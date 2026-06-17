@@ -1,4 +1,4 @@
-# Configuration Bundles [preview]
+# Configuration Bundles
 
 Config bundles are versioned configurations that store your agent's runtime settings — system prompt, tool descriptions,
 model parameters, or any custom keys. Instead of hardcoding values in your agent code, your agent reads its config at
@@ -59,7 +59,7 @@ On deploy, the CLI creates or updates the config bundle in the API and stores th
 ### List versions
 
 ```bash
-agentcore cb versions --bundle MyBundle
+agentcore cb versions --name MyBundle
 ```
 
 Shows version history grouped by branch with commit messages, timestamps, and parent lineage.
@@ -67,13 +67,13 @@ Shows version history grouped by branch with commit messages, timestamps, and pa
 ### Diff two versions
 
 ```bash
-agentcore cb diff --bundle MyBundle --from <version-id-1> --to <version-id-2>
+agentcore cb diff --name MyBundle --from <version-id-1> --to <version-id-2>
 ```
 
 ### Create a branch
 
 ```bash
-agentcore cb create-branch --bundle MyBundle --branch experiment-1
+agentcore cb create-branch --name MyBundle --branch experiment-1
 ```
 
 Creates a new branch from the latest version (or a specific version with `--from`).
@@ -108,7 +108,7 @@ automatically.
 All commands support `--json` for scripting:
 
 ```bash
-agentcore cb versions --bundle MyBundle --json
-agentcore cb diff --bundle MyBundle --from v1 --to v2 --json
-agentcore cb create-branch --bundle MyBundle --branch exp-1 --json
+agentcore cb versions --name MyBundle --json
+agentcore cb diff --name MyBundle --from v1 --to v2 --json
+agentcore cb create-branch --name MyBundle --branch exp-1 --json
 ```

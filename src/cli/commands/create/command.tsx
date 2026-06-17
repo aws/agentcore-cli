@@ -12,6 +12,7 @@ import { LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../schema';
 import { ANSI, COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { isPreviewEnabled } from '../../feature-flags';
+import { ADDITIONAL_PARAMS_JSON_ERROR } from '../../primitives/constants';
 import { harnessPrimitive } from '../../primitives/registry';
 import { runCliCommand, withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import {
@@ -93,6 +94,8 @@ const AGENT_PATH_FLAGS = ['framework', 'language', 'build', 'protocol', 'type', 
 const HARNESS_ONLY_FLAGS = [
   'modelId',
   'apiKeyArn',
+  'apiBase',
+  'additionalParams',
   'maxIterations',
   'maxTokens',
   'timeout',
@@ -184,10 +187,20 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
         bedrock: 'global.anthropic.claude-sonnet-4-6',
         open_ai: 'gpt-5',
         gemini: 'gemini-2.5-flash',
+        lite_llm: 'anthropic/claude-sonnet-4-5',
       };
       const modelId = options.modelId ?? defaultModelIds[provider] ?? 'global.anthropic.claude-sonnet-4-6';
 
       const containerOption = harnessPrimitive!.parseContainerFlag(options.container);
+
+      let additionalParams: Record<string, unknown> | undefined;
+      if (options.additionalParams) {
+        try {
+          additionalParams = JSON.parse(options.additionalParams) as Record<string, unknown>;
+        } catch {
+          throw new Error(ADDITIONAL_PARAMS_JSON_ERROR);
+        }
+      }
 
       const { efsMounts: harnessEfsMounts, s3Mounts: harnessS3Mounts } = await resolveAndValidateFilesystemMounts(
         options,
@@ -201,6 +214,8 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
         modelProvider: provider,
         modelId,
         apiKeyArn: options.apiKeyArn,
+        apiBase: options.apiBase,
+        additionalParams,
         containerUri: containerOption.containerUri,
         dockerfilePath: containerOption.dockerfilePath,
         skipMemory: options.harnessMemory === false,
@@ -430,7 +445,7 @@ export const registerCreate = (program: Command) => {
       (val: string, prev: string[]) => [...prev, val],
       [] as string[]
     )
-    .option('--with-config-bundle', 'Create a config bundle wired into the agent template [preview] [non-interactive]')
+    .option('--with-config-bundle', 'Create a config bundle wired into the agent template [non-interactive]')
     .option('--output-dir <dir>', 'Output directory (default: current directory) [non-interactive]')
     .option('--skip-git', 'Skip git repository initialization [non-interactive]')
     .option('--skip-python-setup', 'Skip Python virtual environment setup [non-interactive]')
@@ -440,20 +455,22 @@ export const registerCreate = (program: Command) => {
 
   if (isPreviewEnabled()) {
     createCmd
-      .option('--model-id <id>', 'Model ID for harness [non-interactive] [preview]')
-      .option('--api-key-arn <arn>', 'API key ARN for non-Bedrock harness providers [non-interactive] [preview]')
-      .option('--no-harness-memory', 'Skip auto-creating memory for harness [non-interactive] [preview]')
-      .option('--max-iterations <n>', 'Max agent loop iterations (harness) [non-interactive] [preview]')
-      .option('--max-tokens <n>', 'Max tokens per iteration (harness) [non-interactive] [preview]')
-      .option('--timeout <seconds>', 'Max execution duration in seconds (harness) [non-interactive] [preview]')
+      .option('--model-id <id>', 'Model ID for harness [non-interactive]')
+      .option('--api-key-arn <arn>', 'API key ARN for non-Bedrock harness providers [non-interactive]')
+      .option('--api-base <url>', 'Base URL for the harness model provider API endpoint (lite_llm) [non-interactive]')
+      .option(
+        '--additional-params <json>',
+        'Provider-specific harness params as a JSON object (lite_llm) [non-interactive]'
+      )
+      .option('--no-harness-memory', 'Skip auto-creating memory for harness [non-interactive]')
+      .option('--max-iterations <n>', 'Max agent loop iterations (harness) [non-interactive]')
+      .option('--max-tokens <n>', 'Max tokens per iteration (harness) [non-interactive]')
+      .option('--timeout <seconds>', 'Max execution duration in seconds (harness) [non-interactive]')
       .option(
         '--truncation-strategy <strategy>',
-        'Truncation strategy: sliding_window or summarization (harness) [non-interactive] [preview]'
+        'Truncation strategy: sliding_window or summarization (harness) [non-interactive]'
       )
-      .option(
-        '--container <uri-or-path>',
-        'Container image URI or Dockerfile path (harness) [non-interactive] [preview]'
-      );
+      .option('--container <uri-or-path>', 'Container image URI or Dockerfile path (harness) [non-interactive]');
   }
 
   createCmd.action(async (rawOptions: Record<string, unknown>) => {

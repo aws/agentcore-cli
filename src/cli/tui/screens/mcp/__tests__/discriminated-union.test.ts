@@ -1,6 +1,7 @@
 import type {
   AddGatewayTargetConfig,
   ApiGatewayTargetConfig,
+  BedrockKnowledgeBasesConnectorTargetConfig,
   LambdaFunctionArnTargetConfig,
   McpServerTargetConfig,
   SchemaBasedTargetConfig,
@@ -180,6 +181,36 @@ describe('AddGatewayTargetConfig discriminated union', () => {
       toolSchemaFile: 'schema.json',
     };
     expect(config.targetType).toBe('lambdaFunctionArn');
+  });
+
+  it('narrows to BedrockKnowledgeBasesConnectorTargetConfig when targetType is connector', () => {
+    const config: AddGatewayTargetConfig = {
+      targetType: 'connector',
+      connectorId: 'bedrock-knowledge-bases',
+      name: 'kb-target',
+      gateway: 'my-gateway',
+      knowledgeBaseId: 'my-project-kb',
+    };
+
+    if (config.targetType === 'connector') {
+      // TypeScript narrows on the connectorId discriminator inside the union.
+      if (config.connectorId === 'bedrock-knowledge-bases') {
+        expect(config.knowledgeBaseId).toBe('my-project-kb');
+        expect(config.gateway).toBe('my-gateway');
+      }
+    }
+  });
+
+  it('BedrockKnowledgeBasesConnectorTargetConfig accepts a literal 10-char external KB ID', () => {
+    const config: BedrockKnowledgeBasesConnectorTargetConfig = {
+      targetType: 'connector',
+      connectorId: 'bedrock-knowledge-bases',
+      name: 'kb-target',
+      gateway: 'gw',
+      knowledgeBaseId: 'ABCDE12345',
+    };
+    expect(config.connectorId).toBe('bedrock-knowledge-bases');
+    expect(config.knowledgeBaseId).toBe('ABCDE12345');
   });
 
   it('three-way dispatch handles all target types', () => {

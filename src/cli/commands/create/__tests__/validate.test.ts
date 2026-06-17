@@ -148,6 +148,32 @@ describe('validateCreateOptions', () => {
     expect(result.error).toContain('is not yet available for TypeScript');
   });
 
+  it('rejects Python with the Vercel AI framework (TypeScript-only)', () => {
+    const result = validateCreateOptions(
+      { name: 'TestProjVercel', language: 'Python', framework: 'VercelAI', modelProvider: 'Bedrock', memory: 'none' },
+      testDir
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('is not yet available for Python');
+    // Message lists the language's supported frameworks (derived from the matrix), not a hardcoded one
+    expect(result.error).toContain('Strands');
+    expect(result.error).toContain('OpenAIAgents');
+  });
+
+  it('accepts TypeScript with the Vercel AI framework', () => {
+    const result = validateCreateOptions(
+      {
+        name: 'TestProjVercelTs',
+        language: 'TypeScript',
+        framework: 'VercelAI',
+        modelProvider: 'Bedrock',
+        memory: 'none',
+      },
+      testDir
+    );
+    expect(result.valid).toBe(true);
+  });
+
   it('returns invalid for invalid framework', () => {
     const result = validateCreateOptions(
       { name: 'TestProj5', language: 'Python', framework: 'InvalidFW', modelProvider: 'Bedrock', memory: 'none' },

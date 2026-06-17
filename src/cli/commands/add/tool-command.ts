@@ -31,6 +31,11 @@ export function registerAddTool(addCmd: Command): void {
       '--grant-type <type>',
       'OAuth grant type: CLIENT_CREDENTIALS or USER_FEDERATION (for --outbound-auth oauth)'
     )
+    .option('--description <text>', 'Tool description shown to the model (required for inline_function)')
+    .option(
+      '--input-schema <json-or-@file>',
+      'JSON Schema for the tool input, as a JSON string or @path/to/schema.json (required for inline_function)'
+    )
     .option('--json', 'Output as JSON')
     .action(async cliOptions => {
       if (!findConfigRoot()) {
@@ -52,6 +57,8 @@ export function registerAddTool(addCmd: Command): void {
           providerArn: cliOptions.providerArn,
           scopes: cliOptions.scopes,
           grantType: cliOptions.grantType,
+          description: cliOptions.description,
+          inputSchema: cliOptions.inputSchema,
           json: cliOptions.json,
         });
 

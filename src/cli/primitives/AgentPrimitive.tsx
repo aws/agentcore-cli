@@ -322,10 +322,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
         (val: string, prev: string[]) => [...prev, val],
         [] as string[]
       )
-      .option(
-        '--with-config-bundle',
-        'Create a config bundle wired into the agent template [preview] [non-interactive]'
-      )
+      .option('--with-config-bundle', 'Create a config bundle wired into the agent template [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(async options => {
         if (!findConfigRoot()) {

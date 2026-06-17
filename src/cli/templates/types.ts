@@ -38,6 +38,8 @@ export interface GatewayProviderRenderConfig {
   discoveryUrl?: string;
   /** Space-separated scopes for token request (CUSTOM_JWT only) */
   scopes?: string;
+  /** Hardcoded URL for external gateways not found in deployed-state.json */
+  hardcodedUrl?: string;
 }
 
 /**
@@ -81,4 +83,59 @@ export interface AgentRenderConfig {
   enableOtel?: boolean;
   /** Whether a config bundle is wired into the agent template */
   hasConfigBundle?: boolean;
+
+  // ── Export-only fields (set by harness-mapper, consumed by export templates) ──
+
+  /** Execution limits from harness — triggers execution-limits capability */
+  maxIterations?: number;
+  maxTokens?: number;
+  timeoutSeconds?: number;
+
+  /** Truncation strategy from harness. 'none' renders no truncation block (truncation disabled). */
+  truncationStrategy?: 'sliding_window' | 'summarization' | 'none';
+  truncationConfig?: Record<string, unknown>;
+
+  /** Inline function tool definitions — one PythonAgentTool generated per entry */
+  inlineFunctionTools?: { name: string; description: string; inputSchema: Record<string, unknown> }[];
+
+  /** Remote MCP tool definitions (non-gateway) */
+  remoteMcpTools?: {
+    name: string;
+    url: string;
+    headerCredentials?: { headerKey: string; credentialName: string; envVarName: string }[];
+  }[];
+
+  /** Skill paths for AgentSkills plugin */
+  pathSkills?: string[];
+  s3Skills?: string[];
+  gitSkills?: { url: string; path?: string; credentialArn?: string; username?: string }[];
+  /** True when any skills exist (path, s3, or git) — enables AgentSkills plugin */
+  hasSkillsFetcher?: boolean;
+  /** True when s3 or git skills exist — enables fetcher imports */
+  hasFetchedSkills?: boolean;
+
+  /** True when agentcore_browser tool is present and allowed */
+  hasBrowser?: boolean;
+  /** Custom browser identifier (resource ID extracted from browserArn) */
+  browserIdentifier?: string;
+  /** True when agentcore_code_interpreter tool is present and allowed */
+  hasCodeInterpreter?: boolean;
+  /** Custom code interpreter identifier (resource ID extracted from codeInterpreterArn) */
+  codeInterpreterIdentifier?: string;
+  /** True when the builtin shell tool is enabled (export harness only) */
+  hasShell?: boolean;
+  /** True when the builtin file_operations tool is enabled (export harness only) */
+  hasFileOperations?: boolean;
+  /** True when any execution limit is configured */
+  hasExecutionLimits?: boolean;
+
+  /** Model ID to use in load.py (export path only — overrides the provider-specific template default) */
+  modelId?: string;
+
+  /** True when generating from a harness export (suppresses placeholder tools) */
+  isExportHarness?: boolean;
+  /** System prompt text written verbatim into main.py (export path) */
+  systemPromptText?: string;
+  /** Default actor ID for memory session manager */
+  actorId?: string;
 }

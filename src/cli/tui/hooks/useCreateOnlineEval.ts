@@ -6,6 +6,8 @@ interface CreateOnlineEvalConfig {
   name: string;
   agent: string;
   endpoint?: string;
+  logGroupNames?: string[];
+  serviceNames?: string[];
   evaluators: string[];
   samplingRate: number;
   sessionTimeoutMinutes?: number;
@@ -31,6 +33,8 @@ export function useCreateOnlineEval() {
             name: config.name,
             agent: config.agent,
             ...(config.endpoint ? { endpoint: config.endpoint } : {}),
+            ...(config.logGroupNames ? { logGroupNames: config.logGroupNames } : {}),
+            ...(config.serviceNames ? { serviceNames: config.serviceNames } : {}),
             evaluators: config.evaluators,
             samplingRate: config.samplingRate,
             ...(config.sessionTimeoutMinutes !== undefined && { sessionTimeoutMinutes: config.sessionTimeoutMinutes }),

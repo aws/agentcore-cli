@@ -27,7 +27,10 @@ describe('integration: add and remove gateway with external MCP server', () => {
 
   describe('gateway lifecycle', () => {
     it('adds a gateway', async () => {
-      const result = await runCLI(['add', 'gateway', '--name', gatewayName, '--json'], project.projectPath);
+      const result = await runCLI(
+        ['add', 'gateway', '--name', gatewayName, '--protocol-type', 'MCP', '--json'],
+        project.projectPath
+      );
 
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -136,7 +139,10 @@ describe('integration: add and remove gateway with OpenAPI schema target', () =>
 
   describe('openApiSchema lifecycle', () => {
     it('adds a gateway', async () => {
-      const result = await runCLI(['add', 'gateway', '--name', gatewayName, '--json'], project.projectPath);
+      const result = await runCLI(
+        ['add', 'gateway', '--name', gatewayName, '--protocol-type', 'MCP', '--json'],
+        project.projectPath
+      );
 
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -262,7 +268,10 @@ describe('integration: add gateway with S3 URI schema target', () => {
 
   describe('S3 URI openApiSchema lifecycle', () => {
     it('adds a gateway and credential', async () => {
-      const result = await runCLI(['add', 'gateway', '--name', gatewayName, '--json'], project.projectPath);
+      const result = await runCLI(
+        ['add', 'gateway', '--name', gatewayName, '--protocol-type', 'MCP', '--json'],
+        project.projectPath
+      );
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
 
       const credResult = await runCLI(
@@ -331,7 +340,7 @@ describe('integration: add gateway with S3 URI and bucketOwnerAccountId', () => 
   });
 
   it('adds a gateway and target with --schema-s3-account', async () => {
-    await runCLI(['add', 'gateway', '--name', gatewayName, '--json'], project.projectPath);
+    await runCLI(['add', 'gateway', '--name', gatewayName, '--protocol-type', 'MCP', '--json'], project.projectPath);
     await runCLI(
       ['add', 'credential', '--name', 'CrossApiKey', '--api-key', 'test-key', '--json'],
       project.projectPath
@@ -388,7 +397,10 @@ describe('integration: add gateway with Smithy model target', () => {
 
   describe('smithyModel lifecycle', () => {
     it('adds a gateway', async () => {
-      const result = await runCLI(['add', 'gateway', '--name', gatewayName, '--json'], project.projectPath);
+      const result = await runCLI(
+        ['add', 'gateway', '--name', gatewayName, '--protocol-type', 'MCP', '--json'],
+        project.projectPath
+      );
 
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
     });
@@ -456,7 +468,7 @@ describe('integration: schema-based target validation errors', () => {
 
   beforeAll(async () => {
     project = await createTestProject({ noAgent: true });
-    await runCLI(['add', 'gateway', '--name', gatewayName, '--json'], project.projectPath);
+    await runCLI(['add', 'gateway', '--name', gatewayName, '--protocol-type', 'MCP', '--json'], project.projectPath);
   });
 
   afterAll(async () => {

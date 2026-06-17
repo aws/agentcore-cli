@@ -178,7 +178,7 @@ export const registerDev = (program: Command) => {
     .option('--exec', 'Execute a shell command in the running dev container (Container agents only) [non-interactive]')
     .option('--tool <name>', 'MCP tool name (used with "call-tool" prompt) [non-interactive]')
     .option('--input <json>', 'MCP tool arguments as JSON (used with --tool) [non-interactive]')
-    .option('--skip-deploy', 'Skip automatic resource deployment before starting dev server [preview]')
+    .option('--skip-deploy', 'Skip automatic resource deployment before starting dev server')
     .option(
       '-H, --header <header>',
       'Custom header to forward to the agent (format: "Name: Value", repeatable) [non-interactive]',

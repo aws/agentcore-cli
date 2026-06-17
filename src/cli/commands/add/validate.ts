@@ -2,6 +2,7 @@ import { ConfigIO, findConfigRoot } from '../../../lib';
 import {
   AgentNameSchema,
   BuildTypeSchema,
+  CONNECTOR_ID_VALUES,
   DatasetNameSchema,
   DatasetSchemaTypeSchema,
   GatewayAuthorizerTypeSchema,
@@ -15,12 +16,15 @@ import {
   StreamDeliveryResourcesSchema,
   TARGET_TYPE_AUTH_CONFIG,
   TargetLanguageSchema,
+  getFrameworksForLanguage,
   getSupportedFrameworksForProtocol,
   getSupportedModelProviders,
+  isFrameworkSupportedForLanguage,
   isValidKmsKeyArn,
   matchEnumValue,
   validateApiFormat,
 } from '../../../schema';
+import { isGatedFeaturesEnabled } from '../../feature-flags';
 import { ARN_VALIDATION_MESSAGE, isValidArn } from '../shared/arn-utils';
 import { validateHeaderAllowlist } from '../shared/header-utils';
 import { MAX_INDEXED_KEYS, parseIndexedKeyArg } from '../shared/indexed-key-parser';
@@ -259,15 +263,16 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
     if (options.language === 'Other') {
       return { valid: false, error: 'Create path only supports Python or TypeScript' };
     }
+    // Framework must ship a template for the chosen language (e.g. Vercel AI is
+    // TypeScript-only, the other open-source frameworks are Python-only).
     if (
-      options.language === 'TypeScript' &&
-      options.framework &&
-      options.framework !== 'Strands' &&
-      options.framework !== 'VercelAI'
+      (langResult.data === 'Python' || langResult.data === 'TypeScript') &&
+      !isFrameworkSupportedForLanguage(langResult.data, fwResult.data)
     ) {
+      const supported = getFrameworksForLanguage(langResult.data).join(', ');
       return {
         valid: false,
-        error: `Framework ${options.framework} is not yet available for TypeScript. Only Strands and Vercel AI SDK are supported.`,
+        error: `Framework ${options.framework} is not yet available for ${langResult.data}. Supported: ${supported}.`,
       };
     }
 
@@ -394,11 +399,23 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     return { valid: false, error: '--name is required' };
   }
 
+  // passthrough is gated; omit it from advertised type lists when the flag is off.
+  const validTypeList = [
+    'mcp-server',
+    'api-gateway',
+    'open-api-schema',
+    'smithy-model',
+    'lambda-function-arn',
+    'http-runtime',
+    'connector',
+    ...(isGatedFeaturesEnabled() ? ['passthrough'] : []),
+    'web-search',
+  ].join(', ');
+
   if (!options.type) {
     return {
       valid: false,
-      error:
-        '--type is required. Valid options: mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn',
+      error: `--type is required. Valid options: ${validTypeList}`,
     };
   }
 
@@ -408,15 +425,27 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     'open-api-schema': 'openApiSchema',
     'smithy-model': 'smithyModel',
     'lambda-function-arn': 'lambdaFunctionArn',
+    'http-runtime': 'httpRuntime',
+    connector: 'connector',
+    passthrough: 'passthrough',
+    'web-search': 'webSearch',
   };
   const mappedType = typeMap[options.type];
   if (!mappedType) {
     return {
       valid: false,
-      error: `Invalid type: ${options.type}. Valid options: mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn`,
+      error: `Invalid type: ${options.type}. Valid options: ${validTypeList}`,
     };
   }
   options.type = mappedType;
+
+  // --exclude-domains is webSearch-target-only. Reject it on every other target type.
+  if (mappedType !== 'webSearch' && options.excludeDomains) {
+    return {
+      valid: false,
+      error: '--exclude-domains only applies to --type web-search',
+    };
+  }
 
   // Gateway is required — a gateway target must be attached to a gateway
   if (!options.gateway) {
@@ -558,6 +587,206 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
       }
       if (typeof item.description !== 'string' || !item.description) {
         return { valid: false, error: `Tool schema entry ${i} is missing a valid "description" field` };
+      }
+    }
+
+    options.language = 'Other';
+    return { valid: true };
+  }
+
+  // HTTP Runtime targets: validate early and return
+  if (mappedType === 'httpRuntime') {
+    if (!options.runtime) {
+      return { valid: false, error: '--runtime is required for http-runtime type' };
+    }
+    if (options.language && options.language !== 'Other') {
+      return { valid: false, error: '--language is not applicable for http-runtime type' };
+    }
+
+    const HTTP_RUNTIME_DISALLOWED_OPTIONS = [
+      'host',
+      'restApiId',
+      'stage',
+      'lambdaArn',
+      'toolSchemaFile',
+      'toolFilterPath',
+      'toolFilterMethods',
+      'schema',
+    ] as const;
+
+    for (const opt of HTTP_RUNTIME_DISALLOWED_OPTIONS) {
+      if (options[opt]) {
+        return {
+          valid: false,
+          error: `--${opt.replace(/([A-Z])/g, '-$1').toLowerCase()} is not applicable for http-runtime type`,
+        };
+      }
+    }
+
+    // Map --runtime-endpoint to the endpoint field used by createHttpRuntimeTarget
+    if (options.runtimeEndpoint) {
+      options.endpoint = options.runtimeEndpoint;
+    }
+
+    options.language = 'Other';
+    return { valid: true };
+  }
+
+  // Web search targets (Amazon Web Search managed connector): validate early and return
+  if (mappedType === 'webSearch') {
+    const WEB_SEARCH_DISALLOWED_OPTIONS: [string, string][] = [
+      ['connector', '--connector'],
+      ['knowledgeBaseId', '--knowledge-base-id'],
+      ['endpoint', '--endpoint'],
+      ['host', '--host'],
+      ['restApiId', '--rest-api-id'],
+      ['stage', '--stage'],
+      ['lambdaArn', '--lambda-arn'],
+      ['toolSchemaFile', '--tool-schema-file'],
+      ['toolFilterPath', '--tool-filter-path'],
+      ['toolFilterMethods', '--tool-filter-methods'],
+      ['schema', '--schema'],
+      ['schemaS3Account', '--schema-s3-account'],
+      ['outboundAuthType', '--outbound-auth'],
+      ['credentialName', '--credential-name'],
+      ['oauthClientId', '--oauth-client-id'],
+      ['oauthClientSecret', '--oauth-client-secret'],
+      ['oauthDiscoveryUrl', '--oauth-discovery-url'],
+      ['oauthScopes', '--oauth-scopes'],
+    ];
+    for (const [key, flag] of WEB_SEARCH_DISALLOWED_OPTIONS) {
+      const v = (options as unknown as Record<string, unknown>)[key];
+      // knowledgeBaseId is a string[]; treat empty array as absent
+      const present = Array.isArray(v) ? v.length > 0 : !!v;
+      if (present) {
+        return { valid: false, error: `${flag} is not applicable for web-search type` };
+      }
+    }
+    if (options.language && options.language !== 'Other') {
+      return { valid: false, error: '--language is not applicable for web-search type' };
+    }
+    options.language = 'Other';
+    return { valid: true };
+  }
+
+  // Connector targets (Bedrock KB, agentic-retrieve): validate early and return
+  if (mappedType === 'connector') {
+    const validConnectors = CONNECTOR_ID_VALUES.join(', ');
+    if (!options.connector) {
+      return {
+        valid: false,
+        error: `--connector is required for connector type. Valid: ${validConnectors}`,
+      };
+    }
+    if (!(CONNECTOR_ID_VALUES as readonly string[]).includes(options.connector)) {
+      return {
+        valid: false,
+        error: `Invalid --connector "${options.connector}". Valid: ${validConnectors}`,
+      };
+    }
+    if (!options.knowledgeBaseId || options.knowledgeBaseId.length === 0) {
+      return {
+        valid: false,
+        error: `--knowledge-base-id is required for --connector ${options.connector}`,
+      };
+    }
+    if (options.connector === 'bedrock-knowledge-bases' && options.knowledgeBaseId.length > 1) {
+      return {
+        valid: false,
+        error:
+          '--knowledge-base-id may only be specified once for --connector bedrock-knowledge-bases. Use --connector bedrock-agentic-retrieve for fan-out.',
+      };
+    }
+    const irrelevant: [string, string][] = [
+      ['endpoint', '--endpoint'],
+      ['host', '--host'],
+      ['restApiId', '--rest-api-id'],
+      ['stage', '--stage'],
+      ['lambdaArn', '--lambda-arn'],
+      ['toolSchemaFile', '--tool-schema-file'],
+      ['toolFilterPath', '--tool-filter-path'],
+      ['toolFilterMethods', '--tool-filter-methods'],
+      ['outboundAuthType', '--outbound-auth'],
+      ['credentialName', '--credential-name'],
+      ['oauthClientId', '--oauth-client-id'],
+      ['oauthClientSecret', '--oauth-client-secret'],
+      ['oauthDiscoveryUrl', '--oauth-discovery-url'],
+      ['oauthScopes', '--oauth-scopes'],
+    ];
+    for (const [key, flag] of irrelevant) {
+      if ((options as unknown as Record<string, unknown>)[key]) {
+        return { valid: false, error: `${flag} is not applicable for connector type` };
+      }
+    }
+    if (options.language && options.language !== 'Other') {
+      return { valid: false, error: '--language is not applicable for connector type' };
+    }
+    options.language = 'Other';
+    return { valid: true };
+  }
+
+  // Passthrough targets: validate early and return
+  if (mappedType === 'passthrough') {
+    if (!isGatedFeaturesEnabled()) {
+      return { valid: false, error: 'Passthrough targets are not yet available.' };
+    }
+    const passthroughEndpoint = (options as Record<string, string | undefined>).passthroughEndpoint;
+    if (!passthroughEndpoint) {
+      return { valid: false, error: '--passthrough-endpoint is required for passthrough type' };
+    }
+    if (!/^https:\/\/[a-zA-Z0-9\-.]+(:[0-9]{1,5})?(\/.*)?$/.test(passthroughEndpoint)) {
+      return { valid: false, error: '--passthrough-endpoint must be a valid HTTPS URL' };
+    }
+    if (options.language && options.language !== 'Other') {
+      return { valid: false, error: '--language is not applicable for passthrough type' };
+    }
+
+    const PASSTHROUGH_DISALLOWED_OPTIONS = [
+      'host',
+      'restApiId',
+      'stage',
+      'lambdaArn',
+      'toolSchemaFile',
+      'toolFilterPath',
+      'toolFilterMethods',
+      'schema',
+      'runtime',
+      'runtimeEndpoint',
+    ] as const;
+
+    for (const opt of PASSTHROUGH_DISALLOWED_OPTIONS) {
+      if (options[opt]) {
+        return {
+          valid: false,
+          error: `--${opt.replace(/([A-Z])/g, '-$1').toLowerCase()} is not applicable for passthrough type`,
+        };
+      }
+    }
+
+    const stickinessTimeoutRaw = (options as Record<string, string | undefined>).stickinessTimeout;
+    if (stickinessTimeoutRaw) {
+      const timeout = parseInt(stickinessTimeoutRaw, 10);
+      if (isNaN(timeout) || timeout < 1 || timeout > 86400) {
+        return { valid: false, error: '--stickiness-timeout must be a number between 1 and 86400' };
+      }
+    }
+
+    // Validate outbound auth for passthrough
+    if (options.outboundAuthType) {
+      const normalizedAuth = options.outboundAuthType.toUpperCase().replace(/-/g, '_');
+      if (normalizedAuth === 'GATEWAY_IAM_ROLE') {
+        // signingService validation is done in the primitive action handler
+      } else if (normalizedAuth === 'JWT_PASSTHROUGH') {
+        // No additional fields required
+      } else if (normalizedAuth === 'OAUTH') {
+        if (!options.credentialName) {
+          const hasInlineOAuth = !!(options.oauthClientId ?? options.oauthClientSecret ?? options.oauthDiscoveryUrl);
+          if (!hasInlineOAuth) {
+            return { valid: false, error: '--credential-name or inline OAuth fields required for OAUTH auth' };
+          }
+        }
+      } else if (normalizedAuth !== 'NONE') {
+        return { valid: false, error: `Unsupported outbound auth type for passthrough: ${options.outboundAuthType}` };
       }
     }
 
@@ -892,6 +1121,10 @@ const VALID_HARNESS_TOOLS = [
 
 const VALID_GATEWAY_OUTBOUND_AUTH = ['awsIam', 'none', 'oauth'] as const;
 
+const VALID_MEMORY_MODES = ['managed', 'existing', 'disabled'] as const;
+// Managed harness memory excludes CUSTOM (only the four; CUSTOM is for standalone memory).
+const VALID_MANAGED_STRATEGIES = ['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE', 'EPISODIC'] as const;
+
 export function validateAddHarnessOptions(options: AddHarnessCliOptions): ValidationResult {
   if (options.apiFormat) {
     const provider = options.modelProvider ?? 'bedrock';
@@ -899,6 +1132,13 @@ export function validateAddHarnessOptions(options: AddHarnessCliOptions): Valida
     if (!formatResult.valid) {
       return { valid: false, error: formatResult.error };
     }
+  }
+
+  // VPC network-mode coupling: reject --subnets/--security-groups when network mode isn't VPC
+  // (and require them when it is), instead of silently dropping them. Mirrors the agent path.
+  const vpcResult = validateVpcOptions(options);
+  if (!vpcResult.valid) {
+    return vpcResult;
   }
 
   if (options.tools) {
@@ -948,6 +1188,84 @@ export function validateAddHarnessOptions(options: AddHarnessCliOptions): Valida
     }
   }
 
+  // --gateway-grant-type / --gateway-custom-parameters only live on the oauth arm; reject them for
+  // any other (or absent) outbound-auth rather than silently dropping them at spec-build.
+  if (
+    (options.gatewayGrantType !== undefined || options.gatewayCustomParameters !== undefined) &&
+    options.gatewayOutboundAuth !== 'oauth'
+  ) {
+    return {
+      valid: false,
+      error: '--gateway-grant-type and --gateway-custom-parameters are only valid with --gateway-outbound-auth oauth',
+    };
+  }
+
+  // Memory flag coupling. Commander sets `memory` to false for --no-memory.
+  const noMemory = options.memory === false;
+  const memoryTuningGiven =
+    options.memoryActorId !== undefined ||
+    options.memoryMessagesCount !== undefined ||
+    options.memoryTopK !== undefined ||
+    options.memoryRelevanceScore !== undefined;
+  if (options.memoryArn && options.memoryName) {
+    return { valid: false, error: '--memory-arn and --memory-name are mutually exclusive' };
+  }
+  if (noMemory && (options.memoryArn || options.memoryName || memoryTuningGiven)) {
+    return {
+      valid: false,
+      error: '--no-memory cannot be combined with --memory-arn, --memory-name, or memory tuning flags',
+    };
+  }
+
+  // Managed-memory mode validation — only when the gated feature is enabled. When gated off, any
+  // --memory-mode / managed-only flag is rejected up front as "not yet available".
+  const managedOnlyFlags =
+    options.memoryStrategies !== undefined ||
+    options.memoryEventExpiryDays !== undefined ||
+    options.memoryEncryptionKeyArn !== undefined;
+  if (!isGatedFeaturesEnabled()) {
+    if (options.memoryMode !== undefined || managedOnlyFlags) {
+      return {
+        valid: false,
+        error:
+          '--memory-mode and managed-memory flags (--memory-strategies, --memory-event-expiry-days, --memory-encryption-key-arn) are not yet available.',
+      };
+    }
+  } else {
+    if (options.memoryMode && !VALID_MEMORY_MODES.includes(options.memoryMode as (typeof VALID_MEMORY_MODES)[number])) {
+      return {
+        valid: false,
+        error: `Invalid --memory-mode '${options.memoryMode}'. Use ${VALID_MEMORY_MODES.join(', ')}.`,
+      };
+    }
+    if (noMemory && (options.memoryMode === 'managed' || options.memoryMode === 'existing')) {
+      return { valid: false, error: '--no-memory cannot be combined with --memory-mode managed/existing' };
+    }
+    if (options.memoryMode === 'existing' && !options.memoryArn && !options.memoryName) {
+      return { valid: false, error: '--memory-mode existing requires --memory-arn or --memory-name' };
+    }
+    if (managedOnlyFlags && options.memoryMode && options.memoryMode !== 'managed') {
+      return {
+        valid: false,
+        error:
+          '--memory-strategies, --memory-event-expiry-days, and --memory-encryption-key-arn are only valid with --memory-mode managed',
+      };
+    }
+    if (options.memoryStrategies) {
+      const bad = options.memoryStrategies
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean)
+        .filter(s => !VALID_MANAGED_STRATEGIES.includes(s as (typeof VALID_MANAGED_STRATEGIES)[number]));
+      if (bad.length) {
+        return {
+          valid: false,
+          error: `Invalid managed memory strateg${bad.length > 1 ? 'ies' : 'y'}: ${bad.join(', ')}. Valid: ${VALID_MANAGED_STRATEGIES.join(', ')}`,
+        };
+      }
+    }
+  }
+
   if (options.authorizerType) {
     const authResult = RuntimeAuthorizerTypeSchema.safeParse(options.authorizerType);
     if (!authResult.success) {
@@ -962,6 +1280,22 @@ export function validateAddHarnessOptions(options: AddHarnessCliOptions): Valida
 
   if (options.clientId && options.authorizerType !== 'CUSTOM_JWT') {
     return { valid: false, error: 'OAuth client credentials are only valid with CUSTOM_JWT authorizer' };
+  }
+
+  // PrivateLink (private-endpoint) flags only apply to the CUSTOM_JWT inbound authorizer; reject
+  // them for any other authorizer rather than silently dropping the config (mirrors the OAuth guard).
+  const hasPrivateEndpointFlag = [
+    options.privateEndpointLatticeArn,
+    options.privateEndpointVpcId,
+    options.privateEndpointSubnets,
+    options.privateEndpointIpType,
+    options.privateEndpointSecurityGroups,
+    options.privateEndpointRoutingDomain,
+    options.privateEndpointTags,
+    options.privateEndpointOverrides,
+  ].some(Boolean);
+  if (hasPrivateEndpointFlag && options.authorizerType !== 'CUSTOM_JWT') {
+    return { valid: false, error: '--private-endpoint-* flags are only valid with CUSTOM_JWT authorizer' };
   }
 
   return { valid: true };

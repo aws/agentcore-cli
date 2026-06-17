@@ -464,6 +464,7 @@ agents:
         version: 1,
         runtimes: [],
         memories: [],
+        knowledgeBases: [],
         credentials: [],
       })
     );
@@ -482,6 +483,7 @@ agents:
       version: 1,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
     });
     mockWriteProjectSpec.mockResolvedValue(undefined);
@@ -508,6 +510,7 @@ agents:
       version: 1,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
     });
     mockWriteProjectSpec.mockResolvedValue(undefined);
@@ -532,6 +535,7 @@ agents:
       version: 1,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
     });
     mockWriteProjectSpec.mockResolvedValue(undefined);
@@ -553,6 +557,7 @@ agents:
       version: 1,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
     });
     mockWriteProjectSpec.mockResolvedValue(undefined);
@@ -572,6 +577,7 @@ agents:
       version: 1,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
     });
     mockWriteProjectSpec.mockResolvedValue(undefined);
@@ -590,6 +596,7 @@ agents:
       version: 1,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
     });
     mockWriteProjectSpec.mockResolvedValue(undefined);
@@ -609,6 +616,7 @@ agents:
       version: 1,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
     });
     mockWriteProjectSpec.mockResolvedValue(undefined);
@@ -627,6 +635,7 @@ agents:
       version: 1,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
     });
     mockWriteProjectSpec.mockResolvedValue(undefined);
@@ -644,6 +653,7 @@ agents:
       version: 1,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
     });
     mockWriteProjectSpec.mockResolvedValue(undefined);
@@ -680,6 +690,7 @@ describe('handleImport: target resolution with null account/region', () => {
         version: 1,
         runtimes: [],
         memories: [],
+        knowledgeBases: [],
         credentials: [],
       })
     );
@@ -722,6 +733,7 @@ agents:
       version: 1,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
     });
     mockWriteProjectSpec.mockResolvedValue(undefined);
@@ -768,6 +780,7 @@ agents:
       version: 1,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
     });
     mockWriteProjectSpec.mockResolvedValue(undefined);
@@ -812,6 +825,7 @@ agents:
       version: 1,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
     });
     mockWriteProjectSpec.mockResolvedValue(undefined);

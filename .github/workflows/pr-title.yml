@@ -2,7 +2,7 @@ name: Validate PR Title
 
 on:
   pull_request_target:
-    branches: [main]
+    branches: [main, feat/**]
     types: [opened, edited, synchronize, reopened]
 
 permissions:
@@ -38,9 +38,11 @@ jobs:
             The subject "{subject}" found in the pull request title "{title}"
             must start with a lowercase letter.
             Example: "feat: add deploy command"
-          validateSingleCommit: false
-          # Skip validation for bot/dependency/release PRs
+          # Validate the commit message when a PR has a single commit, since
+          # GitHub suggests using it as the merge commit message on squash-merge
+          validateSingleCommit: true
+          validateSingleCommitMatchesPrTitle: true
+          # Skip validation for bot/dependency PRs
           ignoreLabels: |
             bot
             dependencies
-            release

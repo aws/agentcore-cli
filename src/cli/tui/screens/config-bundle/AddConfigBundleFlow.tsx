@@ -50,7 +50,7 @@ export function AddConfigBundleFlow({
                 deployedArns.add(name);
               }
             }
-            const httpGateways = target.resources?.httpGateways;
+            const httpGateways = target.resources?.gateways;
             if (httpGateways) {
               for (const [name, state] of Object.entries(httpGateways)) {
                 components.push({ name, arn: state.gatewayArn, type: 'gateway' });
@@ -75,7 +75,7 @@ export function AddConfigBundleFlow({
               });
             }
           }
-          for (const gw of projectSpec.httpGateways ?? []) {
+          for (const gw of (projectSpec.agentCoreGateways ?? []).filter(g => g.protocolType === 'None')) {
             if (!deployedArns.has(gw.name)) {
               components.push({
                 name: gw.name,

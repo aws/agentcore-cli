@@ -171,6 +171,81 @@ describe('agentcore-recommendation', () => {
       expect(body.description).toBe('Test description');
     });
 
+    it('includes kmsKeyArn when provided', async () => {
+      mockFetch.mockResolvedValue(
+        mockJsonResponse({
+          recommendationId: 'r1',
+          recommendationArn: 'arn:1',
+          name: 'MyRec',
+          type: 'SYSTEM_PROMPT_RECOMMENDATION',
+          status: 'PENDING',
+        })
+      );
+
+      await startRecommendation({
+        region: 'us-west-2',
+        name: 'MyRec',
+        type: 'SYSTEM_PROMPT_RECOMMENDATION',
+        recommendationConfig: {
+          systemPromptRecommendationConfig: {
+            systemPrompt: { text: '' },
+            agentTraces: {
+              cloudwatchLogs: {
+                logGroupArns: [],
+                serviceNames: ['bedrock-agentcore'],
+                startTime: '2026-03-23T00:00:00.000Z',
+                endTime: '2026-03-30T00:00:00.000Z',
+              },
+            },
+            evaluationConfig: {
+              evaluators: [{ evaluatorArn: 'arn:aws:bedrock-agentcore:::evaluator/Builtin.Helpfulness' }],
+            },
+          },
+        },
+        kmsKeyArn: 'arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012',
+      });
+
+      const body = JSON.parse(mockFetch.mock.calls[0]![1].body);
+      expect(body.kmsKeyArn).toBe('arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012');
+    });
+
+    it('omits kmsKeyArn when not provided', async () => {
+      mockFetch.mockResolvedValue(
+        mockJsonResponse({
+          recommendationId: 'r1',
+          recommendationArn: 'arn:1',
+          name: 'MyRec',
+          type: 'SYSTEM_PROMPT_RECOMMENDATION',
+          status: 'PENDING',
+        })
+      );
+
+      await startRecommendation({
+        region: 'us-west-2',
+        name: 'MyRec',
+        type: 'SYSTEM_PROMPT_RECOMMENDATION',
+        recommendationConfig: {
+          systemPromptRecommendationConfig: {
+            systemPrompt: { text: '' },
+            agentTraces: {
+              cloudwatchLogs: {
+                logGroupArns: [],
+                serviceNames: ['bedrock-agentcore'],
+                startTime: '2026-03-23T00:00:00.000Z',
+                endTime: '2026-03-30T00:00:00.000Z',
+              },
+            },
+            evaluationConfig: {
+              evaluators: [{ evaluatorArn: 'arn:aws:bedrock-agentcore:::evaluator/Builtin.Helpfulness' }],
+            },
+          },
+        },
+      });
+
+      const body = JSON.parse(mockFetch.mock.calls[0]![1].body);
+      expect(body.kmsKeyArn).toBeUndefined();
+    });
+
     it('throws on non-ok response', async () => {
       mockFetch.mockResolvedValue({
         ok: false,
@@ -215,6 +290,7 @@ describe('agentcore-recommendation', () => {
       expect(result.recommendationResult?.systemPromptRecommendationResult?.recommendedSystemPrompt).toBe(
         'Optimized prompt'
       );
+      expect(result.recommendationResult?.systemPromptRecommendationResult?.explanation).toBe('Made it better');
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/recommendations/rec-123'),
         expect.objectContaining({ method: 'GET' })

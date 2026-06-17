@@ -1,4 +1,4 @@
-# Batch Evaluation [preview]
+# Batch Evaluation
 
 Batch evaluation runs evaluators across all agent sessions in CloudWatch, producing per-session scores and aggregate
 metrics. Use it to measure agent quality over time, compare before/after prompt changes, or validate ground truth
@@ -12,6 +12,9 @@ agentcore run batch-evaluation -r MyAgent -e Builtin.Correctness
 
 # Multiple evaluators
 agentcore run batch-evaluation -r MyAgent -e Builtin.Correctness Builtin.Helpfulness Builtin.Faithfulness
+
+# Reference evaluators by ARN (custom or cross-account)
+agentcore run batch-evaluation -r MyAgent --evaluator-arn arn:aws:bedrock-agentcore:us-west-2:123456789012:evaluator/MyCustomEval
 
 # JSON output for scripting
 agentcore run batch-evaluation -r MyAgent -e Builtin.Helpfulness --json
@@ -90,6 +93,27 @@ All fields inside `inline` are optional — include only what's relevant:
 - `expectedTrajectory` — tool call sequence evaluated by `Builtin.TrajectoryExactOrderMatch`
 - `turns` — input/expected-response pairs evaluated by `Builtin.Correctness`
 
+## Dataset-Driven Evaluation
+
+Instead of scoring historical CloudWatch traces, drive the evaluation from a **dataset** — the CLI invokes the agent
+with each dataset scenario, then scores the results:
+
+```bash
+# Use the local DRAFT dataset file
+agentcore run batch-evaluation -r MyAgent -e Builtin.Correctness --dataset MyScenarios
+
+# Use a published dataset version
+agentcore run batch-evaluation -r MyAgent -e Builtin.Correctness --dataset MyScenarios --dataset-version 1
+```
+
+| Flag                          | Description                                                          |
+| ----------------------------- | -------------------------------------------------------------------- |
+| `--dataset <name>`            | Dataset name — invoke the agent with its scenarios instead of traces |
+| `--dataset-version <version>` | Dataset version (`N` or `DRAFT`; omit to use the local file)         |
+
+Add and edit datasets with `agentcore add dataset` and `agentcore dataset publish-version`. The number of scored
+sessions equals the number of scenarios in the dataset.
+
 ## Custom Name
 
 ```bash
@@ -97,6 +121,21 @@ agentcore run batch-evaluation -r MyAgent -e Builtin.Helpfulness -n "weekly_qual
 ```
 
 Names must start with a letter and contain only letters, digits, and underscores (max 48 characters).
+
+## Encrypting Results with KMS
+
+By default, batch evaluation results are encrypted with an AWS-managed key. To encrypt them with your own customer
+managed key (CMK), pass its ARN with `--kms-key`:
+
+```bash
+agentcore run batch-evaluation \
+  -r MyAgent \
+  -e Builtin.Correctness \
+  --kms-key arn:aws:kms:us-west-2:111122223333:key/12345678-1234-1234-1234-123456789012
+```
+
+The key must be in the same region as the evaluation, and the calling principal (and the AgentCore service) must have
+`kms:Encrypt`/`kms:GenerateDataKey` permissions on it. Omit the flag to use the AWS-managed key.
 
 ## Stopping a Running Evaluation
 
@@ -112,11 +151,11 @@ The CLI shows scores grouped by evaluator with average scores after the run comp
 
 ### Local history
 
-Results are saved in `.cli/eval-job-results/`. View past runs via the TUI:
+Job records are saved in `.cli/jobs/batch-eval-results/`. View past runs via the TUI:
 
 ```bash
 agentcore
-# Navigate to: Evals → Batch Evaluation History
+# Navigate to: Run → Batch Evaluation History   (or View → Batch Evaluation)
 ```
 
 ### JSON output

@@ -1,4 +1,4 @@
-# Recommendations [preview]
+# Recommendations
 
 Recommendations optimize your agent's system prompt or tool descriptions using historical traces as signal. The
 recommendation service analyzes how your agent performed, then produces an improved version scored by an evaluator.
@@ -93,16 +93,36 @@ agentcore run recommendation ... --session-id <id-1> <id-2>
 agentcore run recommendation ... --spans-file ./traces.json
 ```
 
+## Encrypting Results with KMS
+
+By default, recommendation results are encrypted with an AWS-managed key. To encrypt them with your own customer managed
+key (CMK), pass its ARN with `--kms-key`:
+
+```bash
+agentcore run recommendation \
+  -t system-prompt \
+  -r MyAgent \
+  -e Builtin.Correctness \
+  --inline "You are a helpful assistant" \
+  --kms-key arn:aws:kms:us-west-2:111122223333:key/12345678-1234-1234-1234-123456789012
+```
+
+The key must be in the same region as the recommendation, and the calling principal (and the AgentCore service) must
+have `kms:Encrypt`/`kms:GenerateDataKey` permissions on it. Omit the flag to use the AWS-managed key.
+
 ## JSON Output
 
 ```bash
 agentcore run recommendation -r MyAgent -e Builtin.Helpfulness --type system-prompt --inline "..." --json
 ```
 
-Returns `recommendationId`, `status`, and `result` with `systemPromptRecommendationResult.recommendedSystemPrompt` or
+Recommendations are fire-and-forget jobs: `run recommendation` returns `recommendationId` and an initial `status`
+(`PENDING`/`IN_PROGRESS`) — the optimized `result` is **not** available immediately. Pass `--wait` to block until the
+job finishes, or check later with `agentcore view recommendation <id> --json`, which returns the completed `result` with
+`systemPromptRecommendationResult.recommendedSystemPrompt` (and `explanation`) or
 `toolDescriptionRecommendationResult.tools`.
 
-When using `--bundle-name`, the result also includes `configurationBundle.versionId` — the new bundle version.
+When using `--bundle-name`, the completed result also includes `configurationBundle.versionId` — the new bundle version.
 
 ## End-to-End Workflow: Recommendation → Config Bundle → Invoke
 
@@ -136,11 +156,11 @@ When using `--bundle-name`, the result also includes `configurationBundle.versio
 
 ## Viewing History
 
-Results are saved in `.cli/recommendations/`. View past runs via the TUI:
+Job records are saved in `.cli/jobs/recommendations/`. View past runs via the TUI:
 
 ```bash
 agentcore
-# Navigate to: Recommendations → History
+# Navigate to: Recommendations → History   (or View → Recommendation)
 ```
 
 ## TUI Wizard

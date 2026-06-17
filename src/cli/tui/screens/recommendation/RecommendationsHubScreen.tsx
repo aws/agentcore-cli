@@ -21,8 +21,8 @@ export function RecommendationsHubScreen({ onSelect, onExit }: RecommendationsHu
       },
       {
         id: 'recommendation-history',
-        title: 'Recommendation History',
-        description: 'View past recommendation results (local)',
+        title: 'Recommendation Jobs',
+        description: 'View recommendation jobs and their results',
       },
     ],
     []
@@ -36,7 +36,7 @@ export function RecommendationsHubScreen({ onSelect, onExit }: RecommendationsHu
   });
 
   return (
-    <Screen title="Recommendations [preview]" onExit={onExit} helpText={HELP_TEXT.NAVIGATE_SELECT} exitEnabled={false}>
+    <Screen title="Recommendations" onExit={onExit} helpText={HELP_TEXT.NAVIGATE_SELECT} exitEnabled={false}>
       <WizardSelect title="Choose an option" items={items} selectedIndex={nav.selectedIndex} />
     </Screen>
   );

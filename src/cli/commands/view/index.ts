@@ -1,0 +1,1 @@
+export { registerView } from './command';

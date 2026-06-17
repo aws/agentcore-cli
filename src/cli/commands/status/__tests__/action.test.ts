@@ -8,6 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mockGetAgentRuntimeStatus = vi.fn();
 const mockGetEvaluator = vi.fn();
 const mockGetOnlineEvaluationConfig = vi.fn();
+const mockGetKnowledgeBase = vi.fn();
+const mockGetLatestIngestionJob = vi.fn();
 
 vi.mock('../../../aws', () => ({
   getAgentRuntimeStatus: (...args: unknown[]) => mockGetAgentRuntimeStatus(...args),
@@ -18,17 +20,27 @@ vi.mock('../../../aws/agentcore-control', () => ({
   getOnlineEvaluationConfig: (...args: unknown[]) => mockGetOnlineEvaluationConfig(...args),
 }));
 
-const mockIsPreviewEnabled = vi.fn(() => true);
-vi.mock('../../../feature-flags', () => ({
-  isPreviewEnabled: () => mockIsPreviewEnabled(),
+vi.mock('../../../aws/bedrock-agent', () => ({
+  getKnowledgeBase: (...args: unknown[]) => mockGetKnowledgeBase(...args),
+  getLatestIngestionJob: (...args: unknown[]) => mockGetLatestIngestionJob(...args),
 }));
 
+const mockIsPreviewEnabled = vi.fn(() => true);
+const mockIsGatedFeaturesEnabled = vi.fn(() => true);
+vi.mock('../../../feature-flags', () => ({
+  isPreviewEnabled: () => mockIsPreviewEnabled(),
+  isGatedFeaturesEnabled: () => mockIsGatedFeaturesEnabled(),
+}));
+
+const loggedLines: string[] = [];
 vi.mock('../../../logging', () => {
   return {
     ExecLogger: class {
       startStep = vi.fn();
       endStep = vi.fn();
-      log = vi.fn();
+      log = vi.fn((line: string) => {
+        loggedLines.push(line);
+      });
       finalize = vi.fn();
       getRelativeLogPath = vi.fn().mockReturnValue('logs/status.log');
     },
@@ -41,6 +53,7 @@ const baseProject: AgentCoreProjectSpec = {
   managedBy: 'CDK' as const,
   runtimes: [],
   memories: [],
+  knowledgeBases: [],
   credentials: [],
 } as unknown as AgentCoreProjectSpec;
 
@@ -497,6 +510,51 @@ describe('computeResourceStatuses', () => {
     expect(harnessEntries).toHaveLength(0);
   });
 
+  it('renders the config version (v{N}) on a deployed harness when gated features are enabled', () => {
+    const project = {
+      ...baseProject,
+      harnesses: [{ name: 'my-harness', path: 'harnesses/my-harness' }],
+    } as unknown as AgentCoreProjectSpec;
+    const resources: DeployedResourceState = {
+      harnesses: {
+        'my-harness': {
+          harnessId: 'h-123',
+          harnessArn: 'arn:aws:bedrock:us-east-1:123456789:harness/h-123',
+          roleArn: 'arn:aws:iam::123456789:role/test',
+          status: 'READY',
+          harnessVersion: 3,
+        },
+      },
+    };
+
+    const result = computeResourceStatuses(project, resources);
+    const harnessEntry = result.find(r => r.resourceType === 'harness' && r.name === 'my-harness');
+    expect(harnessEntry!.detail).toBe('v3');
+  });
+
+  it('does not render the config version when gated features are disabled', () => {
+    mockIsGatedFeaturesEnabled.mockReturnValueOnce(false);
+    const project = {
+      ...baseProject,
+      harnesses: [{ name: 'my-harness', path: 'harnesses/my-harness' }],
+    } as unknown as AgentCoreProjectSpec;
+    const resources: DeployedResourceState = {
+      harnesses: {
+        'my-harness': {
+          harnessId: 'h-123',
+          harnessArn: 'arn:aws:bedrock:us-east-1:123456789:harness/h-123',
+          roleArn: 'arn:aws:iam::123456789:role/test',
+          status: 'READY',
+          harnessVersion: 3,
+        },
+      },
+    };
+
+    const result = computeResourceStatuses(project, resources);
+    const harnessEntry = result.find(r => r.resourceType === 'harness' && r.name === 'my-harness');
+    expect(harnessEntry!.detail).toBeUndefined();
+  });
+
   it('handles mixed deployed and local-only resources', () => {
     const project = {
       ...baseProject,
@@ -537,6 +595,179 @@ describe('computeResourceStatuses', () => {
 
     const deployedCred = result.find(r => r.name === 'deployed-cred');
     expect(deployedCred!.deploymentState).toBe('deployed');
+  });
+
+  it('marks knowledge-base as deployed when present in deployed-state', () => {
+    const project = {
+      ...baseProject,
+      knowledgeBases: [
+        {
+          type: 'AgentCoreKnowledgeBase',
+          name: 'product-docs',
+          dataSources: [{ type: 'S3', uri: 's3://b/d/' }],
+        },
+      ],
+    } as unknown as AgentCoreProjectSpec;
+
+    const resources: DeployedResourceState = {
+      knowledgeBases: {
+        'product-docs': {
+          knowledgeBaseId: 'KB1',
+          knowledgeBaseArn: 'arn:aws:bedrock:us-west-2:0:knowledge-base/KB1',
+          dataSources: [{ dataSourceId: 'DS1', uri: 's3://b/d/' }],
+        },
+      },
+    };
+
+    const result = computeResourceStatuses(project, resources);
+    const kbEntry = result.find(r => r.resourceType === 'knowledge-base' && r.name === 'product-docs');
+
+    expect(kbEntry).toBeDefined();
+    expect(kbEntry!.deploymentState).toBe('deployed');
+    expect(kbEntry!.identifier).toBe('arn:aws:bedrock:us-west-2:0:knowledge-base/KB1');
+    expect(kbEntry!.detail).toBe('1 data source');
+  });
+
+  it('marks knowledge-base as local-only when not in deployed-state', () => {
+    const project = {
+      ...baseProject,
+      knowledgeBases: [
+        {
+          type: 'AgentCoreKnowledgeBase',
+          name: 'fresh-kb',
+          dataSources: [
+            { type: 'S3', uri: 's3://b/a/' },
+            { type: 'S3', uri: 's3://b/b/' },
+          ],
+        },
+      ],
+    } as unknown as AgentCoreProjectSpec;
+
+    const result = computeResourceStatuses(project, undefined);
+    const kbEntry = result.find(r => r.resourceType === 'knowledge-base' && r.name === 'fresh-kb');
+
+    expect(kbEntry).toBeDefined();
+    expect(kbEntry!.deploymentState).toBe('local-only');
+    expect(kbEntry!.detail).toBe('2 data sources');
+  });
+
+  it('marks knowledge-base as pending-removal when in deployed-state but not local', () => {
+    const project = baseProject;
+    const resources: DeployedResourceState = {
+      knowledgeBases: {
+        'orphan-kb': {
+          knowledgeBaseId: 'KBOLD',
+          knowledgeBaseArn: 'arn:aws:bedrock:us-west-2:0:knowledge-base/KBOLD',
+          dataSources: [],
+        },
+      },
+    };
+
+    const result = computeResourceStatuses(project, resources);
+    const kbEntry = result.find(r => r.resourceType === 'knowledge-base' && r.name === 'orphan-kb');
+
+    expect(kbEntry).toBeDefined();
+    expect(kbEntry!.deploymentState).toBe('pending-removal');
+  });
+
+  it('surfaces gateway wiring on KB detail when a connector target references it', () => {
+    const project = {
+      ...baseProject,
+      agentCoreGateways: [
+        {
+          name: 'main-gw',
+          targets: [
+            {
+              name: 'docs',
+              targetType: 'connector',
+              connectorId: 'bedrock-knowledge-bases',
+              knowledgeBaseId: 'docs',
+            },
+          ],
+        },
+      ],
+      knowledgeBases: [
+        {
+          type: 'AgentCoreKnowledgeBase',
+          name: 'docs',
+          dataSources: [{ type: 'S3', uri: 's3://b/d/' }],
+        },
+      ],
+    } as unknown as AgentCoreProjectSpec;
+
+    const result = computeResourceStatuses(project, undefined);
+    const kbEntry = result.find(r => r.resourceType === 'knowledge-base' && r.name === 'docs');
+    expect(kbEntry?.detail).toBe('1 data source → gw:main-gw');
+  });
+
+  it('annotates gateway detail with retrieve-target count', () => {
+    const project = {
+      ...baseProject,
+      agentCoreGateways: [
+        {
+          name: 'main-gw',
+          targets: [
+            { name: 't1', targetType: 'mcpServer' },
+            { name: 'docs', targetType: 'connector', connectorId: 'bedrock-knowledge-bases', knowledgeBaseId: 'docs' },
+          ],
+        },
+      ],
+    } as unknown as AgentCoreProjectSpec;
+
+    const result = computeResourceStatuses(project, undefined);
+    const gwEntry = result.find(r => r.resourceType === 'gateway' && r.name === 'main-gw');
+    expect(gwEntry?.detail).toBe('2 targets (1 retrieve)');
+  });
+
+  it('annotates gateway detail with both retrieve count and agentic fan-out', () => {
+    const project = {
+      ...baseProject,
+      agentCoreGateways: [
+        {
+          name: 'main-gw',
+          targets: [
+            { name: 'docs', targetType: 'connector', connectorId: 'bedrock-knowledge-bases', knowledgeBaseId: 'docs' },
+            { name: 'hr', targetType: 'connector', connectorId: 'bedrock-knowledge-bases', knowledgeBaseId: 'hr' },
+            {
+              name: 'main-gw-agentic',
+              targetType: 'connector',
+              connectorId: 'bedrock-agentic-retrieve',
+              knowledgeBaseIds: ['docs', 'hr'],
+            },
+          ],
+        },
+      ],
+    } as unknown as AgentCoreProjectSpec;
+
+    const result = computeResourceStatuses(project, undefined);
+    const gwEntry = result.find(r => r.resourceType === 'gateway' && r.name === 'main-gw');
+    expect(gwEntry?.detail).toBe('3 targets (2 retrieve, agentic ×2)');
+  });
+
+  it('KB detail surfaces wiring from agentic-retrieve fan-out target', () => {
+    const project = {
+      ...baseProject,
+      agentCoreGateways: [
+        {
+          name: 'main-gw',
+          targets: [
+            {
+              name: 'main-gw-agentic',
+              targetType: 'connector',
+              connectorId: 'bedrock-agentic-retrieve',
+              knowledgeBaseIds: ['docs'],
+            },
+          ],
+        },
+      ],
+      knowledgeBases: [
+        { type: 'AgentCoreKnowledgeBase', name: 'docs', dataSources: [{ type: 'S3', uri: 's3://b/d/' }] },
+      ],
+    } as unknown as AgentCoreProjectSpec;
+
+    const result = computeResourceStatuses(project, undefined);
+    const kbEntry = result.find(r => r.resourceType === 'knowledge-base' && r.name === 'docs');
+    expect(kbEntry?.detail).toBe('1 data source → gw:main-gw');
   });
 });
 
@@ -729,6 +960,224 @@ describe('handleProjectStatus — live enrichment', () => {
     expect(evalEntry).toBeDefined();
     expect(evalEntry!.deploymentState).toBe('local-only');
     expect(mockGetEvaluator).not.toHaveBeenCalled();
+  });
+});
+
+describe('handleProjectStatus — knowledge base enrichment', () => {
+  beforeEach(() => {
+    mockGetKnowledgeBase.mockReset();
+    mockGetLatestIngestionJob.mockReset();
+    loggedLines.length = 0;
+  });
+
+  afterEach(() => vi.clearAllMocks());
+
+  function makeKbContext(): StatusContext {
+    return {
+      project: {
+        ...baseProject,
+        agentCoreGateways: [
+          {
+            name: 'main-gw',
+            targets: [
+              {
+                name: 'docs',
+                targetType: 'connector',
+                connectorId: 'bedrock-knowledge-bases',
+                knowledgeBaseId: 'product-docs',
+              },
+            ],
+          },
+        ],
+        knowledgeBases: [
+          {
+            type: 'AgentCoreKnowledgeBase',
+            name: 'product-docs',
+            dataSources: [
+              { type: 'S3', uri: 's3://bucket/docs/' },
+              { type: 'S3', uri: 's3://bucket/specs/' },
+            ],
+          },
+        ],
+      } as unknown as AgentCoreProjectSpec,
+      awsTargets: [{ name: 'dev', region: 'us-east-1', account: '123456789' }],
+      deployedState: {
+        targets: {
+          dev: {
+            resources: {
+              knowledgeBases: {
+                'product-docs': {
+                  knowledgeBaseId: 'KB1',
+                  knowledgeBaseArn: 'arn:aws:bedrock:us-east-1:123456789:knowledge-base/KB1',
+                  dataSources: [
+                    { dataSourceId: 'DS1', uri: 's3://bucket/docs/' },
+                    { dataSourceId: 'DS2', uri: 's3://bucket/specs/' },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+    } as unknown as StatusContext;
+  }
+
+  it('fetches the latest ingestion job for every data source and renders all of them', async () => {
+    mockGetKnowledgeBase.mockResolvedValue({ knowledgeBaseId: 'KB1', status: 'ACTIVE' });
+    mockGetLatestIngestionJob.mockImplementation(({ dataSourceId }: { dataSourceId: string }) => {
+      if (dataSourceId === 'DS1') {
+        return {
+          status: 'COMPLETE',
+          startedAt: new Date('2026-01-01T00:00:00Z'),
+          updatedAt: new Date('2026-01-01T00:05:00Z'),
+          statistics: {
+            numberOfDocumentsScanned: 10,
+            numberOfNewDocumentsIndexed: 8,
+            numberOfModifiedDocumentsIndexed: 1,
+            numberOfDocumentsFailed: 0,
+            numberOfDocumentsDeleted: 0,
+          },
+        };
+      }
+      return {
+        status: 'COMPLETE',
+        startedAt: new Date('2026-01-02T00:00:00Z'),
+        updatedAt: new Date('2026-01-02T00:03:00Z'),
+        statistics: {
+          numberOfDocumentsScanned: 5,
+          numberOfNewDocumentsIndexed: 5,
+          numberOfModifiedDocumentsIndexed: 0,
+          numberOfDocumentsFailed: 0,
+          numberOfDocumentsDeleted: 0,
+        },
+      };
+    });
+
+    // Drill into the named KB so the full per-DS block is rendered (the default
+    // view is now a one-line summary; see the dedicated summary/detail tests).
+    const result = await handleProjectStatus(makeKbContext(), { knowledgeBaseName: 'product-docs' });
+
+    assert(result.success);
+
+    // A job was fetched for EACH data source, not just the first.
+    expect(mockGetLatestIngestionJob).toHaveBeenCalledTimes(2);
+    expect(mockGetLatestIngestionJob).toHaveBeenCalledWith({
+      region: 'us-east-1',
+      knowledgeBaseId: 'KB1',
+      dataSourceId: 'DS1',
+    });
+    expect(mockGetLatestIngestionJob).toHaveBeenCalledWith({
+      region: 'us-east-1',
+      knowledgeBaseId: 'KB1',
+      dataSourceId: 'DS2',
+    });
+
+    // The rich block, logged line-by-line, includes BOTH data source URIs and
+    // their per-DS document counts plus the gateway wiring.
+    const block = loggedLines.join('\n');
+    expect(block).toContain('s3://bucket/docs/');
+    expect(block).toContain('s3://bucket/specs/');
+    expect(block).toContain('10 scanned, 8 new indexed');
+    expect(block).toContain('5 scanned, 5 new indexed');
+    expect(block).toContain('main-gw');
+
+    // The structured detail stays a concise one-liner for TUI/JSON consumers.
+    const kbEntry = result.resources.find(
+      (r: ResourceStatusEntry) => r.resourceType === 'knowledge-base' && r.name === 'product-docs'
+    );
+    expect(kbEntry).toBeDefined();
+    expect(kbEntry!.detail).toContain('Status: ACTIVE');
+    expect(kbEntry!.detail).not.toContain('\n');
+  });
+
+  it('renders a one-line summary (not the full per-DS block) when no knowledgeBaseName is given', async () => {
+    mockGetKnowledgeBase.mockResolvedValue({ knowledgeBaseId: 'KB1', status: 'ACTIVE' });
+    mockGetLatestIngestionJob.mockResolvedValue({
+      status: 'COMPLETE',
+      startedAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:05:00Z'),
+      statistics: {
+        numberOfDocumentsScanned: 10,
+        numberOfNewDocumentsIndexed: 8,
+        numberOfModifiedDocumentsIndexed: 0,
+        numberOfDocumentsFailed: 0,
+        numberOfDocumentsDeleted: 0,
+      },
+    });
+
+    const result = await handleProjectStatus(makeKbContext());
+    assert(result.success);
+
+    const block = loggedLines.join('\n');
+    // The summary rollup line is present (name + state + counts).
+    expect(block).toContain('product-docs: ✓ Ready');
+    expect(block).toContain('2 data sources');
+    expect(block).toContain('16 indexed');
+    // The full multi-line block is NOT rendered by default.
+    expect(block).not.toContain('Documents:');
+    expect(block).not.toContain('s3://bucket/docs/');
+  });
+
+  it('renders the full per-DS block when knowledgeBaseName matches', async () => {
+    mockGetKnowledgeBase.mockResolvedValue({ knowledgeBaseId: 'KB1', status: 'ACTIVE' });
+    mockGetLatestIngestionJob.mockResolvedValue({
+      status: 'COMPLETE',
+      startedAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:05:00Z'),
+      statistics: {
+        numberOfDocumentsScanned: 10,
+        numberOfNewDocumentsIndexed: 8,
+        numberOfModifiedDocumentsIndexed: 0,
+        numberOfDocumentsFailed: 0,
+        numberOfDocumentsDeleted: 0,
+      },
+    });
+
+    const result = await handleProjectStatus(makeKbContext(), { knowledgeBaseName: 'product-docs' });
+    assert(result.success);
+
+    const block = loggedLines.join('\n');
+    // The full multi-line block IS rendered for the named KB.
+    expect(block).toContain('Documents:');
+    expect(block).toContain('s3://bucket/docs/');
+    expect(block).toContain('s3://bucket/specs/');
+  });
+
+  it('marks data sources with no ingestion job as never run', async () => {
+    mockGetKnowledgeBase.mockResolvedValue({ knowledgeBaseId: 'KB1', status: 'ACTIVE' });
+    mockGetLatestIngestionJob.mockResolvedValue(null);
+
+    // "never run" appears only in the full drill-down block.
+    const result = await handleProjectStatus(makeKbContext(), { knowledgeBaseName: 'product-docs' });
+
+    assert(result.success);
+    expect(mockGetLatestIngestionJob).toHaveBeenCalledTimes(2);
+    expect(loggedLines.join('\n')).toContain('Ingestion: never run');
+  });
+
+  it('flags KB as out of sync when the live KB is not found', async () => {
+    mockGetKnowledgeBase.mockResolvedValue(null);
+
+    const result = await handleProjectStatus(makeKbContext());
+
+    assert(result.success);
+    const kbEntry = result.resources.find(
+      (r: ResourceStatusEntry) => r.resourceType === 'knowledge-base' && r.name === 'product-docs'
+    );
+    expect(kbEntry!.detail).toContain('out of sync');
+    expect(mockGetLatestIngestionJob).not.toHaveBeenCalled();
+  });
+
+  it('sets error on KB when getKnowledgeBase throws', async () => {
+    mockGetKnowledgeBase.mockRejectedValue(new Error('AccessDenied'));
+
+    const result = await handleProjectStatus(makeKbContext());
+
+    assert(result.success);
+    const kbEntry = result.resources.find(
+      (r: ResourceStatusEntry) => r.resourceType === 'knowledge-base' && r.name === 'product-docs'
+    );
+    expect(kbEntry!.error).toBe('AccessDenied');
   });
 });
 

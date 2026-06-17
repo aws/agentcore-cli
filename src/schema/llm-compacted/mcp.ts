@@ -41,6 +41,24 @@ interface AgentCoreGatewayTarget {
   /** Schema source for openApiSchema / smithyModel targets. */
   schemaSource?: { inline: { path: string } } | { s3: { uri: string; bucketOwnerAccountId?: string } };
   lambdaFunctionArn?: LambdaFunctionArnConfig;
+  /** Required for `connector` target type. */
+  connectorId?: ConnectorId;
+  /**
+   * For bedrock-knowledge-bases connector targets — a project KB name or a
+   * literal 10-char external KB ID. Mutually exclusive with `knowledgeBaseIds`.
+   */
+  knowledgeBaseId?: string;
+  /**
+   * For bedrock-agentic-retrieve connector targets — fan-out list of project
+   * KB names or literal 10-char external KB IDs. Mutually exclusive with
+   * `knowledgeBaseId`.
+   */
+  knowledgeBaseIds?: string[];
+  /**
+   * For `webSearch` target type only — domains to exclude from search results.
+   * Maps to the connector's `domainFilter.exclude` parameterValue at synth.
+   */
+  excludeDomains?: string[];
 }
 
 interface OutboundAuth {
@@ -176,7 +194,18 @@ interface IamPolicyDocument {
 // ENUMS
 // ─────────────────────────────────────────────────────────────────────────────
 
-type GatewayTargetType = 'lambda' | 'mcpServer' | 'openApiSchema' | 'smithyModel' | 'apiGateway' | 'lambdaFunctionArn';
+type GatewayTargetType =
+  | 'lambda'
+  | 'mcpServer'
+  | 'openApiSchema'
+  | 'smithyModel'
+  | 'apiGateway'
+  | 'lambdaFunctionArn'
+  | 'httpRuntime'
+  | 'connector'
+  | 'passthrough'
+  | 'webSearch';
+type ConnectorId = 'bedrock-knowledge-bases' | 'bedrock-agentic-retrieve';
 type PythonRuntime = 'PYTHON_3_10' | 'PYTHON_3_11' | 'PYTHON_3_12' | 'PYTHON_3_13' | 'PYTHON_3_14';
 type NodeRuntime = 'NODE_18' | 'NODE_20' | 'NODE_22';
 type NetworkMode = 'PUBLIC' | 'VPC';

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { AgentCoreStack } from '../lib/cdk-stack';
-import { ConfigIO, type AwsDeploymentTarget } from '@aws/agentcore-cdk';
+import { AgentCoreStack, type HarnessConfig } from '../lib/cdk-stack';
+import { ConfigIO, HarnessSpecSchema, type AwsDeploymentTarget } from '@aws/agentcore-cdk';
 import { App, type Environment } from 'aws-cdk-lib';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -56,40 +56,61 @@ async function main() {
     throw new Error('No deployment targets configured. Please define targets in agentcore/aws-targets.json');
   }
 
-  // Read harness configs for role creation.
+  // Read harness configs: the full validated spec drives the CFN resource; the
+  // role-scoped fields drive the IAM role + container build.
   const projectRoot = path.resolve(configRoot, '..');
-  const harnessConfigs: {
-    name: string;
-    executionRoleArn?: string;
-    memoryName?: string;
-    containerUri?: string;
-    hasDockerfile?: boolean;
-    dockerfile?: string;
-    codeLocation?: string;
-    tools?: { type: string; name: string }[];
-    apiKeyArn?: string;
-    efsAccessPoints?: { accessPointArn: string; mountPath: string }[];
-    s3AccessPoints?: { accessPointArn: string; mountPath: string }[];
-    apiFormat?: 'converse_stream' | 'responses' | 'chat_completions';
-  }[] = [];
-  for (const entry of specAny.harnesses ?? []) {
+
+  // Read non-S3 KB connector-config files and pass their parsed contents to the
+  // L3 verbatim. The L3 does not read files; it expects the parsed
+  // connectorParameters keyed by the data source's connectorConfigFile path.
+  const connectorParametersByFile: Record<string, Record<string, unknown>> = {};
+  for (const kb of specAny.knowledgeBases ?? []) {
+    for (const ds of kb.dataSources ?? []) {
+      if (ds.type !== 'S3' && ds.connectorConfigFile) {
+        const abs = path.resolve(projectRoot, ds.connectorConfigFile);
+        try {
+          connectorParametersByFile[ds.connectorConfigFile] = JSON.parse(fs.readFileSync(abs, 'utf-8'));
+        } catch (err) {
+          throw new Error(
+            `Could not read connector config '${ds.connectorConfigFile}' for knowledge base '${kb.name}' at ${abs}: ${err instanceof Error ? err.message : err}`
+          );
+        }
+      }
+    }
+  }
+
+  // Harness is preview-gated. The CLI bundle bakes the preview flag at build time and
+  // forwards it to this child process via AGENTCORE_PREVIEW (see toolkit-lib/wrapper.ts).
+  // This app is built separately and cannot see that build-time define, so it gates on the
+  // env var. Absent/anything-but-'1' defaults to off so a stale harnesses[] entry in a
+  // non-preview build never synthesizes an AWS::BedrockAgentCore::Harness resource.
+  const previewEnabled = process.env.AGENTCORE_PREVIEW === '1';
+
+  const harnessConfigs: HarnessConfig[] = [];
+  for (const entry of previewEnabled ? (specAny.harnesses ?? []) : []) {
     const harnessDir = path.resolve(projectRoot, entry.path);
     const harnessPath = path.resolve(harnessDir, 'harness.json');
     try {
-      const harnessSpec = JSON.parse(fs.readFileSync(harnessPath, 'utf-8'));
+      const harnessSpec = HarnessSpecSchema.parse(JSON.parse(fs.readFileSync(harnessPath, 'utf-8')));
       harnessConfigs.push({
         name: entry.name,
         executionRoleArn: harnessSpec.executionRoleArn,
-        memoryName: harnessSpec.memory?.name,
+        // Only an `existing` memory ref carries a name to wire IAM against; managed memory is
+        // owned by the harness (no sibling) and disabled has none — both resolve to undefined.
+        memoryName: harnessSpec.memory?.mode === 'existing' ? harnessSpec.memory.name : undefined,
         containerUri: harnessSpec.containerUri,
         hasDockerfile: !!harnessSpec.dockerfile,
         dockerfile: harnessSpec.dockerfile,
         codeLocation: harnessSpec.dockerfile ? harnessDir : undefined,
         tools: harnessSpec.tools,
+        skills: harnessSpec.skills,
         apiKeyArn: harnessSpec.model?.apiKeyArn,
         efsAccessPoints: harnessSpec.efsAccessPoints,
         s3AccessPoints: harnessSpec.s3AccessPoints,
         apiFormat: harnessSpec.model?.apiFormat,
+        // Full spec + dir drive the AWS::BedrockAgentCore::Harness CFN resource.
+        spec: harnessSpec,
+        harnessDir,
       });
     } catch (err) {
       throw new Error(
@@ -156,6 +177,7 @@ async function main() {
       spec,
       mcpSpec,
       credentials,
+      connectorParametersByFile,
       harnesses: harnessConfigs.length > 0 ? harnessConfigs : undefined,
       paymentSpec,
       env,

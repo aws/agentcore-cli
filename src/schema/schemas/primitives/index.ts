@@ -59,11 +59,13 @@ export {
   RatingScaleSchema,
 } from './evaluator';
 
-export type { OnlineEvalConfig } from './online-eval-config';
-export { OnlineEvalConfigSchema, OnlineEvalConfigNameSchema } from './online-eval-config';
+export type { OnlineEvalConfig, ClusteringConfig } from './online-eval-config';
+export { OnlineEvalConfigSchema, OnlineEvalConfigNameSchema, ClusteringConfigSchema } from './online-eval-config';
 
-export type { Policy, PolicyEngine, ValidationMode } from './policy';
+export type { AuthorizationPhase, EnforcementMode, Policy, PolicyEngine, ValidationMode } from './policy';
 export {
+  AuthorizationPhaseSchema,
+  EnforcementModeSchema,
   PolicyEngineNameSchema,
   PolicyEngineSchema,
   PolicyNameSchema,
@@ -82,6 +84,7 @@ export type {
   HarnessTool,
   HarnessToolType,
   HarnessTruncationConfig,
+  ManagedMemoryStrategy,
   OpenAiApiFormat,
 } from './harness';
 export {
@@ -102,10 +105,8 @@ export {
   HarnessToolTypeSchema,
   HarnessTruncationConfigSchema,
   HarnessTruncationStrategySchema,
+  ManagedMemoryStrategySchema,
 } from './harness';
-
-export type { HttpGateway } from './http-gateway';
-export { HttpGatewayNameSchema, HttpGatewaySchema } from './http-gateway';
 
 export type { PaymentManager, PaymentConnector, PaymentProvider, PaymentAuthorizerType } from './payment';
 export {

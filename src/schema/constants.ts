@@ -208,3 +208,31 @@ export function getSupportedFrameworksForProtocol(protocol: ProtocolMode): reado
 export function isFrameworkSupportedForProtocol(protocol: ProtocolMode, framework: SDKFramework): boolean {
   return PROTOCOL_FRAMEWORK_MATRIX[protocol].includes(framework);
 }
+
+/**
+ * Matrix defining which SDK frameworks ship templates for each target language.
+ * Vercel AI is TypeScript-only; the remaining frameworks are Python-only today.
+ * Used to keep framework pickers and validation in sync with the templates that
+ * actually exist under `assets/<language>/...`.
+ */
+export const LANGUAGE_FRAMEWORK_MATRIX = {
+  Python: ['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents'],
+  TypeScript: ['Strands', 'VercelAI'],
+} as const satisfies Record<string, readonly SDKFramework[]>;
+
+/** Languages that scaffold from templates (excludes 'Other', which is BYO-only). */
+export type TemplateLanguage = keyof typeof LANGUAGE_FRAMEWORK_MATRIX;
+
+/**
+ * Returns the SDK frameworks that have templates for a given target language.
+ */
+export function getFrameworksForLanguage(language: TemplateLanguage): readonly SDKFramework[] {
+  return LANGUAGE_FRAMEWORK_MATRIX[language];
+}
+
+/**
+ * Checks if a framework has a template for a given target language.
+ */
+export function isFrameworkSupportedForLanguage(language: TemplateLanguage, framework: SDKFramework): boolean {
+  return getFrameworksForLanguage(language).includes(framework);
+}

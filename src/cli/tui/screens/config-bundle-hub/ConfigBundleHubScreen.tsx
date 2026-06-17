@@ -46,7 +46,7 @@ export function ConfigBundleHubScreen({ onSelectBundle, onExit }: ConfigBundleHu
 
   if (isLoading) {
     return (
-      <Screen title="Configuration Bundles [preview]" onExit={onExit}>
+      <Screen title="Configuration Bundles" onExit={onExit}>
         <Text dimColor>Loading configuration bundles...</Text>
       </Screen>
     );
@@ -54,7 +54,7 @@ export function ConfigBundleHubScreen({ onSelectBundle, onExit }: ConfigBundleHu
 
   if (error) {
     return (
-      <Screen title="Configuration Bundles [preview]" onExit={onExit}>
+      <Screen title="Configuration Bundles" onExit={onExit}>
         <Text color="red">Error: {error}</Text>
       </Screen>
     );
@@ -62,7 +62,7 @@ export function ConfigBundleHubScreen({ onSelectBundle, onExit }: ConfigBundleHu
 
   if (bundles.length === 0) {
     return (
-      <Screen title="Configuration Bundles [preview]" onExit={onExit}>
+      <Screen title="Configuration Bundles" onExit={onExit}>
         <Panel>
           <Text dimColor>No configuration bundles found.</Text>
           <Text dimColor>Use `agentcore add config-bundle` to create one, then deploy.</Text>
@@ -81,7 +81,7 @@ export function ConfigBundleHubScreen({ onSelectBundle, onExit }: ConfigBundleHu
 
   return (
     <Screen
-      title="Configuration Bundles [preview]"
+      title="Configuration Bundles"
       onExit={onExit}
       helpText="↑↓ navigate · Enter view versions · Esc back · Ctrl+C quit"
       headerContent={headerContent}
@@ -116,6 +116,12 @@ function BundleRow({ bundle, selected }: { bundle: BundleWithMeta; selected: boo
         <Text>
           {'  '}
           <Text dimColor>Description: {bundle.description}</Text>
+        </Text>
+      )}
+      {bundle.createdAt && (
+        <Text>
+          {'  '}
+          <Text dimColor>Created: {formatRelativeTime(String(bundle.createdAt))}</Text>
         </Text>
       )}
       {bundle.lastUpdated && (

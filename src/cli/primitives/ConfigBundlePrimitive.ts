@@ -3,9 +3,11 @@ import type { Result } from '../../lib/result';
 import type { ConfigBundle } from '../../schema';
 import { ConfigBundleSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
+import { isGatedFeaturesEnabled } from '../feature-flags';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { BasePrimitive } from './BasePrimitive';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
+import { Option } from '@commander-js/extra-typings';
 import type { Command } from '@commander-js/extra-typings';
 import { readFileSync } from 'fs';
 
@@ -106,7 +108,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
   registerCommands(addCmd: Command, removeCmd: Command): void {
     addCmd
       .command(this.kind)
-      .description('[preview] Add a configuration bundle to the project')
+      .description('Add a configuration bundle to the project')
       .option('--name <name>', 'Bundle name')
       .option('--description <text>', 'Bundle description')
       .option(
@@ -114,7 +116,12 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
         'Components map as inline JSON. Keys are ARNs or placeholders: {{runtime:<name>}}, {{gateway:<name>}}. Placeholders resolve to real ARNs at deploy time.'
       )
       .option('--components-file <path>', 'Path to components JSON file (same format as --components)')
-      .option('--branch <name>', 'Branch name for versioning')
+      // Gated: custom branches blocked by upstream CFN read-back bug. Remove gate when service fixes GetConfigurationBundle.
+      .addOption(
+        isGatedFeaturesEnabled()
+          ? new Option('--branch <name>', 'Branch name for versioning')
+          : new Option('--branch <name>', 'Branch name for versioning').hideHelp()
+      )
       .option('--commit-message <text>', 'Commit message for this version')
       .option('--json', 'Output as JSON')
       .action(
@@ -166,7 +173,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
                 name: cliOptions.name!,
                 description: cliOptions.description,
                 components,
-                branchName: cliOptions.branch,
+                branchName: isGatedFeaturesEnabled() ? cliOptions.branch : undefined,
                 commitMessage: cliOptions.commitMessage,
               });
 

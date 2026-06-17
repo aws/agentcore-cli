@@ -44,8 +44,8 @@ agentcore status    # checks deployment status
 
 exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/bin/cdk.ts should match snapshot 1`] = `
 "#!/usr/bin/env node
-import { AgentCoreStack } from '../lib/cdk-stack';
-import { ConfigIO, type AwsDeploymentTarget } from '@aws/agentcore-cdk';
+import { AgentCoreStack, type HarnessConfig } from '../lib/cdk-stack';
+import { ConfigIO, HarnessSpecSchema, type AwsDeploymentTarget } from '@aws/agentcore-cdk';
 import { App, type Environment } from 'aws-cdk-lib';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -101,40 +101,61 @@ async function main() {
     throw new Error('No deployment targets configured. Please define targets in agentcore/aws-targets.json');
   }
 
-  // Read harness configs for role creation.
+  // Read harness configs: the full validated spec drives the CFN resource; the
+  // role-scoped fields drive the IAM role + container build.
   const projectRoot = path.resolve(configRoot, '..');
-  const harnessConfigs: {
-    name: string;
-    executionRoleArn?: string;
-    memoryName?: string;
-    containerUri?: string;
-    hasDockerfile?: boolean;
-    dockerfile?: string;
-    codeLocation?: string;
-    tools?: { type: string; name: string }[];
-    apiKeyArn?: string;
-    efsAccessPoints?: { accessPointArn: string; mountPath: string }[];
-    s3AccessPoints?: { accessPointArn: string; mountPath: string }[];
-    apiFormat?: 'converse_stream' | 'responses' | 'chat_completions';
-  }[] = [];
-  for (const entry of specAny.harnesses ?? []) {
+
+  // Read non-S3 KB connector-config files and pass their parsed contents to the
+  // L3 verbatim. The L3 does not read files; it expects the parsed
+  // connectorParameters keyed by the data source's connectorConfigFile path.
+  const connectorParametersByFile: Record<string, Record<string, unknown>> = {};
+  for (const kb of specAny.knowledgeBases ?? []) {
+    for (const ds of kb.dataSources ?? []) {
+      if (ds.type !== 'S3' && ds.connectorConfigFile) {
+        const abs = path.resolve(projectRoot, ds.connectorConfigFile);
+        try {
+          connectorParametersByFile[ds.connectorConfigFile] = JSON.parse(fs.readFileSync(abs, 'utf-8'));
+        } catch (err) {
+          throw new Error(
+            \`Could not read connector config '\${ds.connectorConfigFile}' for knowledge base '\${kb.name}' at \${abs}: \${err instanceof Error ? err.message : err}\`
+          );
+        }
+      }
+    }
+  }
+
+  // Harness is preview-gated. The CLI bundle bakes the preview flag at build time and
+  // forwards it to this child process via AGENTCORE_PREVIEW (see toolkit-lib/wrapper.ts).
+  // This app is built separately and cannot see that build-time define, so it gates on the
+  // env var. Absent/anything-but-'1' defaults to off so a stale harnesses[] entry in a
+  // non-preview build never synthesizes an AWS::BedrockAgentCore::Harness resource.
+  const previewEnabled = process.env.AGENTCORE_PREVIEW === '1';
+
+  const harnessConfigs: HarnessConfig[] = [];
+  for (const entry of previewEnabled ? (specAny.harnesses ?? []) : []) {
     const harnessDir = path.resolve(projectRoot, entry.path);
     const harnessPath = path.resolve(harnessDir, 'harness.json');
     try {
-      const harnessSpec = JSON.parse(fs.readFileSync(harnessPath, 'utf-8'));
+      const harnessSpec = HarnessSpecSchema.parse(JSON.parse(fs.readFileSync(harnessPath, 'utf-8')));
       harnessConfigs.push({
         name: entry.name,
         executionRoleArn: harnessSpec.executionRoleArn,
-        memoryName: harnessSpec.memory?.name,
+        // Only an \`existing\` memory ref carries a name to wire IAM against; managed memory is
+        // owned by the harness (no sibling) and disabled has none — both resolve to undefined.
+        memoryName: harnessSpec.memory?.mode === 'existing' ? harnessSpec.memory.name : undefined,
         containerUri: harnessSpec.containerUri,
         hasDockerfile: !!harnessSpec.dockerfile,
         dockerfile: harnessSpec.dockerfile,
         codeLocation: harnessSpec.dockerfile ? harnessDir : undefined,
         tools: harnessSpec.tools,
+        skills: harnessSpec.skills,
         apiKeyArn: harnessSpec.model?.apiKeyArn,
         efsAccessPoints: harnessSpec.efsAccessPoints,
         s3AccessPoints: harnessSpec.s3AccessPoints,
         apiFormat: harnessSpec.model?.apiFormat,
+        // Full spec + dir drive the AWS::BedrockAgentCore::Harness CFN resource.
+        spec: harnessSpec,
+        harnessDir,
       });
     } catch (err) {
       throw new Error(
@@ -201,6 +222,7 @@ async function main() {
       spec,
       mcpSpec,
       credentials,
+      connectorParametersByFile,
       harnesses: harnessConfigs.length > 0 ? harnessConfigs : undefined,
       paymentSpec,
       env,
@@ -349,24 +371,18 @@ exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/lib/cdk-stack.ts shou
   type AgentCoreProjectSpec,
   type AgentCoreMcpSpec,
   type CustomJWTAuthorizerConfig,
+  type HarnessDeploymentConfig,
 } from '@aws/agentcore-cdk';
 import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 
-export interface HarnessConfig {
-  name: string;
-  executionRoleArn?: string;
-  memoryName?: string;
-  containerUri?: string;
-  hasDockerfile?: boolean;
-  dockerfile?: string;
-  codeLocation?: string;
-  tools?: { type: string; name: string }[];
-  apiKeyArn?: string;
-  efsAccessPoints?: { accessPointArn: string; mountPath: string }[];
-  s3AccessPoints?: { accessPointArn: string; mountPath: string }[];
-}
+/**
+ * Harness deployment config: role-scoped fields (for IAM role + container build)
+ * plus the full validated spec + its config directory so the L3 construct can
+ * synthesize the AWS::BedrockAgentCore::Harness resource.
+ */
+export type HarnessConfig = HarnessDeploymentConfig;
 
 export interface PaymentConnectorSpec {
   name: string;
@@ -402,6 +418,11 @@ export interface AgentCoreStackProps extends StackProps {
    * Harness role configurations.
    */
   harnesses?: HarnessConfig[];
+  /**
+   * Parsed connectorParameters for non-S3 KB data sources, keyed by
+   * connectorConfigFile path. Forwarded to AgentCoreApplication.
+   */
+  connectorParametersByFile?: Record<string, Record<string, unknown>>;
   /**
    * Payment specifications with resolved credential provider ARNs.
    */
@@ -441,13 +462,19 @@ export class AgentCoreStack extends Stack {
   constructor(scope: Construct, id: string, props: AgentCoreStackProps) {
     super(scope, id, props);
 
-    const { spec, mcpSpec, credentials, harnesses, paymentSpec } = props;
+    const { spec, mcpSpec, credentials, harnesses, connectorParametersByFile, paymentSpec } = props;
 
     // Create AgentCoreApplication with all agents and harness roles
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const appProps: Record<string, unknown> = { spec };
     if (harnesses?.length) {
       appProps.harnesses = harnesses;
+    }
+    if (connectorParametersByFile && Object.keys(connectorParametersByFile).length > 0) {
+      appProps.connectorParametersByFile = connectorParametersByFile;
+    }
+    if (credentials) {
+      appProps.credentials = credentials;
     }
     this.application = new AgentCoreApplication(this, 'Application', appProps as any);
 
@@ -649,13 +676,14 @@ test('AgentCoreStack synthesizes with empty spec', () => {
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
+      configBundles: [],
       policyEngines: [],
       payments: [],
-      configBundles: [],
       agentCoreGateways: [],
       mcpRuntimeTools: [],
       unassignedTargets: [],
       datasets: [],
+      knowledgeBases: [],
     },
   });
   const template = Template.fromStack(stack);
@@ -810,6 +838,8 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "python/http/strands/base/model/__init__.py",
   "python/http/strands/base/model/load.py",
   "python/http/strands/base/pyproject.toml",
+  "python/http/strands/base/skills/fetcher.py",
+  "python/http/strands/capabilities/execution-limits/hooks/execution_limits.py",
   "python/http/strands/capabilities/memory/__init__.py",
   "python/http/strands/capabilities/memory/session.py",
   "python/http/strands/capabilities/payments/__init__.py",
@@ -2227,8 +2257,11 @@ def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Opti
 {{#if (includes memoryProviders.[0].strategies "USER_PREFERENCE")}}
         f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
+{{#if (includes memoryProviders.[0].strategies "EPISODIC")}}
+        f"/episodes/{actor_id}/{session_id}": RetrievalConfig(top_k=5, relevance_score=0.5),
+{{/if}}
 {{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
-        f"/summaries/{actor_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
+        f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
     }
 {{/if}}
@@ -3246,8 +3279,11 @@ def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Opti
 {{#if (includes memoryProviders.[0].strategies "USER_PREFERENCE")}}
         f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
+{{#if (includes memoryProviders.[0].strategies "EPISODIC")}}
+        f"/episodes/{actor_id}/{session_id}": RetrievalConfig(top_k=5, relevance_score=0.5),
+{{/if}}
 {{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
-        f"/summaries/{actor_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
+        f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
     }
 {{/if}}
@@ -5179,25 +5215,77 @@ Thumbs.db"
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/http/strands/base/main.py should match snapshot 1`] = `
 "from typing import Any
+{{#if inlineFunctionTools}}
+import json
 
+from strands.tools.tools import PythonAgentTool
+from strands.types.tools import ToolResult, ToolUse
+{{/if}}
 from strands import Agent, tool
+{{#if hasSkillsFetcher}}
+from strands import AgentSkills
+{{#if hasFetchedSkills}}
+from skills.fetcher import resolve_s3_skills, resolve_git_skills
+{{/if}}
+{{#if (some gitSkills "credentialArn")}}
+from bedrock_agentcore.services.identity import IdentityClient
+{{/if}}
+{{/if}}
+import asyncio
+{{#if hasShell}}
+import subprocess
+{{/if}}
+{{#if hasFileOperations}}
+import os
+{{/if}}
+{{#if hasExecutionLimits}}
+from strands.tools.executors import SequentialToolExecutor
+from strands.types.exceptions import EventLoopException
+from hooks.execution_limits import ExecutionLimitExceeded, ExecutionLimitsHook
+{{/if}}
 {{#if hasConfigBundle}}
 from strands.hooks import HookProvider, HookRegistry, BeforeInvocationEvent, BeforeToolCallEvent
+{{/if}}
+{{#if truncationStrategy}}
+{{#if (eq truncationStrategy "sliding_window")}}
+from strands.agent.conversation_manager.sliding_window_conversation_manager import SlidingWindowConversationManager
+{{/if}}
+{{#if (eq truncationStrategy "summarization")}}
+from strands.agent.conversation_manager.summarizing_conversation_manager import SummarizingConversationManager
+{{/if}}
+{{else}}
+from strands.agent.conversation_manager.null_conversation_manager import NullConversationManager
+{{/if}}
+{{#if hasConfigBundle}}
 from bedrock_agentcore.runtime.context import BedrockAgentCoreContext
+{{/if}}
+{{#if hasBrowser}}
+from strands_tools.browser import AgentCoreBrowser
+{{/if}}
+{{#if hasCodeInterpreter}}
+from strands_tools.code_interpreter import AgentCoreCodeInterpreter
 {{/if}}
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
 {{#if hasGateway}}
 from mcp_client.client import get_all_gateway_mcp_clients
-{{else}}
-from mcp_client.client import get_streamable_http_mcp_client
 {{/if}}
+{{#if remoteMcpTools}}
+from mcp_client.client import get_all_remote_mcp_clients
+{{/if}}
+{{#unless (or hasGateway remoteMcpTools)}}
+{{#unless isExportHarness}}
+from mcp_client.client import get_streamable_http_mcp_client
+{{/unless}}
+{{/unless}}
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
 {{/if}}
-{{#if needsOs}}
+{{#unless hasFileOperations}}
+{{#if (or needsOs (some gitSkills "credentialArn"))}}
 import os
 {{/if}}
+{{/unless}}
 {{#if hasPayment}}
 from capabilities.payments.payments import create_payments_plugin, PAYMENT_SYSTEM_PROMPT
 {{/if}}
@@ -5205,22 +5293,35 @@ from capabilities.payments.payments import create_payments_plugin, PAYMENT_SYSTE
 app = BedrockAgentCoreApp()
 log = app.logger
 
-# Define a Streamable HTTP MCP Client
+{{#if (or hasGateway remoteMcpTools)}}
+# Define MCP clients for all configured MCP servers (gateways and/or remote MCP)
+mcp_clients = []
 {{#if hasGateway}}
-mcp_clients = get_all_gateway_mcp_clients()
+mcp_clients += get_all_gateway_mcp_clients()
+{{/if}}
+{{#if remoteMcpTools}}
+mcp_clients += get_all_remote_mcp_clients()
+{{/if}}
 {{else}}
+{{#unless isExportHarness}}
+# Define a Streamable HTTP MCP Client
 mcp_clients = [get_streamable_http_mcp_client()]
+{{/unless}}
 {{/if}}
 
+{{#if systemPromptText}}
+DEFAULT_SYSTEM_PROMPT = """{{escapePyStr systemPromptText}}"""
+{{else}}
 DEFAULT_SYSTEM_PROMPT = """
 You are a helpful assistant. Use tools when appropriate.
-{{#if needsOs}}
+{{#if needsOs}}{{#unless isExportHarness}}
 You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
 {{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
 {{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
 {{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
-{{/each}}{{/if}}
+{{/each}}{{/unless}}{{/if}}
 """
+{{/if}}
 
 {{#if hasConfigBundle}}
 DEFAULT_TOOL_DESC = "Return the sum of two numbers"
@@ -5229,6 +5330,30 @@ DEFAULT_TOOL_DESC = "Return the sum of two numbers"
 # Define a collection of tools used by the model
 tools = []
 
+{{#if inlineFunctionTools}}
+# Inline function tools — stop the agent loop so the tool call streams back to the caller
+def _make_inline_tool(name: str, spec: dict) -> PythonAgentTool:
+    def _handler(tool: ToolUse, **kwargs: Any) -> ToolResult:
+        kwargs.get("request_state", {})["stop_event_loop"] = True
+        return {"toolUseId": tool["toolUseId"], "status": "success", "content": [{"text": " "}]}
+    _handler.__name__ = name
+    return PythonAgentTool(tool_name=name, tool_spec=spec, tool_func=_handler)
+
+{{#each inlineFunctionTools}}
+_INLINE_SPEC_{{snakeCase name}} = {
+    "name": "{{name}}",
+    "description": {{safeJson description}},
+    "inputSchema": {"json": json.loads({{pyJsonStr inputSchema}}) },
+}
+tools.append(_make_inline_tool("{{name}}", _INLINE_SPEC_{{snakeCase name}}))
+{{/each}}
+
+_INLINE_FUNCTION_NAMES = { {{#each inlineFunctionTools}}"{{name}}"{{#unless @last}}, {{/unless}}{{/each}} }
+
+{{else}}
+_INLINE_FUNCTION_NAMES = set()
+
+{{#unless isExportHarness}}
 # Define a simple function tool
 {{#if hasConfigBundle}}
 @tool(description=DEFAULT_TOOL_DESC)
@@ -5240,7 +5365,116 @@ def add_numbers(a: int, b: int) -> int:
     return a+b
 tools.append(add_numbers)
 
-{{#if needsOs}}
+{{/unless}}
+{{/if}}
+{{#if hasBrowser}}
+tools.append(AgentCoreBrowser({{#if browserIdentifier}}identifier="{{browserIdentifier}}"{{/if}}).browser)
+{{/if}}
+{{#if hasCodeInterpreter}}
+tools.append(AgentCoreCodeInterpreter({{#if codeInterpreterIdentifier}}identifier="{{codeInterpreterIdentifier}}"{{/if}}).code_interpreter)
+{{/if}}
+{{#if hasShell}}
+@tool
+def shell(command: str, timeout: int = 300) -> dict:
+    """Execute a bash command and return the results.
+
+    Args:
+        command: The bash command to execute
+        timeout: Timeout in seconds (default: 300)
+
+    Returns:
+        Dict with stdout, stderr, and exit_code
+    """
+    result = subprocess.run(
+        command, shell=True, capture_output=True, text=True, timeout=timeout
+    )
+    return {"stdout": result.stdout, "stderr": result.stderr, "exit_code": result.returncode}
+
+tools.append(shell)
+{{/if}}
+{{#if hasFileOperations}}
+@tool
+def file_operations(
+    command: str,
+    path: str,
+    old_str: str = None,
+    new_str: str = None,
+    file_text: str = None,
+    insert_line: int = None,
+    view_range: list = None,
+) -> str:
+    """Text editor tool for viewing and modifying files.
+
+    Args:
+        command: The command to execute ("view", "str_replace", "create", "insert")
+        path: Path to the file or directory
+        old_str: Text to replace (for str_replace command)
+        new_str: Replacement text (for str_replace and insert commands)
+        file_text: Content for new file (for create command)
+        insert_line: Line number to insert after (for insert command)
+        view_range: [start_line, end_line] for viewing specific lines (for view command)
+
+    Returns:
+        Result of the operation
+    """
+    try:
+        if command == "view":
+            if not os.path.exists(path):
+                return f"Error: Path '{path}' does not exist"
+            if os.path.isdir(path):
+                return "\\n".join(os.listdir(path))
+            with open(path) as f:
+                lines = f.read().splitlines()
+            if view_range:
+                start, end = view_range
+                start_idx = max(0, start - 1)
+                end_idx = len(lines) if end == -1 else min(len(lines), end)
+                lines = lines[start_idx:end_idx]
+                start_num = start_idx + 1
+            else:
+                start_num = 1
+            return "\\n".join(f"{start_num + i}: {line}" for i, line in enumerate(lines))
+        elif command == "str_replace":
+            if old_str is None or new_str is None:
+                return "Error: str_replace requires both old_str and new_str parameters"
+            if not os.path.exists(path):
+                return f"Error: File '{path}' does not exist"
+            content = open(path).read()
+            if old_str not in content:
+                return "Error: Text not found in file"
+            count = content.count(old_str)
+            if count > 1:
+                return f"Error: Text appears {count} times in file. Please be more specific."
+            open(path, "w").write(content.replace(old_str, new_str, 1))
+            return f"Successfully replaced text in '{path}'"
+        elif command == "create":
+            if file_text is None:
+                return "Error: create requires file_text parameter"
+            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+            open(path, "w").write(file_text)
+            return f"Successfully created file '{path}'"
+        elif command == "insert":
+            if new_str is None or insert_line is None:
+                return "Error: insert requires both new_str and insert_line parameters"
+            if not os.path.exists(path):
+                return f"Error: File '{path}' does not exist"
+            lines = open(path).read().splitlines(True)
+            if insert_line == 0:
+                lines.insert(0, new_str + "\\n")
+            elif insert_line >= len(lines):
+                lines.append(new_str + "\\n")
+            else:
+                lines.insert(insert_line, new_str + "\\n")
+            open(path, "w").write("".join(lines))
+            return f"Successfully inserted text in '{path}' at line {insert_line + 1}"
+        else:
+            return f"Error: Unknown command '{command}'"
+    except Exception as e:
+        return f"Error: {e}"
+
+tools.append(file_operations)
+{{/if}}
+{{#if needsOs}}{{#unless isExportHarness}}
 _MOUNT_PATHS = [
     {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
     {{#each efsMounts}}"{{mountPath}}",{{/each}}
@@ -5294,12 +5528,21 @@ def list_files(path: str) -> str:
         return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([file_read, file_write, list_files])
-{{/if}}
+{{/unless}}{{/if}}
 
+{{#if (or hasGateway remoteMcpTools)}}
+# Add MCP clients to tools
+for mcp_client in mcp_clients:
+    if mcp_client:
+        tools.append(mcp_client)
+{{else}}
+{{#unless isExportHarness}}
 # Add MCP client to tools if available
 for mcp_client in mcp_clients:
     if mcp_client:
         tools.append(mcp_client)
+{{/unless}}
+{{/if}}
 
 {{#if hasConfigBundle}}
 
@@ -5335,19 +5578,62 @@ class ConfigBundleHook(HookProvider):
 
 {{/if}}
 
+def _make_conversation_manager():
+{{#if truncationStrategy}}
+{{#if (eq truncationStrategy "sliding_window")}}
+{{#if truncationConfig}}
+    return SlidingWindowConversationManager(**{{safeJson truncationConfig}}, per_turn=True)
+{{else}}
+    return SlidingWindowConversationManager(per_turn=True)
+{{/if}}
+{{else}}
+{{#if truncationConfig}}
+    return SummarizingConversationManager(**{{safeJson truncationConfig}})
+{{else}}
+    return SummarizingConversationManager()
+{{/if}}
+{{/if}}
+{{else}}
+    return NullConversationManager()
+{{/if}}
+
 {{#if hasMemory}}
 {{#unless hasPayment}}
 def agent_factory():
     cache = {}
-    def get_or_create_agent(session_id, user_id):
-        key = f"{session_id}/{user_id}"
+    def get_or_create_agent(session_id, user_id{{#if hasSkillsFetcher}}, skill_plugins=None{{/if}}):
+        {{#if actorId}}
+        _actor_id = "{{actorId}}"
+        {{else}}
+        _actor_id = user_id
+        {{/if}}
+        key = f"{session_id}/{_actor_id}"
         if key not in cache:
             cache[key] = Agent(
                 model=load_model(),
-                session_manager=get_memory_session_manager(session_id, user_id),
+                session_manager=get_memory_session_manager(session_id, _actor_id),
+                conversation_manager=_make_conversation_manager(),
                 system_prompt=DEFAULT_SYSTEM_PROMPT,
-                tools=tools{{#if hasConfigBundle}},
-                hooks=[ConfigBundleHook()]{{/if}}
+                tools=tools,
+                {{#if hasSkillsFetcher}}
+                plugins=skill_plugins or None,
+                {{/if}}
+                {{#if hasExecutionLimits}}
+                tool_executor=SequentialToolExecutor(),
+                callback_handler=None,
+                {{/if}}
+                hooks=[
+                    {{#if hasExecutionLimits}}
+                    ExecutionLimitsHook(
+                        {{#if maxIterations}}max_iterations={{maxIterations}},{{/if}}
+                        {{#if maxTokens}}max_tokens={{maxTokens}},{{/if}}
+                        {{#if timeoutSeconds}}timeout_seconds={{timeoutSeconds}},{{/if}}
+                    ),
+                    {{/if}}
+                    {{#if hasConfigBundle}}
+                    ConfigBundleHook(),
+                    {{/if}}
+                ],
             )
         return cache[key]
     return get_or_create_agent
@@ -5355,29 +5641,86 @@ get_or_create_agent = agent_factory()
 {{/unless}}
 {{else}}
 {{#if hasConfigBundle}}
-def create_agent():
+def create_agent({{#if hasSkillsFetcher}}skill_plugins=None{{/if}}):
     return Agent(
         model=load_model(),
         system_prompt=DEFAULT_SYSTEM_PROMPT,
         tools=tools,
+        conversation_manager=_make_conversation_manager(),
+        {{#if hasSkillsFetcher}}
+        plugins=skill_plugins or None,
+        {{/if}}
         hooks=[ConfigBundleHook()],
     )
 {{else}}
 {{#unless hasPayment}}
 _agent = None
 
-def get_or_create_agent():
+def get_or_create_agent({{#if hasSkillsFetcher}}skill_plugins=None{{/if}}):
     global _agent
     if _agent is None:
         _agent = Agent(
             model=load_model(),
             system_prompt=DEFAULT_SYSTEM_PROMPT,
             tools=tools,
+            conversation_manager=_make_conversation_manager(),
+            {{#if hasSkillsFetcher}}
+            plugins=skill_plugins or None,
+            {{/if}}
+            {{#if hasExecutionLimits}}
+            tool_executor=SequentialToolExecutor(),
+            callback_handler=None,
+            {{/if}}
+            hooks=[
+                {{#if hasExecutionLimits}}
+                ExecutionLimitsHook(
+                    {{#if maxIterations}}max_iterations={{maxIterations}},{{/if}}
+                    {{#if maxTokens}}max_tokens={{maxTokens}},{{/if}}
+                    {{#if timeoutSeconds}}timeout_seconds={{timeoutSeconds}},{{/if}}
+                ),
+                {{/if}}
+            ],
         )
     return _agent
 {{/unless}}
 {{/if}}
 {{/if}}
+
+
+def _extract_prompt(payload: dict):
+    """Accept harness-style messages[], tool_results[], or plain prompt string payloads."""
+    if "messages" in payload:
+        return payload["messages"]
+    if "tool_results" in payload:
+        return [{"role": "user", "content": [{"toolResult": {
+            "toolUseId": tr["toolUseId"],
+            "status": tr.get("status", "success"),
+            "content": tr.get("content", []),
+        }} for tr in payload["tool_results"]]}]
+    return payload.get("prompt", "")
+
+
+def _has_inline_function_call(messages) -> bool:
+    """Return True if messages contains an assistant toolUse for an inline function tool."""
+    if not _INLINE_FUNCTION_NAMES or not isinstance(messages, list):
+        return False
+    for msg in messages:
+        if msg.get("role") == "assistant":
+            for block in msg.get("content", []):
+                if isinstance(block, dict) and block.get("toolUse", {}).get("name") in _INLINE_FUNCTION_NAMES:
+                    return True
+    return False
+
+
+def _is_inline_function_call(event: dict) -> bool:
+    """Check if a contentBlockStart event is for an inline function tool."""
+    if not _INLINE_FUNCTION_NAMES:
+        return False
+    cbs = event.get("contentBlockStart", {})
+    start = cbs.get("start", {})
+    tool_use = start.get("toolUse") if isinstance(start, dict) else None
+    return tool_use is not None and tool_use.get("name") in _INLINE_FUNCTION_NAMES
+
 
 
 @app.entrypoint
@@ -5391,23 +5734,52 @@ async def invoke(payload, context):
     payments_plugin = create_payments_plugin(user_id, instrument_id, session_id)
     plugins = [payments_plugin] if payments_plugin else []
 {{/if}}
+{{#if hasSkillsFetcher}}
+    skill_paths = [{{#each pathSkills}}{{safeJson this}}{{#unless @last}}, {{/unless}}{{/each}}]
+    {{#if s3Skills}}
+    s3_skill_sources = [{{#each s3Skills}}{{safeJson this}}{{#unless @last}}, {{/unless}}{{/each}}]
+    skill_paths.extend(await asyncio.to_thread(resolve_s3_skills, s3_skill_sources, None))
+    {{/if}}
+    {{#if gitSkills}}
+    git_skill_sources = [
+        {{#each gitSkills}}
+        dict(url={{safeJson this.url}}{{#if this.path}}, path={{safeJson this.path}}{{/if}}{{#if this.credentialArn}}, credentialArn={{safeJson this.credentialArn}}{{#if this.username}}, username={{safeJson this.username}}{{/if}}{{/if}}),
+        {{/each}}
+    ]
+    {{#if (some gitSkills "credentialArn")}}
+    _git_identity_client = IdentityClient(os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1")))
+    {{else}}
+    _git_identity_client = None
+    {{/if}}
+    skill_paths.extend(await asyncio.to_thread(resolve_git_skills, git_skill_sources, _git_identity_client))
+    {{/if}}
+    _skill_plugins = [AgentSkills(skills=skill_paths)] if skill_paths else []
+{{/if}}
 
 {{#if hasMemory}}
 {{#if hasPayment}}
     mem_session_id = getattr(context, 'session_id', 'default-session')
+    {{#if actorId}}
+    mem_user_id = "{{actorId}}"
+    {{else}}
     mem_user_id = getattr(context, 'user_id', 'default-user')
+    {{/if}}
     agent = Agent(
         model=load_model(),
         session_manager=get_memory_session_manager(mem_session_id, mem_user_id),
         system_prompt=DEFAULT_SYSTEM_PROMPT + PAYMENT_SYSTEM_PROMPT,
         tools=tools,
-        plugins=plugins,{{#if hasConfigBundle}}
+        plugins=plugins{{#if hasSkillsFetcher}} + _skill_plugins{{/if}},{{#if hasConfigBundle}}
         hooks=[ConfigBundleHook()],{{/if}}
     )
 {{else}}
     session_id = getattr(context, 'session_id', 'default-session')
+    {{#if actorId}}
+    user_id = "{{actorId}}"
+    {{else}}
     user_id = getattr(context, 'user_id', 'default-user')
-    agent = get_or_create_agent(session_id, user_id)
+    {{/if}}
+    agent = get_or_create_agent(session_id, user_id{{#if hasSkillsFetcher}}, _skill_plugins{{/if}})
 {{/if}}
 {{else}}
 {{#if hasPayment}}
@@ -5415,25 +5787,100 @@ async def invoke(payload, context):
         model=load_model(),
         system_prompt=DEFAULT_SYSTEM_PROMPT + PAYMENT_SYSTEM_PROMPT,
         tools=tools,
-        plugins=plugins,{{#if hasConfigBundle}}
+        plugins=plugins{{#if hasSkillsFetcher}} + _skill_plugins{{/if}},{{#if hasConfigBundle}}
         hooks=[ConfigBundleHook()],{{/if}}
     )
 {{else}}
 {{#if hasConfigBundle}}
-    agent = create_agent()
+    agent = create_agent({{#if hasSkillsFetcher}}_skill_plugins{{/if}})
 {{else}}
-    agent = get_or_create_agent()
+    agent = get_or_create_agent({{#if hasSkillsFetcher}}_skill_plugins{{/if}})
 {{/if}}
 {{/if}}
 {{/if}}
 
-    # Execute and format response
-    stream = agent.stream_async(payload.get("prompt"))
+    prompt = _extract_prompt(payload)
 
-    async for event in stream:
-        # Handle Text parts of the response
-        if "data" in event and isinstance(event["data"], str):
-            yield event["data"]
+    {{#if inlineFunctionTools}}
+    # If Turn 2 carries the harness-style assistant(toolUse)+user(toolResult) pair,
+    # strip the placeholder turn Strands stored during Turn 1 so the real toolResult
+    # is injected cleanly — same protocol as the harness runtime.
+    if _has_inline_function_call(prompt):
+        msgs = agent.messages
+        if len(msgs) >= 2 and any("toolResult" in b for b in msgs[-1].get("content", [])):
+            del msgs[-2:]
+    {{/if}}
+
+    {{#if hasExecutionLimits}}
+    timeout_seconds = {{#if timeoutSeconds}}{{timeoutSeconds}}{{else}}None{{/if}}
+    timeout_fired = False
+    watchdog_task = None
+    if timeout_seconds is not None:
+        async def _timeout_watchdog():
+            nonlocal timeout_fired
+            await asyncio.sleep(timeout_seconds)
+            timeout_fired = True
+            agent.cancel()
+        watchdog_task = asyncio.create_task(_timeout_watchdog())
+
+    try:
+        {{#if inlineFunctionTools}}
+        hit_inline_function = False
+        {{/if}}
+        async for event in agent.stream_async(
+            prompt,
+        ):
+            if not isinstance(event, dict) or "event" not in event:
+                continue
+            cbs = event["event"].get("contentBlockStart")
+            if cbs is not None and not cbs.get("start"):
+                continue
+            {{#if inlineFunctionTools}}
+            if not hit_inline_function:
+                hit_inline_function = _is_inline_function_call(event["event"])
+            {{/if}}
+            yield event
+            {{#if inlineFunctionTools}}
+            if hit_inline_function and "messageStop" in event["event"]:
+                return
+            {{/if}}
+
+        if timeout_fired:
+            yield {"event": {"messageStop": {"stopReason": "timeout_exceeded"}}}
+    except EventLoopException as e:
+        if isinstance(e.original_exception, ExecutionLimitExceeded):
+            yield {"event": {"messageStop": {"stopReason": str(e.original_exception)}}}
+            return
+        raise
+    finally:
+        if watchdog_task is not None:
+            watchdog_task.cancel()
+            try:
+                await watchdog_task
+            except asyncio.CancelledError:
+                pass
+    {{else}}
+    {{#if inlineFunctionTools}}
+    hit_inline_function = False
+    {{/if}}
+    async for event in agent.stream_async(
+        prompt,
+    ):
+        if not isinstance(event, dict) or "event" not in event:
+            continue
+        cbs = event["event"].get("contentBlockStart")
+        if cbs is not None and not cbs.get("start"):
+            continue
+        {{#if inlineFunctionTools}}
+        if not hit_inline_function:
+            hit_inline_function = _is_inline_function_call(event["event"])
+        {{/if}}
+        yield event
+        {{#if inlineFunctionTools}}
+        if hit_inline_function and "messageStop" in event["event"]:
+            return
+        {{/if}}
+    {{/if}}
 
 
 if __name__ == "__main__":
@@ -5478,10 +5925,14 @@ def _get_bearer_token_{{snakeCase name}}(*, access_token: str):
 {{#each gatewayProviders}}
 def get_{{snakeCase name}}_mcp_client() -> MCPClient | None:
     """Returns an MCP Client connected to the {{name}} gateway."""
+    {{#if hardcodedUrl}}
+    url = {{safeJson hardcodedUrl}}
+    {{else}}
     url = os.environ.get("{{envVarName}}")
     if not url:
         logger.warning("{{envVarName}} not set — {{name}} gateway tools unavailable")
         return None
+    {{/if}}
     {{#if (eq authType "AWS_IAM")}}
     return MCPClient(lambda: aws_iam_streamablehttp_client(url, aws_service="bedrock-agentcore", aws_region=os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION"))), prefix="{{snakeCase name}}")
     {{else if (eq authType "CUSTOM_JWT")}}
@@ -5502,7 +5953,41 @@ def get_all_gateway_mcp_clients() -> list[MCPClient]:
         clients.append(client)
     {{/each}}
     return clients
-{{else}}
+{{/if}}
+{{#if remoteMcpTools}}
+{{#if (some remoteMcpTools "headerCredentials")}}
+from bedrock_agentcore.identity.auth import requires_api_key
+{{/if}}
+{{#each remoteMcpTools}}
+{{#if headerCredentials}}
+{{#each headerCredentials}}
+@requires_api_key(provider_name="{{credentialName}}")
+def _get_{{snakeCase ../name}}_{{snakeCase headerKey}}_key(api_key: str) -> str:
+    """Fetch {{headerKey}} credential for {{../name}} from AgentCore Identity."""
+    return api_key
+
+{{/each}}
+{{/if}}
+def get_{{snakeCase name}}_mcp_client() -> MCPClient | None:
+    """Returns an MCP Client for the {{name}} remote MCP server."""
+    url = {{safeJson url}}
+    {{#if headerCredentials}}
+    if os.getenv("LOCAL_DEV") == "1":
+        headers = { {{#each headerCredentials}}{{safeJson headerKey}}: os.environ.get("{{envVarName}}", ""){{#unless @last}}, {{/unless}}{{/each}} }
+    else:
+        headers = { {{#each headerCredentials}}{{safeJson headerKey}}: _get_{{snakeCase ../name}}_{{snakeCase headerKey}}_key(){{#unless @last}}, {{/unless}}{{/each}} }
+    return MCPClient(lambda: streamablehttp_client(url, headers=headers))
+    {{else}}
+    return MCPClient(lambda: streamablehttp_client(url))
+    {{/if}}
+
+{{/each}}
+def get_all_remote_mcp_clients() -> list[MCPClient]:
+    """Returns all configured remote MCP clients."""
+    clients = [{{#each remoteMcpTools}}get_{{snakeCase name}}_mcp_client(){{#unless @last}}, {{/unless}}{{/each}}]
+    return [c for c in clients if c is not None]
+{{/if}}
+{{#unless (or hasGateway remoteMcpTools)}}
 {{#if isVpc}}
 # VPC mode: external MCP endpoints are not reachable without a NAT gateway.
 # Add an AgentCore Gateway with \`agentcore add gateway\`, or configure your own endpoint below.
@@ -5511,6 +5996,7 @@ def get_streamable_http_mcp_client() -> MCPClient | None:
     """No MCP server configured. Add a gateway with \`agentcore add gateway\`."""
     return None
 {{else}}
+{{#unless isExportHarness}}
 # ExaAI provides information about code through web searches, crawling and code context searches through their platform. Requires no authentication
 EXAMPLE_MCP_ENDPOINT = "https://mcp.exa.ai/mcp"
 
@@ -5518,8 +6004,9 @@ def get_streamable_http_mcp_client() -> MCPClient:
     """Returns an MCP Client compatible with Strands"""
     # to use an MCP server that supports bearer authentication, add headers={"Authorization": f"Bearer {access_token}"}
     return MCPClient(lambda: streamablehttp_client(EXAMPLE_MCP_ENDPOINT))
+{{/unless}}
 {{/if}}
-{{/if}}
+{{/unless}}
 "
 `;
 
@@ -5535,7 +6022,7 @@ from strands.models.bedrock import BedrockModel
 
 def load_model() -> BedrockModel:
     """Get Bedrock model client using IAM credentials."""
-    return BedrockModel(model_id="global.anthropic.claude-sonnet-4-5-20250929-v1:0")
+    return BedrockModel(model_id="{{#if modelId}}{{modelId}}{{else}}global.anthropic.claude-sonnet-4-5-20250929-v1:0{{/if}}")
 {{/if}}
 {{#if (eq modelProvider "Anthropic")}}
 import os
@@ -5611,7 +6098,7 @@ def load_model() -> OpenAIModel:
     """Get authenticated OpenAI model client."""
     return OpenAIModel(
         client_args={"api_key": _get_api_key()},
-        model_id="gpt-4.1",
+        model_id="{{#if modelId}}{{modelId}}{{else}}gpt-4.1{{/if}}",
     )
 {{/if}}
 {{#if (eq modelProvider "Gemini")}}
@@ -5649,7 +6136,7 @@ def load_model() -> GeminiModel:
     """Get authenticated Gemini model client."""
     return GeminiModel(
         client_args={"api_key": _get_api_key()},
-        model_id="gemini-2.5-flash",
+        model_id="{{#if modelId}}{{modelId}}{{else}}gemini-2.5-flash{{/if}}",
     )
 {{/if}}
 "
@@ -5675,12 +6162,356 @@ dependencies = [
     {{/if}}"mcp >= 1.19.0",
     {{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",
     {{/if}}"strands-agents >= 1.15.0",
-    {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
+    {{#if (or hasBrowser hasCodeInterpreter)}}"strands-agents-tools >= 0.1.0",
+    {{/if}}{{#if hasBrowser}}"nest-asyncio >= 1.5.0",
+    "playwright >= 1.42.0",
+    {{/if}}{{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
     {{/if}}{{/if}}
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["."]
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/http/strands/base/skills/fetcher.py should match snapshot 1`] = `
+""""Skill fetcher — downloads s3/git skills to local filesystem on first use.
+
+Resolved paths are passed to AgentSkills(skills=...) in main.py.
+Cache directory: <tmpdir>/.agents/skills/ — an absolute path under the system temp
+directory (honors $TMPDIR, defaults to /tmp). The runtime working directory (e.g.
+/var/task in a CodeZip runtime) is read-only, so the cache must live somewhere
+guaranteed-writable.
+"""
+
+import base64
+import hashlib
+import json
+import logging
+import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+_SKILLS_BASE = Path(tempfile.gettempdir()) / ".agents" / "skills"
+_GIT_TIMEOUT = 60
+_S3_MAX_SIZE_BYTES = 1 * 1024 * 1024 * 1024  # 1 GB
+
+
+def _stable_hash(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()[:12]
+
+
+def _cleanup(path: Path) -> None:
+    """Remove a partially-created skill directory so retries don't see stale state."""
+    shutil.rmtree(path, ignore_errors=True)
+
+
+def _read_map(type_dir: Path) -> dict:
+    map_file = type_dir / ".map.json"
+    return json.loads(map_file.read_text()) if map_file.exists() else {}
+
+
+def _write_map(type_dir: Path, mapping: dict) -> None:
+    type_dir.mkdir(parents=True, exist_ok=True)
+    (type_dir / ".map.json").write_text(json.dumps(mapping))
+
+
+def _resolve_cached(type_dir: Path, source_hash: str) -> Optional[str]:
+    """Return the cached skill directory for a source hash, or None if not on disk."""
+    mapping = _read_map(type_dir)
+    dir_name = mapping.get(source_hash)
+    if dir_name and (type_dir / dir_name).exists():
+        return str(type_dir / dir_name)
+    return None
+
+
+def _read_skill_name(skill_dir: Path) -> str:
+    """Extract the skill name from SKILL.md YAML frontmatter."""
+    content = (skill_dir / "SKILL.md").read_text()
+    if not content.startswith("---"):
+        raise ValueError(f"SKILL.md in {skill_dir} has no YAML frontmatter (must start with ---)")
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        raise ValueError(f"SKILL.md in {skill_dir} has malformed frontmatter (missing closing ---)")
+    for line in parts[1].strip().splitlines():
+        if line.startswith("name:"):
+            name = line[len("name:"):].strip().strip("\\"'")
+            if name:
+                return name
+    raise ValueError(f"SKILL.md in {skill_dir} is missing a 'name' field in frontmatter")
+
+
+def _pick_dir_name(type_dir: Path, name: str, source_hash: str) -> str:
+    """Pick a unique directory name, appending a hash suffix on collision."""
+    if not (type_dir / name).exists():
+        return name
+    return f"{name}-{source_hash[:8]}"
+
+
+def _rename_and_cache_skill(type_dir: Path, temp_dir: Path, source_hash: str, skill_root: Path,
+                            source_label: str = "") -> Path:
+    """Validate SKILL.md, rename the temp dir to the skill's declared name, and update the map.
+
+    Raises ValueError if SKILL.md is missing or has invalid frontmatter.
+    """
+    if not (skill_root / "SKILL.md").exists():
+        _cleanup(temp_dir)
+        hint = f" (source: {source_label})" if source_label else ""
+        raise ValueError(f"No SKILL.md found in fetched skill{hint}")
+
+    name = _read_skill_name(skill_root)
+    dir_name = _pick_dir_name(type_dir, name, source_hash)
+    final_dir = type_dir / dir_name
+    if final_dir != temp_dir:
+        temp_dir.rename(final_dir)
+
+    mapping = _read_map(type_dir)
+    mapping[source_hash] = dir_name
+    _write_map(type_dir, mapping)
+    return final_dir
+
+
+def _fetch_s3_skill(source: str, s3_client=None) -> Path:
+    """Download an s3:// skill prefix and return the local directory."""
+    uri = source if source.endswith("/") else source + "/"
+    source_hash = _stable_hash(uri)
+    type_dir = _SKILLS_BASE / "s3"
+
+    cached = _resolve_cached(type_dir, source_hash)
+    if cached:
+        return Path(cached)
+
+    import boto3
+    client = s3_client or boto3.client("s3")
+    bucket, _, prefix = uri[len("s3://"):].partition("/")
+    if not bucket:
+        raise ValueError(f"Invalid S3 URI (no bucket): {uri}")
+
+    temp_dir = type_dir / source_hash
+    _cleanup(temp_dir)
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_root = temp_dir.resolve()
+
+    paginator = client.get_paginator("list_objects_v2")
+    total = 0
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            total += obj["Size"]
+            if total > _S3_MAX_SIZE_BYTES:
+                _cleanup(temp_dir)
+                raise ValueError(f"S3 skill {uri} exceeds 1 GB size limit")
+            rel = obj["Key"][len(prefix):].lstrip("/")
+            if not rel:
+                continue
+            dest = (temp_dir / rel).resolve()
+            if dest != temp_root and not str(dest).startswith(str(temp_root) + os.sep):
+                _cleanup(temp_dir)
+                raise ValueError(f"Path traversal detected in S3 key: {obj['Key']}")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            client.download_file(bucket, obj["Key"], str(dest))
+
+    if total == 0:
+        _cleanup(temp_dir)
+        raise ValueError(f"No files found at S3 URI: {uri}")
+
+    return _rename_and_cache_skill(type_dir, temp_dir, source_hash, temp_dir, source_label=uri)
+
+
+def _resolve_credential_arn(credential_arn: str, identity_client) -> str:
+    """Resolve a Token Vault API-key credential ARN to its secret value via AgentCore Identity.
+
+    ARN format: arn:<p>:bedrock-agentcore:<region>:<account>:token-vault/<vault>/apikeycredentialprovider/<name>
+    """
+    from bedrock_agentcore.runtime.context import BedrockAgentCoreContext  # noqa: PLC0415
+
+    provider_name = credential_arn.rsplit("/", 1)[-1]
+    if not provider_name:
+        raise ValueError(f"Invalid credential ARN: {credential_arn}")
+    workload_token = BedrockAgentCoreContext.get_workload_access_token()
+    if not workload_token:
+        raise ValueError("Credential ARN resolution requires a workload access token")
+    api_key = identity_client.dp_client.get_resource_api_key(
+        resourceCredentialProviderName=provider_name,
+        workloadIdentityToken=workload_token,
+    )["apiKey"]
+    if not api_key:
+        raise ValueError(f"Identity returned empty API key for provider: {provider_name}")
+    return api_key
+
+
+def _build_git_auth_env(credential_arn: Optional[str], username: Optional[str], identity_client=None) -> dict:
+    """Build GIT_CONFIG_* env vars for HTTP Basic auth using a Token Vault credential ARN.
+
+    Uses env vars instead of -c args to avoid leaking credentials in /proc/*/cmdline,
+    and so auth propagates to sub-commands (e.g. sparse-checkout triggering a fetch).
+    """
+    if not credential_arn or not identity_client:
+        return {}
+    password = _resolve_credential_arn(credential_arn, identity_client)
+    user = username or "oauth2"
+    encoded = base64.b64encode(f"{user}:{password}".encode()).decode()
+    return {
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "http.extraHeader",
+        "GIT_CONFIG_VALUE_0": f"Authorization: Basic {encoded}",
+    }
+
+
+def _fetch_git_skill(url: str, skill_path: str = "", credential_arn: Optional[str] = None,
+                     username: Optional[str] = None, identity_client=None) -> Path:
+    """Shallow-clone a git skill repository and return the local skill directory.
+
+    Returns the directory containing SKILL.md (the subdir itself for sparse checkouts).
+    """
+    if skill_path and (os.path.isabs(skill_path) or ".." in Path(skill_path).parts):
+        raise ValueError(f"Path traversal detected in skill path: {skill_path}")
+
+    source_hash = _stable_hash(f"{url}:{skill_path}")
+    type_dir = _SKILLS_BASE / "git"
+
+    cached = _resolve_cached(type_dir, source_hash)
+    if cached:
+        return Path(cached) / skill_path if skill_path else Path(cached)
+
+    temp_dir = type_dir / source_hash
+    _cleanup(temp_dir)
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    extra_env = _build_git_auth_env(credential_arn, username, identity_client)
+    git_env = {**os.environ, **extra_env} if extra_env else None
+
+    try:
+        if skill_path:
+            subprocess.run(
+                ["git", "clone", "--depth", "1", "--filter=blob:none", "--sparse", url, str(temp_dir)],
+                check=True, timeout=_GIT_TIMEOUT, capture_output=True, env=git_env,
+            )
+            subprocess.run(
+                ["git", "sparse-checkout", "set", skill_path],
+                check=True, timeout=_GIT_TIMEOUT, capture_output=True, cwd=str(temp_dir), env=git_env,
+            )
+        else:
+            subprocess.run(
+                ["git", "clone", "--depth", "1", url, str(temp_dir)],
+                check=True, timeout=_GIT_TIMEOUT, capture_output=True, env=git_env,
+            )
+    except Exception:
+        _cleanup(temp_dir)
+        raise
+
+    if skill_path and not (temp_dir / skill_path).exists():
+        _cleanup(temp_dir)
+        raise ValueError(f"Skill path '{skill_path}' not found in repository '{url}'")
+
+    # SKILL.md lives inside the subdir for sparse checkouts.
+    skill_root = temp_dir / skill_path if skill_path else temp_dir
+    label = f"{url}:{skill_path}" if skill_path else url
+    final_dir = _rename_and_cache_skill(type_dir, temp_dir, source_hash, skill_root, source_label=label)
+    return final_dir / skill_path if skill_path else final_dir
+
+
+def resolve_s3_skills(sources: list, s3_client=None) -> list:
+    """Resolve s3:// skill URIs to local filesystem paths.
+
+    Any fetch failure raises and fails the invocation — a partial skill set
+    would silently run the agent without capabilities the harness declared.
+    """
+    paths = []
+    for uri in sources:
+        try:
+            skill_dir = _fetch_s3_skill(uri, s3_client)
+        except Exception as e:
+            raise ValueError(f"Failed to resolve S3 skill '{uri}': {e}") from e
+        paths.append(str(skill_dir.resolve()))
+    return paths
+
+
+def resolve_git_skills(sources: list, identity_client=None) -> list:
+    """Resolve git skill dicts to local filesystem paths.
+
+    Each source is a dict with keys: url (required), path (optional),
+    credentialArn (optional), username (optional).
+
+    Any fetch failure raises and fails the invocation — a partial skill set
+    would silently run the agent without capabilities the harness declared.
+    """
+    paths = []
+    for source in sources:
+        try:
+            skill_dir = _fetch_git_skill(
+                url=source["url"],
+                skill_path=source.get("path") or "",
+                credential_arn=source.get("credentialArn"),
+                username=source.get("username"),
+                identity_client=identity_client,
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to resolve git skill '{source.get('url', source)}': {e}") from e
+        paths.append(str(skill_dir.resolve()))
+    return paths
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/http/strands/capabilities/execution-limits/hooks/execution_limits.py should match snapshot 1`] = `
+"import time
+from typing import Optional
+
+from strands.hooks import BeforeModelCallEvent
+from strands.hooks.registry import HookProvider, HookRegistry
+from strands.types.exceptions import EventLoopException
+
+
+class ExecutionLimitExceeded(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
+class ExecutionLimitsHook(HookProvider):
+    def __init__(
+        self,
+        max_iterations: Optional[int] = None,
+        max_tokens: Optional[int] = None,
+        timeout_seconds: Optional[float] = None,
+    ) -> None:
+        self._max_iterations = max_iterations
+        self._max_tokens = max_tokens
+        self._timeout_seconds = timeout_seconds
+        self._iteration_count = 0
+        self._start_time = time.monotonic()
+
+    def register_hooks(self, registry: HookRegistry, **kwargs) -> None:
+        registry.add_callback(BeforeModelCallEvent, self._check_limits)
+
+    def _check_limits(self, event: BeforeModelCallEvent) -> None:
+        self._iteration_count += 1
+
+        if self._max_iterations is not None and self._iteration_count > self._max_iterations:
+            raise EventLoopException(
+                ExecutionLimitExceeded(f"Max iterations exceeded: {self._max_iterations}")
+            )
+
+        if self._timeout_seconds is not None:
+            elapsed = time.monotonic() - self._start_time
+            if elapsed > self._timeout_seconds:
+                raise EventLoopException(
+                    ExecutionLimitExceeded(
+                        f"Timeout exceeded: {self._timeout_seconds}s (elapsed {elapsed:.1f}s)"
+                    )
+                )
+
+        if self._max_tokens is not None:
+            used = event.agent.event_loop_metrics.accumulated_usage.get("outputTokens", 0)
+            if used >= self._max_tokens:
+                raise EventLoopException(
+                    ExecutionLimitExceeded(
+                        f"Max output tokens exceeded: {used}/{self._max_tokens}"
+                    )
+                )
 "
 `;
 
@@ -5716,8 +6547,11 @@ def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Opti
 {{#if (includes memoryProviders.[0].strategies "USER_PREFERENCE")}}
         f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
+{{#if (includes memoryProviders.[0].strategies "EPISODIC")}}
+        f"/episodes/{actor_id}/{session_id}": RetrievalConfig(top_k=5, relevance_score=0.5),
+{{/if}}
 {{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
-        f"/summaries/{actor_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
+        f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
     }
 {{/if}}
@@ -6380,6 +7214,19 @@ When modifying JSON config files:
 4. Use CloudFormation-safe names (alphanumeric, start with letter)
 5. Run \`agentcore validate\` to verify changes
 
+## Harness Export
+
+\`agentcore export harness\` converts a harness configuration into a deployable Strands Python agent under \`app/<agentName>/\`.
+
+**After every export, you MUST read \`app/<agentName>/EXPORT_NOTES.md\` before proceeding.**
+
+This file lists any manual follow-up items required before the agent will deploy or run correctly — missing files to create, IAM policies to add, or configuration steps the exporter could not automate. A clean export produces "No manual steps required." Complete every item in the file before running \`agentcore deploy\`.
+
+\`\`\`bash
+agentcore export harness --name <harnessName>   # generates app/<agentName>/EXPORT_NOTES.md
+cat app/<agentName>/EXPORT_NOTES.md             # read this before touching anything else
+\`\`\`
+
 ## CLI Commands
 
 | Command | Description |
@@ -6387,6 +7234,7 @@ When modifying JSON config files:
 | \`agentcore create\` | Create a new project |
 | \`agentcore add <resource>\` | Add agent, memory, credential, gateway, evaluator, policy |
 | \`agentcore remove <resource>\` | Remove a resource |
+| \`agentcore export harness\` | Export a harness to a Strands runtime agent |
 | \`agentcore dev\` | Run agent locally with hot-reload |
 | \`agentcore deploy\` | Deploy to AWS |
 | \`agentcore status\` | Show deployment status |

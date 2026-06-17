@@ -135,11 +135,14 @@ export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions,
 
   /**
    * Get gateway names that don't have a policy engine attached.
+   * Excludes MCP protocol gateways since guardrails policies only apply to HTTP gateways.
    */
   async getUnprotectedGateways(): Promise<string[]> {
     try {
       const project = await this.readProjectSpec();
-      return project.agentCoreGateways.filter(gw => !gw.policyEngineConfiguration).map(gw => gw.name);
+      return project.agentCoreGateways
+        .filter(gw => gw.protocolType === 'None' && !gw.policyEngineConfiguration)
+        .map(gw => gw.name);
     } catch {
       return [];
     }
@@ -181,15 +184,22 @@ export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions,
     return firstArn ?? null;
   }
 
+  /**
+   * Get deployed gateways, excluding MCP protocol gateways.
+   * Guardrails policies only apply to HTTP (protocolType: "None") gateways.
+   */
   async getDeployedGateways(): Promise<Record<string, string>> {
     try {
-      const deployedState = await this.configIO.readDeployedState();
+      const [deployedState, project] = await Promise.all([this.configIO.readDeployedState(), this.readProjectSpec()]);
+      const mcpGatewayNames = new Set(
+        project.agentCoreGateways.filter(gw => gw.protocolType !== 'None').map(gw => gw.name)
+      );
       const result: Record<string, string> = {};
       for (const target of Object.values(deployedState.targets)) {
-        const gateways = target.resources?.mcp?.gateways;
+        const gateways = target.resources?.mcp?.gateways ?? target.resources?.gateways;
         if (gateways) {
           for (const [name, gw] of Object.entries(gateways)) {
-            if (gw?.gatewayArn) {
+            if (gw?.gatewayArn && !mcpGatewayNames.has(name)) {
               result[name] = gw.gatewayArn;
             }
           }
@@ -198,6 +208,26 @@ export class PolicyEnginePrimitive extends BasePrimitive<AddPolicyEngineOptions,
       return result;
     } catch {
       return {};
+    }
+  }
+
+  /**
+   * Get project gateways with their HTTP targets, excluding MCP protocol gateways.
+   * Guardrails policies only apply to HTTP (protocolType: "None") gateways.
+   */
+  async getProjectGateways(): Promise<{ name: string; httpTargets: string[] }[]> {
+    try {
+      const project = await this.readProjectSpec();
+      return project.agentCoreGateways
+        .filter(gw => gw.protocolType === 'None')
+        .map(gw => ({
+          name: gw.name,
+          httpTargets: (gw.targets || [])
+            .filter((t: { targetType?: string }) => t.targetType === 'httpRuntime')
+            .map((t: { name: string }) => t.name),
+        }));
+    } catch {
+      return [];
     }
   }
 

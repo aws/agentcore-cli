@@ -17,7 +17,10 @@ dependencies = [
     {{/if}}"mcp >= 1.19.0",
     {{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",
     {{/if}}"strands-agents >= 1.15.0",
-    {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
+    {{#if (or hasBrowser hasCodeInterpreter)}}"strands-agents-tools >= 0.1.0",
+    {{/if}}{{#if hasBrowser}}"nest-asyncio >= 1.5.0",
+    "playwright >= 1.42.0",
+    {{/if}}{{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
     {{/if}}{{/if}}
 ]
 

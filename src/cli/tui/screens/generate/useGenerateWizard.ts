@@ -285,7 +285,10 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
           resetFilesystemState();
         }
         // Config bundle has no sub-steps — set flag immediately
-        setConfig(c => ({ ...c, withConfigBundle: selected.has('configBundle') || undefined }));
+        setConfig(c => ({
+          ...c,
+          withConfigBundle: selected.has('configBundle') || undefined,
+        }));
         // Navigate to first advanced sub-step — determined by the steps memo on next render.
         // Use setTimeout so the steps memo recalculates with the new advancedSettings first.
         setTimeout(() => {

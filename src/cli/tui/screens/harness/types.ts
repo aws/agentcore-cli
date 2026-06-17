@@ -8,6 +8,8 @@ export type AddHarnessStep =
   | 'model-provider'
   | 'api-format'
   | 'api-key-arn'
+  | 'api-base'
+  | 'additional-params'
   | 'container'
   | 'container-uri'
   | 'container-dockerfile'
@@ -19,7 +21,21 @@ export type AddHarnessStep =
   | 'gateway-outbound-auth'
   | 'gateway-provider-arn'
   | 'gateway-scopes'
+  | 'skills-source-type'
+  | 'skill-path'
+  | 'skill-s3-uri'
+  | 'skill-git-url'
+  | 'skill-git-path'
+  | 'skill-git-credential'
+  | 'skill-git-username'
+  | 'skill-aws-skills-paths'
+  | 'skill-add-another'
   | 'memory'
+  | 'memory-mode'
+  | 'memory-strategies'
+  | 'memory-event-expiry'
+  | 'memory-kms'
+  | 'memory-existing-ref'
   | 'authorizerType'
   | 'jwtConfig'
   | 'network-mode'
@@ -30,6 +46,15 @@ export type AddHarnessStep =
   | 'max-iterations'
   | 'max-tokens'
   | 'timeout'
+  | 'temperature'
+  | 'top-p'
+  | 'top-k'
+  | 'model-max-tokens'
+  | 'memory-messages-count'
+  | 'memory-retrieval-top-k'
+  | 'memory-relevance-score'
+  | 'mcp-headers'
+  | 'allowed-tools'
   | 'truncation-strategy'
   | 'session-storage-path'
   | 'efs-arn'
@@ -46,14 +71,42 @@ export interface AddHarnessConfig {
   modelId: string;
   apiFormat?: HarnessApiFormat;
   apiKeyArn?: string;
-  skipMemory?: boolean;
+  apiBase?: string;
+  additionalParams?: Record<string, unknown>;
   containerMode?: ContainerMode;
   containerUri?: string;
   dockerfilePath?: string;
   maxIterations?: number;
   maxTokens?: number;
   timeoutSeconds?: number;
-  truncationStrategy?: 'sliding_window' | 'summarization';
+  temperature?: number;
+  topP?: number;
+  topK?: number;
+  modelMaxTokens?: number;
+  /** Legacy enabled/disabled memory toggle — used only when gated features are OFF. */
+  skipMemory?: boolean;
+  /**
+   * Mode-tagged memory ref — used when gated features are ON. Mirrors the schema union.
+   * `managed` owns memory internally; `existing` references a memory by name/arn; `disabled` opts out.
+   */
+  memory?:
+    | { mode: 'managed'; strategies?: string[]; eventExpiryDuration?: number; encryptionKeyArn?: string }
+    | {
+        mode: 'existing';
+        name?: string;
+        arn?: string;
+        actorId?: string;
+        messagesCount?: number;
+        topK?: number;
+        relevanceScore?: number;
+      }
+    | { mode: 'disabled' };
+  messagesCount?: number;
+  memoryTopK?: number;
+  memoryRelevanceScore?: number;
+  mcpHeaders?: Record<string, string>;
+  allowedTools?: string[];
+  truncationStrategy?: 'sliding_window' | 'summarization' | 'none';
   networkMode?: NetworkMode;
   subnets?: string[];
   securityGroups?: string[];
@@ -71,6 +124,19 @@ export interface AddHarnessConfig {
   gatewayOutboundAuth?: 'awsIam' | 'none' | 'oauth';
   gatewayProviderArn?: string;
   gatewayScopes?: string;
+  skills?: {
+    path?: string;
+    s3Uri?: string;
+    gitUrl?: string;
+    gitPath?: string;
+    credentialName?: string;
+    username?: string;
+    awsSkills?: string[];
+  }[];
+  pendingSkillSourceType?: 'path' | 's3' | 'git' | 'aws_skills';
+  pendingSkillGitUrl?: string;
+  pendingSkillGitPath?: string;
+  pendingSkillCredentialName?: string;
 }
 
 export const HARNESS_STEP_LABELS: Record<AddHarnessStep, string> = {
@@ -78,6 +144,8 @@ export const HARNESS_STEP_LABELS: Record<AddHarnessStep, string> = {
   'model-provider': 'Model provider',
   'api-format': 'API format',
   'api-key-arn': 'API key ARN',
+  'api-base': 'API base URL',
+  'additional-params': 'Additional params',
   container: 'Custom environment',
   'container-uri': 'Container URI',
   'container-dockerfile': 'Dockerfile path',
@@ -89,7 +157,21 @@ export const HARNESS_STEP_LABELS: Record<AddHarnessStep, string> = {
   'gateway-outbound-auth': 'Gateway auth',
   'gateway-provider-arn': 'Provider ARN',
   'gateway-scopes': 'OAuth scopes',
+  'skills-source-type': 'Skill source',
+  'skill-path': 'Skill path',
+  'skill-s3-uri': 'S3 URI',
+  'skill-git-url': 'Git URL',
+  'skill-git-path': 'Git sub-path',
+  'skill-git-credential': 'Git credential',
+  'skill-git-username': 'Username',
+  'skill-aws-skills-paths': 'AWS Skills paths',
+  'skill-add-another': 'Add skill',
   memory: 'Memory',
+  'memory-mode': 'Memory mode',
+  'memory-strategies': 'Memory strategies',
+  'memory-event-expiry': 'Memory event expiry (days)',
+  'memory-kms': 'Memory KMS key ARN',
+  'memory-existing-ref': 'Existing memory reference',
   authorizerType: 'Auth type',
   jwtConfig: 'JWT config',
   'network-mode': 'Network mode',
@@ -100,6 +182,15 @@ export const HARNESS_STEP_LABELS: Record<AddHarnessStep, string> = {
   'max-iterations': 'Max iterations',
   'max-tokens': 'Max tokens',
   timeout: 'Timeout',
+  temperature: 'Temperature',
+  'top-p': 'Top P',
+  'top-k': 'Top K',
+  'model-max-tokens': 'Model max tokens',
+  'memory-messages-count': 'Memory messages count',
+  'memory-retrieval-top-k': 'Memory retrieval top K',
+  'memory-relevance-score': 'Memory relevance score',
+  'mcp-headers': 'MCP headers',
+  'allowed-tools': 'Allowed tools',
   'truncation-strategy': 'Truncation',
   'session-storage-path': 'Session storage path',
   'efs-arn': 'EFS ARN',
@@ -115,6 +206,7 @@ export const DEFAULT_MODEL_IDS: Record<HarnessModelProvider, string> = {
   bedrock: 'global.anthropic.claude-sonnet-4-6',
   open_ai: 'gpt-5',
   gemini: 'gemini-2.5-flash',
+  lite_llm: 'anthropic/claude-sonnet-4-5',
 };
 
 export const DEFAULT_BEDROCK_MANTLE_MODEL_ID = 'openai.gpt-oss-120b';
@@ -130,6 +222,11 @@ export const MODEL_PROVIDER_OPTIONS = [
     id: 'gemini' as const,
     title: 'Google Gemini',
     description: `Default: ${DEFAULT_MODEL_IDS.gemini} (requires API key ARN)`,
+  },
+  {
+    id: 'lite_llm' as const,
+    title: 'LiteLLM',
+    description: `Default: ${DEFAULT_MODEL_IDS.lite_llm} (API key ARN optional)`,
   },
 ] as const;
 
@@ -169,14 +266,39 @@ export const API_FORMAT_OPTIONS = BEDROCK_API_FORMAT_OPTIONS;
 export const TRUNCATION_STRATEGY_OPTIONS = [
   { id: 'sliding_window' as const, title: 'Sliding window', description: 'Keep most recent messages' },
   { id: 'summarization' as const, title: 'Summarization', description: 'Compress older context' },
+  { id: 'none' as const, title: 'None', description: 'Disable truncation' },
 ] as const;
 
 export const ADVANCED_SETTING_OPTIONS = [
   { id: 'tools', title: 'Tools', description: 'Add browser, code interpreter, MCP, or gateway tools' },
+  { id: 'skills', title: 'Skills', description: 'Add agent skills' },
+  // Two mode-scoped memory-tuning options: only the one matching the chosen memory mode is shown in
+  // the advanced list (see AddHarnessScreen's filter). Managed and existing have disjoint knob sets
+  // per the harness API, so they never both appear. Legacy (gated-off) uses 'memory-tuning'.
+  {
+    id: 'memory-tuning',
+    title: 'Memory tuning',
+    description: 'Tune messages count and retrieval (topK, relevance score)',
+  },
+  {
+    id: 'memory-managed-tuning',
+    title: 'Memory tuning',
+    description: 'Managed memory: strategies, event retention, encryption key',
+  },
+  {
+    id: 'memory-existing-tuning',
+    title: 'Memory tuning',
+    description: 'Existing memory: actor ID, messages count, retrieval (topK, relevance)',
+  },
+  { id: 'allowed-tools', title: 'Allowed tools', description: 'Restrict which tools the agent may invoke' },
   { id: 'auth', title: 'Authentication', description: 'Inbound auth: AWS_IAM or Custom JWT' },
   { id: 'network', title: 'Network', description: 'Deploy inside a VPC with custom subnets and security groups' },
   { id: 'lifecycle', title: 'Lifecycle', description: 'Set idle timeout and max session lifetime' },
-  { id: 'execution', title: 'Execution limits', description: 'Cap iterations, tokens, and per-turn timeout' },
+  {
+    id: 'execution',
+    title: 'Execution & sampling',
+    description: 'Cap iterations, tokens, timeout; tune temperature, topP, topK',
+  },
   { id: 'truncation', title: 'Truncation', description: 'Choose how context is managed when it exceeds limits' },
   {
     id: 'session-storage',
@@ -195,6 +317,27 @@ export const MEMORY_OPTIONS = [
   },
   { id: 'enabled' as const, title: 'Enabled', description: 'Create persistent memory for this harness' },
 ] as const;
+
+/** Mode-first memory options (gated features ON). Mirrors the schema's 3-mode union. */
+export const MEMORY_MODE_OPTIONS = [
+  {
+    id: 'managed' as const,
+    title: 'Managed',
+    description: 'AgentCore creates and manages memory for this harness (default)',
+  },
+  { id: 'existing' as const, title: 'Existing', description: 'Reference an existing memory by name or ARN' },
+  { id: 'disabled' as const, title: 'Disabled', description: 'No memory' },
+] as const;
+
+/** Managed-memory strategy choices (the four CFN ManagedMemoryConfiguration.Strategies values). */
+export const MANAGED_STRATEGY_OPTIONS = [
+  { id: 'SEMANTIC' as const, title: 'Semantic', description: 'Extract and retrieve semantic facts' },
+  { id: 'SUMMARIZATION' as const, title: 'Summarization', description: 'Summarize conversation history' },
+  { id: 'USER_PREFERENCE' as const, title: 'User preference', description: 'Track user preferences' },
+  { id: 'EPISODIC' as const, title: 'Episodic', description: 'Recall past episodes/sessions' },
+] as const;
+
+/** Keep/customize options for the managed retention + encryption tuning sub-flow. */
 
 export const CONTAINER_MODE_OPTIONS = [
   { id: 'none' as const, title: 'Default Environment', description: 'Includes Python, Bash, File tools' },
@@ -228,3 +371,14 @@ export const GATEWAY_OUTBOUND_AUTH_OPTIONS = [
   { id: 'none', title: 'None', description: 'No authentication headers' },
   { id: 'oauth', title: 'OAuth', description: 'Bearer token via AgentCore Identity credential provider' },
 ];
+
+export const SKILL_SOURCE_TYPE_OPTIONS = [
+  { id: 'path' as const, title: 'Path', description: 'Path to an installed skill in the environment' },
+  { id: 's3' as const, title: 'S3', description: 'S3 URI (s3://bucket/path)' },
+  { id: 'git' as const, title: 'Git', description: 'HTTPS git repository URL' },
+  {
+    id: 'aws_skills' as const,
+    title: 'AWS Skills',
+    description: 'Built-in AWS skills (github.com/aws/agent-toolkit-for-aws/tree/main/skills)',
+  },
+] as const;

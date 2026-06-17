@@ -6,24 +6,18 @@ import {
   type AgentCoreProjectSpec,
   type AgentCoreMcpSpec,
   type CustomJWTAuthorizerConfig,
+  type HarnessDeploymentConfig,
 } from '@aws/agentcore-cdk';
 import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 
-export interface HarnessConfig {
-  name: string;
-  executionRoleArn?: string;
-  memoryName?: string;
-  containerUri?: string;
-  hasDockerfile?: boolean;
-  dockerfile?: string;
-  codeLocation?: string;
-  tools?: { type: string; name: string }[];
-  apiKeyArn?: string;
-  efsAccessPoints?: { accessPointArn: string; mountPath: string }[];
-  s3AccessPoints?: { accessPointArn: string; mountPath: string }[];
-}
+/**
+ * Harness deployment config: role-scoped fields (for IAM role + container build)
+ * plus the full validated spec + its config directory so the L3 construct can
+ * synthesize the AWS::BedrockAgentCore::Harness resource.
+ */
+export type HarnessConfig = HarnessDeploymentConfig;
 
 export interface PaymentConnectorSpec {
   name: string;
@@ -59,6 +53,11 @@ export interface AgentCoreStackProps extends StackProps {
    * Harness role configurations.
    */
   harnesses?: HarnessConfig[];
+  /**
+   * Parsed connectorParameters for non-S3 KB data sources, keyed by
+   * connectorConfigFile path. Forwarded to AgentCoreApplication.
+   */
+  connectorParametersByFile?: Record<string, Record<string, unknown>>;
   /**
    * Payment specifications with resolved credential provider ARNs.
    */
@@ -98,13 +97,19 @@ export class AgentCoreStack extends Stack {
   constructor(scope: Construct, id: string, props: AgentCoreStackProps) {
     super(scope, id, props);
 
-    const { spec, mcpSpec, credentials, harnesses, paymentSpec } = props;
+    const { spec, mcpSpec, credentials, harnesses, connectorParametersByFile, paymentSpec } = props;
 
     // Create AgentCoreApplication with all agents and harness roles
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const appProps: Record<string, unknown> = { spec };
     if (harnesses?.length) {
       appProps.harnesses = harnesses;
+    }
+    if (connectorParametersByFile && Object.keys(connectorParametersByFile).length > 0) {
+      appProps.connectorParametersByFile = connectorParametersByFile;
+    }
+    if (credentials) {
+      appProps.credentials = credentials;
     }
     this.application = new AgentCoreApplication(this, 'Application', appProps as any);
 

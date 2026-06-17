@@ -4,6 +4,7 @@ import {
   DEFAULT_RUNTIME_USER_ID,
   buildAguiRunInput,
   executeBashCommand,
+  extractResult,
   getOrCreatePaymentSession,
   invokeA2ARuntime,
   invokeAgentRuntime,
@@ -12,8 +13,10 @@ import {
   mcpCallTool,
   mcpInitSession,
   mcpListTools,
+  parseSSE,
 } from '../../aws';
 import { invokeHarness } from '../../aws/agentcore-harness';
+import { dnsSuffix } from '../../aws/partition';
 import { ANSI } from '../../constants';
 import { isPreviewEnabled } from '../../feature-flags';
 import { InvokeLogger } from '../../logging';
@@ -46,6 +49,196 @@ export async function loadInvokeConfig(configIO: ConfigIO = new ConfigIO()): Pro
 export async function handleInvoke(context: InvokeContext, options: InvokeOptions = {}): Promise<InvokeResult> {
   const { project, deployedState, awsTargets } = context;
 
+  // Gateway invoke: route through a deployed gateway
+  if (options.gateway) {
+    const targetNames = Object.keys(deployedState.targets);
+    if (targetNames.length === 0) {
+      return {
+        success: false,
+        error: new ResourceNotFoundError('No deployed targets found. Run `agentcore deploy` first.'),
+      };
+    }
+    const gwSelectedTarget = options.targetName ?? targetNames[0]!;
+    const gwTargetState = deployedState.targets[gwSelectedTarget];
+    const gwTargetConfig = awsTargets.find(t => t.name === gwSelectedTarget);
+    if (!gwTargetConfig) {
+      return {
+        success: false,
+        error: new ResourceNotFoundError(`Target config '${gwSelectedTarget}' not found in aws-targets`),
+      };
+    }
+    const gwState =
+      gwTargetState?.resources?.gateways?.[options.gateway] ??
+      gwTargetState?.resources?.mcp?.gateways?.[options.gateway];
+    if (!gwState) {
+      return {
+        success: false,
+        error: new ResourceNotFoundError(
+          `Gateway '${options.gateway}' is not deployed. Run \`agentcore deploy\` first.`
+        ),
+      };
+    }
+
+    const gwSpec = project.agentCoreGateways?.find(g => g.name === options.gateway);
+    const isMcpGateway = gwSpec?.protocolType === 'MCP';
+
+    // Require bearer token for CUSTOM_JWT gateways
+    if (gwSpec?.authorizerType === 'CUSTOM_JWT' && !options.bearerToken) {
+      return {
+        success: false,
+        error: new ValidationError('Gateway requires --bearer-token (CUSTOM_JWT authorizer).'),
+      };
+    }
+
+    const region = gwTargetConfig.region;
+    const gatewayUrl =
+      gwState.gatewayUrl ??
+      (() => {
+        const r = gwState.gatewayArn?.split(':')[3];
+        return r ? `https://${gwState.gatewayId}.gateway.bedrock-agentcore.${r}.${dnsSuffix(r)}` : undefined;
+      })();
+
+    if (!gatewayUrl) {
+      return { success: false, error: new ValidationError('Could not determine gateway URL.') };
+    }
+
+    let invocationUrl: string;
+    let body: string;
+
+    if (!isMcpGateway) {
+      // HTTP gateway: requires --target-name and --prompt
+      if (!options.gatewayTarget) {
+        const httpTargets = (gwSpec?.targets ?? [])
+          .filter((t: { targetType?: string }) => t.targetType === 'httpRuntime')
+          .map((t: { name: string }) => t.name);
+        return {
+          success: false,
+          error: new ValidationError(
+            `--target-name is required for HTTP gateways. Available targets: ${httpTargets.join(', ')}`
+          ),
+        };
+      }
+      const targetSpec = gwSpec?.targets?.find(
+        (t: { name: string; targetType?: string }) => t.name === options.gatewayTarget
+      );
+      if (!targetSpec) {
+        return {
+          success: false,
+          error: new ResourceNotFoundError(
+            `Target '${options.gatewayTarget}' not found on gateway '${options.gateway}'.`
+          ),
+        };
+      }
+      if (targetSpec.targetType !== 'httpRuntime') {
+        return {
+          success: false,
+          error: new ValidationError(`Target '${options.gatewayTarget}' is not an httpRuntime target.`),
+        };
+      }
+      invocationUrl = `${gatewayUrl}/${options.gatewayTarget}/invocations`;
+      if (!options.prompt) {
+        return { success: false, error: new ValidationError('--prompt is required for HTTP gateway invoke.') };
+      }
+      // Wrap plain strings into {"prompt": "..."} so the body field matches both the
+      // agent template (reads payload.get("prompt")) and the guardrail form default
+      // data path (context.input.prompt). If the prompt is already valid JSON, pass
+      // it through as-is.
+      try {
+        JSON.parse(options.prompt);
+        body = options.prompt;
+      } catch {
+        body = JSON.stringify({ prompt: options.prompt });
+      }
+    } else {
+      // MCP gateway: direct HTTP POST to gateway /mcp endpoint
+      if (!options.tool) {
+        return {
+          success: false,
+          error: new ValidationError('--tool is required for MCP gateway invoke.'),
+        };
+      }
+
+      invocationUrl = gatewayUrl.endsWith('/mcp') ? gatewayUrl : `${gatewayUrl}/mcp`;
+      body = JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: options.tool,
+          arguments: options.input ? (JSON.parse(options.input) as Record<string, unknown>) : {},
+        },
+      });
+    }
+
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      ...(options.sessionId && { 'x-amz-bedrock-agentcore-session-id': options.sessionId }),
+      ...(isMcpGateway && { Accept: 'application/json, text/event-stream', 'Mcp-Protocol-Version': '2025-03-26' }),
+    };
+
+    let fetchHeaders = headers;
+
+    if (gwSpec?.authorizerType === 'CUSTOM_JWT') {
+      // CUSTOM_JWT: use bearer token
+      fetchHeaders = { ...headers, authorization: `Bearer ${options.bearerToken}` };
+    } else if (gwSpec?.authorizerType === 'AWS_IAM') {
+      // AWS_IAM: SigV4 sign the request
+      const { SignatureV4 } = await import('@smithy/signature-v4');
+      const { Sha256 } = await import('@aws-crypto/sha256-js');
+      const { fromNodeProviderChain } = await import('@aws-sdk/credential-providers');
+
+      const url = new URL(invocationUrl);
+      const signer = new SignatureV4({
+        service: 'bedrock-agentcore',
+        region,
+        credentials: fromNodeProviderChain(),
+        sha256: Sha256,
+      });
+
+      const signed = await signer.sign({
+        method: 'POST',
+        protocol: 'https:',
+        hostname: url.hostname,
+        path: url.pathname,
+        headers: { ...headers, host: url.hostname },
+        body,
+      });
+
+      fetchHeaders = signed.headers as Record<string, string>;
+    }
+    // NONE: no auth needed, use headers as-is
+
+    const response = await fetch(invocationUrl, {
+      method: 'POST',
+      headers: fetchHeaders,
+      body,
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      return { success: false, error: new Error(`Gateway invoke failed (${response.status}): ${errText}`) };
+    }
+
+    const responseText = await response.text();
+
+    // HTTP gateways stream back the same SSE / JSON envelope as a direct runtime
+    // invoke, so parse it the same way (mirrors invokeAgentRuntime) to render clean
+    // text instead of raw `data: "..."` frames. MCP gateways return JSON-RPC, which
+    // the caller renders as-is.
+    const responseBody = isMcpGateway
+      ? responseText
+      : responseText.includes('data: ')
+        ? parseSSE(responseText)
+        : extractResult(responseText);
+
+    return {
+      success: true,
+      response: responseBody,
+      agentName: options.gatewayTarget ?? options.gateway,
+      targetName: gwSelectedTarget,
+    };
+  }
+
   // Preview: route to harness before runtime resolution
   if (isPreviewEnabled()) {
     const harnessEntries = project.harnesses ?? [];
@@ -68,15 +261,15 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
           ),
         };
       }
-      const targetState = deployedState.targets[selectedTarget];
-      const targetConfig = awsTargets.find(t => t.name === selectedTarget);
-      if (!targetConfig) {
+      const harnessTargetState = deployedState.targets[selectedTarget];
+      const harnessTargetConfig = awsTargets.find(t => t.name === selectedTarget);
+      if (!harnessTargetConfig) {
         return {
           success: false,
           error: new ResourceNotFoundError(`Target config '${selectedTarget}' not found in aws-targets`),
         };
       }
-      return handleHarnessInvoke(project, targetState, targetConfig, selectedTarget, options);
+      return handleHarnessInvoke(project, harnessTargetState, harnessTargetConfig, selectedTarget, options);
     }
 
     if (harnessEntries.length > 0 && project.runtimes.length > 0 && !options.agentName) {
@@ -587,10 +780,12 @@ export function buildHarnessBaseOpts(
   harnessSpec?: Partial<HarnessModel>
 ): Partial<import('../../aws/agentcore-harness').InvokeHarnessOptions> {
   const baseOpts: Partial<import('../../aws/agentcore-harness').InvokeHarnessOptions> = {};
-  if (options.modelId || options.modelProvider || options.apiKeyArn) {
+  if (options.modelId || options.modelProvider || options.apiKeyArn || options.apiBase || options.additionalParams) {
     const provider = options.modelProvider ?? harnessSpec?.provider;
     const modelId = options.modelId ?? harnessSpec?.modelId ?? '';
     const apiKeyArn = options.apiKeyArn ?? harnessSpec?.apiKeyArn;
+    const apiBase = options.apiBase ?? harnessSpec?.apiBase;
+    const additionalParams = options.additionalParams ?? harnessSpec?.additionalParams;
     switch (provider) {
       case 'open_ai':
         baseOpts.model = {
@@ -600,6 +795,16 @@ export function buildHarnessBaseOpts(
       case 'gemini':
         baseOpts.model = {
           geminiModelConfig: { modelId, ...(apiKeyArn && { apiKeyArn }) },
+        };
+        break;
+      case 'lite_llm':
+        baseOpts.model = {
+          liteLlmModelConfig: {
+            modelId,
+            ...(apiKeyArn && { apiKeyArn }),
+            ...(apiBase && { apiBase }),
+            ...(additionalParams && { additionalParams }),
+          },
         };
         break;
       default:
@@ -618,7 +823,14 @@ export function buildHarnessBaseOpts(
   if (options.maxIterations != null) baseOpts.maxIterations = options.maxIterations;
   if (options.maxTokens != null) baseOpts.maxTokens = options.maxTokens;
   if (options.harnessTimeout != null) baseOpts.timeoutSeconds = options.harnessTimeout;
-  if (options.skills) baseOpts.skills = options.skills.split(',').map(p => ({ path: p.trim() }));
+  if (options.skills) {
+    baseOpts.skills = options.skills.split(',').map(s => {
+      const trimmed = s.trim();
+      if (trimmed.startsWith('s3://')) return { s3Uri: trimmed };
+      if (trimmed.startsWith('https://')) return { gitUrl: trimmed };
+      return { path: trimmed };
+    });
+  }
   if (options.systemPrompt) baseOpts.systemPrompt = [{ text: options.systemPrompt }];
   if (options.allowedTools) baseOpts.allowedTools = options.allowedTools.split(',').map(t => t.trim());
   if (options.actorId) baseOpts.actorId = options.actorId;

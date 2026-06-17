@@ -144,8 +144,8 @@ describe('toOnlineEvalConfigSpec', () => {
 
     assert(result.success);
     expect(result.config.evaluators).toHaveLength(2);
-    expect(result.config.evaluators[0]).toBe('local_eval');
-    expect(result.config.evaluators[1]).toMatch(/^arn:/);
+    expect(result.config.evaluators![0]).toBe('local_eval');
+    expect(result.config.evaluators![1]).toMatch(/^arn:/);
   });
 });
 

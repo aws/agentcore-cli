@@ -47,6 +47,12 @@ export const PolicyNameSchema = z
 export const ValidationModeSchema = z.enum(['FAIL_ON_ANY_FINDINGS', 'IGNORE_ALL_FINDINGS']);
 export type ValidationMode = z.infer<typeof ValidationModeSchema>;
 
+export const AuthorizationPhaseSchema = z.enum(['INITIATE', 'RETURN_OUTPUT']).default('INITIATE');
+export type AuthorizationPhase = z.infer<typeof AuthorizationPhaseSchema>;
+
+export const EnforcementModeSchema = z.enum(['ACTIVE', 'LOG_ONLY']).default('ACTIVE');
+export type EnforcementMode = z.infer<typeof EnforcementModeSchema>;
+
 // ============================================================================
 // Policy Schema
 // ============================================================================
@@ -57,6 +63,8 @@ export const PolicySchema = z.object({
   statement: z.string().min(1, 'Cedar policy statement is required'),
   sourceFile: z.string().optional(),
   validationMode: ValidationModeSchema.default('FAIL_ON_ANY_FINDINGS'),
+  enforcementMode: EnforcementModeSchema.default('ACTIVE'),
+  authorizationPhase: AuthorizationPhaseSchema.optional(),
 });
 
 export type Policy = z.infer<typeof PolicySchema>;

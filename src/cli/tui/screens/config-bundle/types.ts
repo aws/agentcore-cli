@@ -9,13 +9,14 @@ export type AddConfigBundleStep =
   | 'description'
   | 'componentType'
   | 'componentSelect'
+  | 'componentArnEntry'
   | 'configuration'
   | 'addAnother'
   | 'branchName'
   | 'commitMessage'
   | 'confirm';
 
-export type ComponentType = 'runtime' | 'gateway';
+export type ComponentType = 'runtime' | 'gateway' | 'custom';
 
 export interface DeployedComponent {
   name: string;
@@ -44,6 +45,7 @@ export const CONFIG_BUNDLE_STEP_LABELS: Record<AddConfigBundleStep, string> = {
   description: 'Description',
   componentType: 'Type',
   componentSelect: 'Component',
+  componentArnEntry: 'ARN',
   configuration: 'Config',
   addAnother: 'More?',
   branchName: 'Branch',
@@ -54,4 +56,5 @@ export const CONFIG_BUNDLE_STEP_LABELS: Record<AddConfigBundleStep, string> = {
 export const COMPONENT_TYPE_OPTIONS = [
   { id: 'runtime', title: 'Agent Runtime', description: 'Configure an agent runtime' },
   { id: 'gateway', title: 'HTTP Gateway', description: 'Configure an HTTP gateway' },
+  { id: 'custom', title: 'Other (ARN)', description: 'Enter any component ARN (gateway target, etc.)' },
 ] as const;

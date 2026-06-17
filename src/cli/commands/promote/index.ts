@@ -1,0 +1,1 @@
+export { registerPromote } from './command';

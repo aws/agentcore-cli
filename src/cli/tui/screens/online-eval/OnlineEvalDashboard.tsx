@@ -81,7 +81,7 @@ async function fetchDashboardConfigs(): Promise<DashboardConfig[]> {
       name: local.name,
       configId: deployed?.onlineEvaluationConfigId ?? '',
       region,
-      evaluators: local.evaluators,
+      evaluators: local.evaluators ?? [],
       samplingRate: local.samplingRate,
       executionStatus: deployed?.executionStatus,
     });

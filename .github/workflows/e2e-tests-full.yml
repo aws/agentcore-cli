@@ -5,8 +5,11 @@ on:
       aws_region:
         description: 'AWS region for deployment'
         default: 'us-east-1'
+      cdk_branch:
+        description: 'Branch of CDK constructs repo to build from'
+        default: 'main'
   push:
-    branches: [main]
+    branches: [main, 'feat/**']
 
 env:
   AGENTCORE_TELEMETRY_DISABLED: '1'
@@ -32,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || 'main' }}
+          persist-credentials: false
       - uses: actions/setup-node@v6
         with:
           node-version: '20.x'
@@ -51,7 +54,7 @@ jobs:
         id: aws
         run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> "$GITHUB_OUTPUT"
       - name: Get API keys from Secrets Manager
-        uses: aws-actions/aws-secretsmanager-get-secrets@v2
+        uses: aws-actions/aws-secretsmanager-get-secrets@v3
         with:
           secret-ids: |
             E2E,${{ secrets.E2E_SECRET_ARN }}
@@ -63,14 +66,34 @@ jobs:
           BUILD_PREVIEW: ${{ matrix.cli-build == 'preview' && '1' || '0' }}
       - name: Generate GitHub App Token
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: aws
-      - name: Build CDK package from main
+      - name: Build CDK package
         run: |
-          git clone --depth 1 "https://x-access-token:${CDK_REPO_TOKEN}@github.com/${CDK_REPO}.git" /tmp/cdk-repo
+          if [ -n "${{ inputs.cdk_branch }}" ] && [ "${{ inputs.cdk_branch }}" != "main" ]; then
+            CDK_BRANCH="${{ inputs.cdk_branch }}"
+          elif [ "${{ github.ref_name }}" != "main" ]; then
+            CDK_BRANCH="main"
+            REPO_URL="https://x-access-token:${CDK_REPO_TOKEN}@github.com/${CDK_REPO}.git"
+            # Check if a branch exists on the CDK repo with the same 
+            if git ls-remote --exit-code --heads "$REPO_URL" "${{ github.ref_name }}" > /dev/null 2>&1; then
+              CDK_BRANCH="${{ github.ref_name }}"
+            else
+              # Check if a branch exists with _ subbed for -. (legacy support for summit branch) 
+              ALT="${{ github.ref_name }}"
+              ALT="${ALT//_/-}"
+              if git ls-remote --exit-code --heads "$REPO_URL" "$ALT" > /dev/null 2>&1; then
+                CDK_BRANCH="$ALT"
+              fi
+            fi
+          else
+            CDK_BRANCH="main"
+          fi
+          echo "Using CDK branch: $CDK_BRANCH"
+          git clone --depth 1 --branch "$CDK_BRANCH" "https://x-access-token:${CDK_REPO_TOKEN}@github.com/${CDK_REPO}.git" /tmp/cdk-repo
           cd /tmp/cdk-repo
           npm ci
           npm run build

@@ -15,13 +15,22 @@ import type {
   AgentCoreMcpSpec,
   AgentCoreProjectSpec,
   ApiGatewayHttpMethod,
+  ConnectorId,
   DirectoryPath,
   FilePath,
+  PassthroughProtocolType,
 } from '../../schema';
-import { AgentCoreCliMcpDefsSchema, AgentCoreGatewayTargetSchema, ToolDefinitionSchema } from '../../schema';
+import {
+  AgentCoreCliMcpDefsSchema,
+  AgentCoreGatewayTargetSchema,
+  CONNECTOR_ID_VALUES,
+  ToolDefinitionSchema,
+} from '../../schema';
 import type { AddGatewayTargetOptions as CLIAddGatewayTargetOptions } from '../commands/add/types';
 import { validateAddGatewayTargetOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
+import { isGatedFeaturesEnabled } from '../feature-flags';
+import { upsertAgenticRetrieveTarget } from '../operations/knowledge-base/agentic-retrieve-upsert';
 import type { RemovableGatewayTarget } from '../operations/remove/remove-gateway-target';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand, withCommandRunTelemetry } from '../telemetry/cli-command-run.js';
@@ -35,21 +44,32 @@ import { getTemplateToolDefinitions, renderGatewayTargetTemplate } from '../temp
 import { requireTTY } from '../tui/guards/tty';
 import type {
   ApiGatewayTargetConfig,
+  ConnectorTargetConfig,
   GatewayTargetWizardState,
   LambdaFunctionArnTargetConfig,
   McpServerTargetConfig,
   SchemaBasedTargetConfig,
+  WebSearchTargetConfig,
 } from '../tui/screens/mcp/types';
 import { DEFAULT_HANDLER, DEFAULT_NODE_VERSION, DEFAULT_PYTHON_VERSION } from '../tui/screens/mcp/types';
 import { BasePrimitive } from './BasePrimitive';
-import { SOURCE_CODE_NOTE } from './constants';
+import { PASSTHROUGH_PROTOCOL_TYPES, SOURCE_CODE_NOTE } from './constants';
 import type { AddResult, AddScreenComponent } from './types';
+import { Option } from '@commander-js/extra-typings';
 import type { Command } from '@commander-js/extra-typings';
 import { existsSync } from 'fs';
 import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 
 const MCP_DEFS_FILE = 'mcp-defs.json';
+
+/**
+ * Hide a passthrough-only CLI option from --help unless gated features are enabled.
+ * The option is still parsed if passed; the runtime guard in validate.ts rejects it.
+ */
+function gatePassthroughOption(option: Option): Option {
+  return isGatedFeaturesEnabled() ? option : option.hideHelp();
+}
 
 /**
  * Options for adding a gateway target (CLI-level).
@@ -263,17 +283,50 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
   }
 
   registerCommands(addCmd: Command, removeCmd: Command): void {
+    // Hide gated options from `--help` unless ENABLE_GATED_FEATURES is set.
+    const gate = <T extends Option>(option: T): T => (isGatedFeaturesEnabled() ? option : option.hideHelp());
+
+    const typeDescription = isGatedFeaturesEnabled()
+      ? 'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn, http-runtime, connector, passthrough, web-search [non-interactive]'
+      : 'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn, http-runtime, connector [non-interactive]';
+
+    // Reject repeated use of --exclude-domains. Domains must be passed as a
+    // single comma-separated value.
+    const excludeDomainsCoercer = (val: string, prev?: string) => {
+      if (prev !== undefined) {
+        throw new ValidationError(
+          '--exclude-domains may only be specified once. Pass all domains as a single comma-separated value.'
+        );
+      }
+      return val;
+    };
+
     addCmd
       .command('gateway-target')
-      .description('Add a target (API, MCP server, Lambda) to a gateway for tool routing')
+      .description('Add a target to a gateway for routing requests to backends')
       .option('--name <name>', 'Target name [non-interactive]')
       .option('--description <desc>', 'Target description [non-interactive]')
       .option('--gateway <name>', 'Gateway to attach this target to [non-interactive]')
+      .option('--type <type>', typeDescription)
       .option(
-        '--type <type>',
-        'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn [non-interactive]'
+        '--connector <id>',
+        'Connector id (for connector type): bedrock-knowledge-bases or bedrock-agentic-retrieve [non-interactive]'
       )
-      .option('--endpoint <url>', 'Server endpoint URL (for mcp-server type) [non-interactive]')
+      .option(
+        '--knowledge-base-id <id>',
+        'KB reference for connector type — either a project KB name (entry in knowledgeBases[]) or a 10-char Bedrock KB id for an external KB. Repeatable for --connector bedrock-agentic-retrieve to fan out across multiple KBs. [non-interactive]',
+        (val: string, acc: string[]) => [...acc, val],
+        [] as string[]
+      )
+      .addOption(
+        gate(
+          new Option(
+            '--exclude-domains <list>',
+            'Comma-separated domains to exclude from results (for --type web-search only) [non-interactive]'
+          ).argParser(excludeDomainsCoercer)
+        )
+      )
+      .option('--endpoint <endpoint>', 'Server endpoint URL (for mcp-server type) [non-interactive]')
       .option('--language <lang>', 'Language of target code: Python, TypeScript, Other [non-interactive]')
       .option('--host <host>', 'Where to run the target: Lambda or AgentCoreRuntime [non-interactive]')
       .option('--outbound-auth <type>', 'Outbound auth type: oauth, api-key, or none [non-interactive]')
@@ -308,8 +361,97 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
         '--tool-schema-file <path>',
         'Tool schema JSON file path (for lambda-function-arn type) [non-interactive]'
       )
+      .option('--runtime <name>', 'Runtime from your project (for http-runtime type) [non-interactive]')
+      .option('--runtime-endpoint <name>', 'Runtime endpoint / version alias (for http-runtime type) [non-interactive]')
+      // Passthrough-only flags are gated behind ENABLE_GATED_FEATURES — hidden from help when off.
+      .addOption(
+        gatePassthroughOption(
+          new Option('--passthrough-endpoint <url>', 'HTTPS endpoint URL for passthrough targets [non-interactive]')
+        )
+      )
+      .addOption(
+        gatePassthroughOption(
+          new Option(
+            '--passthrough-protocol <type>',
+            'Passthrough protocol: MCP | A2A | INFERENCE | CUSTOM (default: CUSTOM) [non-interactive]'
+          )
+        )
+      )
+      .addOption(
+        gatePassthroughOption(
+          new Option(
+            '--stickiness-identifier <expr>',
+            'Session routing expression for passthrough targets [non-interactive]'
+          )
+        )
+      )
+      .addOption(
+        gatePassthroughOption(
+          new Option('--stickiness-timeout <seconds>', 'Sticky session timeout in seconds (1-86400) [non-interactive]')
+        )
+      )
+      .addOption(
+        gatePassthroughOption(
+          new Option(
+            '--signing-service <name>',
+            'SigV4 signing service name for passthrough GATEWAY_IAM_ROLE auth [non-interactive]'
+          )
+        )
+      )
+      .addOption(
+        gatePassthroughOption(
+          new Option(
+            '--signing-region <region>',
+            'SigV4 signing region for passthrough (defaults to project region) [non-interactive]'
+          )
+        )
+      )
       .option('--json', 'Output as JSON [non-interactive]')
-      .action(async (rawOptions: Record<string, string | boolean | undefined>) => {
+      .addHelpText(
+        'after',
+        `
+Target types and their options:
+
+  http-runtime — Route to an AgentCore runtime
+    --runtime <name>               Runtime from your project
+    --runtime-endpoint <name>      Endpoint / version alias (optional)
+
+  mcp-server — Connect to an MCP-compatible server
+    --endpoint <url>               Server endpoint URL
+    --host <host>                  Lambda or AgentCoreRuntime
+    --language <lang>              Python, TypeScript, or Other
+
+  api-gateway — Connect to an Amazon API Gateway REST API
+    --rest-api-id <id>             REST API ID
+    --stage <stage>                Deployment stage
+
+  open-api-schema / smithy-model — Auto-derive tools from a schema
+    --schema <path>                Schema file path or S3 URI
+    --schema-s3-account <id>       S3 bucket owner account ID
+
+  lambda-function-arn — Connect to an AWS Lambda function
+    --lambda-arn <arn>             Lambda function ARN
+    --tool-schema-file <path>      Tool schema JSON file
+
+  connector — Wire a managed AWS connector (Bedrock KB, agentic-retrieve)
+    --connector <id>               bedrock-knowledge-bases or bedrock-agentic-retrieve
+    --knowledge-base-id <id>       Project KB name or 10-char external KB id (repeatable for agentic-retrieve)
+${
+  isGatedFeaturesEnabled()
+    ? `
+  passthrough — Route to an external HTTPS endpoint
+    --passthrough-endpoint <url>   HTTPS endpoint URL
+    --stickiness-identifier <expr> Session routing expression (optional)
+    --stickiness-timeout <seconds> Sticky session timeout in seconds (optional)
+`
+    : ''
+}
+  Auth (mcp-server, open-api-schema, smithy-model, lambda-function-arn${isGatedFeaturesEnabled() ? ', passthrough' : ''}):
+    --outbound-auth <type>         oauth, api-key, or none
+    --credential-name <name>       Existing credential name
+`
+      )
+      .action(async (rawOptions: Record<string, string | string[] | boolean | undefined>) => {
         // Commander camelCases --outbound-auth to outboundAuth, but our types use outboundAuthType
         if (rawOptions.outboundAuth && !rawOptions.outboundAuthType) {
           rawOptions.outboundAuthType = rawOptions.outboundAuth;
@@ -328,12 +470,17 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
           }
 
           // Map CLI flag values to internal types
-          const outboundAuthMap: Record<string, 'OAUTH' | 'API_KEY' | 'NONE'> = {
-            oauth: 'OAUTH',
-            'api-key': 'API_KEY',
-            api_key: 'API_KEY',
-            none: 'NONE',
-          };
+          const outboundAuthMap: Record<string, 'OAUTH' | 'API_KEY' | 'NONE' | 'GATEWAY_IAM_ROLE' | 'JWT_PASSTHROUGH'> =
+            {
+              oauth: 'OAUTH',
+              'api-key': 'API_KEY',
+              api_key: 'API_KEY',
+              none: 'NONE',
+              gateway_iam_role: 'GATEWAY_IAM_ROLE',
+              'gateway-iam-role': 'GATEWAY_IAM_ROLE',
+              jwt_passthrough: 'JWT_PASSTHROUGH',
+              'jwt-passthrough': 'JWT_PASSTHROUGH',
+            };
 
           const cliType = cliOptions.type ?? '';
           const telemetryTargetType = GATEWAY_TARGET_TYPE_MAP[cliType] ?? ('unknown' as const);
@@ -407,7 +554,10 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
               ...(cliOptions.outboundAuthType
                 ? {
                     outboundAuth: {
-                      type: outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE',
+                      type: (outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE') as
+                        | 'OAUTH'
+                        | 'API_KEY'
+                        | 'NONE',
                       credentialName: cliOptions.credentialName,
                     },
                   }
@@ -442,6 +592,193 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
             return { ...telemetryAttrs };
           }
 
+          // Handle HTTP runtime targets (no code generation)
+          if (cliOptions.type === 'httpRuntime') {
+            const result = await this.createHttpRuntimeTarget({
+              name: cliOptions.name!,
+              gateway: cliOptions.gateway!,
+              runtime: cliOptions.runtime!,
+              endpoint: cliOptions.runtimeEndpoint ?? cliOptions.endpoint,
+              outboundAuth:
+                cliOptions.outboundAuthType && cliOptions.outboundAuthType !== 'NONE'
+                  ? {
+                      type: outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE',
+                      credentialName: cliOptions.credentialName,
+                      scopes: cliOptions.oauthScopes?.split(',').map(s => s.trim()),
+                    }
+                  : undefined,
+            });
+            const output = { success: true, toolName: result.toolName };
+            if (cliOptions.json) {
+              console.log(JSON.stringify(output));
+            } else {
+              console.log(`Added gateway target '${result.toolName}'`);
+            }
+            return telemetryAttrs;
+          }
+
+          // Handle Amazon Web Search targets (managed-service backed via gateway IAM role)
+          if (cliOptions.type === 'webSearch') {
+            if (!isGatedFeaturesEnabled()) {
+              throw new ValidationError('Web search target type is not yet available.');
+            }
+            const excludeDomains =
+              typeof cliOptions.excludeDomains === 'string'
+                ? cliOptions.excludeDomains
+                    .split(',')
+                    .map((d: string) => d.trim())
+                    .filter((d: string) => d.length > 0)
+                : undefined;
+            const config: WebSearchTargetConfig = {
+              targetType: 'webSearch',
+              name: cliOptions.name!,
+              gateway: cliOptions.gateway!,
+              ...(excludeDomains && excludeDomains.length > 0 ? { excludeDomains } : {}),
+            };
+            const result = await this.createWebSearchGatewayTarget(config);
+            if (cliOptions.json) {
+              console.log(JSON.stringify({ success: true, toolName: result.toolName }));
+            } else {
+              const suffix = config.excludeDomains ? ` (excludeDomains=${config.excludeDomains.join(',')})` : '';
+              console.log(`Added web-search gateway target '${result.toolName}' on '${config.gateway}'${suffix}`);
+            }
+            return telemetryAttrs;
+          }
+
+          // Handle connector targets (managed-service backed: KB single-retrieve, agentic-retrieve fan-out)
+          if (cliOptions.type === 'connector') {
+            const validConnectors = CONNECTOR_ID_VALUES.join(', ');
+            if (!cliOptions.connector) {
+              throw new ValidationError(`--connector is required for connector targets (${validConnectors}).`);
+            }
+            if (!(CONNECTOR_ID_VALUES as readonly string[]).includes(cliOptions.connector)) {
+              throw new ValidationError(
+                `Unknown --connector value '${cliOptions.connector}'. Valid: ${validConnectors}.`
+              );
+            }
+            const connectorId = cliOptions.connector as ConnectorId;
+            const kbRefs = cliOptions.knowledgeBaseId ?? [];
+            if (kbRefs.length === 0) {
+              throw new ValidationError(`--knowledge-base-id is required for --connector ${connectorId}.`);
+            }
+
+            let config: ConnectorTargetConfig;
+            if (connectorId === 'bedrock-knowledge-bases') {
+              if (kbRefs.length > 1) {
+                throw new ValidationError(
+                  '--knowledge-base-id may only be specified once for --connector bedrock-knowledge-bases. ' +
+                    'Use --connector bedrock-agentic-retrieve for fan-out across multiple KBs.'
+                );
+              }
+              config = {
+                targetType: 'connector',
+                name: cliOptions.name!,
+                gateway: cliOptions.gateway!,
+                connectorId,
+                knowledgeBaseId: kbRefs[0]!,
+                ...(cliOptions.description && { description: cliOptions.description }),
+              };
+            } else {
+              // bedrock-agentic-retrieve: fan-out via knowledgeBaseIds[].
+              config = {
+                targetType: 'connector',
+                name: cliOptions.name!,
+                gateway: cliOptions.gateway!,
+                connectorId,
+                knowledgeBaseIds: kbRefs,
+                ...(cliOptions.description && { description: cliOptions.description }),
+              };
+            }
+            const result = await this.createConnectorGatewayTarget(config);
+            const output = { success: true, toolName: result.toolName };
+            if (cliOptions.json) {
+              console.log(JSON.stringify(output));
+            } else if (config.connectorId === 'bedrock-agentic-retrieve') {
+              console.log(
+                `Added connector gateway target '${result.toolName}' on '${config.gateway}' → ${config.connectorId} (KBs ${kbRefs.join(', ')})`
+              );
+            } else {
+              console.log(
+                `Added connector gateway target '${result.toolName}' on '${config.gateway}' → ${config.connectorId} (KB ${kbRefs[0]})`
+              );
+              console.log(
+                `Also wired KB '${kbRefs[0]}' into gateway '${config.gateway}'-agentic (bedrock-agentic-retrieve fan-out)`
+              );
+            }
+            return telemetryAttrs;
+          }
+
+          // Handle passthrough targets (no code generation)
+          if (cliOptions.type === 'passthrough') {
+            const passthroughEndpoint = (cliOptions as Record<string, string | undefined>).passthroughEndpoint;
+            if (!passthroughEndpoint) {
+              throw new ValidationError('--passthrough-endpoint is required for passthrough type');
+            }
+            const stickinessIdentifier = (cliOptions as Record<string, string | undefined>).stickinessIdentifier;
+            const stickinessTimeoutRaw = (cliOptions as Record<string, string | undefined>).stickinessTimeout;
+            const stickinessTimeout = stickinessTimeoutRaw ? parseInt(stickinessTimeoutRaw, 10) : undefined;
+            const signingService = (rawOptions as Record<string, string | undefined>).signingService;
+            const signingRegion = (rawOptions as Record<string, string | undefined>).signingRegion;
+            const protocolTypeRaw = (rawOptions as Record<string, string | undefined>).passthroughProtocol;
+            const protocolType = protocolTypeRaw?.toUpperCase() ?? 'CUSTOM';
+            if (!PASSTHROUGH_PROTOCOL_TYPES.includes(protocolType as PassthroughProtocolType)) {
+              throw new ValidationError(
+                `Invalid --passthrough-protocol "${protocolTypeRaw}". Must be one of: ${PASSTHROUGH_PROTOCOL_TYPES.join(', ')}`
+              );
+            }
+
+            // Build outboundAuth based on the auth type
+            let passthroughOutboundAuth:
+              | { type: string; credentialName?: string; scopes?: string[]; service?: string; region?: string }
+              | undefined;
+            if (cliOptions.outboundAuthType) {
+              const mappedAuthType = outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE';
+              if (mappedAuthType === 'GATEWAY_IAM_ROLE') {
+                if (!signingService) {
+                  throw new ValidationError(
+                    '--signing-service is required when --outbound-auth is GATEWAY_IAM_ROLE for passthrough targets'
+                  );
+                }
+                passthroughOutboundAuth = {
+                  type: 'GATEWAY_IAM_ROLE',
+                  service: signingService,
+                  ...(signingRegion && { region: signingRegion }),
+                };
+              } else if (mappedAuthType === 'JWT_PASSTHROUGH') {
+                passthroughOutboundAuth = { type: 'JWT_PASSTHROUGH' };
+              } else if (mappedAuthType === 'OAUTH') {
+                passthroughOutboundAuth = {
+                  type: 'OAUTH',
+                  credentialName: cliOptions.credentialName,
+                  scopes: cliOptions.oauthScopes?.split(',').map(s => s.trim()),
+                };
+              } else if (mappedAuthType !== 'NONE') {
+                passthroughOutboundAuth = {
+                  type: mappedAuthType,
+                  credentialName: cliOptions.credentialName,
+                  scopes: cliOptions.oauthScopes?.split(',').map(s => s.trim()),
+                };
+              }
+            }
+
+            const result = await this.createPassthroughTarget({
+              name: cliOptions.name!,
+              gateway: cliOptions.gateway!,
+              passthroughEndpoint,
+              protocolType: protocolType as PassthroughProtocolType,
+              stickinessIdentifier,
+              stickinessTimeout,
+              outboundAuth: passthroughOutboundAuth,
+            });
+            const output = { success: true, toolName: result.toolName };
+            if (cliOptions.json) {
+              console.log(JSON.stringify(output));
+            } else {
+              console.log(`Added gateway target '${result.toolName}'`);
+            }
+            return telemetryAttrs;
+          }
+
           // Handle MCP server targets (existing endpoint, no code generation)
           if (cliOptions.type === 'mcpServer' && cliOptions.endpoint) {
             const config: McpServerTargetConfig = {
@@ -458,7 +795,10 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
               ...(cliOptions.outboundAuthType
                 ? {
                     outboundAuth: {
-                      type: outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE',
+                      type: (outboundAuthMap[cliOptions.outboundAuthType.toLowerCase()] ?? 'NONE') as
+                        | 'OAUTH'
+                        | 'API_KEY'
+                        | 'NONE',
                       credentialName: cliOptions.credentialName,
                     },
                   }
@@ -557,6 +897,166 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
               })
             );
           }
+        } catch (error) {
+          if (cliOptions.json) {
+            console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+          } else {
+            console.error(`Error: ${getErrorMessage(error)}`);
+          }
+          process.exit(1);
+        }
+      });
+
+    // ──────────────────────────────────────────────────────────────────
+    // Top-level shortcuts: agentcore add web-search / remove web-search
+    // ──────────────────────────────────────────────────────────────────
+    addCmd
+      .command('web-search', { hidden: !isGatedFeaturesEnabled() })
+      .description('Wire the Amazon Web Search managed connector to a gateway as a target.')
+      .option('--name <name>', 'Target name (default: web-search) [non-interactive]')
+      .option('--gateway <name>', 'Gateway to attach this target to [non-interactive]')
+      .option('--exclude-domains <list>', 'Comma-separated domains to exclude from results [non-interactive]')
+      .option('--json', 'Output as JSON [non-interactive]')
+      .action(async (cliOptions: { name?: string; gateway?: string; excludeDomains?: string; json?: boolean }) => {
+        if (!isGatedFeaturesEnabled()) {
+          console.error('Error: Web search target type is not yet available.');
+          process.exit(1);
+        }
+        if (!findConfigRoot()) {
+          console.error('No agentcore project found. Run `agentcore create` first.');
+          process.exit(1);
+        }
+
+        const userPassedAnyFlag =
+          !!cliOptions.name || !!cliOptions.gateway || !!cliOptions.excludeDomains || !!cliOptions.json;
+        if (!userPassedAnyFlag) {
+          try {
+            requireTTY();
+            const [{ render }, { default: React }, { AddWebSearchFlow }] = await Promise.all([
+              import('ink'),
+              import('react'),
+              import('../tui/screens/web-search'),
+            ]);
+            const { clear, unmount } = render(
+              React.createElement(AddWebSearchFlow, {
+                isInteractive: false,
+                onBack: () => {
+                  clear();
+                  unmount();
+                  process.exit(0);
+                },
+                onExit: () => {
+                  clear();
+                  unmount();
+                  process.exit(0);
+                },
+              })
+            );
+            return;
+          } catch (error) {
+            console.error(getErrorMessage(error));
+            process.exit(1);
+          }
+        }
+
+        await runCliCommand('add.web-search', !!cliOptions.json, async () => {
+          // Default name `web-search` is convenient for the first invocation
+          // but produces a duplicate-target error on the second. Require an
+          // explicit --name when the default is already taken.
+          let resolvedName = cliOptions.name;
+          if (!resolvedName) {
+            const project = await this.readProjectSpec();
+            const nameTaken = project.agentCoreGateways.some(g => (g.targets ?? []).some(t => t.name === 'web-search'));
+            if (nameTaken) {
+              throw new ValidationError(
+                'A gateway target named "web-search" already exists. Pass --name <unique-name> to add another.'
+              );
+            }
+            resolvedName = 'web-search';
+          }
+          const forwardedOptions: CLIAddGatewayTargetOptions = {
+            name: resolvedName,
+            type: 'web-search',
+            gateway: cliOptions.gateway,
+            ...(cliOptions.excludeDomains && { excludeDomains: cliOptions.excludeDomains }),
+          };
+          const validation = await validateAddGatewayTargetOptions(forwardedOptions);
+          if (!validation.valid) {
+            throw new ValidationError(validation.error!);
+          }
+          const excludeDomains =
+            typeof forwardedOptions.excludeDomains === 'string'
+              ? forwardedOptions.excludeDomains
+                  .split(',')
+                  .map((d: string) => d.trim())
+                  .filter((d: string) => d.length > 0)
+              : undefined;
+          const config: WebSearchTargetConfig = {
+            targetType: 'webSearch',
+            name: forwardedOptions.name!,
+            gateway: forwardedOptions.gateway!,
+            ...(excludeDomains && excludeDomains.length > 0 ? { excludeDomains } : {}),
+          };
+          const result = await this.createWebSearchGatewayTarget(config);
+          if (cliOptions.json) {
+            console.log(JSON.stringify({ success: true, toolName: result.toolName }));
+          } else {
+            const suffix = config.excludeDomains ? ` (excludeDomains=${config.excludeDomains.join(',')})` : '';
+            console.log(`Added web-search gateway target '${result.toolName}' on '${config.gateway}'${suffix}`);
+          }
+          return {};
+        });
+      });
+
+    removeCmd
+      .command('web-search', { hidden: !isGatedFeaturesEnabled() })
+      .description('Remove an Amazon Web Search gateway target from the project')
+      .option('--name <name>', 'Name of the web-search target to remove [non-interactive]')
+      .option('-y, --yes', 'Skip confirmation prompt [non-interactive]')
+      .option('--json', 'Output as JSON [non-interactive]')
+      .action(async (cliOptions: { name?: string; yes?: boolean; json?: boolean }) => {
+        try {
+          if (!isGatedFeaturesEnabled()) {
+            console.error('Web search target type is not yet available.');
+            process.exit(1);
+          }
+          if (!findConfigRoot()) {
+            console.error('No agentcore project found. Run `agentcore create` first.');
+            process.exit(1);
+          }
+
+          if (!cliOptions.name) {
+            throw new ValidationError('A --name is required for `agentcore remove web-search`.');
+          }
+          const project = await this.readProjectSpec();
+          const match = project.agentCoreGateways
+            .flatMap(g => (g.targets ?? []).map(t => ({ gateway: g.name, target: t })))
+            .find(({ target }) => target.name === cliOptions.name);
+          if (!match) {
+            throw new ValidationError(`Gateway target "${cliOptions.name}" not found.`);
+          }
+          if (match.target.targetType !== 'webSearch') {
+            throw new ValidationError(
+              `Gateway target "${cliOptions.name}" is type "${match.target.targetType}", not webSearch. Use 'agentcore remove gateway-target --name ${cliOptions.name}' instead.`
+            );
+          }
+          const result = await withCommandRunTelemetry('remove.web-search', {}, () => this.remove(cliOptions.name!));
+          if (cliOptions.json) {
+            console.log(
+              JSON.stringify({
+                success: result.success,
+                resourceType: this.kind,
+                resourceName: cliOptions.name,
+                message: result.success ? `Removed web-search gateway target '${cliOptions.name}'` : undefined,
+                error: !result.success ? result.error.message : undefined,
+              })
+            );
+          } else if (result.success) {
+            console.log(`Removed web-search gateway target '${cliOptions.name}'`);
+          } else {
+            throw result.error;
+          }
+          process.exit(result.success ? 0 : 1);
         } catch (error) {
           if (cliOptions.json) {
             console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
@@ -706,6 +1206,231 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
         toolSchemaFile: config.toolSchemaFile,
       },
     };
+
+    gateway.targets.push(target);
+    await this.writeProjectSpec(project);
+
+    return { toolName: config.name };
+  }
+
+  /**
+   * Create an HTTP runtime target that references an existing agent runtime.
+   * No code generation — this registers a runtime reference for HTTP routing.
+   */
+  async createHttpRuntimeTarget(config: {
+    name: string;
+    gateway: string;
+    runtime: string;
+    endpoint?: string;
+    outboundAuth?: { type: string; credentialName?: string; scopes?: string[] };
+  }): Promise<{ toolName: string }> {
+    const project = await this.readProjectSpec();
+
+    const gateway = project.agentCoreGateways.find(g => g.name === config.gateway);
+    if (!gateway) {
+      throw new Error(`Gateway "${config.gateway}" not found.`);
+    }
+
+    if (!gateway.targets) {
+      gateway.targets = [];
+    }
+
+    if (gateway.targets.some(t => t.name === config.name)) {
+      throw new Error(`Target "${config.name}" already exists in gateway "${gateway.name}".`);
+    }
+
+    const target: AgentCoreGatewayTarget = {
+      name: config.name,
+      targetType: 'httpRuntime',
+      httpRuntime: {
+        runtime: config.runtime,
+        ...(config.endpoint && { runtimeEndpoint: config.endpoint }),
+      },
+      ...(config.outboundAuth &&
+        config.outboundAuth.type !== 'NONE' && {
+          outboundAuth: {
+            type: config.outboundAuth.type as 'OAUTH' | 'API_KEY',
+            credentialName: config.outboundAuth.credentialName!,
+            ...(config.outboundAuth.scopes && { scopes: config.outboundAuth.scopes }),
+          },
+        }),
+    };
+
+    gateway.targets.push(target);
+    await this.writeProjectSpec(project);
+
+    return { toolName: config.name };
+  }
+
+  /**
+   * Create a connector-typed gateway target backed by a managed AWS service
+   * (currently bedrock-knowledge-bases or bedrock-agentic-retrieve).
+   *
+   * Project-owned KB: config.knowledgeBaseId is a knowledgeBases[] entry name;
+   * the L3 resolves it at synth time via application.knowledgeBases.
+   * External KB: config.knowledgeBaseId is a 10-character literal KB ID; the
+   * L3 passes it through verbatim.
+   */
+  async createConnectorGatewayTarget(config: ConnectorTargetConfig): Promise<{ toolName: string }> {
+    const project = await this.readProjectSpec();
+
+    const gateway = project.agentCoreGateways.find(g => g.name === config.gateway);
+    if (!gateway) {
+      throw new Error(`Gateway "${config.gateway}" not found.`);
+    }
+
+    if (!gateway.targets) {
+      gateway.targets = [];
+    }
+
+    if (gateway.targets.some(t => t.name === config.name)) {
+      throw new Error(`Target "${config.name}" already exists in gateway "${gateway.name}".`);
+    }
+
+    // For agentic-retrieve, refuse to silently shadow an existing one on the
+    // same gateway — the KB primitive would have created `${gateway}-agentic`
+    // already, and a user-driven low-level add should be an explicit choice.
+    if (config.connectorId === 'bedrock-agentic-retrieve') {
+      const existingAgentic = gateway.targets.find(
+        t => t.targetType === 'connector' && t.connectorId === 'bedrock-agentic-retrieve'
+      );
+      if (existingAgentic) {
+        throw new Error(
+          `Gateway "${gateway.name}" already has a bedrock-agentic-retrieve target ("${existingAgentic.name}"). ` +
+            `Edit agentcore/agentcore.json directly to extend its knowledgeBaseIds[].`
+        );
+      }
+    }
+
+    let target: AgentCoreGatewayTarget;
+    if (config.connectorId === 'bedrock-agentic-retrieve') {
+      target = {
+        name: config.name,
+        targetType: 'connector',
+        connectorId: config.connectorId,
+        knowledgeBaseIds: config.knowledgeBaseIds,
+      } as AgentCoreGatewayTarget;
+    } else {
+      target = {
+        name: config.name,
+        targetType: 'connector',
+        connectorId: config.connectorId,
+        knowledgeBaseId: config.knowledgeBaseId,
+      } as AgentCoreGatewayTarget;
+    }
+
+    gateway.targets.push(target);
+
+    // Auto-upsert the shared agentic-retrieve target when wiring a single-KB
+    // Retrieve via this path, mirroring KnowledgeBasePrimitive.add({...gateway}).
+    // Without this, KBs added via `add gateway-target --type connector
+    // --connector bedrock-knowledge-bases` would be missing from the gateway's
+    // agentic-retrieve fan-out.
+    if (config.connectorId === 'bedrock-knowledge-bases') {
+      upsertAgenticRetrieveTarget(gateway, config.knowledgeBaseId);
+    }
+
+    await this.writeProjectSpec(project);
+
+    return { toolName: config.name };
+  }
+
+  /**
+   * Create a passthrough target that routes HTTP traffic to an external HTTPS endpoint.
+   * No code generation — this registers an endpoint for HTTP passthrough.
+   */
+  async createPassthroughTarget(config: {
+    name: string;
+    gateway: string;
+    passthroughEndpoint: string;
+    protocolType?: PassthroughProtocolType;
+    stickinessIdentifier?: string;
+    stickinessTimeout?: number;
+    outboundAuth?: { type: string; credentialName?: string; scopes?: string[]; service?: string; region?: string };
+  }): Promise<{ toolName: string }> {
+    const project = await this.readProjectSpec();
+
+    const gateway = project.agentCoreGateways.find(g => g.name === config.gateway);
+    if (!gateway) {
+      throw new Error(`Gateway "${config.gateway}" not found.`);
+    }
+
+    if (!gateway.targets) {
+      gateway.targets = [];
+    }
+
+    if (gateway.targets.some(t => t.name === config.name)) {
+      throw new Error(`Target "${config.name}" already exists in gateway "${gateway.name}".`);
+    }
+
+    // Build outboundAuth object based on auth type
+    let outboundAuth: AgentCoreGatewayTarget['outboundAuth'];
+    if (config.outboundAuth && config.outboundAuth.type !== 'NONE') {
+      if (config.outboundAuth.type === 'GATEWAY_IAM_ROLE') {
+        outboundAuth = {
+          type: 'GATEWAY_IAM_ROLE',
+          service: config.outboundAuth.service,
+          ...(config.outboundAuth.region && { region: config.outboundAuth.region }),
+        };
+      } else if (config.outboundAuth.type === 'JWT_PASSTHROUGH') {
+        outboundAuth = { type: 'JWT_PASSTHROUGH' };
+      } else {
+        outboundAuth = {
+          type: config.outboundAuth.type as 'OAUTH' | 'API_KEY',
+          credentialName: config.outboundAuth.credentialName!,
+          ...(config.outboundAuth.scopes && { scopes: config.outboundAuth.scopes }),
+        };
+      }
+    }
+
+    const target: AgentCoreGatewayTarget = {
+      name: config.name,
+      targetType: 'passthrough',
+      passthrough: {
+        endpoint: config.passthroughEndpoint,
+        protocolType: config.protocolType ?? 'CUSTOM',
+        ...(config.stickinessIdentifier && {
+          stickinessConfiguration: {
+            identifier: config.stickinessIdentifier,
+            ...(config.stickinessTimeout && { timeout: config.stickinessTimeout }),
+          },
+        }),
+      },
+      ...(outboundAuth && { outboundAuth }),
+    };
+
+    gateway.targets.push(target);
+    await this.writeProjectSpec(project);
+
+    return { toolName: config.name };
+  }
+
+  /**
+   * Create an Amazon Web Search gateway target. The target is invoked via the
+   * gateway's IAM role; the only admin-configurable parameter is an optional
+   * list of domains to exclude from results.
+   */
+  async createWebSearchGatewayTarget(config: WebSearchTargetConfig): Promise<{ toolName: string }> {
+    const project = await this.readProjectSpec();
+
+    const gateway = project.agentCoreGateways.find(g => g.name === config.gateway);
+    if (!gateway) {
+      throw new Error(`Gateway "${config.gateway}" not found.`);
+    }
+
+    if (!gateway.targets) {
+      gateway.targets = [];
+    }
+
+    if (gateway.targets.some(t => t.name === config.name)) {
+      throw new Error(`Target "${config.name}" already exists in gateway "${gateway.name}".`);
+    }
+
+    const target: AgentCoreGatewayTarget = {
+      name: config.name,
+      targetType: 'webSearch',
+      ...(config.excludeDomains && config.excludeDomains.length > 0 ? { excludeDomains: config.excludeDomains } : {}),
+    } as AgentCoreGatewayTarget;
 
     gateway.targets.push(target);
     await this.writeProjectSpec(project);

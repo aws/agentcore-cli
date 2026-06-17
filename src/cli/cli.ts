@@ -1,8 +1,9 @@
 import { getOrCreateInstallationId } from '../lib/schemas/io/global-config';
-import { registerABTestCommand } from './commands/abtest';
 import { registerAdd } from './commands/add';
+import { registerAddSkill } from './commands/add/skill-command';
 import { registerAddTool } from './commands/add/tool-command';
 import { registerArchive } from './commands/archive';
+import { registerBatchEvaluations } from './commands/batch-evaluations';
 import { registerConfig } from './commands/config';
 import { registerConfigBundle } from './commands/config-bundle';
 import { registerCreate } from './commands/create';
@@ -11,6 +12,7 @@ import { registerDeploy } from './commands/deploy';
 import { registerDev } from './commands/dev';
 import { registerEval } from './commands/eval';
 import { registerExec } from './commands/exec';
+import { registerExport } from './commands/export';
 import { registerFeedback } from './commands/feedback';
 import { registerFetch } from './commands/fetch';
 import { registerHelp } from './commands/help';
@@ -18,9 +20,10 @@ import { registerImport } from './commands/import';
 import { registerInvoke } from './commands/invoke';
 import { registerLogs } from './commands/logs';
 import { registerPackage } from './commands/package';
-import { registerPause, registerPromote } from './commands/pause';
-import { registerRecommendations } from './commands/recommendations';
+import { registerPause } from './commands/pause';
+import { registerPromote } from './commands/promote';
 import { registerRemove } from './commands/remove';
+import { registerRemoveSkill } from './commands/remove/skill-command';
 import { registerRemoveTool } from './commands/remove/tool-command';
 import { registerResume } from './commands/resume';
 import { registerRun } from './commands/run';
@@ -30,6 +33,7 @@ import { registerTelemetry } from './commands/telemetry';
 import { registerTraces } from './commands/traces';
 import { registerUpdate } from './commands/update';
 import { registerValidate } from './commands/validate';
+import { registerView } from './commands/view';
 import { COMMAND_DESCRIPTIONS, PACKAGE_VERSION } from './constants';
 import { isPreviewEnabled } from './feature-flags';
 import { printPostCommandNotices, printTelemetryNotice } from './notices';
@@ -102,7 +106,8 @@ export function registerCommands(program: Command) {
   registerLogs(program);
   registerPackage(program);
   registerPause(program);
-  registerRecommendations(program);
+  registerView(program);
+  registerBatchEvaluations(program);
   const removeCmd = registerRemove(program);
   registerResume(program);
   registerRun(program);
@@ -117,6 +122,10 @@ export function registerCommands(program: Command) {
   registerConfig(program);
   registerDataset(program);
   registerArchive(program);
+  // Register export command (preview-only)
+  if (isPreviewEnabled()) {
+    registerExport(program);
+  }
 
   // Register primitive subcommands (add agent, remove agent, add memory, etc.)
   for (const primitive of ALL_PRIMITIVES) {
@@ -127,10 +136,9 @@ export function registerCommands(program: Command) {
   if (isPreviewEnabled()) {
     registerAddTool(addCmd);
     registerRemoveTool(removeCmd);
+    registerAddSkill(addCmd);
+    registerRemoveSkill(removeCmd);
   }
-
-  // Register AB test detail command
-  registerABTestCommand(program);
 }
 
 export const main = async (argv: string[]) => {

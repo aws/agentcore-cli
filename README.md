@@ -109,20 +109,20 @@ agentcore invoke
 
 ### Evaluations
 
-| Command                 | Description                                      |
-| ----------------------- | ------------------------------------------------ |
-| `add evaluator`         | Add a custom LLM-as-a-Judge evaluator            |
-| `add online-eval`       | Add continuous evaluation for live traffic       |
-| `run eval`              | Run on-demand evaluation against agent traces    |
-| `run batch-evaluation`  | Run evaluators across all sessions [preview]     |
-| `run recommendation`    | Optimize prompts and tool descriptions [preview] |
-| `evals history`         | View past eval run results                       |
-| `pause online-eval`     | Pause a deployed online eval config              |
-| `resume online-eval`    | Resume a paused online eval config               |
-| `stop batch-evaluation` | Stop a running batch evaluation [preview]        |
-| `logs evals`            | Stream or search online eval logs                |
+| Command                 | Description                                   |
+| ----------------------- | --------------------------------------------- |
+| `add evaluator`         | Add a custom LLM-as-a-Judge evaluator         |
+| `add online-eval`       | Add continuous evaluation for live traffic    |
+| `run eval`              | Run on-demand evaluation against agent traces |
+| `run batch-evaluation`  | Run evaluators across all sessions            |
+| `run recommendation`    | Optimize prompts and tool descriptions        |
+| `evals history`         | View past eval run results                    |
+| `pause online-eval`     | Pause a deployed online eval config           |
+| `resume online-eval`    | Resume a paused online eval config            |
+| `stop batch-evaluation` | Stop a running batch evaluation               |
+| `logs evals`            | Stream or search online eval logs             |
 
-### Config Bundles [preview]
+### Config Bundles
 
 | Command             | Description                               |
 | ------------------- | ----------------------------------------- |
@@ -132,6 +132,18 @@ agentcore invoke
 | `cb create-branch`  | Create a new branch on an existing bundle |
 
 > Create agents with `--with-config-bundle` to auto-wire config bundle support into the generated template.
+
+### A/B Tests
+
+| Command           | Description                                                    |
+| ----------------- | -------------------------------------------------------------- |
+| `run ab-test`     | Start an A/B test (config-bundle or target-based) on a gateway |
+| `view ab-test`    | List A/B test jobs or view one in detail                       |
+| `pause ab-test`   | Pause traffic splitting for a running test                     |
+| `resume ab-test`  | Resume a paused test                                           |
+| `stop ab-test`    | Stop a running test (terminal)                                 |
+| `promote ab-test` | Apply the winning variant to `agentcore.json`                  |
+| `archive ab-test` | Delete the test on the service and clear local history         |
 
 ### Utilities
 
@@ -185,11 +197,13 @@ Projects use JSON schema files in the `agentcore/` directory:
 - [CLI Commands Reference](docs/commands.md) - Full command reference for scripting and CI/CD
 - [Configuration](docs/configuration.md) - Schema reference for config files
 - [Evaluations](docs/evals.md) - Evaluators, on-demand evals, and online monitoring
-- [Batch Evaluation](docs/batch-evaluation.md) - Run evaluators across sessions at scale [preview]
-- [Recommendations](docs/recommendations.md) - Optimize prompts and tool descriptions [preview]
-- [Config Bundles](docs/config-bundles.md) - Versioned runtime configurations [preview]
+- [Batch Evaluation](docs/batch-evaluation.md) - Run evaluators across sessions at scale
+- [Recommendations](docs/recommendations.md) - Optimize prompts and tool descriptions
+- [A/B Tests](docs/ab-tests.md) - Split traffic between variants and promote the winner
+- [Config Bundles](docs/config-bundles.md) - Versioned runtime configurations
 - [Frameworks](docs/frameworks.md) - Supported frameworks and model providers
 - [Gateway](docs/gateway.md) - Gateway setup, targets, and authentication
+- [Knowledge Bases](docs/knowledge-bases.md) - Managed Bedrock Knowledge Bases wired to gateways
 - [Memory](docs/memory.md) - Memory strategies and sharing
 - [Local Development](docs/local-development.md) - Dev server and debugging
 - [Feedback](docs/feedback.md) - Submit feedback from your terminal

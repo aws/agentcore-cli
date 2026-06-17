@@ -4,7 +4,14 @@ import { HELP_TEXT } from '../../constants';
 import { useListNavigation } from '../../hooks';
 import React, { useMemo } from 'react';
 
-type EvalHubView = 'run-eval' | 'runs' | 'run-batch-eval' | 'batch-eval-history' | 'online-dashboard';
+type EvalHubView =
+  | 'run-eval'
+  | 'runs'
+  | 'run-batch-eval'
+  | 'batch-eval-history'
+  | 'run-insights'
+  | 'insights-jobs'
+  | 'online-dashboard';
 
 interface EvalHubScreenProps {
   onSelect: (view: EvalHubView) => void;
@@ -27,8 +34,18 @@ export function EvalHubScreen({ onSelect, onExit }: EvalHubScreenProps) {
       },
       {
         id: 'batch-eval-history',
-        title: 'Batch Eval History',
-        description: 'View past batch evaluation results (local)',
+        title: 'Batch Eval Jobs',
+        description: 'View batch evaluation jobs and their results',
+      },
+      {
+        id: 'run-insights',
+        title: 'Run Insights [preview]',
+        description: 'Run failure analysis on agent sessions',
+      },
+      {
+        id: 'insights-jobs',
+        title: 'Insights Jobs [preview]',
+        description: 'View past insights analysis jobs',
       },
       {
         id: 'online-dashboard',

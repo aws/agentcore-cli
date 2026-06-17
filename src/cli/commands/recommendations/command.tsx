@@ -1,63 +1,57 @@
-import { COMMAND_DESCRIPTIONS } from '../../constants';
-import { getErrorMessage } from '../../errors';
-import { listAllRecommendations } from '../../operations/recommendation';
+import { ConfigIO, JobNotFoundError, serializeResult } from '../../../lib';
+import { createJobEngine } from '../../operations/jobs';
+import { printRecommendationDetail, printRecommendationHistory } from '../../operations/jobs/recommendation/format';
+import { runCliCommand } from '../../telemetry/cli-command-run';
+import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
 import { requireProject } from '../../tui/guards';
 import type { Command } from '@commander-js/extra-typings';
-import { Text, render } from 'ink';
-import React from 'react';
 
 export const registerRecommendations = (program: Command) => {
   const recCmd = program.command('recommendations').description(COMMAND_DESCRIPTIONS.recommendations);
 
   recCmd
     .command('history')
-    .description('Show past recommendation runs saved locally')
+    .description('List recommendation jobs (running jobs are refreshed from the service)')
     .option('--json', 'Output as JSON')
     .action((cliOptions: { json?: boolean }) => {
       requireProject();
-
-      try {
-        const records = listAllRecommendations();
-
+      return runCliCommand('job.history', !!cliOptions.json, async () => {
+        const engine = createJobEngine(new ConfigIO());
+        const records = await engine.list({ type: 'recommendation' });
         if (cliOptions.json) {
-          console.log(JSON.stringify({ success: true, recommendations: records }));
-          process.exit(0);
-          return;
-        }
-
-        if (records.length === 0) {
-          console.log('No recommendation runs found. Run `agentcore run recommendation` to create one.');
-          return;
-        }
-
-        console.log(
-          `\n${'Date'.padEnd(22)} ${'Type'.padEnd(20)} ${'Agent'.padEnd(20)} ${'Recommendation ID'.padEnd(40)}`
-        );
-        console.log('─'.repeat(105));
-
-        for (const record of records) {
-          const date = record.startedAt
-            ? new Date(record.startedAt).toLocaleString([], {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              })
-            : 'unknown';
           console.log(
-            `${date.padEnd(22)} ${(record.type ?? 'unknown').padEnd(20)} ${(record.agent ?? 'unknown').padEnd(20)} ${record.recommendationId.padEnd(40)}`
+            JSON.stringify({
+              success: true,
+              recommendations: records,
+            })
           );
-        }
-
-        console.log('');
-      } catch (error) {
-        if (cliOptions.json) {
-          console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
         } else {
-          render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
+          printRecommendationHistory(records);
         }
-        process.exit(1);
-      }
+        return { job_type: 'recommendation' };
+      });
+    });
+
+  // Bare positional on the group: `agentcore recommendations <id>` shows one job.
+  // (No .description() here — that would override the group description shown in the command list.)
+  recCmd
+    .argument('<id>', 'Recommendation job ID to view')
+    .option('--json', 'Output as JSON')
+    .action((id: string, cliOptions: { json?: boolean }) => {
+      requireProject();
+      return runCliCommand('job.get', !!cliOptions.json, async () => {
+        const engine = createJobEngine(new ConfigIO());
+        const record = await engine.get('recommendation', id);
+        if (!record) {
+          // Throw only — runCliCommand owns error output (single JSON line in --json, stderr otherwise).
+          throw new JobNotFoundError(`Recommendation "${id}" not found.`);
+        }
+        if (cliOptions.json) {
+          console.log(JSON.stringify(serializeResult({ success: true, ...record })));
+        } else {
+          printRecommendationDetail(record);
+        }
+        return { job_type: 'recommendation' };
+      });
     });
 };

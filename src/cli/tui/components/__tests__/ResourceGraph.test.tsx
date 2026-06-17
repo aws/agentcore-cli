@@ -9,6 +9,7 @@ const baseProject: AgentCoreProjectSpec = {
   name: 'test-project',
   runtimes: [],
   memories: [],
+  knowledgeBases: [],
   credentials: [],
 } as unknown as AgentCoreProjectSpec;
 

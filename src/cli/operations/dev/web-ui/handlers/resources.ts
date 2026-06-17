@@ -13,6 +13,7 @@ import type {
   ResourceMemory,
   ResourceOnlineEvalConfig,
   ResourcePolicyEngine,
+  ResourceSkillSource,
 } from '../api-types';
 import type { RouteContext } from './route-context';
 import type { ServerResponse } from 'node:http';
@@ -121,11 +122,36 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
       let model = '';
       let modelConfig: ResourceHarness['modelConfig'];
       let tools: string[] = [];
+      let skills: ResourceSkillSource[] | undefined;
       try {
         const spec = await configIO.readHarnessSpec(h.name);
         model = `${spec.model.provider}/${spec.model.modelId}`;
         modelConfig = spec.model;
         tools = spec.tools.map(t => t.name);
+        if (spec.skills.length > 0) {
+          skills = spec.skills.map(s => {
+            if ('s3Uri' in s) return { s3: { uri: s.s3Uri } };
+            if ('gitUrl' in s) {
+              return {
+                git: {
+                  url: s.gitUrl,
+                  ...(s.path && { path: s.path }),
+                  ...(s.auth && {
+                    auth: {
+                      credentialName: s.auth.credentialName,
+                      credentialArn: targetResources?.credentials?.[s.auth.credentialName]?.credentialProviderArn,
+                      username: s.auth.username,
+                    },
+                  }),
+                },
+              };
+            }
+            if ('awsSkills' in s) {
+              return { awsSkills: { ...(s.awsSkills.paths && { paths: s.awsSkills.paths }) } };
+            }
+            return { path: s.path };
+          });
+        }
       } catch {
         // harness spec may be unreadable — show what we can
       }
@@ -135,6 +161,7 @@ export async function handleResources(ctx: RouteContext, res: ServerResponse, or
         model,
         modelConfig,
         tools,
+        skills,
         deploymentStatus: statusByTypeAndName.get(`harness:${h.name}`),
         deployed: deployed ? { harnessId: deployed.harnessId, harnessArn: deployed.harnessArn } : undefined,
       });

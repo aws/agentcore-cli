@@ -47,6 +47,7 @@ const makeProject = (agentNames: string[]) => ({
   managedBy: 'CDK' as const,
   runtimes: agentNames.map(name => ({ name })),
   memories: [],
+  knowledgeBases: [],
   credentials: [],
 });
 

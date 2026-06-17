@@ -1,0 +1,16 @@
+{
+  "type": "ONEDRIVE",
+  "version": "1",
+  "connectionConfiguration": {
+    "tenantId": "00000000-0000-0000-0000-000000000000",
+    "authType": "OAUTH2",
+    "secretArn": "arn:aws:secretsmanager:us-west-2:111122223333:secret:onedrive-creds"
+  },
+  "entitySelectionConfiguration": {
+    "userSelectionMethod": "USER_EMAILS",
+    "userEmails": ["user@your-domain.com"]
+  },
+  "dataEntityConfiguration": {
+    "crawlPersonalDrives": true
+  }
+}

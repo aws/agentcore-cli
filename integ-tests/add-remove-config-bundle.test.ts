@@ -109,7 +109,9 @@ describe('integration: add and remove config-bundle', () => {
       const bundle = config.configBundles.find(b => b.name === 'FullOptsBundle');
       expect(bundle).toBeDefined();
       expect(bundle!.description).toBe('A bundle with all optional fields');
-      expect(bundle!.branchName).toBe('feature-branch');
+      // --branch is gated behind ENABLE_GATED_FEATURES; when off, silently defaults to mainline
+      const expectedBranch = process.env.ENABLE_GATED_FEATURES === '1' ? 'feature-branch' : 'mainline';
+      expect(bundle!.branchName).toBe(expectedBranch);
       expect(bundle!.commitMessage).toBe('initial config');
     });
 

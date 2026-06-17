@@ -6,6 +6,7 @@ import type {
   GatewayPolicyEngineConfiguration,
   GatewayTargetType,
   NodeRuntime,
+  PassthroughProtocolType,
   SchemaSource,
   ToolDefinition,
 } from '../../../../schema';
@@ -27,6 +28,8 @@ export type AddGatewayStep =
 export interface AddGatewayConfig {
   name: string;
   description: string;
+  /** Protocol type for the gateway. Omit for MCP (default). */
+  protocolType?: 'MCP' | 'None';
   /** Authorization type for the gateway */
   authorizerType: GatewayAuthorizerType;
   /** JWT authorizer configuration (when authorizerType is 'CUSTOM_JWT') */
@@ -94,6 +97,16 @@ export type AddGatewayTargetStep =
   | 'schema-source'
   | 'lambda-arn'
   | 'tool-schema'
+  | 'runtime'
+  | 'runtime-endpoint'
+  | 'kb-select'
+  | 'kb-id'
+  | 'passthrough-endpoint'
+  | 'passthrough-protocol'
+  | 'passthrough-stickiness'
+  | 'signing-service'
+  | 'signing-region'
+  | 'exclude-domains'
   | 'confirm';
 
 export type TargetLanguage = 'Python' | 'TypeScript' | 'Other';
@@ -113,9 +126,11 @@ export interface GatewayTargetWizardState {
   host?: ComputeHost;
   toolDefinition?: ToolDefinition;
   outboundAuth?: {
-    type: 'OAUTH' | 'API_KEY' | 'NONE';
+    type: 'OAUTH' | 'API_KEY' | 'NONE' | 'GATEWAY_IAM_ROLE' | 'JWT_PASSTHROUGH';
     credentialName?: string;
     scopes?: string[];
+    service?: string;
+    region?: string;
   };
   restApiId?: string;
   stage?: string;
@@ -124,6 +139,30 @@ export interface GatewayTargetWizardState {
   schemaSource?: SchemaSource;
   lambdaArn?: string;
   toolSchemaFile?: string;
+  /** Runtime name reference for httpRuntime targets */
+  runtime?: string;
+  /** Knowledge Base reference for connector targets — either a project KB name or a literal 10-char KB ID. */
+  knowledgeBaseId?: string;
+  /**
+   * Connector identifier when targetType is 'connector'. Only
+   * `bedrock-knowledge-bases` is exposed in the TUI; `bedrock-agentic-retrieve`
+   * is gateway-managed by the Add Knowledge Base flow.
+   */
+  connectorId?: 'bedrock-knowledge-bases' | 'bedrock-agentic-retrieve';
+  /** Passthrough endpoint URL for passthrough targets */
+  passthroughEndpoint?: string;
+  /** Passthrough protocol type for passthrough targets */
+  passthroughProtocol?: PassthroughProtocolType;
+  /** Stickiness routing identifier for passthrough targets */
+  stickinessIdentifier?: string;
+  /** Stickiness timeout in seconds for passthrough targets */
+  stickinessTimeout?: number;
+  /** SigV4 signing service for passthrough GATEWAY_IAM_ROLE auth */
+  signingService?: string;
+  /** SigV4 signing region for passthrough GATEWAY_IAM_ROLE auth */
+  signingRegion?: string;
+  /** Optional list of domains to exclude (webSearch target type only). */
+  excludeDomains?: string[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -178,11 +217,75 @@ export interface LambdaFunctionArnTargetConfig {
   toolSchemaFile: string;
 }
 
+export interface HttpRuntimeTargetConfig {
+  targetType: 'httpRuntime';
+  name: string;
+  gateway: string;
+  runtime: string;
+  endpoint?: string;
+  outboundAuth?: { type: string; credentialName?: string; scopes?: string[] };
+}
+
+interface ConnectorTargetConfigBase {
+  targetType: 'connector';
+  name: string;
+  gateway: string;
+  description?: string;
+}
+
+export interface BedrockKnowledgeBasesConnectorTargetConfig extends ConnectorTargetConfigBase {
+  connectorId: 'bedrock-knowledge-bases';
+  /**
+   * Either a project KB name (a knowledgeBases[] entry, resolved at synth
+   * via application.knowledgeBases) or a literal 10-char external KB ID.
+   */
+  knowledgeBaseId: string;
+}
+
+export interface BedrockAgenticRetrieveConnectorTargetConfig extends ConnectorTargetConfigBase {
+  connectorId: 'bedrock-agentic-retrieve';
+  /** Fan-out: project KB names and/or literal 10-char external KB IDs. */
+  knowledgeBaseIds: string[];
+}
+
+export type ConnectorTargetConfig =
+  | BedrockKnowledgeBasesConnectorTargetConfig
+  | BedrockAgenticRetrieveConnectorTargetConfig;
+
+export interface PassthroughTargetConfig {
+  targetType: 'passthrough';
+  name: string;
+  gateway: string;
+  passthroughEndpoint: string;
+  protocolType?: PassthroughProtocolType;
+  stickinessIdentifier?: string;
+  stickinessTimeout?: number;
+  outboundAuth?: {
+    type: 'OAUTH' | 'API_KEY' | 'NONE' | 'GATEWAY_IAM_ROLE' | 'JWT_PASSTHROUGH';
+    credentialName?: string;
+    scopes?: string[];
+    service?: string;
+    region?: string;
+  };
+}
+
+export interface WebSearchTargetConfig {
+  targetType: 'webSearch';
+  name: string;
+  gateway: string;
+  /** Optional list of domains to exclude from web search results. */
+  excludeDomains?: string[];
+}
+
 export type AddGatewayTargetConfig =
   | McpServerTargetConfig
   | ApiGatewayTargetConfig
   | SchemaBasedTargetConfig
-  | LambdaFunctionArnTargetConfig;
+  | LambdaFunctionArnTargetConfig
+  | HttpRuntimeTargetConfig
+  | ConnectorTargetConfig
+  | PassthroughTargetConfig
+  | WebSearchTargetConfig;
 
 export const MCP_TOOL_STEP_LABELS: Record<AddGatewayTargetStep, string> = {
   name: 'Name',
@@ -199,6 +302,16 @@ export const MCP_TOOL_STEP_LABELS: Record<AddGatewayTargetStep, string> = {
   'schema-source': 'Schema Source',
   'lambda-arn': 'Lambda ARN',
   'tool-schema': 'Tool Schema File',
+  runtime: 'Runtime',
+  'runtime-endpoint': 'Endpoint',
+  'kb-select': 'Knowledge Base',
+  'kb-id': 'KB ID',
+  'passthrough-endpoint': 'Endpoint',
+  'passthrough-protocol': 'Protocol',
+  'passthrough-stickiness': 'Stickiness',
+  'signing-service': 'Signing Service',
+  'signing-region': 'Signing Region',
+  'exclude-domains': 'Exclude Domains',
   confirm: 'Confirm',
 };
 
@@ -218,6 +331,7 @@ export const SKIP_FOR_NOW = 'skip-for-now' as const;
 export const NONE_SELECTION = '__none__' as const;
 
 export const TARGET_TYPE_OPTIONS = [
+  // MCP targets
   { id: 'mcpServer', title: 'MCP Server endpoint', description: 'Connect to an existing MCP-compatible server' },
   {
     id: 'apiGateway',
@@ -231,6 +345,38 @@ export const TARGET_TYPE_OPTIONS = [
     title: 'Lambda function',
     description: 'Connect to an existing AWS Lambda function',
   },
+  // HTTP targets
+  {
+    id: 'httpRuntime',
+    title: 'HTTP Runtime',
+    description: 'Route HTTP traffic to an AgentCore runtime',
+  },
+  {
+    id: 'connector',
+    title: 'Knowledge Base',
+    description: 'Wire an existing Knowledge Base to this gateway as a connector target',
+  },
+  {
+    id: 'passthrough',
+    title: 'Passthrough',
+    description: 'Route to external HTTPS endpoint',
+  },
+  {
+    id: 'webSearch',
+    title: 'Amazon Web Search',
+    description: 'Wire the Amazon Web Search managed connector to this gateway',
+  },
+] as const;
+
+/** Sentinel ID for the "Enter an existing KB ID manually..." option in the KB-select step. */
+export const ENTER_KB_ID_MANUALLY = '__enter_kb_id__' as const;
+
+/** Passthrough protocol options. CUSTOM is the default (first). */
+export const PASSTHROUGH_PROTOCOL_OPTIONS = [
+  { id: 'CUSTOM', title: 'CUSTOM', description: 'Generic HTTP/REST endpoint (default)' },
+  { id: 'MCP', title: 'MCP', description: 'Model Context Protocol server' },
+  { id: 'A2A', title: 'A2A', description: 'Agent-to-Agent protocol' },
+  { id: 'INFERENCE', title: 'INFERENCE', description: 'Model inference endpoint' },
 ] as const;
 
 export const TARGET_LANGUAGE_OPTIONS = [
@@ -249,6 +395,8 @@ const AUTH_OPTION_LABELS = {
   NONE: { title: 'No authorization', description: 'No outbound authentication' },
   OAUTH: { title: 'OAuth 2LO', description: 'OAuth 2.0 client credentials' },
   API_KEY: { title: 'API Key', description: 'API key credential' },
+  GATEWAY_IAM_ROLE: { title: 'Gateway IAM Role', description: 'Gateway signs with SigV4' },
+  JWT_PASSTHROUGH: { title: 'JWT Passthrough', description: 'Forward caller JWT token' },
 } as const;
 
 /** Derive the outbound auth UI options for a given target type from the centralized config. */

@@ -1,12 +1,15 @@
+import { MANAGED_MEMORY_ADD_NOTICE } from '../../../operations/deploy';
 import { ErrorPrompt } from '../../components';
 import { AddSuccessScreen } from '../add/AddSuccessScreen';
+import { useExistingCredentials } from '../identity/useCreateIdentity';
 import { AddHarnessScreen } from './AddHarnessScreen';
 import type { AddHarnessConfig } from './types';
-import React, { useCallback, useEffect, useState } from 'react';
+import { Box, Text } from 'ink';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 type FlowState =
   | { name: 'create-wizard' }
-  | { name: 'create-success'; harnessName: string; loading?: boolean; loadingMessage?: string }
+  | { name: 'create-success'; harnessName: string; managedMemory?: boolean; loading?: boolean; loadingMessage?: string }
   | { name: 'error'; message: string };
 
 interface AddHarnessFlowProps {
@@ -20,6 +23,12 @@ interface AddHarnessFlowProps {
 export function AddHarnessFlow({ isInteractive = true, onExit, onBack, onDev, onDeploy }: AddHarnessFlowProps) {
   const [flow, setFlow] = useState<FlowState>({ name: 'create-wizard' });
   const [existingNames, setExistingNames] = useState<string[]>([]);
+  const { credentials } = useExistingCredentials();
+
+  const apiKeyCredentialNames = useMemo(
+    () => credentials.filter(c => c.authorizerType === 'ApiKeyCredentialProvider').map(c => c.name),
+    [credentials]
+  );
 
   useEffect(() => {
     void (async () => {
@@ -52,12 +61,46 @@ export function AddHarnessFlow({ isInteractive = true, onExit, onBack, onDev, on
         modelId: config.modelId,
         apiFormat: config.apiFormat,
         apiKeyArn: config.apiKeyArn,
-        skipMemory: config.skipMemory,
+        apiBase: config.apiBase,
+        additionalParams: config.additionalParams,
+        // Memory: when the mode-tagged union is present (gated ON), translate it to the primitive's
+        // memory-mode options; otherwise fall back to the legacy skipMemory + flat tuning fields.
+        ...(config.memory
+          ? config.memory.mode === 'managed'
+            ? {
+                memoryMode: 'managed' as const,
+                memoryStrategies: config.memory.strategies,
+                memoryEventExpiryDays: config.memory.eventExpiryDuration,
+                memoryEncryptionKeyArn: config.memory.encryptionKeyArn,
+              }
+            : config.memory.mode === 'existing'
+              ? {
+                  memoryMode: 'existing' as const,
+                  memoryName: config.memory.name,
+                  memoryArn: config.memory.arn,
+                  memoryActorId: config.memory.actorId,
+                  messagesCount: config.memory.messagesCount,
+                  memoryTopK: config.memory.topK,
+                  memoryRelevanceScore: config.memory.relevanceScore,
+                }
+              : { memoryMode: 'disabled' as const, skipMemory: true }
+          : {
+              skipMemory: config.skipMemory,
+              messagesCount: config.messagesCount,
+              memoryTopK: config.memoryTopK,
+              memoryRelevanceScore: config.memoryRelevanceScore,
+            }),
         containerUri: config.containerUri,
         dockerfilePath: config.dockerfilePath,
         maxIterations: config.maxIterations,
         maxTokens: config.maxTokens,
         timeoutSeconds: config.timeoutSeconds,
+        temperature: config.temperature,
+        topP: config.topP,
+        topK: config.topK,
+        modelMaxTokens: config.modelMaxTokens,
+        allowedTools: config.allowedTools,
+        mcpHeaders: config.mcpHeaders,
         truncationStrategy: config.truncationStrategy,
         networkMode: config.networkMode,
         subnets: config.subnets,
@@ -79,6 +122,7 @@ export function AddHarnessFlow({ isInteractive = true, onExit, onBack, onDev, on
               .map(s => s.trim())
               .filter(Boolean)
           : undefined,
+        skills: config.skills,
         authorizerType: config.authorizerType,
         jwtConfig: config.jwtConfig
           ? {
@@ -89,6 +133,8 @@ export function AddHarnessFlow({ isInteractive = true, onExit, onBack, onDev, on
               customClaims: config.jwtConfig.customClaims,
               clientId: config.jwtConfig.clientId,
               clientSecret: config.jwtConfig.clientSecret,
+              privateEndpoint: config.jwtConfig.privateEndpoint,
+              privateEndpointOverrides: config.jwtConfig.privateEndpointOverrides,
             }
           : undefined,
       });
@@ -97,7 +143,7 @@ export function AddHarnessFlow({ isInteractive = true, onExit, onBack, onDev, on
         return;
       }
 
-      setFlow({ name: 'create-success', harnessName: config.name });
+      setFlow({ name: 'create-success', harnessName: config.name, managedMemory: result.memoryMode === 'managed' });
     } catch (err) {
       const { getErrorMessage } = await import('../../../errors');
       setFlow({ name: 'error', message: getErrorMessage(err) });
@@ -108,6 +154,7 @@ export function AddHarnessFlow({ isInteractive = true, onExit, onBack, onDev, on
     return (
       <AddHarnessScreen
         existingHarnessNames={existingNames}
+        existingApiKeyCredentialNames={apiKeyCredentialNames}
         onComplete={config => void handleCreateComplete(config)}
         onExit={onBack}
       />
@@ -120,6 +167,13 @@ export function AddHarnessFlow({ isInteractive = true, onExit, onBack, onDev, on
         isInteractive={isInteractive}
         message={`Added harness: ${flow.harnessName}`}
         detail="Harness config written to app/. Deploy with `agentcore deploy`."
+        summary={
+          flow.managedMemory ? (
+            <Box marginTop={1} flexDirection="column">
+              <Text dimColor>Note: {MANAGED_MEMORY_ADD_NOTICE}</Text>
+            </Box>
+          ) : undefined
+        }
         loading={flow.loading}
         loadingMessage={flow.loadingMessage}
         onAddAnother={onBack}
