@@ -119,9 +119,7 @@ describe('ABTestSchema', () => {
       ...validABTest,
       description: 'A test',
       roleArn: 'arn:aws:iam::123:role/MyRole',
-      maxDurationDays: 30,
       enableOnCreate: true,
-      trafficAllocationConfig: { routeOnHeader: { headerName: 'X-AB-Route' } },
     });
     expect(result.success).toBe(true);
   });
@@ -140,11 +138,6 @@ describe('ABTestSchema', () => {
       variants: [...validABTest.variants, validABTest.variants[0]],
     });
     expect(result.success).toBe(false);
-  });
-
-  it('rejects maxDurationDays outside 1-90', () => {
-    expect(ABTestSchema.safeParse({ ...validABTest, maxDurationDays: 0 }).success).toBe(false);
-    expect(ABTestSchema.safeParse({ ...validABTest, maxDurationDays: 91 }).success).toBe(false);
   });
 
   describe('variant weight sum validation', () => {

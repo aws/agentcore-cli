@@ -115,8 +115,6 @@ export const ABTestSchema = z
     variants: z.array(ABTestVariantSchema).length(2),
     evaluationConfig: ABTestEvaluationConfigSchema,
     gatewayFilter: GatewayFilterSchema.optional(),
-    trafficAllocationConfig: TrafficAllocationConfigSchema.optional(),
-    maxDurationDays: z.number().int().min(1).max(90).optional(),
     enableOnCreate: z.boolean().optional(),
     promoted: z.boolean().optional(),
   })

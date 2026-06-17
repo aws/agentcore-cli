@@ -35,10 +35,17 @@ export type MemoryDeployedState = z.infer<typeof MemoryDeployedStateSchema>;
 // MCP Gateway Deployed State
 // ============================================================================
 
+export const GatewayTargetDeployedStateSchema = z.object({
+  targetId: z.string().min(1),
+});
+
+export type GatewayTargetDeployedState = z.infer<typeof GatewayTargetDeployedStateSchema>;
+
 export const GatewayDeployedStateSchema = z.object({
   gatewayId: z.string().min(1),
   gatewayArn: z.string().min(1),
   gatewayUrl: z.string().optional(),
+  targets: z.record(z.string(), GatewayTargetDeployedStateSchema).optional(),
 });
 
 export type GatewayDeployedState = z.infer<typeof GatewayDeployedStateSchema>;
@@ -144,9 +151,12 @@ export const HarnessDeployedStateSchema = z.object({
   harnessArn: z.string().min(1),
   roleArn: z.string().min(1),
   status: z.string().min(1),
+  /** Read-only harness config version from the CFN `Version` output; service-incremented per update. */
+  harnessVersion: z.number().int().min(1).optional(),
   agentRuntimeArn: z.string().optional(),
   memoryArn: z.string().optional(),
-  configHash: z.string().optional(),
+  /** Which subsystem provisioned this harness. Stamped 'cloudformation' by the CDK deploy path. */
+  provisioner: z.enum(['cloudformation']).optional(),
 });
 
 export type HarnessDeployedState = z.infer<typeof HarnessDeployedStateSchema>;
@@ -203,6 +213,41 @@ export const DatasetDeployedStateSchema = z.object({
 export type DatasetDeployedState = z.infer<typeof DatasetDeployedStateSchema>;
 
 // ============================================================================
+// Knowledge Base Deployed State
+// ============================================================================
+
+export const KnowledgeBaseDataSourceDeployedStateSchema = z.object({
+  dataSourceId: z.string().min(1),
+  uri: z.string().min(1),
+});
+
+export type KnowledgeBaseDataSourceDeployedState = z.infer<typeof KnowledgeBaseDataSourceDeployedStateSchema>;
+
+/**
+ * Per-target deployed state for a knowledge base. Captures the IDs the
+ * status command needs to call bedrock-agent for live KB and ingestion state.
+ *
+ * `dataSources` is an array (not a record) because the deploy step writes
+ * them in the same order as the local `dataSources[]` array; the index
+ * lets us correlate local sources with deployed DSs without extra IDs.
+ *
+ * `sourcesHash` is a SHA-256 of the data-source URIs (joined with newlines)
+ * captured at the time auto-ingestion last fired. The post-deploy ingestion
+ * hook computes a fresh hash from the current spec and compares — if equal,
+ * skip ingestion (no changes to ingest). Optional so projects deployed
+ * before the hook shipped don't fail validation; treated as "ingest needed"
+ * when absent.
+ */
+export const KnowledgeBaseDeployedStateSchema = z.object({
+  knowledgeBaseId: z.string().min(1),
+  knowledgeBaseArn: z.string().min(1),
+  dataSources: z.array(KnowledgeBaseDataSourceDeployedStateSchema).default([]),
+  sourcesHash: z.string().min(1).optional(),
+});
+
+export type KnowledgeBaseDeployedState = z.infer<typeof KnowledgeBaseDeployedStateSchema>;
+
+// ============================================================================
 // Configuration Bundle Deployed State
 // ============================================================================
 
@@ -227,21 +272,6 @@ export const ABTestDeployedStateSchema = z.object({
 });
 
 export type ABTestDeployedState = z.infer<typeof ABTestDeployedStateSchema>;
-
-// ============================================================================
-// HTTP Gateway Deployed State
-// ============================================================================
-
-export const HttpGatewayDeployedStateSchema = z.object({
-  gatewayId: z.string().min(1),
-  gatewayArn: z.string().min(1),
-  gatewayUrl: z.string().optional(),
-  targetId: z.string().min(1).optional(),
-  roleArn: z.string().min(1).optional(),
-  roleCreatedByCli: z.boolean().optional(),
-});
-
-export type HttpGatewayDeployedState = z.infer<typeof HttpGatewayDeployedStateSchema>;
 
 // ============================================================================
 // Runtime Endpoint Deployed State
@@ -292,14 +322,15 @@ export const DeployedResourceStateSchema = z.object({
   runtimes: z.record(z.string(), AgentCoreDeployedStateSchema).optional(),
   memories: z.record(z.string(), MemoryDeployedStateSchema).optional(),
   mcp: McpDeployedStateSchema.optional(),
+  gateways: z.record(z.string(), GatewayDeployedStateSchema).optional(),
   externallyManaged: ExternallyManagedStateSchema.optional(),
   credentials: z.record(z.string(), CredentialDeployedStateSchema).optional(),
   evaluators: z.record(z.string(), EvaluatorDeployedStateSchema).optional(),
   onlineEvalConfigs: z.record(z.string(), OnlineEvalDeployedStateSchema).optional(),
   datasets: z.record(z.string(), DatasetDeployedStateSchema).optional(),
+  knowledgeBases: z.record(z.string(), KnowledgeBaseDeployedStateSchema).optional(),
   configBundles: z.record(z.string(), ConfigBundleDeployedStateSchema).optional(),
   abTests: z.record(z.string(), ABTestDeployedStateSchema).optional(),
-  httpGateways: z.record(z.string(), HttpGatewayDeployedStateSchema).optional(),
   policyEngines: z.record(z.string(), PolicyEngineDeployedStateSchema).optional(),
   policies: z.record(z.string(), PolicyDeployedStateSchema).optional(),
   harnesses: z.record(z.string(), HarnessDeployedStateSchema).optional(),

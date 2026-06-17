@@ -1,6 +1,8 @@
 import { cleanupStaleCredentialProviders } from './utils/credential-provider-cleanup';
 import { getLogger } from './utils/logger';
+import { cleanupStaleRecommendations } from './utils/recommendation-cleanup';
 import { cleanUpOldStacks } from './utils/stack-cleanup';
+import { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore';
 import { BedrockAgentCoreControlClient } from '@aws-sdk/client-bedrock-agentcore-control';
 import { CloudFormationClient } from '@aws-sdk/client-cloudformation';
 import type { TestProject } from 'vitest/node';
@@ -45,6 +47,23 @@ export default async function setup(_project: TestProject): Promise<() => void> 
     logger.warn(`failed to clean up all credential providers`);
   } finally {
     bedrockCPClient.destroy();
+  }
+
+  // Recommendations are capped at 5 active per account. Failed e2e runs leak ACTIVE
+  // recommendations that never reach a terminal state, so the next run 402s on every
+  // StartRecommendation across all shards. Reap leftover e2e recs before starting.
+  logger.info(`cleaning up stale active recommendations...`);
+  const bedrockDPClient = new BedrockAgentCoreClient({ region: region, maxAttempts: 10 });
+  try {
+    await cleanupStaleRecommendations(bedrockDPClient, logger.child('recommendation-cleanup'), {
+      minAgeMs: 30 * 60 * 1000,
+      prefix: 'E2e',
+    });
+  } catch (e) {
+    logger.error(String(e));
+    logger.warn(`failed to clean up stale recommendations`);
+  } finally {
+    bedrockDPClient.destroy();
   }
 
   logger.info(`setup finished in ${(Date.now() - startTime) / 1000} seconds`);

@@ -59,14 +59,6 @@ export function AddOnlineEvalFlow({ isInteractive = true, onExit, onBack, onDev,
         const runtimesList = projectSpec.runtimes ?? [];
         const agentNames = runtimesList.map(a => a.name);
 
-        if (agentNames.length === 0) {
-          setFlow({
-            name: 'error',
-            message: 'No agents found in project. Add an agent first with `agentcore add agent`.',
-          });
-          return;
-        }
-
         // Build runtime info with endpoints for the endpoint picker
         const runtimesInfo: RuntimeInfoForEval[] = runtimesList.map(r => ({
           name: r.name,

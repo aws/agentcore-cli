@@ -1,4 +1,5 @@
 import type { ComponentConfigurationMap } from '../../../../schema';
+import { isGatedFeaturesEnabled } from '../../../feature-flags';
 import type { AddConfigBundleConfig, AddConfigBundleStep, ComponentType } from './types';
 import { useCallback, useState } from 'react';
 
@@ -7,6 +8,7 @@ const ALL_STEPS: AddConfigBundleStep[] = [
   'description',
   'componentType',
   'componentSelect',
+  'componentArnEntry',
   'configuration',
   'addAnother',
   'branchName',
@@ -28,13 +30,31 @@ function getDefaultConfig(): AddConfigBundleConfig {
 export function useAddConfigBundleWizard() {
   const [config, setConfig] = useState<AddConfigBundleConfig>(getDefaultConfig);
   const [step, setStep] = useState<AddConfigBundleStep>('name');
+  // True when the component-type/select steps were re-entered from the "add another?" loop,
+  // so back-navigation returns to the addAnother decision point (which holds "Continue" →
+  // branchName) instead of falling through the linear order back to `description`. Without this
+  // the user gets trapped: backing out of a second component drops all progress.
+  const [inAddAnotherLoop, setInAddAnotherLoop] = useState(false);
 
   const currentIndex = ALL_STEPS.indexOf(step);
 
   const goBack = useCallback(() => {
+    // The component picker (componentSelect) and the custom-ARN entry (componentArnEntry) are
+    // mutually exclusive branches off componentType — both return to componentType.
+    if (step === 'componentSelect' || step === 'componentArnEntry') {
+      setStep('componentType');
+      return;
+    }
+    // If we're mid "add another component" loop, componentType must return to the addAnother step
+    // (where Continue lives), not to the linear previous step.
+    if (inAddAnotherLoop && step === 'componentType') {
+      setInAddAnotherLoop(false);
+      setStep('addAnother');
+      return;
+    }
     const prevStep = ALL_STEPS[currentIndex - 1];
     if (prevStep) setStep(prevStep);
-  }, [currentIndex]);
+  }, [currentIndex, inAddAnotherLoop, step]);
 
   const setName = useCallback((name: string) => {
     setConfig(c => ({ ...c, name }));
@@ -48,10 +68,16 @@ export function useAddConfigBundleWizard() {
 
   const setComponentType = useCallback((componentType: ComponentType) => {
     setConfig(c => ({ ...c, currentComponentType: componentType, currentComponentArn: undefined }));
-    setStep('componentSelect');
+    // Custom components are keyed by a free-text ARN; runtime/gateway pick from deployed resources.
+    setStep(componentType === 'custom' ? 'componentArnEntry' : 'componentSelect');
   }, []);
 
   const setSelectedComponent = useCallback((arn: string) => {
+    setConfig(c => ({ ...c, currentComponentArn: arn }));
+    setStep('configuration');
+  }, []);
+
+  const setCustomArn = useCallback((arn: string) => {
     setConfig(c => ({ ...c, currentComponentArn: arn }));
     setStep('configuration');
   }, []);
@@ -71,11 +97,17 @@ export function useAddConfigBundleWizard() {
 
   const addAnotherComponent = useCallback(() => {
     setConfig(c => ({ ...c, currentComponentType: undefined, currentComponentArn: undefined }));
+    setInAddAnotherLoop(true);
     setStep('componentType');
   }, []);
 
   const doneAddingComponents = useCallback(() => {
-    setStep('branchName');
+    setInAddAnotherLoop(false);
+    if (isGatedFeaturesEnabled()) {
+      setStep('branchName');
+    } else {
+      setStep('commitMessage');
+    }
   }, []);
 
   const setBranchName = useCallback((branchName: string) => {
@@ -90,6 +122,7 @@ export function useAddConfigBundleWizard() {
 
   const reset = useCallback(() => {
     setConfig(getDefaultConfig());
+    setInAddAnotherLoop(false);
     setStep('name');
   }, []);
 
@@ -103,6 +136,7 @@ export function useAddConfigBundleWizard() {
     setDescription,
     setComponentType,
     setSelectedComponent,
+    setCustomArn,
     setConfiguration,
     addAnotherComponent,
     doneAddingComponents,

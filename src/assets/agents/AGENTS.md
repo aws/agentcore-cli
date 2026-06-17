@@ -122,6 +122,19 @@ When modifying JSON config files:
 4. Use CloudFormation-safe names (alphanumeric, start with letter)
 5. Run `agentcore validate` to verify changes
 
+## Harness Export
+
+`agentcore export harness` converts a harness configuration into a deployable Strands Python agent under `app/<agentName>/`.
+
+**After every export, you MUST read `app/<agentName>/EXPORT_NOTES.md` before proceeding.**
+
+This file lists any manual follow-up items required before the agent will deploy or run correctly — missing files to create, IAM policies to add, or configuration steps the exporter could not automate. A clean export produces "No manual steps required." Complete every item in the file before running `agentcore deploy`.
+
+```bash
+agentcore export harness --name <harnessName>   # generates app/<agentName>/EXPORT_NOTES.md
+cat app/<agentName>/EXPORT_NOTES.md             # read this before touching anything else
+```
+
 ## CLI Commands
 
 | Command | Description |
@@ -129,6 +142,7 @@ When modifying JSON config files:
 | `agentcore create` | Create a new project |
 | `agentcore add <resource>` | Add agent, memory, credential, gateway, evaluator, policy |
 | `agentcore remove <resource>` | Remove a resource |
+| `agentcore export harness` | Export a harness to a Strands runtime agent |
 | `agentcore dev` | Run agent locally with hot-reload |
 | `agentcore deploy` | Deploy to AWS |
 | `agentcore status` | Show deployment status |

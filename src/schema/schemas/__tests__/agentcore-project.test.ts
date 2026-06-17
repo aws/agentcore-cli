@@ -1,3 +1,4 @@
+import type { DirectoryPath, FilePath } from '../../types/index.js';
 import {
   AgentCoreProjectSpecSchema,
   CredentialNameSchema,
@@ -615,5 +616,226 @@ describe('AgentCoreProjectSpecSchema', () => {
       harnesses: [{ name: 'myHarness', path: '' }],
     });
     expect(result.success).toBe(false);
+  });
+
+  it('httpGateways empty array passes silently', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      httpGateways: [],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('httpGateways with entries produces migration error', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      httpGateways: [{ name: 'old-gw' }],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('deprecated'))).toBe(true);
+    }
+  });
+
+  it('rejects httpRuntime target on MCP gateway (no protocolType None)', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      agentCoreGateways: [
+        {
+          name: 'mcp-gw',
+          targets: [
+            {
+              name: 'http-target',
+              targetType: 'httpRuntime',
+              httpRuntime: { runtime: 'MyAgent' },
+            },
+          ],
+        },
+      ],
+      runtimes: [
+        {
+          name: 'MyAgent',
+          build: 'CodeZip',
+          entrypoint: 'main.py' as FilePath,
+          codeLocation: './src' as DirectoryPath,
+          runtimeVersion: 'PYTHON_3_12',
+          protocol: 'HTTP',
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('protocolType'))).toBe(true);
+    }
+  });
+
+  it('accepts httpRuntime target on gateway with protocolType None', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      agentCoreGateways: [
+        {
+          name: 'http-gw',
+          protocolType: 'None',
+          targets: [
+            {
+              name: 'http-target',
+              targetType: 'httpRuntime',
+              httpRuntime: { runtime: 'MyAgent' },
+            },
+          ],
+        },
+      ],
+      runtimes: [
+        {
+          name: 'MyAgent',
+          build: 'CodeZip',
+          entrypoint: 'main.py' as FilePath,
+          codeLocation: './src' as DirectoryPath,
+          runtimeVersion: 'PYTHON_3_12',
+          protocol: 'HTTP',
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts connector target on gateway with protocolType None (HTTP is a superset of MCP)', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      agentCoreGateways: [
+        {
+          name: 'http-gw',
+          protocolType: 'None',
+          targets: [
+            {
+              name: 'kb-target',
+              targetType: 'connector',
+              connectorId: 'bedrock-knowledge-bases',
+              knowledgeBaseId: 'ABCDEFGHIJ',
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts mcpServer target on gateway with protocolType None (HTTP is a superset of MCP)', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      agentCoreGateways: [
+        {
+          name: 'http-gw',
+          protocolType: 'None',
+          targets: [
+            {
+              name: 'mytool',
+              targetType: 'mcpServer',
+              endpoint: 'https://example.com/mcp',
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects httpRuntime target referencing non-existent runtime', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      agentCoreGateways: [
+        {
+          name: 'http-gw',
+          protocolType: 'None',
+          targets: [
+            {
+              name: 'http-target',
+              targetType: 'httpRuntime',
+              httpRuntime: { runtime: 'NonExistentAgent' },
+            },
+          ],
+        },
+      ],
+      runtimes: [],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('unknown runtime'))).toBe(true);
+    }
+  });
+
+  it('rejects httpRuntime target referencing non-existent runtimeEndpoint', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      agentCoreGateways: [
+        {
+          name: 'http-gw',
+          protocolType: 'None',
+          targets: [
+            {
+              name: 'http-target',
+              targetType: 'httpRuntime',
+              httpRuntime: { runtime: 'MyAgent', runtimeEndpoint: 'NONEXISTENT' },
+            },
+          ],
+        },
+      ],
+      runtimes: [
+        {
+          name: 'MyAgent',
+          build: 'CodeZip',
+          entrypoint: 'main.py' as FilePath,
+          codeLocation: './src' as DirectoryPath,
+          runtimeVersion: 'PYTHON_3_12',
+          protocol: 'HTTP',
+          endpoints: {
+            LIVE: { version: 1, description: 'Live endpoint' },
+          },
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('does not exist on runtime'))).toBe(true);
+    }
+  });
+});
+
+describe('AgentCoreProjectSpec — knowledgeBases', () => {
+  it('defaults knowledgeBases to []', () => {
+    const result = AgentCoreProjectSpecSchema.parse({
+      name: 'TestProj',
+      version: 1,
+    });
+    expect(result.knowledgeBases).toEqual([]);
+  });
+
+  it('accepts a populated knowledgeBases array', () => {
+    const result = AgentCoreProjectSpecSchema.parse({
+      name: 'TestProj',
+      version: 1,
+      knowledgeBases: [
+        {
+          name: 'product-docs',
+          dataSources: [{ type: 'S3', uri: 's3://my-bucket/docs/' }],
+        },
+      ],
+    });
+    expect(result.knowledgeBases).toHaveLength(1);
+    expect(result.knowledgeBases[0]?.name).toBe('product-docs');
+    expect(result.knowledgeBases[0]?.type).toBe('AgentCoreKnowledgeBase');
+  });
+
+  it('rejects duplicate knowledge base names', () => {
+    expect(() =>
+      AgentCoreProjectSpecSchema.parse({
+        name: 'TestProj',
+        version: 1,
+        knowledgeBases: [
+          { name: 'docs', dataSources: [{ type: 'S3', uri: 's3://my-bucket/a/' }] },
+          { name: 'docs', dataSources: [{ type: 'S3', uri: 's3://my-bucket/b/' }] },
+        ],
+      })
+    ).toThrow(/Duplicate knowledge base name/);
   });
 });

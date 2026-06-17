@@ -26,8 +26,6 @@ interface AgentCoreProjectSpec {
   policyEngines: PolicyEngine[]; // Unique by name — Cedar policy engines
   configBundles: ConfigBundle[]; // Unique by name — configuration bundles for versioned config
   abTests: ABTest[]; // Unique by name — A/B test experiments
-  /** @internal Auto-managed by AB test creation. Do not configure directly. */
-  httpGateways: HttpGateway[]; // Unique by name — HTTP gateways bound to a runtime
   datasets: DatasetSpec[]; // Unique by name — datasets for Dataset Management
 }
 
@@ -57,7 +55,14 @@ interface NetworkConfig {
 type MemoryStrategyType = 'SEMANTIC' | 'SUMMARIZATION' | 'USER_PREFERENCE' | 'EPISODIC';
 type ModelProvider = 'Bedrock' | 'Gemini' | 'OpenAI' | 'Anthropic';
 type EvaluationLevel = 'SESSION' | 'TRACE' | 'TOOL_CALL';
-type GatewayTargetType = 'lambda' | 'mcpServer' | 'openApiSchema' | 'smithyModel' | 'apiGateway' | 'lambdaFunctionArn';
+type GatewayTargetType =
+  | 'lambda'
+  | 'mcpServer'
+  | 'openApiSchema'
+  | 'smithyModel'
+  | 'apiGateway'
+  | 'lambdaFunctionArn'
+  | 'httpRuntime';
 type OutboundAuthType = 'OAUTH' | 'API_KEY' | 'NONE';
 type GatewayAuthorizerType = 'NONE' | 'AWS_IAM' | 'CUSTOM_JWT';
 type GatewayExceptionLevel = 'NONE' | 'DEBUG';
@@ -221,6 +226,7 @@ interface OnlineEvalConfig {
 
 interface AgentCoreGateway {
   name: string; // @regex ^[0-9a-zA-Z](?:[0-9a-zA-Z-]*[0-9a-zA-Z])?$ @max 100
+  protocolType?: 'MCP' | 'None';
   description?: string;
   targets: AgentCoreGatewayTarget[]; // Gateway targets
   authorizerType?: GatewayAuthorizerType; // default 'NONE'
@@ -262,16 +268,22 @@ interface GatewayPolicyEngineConfiguration {
 // GATEWAY TARGET
 // ─────────────────────────────────────────────────────────────────────────────
 
+interface HttpRuntimeConfig {
+  runtime: string; // Reference to a runtime name in spec.runtimes
+  runtimeEndpoint?: string; // Version alias / qualifier
+}
+
 interface AgentCoreGatewayTarget {
   name: string;
   targetType: GatewayTargetType;
   toolDefinitions?: ToolDefinition[]; // Required for 'lambda' targets
   compute?: ToolComputeConfig; // Required for 'lambda' and scaffold targets
-  endpoint?: string; // URL — required for external 'mcpServer' targets
+  endpoint?: string; // URL for 'mcpServer' targets
   outboundAuth?: OutboundAuth;
   apiGateway?: ApiGatewayConfig; // Required for 'apiGateway' target type
   schemaSource?: SchemaSource; // Required for 'openApiSchema' / 'smithyModel' targets
   lambdaFunctionArn?: LambdaFunctionArnConfig; // Required for 'lambdaFunctionArn' target type
+  httpRuntime?: HttpRuntimeConfig; // Required for 'httpRuntime' targets
 }
 
 interface OutboundAuth {
@@ -407,10 +419,6 @@ interface ABTest {
   evaluationConfig: {
     onlineEvaluationConfigArn: string;
   };
-  trafficAllocationConfig?: {
-    routeOnHeader: { headerName: string };
-  };
-  maxDurationDays?: number; // @min 1 @max 90
   enableOnCreate?: boolean;
 }
 
@@ -423,16 +431,4 @@ interface ABTestVariant {
       bundleVersion: string;
     };
   };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HTTP GATEWAY
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** @internal HTTP gateway auto-created when setting up an AB test. */
-interface HttpGateway {
-  name: string; // @regex ^[a-zA-Z][a-zA-Z0-9-]{0,47}$ @max 48
-  description?: string; // @max 200
-  runtimeRef: string; // Reference to a runtime name from spec.runtimes
-  roleArn?: string; // IAM role ARN — auto-created if omitted
 }

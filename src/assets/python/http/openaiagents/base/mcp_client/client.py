@@ -33,20 +33,20 @@ def get_all_gateway_mcp_servers() -> list[MCPServerStreamableHttp]:
     {{#each gatewayProviders}}
     url = os.environ.get("{{envVarName}}")
     if url:
-        {{#if (eq authType "AWS_IAM")}}
+{{#if (eq authType "AWS_IAM")}}
         session = create_aws_session()
         auth = SigV4HTTPXAuth(session.get_credentials(), "bedrock-agentcore", session.region_name)
         servers.append(MCPServerStreamableHttp(
             name="{{name}}",
             params={"url": url, "httpx_client_factory": lambda **kwargs: httpx.AsyncClient(auth=auth, **kwargs)}
         ))
-        {{else if (eq authType "CUSTOM_JWT")}}
+{{else if (eq authType "CUSTOM_JWT")}}
         token = _get_bearer_token_{{snakeCase name}}()
         headers = {"Authorization": f"Bearer {token}"} if token else {}
         servers.append(MCPServerStreamableHttp(name="{{name}}", params={"url": url, "headers": headers}))
-        {{else}}
+{{else}}
         servers.append(MCPServerStreamableHttp(name="{{name}}", params={"url": url}))
-        {{/if}}
+{{/if}}
     else:
         logger.warning("{{envVarName}} not set — {{name}} gateway tools unavailable")
     {{/each}}

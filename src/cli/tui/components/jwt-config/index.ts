@@ -4,4 +4,5 @@ export { useJwtConfigFlow } from './useJwtConfigFlow';
 export type { JwtConfig } from './useJwtConfigFlow';
 export { CustomClaimsManager } from './CustomClaimsManager';
 export { CustomClaimForm } from './CustomClaimForm';
+export { DomainOverridesManager } from './DomainOverridesManager';
 export * from './types';

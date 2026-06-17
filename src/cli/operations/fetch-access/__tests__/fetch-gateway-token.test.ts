@@ -44,6 +44,7 @@ const baseProjectSpec = {
   ],
   runtimes: [],
   memories: [],
+  knowledgeBases: [],
   evaluators: [],
   onlineEvalConfigs: [],
 };

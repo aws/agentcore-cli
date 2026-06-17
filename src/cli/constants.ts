@@ -28,17 +28,18 @@ export const COMMAND_DESCRIPTIONS = {
   fetch: 'Fetch access info for deployed resources.',
   pause: 'Pause a deployed resource (online eval config, A/B test).',
   resume: 'Resume a paused resource (online eval config, A/B test).',
-  recommend: '[preview] Run optimization recommendations for system prompts and tool descriptions.',
-  recommendations: '[preview] View recommendation history from past runs.',
+  recommend: 'Run optimization recommendations for system prompts and tool descriptions.',
+  recommendations: 'View recommendation history from past runs.',
   run: 'Run evaluations, batch evaluations, or optimization recommendations.',
   stop: 'Stop a running batch evaluation or A/B test.',
   import: 'Import a runtime, memory, or starter toolkit into this project. [experimental]',
   telemetry: 'Manage anonymous usage analytics preferences.',
   update: 'Check for and install CLI updates',
   validate: 'Validate agentcore/ config files.',
-  'config-bundle': '[preview] Manage configuration bundle versions and diffs.',
-  archive: '[preview] Archive (delete) a batch evaluation or recommendation on the service and clear local history.',
+  'config-bundle': 'Manage configuration bundle versions and diffs.',
+  archive: 'Archive (delete) a batch evaluation or recommendation on the service and clear local history.',
   config: 'Adjust global configuration settings such as telemetry opt-out status',
+  export: 'Export a harness to a Strands runtime agent.',
 } as const;
 
 /**

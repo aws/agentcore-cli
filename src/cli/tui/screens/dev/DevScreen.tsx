@@ -245,6 +245,7 @@ export function DevScreen(props: DevScreenProps) {
     isComplete: deployComplete,
     error: deployError,
     logPath: deployLogPath,
+    managedMemoryNotice,
   } = useDevDeploy({ skip: props.skipDeploy, ready: mode === 'deploying' });
 
   const hasTransitionedFromDeployRef = useRef(false);
@@ -527,6 +528,11 @@ export function DevScreen(props: DevScreenProps) {
           <Box marginTop={1}>
             <StepProgress steps={displaySteps} />
           </Box>
+          {managedMemoryNotice && !deployComplete && (
+            <Box marginTop={1}>
+              <Text dimColor>Note: {managedMemoryNotice}</Text>
+            </Box>
+          )}
           {hasStartedCfn && (
             <Box marginTop={1}>
               <DeployStatus messages={deployMessages} isComplete={deployComplete} hasError={!!deployError} />

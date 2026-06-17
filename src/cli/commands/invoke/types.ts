@@ -5,6 +5,10 @@ export interface InvokeOptions {
   harnessName?: string;
   /** Direct harness ARN — bypasses project config and deployed state resolution */
   harnessArn?: string;
+  /** Gateway name — invoke through a deployed gateway */
+  gateway?: string;
+  /** Gateway target name (httpRuntime target on the gateway) */
+  gatewayTarget?: string;
   /** AWS region (used with --harness-arn) */
   region?: string;
   targetName?: string;
@@ -31,10 +35,14 @@ export interface InvokeOptions {
   verbose?: boolean;
   /** Override model ID for this invocation (harness only) */
   modelId?: string;
-  /** Override model provider for this invocation (harness only): bedrock, open_ai, gemini */
+  /** Override model provider for this invocation (harness only): bedrock, open_ai, gemini, lite_llm */
   modelProvider?: string;
-  /** Override API key ARN for this invocation (harness only, open_ai/gemini) */
+  /** Override API key ARN for this invocation (harness only, open_ai/gemini; optional for lite_llm) */
   apiKeyArn?: string;
+  /** Override LiteLLM API base URL for this invocation (harness only, lite_llm) */
+  apiBase?: string;
+  /** Override LiteLLM additional params for this invocation (harness only, lite_llm; JSON object) */
+  additionalParams?: Record<string, unknown>;
   /** Override tools for this invocation (harness only, comma-separated) */
   tools?: string;
   /** Override max iterations (harness only) */

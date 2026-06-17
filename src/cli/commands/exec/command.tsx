@@ -1,5 +1,5 @@
 import { findConfigRoot } from '../../../lib';
-import { COMMAND_DESCRIPTIONS } from '../../constants';
+import { ANSI, COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { requireProject, requireTTY } from '../../tui/guards';
@@ -239,6 +239,13 @@ interface PickResult {
 }
 
 function pickAgent(): Promise<PickResult | null> {
+  // Render the picker in the alternate screen so it (and any inline error state,
+  // e.g. missing project config) repaints in place instead of leaking static
+  // frames into the normal buffer. Restore the normal buffer + cursor on exit;
+  // the PTY shell session that follows runs in the normal buffer.
+  process.stdout.write(ANSI.enterAltScreen);
+  const restore = () => process.stdout.write(ANSI.exitAltScreen + ANSI.showCursor);
+
   return new Promise<PickResult | null>(resolve => {
     let resolved = false;
 
@@ -248,13 +255,14 @@ function pickAgent(): Promise<PickResult | null> {
           if (resolved) return;
           resolved = true;
           unmount();
-          process.stdout.write('\x1b[2J\x1b[H');
+          restore();
           resolve({ runtimeArn: result.runtimeArn, sessionId: result.sessionId, autoSelected: result.autoSelected });
         }}
         onExit={() => {
           if (!resolved) {
             resolved = true;
             unmount();
+            restore();
             resolve(null);
           }
         }}

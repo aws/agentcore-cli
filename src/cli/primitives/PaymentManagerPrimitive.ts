@@ -322,7 +322,7 @@ export class PaymentManagerPrimitive extends BasePrimitive<AddPaymentManagerOpti
   registerCommands(addCmd: Command, removeCmd: Command): void {
     addCmd
       .command('payment-manager')
-      .description('Add a payment manager to the project')
+      .description('[preview] Add a payment manager to the project')
       .option('--name <name>', 'Payment manager name [non-interactive]')
       .option('--authorizer-type <type>', 'Authorizer type: AWS_IAM or CUSTOM_JWT (default: AWS_IAM) [non-interactive]')
       .option('--discovery-url <url>', 'OIDC discovery URL (required for CUSTOM_JWT) [non-interactive]')
@@ -494,7 +494,7 @@ export class PaymentManagerPrimitive extends BasePrimitive<AddPaymentManagerOpti
 
     removeCmd
       .command('payment-manager')
-      .description('Remove a payment manager from the project')
+      .description('[preview] Remove a payment manager from the project')
       .option('--name <name>', 'Name of resource to remove [non-interactive]')
       .option('-y, --yes', 'Skip confirmation prompt [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')

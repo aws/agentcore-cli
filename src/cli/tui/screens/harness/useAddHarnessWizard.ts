@@ -1,5 +1,5 @@
 import type { HarnessApiFormat, HarnessModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
-import { isPreviewEnabled } from '../../../feature-flags';
+import { isGatedFeaturesEnabled, isPreviewEnabled } from '../../../feature-flags';
 import type { JwtConfig } from '../../components/jwt-config';
 import { HARNESS_FILESYSTEM_STEP_NAMES, useFilesystemMountState } from '../../hooks/useFilesystemMountState';
 import type { AddHarnessConfig, AddHarnessStep, AdvancedSetting, ContainerMode } from './types';
@@ -8,6 +8,11 @@ import { useCallback, useMemo, useState } from 'react';
 
 const ADVANCED_SETTING_ORDER: AdvancedSetting[] = [
   'tools',
+  'skills',
+  'memory-tuning',
+  'memory-managed-tuning',
+  'memory-existing-tuning',
+  'allowed-tools',
   'auth',
   'network',
   'lifecycle',
@@ -18,6 +23,11 @@ const ADVANCED_SETTING_ORDER: AdvancedSetting[] = [
 
 const SETTING_TO_FIRST_STEP: Record<AdvancedSetting, AddHarnessStep> = {
   tools: 'tools-select',
+  skills: 'skills-source-type',
+  'memory-tuning': 'memory-messages-count',
+  'memory-managed-tuning': 'memory-strategies',
+  'memory-existing-tuning': 'memory-messages-count',
+  'allowed-tools': 'allowed-tools',
   auth: 'authorizerType',
   network: 'network-mode',
   lifecycle: 'idle-timeout',
@@ -47,6 +57,12 @@ function getDefaultConfig(): AddHarnessConfig {
     name: '',
     modelProvider: 'bedrock',
     modelId: DEFAULT_MODEL_IDS.bedrock,
+    // Managed memory is the default for new harnesses when the gated feature is on (strategies left
+    // absent → service default; tunable under Advanced). When off, the legacy enabled/disabled
+    // `memory` step drives skipMemory instead and this stays undefined.
+    ...(isGatedFeaturesEnabled() && {
+      memory: { mode: 'managed' as const },
+    }),
   };
 }
 
@@ -66,6 +82,10 @@ export function useAddHarnessWizard() {
       steps.push('api-key-arn');
     }
 
+    if (config.modelProvider === 'lite_llm') {
+      steps.push('api-base', 'additional-params');
+    }
+
     steps.push('container');
     if (config.containerMode === 'uri') {
       steps.push('container-uri');
@@ -73,14 +93,25 @@ export function useAddHarnessWizard() {
       steps.push('container-dockerfile');
     }
 
-    steps.push('memory');
+    if (isGatedFeaturesEnabled()) {
+      // Main path is just the mode pick. Managed defaults to the service's own strategy set (nothing
+      // more to ask); existing REQUIRES a name/ARN so it's collected here; disabled needs nothing.
+      // All other knobs (managed strategies/expiry/KMS, existing tuning) live under Advanced → Memory tuning.
+      steps.push('memory-mode');
+      if (config.memory?.mode === 'existing') {
+        steps.push('memory-existing-ref');
+      }
+    } else {
+      // Legacy enabled/disabled memory step.
+      steps.push('memory');
+    }
 
     steps.push('advanced');
 
     if (advancedSettings.includes('tools')) {
       steps.push('tools-select');
       if (config.selectedTools?.includes('remote_mcp')) {
-        steps.push('mcp-name', 'mcp-url');
+        steps.push('mcp-name', 'mcp-url', 'mcp-headers');
       }
       if (config.selectedTools?.includes('agentcore_gateway')) {
         steps.push('gateway-arn');
@@ -89,6 +120,20 @@ export function useAddHarnessWizard() {
           steps.push('gateway-provider-arn', 'gateway-scopes');
         }
       }
+    }
+
+    if (advancedSettings.includes('skills')) {
+      steps.push('skills-source-type');
+      if (config.pendingSkillSourceType === 'path') {
+        steps.push('skill-path');
+      } else if (config.pendingSkillSourceType === 's3') {
+        steps.push('skill-s3-uri');
+      } else if (config.pendingSkillSourceType === 'git') {
+        steps.push('skill-git-url', 'skill-git-path', 'skill-git-credential', 'skill-git-username');
+      } else if (config.pendingSkillSourceType === 'aws_skills') {
+        steps.push('skill-aws-skills-paths');
+      }
+      steps.push('skill-add-another');
     }
 
     if (advancedSettings.includes('auth')) {
@@ -105,12 +150,34 @@ export function useAddHarnessWizard() {
       }
     }
 
+    // Mode-scoped memory tuning (gated on). Only the advanced option matching the chosen memory mode is
+    // offered (see AddHarnessScreen's filter), so these are mutually exclusive: managed and existing have
+    // disjoint knob sets per the harness API.
+    if (advancedSettings.includes('memory-managed-tuning') && config.memory?.mode === 'managed') {
+      steps.push('memory-strategies', 'memory-event-expiry', 'memory-kms');
+    }
+    if (advancedSettings.includes('memory-existing-tuning') && config.memory?.mode === 'existing') {
+      steps.push('memory-messages-count', 'memory-retrieval-top-k', 'memory-relevance-score');
+    }
+    // Legacy tuning (gated off): the old flat topK/relevance/messages knobs.
+    if (advancedSettings.includes('memory-tuning') && !isGatedFeaturesEnabled()) {
+      steps.push('memory-messages-count', 'memory-retrieval-top-k', 'memory-relevance-score');
+    }
+
+    if (advancedSettings.includes('allowed-tools')) {
+      steps.push('allowed-tools');
+    }
+
     if (advancedSettings.includes('lifecycle')) {
       steps.push('idle-timeout', 'max-lifetime');
     }
 
     if (advancedSettings.includes('execution')) {
-      steps.push('max-iterations', 'max-tokens', 'timeout');
+      steps.push('max-iterations', 'max-tokens', 'timeout', 'temperature', 'top-p');
+      if (config.modelProvider === 'gemini') {
+        steps.push('top-k');
+      }
+      steps.push('model-max-tokens');
     }
 
     if (advancedSettings.includes('truncation')) {
@@ -133,6 +200,9 @@ export function useAddHarnessWizard() {
     config.networkMode,
     config.selectedTools,
     config.gatewayOutboundAuth,
+    config.pendingSkillSourceType,
+    config.skills,
+    config.memory?.mode,
     advancedSettings,
   ]);
 
@@ -223,6 +293,22 @@ export function useAddHarnessWizard() {
       }
       return;
     }
+    if (step === 'skills-source-type') {
+      if ((config.skills?.length ?? 0) > 0) {
+        setStep('skill-add-another');
+      } else {
+        const idx = allSteps.indexOf('skills-source-type');
+        const prev = allSteps[idx - 1];
+        if (prev) setStep(prev);
+      }
+      return;
+    }
+    if (step === 'skill-add-another') {
+      const idx = allSteps.indexOf('skills-source-type');
+      const prev = allSteps[idx - 1];
+      if (prev) setStep(prev);
+      return;
+    }
     const idx = allSteps.indexOf(step);
     const prevStep = allSteps[idx - 1];
     if (prevStep) setStep(prevStep);
@@ -233,6 +319,7 @@ export function useAddHarnessWizard() {
     editingS3Index,
     config.efsAccessPoints,
     config.s3AccessPoints,
+    config.skills,
     resetFilesystemState,
   ]);
 
@@ -254,8 +341,18 @@ export function useAddHarnessWizard() {
   );
 
   const setModelProvider = useCallback((modelProvider: HarnessModelProvider) => {
-    setConfig(c => ({ ...c, modelProvider, modelId: DEFAULT_MODEL_IDS[modelProvider], apiFormat: undefined }));
-    if (modelProvider === 'bedrock' && isPreviewEnabled()) {
+    setConfig(c => ({
+      ...c,
+      modelProvider,
+      modelId: DEFAULT_MODEL_IDS[modelProvider],
+      apiFormat: undefined,
+      // apiBase / additionalParams only apply to lite_llm — clear them when switching away.
+      ...(modelProvider !== 'lite_llm' && { apiBase: undefined, additionalParams: undefined }),
+    }));
+    // bedrock and open_ai both have a preview-gated api-format step that sits before api-key-arn
+    // in allSteps — route through it for BOTH (open_ai previously jumped straight to api-key-arn,
+    // making api-format forward-unreachable and leaving a false ✓ on the skipped step).
+    if ((modelProvider === 'bedrock' || modelProvider === 'open_ai') && isPreviewEnabled()) {
       setStep('api-format');
     } else if (modelProvider !== 'bedrock') {
       setStep('api-key-arn');
@@ -264,25 +361,53 @@ export function useAddHarnessWizard() {
     }
   }, []);
 
-  const setApiFormat = useCallback((apiFormat: HarnessApiFormat) => {
-    setConfig(c => {
-      if (c.modelProvider === 'bedrock') {
-        const isMantle = apiFormat !== 'converse_stream';
-        return {
-          ...c,
-          apiFormat: isMantle ? apiFormat : undefined,
-          modelId: isMantle ? DEFAULT_BEDROCK_MANTLE_MODEL_ID : DEFAULT_MODEL_IDS.bedrock,
-        };
-      }
-      return { ...c, apiFormat };
-    });
-    setStep('container');
-  }, []);
+  const setApiFormat = useCallback(
+    (apiFormat: HarnessApiFormat) => {
+      let provider: HarnessModelProvider = 'bedrock';
+      setConfig(c => {
+        provider = c.modelProvider;
+        if (c.modelProvider === 'bedrock') {
+          const isMantle = apiFormat !== 'converse_stream';
+          return {
+            ...c,
+            apiFormat: isMantle ? apiFormat : undefined,
+            modelId: isMantle ? DEFAULT_BEDROCK_MANTLE_MODEL_ID : DEFAULT_MODEL_IDS.bedrock,
+          };
+        }
+        return { ...c, apiFormat };
+      });
+      // Advance to the natural next step instead of hard-coding 'container'. For open_ai the next
+      // step is the REQUIRED api-key-arn — hard-coding 'container' skipped it, so a Back→api-format
+      // →select path reached Confirm with apiKeyArn undefined and failed hard at write time.
+      const next = nextStep('api-format');
+      if (next) setStep(next);
+      else setStep(provider === 'bedrock' ? 'container' : 'api-key-arn');
+    },
+    [nextStep]
+  );
 
   const setApiKeyArn = useCallback(
     (apiKeyArn: string) => {
       setConfig(c => ({ ...c, apiKeyArn }));
       const next = nextStep('api-key-arn');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
+
+  const setApiBase = useCallback(
+    (apiBase: string) => {
+      setConfig(c => ({ ...c, apiBase: apiBase || undefined }));
+      const next = nextStep('api-base');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
+
+  const setAdditionalParams = useCallback(
+    (additionalParams: Record<string, unknown> | undefined) => {
+      setConfig(c => ({ ...c, additionalParams }));
+      const next = nextStep('additional-params');
       if (next) setStep(next);
     },
     [nextStep]
@@ -295,7 +420,8 @@ export function useAddHarnessWizard() {
     } else if (containerMode === 'dockerfile') {
       setStep('container-dockerfile');
     } else {
-      setStep('memory');
+      // Route to the first memory step: the mode picker (gated on) or the legacy toggle (gated off).
+      setStep(isGatedFeaturesEnabled() ? 'memory-mode' : 'memory');
     }
   }, []);
 
@@ -359,9 +485,14 @@ export function useAddHarnessWizard() {
     [nextStep]
   );
 
-  const setMcpUrl = useCallback(
-    (mcpUrl: string) => {
-      setConfig(c => ({ ...c, mcpUrl }));
+  const setMcpUrl = useCallback((mcpUrl: string) => {
+    setConfig(c => ({ ...c, mcpUrl }));
+    setStep('mcp-headers');
+  }, []);
+
+  const setMcpHeaders = useCallback(
+    (headers: Record<string, string> | undefined) => {
+      setConfig(c => ({ ...c, mcpHeaders: headers }));
       if (config.selectedTools?.includes('agentcore_gateway')) {
         setStep('gateway-arn');
       } else {
@@ -406,6 +537,65 @@ export function useAddHarnessWizard() {
 
   const setMemoryEnabled = useCallback((enabled: boolean) => {
     setConfig(c => ({ ...c, skipMemory: !enabled }));
+    setStep('advanced');
+  }, []);
+
+  // --- Mode-first memory sub-flow setters (gated features ON) ---
+
+  const setMemoryMode = useCallback((mode: 'managed' | 'existing' | 'disabled') => {
+    // Managed seeds nothing beyond the mode — strategies/expiry/KMS are opt-in under Advanced, and an
+    // absent strategy set means "use the service default". Existing collects its required ref next.
+    setConfig(c => ({ ...c, memory: { mode } }));
+    if (mode === 'existing') {
+      setStep('memory-existing-ref');
+    } else {
+      // Managed / disabled have nothing more on the main path → continue to Advanced.
+      setStep('advanced');
+    }
+  }, []);
+
+  const setMemoryStrategies = useCallback(
+    (strategies: string[]) => {
+      setConfig(c =>
+        c.memory?.mode === 'managed'
+          ? { ...c, memory: { ...c.memory, strategies: strategies.length > 0 ? strategies : undefined } }
+          : c
+      );
+      const next = nextStep('memory-strategies');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
+
+  const setMemoryEventExpiry = useCallback(
+    (raw: string) => {
+      const days = raw.trim() === '' ? undefined : parseInt(raw, 10);
+      setConfig(c => (c.memory?.mode === 'managed' ? { ...c, memory: { ...c.memory, eventExpiryDuration: days } } : c));
+      const next = nextStep('memory-event-expiry');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
+
+  const setMemoryKms = useCallback(
+    (raw: string) => {
+      const encryptionKeyArn = raw.trim() === '' ? undefined : raw.trim();
+      setConfig(c => (c.memory?.mode === 'managed' ? { ...c, memory: { ...c.memory, encryptionKeyArn } } : c));
+      const next = nextStep('memory-kms');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
+
+  const setMemoryExistingRef = useCallback((raw: string) => {
+    const value = raw.trim();
+    // An ARN goes to `arn`, anything else is treated as a project memory name.
+    const isArn = value.startsWith('arn:');
+    setConfig(c => ({
+      ...c,
+      memory: { mode: 'existing', ...(isArn ? { arn: value } : { name: value }) },
+    }));
+    // Existing-ref is the last main-path memory step → continue to Advanced.
     setStep('advanced');
   }, []);
 
@@ -520,8 +710,95 @@ export function useAddHarnessWizard() {
     [nextStep]
   );
 
+  const setTemperature = useCallback(
+    (raw: string) => {
+      const temperature = raw.trim() === '' ? undefined : parseFloat(raw);
+      setConfig(c => ({ ...c, temperature }));
+      const next = nextStep('temperature');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
+
+  const setTopP = useCallback(
+    (raw: string) => {
+      const topP = raw.trim() === '' ? undefined : parseFloat(raw);
+      setConfig(c => ({ ...c, topP }));
+      const next = nextStep('top-p');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
+
+  const setTopK = useCallback(
+    (raw: string) => {
+      const topK = raw.trim() === '' ? undefined : parseInt(raw, 10);
+      setConfig(c => ({ ...c, topK }));
+      const next = nextStep('top-k');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
+
+  const setModelMaxTokens = useCallback(
+    (raw: string) => {
+      const modelMaxTokens = raw.trim() === '' ? undefined : parseInt(raw, 10);
+      setConfig(c => ({ ...c, modelMaxTokens }));
+      const next = nextStep('model-max-tokens');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
+
+  const setMessagesCount = useCallback(
+    (raw: string) => {
+      const messagesCount = raw.trim() === '' ? undefined : parseInt(raw, 10);
+      setConfig(c => ({ ...c, messagesCount }));
+      const next = nextStep('memory-messages-count');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
+
+  const setMemoryTopK = useCallback(
+    (raw: string) => {
+      const memoryTopK = raw.trim() === '' ? undefined : parseInt(raw, 10);
+      setConfig(c => ({ ...c, memoryTopK }));
+      const next = nextStep('memory-retrieval-top-k');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
+
+  const setMemoryRelevanceScore = useCallback(
+    (raw: string) => {
+      const memoryRelevanceScore = raw.trim() === '' ? undefined : parseFloat(raw);
+      setConfig(c => ({ ...c, memoryRelevanceScore }));
+      const next = nextStep('memory-relevance-score');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
+
+  const setAllowedTools = useCallback(
+    (raw: string) => {
+      const trimmed = raw.trim();
+      const allowedTools =
+        trimmed === ''
+          ? undefined
+          : trimmed
+              .split(',')
+              .map(s => s.trim())
+              .filter(Boolean);
+      setConfig(c => ({ ...c, allowedTools }));
+      const next = nextStep('allowed-tools');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
+
   const setTruncationStrategy = useCallback(
-    (truncationStrategy: 'sliding_window' | 'summarization') => {
+    (truncationStrategy: 'sliding_window' | 'summarization' | 'none') => {
       setConfig(c => ({ ...c, truncationStrategy }));
       const next = nextStep('truncation-strategy');
       if (next) setStep(next);
@@ -536,6 +813,100 @@ export function useAddHarnessWizard() {
       if (next) setStep(next);
     },
     [nextStep]
+  );
+
+  const setSkillSourceType = useCallback((sourceType: 'path' | 's3' | 'git' | 'aws_skills') => {
+    setConfig(c => ({ ...c, pendingSkillSourceType: sourceType }));
+    if (sourceType === 'path') setStep('skill-path');
+    else if (sourceType === 's3') setStep('skill-s3-uri');
+    else if (sourceType === 'aws_skills') setStep('skill-aws-skills-paths');
+    else setStep('skill-git-url');
+  }, []);
+
+  const submitSkillPath = useCallback((path: string) => {
+    setConfig(c => ({
+      ...c,
+      skills: [...(c.skills ?? []), { path }],
+      pendingSkillSourceType: undefined,
+    }));
+    setStep('skill-add-another');
+  }, []);
+
+  const submitSkillS3 = useCallback((s3Uri: string) => {
+    setConfig(c => ({
+      ...c,
+      skills: [...(c.skills ?? []), { s3Uri }],
+      pendingSkillSourceType: undefined,
+    }));
+    setStep('skill-add-another');
+  }, []);
+
+  const submitSkillGitUrl = useCallback((gitUrl: string) => {
+    setConfig(c => ({ ...c, pendingSkillGitUrl: gitUrl }));
+    setStep('skill-git-path');
+  }, []);
+
+  const submitSkillGitPath = useCallback((gitPath: string) => {
+    setConfig(c => ({ ...c, pendingSkillGitPath: gitPath || undefined }));
+    setStep('skill-git-credential');
+  }, []);
+
+  const submitSkillGitCredential = useCallback((selection: string) => {
+    if (selection === 'skip') {
+      setConfig(c => ({ ...c, pendingSkillCredentialName: undefined }));
+      setStep('skill-git-username');
+    } else {
+      // selection is a credential name (existing or newly created)
+      setConfig(c => ({ ...c, pendingSkillCredentialName: selection }));
+      setStep('skill-git-username');
+    }
+  }, []);
+
+  const submitSkillGitUsername = useCallback((username: string) => {
+    setConfig(c => {
+      const skill: NonNullable<AddHarnessConfig['skills']>[number] = {
+        gitUrl: c.pendingSkillGitUrl,
+        ...(c.pendingSkillGitPath && { gitPath: c.pendingSkillGitPath }),
+        ...(c.pendingSkillCredentialName && {
+          credentialName: c.pendingSkillCredentialName,
+          ...(username && { username }),
+        }),
+      };
+      return {
+        ...c,
+        skills: [...(c.skills ?? []), skill],
+        pendingSkillSourceType: undefined,
+        pendingSkillGitUrl: undefined,
+        pendingSkillGitPath: undefined,
+        pendingSkillCredentialName: undefined,
+      };
+    });
+    setStep('skill-add-another');
+  }, []);
+
+  const submitSkillAwsSkillsPaths = useCallback((pathsStr: string) => {
+    const paths = pathsStr
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    setConfig(c => ({
+      ...c,
+      skills: [...(c.skills ?? []), { awsSkills: paths }],
+      pendingSkillSourceType: undefined,
+    }));
+    setStep('skill-add-another');
+  }, []);
+
+  const submitSkillAddAnother = useCallback(
+    (choice: string) => {
+      if (choice === 'add') {
+        setStep('skills-source-type');
+      } else {
+        const next = getNextAdvancedStep(advancedSettings, 'skills');
+        setStep(next ?? 'confirm');
+      }
+    },
+    [advancedSettings]
   );
 
   const reset = useCallback(() => {
@@ -556,6 +927,8 @@ export function useAddHarnessWizard() {
     setModelProvider,
     setApiFormat,
     setApiKeyArn,
+    setApiBase,
+    setAdditionalParams,
     setContainerMode,
     setContainerUri,
     setDockerfilePath,
@@ -568,6 +941,11 @@ export function useAddHarnessWizard() {
     setGatewayProviderArn,
     setGatewayScopes,
     setMemoryEnabled,
+    setMemoryMode,
+    setMemoryStrategies,
+    setMemoryEventExpiry,
+    setMemoryKms,
+    setMemoryExistingRef,
     setAuthorizerType,
     setJwtConfig,
     setNetworkMode,
@@ -578,6 +956,15 @@ export function useAddHarnessWizard() {
     setMaxIterations,
     setMaxTokens,
     setTimeoutSeconds,
+    setTemperature,
+    setTopP,
+    setTopK,
+    setModelMaxTokens,
+    setMessagesCount,
+    setMemoryTopK,
+    setMemoryRelevanceScore,
+    setAllowedTools,
+    setMcpHeaders,
     setTruncationStrategy,
     setSessionStoragePath,
     pendingEfsArn,
@@ -590,6 +977,15 @@ export function useAddHarnessWizard() {
     submitS3Arn,
     submitS3MountPath,
     submitS3AddAnother,
+    setSkillSourceType,
+    submitSkillPath,
+    submitSkillS3,
+    submitSkillGitUrl,
+    submitSkillGitPath,
+    submitSkillGitCredential,
+    submitSkillGitUsername,
+    submitSkillAwsSkillsPaths,
+    submitSkillAddAnother,
     reset,
   };
 }

@@ -213,6 +213,60 @@ describe('buildDeployedState', () => {
     expect(state.targets.default!.resources?.stackName).toBe('NewStack');
   });
 
+  describe('abTests carry-forward', () => {
+    const existingWithABTests = {
+      targets: {
+        default: {
+          resources: {
+            runtimes: {},
+            stackName: 'Stack',
+            abTests: {
+              live_test: { abTestId: 'ab-live', abTestArn: 'arn:ab-live' },
+              stale_test: { abTestId: 'ab-stale', abTestArn: 'arn:ab-stale' },
+            },
+          },
+        },
+      },
+    };
+
+    it('carries forward all abTests when abTestNames is omitted (legacy behavior)', () => {
+      const state = buildDeployedState({
+        targetName: 'default',
+        stackName: 'Stack',
+        agents: {},
+        gateways: {},
+        existingState: existingWithABTests,
+      });
+      expect(state.targets.default!.resources?.abTests).toEqual(existingWithABTests.targets.default.resources.abTests);
+    });
+
+    it('prunes abTests not present in the current project spec', () => {
+      const state = buildDeployedState({
+        targetName: 'default',
+        stackName: 'Stack',
+        agents: {},
+        gateways: {},
+        existingState: existingWithABTests,
+        abTestNames: ['live_test'],
+      });
+      expect(state.targets.default!.resources?.abTests).toEqual({
+        live_test: { abTestId: 'ab-live', abTestArn: 'arn:ab-live' },
+      });
+    });
+
+    it('omits abTests entirely when none of the existing tests remain in the spec', () => {
+      const state = buildDeployedState({
+        targetName: 'default',
+        stackName: 'Stack',
+        agents: {},
+        gateways: {},
+        existingState: existingWithABTests,
+        abTestNames: [],
+      });
+      expect(state.targets.default!.resources?.abTests).toBeUndefined();
+    });
+  });
+
   it('includes identityKmsKeyArn when provided', () => {
     const state = buildDeployedState({
       targetName: 'default',

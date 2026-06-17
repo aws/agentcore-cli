@@ -1,9 +1,17 @@
 import { RemoveScreen } from '../RemoveScreen.js';
 import { render } from 'ink-testing-library';
 import React from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('RemoveScreen', () => {
+  const originalGate = process.env.ENABLE_GATED_FEATURES;
+  beforeEach(() => {
+    process.env.ENABLE_GATED_FEATURES = '1';
+  });
+  afterEach(() => {
+    if (originalGate === undefined) delete process.env.ENABLE_GATED_FEATURES;
+    else process.env.ENABLE_GATED_FEATURES = originalGate;
+  });
   it('gateway and gateway-target options enabled when counts > 0', () => {
     const onSelect = vi.fn();
     const onExit = vi.fn();
@@ -23,9 +31,9 @@ describe('RemoveScreen', () => {
         policyEngineCount={1}
         policyCount={1}
         configBundleCount={1}
-        abTestCount={0}
         runtimeEndpointCount={1}
         datasetCount={0}
+        knowledgeBaseCount={0}
         paymentCount={1}
       />
     );
@@ -59,9 +67,9 @@ describe('RemoveScreen', () => {
         policyEngineCount={0}
         policyCount={0}
         configBundleCount={0}
-        abTestCount={0}
         runtimeEndpointCount={0}
         datasetCount={0}
+        knowledgeBaseCount={0}
         paymentCount={0}
       />
     );
@@ -72,7 +80,7 @@ describe('RemoveScreen', () => {
     expect(lastFrame()).toContain('No policies to remove');
   });
 
-  it('AB test option enabled when abTestCount > 0', () => {
+  it('Knowledge Base option enabled when knowledgeBaseCount > 0', () => {
     const onSelect = vi.fn();
     const onExit = vi.fn();
 
@@ -91,18 +99,18 @@ describe('RemoveScreen', () => {
         policyEngineCount={0}
         policyCount={0}
         configBundleCount={0}
-        abTestCount={2}
         runtimeEndpointCount={0}
         datasetCount={0}
+        knowledgeBaseCount={3}
         paymentCount={0}
       />
     );
 
-    expect(lastFrame()).toContain('AB Test');
-    expect(lastFrame()).not.toContain('No AB tests to remove');
+    expect(lastFrame()).toContain('Knowledge Base');
+    expect(lastFrame()).not.toContain('No knowledge bases to remove');
   });
 
-  it('AB test option disabled when abTestCount = 0', () => {
+  it('Knowledge Base option disabled when knowledgeBaseCount = 0', () => {
     const onSelect = vi.fn();
     const onExit = vi.fn();
 
@@ -121,13 +129,45 @@ describe('RemoveScreen', () => {
         policyEngineCount={0}
         policyCount={0}
         configBundleCount={0}
-        abTestCount={0}
         runtimeEndpointCount={0}
         datasetCount={0}
+        knowledgeBaseCount={0}
         paymentCount={0}
       />
     );
 
-    expect(lastFrame()).toContain('No AB tests to remove');
+    expect(lastFrame()).toContain('No knowledge bases to remove');
+  });
+
+  it('Knowledge Base option shows Coming soon when ENABLE_GATED_FEATURES is unset', () => {
+    delete process.env.ENABLE_GATED_FEATURES;
+    const onSelect = vi.fn();
+    const onExit = vi.fn();
+
+    const { lastFrame } = render(
+      <RemoveScreen
+        onSelect={onSelect}
+        onExit={onExit}
+        agentCount={0}
+        harnessCount={0}
+        gatewayCount={0}
+        mcpToolCount={0}
+        memoryCount={0}
+        credentialCount={0}
+        evaluatorCount={0}
+        onlineEvalCount={0}
+        policyEngineCount={0}
+        policyCount={0}
+        configBundleCount={0}
+        runtimeEndpointCount={0}
+        datasetCount={0}
+        knowledgeBaseCount={3}
+        paymentCount={0}
+      />
+    );
+
+    expect(lastFrame()).toContain('Knowledge Base');
+    expect(lastFrame()).toContain('Coming soon');
+    expect(lastFrame()).not.toContain('No knowledge bases to remove');
   });
 });

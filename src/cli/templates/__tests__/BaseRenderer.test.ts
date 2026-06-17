@@ -78,7 +78,7 @@ describe('BaseRenderer', () => {
     expect(mockCopyAndRenderDir).toHaveBeenCalledWith(
       join(tmpDir, 'python', 'http', 'strands', 'base'),
       '/output/app/MyAgent',
-      expect.objectContaining({ projectName: 'MyAgent', Name: 'MyAgent', hasMcp: false })
+      expect.objectContaining({ projectName: 'MyAgent', Name: 'MyAgent' })
     );
   });
 

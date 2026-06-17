@@ -8,6 +8,7 @@ import type {
   ListConfigurationBundleVersionsFilter,
 } from '../../aws/agentcore-config-bundles';
 import { getErrorMessage } from '../../errors';
+import { isGatedFeaturesEnabled } from '../../feature-flags';
 import { deepDiff } from '../../operations/config-bundle/diff-versions';
 import { resolveBundleByName } from '../../operations/config-bundle/resolve-bundle';
 import { requireProject } from '../../tui/guards';
@@ -44,7 +45,7 @@ async function resolveRegion(): Promise<string> {
 // ============================================================================
 
 async function handleVersions(options: {
-  bundle: string;
+  name: string;
   branch?: string;
   latestPerBranch?: boolean;
   createdBy?: string;
@@ -52,7 +53,7 @@ async function handleVersions(options: {
   json?: boolean;
 }) {
   const region = options.region ?? (await resolveRegion());
-  const resolved = await resolveBundleByName(options.bundle, region);
+  const resolved = await resolveBundleByName(options.name, region);
 
   const filter: ListConfigurationBundleVersionsFilter = {};
   if (options.branch) filter.branchName = options.branch;
@@ -78,16 +79,16 @@ async function handleVersions(options: {
   // Sort by creation time, newest first
   allVersions.sort((a, b) => Number(b.versionCreatedAt) - Number(a.versionCreatedAt));
 
-  return { versions: allVersions, bundleName: options.bundle, bundleId: resolved.bundleId };
+  return { versions: allVersions, bundleName: options.name, bundleId: resolved.bundleId };
 }
 
 // ============================================================================
 // Diff
 // ============================================================================
 
-async function handleDiff(options: { bundle: string; from: string; to: string; region?: string }) {
+async function handleDiff(options: { name: string; from: string; to: string; region?: string }) {
   const region = options.region ?? (await resolveRegion());
-  const resolved = await resolveBundleByName(options.bundle, region);
+  const resolved = await resolveBundleByName(options.name, region);
 
   const [fromVersion, toVersion] = await Promise.all([
     getConfigurationBundleVersion({ region, bundleId: resolved.bundleId, versionId: options.from }),
@@ -107,13 +108,13 @@ export const registerConfigBundle = (program: Command) => {
   const cmd = program
     .command('config-bundle')
     .alias('cb')
-    .description('[preview] Manage configuration bundles (use bundle name from agentcore.json, not the ID)');
+    .description('Manage configuration bundles (use bundle name from agentcore.json, not the ID)');
 
   // --- versions ---
   cmd
     .command('versions')
     .description('List version history for a configuration bundle')
-    .requiredOption('--bundle <name>', 'Bundle name as defined in agentcore.json (e.g. "MyBundle")')
+    .requiredOption('--name <name>', 'Bundle name as defined in agentcore.json (e.g. "MyBundle")')
     .option('--branch <name>', 'Filter by branch name')
     .option('--latest-per-branch', 'Show only the latest version per branch')
     .option('--created-by <name>', 'Filter by creator name (e.g. "user", "recommendation")')
@@ -121,7 +122,7 @@ export const registerConfigBundle = (program: Command) => {
     .option('--json', 'Output as JSON')
     .action(
       async (cliOptions: {
-        bundle: string;
+        name: string;
         branch?: string;
         latestPerBranch?: boolean;
         createdBy?: string;
@@ -138,7 +139,7 @@ export const registerConfigBundle = (program: Command) => {
           }
 
           if (result.versions.length === 0) {
-            render(<Text color="yellow">No versions found for bundle &quot;{cliOptions.bundle}&quot;.</Text>);
+            render(<Text color="yellow">No versions found for bundle &quot;{cliOptions.name}&quot;.</Text>);
             return;
           }
 
@@ -199,12 +200,12 @@ export const registerConfigBundle = (program: Command) => {
   cmd
     .command('diff')
     .description('Diff two versions of a configuration bundle (get version IDs from `cb versions`)')
-    .requiredOption('--bundle <name>', 'Bundle name as defined in agentcore.json (e.g. "MyBundle")')
+    .requiredOption('--name <name>', 'Bundle name as defined in agentcore.json (e.g. "MyBundle")')
     .requiredOption('--from <id>', 'Source version ID (from `config-bundle versions --json`)')
     .requiredOption('--to <id>', 'Target version ID (from `config-bundle versions --json`)')
     .option('--region <region>', 'AWS region override')
     .option('--json', 'Output as JSON')
-    .action(async (cliOptions: { bundle: string; from: string; to: string; region?: string; json?: boolean }) => {
+    .action(async (cliOptions: { name: string; from: string; to: string; region?: string; json?: boolean }) => {
       requireProject();
       try {
         const result = await handleDiff(cliOptions);
@@ -258,11 +259,12 @@ export const registerConfigBundle = (program: Command) => {
       }
     });
 
-  // --- create-branch ---
+  // --- create-branch: gated until upstream CFN read-back bug is fixed for non-default branches ---
+  if (!isGatedFeaturesEnabled()) return cmd;
   cmd
     .command('create-branch')
     .description('Create a new branch on an existing configuration bundle')
-    .requiredOption('--bundle <name>', 'Bundle name as defined in agentcore.json (e.g. "MyBundle")')
+    .requiredOption('--name <name>', 'Bundle name as defined in agentcore.json (e.g. "MyBundle")')
     .requiredOption('--branch <name>', 'Name for the new branch')
     .option('--from <versionId>', 'Parent version ID to branch from (defaults to latest version)')
     .option('--commit-message <text>', 'Commit message for the branch point')
@@ -270,7 +272,7 @@ export const registerConfigBundle = (program: Command) => {
     .option('--json', 'Output as JSON')
     .action(
       async (cliOptions: {
-        bundle: string;
+        name: string;
         branch: string;
         from?: string;
         commitMessage?: string;
@@ -280,7 +282,7 @@ export const registerConfigBundle = (program: Command) => {
         requireProject();
         try {
           const region = cliOptions.region ?? (await resolveRegion());
-          const resolved = await resolveBundleByName(cliOptions.bundle, region);
+          const resolved = await resolveBundleByName(cliOptions.name, region);
 
           // Determine parent version
           let parentVersionId = cliOptions.from;
@@ -291,7 +293,7 @@ export const registerConfigBundle = (program: Command) => {
               maxResults: 50,
             });
             if (versions.versions.length === 0) {
-              throw new Error(`No versions found for bundle "${cliOptions.bundle}".`);
+              throw new Error(`No versions found for bundle "${cliOptions.name}".`);
             }
             // Sort descending by creation time to get the latest version
             const sorted = [...versions.versions].sort(
@@ -314,6 +316,7 @@ export const registerConfigBundle = (program: Command) => {
             parentVersionIds: [parentVersionId],
             branchName: cliOptions.branch,
             commitMessage: cliOptions.commitMessage ?? `Create branch ${cliOptions.branch}`,
+            createdBy: { name: 'user' },
           });
 
           if (cliOptions.json) {
@@ -324,7 +327,7 @@ export const registerConfigBundle = (program: Command) => {
           render(
             <Box flexDirection="column">
               <Text bold color="green">
-                Branch &quot;{cliOptions.branch}&quot; created on bundle &quot;{cliOptions.bundle}&quot;
+                Branch &quot;{cliOptions.branch}&quot; created on bundle &quot;{cliOptions.name}&quot;
               </Text>
               <Text>
                 Version: <Text color="green">{result.versionId}</Text>

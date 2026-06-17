@@ -122,7 +122,6 @@ export class ConfigIO {
     const cleaned = { ...data };
     if (cleaned.configBundles?.length === 0) delete (cleaned as Record<string, unknown>).configBundles;
     if (cleaned.abTests?.length === 0) delete (cleaned as Record<string, unknown>).abTests;
-    if (cleaned.httpGateways?.length === 0) delete (cleaned as Record<string, unknown>).httpGateways;
     await this.validateAndWrite(filePath, 'AgentCore Project Config', AgentCoreProjectSpecSchema, cleaned);
   }
 

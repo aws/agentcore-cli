@@ -4,6 +4,7 @@
  * Uses the AgentCore Evaluation DataPlane API (bedrock-agentcore)
  * with direct HTTP requests and SigV4 signing.
  */
+import { JobNotFoundError } from '../../lib';
 import { getCredentialProvider } from './account';
 import { dataPlaneEndpoint } from './stage-endpoint';
 import { Sha256 } from '@aws-crypto/sha256-js';
@@ -93,8 +94,6 @@ export interface CreateABTestOptions {
   variants: ABTestVariant[];
   evaluationConfig: ABTestEvaluationConfig;
   gatewayFilter?: GatewayFilter;
-  trafficAllocationConfig?: TrafficAllocationConfig;
-  maxDurationDays?: number;
   enableOnCreate?: boolean;
 }
 
@@ -130,6 +129,7 @@ export interface GetABTestResult {
   currentRunId?: string;
   stopReason?: string;
   failureReason?: string;
+  errorDetails?: string[];
   startedAt?: string;
   stoppedAt?: string;
   maxDurationExpiresAt?: string;
@@ -146,9 +146,7 @@ export interface UpdateABTestOptions {
   name?: string;
   description?: string;
   variants?: ABTestVariant[];
-  trafficAllocationConfig?: TrafficAllocationConfig;
   evaluationConfig?: ABTestEvaluationConfig;
-  maxDurationDays?: number;
   executionStatus?: 'PAUSED' | 'RUNNING' | 'STOPPED';
   roleArn?: string;
 }
@@ -247,7 +245,11 @@ async function signedRequestToEndpoint(
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(`ABTest API error (${response.status}): ${errorBody}`);
+    const message = `ABTest API error (${response.status}): ${errorBody}`;
+    if (response.status === 404) {
+      throw new JobNotFoundError(message, { errorSource: 'service' });
+    }
+    throw new Error(message);
   }
 
   if (response.status === 204) return {};
@@ -273,8 +275,6 @@ export async function createABTest(options: CreateABTestOptions): Promise<Create
     evaluationConfig: options.evaluationConfig,
     ...(options.description && { description: options.description }),
     ...(options.gatewayFilter && { gatewayFilter: options.gatewayFilter }),
-    ...(options.trafficAllocationConfig && { trafficAllocationConfig: options.trafficAllocationConfig }),
-    ...(options.maxDurationDays !== undefined && { maxDurationDays: options.maxDurationDays }),
     ...(options.enableOnCreate !== undefined && { enableOnCreate: options.enableOnCreate }),
   });
 
@@ -304,9 +304,7 @@ export async function updateABTest(options: UpdateABTestOptions): Promise<Update
   if (options.name !== undefined) body.name = options.name;
   if (options.description !== undefined) body.description = options.description;
   if (options.variants !== undefined) body.variants = options.variants;
-  if (options.trafficAllocationConfig !== undefined) body.trafficAllocationConfig = options.trafficAllocationConfig;
   if (options.evaluationConfig !== undefined) body.evaluationConfig = options.evaluationConfig;
-  if (options.maxDurationDays !== undefined) body.maxDurationDays = options.maxDurationDays;
   if (options.executionStatus !== undefined) body.executionStatus = options.executionStatus;
   if (options.roleArn !== undefined) body.roleArn = options.roleArn;
 

@@ -1,4 +1,5 @@
 // Tests for invoke CLI mode — exitCode propagation and flag validation
+import { isPreviewEnabled } from '../../../feature-flags';
 import { handleInvoke } from '../action.js';
 import { registerInvoke } from '../command.js';
 import { resolvePrompt } from '../resolve-prompt.js';
@@ -126,5 +127,29 @@ describe('invoke CLI mode — exitCode propagation', () => {
     await program.parseAsync(['invoke', '--json', 'run something'], { from: 'user' }).catch(_noop);
 
     expect(exitCodes[0]).toBe(1);
+  });
+
+  it('emits a JSON error envelope (not console.error) for bad --additional-params in --json mode', async () => {
+    // --additional-params is preview-gated; enable preview for this case.
+    vi.mocked(isPreviewEnabled).mockReturnValue(true);
+    const logged: string[] = [];
+    const erred: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => logged.push(args.join(' ')));
+    vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => erred.push(args.join(' ')));
+
+    const program = new Command();
+    program.exitOverride();
+    registerInvoke(program);
+
+    await program
+      .parseAsync(['invoke', '--harness', 'h', '--additional-params', '{not json}', '--json', 'hi'], { from: 'user' })
+      .catch(_noop);
+
+    expect(exitCodes[0]).toBe(1);
+    const out = logged.join('');
+    expect(out).toContain('"success":false');
+    expect(out).toContain('--additional-params must be a valid JSON object');
+    // In --json mode the error must NOT go to console.error (would break JSON consumers).
+    expect(erred.join('')).not.toContain('--additional-params');
   });
 });

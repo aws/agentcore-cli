@@ -118,10 +118,13 @@ export async function renderTUI(options: RenderTUIOptions = {}) {
  */
 export function setupAltScreenCleanup() {
   const cleanup = () => {
-    if (!process.stdout.isTTY) return;
-    if (inAltScreen) {
-      process.stdout.write(EXIT_ALT_SCREEN);
+    // Only emit terminal control sequences if we actually entered the alt screen (i.e. a TUI ran).
+    // Plain CLI/JSON commands never hid the cursor, so writing SHOW_CURSOR here would leak the
+    // `\x1b[?25h` escape into stdout and corrupt piped/redirected output (e.g. `... --json | jq`).
+    if (!inAltScreen) {
+      return;
     }
+    process.stdout.write(EXIT_ALT_SCREEN);
     process.stdout.write(SHOW_CURSOR);
   };
 

@@ -4,6 +4,7 @@ import { ConfirmReview, Panel, Screen, StepIndicator, TextInput, WizardSelect } 
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
+import { COMPONENT_KEY_ERROR, COMPONENT_KEY_PATTERN } from './constants';
 import type { AddConfigBundleConfig, ComponentType, DeployedComponent } from './types';
 import { COMPONENT_TYPE_OPTIONS, CONFIG_BUNDLE_STEP_LABELS } from './types';
 import { useAddConfigBundleWizard } from './useAddConfigBundleWizard';
@@ -15,6 +16,10 @@ interface AddConfigBundleScreenProps {
   onExit: () => void;
   existingBundleNames: string[];
   deployedComponents: DeployedComponent[];
+}
+
+function validateComponentArn(value: string): string | true {
+  return COMPONENT_KEY_PATTERN.test(value) || COMPONENT_KEY_ERROR;
 }
 
 function validateConfigJson(value: string): string | true {
@@ -71,6 +76,7 @@ export function AddConfigBundleScreen({
   const isDescriptionStep = wizard.step === 'description';
   const isComponentTypeStep = wizard.step === 'componentType';
   const isComponentSelectStep = wizard.step === 'componentSelect';
+  const isComponentArnEntryStep = wizard.step === 'componentArnEntry';
   const isConfigurationStep = wizard.step === 'configuration';
   const isAddAnotherStep = wizard.step === 'addAnother';
   const isBranchNameStep = wizard.step === 'branchName';
@@ -183,6 +189,24 @@ export function AddConfigBundleScreen({
             <Text dimColor>Deploy your resources first with `agentcore deploy`, then try again.</Text>
             <Text dimColor>Press Esc to go back.</Text>
           </Box>
+        )}
+
+        {isComponentArnEntryStep && (
+          <>
+            <Box flexDirection="column" marginBottom={1}>
+              <Text>Enter the component ARN</Text>
+              <Text dimColor>The resource this configuration applies to (e.g. a gateway target).</Text>
+            </Box>
+            <TextInput
+              key="componentArnEntry"
+              prompt="Component ARN"
+              placeholder="arn:aws:bedrock-agentcore:us-west-2:123456789012:gateway-target/orders-Tg9xK2"
+              initialValue=""
+              onSubmit={wizard.setCustomArn}
+              onCancel={() => wizard.goBack()}
+              customValidation={validateComponentArn}
+            />
+          </>
         )}
 
         {isConfigurationStep && (

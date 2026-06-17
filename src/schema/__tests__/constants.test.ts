@@ -1,4 +1,5 @@
 import {
+  LANGUAGE_FRAMEWORK_MATRIX,
   ModelProviderSchema,
   NetworkModeSchema,
   NodeRuntimeSchema,
@@ -8,8 +9,10 @@ import {
   RuntimeVersionSchema,
   SDKFrameworkSchema,
   TargetLanguageSchema,
+  getFrameworksForLanguage,
   getSupportedFrameworksForProtocol,
   getSupportedModelProviders,
+  isFrameworkSupportedForLanguage,
   isFrameworkSupportedForProtocol,
   isModelProviderSupported,
   isReservedProjectName,
@@ -172,6 +175,54 @@ describe('getSupportedFrameworksForProtocol', () => {
     const frameworks = getSupportedFrameworksForProtocol('A2A');
     expect(frameworks).toContain('Strands');
     expect(frameworks.length).toBeGreaterThan(0);
+  });
+});
+
+describe('LANGUAGE_FRAMEWORK_MATRIX', () => {
+  it('defines Python and TypeScript', () => {
+    expect(Object.keys(LANGUAGE_FRAMEWORK_MATRIX)).toEqual(expect.arrayContaining(['Python', 'TypeScript']));
+  });
+
+  it('Python supports the open-source frameworks but not Vercel AI (TypeScript-only)', () => {
+    expect(LANGUAGE_FRAMEWORK_MATRIX.Python).toEqual(
+      expect.arrayContaining(['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents'])
+    );
+    expect(LANGUAGE_FRAMEWORK_MATRIX.Python).not.toContain('VercelAI');
+  });
+
+  it('TypeScript supports only Strands and Vercel AI', () => {
+    expect([...LANGUAGE_FRAMEWORK_MATRIX.TypeScript].sort()).toEqual(['Strands', 'VercelAI']);
+  });
+});
+
+describe('getFrameworksForLanguage', () => {
+  it('returns Python frameworks without Vercel AI', () => {
+    const frameworks = getFrameworksForLanguage('Python');
+    expect(frameworks).toContain('Strands');
+    expect(frameworks).not.toContain('VercelAI');
+  });
+
+  it('returns TypeScript frameworks including Vercel AI', () => {
+    const frameworks = getFrameworksForLanguage('TypeScript');
+    expect(frameworks).toContain('Strands');
+    expect(frameworks).toContain('VercelAI');
+  });
+});
+
+describe('isFrameworkSupportedForLanguage', () => {
+  it('returns true for supported combinations', () => {
+    expect(isFrameworkSupportedForLanguage('Python', 'Strands')).toBe(true);
+    expect(isFrameworkSupportedForLanguage('TypeScript', 'VercelAI')).toBe(true);
+    expect(isFrameworkSupportedForLanguage('TypeScript', 'Strands')).toBe(true);
+  });
+
+  it('returns false for Python + Vercel AI (the bug being fixed)', () => {
+    expect(isFrameworkSupportedForLanguage('Python', 'VercelAI')).toBe(false);
+  });
+
+  it('returns false for TypeScript + a Python-only framework', () => {
+    expect(isFrameworkSupportedForLanguage('TypeScript', 'LangChain_LangGraph')).toBe(false);
+    expect(isFrameworkSupportedForLanguage('TypeScript', 'GoogleADK')).toBe(false);
   });
 });
 

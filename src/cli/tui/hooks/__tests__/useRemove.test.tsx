@@ -81,6 +81,15 @@ vi.mock('../../../logging', () => ({
   })),
 }));
 
+// Mock the telemetry wrapper so it just runs the inner fn. Without this, the real
+// withCommandRunTelemetry awaits getTelemetryClient()/flush(), which never settles
+// in tests — leaving useRemoveResource stuck at isLoading:true with a null result.
+vi.mock('../../../telemetry/cli-command-run.js', () => ({
+  withCommandRunTelemetry: vi.fn((_command: string, _attrs: unknown, fn: (recorder: unknown) => unknown) =>
+    fn({ set: vi.fn(), get: vi.fn(() => ({})) })
+  ),
+}));
+
 function delay(ms = 100) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }

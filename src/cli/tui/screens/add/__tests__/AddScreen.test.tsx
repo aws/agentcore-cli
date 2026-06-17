@@ -1,9 +1,18 @@
 import { AddScreen } from '../AddScreen.js';
 import { render } from 'ink-testing-library';
 import React from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('AddScreen', () => {
+  const originalGate = process.env.ENABLE_GATED_FEATURES;
+  beforeEach(() => {
+    process.env.ENABLE_GATED_FEATURES = '1';
+  });
+  afterEach(() => {
+    if (originalGate === undefined) delete process.env.ENABLE_GATED_FEATURES;
+    else process.env.ENABLE_GATED_FEATURES = originalGate;
+  });
+
   it('gateway and gateway-target options are present and not disabled', () => {
     const onSelect = vi.fn();
     const onExit = vi.fn();

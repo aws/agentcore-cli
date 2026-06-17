@@ -108,9 +108,11 @@ export function TextInput({
   // Get display value (masked or plain)
   const displayValue = mask ? mask.repeat(value.length) : value;
 
-  // Simple split for cursor positioning (used by both modes)
+  // Simple split for cursor positioning (used by both modes).
+  // When the input is empty, the cursor sits over the placeholder's first character so it
+  // stays visible (the dim placeholder remainder below renders placeholder.slice(1)).
   const beforeCursorFull = displayValue.slice(0, cursor);
-  const charAtCursorFull = displayValue[cursor] ?? ' ';
+  const charAtCursorFull = displayValue[cursor] ?? (!value && placeholder ? (placeholder[0] ?? ' ') : ' ');
   const afterCursorFull = displayValue.slice(cursor + 1);
 
   if (expandable) {

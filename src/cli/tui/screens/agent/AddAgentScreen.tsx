@@ -599,7 +599,10 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
           resetByoFilesystemState();
         }
         // Config bundle has no sub-steps — set flag immediately
-        setByoConfig(c => ({ ...c, withConfigBundle: selected.has('configBundle') || undefined }));
+        setByoConfig(c => ({
+          ...c,
+          withConfigBundle: selected.has('configBundle') || undefined,
+        }));
         // Navigate to first advanced sub-step (steps memo hasn't updated yet)
         setTimeout(() => {
           if (selected.has('dockerfile') && byoConfig.buildType === 'Container') {

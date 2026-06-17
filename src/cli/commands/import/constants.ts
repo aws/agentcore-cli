@@ -11,6 +11,7 @@ export const CFN_RESOURCE_IDENTIFIERS: Record<string, string[]> = {
   'AWS::BedrockAgentCore::GatewayTarget': ['GatewayIdentifier', 'TargetId'],
   'AWS::BedrockAgentCore::Evaluator': ['EvaluatorId'],
   'AWS::BedrockAgentCore::OnlineEvaluationConfig': ['OnlineEvaluationConfigId'],
+  'AWS::BedrockAgentCore::Harness': ['HarnessId'],
 };
 
 /**
@@ -31,6 +32,7 @@ export const PRIMARY_RESOURCE_TYPES = [
   'AWS::BedrockAgentCore::CodeInterpreterCustom',
   'AWS::BedrockAgentCore::Policy',
   'AWS::BedrockAgentCore::PolicyEngine',
+  'AWS::BedrockAgentCore::Harness',
 ];
 
 /**

@@ -35,7 +35,7 @@ const emptyTargets: AgentCoreGatewayTarget[] = [];
 describe('toGatewaySpec – authorizer type mapping', () => {
   it('NONE authorizerType: no authorizerConfiguration in output', () => {
     const gw = makeGateway({ authorizerType: 'NONE' });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result.authorizerType).toBe('NONE');
     expect(result).not.toHaveProperty('authorizerConfiguration');
@@ -43,7 +43,7 @@ describe('toGatewaySpec – authorizer type mapping', () => {
 
   it('AWS_IAM authorizerType: maps to AWS_IAM, no authorizerConfiguration', () => {
     const gw = makeGateway({ authorizerType: 'AWS_IAM' });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result.authorizerType).toBe('AWS_IAM');
     expect(result).not.toHaveProperty('authorizerConfiguration');
@@ -61,7 +61,7 @@ describe('toGatewaySpec – authorizer type mapping', () => {
         },
       },
     });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result.authorizerType).toBe('CUSTOM_JWT');
     expect(result.authorizerConfiguration).toBeDefined();
@@ -100,7 +100,7 @@ describe('toGatewaySpec – authorizer type mapping', () => {
         },
       },
     });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     const claims = result.authorizerConfiguration!.customJwtAuthorizer!.customClaims!;
     expect(claims).toHaveLength(2);
@@ -130,7 +130,7 @@ describe('toGatewaySpec – authorizer type mapping', () => {
         },
       },
     });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     const jwt = result.authorizerConfiguration!.customJwtAuthorizer!;
     expect(jwt).not.toHaveProperty('allowedAudience');
@@ -141,9 +141,8 @@ describe('toGatewaySpec – authorizer type mapping', () => {
   it('missing authorizerType: defaults to NONE', () => {
     const gw = makeGateway();
     // Simulate undefined authorizerType by deleting after construction
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     delete (gw as any).authorizerType;
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result.authorizerType).toBe('NONE');
     expect(result).not.toHaveProperty('authorizerConfiguration');
@@ -159,7 +158,7 @@ describe('toGatewaySpec – semantic search', () => {
     const gw = makeGateway({
       protocolConfiguration: { mcp: { searchType: 'SEMANTIC' } },
     });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result.enableSemanticSearch).toBe(true);
   });
@@ -168,14 +167,14 @@ describe('toGatewaySpec – semantic search', () => {
     const gw = makeGateway({
       protocolConfiguration: { mcp: { searchType: 'KEYWORD' } },
     });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result.enableSemanticSearch).toBe(false);
   });
 
   it('protocolConfiguration missing: enableSemanticSearch is false', () => {
     const gw = makeGateway();
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result.enableSemanticSearch).toBe(false);
   });
@@ -188,21 +187,21 @@ describe('toGatewaySpec – semantic search', () => {
 describe('toGatewaySpec – exception level', () => {
   it('exceptionLevel=DEBUG: maps to DEBUG', () => {
     const gw = makeGateway({ exceptionLevel: 'DEBUG' });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result.exceptionLevel).toBe('DEBUG');
   });
 
   it('exceptionLevel undefined: maps to NONE', () => {
     const gw = makeGateway({ exceptionLevel: undefined });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result.exceptionLevel).toBe('NONE');
   });
 
   it('exceptionLevel other value: maps to NONE', () => {
     const gw = makeGateway({ exceptionLevel: 'VERBOSE' });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result.exceptionLevel).toBe('NONE');
   });
@@ -220,7 +219,7 @@ describe('toGatewaySpec – policy engine', () => {
         mode: 'ENFORCE',
       },
     });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result.policyEngineConfiguration).toBeDefined();
     expect(result.policyEngineConfiguration!.policyEngineName).toBe('my_policy_engine');
@@ -229,7 +228,7 @@ describe('toGatewaySpec – policy engine', () => {
 
   it('policyEngineConfiguration absent: field omitted', () => {
     const gw = makeGateway();
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result).not.toHaveProperty('policyEngineConfiguration');
   });
@@ -242,7 +241,7 @@ describe('toGatewaySpec – policy engine', () => {
 describe('toGatewaySpec – other fields', () => {
   it('resourceName is always set to gateway.name', () => {
     const gw = makeGateway({ name: 'AwsGatewayName' });
-    const result = toGatewaySpec(gw, emptyTargets, 'local_name');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'local_name' });
 
     expect(result.resourceName).toBe('AwsGatewayName');
     expect(result.name).toBe('local_name');
@@ -250,49 +249,49 @@ describe('toGatewaySpec – other fields', () => {
 
   it('description present: included in output', () => {
     const gw = makeGateway({ description: 'My gateway description' });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result.description).toBe('My gateway description');
   });
 
   it('description undefined: omitted from output', () => {
     const gw = makeGateway({ description: undefined });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result).not.toHaveProperty('description');
   });
 
   it('tags present with entries: included in output', () => {
     const gw = makeGateway({ tags: { env: 'prod', team: 'platform' } });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result.tags).toEqual({ env: 'prod', team: 'platform' });
   });
 
   it('tags empty object: omitted from output', () => {
     const gw = makeGateway({ tags: {} });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result).not.toHaveProperty('tags');
   });
 
   it('tags undefined: omitted from output', () => {
     const gw = makeGateway({ tags: undefined });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result).not.toHaveProperty('tags');
   });
 
   it('executionRoleArn: mapped from gateway.roleArn', () => {
     const gw = makeGateway({ roleArn: 'arn:aws:iam::123456789012:role/GatewayRole' });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result.executionRoleArn).toBe('arn:aws:iam::123456789012:role/GatewayRole');
   });
 
   it('roleArn undefined: executionRoleArn omitted from output', () => {
     const gw = makeGateway({ roleArn: undefined });
-    const result = toGatewaySpec(gw, emptyTargets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets: emptyTargets, localName: 'my_gw' });
 
     expect(result).not.toHaveProperty('executionRoleArn');
   });
@@ -302,7 +301,7 @@ describe('toGatewaySpec – other fields', () => {
       { name: 'target1', targetType: 'mcpServer', endpoint: 'https://mcp.example.com' },
     ];
     const gw = makeGateway();
-    const result = toGatewaySpec(gw, targets, 'my_gw');
+    const result = toGatewaySpec({ gateway: gw, targets, localName: 'my_gw' });
 
     expect(result.targets).toBe(targets);
     expect(result.targets).toHaveLength(1);

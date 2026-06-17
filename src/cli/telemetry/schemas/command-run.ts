@@ -18,6 +18,7 @@ import {
   FilterType,
   GatewayTargetHost,
   GatewayTargetType,
+  JobType,
   MemoryType,
   Mode,
   ModelProvider,
@@ -28,6 +29,7 @@ import {
   PolicyValidationMode,
   RefType,
   ResourceType,
+  SkillSourceType,
   UiMode,
   safeSchema,
 } from './common-shapes.js';
@@ -92,10 +94,19 @@ const AddGatewayTargetAttrs = safeSchema({
 
 const AddPolicyEngineAttrs = safeSchema({ attach_gateway_count: Count, attach_mode: AttachMode });
 
+const AddKnowledgeBaseAttrs = safeSchema({
+  data_source_count: Count,
+  has_description: z.boolean(),
+  has_gateway: z.boolean(),
+  is_append: z.boolean(),
+});
+
 const AddPolicyAttrs = safeSchema({
   policy_attr_source_type: PolicyAttrSourceType,
   policy_validation_mode: PolicyValidationMode,
 });
+
+const AddSkillAttrs = safeSchema({ skill_source_type: SkillSourceType });
 
 const DeployAttrs = safeSchema({
   runtime_count: Count,
@@ -155,7 +166,24 @@ const RunEvalAttrs = safeSchema({
   has_expected_response: z.boolean(),
 });
 
+const RunIngestAttrs = safeSchema({
+  data_source_count: Count,
+});
+
 const FetchAccessAttrs = safeSchema({ resource_type: ResourceType });
+
+/**
+ * Async job commands (recommendation + batch-evaluation), keyed by verb with job_type to disambiguate.
+ * safeSchema only permits required enum/boolean/number/literal fields, so per-type detail enums
+ * (recommendation_kind, batch_eval_source, …) are recorded via the shared ATTRIBUTES set on the
+ * recorder when present rather than as required fields here.
+ */
+const RunJobAttrs = safeSchema({
+  job_type: JobType,
+  has_wait: z.boolean(),
+});
+
+const JobTypeOnlyAttrs = safeSchema({ job_type: JobType });
 
 const UpdateAttrs = safeSchema({ is_dry_run: z.boolean() });
 
@@ -165,6 +193,18 @@ const FeedbackAttrs = safeSchema({
 });
 
 const PauseResumeOnlineEvalAttrs = safeSchema({ ref_type: RefType });
+
+const AddOnlineInsightsAttrs = safeSchema({ insights_count: Count, enable_on_create: z.boolean() });
+
+const ExportHarnessAttrs = safeSchema({
+  build_type: BuildType,
+  model_provider: ModelProvider,
+  has_memory: z.boolean(),
+  has_gateway: z.boolean(),
+  has_container: z.boolean(),
+  has_execution_limits: z.boolean(),
+  notes_count: Count,
+});
 
 const NoAttrs = safeSchema({});
 
@@ -180,13 +220,17 @@ export const COMMAND_SCHEMAS = {
   'add.credential': AddCredentialAttrs,
   'add.evaluator': AddEvaluatorAttrs,
   'add.online-eval': AddOnlineEvalAttrs,
+  'add.online-insights': AddOnlineInsightsAttrs,
   'add.gateway': AddGatewayAttrs,
   'add.gateway-target': AddGatewayTargetAttrs,
+  'add.web-search': NoAttrs,
   'add.policy-engine': AddPolicyEngineAttrs,
   'add.policy': AddPolicyAttrs,
   'add.runtime-endpoint': NoAttrs,
+  'add.knowledge-base': AddKnowledgeBaseAttrs,
   'add.payment-manager': NoAttrs,
   'add.payment-connector': NoAttrs,
+  'add.skill': AddSkillAttrs,
   deploy: DeployAttrs,
 
   // dev / invoke / exec
@@ -199,11 +243,22 @@ export const COMMAND_SCHEMAS = {
   logs: LogsAttrs,
   'logs.evals': LogsEvalsAttrs,
   'run.eval': RunEvalAttrs,
+  'run.job': RunJobAttrs,
+  'job.history': JobTypeOnlyAttrs,
+  'job.get': JobTypeOnlyAttrs,
+  'archive.job': JobTypeOnlyAttrs,
+  'stop.job': JobTypeOnlyAttrs,
+  'run.ingest': RunIngestAttrs,
+  'pause.job': JobTypeOnlyAttrs,
+  'resume.job': JobTypeOnlyAttrs,
+  'promote.job': JobTypeOnlyAttrs,
   'fetch.access': FetchAccessAttrs,
   feedback: FeedbackAttrs,
   update: UpdateAttrs,
   'pause.online-eval': PauseResumeOnlineEvalAttrs,
   'resume.online-eval': PauseResumeOnlineEvalAttrs,
+  'pause.online-insights': PauseResumeOnlineEvalAttrs,
+  'resume.online-insights': PauseResumeOnlineEvalAttrs,
   'traces.list': NoAttrs,
   'traces.get': NoAttrs,
   'evals.history': NoAttrs,
@@ -225,21 +280,25 @@ export const COMMAND_SCHEMAS = {
   'remove.credential': NoAttrs,
   'remove.evaluator': NoAttrs,
   'remove.online-eval': NoAttrs,
+  'remove.online-insights': NoAttrs,
   'remove.gateway': NoAttrs,
   'remove.gateway-target': NoAttrs,
+  'remove.web-search': NoAttrs,
   'remove.policy-engine': NoAttrs,
   'remove.policy': NoAttrs,
   'remove.runtime-endpoint': NoAttrs,
   'remove.config-bundle': NoAttrs,
-  'remove.ab-test': NoAttrs,
+  'remove.knowledge-base': NoAttrs,
   'dataset.download': NoAttrs,
   'dataset.publish-version': NoAttrs,
   'dataset.remove-version': NoAttrs,
   'remove.payment-manager': NoAttrs,
   'remove.payment-connector': NoAttrs,
+  'remove.skill': NoAttrs,
   'telemetry.disable': NoAttrs,
   'telemetry.enable': NoAttrs,
   'telemetry.status': NoAttrs,
+  'export.harness': ExportHarnessAttrs,
 } as const satisfies Record<string, z.ZodObject<z.ZodRawShape>>;
 
 // ---------------------------------------------------------------------------

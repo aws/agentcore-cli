@@ -25,8 +25,8 @@ const VALID_RESOURCE_TYPES = [
   'policy-engine',
   'policy',
   'config-bundle',
-  'ab-test',
   'dataset',
+  'knowledge-base',
   ...(isPreviewEnabled() ? (['harness'] as const) : []),
 ] as const;
 const VALID_STATES = ['deployed', 'local-only', 'pending-removal'] as const;
@@ -37,12 +37,13 @@ interface StatusCliOptions {
   type?: string;
   state?: string;
   runtime?: string;
+  name?: string;
   json?: boolean;
 }
 
 function filterResources(
   resources: ResourceStatusEntry[],
-  options: { type?: string; state?: string; runtime?: string }
+  options: { type?: string; state?: string; runtime?: string; name?: string }
 ): ResourceStatusEntry[] {
   let filtered = resources;
 
@@ -58,6 +59,13 @@ function filterResources(
     filtered = filtered.filter(r => r.resourceType !== 'agent' || r.name === options.runtime);
   }
 
+  // --name drills into a single resource by name. It's meant for knowledge-base
+  // (paired with --type knowledge-base), but a bare --name still narrows the list
+  // by name across all types, which is sensible behaviour.
+  if (options.name) {
+    filtered = filtered.filter(r => r.name === options.name);
+  }
+
   return filtered;
 }
 
@@ -71,6 +79,7 @@ export const registerStatus = (program: Command) => {
     .option('--type <type>', `Filter by resource type (${VALID_RESOURCE_TYPES.join(', ')})`)
     .option('--state <state>', 'Filter by deployment state (deployed, local-only, pending-removal)')
     .option('--runtime <name>', 'Filter to a specific runtime')
+    .option('--name <name>', 'Show details for a single resource by name (knowledge-base)')
     .option('--json', 'Output as JSON')
     .action(async (cliOptions: StatusCliOptions) => {
       requireProject();
@@ -139,7 +148,12 @@ export const registerStatus = (program: Command) => {
         // Default path: show all resource types with deployment state
         const result = await withCommandRunTelemetry('status', telemetryAttrs, async () => {
           const context = await loadStatusConfig();
-          return handleProjectStatus(context, { targetName: cliOptions.target });
+          // --name drives the KB drill-down (full block) vs the default summary
+          // line. Scope it to KB filtering: only thread it when the user hasn't
+          // narrowed to a different resource type.
+          const knowledgeBaseName =
+            cliOptions.name && (!cliOptions.type || cliOptions.type === 'knowledge-base') ? cliOptions.name : undefined;
+          return handleProjectStatus(context, { targetName: cliOptions.target, knowledgeBaseName });
         });
 
         if (!result.success) {
@@ -168,8 +182,8 @@ export const registerStatus = (program: Command) => {
         const policyEngines = filtered.filter(r => r.resourceType === 'policy-engine');
         const policies = filtered.filter(r => r.resourceType === 'policy');
         const configBundles = filtered.filter(r => r.resourceType === 'config-bundle');
-        const abTests = filtered.filter(r => r.resourceType === 'ab-test');
         const datasets = filtered.filter(r => r.resourceType === 'dataset');
+        const knowledgeBases = filtered.filter(r => r.resourceType === 'knowledge-base');
         const harnesses = filtered.filter(r => r.resourceType === 'harness');
         const payments = filtered.filter(r => r.resourceType === 'payment');
         // TODO: Add http-gateway resource type when diffResourceSet for HTTP gateways is added to action.ts
@@ -314,22 +328,6 @@ export const registerStatus = (program: Command) => {
               </Box>
             )}
 
-            {abTests.length > 0 && (
-              <Box flexDirection="column" marginTop={1}>
-                <Text bold>AB Tests</Text>
-                {abTests.map(entry => (
-                  <Box key={`${entry.resourceType}-${entry.name}`} flexDirection="column">
-                    <ResourceEntry entry={entry} />
-                    {entry.invocationUrl && (
-                      <Text dimColor>
-                        {'  '}Invocation URL: {entry.invocationUrl}
-                      </Text>
-                    )}
-                  </Box>
-                ))}
-              </Box>
-            )}
-
             {datasets.length > 0 && (
               <Box flexDirection="column" marginTop={1}>
                 <Text bold>Datasets</Text>
@@ -378,6 +376,15 @@ export const registerStatus = (program: Command) => {
                       )}
                     </Box>
                   ))}
+              </Box>
+            )}
+
+            {knowledgeBases.length > 0 && (
+              <Box flexDirection="column" marginTop={1}>
+                <Text bold>Knowledge Bases</Text>
+                {knowledgeBases.map(entry => (
+                  <ResourceEntry key={`${entry.resourceType}-${entry.name}`} entry={entry} />
+                ))}
               </Box>
             )}
 

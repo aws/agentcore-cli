@@ -1,8 +1,8 @@
 import type {
-  RecommendationInputSourceKind,
+  RecommendationInputSource as RecommendationInputSourceKind,
   RecommendationType,
-  TraceSourceKind,
-} from '../../../operations/recommendation';
+  RecommendationTraceSource as TraceSourceKind,
+} from '../../../operations/jobs';
 import type { RecommendationStep, RecommendationWizardConfig } from './types';
 import { DEFAULT_LOOKBACK_DAYS } from './types';
 import { useCallback, useState } from 'react';
@@ -50,6 +50,7 @@ function getAllSteps(
     steps.push('days');
   }
 
+  steps.push('kms-key-arn');
   steps.push('confirm');
   return steps;
 }
@@ -70,6 +71,7 @@ function getDefaultConfig(): RecommendationWizardConfig {
     bundleFields: [],
     systemPromptJsonPath: '',
     toolDescJsonPaths: [],
+    kmsKeyArn: '',
   };
 }
 
@@ -205,6 +207,14 @@ export function useRecommendationWizard() {
     [advance]
   );
 
+  const setKmsKeyArn = useCallback(
+    (kmsKeyArn: string) => {
+      setConfig(c => ({ ...c, kmsKeyArn }));
+      advance('kms-key-arn');
+    },
+    [advance]
+  );
+
   const reset = useCallback(() => {
     setConfig(getDefaultConfig());
     setStep('type');
@@ -227,6 +237,7 @@ export function useRecommendationWizard() {
     setTraceSource,
     setDays,
     setSessions,
+    setKmsKeyArn,
     reset,
   };
 }

@@ -17,8 +17,61 @@ export const GatewayTargetTypeSchema = z.enum([
   'smithyModel',
   'apiGateway',
   'lambdaFunctionArn',
+  'httpRuntime',
+  'connector',
+  'passthrough',
+  'webSearch',
 ]);
 export type GatewayTargetType = z.infer<typeof GatewayTargetTypeSchema>;
+
+/**
+ * Target types that use the non-MCP (HTTP) protocol.
+ * These targets require a gateway with protocolType: "None".
+ */
+export const NON_MCP_TARGET_TYPES: readonly GatewayTargetType[] = ['httpRuntime', 'passthrough'] as const;
+
+/**
+ * Target types that use the MCP protocol.
+ */
+export const MCP_TARGET_TYPES: readonly GatewayTargetType[] = [
+  'lambda',
+  'mcpServer',
+  'openApiSchema',
+  'smithyModel',
+  'apiGateway',
+  'lambdaFunctionArn',
+] as const;
+
+// ============================================================================
+// Connector (managed-service gateway target)
+// ============================================================================
+
+/**
+ * Managed-service connector identifiers. The L3 maps each one to an operation
+ * name + Enabled list via CONNECTOR_DEFAULTS.
+ *
+ * Spec note: the original DevEx doc (cli-knowledge-bases-devex.md) uses
+ * `agentic-retrieve`, but the service accepts `bedrock-agentic-retrieve`. The
+ * latter is canonical.
+ */
+export const CONNECTOR_ID = {
+  BEDROCK_KNOWLEDGE_BASES: 'bedrock-knowledge-bases',
+  BEDROCK_AGENTIC_RETRIEVE: 'bedrock-agentic-retrieve',
+} as const;
+export const CONNECTOR_ID_VALUES = [
+  CONNECTOR_ID.BEDROCK_KNOWLEDGE_BASES,
+  CONNECTOR_ID.BEDROCK_AGENTIC_RETRIEVE,
+] as const;
+export const ConnectorIdSchema = z.enum(CONNECTOR_ID_VALUES);
+export type ConnectorId = z.infer<typeof ConnectorIdSchema>;
+
+/**
+ * Real Bedrock Knowledge Base IDs are 10 uppercase alphanumeric chars.
+ * KB names follow the standard primitive-name shape (1-48 chars, starts with a letter).
+ * The two formats can never collide, so a connector target's `knowledgeBaseId`
+ * field is unambiguously a project KB name or a literal external KB ID.
+ */
+export const REAL_KB_ID_PATTERN = /^[A-Z0-9]{10}$/;
 
 // ============================================================================
 // Gateway Authorization Schemas
@@ -26,7 +79,7 @@ export type GatewayTargetType = z.infer<typeof GatewayTargetTypeSchema>;
 // Auth schemas (GatewayAuthorizerTypeSchema, CustomJwtAuthorizerConfigSchema, etc.)
 // are defined in ./auth.ts and exported via the barrel (index.ts).
 
-export const OutboundAuthTypeSchema = z.enum(['OAUTH', 'API_KEY', 'NONE']);
+export const OutboundAuthTypeSchema = z.enum(['OAUTH', 'API_KEY', 'NONE', 'GATEWAY_IAM_ROLE', 'JWT_PASSTHROUGH']);
 export type OutboundAuthType = z.infer<typeof OutboundAuthTypeSchema>;
 
 export const OutboundAuthSchema = z
@@ -34,6 +87,8 @@ export const OutboundAuthSchema = z
     type: OutboundAuthTypeSchema.default('NONE'),
     credentialName: z.string().min(1).optional(),
     scopes: z.array(z.string()).optional(),
+    service: z.string().min(1).max(64).optional(),
+    region: z.string().min(1).max(32).optional(),
   })
   .strict();
 
@@ -60,6 +115,17 @@ export const TARGET_TYPE_AUTH_CONFIG: Record<
   mcpServer: { authRequired: false, validAuthTypes: ['OAUTH', 'NONE'], iamRoleFallback: false },
   lambda: { authRequired: false, validAuthTypes: ['OAUTH', 'NONE'], iamRoleFallback: true },
   lambdaFunctionArn: { authRequired: false, validAuthTypes: ['OAUTH', 'NONE'], iamRoleFallback: true },
+  httpRuntime: { authRequired: false, validAuthTypes: ['OAUTH', 'NONE'], iamRoleFallback: true },
+  // Connector targets call the underlying managed service (Bedrock KB, etc.)
+  // via the gateway's IAM role. No outbound auth applies.
+  connector: { authRequired: false, validAuthTypes: [], iamRoleFallback: true },
+  passthrough: {
+    authRequired: true,
+    validAuthTypes: ['GATEWAY_IAM_ROLE', 'OAUTH', 'JWT_PASSTHROUGH'],
+    iamRoleFallback: false,
+  },
+  // Amazon Web Search is invoked via the gateway's IAM role. No outbound auth.
+  webSearch: { authRequired: false, validAuthTypes: [], iamRoleFallback: true },
 };
 
 // ============================================================================
@@ -325,6 +391,50 @@ export const SchemaSourceSchema = z.union([
 export type SchemaSource = z.infer<typeof SchemaSourceSchema>;
 
 // ============================================================================
+// HTTP Runtime Configuration
+// ============================================================================
+
+export const HttpRuntimeConfigSchema = z
+  .object({
+    runtime: z.string().min(1),
+    runtimeEndpoint: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type HttpRuntimeConfig = z.infer<typeof HttpRuntimeConfigSchema>;
+
+// ============================================================================
+// Passthrough Target Configuration
+// ============================================================================
+
+export const StickinessConfigSchema = z
+  .object({
+    identifier: z.string().min(1).max(256),
+    timeout: z.number().int().min(1).max(86400).optional(),
+  })
+  .strict();
+export type StickinessConfig = z.infer<typeof StickinessConfigSchema>;
+
+/**
+ * Passthrough protocol type. HTTP is NOT valid — use CUSTOM for plain HTTP/REST backends.
+ */
+export const PassthroughProtocolTypeSchema = z.enum(['MCP', 'A2A', 'INFERENCE', 'CUSTOM']);
+export type PassthroughProtocolType = z.infer<typeof PassthroughProtocolTypeSchema>;
+
+export const PassthroughConfigSchema = z
+  .object({
+    endpoint: z
+      .string()
+      .min(1)
+      .regex(/^https:\/\/[a-zA-Z0-9\-.]+(:[0-9]{1,5})?(\/.*)?$/, 'Must be a valid HTTPS URL'),
+    /** Protocol type for the passthrough backend. Defaults to CUSTOM (generic HTTP/REST). */
+    protocolType: PassthroughProtocolTypeSchema.default('CUSTOM'),
+    stickinessConfiguration: StickinessConfigSchema.optional(),
+  })
+  .strict();
+export type PassthroughConfig = z.infer<typeof PassthroughConfigSchema>;
+
+// ============================================================================
 // Gateway Target
 // ============================================================================
 
@@ -344,7 +454,7 @@ export const AgentCoreGatewayTargetSchema = z
     toolDefinitions: z.array(ToolDefinitionSchema).optional(),
     /** Compute configuration. Required for Lambda/Runtime scaffold targets. */
     compute: ToolComputeConfigSchema.optional(),
-    /** MCP Server endpoint URL. Required for external MCP Server targets. */
+    /** Endpoint URL for mcpServer targets. */
     endpoint: z.string().url().optional(),
     /** Outbound auth configuration for the target. */
     outboundAuth: OutboundAuthSchema.optional(),
@@ -354,6 +464,49 @@ export const AgentCoreGatewayTargetSchema = z
     schemaSource: SchemaSourceSchema.optional(),
     /** Lambda Function ARN configuration. Required for lambdaFunctionArn target type. */
     lambdaFunctionArn: LambdaFunctionArnConfigSchema.optional(),
+    /** HTTP Runtime configuration. Required for httpRuntime target type. */
+    httpRuntime: HttpRuntimeConfigSchema.optional(),
+    /**
+     * Managed-service connector identifier. Required for `connector` target type.
+     */
+    connectorId: ConnectorIdSchema.optional(),
+    /**
+     * For `bedrock-knowledge-bases` connector targets: either a project KB
+     * name (references an entry in `knowledgeBases[]` on the project spec)
+     * or a literal 10-character KB ID (refers to an external KB this project
+     * does not own). The L3 disambiguates by regex match. Mutually exclusive
+     * with `knowledgeBaseIds`.
+     */
+    knowledgeBaseId: z
+      .string()
+      .min(1)
+      .max(48)
+      .regex(/^[a-zA-Z0-9_-]+$/, 'Must be a KB name (1-48 chars, letters/digits/dash/underscore) or a 10-char KB ID')
+      .optional(),
+    /**
+     * For `bedrock-agentic-retrieve` connector targets only. List of project
+     * KB names or literal 10-char external KB IDs that this orchestrated
+     * retriever should fan out across. Each entry is disambiguated the same
+     * way `knowledgeBaseId` is. Mutually exclusive with `knowledgeBaseId`.
+     */
+    knowledgeBaseIds: z
+      .array(
+        z
+          .string()
+          .min(1)
+          .max(48)
+          .regex(/^[a-zA-Z0-9_-]+$/, 'Each entry must be a KB name (1-48 chars) or a 10-char KB ID')
+      )
+      .min(1)
+      .optional(),
+    /** Passthrough configuration. Required for passthrough target type. */
+    passthrough: PassthroughConfigSchema.optional(),
+    /**
+     * For `webSearch` target type only. Domains to exclude from web search
+     * results. Maps to the connector's `domainFilter.exclude` parameterValue
+     * at synth time.
+     */
+    excludeDomains: z.array(z.string().min(1)).min(1).optional(),
   })
   .strict()
   .superRefine((data, ctx) => {
@@ -498,6 +651,101 @@ export const AgentCoreGatewayTargetSchema = z
         });
       }
     }
+    if (data.targetType === 'httpRuntime') {
+      if (!data.httpRuntime) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'httpRuntime targets require an httpRuntime configuration (with a runtime reference).',
+          path: ['httpRuntime'],
+        });
+      }
+      if (data.endpoint) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'httpRuntime targets should use httpRuntime.runtimeEndpoint instead of endpoint.',
+          path: ['endpoint'],
+        });
+      }
+      if (data.compute) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'compute is not applicable for httpRuntime target type',
+          path: ['compute'],
+        });
+      }
+      if (data.apiGateway) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'apiGateway is not applicable for httpRuntime target type',
+          path: ['apiGateway'],
+        });
+      }
+      if (data.lambdaFunctionArn) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'lambdaFunctionArn is not applicable for httpRuntime target type',
+          path: ['lambdaFunctionArn'],
+        });
+      }
+      if (data.toolDefinitions && data.toolDefinitions.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'toolDefinitions is not applicable for httpRuntime target type',
+          path: ['toolDefinitions'],
+        });
+      }
+    }
+    if (data.targetType === 'passthrough') {
+      if (!data.passthrough) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'passthrough targets require a passthrough configuration (with an endpoint).',
+          path: ['passthrough'],
+        });
+      }
+      if (data.endpoint) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'passthrough targets should use passthrough.endpoint instead of endpoint.',
+          path: ['endpoint'],
+        });
+      }
+      if (data.compute) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'compute is not applicable for passthrough target type',
+          path: ['compute'],
+        });
+      }
+      if (data.apiGateway) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'apiGateway is not applicable for passthrough target type',
+          path: ['apiGateway'],
+        });
+      }
+      if (data.lambdaFunctionArn) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'lambdaFunctionArn is not applicable for passthrough target type',
+          path: ['lambdaFunctionArn'],
+        });
+      }
+      if (data.httpRuntime) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'httpRuntime is not applicable for passthrough target type',
+          path: ['httpRuntime'],
+        });
+      }
+      if (data.toolDefinitions && data.toolDefinitions.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'toolDefinitions is not applicable for passthrough target type',
+          path: ['toolDefinitions'],
+        });
+      }
+    }
     if (data.targetType === 'lambda' && !data.compute) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -511,6 +759,214 @@ export const AgentCoreGatewayTargetSchema = z
         message: 'Lambda targets require at least one tool definition.',
         path: ['toolDefinitions'],
       });
+    }
+    if (data.targetType === 'connector') {
+      if (!data.connectorId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'connectorId is required for connector target type',
+          path: ['connectorId'],
+        });
+      }
+      if (data.connectorId === CONNECTOR_ID.BEDROCK_KNOWLEDGE_BASES) {
+        if (!data.knowledgeBaseId) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `knowledgeBaseId is required for connectorId '${data.connectorId}'`,
+            path: ['knowledgeBaseId'],
+          });
+        }
+        if (data.knowledgeBaseIds) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `knowledgeBaseIds is not applicable for connectorId '${data.connectorId}' (use knowledgeBaseId)`,
+            path: ['knowledgeBaseIds'],
+          });
+        }
+      }
+      if (data.connectorId === CONNECTOR_ID.BEDROCK_AGENTIC_RETRIEVE) {
+        if (!data.knowledgeBaseIds || data.knowledgeBaseIds.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `knowledgeBaseIds (non-empty) is required for connectorId '${data.connectorId}'`,
+            path: ['knowledgeBaseIds'],
+          });
+        }
+        if (data.knowledgeBaseId) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `knowledgeBaseId is not applicable for connectorId '${data.connectorId}' (use knowledgeBaseIds)`,
+            path: ['knowledgeBaseId'],
+          });
+        }
+      }
+      if (data.excludeDomains) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `excludeDomains only applies to webSearch target type`,
+          path: ['excludeDomains'],
+        });
+      }
+      if (data.compute) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'compute is not applicable for connector target type',
+          path: ['compute'],
+        });
+      }
+      if (data.endpoint) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'endpoint is not applicable for connector target type',
+          path: ['endpoint'],
+        });
+      }
+      if (data.toolDefinitions && data.toolDefinitions.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'toolDefinitions is not applicable for connector target type',
+          path: ['toolDefinitions'],
+        });
+      }
+      if (data.apiGateway) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'apiGateway is not applicable for connector target type',
+          path: ['apiGateway'],
+        });
+      }
+      if (data.lambdaFunctionArn) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'lambdaFunctionArn is not applicable for connector target type',
+          path: ['lambdaFunctionArn'],
+        });
+      }
+      if (data.schemaSource) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'schemaSource is not applicable for connector target type',
+          path: ['schemaSource'],
+        });
+      }
+    }
+    if (data.targetType === 'webSearch') {
+      // Web search is invoked via the gateway's IAM role and takes only an
+      // optional excludeDomains list. Reject anything else.
+      if (data.compute) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'compute is not applicable for webSearch target type',
+          path: ['compute'],
+        });
+      }
+      if (data.endpoint) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'endpoint is not applicable for webSearch target type',
+          path: ['endpoint'],
+        });
+      }
+      if (data.toolDefinitions && data.toolDefinitions.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'toolDefinitions is not applicable for webSearch target type',
+          path: ['toolDefinitions'],
+        });
+      }
+      if (data.apiGateway) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'apiGateway is not applicable for webSearch target type',
+          path: ['apiGateway'],
+        });
+      }
+      if (data.lambdaFunctionArn) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'lambdaFunctionArn is not applicable for webSearch target type',
+          path: ['lambdaFunctionArn'],
+        });
+      }
+      if (data.schemaSource) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'schemaSource is not applicable for webSearch target type',
+          path: ['schemaSource'],
+        });
+      }
+      if (data.httpRuntime) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'httpRuntime is not applicable for webSearch target type',
+          path: ['httpRuntime'],
+        });
+      }
+      if (data.passthrough) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'passthrough is not applicable for webSearch target type',
+          path: ['passthrough'],
+        });
+      }
+      if (data.outboundAuth && data.outboundAuth.type !== 'NONE') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'outboundAuth is not applicable for webSearch target type (uses gateway IAM role)',
+          path: ['outboundAuth'],
+        });
+      }
+      if (data.connectorId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'connectorId is not applicable for webSearch target type',
+          path: ['connectorId'],
+        });
+      }
+      if (data.knowledgeBaseId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'knowledgeBaseId is not applicable for webSearch target type',
+          path: ['knowledgeBaseId'],
+        });
+      }
+      if (data.knowledgeBaseIds) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'knowledgeBaseIds is not applicable for webSearch target type',
+          path: ['knowledgeBaseIds'],
+        });
+      }
+    }
+    if (data.targetType !== 'connector' && data.targetType !== 'webSearch') {
+      if (data.connectorId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `connectorId only applies to connector target type`,
+          path: ['connectorId'],
+        });
+      }
+      if (data.knowledgeBaseId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `knowledgeBaseId only applies to connector target type`,
+          path: ['knowledgeBaseId'],
+        });
+      }
+      if (data.knowledgeBaseIds) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `knowledgeBaseIds only applies to connector target type`,
+          path: ['knowledgeBaseIds'],
+        });
+      }
+      if (data.excludeDomains) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `excludeDomains only applies to webSearch target type`,
+          path: ['excludeDomains'],
+        });
+      }
     }
     // Centralized outbound auth validation (driven by TARGET_TYPE_AUTH_CONFIG)
     const authConfig = TARGET_TYPE_AUTH_CONFIG[data.targetType];
@@ -536,11 +992,37 @@ export const AgentCoreGatewayTargetSchema = z
         path: ['outboundAuth'],
       });
     }
-    if (data.outboundAuth && data.outboundAuth.type !== 'NONE' && !data.outboundAuth.credentialName) {
+    if (
+      data.outboundAuth &&
+      data.outboundAuth.type !== 'NONE' &&
+      data.outboundAuth.type !== 'GATEWAY_IAM_ROLE' &&
+      data.outboundAuth.type !== 'JWT_PASSTHROUGH' &&
+      !data.outboundAuth.credentialName
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: `${data.outboundAuth.type} outbound auth requires a credentialName.`,
         path: ['outboundAuth', 'credentialName'],
+      });
+    }
+    // GATEWAY_IAM_ROLE on passthrough requires service
+    if (
+      data.targetType === 'passthrough' &&
+      data.outboundAuth?.type === 'GATEWAY_IAM_ROLE' &&
+      !data.outboundAuth.service
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'GATEWAY_IAM_ROLE outbound auth on passthrough targets requires a service name.',
+        path: ['outboundAuth', 'service'],
+      });
+    }
+    // JWT_PASSTHROUGH is only valid for passthrough targets
+    if (data.outboundAuth?.type === 'JWT_PASSTHROUGH' && data.targetType !== 'passthrough') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'JWT_PASSTHROUGH outbound auth is only valid for passthrough targets.',
+        path: ['outboundAuth', 'type'],
       });
     }
   });
@@ -577,11 +1059,16 @@ export type GatewayPolicyEngineConfiguration = z.infer<typeof GatewayPolicyEngin
  * Gateway abstraction with opinionated defaults.
  * Supports NONE (default) or CUSTOM_JWT authorizer types.
  */
+export const GatewayProtocolTypeSchema = z.enum(['MCP', 'None']);
+export type GatewayProtocolType = z.infer<typeof GatewayProtocolTypeSchema>;
+
 export const AgentCoreGatewaySchema = z
   .object({
     name: GatewayNameSchema,
     /** Actual AWS resource name for imported gateways. When set, CDK uses this instead of generating projectName-name. */
     resourceName: GatewayNameSchema.optional(),
+    /** Protocol type for this gateway. */
+    protocolType: GatewayProtocolTypeSchema.optional(),
     description: z.string().optional(),
     targets: z.array(AgentCoreGatewayTargetSchema),
     /** Authorization type for the gateway. Defaults to 'NONE'. */
@@ -615,7 +1102,20 @@ export const AgentCoreGatewaySchema = z
       message: 'customJwtAuthorizer configuration is required when authorizerType is CUSTOM_JWT',
       path: ['authorizerConfiguration'],
     }
-  );
+  )
+  .superRefine((gw, ctx) => {
+    // A protocolType: "None" (HTTP) gateway is a superset: it can host any target
+    // type, including MCP targets (mcpServer, connector, KB, etc.). Only an MCP
+    // gateway is restrictive — it cannot host the HTTP-only target types.
+    for (const target of gw.targets) {
+      if (gw.protocolType !== 'None' && NON_MCP_TARGET_TYPES.includes(target.targetType)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Target "${target.name}" is ${target.targetType} but gateway does not have protocolType: "None". Add --protocol-type None when creating the gateway.`,
+        });
+      }
+    }
+  });
 
 export type AgentCoreGateway = z.infer<typeof AgentCoreGatewaySchema>;
 

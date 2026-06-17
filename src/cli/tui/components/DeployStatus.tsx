@@ -35,8 +35,12 @@ function extractProgress(messages: DeployMessage[]): { current: number; total: n
  * Progress bar component.
  */
 function ProgressBar({ current, total }: { current: number; total: number }) {
-  const percent = total > 0 ? current / total : 0;
-  const filled = Math.round(percent * PROGRESS_BAR_WIDTH);
+  // CDK toolkit can briefly emit completed > total during graph expansion.
+  // Clamp here so the bar never asks String.repeat for a negative count.
+  const safeTotal = total > 0 ? total : 0;
+  const safeCurrent = Math.max(0, Math.min(current, safeTotal));
+  const percent = safeTotal > 0 ? safeCurrent / safeTotal : 0;
+  const filled = Math.min(PROGRESS_BAR_WIDTH, Math.max(0, Math.round(percent * PROGRESS_BAR_WIDTH)));
   const empty = PROGRESS_BAR_WIDTH - filled;
 
   return (
@@ -47,7 +51,7 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
       <Text color="cyan">]</Text>
       <Text>
         {' '}
-        {current}/{total}
+        {safeCurrent}/{safeTotal}
       </Text>
     </Box>
   );

@@ -5,7 +5,7 @@
  * because the Payment APIs are not yet in the SDK client.
  */
 import { getCredentialProvider } from './account';
-import { serviceEndpoint } from './partition';
+import { controlPlaneEndpoint, dataPlaneEndpoint } from './stage-endpoint';
 import { Sha256 } from '@aws-crypto/sha256-js';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { HttpRequest } from '@smithy/protocol-http';
@@ -82,13 +82,6 @@ interface PaymentManagerDetail {
 // HTTP signing helper
 // ============================================================================
 
-function getControlPlaneEndpoint(region: string): string {
-  const stage = process.env.AGENTCORE_STAGE?.toLowerCase();
-  if (stage === 'beta') return `https://beta.${region}.elcapcp.genesis-primitives.aws.dev`;
-  if (stage === 'gamma') return `https://gamma.${region}.elcapcp.genesis-primitives.aws.dev`;
-  return `https://${serviceEndpoint('bedrock-agentcore-control', region)}`;
-}
-
 async function signedRequest(options: {
   region: string;
   method: string;
@@ -96,7 +89,7 @@ async function signedRequest(options: {
   body?: string;
 }): Promise<unknown> {
   const { region, method, path, body } = options;
-  const endpoint = getControlPlaneEndpoint(region);
+  const endpoint = controlPlaneEndpoint(region);
   const url = new URL(path, endpoint);
 
   const query: Record<string, string> = {};
@@ -317,13 +310,6 @@ export async function getPaymentManager(options: GetPaymentManagerOptions): Prom
 // Data Plane Operations (Payment Sessions)
 // ============================================================================
 
-function getDataPlaneEndpoint(region: string): string {
-  const stage = process.env.AGENTCORE_STAGE?.toLowerCase();
-  if (stage === 'beta') return `https://beta.${region}.elcapdp.genesis-primitives.aws.dev`;
-  if (stage === 'gamma') return `https://gamma.${region}.elcapdp.genesis-primitives.aws.dev`;
-  return `https://${serviceEndpoint('bedrock-agentcore', region)}`;
-}
-
 async function signedDataPlaneRequest(options: {
   region: string;
   method: string;
@@ -332,7 +318,7 @@ async function signedDataPlaneRequest(options: {
   extraHeaders?: Record<string, string>;
 }): Promise<unknown> {
   const { region, method, path, body, extraHeaders } = options;
-  const endpoint = getDataPlaneEndpoint(region);
+  const endpoint = dataPlaneEndpoint(region);
   const url = new URL(path, endpoint);
 
   const query: Record<string, string> = {};

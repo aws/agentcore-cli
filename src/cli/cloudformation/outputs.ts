@@ -1,8 +1,11 @@
 import type {
   AgentCoreDeployedState,
+  ConfigBundleDeployedState,
   DatasetDeployedState,
   DeployedState,
   EvaluatorDeployedState,
+  HarnessDeployedState,
+  KnowledgeBaseDeployedState,
   MemoryDeployedState,
   OnlineEvalDeployedState,
   PaymentDeployedState,
@@ -42,16 +45,26 @@ export async function getStackOutputs(region: string, stackName: string): Promis
  * Parse stack outputs into deployed state for gateways.
  *
  * Output key pattern for gateways:
- * Gateway{GatewayName}UrlOutput{Hash}
+ * Gateway{GatewayName}(Id|Arn|Url)Output{Hash}
+ *
+ * Output key pattern for gateway targets:
+ * GatewayTarget{TargetName}IdOutput{Hash}
  *
  * Examples:
  * - GatewayMyGatewayUrlOutput3E11FAB4
+ * - GatewayTargetMyTargetIdOutputA1B2C3D4
  */
 export function parseGatewayOutputs(
   outputs: StackOutputs,
   gatewaySpecs: Record<string, unknown>
-): Record<string, { gatewayId: string; gatewayArn: string; gatewayUrl?: string }> {
-  const gateways: Record<string, { gatewayId: string; gatewayArn: string; gatewayUrl?: string }> = {};
+): Record<
+  string,
+  { gatewayId: string; gatewayArn: string; gatewayUrl?: string; targets?: Record<string, { targetId: string }> }
+> {
+  const gateways: Record<
+    string,
+    { gatewayId: string; gatewayArn: string; gatewayUrl?: string; targets?: Record<string, { targetId: string }> }
+  > = {};
 
   // Map PascalCase gateway names to original names for lookup
   const gatewayNames = Object.keys(gatewaySpecs);
@@ -59,8 +72,23 @@ export function parseGatewayOutputs(
 
   // Match pattern: Gateway{Name}{Type}Output{Hash}
   const outputPattern = /^Gateway(.+?)(Id|Arn|Url)Output/;
+  // Match pattern: GatewayTarget{TargetName}IdOutput{Hash}
+  const targetOutputPattern = /^GatewayTarget(.+?)IdOutput/;
+
+  // Collect target outputs separately
+  const targetOutputs: { logicalTarget: string; targetId: string }[] = [];
 
   for (const [key, value] of Object.entries(outputs)) {
+    // Check target pattern first (more specific) to avoid false matches with gateway pattern
+    const targetMatch = targetOutputPattern.exec(key);
+    if (targetMatch) {
+      const logicalTarget = targetMatch[1];
+      if (logicalTarget) {
+        targetOutputs.push({ logicalTarget, targetId: value });
+      }
+      continue;
+    }
+
     const match = outputPattern.exec(key);
     if (!match) continue;
 
@@ -79,6 +107,32 @@ export function parseGatewayOutputs(
       gateways[gatewayName].gatewayArn = value;
     } else if (outputType === 'Url') {
       gateways[gatewayName].gatewayUrl = value;
+    }
+  }
+
+  // Associate target outputs with gateways
+  // Build a map from PascalCase target name to [gatewayName, originalTargetName]
+  const targetToGateway = new Map<string, { gatewayName: string; targetName: string }>();
+  for (const gwName of gatewayNames) {
+    const gwSpec = gatewaySpecs[gwName];
+    if (
+      gwSpec &&
+      typeof gwSpec === 'object' &&
+      'targets' in gwSpec &&
+      Array.isArray((gwSpec as { targets?: unknown[] }).targets)
+    ) {
+      for (const target of (gwSpec as { targets: { name: string }[] }).targets) {
+        targetToGateway.set(toPascalId(target.name), { gatewayName: gwName, targetName: target.name });
+      }
+    }
+  }
+
+  for (const { logicalTarget, targetId } of targetOutputs) {
+    const mapping = targetToGateway.get(logicalTarget);
+    const gwState = mapping ? gateways[mapping.gatewayName] : undefined;
+    if (mapping && gwState) {
+      gwState.targets ??= {};
+      gwState.targets[mapping.targetName] = { targetId };
     }
   }
 
@@ -212,6 +266,81 @@ export function parseMemoryOutputs(outputs: StackOutputs, memoryNames: string[])
   }
 
   return memories;
+}
+
+/**
+ * Parse stack outputs into deployed state for knowledge bases.
+ *
+ * Output key patterns (L3 ≥ #234):
+ *   ApplicationKnowledgeBase{Pascal}(Id|Arn)Output{Hash}
+ *   ApplicationKnowledgeBase{Pascal}DataSource{N}(Id|Uri)Output{Hash}
+ *
+ * Per-DS outputs are how we map URI → deployed DS id deterministically. For
+ * stacks deployed against an older L3 that pre-dates those outputs, the map
+ * comes back empty — callers fall back to ListDataSources.
+ *
+ * `sourcesHash` is populated separately by the post-deploy step.
+ */
+export function parseKnowledgeBaseOutputs(
+  outputs: StackOutputs,
+  knowledgeBaseNames: string[]
+): Record<string, KnowledgeBaseDeployedState> {
+  const knowledgeBases: Record<string, KnowledgeBaseDeployedState> = {};
+  const outputKeys = Object.keys(outputs);
+
+  for (const kbName of knowledgeBaseNames) {
+    const pascal = toPascalId('KnowledgeBase', kbName);
+    const idPrefix = `Application${pascal}IdOutput`;
+    const arnPrefix = `Application${pascal}ArnOutput`;
+
+    const idKey = outputKeys.find(k => k.startsWith(idPrefix));
+    const arnKey = outputKeys.find(k => k.startsWith(arnPrefix));
+
+    if (idKey && arnKey) {
+      knowledgeBases[kbName] = {
+        knowledgeBaseId: outputs[idKey]!,
+        knowledgeBaseArn: outputs[arnKey]!,
+        dataSources: parseKnowledgeBaseDataSourceOutputs(outputs, kbName),
+      };
+    }
+  }
+
+  return knowledgeBases;
+}
+
+/**
+ * Parse the per-DataSource CFN outputs for a single KB into an ordered
+ * `[{dataSourceId, uri}]` array. Outputs are paired by index (DataSource{N}Id
+ * + DataSource{N}Uri) and sorted ascending by N so the result mirrors the
+ * local `dataSources[]` order from agentcore.json.
+ *
+ * Returns an empty array when no per-DS outputs are present (e.g. stack
+ * deployed against an older L3) — callers should fall back to a SDK listing.
+ */
+export function parseKnowledgeBaseDataSourceOutputs(
+  outputs: StackOutputs,
+  knowledgeBaseName: string
+): { dataSourceId: string; uri: string }[] {
+  const pascal = toPascalId('KnowledgeBase', knowledgeBaseName);
+  const indexed = new Map<number, { dataSourceId?: string; uri?: string }>();
+  // Match `Application{Pascal}DataSource{N}IdOutput…` and `…UriOutput…`.
+  const pattern = new RegExp(`^Application${pascal}DataSource(\\d+)(Id|Uri)Output`);
+
+  for (const [key, value] of Object.entries(outputs)) {
+    const match = pattern.exec(key);
+    if (!match) continue;
+    const idx = parseInt(match[1]!, 10);
+    const kind = match[2] as 'Id' | 'Uri';
+    const slot = indexed.get(idx) ?? {};
+    if (kind === 'Id') slot.dataSourceId = value;
+    else slot.uri = value;
+    indexed.set(idx, slot);
+  }
+
+  return [...indexed.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([, slot]) => slot)
+    .filter((slot): slot is { dataSourceId: string; uri: string } => !!slot.dataSourceId && !!slot.uri);
 }
 
 /**
@@ -409,6 +538,103 @@ export function parseDatasetOutputs(
 }
 
 /**
+ * Parse CDK stack outputs for CFN-deployed harnesses into deployed-state records.
+ *
+ * The L3 AgentCoreApplication emits, per harness `${name}` (pascal = toPascalId('Harness', name)):
+ *   ApplicationHarness{Pascal}{Id,Arn,Status,AgentRuntimeArn}Output<hash>
+ * and the execution role (AgentCoreHarnessRole) separately emits:
+ *   ApplicationHarness{Pascal}RoleRoleArnOutput<hash>
+ * The 'Arn' harness prefix does not collide with 'RoleRoleArn' (next segment differs).
+ */
+export function parseHarnessOutputs(
+  outputs: StackOutputs,
+  harnessNames: string[],
+  onWarn: (message: string) => void = console.warn
+): Record<string, HarnessDeployedState> {
+  const harnesses: Record<string, HarnessDeployedState> = {};
+  const outputKeys = Object.keys(outputs);
+
+  for (const harnessName of harnessNames) {
+    const pascal = toPascalId('Harness', harnessName);
+    const idKey = outputKeys.find(k => k.startsWith(`Application${pascal}IdOutput`));
+    const arnKey = outputKeys.find(k => k.startsWith(`Application${pascal}ArnOutput`));
+    const statusKey = outputKeys.find(k => k.startsWith(`Application${pascal}StatusOutput`));
+    const runtimeArnKey = outputKeys.find(k => k.startsWith(`Application${pascal}AgentRuntimeArnOutput`));
+    const roleArnKey = outputKeys.find(k => k.startsWith(`Application${pascal}RoleRoleArnOutput`));
+    // Version is OPTIONAL: stacks deployed before the config-versioning change won't emit it, so it
+    // is never part of the required-set guard below — a missing Version just leaves harnessVersion unset.
+    const versionKey = outputKeys.find(k => k.startsWith(`Application${pascal}VersionOutput`));
+    const versionRaw = versionKey ? outputs[versionKey] : undefined;
+    const harnessVersion = versionRaw !== undefined && /^[0-9]+$/.test(versionRaw) ? Number(versionRaw) : undefined;
+
+    // Id/Arn/Status/RoleArn are required for a complete CDK-managed harness record.
+    if (idKey && arnKey && statusKey && roleArnKey) {
+      harnesses[harnessName] = {
+        harnessId: outputs[idKey]!,
+        harnessArn: outputs[arnKey]!,
+        status: outputs[statusKey]!,
+        roleArn: outputs[roleArnKey]!,
+        ...(harnessVersion !== undefined && { harnessVersion }),
+        ...(runtimeArnKey && { agentRuntimeArn: outputs[runtimeArnKey] }),
+        provisioner: 'cloudformation',
+      };
+      continue;
+    }
+
+    // A spec'd harness that produced incomplete (or no) outputs is dropped from
+    // deployed-state, which silently removes it from `status`/`invoke`. Surface
+    // the gap so a partially-emitted or missing harness leaves a trace rather
+    // than vanishing without explanation.
+    const missing = [!idKey && 'Id', !arnKey && 'Arn', !statusKey && 'Status', !roleArnKey && 'RoleArn'].filter(
+      (v): v is string => typeof v === 'string'
+    );
+    if (missing.length === 4) {
+      onWarn(
+        `Harness "${harnessName}" produced no CloudFormation outputs; it will not appear in ` +
+          `\`agentcore status\` or be invocable until the next successful deploy.`
+      );
+    } else {
+      onWarn(
+        `Harness "${harnessName}" is missing CloudFormation output(s): ${missing.join(', ')}. ` +
+          `Skipping it in deployed-state — it will not appear in \`agentcore status\` or be invocable. ` +
+          `Re-run \`agentcore deploy\`; if this persists, the harness stack output template may be malformed.`
+      );
+    }
+  }
+
+  return harnesses;
+}
+
+export function parseConfigBundleOutputs(
+  outputs: StackOutputs,
+  bundleNames: string[]
+): Record<string, ConfigBundleDeployedState> {
+  const bundles: Record<string, ConfigBundleDeployedState> = {};
+  const outputKeys = Object.keys(outputs);
+
+  for (const bundleName of bundleNames) {
+    const pascal = toPascalId('ConfigBundle', bundleName);
+    const idPrefix = `Application${pascal}IdOutput`;
+    const arnPrefix = `Application${pascal}ArnOutput`;
+    const versionPrefix = `Application${pascal}VersionIdOutput`;
+
+    const idKey = outputKeys.find(k => k.startsWith(idPrefix));
+    const arnKey = outputKeys.find(k => k.startsWith(arnPrefix));
+    const versionKey = outputKeys.find(k => k.startsWith(versionPrefix));
+
+    if (idKey && arnKey && versionKey) {
+      bundles[bundleName] = {
+        bundleId: outputs[idKey]!,
+        bundleArn: outputs[arnKey]!,
+        versionId: outputs[versionKey]!,
+      };
+    }
+  }
+
+  return bundles;
+}
+
+/**
  * Strip underscores from a name to produce a valid CDK logical ID segment.
  * Must match the toCdkId() function in the vended cdk-stack.ts.
  */
@@ -480,6 +706,10 @@ export interface BuildDeployedStateOptions {
   stackName: string;
   agents: Record<string, AgentCoreDeployedState>;
   gateways: Record<string, { gatewayId: string; gatewayArn: string; gatewayUrl?: string }>;
+  httpGateways?: Record<
+    string,
+    { gatewayId: string; gatewayArn: string; gatewayUrl?: string; targets?: Record<string, { targetId: string }> }
+  >;
   existingState?: DeployedState;
   identityKmsKeyArn?: string;
   credentials?: Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>;
@@ -489,20 +719,19 @@ export interface BuildDeployedStateOptions {
   policyEngines?: Record<string, PolicyEngineDeployedState>;
   policies?: Record<string, PolicyDeployedState>;
   runtimeEndpoints?: Record<string, RuntimeEndpointDeployedState>;
-  harnesses?: Record<
-    string,
-    {
-      harnessId: string;
-      harnessArn: string;
-      roleArn: string;
-      status: string;
-      agentRuntimeArn?: string;
-      memoryArn?: string;
-      configHash?: string;
-    }
-  >;
+  harnesses?: Record<string, HarnessDeployedState>;
   datasets?: Record<string, DatasetDeployedState>;
+  configBundles?: Record<string, ConfigBundleDeployedState>;
+  knowledgeBases?: Record<string, KnowledgeBaseDeployedState>;
   payments?: Record<string, PaymentDeployedState>;
+  /**
+   * Names of A/B tests currently declared in the project spec. AB test state is managed
+   * post-deploy (not via CFN outputs) and carried forward across deploys; passing the
+   * current spec names lets us prune entries for tests the user has since removed, so
+   * stale (e.g. preview) entries self-heal instead of lingering in deployed-state.
+   * If omitted, all existing AB test entries are carried forward unchanged.
+   */
+  abTestNames?: string[];
 }
 
 /**
@@ -514,6 +743,7 @@ export function buildDeployedState(opts: BuildDeployedStateOptions): DeployedSta
     stackName,
     agents,
     gateways,
+    httpGateways,
     existingState,
     identityKmsKeyArn,
     credentials,
@@ -525,7 +755,10 @@ export function buildDeployedState(opts: BuildDeployedStateOptions): DeployedSta
     runtimeEndpoints,
     harnesses,
     datasets,
+    configBundles,
+    knowledgeBases,
     payments,
+    abTestNames,
   } = opts;
   const targetState: TargetDeployedState = {
     resources: {
@@ -543,6 +776,11 @@ export function buildDeployedState(opts: BuildDeployedStateOptions): DeployedSta
     targetState.resources!.mcp = {
       gateways,
     };
+  }
+
+  // Add HTTP gateway state if HTTP gateways exist
+  if (httpGateways && Object.keys(httpGateways).length > 0) {
+    targetState.resources!.gateways = httpGateways;
   }
 
   // Add credential state if credentials exist
@@ -569,27 +807,52 @@ export function buildDeployedState(opts: BuildDeployedStateOptions): DeployedSta
     targetState.resources!.datasets = datasets;
   }
 
-  // Carry forward config bundles from existing state (managed post-deploy, not via CFN outputs)
-  const existingConfigBundles = existingState?.targets?.[targetName]?.resources?.configBundles;
-  if (existingConfigBundles && Object.keys(existingConfigBundles).length > 0) {
-    targetState.resources!.configBundles = existingConfigBundles;
+  if (knowledgeBases && Object.keys(knowledgeBases).length > 0) {
+    targetState.resources!.knowledgeBases = knowledgeBases;
   }
 
-  // Carry forward AB tests from existing state (managed post-deploy, not via CFN outputs)
+  // Config bundles from CFN outputs (preferred) or carry forward from existing state (legacy)
+  if (configBundles && Object.keys(configBundles).length > 0) {
+    targetState.resources!.configBundles = configBundles;
+  } else {
+    const existingConfigBundles = existingState?.targets?.[targetName]?.resources?.configBundles;
+    if (existingConfigBundles && Object.keys(existingConfigBundles).length > 0) {
+      targetState.resources!.configBundles = existingConfigBundles;
+    }
+  }
+
+  // Carry forward AB tests from existing state (managed post-deploy, not via CFN outputs).
+  // Prune entries for tests no longer declared in the project spec so stale (e.g. preview)
+  // entries self-heal. When abTestNames is undefined, carry forward everything unchanged.
   const existingABTests = existingState?.targets?.[targetName]?.resources?.abTests;
   if (existingABTests && Object.keys(existingABTests).length > 0) {
-    targetState.resources!.abTests = existingABTests;
+    const carriedABTests =
+      abTestNames === undefined
+        ? existingABTests
+        : Object.fromEntries(Object.entries(existingABTests).filter(([specName]) => abTestNames.includes(specName)));
+    if (Object.keys(carriedABTests).length > 0) {
+      targetState.resources!.abTests = carriedABTests;
+    }
   }
 
-  // Carry forward HTTP gateways from existing state (managed post-deploy, not via CFN outputs)
-  const existingHttpGateways = existingState?.targets?.[targetName]?.resources?.httpGateways;
-  if (existingHttpGateways && Object.keys(existingHttpGateways).length > 0) {
-    targetState.resources!.httpGateways = existingHttpGateways;
+  // Merge harness state. CFN-sourced records (freshly parsed, stamped
+  // `provisioner: 'cloudformation'`) are authoritative for every CDK-managed harness — they
+  // are re-parsed in full each deploy, so a CFN harness dropped from the spec correctly
+  // disappears here (CloudFormation deletes the resource). On top of that, carry forward any
+  // existing *orphan* record (imperative-build harness, no marker) that the current outputs
+  // don't cover, so it stays visible to detection/cleanup instead of silently vanishing.
+  // Only orphans are preserved — carrying forward stale marked records would resurrect a
+  // harness CloudFormation just deleted.
+  const existingHarnesses = existingState?.targets?.[targetName]?.resources?.harnesses ?? {};
+  const carriedOrphans: Record<string, HarnessDeployedState> = {};
+  for (const [name, record] of Object.entries(existingHarnesses)) {
+    if (!harnesses?.[name] && record.provisioner !== 'cloudformation') {
+      carriedOrphans[name] = record;
+    }
   }
-
-  // Add harness state if harnesses exist
-  if (harnesses && Object.keys(harnesses).length > 0) {
-    targetState.resources!.harnesses = harnesses;
+  const mergedHarnesses = { ...carriedOrphans, ...harnesses };
+  if (Object.keys(mergedHarnesses).length > 0) {
+    targetState.resources!.harnesses = mergedHarnesses;
   }
 
   // Add payment state from CFN outputs (or preserve credential provider state)

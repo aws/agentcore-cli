@@ -114,6 +114,7 @@ export interface ConfigurationBundleSummary {
   bundleId: string;
   bundleName: string;
   description?: string;
+  createdAt?: number;
 }
 
 export interface ListConfigurationBundlesResult {

@@ -65,10 +65,12 @@ describe('integration: dev server', () => {
       { skipInstall: false }
     );
 
-    if (result.exitCode === 0) {
-      const json = JSON.parse(result.stdout);
-      projectPath = json.projectPath;
+    if (result.exitCode !== 0) {
+      throw new Error(`Project creation failed (exit ${result.exitCode}): ${result.stderr || result.stdout}`);
     }
+
+    const json = JSON.parse(result.stdout);
+    projectPath = json.projectPath;
   }, 120000);
 
   afterEach(() => {

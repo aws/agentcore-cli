@@ -9,8 +9,10 @@ import {
   SDKFrameworkSchema,
   SessionStorageSchema,
   TargetLanguageSchema,
+  getFrameworksForLanguage,
   getSupportedFrameworksForProtocol,
   getSupportedModelProviders,
+  isFrameworkSupportedForLanguage,
   matchEnumValue,
 } from '../../../schema';
 import type { ProtocolMode } from '../../../schema';
@@ -200,11 +202,16 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
       return { valid: false, error: `Invalid model provider: ${options.modelProvider}` };
     }
 
-    // TypeScript supports Strands and Vercel AI only
-    if (options.language === 'TypeScript' && fwResult.data !== 'Strands' && fwResult.data !== 'VercelAI') {
+    // Framework must ship a template for the chosen language (e.g. Vercel AI is
+    // TypeScript-only, the other open-source frameworks are Python-only).
+    if (
+      (langResult.data === 'Python' || langResult.data === 'TypeScript') &&
+      !isFrameworkSupportedForLanguage(langResult.data, fwResult.data)
+    ) {
+      const supported = getFrameworksForLanguage(langResult.data).join(', ');
       return {
         valid: false,
-        error: `Framework ${options.framework} is not yet available for TypeScript. Only Strands and Vercel AI SDK are supported.`,
+        error: `Framework ${options.framework} is not yet available for ${langResult.data}. Supported: ${supported}.`,
       };
     }
 

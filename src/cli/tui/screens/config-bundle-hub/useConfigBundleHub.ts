@@ -18,6 +18,7 @@ export interface BundleWithMeta {
   description?: string;
   versionCount: number;
   branches: string[];
+  createdAt?: number;
   lastUpdated?: string;
 }
 
@@ -73,10 +74,20 @@ export function useConfigBundleHub(): ConfigBundleHubState {
         const deployedBundles =
           Object.values(deployedState.targets).find(t => t.resources?.configBundles)?.resources?.configBundles ?? {};
 
+        // Fetch all bundles from the list API once to get createdAt for each
+        let allBundlesList: Awaited<ReturnType<typeof listConfigurationBundles>> | undefined;
+        try {
+          allBundlesList = await listConfigurationBundles({ region: resolvedRegion, maxResults: 100 });
+        } catch {
+          // Non-critical — continue without createdAt
+        }
+
         // Build bundle list from project config, enriching with deployed version info
         const enriched = await Promise.all(
           projectBundles.map(async (bundleSpec): Promise<BundleWithMeta> => {
             const deployed = deployedBundles[bundleSpec.name];
+            const nameVariants = getBundleNameVariants(bundleSpec.name, projectSpec.name);
+            const listMatch = allBundlesList?.bundles.find(b => nameVariants.includes(b.bundleName));
             if (!deployed) {
               // Not yet deployed — show from project config only
               return {
@@ -86,6 +97,7 @@ export function useConfigBundleHub(): ConfigBundleHubState {
                 description: bundleSpec.description,
                 versionCount: 0,
                 branches: bundleSpec.branchName ? [bundleSpec.branchName] : [],
+                createdAt: listMatch?.createdAt,
               };
             }
 
@@ -113,12 +125,14 @@ export function useConfigBundleHub(): ConfigBundleHubState {
                 description: bundleSpec.description,
                 versionCount: versions.versions.length,
                 branches: [...branchSet],
+                createdAt: listMatch?.createdAt,
                 lastUpdated: latestTs || undefined,
               };
             } catch {
               // Stale deployed-state ID — try to resolve via list API
               try {
-                const allBundles = await listConfigurationBundles({ region: resolvedRegion, maxResults: 100 });
+                const allBundles =
+                  allBundlesList ?? (await listConfigurationBundles({ region: resolvedRegion, maxResults: 100 }));
                 const nameVariants = getBundleNameVariants(bundleSpec.name, projectSpec.name);
                 const match = allBundles.bundles.find(b => nameVariants.includes(b.bundleName));
                 if (match) {
@@ -142,6 +156,7 @@ export function useConfigBundleHub(): ConfigBundleHubState {
                     description: bundleSpec.description,
                     versionCount: versions.versions.length,
                     branches: [...branchSet],
+                    createdAt: match.createdAt,
                     lastUpdated: latestTs || undefined,
                   };
                 }

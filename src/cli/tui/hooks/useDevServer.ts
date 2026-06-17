@@ -124,7 +124,7 @@ export function useDevServer(options: {
       setConfigLoaded(true);
     };
     void load();
-  }, [options.workingDir]);
+  }, [options.workingDir, options.agentName]);
 
   const config: DevConfig | null = useMemo(() => {
     if (!project || !options.agentName) {

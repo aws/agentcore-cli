@@ -13,6 +13,7 @@
  *
  * Uses direct HTTP requests with SigV4 signing (service: bedrock-agentcore).
  */
+import { JobNotFoundError } from '../../lib';
 import { getCredentialProvider } from './account';
 import { dataPlaneEndpoint } from './stage-endpoint';
 import { Sha256 } from '@aws-crypto/sha256-js';
@@ -47,6 +48,33 @@ export interface DataSourceConfig {
 
 export interface Evaluator {
   evaluatorId: string;
+}
+
+export interface InsightConfig {
+  insightId: string;
+}
+
+export interface FailureAnalysisRelatedSession {
+  sessionId?: string;
+  recommendationType?: string;
+}
+
+export interface FailureAnalysisRootCause {
+  rootCauseCategory?: string;
+  rootCauseDescription?: string;
+  recommendation?: string;
+  relatedSessions?: FailureAnalysisRelatedSession[];
+}
+
+export interface FailureAnalysisCategory {
+  failureCategoryName?: string;
+  failureCategoryDescription?: string;
+  categoryGroupName?: string;
+  rootCauses?: FailureAnalysisRootCause[];
+}
+
+export interface FailureAnalysisResult {
+  failureCategories?: FailureAnalysisCategory[];
 }
 
 export interface GroundTruthAssertion {
@@ -94,11 +122,13 @@ export interface EvaluationMetadata {
 export interface StartBatchEvaluationOptions {
   region: string;
   name: string;
-  evaluators: Evaluator[];
+  evaluators?: Evaluator[];
+  insights?: InsightConfig[];
   dataSourceConfig: DataSourceConfig;
   evaluationMetadata?: EvaluationMetadata;
   description?: string;
   clientToken?: string;
+  kmsKeyArn?: string;
 }
 
 export interface StartBatchEvaluationResult {
@@ -157,8 +187,10 @@ export interface GetBatchEvaluationResult {
   dataSourceConfig?: DataSourceConfig;
   outputConfig?: OutputConfig;
   evaluationResults?: EvaluationResults;
+  failureAnalysisResult?: FailureAnalysisResult;
   errorDetails?: string[];
   description?: string;
+  kmsKeyArn?: string;
 }
 
 export interface BatchEvaluationResultEntry {
@@ -259,7 +291,11 @@ async function signedRequest(options: {
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(`BatchEvaluation API error (${response.status}): ${errorBody}`);
+    const message = `BatchEvaluation API error (${response.status}): ${errorBody}`;
+    if (response.status === 404) {
+      throw new JobNotFoundError(message, { errorSource: 'service' });
+    }
+    throw new Error(message);
   }
 
   if (response.status === 204) return { data: {}, status: 204 };
@@ -276,9 +312,14 @@ async function signedRequest(options: {
 export async function startBatchEvaluation(options: StartBatchEvaluationOptions): Promise<StartBatchEvaluationResult> {
   const body: Record<string, unknown> = {
     batchEvaluationName: options.name,
-    evaluators: options.evaluators,
     dataSourceConfig: options.dataSourceConfig,
   };
+  if (options.evaluators && options.evaluators.length > 0) {
+    body.evaluators = options.evaluators;
+  }
+  if (options.insights && options.insights.length > 0) {
+    body.insights = options.insights;
+  }
   if (options.evaluationMetadata) {
     body.evaluationMetadata = options.evaluationMetadata;
   }
@@ -287,6 +328,9 @@ export async function startBatchEvaluation(options: StartBatchEvaluationOptions)
   }
   if (options.clientToken) {
     body.clientToken = options.clientToken;
+  }
+  if (options.kmsKeyArn) {
+    body.kmsKeyArn = options.kmsKeyArn;
   }
 
   const { data } = await signedRequest({
@@ -328,8 +372,10 @@ export async function getBatchEvaluation(options: GetBatchEvaluationOptions): Pr
     dataSourceConfig: raw.dataSourceConfig as DataSourceConfig | undefined,
     outputConfig: raw.outputConfig as OutputConfig | undefined,
     evaluationResults: raw.evaluationResults as EvaluationResults | undefined,
+    failureAnalysisResult: raw.failureAnalysisResult as FailureAnalysisResult | undefined,
     errorDetails: raw.errorDetails as string[] | undefined,
     description: raw.description as string | undefined,
+    kmsKeyArn: raw.kmsKeyArn as string | undefined,
   };
 }
 

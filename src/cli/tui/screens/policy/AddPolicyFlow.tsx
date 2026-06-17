@@ -17,7 +17,7 @@ import { AddSuccessScreen } from '../add/AddSuccessScreen';
 import { POLICY_ENGINE_MODE_OPTIONS } from '../mcp/types';
 import { AddPolicyEngineScreen } from './AddPolicyEngineScreen';
 import { AddPolicyScreen } from './AddPolicyScreen';
-import type { AddPolicyConfig, AddPolicyEngineConfig } from './types';
+import { type AddPolicyConfig, type AddPolicyEngineConfig, authorizationPhaseForEffect } from './types';
 import { Box, Text } from 'ink';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -40,6 +40,7 @@ type FlowState =
       preSelectedEngine: string;
       isEngineDeployed: boolean;
       deployedGateways: Record<string, string>;
+      projectGateways: { name: string; httpTargets: string[] }[];
     }
   | { name: 'engine-success'; engineName: string }
   | { name: 'policy-success'; policyName: string; engineName: string }
@@ -58,6 +59,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
   const [engineNames, setEngineNames] = useState<string[]>([]);
   const [policyNames, setPolicyNames] = useState<string[]>([]);
   const [hasUnprotectedGateways, setHasUnprotectedGateways] = useState(false);
+  const [policyAddInFlight, setPolicyAddInFlight] = useState(false);
   const [pendingEngineName, setPendingEngineName] = useState<string | undefined>();
 
   const engineSteps = useMemo<EngineCreationStep[]>(() => {
@@ -88,11 +90,11 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
     };
   }, []);
 
-  // In non-interactive mode, exit after success
+  // In non-interactive mode, show success screen and let user dismiss with Esc/Ctrl+C
   useEffect(() => {
     if (!isInteractive) {
       if (flow.name === 'engine-success' || flow.name === 'policy-success') {
-        onExit();
+        // Success screen renders with exit instructions — user presses Esc/Ctrl+C
       }
     }
   }, [isInteractive, flow.name, onExit]);
@@ -116,15 +118,17 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
       setFlow({ name: 'engine-wizard' });
     } else {
       setFlow({ name: 'loading' });
-      const [deployedId, deployedGateways] = await Promise.all([
+      const [deployedId, deployedGateways, projectGateways] = await Promise.all([
         policyEnginePrimitive.getDeployedEngineId(item.id),
         policyEnginePrimitive.getDeployedGateways(),
+        policyEnginePrimitive.getProjectGateways(),
       ]);
       setFlow({
         name: 'policy-wizard',
         preSelectedEngine: item.id,
         isEngineDeployed: deployedId !== null && Object.keys(deployedGateways).length > 0,
         deployedGateways,
+        projectGateways,
       });
     }
   }, []);
@@ -163,46 +167,59 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
     [commitEngine]
   );
 
-  const handlePolicyComplete = useCallback(async (config: AddPolicyConfig) => {
-    const result = await withCommandRunTelemetry(
-      'add.policy',
-      {
-        policy_attr_source_type: config.sourceFile
-          ? 'file'
-          : config.sourceMethod === 'generate'
-            ? 'generate'
-            : 'statement',
-        policy_validation_mode: standardize(PolicyValidationMode, config.validationMode ?? 'FAIL_ON_ANY_FINDINGS'),
-      },
-      () =>
-        policyPrimitive.add({
-          name: config.name,
-          engine: config.engine,
-          statement: config.statement,
-          source: config.sourceFile || undefined,
-          validationMode: config.validationMode,
-        })
-    );
+  const handlePolicyComplete = useCallback(
+    async (config: AddPolicyConfig) => {
+      if (policyAddInFlight) return;
+      setPolicyAddInFlight(true);
+      const result = await withCommandRunTelemetry(
+        'add.policy',
+        {
+          policy_attr_source_type: config.sourceFile
+            ? 'file'
+            : config.sourceMethod === 'generate'
+              ? 'generate'
+              : 'statement',
+          policy_validation_mode: standardize(PolicyValidationMode, config.validationMode ?? 'FAIL_ON_ANY_FINDINGS'),
+        },
+        () =>
+          policyPrimitive.add({
+            name: config.name,
+            engine: config.engine,
+            statement: config.statement,
+            source: config.sourceFile || undefined,
+            validationMode: config.validationMode,
+            enforcementMode: config.enforcementMode,
+            // Output-phase effects (suppressOutput) must register on RETURN_OUTPUT. The
+            // effect is only known for the form source; other sources stay on INITIATE.
+            authorizationPhase:
+              config.sourceMethod === 'form' ? authorizationPhaseForEffect(config.guardrailForm.effect) : 'INITIATE',
+          })
+      );
 
-    if (result.success) {
-      setPolicyNames(prev => [...prev, config.name]);
-      setFlow({ name: 'policy-success', policyName: config.name, engineName: config.engine });
-    } else {
-      setFlow({ name: 'error', message: result.error.message });
-    }
-  }, []);
+      if (result.success) {
+        setPolicyNames(prev => [...prev, config.name]);
+        setFlow({ name: 'policy-success', policyName: config.name, engineName: config.engine });
+      } else {
+        setPolicyAddInFlight(false);
+        setFlow({ name: 'error', message: result.error.message });
+      }
+    },
+    [policyAddInFlight]
+  );
 
   const handleAddPolicyToNewEngine = useCallback(async (engineName: string) => {
     setFlow({ name: 'loading' });
-    const [deployedId, deployedGateways] = await Promise.all([
+    const [deployedId, deployedGateways, projectGateways] = await Promise.all([
       policyEnginePrimitive.getDeployedEngineId(engineName),
       policyEnginePrimitive.getDeployedGateways(),
+      policyEnginePrimitive.getProjectGateways(),
     ]);
     setFlow({
       name: 'policy-wizard',
       preSelectedEngine: engineName,
       isEngineDeployed: deployedId !== null && Object.keys(deployedGateways).length > 0,
       deployedGateways,
+      projectGateways,
     });
   }, []);
 
@@ -255,6 +272,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
         preSelectedEngine={flow.preSelectedEngine}
         isEngineDeployed={flow.isEngineDeployed}
         deployedGateways={flow.deployedGateways}
+        projectGateways={flow.projectGateways}
         onComplete={(config: AddPolicyConfig) => void handlePolicyComplete(config)}
         onExit={() => setFlow({ name: 'select' })}
       />
@@ -361,7 +379,7 @@ export function AddPolicyFlow({ isInteractive = true, onExit, onBack, onDev, onD
             <Box marginLeft={2} flexDirection="column">
               <Text>
                 agentcore/agentcore.json{'  '}
-                <Text dimColor>Cedar policy added to engine {flow.engineName}</Text>
+                <Text dimColor>Policy added to engine {flow.engineName}</Text>
               </Text>
             </Box>
           </Box>

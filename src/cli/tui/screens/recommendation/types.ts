@@ -1,8 +1,8 @@
 import type {
-  RecommendationInputSourceKind,
+  RecommendationInputSource as RecommendationInputSourceKind,
   RecommendationType,
-  TraceSourceKind,
-} from '../../../operations/recommendation';
+  RecommendationTraceSource as TraceSourceKind,
+} from '../../../operations/jobs';
 
 export type RecommendationStep =
   | 'type'
@@ -16,6 +16,7 @@ export type RecommendationStep =
   | 'traceSource'
   | 'days'
   | 'sessions'
+  | 'kms-key-arn'
   | 'confirm';
 
 export interface RecommendationWizardConfig {
@@ -35,6 +36,8 @@ export interface RecommendationWizardConfig {
   systemPromptJsonPath: string;
   /** Tool name → JSONPath pairs for tool descriptions within the config bundle */
   toolDescJsonPaths: { toolName: string; toolDescriptionJsonPath: string }[];
+  /** KMS key ARN for encrypting recommendation results */
+  kmsKeyArn: string;
 }
 
 export const RECOMMENDATION_STEP_LABELS: Record<RecommendationStep, string> = {
@@ -49,6 +52,7 @@ export const RECOMMENDATION_STEP_LABELS: Record<RecommendationStep, string> = {
   traceSource: 'Traces',
   days: 'Lookback',
   sessions: 'Sessions',
+  'kms-key-arn': 'KMS Key',
   confirm: 'Confirm',
 };
 

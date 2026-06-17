@@ -190,6 +190,25 @@ describe('validate', () => {
       expect(result.error?.includes('Strands')).toBeTruthy();
     });
 
+    it('rejects Python with the Vercel AI framework (TypeScript-only)', () => {
+      const result = validateAddAgentOptions({
+        ...validAgentOptionsCreate,
+        language: 'Python',
+        framework: 'VercelAI',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error?.includes('is not yet available for Python')).toBeTruthy();
+    });
+
+    it('accepts TypeScript with the Vercel AI framework', () => {
+      const result = validateAddAgentOptions({
+        ...validAgentOptionsCreate,
+        language: 'TypeScript',
+        framework: 'VercelAI',
+      });
+      expect(result.valid).toBe(true);
+    });
+
     it('returns error for create path with Other language', () => {
       const result = validateAddAgentOptions({ ...validAgentOptionsCreate, language: 'Other' });
       expect(result.valid).toBe(false);
@@ -448,6 +467,43 @@ describe('validate', () => {
     it('passes for valid gateway target options', async () => {
       const result = await validateAddGatewayTargetOptions({ ...validGatewayTargetOptions });
       expect(result.valid).toBe(true);
+    });
+
+    // Passthrough is gated behind ENABLE_GATED_FEATURES
+    describe('passthrough feature flag', () => {
+      const passthroughOpts: AddGatewayTargetOptions = {
+        name: 'pt-target',
+        type: 'passthrough',
+        gateway: 'my-gateway',
+        passthroughEndpoint: 'https://api.example.com',
+      } as AddGatewayTargetOptions;
+
+      afterEach(() => {
+        delete process.env.ENABLE_GATED_FEATURES;
+      });
+
+      it('rejects passthrough when the flag is off', async () => {
+        delete process.env.ENABLE_GATED_FEATURES;
+        const result = await validateAddGatewayTargetOptions({ ...passthroughOpts });
+        expect(result.valid).toBe(false);
+        expect(result.error).toBe('Passthrough targets are not yet available.');
+      });
+
+      it('omits passthrough from the invalid-type error when the flag is off', async () => {
+        delete process.env.ENABLE_GATED_FEATURES;
+        const result = await validateAddGatewayTargetOptions({
+          ...validGatewayTargetOptions,
+          type: 'bogus-type',
+        } as AddGatewayTargetOptions);
+        expect(result.valid).toBe(false);
+        expect(result.error).not.toContain('passthrough');
+      });
+
+      it('allows passthrough when the flag is on', async () => {
+        process.env.ENABLE_GATED_FEATURES = '1';
+        const result = await validateAddGatewayTargetOptions({ ...passthroughOpts });
+        expect(result.valid).toBe(true);
+      });
     });
     // AC20: type validation
     it('returns error when --type is missing', async () => {
@@ -939,6 +995,98 @@ describe('validate', () => {
       const result = await validateAddGatewayTargetOptions(options);
       expect(result.valid).toBe(false);
       expect(result.error).toBe('--host is not applicable for MCP server targets');
+    });
+
+    // HTTP Runtime target validation
+    it('accepts valid http-runtime options with --runtime', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-http-target',
+        type: 'http-runtime',
+        runtime: 'my-agent',
+        gateway: 'my-gateway',
+      });
+      expect(result.valid).toBe(true);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('rejects http-runtime without --runtime', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-http-target',
+        type: 'http-runtime',
+        gateway: 'my-gateway',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--runtime is required');
+    });
+
+    it('rejects http-runtime with --host', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-http-target',
+        type: 'http-runtime',
+        runtime: 'my-agent',
+        gateway: 'my-gateway',
+        host: 'Lambda',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('not applicable for http-runtime type');
+    });
+
+    it('rejects http-runtime with --rest-api-id', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-http-target',
+        type: 'http-runtime',
+        runtime: 'my-agent',
+        gateway: 'my-gateway',
+        restApiId: 'abc123',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('not applicable for http-runtime type');
+    });
+
+    it('rejects http-runtime with --lambda-arn', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-http-target',
+        type: 'http-runtime',
+        runtime: 'my-agent',
+        gateway: 'my-gateway',
+        lambdaArn: 'arn:aws:lambda:us-east-1:123456789012:function:my-func',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('not applicable for http-runtime type');
+    });
+
+    it('rejects http-runtime with --tool-schema-file', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-http-target',
+        type: 'http-runtime',
+        runtime: 'my-agent',
+        gateway: 'my-gateway',
+        toolSchemaFile: './tools.json',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('not applicable for http-runtime type');
+    });
+
+    it('accepts http-runtime with --runtime-endpoint', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-http-target',
+        type: 'http-runtime',
+        runtime: 'my-agent',
+        runtimeEndpoint: 'LIVE',
+        gateway: 'my-gateway',
+      });
+      expect(result.valid).toBe(true);
+    });
+
+    it('sets language to Other for http-runtime type', async () => {
+      const opts: AddGatewayTargetOptions = {
+        name: 'my-http-target',
+        type: 'http-runtime',
+        runtime: 'my-agent',
+        gateway: 'my-gateway',
+      };
+      await validateAddGatewayTargetOptions(opts);
+      expect(opts.language).toBe('Other');
     });
   });
 

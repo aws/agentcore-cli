@@ -9,7 +9,7 @@ on:
         description: 'CDK repo branch to build from (default: main)'
         default: 'main'
   pull_request_target:
-    branches: [main]
+    branches: [main, feat/**]
 
 concurrency:
   group: e2e-${{ github.event.pull_request.number || github.ref }}

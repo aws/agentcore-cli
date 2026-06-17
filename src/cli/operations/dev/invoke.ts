@@ -9,13 +9,13 @@ export { type InvokeStreamingOptions, type SSELogger } from './invoke-types';
 /**
  * Parse a single SSE data line and extract the content.
  */
-function parseSSELine(line: string): { content: string | null; error: string | null } {
+export function parseSSELine(line: string): { content: string | null; error: string | null } {
   if (!line.startsWith('data: ')) {
     return { content: null, error: null };
   }
-  const content = line.slice(6);
+  const raw = line.slice(6);
   try {
-    const parsed: unknown = JSON.parse(content);
+    const parsed: unknown = JSON.parse(raw);
     if (typeof parsed === 'string') {
       return { content: parsed, error: null };
     } else if (parsed && typeof parsed === 'object') {
@@ -27,8 +27,14 @@ function parseSSELine(line: string): { content: string | null; error: string | n
         return { content: String((parsed as { text: unknown }).text), error: null };
       }
     }
+    // ConverseStream-shaped event: extract text delta
+    const event = (parsed as { event?: { contentBlockDelta?: { delta?: { text?: string } } } })?.event;
+    const text = event?.contentBlockDelta?.delta?.text;
+    if (typeof text === 'string') {
+      return { content: text, error: null };
+    }
   } catch {
-    return { content, error: null };
+    return { content: raw, error: null };
   }
   return { content: null, error: null };
 }

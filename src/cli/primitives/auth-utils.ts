@@ -1,5 +1,10 @@
 import { setEnvVar } from '../../lib';
-import type { AgentCoreProjectSpec, CustomClaimValidation } from '../../schema';
+import type {
+  AgentCoreProjectSpec,
+  CustomClaimValidation,
+  PrivateEndpoint,
+  PrivateEndpointOverride,
+} from '../../schema';
 import { computeDefaultCredentialEnvVarName, computeManagedOAuthCredentialName } from './credential-utils';
 
 /** Flat JWT config from TUI/CLI (pre-schema-transformation). */
@@ -11,6 +16,10 @@ export interface JwtConfigOptions {
   customClaims?: CustomClaimValidation[];
   clientId?: string;
   clientSecret?: string;
+  /** PrivateLink inbound: how to reach the OIDC discovery endpoint over a private network. */
+  privateEndpoint?: PrivateEndpoint;
+  /** Per-domain private-endpoint overrides (≤5). */
+  privateEndpointOverrides?: PrivateEndpointOverride[];
 }
 
 /**
@@ -24,6 +33,10 @@ export function buildAuthorizerConfigFromJwtConfig(jwtConfig: JwtConfigOptions) 
       ...(jwtConfig.allowedClients?.length ? { allowedClients: jwtConfig.allowedClients } : {}),
       ...(jwtConfig.allowedScopes?.length ? { allowedScopes: jwtConfig.allowedScopes } : {}),
       ...(jwtConfig.customClaims?.length ? { customClaims: jwtConfig.customClaims } : {}),
+      ...(jwtConfig.privateEndpoint ? { privateEndpoint: jwtConfig.privateEndpoint } : {}),
+      ...(jwtConfig.privateEndpointOverrides?.length
+        ? { privateEndpointOverrides: jwtConfig.privateEndpointOverrides }
+        : {}),
     },
   };
 }

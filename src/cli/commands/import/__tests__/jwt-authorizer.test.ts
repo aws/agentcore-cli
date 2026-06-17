@@ -250,7 +250,7 @@ describe('handleImport: JWT authorizer passthrough', () => {
     fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(
       path.join(configDir, 'agentcore.json'),
-      JSON.stringify({ name: 'myproject', version: 1, runtimes: [], memories: [], credentials: [] })
+      JSON.stringify({ name: 'myproject', version: 1, runtimes: [], memories: [], knowledgeBases: [], credentials: [] })
     );
     mockFindConfigRoot.mockReturnValue(configDir);
   });
@@ -265,6 +265,7 @@ describe('handleImport: JWT authorizer passthrough', () => {
       version: 1,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
     });
     mockWriteProjectSpec.mockResolvedValue(undefined);
@@ -293,6 +294,7 @@ describe('handleImport: JWT authorizer passthrough', () => {
       version: 1,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
     });
     mockWriteProjectSpec.mockResolvedValue(undefined);
@@ -315,6 +317,7 @@ describe('handleImport: JWT authorizer passthrough', () => {
       version: 1,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
     });
     mockWriteProjectSpec.mockResolvedValue(undefined);

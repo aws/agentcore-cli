@@ -136,15 +136,11 @@ describe('agentcore-ab-tests', () => {
         roleArn: 'arn:role',
         variants: [],
         evaluationConfig: { onlineEvaluationConfigArn: 'arn:eval' },
-        trafficAllocationConfig: { routeOnHeader: { headerName: 'X-AB' } },
-        maxDurationDays: 30,
         enableOnCreate: true,
       });
 
       const body = JSON.parse(mockFetch.mock.calls[0]![1].body);
       expect(body.description).toBe('A description');
-      expect(body.trafficAllocationConfig).toEqual({ routeOnHeader: { headerName: 'X-AB' } });
-      expect(body.maxDurationDays).toBe(30);
       expect(body.enableOnCreate).toBe(true);
     });
 
@@ -249,14 +245,12 @@ describe('agentcore-ab-tests', () => {
         abTestId: 'abt-123',
         name: 'Updated',
         description: 'New desc',
-        maxDurationDays: 60,
         roleArn: 'arn:new-role',
       });
 
       const body = JSON.parse(mockFetch.mock.calls[0]![1].body);
       expect(body.name).toBe('Updated');
       expect(body.description).toBe('New desc');
-      expect(body.maxDurationDays).toBe(60);
       expect(body.roleArn).toBe('arn:new-role');
     });
   });

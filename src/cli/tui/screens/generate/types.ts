@@ -9,7 +9,12 @@ import type {
   SDKFramework,
   TargetLanguage,
 } from '../../../../schema';
-import { DEFAULT_MODEL_IDS, PROTOCOL_FRAMEWORK_MATRIX, getSupportedModelProviders } from '../../../../schema';
+import {
+  DEFAULT_MODEL_IDS,
+  PROTOCOL_FRAMEWORK_MATRIX,
+  getFrameworksForLanguage,
+  getSupportedModelProviders,
+} from '../../../../schema';
 import type { JwtConfigOptions } from '../../../primitives/auth-utils';
 
 export type GenerateStep =
@@ -160,13 +165,15 @@ export const SDK_OPTIONS = [
 
 /**
  * Get SDK options filtered by protocol compatibility and target language.
- * TypeScript currently only supports Strands.
+ * Frameworks must ship a template for the chosen language — e.g. Vercel AI is
+ * TypeScript-only, so it never appears for Python agents.
  */
 export function getSDKOptionsForProtocol(protocol: ProtocolMode, language?: TargetLanguage) {
   const supportedFrameworks = PROTOCOL_FRAMEWORK_MATRIX[protocol];
   const byProtocol = SDK_OPTIONS.filter(option => supportedFrameworks.includes(option.id));
-  if (language === 'TypeScript') {
-    return byProtocol.filter(option => option.id === 'Strands' || option.id === 'VercelAI');
+  if (language === 'Python' || language === 'TypeScript') {
+    const byLanguage = getFrameworksForLanguage(language);
+    return byProtocol.filter(option => byLanguage.includes(option.id));
   }
   return byProtocol;
 }
@@ -213,7 +220,7 @@ export const ADVANCED_SETTING_OPTIONS = [
   { id: 'filesystem', title: 'Filesystem mounts', description: 'Session storage, EFS, and S3 Files mounts' },
   {
     id: 'configBundle',
-    title: 'Config bundle [preview]',
+    title: 'Config bundle',
     description: 'Manage system prompt and tool config without redeploying',
   },
 ] as const;

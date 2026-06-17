@@ -43,10 +43,23 @@ export interface GeminiModelConfig {
   maxTokens?: number;
 }
 
+export interface LiteLlmModelConfig {
+  modelId: string;
+  apiKeyArn?: string;
+  /** Base URL for the third-party model provider's API endpoint. */
+  apiBase?: string;
+  temperature?: number;
+  topP?: number;
+  maxTokens?: number;
+  /** Provider-specific parameters passed through to the model provider unchanged. */
+  additionalParams?: Record<string, unknown>;
+}
+
 export interface HarnessModelConfiguration {
   bedrockModelConfig?: BedrockModelConfig;
   openAiModelConfig?: OpenAiModelConfig;
   geminiModelConfig?: GeminiModelConfig;
+  liteLlmModelConfig?: LiteLlmModelConfig;
 }
 
 export type HarnessSystemPrompt = { text: string }[];
@@ -59,9 +72,10 @@ export interface HarnessTool {
   config?: Record<string, unknown>;
 }
 
-export interface HarnessSkill {
-  path: string;
-}
+export type HarnessSkill =
+  | { path: string }
+  | { s3Uri: string }
+  | { gitUrl: string; path?: string; auth?: { credentialArn: string; username?: string } };
 
 export interface HarnessAgentCoreMemoryConfiguration {
   arn: string;
@@ -121,74 +135,6 @@ export interface Harness {
   updatedAt: string;
 }
 
-export interface HarnessSummary {
-  harnessId: string;
-  harnessName: string;
-  arn: string;
-  status: HarnessStatus;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// ============================================================================
-// CreateHarness
-// ============================================================================
-
-export interface CreateHarnessOptions {
-  region: string;
-  harnessName: string;
-  executionRoleArn: string;
-  environment?: HarnessEnvironmentProvider;
-  environmentArtifact?: HarnessEnvironmentArtifact;
-  environmentVariables?: Record<string, string>;
-  authorizerConfiguration?: Record<string, unknown>;
-  model?: HarnessModelConfiguration;
-  systemPrompt?: HarnessSystemPrompt;
-  tools?: HarnessTool[];
-  skills?: HarnessSkill[];
-  allowedTools?: string[];
-  memory?: HarnessMemoryConfiguration;
-  truncation?: HarnessTruncationConfiguration;
-  maxIterations?: number;
-  maxTokens?: number;
-  timeoutSeconds?: number;
-  tags?: Record<string, string>;
-}
-
-export interface CreateHarnessResult {
-  harness: Harness;
-}
-
-export async function createHarness(options: CreateHarnessOptions): Promise<CreateHarnessResult> {
-  const { region, ...rest } = options;
-  const client = new AgentCoreApiClient({ region, plane: 'control' });
-
-  const body: Record<string, unknown> = {
-    harnessName: rest.harnessName,
-    clientToken: randomUUID(),
-    executionRoleArn: rest.executionRoleArn,
-  };
-
-  if (rest.environment) body.environment = rest.environment;
-  if (rest.environmentArtifact) body.environmentArtifact = rest.environmentArtifact;
-  if (rest.environmentVariables) body.environmentVariables = rest.environmentVariables;
-  if (rest.authorizerConfiguration) body.authorizerConfiguration = rest.authorizerConfiguration;
-  if (rest.model) body.model = rest.model;
-  if (rest.systemPrompt) body.systemPrompt = rest.systemPrompt;
-  if (rest.tools) body.tools = rest.tools;
-  if (rest.skills) body.skills = rest.skills;
-  if (rest.allowedTools) body.allowedTools = rest.allowedTools;
-  if (rest.memory) body.memory = rest.memory;
-  if (rest.truncation) body.truncation = rest.truncation;
-  if (rest.maxIterations != null) body.maxIterations = rest.maxIterations;
-  if (rest.maxTokens != null) body.maxTokens = rest.maxTokens;
-  if (rest.timeoutSeconds != null) body.timeoutSeconds = rest.timeoutSeconds;
-  if (rest.tags) body.tags = rest.tags;
-
-  const result = await client.request({ method: 'POST', path: '/harnesses', body });
-  return result as CreateHarnessResult;
-}
-
 // ============================================================================
 // GetHarness
 // ============================================================================
@@ -206,64 +152,6 @@ export async function getHarness(options: GetHarnessOptions): Promise<GetHarness
   const client = new AgentCoreApiClient({ region: options.region, plane: 'control' });
   const result = await client.request({ method: 'GET', path: `/harnesses/${options.harnessId}` });
   return result as GetHarnessResult;
-}
-
-// ============================================================================
-// UpdateHarness
-// ============================================================================
-
-export interface UpdateHarnessOptions {
-  region: string;
-  harnessId: string;
-  executionRoleArn?: string;
-  environment?: HarnessEnvironmentProvider;
-  environmentArtifact?: { optionalValue: HarnessEnvironmentArtifact | null };
-  environmentVariables?: Record<string, string>;
-  authorizerConfiguration?: { optionalValue: Record<string, unknown> | null };
-  model?: HarnessModelConfiguration;
-  systemPrompt?: HarnessSystemPrompt;
-  tools?: HarnessTool[];
-  skills?: HarnessSkill[];
-  allowedTools?: string[];
-  memory?: { optionalValue: HarnessMemoryConfiguration | null };
-  truncation?: HarnessTruncationConfiguration;
-  maxIterations?: number;
-  maxTokens?: number;
-  timeoutSeconds?: number;
-  tags?: Record<string, string>;
-}
-
-export interface UpdateHarnessResult {
-  harness: Harness;
-}
-
-export async function updateHarness(options: UpdateHarnessOptions): Promise<UpdateHarnessResult> {
-  const { region, harnessId, ...rest } = options;
-  const client = new AgentCoreApiClient({ region, plane: 'control' });
-
-  const body: Record<string, unknown> = {
-    clientToken: randomUUID(),
-  };
-
-  if (rest.executionRoleArn) body.executionRoleArn = rest.executionRoleArn;
-  if (rest.environment) body.environment = rest.environment;
-  if (rest.environmentArtifact !== undefined) body.environmentArtifact = rest.environmentArtifact;
-  if (rest.environmentVariables) body.environmentVariables = rest.environmentVariables;
-  if (rest.authorizerConfiguration !== undefined) body.authorizerConfiguration = rest.authorizerConfiguration;
-  if (rest.model) body.model = rest.model;
-  if (rest.systemPrompt) body.systemPrompt = rest.systemPrompt;
-  if (rest.tools) body.tools = rest.tools;
-  if (rest.skills) body.skills = rest.skills;
-  if (rest.allowedTools) body.allowedTools = rest.allowedTools;
-  if (rest.memory !== undefined) body.memory = rest.memory;
-  if (rest.truncation) body.truncation = rest.truncation;
-  if (rest.maxIterations != null) body.maxIterations = rest.maxIterations;
-  if (rest.maxTokens != null) body.maxTokens = rest.maxTokens;
-  if (rest.timeoutSeconds != null) body.timeoutSeconds = rest.timeoutSeconds;
-  if (rest.tags) body.tags = rest.tags;
-
-  const result = await client.request({ method: 'PATCH', path: `/harnesses/${harnessId}`, body });
-  return result as UpdateHarnessResult;
 }
 
 // ============================================================================
@@ -289,42 +177,14 @@ export async function deleteHarness(options: DeleteHarnessOptions): Promise<Dele
   return result as DeleteHarnessResult;
 }
 
-// ============================================================================
-// ListHarnesses
-// ============================================================================
-
-export interface ListHarnessesOptions {
-  region: string;
-  maxResults?: number;
-  nextToken?: string;
-}
-
-export interface ListHarnessesResult {
-  harnesses: HarnessSummary[];
-  nextToken?: string;
-}
-
-export async function listHarnesses(options: ListHarnessesOptions): Promise<ListHarnessesResult> {
-  const client = new AgentCoreApiClient({ region: options.region, plane: 'control' });
-  const query: Record<string, string> = {};
-  if (options.maxResults != null) query.maxResults = String(options.maxResults);
-  if (options.nextToken) query.nextToken = options.nextToken;
-
-  const result = await client.request({ method: 'GET', path: '/harnesses', query });
-  return result as ListHarnessesResult;
-}
-
-export async function listAllHarnesses(region: string): Promise<HarnessSummary[]> {
-  const all: HarnessSummary[] = [];
-  let nextToken: string | undefined;
-
-  do {
-    const result = await listHarnesses({ region, maxResults: 100, nextToken });
-    all.push(...result.harnesses);
-    nextToken = result.nextToken;
-  } while (nextToken);
-
-  return all;
+/**
+ * True when a DeleteHarness error means the harness is already gone (HTTP 404) — which callers
+ * treat as success for cleanup. Keyed on the typed control-plane status code, NOT a substring of
+ * the message, so unrelated "...does not exist" errors (e.g. a dependent IAM role) are NOT
+ * misclassified as a missing harness. Shared by teardown and the orphan-remove path.
+ */
+export function isHarnessNotFoundError(err: unknown): boolean {
+  return err instanceof AgentCoreApiError && err.statusCode === 404;
 }
 
 // ============================================================================

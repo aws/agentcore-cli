@@ -12,6 +12,7 @@ const mockProject = {
   managedBy: 'CDK' as const,
   runtimes: [{ name: 'MyAgent', build: 'CodeZip' as const, entrypoint: 'main.py', codeLocation: 'app/MyAgent/' }],
   memories: [],
+  knowledgeBases: [],
   credentials: [],
   evaluators: [],
   onlineEvalConfigs: [],

@@ -16,6 +16,8 @@ export interface PreflightContext {
   cdkProject: LocalCdkProject;
   /** True when agents array is empty but a deployed stack exists — deploy will tear down resources */
   isTeardownDeploy: boolean;
+  /** True when deployed-state.json has no targets — stack has never been deployed */
+  isFirstDeploy: boolean;
 }
 
 export interface SynthResult {
@@ -60,7 +62,6 @@ export function formatError(err: unknown): string {
  * Returns the project context needed for subsequent steps.
  */
 const MAX_RUNTIME_NAME_LENGTH = 48;
-const MAX_GATEWAY_COMBINED_NAME_LENGTH = 48;
 
 export async function validateProject(): Promise<PreflightContext> {
   // Find the agentcore config directory, walking up from cwd if needed
@@ -78,13 +79,22 @@ export async function validateProject(): Promise<PreflightContext> {
 
   // Validate that at least one agent or gateway is defined, unless this is a teardown deploy.
   //
-  // Teardown detection: when agents is empty but deployed-state.json records existing
-  // targets, the user has run `remove all` and wants to tear down AWS resources via deploy.
   // deployed-state.json is written by the CLI after every successful deploy, so it is a
   // reliable indicator of whether a CloudFormation stack exists for this project.
+  let hasExistingStack = false;
+  try {
+    const deployedState = await configIO.readDeployedState();
+    hasExistingStack = Object.keys(deployedState.targets).length > 0;
+  } catch {
+    // No deployed state file — no existing stack
+  }
+
+  // Teardown detection: when agents is empty but deployed-state.json records existing
+  // targets, the user has run `remove all` and wants to tear down AWS resources via deploy.
   let isTeardownDeploy = false;
   const hasAgents = projectSpec.runtimes && projectSpec.runtimes.length > 0;
   const hasMemories = projectSpec.memories && projectSpec.memories.length > 0;
+  const hasKnowledgeBases = projectSpec.knowledgeBases && projectSpec.knowledgeBases.length > 0;
   const hasEvaluators = projectSpec.evaluators && projectSpec.evaluators.length > 0;
   const hasPolicyEngines = projectSpec.policyEngines && projectSpec.policyEngines.length > 0;
   const hasHarnesses = projectSpec.harnesses && projectSpec.harnesses.length > 0;
@@ -98,22 +108,16 @@ export async function validateProject(): Promise<PreflightContext> {
     !hasAgents &&
     !hasGateways &&
     !hasMemories &&
+    !hasKnowledgeBases &&
     !hasEvaluators &&
     !hasPolicyEngines &&
     !hasHarnesses &&
     !hasDatasets &&
     !hasPayments
   ) {
-    let hasExistingStack = false;
-    try {
-      const deployedState = await configIO.readDeployedState();
-      hasExistingStack = Object.keys(deployedState.targets).length > 0;
-    } catch {
-      // No deployed state file — no existing stack
-    }
     if (!hasExistingStack) {
       throw new ValidationError(
-        'No resources defined in project. Add at least one resource (agent, memory, evaluator, or gateway) before deploying.'
+        'No resources defined in project. Add at least one resource (agent, memory, knowledge base, evaluator, or gateway) before deploying.'
       );
     }
     isTeardownDeploy = true;
@@ -122,11 +126,16 @@ export async function validateProject(): Promise<PreflightContext> {
   // Validate runtime names don't exceed AWS limits
   validateRuntimeNames(projectSpec);
 
-  // Validate HTTP gateway names don't exceed AWS limits when combined with project name
-  validateHttpGatewayNames(projectSpec);
-
   // Validate Container agents have Dockerfiles
   validateContainerAgents(projectSpec, configRoot);
+
+  // Validate per-harness harness.json up front so a schema error shows its precise message
+  // here instead of as an opaque "CDK synth failed" during synth. Skipped on a teardown deploy:
+  // tearing down a project with a hand-broken harness.json must not be blocked by validating the
+  // very files the user is discarding (mirrors the credential-skip rationale below).
+  if (!isTeardownDeploy) {
+    await validateHarnessSpecs(projectSpec, configRoot);
+  }
 
   // Validate AWS credentials before proceeding with build/synth.
   // Skip for teardown deploys — callers validate after teardown confirmation.
@@ -134,7 +143,7 @@ export async function validateProject(): Promise<PreflightContext> {
     await validateAwsCredentials();
   }
 
-  return { projectSpec, awsTargets, cdkProject, isTeardownDeploy };
+  return { projectSpec, awsTargets, cdkProject, isTeardownDeploy, isFirstDeploy: !hasExistingStack };
 }
 
 /**
@@ -151,36 +160,6 @@ function validateRuntimeNames(projectSpec: AgentCoreProjectSpec): void {
           `Runtime name too long: "${combinedName}" (${combinedName.length} chars). ` +
             `AWS limits runtime names to ${MAX_RUNTIME_NAME_LENGTH} characters. ` +
             `Shorten the project name or agent name in agentcore.json.`
-        );
-      }
-    }
-  }
-}
-
-/**
- * Validates that combined HTTP gateway names (projectName-gatewayName) don't exceed AWS limits.
- */
-function validateHttpGatewayNames(projectSpec: AgentCoreProjectSpec): void {
-  const projectName = projectSpec.name;
-  for (const gateway of projectSpec.httpGateways ?? []) {
-    const gwName = gateway.name;
-    if (gwName) {
-      const combinedName = `${projectName}-${gwName}`;
-      if (combinedName.length > MAX_GATEWAY_COMBINED_NAME_LENGTH) {
-        throw new Error(
-          `HTTP gateway name too long: "${combinedName}" (${combinedName.length} chars). ` +
-            `AWS limits gateway names to ${MAX_GATEWAY_COMBINED_NAME_LENGTH} characters. ` +
-            `Shorten the project name or gateway name in agentcore.json.`
-        );
-      }
-    }
-    for (const target of gateway.targets ?? []) {
-      const combined = `${projectName}-${target.name}`;
-      if (combined.length > MAX_GATEWAY_COMBINED_NAME_LENGTH) {
-        const maxTargetLen = MAX_GATEWAY_COMBINED_NAME_LENGTH - projectName.length - 1;
-        throw new Error(
-          `HTTP gateway target "${target.name}" in gateway "${gwName}" would exceed the ${MAX_GATEWAY_COMBINED_NAME_LENGTH}-character AWS limit when prefixed with project name "${projectName}-" (total: ${combined.length} chars). ` +
-            `Shorten the target name to ${maxTargetLen} characters or fewer.`
         );
       }
     }
@@ -208,6 +187,30 @@ export function validateContainerAgents(projectSpec: AgentCoreProjectSpec, confi
   }
   if (errors.length > 0) {
     throw new Error(errors.join('\n'));
+  }
+}
+
+/**
+ * Validate every per-harness `harness.json` against HarnessSpecSchema so a bad harness spec
+ * fails preflight with the precise Zod message (e.g. "sessionStoragePath ... pattern") instead
+ * of surfacing only "CDK synth failed: Subprocess exited with error 1" mid-deploy. The vended
+ * CDK app re-parses these at synth, so this just moves the same error earlier and makes it readable.
+ */
+export async function validateHarnessSpecs(projectSpec: AgentCoreProjectSpec, configRoot: string): Promise<void> {
+  const harnesses = projectSpec.harnesses ?? [];
+  if (harnesses.length === 0) return;
+
+  const configIO = new ConfigIO({ baseDir: configRoot });
+  const errors: string[] = [];
+  for (const harness of harnesses) {
+    try {
+      await configIO.readHarnessSpec(harness.name);
+    } catch (err) {
+      errors.push(`Harness "${harness.name}": ${formatError(err)}`);
+    }
+  }
+  if (errors.length > 0) {
+    throw new ValidationError(`Invalid harness configuration:\n${errors.join('\n')}`);
   }
 }
 

@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.20.0] - 2026-06-17
+
+### Added
+- feat: upgrade agent inspector to v0.6.0 (#1546) (d2f22e37)
+- feat: send model config to agent inspector (#1516) (3097e031)
+- feat(e2e): enable gemini tests (#1503) (c3d7565a)
+- feat(ci): clean up stale stacks with global vitest setup hook (#1499) (9966e9d2)
+- feat(ci): shard integ tests for faster runs.  (#1484) (9f755cb4)
+- feat(ci): add hourly canary for smoke test (#1486) (6c57e789)
+
+### Fixed
+- fix(harness): surface managed-memory heads-up on dev deploy + validate session storage path in TUI (#1555) (23d6ef22)
+- fix(ci): avoid running pr reviewer on closed prs (#1536) (ef1e0667)
+- fix(assets): prevent multi-gateway tool-name collisions across HTTP frameworks (#1518) (c217b169)
+- fix(e2e): add harness tests to e2e workflow (#1515) (0d93b006)
+- fix(ci): make /security-review fail loudly when the model never runs (#1482) (202eed9c)
+- fix(e2e): wire up payments env vars for full test suite (#1505) (ea2df09f)
+- fix(scripts): avoid overwriting git local config in e2e script (#1501) (f62329b0)
+
+### Other Changes
+- chore: ungate web-search commands (#1558) (6bb2ca45)
+- chore(policy): ungate guardrail policy form (#1552) (d5745af0)
+- release: nys summit (#1547) (845c1bdb)
+- script: bundle agent inspector (#1529) (2166bd87)
+
 ## [0.19.0] - 2026-06-09
 
 ### Added
