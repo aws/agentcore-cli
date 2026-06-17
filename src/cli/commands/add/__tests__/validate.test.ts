@@ -184,6 +184,14 @@ describe('validate', () => {
       result = validateAddAgentOptions({
         ...validAgentOptionsCreate,
         language: 'TypeScript',
+        framework: 'Mastra',
+        modelProvider: 'Bedrock',
+      });
+      expect(result.valid).toBe(true);
+
+      result = validateAddAgentOptions({
+        ...validAgentOptionsCreate,
+        language: 'TypeScript',
         framework: 'LangChain_LangGraph',
       });
       expect(result.valid).toBe(false);

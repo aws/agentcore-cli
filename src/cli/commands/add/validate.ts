@@ -17,6 +17,7 @@ import {
   TargetLanguageSchema,
   getSupportedFrameworksForProtocol,
   getSupportedModelProviders,
+  isTypeScriptSDKFramework,
   isValidKmsKeyArn,
   matchEnumValue,
   validateApiFormat,
@@ -259,15 +260,10 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
     if (options.language === 'Other') {
       return { valid: false, error: 'Create path only supports Python or TypeScript' };
     }
-    if (
-      options.language === 'TypeScript' &&
-      options.framework &&
-      options.framework !== 'Strands' &&
-      options.framework !== 'VercelAI'
-    ) {
+    if (options.language === 'TypeScript' && options.framework && !isTypeScriptSDKFramework(options.framework)) {
       return {
         valid: false,
-        error: `Framework ${options.framework} is not yet available for TypeScript. Only Strands and Vercel AI SDK are supported.`,
+        error: `Framework ${options.framework} is not yet available for TypeScript. Only Strands, Vercel AI SDK, and Mastra are supported.`,
       };
     }
 

@@ -183,6 +183,7 @@ export const FRAMEWORK_OPTIONS = [
   { id: 'LangChain_LangGraph', title: 'LangChain + LangGraph', description: 'Popular open-source frameworks' },
   { id: 'GoogleADK', title: 'Google ADK', description: 'Google Agent Development Kit' },
   { id: 'OpenAIAgents', title: 'OpenAI Agents', description: 'OpenAI native agent SDK' },
+  { id: 'Mastra', title: 'Mastra', description: 'TypeScript agent framework' },
 ] as const;
 
 export const MODEL_PROVIDER_OPTIONS = [

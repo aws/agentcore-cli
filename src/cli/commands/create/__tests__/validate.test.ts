@@ -133,6 +133,20 @@ describe('validateCreateOptions', () => {
     expect(result.valid).toBe(true);
   });
 
+  it('accepts TypeScript with Mastra framework and Bedrock model provider', () => {
+    const result = validateCreateOptions(
+      {
+        name: 'TestProjMastra',
+        language: 'TypeScript',
+        framework: 'Mastra',
+        modelProvider: 'Bedrock',
+        memory: 'none',
+      },
+      testDir
+    );
+    expect(result.valid).toBe(true);
+  });
+
   it('rejects TypeScript with a non-Strands framework', () => {
     const result = validateCreateOptions(
       {

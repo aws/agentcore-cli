@@ -1,6 +1,7 @@
 import type { BaseRenderer } from './BaseRenderer';
 import { GoogleADKRenderer } from './GoogleADKRenderer';
 import { LangGraphRenderer } from './LangGraphRenderer';
+import { MastraRenderer } from './MastraRenderer';
 import { McpRenderer } from './McpRenderer';
 import { OpenAIAgentsRenderer } from './OpenAIAgentsRenderer';
 import { StrandsRenderer } from './StrandsRenderer';
@@ -12,6 +13,7 @@ export { CDKRenderer, type CDKRendererContext } from './CDKRenderer';
 export { renderGatewayTargetTemplate } from './GatewayTargetRenderer';
 export { GoogleADKRenderer } from './GoogleADKRenderer';
 export { LangGraphRenderer } from './LangGraphRenderer';
+export { MastraRenderer } from './MastraRenderer';
 export { McpRenderer } from './McpRenderer';
 export { OpenAIAgentsRenderer } from './OpenAIAgentsRenderer';
 export { StrandsRenderer } from './StrandsRenderer';
@@ -38,6 +40,8 @@ export function createRenderer(config: AgentRenderConfig): BaseRenderer {
       return new OpenAIAgentsRenderer(config);
     case 'VercelAI':
       return new VercelAIRenderer(config);
+    case 'Mastra':
+      return new MastraRenderer(config);
     default: {
       const _exhaustive: never = config.sdkFramework;
       throw new Error(`Unsupported SDK framework: ${String(_exhaustive)}`);
