@@ -17,7 +17,6 @@ Env:  AWS_REGION, RESOURCE_SUFFIX (optional; defaults to a random hex)
 import io
 import json
 import os
-import sys
 import time
 import uuid
 import zipfile
@@ -132,6 +131,11 @@ def ensure_lambda():
             )
             arn = resp["FunctionArn"]
             break
+        except lam.exceptions.ResourceConflictException:
+            # A parallel CI job (e.g. the preview/ga matrix) created it first — reuse it.
+            print("  Lambda created concurrently, reusing existing function")
+            arn = lam.get_function(FunctionName=LAMBDA_FN_NAME)["Configuration"]["FunctionArn"]
+            break
         except lam.exceptions.ClientError as e:
             if "cannot be assumed" in str(e) or "InvalidParameterValue" in str(e):
                 print(f"  role not ready, retrying ({attempt + 1})...")
@@ -144,13 +148,32 @@ def ensure_lambda():
     return arn
 
 
+def _find_rest_apis(api):
+    """All REST API ids with our name, sorted (deterministic 'winner' = first)."""
+    return sorted(
+        item["id"] for item in api.get_rest_apis(limit=500).get("items", []) if item.get("name") == REST_API_NAME
+    )
+
+
 def ensure_rest_api():
-    """Create (or reuse) a minimal REST API with one GET method deployed to a stage."""
+    """Create (or reuse) a minimal REST API with one GET method deployed to a stage.
+
+    API Gateway allows duplicate names, so parallel CI jobs can each create one.
+    We reap the race: keep the lowest-id API, delete the rest, so duplicates never
+    accumulate and every run deterministically resolves to the same API.
+    """
     api = boto3.client("apigateway", region_name=REGION)
-    for item in api.get_rest_apis(limit=500).get("items", []):
-        if item.get("name") == REST_API_NAME:
-            print(f"REST API exists: {item['id']}")
-            return item["id"], REST_API_STAGE
+    existing = _find_rest_apis(api)
+    if existing:
+        winner, dupes = existing[0], existing[1:]
+        for dupe in dupes:
+            print(f"Deleting duplicate REST API: {dupe}")
+            try:
+                api.delete_rest_api(restApiId=dupe)
+            except api.exceptions.ClientError:
+                pass  # best-effort; another job may be reaping it too
+        print(f"REST API exists: {winner}")
+        return winner, REST_API_STAGE
     print(f"Creating REST API: {REST_API_NAME}")
     rest_api_id = api.create_rest_api(name=REST_API_NAME, description="e2e gateway-target prereq")["id"]
     root_id = next(r["id"] for r in api.get_resources(restApiId=rest_api_id)["items"] if r["path"] == "/")
@@ -180,7 +203,18 @@ def ensure_rest_api():
     )
     api.create_deployment(restApiId=rest_api_id, stageName=REST_API_STAGE)
     print(f"REST API created: {rest_api_id} (stage {REST_API_STAGE})")
-    return rest_api_id, REST_API_STAGE
+
+    # Two jobs may have both reached the create path concurrently. Reconcile to the
+    # lowest id so every job converges on the same API and no duplicates survive.
+    all_ids = _find_rest_apis(api)
+    winner = all_ids[0] if all_ids else rest_api_id
+    for dupe in (i for i in all_ids if i != winner):
+        print(f"Deleting duplicate REST API created by a parallel job: {dupe}")
+        try:
+            api.delete_rest_api(restApiId=dupe)
+        except api.exceptions.ClientError:
+            pass
+    return winner, REST_API_STAGE
 
 
 def _try(label, fn):
