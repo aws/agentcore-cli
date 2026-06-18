@@ -178,12 +178,12 @@ clusters of bad outcomes.
 A harness bundles a runtime, model, tools, skills, memory, and observability into one declarative config. Use it when
 you want infra without writing agent code.
 
-| Command               | Description                                                               |
-| --------------------- | ------------------------------------------------------------------------- |
-| `add harness`         | Add a harness resource (runtime + tools + skills + memory)                |
-| `add harness --tool`  | Add a tool to an existing harness                                         |
-| `add harness --skill` | Add a skill to an existing harness                                        |
-| `export harness`      | Export a harness config to a deployable Strands Python agent under `app/` |
+| Command          | Description                                                                 |
+| ---------------- | --------------------------------------------------------------------------- |
+| `add harness`    | Add a harness resource (runtime + model + memory)                           |
+| `add tool`       | Add a tool to a harness (`--harness <name> --type <type> --name <name>`)    |
+| `add skill`      | Add a skill to a harness (`--harness <name>` + `--path` / `--s3` / `--git`) |
+| `export harness` | Export a harness config to a deployable Strands Python agent under `app/`   |
 
 > After `export harness`, **read `app/<agentName>/EXPORT_NOTES.md`** before running `deploy` — it lists any manual
 > follow-up the exporter could not automate.
