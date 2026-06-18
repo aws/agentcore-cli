@@ -281,8 +281,15 @@ describe.skipIf(!canRun).sequential('e2e: policy engine blocks violating gateway
           const json = parseJsonOutput(result.stdout) as { success: boolean; error?: string };
           expect(json.success, `Invoke should be blocked but got: ${JSON.stringify(json)}`).toBe(false);
           expect(json.error, 'Block error message should be present').toBeTruthy();
+          // Require a genuine policy-engine denial — not a bare IAM authorization 403.
+          // Expected shape: "...not allowed due to policy enforcement [Policy evaluation
+          // denied due to blockviolence-xxxxx]". Guard against the IAM "not authorized to
+          // perform" 403 silently satisfying this assertion (which would be a false positive).
+          expect(json.error!, `Error should not be an IAM authorization failure, got: ${json.error}`).not.toMatch(
+            /not authorized to perform/i
+          );
           expect(json.error!, `Error should indicate policy denial, got: ${json.error}`).toMatch(
-            /denied|policy|403|blockviolence/i
+            /policy enforcement|policy evaluation|policy denial|blockviolence/i
           );
         },
         3,
