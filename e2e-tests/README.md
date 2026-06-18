@@ -113,8 +113,8 @@ Feature lifecycle tests: describe what the test exercises end-to-end
 
 - `dev-lifecycle.test.ts`
 - `evals-lifecycle.test.ts`
-- `ab-test-lifecycle.test.ts` — A/B test (config-bundle mode): create → run → pause → resume → promote, asserting live
-  execution state from AWS via `view ab-test`
+- `ab-test-config-bundle.test.ts` — A/B test (config-bundle mode): create → run → pause → resume → promote, asserting
+  live execution state from AWS via `view ab-test`
 - `ab-test-target-based.test.ts` — A/B test (target-based mode): two http-runtime gateway-targets on named runtime
   endpoints, each scoped by its own online-eval → run → pause → resume → promote (control endpoint version-bumped to
   treatment's)
