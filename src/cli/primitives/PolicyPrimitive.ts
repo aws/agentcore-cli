@@ -9,7 +9,14 @@ import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand, withCommandRunTelemetry } from '../telemetry/cli-command-run.js';
 import { PolicyValidationMode, standardize } from '../telemetry/schemas/common-shapes.js';
 import { requireTTY } from '../tui/guards/tty';
-import { type PolicyEffect, authorizationPhaseForEffect, defaultDataPathForEffect } from '../tui/screens/policy/types';
+import {
+  FILTERS_BY_CATEGORY,
+  type GuardrailCategoryType,
+  type PolicyEffect,
+  authorizationPhaseForEffect,
+  defaultDataPathForEffect,
+  invalidFiltersForCategory,
+} from '../tui/screens/policy/types';
 import { BasePrimitive } from './BasePrimitive';
 import { SOURCE_CODE_NOTE } from './constants';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
@@ -408,6 +415,15 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
                 const policyEffect = effect as PolicyEffect;
                 const filters = cliOptions.formFilters.split(',').map(s => s.trim());
 
+                const category = cliOptions.formCategory as GuardrailCategoryType;
+                const invalidFilters = invalidFiltersForCategory(category, filters);
+                if (invalidFilters.length > 0) {
+                  throw new ValidationError(
+                    `Invalid filter(s) for category '${category}': ${invalidFilters.join(', ')}. ` +
+                      `Allowed: ${FILTERS_BY_CATEGORY[category].join(', ')}`
+                  );
+                }
+
                 let resolvedGatewayArn: string | undefined;
                 let resolvedTargetName: string | undefined = cliOptions.target;
                 if (cliOptions.gateway) {
@@ -446,7 +462,7 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
 
                 const statement = synthesizeCedar(
                   {
-                    category: cliOptions.formCategory as 'contentFilter' | 'promptAttack' | 'sensitiveInformation',
+                    category,
                     filters,
                     effect: policyEffect,
                     dataPath: cliOptions.formDataPath ?? defaultDataPathForEffect(policyEffect),
