@@ -167,7 +167,13 @@ clusters of bad outcomes.
 | `resume online-insights` | Resume a paused online insights config                      |
 | `archive insights`       | Delete an insights job on the service + clear local history |
 
-### Harness
+### Harness — `[preview]`
+
+> Harness commands are only available in the preview release of the CLI. Install it with:
+>
+> ```bash
+> npm install -g @aws/agentcore@preview
+> ```
 
 A harness bundles a runtime, model, tools, skills, memory, and observability into one declarative config. Use it when
 you want infra without writing agent code.
