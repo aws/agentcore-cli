@@ -223,6 +223,7 @@ describe.sequential('e2e: A/B test lifecycle (config-bundle mode)', () => {
 
       // Auto-creates an IAM role and retries on AccessDenied while IAM propagates;
       // retry the whole call to absorb propagation flakiness.
+      let runJson: { mode: string; variants: { name: string }[] } | undefined;
       await retry(
         async () => {
           const result = await run([
@@ -259,13 +260,18 @@ describe.sequential('e2e: A/B test lifecycle (config-bundle mode)', () => {
           };
           expect(json.success).toBe(true);
           expect(json.id).toBeTruthy();
-          expect(json.mode).toBe('config-bundle');
-          expect(json.variants).toHaveLength(2);
+          // Capture the id immediately so afterAll always archives the test, even if a
+          // later assertion fails. Done inside retry (before any throw) so an orphan is
+          // never left behind by a re-attempt.
           abTestId = json.id;
+          runJson = json;
         },
         3,
         20000
       );
+      // Deterministic checks live outside retry — a mismatch must not re-create the test.
+      expect(runJson!.mode).toBe('config-bundle');
+      expect(runJson!.variants).toHaveLength(2);
     },
     300000
   );

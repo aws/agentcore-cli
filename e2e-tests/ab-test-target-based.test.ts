@@ -220,6 +220,7 @@ describe.sequential('e2e: A/B test lifecycle (target-based mode)', () => {
   it.skipIf(!canRun)(
     'runs the A/B test in target-based mode',
     async () => {
+      let runJson: { mode: string; variants: { name: string; targetName?: string }[] } | undefined;
       await retry(
         async () => {
           const result = await run([
@@ -254,13 +255,18 @@ describe.sequential('e2e: A/B test lifecycle (target-based mode)', () => {
           };
           expect(json.success).toBe(true);
           expect(json.id).toBeTruthy();
-          expect(json.mode).toBe('target-based');
-          expect(json.variants).toHaveLength(2);
+          // Capture the id immediately so afterAll always archives the test, even if a
+          // later assertion fails. Done inside retry (before any throw) so an orphan is
+          // never left behind by a re-attempt.
           abTestId = json.id;
+          runJson = json;
         },
         3,
         20000
       );
+      // Deterministic checks live outside retry — a mismatch must not re-create the test.
+      expect(runJson!.mode).toBe('target-based');
+      expect(runJson!.variants).toHaveLength(2);
     },
     300000
   );
