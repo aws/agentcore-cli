@@ -180,7 +180,7 @@ Run `agentcore --help` or `agentcore <command> --help` for full flags. Commonly 
 | `agentcore run recommendation` | Optimize prompts or tool descriptions from real traces |
 | `agentcore run insights` _[preview]_ | Run failure-pattern analysis across sessions |
 | `agentcore run ab-test` | Start an A/B test (config-bundle or target-based) |
-| `agentcore run ingest` | Ingest dataset rows for evaluation |
+| `agentcore run ingest` | Start a fresh ingestion job for every data source on a deployed knowledge base |
 | `agentcore view <type>` | List or view jobs (recommendation, batch-evaluation, ab-test, insights) |
 | `agentcore archive <type>` | Delete a job on the service + clear local history |
 | `agentcore stop <type>` | Stop a running batch-evaluation or ab-test |
