@@ -364,9 +364,12 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
         <Box marginBottom={1} flexDirection="column">
           <Text color="red">A project already exists at this location.</Text>
           {flow.existingProjectPath && <Text dimColor>Found: {flow.existingProjectPath}</Text>}
-          <Box marginTop={1}>
+          <Box marginTop={1} flexDirection="column">
             <Text>
-              Use <Text color="cyan">add agent</Text> to create a new agent in the existing project.
+              Use <Text color="cyan">add harness</Text> to add a harness to the existing project.
+            </Text>
+            <Text dimColor>
+              Or use <Text color="cyan">add agent</Text> to add a code-based agent.
             </Text>
           </Box>
         </Box>
