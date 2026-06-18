@@ -312,11 +312,9 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         endStep('error', errorMsg);
         logger.finalize(false);
 
-        const error = errorResult?.error ?? new Error('unknown error occurred when setting up oauth providers');
-        error.message = errorMsg;
         return {
           success: false,
-          error: error,
+          error: errorResult?.error ?? new Error(`an unexpected error ocurred when setting up oauth providers`),
           logPath: logger.getRelativeLogPath(),
         };
       }

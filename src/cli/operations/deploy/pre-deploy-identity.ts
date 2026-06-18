@@ -460,11 +460,9 @@ async function setupSingleOAuth2Provider(
       return {
         providerName: credential.name,
         status: 'error',
-        error: new AwsCredentialsError(
-          'AWS credentials not found. Run`aws sso login` or set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.',
-          undefined,
-          { cause: error }
-        ),
+        error: new AwsCredentialsError(`AWS crdentials not found. ${await getAwsLoginGuidance()}`, undefined, {
+          cause: error,
+        }),
       };
     }
     return { providerName: credential.name, status: 'error', error: error };
