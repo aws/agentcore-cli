@@ -12,6 +12,7 @@ import { getErrorMessage } from '../../errors';
 import { detectContainerRuntime } from '../../external-requirements';
 import { isPreviewEnabled } from '../../feature-flags';
 import { ExecLogger } from '../../logging';
+import { isDeploySkippable } from '../../operations/deploy/change-detection';
 import {
   callMcpTool,
   createDevServer,
@@ -509,28 +510,54 @@ export const registerDev = (program: Command) => {
               };
             }
 
-            // Preview: show TUI deploy progress, then launch Agent Inspector in the browser
+            // Preview browser mode: check if deploy is needed BEFORE entering the TUI.
+            // This avoids an alt-screen flash when there's nothing to deploy.
+            // The TUI (launchTuiDevScreenWithPicker) is only used to show deploy progress.
             if (isPreviewEnabled()) {
-              const pickerResult = await launchTuiDevScreenWithPicker(workingDir, {
-                skipDeploy: opts.skipDeploy,
-              });
+              const isHarnessOnly = hasHarnesses && supportedAgents.length === 0;
+              let needsTuiDeploy = false;
 
-              if (pickerResult != null) {
-                recorder.set({ ui_mode: 'browser' as const });
-                return {
-                  success: true as const,
-                  blockingPromise: runBrowserMode({
-                    workingDir,
-                    project,
-                    port,
-                    agentName: pickerResult.agentName,
-                    harnessName: pickerResult.harnessName,
-                    otelEnvVars,
-                    collector,
-                  }),
-                };
+              if (isHarnessOnly && !opts.skipDeploy) {
+                needsTuiDeploy = !(await isDeploySkippable());
               }
-              return { success: true as const, blockingPromise: Promise.resolve() };
+
+              if (needsTuiDeploy) {
+                // Deploy is needed — show TUI deploy progress, then launch browser
+                const pickerResult = await launchTuiDevScreenWithPicker(workingDir, {
+                  skipDeploy: opts.skipDeploy,
+                });
+
+                if (pickerResult != null) {
+                  recorder.set({ ui_mode: 'browser' as const });
+                  return {
+                    success: true as const,
+                    blockingPromise: runBrowserMode({
+                      workingDir,
+                      project,
+                      port,
+                      agentName: pickerResult.agentName,
+                      harnessName: pickerResult.harnessName,
+                      otelEnvVars,
+                      collector,
+                    }),
+                  };
+                }
+                return { success: true as const, blockingPromise: Promise.resolve() };
+              }
+
+              // No deploy needed — skip TUI entirely, go straight to browser
+              recorder.set({ ui_mode: 'browser' as const });
+              return {
+                success: true as const,
+                blockingPromise: runBrowserMode({
+                  workingDir,
+                  project,
+                  port,
+                  agentName: opts.runtime,
+                  otelEnvVars,
+                  collector,
+                }),
+              };
             }
 
             // Default: browser mode (blocks forever)

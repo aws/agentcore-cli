@@ -2,6 +2,7 @@ import { ConfigIO, findConfigRoot, getWorkingDirectory } from '../../../lib';
 import type { AgentCoreProjectSpec } from '../../../schema';
 import { ANSI } from '../../constants';
 import { isPreviewEnabled } from '../../feature-flags';
+import { isDeploySkippable } from '../../operations/deploy/change-detection';
 import { getDevConfig, getDevSupportedAgents, loadDevEnv, loadProjectConfig } from '../../operations/dev';
 import { type OtelCollector, startOtelCollector } from '../../operations/dev/otel';
 import {
@@ -133,7 +134,8 @@ export async function launchBrowserDev(): Promise<void> {
     process.exit(1);
   }
 
-  if (hasHarnesses) {
+  // Only auto-deploy for harness-only projects, and skip if no CDK changes
+  if (hasHarnesses && !hasRuntimes && !(await isDeploySkippable())) {
     await runCliDeploy();
   }
 

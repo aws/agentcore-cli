@@ -1,5 +1,6 @@
 import type { AgentEnvSpec } from '../../../../schema';
 import { isPreviewEnabled } from '../../../feature-flags';
+import { isDeploySkippable } from '../../../operations/deploy/change-detection';
 import { getDevSupportedAgents, getEndpointUrl, loadProjectConfig } from '../../../operations/dev';
 import {
   DeployStatus,
@@ -185,19 +186,35 @@ export function DevScreen(props: DevScreenProps) {
       } else if (agents.length === 1 && harnesses.length === 0 && agents[0]) {
         setSelectedAgentName(agents[0].name);
         if (!onLaunchBrowser) setMode('chat');
-      } else if (harnesses.length === 1 && agents.length === 0) {
-        setSelectedHarness(harnesses[0]);
-        setMode('deploying');
+      } else if (harnesses.length > 0 && agents.length === 0) {
+        // Harness-only projects: check if deploy is needed before showing deploy UI.
+        // This covers terminal mode (--no-browser). Browser mode is gated earlier in command.tsx.
+        if (harnesses.length === 1) setSelectedHarness(harnesses[0]);
+
+        const skipDeploy = props.skipDeploy === true || (await isDeploySkippable());
+
+        if (skipDeploy) {
+          if (onLaunchBrowser) {
+            queueMicrotask(() => onLaunchBrowser({ harnessName: harnesses.length === 1 ? harnesses[0] : undefined }));
+          } else if (harnesses.length === 1) {
+            setMode('harness');
+          }
+          // Multiple harnesses + terminal: stays in 'select-agent' (chooser)
+        } else {
+          setMode('deploying');
+        }
       } else if (agents.length === 0 && harnesses.length === 0) {
         setNoAgentsError(true);
       }
 
       setAgentsLoaded(true);
 
-      // If onLaunchBrowser is set and only agents (no harnesses), auto-select immediately.
-      // Harness projects need deploy first — handled after deploy completes.
-      if (onLaunchBrowser && agents.length === 1 && harnesses.length === 0) {
-        queueMicrotask(() => onLaunchBrowser({ agentName: agents[0]?.name }));
+      // Browser mode: skip the terminal chooser and launch browser immediately.
+      // The web UI handles agent/harness selection.
+      // Harness-only projects need deploy first — handled after deploy completes.
+      if (onLaunchBrowser && agents.length > 0) {
+        const resolvedName = props.agentName ?? (agents.length === 1 ? agents[0]?.name : undefined);
+        queueMicrotask(() => onLaunchBrowser({ agentName: resolvedName }));
       }
     };
     void load();
@@ -255,8 +272,11 @@ export function DevScreen(props: DevScreenProps) {
     queueMicrotask(() => {
       if (onLaunchBrowser) {
         onLaunchBrowser({ harnessName: selectedHarness });
-      } else {
+      } else if (selectedHarness) {
         setMode('harness');
+      } else {
+        // Multiple harnesses: show the chooser after deploy completes
+        setMode('select-agent');
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
