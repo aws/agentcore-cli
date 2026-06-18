@@ -119,9 +119,9 @@ Feature lifecycle tests: describe what the test exercises end-to-end
   endpoints, each scoped by its own online-eval → run → pause → resume → promote (control endpoint version-bumped to
   treatment's)
 - `httpgateway-all-targets.test.ts` — one `protocolType: None` (HTTP) gateway hosting every deployable target type
-  (http-runtime, mcp-server, lambda-function-arn, api-gateway, open-api-schema, smithy-model, web-search), deployed in a
-  single stack. Omits `connector` (Bedrock FMKB, a private-beta CFN resource type) and `passthrough` (unreleased gated
-  feature).
+  (http-runtime, mcp-server, lambda-function-arn, api-gateway, open-api-schema, smithy-model, web-search, passthrough),
+  deployed in a single stack. `passthrough` is gated, so its add/deploy run with `ENABLE_GATED_FEATURES=1`. Omits
+  `connector` (Bedrock FMKB, a private-beta CFN resource type).
 
 ### Fixtures that provision external AWS resources
 

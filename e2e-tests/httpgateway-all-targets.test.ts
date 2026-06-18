@@ -5,7 +5,7 @@
  * AND the HTTP-only target types — so one gateway carries all targets:
  *
  *   http-runtime, mcp-server, lambda-function-arn, api-gateway,
- *   open-api-schema, smithy-model, web-search
+ *   open-api-schema, smithy-model, web-search, passthrough
  *
  * Flow: create project → ensure external prereqs (Lambda, REST API via a boto3
  *       fixture) → add gateway + credential → add every target → deploy ONE
@@ -16,8 +16,9 @@
  * idempotently by fixtures/gateway-targets/setup_target_prereqs.py (mirrors the
  * import-resources.test.ts fixture pattern).
  *
- * Omitted target types: `connector` (Bedrock FMKB) is a private-beta CloudFormation
- * resource type, and `passthrough` is an unreleased gated feature.
+ * `passthrough` is gated behind ENABLE_GATED_FEATURES, so the add/deploy steps
+ * run with that env var set. Omits `connector` (Bedrock FMKB), a private-beta
+ * CloudFormation resource type.
  *
  * Prerequisites: AWS credentials, npm, git, uv, python3 + boto3.
  */
@@ -70,9 +71,11 @@ describe.sequential('e2e: HTTP gateway with all target types', () => {
   let prereqsData: Prereqs;
 
   const run = (args: string[]) => runAgentCoreCLI(args, projectPath);
+  // passthrough is gated; run add/deploy with ENABLE_GATED_FEATURES on (harmless for the others).
+  const runGated = (args: string[]) => spawnAndCollect('agentcore', args, projectPath, { ENABLE_GATED_FEATURES: '1' });
 
   const assertAddTarget = async (args: string[], targetName: string): Promise<void> => {
-    const result = await run(['add', 'gateway-target', '--gateway', gatewayName, '--json', ...args]);
+    const result = await runGated(['add', 'gateway-target', '--gateway', gatewayName, '--json', ...args]);
     expect(result.exitCode, `add target ${targetName} failed: ${result.stdout}\n${result.stderr}`).toBe(0);
     const json = parseJsonOutput(result.stdout) as { success: boolean; toolName: string };
     expect(json.success, `add target ${targetName} should succeed`).toBe(true);
@@ -251,6 +254,28 @@ describe.sequential('e2e: HTTP gateway with all target types', () => {
     assertAddTarget(['--name', 'tWebSearch', '--type', 'web-search'], 'tWebSearch')
   );
 
+  it.skipIf(!canRun)('adds a passthrough target (gated; gateway-iam-role auth)', () =>
+    assertAddTarget(
+      [
+        '--name',
+        'tPassthrough',
+        '--type',
+        'passthrough',
+        '--passthrough-endpoint',
+        'https://example.com/mcp',
+        '--passthrough-protocol',
+        'MCP',
+        '--outbound-auth',
+        'gateway-iam-role',
+        '--signing-service',
+        'execute-api',
+        '--signing-region',
+        region,
+      ],
+      'tPassthrough'
+    )
+  );
+
   // ── Config sanity: every target landed in agentcore.json ─────────────────
 
   it.skipIf(!canRun)(
@@ -262,7 +287,7 @@ describe.sequential('e2e: HTTP gateway with all target types', () => {
       const gw = config.agentCoreGateways.find(g => g.name === gatewayName);
       expect(gw, `gateway ${gatewayName} should be in config`).toBeDefined();
       const types = new Set(gw!.targets.map(t => t.targetType));
-      const expected = ['httpRuntime', 'mcpServer', 'openApiSchema', 'smithyModel', 'webSearch'];
+      const expected = ['httpRuntime', 'mcpServer', 'openApiSchema', 'smithyModel', 'webSearch', 'passthrough'];
       // Only expected when the fixture could provision their external prereqs.
       if (prereqsData.lambdaArn) expected.push('lambdaFunctionArn');
       if (prereqsData.restApiId) expected.push('apiGateway');
@@ -281,7 +306,7 @@ describe.sequential('e2e: HTTP gateway with all target types', () => {
       // No retry: a failed deploy can leave the CFN stack mid-rollback /
       // REVIEW_IN_PROGRESS, and an immediate second deploy fails differently
       // (masking the real error). One deploy, long timeout, surface the failure.
-      const result = await run(['deploy', '--yes', '--json']);
+      const result = await runGated(['deploy', '--yes', '--json']);
       if (result.exitCode !== 0) {
         console.log('Deploy stdout:', result.stdout);
         console.log('Deploy stderr:', result.stderr);
