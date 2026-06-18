@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.20.2] - 2026-06-18
+
+### Fixed
+- fix(policy): correct INSULTS content-filter enum and validate --form-filters (#1576) (5fe72af6)
+- fix(deploy): surface original error types in preflight steps.  (#1525) (1f5d7948)
+- fix(payment-connector): validate secret key formats client-side at add time (#1573) (fc905f8c)
+- fix: stop web-search TUI early exit when no gateway (#1575) (48374862)
+
+### Documentation
+- docs: cover payments, policies/guardrails, insights, harness, datasets, web-search (#1577) (954b97b5)
+
+### Other Changes
+- test(e2e): use real key formats in payment-validation CDP fixtures (#1592) (69547c3f)
+- test(e2e): enable policy guardrail suite with two-deploy form-policy flow (#1582) (687029c6)
+
 ## [0.20.1] - 2026-06-17
 
 ### Other Changes
