@@ -22,6 +22,7 @@ import uuid
 import zipfile
 
 import boto3
+import botocore
 
 REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1"
 SUFFIX = os.environ.get("RESOURCE_SUFFIX") or uuid.uuid4().hex[:12]
