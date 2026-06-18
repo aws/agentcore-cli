@@ -183,9 +183,23 @@ def ensure_rest_api():
     return rest_api_id, REST_API_STAGE
 
 
+def _try(label, fn):
+    """Run a resource creator; on AccessDenied return None so the test can skip
+    the dependent target instead of failing the whole suite. Restricted CI roles
+    (e.g. e2e-github-actions) may lack lambda:*/apigateway:* permissions."""
+    try:
+        return fn()
+    except botocore.exceptions.ClientError as e:
+        if e.response.get("Error", {}).get("Code") in ("AccessDeniedException", "AccessDenied", "UnauthorizedOperation"):
+            print(f"⚠️  Skipping {label}: not authorized ({e.response['Error']['Code']})")
+            return None
+        raise
+
+
 def main():
-    lambda_arn = ensure_lambda()
-    rest_api_id, stage = ensure_rest_api()
+    lambda_arn = _try("lambda", ensure_lambda)
+    api = _try("api-gateway", ensure_rest_api)
+    rest_api_id, stage = api if api else (None, None)
 
     out = {
         "lambdaArn": lambda_arn,

@@ -115,6 +115,9 @@ Feature lifecycle tests: describe what the test exercises end-to-end
 - `evals-lifecycle.test.ts`
 - `ab-test-lifecycle.test.ts` — A/B test (config-bundle mode): create → run → pause → resume → promote, asserting live
   execution state from AWS via `view ab-test`
+- `ab-test-target-based.test.ts` — A/B test (target-based mode): two http-runtime gateway-targets on named runtime
+  endpoints, each scoped by its own online-eval → run → pause → resume → promote (control endpoint version-bumped to
+  treatment's)
 - `httpgateway-all-targets.test.ts` — one `protocolType: None` (HTTP) gateway hosting every deployable target type
   (http-runtime, mcp-server, lambda-function-arn, api-gateway, open-api-schema, smithy-model, web-search), deployed in a
   single stack. Omits `connector` (Bedrock FMKB, a private-beta CFN resource type) and `passthrough` (unreleased gated
@@ -125,7 +128,8 @@ Feature lifecycle tests: describe what the test exercises end-to-end
 Some gateway-target types reference AWS resources that `agentcore deploy` cannot create (an existing Lambda, a REST
 API). `fixtures/gateway-targets/setup_target_prereqs.py` creates them idempotently (check-then-create, reused across
 runs) and writes their identifiers to a per-run JSON file the test reads — mirroring `fixtures/import/`'s boto3 setup
-pattern.
+pattern. If the IAM role lacks permission to create one (e.g. a restricted CI role without `lambda:*`/`apigateway:*`),
+the fixture emits `null` for that identifier and the test skips the dependent target rather than failing the suite.
 
 ## Important Notes
 

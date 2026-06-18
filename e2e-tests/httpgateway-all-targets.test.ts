@@ -51,9 +51,11 @@ const hasPython =
 const canRun = prereqs.npm && prereqs.git && prereqs.uv && hasAws && hasPython;
 
 interface Prereqs {
-  lambdaArn: string;
-  restApiId: string;
-  restApiStage: string;
+  // null when the IAM role lacks permission to create the resource (restricted
+  // CI roles may lack lambda:*/apigateway:*); the dependent target is then skipped.
+  lambdaArn: string | null;
+  restApiId: string | null;
+  restApiStage: string | null;
 }
 
 describe.sequential('e2e: HTTP gateway with all target types', () => {
@@ -187,8 +189,11 @@ describe.sequential('e2e: HTTP gateway with all target types', () => {
     )
   );
 
-  it.skipIf(!canRun)('adds a lambda-function-arn target', () =>
-    assertAddTarget(
+  // Lambda + API Gateway depend on resources the fixture may not be able to create
+  // under a restricted IAM role; skip the target when its prereq is absent.
+  it.skipIf(!canRun)('adds a lambda-function-arn target', async ctx => {
+    if (!prereqsData.lambdaArn) return ctx.skip();
+    await assertAddTarget(
       [
         '--name',
         'tLambda',
@@ -200,11 +205,12 @@ describe.sequential('e2e: HTTP gateway with all target types', () => {
         'lambda-tools.json',
       ],
       'tLambda'
-    )
-  );
+    );
+  });
 
-  it.skipIf(!canRun)('adds an api-gateway target', () =>
-    assertAddTarget(
+  it.skipIf(!canRun)('adds an api-gateway target', async ctx => {
+    if (!prereqsData.restApiId || !prereqsData.restApiStage) return ctx.skip();
+    await assertAddTarget(
       [
         '--name',
         'tApiGw',
@@ -216,8 +222,8 @@ describe.sequential('e2e: HTTP gateway with all target types', () => {
         prereqsData.restApiStage,
       ],
       'tApiGw'
-    )
-  );
+    );
+  });
 
   it.skipIf(!canRun)('adds an open-api-schema target (api-key outbound auth)', () =>
     assertAddTarget(
@@ -256,15 +262,10 @@ describe.sequential('e2e: HTTP gateway with all target types', () => {
       const gw = config.agentCoreGateways.find(g => g.name === gatewayName);
       expect(gw, `gateway ${gatewayName} should be in config`).toBeDefined();
       const types = new Set(gw!.targets.map(t => t.targetType));
-      const expected = [
-        'httpRuntime',
-        'mcpServer',
-        'lambdaFunctionArn',
-        'apiGateway',
-        'openApiSchema',
-        'smithyModel',
-        'webSearch',
-      ];
+      const expected = ['httpRuntime', 'mcpServer', 'openApiSchema', 'smithyModel', 'webSearch'];
+      // Only expected when the fixture could provision their external prereqs.
+      if (prereqsData.lambdaArn) expected.push('lambdaFunctionArn');
+      if (prereqsData.restApiId) expected.push('apiGateway');
       for (const t of expected) {
         expect(types.has(t), `config should contain a ${t} target`).toBe(true);
       }
