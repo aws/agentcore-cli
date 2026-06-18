@@ -198,13 +198,7 @@ Policy engines apply Cedar-based pre/post-call policies to agent invocations —
 | `add policy-engine` | Add a Cedar policy engine to the project                             |
 | `add policy`        | Add a policy to a policy engine (form-based guardrails or raw Cedar) |
 
-### Payments — `[preview]`
-
-> Payment commands are only available in the preview release of the CLI. Install it with:
->
-> ```bash
-> npm install -g @aws/agentcore@preview
-> ```
+### Payments
 
 Pay-per-call agent transactions via the [x402 protocol](https://www.x402.org/). When a tool call returns
 `402 Payment Required`, the payments system signs and submits payment then retries automatically.
