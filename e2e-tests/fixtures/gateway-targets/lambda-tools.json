@@ -1,0 +1,13 @@
+[
+  {
+    "name": "say_hello",
+    "description": "Returns a friendly greeting for the given name.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Who to greet" }
+      },
+      "required": ["name"]
+    }
+  }
+]
