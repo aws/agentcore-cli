@@ -461,7 +461,7 @@ async function setupSingleOAuth2Provider(
         providerName: credential.name,
         status: 'error',
         error: new AwsCredentialsError(
-          'AWS credentials not found.Run`aws sso login` or set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.',
+          'AWS credentials not found. Run`aws sso login` or set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.',
           undefined,
           { cause: error }
         ),
