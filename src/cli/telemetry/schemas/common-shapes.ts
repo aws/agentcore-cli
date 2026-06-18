@@ -118,7 +118,6 @@ export const ErrorName = z.enum([
   'MissingCredentialsError',
   'IngestionError',
   'JobNotFoundError',
-
   'MissingDependencyError',
   'MissingProjectFileError',
   'NoProjectError',
