@@ -91,6 +91,7 @@ describe('create command', () => {
       expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
+      expect(json.harnessName).toBe(name);
       expect(await exists(join(json.projectPath, 'app', name, 'harness.json'))).toBeTruthy();
     });
 

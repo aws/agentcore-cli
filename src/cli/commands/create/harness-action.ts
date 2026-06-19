@@ -98,6 +98,7 @@ export async function createProjectWithHarness(options: CreateHarnessProjectOpti
     return {
       success: true,
       projectPath: projectRoot,
+      harnessName: options.name,
       warnings: projectResult.warnings,
     };
   } catch (err) {

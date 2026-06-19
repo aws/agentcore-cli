@@ -379,10 +379,10 @@ export function getDryRunInfo(options: {
   const wouldCreate = [
     `${projectRoot}/`,
     `${projectRoot}/agentcore/`,
-    `${projectRoot}/agentcore/project.json`,
+    `${projectRoot}/agentcore/agentcore.json`,
     `${projectRoot}/agentcore/aws-targets.json`,
     `${projectRoot}/agentcore/.env.local`,
-    `${projectRoot}/cdk/`,
+    `${projectRoot}/agentcore/cdk/`,
   ];
 
   if (language === 'Python') {
@@ -427,6 +427,7 @@ export function getHarnessDryRunInfo(options: { name: string; cwd: string; proje
     success: true,
     dryRun: true,
     projectPath: projectRoot,
+    harnessName: name,
     wouldCreate,
   };
 }
