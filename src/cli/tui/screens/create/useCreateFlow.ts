@@ -11,7 +11,6 @@ import type { DeployedState } from '../../../../schema';
 import { getCredentialProvider } from '../../../aws/account';
 import { validateFilesystemMountsConfiguration } from '../../../commands/shared/filesystem-utils';
 import { getErrorMessage } from '../../../errors';
-import { isPreviewEnabled } from '../../../feature-flags';
 import { CreateLogger } from '../../../logging';
 import { initGitRepo, setupNodeProject, setupPythonProject, writeEnvFile, writeGitignore } from '../../../operations';
 import { createConfigBundleForAgent } from '../../../operations/agent/config-bundle-defaults';
@@ -55,7 +54,6 @@ type CreatePhase =
   | 'checking'
   | 'existing-project-error'
   | 'input'
-  | 'create-prompt'
   | 'create-type-prompt'
   | 'create-wizard'
   | 'harness-wizard'
@@ -74,10 +72,7 @@ interface CreateFlowState {
   // Project name actions
   setProjectName: (name: string) => void;
   confirmProjectName: () => void;
-  // Create prompt actions (GA mode)
-  wantsCreate: boolean;
-  setWantsCreate: (wants: boolean) => void;
-  // Create type selection (preview mode)
+  // Create type selection
   handleCreateTypeSelection: (choice: 'harness' | 'agent' | 'skip') => void;
   // Add agent config (set when AddAgentScreen completes)
   addAgentConfig: AddAgentConfig | null;
@@ -151,9 +146,6 @@ export function useCreateFlow(cwd: string): CreateFlowState {
   const [outputDir, setOutputDir] = useState<string>();
   const [logFilePath, setLogFilePath] = useState<string | undefined>();
 
-  // Create prompt state
-  const [wantsCreate, setWantsCreate] = useState(false);
-
   // Add agent config (from AddAgentScreen)
   const [addAgentConfig, setAddAgentConfig] = useState<AddAgentConfig | null>(null);
 
@@ -184,29 +176,12 @@ export function useCreateFlow(cwd: string): CreateFlowState {
   }, [cwd, phase]);
 
   const confirmProjectName = useCallback(() => {
-    setPhase(isPreviewEnabled() ? 'create-type-prompt' : 'create-prompt');
+    setPhase('create-type-prompt');
   }, []);
 
   const updateStep = (index: number, update: Partial<Step>) => {
     setSteps(prev => prev.map((s, i) => (i === index ? { ...s, ...update } : s)));
   };
-
-  // Create prompt handlers
-  const handleSetWantsCreate = useCallback(
-    (wants: boolean) => {
-      setWantsCreate(wants);
-      if (wants) {
-        setAddAgentConfig(null); // Reset any previous config
-        setPhase('create-wizard');
-      } else {
-        // Skip add agent, go straight to running
-        setAddAgentConfig(null);
-        setSteps(getCreateSteps(projectName, null));
-        setPhase('running');
-      }
-    },
-    [projectName]
-  );
 
   // Handle completion from AddAgentScreen
   const handleAddAgentComplete = useCallback(
@@ -220,7 +195,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
 
   // Go back from add agent wizard to create prompt
   const goBackFromAddAgent = useCallback(() => {
-    setPhase(isPreviewEnabled() ? 'create-type-prompt' : 'create-prompt');
+    setPhase('create-type-prompt');
   }, []);
 
   // Preview mode: create type selection handler
@@ -646,7 +621,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
             await withMinDuration(async () => {
               logger.logSubStep(`Adding harness: ${addHarnessConfig.name}`);
               const { harnessPrimitive: hp } = await import('../../../primitives/registry');
-              const result = await hp!.add({
+              const result = await hp.add({
                 name: addHarnessConfig.name,
                 modelProvider: addHarnessConfig.modelProvider,
                 modelId: addHarnessConfig.modelId,
@@ -775,10 +750,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
     logFilePath,
     setProjectName,
     confirmProjectName,
-    // Create prompt (GA)
-    wantsCreate,
-    setWantsCreate: handleSetWantsCreate,
-    // Create type selection (preview)
+    // Create type selection
     handleCreateTypeSelection,
     // Add agent
     addAgentConfig,

@@ -62,23 +62,16 @@ jobs:
           # Delete existing release if it exists (to update the tarballs)
           gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
 
-          # Create a new pre-release with both tarballs
+          # Create a new pre-release with the tarball
           gh release create "$TAG" \
             "${TARBALL_BASE}.tgz" \
-            "${TARBALL_BASE}-preview.tgz" \
             --title "Prerelease" \
-            --notes "Auto-generated tarballs from the latest commit on main.
+            --notes "Auto-generated tarball from the latest commit on main.
 
           Version: \`${VERSION_SUFFIX}\` (cli-cdk)
 
-          **GA build** (no harness features):
           \`\`\`
           npm install -g https://github.com/aws/agentcore-cli/releases/download/prerelease/${TARBALL_BASE}.tgz
-          \`\`\`
-
-          **Preview build** (harness features enabled):
-          \`\`\`
-          npm install -g https://github.com/aws/agentcore-cli/releases/download/prerelease/${TARBALL_BASE}-preview.tgz
           \`\`\`" \
             --prerelease \
             --target "${{ github.sha }}"

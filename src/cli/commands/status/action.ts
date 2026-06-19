@@ -6,7 +6,7 @@ import { getEvaluator, getOnlineEvaluationConfig } from '../../aws/agentcore-con
 import { getPaymentManager } from '../../aws/agentcore-payments';
 import { getKnowledgeBase, getLatestIngestionJob } from '../../aws/bedrock-agent';
 import { getErrorMessage } from '../../errors';
-import { isGatedFeaturesEnabled, isPreviewEnabled } from '../../feature-flags';
+import { isGatedFeaturesEnabled } from '../../feature-flags';
 import { ExecLogger } from '../../logging';
 import type { ResourceDeploymentState } from './constants';
 import { buildRuntimeInvocationUrl } from './constants';
@@ -310,15 +310,13 @@ export function computeResourceStatuses(
     getParentName: item => item.agentName,
   });
 
-  const harnesses = isPreviewEnabled()
-    ? diffResourceSet({
-        resourceType: 'harness',
-        localItems: project.harnesses ?? [],
-        deployedRecord: resources?.harnesses ?? {},
-        getIdentifier: deployed => deployed.harnessArn,
-        getLocalDetail: () => undefined,
-      })
-    : [];
+  const harnesses = diffResourceSet({
+    resourceType: 'harness',
+    localItems: project.harnesses ?? [],
+    deployedRecord: resources?.harnesses ?? {},
+    getIdentifier: deployed => deployed.harnessArn,
+    getLocalDetail: () => undefined,
+  });
 
   // Config version (gated): the harness Version is service-incremented and only known from deployed
   // state, so enrich each entry's detail post-pass rather than via getLocalDetail (local spec has none).

@@ -9,9 +9,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const hasAws = hasAwsCredentials();
-// Harness features are only available in preview builds (BUILD_PREVIEW=1).
-const isPreviewBuild = process.env.BUILD_PREVIEW === '1';
-const baseCanRun = prereqs.npm && prereqs.git && hasAws && isPreviewBuild;
+const baseCanRun = prereqs.npm && prereqs.git && hasAws;
 
 interface HarnessE2EConfig {
   modelProvider: 'bedrock' | 'open_ai' | 'gemini';
@@ -33,8 +31,7 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
   if (!canRun) {
     logger.warn(
       `tests are skipped due to insufficient conditions. ` +
-        `npm=${prereqs.npm}, git=${prereqs.git}, hasAws=${hasAws}, ` +
-        `isPreviewBuild=${isPreviewBuild}, hasRequiredVar=${hasRequiredVar}`
+        `npm=${prereqs.npm}, git=${prereqs.git}, hasAws=${hasAws}, hasRequiredVar=${hasRequiredVar}`
     );
   }
 

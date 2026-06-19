@@ -1,7 +1,6 @@
 import { DEFAULT_MODEL_IDS, ProjectNameSchema } from '../../../../schema';
 import { validateFolderNotExists } from '../../../commands/create/validate';
 import { VPC_ENDPOINT_WARNING } from '../../../commands/shared/vpc-utils';
-import { isPreviewEnabled } from '../../../feature-flags';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import {
   LogLink,
@@ -146,11 +145,6 @@ function getCreateNextSteps(hasAgent: boolean): NextStep[] {
   return [{ command: 'add', label: 'Add an agent' }];
 }
 
-const CREATE_PROMPT_ITEMS = [
-  { id: 'yes', title: 'Yes, add an agent' },
-  { id: 'no', title: "No, I'll do it later" },
-];
-
 const CREATE_TYPE_ITEMS = [
   { id: 'harness', title: 'Harness (recommended)', description: 'Managed config-based agent loop, no code required' },
   {
@@ -256,7 +250,6 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
   const flow = useCreateFlow(cwd);
   // Project root is cwd/projectName (new project directory)
   const projectRoot = join(cwd, flow.projectName);
-  const preview = isPreviewEnabled();
 
   // Completion state for next steps
   const allSuccess = !flow.hasError && flow.isComplete && flow.phase === 'complete';
@@ -288,24 +281,14 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
     }
   }, [allSuccess, handleExit]);
 
-  // GA mode: binary create prompt navigation
-  const { selectedIndex: createPromptIndex } = useListNavigation({
-    items: CREATE_PROMPT_ITEMS,
-    onSelect: item => {
-      flow.setWantsCreate(item.id === 'yes');
-    },
-    onExit: handleExit,
-    isActive: !preview && flow.phase === 'create-prompt',
-  });
-
-  // Preview mode: 3-option create type selection navigation
+  // 3-option create type selection navigation
   const { selectedIndex: createTypeIndex } = useListNavigation({
     items: CREATE_TYPE_ITEMS,
     onSelect: item => {
       flow.handleCreateTypeSelection(item.id as 'harness' | 'agent' | 'skip');
     },
     onExit: handleExit,
-    isActive: preview && flow.phase === 'create-type-prompt',
+    isActive: flow.phase === 'create-type-prompt',
   });
 
   // Checking phase: instant async check — render nothing to avoid a flash before the real UI
@@ -324,8 +307,8 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
     );
   }
 
-  // Harness wizard phase (preview only, separate component, no header conflict)
-  if (preview && flow.phase === 'harness-wizard') {
+  // Harness wizard phase (separate component, no header conflict)
+  if (flow.phase === 'harness-wizard') {
     return (
       <AddHarnessScreen
         existingHarnessNames={[]}
@@ -352,7 +335,7 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
       ? 'Press Esc to exit'
       : phase === 'input'
         ? HELP_TEXT.TEXT_INPUT
-        : phase === 'create-prompt' || phase === 'create-type-prompt'
+        : phase === 'create-type-prompt'
           ? HELP_TEXT.NAVIGATE_SELECT
           : flow.hasError || allSuccess
             ? HELP_TEXT.EXIT
@@ -392,18 +375,7 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
         </>
       )}
 
-      {phase === 'create-prompt' && !preview && (
-        <>
-          <Box flexDirection="column">
-            <Text>Would you like to add an agent now?</Text>
-            <Box marginTop={1}>
-              <SelectList items={CREATE_PROMPT_ITEMS} selectedIndex={createPromptIndex} />
-            </Box>
-          </Box>
-        </>
-      )}
-
-      {phase === 'create-type-prompt' && preview && (
+      {phase === 'create-type-prompt' && (
         <>
           <Box flexDirection="column">
             <Text>What would you like to build?</Text>

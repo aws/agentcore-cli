@@ -58,7 +58,7 @@ export async function createProjectWithHarness(options: CreateHarnessProjectOpti
   try {
     onProgress?.('Add harness to project', 'start');
 
-    const harnessResult = await harnessPrimitive!.add({
+    const harnessResult = await harnessPrimitive.add({
       name: options.name,
       modelProvider: options.modelProvider,
       modelId: options.modelId,

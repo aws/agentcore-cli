@@ -1,5 +1,4 @@
 import type { AgentEnvSpec } from '../../../../schema';
-import { isPreviewEnabled } from '../../../feature-flags';
 import { isDeploySkippable } from '../../../operations/deploy/change-detection';
 import { getDevSupportedAgents, getEndpointUrl, loadProjectConfig } from '../../../operations/dev';
 import {
@@ -28,9 +27,9 @@ interface DevScreenProps {
   agentName?: string;
   /** Custom headers to forward to the agent on every invocation */
   headers?: Record<string, string>;
-  /** Skip automatic resource deployment (preview) */
+  /** Skip automatic resource deployment */
   skipDeploy?: boolean;
-  /** Called when deploy completes and browser mode should launch (preview) */
+  /** Called when deploy completes and browser mode should launch */
   onLaunchBrowser?: (selection?: { agentName?: string; harnessName?: string }) => void;
 }
 
@@ -138,7 +137,6 @@ const MAX_VISIBLE_TOOLS = 5;
 
 export function DevScreen(props: DevScreenProps) {
   const { onLaunchBrowser } = props;
-  const preview = isPreviewEnabled();
   const [mode, setMode] = useState<Mode>('select-agent');
   const [isExiting, setIsExiting] = useState(false);
   const [scrollOffset, setScrollOffset] = useState(0);
@@ -158,7 +156,7 @@ export function DevScreen(props: DevScreenProps) {
   const [isContainerExec, setIsContainerExec] = useState(false);
   const [execInputEmpty, setExecInputEmpty] = useState(true);
 
-  // Harness state (preview)
+  // Harness state
   const [availableHarnesses, setAvailableHarnesses] = useState<string[]>([]);
   const [selectedHarness, setSelectedHarness] = useState<string | undefined>();
 
@@ -171,7 +169,7 @@ export function DevScreen(props: DevScreenProps) {
       const agents = getDevSupportedAgents(project);
       setSupportedAgents(agents);
 
-      const harnesses = preview ? (project?.harnesses ?? []).map(h => h.name) : [];
+      const harnesses = (project?.harnesses ?? []).map(h => h.name);
       setAvailableHarnesses(harnesses);
 
       // If agent name was provided via CLI, validate it
@@ -218,7 +216,7 @@ export function DevScreen(props: DevScreenProps) {
       }
     };
     void load();
-  }, [workingDir, props.agentName, preview, onLaunchBrowser]);
+  }, [workingDir, props.agentName, onLaunchBrowser]);
 
   const onServerReady = useCallback(() => setMode(prev => (prev === 'chat' ? 'input' : prev)), []);
 
@@ -433,7 +431,7 @@ export function DevScreen(props: DevScreenProps) {
                 setMode('chat');
               }
             }
-          } else if (preview) {
+          } else {
             const harnessIdx = selectedAgentIndex - supportedAgents.length;
             const harnessName = availableHarnesses[harnessIdx];
             if (harnessName) {
@@ -521,14 +519,8 @@ export function DevScreen(props: DevScreenProps) {
     return (
       <Screen title="Dev Server" onExit={props.onBack} helpText="Esc quit">
         <Box flexDirection="column">
-          <Text color="red">
-            {preview ? 'No agents or harnesses defined in project.' : 'No agents defined in project.'}
-          </Text>
-          <Text>
-            {preview
-              ? 'Dev mode requires at least one agent with an entrypoint or a harness.'
-              : 'Dev mode requires at least one agent with an entrypoint.'}
-          </Text>
+          <Text color="red">No agents or harnesses defined in project.</Text>
+          <Text>Dev mode requires at least one agent with an entrypoint or a harness.</Text>
           <Text>
             Run <Text color="blue">agentcore add agent</Text> to create one.
           </Text>
@@ -569,8 +561,8 @@ export function DevScreen(props: DevScreenProps) {
     );
   }
 
-  // If harness mode (preview), render the InvokeScreen with the pre-selected harness
-  if (preview && mode === 'harness') {
+  // If harness mode, render the InvokeScreen with the pre-selected harness
+  if (mode === 'harness') {
     return <InvokeScreen isInteractive={true} onExit={handleExit} title="Dev" initialHarnessName={selectedHarness} />;
   }
 
@@ -611,19 +603,17 @@ export function DevScreen(props: DevScreenProps) {
       description: `${agent.runtimeVersion} · ${agent.build}`,
     }));
 
-    const harnessItems = preview
-      ? availableHarnesses.map((name, i) => ({
-          id: `harness-${i}`,
-          title: name,
-          description: 'Harness',
-        }))
-      : [];
+    const harnessItems = availableHarnesses.map((name, i) => ({
+      id: `harness-${i}`,
+      title: name,
+      description: 'Harness',
+    }));
 
     const allItems = [...agentItems, ...harnessItems];
 
     return (
       <Screen title="Dev Server" onExit={handleExit} helpText={helpText}>
-        <Panel title={preview && availableHarnesses.length > 0 ? 'Select Target' : 'Select Agent'} fullWidth>
+        <Panel title={availableHarnesses.length > 0 ? 'Select Target' : 'Select Agent'} fullWidth>
           <SelectList items={allItems} selectedIndex={selectedAgentIndex} />
         </Panel>
       </Screen>

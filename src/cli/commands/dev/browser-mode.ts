@@ -1,7 +1,6 @@
 import { ConfigIO, findConfigRoot, getWorkingDirectory } from '../../../lib';
 import type { AgentCoreProjectSpec } from '../../../schema';
 import { ANSI } from '../../constants';
-import { isPreviewEnabled } from '../../feature-flags';
 import { isDeploySkippable } from '../../operations/deploy/change-detection';
 import { getDevConfig, getDevSupportedAgents, loadDevEnv, loadProjectConfig } from '../../operations/dev';
 import { type OtelCollector, startOtelCollector } from '../../operations/dev/otel';
@@ -127,7 +126,7 @@ export async function launchBrowserDev(): Promise<void> {
   }
 
   const hasRuntimes = project.runtimes.length > 0;
-  const hasHarnesses = isPreviewEnabled() && (project.harnesses ?? []).length > 0;
+  const hasHarnesses = (project.harnesses ?? []).length > 0;
 
   if (!hasRuntimes && !hasHarnesses) {
     console.error('Error: No agents or harnesses defined in project.');
@@ -164,7 +163,7 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
   const { envVars } = await loadDevEnv(workingDir);
 
   const supportedAgents = getDevSupportedAgents(project);
-  const projectHasHarnesses = isPreviewEnabled() && (project.harnesses ?? []).length > 0;
+  const projectHasHarnesses = (project.harnesses ?? []).length > 0;
 
   if (supportedAgents.length === 0 && !projectHasHarnesses) {
     console.error('Error: No dev-supported agents found.');
@@ -193,41 +192,39 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
   // Handlers re-resolve on each call so newly deployed memories are picked up.
   const baseDir = configRoot ?? workingDir;
 
-  // Discover deployed harnesses from project config + deployed state (preview mode)
+  // Discover deployed harnesses from project config + deployed state
   const harnessInfoList: HarnessInfo[] = [];
-  if (isPreviewEnabled()) {
-    try {
-      const configIO = new ConfigIO({ baseDir });
-      if (configIO.configExists('state') && configIO.configExists('awsTargets')) {
-        const deployedState = await configIO.readDeployedState();
-        const awsTargets = await configIO.readAWSDeploymentTargets();
-        const targetName = Object.keys(deployedState.targets)[0];
-        if (targetName) {
-          const targetState = deployedState.targets[targetName];
-          const targetConfig = awsTargets.find(t => t.name === targetName);
-          if (targetConfig) {
-            for (const harness of project.harnesses ?? []) {
-              const state = targetState?.resources?.harnesses?.[harness.name];
-              if (state) {
-                harnessInfoList.push({
-                  name: harness.name,
-                  harnessArn: state.harnessArn,
-                  region: targetConfig.region,
-                });
-              }
+  try {
+    const configIO = new ConfigIO({ baseDir });
+    if (configIO.configExists('state') && configIO.configExists('awsTargets')) {
+      const deployedState = await configIO.readDeployedState();
+      const awsTargets = await configIO.readAWSDeploymentTargets();
+      const targetName = Object.keys(deployedState.targets)[0];
+      if (targetName) {
+        const targetState = deployedState.targets[targetName];
+        const targetConfig = awsTargets.find(t => t.name === targetName);
+        if (targetConfig) {
+          for (const harness of project.harnesses ?? []) {
+            const state = targetState?.resources?.harnesses?.[harness.name];
+            if (state) {
+              harnessInfoList.push({
+                name: harness.name,
+                harnessArn: state.harnessArn,
+                region: targetConfig.region,
+              });
             }
-            if (harnessInfoList.length > 0) {
-              onLog(
-                'info',
-                `Found ${harnessInfoList.length} deployed harness(es): ${harnessInfoList.map(h => h.name).join(', ')}`
-              );
-            }
+          }
+          if (harnessInfoList.length > 0) {
+            onLog(
+              'info',
+              `Found ${harnessInfoList.length} deployed harness(es): ${harnessInfoList.map(h => h.name).join(', ')}`
+            );
           }
         }
       }
-    } catch {
-      // Harness discovery is best-effort — local dev works without it
     }
+  } catch {
+    // Harness discovery is best-effort — local dev works without it
   }
 
   await runWebUI({

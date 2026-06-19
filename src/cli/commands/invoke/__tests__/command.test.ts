@@ -1,5 +1,4 @@
 // Tests for invoke CLI mode — exitCode propagation and flag validation
-import { isPreviewEnabled } from '../../../feature-flags';
 import { handleInvoke } from '../action.js';
 import { registerInvoke } from '../command.js';
 import { resolvePrompt } from '../resolve-prompt.js';
@@ -48,10 +47,6 @@ vi.mock('ink', () => ({
 }));
 
 vi.mock('react', async importOriginal => ({ ...(await importOriginal<typeof import('react')>()) }));
-
-vi.mock('../../../feature-flags', () => ({
-  isPreviewEnabled: vi.fn().mockReturnValue(false),
-}));
 
 vi.mock('../validate.js', () => ({
   validateInvokeOptions: vi.fn().mockReturnValue({ valid: true }),
@@ -130,8 +125,6 @@ describe('invoke CLI mode — exitCode propagation', () => {
   });
 
   it('emits a JSON error envelope (not console.error) for bad --additional-params in --json mode', async () => {
-    // --additional-params is preview-gated; enable preview for this case.
-    vi.mocked(isPreviewEnabled).mockReturnValue(true);
     const logged: string[] = [];
     const erred: string[] = [];
     vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => logged.push(args.join(' ')));

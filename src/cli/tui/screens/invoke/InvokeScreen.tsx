@@ -1,4 +1,3 @@
-import { isPreviewEnabled } from '../../../feature-flags';
 import { buildTraceConsoleUrl } from '../../../operations/traces';
 import { GradientText, LogLink, Panel, Screen, SelectList, TextInput } from '../../components';
 import { setExitMessage } from '../../exit-message';
@@ -22,7 +21,7 @@ interface InvokeScreenProps {
   onExec?: (result: { runtimeArn: string; region: string; sessionId?: string }) => void;
   /** True when remounting after a PTY detour — shows [session resumed] hint. False for direct --session-id invocations. */
   isResume?: boolean;
-  /** Pre-select a harness by name, skipping the agent selection screen (preview) */
+  /** Pre-select a harness by name, skipping the agent selection screen */
   initialHarnessName?: string;
   /** Payment instrument ID (wallet) forwarded on every turn when invoking with payments */
   initialPaymentInstrumentId?: string;
@@ -166,7 +165,6 @@ export function InvokeScreen({
   initialPaymentUserId,
   initialAutoSession,
 }: InvokeScreenProps) {
-  const preview = isPreviewEnabled();
   const {
     phase,
     config,
@@ -218,11 +216,10 @@ export function InvokeScreen({
   }, [sessionId, messages.length]);
 
   // Compute auth type early so hooks can reference it
-  const totalInvokables = (config?.runtimes.length ?? 0) + (preview ? (config?.harnesses.length ?? 0) : 0);
+  const totalInvokables = (config?.runtimes.length ?? 0) + (config?.harnesses.length ?? 0);
   const runtimeCount = config?.runtimes.length ?? 0;
   const currentAgent = selectedAgent < runtimeCount ? config?.runtimes[selectedAgent] : undefined;
-  const currentHarness =
-    preview && selectedAgent >= runtimeCount ? config?.harnesses[selectedAgent - runtimeCount] : undefined;
+  const currentHarness = selectedAgent >= runtimeCount ? config?.harnesses[selectedAgent - runtimeCount] : undefined;
   const isCustomJwt = (currentAgent?.authorizerType ?? currentHarness?.authorizerType) === 'CUSTOM_JWT';
 
   // Handle initial prompt - skip agent selection if only one invokable
@@ -348,7 +345,7 @@ export function InvokeScreen({
         if (key.return) {
           const chosen = config.runtimes[selectedAgent];
           const chosenHarness =
-            preview && selectedAgent >= config.runtimes.length
+            selectedAgent >= config.runtimes.length
               ? config.harnesses[selectedAgent - config.runtimes.length]
               : undefined;
           const authType = chosen?.authorizerType ?? chosenHarness?.authorizerType;
@@ -438,7 +435,7 @@ export function InvokeScreen({
     return null;
   }
 
-  const isHarnessSelected = preview && selectedAgent >= config.runtimes.length;
+  const isHarnessSelected = selectedAgent >= config.runtimes.length;
   const agent = isHarnessSelected ? undefined : config.runtimes[selectedAgent];
   const selectedHarness = isHarnessSelected ? config.harnesses[selectedAgent - config.runtimes.length] : undefined;
   const selectedName = agent?.name ?? selectedHarness?.name;
@@ -459,13 +456,11 @@ export function InvokeScreen({
       title: a.name,
       description: `${a.protocol && a.protocol !== 'HTTP' ? `${a.protocol} · ` : ''}Agent`,
     })),
-    ...(preview
-      ? config.harnesses.map((h, i) => ({
-          id: String(config.runtimes.length + i),
-          title: h.name,
-          description: 'Harness',
-        }))
-      : []),
+    ...config.harnesses.map((h, i) => ({
+      id: String(config.runtimes.length + i),
+      title: h.name,
+      description: 'Harness',
+    })),
   ];
 
   const isMcp = !isHarnessSelected && agentProtocol === 'MCP';

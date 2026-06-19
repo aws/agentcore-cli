@@ -124,15 +124,9 @@ async function main() {
     }
   }
 
-  // Harness is preview-gated. The CLI bundle bakes the preview flag at build time and
-  // forwards it to this child process via AGENTCORE_PREVIEW (see toolkit-lib/wrapper.ts).
-  // This app is built separately and cannot see that build-time define, so it gates on the
-  // env var. Absent/anything-but-'1' defaults to off so a stale harnesses[] entry in a
-  // non-preview build never synthesizes an AWS::BedrockAgentCore::Harness resource.
-  const previewEnabled = process.env.AGENTCORE_PREVIEW === '1';
-
+  // Synthesize an AWS::BedrockAgentCore::Harness resource for each harness entry in the spec.
   const harnessConfigs: HarnessConfig[] = [];
-  for (const entry of previewEnabled ? (specAny.harnesses ?? []) : []) {
+  for (const entry of specAny.harnesses ?? []) {
     const harnessDir = path.resolve(projectRoot, entry.path);
     const harnessPath = path.resolve(harnessDir, 'harness.json');
     try {

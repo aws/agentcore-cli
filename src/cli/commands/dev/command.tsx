@@ -10,7 +10,6 @@ import { failureResult } from '../../../lib/result.js';
 import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { detectContainerRuntime } from '../../external-requirements';
-import { isPreviewEnabled } from '../../feature-flags';
 import { ExecLogger } from '../../logging';
 import { isDeploySkippable } from '../../operations/deploy/change-detection';
 import {
@@ -323,7 +322,7 @@ export const registerDev = (program: Command) => {
             }
 
             const hasRuntimes = project.runtimes && project.runtimes.length > 0;
-            const hasHarnesses = isPreviewEnabled() && project.harnesses && project.harnesses.length > 0;
+            const hasHarnesses = project.harnesses && project.harnesses.length > 0;
 
             if (!hasRuntimes && !hasHarnesses) {
               throw new ValidationError(
@@ -360,8 +359,8 @@ export const registerDev = (program: Command) => {
 
             // --logs: non-interactive server mode
             if (opts.logs) {
-              // Preview: harness-only projects need deploy then print invoke instructions
-              if (isPreviewEnabled() && supportedAgents.length === 0 && hasHarnesses) {
+              // Harness-only projects need deploy then print invoke instructions
+              if (supportedAgents.length === 0 && hasHarnesses) {
                 recorder.set({ agent_environment: 'harness' as const });
                 if (!opts.skipDeploy) {
                   await runCliDeploy();
@@ -408,8 +407,8 @@ export const registerDev = (program: Command) => {
                 );
               }
 
-              // Deploy resources before starting dev server (preview mode with harnesses)
-              if (isPreviewEnabled() && !opts.skipDeploy && hasHarnesses) {
+              // Deploy resources before starting dev server (harness projects)
+              if (!opts.skipDeploy && hasHarnesses) {
                 await runCliDeploy();
               }
 
@@ -510,57 +509,41 @@ export const registerDev = (program: Command) => {
               };
             }
 
-            // Preview browser mode: check if deploy is needed BEFORE entering the TUI.
+            // Browser mode: check if deploy is needed BEFORE entering the TUI.
             // This avoids an alt-screen flash when there's nothing to deploy.
             // The TUI (launchTuiDevScreenWithPicker) is only used to show deploy progress.
-            if (isPreviewEnabled()) {
-              const isHarnessOnly = hasHarnesses && supportedAgents.length === 0;
-              let needsTuiDeploy = false;
+            const isHarnessOnly = hasHarnesses && supportedAgents.length === 0;
+            let needsTuiDeploy = false;
 
-              if (isHarnessOnly && !opts.skipDeploy) {
-                needsTuiDeploy = !(await isDeploySkippable());
-              }
-
-              if (needsTuiDeploy) {
-                // Deploy is needed — show TUI deploy progress, then launch browser
-                const pickerResult = await launchTuiDevScreenWithPicker(workingDir, {
-                  skipDeploy: opts.skipDeploy,
-                });
-
-                if (pickerResult != null) {
-                  recorder.set({ ui_mode: 'browser' as const });
-                  return {
-                    success: true as const,
-                    blockingPromise: runBrowserMode({
-                      workingDir,
-                      project,
-                      port,
-                      agentName: pickerResult.agentName,
-                      harnessName: pickerResult.harnessName,
-                      otelEnvVars,
-                      collector,
-                    }),
-                  };
-                }
-                return { success: true as const, blockingPromise: Promise.resolve() };
-              }
-
-              // No deploy needed — skip TUI entirely, go straight to browser
-              recorder.set({ ui_mode: 'browser' as const });
-              return {
-                success: true as const,
-                blockingPromise: runBrowserMode({
-                  workingDir,
-                  project,
-                  port,
-                  agentName: opts.runtime,
-                  otelEnvVars,
-                  collector,
-                }),
-              };
+            if (isHarnessOnly && !opts.skipDeploy) {
+              needsTuiDeploy = !(await isDeploySkippable());
             }
 
-            // Default: browser mode (blocks forever)
+            if (needsTuiDeploy) {
+              // Deploy is needed — show TUI deploy progress, then launch browser
+              const pickerResult = await launchTuiDevScreenWithPicker(workingDir, {
+                skipDeploy: opts.skipDeploy,
+              });
+
+              if (pickerResult != null) {
+                recorder.set({ ui_mode: 'browser' as const });
+                return {
+                  success: true as const,
+                  blockingPromise: runBrowserMode({
+                    workingDir,
+                    project,
+                    port,
+                    agentName: pickerResult.agentName,
+                    harnessName: pickerResult.harnessName,
+                    otelEnvVars,
+                    collector,
+                  }),
+                };
+              }
+              return { success: true as const, blockingPromise: Promise.resolve() };
+            }
+
+            // No deploy needed — skip TUI entirely, go straight to browser
             recorder.set({ ui_mode: 'browser' as const });
             return {
               success: true as const,

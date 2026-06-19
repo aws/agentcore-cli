@@ -1,4 +1,4 @@
-import { isGatedFeaturesEnabled, isPreviewEnabled } from '../../../feature-flags';
+import { isGatedFeaturesEnabled } from '../../../feature-flags';
 import type { SelectableItem } from '../../components';
 import { SelectScreen } from '../../components';
 import { useMemo } from 'react';
@@ -24,9 +24,7 @@ export type RemoveResourceType =
 
 const REMOVE_RESOURCES: { id: RemoveResourceType; title: string; description: string }[] = [
   { id: 'agent', title: 'Agent', description: 'Remove an agent from the project' },
-  ...(isPreviewEnabled()
-    ? [{ id: 'harness' as const, title: 'Harness', description: 'Remove a harness from the project' }]
-    : []),
+  { id: 'harness', title: 'Harness', description: 'Remove a harness from the project' },
   { id: 'memory', title: 'Memory', description: 'Remove a memory provider' },
   { id: 'credential', title: 'Credential', description: 'Remove a credential' },
   { id: 'evaluator', title: 'Evaluator', description: 'Remove a custom evaluator' },

@@ -55,7 +55,7 @@ export function AddHarnessFlow({ isInteractive = true, onExit, onBack, onDev, on
     setFlow({ name: 'create-success', harnessName: config.name, loading: true, loadingMessage: 'Creating harness...' });
     try {
       const { harnessPrimitive } = await import('../../../primitives/registry');
-      const result = await harnessPrimitive!.add({
+      const result = await harnessPrimitive.add({
         name: config.name,
         modelProvider: config.modelProvider,
         modelId: config.modelId,

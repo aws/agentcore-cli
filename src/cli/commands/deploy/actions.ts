@@ -22,7 +22,7 @@ import {
   parseRuntimeEndpointOutputs,
 } from '../../cloudformation';
 import { getErrorMessage } from '../../errors';
-import { isGatedFeaturesEnabled, isPreviewEnabled } from '../../feature-flags';
+import { isGatedFeaturesEnabled } from '../../feature-flags';
 import { ExecLogger } from '../../logging';
 import {
   MANAGED_MEMORY_DEPLOY_NOTICE,
@@ -192,7 +192,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // Skipped on a teardown deploy: the "migrate it to GA with --keep" guidance is wrong when the
     // user is tearing everything down, and teardown.ts emits the apt "--discard" warning instead.
     const orphanWarnings: string[] = [];
-    if (isPreviewEnabled() && !context.isTeardownDeploy) {
+    if (!context.isTeardownDeploy) {
       const preDeployState = await configIO.readDeployedState().catch(() => undefined);
       for (const orphan of findOrphanHarnesses(preDeployState)) {
         const warning =
@@ -671,10 +671,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const payments = paymentSpecs.length > 0 ? parsePaymentOutputs(outputs, paymentSpecs) : undefined;
 
     // Parse harness outputs (harnesses are now part of the CloudFormation stack).
-    // Preview-gated: when preview is off the vended app never synthesizes a harness
-    // (see bin/cdk.ts), so there are no outputs to parse — skip entirely to keep the
-    // gate complete and avoid warning on a harness that was intentionally not deployed.
-    const harnessNames = isPreviewEnabled() ? (context.projectSpec.harnesses ?? []).map(h => h.name) : [];
+    const harnessNames = (context.projectSpec.harnesses ?? []).map(h => h.name);
     const deployedHarnesses = parseHarnessOutputs(outputs, harnessNames);
 
     endStep('success');
@@ -878,7 +875,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // as fire-and-forget jobs (agentcore run ab-test), not via the deploy path.
 
     // Post-deploy: Enable CloudWatch Transaction Search (non-blocking, silent)
-    const hasHarnesses = isPreviewEnabled() && (context.projectSpec.harnesses ?? []).length > 0;
+    const hasHarnesses = (context.projectSpec.harnesses ?? []).length > 0;
     const hasInvokable = agentNames.length > 0 || hasHarnesses;
     const nextSteps = hasInvokable ? [...AGENT_NEXT_STEPS] : [...MEMORY_ONLY_NEXT_STEPS];
     const notes: string[] = [];

@@ -35,6 +35,12 @@ jobs:
       matrix:
         variant: [Released, Prerelease]
         build: [GA, Preview]
+        # The prerelease channel produces a single tarball (GA and preview builds are
+        # identical post-cutover), so there is no separate prerelease preview artifact.
+        # Released/Preview is kept — it verifies the @preview npm tag stays publishable.
+        exclude:
+          - variant: Prerelease
+            build: Preview
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -72,7 +78,6 @@ jobs:
             "Released/GA")        SPEC="@aws/agentcore" ;;
             "Released/Preview")   SPEC="@aws/agentcore@preview" ;;
             "Prerelease/GA")      SPEC="${PRERELEASE_BASE_URL}/agentcore-cli-prerelease.tgz" ;;
-            "Prerelease/Preview") SPEC="${PRERELEASE_BASE_URL}/agentcore-cli-prerelease-preview.tgz" ;;
             *) echo "Unknown variant/build combination" >&2; exit 1 ;;
           esac
           echo "Installing: $SPEC"

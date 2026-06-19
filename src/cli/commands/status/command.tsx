@@ -1,7 +1,6 @@
 import { ValidationError, serializeResult } from '../../../lib';
 import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
-import { isPreviewEnabled } from '../../feature-flags';
 import { getDatasetStatus } from '../../operations/dataset';
 import type { DatasetStatusResult } from '../../operations/dataset';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
@@ -27,7 +26,7 @@ const VALID_RESOURCE_TYPES = [
   'config-bundle',
   'dataset',
   'knowledge-base',
-  ...(isPreviewEnabled() ? (['harness'] as const) : []),
+  'harness',
 ] as const;
 const VALID_STATES = ['deployed', 'local-only', 'pending-removal'] as const;
 

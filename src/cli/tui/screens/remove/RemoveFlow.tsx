@@ -438,7 +438,7 @@ export function RemoveFlow({
 
   const handleConfirmOrphanHarness = useCallback(async (harnessName: string, orphanAction: OrphanAction) => {
     setFlow({ name: 'loading', message: `Deleting orphan harness ${harnessName} from AWS...` });
-    const result = await harnessPrimitive!.remove(harnessName, { orphanAction });
+    const result = await harnessPrimitive.remove(harnessName, { orphanAction });
     if (result.success) {
       setFlow({ name: 'harness-success', harnessName });
     } else {

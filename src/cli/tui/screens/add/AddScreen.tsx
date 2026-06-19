@@ -1,4 +1,4 @@
-import { isGatedFeaturesEnabled, isPreviewEnabled } from '../../../feature-flags';
+import { isGatedFeaturesEnabled } from '../../../feature-flags';
 import type { SelectableItem } from '../../components';
 import { SelectScreen } from '../../components';
 
@@ -45,9 +45,7 @@ const BASE_ADD_RESOURCES: { id: AddResourceType; title: string; description: str
 ];
 
 const ADD_RESOURCES: { id: AddResourceType; title: string; description: string }[] = [
-  ...(isPreviewEnabled()
-    ? [{ id: 'harness' as const, title: 'Harness', description: 'Managed config-based agent loop, no code required' }]
-    : []),
+  { id: 'harness', title: 'Harness', description: 'Managed config-based agent loop, no code required' },
   ...BASE_ADD_RESOURCES,
 ];
 

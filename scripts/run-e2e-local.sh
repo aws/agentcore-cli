@@ -9,10 +9,6 @@
 # Optional env vars:
 #   AWS_REGION      — defaults to us-east-1
 #   CDK_REPO_PATH   — local path to CDK constructs repo; if set, builds and uses it as CDK_TARBALL
-#   BUILD_PREVIEW   — set to 1 to build a preview CLI and run the harness e2e tests
-#                     (e2e-tests/harness-*.test.ts). Harness features are gated to preview
-#                     builds; without this they self-skip. The var is read at build time
-#                     (esbuild bakes __PREVIEW__=true) and at test runtime (skip gate).
 #
 # Usage:
 #   export E2E_ROLE_ARN=arn:aws:iam::<account>:role/<role>
@@ -20,7 +16,6 @@
 #   ./scripts/run-e2e-local.sh                                  # runs strands-bedrock.test.ts (CI default)
 #   ./scripts/run-e2e-local.sh --all                            # runs the full e2e suite
 #   ./scripts/run-e2e-local.sh e2e-tests/foo.test.ts            # runs a specific test file
-#   BUILD_PREVIEW=1 ./scripts/run-e2e-local.sh e2e-tests/harness-bedrock.test.ts  # runs harness tests
 #
 # Prerequisites: aws CLI, node >=20.19, npm, git, uv, jq
 

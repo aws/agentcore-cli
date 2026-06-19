@@ -125,7 +125,7 @@ export function useRemovableAgents() {
 
 export function useRemovableHarnesses() {
   const { items: harnesses, ...rest } = useRemovableResources(() =>
-    harnessPrimitive ? harnessPrimitive.getRemovable().then(r => r.map(h => h.name)) : Promise.resolve([])
+    harnessPrimitive.getRemovable().then(r => r.map(h => h.name))
   );
   return { harnesses, ...rest };
 }
@@ -244,7 +244,7 @@ export function useRemovalPreview() {
     [loadPreview]
   );
   const loadHarnessPreview = useCallback(
-    (name: string) => loadPreview(n => harnessPrimitive!.previewRemove(n), name),
+    (name: string) => loadPreview(n => harnessPrimitive.previewRemove(n), name),
     [loadPreview]
   );
   const loadGatewayPreview = useCallback(
@@ -342,7 +342,7 @@ export function useRemoveAgent() {
 
 export function useRemoveHarness() {
   return useRemoveResource(
-    (name: string) => harnessPrimitive!.remove(name),
+    (name: string) => harnessPrimitive.remove(name),
     'harness',
     name => name
   );

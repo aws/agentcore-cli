@@ -52,9 +52,6 @@ await esbuild.build({
   minify: true,
   keepNames: true,
   jsx: 'automatic',
-  define: {
-    __PREVIEW__: process.env.BUILD_PREVIEW === '1' ? 'true' : 'false',
-  },
   // Inject require shim for ESM compatibility with CommonJS dependencies
   banner: {
     js: `import { createRequire } from 'module'; import { fileURLToPath as __ef } from 'url'; import { dirname as __ed } from 'path'; const require = createRequire(import.meta.url); const __filename = __ef(import.meta.url); const __dirname = __ed(__filename);`,
