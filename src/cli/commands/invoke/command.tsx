@@ -381,7 +381,6 @@ Model & Runtime Overrides (harness only) [non-interactive]
           const result = await withCommandRunTelemetry(
             'invoke',
             computeInvokeAttrs({
-              preview: true,
               harnessName: cliOptions.harness,
               harnessArn: cliOptions.harnessArn,
               harnessCount: invokeContext?.project.harnesses?.length ?? 0,

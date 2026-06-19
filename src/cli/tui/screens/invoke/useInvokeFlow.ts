@@ -176,7 +176,6 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
       const result = await withCommandRunTelemetry(
         'invoke',
         computeInvokeAttrs({
-          preview: true,
           harnessName: initialHarnessName,
           harnessCount: project?.harnesses?.length ?? 0,
           runtimeCount: project?.runtimes?.length ?? 0,

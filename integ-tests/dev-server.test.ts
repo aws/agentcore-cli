@@ -175,9 +175,7 @@ describe('integration: dev server', () => {
   );
 });
 
-const isPreviewBuild = process.env.BUILD_PREVIEW === '1';
-
-describe.skipIf(!isPreviewBuild || !hasNpm || !hasGit || !hasUv)('integration: dev with harness-only project', () => {
+describe.skipIf(!hasNpm || !hasGit || !hasUv)('integration: dev with harness-only project', () => {
   const telemetry = createTelemetryHelper();
   let projectPath: string;
 

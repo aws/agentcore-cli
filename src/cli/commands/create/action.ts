@@ -405,3 +405,28 @@ export function getDryRunInfo(options: {
     wouldCreate,
   };
 }
+
+export function getHarnessDryRunInfo(options: { name: string; cwd: string; projectName?: string }): CreateResult {
+  const { name, cwd } = options;
+  const projectName = options.projectName ?? name;
+  const projectRoot = join(cwd, projectName);
+
+  const wouldCreate = [
+    `${projectRoot}/`,
+    `${projectRoot}/agentcore/`,
+    `${projectRoot}/agentcore/agentcore.json`,
+    `${projectRoot}/agentcore/aws-targets.json`,
+    `${projectRoot}/agentcore/.env.local`,
+    `${projectRoot}/agentcore/cdk/`,
+    `${projectRoot}/app/${name}/`,
+    `${projectRoot}/app/${name}/harness.json`,
+    `${projectRoot}/app/${name}/system-prompt.md`,
+  ];
+
+  return {
+    success: true,
+    dryRun: true,
+    projectPath: projectRoot,
+    wouldCreate,
+  };
+}

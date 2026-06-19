@@ -377,8 +377,6 @@ jobs:
           echo "Set package.json version to $VERSION for preview publish"
 
       - name: Build package
-        env:
-          BUILD_PREVIEW: '1'
         run: npm run build
 
       - name: Publish to npm

@@ -4,15 +4,11 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-// Harness features are only available in preview builds (BUILD_PREVIEW=1).
-// The standard CI build is GA, so skip these tests unless the preview bundle is present.
-const isPreviewBuild = process.env.BUILD_PREVIEW === '1';
-
 async function readHarnessSpec(projectPath: string, harnessName: string) {
   return JSON.parse(await readFile(join(projectPath, `app/${harnessName}/harness.json`), 'utf-8'));
 }
 
-describe.skipIf(!isPreviewBuild)('integration: harness add/remove lifecycle', () => {
+describe('integration: harness add/remove lifecycle', () => {
   let project: TestProject;
   const harnessName = 'TestHarness';
 
@@ -87,7 +83,7 @@ describe.skipIf(!isPreviewBuild)('integration: harness add/remove lifecycle', ()
   });
 });
 
-describe.skipIf(!isPreviewBuild)('integration: harness configuration options', () => {
+describe('integration: harness configuration options', () => {
   let project: TestProject;
 
   beforeAll(async () => {
@@ -167,7 +163,7 @@ describe.skipIf(!isPreviewBuild)('integration: harness configuration options', (
   });
 });
 
-describe.skipIf(!isPreviewBuild)('integration: harness validation errors', () => {
+describe('integration: harness validation errors', () => {
   let project: TestProject;
 
   beforeAll(async () => {
@@ -194,7 +190,7 @@ describe.skipIf(!isPreviewBuild)('integration: harness validation errors', () =>
   });
 });
 
-describe.skipIf(!isPreviewBuild)('integration: create project with harness', () => {
+describe('integration: create project with harness', () => {
   let project: TestProject;
   const harnessName = 'CreateHarness';
 

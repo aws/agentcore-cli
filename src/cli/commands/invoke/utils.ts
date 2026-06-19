@@ -12,7 +12,6 @@ function isHarnessInvoke(options: {
 }
 
 export function computeInvokeAttrs(options: {
-  preview: boolean;
   harnessName?: string;
   harnessArn?: string;
   harnessCount: number;
@@ -22,7 +21,7 @@ export function computeInvokeAttrs(options: {
   bearerToken?: string;
   agentProtocol?: string;
 }) {
-  const isHarness = options.preview && isHarnessInvoke(options);
+  const isHarness = isHarnessInvoke(options);
   return {
     agent_environment: standardize(AgentEnvironment, isHarness ? 'harness' : 'runtime'),
     has_stream: options.stream,

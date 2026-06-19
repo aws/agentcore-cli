@@ -29,7 +29,13 @@ import { renderTUI } from '../../tui';
 import { requireTTY } from '../../tui/guards';
 import { resolveAndValidateFilesystemMounts } from '../shared/filesystem-utils';
 import { parseCommaSeparatedList } from '../shared/vpc-utils';
-import { type ProgressCallback, createProject, createProjectWithAgent, getDryRunInfo } from './action';
+import {
+  type ProgressCallback,
+  createProject,
+  createProjectWithAgent,
+  getDryRunInfo,
+  getHarnessDryRunInfo,
+} from './action';
 import { createProjectWithHarness } from './harness-action';
 import { normalizeHarnessModelProvider, validateCreateHarnessOptions } from './harness-validate';
 import type { CreateOptions } from './types';
@@ -141,6 +147,43 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
   const cwd = options.outputDir ?? getWorkingDirectory();
   const name = options.name ?? options.projectName;
   const projectName = options.projectName ?? name;
+
+  // Handle dry-run mode (no telemetry for dry-run)
+  if (options.dryRun) {
+    const validation = validateCreateHarnessOptions(
+      {
+        name,
+        projectName,
+        modelProvider: options.modelProvider,
+        modelId: options.modelId,
+        apiKeyArn: options.apiKeyArn,
+        networkMode: options.networkMode,
+        efsAccessPointArn: options.efsAccessPointArn,
+        efsMountPath: options.efsMountPath,
+        s3AccessPointArn: options.s3AccessPointArn,
+        s3MountPath: options.s3MountPath,
+      },
+      cwd
+    );
+    if (!validation.valid) {
+      if (options.json) {
+        console.log(JSON.stringify({ success: false, error: validation.error }));
+      } else {
+        console.error(validation.error);
+      }
+      process.exit(1);
+    }
+    const result = getHarnessDryRunInfo({ name: name!, projectName, cwd });
+    if (options.json) {
+      console.log(JSON.stringify(serializeResult(result)));
+    } else if (result.success) {
+      console.log('Dry run - would create:');
+      for (const path of result.wouldCreate ?? []) {
+        console.log(`  ${path}`);
+      }
+    }
+    process.exit(0);
+  }
 
   const result = await withCommandRunTelemetry(
     'create',

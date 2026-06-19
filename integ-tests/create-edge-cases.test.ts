@@ -34,13 +34,13 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create edge cases', 
         `Error should mention reserved/conflict: ${json.error}`
       ).toBeTruthy();
 
+      // No agent-path flags -> create defaults to the harness path.
       telemetry.assertMetricEmitted({
         command: 'create',
         exit_reason: 'failure',
         error_name: 'ValidationError',
         error_source: 'user',
-        agent_environment: 'runtime',
-        agent_language: 'python',
+        agent_environment: 'harness',
         has_agent: 'true',
       });
     });
@@ -141,12 +141,11 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create edge cases', 
       expect(json.success).toBe(true);
       expect(json.projectPath).toBeTruthy();
 
+      // No agent-path flags -> create defaults to the harness path.
       telemetry.assertMetricEmitted({
         command: 'create',
         exit_reason: 'success',
-        agent_environment: 'runtime',
-        agent_language: 'python',
-        agent_framework: 'strands',
+        agent_environment: 'harness',
         model_provider: 'bedrock',
         has_agent: 'true',
       });
@@ -197,9 +196,7 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create edge cases', 
   });
 });
 
-const isPreviewBuild = process.env.BUILD_PREVIEW === '1';
-
-describe.skipIf(!isPreviewBuild || !prereqs.npm || !prereqs.git)('integration: create harness project', () => {
+describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create harness project', () => {
   let testDir: string;
   const telemetry = createTelemetryHelper();
 
