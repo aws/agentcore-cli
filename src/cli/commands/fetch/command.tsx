@@ -12,9 +12,9 @@ export const registerFetch = (program: Command) => {
 
   fetchCmd
     .command('access')
-    .description('Fetch access info (URL, token, auth guidance) for a deployed gateway or agent.')
-    .option('--name <resource>', 'Gateway or agent name [non-interactive]')
-    .option('--type <type>', 'Resource type: gateway (default) or agent [non-interactive]', 'gateway')
+    .description('Fetch access info (URL, token, auth guidance) for a deployed gateway, agent, or harness.')
+    .option('--name <resource>', 'Gateway, agent, or harness name [non-interactive]')
+    .option('--type <type>', 'Resource type: gateway (default), agent, or harness [non-interactive]', 'gateway')
     .option('--target <target>', 'Deployment target [non-interactive]')
     .option('--identity-name <name>', 'Identity credential name for token fetch [non-interactive]')
     .option('--json', 'Output as JSON [non-interactive]')

@@ -1,6 +1,6 @@
 import type { GatewayAuthorizerType, RuntimeAuthorizerType } from '../../../schema';
 
-export type FetchResourceType = 'gateway' | 'agent';
+export type FetchResourceType = 'gateway' | 'agent' | 'harness';
 
 export interface TokenFetchResult {
   url: string;
@@ -18,6 +18,11 @@ export interface GatewayInfo {
 export interface AgentInfo {
   name: string;
   authType: RuntimeAuthorizerType;
+}
+
+export interface HarnessInfo {
+  name: string;
+  authType: string;
 }
 
 export interface ResourceInfo {
