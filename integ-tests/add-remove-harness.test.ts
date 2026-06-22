@@ -490,15 +490,17 @@ describe('integration: harness config shape', () => {
       },
       {
         label: '--memory-mode when the gated feature is disabled',
+        // Force the gate OFF explicitly: cleanSpawnEnv inherits the host process.env, so a
+        // developer/CI shell with ENABLE_GATED_FEATURES=1 exported would otherwise flip this
+        // case (the CLI would accept --memory-mode and exit 0). An empty string is "off"
+        // because isGatedFeaturesEnabled() checks `=== '1'`.
         args: ['--memory-mode', 'managed'],
-        env: undefined,
+        env: { ENABLE_GATED_FEATURES: '' },
       },
     ])('rejects $label', async ({ args, env }) => {
-      const result = await runCLI(
-        ['add', 'harness', '--name', 'BadMem', ...args, '--json'],
-        project.projectPath,
-        env ? { env } : {}
-      );
+      const result = await runCLI(['add', 'harness', '--name', 'BadMem', ...args, '--json'], project.projectPath, {
+        env,
+      });
       expect(result.exitCode).not.toBe(0);
     });
   });
