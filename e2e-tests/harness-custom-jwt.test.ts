@@ -2,14 +2,13 @@
  * E2E test: a harness with CUSTOM_JWT inbound auth (Cognito).
  *
  * Creates a Cognito user pool as the OIDC provider, deploys a harness configured with a
- * CUSTOM_JWT authorizer, and verifies that:
+ * CUSTOM_JWT authorizer (added via `add harness` with the JWT + OAuth-credential flags, so
+ * the managed OAuth credential is registered the way a real user would), and verifies that:
  * - Deploy embeds AuthorizerConfiguration in the CloudFormation template
  * - A default SigV4 invocation is rejected (auth method mismatch)
  * - A bearer-token invocation is not rejected for auth reasons
+ * - `fetch access --type harness` mints a CUSTOM_JWT bearer token via the managed credential
  * - Status reports the harness as deployed
- *
- * `create` exposes no authorizer flags for the harness path, so the authorizer is written
- * into harness.json after create (mirrors byo-custom-jwt.test.ts patching agentcore.json).
  *
  * Requires: AWS credentials, npm, git.
  */
@@ -27,7 +26,7 @@ import {
   DeleteUserPoolDomainCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -107,34 +106,55 @@ describe.sequential('e2e: harness with CUSTOM_JWT auth', () => {
 
     discoveryUrl = `https://cognito-idp.${region}.amazonaws.com/${userPoolId}/.well-known/openid-configuration`;
 
-    // ── Create harness project using local CLI build ──
+    // ── Create a no-agent project, then add a CUSTOM_JWT harness via the CLI ──
+    // Going through `add harness` with --client-id/--client-secret (rather than patching
+    // harness.json directly) registers the managed OAuth credential and writes the client
+    // secret to .env.local — the prerequisites for `fetch access --type harness` to mint a
+    // bearer token. It also mirrors the real user flow end to end.
     testDir = join(tmpdir(), `agentcore-e2e-hrns-jwt-${randomUUID()}`);
     await mkdir(testDir, { recursive: true });
 
-    harnessName = `E2eHrnsJwt${String(Date.now()).slice(-8)}`;
+    const projectName = `E2eHrnsJwt${String(Date.now()).slice(-8)}`;
+    harnessName = projectName;
     const createResult = await runCLI(
-      ['create', '--name', harnessName, '--model-provider', 'bedrock', '--no-harness-memory', '--json', '--skip-git'],
+      ['create', '--name', projectName, '--no-agent', '--json', '--skip-git'],
       testDir,
-      { skipInstall: false }
+      {
+        skipInstall: false,
+      }
     );
     expect(createResult.exitCode, `Create failed: ${createResult.stderr}`).toBe(0);
     const createJson = parseJsonOutput(createResult.stdout) as { projectPath: string };
     projectPath = createJson.projectPath;
 
+    const addResult = await runCLI(
+      [
+        'add',
+        'harness',
+        '--name',
+        harnessName,
+        '--model-provider',
+        'bedrock',
+        '--no-memory',
+        '--authorizer-type',
+        'CUSTOM_JWT',
+        '--discovery-url',
+        discoveryUrl,
+        '--allowed-audience',
+        clientId,
+        '--client-id',
+        clientId,
+        '--client-secret',
+        clientSecret,
+        '--json',
+      ],
+      projectPath,
+      { skipInstall: false }
+    );
+    expect(addResult.exitCode, `Add harness failed: ${addResult.stderr}`).toBe(0);
+
     await writeAwsTargets(projectPath);
     installCdkTarball(projectPath);
-
-    // ── Patch the harness with CUSTOM_JWT auth ──
-    const specPath = join(projectPath, 'app', harnessName, 'harness.json');
-    const spec = JSON.parse(await readFile(specPath, 'utf8'));
-    spec.authorizerType = 'CUSTOM_JWT';
-    spec.authorizerConfiguration = {
-      customJwtAuthorizer: {
-        discoveryUrl,
-        allowedAudience: [clientId],
-      },
-    };
-    await writeFile(specPath, JSON.stringify(spec, null, 2));
   }, 300000);
 
   afterAll(async () => {
@@ -240,6 +260,39 @@ describe.sequential('e2e: harness with CUSTOM_JWT auth', () => {
       const output = stripAnsi(result.stdout + result.stderr);
       // May still fail for unrelated reasons, but NOT with an auth-method mismatch.
       expect(output).not.toMatch(customJWTRejectMsgRegex);
+    },
+    180000
+  );
+
+  it.skipIf(!canRun)(
+    'fetch access --type harness returns a CUSTOM_JWT bearer token',
+    async () => {
+      const result = await runCLI(
+        ['fetch', 'access', '--type', 'harness', '--name', harnessName, '--json'],
+        projectPath,
+        { skipInstall: false }
+      );
+
+      expect(result.exitCode, `fetch access failed: stderr=${result.stderr}\n\nstdout=${result.stdout}`).toBe(0);
+
+      const json = parseJsonOutput(result.stdout) as {
+        success: boolean;
+        authType: string;
+        token?: string;
+        expiresIn?: number;
+      };
+      expect(json.success).toBe(true);
+      expect(json.authType).toBe('CUSTOM_JWT');
+      expect(json.token, 'Should return a bearer token').toBeTruthy();
+
+      // The token is a real OIDC JWT minted via the managed OAuth credential — sanity-check
+      // its issuer/client claims match the Cognito pool this harness was configured against.
+      const claims = JSON.parse(Buffer.from(json.token!.split('.')[1]!, 'base64url').toString('utf-8')) as {
+        iss: string;
+        client_id?: string;
+      };
+      expect(claims.iss).toBe(`https://cognito-idp.${region}.amazonaws.com/${userPoolId}`);
+      expect(claims.client_id).toBe(clientId);
     },
     180000
   );
