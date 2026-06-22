@@ -100,7 +100,7 @@
     "@opentelemetry/resources": "^2.6.1",
     "@opentelemetry/sdk-metrics": "^2.6.1",
     "@smithy/shared-ini-file-loader": "^4.4.2",
-    "commander": "^14.0.2",
+    "commander": "^15.0.0",
     "dotenv": "^17.2.3",
     "fast-json-stable-stringify": "^2.1.0",
     "fflate": "^0.8.2",
