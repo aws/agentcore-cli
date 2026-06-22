@@ -36,6 +36,13 @@ export const RUN_INSIGHTS_STEP_LABELS: Record<RunInsightsStep, string> = {
 
 export const DEFAULT_LOOKBACK_DAYS = 7;
 
+/**
+ * Validation pattern for job names. Mirrors the service-side BatchEvaluationName
+ * shape (`^[a-zA-Z][a-zA-Z0-9_]{0,47}$`) so we reject locally instead of
+ * surfacing a 400 from startBatchEvaluation.
+ */
+export const JOB_NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/;
+
 export const AVAILABLE_INSIGHTS = [
   {
     id: 'Builtin.Insight.FailureAnalysis',

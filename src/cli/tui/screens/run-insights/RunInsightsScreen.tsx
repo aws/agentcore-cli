@@ -10,20 +10,59 @@ import {
 import type { SelectableItem } from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation, useMultiSelectNavigation } from '../../hooks';
-import { AVAILABLE_INSIGHTS, RUN_INSIGHTS_STEP_LABELS, SESSION_MODE_OPTIONS, SOURCE_OPTIONS } from './types';
-import type { RunInsightsConfig } from './types';
+import {
+  AVAILABLE_INSIGHTS,
+  JOB_NAME_PATTERN,
+  RUN_INSIGHTS_STEP_LABELS,
+  SESSION_MODE_OPTIONS,
+  SOURCE_OPTIONS,
+} from './types';
+import type { RunInsightsConfig, RunInsightsStep } from './types';
 import { useRunInsightsWizard } from './useRunInsightsWizard';
-import React, { useMemo } from 'react';
+import React, { forwardRef, useImperativeHandle, useMemo } from 'react';
+
+export interface RunInsightsScreenHandle {
+  jumpToStep: (step: RunInsightsStep) => void;
+}
 
 interface RunInsightsScreenProps {
   agentNames: string[];
   onlineEvalConfigArns: string[];
   onComplete: (config: RunInsightsConfig) => void;
   onExit: () => void;
+  /** Pre-seed wizard state, e.g. when returning from a validation/API error. */
+  initialConfig?: RunInsightsConfig;
+  /** Step to land on at mount (default: 'source'). */
+  initialStep?: RunInsightsStep;
 }
 
-export function RunInsightsScreen({ agentNames, onlineEvalConfigArns, onComplete, onExit }: RunInsightsScreenProps) {
-  const wizard = useRunInsightsWizard(agentNames.length);
+function validateJobName(value: string): true | string {
+  // Empty is allowed — the CLI auto-generates a name when omitted.
+  if (!value) return true;
+  if (!JOB_NAME_PATTERN.test(value)) {
+    return 'Name must start with a letter and contain only letters, numbers, and underscores (max 48 chars).';
+  }
+  return true;
+}
+
+function validateLookbackInput(value: string): true | string {
+  if (!value) return true;
+  const days = parseInt(value, 10);
+  if (!Number.isInteger(days) || String(days) !== value.trim()) {
+    return 'Lookback must be a whole number.';
+  }
+  if (days < 1 || days > 90) {
+    return 'Lookback must be between 1 and 90 days.';
+  }
+  return true;
+}
+
+export const RunInsightsScreen = forwardRef<RunInsightsScreenHandle, RunInsightsScreenProps>(function RunInsightsScreen(
+  { agentNames, onlineEvalConfigArns, onComplete, onExit, initialConfig, initialStep },
+  ref
+) {
+  const wizard = useRunInsightsWizard(agentNames, initialConfig, initialStep);
+  useImperativeHandle(ref, () => ({ jumpToStep: wizard.jumpToStep }), [wizard.jumpToStep]);
 
   const isSourceStep = wizard.step === 'source';
   const isAgentStep = wizard.step === 'agent';
@@ -157,10 +196,8 @@ export function RunInsightsScreen({ agentNames, onlineEvalConfigArns, onComplete
             key="lookback"
             prompt="Lookback window (days)"
             initialValue="7"
-            onSubmit={value => {
-              const days = parseInt(value, 10);
-              wizard.setLookbackDays(isNaN(days) || days <= 0 ? 7 : days);
-            }}
+            customValidation={validateLookbackInput}
+            onSubmit={value => wizard.setLookbackDays(parseInt(value, 10))}
             onCancel={() => wizard.goBack()}
           />
         )}
@@ -187,6 +224,8 @@ export function RunInsightsScreen({ agentNames, onlineEvalConfigArns, onComplete
           <TextInput
             key="name"
             prompt="Job name (leave blank for auto-generated)"
+            allowEmpty
+            customValidation={validateJobName}
             onSubmit={value => wizard.setName(value)}
             onCancel={() => wizard.goBack()}
           />
@@ -197,7 +236,7 @@ export function RunInsightsScreen({ agentNames, onlineEvalConfigArns, onComplete
             fields={
               wizard.config.source === 'agent'
                 ? [
-                    { label: 'Agent', value: wizard.config.agent ?? agentNames[0] ?? '' },
+                    { label: 'Agent', value: wizard.config.agent !== '' ? wizard.config.agent : (agentNames[0] ?? '') },
                     {
                       label: 'Insights',
                       value: wizard.config.insights
@@ -218,4 +257,4 @@ export function RunInsightsScreen({ agentNames, onlineEvalConfigArns, onComplete
       </Panel>
     </Screen>
   );
-}
+});
