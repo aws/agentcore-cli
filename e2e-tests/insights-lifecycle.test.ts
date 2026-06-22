@@ -170,7 +170,7 @@ interface InsightsJobJson {
   id: string;
   status: string;
   name: string;
-  region: string;
+  arn: string;
   agent?: string;
   insights: string[];
 }
@@ -319,7 +319,7 @@ describe.sequential('e2e: run-insights and recommendation chain', () => {
       expect(json.success).toBe(true);
       expect(json.id).toBe(asyncJobId);
       expect(json.status).toBeTruthy();
-      expect(json.region).toBeTruthy();
+      expect(json.arn).toMatch(/^arn:[^:]+:bedrock-agentcore:/);
     },
     120000
   );
