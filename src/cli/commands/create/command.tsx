@@ -105,6 +105,7 @@ const HARNESS_ONLY_FLAGS = [
   'maxTokens',
   'timeout',
   'truncationStrategy',
+  'container',
 ] as const;
 
 /** Determines if the agent path should be taken based on provided flags */
