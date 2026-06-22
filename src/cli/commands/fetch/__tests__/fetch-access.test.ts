@@ -208,7 +208,10 @@ describe('registerFetch', () => {
         from: 'user',
       });
 
-      expect(mockFetchHarnessToken).toHaveBeenCalledWith('MyHarness', expect.objectContaining({}));
+      expect(mockFetchHarnessToken).toHaveBeenCalledWith('MyHarness', {
+        deployTarget: undefined,
+        identityName: undefined,
+      });
       expect(mockFetchGatewayToken).not.toHaveBeenCalled();
       expect(mockLog).toHaveBeenCalledTimes(1);
       const output = JSON.parse(mockLog.mock.calls[0][0]);
@@ -216,6 +219,32 @@ describe('registerFetch', () => {
       expect(output.authType).toBe('CUSTOM_JWT');
       expect(output.token).toBe('harness-token');
       expect(output.expiresIn).toBe(3600);
+    });
+
+    it('forwards --identity-name and --target to fetchHarnessToken', async () => {
+      mockFetchHarnessToken.mockResolvedValue(harnessTokenResult);
+
+      await program.parseAsync(
+        [
+          'fetch',
+          'access',
+          '--type',
+          'harness',
+          '--name',
+          'MyHarness',
+          '--identity-name',
+          'my-custom-cred',
+          '--target',
+          'prod',
+          '--json',
+        ],
+        { from: 'user' }
+      );
+
+      expect(mockFetchHarnessToken).toHaveBeenCalledWith('MyHarness', {
+        deployTarget: 'prod',
+        identityName: 'my-custom-cred',
+      });
     });
 
     it('errors with a harness-specific message when --name is missing and --json flag is used', async () => {

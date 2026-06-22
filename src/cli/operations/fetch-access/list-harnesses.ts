@@ -29,15 +29,12 @@ export async function listHarnesses(
     const deployed = deployedHarnesses[harness.name];
     if (!deployed?.harnessArn) continue;
 
-    let authType = 'AWS_IAM';
-    try {
-      const spec = await configIO.readHarnessSpec(harness.name);
-      authType = spec.authorizerType ?? 'AWS_IAM';
-    } catch {
-      // Spec unreadable — fall back to the AWS_IAM default rather than dropping the harness.
-    }
-
-    harnesses.push({ name: harness.name, authType });
+    // Read the spec for its authorizerType. A read failure (corrupt/missing harness.json,
+    // post-upgrade schema mismatch) for a deployed harness is a real config problem — let it
+    // propagate so the caller surfaces it, rather than masking it as AWS_IAM and silently
+    // steering a CUSTOM_JWT harness to the "use SigV4" path with no token.
+    const spec = await configIO.readHarnessSpec(harness.name);
+    harnesses.push({ name: harness.name, authType: spec.authorizerType ?? 'AWS_IAM' });
   }
 
   return harnesses;

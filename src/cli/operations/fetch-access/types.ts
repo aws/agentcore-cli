@@ -22,7 +22,7 @@ export interface AgentInfo {
 
 export interface HarnessInfo {
   name: string;
-  authType: string;
+  authType: RuntimeAuthorizerType;
 }
 
 export interface ResourceInfo {
