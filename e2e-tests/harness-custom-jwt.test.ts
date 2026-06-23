@@ -5,8 +5,8 @@
  * CUSTOM_JWT authorizer (added via `add harness` with the JWT + OAuth-credential flags, so
  * the managed OAuth credential is registered the way a real user would), and verifies that:
  * - Deploy embeds AuthorizerConfiguration in the CloudFormation template
- * - A default SigV4 invocation is rejected (auth method mismatch)
- * - A bearer-token invocation is not rejected for auth reasons
+ * - A default (non-bearer) invocation auto-fetches a CUSTOM_JWT token via the managed credential
+ * - A bearer-token invocation succeeds (not rejected for auth reasons)
  * - `fetch access --type harness` mints a CUSTOM_JWT bearer token via the managed credential
  * - Status reports the harness as deployed
  *
@@ -140,7 +140,9 @@ describe.sequential('e2e: harness with CUSTOM_JWT auth', () => {
         'CUSTOM_JWT',
         '--discovery-url',
         discoveryUrl,
-        '--allowed-audience',
+        // Cognito client_credentials (M2M) tokens carry a `client_id` claim, not `aud`,
+        // so the authorizer must validate allowedClients — allowedAudience would 403 every token.
+        '--allowed-clients',
         clientId,
         '--client-id',
         clientId,
@@ -220,19 +222,23 @@ describe.sequential('e2e: harness with CUSTOM_JWT auth', () => {
       expect(harnessResource, 'Template should contain a Harness resource').toBeDefined();
 
       const authConfig = harnessResource!.Properties.AuthorizerConfiguration as {
-        CustomJWTAuthorizer: { DiscoveryUrl: string; AllowedAudience: string[] };
+        CustomJWTAuthorizer: { DiscoveryUrl: string; AllowedClients: string[] };
       };
       expect(authConfig, 'Harness should have AuthorizerConfiguration').toBeDefined();
       expect(authConfig.CustomJWTAuthorizer.DiscoveryUrl).toBe(discoveryUrl);
-      expect(authConfig.CustomJWTAuthorizer.AllowedAudience).toContain(clientId);
+      expect(authConfig.CustomJWTAuthorizer.AllowedClients).toContain(clientId);
     },
     600000
   );
 
   it.skipIf(!canRun)(
-    'rejects SigV4 invocation (auth method mismatch)',
+    'auto-fetches a JWT for a default (non-bearer) invocation',
     async () => {
-      // The CLI uses SigV4 by default — a CUSTOM_JWT harness should reject it.
+      // This harness was added with --client-id/--client-secret, so the managed OAuth
+      // credential is registered. A default `invoke` (no --bearer-token) must therefore
+      // auto-fetch a CUSTOM_JWT bearer token rather than fall back to SigV4 — and that
+      // token must be accepted (it carries `client_id`, which the authorizer validates via
+      // allowedClients). So the invoke must NOT be rejected for an auth/audience reason.
       const result = await runCLI(
         ['invoke', '--harness', harnessName, '--prompt', 'Say hello', '--json'],
         projectPath,
@@ -240,8 +246,10 @@ describe.sequential('e2e: harness with CUSTOM_JWT auth', () => {
       );
 
       const output = stripAnsi(result.stdout + result.stderr);
-      expect(result.exitCode, `failure: stderr=${result.stderr}\n\nstdout=${result.stdout}`).not.toBe(0);
-      expect(output).toMatch(customJWTRejectMsgRegex);
+      expect(output, `auth-method rejection: ${output}`).not.toMatch(customJWTRejectMsgRegex);
+      expect(output, `audience rejection (allowedClients misconfigured?): ${output}`).not.toMatch(
+        /missing required audience claim/i
+      );
     },
     180000
   );
@@ -258,8 +266,13 @@ describe.sequential('e2e: harness with CUSTOM_JWT auth', () => {
       );
 
       const output = stripAnsi(result.stdout + result.stderr);
-      // May still fail for unrelated reasons, but NOT with an auth-method mismatch.
-      expect(output).not.toMatch(customJWTRejectMsgRegex);
+      // Must NOT be rejected for an auth reason — neither a client-side auth-method mismatch
+      // nor a service-side audience rejection (which would mean allowedClients is misconfigured).
+      expect(output, `auth-method rejection: ${output}`).not.toMatch(customJWTRejectMsgRegex);
+      expect(output, `audience rejection (allowedClients misconfigured?): ${output}`).not.toMatch(
+        /missing required audience claim/i
+      );
+      expect(result.exitCode, `bearer-token invoke failed: ${output}`).toBe(0);
     },
     180000
   );
