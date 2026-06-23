@@ -125,6 +125,8 @@ export const ErrorName = z.enum([
   'PollExhaustedError',
   'PollTimeoutError',
   'ResourceNotFoundError',
+  'SecretDecryptionError',
+  'SecretEncryptionError',
   'ServiceError',
   'ServiceQuotaError',
   'ShellKickedError',

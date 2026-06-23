@@ -62,6 +62,26 @@ export class AccessDeniedError extends BaseError {
 }
 
 /**
+ * Error thrown when a secret value cannot be encrypted before writing to disk
+ * (e.g. the machine encryption key could not be created/read).
+ */
+export class SecretEncryptionError extends BaseError {
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'client', ...options });
+  }
+}
+
+/**
+ * Error thrown when a stored secret value cannot be decrypted (missing/changed
+ * machine key, or corrupted ciphertext).
+ */
+export class SecretDecryptionError extends BaseError {
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'user', ...options });
+  }
+}
+
+/**
  * Error indicating missing system dependencies required for an operation.
  */
 export class DependencyCheckError extends BaseError {
