@@ -1233,14 +1233,21 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
    * Legacy (gated OFF) memory ref builder — preserves pre-managed-memory behavior exactly.
    * An explicit `--memory-arn`/`--memory-name` references an existing memory; otherwise
    * `autoCreateMemoryName` (when set) points at the `${name}Memory` sibling this command auto-creates.
-   * Returns undefined when there is no memory at all (`--no-memory`).
+   * `--no-memory` emits a `disabled` ref (a true opt-out), never an omitted one.
    */
   private buildLegacyMemoryRef(
     options: AddHarnessOptions,
     autoCreateMemoryName: string | undefined
   ): HarnessMemoryRef | undefined {
     const name = options.memoryName ?? autoCreateMemoryName;
-    if (!options.memoryArn && !name) return undefined;
+    if (!options.memoryArn && !name) {
+      // `--no-memory`: the harness CFN resource now supports an explicit opt-out, so emit a
+      // `disabled` ref instead of omitting memory. An omitted Memory config makes the AgentCore
+      // service auto-provision a managed memory the execution role can't read, so invoke fails
+      // with AccessDenied on bedrock-agentcore:ListEvents. `disabled` maps to CFN Memory:
+      // { Disabled: {} }, so no memory is created and no grant is needed.
+      return options.skipMemory ? { mode: 'disabled' } : undefined;
+    }
     const tuning = this.buildRetrievalConfig(options);
     return {
       mode: 'existing',

@@ -139,6 +139,12 @@ describe('integration: harness configuration options', () => {
     const configAfter = await readProjectConfig(project.projectPath);
     const memoriesAfter = (configAfter.memories ?? []).length;
     expect(memoriesAfter).toBe(memoriesBefore);
+
+    // --no-memory must write an explicit `disabled` ref, not omit memory: an omitted memory
+    // config makes the service auto-provision a managed memory the execution role can't read
+    // (AccessDenied on ListEvents at invoke). `disabled` maps to CFN Memory: { Disabled: {} }.
+    const spec = await readHarnessSpec(project.projectPath, name);
+    expect(spec.memory?.mode).toBe('disabled');
   });
 
   it('adds harness with non-bedrock model provider', async () => {
