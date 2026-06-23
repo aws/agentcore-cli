@@ -24,6 +24,7 @@ import {
   getOutboundAuthOptions,
 } from './types';
 import { useAddGatewayTargetWizard } from './useAddGatewayTargetWizard';
+import { isGatedFeaturesEnabled } from '@/cli/feature-flags';
 import { Box, Text } from 'ink';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -153,11 +154,15 @@ export function AddGatewayTargetScreen({
   );
   const targetTypeItems: SelectableItem[] = useMemo(
     () =>
-      TARGET_TYPE_OPTIONS.map(o => ({
-        id: o.id,
-        title: o.title,
-        description: o.description,
-      })),
+      TARGET_TYPE_OPTIONS.map(o => {
+        const gated = o.id === 'webSearch' && !isGatedFeaturesEnabled();
+        return {
+          id: o.id,
+          title: o.title,
+          description: gated ? 'Coming soon' : o.description,
+          disabled: gated,
+        };
+      }),
     []
   );
   const outboundAuthItems: SelectableItem[] = useMemo(
