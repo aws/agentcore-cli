@@ -29,7 +29,6 @@ import {
 import type { AddGatewayTargetOptions as CLIAddGatewayTargetOptions } from '../commands/add/types';
 import { validateAddGatewayTargetOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
-import { isGatedFeaturesEnabled } from '../feature-flags';
 import { upsertAgenticRetrieveTarget } from '../operations/knowledge-base/agentic-retrieve-upsert';
 import type { RemovableGatewayTarget } from '../operations/remove/remove-gateway-target';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
@@ -64,11 +63,11 @@ import { dirname, join } from 'path';
 const MCP_DEFS_FILE = 'mcp-defs.json';
 
 /**
- * Hide a passthrough-only CLI option from --help unless gated features are enabled.
- * The option is still parsed if passed; the runtime guard in validate.ts rejects it.
+ * Passthrough-only CLI option. Kept as a pass-through wrapper so the six call sites
+ * read consistently; passthrough targets are no longer gated.
  */
 function gatePassthroughOption(option: Option): Option {
-  return isGatedFeaturesEnabled() ? option : option.hideHelp();
+  return option;
 }
 
 /**
@@ -283,9 +282,8 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
   }
 
   registerCommands(addCmd: Command, removeCmd: Command): void {
-    const typeDescription = isGatedFeaturesEnabled()
-      ? 'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn, http-runtime, connector, passthrough, web-search [non-interactive]'
-      : 'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn, http-runtime, connector, web-search [non-interactive]';
+    const typeDescription =
+      'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn, http-runtime, connector, passthrough, web-search [non-interactive]';
 
     // Reject repeated use of --exclude-domains. Domains must be passed as a
     // single comma-separated value.
@@ -430,17 +428,13 @@ Target types and their options:
   connector — Wire a managed AWS connector (Bedrock KB, agentic-retrieve)
     --connector <id>               bedrock-knowledge-bases or bedrock-agentic-retrieve
     --knowledge-base-id <id>       Project KB name or 10-char external KB id (repeatable for agentic-retrieve)
-${
-  isGatedFeaturesEnabled()
-    ? `
+
   passthrough — Route to an external HTTPS endpoint
     --passthrough-endpoint <url>   HTTPS endpoint URL
     --stickiness-identifier <expr> Session routing expression (optional)
     --stickiness-timeout <seconds> Sticky session timeout in seconds (optional)
-`
-    : ''
-}
-  Auth (mcp-server, open-api-schema, smithy-model, lambda-function-arn${isGatedFeaturesEnabled() ? ', passthrough' : ''}):
+
+  Auth (mcp-server, open-api-schema, smithy-model, lambda-function-arn, passthrough):
     --outbound-auth <type>         oauth, api-key, or none
     --credential-name <name>       Existing credential name
 `
