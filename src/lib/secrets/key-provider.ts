@@ -25,7 +25,6 @@ async function tryKeychainKey(): Promise<Buffer | null> {
   try {
     // Optional native dependency — dynamic import so a missing/unbuildable
     // module degrades to the keyfile instead of failing the CLI.
-    // @ts-expect-error — @napi-rs/keyring is not declared in package.json; absent by design.
     const { Entry } = (await import('@napi-rs/keyring')) as KeyringModule;
     const entry = new Entry(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
     try {

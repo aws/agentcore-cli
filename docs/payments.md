@@ -197,14 +197,28 @@ AGENTCORE_CREDENTIAL_{CREDENTIAL_NAME}_AUTHORIZATION_ID=...
 `{CREDENTIAL_NAME}` is the connector's credential name uppercased with hyphens replaced by underscores. For example, a
 credential named `my-cdp-creds` becomes `AGENTCORE_CREDENTIAL_MY_CDP_CREDS_API_KEY_ID`.
 
+### Secret encryption at rest
+
+Connector secret values in `agentcore/.env.local` (API key secrets, wallet secrets, private keys) are encrypted at rest
+with a machine-local key stored outside the project directory (your OS keychain, or `~/.agentcore/secrets.key` on
+machines without a keychain). Copying or syncing the project directory does **not** expose the secrets — only the holder
+of the machine key can decrypt them. Reference IDs (API key ID, app ID) remain readable.
+
+To rotate a credential, re-run `agentcore add payment-connector` with the new values (this re-encrypts immediately).
+Editing `agentcore/.env.local` by hand still works: paste the new plaintext value and run `agentcore deploy` — the CLI
+re-encrypts it on the next write.
+
 ### Credential Rotation
 
-To rotate credentials:
+The preferred rotation path is to re-run `agentcore add payment-connector` with the new values — the CLI re-encrypts the
+secrets immediately and there is no plaintext window. Hand-editing `.env.local` also works: paste the new plaintext
+value and run `agentcore deploy -y` — the CLI re-encrypts on the next write.
 
-1. Update the values in `agentcore/.env.local`
+1. Re-run `agentcore add payment-connector` with the new values (preferred), **or** open `agentcore/.env.local`, paste
+   the new plaintext secret value, and save.
 2. Run `agentcore deploy -y`
 
-Deploy automatically updates the PaymentCredentialProvider on AWS with the new secret values.
+Deploy automatically updates the PaymentCredentialProvider on AWS with the new (re-encrypted) secret values.
 
 ## Deploying with Payments
 
