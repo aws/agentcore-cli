@@ -1,4 +1,5 @@
 import { ConfigIO, ResourceNotFoundError, SecureCredentials, ValidationError, toError } from '../../../lib';
+import type { Result } from '../../../lib/result';
 import type { AgentCoreMcpSpec, DeployedState } from '../../../schema';
 import { applyTargetRegionToEnv } from '../../aws';
 import { validateAwsCredentials } from '../../aws/account';
@@ -92,6 +93,36 @@ export function computeHarnessVersionDrift(
     if (from !== rec.harnessVersion) notes.push({ name, from, to: rec.harnessVersion });
   }
   return notes;
+}
+
+/**
+ * Pick the synthesized stack for the target being deployed.
+ *
+ * The vended CDK app synthesizes one stack per target in aws-targets.json, so a multi-target
+ * project's assembly contains every target's stack. Selecting `stackNames[0]` would describe/persist
+ * the *first* target's stack rather than the deployed one — for `deploy --target qa` that meant the
+ * Persist step ran `DescribeStacks` on a different (often undeployed) stack and failed. Matching on the
+ * deterministic `toStackName(project, target)` keeps the choice correct regardless of target ordering.
+ */
+export function selectTargetStack(
+  stackNames: string[],
+  projectName: string,
+  targetName: string
+): Result<{ stackName: string }, ValidationError> {
+  if (stackNames.length === 0) {
+    return { success: false, error: new ValidationError('No stacks found to deploy') };
+  }
+  const expected = toStackName(projectName, targetName);
+  if (!stackNames.includes(expected)) {
+    return {
+      success: false,
+      error: new ValidationError(
+        `Synthesized stacks [${stackNames.join(', ')}] do not include the stack for target ` +
+          `"${targetName}" (expected "${expected}").`
+      ),
+    };
+  }
+  return { success: true, stackName: expected };
 }
 
 export async function runDiff(
@@ -387,20 +418,21 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       region: target.region,
     });
     toolkitWrapper = synthResult.toolkitWrapper;
-    const stackNames = synthResult.stackNames;
-    if (stackNames.length === 0) {
-      endStep('error', 'No stacks found');
+    // The assembly holds one stack per target in aws-targets.json. Select the deployed target's
+    // stack so every downstream step (deployability check, deploy, Persist/describe) acts on it
+    // rather than blindly on stackNames[0] — see selectTargetStack.
+    const stackSelection = selectTargetStack(synthResult.stackNames, context.projectSpec.name, target.name);
+    if (!stackSelection.success) {
+      endStep('error', stackSelection.error.message);
       logger.finalize(false);
       return {
         success: false,
-        error: new ValidationError('No stacks found to deploy'),
+        error: stackSelection.error,
         logPath: logger.getRelativeLogPath(),
       };
     }
-    const stackName = stackNames[0]!;
+    const stackName = stackSelection.stackName;
     endStep('success');
-
-    const targetStackName = toStackName(context.projectSpec.name, target.name);
 
     // Check if bootstrap needed
     startStep('Check bootstrap status');
@@ -421,9 +453,10 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     }
     endStep('success');
 
-    // Check stack deployability
+    // Check stack deployability — scope to the deployed target's stack only, not every
+    // synthesized target, so a sibling target's in-progress/failed stack can't block this deploy.
     startStep('Check stack status');
-    const deployabilityCheck = await checkStackDeployability(target.region, stackNames);
+    const deployabilityCheck = await checkStackDeployability(target.region, [stackName]);
     if (!deployabilityCheck.canDeploy) {
       endStep('error', deployabilityCheck.message);
       logger.finalize(false);
@@ -451,7 +484,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // Diff mode: run cdk diff and exit without deploying
     if (options.diff) {
       startStep('Run CDK diff');
-      await runDiff(toolkitWrapper, targetStackName, switchableIoHost);
+      await runDiff(toolkitWrapper, stackName, switchableIoHost);
       endStep('success');
 
       logger.finalize(true);
@@ -491,7 +524,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       switchableIoHost.setVerbose(true);
     }
 
-    await runDeploy(toolkitWrapper, targetStackName);
+    await runDeploy(toolkitWrapper, stackName);
 
     // Disable verbose output
     if (switchableIoHost) {
