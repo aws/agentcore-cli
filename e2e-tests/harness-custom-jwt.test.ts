@@ -135,7 +135,9 @@ describe.sequential('e2e: harness with CUSTOM_JWT auth', () => {
         harnessName,
         '--model-provider',
         'bedrock',
-        '--no-memory',
+        // Use the default managed memory (no --no-memory): a disabled-memory harness still
+        // calls bedrock-agentcore:ListEvents at invoke, but the CDK only grants that action on
+        // the execution role when memory is managed — so --no-memory invokes fail with AccessDenied.
         '--authorizer-type',
         'CUSTOM_JWT',
         '--discovery-url',
