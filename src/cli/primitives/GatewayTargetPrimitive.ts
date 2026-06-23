@@ -63,14 +63,6 @@ import { dirname, join } from 'path';
 const MCP_DEFS_FILE = 'mcp-defs.json';
 
 /**
- * Passthrough-only CLI option. Kept as a pass-through wrapper so the six call sites
- * read consistently; passthrough targets are no longer gated.
- */
-function gatePassthroughOption(option: Option): Option {
-  return option;
-}
-
-/**
  * Options for adding a gateway target (CLI-level).
  */
 export interface AddGatewayTargetOptions {
@@ -355,47 +347,35 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
       )
       .option('--runtime <name>', 'Runtime from your project (for http-runtime type) [non-interactive]')
       .option('--runtime-endpoint <name>', 'Runtime endpoint / version alias (for http-runtime type) [non-interactive]')
-      // Passthrough-only flags are gated behind ENABLE_GATED_FEATURES — hidden from help when off.
+      // Passthrough-only flags.
       .addOption(
-        gatePassthroughOption(
-          new Option('--passthrough-endpoint <url>', 'HTTPS endpoint URL for passthrough targets [non-interactive]')
+        new Option('--passthrough-endpoint <url>', 'HTTPS endpoint URL for passthrough targets [non-interactive]')
+      )
+      .addOption(
+        new Option(
+          '--passthrough-protocol <type>',
+          'Passthrough protocol: MCP | A2A | INFERENCE | CUSTOM (default: CUSTOM) [non-interactive]'
         )
       )
       .addOption(
-        gatePassthroughOption(
-          new Option(
-            '--passthrough-protocol <type>',
-            'Passthrough protocol: MCP | A2A | INFERENCE | CUSTOM (default: CUSTOM) [non-interactive]'
-          )
+        new Option(
+          '--stickiness-identifier <expr>',
+          'Session routing expression for passthrough targets [non-interactive]'
         )
       )
       .addOption(
-        gatePassthroughOption(
-          new Option(
-            '--stickiness-identifier <expr>',
-            'Session routing expression for passthrough targets [non-interactive]'
-          )
+        new Option('--stickiness-timeout <seconds>', 'Sticky session timeout in seconds (1-86400) [non-interactive]')
+      )
+      .addOption(
+        new Option(
+          '--signing-service <name>',
+          'SigV4 signing service name for passthrough GATEWAY_IAM_ROLE auth [non-interactive]'
         )
       )
       .addOption(
-        gatePassthroughOption(
-          new Option('--stickiness-timeout <seconds>', 'Sticky session timeout in seconds (1-86400) [non-interactive]')
-        )
-      )
-      .addOption(
-        gatePassthroughOption(
-          new Option(
-            '--signing-service <name>',
-            'SigV4 signing service name for passthrough GATEWAY_IAM_ROLE auth [non-interactive]'
-          )
-        )
-      )
-      .addOption(
-        gatePassthroughOption(
-          new Option(
-            '--signing-region <region>',
-            'SigV4 signing region for passthrough (defaults to project region) [non-interactive]'
-          )
+        new Option(
+          '--signing-region <region>',
+          'SigV4 signing region for passthrough (defaults to project region) [non-interactive]'
         )
       )
       .option('--json', 'Output as JSON [non-interactive]')
