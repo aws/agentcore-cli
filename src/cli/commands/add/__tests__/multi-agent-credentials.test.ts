@@ -1,3 +1,4 @@
+import { readEnvFile } from '../../../../lib/utils/env';
 import { runCLI } from '../../../../test-utils/index.js';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -47,6 +48,10 @@ describe('multi-agent credential behavior', () => {
     }
   }
 
+  async function readEnvDecrypted() {
+    return readEnvFile(join(projectDir, 'agentcore'));
+  }
+
   describe('credential reuse with same API key', () => {
     it('first agent creates project-scoped credential', async () => {
       const result = await runCLI(
@@ -76,9 +81,11 @@ describe('multi-agent credential behavior', () => {
       expect(spec.credentials).toHaveLength(1);
       expect(spec.credentials[0].name).toBe(`${projectName}Gemini`);
 
-      const env = await readEnvLocal();
-      expect(env).toContain('AGENTCORE_CREDENTIAL_MULTIAGENTPROJGEMINI=');
-      expect(env).toContain('KEY1');
+      const rawEnv = await readEnvLocal();
+      expect(rawEnv).toContain('AGENTCORE_CREDENTIAL_MULTIAGENTPROJGEMINI=');
+      expect(rawEnv).not.toContain('KEY1'); // encrypted at rest
+      const env = await readEnvDecrypted();
+      expect(env.AGENTCORE_CREDENTIAL_MULTIAGENTPROJGEMINI).toBe('KEY1');
     });
 
     it('second agent with same key reuses credential (no duplicate)', async () => {
@@ -151,12 +158,15 @@ describe('multi-agent credential behavior', () => {
       // Should have 3 agents
       expect(spec.runtimes).toHaveLength(3);
 
-      // .env.local should have both keys
-      const env = await readEnvLocal();
-      expect(env).toContain('AGENTCORE_CREDENTIAL_MULTIAGENTPROJGEMINI=');
-      expect(env).toContain('KEY1');
-      expect(env).toContain('AGENTCORE_CREDENTIAL_MULTIAGENTPROJAGENT3GEMINI=');
-      expect(env).toContain('KEY2');
+      // .env.local should have both keys encrypted at rest, decryptable to original values
+      const rawEnv = await readEnvLocal();
+      expect(rawEnv).toContain('AGENTCORE_CREDENTIAL_MULTIAGENTPROJGEMINI=');
+      expect(rawEnv).toContain('AGENTCORE_CREDENTIAL_MULTIAGENTPROJAGENT3GEMINI=');
+      expect(rawEnv).not.toContain('KEY1'); // encrypted at rest
+      expect(rawEnv).not.toContain('KEY2'); // encrypted at rest
+      const env = await readEnvDecrypted();
+      expect(env.AGENTCORE_CREDENTIAL_MULTIAGENTPROJGEMINI).toBe('KEY1');
+      expect(env.AGENTCORE_CREDENTIAL_MULTIAGENTPROJAGENT3GEMINI).toBe('KEY2');
 
       // Generated code should reference correct credentials
       const agent1Code = await readFile(join(projectDir, 'app/Agent1/model/load.py'), 'utf-8');
