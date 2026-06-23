@@ -341,10 +341,10 @@ describe.sequential('e2e: run-insights and recommendation chain', () => {
     120000
   );
 
-  // The chain test needs a COMPLETED insights job. We submit a fresh one with
-  // --wait and a long timeout. An evaluator is supplied because system-prompt
-  // recommendations require one (recommendation handler reads it from the
-  // batch eval rather than --evaluator on the command).
+  // The chain test needs a terminal insights job. We submit a fresh one with
+  // --wait and a long timeout. `--insights` and `--evaluator` are mutually
+  // exclusive on the BatchEvaluation API, so we only pass --insights here and
+  // supply --evaluator directly on the recommendation chain step below.
   it.skipIf(!canRun)(
     'submits an insights job with --wait and reaches a terminal status',
     async () => {
@@ -355,8 +355,6 @@ describe.sequential('e2e: run-insights and recommendation chain', () => {
         agentName,
         '--insights',
         FAILURE_ANALYSIS,
-        '--evaluator',
-        'Builtin.Faithfulness',
         '--lookback-days',
         '1',
         '--wait',
@@ -389,6 +387,8 @@ describe.sequential('e2e: run-insights and recommendation chain', () => {
         'system-prompt',
         '--inline',
         'You are a helpful assistant.',
+        '--evaluator',
+        'Builtin.Faithfulness',
         '--json',
       ]);
       const json = parseJsonOutput(result.stdout) as Record<string, unknown> & { error?: string };
