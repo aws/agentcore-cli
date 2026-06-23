@@ -42,20 +42,22 @@ async function tryKeychainKey(): Promise<Buffer | null> {
   }
 }
 
+function resolveConfigDir(): string {
+  return process.env.AGENTCORE_CONFIG_DIR ?? join(homedir(), '.agentcore');
+}
+
 function keyfilePath(): string {
-  const configDir = process.env.AGENTCORE_CONFIG_DIR ?? join(homedir(), '.agentcore');
-  return join(configDir, 'secrets.key');
+  return join(resolveConfigDir(), 'secrets.key');
 }
 
 function keyfileKey(): Buffer {
   const path = keyfilePath();
-  const configDir = process.env.AGENTCORE_CONFIG_DIR ?? join(homedir(), '.agentcore');
   try {
     if (existsSync(path)) {
       const key = readFileSync(path);
       if (key.length === KEY_BYTES) return key;
     }
-    mkdirSync(configDir, { recursive: true });
+    mkdirSync(resolveConfigDir(), { recursive: true });
     const key = randomBytes(KEY_BYTES);
     writeFileSync(path, key, { mode: 0o600 });
     return key;
