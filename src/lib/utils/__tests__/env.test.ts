@@ -1,8 +1,10 @@
-import { getEnvPath, getEnvVar, readEnvFile, setEnvVar, writeEnvFile } from '../env.js';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { ENC_PREFIX } from '../../secrets';
+import { __resetKeyCacheForTests } from '../../secrets/key-provider';
+import { getEnvPath, getEnvVar, readEnvFile, removeEnvVars, setEnvVar, writeEnvFile } from '../env.js';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 describe('getEnvPath', () => {
   it('joins configRoot with .env.local', () => {
@@ -184,5 +186,78 @@ describe('setEnvVar', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('env.ts at-rest encryption', () => {
+  let root: string; // acts as configRoot (contains .env.local)
+  let cfgDir: string;
+  const prev = { cfg: process.env.AGENTCORE_CONFIG_DIR, noKc: process.env.AGENTCORE_DISABLE_KEYCHAIN };
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'agentcore-env-'));
+    cfgDir = mkdtempSync(join(tmpdir(), 'agentcore-cfg-'));
+    process.env.AGENTCORE_CONFIG_DIR = cfgDir;
+    process.env.AGENTCORE_DISABLE_KEYCHAIN = '1';
+    __resetKeyCacheForTests();
+  });
+  afterEach(() => {
+    process.env.AGENTCORE_CONFIG_DIR = prev.cfg;
+    process.env.AGENTCORE_DISABLE_KEYCHAIN = prev.noKc;
+    __resetKeyCacheForTests();
+    rmSync(root, { recursive: true, force: true });
+    rmSync(cfgDir, { recursive: true, force: true });
+  });
+
+  it('encrypts sensitive values on write, leaves reference values plaintext', async () => {
+    await writeEnvFile(
+      {
+        AGENTCORE_CREDENTIAL_M_C_API_KEY_SECRET: 'sek-123',
+        AGENTCORE_CREDENTIAL_M_C_API_KEY_ID: 'id-abc',
+      },
+      root
+    );
+    const onDisk = readFileSync(join(root, '.env.local'), 'utf-8');
+    expect(onDisk).not.toContain('sek-123');
+    expect(onDisk).toContain(`API_KEY_SECRET="${ENC_PREFIX}`);
+    expect(onDisk).toContain('API_KEY_ID="id-abc"'); // reference stays plaintext
+  });
+
+  it('decrypts transparently on read', async () => {
+    await writeEnvFile({ AGENTCORE_CREDENTIAL_M_C_API_KEY_SECRET: 'sek-123' }, root);
+    const env = await readEnvFile(root);
+    expect(env.AGENTCORE_CREDENTIAL_M_C_API_KEY_SECRET).toBe('sek-123');
+  });
+
+  it('reads legacy plaintext secret and re-encrypts it on next write (self-migration)', async () => {
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, '.env.local'), 'AGENTCORE_CREDENTIAL_M_C_API_KEY_SECRET="legacy-plain"\n');
+    // read returns plaintext untouched
+    expect((await readEnvFile(root)).AGENTCORE_CREDENTIAL_M_C_API_KEY_SECRET).toBe('legacy-plain');
+    // any write re-encrypts all sensitive values
+    await writeEnvFile({ OTHER: 'x' }, root);
+    const onDisk = readFileSync(join(root, '.env.local'), 'utf-8');
+    expect(onDisk).not.toContain('legacy-plain');
+    expect(onDisk).toContain(`API_KEY_SECRET="${ENC_PREFIX}`);
+    expect((await readEnvFile(root)).AGENTCORE_CREDENTIAL_M_C_API_KEY_SECRET).toBe('legacy-plain');
+  });
+
+  it('does not double-encrypt an already-encrypted value', async () => {
+    await writeEnvFile({ AGENTCORE_CREDENTIAL_M_C_API_KEY_SECRET: 'sek-123' }, root);
+    await writeEnvFile({ OTHER: 'y' }, root); // merge re-writes existing values
+    const env = await readEnvFile(root);
+    expect(env.AGENTCORE_CREDENTIAL_M_C_API_KEY_SECRET).toBe('sek-123');
+  });
+
+  it('removeEnvVars rewrites remaining secrets still encrypted', async () => {
+    await writeEnvFile(
+      { AGENTCORE_CREDENTIAL_M_C_API_KEY_SECRET: 'sek-1', AGENTCORE_CREDENTIAL_M_D_API_KEY_SECRET: 'sek-2' },
+      root
+    );
+    await removeEnvVars(['AGENTCORE_CREDENTIAL_M_C_API_KEY_SECRET'], root);
+    const onDisk = readFileSync(join(root, '.env.local'), 'utf-8');
+    expect(onDisk).not.toContain('sek-1');
+    expect(onDisk).not.toContain('sek-2');
+    expect((await readEnvFile(root)).AGENTCORE_CREDENTIAL_M_D_API_KEY_SECRET).toBe('sek-2');
   });
 });
