@@ -41,7 +41,6 @@ import {
   HARNESS_STEP_LABELS,
   MANAGED_STRATEGY_OPTIONS,
   MEMORY_MODE_OPTIONS,
-  MEMORY_OPTIONS,
   MODEL_PROVIDER_OPTIONS,
   NETWORK_MODE_OPTIONS,
   OPENAI_API_FORMAT_OPTIONS,
@@ -50,7 +49,6 @@ import {
   TRUNCATION_STRATEGY_OPTIONS,
 } from './types';
 import { useAddHarnessWizard } from './useAddHarnessWizard';
-import { isGatedFeaturesEnabled } from '@/cli/feature-flags';
 import { Text } from 'ink';
 import React, { useEffect, useMemo } from 'react';
 
@@ -114,24 +112,17 @@ export function AddHarnessScreen({
         // and managed/existing have disjoint knob sets (per the harness API). Disabled shows none.
         //  - memory-managed-tuning  → only when mode === 'managed'  (strategies/event-expiry/KMS)
         //  - memory-existing-tuning → only when mode === 'existing' (actorId/messagesCount/topK/relevance)
-        //  - memory-tuning (legacy) → only in the gated-off model, when memory isn't skipped
         .filter(opt => {
           if (opt.id === 'memory-managed-tuning') return wizard.config.memory?.mode === 'managed';
           if (opt.id === 'memory-existing-tuning') return wizard.config.memory?.mode === 'existing';
-          if (opt.id === 'memory-tuning') return !wizard.config.memory && wizard.config.skipMemory !== true;
           return true;
         })
         .map(opt => ({ id: opt.id, title: opt.title, description: opt.description })),
-    [wizard.config.skipMemory, wizard.config.memory]
+    [wizard.config.memory]
   );
 
   const toolSelectItems: SelectableItem[] = useMemo(
     () => TOOL_SELECT_OPTIONS.map(opt => ({ id: opt.id, title: opt.title, description: opt.description })),
-    []
-  );
-
-  const memoryItems: SelectableItem[] = useMemo(
-    () => MEMORY_OPTIONS.map(opt => ({ id: opt.id, title: opt.title, description: opt.description })),
     []
   );
 
@@ -182,7 +173,6 @@ export function AddHarnessScreen({
   const isGatewayOutboundAuthStep = wizard.step === 'gateway-outbound-auth';
   const isGatewayProviderArnStep = wizard.step === 'gateway-provider-arn';
   const isGatewayScopesStep = wizard.step === 'gateway-scopes';
-  const isMemoryStep = wizard.step === 'memory';
   const isMemoryModeStep = wizard.step === 'memory-mode';
   const isMemoryStrategiesStep = wizard.step === 'memory-strategies';
   const isMemoryEventExpiryStep = wizard.step === 'memory-event-expiry';
@@ -264,13 +254,6 @@ export function AddHarnessScreen({
     requireSelection: false,
   });
 
-  const memoryNav = useListNavigation({
-    items: memoryItems,
-    onSelect: item => wizard.setMemoryEnabled(item.id === 'enabled'),
-    onExit: () => wizard.goBack(),
-    isActive: isMemoryStep,
-  });
-
   const memoryModeNav = useListNavigation({
     items: memoryModeItems,
     onSelect: item => wizard.setMemoryMode(item.id as 'managed' | 'existing' | 'disabled'),
@@ -328,8 +311,7 @@ export function AddHarnessScreen({
       SKILL_SOURCE_TYPE_OPTIONS.map(opt => ({
         id: opt.id,
         title: opt.title,
-        description: opt.id === 'aws_skills' && !isGatedFeaturesEnabled() ? 'Coming soon' : opt.description,
-        disabled: opt.id === 'aws_skills' && !isGatedFeaturesEnabled(),
+        description: opt.description,
       })),
     []
   );
@@ -409,7 +391,6 @@ export function AddHarnessScreen({
       ? 'Space toggle · Enter confirm · Esc back'
       : isModelProviderStep ||
           isApiFormatStep ||
-          isMemoryStep ||
           isMemoryModeStep ||
           isContainerStep ||
           isNetworkModeStep ||
@@ -451,7 +432,6 @@ export function AddHarnessScreen({
 
     const mem = wizard.config.memory;
     if (mem) {
-      // Mode-tagged memory (gated ON).
       if (mem.mode === 'managed') {
         const titled = mem.strategies?.length
           ? mem.strategies.map(s => s.charAt(0) + s.slice(1).toLowerCase().replace('_', ' ')).join(', ')
@@ -465,22 +445,18 @@ export function AddHarnessScreen({
         }
       } else if (mem.mode === 'existing') {
         fields.push({ label: 'Memory', value: `Existing (${mem.arn ?? mem.name ?? '—'})` });
+        if (mem.messagesCount !== undefined) {
+          fields.push({ label: 'Memory Messages Count', value: String(mem.messagesCount) });
+        }
+        if (mem.topK !== undefined) {
+          fields.push({ label: 'Memory Retrieval Top K', value: String(mem.topK) });
+        }
+        if (mem.relevanceScore !== undefined) {
+          fields.push({ label: 'Memory Relevance Score', value: String(mem.relevanceScore) });
+        }
       } else {
         fields.push({ label: 'Memory', value: 'Disabled' });
       }
-    } else if (wizard.config.skipMemory !== undefined) {
-      // Legacy enabled/disabled (gated OFF).
-      fields.push({ label: 'Memory', value: wizard.config.skipMemory ? 'Disabled' : 'Enabled' });
-    }
-
-    if (wizard.config.messagesCount !== undefined) {
-      fields.push({ label: 'Memory Messages Count', value: String(wizard.config.messagesCount) });
-    }
-    if (wizard.config.memoryTopK !== undefined) {
-      fields.push({ label: 'Memory Retrieval Top K', value: String(wizard.config.memoryTopK) });
-    }
-    if (wizard.config.memoryRelevanceScore !== undefined) {
-      fields.push({ label: 'Memory Relevance Score', value: String(wizard.config.memoryRelevanceScore) });
     }
 
     if (wizard.config.allowedTools?.length) {
@@ -568,7 +544,10 @@ export function AddHarnessScreen({
 
     if (wizard.config.skills?.length) {
       for (const [i, skill] of wizard.config.skills.entries()) {
-        const label = skill.s3Uri ?? skill.gitUrl ?? skill.path ?? 'unknown';
+        const awsSkillsLabel = skill.awsSkills
+          ? `aws-skills (${skill.awsSkills.length > 0 ? skill.awsSkills.join(', ') : 'all'})`
+          : undefined;
+        const label = skill.s3Uri ?? skill.gitUrl ?? skill.path ?? awsSkillsLabel ?? 'unknown';
         fields.push({ label: `Skill ${i + 1}`, value: label });
       }
     }
@@ -1021,15 +1000,6 @@ export function AddHarnessScreen({
             description={`${(wizard.config.skills ?? []).length} skill(s) configured`}
             items={skillAddAnotherItems}
             selectedIndex={skillAddAnotherNav.selectedIndex}
-          />
-        )}
-
-        {isMemoryStep && (
-          <WizardSelect
-            title="Memory"
-            description="Persistent memory lets the harness remember context across sessions"
-            items={memoryItems}
-            selectedIndex={memoryNav.selectedIndex}
           />
         )}
 

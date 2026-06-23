@@ -3,6 +3,7 @@ import { ErrorPrompt } from '../../components';
 import { AddSuccessScreen } from '../add/AddSuccessScreen';
 import { useExistingCredentials } from '../identity/useCreateIdentity';
 import { AddHarnessScreen } from './AddHarnessScreen';
+import { toMemoryAddOptions } from './memory-options';
 import type { AddHarnessConfig } from './types';
 import { Box, Text } from 'ink';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -55,6 +56,7 @@ export function AddHarnessFlow({ isInteractive = true, onExit, onBack, onDev, on
     setFlow({ name: 'create-success', harnessName: config.name, loading: true, loadingMessage: 'Creating harness...' });
     try {
       const { harnessPrimitive } = await import('../../../primitives/registry');
+      const memoryOptions = toMemoryAddOptions(config.memory);
       const result = await harnessPrimitive.add({
         name: config.name,
         modelProvider: config.modelProvider,
@@ -63,33 +65,7 @@ export function AddHarnessFlow({ isInteractive = true, onExit, onBack, onDev, on
         apiKeyArn: config.apiKeyArn,
         apiBase: config.apiBase,
         additionalParams: config.additionalParams,
-        // Memory: when the mode-tagged union is present (gated ON), translate it to the primitive's
-        // memory-mode options; otherwise fall back to the legacy skipMemory + flat tuning fields.
-        ...(config.memory
-          ? config.memory.mode === 'managed'
-            ? {
-                memoryMode: 'managed' as const,
-                memoryStrategies: config.memory.strategies,
-                memoryEventExpiryDays: config.memory.eventExpiryDuration,
-                memoryEncryptionKeyArn: config.memory.encryptionKeyArn,
-              }
-            : config.memory.mode === 'existing'
-              ? {
-                  memoryMode: 'existing' as const,
-                  memoryName: config.memory.name,
-                  memoryArn: config.memory.arn,
-                  memoryActorId: config.memory.actorId,
-                  messagesCount: config.memory.messagesCount,
-                  memoryTopK: config.memory.topK,
-                  memoryRelevanceScore: config.memory.relevanceScore,
-                }
-              : { memoryMode: 'disabled' as const, skipMemory: true }
-          : {
-              skipMemory: config.skipMemory,
-              messagesCount: config.messagesCount,
-              memoryTopK: config.memoryTopK,
-              memoryRelevanceScore: config.memoryRelevanceScore,
-            }),
+        ...memoryOptions,
         containerUri: config.containerUri,
         dockerfilePath: config.dockerfilePath,
         maxIterations: config.maxIterations,

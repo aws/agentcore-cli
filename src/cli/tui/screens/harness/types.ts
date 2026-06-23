@@ -30,7 +30,6 @@ export type AddHarnessStep =
   | 'skill-git-username'
   | 'skill-aws-skills-paths'
   | 'skill-add-another'
-  | 'memory'
   | 'memory-mode'
   | 'memory-strategies'
   | 'memory-event-expiry'
@@ -83,10 +82,8 @@ export interface AddHarnessConfig {
   topP?: number;
   topK?: number;
   modelMaxTokens?: number;
-  /** Legacy enabled/disabled memory toggle — used only when gated features are OFF. */
-  skipMemory?: boolean;
   /**
-   * Mode-tagged memory ref — used when gated features are ON. Mirrors the schema union.
+   * Mode-tagged memory ref. Mirrors the schema union.
    * `managed` owns memory internally; `existing` references a memory by name/arn; `disabled` opts out.
    */
   memory?:
@@ -101,9 +98,6 @@ export interface AddHarnessConfig {
         relevanceScore?: number;
       }
     | { mode: 'disabled' };
-  messagesCount?: number;
-  memoryTopK?: number;
-  memoryRelevanceScore?: number;
   mcpHeaders?: Record<string, string>;
   allowedTools?: string[];
   truncationStrategy?: 'sliding_window' | 'summarization' | 'none';
@@ -166,7 +160,6 @@ export const HARNESS_STEP_LABELS: Record<AddHarnessStep, string> = {
   'skill-git-username': 'Username',
   'skill-aws-skills-paths': 'AWS Skills paths',
   'skill-add-another': 'Add skill',
-  memory: 'Memory',
   'memory-mode': 'Memory mode',
   'memory-strategies': 'Memory strategies',
   'memory-event-expiry': 'Memory event expiry (days)',
@@ -274,12 +267,7 @@ export const ADVANCED_SETTING_OPTIONS = [
   { id: 'skills', title: 'Skills', description: 'Add agent skills' },
   // Two mode-scoped memory-tuning options: only the one matching the chosen memory mode is shown in
   // the advanced list (see AddHarnessScreen's filter). Managed and existing have disjoint knob sets
-  // per the harness API, so they never both appear. Legacy (gated-off) uses 'memory-tuning'.
-  {
-    id: 'memory-tuning',
-    title: 'Memory tuning',
-    description: 'Tune messages count and retrieval (topK, relevance score)',
-  },
+  // per the harness API, so they never both appear.
   {
     id: 'memory-managed-tuning',
     title: 'Memory tuning',
@@ -309,16 +297,7 @@ export const ADVANCED_SETTING_OPTIONS = [
 
 export type AdvancedSetting = (typeof ADVANCED_SETTING_OPTIONS)[number]['id'];
 
-export const MEMORY_OPTIONS = [
-  {
-    id: 'disabled' as const,
-    title: 'No persistent memory',
-    description: 'Harness does not retain context across sessions',
-  },
-  { id: 'enabled' as const, title: 'Enabled', description: 'Create persistent memory for this harness' },
-] as const;
-
-/** Mode-first memory options (gated features ON). Mirrors the schema's 3-mode union. */
+/** Mode-first memory options. Mirrors the schema's 3-mode union. */
 export const MEMORY_MODE_OPTIONS = [
   {
     id: 'managed' as const,

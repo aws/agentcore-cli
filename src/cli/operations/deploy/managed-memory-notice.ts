@@ -1,5 +1,4 @@
 import type { ConfigIO } from '../../../lib';
-import { isGatedFeaturesEnabled } from '../../feature-flags';
 
 /**
  * One-shot heads-up shown before the CFN apply when a harness uses managed memory.
@@ -26,7 +25,13 @@ export const MANAGED_MEMORY_ADD_NOTICE =
   'provisioning time. To skip it, recreate the harness with --memory-mode disabled.';
 
 /**
- * Returns true when the gate is on and at least one harness in the project uses managed memory.
+ * Returns true when at least one harness in the project will provision a NEW managed memory on
+ * deploy (the slow 3-5 min step the notice explains). That happens for an explicit `managed` mode
+ * AND for an omitted memory config — the service auto-provisions a managed memory whenever the
+ * harness is not explicitly `disabled` or pointed at an `existing` memory (mirrors the CDK
+ * derivation in AgentCoreHarnessEnvironment). `existing` references a pre-existing memory (no
+ * provisioning) and `disabled` opts out, so neither triggers the notice.
+ *
  * The memory mode lives in each harness's harness.json (not the agentcore.json pointer list), so
  * the per-harness specs are read to detect it.
  */
@@ -34,12 +39,11 @@ export async function hasManagedMemoryHarness(
   configIO: ConfigIO,
   harnesses: { name: string }[] | undefined
 ): Promise<boolean> {
-  if (!isGatedFeaturesEnabled()) {
-    return false;
-  }
   for (const h of harnesses ?? []) {
     const harnessSpec = await configIO.readHarnessSpec(h.name).catch(() => undefined);
-    if (harnessSpec?.memory?.mode === 'managed') {
+    // Only a successfully-loaded spec counts: an explicit `managed` mode, or an omitted memory
+    // config (auto-provisions). An unreadable spec stays unknown and does not trigger the notice.
+    if (harnessSpec && (harnessSpec.memory?.mode === 'managed' || harnessSpec.memory === undefined)) {
       return true;
     }
   }
