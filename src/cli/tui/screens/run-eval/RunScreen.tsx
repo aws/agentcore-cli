@@ -1,3 +1,4 @@
+import { isGatedFeaturesEnabled } from '../../../feature-flags';
 import { Screen, WizardSelect } from '../../components';
 import type { SelectableItem } from '../../components';
 import { HELP_TEXT } from '../../constants';
@@ -45,11 +46,18 @@ export function RunScreen({
         title: 'Recommendation',
         description: 'Optimize system prompts or tool descriptions using agent traces.',
       },
-      {
-        id: 'run-ingest',
-        title: 'Ingest knowledge base',
-        description: 'Start an ingestion job for a deployed knowledge base.',
-      },
+      // Knowledge base ingestion is part of FMKB, which is gated behind
+      // ENABLE_GATED_FEATURES. Hide the option entirely when the gate is off,
+      // matching the hidden `agentcore run ingest` CLI command.
+      ...(isGatedFeaturesEnabled()
+        ? [
+            {
+              id: 'run-ingest',
+              title: 'Ingest knowledge base',
+              description: 'Start an ingestion job for a deployed knowledge base.',
+            },
+          ]
+        : []),
       {
         id: 'run-ab-test',
         title: 'A/B Test',
