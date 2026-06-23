@@ -469,7 +469,6 @@ describe('validate', () => {
       expect(result.valid).toBe(true);
     });
 
-    // Passthrough is generally available (no longer gated)
     describe('passthrough target type', () => {
       const passthroughOpts: AddGatewayTargetOptions = {
         name: 'pt-target',
@@ -478,14 +477,12 @@ describe('validate', () => {
         passthroughEndpoint: 'https://api.example.com',
       } as AddGatewayTargetOptions;
 
-      it('allows passthrough without any feature flag', async () => {
-        delete process.env.ENABLE_GATED_FEATURES;
+      it('accepts a valid passthrough target', async () => {
         const result = await validateAddGatewayTargetOptions({ ...passthroughOpts });
         expect(result.valid).toBe(true);
       });
 
       it('lists passthrough in the invalid-type error', async () => {
-        delete process.env.ENABLE_GATED_FEATURES;
         const result = await validateAddGatewayTargetOptions({
           ...validGatewayTargetOptions,
           type: 'bogus-type',
