@@ -2,6 +2,7 @@ import { findConfigRoot, removeEnvVars, setEnvVar, toError } from '../../lib';
 import type { AgentCoreProjectSpec, PaymentProvider } from '../../schema';
 import { PaymentConnectorNameSchema, PaymentConnectorSchema, PaymentProviderSchema } from '../../schema';
 import type { RemoveResult } from '../commands/remove/types';
+import { ANSI } from '../constants';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { requireTTY } from '../tui/guards/tty';
@@ -445,6 +446,20 @@ export class PaymentConnectorPrimitive extends BasePrimitive<AddPaymentConnector
                 if (apiKeySecretResult !== true) failValidation(apiKeySecretResult);
                 const walletSecretResult = validateWalletSecret(cliOptions.walletSecret!);
                 if (walletSecretResult !== true) failValidation(walletSecretResult);
+              }
+
+              const usedLiteralSecretFlag = [
+                cliOptions.apiKeySecret,
+                cliOptions.walletSecret,
+                cliOptions.appSecret,
+                cliOptions.authorizationPrivateKey,
+              ].some(v => v !== undefined);
+              if (usedLiteralSecretFlag && !cliOptions.json) {
+                process.stderr.write(
+                  `${ANSI.yellow}Warning: passing secrets as CLI flags exposes them to shell history and the ` +
+                    `process table. Prefer interactive mode (run \`agentcore add payment-connector\` with no ` +
+                    `secret flags) for masked entry.${ANSI.reset}\n`
+                );
               }
 
               let result: Awaited<ReturnType<typeof this.add>>;
