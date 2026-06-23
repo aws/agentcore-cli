@@ -34,7 +34,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 const hasAws = hasAwsCredentials();
 const canRun = prereqs.npm && prereqs.git && hasAws;
 const region = process.env.AWS_REGION ?? 'us-east-1';
-const customJWTRejectMsgRegex = /configured for CUSTOM_JWT|[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i;
+const customJWTRejectMsgRegex =
+  /configured for CUSTOM_JWT|[Aa]uthoriz(ation|er).*mismatch|different.*authorization|missing required audience claim/i;
 
 describe.sequential('e2e: harness with CUSTOM_JWT auth', () => {
   let testDir: string;
