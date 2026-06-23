@@ -1,3 +1,4 @@
+import { readEnvFile } from '../src/lib/utils/env.js';
 import { createTestProject, readProjectConfig, runCLI } from '../src/test-utils/index.js';
 import type { TestProject } from '../src/test-utils/index.js';
 import { readFile } from 'node:fs/promises';
@@ -119,11 +120,13 @@ describe('integration: add BYO agent with CUSTOM_JWT auth', () => {
     expect(oauthCred!.authorizerType).toBe('OAuthCredentialProvider');
     expect((oauthCred as { managed?: boolean }).managed).toBe(true);
 
-    // Verify .env.local has client secrets (namespaced per credential)
+    // Client ID is a reference (plaintext); the client SECRET is encrypted at rest.
     const envPath = join(project.projectPath, 'agentcore', '.env.local');
     const envContent = await readFile(envPath, 'utf-8');
     expect(envContent).toContain('my-client-id');
-    expect(envContent).toContain('my-client-secret');
+    expect(envContent).not.toContain('my-client-secret'); // encrypted at rest
+    const env = await readEnvFile(join(project.projectPath, 'agentcore'));
+    expect(env.AGENTCORE_CREDENTIAL_AUTHAGENT2_OAUTH_CLIENT_SECRET).toBe('my-client-secret');
   });
 
   it('adds a BYO agent with default AWS_IAM auth (no auth flags)', async () => {
