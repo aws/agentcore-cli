@@ -176,6 +176,37 @@ describe('mapApiHarnessToSpec', () => {
       });
     });
 
+    it('throws early when a VPC harness is missing securityGroups (would otherwise crash post-write)', () => {
+      // The local AgentEnvSpec schema requires BOTH subnets and securityGroups for VPC. A VPC harness
+      // with only one (or AWS-default subnets) must fail here, during the pre-write fetch — not emit
+      // networkMode:'VPC' with no networkConfig and blow up later in writeProjectSpec's validation
+      // after the agent dir and code were already written.
+      expect(() =>
+        mapApiHarnessToSpec(
+          makeApiHarness({
+            environment: {
+              agentCoreRuntimeEnvironment: {
+                networkConfiguration: {
+                  networkMode: 'VPC',
+                  networkModeConfig: { subnets: ['subnet-0123456789abcdef0'] },
+                },
+              },
+            },
+          })
+        )
+      ).toThrow(/VPC/);
+    });
+
+    it('throws when a VPC harness has no networkModeConfig at all', () => {
+      expect(() =>
+        mapApiHarnessToSpec(
+          makeApiHarness({
+            environment: { agentCoreRuntimeEnvironment: { networkConfiguration: { networkMode: 'VPC' } } },
+          })
+        )
+      ).toThrow(/VPC/);
+    });
+
     it('does not set networkMode for PUBLIC (the implicit local default)', () => {
       const { spec } = mapApiHarnessToSpec(
         makeApiHarness({

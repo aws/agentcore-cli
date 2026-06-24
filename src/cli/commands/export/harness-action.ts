@@ -1,7 +1,7 @@
 import { AgentAlreadyExistsError, ConfigIO, setEnvVar } from '../../../lib';
 import { ExportHarnessError, ValidationError } from '../../../lib/errors/types';
 import { AgentNameSchema } from '../../../schema';
-import type { AgentEnvSpec, BuildType, Credential } from '../../../schema';
+import type { AgentEnvSpec, BuildType, Credential, HarnessSpec } from '../../../schema';
 import { getErrorMessage } from '../../errors';
 import type { AttributeRecorder } from '../../telemetry/cli-command-run.js';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
@@ -60,7 +60,7 @@ export async function handleExportHarness(
 
       // For --arn, fetch the harness from the service first so we can derive its name. The fetch
       // needs a region — taken from the project's first deployment target.
-      let prefetched: { spec: import('../../../schema').HarnessSpec; systemPrompt?: string } | undefined;
+      let prefetched: { spec: HarnessSpec; systemPrompt?: string } | undefined;
       if (options.arn) {
         log('Fetching harness from service');
         const region = await resolveExportRegion();

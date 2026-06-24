@@ -147,9 +147,11 @@ export const ConnectionsSchema = z.array(ConnectionSchema);
 //
 // The discovery env var (e.g. MEMORY_<TOKEN>_ID, GATEWAY_<TOKEN>_URL) is the handshake between the
 // CLI export (which bakes the NAME into the generated agent code) and the CDK deploy (which injects
-// the VALUE onto the runtime). Both sides MUST compute the identical name, so the derivation lives
-// here — the one file already kept in lockstep across the CLI and @aws/agentcore-cdk repos — and is
-// called from both `harness-mapper` (CLI) and `wire-connections` (CDK). Do not re-implement it.
+// the VALUE onto the runtime). Both sides MUST compute the identical <TOKEN>, so the token derivation
+// lives here — the one file already kept in lockstep across the CLI and @aws/agentcore-cdk repos.
+// `connectionEnvToken` is used by `harness-mapper` (CLI) and `connectionTokenFor` by
+// `wire-connections` (CDK); do not re-implement the token derivation. Each side then assembles the
+// final `<PREFIX>_<TOKEN>_<SUFFIX>` name inline (the prefixes/suffixes differ per resource kind).
 // ============================================================================
 
 /** Maximum length of a connection id (matches the ConnectionSchema id regex bound). */
@@ -187,9 +189,4 @@ export function connectionEnvToken(id: string): string {
  */
 export function connectionTokenFor(connection: Connection): string {
   return connectionEnvToken(connection.id ?? connectionIdForTarget(connection.to));
-}
-
-/** Build a discovery env-var NAME: `<PREFIX>_<TOKEN>_<SUFFIX>` (e.g. MEMORY_<TOKEN>_ID). */
-export function connectionEnvVarName(prefix: string, connection: Connection, suffix: string): string {
-  return `${prefix}_${connectionTokenFor(connection)}_${suffix}`;
 }

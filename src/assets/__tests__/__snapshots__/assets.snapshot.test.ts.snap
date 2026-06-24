@@ -5276,7 +5276,7 @@ from mcp_client.client import get_streamable_http_mcp_client
 from memory.session import get_memory_session_manager
 {{/if}}
 {{#unless hasFileOperations}}
-{{#if (or needsOs (some gitSkills "credentialArn"))}}
+{{#if (or needsOs browserIdentifierEnvVar codeInterpreterIdentifierEnvVar (some gitSkills "credentialArn"))}}
 import os
 {{/if}}
 {{/unless}}

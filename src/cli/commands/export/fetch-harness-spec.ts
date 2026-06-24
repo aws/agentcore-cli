@@ -233,15 +233,25 @@ function mapRuntimeEnvironment(env: HarnessAgentCoreRuntimeEnvironment | undefin
   if (!env) return {};
   const out: Record<string, unknown> = {};
 
-  // Network: PUBLIC is the implicit default locally, so only carry VPC (with its config).
+  // Network: PUBLIC is the implicit default locally, so only carry VPC (with its config). The local
+  // AgentEnvSpec schema requires BOTH subnets and securityGroups when networkMode is VPC; a VPC
+  // harness missing either (e.g. AWS-default subnets) can't be expressed. Fail here — during the
+  // pre-write fetch — with a clear message rather than emitting networkMode:'VPC' with no
+  // networkConfig and crashing later in writeProjectSpec's schema validation, after the agent dir
+  // and code have already been written.
   const net = env.networkConfiguration;
   if (net?.networkMode === 'VPC') {
-    out.networkMode = 'VPC';
     const subnets = net.networkModeConfig?.subnets;
     const securityGroups = net.networkModeConfig?.securityGroups;
-    if (subnets?.length && securityGroups?.length) {
-      out.networkConfig = { subnets, securityGroups };
+    if (!subnets?.length || !securityGroups?.length) {
+      throw new ValidationError(
+        'This harness runs in a VPC but its network configuration is missing explicit subnets and/or ' +
+          'security groups, which the exported agent requires. Re-create the harness with explicit VPC ' +
+          'subnets and security groups, or export a non-VPC harness.'
+      );
     }
+    out.networkMode = 'VPC';
+    out.networkConfig = { subnets, securityGroups };
   }
 
   // Lifecycle: same field names; drop unset members.
