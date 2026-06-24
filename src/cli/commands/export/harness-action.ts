@@ -254,21 +254,6 @@ export async function handleExportHarness(
         writeFileSync(join(agentDir, fileName), JSON.stringify(policyDoc, null, 2) + '\n');
       }
 
-      // 6b. Warn if no deploy targets are configured
-      const configIO = new ConfigIO({ baseDir: context.configBaseDir });
-      const targets = await configIO.readAWSDeploymentTargets().catch(() => []);
-      if (targets.length === 0) {
-        context.exportNotes.push({
-          category: 'No AWS deployment target configured',
-          message:
-            'aws-targets.json is empty — running `agentcore deploy` will fail with "Target \\"default\\" not found". ' +
-            'Add a deployment target first:\n\n' +
-            '  agentcore deploy  (interactive mode will prompt for account/region)\n\n' +
-            'Or edit agentcore/aws-targets.json manually:\n\n' +
-            '  [{ "name": "default", "account": "<account-id>", "region": "<region>" }]',
-        });
-      }
-
       // 7. Write EXPORT_NOTES.md
       log('Writing EXPORT_NOTES.md');
       writeExportNotes(context.exportNotes, harnessName, targetAgentName, agentDir);
