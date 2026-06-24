@@ -194,7 +194,13 @@ function mapSkill(skill: ApiHarnessSkill): HarnessSpec['skills'][number] {
  * a tagged union; we handle each variant defensively because the CLI's bundled SDK model may lag the
  * service (an unmodeled variant arrives as `{ SDK_UNKNOWN_MEMBER: { name } }`):
  *   - agentCoreMemoryConfiguration -> existing (bring-your-own, by arn)
- *   - managedMemoryConfiguration  -> managed (service-managed; no arn to carry)
+ *   - managedMemoryConfiguration   -> existing BY ARN when the harness-owned memory has been
+ *       provisioned (it has a concrete, service-populated arn once the harness is READY); the
+ *       exported agent references it like any external memory (connection + IAM scoped to the arn).
+ *       When no arn is present yet (managed-but-unprovisioned, or an SDK-unknown variant) it returns
+ *       `{ mode: 'managed' }`, which the downstream wiring does NOT resolve — so that case currently
+ *       yields no memory on the exported agent. This is acceptable only because a READY harness
+ *       always carries the arn and so takes the existing-by-arn path above.
  *   - anything else / unknown      -> undefined (omit memory; the exported agent gets none)
  */
 function mapMemory(memory: NonNullable<Harness['memory']>): NonNullable<HarnessSpec['memory']> | undefined {
@@ -207,8 +213,21 @@ function mapMemory(memory: NonNullable<Harness['memory']>): NonNullable<HarnessS
       messagesCount: m.messagesCount,
     }) as NonNullable<HarnessSpec['memory']>;
   }
-  // Managed memory (or an SDK-unknown variant that resolves to managed) — there is no external ARN
-  // to reference; export it as a managed memory request so deploy provisions a fresh one.
+
+  // Managed memory the harness created and owns. Once READY it carries a real ARN, so reference it
+  // by ARN exactly like a bring-your-own memory — the export then wires it as an external memory
+  // connection (IAM + discovery env var) instead of silently dropping it.
+  const managedArn = memory.managedMemoryConfiguration?.arn;
+  if (managedArn) {
+    return { mode: 'existing', arn: managedArn } as NonNullable<HarnessSpec['memory']>;
+  }
+
+  // No ARN to reference yet (managed-but-unprovisioned, or an SDK-unknown variant that resolves to
+  // managed). Return the `managed` marker for completeness, but note resolveMemoryProviders only
+  // wires `existing` refs — so this path produces NO memory on the exported agent today. It is a
+  // rare fallback: a READY harness always has the arn and takes the existing-by-arn path above. If
+  // managed-without-arn ever needs real handling, wire it (provision a project memory or emit a note)
+  // in resolveMemoryProviders rather than here.
   const asRecord = memory as unknown as Record<string, unknown>;
   if ('managedMemoryConfiguration' in asRecord || hasUnknownManagedMember(asRecord)) {
     return { mode: 'managed' } as NonNullable<HarnessSpec['memory']>;

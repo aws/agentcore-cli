@@ -102,7 +102,23 @@ describe('mapApiHarnessToSpec', () => {
     });
   });
 
-  it('maps a managed-memory harness to mode "managed"', () => {
+  it('maps a provisioned managed memory (with arn) to existing-by-arn', () => {
+    // A harness-owned "managed" memory still has a concrete, service-populated ARN once READY, so it
+    // is referenced by ARN like any external memory (export then wires it as a memory connection).
+    const { spec } = mapApiHarnessToSpec(
+      makeApiHarness({
+        memory: {
+          managedMemoryConfiguration: { arn: 'arn:aws:bedrock-agentcore:us-east-1:999:memory/harness_x_a9c0-zvOY' },
+        } as any,
+      })
+    );
+    expect(spec.memory).toEqual({
+      mode: 'existing',
+      arn: 'arn:aws:bedrock-agentcore:us-east-1:999:memory/harness_x_a9c0-zvOY',
+    });
+  });
+
+  it('maps a managed memory WITHOUT an arn to mode "managed" (not yet provisioned)', () => {
     const { spec } = mapApiHarnessToSpec(makeApiHarness({ memory: { managedMemoryConfiguration: {} } as any }));
     expect(spec.memory).toEqual({ mode: 'managed' });
   });
