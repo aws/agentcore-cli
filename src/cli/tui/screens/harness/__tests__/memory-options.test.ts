@@ -67,12 +67,7 @@ describe('toMemoryAddOptions', () => {
     expect(toMemoryAddOptions({ mode: 'disabled' })).toEqual({ memoryMode: 'disabled' });
   });
 
-  it('falls through to managed when memory is undefined (wizard always seeds, but be safe)', () => {
-    expect(toMemoryAddOptions(undefined)).toEqual({
-      memoryMode: 'managed',
-      memoryStrategies: undefined,
-      memoryEventExpiryDays: undefined,
-      memoryEncryptionKeyArn: undefined,
-    });
+  it('falls through to disabled when memory is undefined (opt-in: silence means no memory)', () => {
+    expect(toMemoryAddOptions(undefined)).toEqual({ memoryMode: 'disabled' });
   });
 });

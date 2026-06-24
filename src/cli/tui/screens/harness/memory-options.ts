@@ -38,13 +38,15 @@ export function toMemoryAddOptions(memory: AddHarnessConfig['memory']): MemoryAd
       memoryRelevanceScore: memory.relevanceScore,
     };
   }
-  if (memory?.mode === 'disabled') {
-    return { memoryMode: 'disabled' };
+  if (memory?.mode === 'managed') {
+    return {
+      memoryMode: 'managed',
+      memoryStrategies: memory.strategies,
+      memoryEventExpiryDays: memory.eventExpiryDuration,
+      memoryEncryptionKeyArn: memory.encryptionKeyArn,
+    };
   }
-  return {
-    memoryMode: 'managed',
-    memoryStrategies: memory?.mode === 'managed' ? memory.strategies : undefined,
-    memoryEventExpiryDays: memory?.mode === 'managed' ? memory.eventExpiryDuration : undefined,
-    memoryEncryptionKeyArn: memory?.mode === 'managed' ? memory.encryptionKeyArn : undefined,
-  };
+  // disabled, or absent (the wizard always seeds a mode, but default to disabled to match the
+  // opt-in model: silence means no memory).
+  return { memoryMode: 'disabled' };
 }

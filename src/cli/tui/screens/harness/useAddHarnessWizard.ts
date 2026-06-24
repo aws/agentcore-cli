@@ -54,9 +54,10 @@ function getDefaultConfig(): AddHarnessConfig {
     name: '',
     modelProvider: 'bedrock',
     modelId: DEFAULT_MODEL_IDS.bedrock,
-    // Managed memory is the default for new harnesses (strategies left absent → service default;
-    // tunable under Advanced).
-    memory: { mode: 'managed' as const },
+    // Memory is opt-in: a new harness defaults to disabled (no memory). The user picks Managed or
+    // Existing on the memory-mode step if they want it. Seeding disabled keeps the confirm summary
+    // accurate when the user accepts the default.
+    memory: { mode: 'disabled' as const },
   };
 }
 

@@ -42,10 +42,11 @@ describe('hasManagedMemoryHarness', () => {
     expect(await hasManagedMemoryHarness(configIO, [{ name: 'h1' }, { name: 'h2' }])).toBe(false);
   });
 
-  it('returns true for a harness whose memory config is OMITTED (service auto-provisions managed)', async () => {
-    // mode undefined → stub resolves { memory: undefined } (omitted), which auto-provisions on deploy.
+  it('returns false for a harness whose memory config is OMITTED (omitted opts out → Disabled, no provisioning)', async () => {
+    // mode undefined → stub resolves { memory: undefined } (omitted). The CDK now synthesizes
+    // Memory: { Disabled: {} } for omitted, so no memory is provisioned and the notice must not fire.
     const configIO = stubConfigIO({ h1: undefined });
-    expect(await hasManagedMemoryHarness(configIO, [{ name: 'h1' }])).toBe(true);
+    expect(await hasManagedMemoryHarness(configIO, [{ name: 'h1' }])).toBe(false);
   });
 
   it('treats an unreadable harness spec as non-managed (does not throw)', async () => {

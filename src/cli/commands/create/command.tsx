@@ -192,7 +192,9 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
       agent_environment: 'harness' as const,
       has_agent: true,
       model_provider: standardize(ModelProviderEnum, options.modelProvider ?? 'bedrock'),
-      memory_type: standardize(MemoryType, options.harnessMemory === false ? 'none' : 'longandshortterm'),
+      // Harness memory is opt-in and defaults to disabled; only an explicit managed/existing request
+      // (not modeled by the legacy --harness-memory boolean) would be non-'none'.
+      memory_type: standardize(MemoryType, 'none'),
       network_mode: standardize(NetworkModeEnum, options.networkMode ?? 'public'),
     },
     async () => {

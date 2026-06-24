@@ -299,13 +299,15 @@ export type AdvancedSetting = (typeof ADVANCED_SETTING_OPTIONS)[number]['id'];
 
 /** Mode-first memory options. Mirrors the schema's 3-mode union. */
 export const MEMORY_MODE_OPTIONS = [
+  // Disabled is first so it is the highlighted default (the picker selects index 0). Memory is
+  // opt-in: a harness has no memory unless the user picks Managed or Existing here.
+  { id: 'disabled' as const, title: 'Disabled', description: 'No memory (default)' },
   {
     id: 'managed' as const,
     title: 'Managed',
-    description: 'AgentCore creates and manages memory for this harness (default)',
+    description: 'AgentCore creates and manages memory for this harness',
   },
   { id: 'existing' as const, title: 'Existing', description: 'Reference an existing memory by name or ARN' },
-  { id: 'disabled' as const, title: 'Disabled', description: 'No memory' },
 ] as const;
 
 /** Managed-memory strategy choices (the four CFN ManagedMemoryConfiguration.Strategies values). */

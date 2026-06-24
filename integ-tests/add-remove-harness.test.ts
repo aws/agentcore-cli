@@ -51,11 +51,11 @@ describe('integration: harness add/remove lifecycle', () => {
     expect(await exists(promptPath), 'system-prompt.md should exist').toBe(true);
   });
 
-  it('defaults to managed memory and creates NO sibling memory resource', async () => {
-    // The harness owns its memory internally (managed mode). It must NOT auto-create a
-    // `${name}Memory` sibling in the project (the legacy pre-managed-memory behavior).
+  it('defaults to disabled memory and creates NO sibling memory resource', async () => {
+    // Memory is opt-in: with no memory flag the harness gets `disabled` (no memory). It must also NOT
+    // auto-create a `${name}Memory` sibling in the project (the legacy pre-managed-memory behavior).
     const spec = await readHarnessSpec(project.projectPath, harnessName);
-    expect(spec.memory?.mode, 'default harness memory should be managed').toBe('managed');
+    expect(spec.memory?.mode, 'default harness memory should be disabled (opt-in)').toBe('disabled');
 
     const config = await readProjectConfig(project.projectPath);
     const sibling = (config.memories ?? []).find((m: { name: string }) => m.name === `${harnessName}Memory`);
@@ -472,13 +472,13 @@ describe('integration: harness config shape', () => {
       expect(spec.memory.strategies).toEqual(['SEMANTIC', 'EPISODIC']);
     });
 
-    it('defaults to managed memory when no memory flags are passed', async () => {
+    it('defaults to disabled memory when no memory flags are passed (memory is opt-in)', async () => {
       const name = 'DefaultMemHarness';
       const result = await runCLI(['add', 'harness', '--name', name, '--json'], project.projectPath);
 
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
       const spec = await readHarnessSpec(project.projectPath, name);
-      expect(spec.memory.mode).toBe('managed');
+      expect(spec.memory.mode).toBe('disabled');
     });
 
     it('writes disabled memory for --memory-mode disabled (true opt-out, no sibling)', async () => {

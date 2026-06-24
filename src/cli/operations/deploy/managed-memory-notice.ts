@@ -26,11 +26,9 @@ export const MANAGED_MEMORY_ADD_NOTICE =
 
 /**
  * Returns true when at least one harness in the project will provision a NEW managed memory on
- * deploy (the slow 3-5 min step the notice explains). That happens for an explicit `managed` mode
- * AND for an omitted memory config — the service auto-provisions a managed memory whenever the
- * harness is not explicitly `disabled` or pointed at an `existing` memory (mirrors the CDK
- * derivation in AgentCoreHarnessEnvironment). `existing` references a pre-existing memory (no
- * provisioning) and `disabled` opts out, so neither triggers the notice.
+ * deploy (the slow 3-5 min step the notice explains) — i.e. an explicit `managed` mode. Every other
+ * shape skips provisioning: `disabled` and omitted both synthesize Memory: { Disabled: {} } (no
+ * memory), and `existing` references a pre-existing memory.
  *
  * The memory mode lives in each harness's harness.json (not the agentcore.json pointer list), so
  * the per-harness specs are read to detect it.
@@ -41,9 +39,7 @@ export async function hasManagedMemoryHarness(
 ): Promise<boolean> {
   for (const h of harnesses ?? []) {
     const harnessSpec = await configIO.readHarnessSpec(h.name).catch(() => undefined);
-    // Only a successfully-loaded spec counts: an explicit `managed` mode, or an omitted memory
-    // config (auto-provisions). An unreadable spec stays unknown and does not trigger the notice.
-    if (harnessSpec && (harnessSpec.memory?.mode === 'managed' || harnessSpec.memory === undefined)) {
+    if (harnessSpec?.memory?.mode === 'managed') {
       return true;
     }
   }

@@ -1154,8 +1154,12 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
   /**
    * Build the mode-tagged memory ref for the harness.
    * Precedence: an explicit existing reference (--memory-arn/--memory-name or --memory-mode existing)
-   * → existing; --no-memory or --memory-mode disabled → disabled; otherwise (the default) → managed,
-   * with strategies written explicitly so the config is auditable.
+   * → existing; an explicit managed request (--memory-mode managed or a managed-tuning flag) →
+   * managed, with strategies written explicitly so the config is auditable; everything else →
+   * disabled. Memory is OPT-IN: a user who says nothing about memory gets `disabled`, which maps to
+   * CFN `Memory: { Disabled: {} }`. This is deliberate — an omitted CFN Memory block makes the
+   * service auto-provision managed memory, so the CLI always emits an explicit mode to avoid that
+   * surprise (silence must mean "no memory", not "managed").
    */
   private buildMemoryRef(options: AddHarnessOptions): HarnessMemoryRef | undefined {
     if (options.memoryArn || options.memoryName || options.memoryMode === 'existing') {
@@ -1169,20 +1173,26 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
         ...(tuning && { retrievalConfig: tuning }),
       };
     }
-    if (options.skipMemory || options.memoryMode === 'disabled') {
-      return { mode: 'disabled' };
+    // Managed is opt-in: only when the user explicitly asks for it via --memory-mode managed or any
+    // managed-tuning flag. Strategies are written ONLY when the user tuned them; omitted otherwise so
+    // the service applies its own default rather than the CLI pinning one.
+    const managedRequested =
+      options.memoryMode === 'managed' ||
+      (options.memoryStrategies?.length ?? 0) > 0 ||
+      options.memoryEventExpiryDays !== undefined ||
+      options.memoryEncryptionKeyArn !== undefined;
+    if (managedRequested) {
+      return {
+        mode: 'managed',
+        ...(options.memoryStrategies?.length && {
+          strategies: options.memoryStrategies as ManagedMemoryStrategy[],
+        }),
+        ...(options.memoryEventExpiryDays !== undefined && { eventExpiryDuration: options.memoryEventExpiryDays }),
+        ...(options.memoryEncryptionKeyArn && { encryptionKeyArn: options.memoryEncryptionKeyArn }),
+      };
     }
-    // Default (and explicit --memory-mode managed): managed memory. Strategies are written ONLY when
-    // the user tuned them (--memory-strategies); omitted otherwise so the harness/service applies its
-    // own default rather than the CLI pinning one.
-    return {
-      mode: 'managed',
-      ...(options.memoryStrategies?.length && {
-        strategies: options.memoryStrategies as ManagedMemoryStrategy[],
-      }),
-      ...(options.memoryEventExpiryDays !== undefined && { eventExpiryDuration: options.memoryEventExpiryDays }),
-      ...(options.memoryEncryptionKeyArn && { encryptionKeyArn: options.memoryEncryptionKeyArn }),
-    };
+    // Default (and --no-memory / --memory-mode disabled): no memory.
+    return { mode: 'disabled' };
   }
 
   private buildRetrievalConfig(options: AddHarnessOptions) {

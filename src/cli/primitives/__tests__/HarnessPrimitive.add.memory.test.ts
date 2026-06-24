@@ -52,16 +52,24 @@ async function memoryWrittenFor(options: Record<string, unknown>) {
 describe('HarnessPrimitive.add — memory mode resolution', () => {
   afterEach(() => vi.clearAllMocks());
 
-  it('defaults to managed when no memory flags are passed', async () => {
-    expect(await memoryWrittenFor({})).toEqual({ mode: 'managed' });
+  it('defaults to disabled when no memory flags are passed (memory is opt-in)', async () => {
+    expect(await memoryWrittenFor({})).toEqual({ mode: 'disabled' });
   });
 
-  it('writes { mode: "disabled" } for --no-memory (skipMemory) — true opt-out, not omitted', async () => {
+  it('writes { mode: "disabled" } for --no-memory (skipMemory)', async () => {
     expect(await memoryWrittenFor({ skipMemory: true })).toEqual({ mode: 'disabled' });
   });
 
   it('writes { mode: "disabled" } for --memory-mode disabled', async () => {
     expect(await memoryWrittenFor({ memoryMode: 'disabled' })).toEqual({ mode: 'disabled' });
+  });
+
+  it('writes managed only when explicitly requested via --memory-mode managed', async () => {
+    expect(await memoryWrittenFor({ memoryMode: 'managed' })).toEqual({ mode: 'managed' });
+  });
+
+  it('writes managed when a managed-tuning flag is given (implies managed)', async () => {
+    expect(await memoryWrittenFor({ memoryEventExpiryDays: 30 })).toEqual({ mode: 'managed', eventExpiryDuration: 30 });
   });
 
   it('writes managed with explicit strategies when tuned', async () => {
