@@ -151,6 +151,40 @@ describe('validateAddHarnessOptions — memory modes', () => {
     if (!r.valid) expect(r.error).toContain('--memory-event-expiry-days');
   });
 
+  it('rejects --memory-mode managed combined with --memory-arn (contradictory)', () => {
+    const r = validateAddHarnessOptions({
+      ...base,
+      memoryMode: 'managed',
+      memoryArn: 'arn:aws:bedrock-agentcore:us-west-2:1:memory/m-aBcD012345',
+    });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.error).toContain('managed');
+  });
+
+  it('rejects --memory-mode disabled combined with --memory-name (contradictory)', () => {
+    const r = validateAddHarnessOptions({ ...base, memoryMode: 'disabled', memoryName: 'mem' });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.error).toContain('disabled');
+  });
+
+  it('rejects existing-only tuning flags given without an existing reference', () => {
+    // --memory-top-k alone would otherwise be silently dropped (resolves to disabled).
+    const r = validateAddHarnessOptions({ ...base, memoryTopK: 5 });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.error).toContain('existing memory');
+  });
+
+  it('accepts existing-only tuning flags WITH an existing reference', () => {
+    const r = validateAddHarnessOptions({ ...base, memoryName: 'mem', memoryTopK: 5, memoryMessagesCount: 10 });
+    expect(r.valid).toBe(true);
+  });
+
+  it('rejects a malformed --memory-arn (not an ARN)', () => {
+    const r = validateAddHarnessOptions({ ...base, memoryArn: 'not-an-arn' });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.error).toContain('--memory-arn');
+  });
+
   it('rejects an invalid managed strategy', () => {
     const r = validateAddHarnessOptions({ ...base, memoryMode: 'managed', memoryStrategies: 'SEMANTIC,BOGUS' });
     expect(r.valid).toBe(false);

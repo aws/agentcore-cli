@@ -120,7 +120,7 @@ export interface AddHarnessOptions {
   memoryEventExpiryDays?: number;
   /** Managed-memory KMS CMK ARN, create-only. */
   memoryEncryptionKeyArn?: string;
-  /** Reference an existing memory by name or ARN instead of auto-creating one. */
+  /** Reference an existing memory by name or ARN (sets memory mode to existing). */
   memoryName?: string;
   memoryArn?: string;
   /** Deploy-time ActorId for the referenced memory (CFN Memory.ActorId). */
@@ -215,8 +215,8 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
 
       // Memory resolution: the harness owns its memory internally. buildMemoryRef emits the
       // mode-tagged union (managed | existing | disabled). No sibling `${name}Memory` is ever
-      // auto-created — managed is the default, and --no-memory/--memory-mode disabled emits
-      // `{ mode: 'disabled' }`, which maps to CFN `Memory: { Disabled: {} }` (a true opt-out).
+      // auto-created. Memory is opt-in: with no memory flag (or --no-memory / --memory-mode disabled)
+      // it emits `{ mode: 'disabled' }`, which maps to CFN `Memory: { Disabled: {} }` (a true opt-out).
       const memoryRef = this.buildMemoryRef(options);
 
       let dockerfile: string | undefined;
@@ -636,9 +636,9 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
         strictInt('--model-max-tokens')
       )
       .option('--container <uri-or-path>', 'Container image URI or path to a Dockerfile')
-      .option('--no-memory', 'Skip auto-creating memory')
-      .option('--memory-name <name>', 'Reference an existing memory by name instead of auto-creating one')
-      .option('--memory-arn <arn>', 'Reference an existing memory by ARN instead of auto-creating one')
+      .option('--no-memory', 'Disable memory for this harness (this is the default)')
+      .option('--memory-name <name>', 'Use an existing memory by name')
+      .option('--memory-arn <arn>', 'Use an existing memory by ARN')
       .option('--memory-actor-id <id>', 'Deploy-time ActorId scoping memory access for the harness')
       .option(
         '--memory-messages-count <n>',
@@ -652,7 +652,7 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
         strictFloat('--memory-relevance-score')
       )
       // Managed-memory flags.
-      .addOption(new Option('--memory-mode <mode>', 'Memory mode: managed (default), existing, or disabled'))
+      .addOption(new Option('--memory-mode <mode>', 'Memory mode: disabled (default), managed, or existing'))
       .addOption(
         new Option(
           '--memory-strategies <list>',

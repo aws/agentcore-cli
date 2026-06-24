@@ -1211,6 +1211,9 @@ export function validateAddHarnessOptions(options: AddHarnessCliOptions): Valida
   if (options.memoryArn && options.memoryName) {
     return { valid: false, error: '--memory-arn and --memory-name are mutually exclusive' };
   }
+  if (options.memoryArn && !isValidArn(options.memoryArn)) {
+    return { valid: false, error: `--memory-arn: ${ARN_VALIDATION_MESSAGE}` };
+  }
   if (noMemory && (options.memoryArn || options.memoryName || memoryTuningGiven || managedOnlyFlags)) {
     return {
       valid: false,
@@ -1231,6 +1234,26 @@ export function validateAddHarnessOptions(options: AddHarnessCliOptions): Valida
   }
   if (options.memoryMode === 'existing' && !options.memoryArn && !options.memoryName) {
     return { valid: false, error: '--memory-mode existing requires --memory-arn or --memory-name' };
+  }
+  // A memory reference (--memory-arn/--memory-name) is an `existing` selector. It is contradictory
+  // with an explicit managed or disabled mode — reject rather than silently downgrading to existing.
+  if (
+    (options.memoryArn || options.memoryName) &&
+    (options.memoryMode === 'managed' || options.memoryMode === 'disabled')
+  ) {
+    return {
+      valid: false,
+      error: `--memory-arn/--memory-name reference an existing memory and cannot be combined with --memory-mode ${options.memoryMode}`,
+    };
+  }
+  // Existing-only retrieval tuning (actorId/messagesCount/topK/relevanceScore) only applies to an
+  // existing memory. Given without an existing reference it would be silently dropped — require the ref.
+  if (memoryTuningGiven && !options.memoryArn && !options.memoryName && options.memoryMode !== 'existing') {
+    return {
+      valid: false,
+      error:
+        'memory tuning flags (--memory-actor-id, --memory-messages-count, --memory-top-k, --memory-relevance-score) require an existing memory (--memory-arn, --memory-name, or --memory-mode existing)',
+    };
   }
   if (managedOnlyFlags && options.memoryMode && options.memoryMode !== 'managed') {
     return {

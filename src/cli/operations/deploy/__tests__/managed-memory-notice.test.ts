@@ -62,7 +62,13 @@ describe('managed-memory notice text', () => {
   });
 
   it('add notice is future-tense and points at the next deploy', () => {
-    expect(MANAGED_MEMORY_ADD_NOTICE).toContain('will automatically provision');
+    expect(MANAGED_MEMORY_ADD_NOTICE).toContain('will provision');
     expect(MANAGED_MEMORY_ADD_NOTICE).toContain('on deploy');
+  });
+
+  it('notices reflect opt-in managed (do NOT call managed the default)', () => {
+    expect(MANAGED_MEMORY_DEPLOY_NOTICE).not.toContain('the default');
+    expect(MANAGED_MEMORY_ADD_NOTICE).not.toContain('the default');
+    expect(MANAGED_MEMORY_DEPLOY_NOTICE).toContain('--memory-mode managed');
   });
 });

@@ -9,8 +9,8 @@ import type { ConfigIO } from '../../../lib';
  * wording can't drift between them.
  */
 export const MANAGED_MEMORY_DEPLOY_NOTICE =
-  'Managed memory: this harness automatically provisions a dedicated AgentCore Memory resource ' +
-  '(the default unless you set --memory-mode existing or disabled).\n\n' +
+  'Managed memory: this harness provisions a dedicated AgentCore Memory resource on deploy ' +
+  '(you requested --memory-mode managed).\n\n' +
   'Memory provisioning can take 3-5 minutes. We know this is slow, and we will be reducing this ' +
   'provisioning time. To skip it, redeploy with --memory-mode disabled.';
 
@@ -19,8 +19,8 @@ export const MANAGED_MEMORY_DEPLOY_NOTICE =
  * what the next deploy will do and how to opt out before deploying.
  */
 export const MANAGED_MEMORY_ADD_NOTICE =
-  'Managed memory: this harness will automatically provision a dedicated AgentCore Memory resource ' +
-  'on deploy (the default unless you set --memory-mode existing or disabled).\n\n' +
+  'Managed memory: this harness will provision a dedicated AgentCore Memory resource on deploy ' +
+  '(you requested --memory-mode managed).\n\n' +
   'Memory provisioning can take 3-5 minutes. We know this is slow, and we will be reducing this ' +
   'provisioning time. To skip it, recreate the harness with --memory-mode disabled.';
 
