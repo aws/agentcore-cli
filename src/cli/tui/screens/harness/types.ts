@@ -299,9 +299,10 @@ export type AdvancedSetting = (typeof ADVANCED_SETTING_OPTIONS)[number]['id'];
 
 /** Mode-first memory options. Mirrors the schema's 3-mode union. */
 export const MEMORY_MODE_OPTIONS = [
-  // Disabled is first so it is the highlighted default (the picker selects index 0). Memory is
-  // opt-in: a harness has no memory unless the user picks Managed or Existing here.
-  { id: 'disabled' as const, title: 'Disabled', description: 'No memory (default)' },
+  // "No memory" is first so it is the highlighted default (the picker selects index 0). Memory is
+  // opt-in: a harness has no memory unless the user picks Managed or Existing here. The id stays
+  // 'disabled' — it is the schema/CFN contract token; only the displayed title is reworded.
+  { id: 'disabled' as const, title: 'No memory', description: 'Default' },
   {
     id: 'managed' as const,
     title: 'Managed',

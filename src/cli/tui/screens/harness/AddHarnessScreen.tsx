@@ -455,7 +455,7 @@ export function AddHarnessScreen({
           fields.push({ label: 'Memory Relevance Score', value: String(mem.relevanceScore) });
         }
       } else {
-        fields.push({ label: 'Memory', value: 'Disabled' });
+        fields.push({ label: 'Memory', value: 'No memory' });
       }
     }
 
