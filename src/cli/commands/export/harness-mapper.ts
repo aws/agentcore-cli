@@ -86,8 +86,8 @@ export function mapHarnessToExportConfig(
   // LiteLLM keyless-but-key-requiring warning. A `bedrock/...` LiteLLM model authenticates via the
   // execution role (no key needed) — the common, valid case. Any other provider prefix (openai/,
   // anthropic/, ...) typically needs an API key; if the harness set no apiKeyArn, the generated
-  // client is built keyless and fails at first invocation. Keyless is schema- and runtime-valid
-  // (matches loopy), so this is a note, not an error — export is just the right place to flag it.
+  // client is built keyless and fails at first invocation. Keyless is schema- and runtime-valid,
+  // so this is a note, not an error — export is just the right place to flag it.
   if (spec.model.provider === 'lite_llm' && !spec.model.apiKeyArn && !spec.model.modelId.startsWith('bedrock/')) {
     context.exportNotes.push({
       category: LITELLM_NO_API_KEY_NOTE_CATEGORY,
@@ -98,6 +98,11 @@ export function mapHarnessToExportConfig(
         `(model apiKeyArn), or use a bedrock/ model id (which authenticates via the execution role).`,
     });
   }
+  // Bedrock Mantle models are invoked via the bedrock-mantle service (not bedrock:InvokeModel), so
+  // the runtime role's default Bedrock grant is insufficient. Generate the bedrock-mantle:CreateInference
+  // policy and wire it via additionalPolicies, mirroring the S3-skills opaque-AWS-access pattern.
+  resolveBedrockMantlePolicy(spec, context);
+
   const memoryResult = resolveMemoryProviders(spec, context);
   const gatewayResult = resolveGatewayProviders(spec, context, allowedToolPatterns);
   const hasGateway = gatewayResult.providers.length > 0;
@@ -277,6 +282,9 @@ export function mapHarnessToExportConfig(
     Object.keys(spec.model.additionalParams).length > 0
       ? { litellmAdditionalParams: spec.model.additionalParams }
       : {}),
+    // Bedrock Mantle (OpenAI-compatible Bedrock models served via the Mantle endpoint, not Converse).
+    // Empty for ordinary Converse Bedrock models and all other providers.
+    ...buildBedrockMantleRenderConfig(spec),
     // System prompt (written verbatim into main.py)
     systemPromptText: context.systemPrompt,
     actorId: spec.memory?.mode === 'existing' ? spec.memory.actorId : undefined,
@@ -461,8 +469,7 @@ function connectionEnvVarName(prefix: string, connectionId: string, suffix: stri
  * Map a harness gateway outboundAuth onto the connection's GatewayOutboundAuth. The shapes match
  * except for the oauth grant-type enum: the harness uses CLIENT_CREDENTIALS | USER_FEDERATION,
  * while the connection (matching the runtime/Smithy model) uses CLIENT_CREDENTIALS |
- * AUTHORIZATION_CODE | TOKEN_EXCHANGE. USER_FEDERATION maps to AUTHORIZATION_CODE (loopy's
- * _GRANT_TYPE_TO_FLOW maps AUTHORIZATION_CODE -> USER_FEDERATION auth flow).
+ * AUTHORIZATION_CODE | TOKEN_EXCHANGE. USER_FEDERATION maps to AUTHORIZATION_CODE.
  */
 function toConnectionGatewayAuth(
   outboundAuth: HarnessGatewayOutboundAuth | undefined
@@ -490,8 +497,7 @@ function toConnectionGatewayAuth(
 /**
  * Map a HARNESS OAuth grant type to the AgentCore Identity auth flow consumed by the generated
  * client's `@requires_access_token(auth_flow=...)`. The harness enum is CLIENT_CREDENTIALS |
- * USER_FEDERATION (see HarnessGatewayOutboundAuth); both have a decorator equivalent, mirroring
- * loopy's `_GRANT_TYPE_TO_FLOW`:
+ * USER_FEDERATION (see HarnessGatewayOutboundAuth); both have a decorator equivalent:
  *   CLIENT_CREDENTIALS -> M2M, USER_FEDERATION -> USER_FEDERATION.
  * The SDK decorator's auth_flow is `Literal["M2M","USER_FEDERATION"]`. Unset grant defaults to M2M.
  * Returns undefined only for an unrecognized value (caller emits a manual-step note).
@@ -523,6 +529,77 @@ function resolveModelProvider(provider: 'bedrock' | 'open_ai' | 'gemini' | 'lite
     case 'lite_llm':
       return 'LiteLLM';
   }
+}
+
+/**
+ * Proprietary OpenAI models (e.g. openai.gpt-5.4, openai.gpt-5.5) are served on the Bedrock Mantle
+ * `/openai/v1` path; open-source OpenAI models (openai.gpt-oss-*) use `/v1`.
+ */
+function isProprietaryOpenAiModel(modelId: string): boolean {
+  return modelId.startsWith('openai.') && !modelId.includes('gpt-oss');
+}
+
+/**
+ * Bedrock Mantle render config. A Bedrock model whose apiFormat is `responses`/`chat_completions`
+ * (not `converse_stream`) is an OpenAI-compatible model served via the Bedrock Mantle endpoint, NOT
+ * the Converse API — building a plain BedrockModel for it makes invocation fail with
+ * "The provided model identifier is invalid" on ConverseStream. When that combination is detected,
+ * emit the fields load.py needs to construct the OpenAI-style Mantle client (base URL is derived at
+ * runtime from AWS_REGION). Returns {} for ordinary Converse Bedrock models.
+ */
+function buildBedrockMantleRenderConfig(spec: HarnessSpec): Partial<AgentRenderConfig> {
+  if (!isBedrockMantleModel(spec)) return {};
+  const apiFormat = spec.model.apiFormat as 'responses' | 'chat_completions';
+  return {
+    bedrockMantle: true,
+    mantleApiFormat: apiFormat,
+    mantleProprietary: isProprietaryOpenAiModel(spec.model.modelId),
+    modelTemperature: spec.model.temperature,
+    modelTopP: spec.model.topP,
+    modelMaxTokens: spec.model.maxTokens,
+  };
+}
+
+/** A Bedrock model whose apiFormat routes it through the OpenAI-compatible Mantle endpoint. */
+function isBedrockMantleModel(spec: HarnessSpec): boolean {
+  return (
+    spec.model.provider === 'bedrock' &&
+    (spec.model.apiFormat === 'responses' || spec.model.apiFormat === 'chat_completions')
+  );
+}
+
+/**
+ * Bedrock Mantle invocation goes through the `bedrock-mantle` service (CreateInference), NOT
+ * `bedrock:InvokeModel`, so the runtime role's default Bedrock grant does not cover it. Emit an
+ * inline IAM policy (opaque AWS access, like S3 skills) granting bedrock-mantle:CreateInference on
+ * the account's default Mantle project, wired via AgentEnvSpec.additionalPolicies.
+ */
+function resolveBedrockMantlePolicy(spec: HarnessSpec, context: ResolvedHarnessContext): void {
+  if (!isBedrockMantleModel(spec)) return;
+  // arnPrefix returns `arn:<partition>` (e.g. arn:aws); region defaults to us-east-1 only to pick the
+  // partition — the ARN itself wildcards region/account so the runtime works wherever it deploys.
+  const prefix = arnPrefix(context.region ?? 'us-east-1');
+  const policyDoc = {
+    Version: '2012-10-17',
+    Statement: [
+      {
+        Effect: 'Allow',
+        Action: 'bedrock-mantle:CreateInference',
+        // The Mantle endpoint resolves the caller's account; access is scoped to the default project.
+        Resource: `${prefix}:bedrock-mantle:*:*:project/default`,
+      },
+      {
+        // The bearer-token auth path (provide_token -> Mantle) requires CallWithBearerToken, which
+        // the service authorizes against resource `*` (it is not resource-scoped).
+        Effect: 'Allow',
+        Action: 'bedrock-mantle:CallWithBearerToken',
+        Resource: '*',
+      },
+    ],
+  };
+  const policyFile = 'bedrock-mantle-policy.json';
+  context.generatedPolicyFiles[policyFile] = policyDoc;
+  if (!context.additionalPolicies.includes(policyFile)) context.additionalPolicies.push(policyFile);
 }
 
 // ============================================================================
@@ -737,7 +814,7 @@ function resolveGatewayProviders(
         if (scopes?.length) {
           provider.scopes = scopes.join(' ');
         }
-        // Thread the grant type through to the generated client's auth_flow (mirrors loopy), so a
+        // Thread the grant type through to the generated client's auth_flow, so a
         // USER_FEDERATION harness gateway exports a USER_FEDERATION client instead of a hardcoded M2M.
         const authFlow = grantTypeToAuthFlow(outboundAuth.oauth.grantType);
         if (authFlow) provider.authFlow = authFlow;

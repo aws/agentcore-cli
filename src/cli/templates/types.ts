@@ -150,6 +150,27 @@ export interface AgentRenderConfig {
    *  pyJsonStr + json.loads so JSON booleans/null parse correctly at runtime. */
   litellmAdditionalParams?: Record<string, unknown>;
 
+  /**
+   * Bedrock Mantle (export path): a Bedrock model whose apiFormat is `responses`/`chat_completions`
+   * (e.g. openai.gpt-5.5, openai.gpt-oss-120b) is served via the Bedrock Mantle OpenAI-compatible
+   * endpoint, NOT the Converse API. When true, load.py builds an OpenAI-style client against the
+   * Mantle base URL instead of BedrockModel.
+   */
+  bedrockMantle?: boolean;
+  /** Mantle apiFormat: 'responses' or 'chat_completions' — selects the client class + token param. */
+  mantleApiFormat?: 'responses' | 'chat_completions';
+  /**
+   * True for proprietary OpenAI models (openai.* without gpt-oss), which require the `/openai/v1`
+   * Mantle path + OpenAIResponsesModel; open-source models use `/v1` + MantleCompatResponsesModel.
+   */
+  mantleProprietary?: boolean;
+  /** Model temperature (export path, Mantle): merged into the client params when set. */
+  modelTemperature?: number;
+  /** Model nucleus-sampling top_p (export path, Mantle): merged into the client params when set. */
+  modelTopP?: number;
+  /** Model max output tokens (export path, Mantle): mapped to max_output_tokens / max_completion_tokens. */
+  modelMaxTokens?: number;
+
   /** True when generating from a harness export (suppresses placeholder tools) */
   isExportHarness?: boolean;
   /** System prompt text written verbatim into main.py (export path) */

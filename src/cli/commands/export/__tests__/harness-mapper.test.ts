@@ -1060,7 +1060,7 @@ describe('resolveGatewayProviders', () => {
       expect((conn?.to as { outboundAuth: { oauth: { grantType: string } } }).outboundAuth.oauth.grantType).toBe(
         'AUTHORIZATION_CODE'
       );
-      // ...and the generated client gets the corresponding USER_FEDERATION auth_flow (loopy parity).
+      // ...and the generated client gets the corresponding USER_FEDERATION auth_flow.
       expect(renderConfig.gatewayProviders.find(() => true)?.authFlow).toBe('USER_FEDERATION');
       // USER_FEDERATION is now expressible by the decorator → no manual-step note.
       expect(noteCategories(ctx)).not.toContain(GATEWAY_GRANT_TYPE_NOTE_CATEGORY);
