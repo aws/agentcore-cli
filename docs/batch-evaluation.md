@@ -31,7 +31,6 @@ Built-in evaluators provided by AgentCore:
 | `Builtin.Faithfulness`              | Grounding in tool results / provided context   |
 | `Builtin.GoalSuccessRate`           | Whether the agent achieved the user's goal     |
 | `Builtin.ToolSelectionAccuracy`     | Correct tool chosen for the task               |
-| `Builtin.Completeness`              | Whether all parts of the request were handled  |
 | `Builtin.TrajectoryExactOrderMatch` | Tool call sequence matches expected trajectory |
 
 Custom evaluators defined in your project (via `agentcore add evaluator`) can also be used.
