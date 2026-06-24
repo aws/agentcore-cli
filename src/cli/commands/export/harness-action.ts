@@ -3,6 +3,7 @@ import { ExportHarnessError, ValidationError } from '../../../lib/errors/types';
 import { AgentNameSchema } from '../../../schema';
 import type { AgentEnvSpec, BuildType, Credential, HarnessSpec } from '../../../schema';
 import { getErrorMessage } from '../../errors';
+import { regionFromHarnessArn } from '../../operations/harness/orphan';
 import type { AttributeRecorder } from '../../telemetry/cli-command-run.js';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import type { CommandAttrs } from '../../telemetry/schemas/command-run.js';
@@ -63,12 +64,13 @@ export async function handleExportHarness(
       let prefetched: { spec: HarnessSpec; systemPrompt?: string } | undefined;
       if (options.arn) {
         log('Fetching harness from service');
-        const region = await resolveExportRegion();
+        const region = await resolveExportRegion(options.arn);
         if (!region) {
           return {
             success: false as const,
             error: new ValidationError(
-              'No AWS region configured. Add a deployment target (agentcore/aws-targets.json) before exporting by ARN.'
+              'No AWS region configured. Pass an ARN that includes a region, configure a deployment ' +
+                'target (agentcore/aws-targets.json), or set AWS_REGION before exporting by ARN.'
             ),
           };
         }
@@ -303,13 +305,27 @@ export async function handleExportHarness(
 // ============================================================================
 
 /** Region for the --arn fetch: the current project's first deployment target. */
-async function resolveExportRegion(): Promise<string | undefined> {
+/**
+ * Resolve the region used to fetch a harness by ARN, in priority order:
+ *   1. the region embedded in the harness ARN (`arn:<p>:bedrock-agentcore:<region>:...`) — this is
+ *      the region the harness actually lives in, so it is the most correct source;
+ *   2. the first configured deployment target (agentcore/aws-targets.json);
+ *   3. the AWS_REGION / AWS_DEFAULT_REGION environment variables.
+ * Returns undefined only when none of these yield a region, so export-by-ARN no longer requires a
+ * configured deployment target when the ARN (or the environment) already names a region.
+ */
+export async function resolveExportRegion(arn: string): Promise<string | undefined> {
+  const arnRegion = regionFromHarnessArn(arn);
+  if (arnRegion) return arnRegion;
+
   try {
     const targets = await new ConfigIO().readAWSDeploymentTargets();
-    return targets[0]?.region;
+    if (targets[0]?.region) return targets[0].region;
   } catch {
-    return undefined;
+    // fall through to env
   }
+
+  return process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? undefined;
 }
 
 async function writeExportedAgentToProject(
