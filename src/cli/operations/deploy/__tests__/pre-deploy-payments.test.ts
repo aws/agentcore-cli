@@ -386,7 +386,9 @@ describe('cleanupPaymentCredentialProviders', () => {
   });
 
   it('ignores 404 errors gracefully without throwing', async () => {
-    mockDeletePaymentCredentialProvider.mockRejectedValue(new Error('Payment API error (404): resource not found'));
+    mockDeletePaymentCredentialProvider.mockRejectedValue(
+      new Error('Failed to delete payment credential provider "my-cdp-cred": Payment API error (404)')
+    );
 
     await expect(
       cleanupPaymentCredentialProviders({
@@ -405,8 +407,12 @@ describe('cleanupPaymentCredentialProviders', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('ignores NotFound errors gracefully without throwing', async () => {
-    mockDeletePaymentCredentialProvider.mockRejectedValue(new Error('ResourceNotFoundException: not found'));
+  it('ignores ResourceNotFoundException errors gracefully without throwing', async () => {
+    const notFoundErr = new Error(
+      'Failed to delete payment credential provider "my-cdp-cred": Payment API error (400)'
+    ) as Error & { code?: string };
+    notFoundErr.code = 'ResourceNotFoundException';
+    mockDeletePaymentCredentialProvider.mockRejectedValue(notFoundErr);
 
     await expect(
       cleanupPaymentCredentialProviders({

@@ -584,7 +584,8 @@ export async function cleanupPaymentCredentialProviders(options: {
           await deletePaymentCredentialProvider({ region, name: credName });
         } catch (credErr) {
           const msg = credErr instanceof Error ? credErr.message : String(credErr);
-          if (!msg.includes('404') && !msg.includes('NotFound')) {
+          const code = (credErr as { code?: unknown })?.code;
+          if (code !== 'ResourceNotFoundException' && !msg.includes('404')) {
             console.warn(
               `Failed to delete credential provider for connector '${connName}' (payment '${name}'): ${msg}`
             );

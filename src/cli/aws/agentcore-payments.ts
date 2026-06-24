@@ -82,13 +82,50 @@ interface PaymentManagerDetail {
 // HTTP signing helper
 // ============================================================================
 
+/**
+ * Wrap an inner error with a contextual prefix while preserving its
+ * structured `.code` (the parsed `__type` / `code` from the server response).
+ */
+function rethrowWithContext(prefix: string, err: unknown): Error & { code?: string } {
+  const innerMsg = err instanceof Error ? err.message : String(err);
+  const wrapped = new Error(`${prefix}: ${innerMsg}`) as Error & { code?: string };
+  const innerCode = (err as { code?: unknown })?.code;
+  if (typeof innerCode === 'string') wrapped.code = innerCode;
+  return wrapped;
+}
+
+/**
+ * Build a debug-only excerpt of a non-2xx response body, with every literal
+ * secret value the CLI just sent stripped out.
+ *
+ * Default (no DEBUG): returns `''` so callers can omit the body from
+ * `Error.message` entirely. The structured `code`/`__type` extracted by the
+ * caller is what programmatic consumers should use.
+ *
+ * With DEBUG set: returns the body with each `secret` substring replaced by
+ * `[REDACTED]` and capped at 500 chars. Value-based redaction is robust to
+ * server-side reshaping (snake_case, nesting, free-text echoes) in a way the
+ * old key-name regex was not.
+ */
+function sanitizeErrorBody(body: string, secrets: Iterable<string> | undefined): string {
+  if (!process.env.DEBUG || !body) return '';
+  let out = body;
+  for (const secret of secrets ?? []) {
+    if (typeof secret === 'string' && secret.length > 0) {
+      out = out.split(secret).join('[REDACTED]');
+    }
+  }
+  return out.slice(0, 500);
+}
+
 async function signedRequest(options: {
   region: string;
   method: string;
   path: string;
   body?: string;
+  secretsToRedact?: Iterable<string>;
 }): Promise<unknown> {
-  const { region, method, path, body } = options;
+  const { region, method, path, body, secretsToRedact } = options;
   const endpoint = controlPlaneEndpoint(region);
   const url = new URL(path, endpoint);
 
@@ -139,16 +176,12 @@ async function signedRequest(options: {
   }
 
   if (!response.ok) {
-    const errorBody = await response.text();
-    // Sanitize error body -- API validation errors may echo request fields containing secrets
-    const sanitized = errorBody
-      .replace(
-        /("apiKeySecret"|"walletSecret"|"apiKeyId"|"appId"|"appSecret"|"authorizationPrivateKey"|"authorizationId")\s*:\s*"[^"]*"/g,
-        '$1:"[REDACTED]"'
-      )
-      .slice(0, 500);
-
-    const error = new Error(`Payment API error (${response.status}): ${sanitized}`) as Error & { code?: string };
+    const errorBody = await response.text().catch(() => '');
+    const baseMsg = `Payment API error (${response.status})`;
+    const debugExcerpt = sanitizeErrorBody(errorBody, secretsToRedact);
+    const error = new Error(debugExcerpt ? `${baseMsg}: ${debugExcerpt}` : baseMsg) as Error & {
+      code?: string;
+    };
     try {
       const parsed = JSON.parse(errorBody) as Record<string, unknown>;
       const code = parsed.code ?? parsed.__type;
@@ -170,6 +203,8 @@ async function signedRequest(options: {
 function buildProviderConfigPayload(options: CreatePaymentCredentialProviderOptions): {
   credentialProviderVendor: string;
   providerConfigurationInput: Record<string, unknown>;
+  /** Literal secret values from `options`, used only for DEBUG-mode redaction. */
+  secrets: string[];
 } {
   if (options.vendor === 'StripePrivy') {
     return {
@@ -182,6 +217,7 @@ function buildProviderConfigPayload(options: CreatePaymentCredentialProviderOpti
           authorizationId: options.authorizationId,
         },
       },
+      secrets: [options.appId, options.appSecret, options.authorizationPrivateKey, options.authorizationId],
     };
   }
   return {
@@ -193,13 +229,14 @@ function buildProviderConfigPayload(options: CreatePaymentCredentialProviderOpti
         walletSecret: options.walletSecret,
       },
     },
+    secrets: [options.apiKeyId, options.apiKeySecret, options.walletSecret],
   };
 }
 
 export async function createPaymentCredentialProvider(
   options: CreatePaymentCredentialProviderOptions
 ): Promise<PaymentCredentialProviderApiResult> {
-  const { credentialProviderVendor, providerConfigurationInput } = buildProviderConfigPayload(options);
+  const { credentialProviderVendor, providerConfigurationInput, secrets } = buildProviderConfigPayload(options);
   const body = JSON.stringify({
     name: options.name,
     credentialProviderVendor,
@@ -212,6 +249,7 @@ export async function createPaymentCredentialProvider(
       method: 'POST',
       path: '/identities/CreatePaymentCredentialProvider',
       body,
+      secretsToRedact: secrets,
     })) as PaymentCredentialProviderApiResult;
 
     return {
@@ -219,16 +257,14 @@ export async function createPaymentCredentialProvider(
       status: data.status,
     };
   } catch (err) {
-    throw new Error(
-      `Failed to create payment credential provider "${options.name}": ${err instanceof Error ? err.message : String(err)}`
-    );
+    throw rethrowWithContext(`Failed to create payment credential provider "${options.name}"`, err);
   }
 }
 
 export async function updatePaymentCredentialProvider(
   options: UpdatePaymentCredentialProviderOptions
 ): Promise<PaymentCredentialProviderApiResult> {
-  const { credentialProviderVendor, providerConfigurationInput } = buildProviderConfigPayload(options);
+  const { credentialProviderVendor, providerConfigurationInput, secrets } = buildProviderConfigPayload(options);
   const body = JSON.stringify({
     name: options.name,
     credentialProviderVendor,
@@ -241,6 +277,7 @@ export async function updatePaymentCredentialProvider(
       method: 'POST',
       path: '/identities/UpdatePaymentCredentialProvider',
       body,
+      secretsToRedact: secrets,
     })) as PaymentCredentialProviderApiResult;
 
     return {
@@ -248,9 +285,7 @@ export async function updatePaymentCredentialProvider(
       status: data.status,
     };
   } catch (err) {
-    throw new Error(
-      `Failed to update payment credential provider "${options.name}": ${err instanceof Error ? err.message : String(err)}`
-    );
+    throw rethrowWithContext(`Failed to update payment credential provider "${options.name}"`, err);
   }
 }
 
@@ -268,7 +303,8 @@ export async function getPaymentCredentialProvider(
     return data;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes('(404)') || msg.includes('ResourceNotFoundException')) return null;
+    const code = (err as { code?: unknown }).code;
+    if (code === 'ResourceNotFoundException' || msg.includes('(404)')) return null;
     throw new Error(`Failed to get payment credential provider "${options.name}": ${msg}`);
   }
 }
@@ -282,9 +318,7 @@ export async function deletePaymentCredentialProvider(options: { region: string;
       body: JSON.stringify({ name: options.name }),
     });
   } catch (err) {
-    throw new Error(
-      `Failed to delete payment credential provider "${options.name}": ${err instanceof Error ? err.message : String(err)}`
-    );
+    throw rethrowWithContext(`Failed to delete payment credential provider "${options.name}"`, err);
   }
 }
 
@@ -301,7 +335,8 @@ export async function getPaymentManager(options: GetPaymentManagerOptions): Prom
     })) as PaymentManagerDetail;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes('(404)') || msg.includes('ResourceNotFoundException')) return null;
+    const code = (err as { code?: unknown }).code;
+    if (code === 'ResourceNotFoundException' || msg.includes('(404)')) return null;
     throw new Error(`Failed to get payment manager "${options.paymentManagerId}": ${msg}`);
   }
 }
@@ -316,8 +351,10 @@ async function signedDataPlaneRequest(options: {
   path: string;
   body?: string;
   extraHeaders?: Record<string, string>;
+  /** See `signedRequest.secretsToRedact`. */
+  secretsToRedact?: Iterable<string>;
 }): Promise<unknown> {
-  const { region, method, path, body, extraHeaders } = options;
+  const { region, method, path, body, extraHeaders, secretsToRedact } = options;
   const endpoint = dataPlaneEndpoint(region);
   const url = new URL(path, endpoint);
 
@@ -370,13 +407,9 @@ async function signedDataPlaneRequest(options: {
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => '');
-    const sanitized = errorBody
-      .replace(
-        /("apiKeySecret"|"walletSecret"|"apiKeyId"|"appId"|"appSecret"|"authorizationPrivateKey"|"authorizationId")\s*:\s*"[^"]*"/g,
-        '$1:"[REDACTED]"'
-      )
-      .slice(0, 500);
-    const error = new Error(`Payment data plane API error (${response.status}): ${sanitized}`) as Error & {
+    const baseMsg = `Payment data plane API error (${response.status})`;
+    const debugExcerpt = sanitizeErrorBody(errorBody, secretsToRedact);
+    const error = new Error(debugExcerpt ? `${baseMsg}: ${debugExcerpt}` : baseMsg) as Error & {
       code?: string;
     };
     try {
