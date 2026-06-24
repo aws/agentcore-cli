@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.21.0] - 2026-06-24
+
+### Added
+- feat: ungate AWS skills, managed memory, and read-only harness Version (#1620) (e9cd559a)
+- feat(fetch): support harness in fetch access (CLI + TUI) (#1611) (12fd67a4)
+- feat: upgrade agent inspector to 0.6.1 (#1607) (1329cebb)
+- feat: bring harness flows into latest version of cli (#1598) (6f95ed43)
+
+### Fixed
+- fix(config-bundle): ungate custom branchName feature (#1632) (2fdec1ea)
+- fix(tui): use "No memory" instead of "Disabled" in harness memory picker (#1635) (bac7f61e)
+- fix(deploy): resolve online-eval step on re-deploys with no new configs (#1615) (fa35b69d)
+- fix: gate `agentcore run ingest` behind ENABLE_GATED_FEATURES (#1619) (5d4719af)
+- fix: select deployed target's stack at Persist instead of stackNames[0] (#1612) (93d104c7)
+- fix(recommendation): resolve --bundle-version LATEST to deployed versionId (#1566) (9fdab064)
+- fix: dont show deploy screen when deploy is skipped (#1585) (692103c8)
+
+### Other Changes
+- chore: re-gate web search (#1625) (9e39abf2)
+- test(e2e): fix harness CUSTOM_JWT auth to validate allowedClients (#1624) (a880f45a)
+- Ungate passthrough gateway targets (#1617) (30ae7683)
+- chore: add e2e & integ tests for web-search (#1604) (1339f4f2)
+- test(e2e): add harness E2E coverage for lite_llm, tools, and CUSTOM_JWT (#1609) (c4e54be1)
+- test(integ): expand harness config-shape coverage (#1608) (5fd591ae)
+- chore: ungate web-search commands (#1558) (#1597) (61e405e3)
+
 ## [0.20.2] - 2026-06-18
 
 ### Fixed
