@@ -1423,7 +1423,10 @@ export function AddHarnessScreen({
             initialValue="/mnt/data/"
             onSubmit={wizard.setSessionStoragePath}
             onCancel={() => wizard.goBack()}
-            customValidation={value => (value.startsWith('/') ? true : 'Must be an absolute path')}
+            customValidation={value => {
+              const r = validateBYOMountPath(value);
+              return r === true ? true : r;
+            }}
           />
         )}
 

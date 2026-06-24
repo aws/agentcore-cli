@@ -3,12 +3,16 @@ import { Command } from '@commander-js/extra-typings';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockFetchGatewayToken = vi.fn();
+const mockFetchRuntimeToken = vi.fn();
+const mockFetchHarnessToken = vi.fn();
 const mockListGateways = vi.fn();
 const mockRequireProject = vi.fn();
 const mockRender = vi.fn();
 
 vi.mock('../../../operations/fetch-access', () => ({
   fetchGatewayToken: (...args: unknown[]) => mockFetchGatewayToken(...args),
+  fetchRuntimeToken: (...args: unknown[]) => mockFetchRuntimeToken(...args),
+  fetchHarnessToken: (...args: unknown[]) => mockFetchHarnessToken(...args),
   listGateways: (...args: unknown[]) => mockListGateways(...args),
 }));
 
@@ -192,5 +196,80 @@ describe('registerFetch', () => {
     expect(mockLog).toHaveBeenCalledTimes(1);
     const output = JSON.parse(mockLog.mock.calls[0][0]);
     expect(output.success).toBe(true);
+  });
+
+  describe('--type harness', () => {
+    const harnessTokenResult = { token: 'harness-token', expiresIn: 3600 };
+
+    it('outputs a CUSTOM_JWT token for a harness when --json flag is used', async () => {
+      mockFetchHarnessToken.mockResolvedValue(harnessTokenResult);
+
+      await program.parseAsync(['fetch', 'access', '--type', 'harness', '--name', 'MyHarness', '--json'], {
+        from: 'user',
+      });
+
+      expect(mockFetchHarnessToken).toHaveBeenCalledWith('MyHarness', {
+        deployTarget: undefined,
+        identityName: undefined,
+      });
+      expect(mockFetchGatewayToken).not.toHaveBeenCalled();
+      expect(mockLog).toHaveBeenCalledTimes(1);
+      const output = JSON.parse(mockLog.mock.calls[0][0]);
+      expect(output.success).toBe(true);
+      expect(output.authType).toBe('CUSTOM_JWT');
+      expect(output.token).toBe('harness-token');
+      expect(output.expiresIn).toBe(3600);
+    });
+
+    it('forwards --identity-name and --target to fetchHarnessToken', async () => {
+      mockFetchHarnessToken.mockResolvedValue(harnessTokenResult);
+
+      await program.parseAsync(
+        [
+          'fetch',
+          'access',
+          '--type',
+          'harness',
+          '--name',
+          'MyHarness',
+          '--identity-name',
+          'my-custom-cred',
+          '--target',
+          'prod',
+          '--json',
+        ],
+        { from: 'user' }
+      );
+
+      expect(mockFetchHarnessToken).toHaveBeenCalledWith('MyHarness', {
+        deployTarget: 'prod',
+        identityName: 'my-custom-cred',
+      });
+    });
+
+    it('errors with a harness-specific message when --name is missing and --json flag is used', async () => {
+      await expect(
+        program.parseAsync(['fetch', 'access', '--type', 'harness', '--json'], { from: 'user' })
+      ).rejects.toThrow('process.exit');
+
+      expect(mockFetchHarnessToken).not.toHaveBeenCalled();
+      expect(mockLog).toHaveBeenCalledTimes(1);
+      const output = JSON.parse(mockLog.mock.calls[0][0]);
+      expect(output.success).toBe(false);
+      expect(output.error).toBe('Missing required option: --name <harness>');
+    });
+
+    it('outputs JSON error when fetchHarnessToken throws (e.g. non-CUSTOM_JWT harness)', async () => {
+      mockFetchHarnessToken.mockRejectedValue(new Error("Harness 'MyHarness' uses AWS_IAM auth, not CUSTOM_JWT."));
+
+      await expect(
+        program.parseAsync(['fetch', 'access', '--type', 'harness', '--name', 'MyHarness', '--json'], { from: 'user' })
+      ).rejects.toThrow('process.exit');
+
+      expect(mockLog).toHaveBeenCalledTimes(1);
+      const output = JSON.parse(mockLog.mock.calls[0][0]);
+      expect(output.success).toBe(false);
+      expect(output.error).toBe("Harness 'MyHarness' uses AWS_IAM auth, not CUSTOM_JWT.");
+    });
   });
 });

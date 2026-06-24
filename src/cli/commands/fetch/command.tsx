@@ -1,5 +1,7 @@
 import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
+import { ResourceType, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { requireProject } from '../../tui/guards';
 import { handleFetchAccess } from './action';
 import type { FetchAccessResult } from './action';
@@ -12,9 +14,9 @@ export const registerFetch = (program: Command) => {
 
   fetchCmd
     .command('access')
-    .description('Fetch access info (URL, token, auth guidance) for a deployed gateway or agent.')
-    .option('--name <resource>', 'Gateway or agent name [non-interactive]')
-    .option('--type <type>', 'Resource type: gateway (default) or agent [non-interactive]', 'gateway')
+    .description('Fetch access info (URL, token, auth guidance) for a deployed gateway, agent, or harness.')
+    .option('--name <resource>', 'Gateway, agent, or harness name [non-interactive]')
+    .option('--type <type>', 'Resource type: gateway (default), agent, or harness [non-interactive]', 'gateway')
     .option('--target <target>', 'Deployment target [non-interactive]')
     .option('--identity-name <name>', 'Identity credential name for token fetch [non-interactive]')
     .option('--json', 'Output as JSON [non-interactive]')
@@ -24,7 +26,22 @@ export const registerFetch = (program: Command) => {
 
       let result: FetchAccessResult;
       try {
-        result = await handleFetchAccess(options);
+        // Record cli.command_run for fetch.access. handleFetchAccess runs exactly once inside
+        // the telemetry wrapper; its string-error shape is adapted to the Result {success,
+        // error: Error} the telemetry layer expects (used only for exit_reason/error_name),
+        // while the original result is captured via closure to drive output below.
+        let captured: FetchAccessResult;
+        await withCommandRunTelemetry(
+          'fetch.access',
+          { resource_type: standardize(ResourceType, options.type ?? 'gateway') },
+          async () => {
+            captured = await handleFetchAccess(options);
+            return captured.success
+              ? { success: true as const }
+              : { success: false as const, error: new Error(captured.error) };
+          }
+        );
+        result = captured!;
       } catch (error) {
         if (options.json) {
           console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));

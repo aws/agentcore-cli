@@ -36,10 +36,11 @@ vi.mock('../../../operations/deploy/change-detection', () => ({
 }));
 
 function Harness({ skip }: { skip?: boolean }) {
-  const { steps, isComplete, error } = useDevDeploy({ skip });
+  const { steps, isComplete, error, managedMemoryNotice } = useDevDeploy({ skip });
   return (
     <Text>
-      steps:{steps.length} isComplete:{String(isComplete)} error:{error ?? 'null'}
+      steps:{steps.length} isComplete:{String(isComplete)} error:{error ?? 'null'} notice:
+      {managedMemoryNotice ?? 'null'}
     </Text>
   );
 }
@@ -106,6 +107,31 @@ describe('useDevDeploy', () => {
       expect(lastFrame()).toContain('isComplete:true');
       expect(lastFrame()).toContain('error:Network error');
     });
+  });
+
+  it('surfaces the managed-memory heads-up from the onNotice callback', async () => {
+    mockHandleDeploy.mockImplementation((opts: { onNotice?: (message: string) => void }) => {
+      opts.onNotice?.('Managed memory: this harness automatically provisions a dedicated AgentCore Memory resource');
+      return Promise.resolve({ success: true });
+    });
+
+    const { lastFrame } = render(<Harness />);
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('notice:Managed memory:');
+      expect(lastFrame()).toContain('isComplete:true');
+    });
+  });
+
+  it('leaves the managed-memory heads-up null when onNotice is not called', async () => {
+    mockHandleDeploy.mockResolvedValue({ success: true });
+
+    const { lastFrame } = render(<Harness />);
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('isComplete:true');
+    });
+    expect(lastFrame()).toContain('notice:null');
   });
 
   it('populates steps from onProgress callback', async () => {

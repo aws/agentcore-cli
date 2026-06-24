@@ -56,13 +56,21 @@ file maps to a JSON config file and includes validation constraints as comments 
 
 ### Key Types
 
-- **AgentCoreProjectSpec**: Root config with `runtimes`, `memories`, `credentials`, `agentCoreGateways`, `evaluators`, `onlineEvalConfigs`, `policyEngines` arrays
+- **AgentCoreProjectSpec**: Root config with `runtimes`, `memories`, `credentials`, `agentCoreGateways`, `evaluators`, `onlineEvalConfigs`, `onlineInsightsConfigs`, `knowledgeBases`, `harnesses`, `policyEngines`, `policies`, `payments` (managers + connectors), `configBundles`, `datasets`, `runtimeEndpoints` arrays
 - **AgentEnvSpec**: Agent configuration (build type, entrypoint, code location, runtime version, network mode)
 - **Memory**: Memory resource with strategies (SEMANTIC, SUMMARIZATION, USER_PREFERENCE, EPISODIC) and expiry
 - **Credential**: API key or OAuth credential provider
-- **AgentCoreGateway**: MCP gateway with targets (Lambda, MCP server, OpenAPI, Smithy, API Gateway)
+- **AgentCoreGateway**: MCP gateway with targets (Lambda, MCP server, OpenAPI, Smithy, API Gateway, web-search, knowledge-base)
 - **Evaluator**: LLM-as-a-Judge or code-based evaluator
 - **OnlineEvalConfig**: Continuous evaluation pipeline bound to an agent
+- **OnlineInsightsConfig** _[preview]_: Continuous failure-pattern analysis bound to an agent
+- **KnowledgeBase**: Managed Bedrock Knowledge Base auto-wired to a gateway
+- **Harness**: Declarative agent — runtime + tools + skills + memory + observability without writing agent code
+- **PolicyEngine** + **Policy**: Cedar policy engine with form-based guardrails (Bedrock content filters, prompt-attack, sensitive-info) or raw Cedar policies
+- **PaymentManager** + **PaymentConnector**: x402-protocol payment orchestration with provider credentials (CoinbaseCDP, StripePrivy)
+- **ConfigBundle**: Versioned runtime configuration as a separately-deployable resource
+- **Dataset**: Curated session dataset for batch evaluation and recommendation runs
+- **RuntimeEndpoint**: Named endpoint (e.g. `PROMPT_V1`) targeting a specific runtime version
 
 ### Common Enum Values
 
@@ -70,8 +78,11 @@ file maps to a JSON config file and includes validation constraints as comments 
 - **NetworkMode**: `'PUBLIC'` | `'VPC'`
 - **RuntimeVersion**: `'PYTHON_3_10'` | `'PYTHON_3_11'` | `'PYTHON_3_12'` | `'PYTHON_3_13'` | `'PYTHON_3_14'` | `'NODE_18'` | `'NODE_20'` | `'NODE_22'`
 - **MemoryStrategyType**: `'SEMANTIC'` | `'SUMMARIZATION'` | `'USER_PREFERENCE'` | `'EPISODIC'`
-- **GatewayTargetType**: `'lambda'` | `'mcpServer'` | `'openApiSchema'` | `'smithyModel'` | `'apiGateway'` | `'lambdaFunctionArn'`
+- **GatewayTargetType**: `'lambda'` | `'mcpServer'` | `'openApiSchema'` | `'smithyModel'` | `'apiGateway'` | `'lambdaFunctionArn'` | `'connector'` (web-search, bedrock-knowledge-bases, bedrock-agentic-retrieve)
 - **ModelProvider**: `'Bedrock'` | `'Gemini'` | `'OpenAI'` | `'Anthropic'`
+- **PaymentProvider**: `'CoinbaseCDP'` | `'StripePrivy'`
+- **PolicyEnforcementMode**: `'ACTIVE'` | `'PASSIVE'`
+- **GuardrailContentFilter**: `'VIOLENCE'` | `'HATE'` | `'SEXUAL'` | `'MISCONDUCT'` | `'INSULTS'`
 
 ### Build Types
 
@@ -137,19 +148,70 @@ cat app/<agentName>/EXPORT_NOTES.md             # read this before touching anyt
 
 ## CLI Commands
 
+Run `agentcore --help` or `agentcore <command> --help` for full flags. Commonly used:
+
+**Project lifecycle**
+
 | Command | Description |
 | --- | --- |
 | `agentcore create` | Create a new project |
-| `agentcore add <resource>` | Add agent, memory, credential, gateway, evaluator, policy |
-| `agentcore remove <resource>` | Remove a resource |
-| `agentcore export harness` | Export a harness to a Strands runtime agent |
 | `agentcore dev` | Run agent locally with hot-reload |
 | `agentcore deploy` | Deploy to AWS |
-| `agentcore status` | Show deployment status |
 | `agentcore invoke` | Invoke agent (local or deployed) |
-| `agentcore logs` | View agent logs |
-| `agentcore traces` | View agent traces |
-| `agentcore eval` | Run evaluations against an agent |
-| `agentcore package` | Package agent artifacts |
+| `agentcore status` | Show deployment status |
 | `agentcore validate` | Validate configuration |
-| `agentcore pause` / `resume` | Pause or resume a deployed agent |
+| `agentcore package` | Package agent artifacts |
+| `agentcore import` | Import resources from a Bedrock AgentCore Starter Toolkit project |
+
+**Resources**
+
+| Command | Description |
+| --- | --- |
+| `agentcore add <resource>` | Add agent, memory, credential, gateway, gateway-target, evaluator, online-eval, online-insights, knowledge-base, harness, policy-engine, policy, payment-manager, payment-connector, config-bundle, dataset, runtime-endpoint |
+| `agentcore remove <resource>` | Remove any resource |
+| `agentcore export harness` | Export a harness to a Strands runtime agent under `app/<agentName>/` |
+
+**Jobs (run, view, archive, lifecycle)**
+
+| Command | Description |
+| --- | --- |
+| `agentcore run eval` | Run on-demand evaluation against agent traces |
+| `agentcore run batch-evaluation` | Run evaluators across all sessions at scale |
+| `agentcore run recommendation` | Optimize prompts or tool descriptions from real traces |
+| `agentcore run insights` _[preview]_ | Run failure-pattern analysis across sessions |
+| `agentcore run ab-test` | Start an A/B test (config-bundle or target-based) |
+| `agentcore run ingest` | Start a fresh ingestion job for every data source on a deployed knowledge base |
+| `agentcore view <type>` | List or view jobs (recommendation, batch-evaluation, ab-test, insights) |
+| `agentcore archive <type>` | Delete a job on the service + clear local history |
+| `agentcore stop <type>` | Stop a running batch-evaluation or ab-test |
+| `agentcore promote ab-test` | Apply the winning variant to `agentcore.json` |
+| `agentcore pause <type>` / `agentcore resume <type>` | Pause/resume a deployed online-eval, online-insights, or ab-test |
+
+**Config bundles & datasets**
+
+| Command | Description |
+| --- | --- |
+| `agentcore config-bundle versions` (alias `cb versions`) | List version history for a bundle |
+| `agentcore config-bundle diff` | Diff two versions of a bundle |
+| `agentcore config-bundle create-branch` | Create a new branch on an existing bundle |
+| `agentcore dataset download` | Download a dataset version locally |
+| `agentcore dataset publish-version` | Publish a new dataset version |
+| `agentcore dataset remove-version` | Remove a dataset version |
+
+**Observability & history**
+
+| Command | Description |
+| --- | --- |
+| `agentcore logs` | Stream/search agent runtime logs |
+| `agentcore logs evals` | Stream/search online-eval logs |
+| `agentcore traces list` / `agentcore traces get` | List recent traces or download one to JSON |
+| `agentcore evals history` | View past on-demand eval results |
+
+**Utilities**
+
+| Command | Description |
+| --- | --- |
+| `agentcore fetch access` | Fetch access info for deployed gateway or agent |
+| `agentcore feedback` | Send feedback (with optional screenshot) to the AgentCore team |
+| `agentcore update` | Check for and install CLI updates |
+| `agentcore telemetry` | View or change telemetry preferences |

@@ -399,7 +399,6 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     return { valid: false, error: '--name is required' };
   }
 
-  // passthrough is gated; omit it from advertised type lists when the flag is off.
   const validTypeList = [
     'mcp-server',
     'api-gateway',
@@ -408,7 +407,7 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     'lambda-function-arn',
     'http-runtime',
     'connector',
-    ...(isGatedFeaturesEnabled() ? ['passthrough'] : []),
+    'passthrough',
     'web-search',
   ].join(', ');
 
@@ -727,9 +726,6 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
 
   // Passthrough targets: validate early and return
   if (mappedType === 'passthrough') {
-    if (!isGatedFeaturesEnabled()) {
-      return { valid: false, error: 'Passthrough targets are not yet available.' };
-    }
     const passthroughEndpoint = (options as Record<string, string | undefined>).passthroughEndpoint;
     if (!passthroughEndpoint) {
       return { valid: false, error: '--passthrough-endpoint is required for passthrough type' };

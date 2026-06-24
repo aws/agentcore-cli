@@ -1,5 +1,5 @@
 import type { HarnessApiFormat, HarnessModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
-import { isGatedFeaturesEnabled, isPreviewEnabled } from '../../../feature-flags';
+import { isGatedFeaturesEnabled } from '../../../feature-flags';
 import type { JwtConfig } from '../../components/jwt-config';
 import { HARNESS_FILESYSTEM_STEP_NAMES, useFilesystemMountState } from '../../hooks/useFilesystemMountState';
 import type { AddHarnessConfig, AddHarnessStep, AdvancedSetting, ContainerMode } from './types';
@@ -74,7 +74,7 @@ export function useAddHarnessWizard() {
   const allSteps = useMemo(() => {
     const steps: AddHarnessStep[] = ['name', 'model-provider'];
 
-    if ((config.modelProvider === 'bedrock' || config.modelProvider === 'open_ai') && isPreviewEnabled()) {
+    if (config.modelProvider === 'bedrock' || config.modelProvider === 'open_ai') {
       steps.push('api-format');
     }
 
@@ -349,15 +349,13 @@ export function useAddHarnessWizard() {
       // apiBase / additionalParams only apply to lite_llm — clear them when switching away.
       ...(modelProvider !== 'lite_llm' && { apiBase: undefined, additionalParams: undefined }),
     }));
-    // bedrock and open_ai both have a preview-gated api-format step that sits before api-key-arn
+    // bedrock and open_ai both have an api-format step that sits before api-key-arn
     // in allSteps — route through it for BOTH (open_ai previously jumped straight to api-key-arn,
     // making api-format forward-unreachable and leaving a false ✓ on the skipped step).
-    if ((modelProvider === 'bedrock' || modelProvider === 'open_ai') && isPreviewEnabled()) {
+    if (modelProvider === 'bedrock' || modelProvider === 'open_ai') {
       setStep('api-format');
-    } else if (modelProvider !== 'bedrock') {
-      setStep('api-key-arn');
     } else {
-      setStep('container');
+      setStep('api-key-arn');
     }
   }, []);
 

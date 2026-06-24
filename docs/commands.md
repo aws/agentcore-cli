@@ -1385,21 +1385,26 @@ agentcore dataset remove-version 2 --name MyDataset
 
 ### fetch access
 
-Fetch access info (URL, token, auth guidance) for a deployed gateway or agent.
+Fetch access info (URL, token, auth guidance) for a deployed gateway, agent, or harness.
 
 ```bash
 agentcore fetch access
 agentcore fetch access --name MyGateway --type gateway --json
 agentcore fetch access --name MyAgent --type agent --target staging
+agentcore fetch access --name MyHarness --type harness --json
 ```
 
-| Flag                     | Description                                   |
-| ------------------------ | --------------------------------------------- |
-| `--name <name>`          | Gateway or agent name                         |
-| `--type <type>`          | Resource type: `gateway` (default) or `agent` |
-| `--target <name>`        | Deployment target                             |
-| `--identity-name <name>` | Identity credential name for token fetch      |
-| `--json`                 | JSON output                                   |
+| Flag                     | Description                                               |
+| ------------------------ | --------------------------------------------------------- |
+| `--name <name>`          | Gateway, agent, or harness name                           |
+| `--type <type>`          | Resource type: `gateway` (default), `agent`, or `harness` |
+| `--target <name>`        | Deployment target                                         |
+| `--identity-name <name>` | Identity credential name for token fetch                  |
+| `--json`                 | JSON output                                               |
+
+For an `agent` or `harness` configured with a `CUSTOM_JWT` authorizer, this mints an OAuth bearer token via the
+resource's managed OAuth credential (override the credential with `--identity-name`). A resource using `AWS_IAM` auth
+has no token to fetch — use AWS SigV4 signing to invoke it.
 
 ### package
 

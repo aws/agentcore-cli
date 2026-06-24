@@ -1,9 +1,15 @@
-import { fetchGatewayToken, listAgents, listGateways } from '../../../../operations/fetch-access';
+import {
+  fetchGatewayToken,
+  fetchHarnessToken,
+  listAgents,
+  listGateways,
+  listHarnesses,
+} from '../../../../operations/fetch-access';
 import { useFetchAccessFlow } from '../useFetchAccessFlow';
 import { Text } from 'ink';
 import { render } from 'ink-testing-library';
 import React, { act, useImperativeHandle } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -12,13 +18,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../../../operations/fetch-access', () => ({
   listGateways: vi.fn(),
   listAgents: vi.fn(),
+  listHarnesses: vi.fn(),
   fetchGatewayToken: vi.fn(),
   fetchRuntimeToken: vi.fn(),
+  fetchHarnessToken: vi.fn(),
 }));
 
 const mockListGateways = vi.mocked(listGateways);
 const mockListAgents = vi.mocked(listAgents);
+const mockListHarnesses = vi.mocked(listHarnesses);
 const mockFetchGatewayToken = vi.mocked(fetchGatewayToken);
+const mockFetchHarnessToken = vi.mocked(fetchHarnessToken);
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -106,6 +116,10 @@ ImperativeHarness.displayName = 'ImperativeHarness';
 // ---------------------------------------------------------------------------
 
 afterEach(() => vi.clearAllMocks());
+
+// Default the harness lister to empty so existing gateway/agent cases are unaffected;
+// the harness-specific tests override it.
+beforeEach(() => mockListHarnesses.mockResolvedValue([]));
 
 describe('useFetchAccessFlow', () => {
   describe('initial loading state', () => {
@@ -268,6 +282,51 @@ describe('useFetchAccessFlow', () => {
       await delay();
 
       expect(lastFrame()).toContain('phase:error');
+    });
+  });
+
+  describe('harness resources', () => {
+    it('fetches a CUSTOM_JWT token for a single deployed harness', async () => {
+      mockListGateways.mockResolvedValue([]);
+      mockListAgents.mockResolvedValue([]);
+      mockListHarnesses.mockResolvedValue([{ name: 'MyHarness', authType: 'CUSTOM_JWT' }]);
+      mockFetchHarnessToken.mockResolvedValue({ token: 'harness-token', expiresIn: 3600 });
+      const ref = React.createRef<HarnessHandle>();
+      const { lastFrame } = render(<ImperativeHarness ref={ref} />);
+
+      await delay();
+
+      expect(mockFetchHarnessToken).toHaveBeenCalledWith('MyHarness');
+      expect(lastFrame()).toContain('phase:result');
+      expect(ref.current!.getResult()?.authType).toBe('CUSTOM_JWT');
+      expect(ref.current!.getResult()?.token).toBe('harness-token');
+    });
+
+    it('shows the AWS_IAM guidance message for an AWS_IAM harness without fetching a token', async () => {
+      mockListGateways.mockResolvedValue([]);
+      mockListAgents.mockResolvedValue([]);
+      mockListHarnesses.mockResolvedValue([{ name: 'IamHarness', authType: 'AWS_IAM' }]);
+      const ref = React.createRef<HarnessHandle>();
+      const { lastFrame } = render(<ImperativeHarness ref={ref} />);
+
+      await delay();
+
+      expect(mockFetchHarnessToken).not.toHaveBeenCalled();
+      expect(lastFrame()).toContain('phase:result');
+      expect(ref.current!.getResult()?.authType).toBe('AWS_IAM');
+      expect(ref.current!.getResult()?.message).toContain('harness');
+    });
+
+    it('includes harnesses alongside gateways and agents in the picker', async () => {
+      mockListGateways.mockResolvedValue([{ name: 'gw-jwt', authType: 'CUSTOM_JWT' as const }]);
+      mockListAgents.mockResolvedValue([{ name: 'agent-one', authType: 'AWS_IAM' as const }]);
+      mockListHarnesses.mockResolvedValue([{ name: 'MyHarness', authType: 'CUSTOM_JWT' }]);
+      const { lastFrame } = render(<PhaseHarness />);
+
+      await delay();
+
+      expect(lastFrame()).toContain('phase:picking');
+      expect(lastFrame()).toContain('resourceCount:3');
     });
   });
 });

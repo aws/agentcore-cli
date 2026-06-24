@@ -36,19 +36,19 @@ describe('assertEnvFileExists', () => {
     vi.clearAllMocks();
   });
 
-  it('returns null when no credentials exist (file missing is fine)', () => {
+  it('returns ok when no credentials exist (file missing is fine)', () => {
     mockExistsSync.mockReturnValue(false);
     const result = assertEnvFileExists(makeSpec(), BASE_DIR);
-    expect(result).toBeNull();
+    expect(result.success).toBe(true);
   });
 
-  it('returns null when file exists', () => {
+  it('returns ok when file exists', () => {
     mockExistsSync.mockReturnValue(true);
     const spec = makeSpec({
       credentials: [{ name: 'mykey', authorizerType: 'ApiKeyCredentialProvider' } as any],
     });
     const result = assertEnvFileExists(spec, BASE_DIR);
-    expect(result).toBeNull();
+    expect(result.success).toBe(true);
   });
 
   it('lists ApiKey env vars when file is missing', () => {
@@ -57,8 +57,11 @@ describe('assertEnvFileExists', () => {
       credentials: [{ name: 'openai', authorizerType: 'ApiKeyCredentialProvider' } as any],
     });
     const result = assertEnvFileExists(spec, BASE_DIR);
-    expect(result).toContain('agentcore/.env.local not found');
-    expect(result).toContain('AGENTCORE_CREDENTIAL_OPENAI');
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toContain('agentcore/.env.local not found');
+      expect(result.error.message).toContain('AGENTCORE_CREDENTIAL_OPENAI');
+    }
   });
 
   it('lists OAuth2 env vars when file is missing', () => {
@@ -67,8 +70,11 @@ describe('assertEnvFileExists', () => {
       credentials: [{ name: 'google-oauth', authorizerType: 'OAuthCredentialProvider' } as any],
     });
     const result = assertEnvFileExists(spec, BASE_DIR);
-    expect(result).toContain('AGENTCORE_CREDENTIAL_GOOGLE_OAUTH_CLIENT_ID');
-    expect(result).toContain('AGENTCORE_CREDENTIAL_GOOGLE_OAUTH_CLIENT_SECRET');
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toContain('AGENTCORE_CREDENTIAL_GOOGLE_OAUTH_CLIENT_ID');
+      expect(result.error.message).toContain('AGENTCORE_CREDENTIAL_GOOGLE_OAUTH_CLIENT_SECRET');
+    }
   });
 
   it('lists CoinbaseCDP payment env vars when file is missing', () => {
@@ -83,9 +89,12 @@ describe('assertEnvFileExists', () => {
       ],
     });
     const result = assertEnvFileExists(spec, BASE_DIR);
-    expect(result).toContain('AGENTCORE_CREDENTIAL_PAYMGR_CDPCONN_CDP_API_KEY_ID');
-    expect(result).toContain('AGENTCORE_CREDENTIAL_PAYMGR_CDPCONN_CDP_API_KEY_SECRET');
-    expect(result).toContain('AGENTCORE_CREDENTIAL_PAYMGR_CDPCONN_CDP_WALLET_SECRET');
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toContain('AGENTCORE_CREDENTIAL_PAYMGR_CDPCONN_CDP_API_KEY_ID');
+      expect(result.error.message).toContain('AGENTCORE_CREDENTIAL_PAYMGR_CDPCONN_CDP_API_KEY_SECRET');
+      expect(result.error.message).toContain('AGENTCORE_CREDENTIAL_PAYMGR_CDPCONN_CDP_WALLET_SECRET');
+    }
   });
 
   it('lists StripePrivy payment env vars when file is missing', () => {
@@ -102,10 +111,13 @@ describe('assertEnvFileExists', () => {
       ],
     });
     const result = assertEnvFileExists(spec, BASE_DIR);
-    expect(result).toContain('APP_ID');
-    expect(result).toContain('APP_SECRET');
-    expect(result).toContain('AUTHORIZATION_PRIVATE_KEY');
-    expect(result).toContain('AUTHORIZATION_ID');
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toContain('APP_ID');
+      expect(result.error.message).toContain('APP_SECRET');
+      expect(result.error.message).toContain('AUTHORIZATION_PRIVATE_KEY');
+      expect(result.error.message).toContain('AUTHORIZATION_ID');
+    }
   });
 
   it('combines all credential types in a single error', () => {
@@ -124,9 +136,12 @@ describe('assertEnvFileExists', () => {
       ],
     });
     const result = assertEnvFileExists(spec, BASE_DIR);
-    expect(result).toContain('AGENTCORE_CREDENTIAL_OPENAI');
-    expect(result).toContain('AGENTCORE_CREDENTIAL_GOOGLE_CLIENT_ID');
-    expect(result).toContain('AGENTCORE_CREDENTIAL_PAYMGR_CDPCONN_CDP_API_KEY_ID');
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toContain('AGENTCORE_CREDENTIAL_OPENAI');
+      expect(result.error.message).toContain('AGENTCORE_CREDENTIAL_GOOGLE_CLIENT_ID');
+      expect(result.error.message).toContain('AGENTCORE_CREDENTIAL_PAYMGR_CDPCONN_CDP_API_KEY_ID');
+    }
   });
 });
 

@@ -18,7 +18,6 @@ import {
 import { invokeHarness } from '../../aws/agentcore-harness';
 import { dnsSuffix } from '../../aws/partition';
 import { ANSI } from '../../constants';
-import { isPreviewEnabled } from '../../feature-flags';
 import { InvokeLogger } from '../../logging';
 import { formatMcpToolList } from '../../operations/dev/utils';
 import { canFetchHarnessToken, fetchHarnessToken } from '../../operations/fetch-access';
@@ -239,51 +238,49 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     };
   }
 
-  // Preview: route to harness before runtime resolution
-  if (isPreviewEnabled()) {
-    const harnessEntries = project.harnesses ?? [];
-    const isHarnessInvoke = options.harnessName != null || (harnessEntries.length > 0 && project.runtimes.length === 0);
+  // Route to harness before runtime resolution
+  const harnessEntries = project.harnesses ?? [];
+  const isHarnessInvoke = options.harnessName != null || (harnessEntries.length > 0 && project.runtimes.length === 0);
 
-    if (isHarnessInvoke) {
-      const targetNames = Object.keys(deployedState.targets);
-      if (targetNames.length === 0) {
-        return {
-          success: false,
-          error: new ResourceNotFoundError('No deployed targets found. Run `agentcore deploy` first.'),
-        };
-      }
-      const selectedTarget = options.targetName ?? targetNames[0]!;
-      if (options.targetName && !targetNames.includes(options.targetName)) {
-        return {
-          success: false,
-          error: new ResourceNotFoundError(
-            `Target '${options.targetName}' not found. Available: ${targetNames.join(', ')}`
-          ),
-        };
-      }
-      const harnessTargetState = deployedState.targets[selectedTarget];
-      const harnessTargetConfig = awsTargets.find(t => t.name === selectedTarget);
-      if (!harnessTargetConfig) {
-        return {
-          success: false,
-          error: new ResourceNotFoundError(`Target config '${selectedTarget}' not found in aws-targets`),
-        };
-      }
-      return handleHarnessInvoke(project, harnessTargetState, harnessTargetConfig, selectedTarget, options);
-    }
-
-    if (harnessEntries.length > 0 && project.runtimes.length > 0 && !options.agentName) {
-      const runtimeNames = project.runtimes.map(a => a.name);
-      const harnessNames = harnessEntries.map(h => h.name);
+  if (isHarnessInvoke) {
+    const targetNames = Object.keys(deployedState.targets);
+    if (targetNames.length === 0) {
       return {
         success: false,
-        error: new ValidationError(
-          `Project has both runtimes and harnesses. Specify one:\n` +
-            `  --runtime: ${runtimeNames.join(', ')}\n` +
-            `  --harness: ${harnessNames.join(', ')}`
+        error: new ResourceNotFoundError('No deployed targets found. Run `agentcore deploy` first.'),
+      };
+    }
+    const selectedTarget = options.targetName ?? targetNames[0]!;
+    if (options.targetName && !targetNames.includes(options.targetName)) {
+      return {
+        success: false,
+        error: new ResourceNotFoundError(
+          `Target '${options.targetName}' not found. Available: ${targetNames.join(', ')}`
         ),
       };
     }
+    const harnessTargetState = deployedState.targets[selectedTarget];
+    const harnessTargetConfig = awsTargets.find(t => t.name === selectedTarget);
+    if (!harnessTargetConfig) {
+      return {
+        success: false,
+        error: new ResourceNotFoundError(`Target config '${selectedTarget}' not found in aws-targets`),
+      };
+    }
+    return handleHarnessInvoke(project, harnessTargetState, harnessTargetConfig, selectedTarget, options);
+  }
+
+  if (harnessEntries.length > 0 && project.runtimes.length > 0 && !options.agentName) {
+    const runtimeNames = project.runtimes.map(a => a.name);
+    const harnessNames = harnessEntries.map(h => h.name);
+    return {
+      success: false,
+      error: new ValidationError(
+        `Project has both runtimes and harnesses. Specify one:\n` +
+          `  --runtime: ${runtimeNames.join(', ')}\n` +
+          `  --harness: ${harnessNames.join(', ')}`
+      ),
+    };
   }
 
   const resolved = await resolveInvokeTarget({

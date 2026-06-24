@@ -1,5 +1,5 @@
 import {
-  ConnectionError,
+  DevServerConnectionError,
   NoProjectError,
   ResourceNotFoundError,
   ValidationError,
@@ -10,8 +10,8 @@ import { failureResult } from '../../../lib/result.js';
 import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { detectContainerRuntime } from '../../external-requirements';
-import { isPreviewEnabled } from '../../feature-flags';
 import { ExecLogger } from '../../logging';
+import { isDeploySkippable } from '../../operations/deploy/change-detection';
 import {
   callMcpTool,
   createDevServer,
@@ -65,7 +65,7 @@ async function invokeDevServer(
     }
   } catch (err) {
     throw isConnectionRefused(err)
-      ? new ConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
+      ? new DevServerConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
           cause: err,
         })
       : err;
@@ -80,7 +80,7 @@ async function invokeA2ADevServer(port: number, prompt: string, headers?: Record
     process.stdout.write('\n');
   } catch (err) {
     throw isConnectionRefused(err)
-      ? new ConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
+      ? new DevServerConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
           cause: err,
         })
       : err;
@@ -89,8 +89,8 @@ async function invokeA2ADevServer(port: number, prompt: string, headers?: Record
 
 function isConnectionRefused(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
-  // ConnectionError from invoke.ts wraps fetch failures after retries
-  if (err.name === 'ConnectionError') return true;
+  // DevServerConnectionError from invoke.ts wraps fetch failures after retries
+  if (err.name === 'DevServerConnectionError') return true;
   const msg = err.message + (err.cause instanceof Error ? err.cause.message : '');
   return msg.includes('ECONNREFUSED') || msg.includes('fetch failed');
 }
@@ -138,7 +138,7 @@ async function handleMcpInvoke(
     }
   } catch (err) {
     throw isConnectionRefused(err)
-      ? new ConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
+      ? new DevServerConnectionError(`Dev server not running on port ${port}. Start it with: agentcore dev --logs`, {
           cause: err,
         })
       : err;
@@ -322,7 +322,7 @@ export const registerDev = (program: Command) => {
             }
 
             const hasRuntimes = project.runtimes && project.runtimes.length > 0;
-            const hasHarnesses = isPreviewEnabled() && project.harnesses && project.harnesses.length > 0;
+            const hasHarnesses = project.harnesses && project.harnesses.length > 0;
 
             if (!hasRuntimes && !hasHarnesses) {
               throw new ValidationError(
@@ -359,8 +359,8 @@ export const registerDev = (program: Command) => {
 
             // --logs: non-interactive server mode
             if (opts.logs) {
-              // Preview: harness-only projects need deploy then print invoke instructions
-              if (isPreviewEnabled() && supportedAgents.length === 0 && hasHarnesses) {
+              // Harness-only projects need deploy then print invoke instructions
+              if (supportedAgents.length === 0 && hasHarnesses) {
                 recorder.set({ agent_environment: 'harness' as const });
                 if (!opts.skipDeploy) {
                   await runCliDeploy();
@@ -407,8 +407,8 @@ export const registerDev = (program: Command) => {
                 );
               }
 
-              // Deploy resources before starting dev server (preview mode with harnesses)
-              if (isPreviewEnabled() && !opts.skipDeploy && hasHarnesses) {
+              // Deploy resources before starting dev server (harness projects)
+              if (!opts.skipDeploy && hasHarnesses) {
                 await runCliDeploy();
               }
 
@@ -509,8 +509,18 @@ export const registerDev = (program: Command) => {
               };
             }
 
-            // Preview: show TUI deploy progress, then launch Agent Inspector in the browser
-            if (isPreviewEnabled()) {
+            // Browser mode: check if deploy is needed BEFORE entering the TUI.
+            // This avoids an alt-screen flash when there's nothing to deploy.
+            // The TUI (launchTuiDevScreenWithPicker) is only used to show deploy progress.
+            const isHarnessOnly = hasHarnesses && supportedAgents.length === 0;
+            let needsTuiDeploy = false;
+
+            if (isHarnessOnly && !opts.skipDeploy) {
+              needsTuiDeploy = !(await isDeploySkippable());
+            }
+
+            if (needsTuiDeploy) {
+              // Deploy is needed — show TUI deploy progress, then launch browser
               const pickerResult = await launchTuiDevScreenWithPicker(workingDir, {
                 skipDeploy: opts.skipDeploy,
               });
@@ -533,7 +543,7 @@ export const registerDev = (program: Command) => {
               return { success: true as const, blockingPromise: Promise.resolve() };
             }
 
-            // Default: browser mode (blocks forever)
+            // No deploy needed — skip TUI entirely, go straight to browser
             recorder.set({ ui_mode: 'browser' as const });
             return {
               success: true as const,

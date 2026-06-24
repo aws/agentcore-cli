@@ -26,7 +26,6 @@ import { invokeHarness } from '../../../aws/agentcore-harness';
 import { computeInvokeAttrs } from '../../../commands/invoke/utils';
 import { ANSI } from '../../../constants';
 import { getErrorMessage } from '../../../errors';
-import { isPreviewEnabled } from '../../../feature-flags';
 import { InvokeLogger } from '../../../logging';
 import { formatMcpToolList } from '../../../operations/dev/utils';
 import {
@@ -75,7 +74,7 @@ export interface InvokeFlowOptions {
   initialBearerToken?: string;
   /** Show [session resumed] hint on load — true only when remounting after a PTY detour. */
   isResume?: boolean;
-  /** Pre-select a harness by name, skipping the agent selection screen (preview) */
+  /** Pre-select a harness by name, skipping the agent selection screen */
   initialHarnessName?: string;
   /** Payment instrument ID (wallet) forwarded on every invocation when payments are used */
   initialPaymentInstrumentId?: string;
@@ -177,7 +176,6 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
       const result = await withCommandRunTelemetry(
         'invoke',
         computeInvokeAttrs({
-          preview: isPreviewEnabled(),
           harnessName: initialHarnessName,
           harnessCount: project?.harnesses?.length ?? 0,
           runtimeCount: project?.runtimes?.length ?? 0,
@@ -245,19 +243,17 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
           }
 
           const harnesses: InvokeConfig['harnesses'] = [];
-          if (isPreviewEnabled()) {
-            for (const harness of project.harnesses ?? []) {
-              const state = targetState?.resources?.harnesses?.[harness.name];
-              if (!state) continue;
-              let authorizerType: RuntimeAuthorizerType | undefined;
-              try {
-                const spec = await configIO.readHarnessSpec(harness.name);
-                authorizerType = spec.authorizerType;
-              } catch {
-                // spec read is best-effort
-              }
-              harnesses.push({ name: harness.name, state, authorizerType });
+          for (const harness of project.harnesses ?? []) {
+            const state = targetState?.resources?.harnesses?.[harness.name];
+            if (!state) continue;
+            let authorizerType: RuntimeAuthorizerType | undefined;
+            try {
+              const spec = await configIO.readHarnessSpec(harness.name);
+              authorizerType = spec.authorizerType;
+            } catch {
+              // spec read is best-effort
             }
+            harnesses.push({ name: harness.name, state, authorizerType });
           }
 
           if (runtimes.length === 0 && harnesses.length === 0) {
@@ -552,7 +548,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
     async (prompt: string) => {
       if (!config || phase === 'invoking') return;
 
-      const isHarness = isPreviewEnabled() && selectedAgent >= config.runtimes.length;
+      const isHarness = selectedAgent >= config.runtimes.length;
       const agent = config.runtimes[selectedAgent];
       if (!agent && !isHarness) return;
 
@@ -572,7 +568,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
 
       const logger = loggerRef.current;
 
-      // Harness invoke (preview)
+      // Harness invoke
       if (isHarness) {
         const harnessIdx = selectedAgent - config.runtimes.length;
         const harness = config.harnesses[harnessIdx];
@@ -863,7 +859,7 @@ export function useInvokeFlow(options: InvokeFlowOptions = {}): InvokeFlowState 
     async (command: string) => {
       if (!config || phase === 'invoking') return;
 
-      const isHarnessExec = isPreviewEnabled() && selectedAgent >= config.runtimes.length;
+      const isHarnessExec = selectedAgent >= config.runtimes.length;
       const agent = isHarnessExec ? undefined : config.runtimes[selectedAgent];
       if (!agent && !isHarnessExec) return;
 

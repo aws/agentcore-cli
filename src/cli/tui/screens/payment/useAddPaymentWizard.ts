@@ -1,4 +1,5 @@
 import type { PaymentAuthorizerType, PaymentProvider } from '../../../../schema';
+import { stripWalletAuthPrefix } from '../../../primitives/payment-validation';
 import type {
   AddPaymentConnectorConfig,
   AddPaymentConnectorStep,
@@ -286,9 +287,7 @@ export function useAddPaymentConnectorWizard(preSelectedManager?: string) {
   const setAuthorizationPrivateKey = useCallback(
     (authorizationPrivateKey: string) => {
       // AWS docs ship the key with a `wallet-auth:` prefix — strip it transparently.
-      const cleaned = authorizationPrivateKey.startsWith('wallet-auth:')
-        ? authorizationPrivateKey.slice('wallet-auth:'.length)
-        : authorizationPrivateKey;
+      const cleaned = stripWalletAuthPrefix(authorizationPrivateKey);
       setConfig(c => ({ ...c, authorizationPrivateKey: cleaned }));
       advanceFrom('authorization-private-key');
     },

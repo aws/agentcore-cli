@@ -27,6 +27,7 @@ import {
   buildRecommendationConfig,
   extractAccountIdFromArn,
   extractFailureDetails,
+  resolveBundleVersionId,
   resolveComponentKeyForJsonPath,
   resolveEvaluatorId,
 } from './build-config';
@@ -141,6 +142,7 @@ export const recommendationHandler: RecommendationHandler = {
 
       // Resolve config-bundle ARN + short JSONPath (from deployed state / agentcore.json)
       let bundleArn: string | undefined;
+      let resolvedBundleVersion = opts.bundleVersion;
       let resolvedSystemPromptJsonPath = opts.systemPromptJsonPath;
       if (opts.inputSource === 'config-bundle' && opts.bundleName) {
         if (opts.bundleName.startsWith('arn:')) {
@@ -160,6 +162,22 @@ export const recommendationHandler: RecommendationHandler = {
             logger?.finalize(false);
             return { success: false, error: err };
           }
+        }
+
+        // Expand '--bundle-version LATEST' to the deployed versionId. The recommendation API only
+        // accepts a concrete version UUID, so passing 'LATEST' through verbatim yields a 400. (The
+        // ab-test path resolves LATEST the same way; this mirrors it.)
+        if (resolvedBundleVersion === 'LATEST' && bundleArn) {
+          const versionId = resolveBundleVersionId(bundleArn, resolvedBundleVersion, deployedState);
+          if (!versionId) {
+            const err = new ResourceNotFoundError(
+              `Could not resolve version "LATEST" for config bundle "${opts.bundleName}". ` +
+                'Run `agentcore deploy` first, or pass an explicit version UUID.'
+            );
+            logger?.finalize(false);
+            return { success: false, error: err };
+          }
+          resolvedBundleVersion = versionId;
         }
 
         if (resolvedSystemPromptJsonPath && !resolvedSystemPromptJsonPath.startsWith('$')) {
@@ -186,7 +204,7 @@ export const recommendationHandler: RecommendationHandler = {
         type: opts.type,
         inlineContent,
         bundleArn,
-        bundleVersion: opts.bundleVersion,
+        bundleVersion: resolvedBundleVersion,
         systemPromptJsonPath: resolvedSystemPromptJsonPath,
         toolDescJsonPaths: opts.toolDescJsonPaths,
         inputSource: opts.inputSource,
@@ -242,7 +260,7 @@ export const recommendationHandler: RecommendationHandler = {
         inputSource: opts.inputSource,
         bundleName: opts.bundleName,
         bundleArn,
-        bundleVersion: opts.bundleVersion,
+        bundleVersion: resolvedBundleVersion,
         systemPromptJsonPath: resolvedSystemPromptJsonPath,
         toolDescJsonPaths: opts.toolDescJsonPaths,
         ...(opts.kmsKeyArn ? { kmsKeyArn: opts.kmsKeyArn } : {}),

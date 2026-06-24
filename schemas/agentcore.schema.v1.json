@@ -186,7 +186,9 @@
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "minLength": 1
+                      "minLength": 1,
+                      "maxLength": 255,
+                      "pattern": "^[\\x21\\x23-\\x5B\\x5D-\\x7E]+$"
                     }
                   },
                   "customClaims": {
@@ -241,6 +243,160 @@
                         }
                       },
                       "required": ["inboundTokenClaimName", "inboundTokenClaimValueType", "authorizingClaimMatchValue"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "privateEndpoint": {
+                    "type": "object",
+                    "properties": {
+                      "selfManagedLatticeResource": {
+                        "type": "object",
+                        "properties": {
+                          "resourceConfigurationIdentifier": {
+                            "type": "string",
+                            "minLength": 20,
+                            "maxLength": 2048,
+                            "pattern": "^((rcfg-[0-9a-z]{17})|(arn:[a-z0-9-]+:vpc-lattice:[a-zA-Z0-9-]+:\\d{12}:resourceconfiguration\\/rcfg-[0-9a-z]{17}))$"
+                          }
+                        },
+                        "required": ["resourceConfigurationIdentifier"],
+                        "additionalProperties": false
+                      },
+                      "managedVpcResource": {
+                        "type": "object",
+                        "properties": {
+                          "vpcIdentifier": {
+                            "type": "string",
+                            "pattern": "^vpc-(([0-9a-z]{8})|([0-9a-z]{17}))$"
+                          },
+                          "subnetIds": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^subnet-[0-9a-zA-Z]{8,17}$"
+                            }
+                          },
+                          "endpointIpAddressType": {
+                            "type": "string",
+                            "enum": ["IPV4", "IPV6"]
+                          },
+                          "securityGroupIds": {
+                            "maxItems": 5,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^sg-(([0-9a-z]{8})|([0-9a-z]{17}))$"
+                            }
+                          },
+                          "tags": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128,
+                              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+                            },
+                            "additionalProperties": {
+                              "type": "string",
+                              "maxLength": 256,
+                              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+                            }
+                          },
+                          "routingDomain": {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 255
+                          }
+                        },
+                        "required": ["vpcIdentifier", "subnetIds", "endpointIpAddressType"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "privateEndpointOverrides": {
+                    "maxItems": 5,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "domain": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 253
+                        },
+                        "privateEndpoint": {
+                          "type": "object",
+                          "properties": {
+                            "selfManagedLatticeResource": {
+                              "type": "object",
+                              "properties": {
+                                "resourceConfigurationIdentifier": {
+                                  "type": "string",
+                                  "minLength": 20,
+                                  "maxLength": 2048,
+                                  "pattern": "^((rcfg-[0-9a-z]{17})|(arn:[a-z0-9-]+:vpc-lattice:[a-zA-Z0-9-]+:\\d{12}:resourceconfiguration\\/rcfg-[0-9a-z]{17}))$"
+                                }
+                              },
+                              "required": ["resourceConfigurationIdentifier"],
+                              "additionalProperties": false
+                            },
+                            "managedVpcResource": {
+                              "type": "object",
+                              "properties": {
+                                "vpcIdentifier": {
+                                  "type": "string",
+                                  "pattern": "^vpc-(([0-9a-z]{8})|([0-9a-z]{17}))$"
+                                },
+                                "subnetIds": {
+                                  "minItems": 1,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "pattern": "^subnet-[0-9a-zA-Z]{8,17}$"
+                                  }
+                                },
+                                "endpointIpAddressType": {
+                                  "type": "string",
+                                  "enum": ["IPV4", "IPV6"]
+                                },
+                                "securityGroupIds": {
+                                  "maxItems": 5,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "pattern": "^sg-(([0-9a-z]{8})|([0-9a-z]{17}))$"
+                                  }
+                                },
+                                "tags": {
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128,
+                                    "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+                                  },
+                                  "additionalProperties": {
+                                    "type": "string",
+                                    "maxLength": 256,
+                                    "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+                                  }
+                                },
+                                "routingDomain": {
+                                  "type": "string",
+                                  "minLength": 3,
+                                  "maxLength": 255
+                                }
+                              },
+                              "required": ["vpcIdentifier", "subnetIds", "endpointIpAddressType"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": ["domain", "privateEndpoint"],
                       "additionalProperties": false
                     }
                   }
@@ -545,6 +701,74 @@
         "additionalProperties": false
       }
     },
+    "knowledgeBases": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "default": "AgentCoreKnowledgeBase",
+            "type": "string",
+            "const": "AgentCoreKnowledgeBase"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 48,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,47}$"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2048
+          },
+          "dataSources": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "S3"
+                    },
+                    "uri": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": ["type", "uri"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": ["WEB", "CONFLUENCE", "SHAREPOINT", "ONEDRIVE", "GOOGLEDRIVE"]
+                    },
+                    "connectorConfigFile": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": ["type", "connectorConfigFile"],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "gateway": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["name", "dataSources"],
+        "additionalProperties": false
+      }
+    },
     "credentials": {
       "default": [],
       "type": "array",
@@ -806,13 +1030,52 @@
             "type": "string",
             "minLength": 1
           },
-          "evaluators": {
+          "logGroupNames": {
+            "minItems": 1,
+            "maxItems": 5,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "serviceNames": {
             "minItems": 1,
             "type": "array",
             "items": {
               "type": "string",
               "minLength": 1
             }
+          },
+          "evaluators": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "insights": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "clusteringConfig": {
+            "type": "object",
+            "properties": {
+              "frequencies": {
+                "minItems": 1,
+                "maxItems": 3,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["DAILY", "WEEKLY", "MONTHLY"]
+                }
+              }
+            },
+            "required": ["frequencies"],
+            "additionalProperties": false
           },
           "samplingRate": {
             "type": "number",
@@ -841,7 +1104,7 @@
             }
           }
         },
-        "required": ["name", "agent", "evaluators", "samplingRate"],
+        "required": ["name", "samplingRate"],
         "additionalProperties": false
       }
     },
@@ -863,6 +1126,10 @@
             "maxLength": 100,
             "pattern": "^[0-9a-zA-Z](?:[0-9a-zA-Z-]*[0-9a-zA-Z])?$"
           },
+          "protocolType": {
+            "type": "string",
+            "enum": ["MCP", "None"]
+          },
           "description": {
             "type": "string"
           },
@@ -877,7 +1144,18 @@
                 },
                 "targetType": {
                   "type": "string",
-                  "enum": ["lambda", "mcpServer", "openApiSchema", "smithyModel", "apiGateway", "lambdaFunctionArn"]
+                  "enum": [
+                    "lambda",
+                    "mcpServer",
+                    "openApiSchema",
+                    "smithyModel",
+                    "apiGateway",
+                    "lambdaFunctionArn",
+                    "httpRuntime",
+                    "connector",
+                    "passthrough",
+                    "webSearch"
+                  ]
                 },
                 "toolDefinitions": {
                   "type": "array",
@@ -1076,7 +1354,7 @@
                     "type": {
                       "default": "NONE",
                       "type": "string",
-                      "enum": ["OAUTH", "API_KEY", "NONE"]
+                      "enum": ["OAUTH", "API_KEY", "NONE", "GATEWAY_IAM_ROLE", "JWT_PASSTHROUGH"]
                     },
                     "credentialName": {
                       "type": "string",
@@ -1087,6 +1365,16 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "service": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "region": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
                     }
                   },
                   "additionalProperties": false
@@ -1220,6 +1508,83 @@
                   },
                   "required": ["lambdaArn", "toolSchemaFile"],
                   "additionalProperties": false
+                },
+                "httpRuntime": {
+                  "type": "object",
+                  "properties": {
+                    "runtime": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "runtimeEndpoint": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": ["runtime"],
+                  "additionalProperties": false
+                },
+                "connectorId": {
+                  "type": "string",
+                  "enum": ["bedrock-knowledge-bases", "bedrock-agentic-retrieve"]
+                },
+                "knowledgeBaseId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 48,
+                  "pattern": "^[a-zA-Z0-9_-]+$"
+                },
+                "knowledgeBaseIds": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48,
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  }
+                },
+                "passthrough": {
+                  "type": "object",
+                  "properties": {
+                    "endpoint": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^https:\\/\\/[a-zA-Z0-9\\-.]+(:[0-9]{1,5})?(\\/.*)?$"
+                    },
+                    "protocolType": {
+                      "default": "CUSTOM",
+                      "type": "string",
+                      "enum": ["MCP", "A2A", "INFERENCE", "CUSTOM"]
+                    },
+                    "stickinessConfiguration": {
+                      "type": "object",
+                      "properties": {
+                        "identifier": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        },
+                        "timeout": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 86400
+                        }
+                      },
+                      "required": ["identifier"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["endpoint"],
+                  "additionalProperties": false
+                },
+                "excludeDomains": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
                 }
               },
               "required": ["name", "targetType"],
@@ -1259,7 +1624,9 @@
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "minLength": 1
+                      "minLength": 1,
+                      "maxLength": 255,
+                      "pattern": "^[\\x21\\x23-\\x5B\\x5D-\\x7E]+$"
                     }
                   },
                   "customClaims": {
@@ -1314,6 +1681,160 @@
                         }
                       },
                       "required": ["inboundTokenClaimName", "inboundTokenClaimValueType", "authorizingClaimMatchValue"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "privateEndpoint": {
+                    "type": "object",
+                    "properties": {
+                      "selfManagedLatticeResource": {
+                        "type": "object",
+                        "properties": {
+                          "resourceConfigurationIdentifier": {
+                            "type": "string",
+                            "minLength": 20,
+                            "maxLength": 2048,
+                            "pattern": "^((rcfg-[0-9a-z]{17})|(arn:[a-z0-9-]+:vpc-lattice:[a-zA-Z0-9-]+:\\d{12}:resourceconfiguration\\/rcfg-[0-9a-z]{17}))$"
+                          }
+                        },
+                        "required": ["resourceConfigurationIdentifier"],
+                        "additionalProperties": false
+                      },
+                      "managedVpcResource": {
+                        "type": "object",
+                        "properties": {
+                          "vpcIdentifier": {
+                            "type": "string",
+                            "pattern": "^vpc-(([0-9a-z]{8})|([0-9a-z]{17}))$"
+                          },
+                          "subnetIds": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^subnet-[0-9a-zA-Z]{8,17}$"
+                            }
+                          },
+                          "endpointIpAddressType": {
+                            "type": "string",
+                            "enum": ["IPV4", "IPV6"]
+                          },
+                          "securityGroupIds": {
+                            "maxItems": 5,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^sg-(([0-9a-z]{8})|([0-9a-z]{17}))$"
+                            }
+                          },
+                          "tags": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128,
+                              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+                            },
+                            "additionalProperties": {
+                              "type": "string",
+                              "maxLength": 256,
+                              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+                            }
+                          },
+                          "routingDomain": {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 255
+                          }
+                        },
+                        "required": ["vpcIdentifier", "subnetIds", "endpointIpAddressType"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "privateEndpointOverrides": {
+                    "maxItems": 5,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "domain": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 253
+                        },
+                        "privateEndpoint": {
+                          "type": "object",
+                          "properties": {
+                            "selfManagedLatticeResource": {
+                              "type": "object",
+                              "properties": {
+                                "resourceConfigurationIdentifier": {
+                                  "type": "string",
+                                  "minLength": 20,
+                                  "maxLength": 2048,
+                                  "pattern": "^((rcfg-[0-9a-z]{17})|(arn:[a-z0-9-]+:vpc-lattice:[a-zA-Z0-9-]+:\\d{12}:resourceconfiguration\\/rcfg-[0-9a-z]{17}))$"
+                                }
+                              },
+                              "required": ["resourceConfigurationIdentifier"],
+                              "additionalProperties": false
+                            },
+                            "managedVpcResource": {
+                              "type": "object",
+                              "properties": {
+                                "vpcIdentifier": {
+                                  "type": "string",
+                                  "pattern": "^vpc-(([0-9a-z]{8})|([0-9a-z]{17}))$"
+                                },
+                                "subnetIds": {
+                                  "minItems": 1,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "pattern": "^subnet-[0-9a-zA-Z]{8,17}$"
+                                  }
+                                },
+                                "endpointIpAddressType": {
+                                  "type": "string",
+                                  "enum": ["IPV4", "IPV6"]
+                                },
+                                "securityGroupIds": {
+                                  "maxItems": 5,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "pattern": "^sg-(([0-9a-z]{8})|([0-9a-z]{17}))$"
+                                  }
+                                },
+                                "tags": {
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128,
+                                    "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+                                  },
+                                  "additionalProperties": {
+                                    "type": "string",
+                                    "maxLength": 256,
+                                    "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+                                  }
+                                },
+                                "routingDomain": {
+                                  "type": "string",
+                                  "minLength": 3,
+                                  "maxLength": 255
+                                }
+                              },
+                              "required": ["vpcIdentifier", "subnetIds", "endpointIpAddressType"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": ["domain", "privateEndpoint"],
                       "additionalProperties": false
                     }
                   }
@@ -1535,7 +2056,18 @@
           },
           "targetType": {
             "type": "string",
-            "enum": ["lambda", "mcpServer", "openApiSchema", "smithyModel", "apiGateway", "lambdaFunctionArn"]
+            "enum": [
+              "lambda",
+              "mcpServer",
+              "openApiSchema",
+              "smithyModel",
+              "apiGateway",
+              "lambdaFunctionArn",
+              "httpRuntime",
+              "connector",
+              "passthrough",
+              "webSearch"
+            ]
           },
           "toolDefinitions": {
             "type": "array",
@@ -1734,7 +2266,7 @@
               "type": {
                 "default": "NONE",
                 "type": "string",
-                "enum": ["OAUTH", "API_KEY", "NONE"]
+                "enum": ["OAUTH", "API_KEY", "NONE", "GATEWAY_IAM_ROLE", "JWT_PASSTHROUGH"]
               },
               "credentialName": {
                 "type": "string",
@@ -1745,6 +2277,16 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "service": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "region": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32
               }
             },
             "additionalProperties": false
@@ -1878,6 +2420,83 @@
             },
             "required": ["lambdaArn", "toolSchemaFile"],
             "additionalProperties": false
+          },
+          "httpRuntime": {
+            "type": "object",
+            "properties": {
+              "runtime": {
+                "type": "string",
+                "minLength": 1
+              },
+              "runtimeEndpoint": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": ["runtime"],
+            "additionalProperties": false
+          },
+          "connectorId": {
+            "type": "string",
+            "enum": ["bedrock-knowledge-bases", "bedrock-agentic-retrieve"]
+          },
+          "knowledgeBaseId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 48,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "knowledgeBaseIds": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 48,
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            }
+          },
+          "passthrough": {
+            "type": "object",
+            "properties": {
+              "endpoint": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^https:\\/\\/[a-zA-Z0-9\\-.]+(:[0-9]{1,5})?(\\/.*)?$"
+              },
+              "protocolType": {
+                "default": "CUSTOM",
+                "type": "string",
+                "enum": ["MCP", "A2A", "INFERENCE", "CUSTOM"]
+              },
+              "stickinessConfiguration": {
+                "type": "object",
+                "properties": {
+                  "identifier": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "timeout": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 86400
+                  }
+                },
+                "required": ["identifier"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["endpoint"],
+            "additionalProperties": false
+          },
+          "excludeDomains": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
         "required": ["name", "targetType"],
@@ -1946,6 +2565,16 @@
                   "default": "FAIL_ON_ANY_FINDINGS",
                   "type": "string",
                   "enum": ["FAIL_ON_ANY_FINDINGS", "IGNORE_ALL_FINDINGS"]
+                },
+                "enforcementMode": {
+                  "default": "ACTIVE",
+                  "type": "string",
+                  "enum": ["ACTIVE", "LOG_ONLY"]
+                },
+                "authorizationPhase": {
+                  "default": "INITIATE",
+                  "type": "string",
+                  "enum": ["INITIATE", "RETURN_OUTPUT"]
                 }
               },
               "required": ["name", "statement"],
@@ -2172,29 +2801,6 @@
             "required": ["targetPaths"],
             "additionalProperties": false
           },
-          "trafficAllocationConfig": {
-            "type": "object",
-            "properties": {
-              "routeOnHeader": {
-                "type": "object",
-                "properties": {
-                  "headerName": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                },
-                "required": ["headerName"],
-                "additionalProperties": false
-              }
-            },
-            "required": ["routeOnHeader"],
-            "additionalProperties": false
-          },
-          "maxDurationDays": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 90
-          },
           "enableOnCreate": {
             "type": "boolean"
           },
@@ -2203,59 +2809,6 @@
           }
         },
         "required": ["name", "gatewayRef", "variants", "evaluationConfig"],
-        "additionalProperties": false
-      }
-    },
-    "httpGateways": {
-      "default": [],
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "pattern": "^[a-zA-Z][a-zA-Z0-9-]*$"
-          },
-          "description": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200
-          },
-          "runtimeRef": {
-            "type": "string",
-            "minLength": 1
-          },
-          "roleArn": {
-            "type": "string",
-            "minLength": 1
-          },
-          "targets": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 100
-                },
-                "runtimeRef": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "qualifier": {
-                  "default": "DEFAULT",
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "required": ["name", "runtimeRef"],
-              "additionalProperties": false
-            }
-          }
-        },
-        "required": ["name", "runtimeRef"],
         "additionalProperties": false
       }
     },
@@ -2268,8 +2821,8 @@
           "name": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 48,
-            "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+            "maxLength": 40,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,39}$"
           },
           "path": {
             "type": "string",
@@ -2325,6 +2878,11 @@
         "required": ["name", "schemaType", "config"],
         "additionalProperties": false
       }
+    },
+    "httpGateways": {
+      "maxItems": 0,
+      "type": "array",
+      "items": {}
     },
     "payments": {
       "type": "array",

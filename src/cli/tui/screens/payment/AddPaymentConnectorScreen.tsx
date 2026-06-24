@@ -1,5 +1,10 @@
 import type { PaymentProvider } from '../../../../schema';
 import { PaymentConnectorNameSchema } from '../../../../schema';
+import {
+  validateApiKeySecret,
+  validateAuthorizationPrivateKey,
+  validateWalletSecret,
+} from '../../../primitives/payment-validation';
 import { ConfirmReview, Panel, Screen, SecretInput, StepIndicator, TextInput, WizardSelect } from '../../components';
 import type { SelectableItem } from '../../components';
 import { HELP_TEXT } from '../../constants';
@@ -149,7 +154,7 @@ export function AddPaymentConnectorScreen({
             prompt="CDP API Key Secret"
             onSubmit={wizard.setApiKeySecret}
             onCancel={goBackOrExit}
-            customValidation={value => value.trim().length > 0 || 'API Key Secret is required'}
+            customValidation={validateApiKeySecret}
             revealChars={4}
           />
         )}
@@ -160,7 +165,7 @@ export function AddPaymentConnectorScreen({
             prompt="CDP Wallet Secret"
             onSubmit={wizard.setWalletSecret}
             onCancel={goBackOrExit}
-            customValidation={value => value.trim().length > 0 || 'Wallet Secret is required'}
+            customValidation={validateWalletSecret}
             revealChars={4}
           />
         )}
@@ -193,7 +198,7 @@ export function AddPaymentConnectorScreen({
             prompt="Authorization Private Key (ECDSA P-256)"
             onSubmit={wizard.setAuthorizationPrivateKey}
             onCancel={goBackOrExit}
-            customValidation={value => value.trim().length > 0 || 'Authorization Private Key is required'}
+            customValidation={validateAuthorizationPrivateKey}
             revealChars={4}
           />
         )}

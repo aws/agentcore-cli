@@ -12,7 +12,7 @@ export type PolicySourceMethod = 'file' | 'inline' | 'generate' | 'form';
 
 export type GuardrailCategoryType = 'contentFilter' | 'promptAttack' | 'sensitiveInformation';
 
-export const CONTENT_FILTER_FILTERS = ['VIOLENCE', 'HATE', 'SEXUAL', 'MISCONDUCT', 'INSULT'] as const;
+export const CONTENT_FILTER_FILTERS = ['VIOLENCE', 'HATE', 'SEXUAL', 'MISCONDUCT', 'INSULTS'] as const;
 export type ContentFilterCategory = (typeof CONTENT_FILTER_FILTERS)[number];
 
 export const PROMPT_ATTACK_FILTERS = ['JAILBREAK', 'PROMPT_INJECTION', 'PROMPT_LEAKAGE'] as const;
@@ -80,6 +80,25 @@ export const GUARDRAIL_CATEGORY_OPTIONS: {
     filters: SENSITIVE_INFO_FILTERS,
   },
 ];
+
+/**
+ * Valid filters per guardrail category. Single source of truth for both the TUI options
+ * and client-side validation of the non-interactive `--form-filters` flag.
+ */
+export const FILTERS_BY_CATEGORY: Record<GuardrailCategoryType, readonly string[]> = {
+  contentFilter: CONTENT_FILTER_FILTERS,
+  promptAttack: PROMPT_ATTACK_FILTERS,
+  sensitiveInformation: SENSITIVE_INFO_FILTERS,
+};
+
+/**
+ * Returns the filter values that are not valid for the given category.
+ * An empty array means every supplied filter is valid.
+ */
+export function invalidFiltersForCategory(category: GuardrailCategoryType, filters: string[]): string[] {
+  const allowed = FILTERS_BY_CATEGORY[category];
+  return filters.filter(f => !allowed.includes(f));
+}
 
 export type PolicyEffect = 'permit' | 'forbid' | 'suppressOutput';
 

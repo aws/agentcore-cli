@@ -1,6 +1,6 @@
 {
   "name": "@aws/agentcore",
-  "version": "0.19.0",
+  "version": "0.20.2",
   "description": "CLI for Amazon Bedrock AgentCore",
   "license": "Apache-2.0",
   "repository": {
@@ -51,7 +51,6 @@
     "build:lib": "tsc -p tsconfig.build.json",
     "build:cli": "node esbuild.config.mjs",
     "build:assets": "node scripts/copy-assets.mjs",
-    "build:preview": "BUILD_PREVIEW=1 node esbuild.config.mjs",
     "build:harness": "BUILD_HARNESS=1 node esbuild.config.mjs",
     "cli": "npx tsx src/cli/index.ts",
     "typecheck": "tsc --noEmit --incremental",
@@ -93,7 +92,7 @@
     "@aws-sdk/client-xray": "^3.1003.0",
     "@aws-sdk/credential-providers": "^3.893.0",
     "@aws-sdk/region-config-resolver": "^3.972.13",
-    "@aws/agent-inspector": "0.6.0",
+    "@aws/agent-inspector": "0.6.1",
     "@commander-js/extra-typings": "^14.0.0",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.215.0",

@@ -42,6 +42,13 @@ vi.mock('../../../../lib', () => ({
     }
   },
   readEnvFile: mockReadEnvFile,
+  toError: (e: unknown) => (e instanceof Error ? e : new Error(String(e))),
+  MissingCredentialsError: class MissingCredentialsError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'MissingCredentialsError';
+    }
+  },
 }));
 
 vi.mock('fs', () => ({
@@ -218,9 +225,9 @@ describe('setupPaymentCredentialProviders', () => {
 
     expect(result.hasErrors).toBe(true);
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toContain('Missing CDP credentials');
-    expect(result.errors[0]).toContain('AGENTCORE_CREDENTIAL_MY_CDP_CRED_API_KEY_SECRET');
-    expect(result.errors[0]).toContain('AGENTCORE_CREDENTIAL_MY_CDP_CRED_WALLET_SECRET');
+    expect(result.errors[0]?.message).toContain('Missing CDP credentials');
+    expect(result.errors[0]?.message).toContain('AGENTCORE_CREDENTIAL_MY_CDP_CRED_API_KEY_SECRET');
+    expect(result.errors[0]?.message).toContain('AGENTCORE_CREDENTIAL_MY_CDP_CRED_WALLET_SECRET');
     expect(mockCreatePaymentCredentialProvider).not.toHaveBeenCalled();
   });
 
@@ -240,10 +247,10 @@ describe('setupPaymentCredentialProviders', () => {
 
     expect(result.hasErrors).toBe(true);
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toContain('Missing StripePrivy credentials');
-    expect(result.errors[0]).toContain('AGENTCORE_CREDENTIAL_MY_STRIPE_CRED_APP_SECRET');
-    expect(result.errors[0]).toContain('AGENTCORE_CREDENTIAL_MY_STRIPE_CRED_AUTHORIZATION_PRIVATE_KEY');
-    expect(result.errors[0]).toContain('AGENTCORE_CREDENTIAL_MY_STRIPE_CRED_AUTHORIZATION_ID');
+    expect(result.errors[0]?.message).toContain('Missing StripePrivy credentials');
+    expect(result.errors[0]?.message).toContain('AGENTCORE_CREDENTIAL_MY_STRIPE_CRED_APP_SECRET');
+    expect(result.errors[0]?.message).toContain('AGENTCORE_CREDENTIAL_MY_STRIPE_CRED_AUTHORIZATION_PRIVATE_KEY');
+    expect(result.errors[0]?.message).toContain('AGENTCORE_CREDENTIAL_MY_STRIPE_CRED_AUTHORIZATION_ID');
     expect(mockCreatePaymentCredentialProvider).not.toHaveBeenCalled();
   });
 

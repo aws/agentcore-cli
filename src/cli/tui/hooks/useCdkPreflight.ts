@@ -81,7 +81,7 @@ async function runPaymentPreDeploy(opts: RunPaymentSetupOptions): Promise<boolea
   });
 
   if (paymentResult.hasErrors) {
-    const errorMsg = paymentResult.errors.join('; ');
+    const errorMsg = paymentResult.errors.map(e => e.message).join('; ');
     logger.endStep('error', errorMsg);
     updateStepByLabel(LABEL_PAYMENTS, { status: 'error', error: `Payment setup failed: ${errorMsg}` });
     setPhase('error');
@@ -800,9 +800,9 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
             } else if (result.status === 'exists') {
               logger.log(`API key provider exists: ${result.providerName}`);
             } else if (result.status === 'skipped') {
-              logger.log(`Skipped ${result.providerName}: ${result.error}`);
+              logger.log(`Skipped ${result.providerName}: ${result.error?.message}`);
             } else if (result.status === 'error') {
-              logger.log(`Error for ${result.providerName}: ${result.error}`);
+              logger.log(`Error for ${result.providerName}: ${result.error?.message}`);
             }
           }
 
@@ -843,9 +843,9 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
             } else if (result.status === 'updated') {
               logger.log(`Updated OAuth provider: ${result.providerName}`);
             } else if (result.status === 'skipped') {
-              logger.log(`Skipped ${result.providerName}: ${result.error}`);
+              logger.log(`Skipped ${result.providerName}: ${result.error?.message}`);
             } else if (result.status === 'error') {
-              logger.log(`Error for ${result.providerName}: ${result.error}`);
+              logger.log(`Error for ${result.providerName}: ${result.error?.message}`);
             }
           }
 

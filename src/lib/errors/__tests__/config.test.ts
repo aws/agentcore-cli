@@ -1,5 +1,5 @@
 import {
-  ConfigError,
+  BaseError,
   ConfigNotFoundError,
   ConfigParseError,
   ConfigReadError,
@@ -21,9 +21,9 @@ describe('ConfigNotFoundError', () => {
     expect(err.fileType).toBe('targets');
   });
 
-  it('is instance of ConfigError and Error', () => {
+  it('is instance of BaseError and Error', () => {
     const err = new ConfigNotFoundError('/path', 'project');
-    expect(err).toBeInstanceOf(ConfigError);
+    expect(err).toBeInstanceOf(BaseError);
     expect(err).toBeInstanceOf(Error);
   });
 
@@ -83,14 +83,14 @@ describe('ConfigParseError', () => {
 });
 
 describe('ConfigValidationError', () => {
-  it('stores zodError and is instance of ConfigError', () => {
+  it('stores zodError and is instance of BaseError', () => {
     const schema = z.object({ name: z.string() });
     const result = schema.safeParse({ name: 123 });
     expect(result.success).toBe(false);
     if (!result.success) {
       const err = new ConfigValidationError('/path', 'project', result.error);
       expect(err.zodError).toBe(result.error);
-      expect(err).toBeInstanceOf(ConfigError);
+      expect(err).toBeInstanceOf(BaseError);
       expect(err).toBeInstanceOf(Error);
     }
   });

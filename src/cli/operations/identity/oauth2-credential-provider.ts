@@ -5,6 +5,8 @@
  * as CDK constructs. These operations run as a pre-deploy step outside the
  * main CDK synthesis/deploy path.
  */
+import { type Result, ServiceError, toError } from '@/lib';
+import { err, ok } from '@/lib/result';
 import {
   BedrockAgentCoreControlClient,
   CreateOauth2CredentialProviderCommand,
@@ -14,11 +16,11 @@ import {
   UpdateOauth2CredentialProviderCommand,
 } from '@aws-sdk/client-bedrock-agentcore-control';
 
-export interface OAuth2ProviderResult {
+export type OAuth2ProviderResult = Result<{
   credentialProviderArn: string;
   clientSecretArn?: string;
   callbackUrl?: string;
-}
+}>;
 
 export interface OAuth2ProviderParams {
   name: string;
@@ -36,13 +38,13 @@ function extractResult(response: {
   credentialProviderArn?: string;
   clientSecretArn?: { secretArn?: string };
   callbackUrl?: string;
-}): OAuth2ProviderResult | undefined {
-  if (!response.credentialProviderArn) return undefined;
-  return {
+}): OAuth2ProviderResult {
+  if (!response.credentialProviderArn) return err(new ServiceError('missing credentialProviderArn in response'));
+  return ok({
     credentialProviderArn: response.credentialProviderArn,
     clientSecretArn: response.clientSecretArn?.secretArn,
     callbackUrl: response.callbackUrl,
-  };
+  });
 }
 
 /**
@@ -93,19 +95,16 @@ function buildOAuth2Config(params: OAuth2ProviderParams) {
 export async function createOAuth2Provider(
   client: BedrockAgentCoreControlClient,
   params: OAuth2ProviderParams
-): Promise<{ success: boolean; result?: OAuth2ProviderResult; error?: string }> {
+): Promise<OAuth2ProviderResult> {
   try {
     const response = await client.send(new CreateOauth2CredentialProviderCommand(buildOAuth2Config(params)));
     let result = extractResult(response);
-    if (!result) {
+    if (!result.success) {
       // Create response may not include credentialProviderArn — fetch it
       const getResult = await getOAuth2Provider(client, params.name);
-      result = getResult.result;
+      result = getResult;
     }
-    if (!result) {
-      return { success: false, error: 'No credential provider ARN in response' };
-    }
-    return { success: true, result };
+    return result;
   } catch (error) {
     const errorName = (error as { name?: string }).name;
     if (errorName === 'ConflictException' || errorName === 'ResourceAlreadyExistsException') {
@@ -113,10 +112,7 @@ export async function createOAuth2Provider(
       // create call. Fall back to update so the user's credentials are always applied.
       return updateOAuth2Provider(client, params);
     }
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
+    return err(toError(error));
   }
 }
 
@@ -126,19 +122,12 @@ export async function createOAuth2Provider(
 export async function getOAuth2Provider(
   client: BedrockAgentCoreControlClient,
   name: string
-): Promise<{ success: boolean; result?: OAuth2ProviderResult; error?: string }> {
+): Promise<OAuth2ProviderResult> {
   try {
     const response = await client.send(new GetOauth2CredentialProviderCommand({ name }));
-    const result = extractResult(response);
-    if (!result) {
-      return { success: false, error: 'No credential provider ARN in response' };
-    }
-    return { success: true, result };
+    return extractResult(response);
   } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
+    return err(toError(error));
   }
 }
 
@@ -148,22 +137,16 @@ export async function getOAuth2Provider(
 export async function updateOAuth2Provider(
   client: BedrockAgentCoreControlClient,
   params: OAuth2ProviderParams
-): Promise<{ success: boolean; result?: OAuth2ProviderResult; error?: string }> {
+): Promise<OAuth2ProviderResult> {
   try {
     const response = await client.send(new UpdateOauth2CredentialProviderCommand(buildOAuth2Config(params)));
     let result = extractResult(response);
-    if (!result) {
+    if (!result.success) {
       const getResult = await getOAuth2Provider(client, params.name);
-      result = getResult.result;
+      result = getResult;
     }
-    if (!result) {
-      return { success: false, error: 'No credential provider ARN in response' };
-    }
-    return { success: true, result };
+    return result;
   } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
+    return err(toError(error));
   }
 }

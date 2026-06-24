@@ -19,7 +19,6 @@ import {
 } from '../../../cloudformation';
 import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs } from '../../../commands/deploy/utils.js';
 import { getErrorMessage, isChangesetInProgressError, isExpiredTokenError } from '../../../errors';
-import { isPreviewEnabled } from '../../../feature-flags';
 import { ExecLogger } from '../../../logging';
 import {
   MANAGED_MEMORY_DEPLOY_NOTICE,
@@ -449,11 +448,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     const existingState = await configIO.readDeployedState().catch(() => undefined);
 
     // Parse harness outputs (harnesses are now part of the CloudFormation stack).
-    // Preview-gated to match the synth path: with preview off, bin/cdk.ts emits no harness
-    // resource/outputs, so skip parsing entirely (see toolkit-lib/wrapper.ts + bin/cdk.ts).
-    const harnessNames = isPreviewEnabled()
-      ? (ctx.projectSpec.harnesses ?? []).map((h: { name: string }) => h.name)
-      : [];
+    const harnessNames = (ctx.projectSpec.harnesses ?? []).map((h: { name: string }) => h.name);
     const deployedHarnesses = parseHarnessOutputs(outputs, harnessNames);
 
     let deployedState = buildDeployedState({
@@ -661,6 +656,10 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
         logger.endStep('error', message);
         setOnlineEvalStep(prev => ({ ...prev, status: 'error', error: message }));
       }
+    } else if (onlineEvalFullSpecs.length > 0) {
+      // Step is rendered whenever onlineEvalConfigs is non-empty, but only runs for newly
+      // deployed configs. With nothing new to enable, mark it terminal so the deploy completes.
+      setOnlineEvalStep(prev => ({ ...prev, status: 'success' }));
     }
 
     // Config bundles are now managed via CloudFormation; their state is parsed

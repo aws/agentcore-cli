@@ -1,4 +1,12 @@
-import { SecureCredentials, readEnvFile } from '../../../lib';
+import {
+  AwsCredentialsError,
+  MissingCredentialsError,
+  SecureCredentials,
+  ServiceQuotaError,
+  ValidationError,
+  readEnvFile,
+  toError,
+} from '../../../lib';
 import type { AgentCoreProjectSpec, Credential } from '../../../schema';
 import { getCredentialProvider } from '../../aws';
 import {
@@ -23,6 +31,7 @@ import {
   updateApiKeyProvider,
   updateOAuth2Provider,
 } from '../identity';
+import { type Result, err, ok } from '@/lib/result';
 import { BedrockAgentCoreControlClient, GetTokenVaultCommand } from '@aws-sdk/client-bedrock-agentcore-control';
 import { CreateKeyCommand, KMSClient } from '@aws-sdk/client-kms';
 import { existsSync } from 'fs';
@@ -36,7 +45,7 @@ export interface ApiKeyProviderSetupResult {
   providerName: string;
   status: 'created' | 'updated' | 'exists' | 'skipped' | 'error';
   credentialProviderArn?: string;
-  error?: string;
+  error?: Error;
 }
 
 export interface PreDeployIdentityResult {
@@ -86,7 +95,7 @@ export async function setupApiKeyProviders(options: SetupApiKeyProvidersOptions)
           {
             providerName: 'TokenVault',
             status: 'error',
-            error: `Failed to configure KMS: ${kmsResult.error}`,
+            error: kmsResult.error,
           },
         ],
         hasErrors: true,
@@ -117,7 +126,7 @@ async function setupTokenVaultKms(
   region: string,
   credentials: ReturnType<typeof getCredentialProvider>,
   projectSpec: AgentCoreProjectSpec
-): Promise<{ success: boolean; keyArn?: string; error?: string }> {
+): Promise<Result<{ keyArn?: string }>> {
   try {
     const controlClient = new BedrockAgentCoreControlClient({ region, credentials });
 
@@ -128,7 +137,7 @@ async function setupTokenVaultKms(
         vaultResponse.kmsConfiguration?.keyType === 'CustomerManagedKey' &&
         vaultResponse.kmsConfiguration.kmsKeyArn
       ) {
-        return { success: true, keyArn: vaultResponse.kmsConfiguration.kmsKeyArn };
+        return ok({ keyArn: vaultResponse.kmsConfiguration.kmsKeyArn });
       }
     } catch {
       // Vault may not exist yet or access denied — fall through to create key
@@ -144,17 +153,14 @@ async function setupTokenVaultKms(
     );
     const keyArn = response.KeyMetadata?.Arn;
     if (!keyArn) {
-      return { success: false, error: 'Failed to create KMS key' };
+      return err(new Error('Failed to create KMS key'));
     }
 
     const result = await setTokenVaultKmsKey(controlClient, keyArn);
-    if (!result.success) {
-      return { success: false, error: result.error };
-    }
-
-    return { success: true, keyArn };
+    if (!result.success) return result;
+    return ok({ keyArn });
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return err(toError(error));
   }
 }
 
@@ -170,7 +176,7 @@ async function setupApiKeyCredentialProvider(
     return {
       providerName: credential.name,
       status: 'skipped',
-      error: `No ${envVarName} found in agentcore/.env.local`,
+      error: new Error(`No ${envVarName} found in agentcore/.env.local`),
     };
   }
 
@@ -182,8 +188,8 @@ async function setupApiKeyCredentialProvider(
       return {
         providerName: credential.name,
         status: updateResult.success ? 'updated' : 'error',
-        credentialProviderArn: updateResult.credentialProviderArn,
-        error: updateResult.error,
+        credentialProviderArn: updateResult.success ? updateResult.credentialProviderArn : undefined,
+        error: updateResult.success ? undefined : updateResult.error,
       };
     }
 
@@ -191,22 +197,25 @@ async function setupApiKeyCredentialProvider(
     return {
       providerName: credential.name,
       status: createResult.success ? 'created' : 'error',
-      credentialProviderArn: createResult.credentialProviderArn,
-      error: createResult.error,
+      credentialProviderArn: createResult.success ? createResult.credentialProviderArn : undefined,
+      error: createResult.success ? undefined : createResult.error,
     };
   } catch (error) {
     // Provide clearer error message for AWS credentials issues
-    let errorMessage: string;
     if (isNoCredentialsError(error)) {
-      errorMessage = `AWS credentials not found. ${await getAwsLoginGuidance()}`;
-    } else {
-      errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        providerName: credential.name,
+        status: 'error',
+        error: new AwsCredentialsError(`AWS credentials not found. ${await getAwsLoginGuidance()}`, undefined, {
+          cause: error,
+        }),
+      };
     }
 
     return {
       providerName: credential.name,
       status: 'error',
-      error: errorMessage,
+      error: toError(error),
     };
   }
 }
@@ -302,15 +311,19 @@ export function getAllCredentials(projectSpec: AgentCoreProjectSpec): MissingCre
  * so the user can populate the file in one shot rather than discovering missing vars
  * one at a time across separate setup steps.
  */
-export function assertEnvFileExists(projectSpec: AgentCoreProjectSpec, configBaseDir: string): string | null {
+export function assertEnvFileExists(projectSpec: AgentCoreProjectSpec, configBaseDir: string): Result {
   const allCredentials = getAllCredentials(projectSpec);
-  if (allCredentials.length === 0) return null;
+  if (allCredentials.length === 0) return ok();
 
   const envFilePath = join(configBaseDir, '.env.local');
-  if (existsSync(envFilePath)) return null;
+  if (existsSync(envFilePath)) return ok();
 
   const varList = allCredentials.map(c => `  ${c.envVarName}`).join('\n');
-  return `agentcore/.env.local not found. Credentials require environment variables.\n\nRequired variables:\n${varList}\n\nTo fix: create agentcore/.env.local with the variables above, or re-run the relevant 'agentcore add' command to enter credentials interactively.`;
+  return err(
+    new MissingCredentialsError(
+      `agentcore/.env.local not found. Credentials require environment variables.\n\nRequired variables:\n${varList}\n\nTo fix: create agentcore/.env.local with the variables above, or re-run the relevant 'agentcore add' command to enter credentials interactively.`
+    )
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -320,7 +333,7 @@ export function assertEnvFileExists(projectSpec: AgentCoreProjectSpec, configBas
 export interface OAuth2ProviderSetupResult {
   providerName: string;
   status: 'created' | 'updated' | 'skipped' | 'error';
-  error?: string;
+  error?: Error;
   credentialProviderArn?: string;
   clientSecretArn?: string;
   callbackUrl?: string;
@@ -379,7 +392,7 @@ async function setupSingleOAuth2Provider(
   credentials: SecureCredentials
 ): Promise<OAuth2ProviderSetupResult> {
   if (credential.authorizerType !== 'OAuthCredentialProvider') {
-    return { providerName: credential.name, status: 'error', error: 'Invalid credential type' };
+    return { providerName: credential.name, status: 'error', error: new ValidationError('Invalid credential type') };
   }
 
   const nameKey = credential.name.toUpperCase().replace(/-/g, '_');
@@ -393,7 +406,7 @@ async function setupSingleOAuth2Provider(
     return {
       providerName: credential.name,
       status: 'skipped',
-      error: `Missing ${clientIdEnvVar} or ${clientSecretEnvVar} in agentcore/.env.local`,
+      error: new MissingCredentialsError(`Missing ${clientIdEnvVar} or ${clientSecretEnvVar} in agentcore/.env.local`),
     };
   }
 
@@ -403,7 +416,9 @@ async function setupSingleOAuth2Provider(
     return {
       providerName: credential.name,
       status: 'skipped',
-      error: `No discoveryUrl configured for "${credential.name}". Provider already exists in Identity service — credentials in .env.local will be ignored.`,
+      error: new MissingCredentialsError(
+        `No discoveryUrl configured for "${credential.name}". Provider already exists in Identity service — credentials in .env.local will be ignored.`
+      ),
     };
   }
 
@@ -423,10 +438,10 @@ async function setupSingleOAuth2Provider(
       return {
         providerName: credential.name,
         status: updateResult.success ? 'updated' : 'error',
-        error: updateResult.error,
-        credentialProviderArn: updateResult.result?.credentialProviderArn,
-        clientSecretArn: updateResult.result?.clientSecretArn,
-        callbackUrl: updateResult.result?.callbackUrl,
+        error: updateResult.success ? undefined : updateResult.error,
+        credentialProviderArn: updateResult.success ? updateResult.credentialProviderArn : undefined,
+        clientSecretArn: updateResult.success ? updateResult.clientSecretArn : undefined,
+        callbackUrl: updateResult.success ? updateResult.callbackUrl : undefined,
       };
     }
 
@@ -434,19 +449,23 @@ async function setupSingleOAuth2Provider(
     return {
       providerName: credential.name,
       status: createResult.success ? 'created' : 'error',
-      error: createResult.error,
-      credentialProviderArn: createResult.result?.credentialProviderArn,
-      clientSecretArn: createResult.result?.clientSecretArn,
-      callbackUrl: createResult.result?.callbackUrl,
+      error: createResult.success ? undefined : createResult.error,
+      credentialProviderArn: createResult.success ? createResult.credentialProviderArn : undefined,
+      clientSecretArn: createResult.success ? createResult.clientSecretArn : undefined,
+      callbackUrl: createResult.success ? createResult.callbackUrl : undefined,
     };
-  } catch (error) {
-    let errorMessage: string;
+  } catch (e) {
+    const error = toError(e);
     if (isNoCredentialsError(error)) {
-      errorMessage = 'AWS credentials not found. Run `aws sso login` or set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY.';
-    } else {
-      errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        providerName: credential.name,
+        status: 'error',
+        error: new AwsCredentialsError(`AWS crdentials not found. ${await getAwsLoginGuidance()}`, undefined, {
+          cause: error,
+        }),
+      };
     }
-    return { providerName: credential.name, status: 'error', error: errorMessage };
+    return { providerName: credential.name, status: 'error', error: error };
   }
 }
 
@@ -462,7 +481,7 @@ export interface PaymentCredentialProviderResult {
 export interface PaymentCredentialProvidersResult {
   credentialProviders: Record<string, PaymentCredentialProviderResult>;
   hasErrors: boolean;
-  errors: string[];
+  errors: Error[];
 }
 
 export interface SetupPaymentCredentialProvidersOptions {
@@ -508,7 +527,9 @@ export async function setupPaymentCredentialProviders(
         if (!credential) {
           result.hasErrors = true;
           result.errors.push(
-            `Payment manager "${payment.name}" connector "${connector.name}" references credential "${credentialName}" which is not a PaymentCredentialProvider`
+            new ValidationError(
+              `Payment manager "${payment.name}" connector "${connector.name}" references credential "${credentialName}" which is not a PaymentCredentialProvider`
+            )
           );
           continue;
         }
@@ -524,17 +545,24 @@ export async function setupPaymentCredentialProviders(
           credentialProviderArn,
           credentialProviderName: credentialName,
         };
-      } catch (error) {
-        let errorMessage: string;
-        if (isNoCredentialsError(error)) {
-          errorMessage = `AWS credentials not found. ${await getAwsLoginGuidance()}`;
-        } else if (isQuotaExceededError(error)) {
-          errorMessage = `Service quota exceeded. Delete unused credential providers, or request a limit increase via the AWS Service Quotas console.`;
-        } else {
-          errorMessage = error instanceof Error ? error.message : String(error);
-        }
+      } catch (e) {
         result.hasErrors = true;
-        result.errors.push(`Credential provider for "${connector.name}": ${errorMessage}`);
+        const error = toError(e);
+        if (isNoCredentialsError(error)) {
+          result.errors.push(
+            new AwsCredentialsError(`AWS credentials not found. ${await getAwsLoginGuidance()}`, undefined, {
+              cause: error,
+            })
+          );
+        } else if (isQuotaExceededError(error)) {
+          result.errors.push(
+            new ServiceQuotaError(
+              `Service quota exceeded. Delete unused credential providers, or request a limit increase via the AWS Service Quotas console.`
+            )
+          );
+        } else {
+          result.errors.push(error);
+        }
       }
     }
   }
@@ -598,7 +626,7 @@ async function createOrUpdatePaymentCredentialProvider(
         !authorizationPrivateKey && envVarNames.authorizationPrivateKey,
         !authorizationId && envVarNames.authorizationId,
       ].filter(Boolean);
-      throw new Error(
+      throw new MissingCredentialsError(
         `Missing StripePrivy credentials for connector "${connector.name}" in agentcore/.env.local: ${missing.join(', ')}`
       );
     }
@@ -624,7 +652,7 @@ async function createOrUpdatePaymentCredentialProvider(
         !apiKeySecret && envVarNames.apiKeySecret,
         !walletSecret && envVarNames.walletSecret,
       ].filter(Boolean);
-      throw new Error(
+      throw new MissingCredentialsError(
         `Missing CDP credentials for connector "${connector.name}" in agentcore/.env.local: ${missing.join(', ')}`
       );
     }

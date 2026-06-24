@@ -65,28 +65,51 @@ describe('apiKeyProviderExists', () => {
 describe('createApiKeyProvider', () => {
   afterEach(() => vi.clearAllMocks());
 
-  it('returns success on creation', async () => {
-    mockSend.mockResolvedValue({});
+  it('returns success with credentialProviderArn', async () => {
+    mockSend.mockResolvedValueOnce({}); // create
+    mockSend.mockResolvedValueOnce({ credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:provider/prov' }); // get
 
     const result = await createApiKeyProvider(makeMockClient(), 'prov', 'key123');
 
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({
+      success: true,
+      credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:provider/prov',
+    });
   });
 
-  it('returns success on ConflictException (idempotent)', async () => {
+  it('returns success on ConflictException with ARN from get', async () => {
     const err = new Error('conflict');
     Object.defineProperty(err, 'name', { value: 'ConflictException' });
-    mockSend.mockRejectedValue(err);
+    mockSend.mockRejectedValueOnce(err);
+    mockSend.mockResolvedValueOnce({ credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:provider/prov' }); // get
 
     const result = await createApiKeyProvider(makeMockClient(), 'prov', 'key123');
 
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({
+      success: true,
+      credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:provider/prov',
+    });
   });
 
-  it('returns success on ResourceAlreadyExistsException', async () => {
+  it('returns success on ResourceAlreadyExistsException with ARN from get', async () => {
     const err = new Error('exists');
     Object.defineProperty(err, 'name', { value: 'ResourceAlreadyExistsException' });
-    mockSend.mockRejectedValue(err);
+    mockSend.mockRejectedValueOnce(err);
+    mockSend.mockResolvedValueOnce({ credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:provider/prov' }); // get
+
+    const result = await createApiKeyProvider(makeMockClient(), 'prov', 'key123');
+
+    expect(result).toEqual({
+      success: true,
+      credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:provider/prov',
+    });
+  });
+
+  it('returns success without ARN when conflict get fails', async () => {
+    const conflictErr = new Error('conflict');
+    Object.defineProperty(conflictErr, 'name', { value: 'ConflictException' });
+    mockSend.mockRejectedValueOnce(conflictErr);
+    mockSend.mockRejectedValueOnce(new Error('get failed')); // get fails
 
     const result = await createApiKeyProvider(makeMockClient(), 'prov', 'key123');
 
@@ -99,17 +122,23 @@ describe('createApiKeyProvider', () => {
     const result = await createApiKeyProvider(makeMockClient(), 'prov', 'key123');
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe('unexpected');
+    expect((result as { success: false; error: Error }).error.message).toBe('unexpected');
   });
 });
 
 describe('updateApiKeyProvider', () => {
   afterEach(() => vi.clearAllMocks());
 
-  it('returns success on update', async () => {
-    mockSend.mockResolvedValue({});
+  it('returns success with credentialProviderArn', async () => {
+    mockSend.mockResolvedValueOnce({}); // update
+    mockSend.mockResolvedValueOnce({ credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:provider/prov' }); // get
 
-    expect(await updateApiKeyProvider(makeMockClient(), 'prov', 'newkey')).toEqual({ success: true });
+    const result = await updateApiKeyProvider(makeMockClient(), 'prov', 'newkey');
+
+    expect(result).toEqual({
+      success: true,
+      credentialProviderArn: 'arn:aws:bedrock:us-east-1:123:provider/prov',
+    });
   });
 
   it('returns failure on error', async () => {
@@ -118,7 +147,7 @@ describe('updateApiKeyProvider', () => {
     const result = await updateApiKeyProvider(makeMockClient(), 'prov', 'newkey');
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe('update fail');
+    expect((result as { success: false; error: Error }).error.message).toBe('update fail');
   });
 });
 
@@ -137,6 +166,6 @@ describe('setTokenVaultKmsKey', () => {
     const result = await setTokenVaultKmsKey(makeMockClient(), 'arn:aws:kms:key');
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe('kms fail');
+    expect((result as { success: false; error: Error }).error.message).toBe('kms fail');
   });
 });

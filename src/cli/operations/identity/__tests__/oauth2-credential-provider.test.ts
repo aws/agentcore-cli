@@ -81,11 +81,9 @@ describe('createOAuth2Provider', () => {
 
     expect(result).toEqual({
       success: true,
-      result: {
-        credentialProviderArn: 'arn:aws:bedrock:us-east-1:123456789012:credential-provider/test-provider',
-        clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret',
-        callbackUrl: 'https://callback.example.com',
-      },
+      credentialProviderArn: 'arn:aws:bedrock:us-east-1:123456789012:credential-provider/test-provider',
+      clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret',
+      callbackUrl: 'https://callback.example.com',
     });
   });
 
@@ -104,9 +102,7 @@ describe('createOAuth2Provider', () => {
 
     expect(result).toEqual({
       success: true,
-      result: {
-        credentialProviderArn: 'arn:aws:bedrock:us-east-1:123456789012:credential-provider/test-provider',
-      },
+      credentialProviderArn: 'arn:aws:bedrock:us-east-1:123456789012:credential-provider/test-provider',
     });
   });
 
@@ -125,9 +121,7 @@ describe('createOAuth2Provider', () => {
 
     expect(result).toEqual({
       success: true,
-      result: {
-        credentialProviderArn: 'arn:aws:bedrock:us-east-1:123456789012:credential-provider/test-provider',
-      },
+      credentialProviderArn: 'arn:aws:bedrock:us-east-1:123456789012:credential-provider/test-provider',
     });
   });
 
@@ -137,7 +131,7 @@ describe('createOAuth2Provider', () => {
     const result = await createOAuth2Provider(makeMockClient(), mockParams);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe('unexpected error');
+    expect((result as { success: false; error: Error }).error.message).toBe('unexpected error');
   });
 
   it('returns error when no credentialProviderArn in response', async () => {
@@ -145,10 +139,10 @@ describe('createOAuth2Provider', () => {
 
     const result = await createOAuth2Provider(makeMockClient(), mockParams);
 
-    expect(result).toEqual({
-      success: false,
-      error: 'No credential provider ARN in response',
-    });
+    expect(result.success).toBe(false);
+    expect((result as { success: false; error: Error }).error.message).toBe(
+      'missing credentialProviderArn in response'
+    );
   });
 });
 
@@ -167,11 +161,9 @@ describe('getOAuth2Provider', () => {
 
     expect(result).toEqual({
       success: true,
-      result: {
-        credentialProviderArn: 'arn:aws:bedrock:us-east-1:123456789012:credential-provider/test-provider',
-        clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret',
-        callbackUrl: 'https://callback.example.com',
-      },
+      credentialProviderArn: 'arn:aws:bedrock:us-east-1:123456789012:credential-provider/test-provider',
+      clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret',
+      callbackUrl: 'https://callback.example.com',
     });
   });
 
@@ -181,7 +173,7 @@ describe('getOAuth2Provider', () => {
     const result = await getOAuth2Provider(makeMockClient(), 'test-provider');
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe('get failed');
+    expect((result as { success: false; error: Error }).error.message).toBe('get failed');
   });
 
   it('returns error when no ARN', async () => {
@@ -189,10 +181,10 @@ describe('getOAuth2Provider', () => {
 
     const result = await getOAuth2Provider(makeMockClient(), 'test-provider');
 
-    expect(result).toEqual({
-      success: false,
-      error: 'No credential provider ARN in response',
-    });
+    expect(result.success).toBe(false);
+    expect((result as { success: false; error: Error }).error.message).toBe(
+      'missing credentialProviderArn in response'
+    );
   });
 });
 
@@ -218,10 +210,8 @@ describe('updateOAuth2Provider', () => {
 
     expect(result).toEqual({
       success: true,
-      result: {
-        credentialProviderArn: 'arn:aws:bedrock:us-east-1:123456789012:credential-provider/test-provider',
-        clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret',
-      },
+      credentialProviderArn: 'arn:aws:bedrock:us-east-1:123456789012:credential-provider/test-provider',
+      clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret',
     });
   });
 
@@ -231,6 +221,6 @@ describe('updateOAuth2Provider', () => {
     const result = await updateOAuth2Provider(makeMockClient(), mockParams);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe('update failed');
+    expect((result as { success: false; error: Error }).error.message).toBe('update failed');
   });
 });

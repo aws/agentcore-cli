@@ -1,4 +1,5 @@
 import { ConfigIO } from '../../../lib';
+import { ensureDefaultDeploymentTarget } from './ensure-target';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -69,6 +70,25 @@ export async function canSkipDeploy(configIO: ConfigIO): Promise<boolean> {
     }
 
     return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Checks whether a deploy is needed, handling target auto-population.
+ * Returns true if deploy can be safely skipped (no changes detected).
+ * Returns false if deploy is needed or if the check itself fails.
+ *
+ * This is the high-level entry point used by both the browser-mode gate
+ * (command.tsx) and the terminal-mode gate (DevScreen) to avoid showing
+ * deploy UI when there's nothing to deploy.
+ */
+export async function isDeploySkippable(): Promise<boolean> {
+  try {
+    const configIO = new ConfigIO();
+    await ensureDefaultDeploymentTarget(configIO);
+    return await canSkipDeploy(configIO);
   } catch {
     return false;
   }

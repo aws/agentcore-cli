@@ -26,10 +26,6 @@ vi.mock('../resolve', () => ({
   resolveInvokeTarget: (...args: unknown[]) => mockResolveInvokeTarget(...args),
 }));
 
-vi.mock('../../../feature-flags', () => ({
-  isPreviewEnabled: () => false,
-}));
-
 // Mock the entire aws barrel. Re-export the real DEFAULT_RUNTIME_USER_ID constant
 // so the production fallback value stays in sync with the source of truth.
 vi.mock('../../../aws', () => ({

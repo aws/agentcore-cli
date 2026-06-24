@@ -30,6 +30,12 @@ describe('synthesizeCedar', () => {
     expect(result).toContain('[context.input.prompt]');
   });
 
+  it('generates a policy with the INSULTS content filter (canonical plural name)', () => {
+    const form: GuardrailFormConfig = { ...baseForm, filters: ['INSULTS'] };
+    const result = synthesizeCedar(form);
+    expect(result).toContain('["INSULTS"]');
+  });
+
   it('generates permit policy with single filter using lessThanOrEqual', () => {
     const form: GuardrailFormConfig = { ...baseForm, effect: 'permit' };
     const result = synthesizeCedar(form);

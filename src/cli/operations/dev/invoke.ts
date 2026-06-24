@@ -1,4 +1,4 @@
-import { ConnectionError, ServerError } from '../../../lib/errors/types';
+import { DevServerConnectionError, DevServerError } from '../../../lib/errors/types';
 import { invokeA2AStreaming } from './invoke-a2a';
 import { invokeAguiStreaming } from './invoke-agui';
 import { type InvokeStreamingOptions, type SSELogger } from './invoke-types';
@@ -106,7 +106,7 @@ export async function* invokeAgentStreaming(
 
       if (!res.ok) {
         const body = await res.text();
-        throw new ServerError(res.status, body);
+        throw new DevServerError(res.status, body);
       }
 
       if (!res.body) {
@@ -177,8 +177,8 @@ export async function* invokeAgentStreaming(
 
       return;
     } catch (err) {
-      // Re-throw ServerError directly — no retries for HTTP errors
-      if (err instanceof ServerError) {
+      // Re-throw DevServerError directly — no retries for HTTP errors
+      if (err instanceof DevServerError) {
         logger?.log?.('error', `Server error (${err.statusCode}): ${err.message}`);
         throw err;
       }
@@ -202,9 +202,12 @@ export async function* invokeAgentStreaming(
   }
 
   // Log final failure after all retries exhausted with full details
-  const finalError = new ConnectionError(lastError?.message ?? 'Failed to connect to dev server after retries', {
-    cause: lastError,
-  });
+  const finalError = new DevServerConnectionError(
+    lastError?.message ?? 'Failed to connect to dev server after retries',
+    {
+      cause: lastError,
+    }
+  );
   logger?.log?.('error', `Failed to connect after ${maxRetries} attempts: ${finalError.message}`);
   throw finalError;
 }
@@ -271,7 +274,7 @@ export async function invokeAgent(portOrOptions: number | InvokeOptions, message
 
       if (!res.ok) {
         const body = await res.text();
-        throw new ServerError(res.status, body);
+        throw new DevServerError(res.status, body);
       }
 
       const text = await res.text();
@@ -287,8 +290,8 @@ export async function invokeAgent(portOrOptions: number | InvokeOptions, message
       // Handle plain JSON response (non-streaming frameworks)
       return extractResult(text);
     } catch (err) {
-      // Re-throw ServerError directly — no retries for HTTP errors
-      if (err instanceof ServerError) {
+      // Re-throw DevServerError directly — no retries for HTTP errors
+      if (err instanceof DevServerError) {
         logger?.log?.('error', `Server error (${err.statusCode}): ${err.message}`);
         throw err;
       }
@@ -312,9 +315,12 @@ export async function invokeAgent(portOrOptions: number | InvokeOptions, message
   }
 
   // Log final failure after all retries exhausted with full details
-  const finalError = new ConnectionError(lastError?.message ?? 'Failed to connect to dev server after retries', {
-    cause: lastError,
-  });
+  const finalError = new DevServerConnectionError(
+    lastError?.message ?? 'Failed to connect to dev server after retries',
+    {
+      cause: lastError,
+    }
+  );
   logger?.log?.('error', `Failed to connect after ${maxRetries} attempts: ${finalError.message}`);
   throw finalError;
 }

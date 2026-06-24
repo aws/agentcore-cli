@@ -35,7 +35,6 @@ import { registerUpdate } from './commands/update';
 import { registerValidate } from './commands/validate';
 import { registerView } from './commands/view';
 import { COMMAND_DESCRIPTIONS, PACKAGE_VERSION } from './constants';
-import { isPreviewEnabled } from './feature-flags';
 import { printPostCommandNotices, printTelemetryNotice } from './notices';
 import { ALL_PRIMITIVES } from './primitives';
 import { TelemetryClientAccessor } from './telemetry';
@@ -122,23 +121,19 @@ export function registerCommands(program: Command) {
   registerConfig(program);
   registerDataset(program);
   registerArchive(program);
-  // Register export command (preview-only)
-  if (isPreviewEnabled()) {
-    registerExport(program);
-  }
+  // Register export command
+  registerExport(program);
 
   // Register primitive subcommands (add agent, remove agent, add memory, etc.)
   for (const primitive of ALL_PRIMITIVES) {
     primitive.registerCommands(addCmd, removeCmd);
   }
 
-  // Register standalone add/remove subcommands (preview-only)
-  if (isPreviewEnabled()) {
-    registerAddTool(addCmd);
-    registerRemoveTool(removeCmd);
-    registerAddSkill(addCmd);
-    registerRemoveSkill(removeCmd);
-  }
+  // Register standalone add/remove subcommands
+  registerAddTool(addCmd);
+  registerRemoveTool(removeCmd);
+  registerAddSkill(addCmd);
+  registerRemoveSkill(removeCmd);
 }
 
 export const main = async (argv: string[]) => {

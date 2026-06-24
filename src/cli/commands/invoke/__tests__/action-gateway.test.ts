@@ -14,10 +14,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // branch actually calls it rather than returning the body raw.
 // ---------------------------------------------------------------------------
 
-vi.mock('../../../feature-flags', () => ({
-  isPreviewEnabled: () => false,
-}));
-
 vi.mock('../../../logging', () => ({
   InvokeLogger: class {
     logFilePath = '/tmp/fake.log';

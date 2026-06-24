@@ -9,14 +9,18 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const hasAws = hasAwsCredentials();
-// Harness features are only available in preview builds (BUILD_PREVIEW=1).
-const isPreviewBuild = process.env.BUILD_PREVIEW === '1';
-const baseCanRun = prereqs.npm && prereqs.git && hasAws && isPreviewBuild;
+const baseCanRun = prereqs.npm && prereqs.git && hasAws;
 
 interface HarnessE2EConfig {
-  modelProvider: 'bedrock' | 'open_ai' | 'gemini';
+  modelProvider: 'bedrock' | 'open_ai' | 'gemini' | 'lite_llm';
+  /** Override the model ID (otherwise create's per-provider default is used). */
+  modelId?: string;
   /** Env var holding the API key ARN — its value is passed as --api-key-arn. */
   apiKeyArnEnvVar?: string;
+  /** LiteLLM only: base URL for the third-party provider, passed as --api-base. */
+  apiBase?: string;
+  /** LiteLLM only: provider-specific params (JSON string), passed as --additional-params. */
+  additionalParams?: string;
   skipMemory?: boolean;
   skipInvoke?: boolean;
 }
@@ -26,15 +30,20 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
   const canRun = baseCanRun && hasRequiredVar;
 
   const providerLabel =
-    cfg.modelProvider === 'open_ai' ? 'OpenAI' : cfg.modelProvider === 'gemini' ? 'Gemini' : 'Bedrock';
+    cfg.modelProvider === 'open_ai'
+      ? 'OpenAI'
+      : cfg.modelProvider === 'gemini'
+        ? 'Gemini'
+        : cfg.modelProvider === 'lite_llm'
+          ? 'LiteLLM'
+          : 'Bedrock';
 
   // note: this is created outside of beforeAll since beforeAll is skipped if all tests are skipped.
   const logger = getLogger(`harness-${providerLabel.toLowerCase()}`);
   if (!canRun) {
     logger.warn(
       `tests are skipped due to insufficient conditions. ` +
-        `npm=${prereqs.npm}, git=${prereqs.git}, hasAws=${hasAws}, ` +
-        `isPreviewBuild=${isPreviewBuild}, hasRequiredVar=${hasRequiredVar}`
+        `npm=${prereqs.npm}, git=${prereqs.git}, hasAws=${hasAws}, hasRequiredVar=${hasRequiredVar}`
     );
   }
 
@@ -63,8 +72,20 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
         '--skip-git',
       ];
 
+      if (cfg.modelId) {
+        createArgs.push('--model-id', cfg.modelId);
+      }
+
       if (cfg.apiKeyArnEnvVar && process.env[cfg.apiKeyArnEnvVar]) {
         createArgs.push('--api-key-arn', process.env[cfg.apiKeyArnEnvVar]!);
+      }
+
+      if (cfg.apiBase) {
+        createArgs.push('--api-base', cfg.apiBase);
+      }
+
+      if (cfg.additionalParams) {
+        createArgs.push('--additional-params', cfg.additionalParams);
       }
 
       if (cfg.skipMemory) {

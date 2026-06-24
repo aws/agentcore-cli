@@ -1,4 +1,3 @@
-import { isPreviewEnabled } from '../feature-flags';
 import { AgentPrimitive } from './AgentPrimitive';
 import type { BasePrimitive } from './BasePrimitive';
 import { ConfigBundlePrimitive } from './ConfigBundlePrimitive';
@@ -23,7 +22,7 @@ import type { RemovableResource } from './types';
  * Singleton instances of all primitives.
  */
 export const agentPrimitive = new AgentPrimitive();
-export const harnessPrimitive = isPreviewEnabled() ? new HarnessPrimitive() : undefined;
+export const harnessPrimitive = new HarnessPrimitive();
 export const memoryPrimitive = new MemoryPrimitive();
 export const datasetPrimitive = new DatasetPrimitive();
 export const credentialPrimitive = new CredentialPrimitive();
@@ -45,7 +44,7 @@ export const paymentConnectorPrimitive = new PaymentConnectorPrimitive();
  */
 export const ALL_PRIMITIVES: BasePrimitive<unknown, RemovableResource>[] = [
   agentPrimitive,
-  ...(harnessPrimitive ? [harnessPrimitive] : []),
+  harnessPrimitive,
   memoryPrimitive,
   datasetPrimitive,
   credentialPrimitive,

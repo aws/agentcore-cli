@@ -1,7 +1,6 @@
 import { ValidationError, serializeResult } from '../../../lib';
 import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
-import { isPreviewEnabled } from '../../feature-flags';
 import { ADDITIONAL_PARAMS_JSON_ERROR } from '../../primitives/constants';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { renderTUI } from '../../tui';
@@ -40,8 +39,8 @@ async function handleInvokeCLI(options: InvokeOptions, preloadedContext?: Invoke
   let spinner: NodeJS.Timeout | undefined;
 
   try {
-    // Preview: direct harness invoke by ARN (no project required)
-    if (isPreviewEnabled() && options.harnessArn) {
+    // Direct harness invoke by ARN (no project required)
+    if (options.harnessArn) {
       const region = options.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
       if (!region) {
         const msg = '--region is required with --harness-arn (or set AWS_REGION)';
@@ -60,9 +59,8 @@ async function handleInvokeCLI(options: InvokeOptions, preloadedContext?: Invoke
     // Show spinner for non-streaming, non-json, non-exec invocations
     // Harness invoke always streams directly to stdout, so skip spinner for harness
     const isHarness =
-      isPreviewEnabled() &&
-      (options.harnessName != null ||
-        ((context.project.harnesses ?? []).length > 0 && context.project.runtimes.length === 0));
+      options.harnessName != null ||
+      ((context.project.harnesses ?? []).length > 0 && context.project.runtimes.length === 0);
     if (!options.stream && !options.json && !options.exec && !isHarness) {
       spinner = startSpinner('Invoking agent...');
     }
@@ -169,40 +167,38 @@ export const registerInvoke = (program: Command) => {
       'End-user identity (wallet owner) for payments; scopes the instrument/session/budget. Defaults to --user-id when omitted.'
     );
 
-  if (isPreviewEnabled()) {
-    invokeCmd
-      .option('--harness <name>', 'Select specific harness to invoke [non-interactive]')
-      .option('--harness-arn <arn>', 'Invoke a harness by ARN (no project required) [non-interactive]')
-      .option('--region <region>', 'AWS region (required with --harness-arn when no project) [non-interactive]')
-      .option('--verbose', 'Print verbose streaming JSON events (harness only) [non-interactive]')
-      .option('--model-id <id>', 'Override model for this invocation (harness only) [non-interactive]')
-      .option(
-        '--model-provider <provider>',
-        'Override model provider: bedrock, open_ai, gemini, lite_llm (harness only) [non-interactive]'
-      )
-      .option('--api-key-arn <arn>', 'Override API key ARN for open_ai/gemini (harness only) [non-interactive]')
-      .option('--api-base <url>', 'Override LiteLLM API base URL (harness only, lite_llm) [non-interactive]')
-      .option(
-        '--additional-params <json>',
-        'Override LiteLLM additional params as a JSON object (harness only, lite_llm) [non-interactive]'
-      )
-      .option('--tools <tools>', 'Override tools, comma-separated (harness only) [non-interactive]')
-      .option('--max-iterations <n>', 'Override max iterations (harness only) [non-interactive]', parseInt)
-      .option('--max-tokens <n>', 'Override max tokens (harness only) [non-interactive]', parseInt)
-      .option('--harness-timeout <seconds>', 'Override timeout seconds (harness only) [non-interactive]', parseInt)
-      .option(
-        '--skills <sources>',
-        'Skills override, comma-separated (path, s3://uri, or https://git-url). Git auth not supported here — configure via agentcore add skill [non-interactive]'
-      )
-      .option('--system-prompt <text>', 'Override system prompt (harness only) [non-interactive]')
-      .option('--allowed-tools <tools>', 'Override allowed tools, comma-separated (harness only) [non-interactive]')
-      .option('--actor-id <id>', 'Override memory actor ID (harness only) [non-interactive]');
-  }
+  invokeCmd
+    .option('--harness <name>', 'Select specific harness to invoke [non-interactive]')
+    .option('--harness-arn <arn>', 'Invoke a harness by ARN (no project required) [non-interactive]')
+    .option('--region <region>', 'AWS region (required with --harness-arn when no project) [non-interactive]')
+    .option('--verbose', 'Print verbose streaming JSON events (harness only) [non-interactive]')
+    .option('--model-id <id>', 'Override model for this invocation (harness only) [non-interactive]')
+    .option(
+      '--model-provider <provider>',
+      'Override model provider: bedrock, open_ai, gemini, lite_llm (harness only) [non-interactive]'
+    )
+    .option('--api-key-arn <arn>', 'Override API key ARN for open_ai/gemini (harness only) [non-interactive]')
+    .option('--api-base <url>', 'Override LiteLLM API base URL (harness only, lite_llm) [non-interactive]')
+    .option(
+      '--additional-params <json>',
+      'Override LiteLLM additional params as a JSON object (harness only, lite_llm) [non-interactive]'
+    )
+    .option('--tools <tools>', 'Override tools, comma-separated (harness only) [non-interactive]')
+    .option('--max-iterations <n>', 'Override max iterations (harness only) [non-interactive]', parseInt)
+    .option('--max-tokens <n>', 'Override max tokens (harness only) [non-interactive]', parseInt)
+    .option('--harness-timeout <seconds>', 'Override timeout seconds (harness only) [non-interactive]', parseInt)
+    .option(
+      '--skills <sources>',
+      'Skills override, comma-separated (path, s3://uri, or https://git-url). Git auth not supported here — configure via agentcore add skill [non-interactive]'
+    )
+    .option('--system-prompt <text>', 'Override system prompt (harness only) [non-interactive]')
+    .option('--allowed-tools <tools>', 'Override allowed tools, comma-separated (harness only) [non-interactive]')
+    .option('--actor-id <id>', 'Override memory actor ID (harness only) [non-interactive]');
 
   // Group the long flag list into labelled sections (mirrors `add ab-test`).
   // Core flags (prompt/prompt-file/runtime/target/session-id/user-id) stay in the
   // default "Options:" block; everything else is hidden there and re-listed under a
-  // section heading below. Preview/harness sections are only emitted when registered.
+  // section heading below.
   const hiddenFromDefaultHelp = new Set<string>([
     // Payments
     '--payment-user-id',
@@ -265,10 +261,9 @@ MCP & Advanced [non-interactive]
 `
   );
 
-  if (isPreviewEnabled()) {
-    invokeCmd.addHelpText(
-      'after',
-      `
+  invokeCmd.addHelpText(
+    'after',
+    `
 Harness [non-interactive]
   --harness <name>                 Select specific harness to invoke
   --harness-arn <arn>              Invoke a harness by ARN (no project required)
@@ -288,8 +283,7 @@ Model & Runtime Overrides (harness only) [non-interactive]
   --max-tokens <n>                 Override max tokens
   --harness-timeout <seconds>      Override timeout seconds
 `
-    );
-  }
+  );
 
   invokeCmd.action(
     async (
@@ -335,8 +329,8 @@ Model & Runtime Overrides (harness only) [non-interactive]
       }
     ) => {
       try {
-        // Skip requireProject when --harness-arn provided (preview mode)
-        if (!(isPreviewEnabled() && cliOptions.harnessArn)) {
+        // Skip requireProject when --harness-arn provided
+        if (!cliOptions.harnessArn) {
           requireProject();
         }
 
@@ -387,7 +381,6 @@ Model & Runtime Overrides (harness only) [non-interactive]
           const result = await withCommandRunTelemetry(
             'invoke',
             computeInvokeAttrs({
-              preview: isPreviewEnabled(),
               harnessName: cliOptions.harness,
               harnessArn: cliOptions.harnessArn,
               harnessCount: invokeContext?.project.harnesses?.length ?? 0,

@@ -379,10 +379,10 @@ export function getDryRunInfo(options: {
   const wouldCreate = [
     `${projectRoot}/`,
     `${projectRoot}/agentcore/`,
-    `${projectRoot}/agentcore/project.json`,
+    `${projectRoot}/agentcore/agentcore.json`,
     `${projectRoot}/agentcore/aws-targets.json`,
     `${projectRoot}/agentcore/.env.local`,
-    `${projectRoot}/cdk/`,
+    `${projectRoot}/agentcore/cdk/`,
   ];
 
   if (language === 'Python') {
@@ -402,6 +402,32 @@ export function getDryRunInfo(options: {
     success: true,
     dryRun: true,
     projectPath: projectRoot,
+    wouldCreate,
+  };
+}
+
+export function getHarnessDryRunInfo(options: { name: string; cwd: string; projectName?: string }): CreateResult {
+  const { name, cwd } = options;
+  const projectName = options.projectName ?? name;
+  const projectRoot = join(cwd, projectName);
+
+  const wouldCreate = [
+    `${projectRoot}/`,
+    `${projectRoot}/agentcore/`,
+    `${projectRoot}/agentcore/agentcore.json`,
+    `${projectRoot}/agentcore/aws-targets.json`,
+    `${projectRoot}/agentcore/.env.local`,
+    `${projectRoot}/agentcore/cdk/`,
+    `${projectRoot}/app/${name}/`,
+    `${projectRoot}/app/${name}/harness.json`,
+    `${projectRoot}/app/${name}/system-prompt.md`,
+  ];
+
+  return {
+    success: true,
+    dryRun: true,
+    projectPath: projectRoot,
+    harnessName: name,
     wouldCreate,
   };
 }

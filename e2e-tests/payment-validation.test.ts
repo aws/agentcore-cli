@@ -7,13 +7,24 @@
  */
 import { parseJsonOutput, prereqs } from '../src/test-utils/index.js';
 import { runAgentCoreCLI } from './e2e-helper.js';
-import { randomUUID } from 'node:crypto';
+import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const canRun = prereqs.npm && prereqs.git && prereqs.uv;
+
+// The CLI validates CDP secret formats at add time: apiKeySecret must be a
+// base64-encoded Ed25519 private key and walletSecret a base64-encoded EC P-256
+// private key. Use real keys so add/remove lifecycle tests exercise their intent
+// rather than tripping the format check.
+const CDP_API_KEY_SECRET = generateKeyPairSync('ed25519')
+  .privateKey.export({ type: 'pkcs8', format: 'der' })
+  .toString('base64');
+const CDP_WALLET_SECRET = generateKeyPairSync('ec', { namedCurve: 'P-256' })
+  .privateKey.export({ type: 'pkcs8', format: 'der' })
+  .toString('base64');
 
 describe.sequential('e2e: payments — validation, config, and remove lifecycle', () => {
   let testDir: string;
@@ -91,9 +102,9 @@ describe.sequential('e2e: payments — validation, config, and remove lifecycle'
         '--api-key-id',
         'key-id',
         '--api-key-secret',
-        'key-secret',
+        CDP_API_KEY_SECRET,
         '--wallet-secret',
-        'wallet-secret',
+        CDP_WALLET_SECRET,
         '--json',
       ],
       projectPath
@@ -253,9 +264,9 @@ describe.sequential('e2e: payments — validation, config, and remove lifecycle'
         '--api-key-id',
         'a',
         '--api-key-secret',
-        'b',
+        CDP_API_KEY_SECRET,
         '--wallet-secret',
-        'c',
+        CDP_WALLET_SECRET,
         '--json',
       ],
       projectPath
@@ -281,9 +292,9 @@ describe.sequential('e2e: payments — validation, config, and remove lifecycle'
         '--api-key-id',
         'key-id',
         '--api-key-secret',
-        'key-secret',
+        CDP_API_KEY_SECRET,
         '--wallet-secret',
-        'wallet-secret',
+        CDP_WALLET_SECRET,
         '--json',
       ],
       projectPath

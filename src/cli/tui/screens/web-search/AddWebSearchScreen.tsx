@@ -92,7 +92,7 @@ export function AddWebSearchScreen({
       onExit={onExit}
       helpText={helpText}
       headerContent={headerContent}
-      exitEnabled={isNameStep}
+      exitEnabled={isNameStep || (isGatewayStep && noGatewaysAvailable)}
     >
       <Panel>
         {isNameStep && (

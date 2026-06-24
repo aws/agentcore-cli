@@ -1,4 +1,4 @@
-import { ConnectionError, ServerError } from '../../../lib/errors/types';
+import { DevServerConnectionError, DevServerError } from '../../../lib/errors/types';
 import { parseJsonRpcResponse } from '../../../lib/utils/json-rpc';
 import { type SSELogger } from './invoke-types';
 import { isConnectionError, sleep } from './utils';
@@ -58,7 +58,7 @@ export async function listMcpTools(
 
       if (!initRes.ok) {
         const body = await initRes.text();
-        throw new ServerError(initRes.status, body);
+        throw new DevServerError(initRes.status, body);
       }
 
       // Extract session ID from response header
@@ -103,7 +103,7 @@ export async function listMcpTools(
 
       if (!listRes.ok) {
         const body = await listRes.text();
-        throw new ServerError(listRes.status, body);
+        throw new DevServerError(listRes.status, body);
       }
 
       const listResponseText = await listRes.text();
@@ -122,7 +122,7 @@ export async function listMcpTools(
         sessionId: sessionId ?? undefined,
       };
     } catch (err) {
-      if (err instanceof ServerError) {
+      if (err instanceof DevServerError) {
         logger?.log?.('error', `Server error (${err.statusCode}): ${err.message}`);
         throw err;
       }
@@ -144,9 +144,12 @@ export async function listMcpTools(
     }
   }
 
-  const finalError = new ConnectionError(lastError?.message ?? 'Failed to connect to MCP server after retries', {
-    cause: lastError,
-  });
+  const finalError = new DevServerConnectionError(
+    lastError?.message ?? 'Failed to connect to MCP server after retries',
+    {
+      cause: lastError,
+    }
+  );
   logger?.log?.('error', `Failed to connect after ${maxRetries} attempts: ${finalError.message}`);
   throw finalError;
 }
@@ -187,7 +190,7 @@ export async function callMcpTool(
 
   if (!res.ok) {
     const responseBody = await res.text();
-    throw new ServerError(res.status, responseBody);
+    throw new DevServerError(res.status, responseBody);
   }
 
   const responseText = await res.text();

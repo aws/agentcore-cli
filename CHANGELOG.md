@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.20.2] - 2026-06-18
+
+### Fixed
+- fix(policy): correct INSULTS content-filter enum and validate --form-filters (#1576) (5fe72af6)
+- fix(deploy): surface original error types in preflight steps.  (#1525) (1f5d7948)
+- fix(payment-connector): validate secret key formats client-side at add time (#1573) (fc905f8c)
+- fix: stop web-search TUI early exit when no gateway (#1575) (48374862)
+
+### Documentation
+- docs: cover payments, policies/guardrails, insights, harness, datasets, web-search (#1577) (954b97b5)
+
+### Other Changes
+- test(e2e): use real key formats in payment-validation CDP fixtures (#1592) (69547c3f)
+- test(e2e): enable policy guardrail suite with two-deploy form-policy flow (#1582) (687029c6)
+
+## [0.20.1] - 2026-06-17
+
+### Other Changes
+- Revert "chore: ungate web-search commands (#1558)" (#1567) (b0961814)
+- test(e2e): fix shard 4/5 stale paths and missing --wait (#1560) (abccd4fe)
+
+## [0.20.0] - 2026-06-17
+
+### Added
+- feat: upgrade agent inspector to v0.6.0 (#1546) (d2f22e37)
+- feat: send model config to agent inspector (#1516) (3097e031)
+- feat(e2e): enable gemini tests (#1503) (c3d7565a)
+- feat(ci): clean up stale stacks with global vitest setup hook (#1499) (9966e9d2)
+- feat(ci): shard integ tests for faster runs.  (#1484) (9f755cb4)
+- feat(ci): add hourly canary for smoke test (#1486) (6c57e789)
+
+### Fixed
+- fix(harness): surface managed-memory heads-up on dev deploy + validate session storage path in TUI (#1555) (23d6ef22)
+- fix(ci): avoid running pr reviewer on closed prs (#1536) (ef1e0667)
+- fix(assets): prevent multi-gateway tool-name collisions across HTTP frameworks (#1518) (c217b169)
+- fix(e2e): add harness tests to e2e workflow (#1515) (0d93b006)
+- fix(ci): make /security-review fail loudly when the model never runs (#1482) (202eed9c)
+- fix(e2e): wire up payments env vars for full test suite (#1505) (ea2df09f)
+- fix(scripts): avoid overwriting git local config in e2e script (#1501) (f62329b0)
+
+### Other Changes
+- chore: ungate web-search commands (#1558) (6bb2ca45)
+- chore(policy): ungate guardrail policy form (#1552) (d5745af0)
+- release: nys summit (#1547) (845c1bdb)
+- script: bundle agent inspector (#1529) (2166bd87)
+
 ## [0.19.0] - 2026-06-09
 
 ### Added

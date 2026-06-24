@@ -1,6 +1,5 @@
 import type { ApiGatewayHttpMethod, GatewayTargetType, PassthroughProtocolType } from '../../../../schema';
 import { REAL_KB_ID_PATTERN, ToolNameSchema } from '../../../../schema';
-import { isGatedFeaturesEnabled } from '../../../feature-flags';
 import { ConfirmReview, Panel, Screen, StepIndicator, TextInput, WizardSelect } from '../../components';
 import type { SelectableItem } from '../../components';
 import { HELP_TEXT } from '../../constants';
@@ -25,6 +24,7 @@ import {
   getOutboundAuthOptions,
 } from './types';
 import { useAddGatewayTargetWizard } from './useAddGatewayTargetWizard';
+import { isGatedFeaturesEnabled } from '@/cli/feature-flags';
 import { Box, Text } from 'ink';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -155,7 +155,7 @@ export function AddGatewayTargetScreen({
   const targetTypeItems: SelectableItem[] = useMemo(
     () =>
       TARGET_TYPE_OPTIONS.map(o => {
-        const gated = (o.id === 'passthrough' || o.id === 'webSearch') && !isGatedFeaturesEnabled();
+        const gated = o.id === 'webSearch' && !isGatedFeaturesEnabled();
         return {
           id: o.id,
           title: o.title,

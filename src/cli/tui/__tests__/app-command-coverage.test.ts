@@ -21,6 +21,7 @@ const ROUTED_COMMANDS = new Set([
   'create',
   'add',
   'remove',
+  'export',
   'run',
   'evals',
   'fetch',

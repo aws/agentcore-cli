@@ -81,12 +81,18 @@ describe('create command', () => {
       expect(await exists(join(json.projectPath, 'app', name))).toBeTruthy();
     });
 
-    it('requires all options without --no-agent', async () => {
-      const result = await runCLI(['create', '--name', 'Incomplete', '--json'], testDir);
+    it('creates a harness project when no agent flags are given', async () => {
+      // Without agent-path flags (--framework/--language/etc.) or --no-agent, create
+      // defaults to the harness path rather than erroring on incomplete agent options.
+      // Harness names are limited to 23 chars, so keep this short.
+      const name = `H${Date.now().toString().slice(-6)}`;
+      const result = await runCLI(['create', '--name', name, '--json'], testDir);
 
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
       const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
+      expect(json.success).toBe(true);
+      expect(json.harnessName).toBe(name);
+      expect(await exists(join(json.projectPath, 'app', name, 'harness.json'))).toBeTruthy();
     });
 
     it('validates framework', async () => {

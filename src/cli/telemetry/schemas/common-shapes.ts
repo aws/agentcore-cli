@@ -90,7 +90,7 @@ export const OutboundAuthType = z.enum(['oauth', 'api-key', 'none']);
 export const PolicyEngineMode = z.enum(['log_only', 'enforce']);
 export const AgentProtocol = z.enum(['http', 'mcp', 'a2a', 'agui']);
 export const RefType = z.enum(['arn', 'name']);
-export const ResourceType = z.enum(['gateway', 'agent']);
+export const ResourceType = z.enum(['gateway', 'agent', 'harness']);
 export const JobType = z.enum(['recommendation', 'batch-evaluation', 'ab-test', 'insights']);
 export const RecommendationKind = z.enum(['system-prompt', 'tool-description']);
 export const RecommendationInputSource = z.enum(['config-bundle', 'inline', 'file']);
@@ -111,9 +111,11 @@ export const ErrorName = z.enum([
   'ConfigValidationError',
   'ConfigWriteError',
   'ConflictError',
-  'ConnectionError',
   'DependencyCheckError',
+  'DevServerConnectionError',
+  'DevServerError',
   'GitInitError',
+  'MissingCredentialsError',
   'IngestionError',
   'JobNotFoundError',
   'MissingDependencyError',
@@ -123,8 +125,10 @@ export const ErrorName = z.enum([
   'PollExhaustedError',
   'PollTimeoutError',
   'ResourceNotFoundError',
-  'ServerError',
+  'ServiceError',
+  'ServiceQuotaError',
   'ShellKickedError',
+  'ThrottlingError',
   'TimeoutError',
   'UnsupportedLanguageError',
   'UserCancellationError',

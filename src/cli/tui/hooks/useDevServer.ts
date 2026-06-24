@@ -1,5 +1,5 @@
 import { findConfigRoot } from '../../../lib';
-import { ConnectionError, ServerError } from '../../../lib/errors/types';
+import { DevServerConnectionError, DevServerError } from '../../../lib/errors/types';
 import type { AgentCoreProjectSpec, ProtocolMode } from '../../../schema';
 import { detectContainerRuntime } from '../../external-requirements';
 import { DevLogger } from '../../logging/dev-logger';
@@ -381,11 +381,11 @@ export function useDevServer(options: {
 
       let errorMsg: string;
       let showHint = false;
-      if (err instanceof ServerError) {
+      if (err instanceof DevServerError) {
         // HTTP error — use the response body directly (avoids stderr race condition)
         errorMsg = err.message || `Server error (${err.statusCode})`;
         showHint = true;
-      } else if (err instanceof ConnectionError) {
+      } else if (err instanceof DevServerConnectionError) {
         // Connection failed after retries — check stderr logs for crash context
         const recentErrors = logsRef.current
           .filter(l => l.level === 'error')

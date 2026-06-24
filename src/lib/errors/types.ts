@@ -110,6 +110,15 @@ export class AwsCredentialsError extends BaseError {
 }
 
 /**
+ * Error thrown when non-AWS credentials are missing but required.. (ex. API Keys)
+ */
+export class MissingCredentialsError extends BaseError {
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'user', ...options });
+  }
+}
+
+/**
  * Error indicating a packaging operation failed.
  */
 export class PackagingError extends BaseError {
@@ -159,7 +168,7 @@ export class UnsupportedLanguageError extends PackagingError {
 /**
  * Base class for all config-related errors.
  */
-export abstract class ConfigError extends BaseError {
+abstract class ConfigError extends BaseError {
   protected constructor(message: string, options?: BaseErrorOptions) {
     super(message, { defaultSource: 'user', ...options });
   }
@@ -229,8 +238,6 @@ export class ConfigParseError extends ConfigError {
   }
 }
 
-// --- Client errors ---
-
 /**
  * Error indicating git repository initialization failed.
  */
@@ -263,7 +270,7 @@ export class TimeoutError extends BaseError {
 /**
  * Error thrown when the dev server returns a non-OK HTTP response.
  */
-export class ServerError extends BaseError {
+export class DevServerError extends BaseError {
   constructor(
     public readonly statusCode: number,
     body: string,
@@ -276,9 +283,36 @@ export class ServerError extends BaseError {
 /**
  * Error thrown when the connection to the dev server fails.
  */
-export class ConnectionError extends BaseError {
+export class DevServerConnectionError extends BaseError {
   constructor(message: string, options?: BaseErrorOptions) {
     super(message, { defaultSource: 'client', ...options });
+  }
+}
+
+/**
+ * Error indicating an AWS service gave back a 5xx or malforned response.
+ */
+export class ServiceError extends BaseError {
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'service', ...options });
+  }
+}
+
+/**
+ * Error indicating a request was throttled or rate-limited.
+ */
+export class ThrottlingError extends BaseError {
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'service', ...options });
+  }
+}
+
+/**
+ * Error indicating a service quota or limit was exceeded.
+ */
+export class ServiceQuotaError extends BaseError {
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'service', ...options });
   }
 }
 

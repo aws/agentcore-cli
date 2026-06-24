@@ -1,7 +1,6 @@
 import { CONFIG_DIR } from '../../../lib';
 import { CDK_APP_ENTRY, CDK_PROJECT_DIR } from '../../constants';
 import { isChangesetInProgressError } from '../../errors';
-import { isPreviewEnabled } from '../../feature-flags';
 import type { CdkToolkitWrapperOptions, DeployOptions, DestroyOptions, DiffOptions, ListOptions } from './types';
 import {
   BaseCredentials,
@@ -108,16 +107,12 @@ export class CdkToolkitWrapper {
         sdkConfig,
       });
 
-      // The vended CDK app (dist/bin/cdk.js) runs as a child process and cannot see the
-      // build-time `__PREVIEW__` define baked into this CLI bundle. Pass the preview state
-      // through the child env so bin/cdk.ts can gate preview-only resources (e.g. harnesses)
-      // off when preview is disabled. The toolkit overlays this on top of process.env, so
-      // PATH/AWS_PROFILE are preserved; env must be unconditional so the flag is never
-      // dropped when no region override is present (absent flag defaults to off).
+      // The vended CDK app (dist/bin/cdk.js) runs as a child process. Forward the region
+      // override through the child env when present. The toolkit overlays this on top of
+      // process.env, so PATH/AWS_PROFILE are preserved.
       this.cloudAssemblySource = await this.toolkit.fromCdkApp(this.getCdkAppCommand(), {
         workingDirectory: this.projectDir,
         env: {
-          AGENTCORE_PREVIEW: isPreviewEnabled() ? '1' : '0',
           ...(region && { AWS_REGION: region, AWS_DEFAULT_REGION: region }),
         },
       });

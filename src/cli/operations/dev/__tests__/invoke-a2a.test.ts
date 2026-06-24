@@ -1,4 +1,4 @@
-import { ServerError } from '../../../../lib/errors/types';
+import { DevServerError } from '../../../../lib/errors/types';
 import { invokeA2AStreaming } from '../invoke-a2a';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -76,7 +76,7 @@ describe('invokeA2AStreaming', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it('throws ServerError on HTTP error without retrying', async () => {
+  it('throws DevServerError on HTTP error without retrying', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 500,
@@ -84,7 +84,7 @@ describe('invokeA2AStreaming', () => {
     });
 
     const gen = invokeA2AStreaming({ port: 8080, message: 'test' });
-    await expect(gen.next()).rejects.toThrow(ServerError);
+    await expect(gen.next()).rejects.toThrow(DevServerError);
   });
 
   it('handles JSON-RPC error in response', async () => {
@@ -101,7 +101,7 @@ describe('invokeA2AStreaming', () => {
     });
 
     const gen = invokeA2AStreaming({ port: 8080, message: 'test' });
-    await expect(gen.next()).rejects.toThrow(ServerError);
+    await expect(gen.next()).rejects.toThrow(DevServerError);
   });
 
   it('streams text from status-update events and skips duplicate artifact-update', async () => {

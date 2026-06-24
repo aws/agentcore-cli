@@ -74,6 +74,13 @@ vi.mock('../../../../lib/index.js', () => ({
     }
   },
   readEnvFile: mockReadEnvFile,
+  MissingCredentialsError: class MissingCredentialsError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'MissingCredentialsError';
+    }
+  },
+  toError: (e: unknown) => (e instanceof Error ? e : new Error(String(e))),
 }));
 
 vi.mock('../../../aws/index.js', () => ({
@@ -359,7 +366,7 @@ describe('setupOAuth2Providers', () => {
     expect(result.hasErrors).toBe(false);
     expect(result.results).toHaveLength(1);
     expect(result.results[0]!.status).toBe('skipped');
-    expect(result.results[0]!.error).toContain('Missing');
+    expect(result.results[0]!.error?.message).toContain('Missing');
   });
 
   it('returns error on failure', async () => {

@@ -1,22 +1,35 @@
 import { isMacOS, isWindows } from '../../../../lib/utils/platform';
 import { getErrorMessage } from '../../../errors';
-import type { ResourceInfo, TokenFetchResult } from '../../../operations/fetch-access';
-import { fetchGatewayToken, fetchRuntimeToken, listAgents, listGateways } from '../../../operations/fetch-access';
+import type { OAuthTokenResult, ResourceInfo, TokenFetchResult } from '../../../operations/fetch-access';
+import {
+  fetchGatewayToken,
+  fetchHarnessToken,
+  fetchRuntimeToken,
+  listAgents,
+  listGateways,
+  listHarnesses,
+} from '../../../operations/fetch-access';
 import { spawn } from 'node:child_process';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-async function fetchAgentAccess(resource: ResourceInfo): Promise<TokenFetchResult> {
+/**
+ * Resolve token-bearing access for an agent runtime or harness. AWS_IAM resources have no token
+ * to fetch (SigV4 signing is used instead); CUSTOM_JWT resources fetch an OAuth token directly,
+ * with any error (missing credential, bad config) surfacing in the error phase.
+ */
+async function fetchTokenAccess(
+  resource: ResourceInfo,
+  fetchToken: (name: string) => Promise<OAuthTokenResult>
+): Promise<TokenFetchResult> {
   if (resource.authType === 'AWS_IAM') {
     return {
       url: '',
       authType: 'AWS_IAM',
-      message: 'This agent uses AWS_IAM authentication. Use AWS SigV4 signing to invoke.',
+      message: `This ${resource.resourceType} uses AWS_IAM authentication. Use AWS SigV4 signing to invoke.`,
     };
   }
 
-  // For CUSTOM_JWT agents, attempt token fetch directly.
-  // Errors (missing credential, bad config) surface in the error phase.
-  const tokenResult = await fetchRuntimeToken(resource.name);
+  const tokenResult = await fetchToken(resource.name);
   return {
     url: '',
     authType: 'CUSTOM_JWT',
@@ -55,22 +68,23 @@ export function useFetchAccessFlow() {
     };
   }, []);
 
-  // Load gateways and agents on mount
+  // Load gateways, agents, and harnesses on mount
   useEffect(() => {
-    Promise.all([listGateways(), listAgents()])
-      .then(([gateways, agents]) => {
+    Promise.all([listGateways(), listAgents(), listHarnesses()])
+      .then(([gateways, agents, harnesses]) => {
         if (!mountedRef.current) return;
 
         const resources: ResourceInfo[] = [
           ...gateways.map(gw => ({ name: gw.name, resourceType: 'gateway' as const, authType: gw.authType })),
           ...agents.map(ag => ({ name: ag.name, resourceType: 'agent' as const, authType: ag.authType })),
+          ...harnesses.map(hn => ({ name: hn.name, resourceType: 'harness' as const, authType: hn.authType })),
         ];
 
         if (resources.length === 0) {
           setState(prev => ({
             ...prev,
             phase: 'error',
-            error: 'No deployed gateways or agents found. Run `agentcore deploy` first.',
+            error: 'No deployed gateways, agents, or harnesses found. Run `agentcore deploy` first.',
           }));
           return;
         }
@@ -109,7 +123,11 @@ export function useFetchAccessFlow() {
     const resource = state.selectedResource;
 
     const fetchToken: Promise<TokenFetchResult> =
-      resource.resourceType === 'gateway' ? fetchGatewayToken(resource.name) : fetchAgentAccess(resource);
+      resource.resourceType === 'gateway'
+        ? fetchGatewayToken(resource.name)
+        : resource.resourceType === 'harness'
+          ? fetchTokenAccess(resource, fetchHarnessToken)
+          : fetchTokenAccess(resource, fetchRuntimeToken);
 
     fetchToken
       .then(result => {
