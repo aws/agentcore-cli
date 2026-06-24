@@ -75,6 +75,19 @@ describe('useGenerateWizard — advanced config gate', () => {
       const frame = lastFrame()!;
       expect(frame).toMatch(/memory,advanced/);
     });
+
+    it('Strands SDK inserts memory before advanced for TypeScript', () => {
+      const { ref, lastFrame } = setup();
+      act(() => {
+        ref.current!.wizard.setProjectName('Test');
+        ref.current!.wizard.setLanguage('TypeScript');
+        ref.current!.wizard.setBuildType('CodeZip');
+        ref.current!.wizard.setProtocol('HTTP');
+        ref.current!.wizard.setSdk('Strands');
+      });
+      const frame = lastFrame()!;
+      expect(frame).toMatch(/memory,advanced/);
+    });
   });
 
   describe('setAdvanced routing', () => {
