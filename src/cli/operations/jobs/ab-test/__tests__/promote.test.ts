@@ -286,6 +286,47 @@ describe('promoteABTestConfig (record-driven)', () => {
       expect(bundle.components['{{runtime:r}}'].configuration.systemPrompt).toBe('NEW');
     });
 
+    it('restores portable {{runtime:...}} keys when the service returns ARN-keyed components', async () => {
+      const RUNTIME_ARN = 'arn:aws:bedrock-agentcore:us-east-1:1:runtime/cbbugbash_cbagent-N5owhv3MRl';
+      const project = makeConfigBundleProject();
+      // Local bundle uses the portable placeholder for the runtime named "r".
+      project.configBundles[0]!.components = { '{{runtime:r}}': { configuration: { systemPrompt: 'OLD' } } };
+      mockReadProjectSpec.mockResolvedValue(project);
+      mockReadDeployedState.mockResolvedValue({
+        targets: {
+          default: {
+            resources: {
+              configBundles: {
+                promptBundle: { bundleId: 'promptBundle-abc123', bundleArn: BUNDLE_ARN, versionId: 'v1' },
+              },
+              runtimes: { r: { runtimeArn: RUNTIME_ARN } },
+            },
+          },
+        },
+      });
+      // Service keys the winning version's components by the resolved (hardcoded) runtime ARN.
+      mockGetConfigurationBundleVersion.mockResolvedValue({
+        components: { [RUNTIME_ARN]: { configuration: { systemPrompt: 'NEW' } } },
+      });
+
+      const record = baseRecord({
+        mode: 'config-bundle',
+        variants: [
+          { name: 'C', weight: 50, bundleArn: BUNDLE_ARN, bundleVersion: 'v1' },
+          { name: 'T1', weight: 50, bundleArn: BUNDLE_ARN, bundleVersion: 'v2' },
+        ],
+      });
+
+      const result = await promoteABTestConfig(record);
+
+      expect(result.promoted).toBe(true);
+      const written = mockWriteProjectSpec.mock.calls[0]![0];
+      const bundle = written.configBundles.find((b: { name: string }) => b.name === 'promptBundle');
+      // Placeholder preserved, ARN NOT written into the committed config.
+      expect(bundle.components['{{runtime:r}}'].configuration.systemPrompt).toBe('NEW');
+      expect(bundle.components[RUNTIME_ARN]).toBeUndefined();
+    });
+
     it('returns promoted=false (error) when control and treatment are DIFFERENT bundles', async () => {
       mockReadProjectSpec.mockResolvedValue(makeConfigBundleProject());
       mockReadDeployedState.mockResolvedValue(makeBundleDeployedState());

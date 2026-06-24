@@ -1,5 +1,7 @@
 import { ConfigIO } from '../../../../lib';
+import type { DeployedState } from '../../../../schema';
 import { getConfigurationBundleVersion } from '../../../aws/agentcore-config-bundles';
+import { resolveComponentKeyForJsonPath } from '../recommendation/build-config';
 import { regionFromArn } from '../shared/region';
 import type { ABTestJobRecord, ABTestVariantSummary } from '../shared/types';
 
@@ -7,6 +9,35 @@ import type { ABTestJobRecord, ABTestVariantSummary } from '../shared/types';
 function bundleIdFromArn(arn: string): string | undefined {
   const id = arn.split('/').pop();
   return id && id.length > 0 ? id : undefined;
+}
+
+/**
+ * Restore portable component keys when adopting service-returned components.
+ *
+ * The service keys a bundle version's components by resolved runtime/gateway ARN (account- and
+ * region-specific). Writing those straight into agentcore.json would replace the committed,
+ * portable `{{runtime:<name>}}` / `{{gateway:<name>}}` placeholders with hardcoded ARNs, breaking
+ * cross-account/region reuse of the config. We rebuild the placeholder→ARN map from the LOCAL
+ * bundle's existing keys (via the same resolver deploy uses) and invert it, so each incoming ARN
+ * key is rewritten back to the placeholder the project already uses. ARNs with no matching local
+ * placeholder are passed through unchanged.
+ */
+function restorePlaceholderKeys<T>(
+  serviceComponents: Record<string, T>,
+  localComponents: Record<string, T> | undefined,
+  deployedState: DeployedState
+): Record<string, T> {
+  const arnToPlaceholder = new Map<string, string>();
+  for (const key of Object.keys(localComponents ?? {})) {
+    if (key.startsWith('arn:')) continue;
+    const arn = resolveComponentKeyForJsonPath(key, deployedState);
+    if (arn !== key) arnToPlaceholder.set(arn, key);
+  }
+  const remapped: Record<string, T> = {};
+  for (const [key, value] of Object.entries(serviceComponents)) {
+    remapped[arnToPlaceholder.get(key) ?? key] = value;
+  }
+  return remapped;
 }
 
 export interface PromoteABTestResult {
@@ -156,13 +187,14 @@ export async function promoteABTestConfig(record: ABTestJobRecord, dryRun = fals
   }
 
   let controlName: string | undefined;
+  let deployedState: DeployedState | undefined;
   try {
-    const deployedState = await configIO.readDeployedState();
+    deployedState = await configIO.readDeployedState();
     controlName = bundleNameFromArn(deployedState, control.bundleArn);
   } catch {
     // deployed state unavailable
   }
-  if (!controlName) {
+  if (!controlName || !deployedState) {
     return {
       promoted: false,
       mode,
@@ -196,7 +228,13 @@ export async function promoteABTestConfig(record: ABTestJobRecord, dryRun = fals
       bundleId,
       versionId: treatment.bundleVersion,
     });
-    controlBundle.components = winning.components as typeof controlBundle.components;
+    // Service keys components by resolved ARN; restore the bundle's portable {{runtime:...}}
+    // placeholders so the committed config stays cross-account/region portable.
+    controlBundle.components = restorePlaceholderKeys(
+      winning.components as Record<string, unknown>,
+      controlBundle.components as Record<string, unknown>,
+      deployedState
+    ) as typeof controlBundle.components;
     await configIO.writeProjectSpec(project);
   }
   return {
