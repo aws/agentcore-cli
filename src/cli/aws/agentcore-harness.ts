@@ -67,8 +67,8 @@ export type HarnessSystemPrompt = { text: string }[];
 export interface HarnessTool {
   type: string;
   name: string;
-  browserArn?: string;
-  codeInterpreterArn?: string;
+  // Browser / code-interpreter ARNs are returned nested under config.agentCoreBrowser.browserArn /
+  // config.agentCoreCodeInterpreter.codeInterpreterArn (NOT top-level) — see mapTool.
   config?: Record<string, unknown>;
 }
 
@@ -97,13 +97,30 @@ export interface HarnessEnvironmentArtifact {
   containerConfiguration?: { containerUri: string };
 }
 
+/** A single filesystem mount on the runtime environment (tagged union — exactly one key set). */
+export interface HarnessFilesystemConfiguration {
+  sessionStorage?: { mountPath: string };
+  efsAccessPoint?: { accessPointArn: string; mountPath: string };
+  s3FilesAccessPoint?: { accessPointArn: string; mountPath: string };
+}
+
+export interface HarnessNetworkConfiguration {
+  networkMode?: 'PUBLIC' | 'VPC';
+  networkModeConfig?: { securityGroups?: string[]; subnets?: string[]; requireServiceS3Endpoint?: boolean };
+}
+
+export interface HarnessLifecycleConfiguration {
+  idleRuntimeSessionTimeout?: number;
+  maxLifetime?: number;
+}
+
 export interface HarnessAgentCoreRuntimeEnvironment {
   agentRuntimeArn?: string;
   agentRuntimeId?: string;
   agentRuntimeName?: string;
-  lifecycleConfiguration?: Record<string, unknown>;
-  networkConfiguration?: Record<string, unknown>;
-  filesystemConfigurations?: Record<string, unknown>[];
+  lifecycleConfiguration?: HarnessLifecycleConfiguration;
+  networkConfiguration?: HarnessNetworkConfiguration;
+  filesystemConfigurations?: HarnessFilesystemConfiguration[];
 }
 
 export interface HarnessEnvironmentProvider {

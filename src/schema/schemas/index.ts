@@ -3,6 +3,7 @@ export * from './agent-env';
 export * from './agentcore-project';
 export * from './auth';
 export * from './aws-targets';
+export * from './connections';
 export * from './deployed-state';
 export * from './mcp';
 export * from './mcp-defs';

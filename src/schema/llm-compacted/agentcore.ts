@@ -111,7 +111,39 @@ interface AgentEnvSpec {
   protocol?: ProtocolMode; // default 'HTTP'
   tags?: Record<string, string>;
   filesystemConfigurations?: FilesystemConfiguration[]; // max 5 total, max 1 sessionStorage, max 2 efsAccessPoint, max 2 s3FilesAccessPoint; efsAccessPoint/s3FilesAccessPoint require networkMode: VPC
+  connections?: Connection[]; // Access to EXTERNAL AgentCore resources (memory/gateway/runtime/browser/codeInterpreter); generates IAM + discovery env vars on the execution role
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONNECTIONS — access to EXTERNAL AgentCore resources (not in this project).
+// In-project access stays implicit (all-to-all). Connections only ADD external grants.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface Connection {
+  id?: string; // @regex ^[a-zA-Z][a-zA-Z0-9_-]{0,63}$
+  to: ConnectionTarget;
+  access?: 'read' | 'readwrite'; // memory only; default 'read'
+  description?: string; // @max 200
+}
+
+type ConnectionTarget =
+  | { type: 'memory'; arn: string; namespaces?: string[] } // external memory ARN; namespaces scope retrieval
+  | { type: 'gateway'; arn: string; outboundAuth?: GatewayOutboundAuth } // external gateway ARN
+  | { type: 'runtime'; arn: string; exec?: boolean } // external agent runtime ARN; exec adds container-exec
+  | { type: 'browser'; arn?: string } // customer-owned browser ARN; omit for the AWS-managed default
+  | { type: 'codeInterpreter'; arn?: string }; // customer-owned code-interpreter ARN; omit for the AWS-managed default
+
+type GatewayOutboundAuth =
+  | { awsIam: {} } // SigV4 with the execution role (default)
+  | { none: {} }
+  | {
+      oauth: {
+        providerArn: string;
+        scopes: string[];
+        grantType?: 'CLIENT_CREDENTIALS' | 'AUTHORIZATION_CODE' | 'TOKEN_EXCHANGE';
+        customParameters?: Record<string, string>;
+      };
+    };
 
 interface Instrumentation {
   enableOtel: boolean; // default true - wrap entrypoint with opentelemetry-instrument

@@ -121,3 +121,57 @@ def load_model() -> GeminiModel:
         model_id="{{#if modelId}}{{modelId}}{{else}}gemini-2.5-flash{{/if}}",
     )
 {{/if}}
+{{#if (eq modelProvider "LiteLLM")}}
+import os
+{{#if litellmAdditionalParams}}
+import json
+{{/if}}
+
+from strands.models.litellm import LiteLLMModel
+{{#if identityProviders.[0].name}}
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+{{/if}}
+
+
+
+
+def load_model() -> LiteLLMModel:
+    """Get a LiteLLM model client (proxies to the provider encoded in model_id)."""
+    client_args = {}
+    {{#if identityProviders.[0].name}}
+    client_args["api_key"] = _get_api_key()
+    {{/if}}
+    {{#if litellmApiBase}}
+    client_args["api_base"] = {{safeJson litellmApiBase}}
+    {{/if}}
+    params = {{#if litellmAdditionalParams}}json.loads({{pyJsonStr litellmAdditionalParams}}){{else}}{}{{/if}}
+    return LiteLLMModel(
+        client_args=client_args,
+        model_id="{{#if modelId}}{{modelId}}{{else}}bedrock/us.anthropic.claude-sonnet-4-5-20250514-v1:0{{/if}}",
+        params=params,
+    )
+{{/if}}

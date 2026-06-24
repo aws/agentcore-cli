@@ -10,11 +10,11 @@ export type SDKFramework = z.infer<typeof SDKFrameworkSchema>;
 export const TargetLanguageSchema = z.enum(['Python', 'TypeScript', 'Other']);
 export type TargetLanguage = z.infer<typeof TargetLanguageSchema>;
 
-export const ModelProviderSchema = z.enum(['Bedrock', 'Gemini', 'OpenAI', 'Anthropic']);
+export const ModelProviderSchema = z.enum(['Bedrock', 'Gemini', 'OpenAI', 'Anthropic', 'LiteLLM']);
 export type ModelProvider = z.infer<typeof ModelProviderSchema>;
 
-/** Providers that use credentials (Bedrock uses IAM, no credential needed). */
-export const CREDENTIAL_PROVIDERS = ['Gemini', 'OpenAI', 'Anthropic'] as const;
+/** Providers that use credentials (Bedrock uses IAM, no credential needed). LiteLLM's API key is optional. */
+export const CREDENTIAL_PROVIDERS = ['Gemini', 'OpenAI', 'Anthropic', 'LiteLLM'] as const;
 
 /**
  * Case-insensitively match a user-provided value against a Zod enum's options.
@@ -34,6 +34,8 @@ export const DEFAULT_MODEL_IDS: Record<ModelProvider, string> = {
   Anthropic: 'claude-sonnet-4-5-20250514',
   OpenAI: 'gpt-4.1',
   Gemini: 'gemini-2.5-flash',
+  // LiteLLM model ids are provider-prefixed (e.g. "bedrock/...", "openai/gpt-4o"); no single default.
+  LiteLLM: 'bedrock/us.anthropic.claude-sonnet-4-5-20250514-v1:0',
 };
 
 /**
@@ -43,7 +45,8 @@ export const DEFAULT_MODEL_IDS: Record<ModelProvider, string> = {
  * - OpenAIAgents only supports OpenAI (uses OpenAI's native API)
  */
 export const SDK_MODEL_PROVIDER_MATRIX: Record<SDKFramework, readonly ModelProvider[]> = {
-  Strands: ['Bedrock', 'Anthropic', 'OpenAI', 'Gemini'] as const,
+  // LiteLLM is supported for Strands (used by harness export) — it proxies to any provider.
+  Strands: ['Bedrock', 'Anthropic', 'OpenAI', 'Gemini', 'LiteLLM'] as const,
   LangChain_LangGraph: ['Bedrock', 'Anthropic', 'OpenAI', 'Gemini'] as const,
   GoogleADK: ['Gemini'] as const,
   OpenAIAgents: ['OpenAI'] as const,

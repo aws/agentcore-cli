@@ -38,6 +38,15 @@ export interface GatewayProviderRenderConfig {
   discoveryUrl?: string;
   /** Space-separated scopes for token request (CUSTOM_JWT only) */
   scopes?: string;
+  /**
+   * AgentCore Identity auth flow for @requires_access_token (CUSTOM_JWT only).
+   * Mapped from the OAuth grant type: CLIENT_CREDENTIALS→M2M, AUTHORIZATION_CODE→USER_FEDERATION.
+   * Defaults to M2M when unset. (TOKEN_EXCHANGE is not supported by the decorator.)
+   */
+  authFlow?: string;
+  /** Custom OAuth parameters for @requires_access_token (CUSTOM_JWT only). Rendered via the safeJson
+   *  helper (SafeString) so the JSON is NOT HTML-escaped into invalid Python. */
+  customParameters?: Record<string, string>;
   /** Hardcoded URL for external gateways not found in deployed-state.json */
   hardcodedUrl?: string;
 }
@@ -116,12 +125,14 @@ export interface AgentRenderConfig {
 
   /** True when agentcore_browser tool is present and allowed */
   hasBrowser?: boolean;
-  /** Custom browser identifier (resource ID extracted from browserArn) */
-  browserIdentifier?: string;
+  /** Env var holding the custom browser identifier, injected by the browser connection at deploy.
+   *  Undefined when the AWS-managed default browser is used (no custom ARN). */
+  browserIdentifierEnvVar?: string;
   /** True when agentcore_code_interpreter tool is present and allowed */
   hasCodeInterpreter?: boolean;
-  /** Custom code interpreter identifier (resource ID extracted from codeInterpreterArn) */
-  codeInterpreterIdentifier?: string;
+  /** Env var holding the custom code-interpreter identifier, injected by the connection at deploy.
+   *  Undefined when the AWS-managed default is used (no custom ARN). */
+  codeInterpreterIdentifierEnvVar?: string;
   /** True when the builtin shell tool is enabled (export harness only) */
   hasShell?: boolean;
   /** True when the builtin file_operations tool is enabled (export harness only) */
@@ -131,6 +142,13 @@ export interface AgentRenderConfig {
 
   /** Model ID to use in load.py (export path only — overrides the provider-specific template default) */
   modelId?: string;
+
+  /** LiteLLM-only: base URL for the model endpoint (export path). */
+  litellmApiBase?: string;
+
+  /** LiteLLM-only: extra LiteLLM params merged into the model client (export path). Rendered via
+   *  pyJsonStr + json.loads so JSON booleans/null parse correctly at runtime. */
+  litellmAdditionalParams?: Record<string, unknown>;
 
   /** True when generating from a harness export (suppresses placeholder tools) */
   isExportHarness?: boolean;

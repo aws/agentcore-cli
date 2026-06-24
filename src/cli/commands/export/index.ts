@@ -15,8 +15,9 @@ export function registerExport(program: Command): void {
 
   exportCmd
     .command('harness')
-    .description('Export an in-project harness to a Python Strands runtime agent')
-    .option('--name <name>', 'Harness name [non-interactive]')
+    .description('Export a harness to a Python Strands runtime agent (in-project via --name, or by --arn)')
+    .option('--name <name>', 'In-project harness name [non-interactive]')
+    .option('--arn <arn>', 'ARN of a harness created outside this project — fetched from the service [non-interactive]')
     .option(
       '--target-agent-name <name>',
       'Name for the generated runtime agent (default: <harnessName>Agent) [non-interactive]'
@@ -24,9 +25,9 @@ export function registerExport(program: Command): void {
     .option('--build <type>', 'Build type: CodeZip or Container [non-interactive]')
     .option('--json', 'Output results as JSON')
     .action(async options => {
-      if (!options.name) {
+      if (!options.name && !options.arn) {
         if (options.json) {
-          console.log(JSON.stringify({ success: false, error: '--name is required in non-interactive mode' }));
+          console.log(JSON.stringify({ success: false, error: '--name or --arn is required in non-interactive mode' }));
           process.exit(1);
         }
         await renderTUI({ initialRoute: { name: 'export-harness' }, actionOnBack: 'exit' });
@@ -64,10 +65,11 @@ export function registerExport(program: Command): void {
         process.exit(1);
       }
 
-      const targetAgentName = options.targetAgentName ?? `${options.name}Agent`;
+      const targetAgentName = result.agentName;
+      const harnessLabel = options.name ?? options.arn;
 
       console.log('');
-      console.log(`${green}Exported harness ${options.name} → runtime agent ${targetAgentName}${reset}`);
+      console.log(`${green}Exported harness ${harnessLabel} → runtime agent ${targetAgentName}${reset}`);
       console.log('');
       console.log(`${dim}Generated:${reset}`);
       console.log(`  app/${targetAgentName}/    Python agent (Strands)`);

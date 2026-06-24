@@ -152,10 +152,20 @@ tools.append(add_numbers)
 {{/unless}}
 {{/if}}
 {{#if hasBrowser}}
-tools.append(AgentCoreBrowser({{#if browserIdentifier}}identifier="{{browserIdentifier}}"{{/if}}).browser)
+{{#if browserIdentifierEnvVar}}
+_browser_id = os.getenv("{{browserIdentifierEnvVar}}")
+tools.append(AgentCoreBrowser(**({"identifier": _browser_id} if _browser_id else {})).browser)
+{{else}}
+tools.append(AgentCoreBrowser().browser)
+{{/if}}
 {{/if}}
 {{#if hasCodeInterpreter}}
-tools.append(AgentCoreCodeInterpreter({{#if codeInterpreterIdentifier}}identifier="{{codeInterpreterIdentifier}}"{{/if}}).code_interpreter)
+{{#if codeInterpreterIdentifierEnvVar}}
+_code_interpreter_id = os.getenv("{{codeInterpreterIdentifierEnvVar}}")
+tools.append(AgentCoreCodeInterpreter(**({"identifier": _code_interpreter_id} if _code_interpreter_id else {})).code_interpreter)
+{{else}}
+tools.append(AgentCoreCodeInterpreter().code_interpreter)
+{{/if}}
 {{/if}}
 {{#if hasShell}}
 @tool
