@@ -44,6 +44,7 @@ import { withMinDuration } from '../../utils';
 import { mapByoConfigToAgent } from '../agent';
 import type { AddAgentConfig } from '../agent/types';
 import type { GenerateConfig } from '../generate/types';
+import { toMemoryAddOptions } from '../harness/memory-options';
 import type { AddHarnessConfig } from '../harness/types';
 import { DescribeSubnetsCommand, EC2Client } from '@aws-sdk/client-ec2';
 import { mkdir } from 'fs/promises';
@@ -249,7 +250,11 @@ export function useCreateFlow(cwd: string): CreateFlowState {
       ),
       memory_type: standardize(
         MemoryEnum,
-        isHarness ? (addHarnessConfig?.skipMemory ? 'none' : 'longandshortterm') : (addAgentConfig?.memory ?? 'none')
+        isHarness
+          ? addHarnessConfig?.memory?.mode === 'disabled'
+            ? 'none'
+            : 'longandshortterm'
+          : (addAgentConfig?.memory ?? 'none')
       ),
       build_type: isHarness ? undefined : standardize(BuildType, addAgentConfig?.buildType ?? 'CodeZip'),
       network_mode: standardize(
@@ -621,13 +626,14 @@ export function useCreateFlow(cwd: string): CreateFlowState {
             await withMinDuration(async () => {
               logger.logSubStep(`Adding harness: ${addHarnessConfig.name}`);
               const { harnessPrimitive: hp } = await import('../../../primitives/registry');
+              const memoryOptions = toMemoryAddOptions(addHarnessConfig.memory);
               const result = await hp.add({
                 name: addHarnessConfig.name,
                 modelProvider: addHarnessConfig.modelProvider,
                 modelId: addHarnessConfig.modelId,
                 apiFormat: addHarnessConfig.apiFormat,
                 apiKeyArn: addHarnessConfig.apiKeyArn,
-                skipMemory: addHarnessConfig.skipMemory,
+                ...memoryOptions,
                 containerUri: addHarnessConfig.containerUri,
                 dockerfilePath: addHarnessConfig.dockerfilePath,
                 maxIterations: addHarnessConfig.maxIterations,

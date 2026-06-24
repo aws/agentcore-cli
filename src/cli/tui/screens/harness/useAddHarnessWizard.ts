@@ -1,5 +1,4 @@
 import type { HarnessApiFormat, HarnessModelProvider, NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
-import { isGatedFeaturesEnabled } from '../../../feature-flags';
 import type { JwtConfig } from '../../components/jwt-config';
 import { HARNESS_FILESYSTEM_STEP_NAMES, useFilesystemMountState } from '../../hooks/useFilesystemMountState';
 import type { AddHarnessConfig, AddHarnessStep, AdvancedSetting, ContainerMode } from './types';
@@ -9,7 +8,6 @@ import { useCallback, useMemo, useState } from 'react';
 const ADVANCED_SETTING_ORDER: AdvancedSetting[] = [
   'tools',
   'skills',
-  'memory-tuning',
   'memory-managed-tuning',
   'memory-existing-tuning',
   'allowed-tools',
@@ -24,7 +22,6 @@ const ADVANCED_SETTING_ORDER: AdvancedSetting[] = [
 const SETTING_TO_FIRST_STEP: Record<AdvancedSetting, AddHarnessStep> = {
   tools: 'tools-select',
   skills: 'skills-source-type',
-  'memory-tuning': 'memory-messages-count',
   'memory-managed-tuning': 'memory-strategies',
   'memory-existing-tuning': 'memory-messages-count',
   'allowed-tools': 'allowed-tools',
@@ -57,12 +54,10 @@ function getDefaultConfig(): AddHarnessConfig {
     name: '',
     modelProvider: 'bedrock',
     modelId: DEFAULT_MODEL_IDS.bedrock,
-    // Managed memory is the default for new harnesses when the gated feature is on (strategies left
-    // absent → service default; tunable under Advanced). When off, the legacy enabled/disabled
-    // `memory` step drives skipMemory instead and this stays undefined.
-    ...(isGatedFeaturesEnabled() && {
-      memory: { mode: 'managed' as const },
-    }),
+    // Memory is opt-in: a new harness defaults to disabled (no memory). The user picks Managed or
+    // Existing on the memory-mode step if they want it. Seeding disabled keeps the confirm summary
+    // accurate when the user accepts the default.
+    memory: { mode: 'disabled' as const },
   };
 }
 
@@ -93,17 +88,12 @@ export function useAddHarnessWizard() {
       steps.push('container-dockerfile');
     }
 
-    if (isGatedFeaturesEnabled()) {
-      // Main path is just the mode pick. Managed defaults to the service's own strategy set (nothing
-      // more to ask); existing REQUIRES a name/ARN so it's collected here; disabled needs nothing.
-      // All other knobs (managed strategies/expiry/KMS, existing tuning) live under Advanced → Memory tuning.
-      steps.push('memory-mode');
-      if (config.memory?.mode === 'existing') {
-        steps.push('memory-existing-ref');
-      }
-    } else {
-      // Legacy enabled/disabled memory step.
-      steps.push('memory');
+    // Main path is just the mode pick. Managed defaults to the service's own strategy set (nothing
+    // more to ask); existing REQUIRES a name/ARN so it's collected here; disabled needs nothing.
+    // All other knobs (managed strategies/expiry/KMS, existing tuning) live under Advanced → Memory tuning.
+    steps.push('memory-mode');
+    if (config.memory?.mode === 'existing') {
+      steps.push('memory-existing-ref');
     }
 
     steps.push('advanced');
@@ -157,10 +147,6 @@ export function useAddHarnessWizard() {
       steps.push('memory-strategies', 'memory-event-expiry', 'memory-kms');
     }
     if (advancedSettings.includes('memory-existing-tuning') && config.memory?.mode === 'existing') {
-      steps.push('memory-messages-count', 'memory-retrieval-top-k', 'memory-relevance-score');
-    }
-    // Legacy tuning (gated off): the old flat topK/relevance/messages knobs.
-    if (advancedSettings.includes('memory-tuning') && !isGatedFeaturesEnabled()) {
       steps.push('memory-messages-count', 'memory-retrieval-top-k', 'memory-relevance-score');
     }
 
@@ -418,8 +404,8 @@ export function useAddHarnessWizard() {
     } else if (containerMode === 'dockerfile') {
       setStep('container-dockerfile');
     } else {
-      // Route to the first memory step: the mode picker (gated on) or the legacy toggle (gated off).
-      setStep(isGatedFeaturesEnabled() ? 'memory-mode' : 'memory');
+      // Route to the first memory step: the mode picker.
+      setStep('memory-mode');
     }
   }, []);
 
@@ -533,12 +519,7 @@ export function useAddHarnessWizard() {
     [advancedSettings]
   );
 
-  const setMemoryEnabled = useCallback((enabled: boolean) => {
-    setConfig(c => ({ ...c, skipMemory: !enabled }));
-    setStep('advanced');
-  }, []);
-
-  // --- Mode-first memory sub-flow setters (gated features ON) ---
+  // --- Mode-first memory sub-flow setters ---
 
   const setMemoryMode = useCallback((mode: 'managed' | 'existing' | 'disabled') => {
     // Managed seeds nothing beyond the mode — strategies/expiry/KMS are opt-in under Advanced, and an
@@ -748,10 +729,13 @@ export function useAddHarnessWizard() {
     [nextStep]
   );
 
+  // Existing-memory retrieval tuning. These steps appear only in existing mode, so the value is
+  // written into the existing union arm (mirroring the managed setters above) — AddHarnessFlow reads
+  // tuning from config.memory, not from flat fields.
   const setMessagesCount = useCallback(
     (raw: string) => {
       const messagesCount = raw.trim() === '' ? undefined : parseInt(raw, 10);
-      setConfig(c => ({ ...c, messagesCount }));
+      setConfig(c => (c.memory?.mode === 'existing' ? { ...c, memory: { ...c.memory, messagesCount } } : c));
       const next = nextStep('memory-messages-count');
       if (next) setStep(next);
     },
@@ -760,8 +744,8 @@ export function useAddHarnessWizard() {
 
   const setMemoryTopK = useCallback(
     (raw: string) => {
-      const memoryTopK = raw.trim() === '' ? undefined : parseInt(raw, 10);
-      setConfig(c => ({ ...c, memoryTopK }));
+      const topK = raw.trim() === '' ? undefined : parseInt(raw, 10);
+      setConfig(c => (c.memory?.mode === 'existing' ? { ...c, memory: { ...c.memory, topK } } : c));
       const next = nextStep('memory-retrieval-top-k');
       if (next) setStep(next);
     },
@@ -770,8 +754,8 @@ export function useAddHarnessWizard() {
 
   const setMemoryRelevanceScore = useCallback(
     (raw: string) => {
-      const memoryRelevanceScore = raw.trim() === '' ? undefined : parseFloat(raw);
-      setConfig(c => ({ ...c, memoryRelevanceScore }));
+      const relevanceScore = raw.trim() === '' ? undefined : parseFloat(raw);
+      setConfig(c => (c.memory?.mode === 'existing' ? { ...c, memory: { ...c.memory, relevanceScore } } : c));
       const next = nextStep('memory-relevance-score');
       if (next) setStep(next);
     },
@@ -938,7 +922,6 @@ export function useAddHarnessWizard() {
     setGatewayOutboundAuth,
     setGatewayProviderArn,
     setGatewayScopes,
-    setMemoryEnabled,
     setMemoryMode,
     setMemoryStrategies,
     setMemoryEventExpiry,

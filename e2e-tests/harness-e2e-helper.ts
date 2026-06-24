@@ -21,15 +21,31 @@ interface HarnessE2EConfig {
   apiBase?: string;
   /** LiteLLM only: provider-specific params (JSON string), passed as --additional-params. */
   additionalParams?: string;
+  /** Skip memory entirely (`create --no-harness-memory` → disabled). Mutually exclusive with memoryRoundTrip. */
   skipMemory?: boolean;
   skipInvoke?: boolean;
+  /**
+   * After creating the (managed-memory) harness, exercise a 2-turn memory round-trip: state a fact,
+   * then in the SAME session confirm it's recalled. Proves the execution role's memory data-plane
+   * grant actually works at runtime (the AccessDenied-on-ListEvents scenario) — not just that
+   * invoke returns 200. Only meaningful when the harness has managed (or omitted) memory.
+   */
+  memoryRoundTrip?: boolean;
+  /**
+   * AWS Skills to attach to the harness via `add skill --aws-skills <value>` before deploy. Use ''
+   * for all skills, or a comma-separated path filter (e.g. 'core-skills/*'). When set, an extra
+   * step asks the deployed agent what skills it has and asserts the response references them.
+   */
+  awsSkills?: string;
+  /** Suffix for the suite label, so multiple suites with the same provider don't collide in output. */
+  labelSuffix?: string;
 }
 
 export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
   const hasRequiredVar = !cfg.apiKeyArnEnvVar || !!process.env[cfg.apiKeyArnEnvVar];
   const canRun = baseCanRun && hasRequiredVar;
 
-  const providerLabel =
+  const providerBase =
     cfg.modelProvider === 'open_ai'
       ? 'OpenAI'
       : cfg.modelProvider === 'gemini'
@@ -37,9 +53,10 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
         : cfg.modelProvider === 'lite_llm'
           ? 'LiteLLM'
           : 'Bedrock';
+  const providerLabel = providerBase + (cfg.labelSuffix ? `/${cfg.labelSuffix}` : '');
 
   // note: this is created outside of beforeAll since beforeAll is skipped if all tests are skipped.
-  const logger = getLogger(`harness-${providerLabel.toLowerCase()}`);
+  const logger = getLogger(`harness-${providerLabel.toLowerCase().replace('/', '-')}`);
   if (!canRun) {
     logger.warn(
       `tests are skipped due to insufficient conditions. ` +
@@ -98,6 +115,16 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
       const json = parseJsonOutput(result.stdout) as { projectPath: string };
       projectPath = json.projectPath;
 
+      // Attach AWS Skills to the harness before deploy, if configured. '' means all skills; a
+      // non-empty value is a comma-separated path filter passed as the --aws-skills argument.
+      if (cfg.awsSkills !== undefined) {
+        const skillArgs = ['add', 'skill', '--harness', harnessName, '--aws-skills'];
+        if (cfg.awsSkills) skillArgs.push(cfg.awsSkills);
+        skillArgs.push('--json');
+        const skillResult = await runAgentCoreCLI(skillArgs, projectPath);
+        expect(skillResult.exitCode, `add skill --aws-skills failed: ${skillResult.stderr}`).toBe(0);
+      }
+
       await writeAwsTargets(projectPath);
       installCdkTarball(projectPath);
     }, 300000);
@@ -115,6 +142,9 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
       async () => {
         expect(projectPath, 'Project should have been created').toBeTruthy();
 
+        // Retry the deploy: managed-memory provisioning (3-5 min) can run long, and CFN/global-setup
+        // contention occasionally surfaces a transient non-zero on the first attempt. `deploy` is
+        // idempotent (re-applies the same stack), so a second attempt is safe and lands the stack.
         await retry(
           async () => {
             const result = await runAgentCoreCLI(['deploy', '--yes', '--json'], projectPath);
@@ -124,11 +154,11 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
             const json = parseJsonOutput(result.stdout) as { success: boolean };
             expect(json.success, 'Deploy should report success').toBe(true);
           },
-          1,
+          2,
           30000
         );
       },
-      600000
+      900000
     );
 
     it.skipIf(!canRun || !!cfg.skipInvoke)(
@@ -153,6 +183,99 @@ export function createHarnessE2ESuite(cfg: HarnessE2EConfig) {
         );
       },
       180000
+    );
+
+    // Memory round-trip: prove the execution-role memory data-plane grant works at runtime. The
+    // harness must read/write its managed memory without AccessDenied (the bug #286/#287 fixed) —
+    // an invoke that returns 200 isn't enough; the SECOND turn must recall the fact from the FIRST.
+    it.skipIf(!canRun || !cfg.memoryRoundTrip)(
+      'remembers a fact across turns (managed memory round-trip)',
+      async () => {
+        // 33+ char session id (service constraint), no random/Date in the literal source needed —
+        // harnessName already carries a per-run timestamp suffix, which is enough to isolate runs.
+        const sessionId = `e2e-mem-roundtrip-${harnessName}-padding`;
+
+        const turn1 = await runAgentCoreCLI(
+          [
+            'invoke',
+            '--harness',
+            harnessName,
+            '--session-id',
+            sessionId,
+            '--prompt',
+            'My favorite color is teal. Remember it.',
+            '--json',
+          ],
+          projectPath
+        );
+        expect(turn1.exitCode, `Turn 1 failed: stderr=${turn1.stderr}, stdout=${turn1.stdout}`).toBe(0);
+        const t1 = parseJsonOutput(turn1.stdout) as { success: boolean; response?: string };
+        expect(t1.success, 'Turn 1 invoke should succeed (no AccessDenied on memory)').toBe(true);
+
+        // Recall in a fresh invoke on the same session — the harness must read its memory store.
+        const turn2 = await retry(
+          async () => {
+            const result = await runAgentCoreCLI(
+              [
+                'invoke',
+                '--harness',
+                harnessName,
+                '--session-id',
+                sessionId,
+                '--prompt',
+                'What is my favorite color? Answer with just the color.',
+                '--json',
+              ],
+              projectPath
+            );
+            expect(result.exitCode, `Turn 2 failed: stderr=${result.stderr}, stdout=${result.stdout}`).toBe(0);
+            const json = parseJsonOutput(result.stdout) as { success: boolean; response?: string };
+            expect(json.success, 'Turn 2 invoke should succeed').toBe(true);
+            expect(
+              (json.response ?? '').toLowerCase(),
+              `Harness should recall "teal" from memory; got: ${json.response}`
+            ).toContain('teal');
+            return json;
+          },
+          3,
+          15000
+        );
+        expect(turn2.success).toBe(true);
+      },
+      240000
+    );
+
+    // AWS Skills: prove the deployed agent actually loaded the configured skills (not just that the
+    // spec carried them). Ask the agent what skills/tools it has and assert it references AWS ones.
+    it.skipIf(!canRun || cfg.awsSkills === undefined)(
+      'loads AWS skills on the deployed harness',
+      async () => {
+        await retry(
+          async () => {
+            const result = await runAgentCoreCLI(
+              [
+                'invoke',
+                '--harness',
+                harnessName,
+                '--prompt',
+                'List the AWS skills or tools you have access to. Be brief.',
+                '--json',
+              ],
+              projectPath
+            );
+            expect(result.exitCode, `Skills invoke failed: stderr=${result.stderr}, stdout=${result.stdout}`).toBe(0);
+            const json = parseJsonOutput(result.stdout) as { success: boolean; response?: string };
+            expect(json.success, 'Skills invoke should succeed').toBe(true);
+            expect(
+              (json.response ?? '').toLowerCase(),
+              `Agent should reference its loaded AWS skills; got: ${json.response}`
+            ).toContain('aws');
+          },
+          3,
+          15000
+        );
+      },
+      240000
     );
 
     it.skipIf(!canRun)(

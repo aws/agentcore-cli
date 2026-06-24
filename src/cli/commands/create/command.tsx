@@ -92,8 +92,19 @@ function printCreateSummary(
   console.log('');
 }
 
-/** Flags that trigger the agent/runtime path */
-const AGENT_PATH_FLAGS = ['framework', 'language', 'build', 'protocol', 'type', 'agentId', 'agentAliasId'] as const;
+/** Flags that trigger the agent/runtime path. `memory` (none/shortTerm/longAndShortTerm) is an
+ * agent-only concept — harnesses use --memory-mode/--no-memory — so it routes to the agent path
+ * (and conflicts with harness-only flags) rather than being silently ignored on the harness path. */
+const AGENT_PATH_FLAGS = [
+  'framework',
+  'language',
+  'build',
+  'protocol',
+  'type',
+  'agentId',
+  'agentAliasId',
+  'memory',
+] as const;
 
 /** Flags that are harness-only */
 const HARNESS_ONLY_FLAGS = [
@@ -192,7 +203,9 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
       agent_environment: 'harness' as const,
       has_agent: true,
       model_provider: standardize(ModelProviderEnum, options.modelProvider ?? 'bedrock'),
-      memory_type: standardize(MemoryType, options.harnessMemory === false ? 'none' : 'longandshortterm'),
+      // Harness memory is opt-in and defaults to disabled; only an explicit managed/existing request
+      // (not modeled by the legacy --harness-memory boolean) would be non-'none'.
+      memory_type: standardize(MemoryType, 'none'),
       network_mode: standardize(NetworkModeEnum, options.networkMode ?? 'public'),
     },
     async () => {
@@ -504,7 +517,7 @@ export const registerCreate = (program: Command) => {
       '--additional-params <json>',
       'Provider-specific harness params as a JSON object (lite_llm) [non-interactive]'
     )
-    .option('--no-harness-memory', 'Skip auto-creating memory for harness [non-interactive]')
+    .option('--no-harness-memory', 'Disable memory for the harness (this is the default) [non-interactive]')
     .option('--max-iterations <n>', 'Max agent loop iterations (harness) [non-interactive]')
     .option('--max-tokens <n>', 'Max tokens per iteration (harness) [non-interactive]')
     .option('--timeout <seconds>', 'Max execution duration in seconds (harness) [non-interactive]')

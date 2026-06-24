@@ -202,11 +202,19 @@ describe('formatError', () => {
     expect(result).toContain('Something went wrong');
   });
 
-  it('includes stack trace when present', () => {
+  it('omits the stack trace by default but includes it under AGENTCORE_DEBUG', () => {
     const err = new Error('oops');
-    const result = formatError(err);
-    expect(result).toContain('Stack trace:');
-    expect(result).toContain('oops');
+    expect(formatError(err)).not.toContain('Stack trace:');
+    expect(formatError(err)).toContain('oops');
+
+    const prev = process.env.AGENTCORE_DEBUG;
+    process.env.AGENTCORE_DEBUG = '1';
+    try {
+      expect(formatError(new Error('oops'))).toContain('Stack trace:');
+    } finally {
+      if (prev === undefined) delete process.env.AGENTCORE_DEBUG;
+      else process.env.AGENTCORE_DEBUG = prev;
+    }
   });
 
   it('formats nested cause errors', () => {

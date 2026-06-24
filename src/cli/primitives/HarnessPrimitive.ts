@@ -8,16 +8,13 @@ import type {
   HarnessModelProvider,
   HarnessSpec,
   ManagedMemoryStrategy,
-  MemoryStrategy,
-  MemoryStrategyType,
   NetworkMode,
   PrivateEndpoint,
   RuntimeAuthorizerType,
 } from '../../schema';
-import { DEFAULT_EPISODIC_REFLECTION_NAMESPACES, DEFAULT_STRATEGY_NAMESPACES, HarnessSpecSchema } from '../../schema';
+import { HarnessSpecSchema } from '../../schema';
 import { deleteHarness, isHarnessNotFoundError } from '../aws/agentcore-harness';
 import { getErrorMessage } from '../errors';
-import { isGatedFeaturesEnabled } from '../feature-flags';
 import { MANAGED_MEMORY_ADD_NOTICE } from '../operations/deploy';
 import { findOrphanHarnesses } from '../operations/harness/orphan';
 import type { OrphanHarness } from '../operations/harness/orphan';
@@ -26,7 +23,6 @@ import { withCommandRunTelemetry } from '../telemetry/cli-command-run.js';
 import type { SubCommand } from '../telemetry/schemas/command-run.js';
 import { getTemplatePath } from '../templates/templateRoot';
 import { requireTTY } from '../tui/guards/tty';
-import { DEFAULT_MEMORY_EXPIRY_DAYS } from '../tui/screens/generate/defaults';
 import { BasePrimitive } from './BasePrimitive';
 import { buildAuthorizerConfigFromJwtConfig, createManagedOAuthCredential } from './auth-utils';
 import type { JwtConfigOptions } from './auth-utils';
@@ -73,15 +69,6 @@ function strictFloat(label: string): (value: string) => number {
   };
 }
 
-/**
- * Hide a gated option from `--help` when ENABLE_GATED_FEATURES is off. The option still PARSES
- * (so explicit use is caught by validation with a clean "not yet available" message) but does not
- * advertise itself. Mirrors the AWS Skills gating pattern (skill-command.ts).
- */
-function gatedOption<T extends Option>(option: T): T {
-  return isGatedFeaturesEnabled() ? option : option.hideHelp();
-}
-
 /** Commander accumulator for repeatable `--env`/`--tag` KEY=VALUE flags. Last write wins per key. */
 function collectKeyValue(value: string, previous: Record<string, string>): Record<string, string> {
   const eq = value.indexOf('=');
@@ -125,15 +112,15 @@ export interface AddHarnessOptions {
   modelMaxTokens?: number;
   systemPrompt?: string;
   skipMemory?: boolean;
-  /** Memory mode (gated). managed = harness owns its memory; existing = BYO; disabled = none. */
+  /** Memory mode. managed = harness owns its memory; existing = BYO; disabled = none. */
   memoryMode?: 'managed' | 'existing' | 'disabled';
-  /** Managed-memory strategies (gated). Subset of SEMANTIC/SUMMARIZATION/USER_PREFERENCE/EPISODIC. */
+  /** Managed-memory strategies. Subset of SEMANTIC/SUMMARIZATION/USER_PREFERENCE/EPISODIC. */
   memoryStrategies?: string[];
-  /** Managed-memory event retention in days, 3-365 (gated). */
+  /** Managed-memory event retention in days, 3-365. */
   memoryEventExpiryDays?: number;
-  /** Managed-memory KMS CMK ARN, create-only (gated). */
+  /** Managed-memory KMS CMK ARN, create-only. */
   memoryEncryptionKeyArn?: string;
-  /** Reference an existing memory by name or ARN instead of auto-creating one. */
+  /** Reference an existing memory by name or ARN (sets memory mode to existing). */
   memoryName?: string;
   memoryArn?: string;
   /** Deploy-time ActorId for the referenced memory (CFN Memory.ActorId). */
@@ -226,17 +213,11 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
       const harnesses = project.harnesses ?? [];
       this.checkDuplicate(harnesses, options.name);
 
-      // Memory resolution. Two regimes, gated by ENABLE_GATED_FEATURES:
-      //  - Gated ON (managed-memory feature): the harness owns its memory internally (managed
-      //    default). No sibling `${name}Memory` is ever auto-created; buildMemoryRef emits the
-      //    mode-tagged union (managed | existing | disabled).
-      //  - Gated OFF (today's behavior): an explicit --memory-arn/--memory-name reference is used
-      //    as-is; otherwise (unless --no-memory) a dedicated `${name}Memory` sibling is auto-created.
-      const gated = isGatedFeaturesEnabled();
-      const referencesExistingMemory = options.memoryArn !== undefined || options.memoryName !== undefined;
-      const autoCreateMemoryName =
-        gated || options.skipMemory || referencesExistingMemory ? undefined : `${options.name}Memory`;
-      const memoryRef = gated ? this.buildMemoryRef(options) : this.buildLegacyMemoryRef(options, autoCreateMemoryName);
+      // Memory resolution: the harness owns its memory internally. buildMemoryRef emits the
+      // mode-tagged union (managed | existing | disabled). No sibling `${name}Memory` is ever
+      // auto-created. Memory is opt-in: with no memory flag (or --no-memory / --memory-mode disabled)
+      // it emits `{ mode: 'disabled' }`, which maps to CFN `Memory: { Disabled: {} }` (a true opt-out).
+      const memoryRef = this.buildMemoryRef(options);
 
       let dockerfile: string | undefined;
       if (options.dockerfilePath) {
@@ -403,21 +384,6 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
         template = template.replace('{{HARNESS_ARN}}', '<your-harness-arn>');
         template = template.replace('{{REGION}}', '<your-region>');
         await writeFile(invokeScriptPath, template, 'utf-8');
-      }
-
-      if (autoCreateMemoryName) {
-        const strategyTypes: MemoryStrategyType[] = ['SEMANTIC', 'USER_PREFERENCE', 'SUMMARIZATION', 'EPISODIC'];
-        const strategies: MemoryStrategy[] = strategyTypes.map(type => ({
-          type,
-          ...(DEFAULT_STRATEGY_NAMESPACES[type] && { namespaces: DEFAULT_STRATEGY_NAMESPACES[type] }),
-          ...(type === 'EPISODIC' && { reflectionNamespaces: DEFAULT_EPISODIC_REFLECTION_NAMESPACES }),
-        }));
-
-        project.memories.push({
-          name: autoCreateMemoryName,
-          eventExpiryDuration: DEFAULT_MEMORY_EXPIRY_DAYS,
-          strategies,
-        });
       }
 
       project.harnesses = [
@@ -670,9 +636,9 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
         strictInt('--model-max-tokens')
       )
       .option('--container <uri-or-path>', 'Container image URI or path to a Dockerfile')
-      .option('--no-memory', 'Skip auto-creating memory')
-      .option('--memory-name <name>', 'Reference an existing memory by name instead of auto-creating one')
-      .option('--memory-arn <arn>', 'Reference an existing memory by ARN instead of auto-creating one')
+      .option('--no-memory', 'Disable memory for this harness (this is the default)')
+      .option('--memory-name <name>', 'Use an existing memory by name')
+      .option('--memory-arn <arn>', 'Use an existing memory by ARN')
       .option('--memory-actor-id <id>', 'Deploy-time ActorId scoping memory access for the harness')
       .option(
         '--memory-messages-count <n>',
@@ -685,30 +651,20 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
         'Memory retrieval: minimum relevance score (0-1)',
         strictFloat('--memory-relevance-score')
       )
-      // Managed-memory flags — gated behind ENABLE_GATED_FEATURES. When off they still PARSE
-      // (so explicit use returns a clean "not yet available" error in validation) but are hidden
-      // from --help, mirroring the AWS Skills gating pattern.
+      // Managed-memory flags.
+      .addOption(new Option('--memory-mode <mode>', 'Memory mode: disabled (default), managed, or existing'))
       .addOption(
-        gatedOption(new Option('--memory-mode <mode>', 'Memory mode: managed (default), existing, or disabled'))
-      )
-      .addOption(
-        gatedOption(
-          new Option(
-            '--memory-strategies <list>',
-            'Managed memory strategies (comma-separated): SEMANTIC,SUMMARIZATION,USER_PREFERENCE,EPISODIC'
-          )
+        new Option(
+          '--memory-strategies <list>',
+          'Managed memory strategies (comma-separated): SEMANTIC,SUMMARIZATION,USER_PREFERENCE,EPISODIC'
         )
       )
       .addOption(
-        gatedOption(
-          new Option('--memory-event-expiry-days <n>', 'Managed memory event retention in days (3-365)').argParser(
-            strictInt('--memory-event-expiry-days')
-          )
+        new Option('--memory-event-expiry-days <n>', 'Managed memory event retention in days (3-365)').argParser(
+          strictInt('--memory-event-expiry-days')
         )
       )
-      .addOption(
-        gatedOption(new Option('--memory-encryption-key-arn <arn>', 'Managed memory KMS CMK ARN (create-only)'))
-      )
+      .addOption(new Option('--memory-encryption-key-arn <arn>', 'Managed memory KMS CMK ARN (create-only)'))
       .option('--max-iterations <n>', 'Max iterations', strictInt('--max-iterations'))
       .option('--max-tokens <n>', 'Max execution tokens per invocation (harness loop cap)', strictInt('--max-tokens'))
       .option('--timeout <seconds>', 'Timeout in seconds', strictInt('--timeout'))
@@ -1196,10 +1152,14 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
   }
 
   /**
-   * Build the mode-tagged memory ref for the managed-memory feature (gated ON).
+   * Build the mode-tagged memory ref for the harness.
    * Precedence: an explicit existing reference (--memory-arn/--memory-name or --memory-mode existing)
-   * → existing; --no-memory or --memory-mode disabled → disabled; otherwise (the default) → managed,
-   * with strategies written explicitly so the config is auditable.
+   * → existing; an explicit managed request (--memory-mode managed or a managed-tuning flag) →
+   * managed, with strategies written explicitly so the config is auditable; everything else →
+   * disabled. Memory is OPT-IN: a user who says nothing about memory gets `disabled`, which maps to
+   * CFN `Memory: { Disabled: {} }`. This is deliberate — an omitted CFN Memory block makes the
+   * service auto-provision managed memory, so the CLI always emits an explicit mode to avoid that
+   * surprise (silence must mean "no memory", not "managed").
    */
   private buildMemoryRef(options: AddHarnessOptions): HarnessMemoryRef | undefined {
     if (options.memoryArn || options.memoryName || options.memoryMode === 'existing') {
@@ -1213,43 +1173,26 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
         ...(tuning && { retrievalConfig: tuning }),
       };
     }
-    if (options.skipMemory || options.memoryMode === 'disabled') {
-      return { mode: 'disabled' };
+    // Managed is opt-in: only when the user explicitly asks for it via --memory-mode managed or any
+    // managed-tuning flag. Strategies are written ONLY when the user tuned them; omitted otherwise so
+    // the service applies its own default rather than the CLI pinning one.
+    const managedRequested =
+      options.memoryMode === 'managed' ||
+      (options.memoryStrategies?.length ?? 0) > 0 ||
+      options.memoryEventExpiryDays !== undefined ||
+      options.memoryEncryptionKeyArn !== undefined;
+    if (managedRequested) {
+      return {
+        mode: 'managed',
+        ...(options.memoryStrategies?.length && {
+          strategies: options.memoryStrategies as ManagedMemoryStrategy[],
+        }),
+        ...(options.memoryEventExpiryDays !== undefined && { eventExpiryDuration: options.memoryEventExpiryDays }),
+        ...(options.memoryEncryptionKeyArn && { encryptionKeyArn: options.memoryEncryptionKeyArn }),
+      };
     }
-    // Default (and explicit --memory-mode managed): managed memory. Strategies are written ONLY when
-    // the user tuned them (--memory-strategies); omitted otherwise so the harness/service applies its
-    // own default rather than the CLI pinning one.
-    return {
-      mode: 'managed',
-      ...(options.memoryStrategies?.length && {
-        strategies: options.memoryStrategies as ManagedMemoryStrategy[],
-      }),
-      ...(options.memoryEventExpiryDays !== undefined && { eventExpiryDuration: options.memoryEventExpiryDays }),
-      ...(options.memoryEncryptionKeyArn && { encryptionKeyArn: options.memoryEncryptionKeyArn }),
-    };
-  }
-
-  /**
-   * Legacy (gated OFF) memory ref builder — preserves pre-managed-memory behavior exactly.
-   * An explicit `--memory-arn`/`--memory-name` references an existing memory; otherwise
-   * `autoCreateMemoryName` (when set) points at the `${name}Memory` sibling this command auto-creates.
-   * Returns undefined when there is no memory at all (`--no-memory`).
-   */
-  private buildLegacyMemoryRef(
-    options: AddHarnessOptions,
-    autoCreateMemoryName: string | undefined
-  ): HarnessMemoryRef | undefined {
-    const name = options.memoryName ?? autoCreateMemoryName;
-    if (!options.memoryArn && !name) return undefined;
-    const tuning = this.buildRetrievalConfig(options);
-    return {
-      mode: 'existing',
-      ...(name && { name }),
-      ...(options.memoryArn && { arn: options.memoryArn }),
-      ...(options.memoryActorId && { actorId: options.memoryActorId }),
-      ...(options.messagesCount !== undefined && { messagesCount: options.messagesCount }),
-      ...(tuning && { retrievalConfig: tuning }),
-    };
+    // Default (and --no-memory / --memory-mode disabled): no memory.
+    return { mode: 'disabled' };
   }
 
   private buildRetrievalConfig(options: AddHarnessOptions) {

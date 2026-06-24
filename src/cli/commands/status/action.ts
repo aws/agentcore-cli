@@ -6,7 +6,6 @@ import { getEvaluator, getOnlineEvaluationConfig } from '../../aws/agentcore-con
 import { getPaymentManager } from '../../aws/agentcore-payments';
 import { getKnowledgeBase, getLatestIngestionJob } from '../../aws/bedrock-agent';
 import { getErrorMessage } from '../../errors';
-import { isGatedFeaturesEnabled } from '../../feature-flags';
 import { ExecLogger } from '../../logging';
 import type { ResourceDeploymentState } from './constants';
 import { buildRuntimeInvocationUrl } from './constants';
@@ -318,13 +317,11 @@ export function computeResourceStatuses(
     getLocalDetail: () => undefined,
   });
 
-  // Config version (gated): the harness Version is service-incremented and only known from deployed
+  // Config version: the harness Version is service-incremented and only known from deployed
   // state, so enrich each entry's detail post-pass rather than via getLocalDetail (local spec has none).
-  if (isGatedFeaturesEnabled()) {
-    for (const entry of harnesses) {
-      const version = resources?.harnesses?.[entry.name]?.harnessVersion;
-      if (version !== undefined) entry.detail = entry.detail ? `${entry.detail} v${version}` : `v${version}`;
-    }
+  for (const entry of harnesses) {
+    const version = resources?.harnesses?.[entry.name]?.harnessVersion;
+    if (version !== undefined) entry.detail = entry.detail ? `${entry.detail} v${version}` : `v${version}`;
   }
 
   const payments = diffResourceSet({

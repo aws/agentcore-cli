@@ -74,14 +74,11 @@ describe('useAddConfigBundleWizard — add-another back-navigation (BUG TUI-B)',
     const { ref } = setup();
     advanceToAddAnother(ref);
     act(() => ref.current!.wizard.doneAddingComponents());
-    // When ENABLE_GATED_FEATURES is off, branchName is skipped (defaults to mainline)
-    const expectedStep = process.env.ENABLE_GATED_FEATURES === '1' ? 'branchName' : 'commitMessage';
-    expect(ref.current!.wizard.step).toBe(expectedStep);
+    expect(ref.current!.wizard.step).toBe('branchName');
 
     // Back from the current step follows the linear order, not the loop guard.
     act(() => ref.current!.wizard.goBack());
-    const expectedBackStep = process.env.ENABLE_GATED_FEATURES === '1' ? 'addAnother' : 'branchName';
-    expect(ref.current!.wizard.step).toBe(expectedBackStep);
+    expect(ref.current!.wizard.step).toBe('addAnother');
   });
 
   it('first-pass back-navigation is unaffected (componentType → description)', () => {

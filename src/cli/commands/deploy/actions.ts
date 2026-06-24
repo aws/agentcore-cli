@@ -23,7 +23,6 @@ import {
   parseRuntimeEndpointOutputs,
 } from '../../cloudformation';
 import { getErrorMessage } from '../../errors';
-import { isGatedFeaturesEnabled } from '../../feature-flags';
 import { ExecLogger } from '../../logging';
 import {
   MANAGED_MEMORY_DEPLOY_NOTICE,
@@ -769,16 +768,14 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       throw writeErr;
     }
 
-    // Harness config-version drift note (gated): the service increments Version on every successful
+    // Harness config-version drift note: the service increments Version on every successful
     // update, so surface what changed this deploy.
-    if (isGatedFeaturesEnabled()) {
-      for (const drift of computeHarnessVersionDrift(prevHarnessRecords, deployedHarnesses)) {
-        logger.log(
-          drift.from !== undefined
-            ? `Harness ${drift.name}: config updated (v${drift.from} → v${drift.to})`
-            : `Harness ${drift.name}: deployed (v${drift.to})`
-        );
-      }
+    for (const drift of computeHarnessVersionDrift(prevHarnessRecords, deployedHarnesses)) {
+      logger.log(
+        drift.from !== undefined
+          ? `Harness ${drift.name}: config updated (v${drift.from} → v${drift.to})`
+          : `Harness ${drift.name}: deployed (v${drift.to})`
+      );
     }
 
     // Show gateway URLs and target sync status

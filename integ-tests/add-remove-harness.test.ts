@@ -51,10 +51,15 @@ describe('integration: harness add/remove lifecycle', () => {
     expect(await exists(promptPath), 'system-prompt.md should exist').toBe(true);
   });
 
-  it('auto-creates memory resource', async () => {
+  it('defaults to disabled memory and creates NO sibling memory resource', async () => {
+    // Memory is opt-in: with no memory flag the harness gets `disabled` (no memory). It must also NOT
+    // auto-create a `${name}Memory` sibling in the project (the legacy pre-managed-memory behavior).
+    const spec = await readHarnessSpec(project.projectPath, harnessName);
+    expect(spec.memory?.mode, 'default harness memory should be disabled (opt-in)').toBe('disabled');
+
     const config = await readProjectConfig(project.projectPath);
-    const memories = config.memories ?? [];
-    expect(memories.length, 'Should have auto-created memory').toBeGreaterThan(0);
+    const sibling = (config.memories ?? []).find((m: { name: string }) => m.name === `${harnessName}Memory`);
+    expect(sibling, 'no `${name}Memory` sibling should be auto-created').toBeFalsy();
   });
 
   it('rejects duplicate harness name', async () => {
@@ -72,12 +77,9 @@ describe('integration: harness add/remove lifecycle', () => {
     const config = await readProjectConfig(project.projectPath);
     const found = config.harnesses?.find((h: { name: string }) => h.name === harnessName);
     expect(found, `Harness "${harnessName}" should be removed`).toBeFalsy();
-
-    const associatedMemory = (config.memories ?? []).find((m: { name: string }) => m.name === `${harnessName}Memory`);
-    expect(associatedMemory, 'Associated memory should be removed with harness').toBeFalsy();
   });
 
-  it('re-adds harness after removal without duplicate memory error', async () => {
+  it('re-adds harness after removal', async () => {
     const result = await runCLI(['add', 'harness', '--name', harnessName, '--json'], project.projectPath);
 
     expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
@@ -236,7 +238,6 @@ describe('integration: create project with harness', () => {
 
 describe('integration: harness config shape', () => {
   let project: TestProject;
-  const gatedEnv = { ENABLE_GATED_FEATURES: '1' };
 
   beforeAll(async () => {
     project = await createTestProject({ noAgent: true });
@@ -420,9 +421,34 @@ describe('integration: harness config shape', () => {
       expect(git.path).toBe('pack');
       expect(git.auth).toEqual({ credentialName: 'gitCred', username: 'git-user' });
     });
+
+    it('adds AWS skills — all paths and a path filter', async () => {
+      await runCLI(['add', 'harness', '--name', 'AwsSkillHarness', '--no-memory', '--json'], project.projectPath);
+
+      const all = await runCLI(
+        ['add', 'skill', '--harness', 'AwsSkillHarness', '--aws-skills', '--json'],
+        project.projectPath
+      );
+      expect(all.exitCode, `stdout: ${all.stdout}, stderr: ${all.stderr}`).toBe(0);
+
+      const filtered = await runCLI(
+        ['add', 'skill', '--harness', 'AwsSkillHarness', '--aws-skills', 'core-skills/*', '--json'],
+        project.projectPath
+      );
+      expect(filtered.exitCode, `stdout: ${filtered.stdout}, stderr: ${filtered.stderr}`).toBe(0);
+
+      const spec = await readHarnessSpec(project.projectPath, 'AwsSkillHarness');
+      // "all" → awsSkills with no paths key; filtered → awsSkills.paths includes the glob.
+      expect(spec.skills.some((s: { awsSkills?: { paths?: string[] } }) => s.awsSkills && !s.awsSkills.paths)).toBe(
+        true
+      );
+      expect(
+        spec.skills.some((s: { awsSkills?: { paths?: string[] } }) => s.awsSkills?.paths?.includes('core-skills/*'))
+      ).toBe(true);
+    });
   });
 
-  describe('memory modes (gated)', () => {
+  describe('memory modes', () => {
     it('adds a managed-memory harness with explicit strategies', async () => {
       const name = 'ManagedMemHarness';
       const result = await runCLI(
@@ -437,14 +463,34 @@ describe('integration: harness config shape', () => {
           'SEMANTIC,EPISODIC',
           '--json',
         ],
-        project.projectPath,
-        { env: gatedEnv }
+        project.projectPath
       );
 
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
       const spec = await readHarnessSpec(project.projectPath, name);
       expect(spec.memory.mode).toBe('managed');
       expect(spec.memory.strategies).toEqual(['SEMANTIC', 'EPISODIC']);
+    });
+
+    it('defaults to disabled memory when no memory flags are passed (memory is opt-in)', async () => {
+      const name = 'DefaultMemHarness';
+      const result = await runCLI(['add', 'harness', '--name', name, '--json'], project.projectPath);
+
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+      const spec = await readHarnessSpec(project.projectPath, name);
+      expect(spec.memory.mode).toBe('disabled');
+    });
+
+    it('writes disabled memory for --memory-mode disabled (true opt-out, no sibling)', async () => {
+      const name = 'DisabledMemHarness';
+      const result = await runCLI(
+        ['add', 'harness', '--name', name, '--memory-mode', 'disabled', '--json'],
+        project.projectPath
+      );
+
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+      const spec = await readHarnessSpec(project.projectPath, name);
+      expect(spec.memory.mode).toBe('disabled');
     });
 
     it('adds an existing-memory harness referencing a sibling by name with tuning', async () => {
@@ -465,8 +511,7 @@ describe('integration: harness config shape', () => {
           '5',
           '--json',
         ],
-        project.projectPath,
-        { env: gatedEnv }
+        project.projectPath
       );
 
       expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
@@ -481,26 +526,17 @@ describe('integration: harness config shape', () => {
       {
         label: 'retrievalConfig tuning when memory is referenced by ARN',
         args: ['--memory-mode', 'existing', '--memory-arn', MEMORY_ARN, '--memory-top-k', '5'],
-        env: gatedEnv,
       },
       {
         label: '--memory-mode existing without a memory reference',
         args: ['--memory-mode', 'existing'],
-        env: gatedEnv,
       },
       {
-        label: '--memory-mode when the gated feature is disabled',
-        // Force the gate OFF explicitly: cleanSpawnEnv inherits the host process.env, so a
-        // developer/CI shell with ENABLE_GATED_FEATURES=1 exported would otherwise flip this
-        // case (the CLI would accept --memory-mode and exit 0). An empty string is "off"
-        // because isGatedFeaturesEnabled() checks `=== '1'`.
-        args: ['--memory-mode', 'managed'],
-        env: { ENABLE_GATED_FEATURES: '' },
+        label: '--no-memory combined with managed-only flags (--memory-strategies)',
+        args: ['--no-memory', '--memory-strategies', 'SEMANTIC'],
       },
-    ])('rejects $label', async ({ args, env }) => {
-      const result = await runCLI(['add', 'harness', '--name', 'BadMem', ...args, '--json'], project.projectPath, {
-        env,
-      });
+    ])('rejects $label', async ({ args }) => {
+      const result = await runCLI(['add', 'harness', '--name', 'BadMem', ...args, '--json'], project.projectPath);
       expect(result.exitCode).not.toBe(0);
     });
   });
