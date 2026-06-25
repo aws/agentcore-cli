@@ -50,14 +50,26 @@ interface InvokeJson {
   error?: unknown;
 }
 
-/** Invoke (harness or runtime) with retries; assert success and return the parsed response. */
-async function invokeAndExpectSuccess(args: string[], projectPath: string, attempts = 3): Promise<InvokeJson> {
+/**
+ * Invoke (harness or runtime) with retries; assert success and return the parsed response. An
+ * optional `verify` predicate runs INSIDE the retried unit, so a content assertion that fails on one
+ * LLM sample (nondeterministic phrasing) or one read (memory write/read lag) re-invokes rather than
+ * failing the test — matching the retry pattern in harness-e2e-helper.ts. `verify` should throw
+ * (e.g. via expect) when the response does not yet satisfy the check.
+ */
+async function invokeAndExpectSuccess(
+  args: string[],
+  projectPath: string,
+  verify?: (json: InvokeJson) => void,
+  attempts = 3
+): Promise<InvokeJson> {
   return retry(
     async () => {
       const result = await runAgentCoreCLI(args, projectPath);
       expect(result.exitCode, `Invoke failed: stderr=${result.stderr}, stdout=${result.stdout}`).toBe(0);
       const json = parseJsonOutput(result.stdout) as InvokeJson;
       expect(json.success, `Invoke should report success; got: ${JSON.stringify(json)}`).toBe(true);
+      verify?.(json);
       return json;
     },
     attempts,
@@ -79,7 +91,9 @@ async function verifyExportedAgentCapabilities(
   projectPath: string,
   factorial: { prompt: string; expected: string }
 ): Promise<void> {
-  const invoke = (prompt: string, sessionId?: string): Promise<InvokeJson> =>
+  // Each capability check passes its content assertion as `verify`, so the assertion runs inside the
+  // retry: a flaky LLM sample (or a not-yet-visible memory write) re-invokes instead of failing.
+  const invoke = (prompt: string, verify?: (json: InvokeJson) => void, sessionId?: string): Promise<InvokeJson> =>
     invokeAndExpectSuccess(
       [
         'invoke',
@@ -90,44 +104,51 @@ async function verifyExportedAgentCapabilities(
         prompt,
         '--json',
       ],
-      projectPath
+      projectPath,
+      verify
     );
 
   // 1. Code interpreter — exact computed value proves the tool ran (not model guesswork).
-  const calc = await invoke(factorial.prompt);
-  expect(calc.response ?? '', `Expected ${factorial.expected} in response; got: ${calc.response}`).toContain(
-    factorial.expected
+  await invoke(factorial.prompt, json =>
+    expect(json.response ?? '', `Expected ${factorial.expected} in response; got: ${json.response}`).toContain(
+      factorial.expected
+    )
   );
 
   // 2. Gateway tool — exported gateway tools are exposed to the model under the gateway tool's
   //    snake_cased name prefix (mcpGw -> `mcp_gw_*`), and the Exa MCP server's tools carry an `_exa`
   //    suffix. Match those provider/prefix-specific tokens (not generic words like "search"/"fetch",
   //    which the model could emit in prose) so a pass means the MCP client actually connected.
-  const tools = await invoke('List the exact names of every tool you can call. Reply with the names only.');
-  const toolsResp = (tools.response ?? '').toLowerCase();
-  expect(
-    /mcp_?gw|_exa|exa_/.test(toolsResp),
-    `Agent should list a gateway-provided MCP tool (mcpGw-prefixed / Exa); got: ${tools.response}`
-  ).toBe(true);
+  await invoke('List the exact names of every tool you can call. Reply with the names only.', json =>
+    expect(
+      /mcp_?gw|_exa|exa_/.test((json.response ?? '').toLowerCase()),
+      `Agent should list a gateway-provided MCP tool (mcpGw-prefixed / Exa); got: ${json.response}`
+    ).toBe(true)
+  );
 
   // 3. Skill — the returns-policy skill is about returns/refunds/warranty; asking the agent to name
   //    its skills should surface it, proving the git clone + skill load succeeded at runtime.
-  const skills = await invoke('What specialized skills do you have? Name them briefly.');
-  const skillsResp = (skills.response ?? '').toLowerCase();
-  expect(
-    /return|refund|warranty|returns-policy/.test(skillsResp),
-    `Agent should reference the returns-policy skill; got: ${skills.response}`
-  ).toBe(true);
+  await invoke('What specialized skills do you have? Name them briefly.', json =>
+    expect(
+      /return|refund|warranty|returns-policy/.test((json.response ?? '').toLowerCase()),
+      `Agent should reference the returns-policy skill; got: ${json.response}`
+    ).toBe(true)
+  );
 
   // 4. Memory — same-session round trip. Session id must be >=33 chars (service constraint); the
-  //    agentName already carries a per-run suffix, so it is unique per run.
+  //    agentName already carries a per-run suffix, so it is unique per run. Turn 1 just needs to
+  //    succeed; the recall turn retries its content assertion (the write may lag the read).
   const sessionId = `e2e-export-mem-${agentName}-roundtrip-padding`;
-  await invoke('My favorite color is teal. Please remember it.', sessionId);
-  const recall = await invoke('What is my favorite color? Answer with just the color.', sessionId);
-  expect(
-    (recall.response ?? '').toLowerCase(),
-    `Agent should recall "teal" from memory; got: ${recall.response}`
-  ).toContain('teal');
+  await invoke('My favorite color is teal. Please remember it.', undefined, sessionId);
+  await invoke(
+    'What is my favorite color? Answer with just the color.',
+    json =>
+      expect(
+        (json.response ?? '').toLowerCase(),
+        `Agent should recall "teal" from memory; got: ${json.response}`
+      ).toContain('teal'),
+    sessionId
+  );
 }
 
 describe.sequential('e2e: export fully-featured harness — in-project + out-of-project', () => {
@@ -386,7 +407,7 @@ describe.sequential('e2e: export fully-featured harness — in-project + out-of-
   it.skipIf(!canRun)(
     'invokes the source harness and runs the code interpreter',
     async () => {
-      const json = await invokeAndExpectSuccess(
+      await invokeAndExpectSuccess(
         [
           'invoke',
           '--harness',
@@ -395,9 +416,9 @@ describe.sequential('e2e: export fully-featured harness — in-project + out-of-
           'Use your code interpreter to compute 6 factorial. Reply with just the number.',
           '--json',
         ],
-        projectPath
+        projectPath,
+        json => expect(json.response ?? '', `Expected 720 in response; got: ${json.response}`).toContain('720')
       );
-      expect(json.response ?? '', `Expected 720 in response; got: ${json.response}`).toContain('720');
     },
     240000
   );
