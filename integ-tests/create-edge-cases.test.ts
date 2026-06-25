@@ -141,12 +141,11 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create edge cases', 
       expect(json.success).toBe(true);
       expect(json.projectPath).toBeTruthy();
 
-      // No agent-path flags -> create defaults to the harness path.
+      // --defaults is an agent-path flag -> routes to the agent creation path.
       telemetry.assertMetricEmitted({
         command: 'create',
         exit_reason: 'success',
-        agent_environment: 'harness',
-        model_provider: 'bedrock',
+        agent_environment: 'runtime',
         has_agent: 'true',
       });
     });

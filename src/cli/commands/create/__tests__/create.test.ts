@@ -241,14 +241,15 @@ describe('create command', () => {
   });
 
   describe('--defaults', () => {
-    it('creates project with defaults', async () => {
+    it('creates project with defaults via agent path', async () => {
       const name = `Defaults${Date.now()}`;
       const result = await runCLI(['create', '--name', name, '--defaults', '--json'], testDir);
 
       expect(result.exitCode, `stderr: ${result.stderr}`).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
-      expect(await exists(join(testDir, name))).toBeTruthy();
+      expect(json.agentName).toBe(name);
+      expect(await exists(join(json.projectPath, 'app', name))).toBeTruthy();
     });
   });
 
