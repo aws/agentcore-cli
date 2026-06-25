@@ -1,5 +1,10 @@
 import type { EvaluatorConfig } from '../../../schema';
-import { EvaluatorPrimitive, jsonToKwargs, jsonToPythonValue } from '../EvaluatorPrimitive.js';
+import {
+  EvaluatorPrimitive,
+  THIRD_PARTY_EVALUATOR_LIBRARIES,
+  jsonToKwargs,
+  jsonToPythonValue,
+} from '../EvaluatorPrimitive.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mockReadProjectSpec = vi.fn();
@@ -28,11 +33,11 @@ vi.mock('../../../lib/index.js', () => ({
 }));
 
 const mockRenderCodeBased = vi.fn().mockResolvedValue(undefined);
-const mockRenderDeepEval = vi.fn().mockResolvedValue(undefined);
+const mockRenderThirdParty = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../../templates/EvaluatorRenderer', () => ({
   renderCodeBasedEvaluatorTemplate: (...args: unknown[]) => mockRenderCodeBased(...args),
-  renderDeepEvalEvaluatorTemplate: (...args: unknown[]) => mockRenderDeepEval(...args),
+  renderThirdPartyEvaluatorTemplate: (...args: unknown[]) => mockRenderThirdParty(...args),
 }));
 
 const validConfig: EvaluatorConfig = {
@@ -265,55 +270,79 @@ describe('EvaluatorPrimitive', () => {
     });
   });
 
-  describe('buildDeepEvalConfig', () => {
-    it('returns managed code-based config with deepeval defaults', () => {
-      // eslint-disable-next-line @typescript-eslint/dot-notation
-      const config = primitive['buildDeepEvalConfig']('my_eval');
+  describe('buildThirdPartyConfig', () => {
+    describe('deepeval', () => {
+      const deepevalConfig = THIRD_PARTY_EVALUATOR_LIBRARIES.deepeval;
 
-      expect(config).toEqual({
-        codeBased: {
-          managed: {
-            codeLocation: 'app/my_eval/',
-            entrypoint: 'lambda_function.handler',
-            timeoutSeconds: 300,
-            memorySizeMb: 1024,
-            additionalPolicies: ['execution-role-policy.json'],
+      it('returns config with deepeval defaults (300s, 1024MB)', () => {
+        // eslint-disable-next-line @typescript-eslint/dot-notation
+        const config = primitive['buildThirdPartyConfig']('my_eval', deepevalConfig);
+
+        expect(config).toEqual({
+          codeBased: {
+            managed: {
+              codeLocation: 'app/my_eval/',
+              entrypoint: 'lambda_function.handler',
+              timeoutSeconds: 300,
+              memorySizeMb: 1024,
+              additionalPolicies: ['execution-role-policy.json'],
+            },
           },
-        },
+        });
+      });
+
+      it('respects custom timeout', () => {
+        // eslint-disable-next-line @typescript-eslint/dot-notation
+        const config = primitive['buildThirdPartyConfig']('my_eval', deepevalConfig, '120');
+
+        expect(config.codeBased!.managed!.timeoutSeconds).toBe(120);
+      });
+
+      it('respects custom memory', () => {
+        // eslint-disable-next-line @typescript-eslint/dot-notation
+        const config = primitive['buildThirdPartyConfig']('my_eval', deepevalConfig, undefined, '2048');
+
+        expect(config.codeBased!.managed!.memorySizeMb).toBe(2048);
       });
     });
 
-    it('respects custom timeout', () => {
-      // eslint-disable-next-line @typescript-eslint/dot-notation
-      const config = primitive['buildDeepEvalConfig']('my_eval', '120');
+    describe('autoevals', () => {
+      const autoevalsConfig = THIRD_PARTY_EVALUATOR_LIBRARIES.autoevals;
 
-      expect(config.codeBased!.managed!.timeoutSeconds).toBe(120);
-    });
+      it('returns config with autoevals defaults (60s, 512MB)', () => {
+        // eslint-disable-next-line @typescript-eslint/dot-notation
+        const config = primitive['buildThirdPartyConfig']('fact_check', autoevalsConfig);
 
-    it('respects custom memory', () => {
-      // eslint-disable-next-line @typescript-eslint/dot-notation
-      const config = primitive['buildDeepEvalConfig']('my_eval', undefined, '2048');
+        expect(config).toEqual({
+          codeBased: {
+            managed: {
+              codeLocation: 'app/fact_check/',
+              entrypoint: 'lambda_function.handler',
+              timeoutSeconds: 60,
+              memorySizeMb: 512,
+              additionalPolicies: ['execution-role-policy.json'],
+            },
+          },
+        });
+      });
 
-      expect(config.codeBased!.managed!.memorySizeMb).toBe(2048);
-    });
+      it('respects custom timeout', () => {
+        // eslint-disable-next-line @typescript-eslint/dot-notation
+        const config = primitive['buildThirdPartyConfig']('fact_check', autoevalsConfig, '180');
 
-    it('respects both custom timeout and memory', () => {
-      // eslint-disable-next-line @typescript-eslint/dot-notation
-      const config = primitive['buildDeepEvalConfig']('my_eval', '60', '512');
+        expect(config.codeBased!.managed!.timeoutSeconds).toBe(180);
+      });
 
-      expect(config.codeBased!.managed!.timeoutSeconds).toBe(60);
-      expect(config.codeBased!.managed!.memorySizeMb).toBe(512);
-    });
+      it('respects custom memory', () => {
+        // eslint-disable-next-line @typescript-eslint/dot-notation
+        const config = primitive['buildThirdPartyConfig']('fact_check', autoevalsConfig, undefined, '1024');
 
-    it('sets codeLocation based on evaluator name', () => {
-      // eslint-disable-next-line @typescript-eslint/dot-notation
-      const config = primitive['buildDeepEvalConfig']('relevancy_check');
-
-      expect(config.codeBased!.managed!.codeLocation).toBe('app/relevancy_check/');
+        expect(config.codeBased!.managed!.memorySizeMb).toBe(1024);
+      });
     });
   });
 
-  describe('add with thirdParty (deepeval)', () => {
+  describe('add with thirdParty', () => {
     const deepEvalConfig: EvaluatorConfig = {
       codeBased: {
         managed: {
@@ -326,7 +355,19 @@ describe('EvaluatorPrimitive', () => {
       },
     };
 
-    it('calls renderDeepEvalEvaluatorTemplate when thirdParty.library is deepeval', async () => {
+    const autoevalsEvalConfig: EvaluatorConfig = {
+      codeBased: {
+        managed: {
+          codeLocation: 'app/auto_eval/',
+          entrypoint: 'lambda_function.handler',
+          timeoutSeconds: 60,
+          memorySizeMb: 512,
+          additionalPolicies: ['execution-role-policy.json'],
+        },
+      },
+    };
+
+    it('calls renderThirdPartyEvaluatorTemplate with deepeval templateDir', async () => {
       mockReadProjectSpec.mockResolvedValue(makeProject());
       mockWriteProjectSpec.mockResolvedValue(undefined);
 
@@ -343,15 +384,42 @@ describe('EvaluatorPrimitive', () => {
 
       expect(result.success).toBe(true);
       expect(result).toHaveProperty('codePath', 'app/deep_eval/');
-      expect(mockRenderDeepEval).toHaveBeenCalledOnce();
-      expect(mockRenderDeepEval).toHaveBeenCalledWith(
-        { Name: 'deep_eval', MetricClass: 'AnswerRelevancyMetric', MetricParams: 'threshold=0.7' },
+      expect(mockRenderThirdParty).toHaveBeenCalledOnce();
+      expect(mockRenderThirdParty).toHaveBeenCalledWith(
+        'deepeval-lambda',
+        { Name: 'deep_eval', EvaluatorClass: 'AnswerRelevancyMetric', EvaluatorParams: 'threshold=0.7' },
         expect.stringContaining('app/deep_eval')
       );
       expect(mockRenderCodeBased).not.toHaveBeenCalled();
     });
 
-    it('passes empty string for MetricParams when not provided', async () => {
+    it('calls renderThirdPartyEvaluatorTemplate with autoevals templateDir', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      const result = await primitive.add({
+        name: 'auto_eval',
+        level: 'SESSION',
+        config: autoevalsEvalConfig,
+        thirdParty: {
+          library: 'autoevals',
+          metricClass: 'Factuality',
+          metricParams: '',
+        },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result).toHaveProperty('codePath', 'app/auto_eval/');
+      expect(mockRenderThirdParty).toHaveBeenCalledOnce();
+      expect(mockRenderThirdParty).toHaveBeenCalledWith(
+        'autoevals-lambda',
+        { Name: 'auto_eval', EvaluatorClass: 'Factuality', EvaluatorParams: '' },
+        expect.stringContaining('app/auto_eval')
+      );
+      expect(mockRenderCodeBased).not.toHaveBeenCalled();
+    });
+
+    it('passes empty string for EvaluatorParams when not provided', async () => {
       mockReadProjectSpec.mockResolvedValue(makeProject());
       mockWriteProjectSpec.mockResolvedValue(undefined);
 
@@ -365,8 +433,9 @@ describe('EvaluatorPrimitive', () => {
         },
       });
 
-      expect(mockRenderDeepEval).toHaveBeenCalledWith(
-        { Name: 'deep_eval', MetricClass: 'HallucinationMetric', MetricParams: '' },
+      expect(mockRenderThirdParty).toHaveBeenCalledWith(
+        'deepeval-lambda',
+        { Name: 'deep_eval', EvaluatorClass: 'HallucinationMetric', EvaluatorParams: '' },
         expect.any(String)
       );
     });
@@ -394,8 +463,62 @@ describe('EvaluatorPrimitive', () => {
 
       expect(mockRenderCodeBased).toHaveBeenCalledOnce();
       expect(mockRenderCodeBased).toHaveBeenCalledWith('plain_eval', expect.stringContaining('app/plain_eval'));
-      expect(mockRenderDeepEval).not.toHaveBeenCalled();
+      expect(mockRenderThirdParty).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('THIRD_PARTY_EVALUATOR_LIBRARIES registry', () => {
+  it('contains deepeval with expected defaults', () => {
+    const config = THIRD_PARTY_EVALUATOR_LIBRARIES.deepeval;
+    expect(config).toBeDefined();
+    expect(config.templateDir).toBe('deepeval-lambda');
+    expect(config.defaultTimeoutSeconds).toBe(300);
+    expect(config.defaultMemorySizeMb).toBe(1024);
+  });
+
+  it('contains autoevals with expected defaults', () => {
+    const config = THIRD_PARTY_EVALUATOR_LIBRARIES.autoevals;
+    expect(config).toBeDefined();
+    expect(config.templateDir).toBe('autoevals-lambda');
+    expect(config.defaultTimeoutSeconds).toBe(60);
+    expect(config.defaultMemorySizeMb).toBe(512);
+  });
+
+  it('deepeval has warnings for retrieval_context metrics', () => {
+    const config = THIRD_PARTY_EVALUATOR_LIBRARIES.deepeval;
+    const retrievalWarning = config.warnings.find(w => w.metrics.has('FaithfulnessMetric'));
+    expect(retrievalWarning).toBeDefined();
+    expect(retrievalWarning!.message).toContain('retrieval_context');
+    expect(retrievalWarning!.metrics.has('HallucinationMetric')).toBe(true);
+    expect(retrievalWarning!.metrics.has('ContextualRelevancyMetric')).toBe(true);
+  });
+
+  it('deepeval has warnings for expected_output metrics', () => {
+    const config = THIRD_PARTY_EVALUATOR_LIBRARIES.deepeval;
+    const expectedWarning = config.warnings.find(w => w.metrics.has('ContextualPrecisionMetric'));
+    expect(expectedWarning).toBeDefined();
+    expect(expectedWarning!.message).toContain('expected_output');
+  });
+
+  it('autoevals has warnings for reference-input metrics', () => {
+    const config = THIRD_PARTY_EVALUATOR_LIBRARIES.autoevals;
+    const factWarning = config.warnings.find(w => w.metrics.has('Factuality'));
+    expect(factWarning).toBeDefined();
+    expect(factWarning!.message).toContain('expected_output');
+    expect(factWarning!.metrics.has('ClosedQA')).toBe(true);
+  });
+
+  it('autoevals has warnings for SQL metric', () => {
+    const config = THIRD_PARTY_EVALUATOR_LIBRARIES.autoevals;
+    const sqlWarning = config.warnings.find(w => w.metrics.has('SQL'));
+    expect(sqlWarning).toBeDefined();
+    expect(sqlWarning!.message).toContain('reference SQL');
+  });
+
+  it('does not contain unsupported libraries', () => {
+    expect((THIRD_PARTY_EVALUATOR_LIBRARIES as Record<string, unknown>).ragas).toBeUndefined();
+    expect((THIRD_PARTY_EVALUATOR_LIBRARIES as Record<string, unknown>).langsmith).toBeUndefined();
   });
 });
 

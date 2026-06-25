@@ -11,13 +11,17 @@ export async function renderCodeBasedEvaluatorTemplate(evaluatorName: string, ou
   await copyAndRenderDir(templateDir, outputDir, { Name: evaluatorName });
 }
 
-export interface DeepEvalTemplateData {
+export interface ThirdPartyEvaluatorTemplateData {
   Name: string;
-  MetricClass: string;
-  MetricParams: string;
+  EvaluatorClass: string;
+  EvaluatorParams: string;
 }
 
-export async function renderDeepEvalEvaluatorTemplate(data: DeepEvalTemplateData, outputDir: string): Promise<void> {
-  const templateDir = getTemplatePath('evaluators', 'deepeval-lambda');
+export async function renderThirdPartyEvaluatorTemplate(
+  templateDirName: string,
+  data: ThirdPartyEvaluatorTemplateData,
+  outputDir: string
+): Promise<void> {
+  const templateDir = getTemplatePath('evaluators', templateDirName);
   await copyAndRenderDir(templateDir, outputDir, data);
 }

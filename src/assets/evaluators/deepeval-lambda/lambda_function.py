@@ -1,4 +1,4 @@
-from bedrock_agentcore.evaluation.integrations.deepeval import DeepEvalHandler
-from deepeval.metrics import {{ MetricClass }}
+from bedrock_agentcore.evaluation.integrations.deepeval import DeepEvalAdapter
+from deepeval.metrics import {{ EvaluatorClass }}
 
-handler = DeepEvalHandler(metric={{ MetricClass }}({{{ MetricParams }}}))
+handler = DeepEvalAdapter(metric={{ EvaluatorClass }}({{{ EvaluatorParams }}}))

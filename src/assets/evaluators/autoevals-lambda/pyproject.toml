@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ Name }}"
+version = "0.1.0"
+description = "AgentCore Code-Based Evaluator (Autoevals)"
+requires-python = ">=3.10"
+dependencies = [
+    "bedrock-agentcore[autoevals]>=1.6.0",
+    "autoevals>=0.0.80",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

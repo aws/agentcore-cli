@@ -6,7 +6,7 @@ import { getErrorMessage } from '../errors';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand } from '../telemetry/cli-command-run.js';
 import { EvaluatorLevel, EvaluatorType, standardize } from '../telemetry/schemas/common-shapes.js';
-import { renderCodeBasedEvaluatorTemplate, renderDeepEvalEvaluatorTemplate } from '../templates/EvaluatorRenderer';
+import { renderCodeBasedEvaluatorTemplate, renderThirdPartyEvaluatorTemplate } from '../templates/EvaluatorRenderer';
 import { requireTTY } from '../tui/guards/tty';
 import {
   LEVEL_PLACEHOLDERS,
@@ -21,8 +21,83 @@ import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
+// ============================================================================
+// Third-Party Library Registry
+// ============================================================================
+
+interface MetricWarning {
+  metrics: Set<string>;
+  message: string;
+}
+
+export interface ThirdPartyLibraryConfig {
+  templateDir: string;
+  defaultTimeoutSeconds: number;
+  defaultMemorySizeMb: number;
+  warnings: MetricWarning[];
+}
+
+export const THIRD_PARTY_EVALUATOR_LIBRARIES = {
+  deepeval: {
+    templateDir: 'deepeval-lambda',
+    defaultTimeoutSeconds: 300,
+    defaultMemorySizeMb: 1024,
+    warnings: [
+      {
+        metrics: new Set([
+          'FaithfulnessMetric',
+          'HallucinationMetric',
+          'ContextualRelevancyMetric',
+          'ContextualPrecisionMetric',
+          'ContextualRecallMetric',
+        ]),
+        message:
+          'requires retrieval_context from tool-role messages. ' +
+          'If your agent has no tool calls, the evaluator will return MISSING_REQUIRED_FIELD at runtime.',
+      },
+      {
+        metrics: new Set(['ContextualPrecisionMetric', 'ContextualRecallMetric']),
+        message:
+          'requires expected_output via evaluationReferenceInputs. ' +
+          'Caller must provide referenceInputs when invoking the Evaluate API.',
+      },
+    ],
+  },
+  autoevals: {
+    templateDir: 'autoevals-lambda',
+    defaultTimeoutSeconds: 60,
+    defaultMemorySizeMb: 512,
+    warnings: [
+      {
+        metrics: new Set(['Factuality', 'ClosedQA']),
+        message:
+          'requires expected_output via evaluationReferenceInputs. ' +
+          'Caller must provide referenceInputs when invoking the Evaluate API.',
+      },
+      {
+        metrics: new Set(['SQL']),
+        message:
+          'requires expected_output (reference SQL) via evaluationReferenceInputs. ' +
+          'Caller must provide referenceInputs when invoking the Evaluate API.',
+      },
+    ],
+  },
+} satisfies Record<string, ThirdPartyLibraryConfig>;
+
+export type ThirdPartyLibrary = keyof typeof THIRD_PARTY_EVALUATOR_LIBRARIES;
+
+const SUPPORTED_LIBRARIES: ThirdPartyLibrary[] = Object.keys(THIRD_PARTY_EVALUATOR_LIBRARIES) as ThirdPartyLibrary[];
+
+function isSupportedLibrary(value: string): value is ThirdPartyLibrary {
+  return value in THIRD_PARTY_EVALUATOR_LIBRARIES;
+}
+
+// ============================================================================
+// Types
+// ============================================================================
+
 export interface ThirdPartyLibraryOptions {
-  library: 'deepeval';
+  library: ThirdPartyLibrary;
   metricClass: string;
   metricParams?: string;
 }
@@ -38,20 +113,12 @@ export interface AddEvaluatorOptions {
 
 export type RemovableEvaluator = RemovableResource;
 
+// ============================================================================
+// Constants & Utilities
+// ============================================================================
+
 const DEFAULT_CODE_ENTRYPOINT = 'lambda_function.handler';
 const DEFAULT_CODE_TIMEOUT = 60;
-const DEEPEVAL_DEFAULT_TIMEOUT = 300;
-const DEEPEVAL_DEFAULT_MEMORY_MB = 1024;
-
-const METRICS_REQUIRING_RETRIEVAL_CONTEXT = new Set([
-  'FaithfulnessMetric',
-  'HallucinationMetric',
-  'ContextualRelevancyMetric',
-  'ContextualPrecisionMetric',
-  'ContextualRecallMetric',
-]);
-
-const METRICS_REQUIRING_EXPECTED_OUTPUT = new Set(['ContextualPrecisionMetric', 'ContextualRecallMetric']);
 
 export function jsonToPythonValue(value: unknown): string {
   if (value === null) return 'None';
@@ -64,7 +131,7 @@ export function jsonToPythonValue(value: unknown): string {
     const entries = Object.entries(value as Record<string, unknown>);
     return `{${entries.map(([k, v]) => `${JSON.stringify(k)}: ${jsonToPythonValue(v)}`).join(', ')}}`;
   }
-  return String(value);
+  return String(value as string | number | boolean);
 }
 
 export function jsonToKwargs(json: string): string {
@@ -73,6 +140,20 @@ export function jsonToKwargs(json: string): string {
     .map(([key, value]) => `${key}=${jsonToPythonValue(value)}`)
     .join(', ');
 }
+
+function getWarningsForMetric(libraryConfig: ThirdPartyLibraryConfig, metricClass: string): string[] {
+  const messages: string[] = [];
+  for (const warning of libraryConfig.warnings) {
+    if (warning.metrics.has(metricClass)) {
+      messages.push(`⚠️ ${metricClass} ${warning.message}`);
+    }
+  }
+  return messages;
+}
+
+// ============================================================================
+// EvaluatorPrimitive
+// ============================================================================
 
 /**
  * EvaluatorPrimitive handles all evaluator add/remove operations.
@@ -94,12 +175,14 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
         const codeLocation = options.config.codeBased.managed.codeLocation;
         const targetDir = join(projectRoot, codeLocation);
 
-        if (options.thirdParty?.library === 'deepeval') {
-          await renderDeepEvalEvaluatorTemplate(
+        if (options.thirdParty) {
+          const libraryConfig = THIRD_PARTY_EVALUATOR_LIBRARIES[options.thirdParty.library];
+          await renderThirdPartyEvaluatorTemplate(
+            libraryConfig.templateDir,
             {
               Name: options.name,
-              MetricClass: options.thirdParty.metricClass,
-              MetricParams: options.thirdParty.metricParams ?? '',
+              EvaluatorClass: options.thirdParty.metricClass,
+              EvaluatorParams: options.thirdParty.metricParams ?? '',
             },
             targetDir
           );
@@ -236,13 +319,10 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
       .option('--rating-scale <preset>', `[LLM] Rating scale preset: ${presetIds.join(', ')} (default: 1-5-quality)`)
       .option('--lambda-arn <arn>', '[Code-based] Existing Lambda function ARN (external)')
       .option('--timeout <seconds>', '[Code-based] Lambda timeout in seconds, 1-300 (default: 60)')
-      .option(
-        '--from-3p-library <library>',
-        'Third-party evaluation library to use (currently: deepeval)'
-      )
-      .option('--metric <className>', '[3P library] Metric class name (e.g. AnswerRelevancyMetric)')
+      .option('--from-3p-library <library>', `Third-party evaluation library (${SUPPORTED_LIBRARIES.join(', ')})`)
+      .option('--metric <className>', '[3P library] Metric/evaluator class name (e.g. AnswerRelevancyMetric)')
       .option('--parameters <json>', '[3P library] JSON string of metric constructor kwargs')
-      .option('--memory <mb>', '[3P library] Lambda memory size in MB, 128-10240 (default: 1024 for deepeval)')
+      .option('--memory <mb>', '[3P library] Lambda memory size in MB, 128-10240')
       .option(
         '--config <path>',
         'Path to evaluator config JSON file (overrides --model, --instructions, --rating-scale) [non-interactive]'
@@ -288,10 +368,11 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               }
 
               // Validate --from-3p-library
-              const from3pLibrary = cliOptions.from3pLibrary;
-              if (from3pLibrary && from3pLibrary !== 'deepeval') {
-                fail(`Invalid --from-3p-library "${from3pLibrary}". Currently supported: deepeval`);
+              const from3pLibraryRaw = cliOptions.from3pLibrary;
+              if (from3pLibraryRaw && !isSupportedLibrary(from3pLibraryRaw)) {
+                fail(`Invalid --from-3p-library "${from3pLibraryRaw}". Supported: ${SUPPORTED_LIBRARIES.join(', ')}`);
               }
+              const from3pLibrary = from3pLibraryRaw as ThirdPartyLibrary | undefined;
               if (from3pLibrary) {
                 if (!cliOptions.metric) fail('--metric is required when using --from-3p-library');
                 if (cliOptions.model) fail('--model cannot be used with --from-3p-library');
@@ -336,8 +417,14 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               let configJson: EvaluatorConfig;
               let thirdParty: ThirdPartyLibraryOptions | undefined;
 
-              if (from3pLibrary === 'deepeval') {
-                configJson = this.buildDeepEvalConfig(cliOptions.name!, cliOptions.timeout, cliOptions.memory);
+              if (from3pLibrary) {
+                const libraryConfig = THIRD_PARTY_EVALUATOR_LIBRARIES[from3pLibrary];
+                configJson = this.buildThirdPartyConfig(
+                  cliOptions.name!,
+                  libraryConfig,
+                  cliOptions.timeout,
+                  cliOptions.memory
+                );
                 let kwargs: string | undefined;
                 if (cliOptions.parameters) {
                   try {
@@ -347,7 +434,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                   }
                 }
                 thirdParty = {
-                  library: 'deepeval',
+                  library: from3pLibrary,
                   metricClass: cliOptions.metric!,
                   metricParams: kwargs,
                 };
@@ -436,18 +523,11 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                   console.log(`Added evaluator '${result.evaluatorName}'`);
                 }
 
-                if (thirdParty?.metricClass) {
-                  if (METRICS_REQUIRING_RETRIEVAL_CONTEXT.has(thirdParty.metricClass)) {
-                    console.warn(
-                      `\n  ⚠️ ${thirdParty.metricClass} requires retrieval_context from tool-role messages. ` +
-                        `If your agent has no tool calls, the evaluator will return MISSING_REQUIRED_FIELD at runtime.`
-                    );
-                  }
-                  if (METRICS_REQUIRING_EXPECTED_OUTPUT.has(thirdParty.metricClass)) {
-                    console.warn(
-                      `  ⚠️ ${thirdParty.metricClass} requires expected_output via evaluationReferenceInputs. ` +
-                        `Caller must provide referenceInputs when invoking the Evaluate API.`
-                    );
+                if (thirdParty) {
+                  const libraryConfig = THIRD_PARTY_EVALUATOR_LIBRARIES[thirdParty.library];
+                  const warnings = getWarningsForMetric(libraryConfig, thirdParty.metricClass);
+                  for (const warning of warnings) {
+                    console.warn(`\n  ${warning}`);
                   }
                 }
               }
@@ -514,9 +594,14 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
     };
   }
 
-  private buildDeepEvalConfig(name: string, timeoutStr?: string, memoryStr?: string): EvaluatorConfig {
-    const timeoutSeconds = timeoutStr ? parseInt(timeoutStr, 10) : DEEPEVAL_DEFAULT_TIMEOUT;
-    const memorySizeMb = memoryStr ? parseInt(memoryStr, 10) : DEEPEVAL_DEFAULT_MEMORY_MB;
+  private buildThirdPartyConfig(
+    name: string,
+    libraryConfig: ThirdPartyLibraryConfig,
+    timeoutStr?: string,
+    memoryStr?: string
+  ): EvaluatorConfig {
+    const timeoutSeconds = timeoutStr ? parseInt(timeoutStr, 10) : libraryConfig.defaultTimeoutSeconds;
+    const memorySizeMb = memoryStr ? parseInt(memoryStr, 10) : libraryConfig.defaultMemorySizeMb;
     return {
       codeBased: {
         managed: {
