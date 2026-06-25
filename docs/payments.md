@@ -12,7 +12,7 @@ guide.
 
 ```bash
 # 1. Create a project with payments capability
-agentcore create --name MyProject --defaults
+agentcore create --name MyProject --framework Strands --model-provider Bedrock
 cd MyProject
 
 # 2. Add a payment manager
@@ -367,7 +367,7 @@ The complete path from a fresh project to a settled on-chain payment. Steps 1–
 
 ```bash
 # 1. Create a project and add the payment manager + connector
-agentcore create --name MyProject --defaults && cd MyProject
+agentcore create --name MyProject --framework Strands --model-provider Bedrock && cd MyProject
 agentcore add payment-manager --name MyManager
 agentcore add payment-connector --manager MyManager --name MyCDPConnector --provider CoinbaseCDP \
   --api-key-id "$CDP_API_KEY_ID" --api-key-secret "$CDP_API_KEY_SECRET" --wallet-secret "$CDP_WALLET_SECRET"

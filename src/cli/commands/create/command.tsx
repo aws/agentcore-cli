@@ -447,7 +447,7 @@ export const registerCreate = (program: Command) => {
       'Project name (start with letter, alphanumeric only, max 23 chars) [non-interactive]'
     )
     .option('--no-agent', 'Skip agent creation [non-interactive]')
-    .option('--defaults', 'Use defaults (Python, Strands, Bedrock, no memory) [non-interactive]')
+    .option('--defaults', 'Create a harness project with default settings (this is the default) [non-interactive]')
     .option('--build <type>', 'Build type: CodeZip or Container (default: CodeZip) [non-interactive]')
     .option('--language <language>', 'Target language: Python or TypeScript (default: Python) [non-interactive]')
     .option(
@@ -633,13 +633,6 @@ export const registerCreate = (program: Command) => {
 
       // Agent path: any agent-specific flag triggers it
       if (isAgentPath(opts)) {
-        if (opts.defaults) {
-          opts.language = opts.language ?? 'Python';
-          opts.build = opts.build ?? 'CodeZip';
-          opts.framework = opts.framework ?? 'Strands';
-          opts.modelProvider = opts.modelProvider ?? 'Bedrock';
-          opts.memory = opts.memory ?? 'none';
-        }
         opts.language = opts.language ?? 'Python';
         await handleCreateCLI(opts);
         return;

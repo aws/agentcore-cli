@@ -20,7 +20,7 @@ invocation time from whichever bundle version is active.
 Create an agent with a pre-wired config bundle that injects system prompt and tool descriptions at runtime:
 
 ```bash
-agentcore create --name MyProject --defaults --with-config-bundle
+agentcore create --name MyProject --framework Strands --model-provider Bedrock --with-config-bundle
 ```
 
 This creates a `{AgentName}Config` bundle with smart defaults and generates a template that uses

@@ -30,8 +30,11 @@ Create a new AgentCore project.
 # Interactive wizard
 agentcore create
 
-# Fully non-interactive with defaults
-agentcore create --name MyProject --defaults
+# Non-interactive harness project (this is the default)
+agentcore create --name MyProject
+
+# Non-interactive agent project
+agentcore create --name MyProject --framework Strands --model-provider Bedrock
 
 # Custom configuration
 agentcore create \
@@ -44,7 +47,8 @@ agentcore create \
 # With networking
 agentcore create \
   --name MyProject \
-  --defaults \
+  --framework Strands \
+  --model-provider Bedrock \
   --network-mode VPC \
   --subnets subnet-abc,subnet-def \
   --security-groups sg-123
@@ -60,7 +64,7 @@ agentcore create \
   --model-provider Bedrock
 
 # Preview without creating
-agentcore create --name MyProject --defaults --dry-run
+agentcore create --name MyProject --framework Strands --model-provider Bedrock --dry-run
 
 # Import from Bedrock Agents
 agentcore create \
@@ -77,7 +81,7 @@ agentcore create \
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `--name <name>`                       | Agent (resource) name; also used as project directory name when `--project-name` is omitted                    |
 | `--project-name <name>`               | Project directory name (alphanumeric, starts with letter, max 23 chars)                                        |
-| `--defaults`                          | Use defaults (Python, Strands, Bedrock, no memory)                                                             |
+| `--defaults`                          | Create a harness project with default settings (this is the default)                                           |
 | `--no-agent`                          | Skip agent creation                                                                                            |
 | `--type <type>`                       | `create` (default) or `import`                                                                                 |
 | `--language <lang>`                   | `Python` (default) or `TypeScript` (Strands-only; see [Frameworks](frameworks.md#supported-languages))         |
@@ -1492,7 +1496,7 @@ agentcore deploy -y --json            # Deploy with auto-confirm
 ### Scripted Project Setup
 
 ```bash
-agentcore create --name MyProject --defaults
+agentcore create --name MyProject --framework Strands --model-provider Bedrock
 cd MyProject
 agentcore add memory --name SharedMemory --strategies SEMANTIC
 agentcore deploy -y

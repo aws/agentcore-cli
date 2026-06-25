@@ -10,7 +10,7 @@ the gateway client code.
 
 ```bash
 # 1. Create a project
-agentcore create --name MyProject --defaults
+agentcore create --name MyProject --framework Strands --model-provider Bedrock
 cd MyProject
 
 # 2. Add a gateway
