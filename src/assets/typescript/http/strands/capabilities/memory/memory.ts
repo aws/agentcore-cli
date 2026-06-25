@@ -7,16 +7,11 @@ const MEMORY_ID = process.env.{{memoryProviders.[0].envVarName}};
 const CUSTOM_ACTOR_ID_HEADER = 'x-amzn-bedrock-agentcore-runtime-custom-actor-id';
 
 export function getActorId(payload: any, context: any): string {
-  // Multi-actor agents: caller passes user via the custom header (declared in
-  // requestHeaderAllowlist) or as a `userId` field in the invocation payload.
-  // Single-actor agents: actorId == sessionId is fine.
-  // RandomUUID fallback when all sources are absent
-  return (
-    context?.headers?.[CUSTOM_ACTOR_ID_HEADER] ??
-    payload?.userId ??
-    context?.sessionId ??
-    randomUUID()
-  );
+  const raw =
+    context?.headers?.[CUSTOM_ACTOR_ID_HEADER] ||
+    payload?.userId ||
+    context?.sessionId;
+  return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : randomUUID();
 }
 
 const memoryManagerCache = new Map<string, MemoryManager>();

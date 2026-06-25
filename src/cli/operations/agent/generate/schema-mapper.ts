@@ -113,10 +113,19 @@ export function mapModelProviderToCredentials(modelProvider: ModelProvider, proj
 /**
  * Maps GenerateConfig to v2 AgentEnvSpec resource.
  */
+const ACTOR_ID_HEADER = 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-Actor-Id';
+
 export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
   const codeLocation = `${APP_DIR}/${config.projectName}/`;
   const protocol = config.protocol ?? 'HTTP';
   const networkMode = config.networkMode ?? DEFAULT_NETWORK_MODE;
+
+  const needsActorHeader =
+    config.language === 'TypeScript' && config.sdk === 'Strands' && config.memory === 'longAndShortTerm';
+  const headerAllowlist = [
+    ...(config.requestHeaderAllowlist ?? []),
+    ...(needsActorHeader && !(config.requestHeaderAllowlist ?? []).includes(ACTOR_ID_HEADER) ? [ACTOR_ID_HEADER] : []),
+  ];
 
   return {
     name: config.projectName,
@@ -137,8 +146,8 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
           securityGroups: config.securityGroups,
         },
       }),
-    ...(config.requestHeaderAllowlist?.length && {
-      requestHeaderAllowlist: config.requestHeaderAllowlist,
+    ...(headerAllowlist.length > 0 && {
+      requestHeaderAllowlist: headerAllowlist,
     }),
     ...(config.authorizerType && { authorizerType: config.authorizerType }),
     ...(config.authorizerType === 'CUSTOM_JWT' &&
