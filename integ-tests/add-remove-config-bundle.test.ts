@@ -240,7 +240,7 @@ describe('integration: add and remove config-bundle', () => {
         project.projectPath
       );
 
-      expect(json.error).toBeDefined();
+      expect(json.error).toContain('--kms-key must be a valid KMS key ARN');
     });
 
     it('rejects bundle name starting with a number', async () => {

@@ -1,7 +1,7 @@
 import { ResourceNotFoundError, findConfigRoot, serializeResult, toError } from '../../lib';
 import type { Result } from '../../lib/result';
 import type { ConfigBundle } from '../../schema';
-import { ConfigBundleSchema } from '../../schema';
+import { ConfigBundleSchema, isValidKmsKeyArn } from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { BasePrimitive } from './BasePrimitive';
@@ -152,6 +152,12 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
 
               if (!cliOptions.components && !cliOptions.componentsFile) {
                 fail('Either --components or --components-file is required');
+              }
+
+              if (cliOptions.kmsKey && !isValidKmsKeyArn(cliOptions.kmsKey)) {
+                fail(
+                  '--kms-key must be a valid KMS key ARN (e.g. arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012)'
+                );
               }
 
               let components: Record<string, { configuration: Record<string, unknown> }>;
