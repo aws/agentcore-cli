@@ -851,6 +851,7 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "typescript/http/strands/base/model/load.ts",
   "typescript/http/strands/base/package.json",
   "typescript/http/strands/base/tsconfig.json",
+  "typescript/http/strands/capabilities/memory/memory.ts",
   "typescript/http/vercelai/base/README.md",
   "typescript/http/vercelai/base/gitignore.template",
   "typescript/http/vercelai/base/main.ts",
@@ -7537,6 +7538,9 @@ import { Agent, McpClient, tool, type ToolList } from '@strands-agents/sdk';
 import { z } from 'zod';
 import { loadModel } from './model/load.js';
 import { getStreamableHttpMcpClient } from './mcp_client/client.js';
+{{#if hasMemory}}
+import { getActorId, getOrCreateMemoryManager } from './memory/memory.js';
+{{/if}}
 
 // Define a collection of MCP clients (filter out anything that failed to initialize)
 const mcpClients: McpClient[] = [getStreamableHttpMcpClient()].filter(
@@ -7565,6 +7569,25 @@ const SYSTEM_PROMPT = \`
 You are a helpful assistant. Use tools when appropriate.
 \`;
 
+{{#if hasMemory}}
+const agentCache = new Map<string, Agent>();
+
+async function getOrCreateAgent(sessionId: string, actorId: string): Promise<Agent> {
+  const key = \`\${actorId}:\${sessionId}\`;
+  let agent = agentCache.get(key);
+  if (agent) return agent;
+
+  const model = await loadModel();
+  agent = new Agent({
+    model,
+    systemPrompt: SYSTEM_PROMPT,
+    tools,
+    memoryManager: getOrCreateMemoryManager(sessionId, actorId) ?? undefined,
+  });
+  agentCache.set(key, agent);
+  return agent;
+}
+{{else}}
 let cachedAgent: Agent | null = null;
 
 async function getOrCreateAgent(): Promise<Agent> {
@@ -7578,12 +7601,37 @@ async function getOrCreateAgent(): Promise<Agent> {
   }
   return cachedAgent;
 }
+{{/if}}
 
 const app = new BedrockAgentCoreApp({
   invocationHandler: {
     async *process(payload: any, context: any) {
+      {{#if hasMemory}}
+      const sessionId = context?.sessionId ?? 'default-session';
+      const actorId = getActorId(payload, context);
+      const agent = await getOrCreateAgent(sessionId, actorId);
+      {{else}}
       const agent = await getOrCreateAgent();
+      {{/if}}
 
+      {{#if hasMemory}}
+      try {
+        for await (const event of agent.stream(payload.prompt ?? '')) {
+          if (
+            event.type === 'modelStreamUpdateEvent' &&
+            event.event?.type === 'modelContentBlockDeltaEvent' &&
+            event.event.delta?.type === 'textDelta'
+          ) {
+            yield { data: event.event.delta.text };
+          }
+        }
+      } finally {
+        // Drain in-flight createEvent calls before the runtime can reclaim
+        // the session microVM. flush() is the durability mechanism — without
+        // it, an idle reclamation can lose the tail of the conversation.
+        await agent.memoryManager?.flush();
+      }
+      {{else}}
       for await (const event of agent.stream(payload.prompt ?? '')) {
         if (
           event.type === 'modelStreamUpdateEvent' &&
@@ -7593,6 +7641,7 @@ const app = new BedrockAgentCoreApp({
           yield { data: event.event.delta.text };
         }
       }
+      {{/if}}
     },
   },
 });
@@ -7745,8 +7794,8 @@ exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/
     "@google/genai": "^1.40.0",
     {{/if}}
     "@modelcontextprotocol/sdk": "^1.25.2",
-    "@strands-agents/sdk": "1.0.0-rc.4",
-    "bedrock-agentcore": "^0.2.4",
+    "@strands-agents/sdk": "^1.5.0",
+    "bedrock-agentcore": "^0.3.0",
     "tsx": "^4.19.0",
     "zod": "^4.4.3"
   },
@@ -7782,6 +7831,67 @@ exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist"]
+}
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/capabilities/memory/memory.ts should match snapshot 1`] = `
+"import { randomUUID } from 'node:crypto';
+import { MemoryManager } from '@strands-agents/sdk';
+import { createAgentCoreMemoryStores } from 'bedrock-agentcore/experimental/memory/strands';
+
+const MEMORY_ID = process.env.{{memoryProviders.[0].envVarName}};
+
+const CUSTOM_ACTOR_ID_HEADER = 'x-amzn-bedrock-agentcore-runtime-custom-actor-id';
+
+export function getActorId(payload: any, context: any): string {
+  // Multi-actor agents: caller passes user via the custom header (declared in
+  // requestHeaderAllowlist) or as a \`userId\` field in the invocation payload.
+  // Single-actor agents: actorId == sessionId is fine.
+  // RandomUUID fallback when all sources are absent
+  return (
+    context?.headers?.[CUSTOM_ACTOR_ID_HEADER] ??
+    payload?.userId ??
+    context?.sessionId ??
+    randomUUID()
+  );
+}
+
+const memoryManagerCache = new Map<string, MemoryManager>();
+
+export function getOrCreateMemoryManager(sessionId: string, actorId: string): MemoryManager | null {
+  if (!MEMORY_ID) return null;
+
+  const key = \`\${actorId}:\${sessionId}\`;
+  let manager = memoryManagerCache.get(key);
+  if (manager) return manager;
+
+  const stores = createAgentCoreMemoryStores({
+    memoryId: MEMORY_ID,
+    actorId,
+    sessionId,
+    namespaces: [
+{{#if (includes memoryProviders.[0].strategies "SEMANTIC")}}
+      { namespace: '/users/{actorId}/facts' },
+{{/if}}
+{{#if (includes memoryProviders.[0].strategies "USER_PREFERENCE")}}
+      { namespace: '/users/{actorId}/preferences' },
+{{/if}}
+{{#if (includes memoryProviders.[0].strategies "EPISODIC")}}
+      { namespace: '/episodes/{actorId}/{sessionId}' },
+{{/if}}
+{{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
+      { namespace: '/summaries/{actorId}/{sessionId}' },
+{{/if}}
+    ],
+    // readMode defaults to 'per-namespace' (one retrieve call per namespace).
+    // Switch to 'subtree' to consolidate to a single hierarchical recall call.
+    extraction: true,
+  });
+
+  manager = new MemoryManager({ stores });
+  memoryManagerCache.set(key, manager);
+  return manager;
 }
 "
 `;

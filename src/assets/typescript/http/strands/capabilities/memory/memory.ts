@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { MemoryManager } from '@strands-agents/sdk';
 import { createAgentCoreMemoryStores } from 'bedrock-agentcore/experimental/memory/strands';
 
@@ -9,10 +10,12 @@ export function getActorId(payload: any, context: any): string {
   // Multi-actor agents: caller passes user via the custom header (declared in
   // requestHeaderAllowlist) or as a `userId` field in the invocation payload.
   // Single-actor agents: actorId == sessionId is fine.
+  // RandomUUID fallback when all sources are absent
   return (
     context?.headers?.[CUSTOM_ACTOR_ID_HEADER] ??
     payload?.userId ??
-    context?.sessionId
+    context?.sessionId ??
+    randomUUID()
   );
 }
 

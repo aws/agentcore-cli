@@ -600,4 +600,13 @@ describe('mapGenerateConfigToRenderConfig - needsOs', () => {
     expect(result.hasMemory).toBe(false);
     expect(result.memoryProviders).toEqual([]);
   });
+
+  it('TypeScript non-Strands agents have hasMemory=false even with memory selected', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, language: 'TypeScript', sdk: 'VercelAI', memory: 'longAndShortTerm' as const },
+      []
+    );
+    expect(result.hasMemory).toBe(false);
+    expect(result.memoryProviders).toEqual([]);
+  });
 });
