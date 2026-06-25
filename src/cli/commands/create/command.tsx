@@ -96,6 +96,7 @@ function printCreateSummary(
  * agent-only concept — harnesses use --memory-mode/--no-memory — so it routes to the agent path
  * (and conflicts with harness-only flags) rather than being silently ignored on the harness path. */
 const AGENT_PATH_FLAGS = [
+  'defaults',
   'framework',
   'language',
   'build',
