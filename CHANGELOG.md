@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.21.1] - 2026-06-25
+
+### Added
+- feat: add support for TS memory (#1636) (39a47fa8)
+- feat(export): export harnesses to standalone Strands agents with connections (#1630) (2ffbd9a7)
+
+### Fixed
+- fix(create): make --defaults create a harness project (#1644) (eb2cc233)
+
+### Other Changes
+- test(e2e): export a fully-featured harness in-project and by ARN (#1641) (aba397a7)
+
 ## [0.21.0] - 2026-06-24
 
 ### Added
