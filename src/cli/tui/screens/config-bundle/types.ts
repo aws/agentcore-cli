@@ -14,6 +14,7 @@ export type AddConfigBundleStep =
   | 'addAnother'
   | 'branchName'
   | 'commitMessage'
+  | 'kmsKey'
   | 'confirm';
 
 export type ComponentType = 'runtime' | 'gateway' | 'custom';
@@ -34,6 +35,8 @@ export interface AddConfigBundleConfig {
   componentsRaw: string;
   branchName: string;
   commitMessage: string;
+  /** Optional KMS key ARN for customer-managed encryption of the bundle. */
+  kmsKeyArn: string;
   /** Currently selected component type in wizard. */
   currentComponentType?: ComponentType;
   /** Currently selected component ARN in wizard. */
@@ -50,6 +53,7 @@ export const CONFIG_BUNDLE_STEP_LABELS: Record<AddConfigBundleStep, string> = {
   addAnother: 'More?',
   branchName: 'Branch',
   commitMessage: 'Message',
+  kmsKey: 'KMS Key',
   confirm: 'Confirm',
 };
 

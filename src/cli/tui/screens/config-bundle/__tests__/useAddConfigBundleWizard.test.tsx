@@ -91,6 +91,46 @@ describe('useAddConfigBundleWizard — add-another back-navigation (BUG TUI-B)',
   });
 });
 
+describe('useAddConfigBundleWizard — KMS key step', () => {
+  const KMS_ARN = 'arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012';
+
+  function advanceToKmsKey(ref: React.RefObject<HarnessHandle | null>) {
+    advanceToAddAnother(ref);
+    act(() => ref.current!.wizard.doneAddingComponents());
+    act(() => ref.current!.wizard.setBranchName('mainline'));
+    act(() => ref.current!.wizard.setCommitMessage('msg'));
+  }
+
+  it('commitMessage advances to the kmsKey step', () => {
+    const { ref } = setup();
+    advanceToKmsKey(ref);
+    expect(ref.current!.wizard.step).toBe('kmsKey');
+  });
+
+  it('setKmsKey stores the ARN and advances to confirm', () => {
+    const { ref } = setup();
+    advanceToKmsKey(ref);
+    act(() => ref.current!.wizard.setKmsKey(KMS_ARN));
+    expect(ref.current!.wizard.step).toBe('confirm');
+    expect(ref.current!.wizard.config.kmsKeyArn).toBe(KMS_ARN);
+  });
+
+  it('skipping the kmsKey step (empty) leaves kmsKeyArn empty and advances to confirm', () => {
+    const { ref } = setup();
+    advanceToKmsKey(ref);
+    act(() => ref.current!.wizard.setKmsKey(''));
+    expect(ref.current!.wizard.step).toBe('confirm');
+    expect(ref.current!.wizard.config.kmsKeyArn).toBe('');
+  });
+
+  it('goBack from kmsKey returns to commitMessage', () => {
+    const { ref } = setup();
+    advanceToKmsKey(ref);
+    act(() => ref.current!.wizard.goBack());
+    expect(ref.current!.wizard.step).toBe('commitMessage');
+  });
+});
+
 describe('useAddConfigBundleWizard — custom ARN component (Part 1)', () => {
   /** Drive the wizard to the componentType step. */
   function advanceToComponentType(ref: React.RefObject<HarnessHandle | null>) {

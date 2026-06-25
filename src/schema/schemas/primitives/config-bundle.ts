@@ -1,3 +1,4 @@
+import { KmsKeyArnSchema } from './evaluator';
 import { z } from 'zod';
 
 // ============================================================================
@@ -44,6 +45,8 @@ export const ConfigBundleSchema = z.object({
   branchName: z.string().max(128).optional(),
   /** Optional commit message for this version. */
   commitMessage: z.string().max(500).optional(),
+  /** Optional KMS key ARN for customer-managed encryption of the bundle. */
+  kmsKeyArn: KmsKeyArnSchema.optional(),
 });
 
 export type ConfigBundle = z.infer<typeof ConfigBundleSchema>;

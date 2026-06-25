@@ -1,4 +1,4 @@
-import { ConfigBundleNameSchema } from '../../../../schema';
+import { ConfigBundleNameSchema, isValidKmsKeyArn } from '../../../../schema';
 import type { SelectableItem } from '../../components';
 import { ConfirmReview, Panel, Screen, StepIndicator, TextInput, WizardSelect } from '../../components';
 import { HELP_TEXT } from '../../constants';
@@ -81,6 +81,7 @@ export function AddConfigBundleScreen({
   const isAddAnotherStep = wizard.step === 'addAnother';
   const isBranchNameStep = wizard.step === 'branchName';
   const isCommitMessageStep = wizard.step === 'commitMessage';
+  const isKmsKeyStep = wizard.step === 'kmsKey';
   const isConfirmStep = wizard.step === 'confirm';
 
   const componentTypeNav = useListNavigation({
@@ -278,6 +279,19 @@ export function AddConfigBundleScreen({
           />
         )}
 
+        {isKmsKeyStep && (
+          <TextInput
+            key="kmsKey"
+            prompt="KMS key ARN (optional, press Enter to skip)"
+            placeholder="arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
+            initialValue=""
+            allowEmpty
+            onSubmit={wizard.setKmsKey}
+            onCancel={() => wizard.goBack()}
+            customValidation={value => value === '' || isValidKmsKeyArn(value) || 'Must be a valid KMS key ARN'}
+          />
+        )}
+
         {isConfirmStep && (
           <ConfirmReview
             fields={[
@@ -290,6 +304,7 @@ export function AddConfigBundleScreen({
               })),
               { label: 'Branch', value: wizard.config.branchName || 'mainline' },
               { label: 'Message', value: wizard.config.commitMessage || `Create ${wizard.config.name}` },
+              ...(wizard.config.kmsKeyArn ? [{ label: 'KMS Key', value: wizard.config.kmsKeyArn }] : []),
             ]}
           />
         )}

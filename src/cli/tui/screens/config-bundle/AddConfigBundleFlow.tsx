@@ -110,6 +110,7 @@ export function AddConfigBundleFlow({
         components: config.components,
         branchName: config.branchName || 'mainline',
         commitMessage: config.commitMessage || `Create ${config.name}`,
+        kmsKeyArn: config.kmsKeyArn || undefined,
       }).then(result => {
         if (result.ok) {
           setFlow(prev => {

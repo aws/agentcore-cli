@@ -15,6 +15,7 @@ export interface AddConfigBundleOptions {
   components: Record<string, { configuration: Record<string, unknown> }>;
   branchName?: string;
   commitMessage?: string;
+  kmsKeyArn?: string;
 }
 
 export type RemovableConfigBundle = RemovableResource;
@@ -116,6 +117,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
       .option('--components-file <path>', 'Path to components JSON file (same format as --components)')
       .option('--branch <name>', 'Branch name for versioning')
       .option('--commit-message <text>', 'Commit message for this version')
+      .option('--kms-key <arn>', 'KMS key ARN for encrypting the configuration bundle')
       .option('--json', 'Output as JSON')
       .action(
         async (cliOptions: {
@@ -125,6 +127,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
           componentsFile?: string;
           branch?: string;
           commitMessage?: string;
+          kmsKey?: string;
           json?: boolean;
         }) => {
           try {
@@ -168,6 +171,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
                 components,
                 branchName: cliOptions.branch,
                 commitMessage: cliOptions.commitMessage,
+                kmsKeyArn: cliOptions.kmsKey,
               });
 
               if (cliOptions.json) {
@@ -227,6 +231,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
       components: options.components,
       branchName: options.branchName ?? 'mainline',
       ...(options.commitMessage && { commitMessage: options.commitMessage }),
+      ...(options.kmsKeyArn && { kmsKeyArn: options.kmsKeyArn }),
     };
 
     project.configBundles ??= [];

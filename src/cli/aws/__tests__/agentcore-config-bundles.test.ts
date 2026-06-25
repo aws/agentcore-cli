@@ -1,4 +1,4 @@
-import { listConfigurationBundles } from '../agentcore-config-bundles.js';
+import { createConfigurationBundle, listConfigurationBundles } from '../agentcore-config-bundles.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockFetch = vi.fn();
@@ -41,6 +41,40 @@ function mockJsonResponse(body: unknown, status = 200) {
 describe('agentcore-config-bundles', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe('createConfigurationBundle', () => {
+    const components = {
+      'arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/myRuntime-abc': {
+        configuration: { systemPrompt: 'hi' },
+      },
+    };
+
+    function parseRequestBody(): Record<string, unknown> {
+      const init = mockFetch.mock.calls[0]![1] as { body: string };
+      return JSON.parse(init.body) as Record<string, unknown>;
+    }
+
+    it('includes kmsKeyArn in the request body when provided', async () => {
+      mockFetch.mockResolvedValue(
+        mockJsonResponse({ bundleArn: 'arn', bundleId: 'id', versionId: 'v1', createdAt: '2026-01-01' })
+      );
+      const kmsKeyArn = 'arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012';
+
+      await createConfigurationBundle({ region: 'us-west-2', bundleName: 'b', components, kmsKeyArn });
+
+      expect(parseRequestBody().kmsKeyArn).toBe(kmsKeyArn);
+    });
+
+    it('omits kmsKeyArn from the request body when not provided', async () => {
+      mockFetch.mockResolvedValue(
+        mockJsonResponse({ bundleArn: 'arn', bundleId: 'id', versionId: 'v1', createdAt: '2026-01-01' })
+      );
+
+      await createConfigurationBundle({ region: 'us-west-2', bundleName: 'b', components });
+
+      expect(parseRequestBody()).not.toHaveProperty('kmsKeyArn');
+    });
   });
 
   describe('listConfigurationBundles', () => {

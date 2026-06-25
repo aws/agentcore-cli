@@ -43,6 +43,7 @@ export interface CreateConfigurationBundleOptions {
   components: ComponentConfigurationMap;
   branchName?: string;
   commitMessage?: string;
+  kmsKeyArn?: string;
   createdBy?: { name: string; arn?: string };
 }
 
@@ -243,6 +244,7 @@ export async function createConfigurationBundle(
     components: options.components,
     ...(options.branchName && { branchName: options.branchName }),
     ...(options.commitMessage && { commitMessage: options.commitMessage }),
+    ...(options.kmsKeyArn && { kmsKeyArn: options.kmsKeyArn }),
     ...(options.createdBy && { createdBy: options.createdBy }),
   });
 

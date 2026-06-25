@@ -12,6 +12,7 @@ const ALL_STEPS: AddConfigBundleStep[] = [
   'addAnother',
   'branchName',
   'commitMessage',
+  'kmsKey',
   'confirm',
 ];
 
@@ -23,6 +24,7 @@ function getDefaultConfig(): AddConfigBundleConfig {
     componentsRaw: '',
     branchName: 'mainline',
     commitMessage: '',
+    kmsKeyArn: '',
   };
 }
 
@@ -112,6 +114,11 @@ export function useAddConfigBundleWizard() {
 
   const setCommitMessage = useCallback((commitMessage: string) => {
     setConfig(c => ({ ...c, commitMessage }));
+    setStep('kmsKey');
+  }, []);
+
+  const setKmsKey = useCallback((kmsKeyArn: string) => {
+    setConfig(c => ({ ...c, kmsKeyArn }));
     setStep('confirm');
   }, []);
 
@@ -137,6 +144,7 @@ export function useAddConfigBundleWizard() {
     doneAddingComponents,
     setBranchName,
     setCommitMessage,
+    setKmsKey,
     reset,
   };
 }
