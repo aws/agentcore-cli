@@ -609,4 +609,12 @@ describe('mapGenerateConfigToRenderConfig - needsOs', () => {
     expect(result.hasMemory).toBe(false);
     expect(result.memoryProviders).toEqual([]);
   });
+
+  it('TypeScript Strands agents have hasMemory=false for shortTerm only', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, language: 'TypeScript', memory: 'shortTerm' as const },
+      []
+    );
+    expect(result.hasMemory).toBe(false);
+  });
 });

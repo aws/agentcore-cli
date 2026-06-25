@@ -277,7 +277,11 @@ export async function mapGenerateConfigToRenderConfig(
     targetLanguage: config.language,
     modelProvider: config.modelProvider,
     hasMemory:
-      isMcp || (config.language === 'TypeScript' && config.sdk !== 'Strands') ? false : config.memory !== 'none',
+      isMcp || (config.language === 'TypeScript' && config.sdk !== 'Strands')
+        ? false
+        : config.language === 'TypeScript'
+          ? config.memory === 'longAndShortTerm'
+          : config.memory !== 'none',
     hasIdentity: isMcp ? false : identityProviders.length > 0,
     hasGateway: gatewayProviders.length > 0,
     hasPayment: await (async () => {

@@ -93,8 +93,11 @@ export function GenerateWizardUI({
           title: o.title,
           description: o.description,
         }));
-      case 'memory':
-        return MEMORY_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
+      case 'memory': {
+        const isTypescriptStrands = wizard.config.language === 'TypeScript' && wizard.config.sdk === 'Strands';
+        const options = isTypescriptStrands ? MEMORY_OPTIONS.filter(o => o.id !== 'shortTerm') : MEMORY_OPTIONS;
+        return options.map(o => ({ id: o.id, title: o.title, description: o.description }));
+      }
       case 'networkMode':
         return NETWORK_MODE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
       case 'authorizerType':
