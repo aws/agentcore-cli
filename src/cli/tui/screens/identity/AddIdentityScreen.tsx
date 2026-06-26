@@ -1,3 +1,4 @@
+import { validateCredentialNameEncryptable } from '../../../../lib/secrets';
 import type { CredentialType } from '../../../../schema';
 import { CredentialNameSchema } from '../../../../schema';
 import { ConfirmReview, Panel, Screen, SecretInput, StepIndicator, TextInput, WizardSelect } from '../../components';
@@ -81,7 +82,14 @@ export function AddIdentityScreen({ onComplete, onExit, existingIdentityNames, i
             onSubmit={wizard.setName}
             onCancel={() => wizard.goBack()}
             schema={CredentialNameSchema}
-            customValidation={value => !existingIdentityNames.includes(value) || 'Credential name already exists'}
+            customValidation={value => {
+              if (existingIdentityNames.includes(value)) return 'Credential name already exists';
+              // API-key credentials store the secret in the bare AGENTCORE_CREDENTIAL_<NAME>
+              // var; reject names that would leave it unencrypted. OAuth appends
+              // _CLIENT_SECRET, so its name is always safe.
+              if (!isOAuth) return validateCredentialNameEncryptable(value);
+              return true;
+            }}
           />
         )}
 

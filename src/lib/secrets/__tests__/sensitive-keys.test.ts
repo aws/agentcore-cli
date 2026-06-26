@@ -1,4 +1,4 @@
-import { isSensitiveKey } from '../sensitive-keys';
+import { isSensitiveKey, validateCredentialNameEncryptable } from '../sensitive-keys';
 import { describe, expect, it } from 'vitest';
 
 describe('isSensitiveKey', () => {
@@ -24,4 +24,29 @@ describe('isSensitiveKey', () => {
   ])('treats %s as non-sensitive', key => {
     expect(isSensitiveKey(key)).toBe(false);
   });
+});
+
+describe('validateCredentialNameEncryptable', () => {
+  it.each([
+    'my-client-id', // → AGENTCORE_CREDENTIAL_MY_CLIENT_ID
+    'my_client_id',
+    'foo-api-key-id',
+    'thing-app-id',
+    'x-authorization-id',
+    'PROD_CLIENT_ID',
+  ])('rejects a name that normalizes to a reserved reference suffix: %s', name => {
+    const result = validateCredentialNameEncryptable(name);
+    expect(result).not.toBe(true);
+    expect(typeof result).toBe('string');
+    expect(result).toMatch(/would not be encrypted at rest/i);
+  });
+
+  it.each(['my-openai-key', 'anthropic', 'gemini', 'my-secret', 'client-id-prod', 'idle', 'rapid'])(
+    'accepts a safe name: %s',
+    name => {
+      // includes tricky non-collisions: 'client-id-prod' does not END in the suffix;
+      // 'idle'/'rapid' merely contain "id" but do not end in a reference suffix.
+      expect(validateCredentialNameEncryptable(name)).toBe(true);
+    }
+  );
 });

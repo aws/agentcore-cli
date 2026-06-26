@@ -34,3 +34,32 @@ export function isSensitiveKey(key: string): boolean {
   if (SENSITIVE_KEY_PATTERNS.some(re => re.test(key))) return true;
   return isBareModelCredential(key);
 }
+
+/**
+ * Normalize a credential name into its env-var-suffix form (matches
+ * computeDefaultCredentialEnvVarName: hyphens → underscores, uppercased).
+ */
+function normalizeCredentialNameToKey(name: string): string {
+  return name.replace(/-/g, '_').toUpperCase();
+}
+
+/**
+ * Validate that an API-key credential NAME won't collide with a reserved
+ * reference suffix. A bare API-key credential is stored as
+ * `AGENTCORE_CREDENTIAL_<NAME>` carrying the secret value directly; if <NAME>
+ * normalizes to end in a reference suffix (e.g. `my-client-id` → `..._CLIENT_ID`)
+ * the value is indistinguishable from a non-secret reference and would be left
+ * UNENCRYPTED at rest. Reject such names at creation (fail closed).
+ *
+ * Returns `true` if the name is safe, or an error message string if not — the
+ * `(value) => true | string` contract used by both the CLI and the TUI's
+ * SecretInput/TextInput `customValidation`.
+ */
+export function validateCredentialNameEncryptable(name: string): true | string {
+  const normalized = normalizeCredentialNameToKey(name);
+  const collision = REFERENCE_SUFFIXES.find(suffix => normalized.endsWith(suffix));
+  if (collision) {
+    return `Credential name "${name}" ends in a reserved reference suffix (${collision}) and its secret would not be encrypted at rest. Choose a name that does not end in id/client-id/app-id/authorization-id.`;
+  }
+  return true;
+}

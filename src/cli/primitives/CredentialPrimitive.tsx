@@ -9,6 +9,7 @@ import {
   toError,
 } from '../../lib';
 import type { Result } from '../../lib/result';
+import { validateCredentialNameEncryptable } from '../../lib/secrets';
 import type { Credential, ModelProvider } from '../../schema';
 import { CredentialSchema } from '../../schema';
 import { validateAddCredentialOptions } from '../commands/add/validate';
@@ -84,6 +85,16 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
 
   async add(options: AddCredentialOptions): Promise<AddResult<{ credentialName: string }>> {
     try {
+      // Fail closed: an API-key credential stores its secret in the bare
+      // AGENTCORE_CREDENTIAL_<NAME> var. If <NAME> normalizes to a reserved
+      // reference suffix, the value would be left unencrypted at rest. OAuth
+      // appends _CLIENT_SECRET, so its name is always safe.
+      if (options.authorizerType === 'ApiKeyCredentialProvider') {
+        const nameCheck = validateCredentialNameEncryptable(options.name);
+        if (nameCheck !== true) {
+          return { success: false, error: new ValidationError(nameCheck) };
+        }
+      }
       const credential = await this.createCredential(options);
       return { success: true, credentialName: credential.name };
     } catch (err) {
