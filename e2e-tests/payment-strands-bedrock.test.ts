@@ -125,6 +125,21 @@ describe.sequential('e2e: payments — create → add payment → deploy → sta
     expect(cred).toBeTruthy();
   });
 
+  it.skipIf(!canRun)('stores connector secrets encrypted at rest, never as plaintext', async () => {
+    // The deploy step below reads these same values back and decrypts them, so a
+    // passing deploy already proves the round trip works. This assertion additionally
+    // pins the security invariant the encryption feature exists to guarantee: the raw
+    // secret must never touch disk in cleartext. Without it, a regression that silently
+    // reverted to plaintext storage would still deploy green and go unnoticed.
+    const envLocal = await readFile(join(projectPath, 'agentcore', '.env.local'), 'utf-8');
+
+    expect(envLocal, '.env.local should contain at least one enc:v1: envelope').toContain('enc:v1:');
+
+    for (const raw of [process.env.CDP_API_KEY_SECRET!, process.env.CDP_WALLET_SECRET!]) {
+      expect(envLocal, 'raw secret value must not appear in cleartext on disk').not.toContain(raw);
+    }
+  });
+
   it.skipIf(!canRun)('has payment capability code in agent', async () => {
     const config = JSON.parse(await readFile(join(projectPath, 'agentcore', 'agentcore.json'), 'utf-8'));
     const runtimeName = config.runtimes?.[0]?.name;
