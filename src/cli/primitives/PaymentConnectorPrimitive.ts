@@ -436,18 +436,11 @@ export class PaymentConnectorPrimitive extends BasePrimitive<AddPaymentConnector
                 process.exit(1);
               };
 
-              if (provider === 'StripePrivy') {
-                // AWS docs ship the key with a `wallet-auth:` prefix — strip it transparently.
-                cliOptions.authorizationPrivateKey = stripWalletAuthPrefix(cliOptions.authorizationPrivateKey!);
-                const keyResult = validateAuthorizationPrivateKey(cliOptions.authorizationPrivateKey);
-                if (keyResult !== true) failValidation(keyResult);
-              } else {
-                const apiKeySecretResult = validateApiKeySecret(cliOptions.apiKeySecret!);
-                if (apiKeySecretResult !== true) failValidation(apiKeySecretResult);
-                const walletSecretResult = validateWalletSecret(cliOptions.walletSecret!);
-                if (walletSecretResult !== true) failValidation(walletSecretResult);
-              }
-
+              // Emit the leak warning BEFORE format validation: a literal secret
+              // is already exposed to shell history / the process table the moment
+              // the command is typed, regardless of whether the value is well-formed.
+              // Warning after validation would silently skip the malformed-secret
+              // case — exactly where the leak still happened.
               const usedLiteralSecretFlag = [
                 cliOptions.apiKeySecret,
                 cliOptions.walletSecret,
@@ -460,6 +453,18 @@ export class PaymentConnectorPrimitive extends BasePrimitive<AddPaymentConnector
                     `process table. Prefer interactive mode (run \`agentcore add payment-connector\` with no ` +
                     `secret flags) for masked entry.${ANSI.reset}\n`
                 );
+              }
+
+              if (provider === 'StripePrivy') {
+                // AWS docs ship the key with a `wallet-auth:` prefix — strip it transparently.
+                cliOptions.authorizationPrivateKey = stripWalletAuthPrefix(cliOptions.authorizationPrivateKey!);
+                const keyResult = validateAuthorizationPrivateKey(cliOptions.authorizationPrivateKey);
+                if (keyResult !== true) failValidation(keyResult);
+              } else {
+                const apiKeySecretResult = validateApiKeySecret(cliOptions.apiKeySecret!);
+                if (apiKeySecretResult !== true) failValidation(apiKeySecretResult);
+                const walletSecretResult = validateWalletSecret(cliOptions.walletSecret!);
+                if (walletSecretResult !== true) failValidation(walletSecretResult);
               }
 
               let result: Awaited<ReturnType<typeof this.add>>;

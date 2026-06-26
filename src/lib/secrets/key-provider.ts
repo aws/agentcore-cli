@@ -67,12 +67,57 @@ function keyfileKey(): Buffer {
   }
 }
 
-/** Resolve the 32-byte machine-local encryption key: keychain first, keyfile fallback. */
+/** Read the keyfile key WITHOUT creating one if absent (read-only; returns null when missing). */
+function readKeyfileKeyIfPresent(): Buffer | null {
+  try {
+    const path = keyfilePath();
+    if (existsSync(path)) {
+      const key = readFileSync(path);
+      if (key.length === KEY_BYTES) return key;
+    }
+  } catch {
+    // unreadable keyfile — treat as absent
+  }
+  return null;
+}
+
+/** Read the keychain key WITHOUT creating one if absent (returns null when unavailable/missing). */
+async function readKeychainKeyIfPresent(): Promise<Buffer | null> {
+  if (process.env.AGENTCORE_DISABLE_KEYCHAIN === '1') return null;
+  try {
+    const { Entry } = (await import('@napi-rs/keyring')) as KeyringModule;
+    const existing = new Entry(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).getPassword();
+    return existing ? Buffer.from(existing, 'base64') : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve the single key used to ENCRYPT new values: keychain first, keyfile
+ * fallback. Creates a key if none exists yet.
+ */
 export async function resolveEncryptionKey(): Promise<Buffer> {
   if (cachedKey) return cachedKey;
   const fromKeychain = await tryKeychainKey();
   cachedKey = fromKeychain ?? keyfileKey();
   return cachedKey;
+}
+
+/**
+ * Resolve ALL candidate keys for DECRYPTION, newest-intent first. A stored
+ * value may have been sealed by the keychain on one run and the keyfile on
+ * another (e.g. AGENTCORE_DISABLE_KEYCHAIN toggled); trying every available key
+ * lets a value decrypt regardless of which source is currently active. Read-only
+ * — never creates a key. May be empty if no key material exists at all.
+ */
+export async function resolveCandidateKeys(): Promise<Buffer[]> {
+  const keys: Buffer[] = [];
+  const fromKeychain = await readKeychainKeyIfPresent();
+  if (fromKeychain) keys.push(fromKeychain);
+  const fromKeyfile = readKeyfileKeyIfPresent();
+  if (fromKeyfile && !keys.some(k => k.equals(fromKeyfile))) keys.push(fromKeyfile);
+  return keys;
 }
 
 /** Reset the per-process key cache. Only for use in tests. */

@@ -1,6 +1,13 @@
 import { ENV_FILE } from '../constants';
 import { findConfigRoot } from '../schemas/io/path-resolver';
-import { ENC_PREFIX, decryptSecret, encryptSecret, isSensitiveKey, resolveEncryptionKey } from '../secrets';
+import {
+  ENC_PREFIX,
+  decryptSecret,
+  encryptSecret,
+  isSensitiveKey,
+  resolveCandidateKeys,
+  resolveEncryptionKey,
+} from '../secrets';
 import { parse } from 'dotenv';
 import { existsSync } from 'fs';
 import { readFile, writeFile } from 'fs/promises';
@@ -39,10 +46,12 @@ export async function readEnvFile(configRoot?: string): Promise<Record<string, s
   const parsed = parse(await readFile(path, 'utf-8'));
   const entries = Object.entries(parsed);
   if (!entries.some(([, v]) => v.startsWith(ENC_PREFIX))) return parsed;
-  const key = await resolveEncryptionKey();
+  // Try every available key (keychain + keyfile) so a value sealed by either
+  // source decrypts even if the active source differs from the one that wrote it.
+  const keys = await resolveCandidateKeys();
   const out: Record<string, string> = {};
   for (const [k, v] of entries) {
-    out[k] = v.startsWith(ENC_PREFIX) ? decryptSecret(v, key) : v;
+    out[k] = v.startsWith(ENC_PREFIX) ? decryptSecret(v, keys) : v;
   }
   return out;
 }
