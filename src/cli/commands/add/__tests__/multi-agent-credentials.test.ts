@@ -18,10 +18,18 @@ describe('multi-agent credential behavior', () => {
   let testDir: string;
   let projectDir: string;
   const projectName = 'MultiAgentProj';
+  const prevEnv = { kc: process.env.AGENTCORE_DISABLE_KEYCHAIN, cfg: process.env.AGENTCORE_CONFIG_DIR };
 
   beforeAll(async () => {
     testDir = join(tmpdir(), `agentcore-multi-agent-cred-${randomUUID()}`);
     await mkdir(testDir, { recursive: true });
+
+    // Isolate secret-at-rest encryption from the developer's real OS keychain and
+    // ~/.agentcore: force the keyfile provider into this throwaway dir. cleanSpawnEnv
+    // inherits process.env, so spawned CLI processes pick these up too; the
+    // in-process readEnvFile() calls below read the same vars.
+    process.env.AGENTCORE_DISABLE_KEYCHAIN = '1';
+    process.env.AGENTCORE_CONFIG_DIR = join(testDir, '.agentcore-keys');
 
     // Create project without agent
     const result = await runCLI(['create', '--name', projectName, '--no-agent'], testDir);
@@ -32,6 +40,8 @@ describe('multi-agent credential behavior', () => {
   });
 
   afterAll(async () => {
+    process.env.AGENTCORE_DISABLE_KEYCHAIN = prevEnv.kc;
+    process.env.AGENTCORE_CONFIG_DIR = prevEnv.cfg;
     await rm(testDir, { recursive: true, force: true });
   });
 

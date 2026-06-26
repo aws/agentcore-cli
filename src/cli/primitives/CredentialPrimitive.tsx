@@ -20,6 +20,7 @@ import { CredentialType, standardize } from '../telemetry/schemas/common-shapes.
 import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
 import { computeDefaultCredentialEnvVarName } from './credential-utils';
+import { warnOnLiteralSecretFlag } from './secret-flag-warning';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
 
@@ -316,6 +317,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
           ) {
             // CLI mode
             await runCliCommand('add.credential', !!cliOptions.json, async () => {
+              warnOnLiteralSecretFlag([cliOptions.apiKey, cliOptions.clientSecret], cliOptions.json, 'add credential');
               const validation = validateAddCredentialOptions({
                 name: cliOptions.name,
                 type: cliOptions.type as 'api-key' | 'oauth' | undefined,

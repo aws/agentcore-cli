@@ -35,6 +35,16 @@ async function tryKeychainKey(): Promise<Buffer | null> {
     }
     const key = randomBytes(KEY_BYTES);
     entry.setPassword(key.toString('base64'));
+    // Re-read after writing: if a concurrent process stored a different key
+    // between our getPassword() and setPassword(), the keychain now holds
+    // theirs — trust the persisted value, not our local one, so both processes
+    // converge on the same key.
+    try {
+      const persisted = entry.getPassword();
+      if (persisted) return Buffer.from(persisted, 'base64');
+    } catch {
+      // fall through to the freshly-generated key
+    }
     return key;
   } catch {
     return null;
@@ -49,18 +59,40 @@ function keyfilePath(): string {
   return join(resolveConfigDir(), 'secrets.key');
 }
 
+/** A keyfile that exists but isn't KEY_BYTES long is corrupt — never overwrite it. */
+function assertKeyfileSize(key: Buffer, path: string): Buffer {
+  if (key.length === KEY_BYTES) return key;
+  throw new SecretEncryptionError(
+    `Encryption key file at ${path} is corrupt (expected ${KEY_BYTES} bytes, found ${key.length}). ` +
+      `Move it aside and re-add your credentials, or restore the original key file`
+  );
+}
+
 function keyfileKey(): Buffer {
   const path = keyfilePath();
   try {
     if (existsSync(path)) {
-      const key = readFileSync(path);
-      if (key.length === KEY_BYTES) return key;
+      // A wrong-sized existing file is corruption, NOT a cue to mint a new key:
+      // overwriting it would permanently orphan every secret sealed with the
+      // real key. Fail loud instead.
+      return assertKeyfileSize(readFileSync(path), path);
     }
     mkdirSync(resolveConfigDir(), { recursive: true });
     const key = randomBytes(KEY_BYTES);
-    writeFileSync(path, key, { mode: 0o600 });
-    return key;
+    try {
+      // `wx` fails if the file already exists, making first-time creation
+      // last-writer-safe: if a concurrent process created it between the
+      // existsSync check and here, re-read theirs instead of clobbering it.
+      writeFileSync(path, key, { mode: 0o600, flag: 'wx' });
+      return key;
+    } catch (writeErr) {
+      if ((writeErr as NodeJS.ErrnoException).code === 'EEXIST') {
+        return assertKeyfileSize(readFileSync(path), path);
+      }
+      throw writeErr;
+    }
   } catch (err) {
+    if (err instanceof SecretEncryptionError) throw err;
     throw new SecretEncryptionError(`Could not create or read the machine encryption key at ${path}.`, {
       cause: err instanceof Error ? err : undefined,
     });

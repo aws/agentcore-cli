@@ -1,16 +1,26 @@
 import { readEnvFile } from '../src/lib/utils/env.js';
 import { createTestProject, readProjectConfig, runCLI } from '../src/test-utils/index.js';
 import type { TestProject } from '../src/test-utils/index.js';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 describe('integration: add BYO agent with CUSTOM_JWT auth', () => {
   let project: TestProject;
+  let keyDir: string;
+  const prevEnv = { kc: process.env.AGENTCORE_DISABLE_KEYCHAIN, cfg: process.env.AGENTCORE_CONFIG_DIR };
   const agentName = 'AuthAgent';
   const discoveryUrl = 'https://cognito-idp.us-east-1.amazonaws.com/us-east-1_test123/.well-known/openid-configuration';
 
   beforeAll(async () => {
+    // Isolate secret-at-rest encryption from the developer's real OS keychain and
+    // ~/.agentcore: force the keyfile provider into a throwaway dir. cleanSpawnEnv
+    // inherits process.env, so spawned CLI processes pick these up too.
+    keyDir = mkdtempSync(join(tmpdir(), 'agentcore-integ-keys-'));
+    process.env.AGENTCORE_DISABLE_KEYCHAIN = '1';
+    process.env.AGENTCORE_CONFIG_DIR = keyDir;
     project = await createTestProject({
       noAgent: true,
     });
@@ -18,6 +28,9 @@ describe('integration: add BYO agent with CUSTOM_JWT auth', () => {
 
   afterAll(async () => {
     await project.cleanup();
+    process.env.AGENTCORE_DISABLE_KEYCHAIN = prevEnv.kc;
+    process.env.AGENTCORE_CONFIG_DIR = prevEnv.cfg;
+    rmSync(keyDir, { recursive: true, force: true });
   });
 
   it('adds a BYO agent with CUSTOM_JWT authorizer and audience', async () => {

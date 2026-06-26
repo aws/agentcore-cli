@@ -1,5 +1,5 @@
 import { resolveEncryptionKey } from '../key-provider';
-import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -36,5 +36,22 @@ describe('resolveEncryptionKey (keyfile fallback)', () => {
     const a = await resolveEncryptionKey();
     const b = await resolveEncryptionKey();
     expect(Buffer.compare(a, b)).toBe(0);
+  });
+
+  it('fails loud on a wrong-sized (corrupt) keyfile instead of overwriting it', async () => {
+    const keyfile = join(dir, 'secrets.key');
+    writeFileSync(keyfile, Buffer.alloc(10, 0x41)); // 10 bytes, not 32
+    const before = readFileSync(keyfile);
+    await expect(resolveEncryptionKey()).rejects.toThrow(/corrupt/i);
+    // The corrupt file must NOT have been clobbered with a fresh key.
+    expect(Buffer.compare(readFileSync(keyfile), before)).toBe(0);
+  });
+
+  it('reuses an existing valid keyfile rather than minting a new one', async () => {
+    const first = await resolveEncryptionKey();
+    const { __resetKeyCacheForTests } = await import('../key-provider');
+    __resetKeyCacheForTests();
+    const second = await resolveEncryptionKey();
+    expect(Buffer.compare(first, second)).toBe(0);
   });
 });

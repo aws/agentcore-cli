@@ -2,7 +2,6 @@ import { findConfigRoot, removeEnvVars, setEnvVar, toError } from '../../lib';
 import type { AgentCoreProjectSpec, PaymentProvider } from '../../schema';
 import { PaymentConnectorNameSchema, PaymentConnectorSchema, PaymentProviderSchema } from '../../schema';
 import type { RemoveResult } from '../commands/remove/types';
-import { ANSI } from '../constants';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { requireTTY } from '../tui/guards/tty';
@@ -15,6 +14,7 @@ import {
   validateAuthorizationPrivateKey,
   validateWalletSecret,
 } from './payment-validation';
+import { warnOnLiteralSecretFlag } from './secret-flag-warning';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
 
@@ -441,19 +441,16 @@ export class PaymentConnectorPrimitive extends BasePrimitive<AddPaymentConnector
               // the command is typed, regardless of whether the value is well-formed.
               // Warning after validation would silently skip the malformed-secret
               // case — exactly where the leak still happened.
-              const usedLiteralSecretFlag = [
-                cliOptions.apiKeySecret,
-                cliOptions.walletSecret,
-                cliOptions.appSecret,
-                cliOptions.authorizationPrivateKey,
-              ].some(v => v !== undefined);
-              if (usedLiteralSecretFlag && !cliOptions.json) {
-                process.stderr.write(
-                  `${ANSI.yellow}Warning: passing secrets as CLI flags exposes them to shell history and the ` +
-                    `process table. Prefer interactive mode (run \`agentcore add payment-connector\` with no ` +
-                    `secret flags) for masked entry.${ANSI.reset}\n`
-                );
-              }
+              warnOnLiteralSecretFlag(
+                [
+                  cliOptions.apiKeySecret,
+                  cliOptions.walletSecret,
+                  cliOptions.appSecret,
+                  cliOptions.authorizationPrivateKey,
+                ],
+                cliOptions.json,
+                'add payment-connector'
+              );
 
               if (provider === 'StripePrivy') {
                 // AWS docs ship the key with a `wallet-auth:` prefix — strip it transparently.
