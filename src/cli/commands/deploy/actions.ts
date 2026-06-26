@@ -769,11 +769,14 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const postDeployWarnings: string[] = [];
 
     // Auto-payment is a money-movement default; surface its posture per manager
-    // so an unattended-spend configuration is never silent at deploy time.
+    // so an unattended-spend configuration is never silent at deploy time. This
+    // is an informational notice, not a failure — it goes through `notes` (exit
+    // 0), NOT postDeployWarnings (which signals partial failure and exits 2).
+    const autoPaymentNotices: string[] = [];
     for (const manager of context.projectSpec.payments ?? []) {
       if (manager.autoPayment !== false) {
         const limit = manager.defaultSpendLimit ?? '10.00';
-        postDeployWarnings.push(
+        autoPaymentNotices.push(
           `Payment manager "${manager.name}": auto-payment is ENABLED — the agent will settle ` +
             `402 responses automatically up to the per-session spend limit ($${limit}) with no ` +
             `human approval. Set --auto-payment false on the manager to require manual approval.`
@@ -891,7 +894,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const hasHarnesses = (context.projectSpec.harnesses ?? []).length > 0;
     const hasInvokable = agentNames.length > 0 || hasHarnesses;
     const nextSteps = hasInvokable ? [...AGENT_NEXT_STEPS] : [...MEMORY_ONLY_NEXT_STEPS];
-    const notes: string[] = [];
+    const notes: string[] = [...autoPaymentNotices];
     const hasPythonAgent =
       context.projectSpec.runtimes?.some(a => a.entrypoint?.endsWith('.py') || a.entrypoint?.includes('.py:')) ?? false;
     if ((agentNames.length > 0 || hasGateways) && hasPythonAgent) {

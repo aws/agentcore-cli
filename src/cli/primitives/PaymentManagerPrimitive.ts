@@ -456,7 +456,15 @@ export class PaymentManagerPrimitive extends BasePrimitive<AddPaymentManagerOpti
               });
 
               if (cliOptions.json) {
-                console.log(JSON.stringify(serializeResult(result)));
+                // autoPaymentWarning is a human-facing notice rendered on the
+                // non-JSON path only; strip it so --json stdout stays a clean
+                // machine-readable result (mirrors the connector leak warning).
+                if (result.success) {
+                  const { autoPaymentWarning: _autoPaymentWarning, ...rest } = result;
+                  console.log(JSON.stringify(serializeResult(rest)));
+                } else {
+                  console.log(JSON.stringify(serializeResult(result)));
+                }
               } else if (result.success) {
                 console.log(`Added payment manager '${result.managerName}'`);
                 if (result.autoPaymentWarning) {
