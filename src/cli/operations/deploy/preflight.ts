@@ -1,10 +1,11 @@
 import { ConfigIO, DOCKERFILE_NAME, getDockerfilePath, requireConfigRoot, resolveCodeLocation } from '../../../lib';
-import { ValidationError } from '../../../lib/errors/types';
+import { StaleCdkConstructError, ValidationError } from '../../../lib/errors/types';
 import type { AgentCoreProjectSpec, AwsDeploymentTarget } from '../../../schema';
 import { validateAwsCredentials } from '../../aws/account';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
 import { CdkToolkitWrapper, createCdkToolkitWrapper, silentIoHost } from '../../cdk/toolkit-lib';
 import { checkBootstrapStatus, checkStacksStatus, formatCdkEnvironment } from '../../cloudformation';
+import { MAX_GATEWAY_NAME_LENGTH, MAX_RUNTIME_NAME_LENGTH } from '../../constants';
 import { cleanupStaleLockFiles } from '../../tui/utils';
 import type { IIoHost } from '@aws-cdk/toolkit-lib';
 import { existsSync, readFileSync } from 'node:fs';
@@ -63,8 +64,6 @@ export function formatError(err: unknown): string {
  * Also validates AWS credentials are configured before proceeding.
  * Returns the project context needed for subsequent steps.
  */
-const MAX_RUNTIME_NAME_LENGTH = 48;
-
 export async function validateProject(): Promise<PreflightContext> {
   // Find the agentcore config directory, walking up from cwd if needed
   const configRoot = requireConfigRoot();
@@ -128,6 +127,9 @@ export async function validateProject(): Promise<PreflightContext> {
   // Validate runtime names don't exceed AWS limits
   validateRuntimeNames(projectSpec);
 
+  // Validate gateway names don't exceed AWS limits
+  validateGatewayNames(projectSpec);
+
   // Validate Container agents have Dockerfiles
   validateContainerAgents(projectSpec, configRoot);
 
@@ -164,6 +166,27 @@ function validateRuntimeNames(projectSpec: AgentCoreProjectSpec): void {
             `Shorten the project name or agent name in agentcore.json.`
         );
       }
+    }
+  }
+}
+
+/**
+ * Validates that combined gateway names (projectName-gatewayName) don't exceed AWS limits.
+ * The deployed gateway resource name is `${projectName}-${gatewayName}` and AWS rejects names
+ * over 48 chars at CreateGateway — surface that here instead of as an opaque CREATE_FAILED.
+ */
+export function validateGatewayNames(projectSpec: AgentCoreProjectSpec): void {
+  const projectName = projectSpec.name;
+  for (const gateway of projectSpec.agentCoreGateways || []) {
+    // Imported gateways carry an explicit resourceName that AWS already accepted; skip those.
+    if (gateway.resourceName) continue;
+    const combinedName = `${projectName}-${gateway.name}`;
+    if (combinedName.length > MAX_GATEWAY_NAME_LENGTH) {
+      throw new ValidationError(
+        `Gateway name too long: "${combinedName}" (${combinedName.length} chars). ` +
+          `AWS limits gateway names to ${MAX_GATEWAY_NAME_LENGTH} characters. ` +
+          `Shorten the project name or gateway name in agentcore.json.`
+      );
     }
   }
 }
@@ -275,12 +298,63 @@ export async function synthesizeCdk(cdkProject: LocalCdkProject, options?: Synth
   });
 
   // synth() produces the assembly internally and stores the directory for later use
-  const synthResult = await toolkitWrapper.synth();
+  let synthResult: { stackNames: string[]; assemblyDirectory: string };
+  try {
+    synthResult = await toolkitWrapper.synth();
+  } catch (err) {
+    throw rewriteIfStaleCdkConstruct(err, cdkProject.projectDir);
+  }
 
   return {
     toolkitWrapper,
     stackNames: synthResult.stackNames,
   };
+}
+
+// Matches the construct's config validator output: `path: unknown keys (remove): "a", "b"`.
+// See @aws/agentcore-cdk src/lib/errors/config.ts (unrecognized_keys formatting).
+const UNKNOWN_KEYS_PATTERN = /unknown keys \(remove\): (.+?)(?:\n|$)/;
+
+/**
+ * Pull the rejected key names out of an "unknown keys (remove)" message anywhere in the
+ * error's cause chain. Returns [] when the error is not an unknown-keys rejection.
+ */
+export function extractUnknownKeys(err: unknown): string[] {
+  const message = formatError(err);
+  const match = UNKNOWN_KEYS_PATTERN.exec(message);
+  if (!match?.[1]) return [];
+  return match[1]
+    .split(',')
+    .map(k => k.trim().replace(/^"|"$/g, ''))
+    .filter(Boolean);
+}
+
+/**
+ * Read the version of @aws/agentcore-cdk actually installed in the vended CDK project.
+ * Returns undefined when it can't be determined (the error message degrades gracefully).
+ */
+export function readInstalledCdkConstructVersion(cdkProjectDir: string): string | undefined {
+  try {
+    const pkgPath = path.join(cdkProjectDir, 'node_modules', '@aws', 'agentcore-cdk', 'package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: string };
+    return pkg.version;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * If a synth failure is an "unknown keys" rejection, it is provably a version skew: the CLI
+ * strict-validates agentcore.json against its own schema during preflight (validateProject),
+ * *before* synth runs. So any unknown-key the CLI wrote is one the CLI considers valid, and the
+ * rejection means the project's bundled @aws/agentcore-cdk is older than the CLI. Rewrite to a
+ * StaleCdkConstructError with an actionable hint. Any other error passes through untouched.
+ */
+export function rewriteIfStaleCdkConstruct(err: unknown, cdkProjectDir: string): unknown {
+  const rejectedKeys = extractUnknownKeys(err);
+  if (rejectedKeys.length === 0) return err instanceof Error ? err : new Error(String(err));
+  const installedVersion = readInstalledCdkConstructVersion(cdkProjectDir);
+  return new StaleCdkConstructError(rejectedKeys, installedVersion, { cause: err });
 }
 
 /**

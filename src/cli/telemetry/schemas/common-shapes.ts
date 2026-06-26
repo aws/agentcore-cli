@@ -128,6 +128,7 @@ export const ErrorName = z.enum([
   'ServiceError',
   'ServiceQuotaError',
   'ShellKickedError',
+  'StaleCdkConstructError',
   'ThrottlingError',
   'TimeoutError',
   'UnsupportedLanguageError',

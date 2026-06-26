@@ -98,6 +98,28 @@ export class ValidationError extends BaseError {
 }
 
 /**
+ * Error thrown when CDK synth fails because the project's installed `@aws/agentcore-cdk`
+ * construct is older than the running CLI and rejects a config key the CLI legitimately writes.
+ *
+ * The CLI strict-validates agentcore.json against its own schema during preflight, *before*
+ * synth. So an "unknown keys (remove)" failure reaching synth proves the key is valid to the
+ * CLI but unknown to the older bundled construct — i.e. version skew, not a bad config.
+ */
+export class StaleCdkConstructError extends BaseError {
+  constructor(rejectedKeys: string[], installedVersion: string | undefined, options?: BaseErrorOptions) {
+    const keyList = rejectedKeys.map(k => `"${k}"`).join(', ');
+    const versionPart = installedVersion ? ` (currently ${installedVersion})` : '';
+    super(
+      `CDK synth rejected ${keyList}, which this CLI writes but the project's installed ` +
+        `@aws/agentcore-cdk${versionPart} does not recognize. If you did not hand-edit ` +
+        `agentcore.json, the bundled CDK constructs are likely behind the CLI. Run ` +
+        `\`npm update @aws/agentcore-cdk\` in agentcore/cdk/, then re-run \`agentcore deploy\`.`,
+      { defaultSource: 'user', ...options }
+    );
+  }
+}
+
+/**
  * Error thrown when AWS credentials are not configured or invalid.
  * Supports both a short message (for interactive mode) and detailed message (for CLI mode).
  */

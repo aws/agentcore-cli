@@ -97,6 +97,18 @@ export const CDK_PROJECT_DIR = 'cdk';
 export const CDK_APP_ENTRY = 'dist/bin/cdk.js';
 
 /**
+ * Max length AWS BedrockAgentCore allows for a runtime name (combined projectName_agentName).
+ */
+export const MAX_RUNTIME_NAME_LENGTH = 48;
+
+/**
+ * Max length AWS BedrockAgentCore allows for a gateway name. The deployed name is composed as
+ * `${projectName}-${gatewayName}` (see @aws/agentcore-cdk Gateway.ts), and AWS rejects names
+ * over this limit at CreateGateway with pattern ([0-9a-zA-Z][-]?){1,48}.
+ */
+export const MAX_GATEWAY_NAME_LENGTH = 48;
+
+/**
  * Current schema version for AgentCore configuration files.
  */
 export const SCHEMA_VERSION = 1;

@@ -11,6 +11,7 @@ import type {
 import { AgentCoreGatewaySchema, PolicyEngineModeSchema } from '../../schema';
 import type { AddGatewayOptions as CLIAddGatewayOptions } from '../commands/add/types';
 import { validateAddGatewayOptions } from '../commands/add/validate';
+import { MAX_GATEWAY_NAME_LENGTH } from '../constants';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand, withCommandRunTelemetry } from '../telemetry/cli-command-run.js';
@@ -418,6 +419,18 @@ export class GatewayPrimitive extends BasePrimitive<AddGatewayOptions, Removable
 
     if (project.agentCoreGateways.some(g => g.name === config.name)) {
       throw new Error(`Gateway "${config.name}" already exists.`);
+    }
+
+    // AWS composes the deployed gateway name as `${projectName}-${gatewayName}` and rejects it
+    // over MAX_GATEWAY_NAME_LENGTH chars at CreateGateway. Fail here, when the user types the
+    // command, rather than mid-deploy with an opaque CloudFormation CREATE_FAILED.
+    const combinedName = `${project.name}-${config.name}`;
+    if (combinedName.length > MAX_GATEWAY_NAME_LENGTH) {
+      throw new ValidationError(
+        `Gateway name too long: "${combinedName}" (${combinedName.length} chars). ` +
+          `AWS limits gateway names to ${MAX_GATEWAY_NAME_LENGTH} characters. ` +
+          `Shorten the project name or gateway name.`
+      );
     }
 
     // Move selected unassigned targets to the new gateway
