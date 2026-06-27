@@ -93,10 +93,25 @@ agentcore invoke
 
 | Command  | Description                                                                                                                                                                                                                                             |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `add`    | Add agents, memory, credentials, gateways and gateway-targets, evaluators, online evals, online insights, knowledge bases, config bundles, datasets, harnesses, policy engines and policies, payment managers and payment connectors, runtime endpoints |
+| `add`    | Add harnesses, agents, memory, credentials, gateways and gateway-targets, evaluators, online evals, online insights, knowledge bases, config bundles, datasets, policy engines and policies, payment managers and payment connectors, runtime endpoints |
 | `remove` | Remove any of the above resources from the project                                                                                                                                                                                                      |
 
 > **Note**: Run `agentcore deploy` after `add` or `remove` to update resources in AWS.
+
+### Harness
+
+A harness bundles a runtime, model, tools, skills, memory, and observability into one declarative config. Use it when
+you want infra without writing agent code.
+
+| Command          | Description                                                                 |
+| ---------------- | --------------------------------------------------------------------------- |
+| `add harness`    | Add a harness resource (runtime + model + memory)                           |
+| `add tool`       | Add a tool to a harness (`--harness <name> --type <type> --name <name>`)    |
+| `add skill`      | Add a skill to a harness (`--harness <name>` + `--path` / `--s3` / `--git`) |
+| `export harness` | Export a harness config to a deployable Strands Python agent under `app/`   |
+
+> After `export harness`, **read `app/<agentName>/EXPORT_NOTES.md`** before running `deploy` — it lists any manual
+> follow-up the exporter could not automate.
 
 ### Observability
 
@@ -166,21 +181,6 @@ clusters of bad outcomes.
 | `pause online-insights`  | Pause a deployed online insights config                     |
 | `resume online-insights` | Resume a paused online insights config                      |
 | `archive insights`       | Delete an insights job on the service + clear local history |
-
-### Harness
-
-A harness bundles a runtime, model, tools, skills, memory, and observability into one declarative config. Use it when
-you want infra without writing agent code.
-
-| Command          | Description                                                                 |
-| ---------------- | --------------------------------------------------------------------------- |
-| `add harness`    | Add a harness resource (runtime + model + memory)                           |
-| `add tool`       | Add a tool to a harness (`--harness <name> --type <type> --name <name>`)    |
-| `add skill`      | Add a skill to a harness (`--harness <name>` + `--path` / `--s3` / `--git`) |
-| `export harness` | Export a harness config to a deployable Strands Python agent under `app/`   |
-
-> After `export harness`, **read `app/<agentName>/EXPORT_NOTES.md`** before running `deploy` — it lists any manual
-> follow-up the exporter could not automate.
 
 ### Policies & Guardrails
 
@@ -271,6 +271,7 @@ Projects use JSON schema files in the `agentcore/` directory:
 
 ## Capabilities
 
+- **Harness** - Declarative agent: bundle runtime + tools + skills + memory + observability without writing agent code
 - **Runtime** - Managed execution environment for deployed agents
 - **Memory** - Semantic, summarization, user-preference, and episodic strategies
 - **Credentials** - Secure API key + OAuth credential management via Secrets Manager
@@ -281,7 +282,6 @@ Projects use JSON schema files in the `agentcore/` directory:
 - **A/B Tests** - Traffic-split between config-bundle or target-based variants and promote the winner
 - **Insights** _[preview]_ - Failure-pattern analysis and clustering across agent sessions
 - **Knowledge Bases** - Managed Bedrock Knowledge Bases auto-wired to gateways
-- **Harness** - Declarative agent: bundle runtime + tools + skills + memory + observability without writing agent code
 - **Policies & Guardrails** - Cedar pre/post-call policies including Bedrock content filters, prompt-attack detection,
   and sensitive-information redaction
 - **Payments** - x402-protocol microtransactions for pay-per-call tools and APIs
