@@ -398,11 +398,11 @@ export const registerRun = (program: Command) => {
           if (!cliOptions.json) console.log(message);
         };
 
-        if (cliOptions.name?.trim() === '') {
-          throw new ValidationError('--name must not be empty. Omit the flag to auto-generate a name.');
-        }
-
         await runCliCommand('run.job', !!cliOptions.json, async () => {
+          if (cliOptions.name?.trim() === '') {
+            throw new ValidationError('--name must not be empty. Omit the flag to auto-generate a name.');
+          }
+
           const engine = createJobEngine(new ConfigIO());
 
           const insightIds = cliOptions.insights ?? ['Builtin.Insight.FailureAnalysis'];
