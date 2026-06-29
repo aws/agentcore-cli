@@ -35,7 +35,7 @@ function registerOnlineEvalSubcommand(parent: Command, action: 'pause' | 'resume
         process.exit(1);
       }
 
-      if (!cliOptions.arn) {
+      if (!cliOptions.arn || name) {
         requireProject();
       }
 
@@ -126,7 +126,7 @@ function registerOnlineInsightsSubcommand(parent: Command, action: 'pause' | 're
         process.exit(1);
       }
 
-      if (!cliOptions.arn) {
+      if (!cliOptions.arn || name) {
         requireProject();
       }
 

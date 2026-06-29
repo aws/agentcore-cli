@@ -94,6 +94,17 @@ async function resolveConfig(
           `Pass only one, or pass matching values.`,
       };
     }
+
+    if (nameResolution.region !== arnResolution.region) {
+      return {
+        success: false,
+        error:
+          `--arn and config name "${options.name}" resolve to different regions ` +
+          `(name resolves to "${nameResolution.region}", ARN resolves to "${arnResolution.region}"). ` +
+          `Pass only one, or use --region to override.`,
+      };
+    }
+
     return arnResolution;
   }
   if (options.arn) {
