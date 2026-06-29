@@ -1,7 +1,8 @@
 import type { FailureAnalysisResult, GetBatchEvaluationResult } from '../../../aws/agentcore-batch-evaluation';
 import { getBatchEvaluation } from '../../../aws/agentcore-batch-evaluation';
-import type { InsightsRunRecord } from '../../../operations/insights';
-import { listInsightsRuns } from '../../../operations/insights';
+import { regionFromArn } from '../../../operations/jobs';
+import { listRecords } from '../../../operations/jobs/shared/storage';
+import type { InsightsJobRecord } from '../../../operations/jobs/shared/types';
 import { Panel, Screen } from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation } from '../../hooks';
@@ -44,8 +45,8 @@ function InsightsJobsListView({
   onExit,
   availableHeight,
 }: {
-  records: InsightsRunRecord[];
-  onSelect: (record: InsightsRunRecord) => void;
+  records: InsightsJobRecord[];
+  onSelect: (record: InsightsJobRecord) => void;
   onExit: () => void;
   availableHeight: number;
 }) {
@@ -79,11 +80,11 @@ function InsightsJobsListView({
             const date = rec.createdAt ? formatShortDate(rec.createdAt) : 'unknown';
 
             return (
-              <Text key={rec.batchEvaluationId} wrap="truncate-end">
+              <Text key={rec.id} wrap="truncate-end">
                 <Text color={selected ? 'cyan' : undefined}>{selected ? '>' : ' '} </Text>
                 <Text dimColor>{date.padEnd(16)}</Text>
                 <Text color={statusColor(rec.status)}>{rec.status.padEnd(12)}</Text>
-                <Text dimColor>{rec.name || rec.batchEvaluationId}</Text>
+                <Text dimColor>{rec.name || rec.id}</Text>
               </Text>
             );
           })}
@@ -100,19 +101,21 @@ function InsightsJobsListView({
 // Results view
 // ─────────────────────────────────────────────────────────────────────────────
 
-function InsightsResultsView({ record, onBack }: { record: InsightsRunRecord; onBack: () => void }) {
+function InsightsResultsView({ record, onBack }: { record: InsightsJobRecord; onBack: () => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [failureAnalysis, setFailureAnalysis] = useState<FailureAnalysisResult | undefined>(undefined);
   const [totalSessions, setTotalSessions] = useState(0);
+
+  const region = regionFromArn(record.arn) ?? '';
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
         const result: GetBatchEvaluationResult = await getBatchEvaluation({
-          region: record.region,
-          batchEvaluationId: record.batchEvaluationId,
+          region,
+          batchEvaluationId: record.id,
         });
         if (cancelled) return;
         if (result.status !== 'COMPLETED' && result.status !== 'COMPLETEDWITHERRORS') {
@@ -132,7 +135,7 @@ function InsightsResultsView({ record, onBack }: { record: InsightsRunRecord; on
     return () => {
       cancelled = true;
     };
-  }, [record.batchEvaluationId, record.region]);
+  }, [record.id, region]);
 
   useInput((input, key) => {
     if (key.escape || input === 'b') {
@@ -179,7 +182,7 @@ function InsightsResultsView({ record, onBack }: { record: InsightsRunRecord; on
   return (
     <Panel fullWidth>
       <Box flexDirection="column">
-        <Text bold>Insights Results: {record.name || record.batchEvaluationId}</Text>
+        <Text bold>Insights Results: {record.name || record.id}</Text>
         <Text dimColor>
           Sessions: {totalSessions} | Clusters: {categories.length}
         </Text>
@@ -236,7 +239,7 @@ function InsightsJobDetailView({
   onBack,
   onViewResults,
 }: {
-  record: InsightsRunRecord;
+  record: InsightsJobRecord;
   onBack: () => void;
   onViewResults: () => void;
 }) {
@@ -255,7 +258,7 @@ function InsightsJobDetailView({
     <Panel fullWidth>
       <Box flexDirection="column">
         <Text>
-          <Text bold>ID:</Text> {record.batchEvaluationId}
+          <Text bold>ID:</Text> {record.id}
         </Text>
         <Text>
           <Text bold>Status:</Text> <Text color={statusColor(record.status)}>{record.status}</Text>
@@ -282,18 +285,19 @@ function InsightsJobDetailView({
         <Box marginTop={1} flexDirection="column">
           <Text bold>Sessions:</Text>
           <Text>
-            {'  '}total: {record.sessionCount ?? 'N/A'}
-            {record.sessionsCompleted != null && <Text>, completed: {record.sessionsCompleted}</Text>}
-            {record.sessionsFailed != null && record.sessionsFailed > 0 && (
-              <Text color="red">, failed: {record.sessionsFailed}</Text>
+            {'  '}total: {record.evaluationResults?.totalNumberOfSessions ?? 'N/A'}
+            {record.evaluationResults?.numberOfSessionsCompleted != null && (
+              <Text>, completed: {record.evaluationResults.numberOfSessionsCompleted}</Text>
             )}
+            {record.evaluationResults?.numberOfSessionsFailed != null &&
+              record.evaluationResults.numberOfSessionsFailed > 0 && (
+                <Text color="red">, failed: {record.evaluationResults.numberOfSessionsFailed}</Text>
+              )}
           </Text>
         </Box>
 
         <Box marginTop={1}>
-          <Text dimColor>
-            To generate a recommendation: agentcore run recommendation --from-insights {record.batchEvaluationId}
-          </Text>
+          <Text dimColor>To generate a recommendation: agentcore run recommendation --from-insights {record.id}</Text>
         </Box>
 
         <Box marginTop={1}>
@@ -317,14 +321,14 @@ export function InsightsJobsScreen({ onExit }: InsightsJobsScreenProps) {
   const terminalHeight = stdout?.rows ?? 24;
   const availableHeight = Math.max(6, terminalHeight - CHROME_LINES);
 
-  const [selectedRecord, setSelectedRecord] = useState<InsightsRunRecord | null>(null);
+  const [selectedRecord, setSelectedRecord] = useState<InsightsJobRecord | null>(null);
   const [viewingResults, setViewingResults] = useState(false);
 
   const [records, loaded, error] = useMemo(() => {
     try {
-      return [listInsightsRuns(), true, null] as const;
+      return [listRecords('insights'), true, null] as const;
     } catch (err) {
-      return [[] as InsightsRunRecord[], true, err instanceof Error ? err.message : String(err)] as const;
+      return [[] as InsightsJobRecord[], true, err instanceof Error ? err.message : String(err)] as const;
     }
   }, []);
 

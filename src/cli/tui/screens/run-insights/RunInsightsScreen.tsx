@@ -19,11 +19,7 @@ import {
 } from './types';
 import type { RunInsightsConfig, RunInsightsStep } from './types';
 import { useRunInsightsWizard } from './useRunInsightsWizard';
-import React, { forwardRef, useImperativeHandle, useMemo } from 'react';
-
-export interface RunInsightsScreenHandle {
-  jumpToStep: (step: RunInsightsStep) => void;
-}
+import React, { useMemo } from 'react';
 
 interface RunInsightsScreenProps {
   agentNames: string[];
@@ -57,12 +53,15 @@ function validateLookbackInput(value: string): true | string {
   return true;
 }
 
-export const RunInsightsScreen = forwardRef<RunInsightsScreenHandle, RunInsightsScreenProps>(function RunInsightsScreen(
-  { agentNames, onlineEvalConfigArns, onComplete, onExit, initialConfig, initialStep },
-  ref
-) {
+export function RunInsightsScreen({
+  agentNames,
+  onlineEvalConfigArns,
+  onComplete,
+  onExit,
+  initialConfig,
+  initialStep,
+}: RunInsightsScreenProps) {
   const wizard = useRunInsightsWizard(agentNames, initialConfig, initialStep);
-  useImperativeHandle(ref, () => ({ jumpToStep: wizard.jumpToStep }), [wizard.jumpToStep]);
 
   const isSourceStep = wizard.step === 'source';
   const isAgentStep = wizard.step === 'agent';
@@ -257,4 +256,4 @@ export const RunInsightsScreen = forwardRef<RunInsightsScreenHandle, RunInsights
       </Panel>
     </Screen>
   );
-});
+}

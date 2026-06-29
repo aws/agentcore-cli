@@ -1,8 +1,6 @@
 import { ConfigIO } from '../../../../lib';
 import type { DeployedState } from '../../../../schema';
-import { detectRegion } from '../../../aws/region';
 import { getErrorMessage } from '../../../errors';
-import { saveInsightsRun } from '../../../operations/insights';
 import { createJobEngine } from '../../../operations/jobs';
 import type { InsightsJobRecord } from '../../../operations/jobs/shared/types';
 import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
@@ -96,13 +94,6 @@ export function RunInsightsFlow({ isInteractive = true, onExit, onBack, onViewJo
             throw startResult.error ?? new Error('Failed to start insights job');
           }
 
-          // Mirror the new job to the legacy insights store so `view insights`
-          // (InsightsJobsScreen) finds it. Without this, the post-launch screen
-          // shows "No insights runs found" right after creating the job.
-          await persistToLegacyStore(startResult.record).catch(() => {
-            // Non-fatal — the job started successfully; storage failures shouldn't surface.
-          });
-
           setFlow({ name: 'success', record: startResult.record });
         } catch (err) {
           setFlow({
@@ -167,31 +158,6 @@ export function RunInsightsFlow({ isInteractive = true, onExit, onBack, onViewJo
       onExit={onExit}
     />
   );
-}
-
-async function persistToLegacyStore(record: InsightsJobRecord): Promise<void> {
-  // The job engine record uses `id`/`arn`; the legacy storage uses
-  // `batchEvaluationId`/`batchEvaluationArn`. Translate so InsightsJobsScreen
-  // (which reads from the legacy store) sees the new run.
-  const region = regionFromArn(record.arn) ?? (await detectRegion()).region;
-  saveInsightsRun({
-    batchEvaluationId: record.id,
-    batchEvaluationArn: record.arn,
-    name: record.name,
-    status: record.status,
-    region,
-    createdAt: record.createdAt,
-    completedAt: record.completedAt,
-    insights: record.insights,
-    agent: record.agent,
-  });
-}
-
-function regionFromArn(arn: string | undefined): string | undefined {
-  if (!arn) return undefined;
-  const region = arn.split(':')[3];
-  if (!region) return undefined;
-  return region;
 }
 
 function extractOnlineEvalConfigArns(deployedState: DeployedState): string[] {

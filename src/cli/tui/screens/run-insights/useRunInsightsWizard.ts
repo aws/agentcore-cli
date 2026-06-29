@@ -58,16 +58,6 @@ export function useRunInsightsWizard(
     }
   }, [allSteps, currentIndex]);
 
-  /** Jump to an arbitrary step in the current flow without resetting config. */
-  const jumpToStep = useCallback(
-    (target: RunInsightsStep) => {
-      if (allSteps.includes(target)) {
-        setStep(target);
-      }
-    },
-    [allSteps]
-  );
-
   const setSource = useCallback(
     (source: RunInsightsSource) => {
       setConfig(c => ({ ...c, source }));
@@ -151,7 +141,6 @@ export function useRunInsightsWizard(
     steps: allSteps,
     currentIndex,
     goBack,
-    jumpToStep,
     setSource,
     setAgent,
     setInsights,
