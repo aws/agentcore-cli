@@ -1,7 +1,6 @@
 import { ApiKeySecretInput, SecretInput } from '../SecretInput.js';
 import { render } from 'ink-testing-library';
 import React from 'react';
-import stripAnsi from 'strip-ansi';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
@@ -35,7 +34,7 @@ describe('SecretInput', () => {
       <SecretInput prompt="Key" placeholder="sk-..." onSubmit={vi.fn()} onCancel={vi.fn()} />
     );
 
-    expect(stripAnsi(lastFrame()!)).toContain('sk-...');
+    expect(lastFrame()).toContain('sk-...');
   });
 
   it('masks input with default * character', async () => {
@@ -148,6 +147,23 @@ describe('SecretInput', () => {
     await delay();
 
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows validation error instead of calling onCancel when customValidation rejects empty value', async () => {
+    const onCancel = vi.fn();
+    const onSubmit = vi.fn();
+    const customValidation = (val: string) => val.trim().length > 0 || 'API key is required';
+    const { lastFrame, stdin } = render(
+      <SecretInput prompt="API Key" customValidation={customValidation} onSubmit={onSubmit} onCancel={onCancel} />
+    );
+
+    await delay();
+    stdin.write(ENTER);
+    await delay();
+
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(lastFrame()).toContain('API key is required');
   });
 
   it('shows skip hint when onSkip is provided', () => {
