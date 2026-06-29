@@ -7757,14 +7757,26 @@ const app = new BedrockAgentCoreApp({
         await agent.memoryManager?.flush();
       }
       {{else}}
-      for await (const event of agent.stream(payload.prompt ?? '')) {
-        if (
-          event.type === 'modelStreamUpdateEvent' &&
-          event.event?.type === 'modelContentBlockDeltaEvent' &&
-          event.event.delta?.type === 'textDelta'
-        ) {
-          yield { data: event.event.delta.text };
+      // Snapshot history before streaming so a failed turn can be rolled back.
+      // Agent.stream() appends the user message before invoking the model; on a
+      // mid-stream error that user turn would otherwise linger in the cached
+      // agent, and the next turn for this session would send consecutive user
+      // messages (rejected by providers that require strict role alternation,
+      // e.g. Anthropic). Restoring on error keeps the session reusable.
+      const snapshot = agent.takeSnapshot({ include: ['messages'] });
+      try {
+        for await (const event of agent.stream(payload.prompt ?? '')) {
+          if (
+            event.type === 'modelStreamUpdateEvent' &&
+            event.event?.type === 'modelContentBlockDeltaEvent' &&
+            event.event.delta?.type === 'textDelta'
+          ) {
+            yield { data: event.event.delta.text };
+          }
         }
+      } catch (error) {
+        agent.loadSnapshot(snapshot);
+        throw error;
       }
       {{/if}}
     },
