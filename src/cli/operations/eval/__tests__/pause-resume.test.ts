@@ -204,6 +204,17 @@ describe('handlePauseResume', () => {
       expect(mockUpdateOnlineEvalExecutionStatus).not.toHaveBeenCalled();
     });
 
+    it('rejects mismatched regions between name and ARN', async () => {
+      mockLoadDeployedProjectConfig.mockResolvedValue(makeContext('my-config', 'cfg-123', 'dev', 'us-west-2'));
+
+      const arn = 'arn:aws:bedrock-agentcore:us-east-1:123456789012:online-evaluation-config/cfg-123';
+      const result = await handlePauseResume({ name: 'my-config', arn }, 'pause');
+
+      assert(!result.success);
+      expect(result.error.message).toContain('different regions');
+      expect(mockUpdateOnlineEvalExecutionStatus).not.toHaveBeenCalled();
+    });
+
     it('returns name-lookup error when both are passed but name is unknown', async () => {
       mockLoadDeployedProjectConfig.mockResolvedValue(makeContext('other-config', 'cfg-999'));
 
