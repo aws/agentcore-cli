@@ -1,3 +1,4 @@
+import { DEFAULT_SPEND_LIMIT } from '../../../../schema';
 import { paymentManagerPrimitive } from '../../../primitives/registry';
 import { ConfirmReview, ErrorPrompt, Panel, Screen, SelectScreen } from '../../components';
 import type { SelectableItem } from '../../components';
@@ -280,7 +281,7 @@ export function AddPaymentFlow({
       { label: 'Auth Type', value: flow.managerConfig.authorizerType },
       { label: 'Manager Name', value: flow.managerConfig.managerName },
       { label: 'Auto Payment', value: flow.managerConfig.autoPayment ? 'Enabled' : 'Disabled' },
-      { label: 'Default Spend Limit', value: `$${flow.managerConfig.defaultSpendLimit}` },
+      { label: 'Default Spend Limit', value: `$${flow.managerConfig.defaultSpendLimit ?? DEFAULT_SPEND_LIMIT}` },
       ...(flow.managerConfig.paymentToolAllowlist
         ? [{ label: 'Tool Allowlist', value: flow.managerConfig.paymentToolAllowlist }]
         : []),
@@ -353,7 +354,7 @@ export function AddPaymentFlow({
         ? [
             {
               label: '⚠ Warning',
-              value: `Auto-payment ENABLED — agent settles 402s automatically up to $${flow.managerConfig.defaultSpendLimit}/session with no human approval`,
+              value: `Auto-payment ENABLED — agent settles 402s automatically up to $${flow.managerConfig.defaultSpendLimit ?? DEFAULT_SPEND_LIMIT}/session with no human approval`,
             },
           ]
         : []),
