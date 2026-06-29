@@ -1,5 +1,4 @@
 import type { ComponentConfigurationMap } from '../../../../schema';
-import { isGatedFeaturesEnabled } from '../../../feature-flags';
 import type { AddConfigBundleConfig, AddConfigBundleStep, ComponentType } from './types';
 import { useCallback, useState } from 'react';
 
@@ -103,11 +102,7 @@ export function useAddConfigBundleWizard() {
 
   const doneAddingComponents = useCallback(() => {
     setInAddAnotherLoop(false);
-    if (isGatedFeaturesEnabled()) {
-      setStep('branchName');
-    } else {
-      setStep('commitMessage');
-    }
+    setStep('branchName');
   }, []);
 
   const setBranchName = useCallback((branchName: string) => {

@@ -6,6 +6,7 @@ import { type UpdateCheckResult } from '../update-notifier';
 import { App, type InitialRoute } from './App';
 import { clearExitAction, getExitAction } from './exit-action';
 import { clearExitMessage, getExitMessage } from './exit-message';
+import { requireTTY } from './guards/tty';
 import { render } from 'ink';
 import React from 'react';
 
@@ -33,6 +34,10 @@ export interface RenderTUIOptions {
  * This is the entrypoint for all TUI operations.
  */
 export async function renderTUI(options: RenderTUIOptions = {}) {
+  // Centralized interactive-terminal guard for every TUI entrypoint that goes
+  // through renderTUI. Raw `render()` call sites (import, view) guard inline.
+  requireTTY();
+
   const {
     initialRoute,
     updateCheck = Promise.resolve(null),

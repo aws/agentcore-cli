@@ -4,7 +4,8 @@ import os
 {{#if hasGateway}}
 from contextlib import AsyncExitStack
 {{/if}}
-from agents import Agent, Runner, function_tool
+from functools import lru_cache
+from agents import Agent, Runner, SQLiteSession, function_tool
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
 {{#if hasGateway}}
@@ -108,8 +109,16 @@ You have access to the following mounted filesystems. Use file_read, file_write,
 {{/each}}{{/if}}
 """
 
+# Caches up to 128 active sessions; LRU eviction silently resets history for
+# the oldest session. For production use, replace with a durable session store
+# (e.g. SQLiteSession with a file path).
+@lru_cache(maxsize=128)
+def get_session(session_id):
+    return SQLiteSession(session_id)
+
+
 # Define the agent execution
-async def main(query):
+async def main(query, session):
     ensure_credentials_loaded()
     try:
         {{#if hasGateway}}
@@ -128,7 +137,7 @@ async def main(query):
                     tools=tools,
                     mcp_config={"include_server_in_tool_names": True},
                 )
-                result = await Runner.run(agent, query)
+                result = await Runner.run(agent, query, session=session)
                 return result
         else:
             agent = Agent(
@@ -138,7 +147,7 @@ async def main(query):
                 mcp_servers=[],
                 tools=tools
             )
-            result = await Runner.run(agent, query)
+            result = await Runner.run(agent, query, session=session)
             return result
         {{else}}
         if mcp_servers:
@@ -151,7 +160,7 @@ async def main(query):
                     mcp_servers=active_servers,
                     tools=tools
                 )
-                result = await Runner.run(agent, query)
+                result = await Runner.run(agent, query, session=session)
                 return result
         else:
             agent = Agent(
@@ -161,7 +170,7 @@ async def main(query):
                 mcp_servers=[],
                 tools=tools
             )
-            result = await Runner.run(agent, query)
+            result = await Runner.run(agent, query, session=session)
             return result
         {{/if}}
     except Exception as e:
@@ -175,9 +184,11 @@ async def invoke(payload, context):
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    session_id = getattr(context, "session_id", "default-session")
+    session = get_session(session_id)
 
-    # Run the agent
-    result = await main(prompt)
+    # Run the agent (session automatically loads/saves conversation history)
+    result = await main(prompt, session)
 
     # Return result
     return {"result": result.final_output}

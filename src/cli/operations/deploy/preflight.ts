@@ -40,12 +40,14 @@ export interface StackStatusCheckResult {
 }
 
 /**
- * Format an error for user display, including stack trace if available.
+ * Format an error for user display. Shows the message and the cause chain, but NOT the raw JS stack
+ * trace — dumping `err.stack` (minified dist/cli/index.mjs frames) to users is noise for the common
+ * case (config/validation errors). Set AGENTCORE_DEBUG=1 to include the stack trace for debugging.
  */
 export function formatError(err: unknown): string {
   if (err instanceof Error) {
     const lines = [err.message];
-    if (err.stack) {
+    if (err.stack && process.env.AGENTCORE_DEBUG) {
       lines.push('', 'Stack trace:', err.stack);
     }
     if (err.cause) {

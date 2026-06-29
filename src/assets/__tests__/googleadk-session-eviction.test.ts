@@ -1,0 +1,87 @@
+/**
+ * Regression test for the GoogleADK session-store LRU eviction (#808, #1639).
+ *
+ * The rendered template bounds InMemorySessionService to 128 sessions via an
+ * OrderedDict whose KEY is the composite (user_id, session_id) tuple. The
+ * eviction must unpack the key tuple from popitem() -- popitem() returns
+ * (key, value), so the value (always True) must be discarded. A previous
+ * bug unpacked `old_user_id, old_session_id = popitem(...)`, which assigned the
+ * tuple key to old_user_id and True to old_session_id, so delete_session() was
+ * called with garbage and the real session was never freed -- growing unbounded.
+ */
+import * as fs from 'fs';
+import Handlebars from 'handlebars';
+import * as path from 'path';
+import { describe, expect, it } from 'vitest';
+
+const MAIN_PATH = path.resolve(__dirname, '..', 'python', 'http', 'googleadk', 'base', 'main.py');
+
+const SESSION_LIMIT = 128;
+const SEP = '::';
+
+/**
+ * Mirror of the rendered template's `get_or_create_session` eviction loop so we
+ * can assert the observable behavior (store cap + correct delete ids) without a
+ * Python runtime. Returns the keys still tracked and the (user_id, session_id)
+ * pairs that delete_session was invoked with, in eviction order.
+ */
+function simulateEviction(sessions: Array<[string, string]>): {
+  tracked: Set<string>;
+  deleted: Array<[string, string]>;
+} {
+  const keys = new Map<string, true>();
+  const deleted: Array<[string, string]> = [];
+
+  for (const [userId, sessionId] of sessions) {
+    const key = `${userId}${SEP}${sessionId}`;
+    if (keys.has(key)) {
+      keys.delete(key);
+      keys.set(key, true);
+      continue;
+    }
+    while (keys.size >= SESSION_LIMIT) {
+      const oldest = keys.keys().next().value as string;
+      keys.delete(oldest);
+      const [oldUser, oldSession] = oldest.split(SEP);
+      deleted.push([oldUser, oldSession]);
+    }
+    keys.set(key, true);
+  }
+
+  return { tracked: new Set(keys.keys()), deleted };
+}
+
+describe('GoogleADK session store LRU eviction', () => {
+  const template = Handlebars.compile(fs.readFileSync(MAIN_PATH, 'utf-8'));
+  const rendered = template({ name: 'evictionagent', needsOs: false, hasGateway: false });
+
+  it('unpacks the composite key tuple from popitem (not key->user_id, value->session_id)', () => {
+    // The load-bearing fix: the key tuple must be destructured, value discarded.
+    expect(rendered).toContain('(old_user_id, old_session_id), _ = _session_keys.popitem(last=False)');
+    // Guard against the buggy form regressing back in.
+    expect(rendered).not.toMatch(/^\s*old_user_id, old_session_id = _session_keys\.popitem/m);
+  });
+
+  it('passes the unpacked ids straight to delete_session', () => {
+    expect(rendered).toContain('user_id=old_user_id, session_id=old_session_id');
+  });
+
+  it('caps the store at 128 and evicts the oldest sessions in order', () => {
+    const sessions: Array<[string, string]> = [];
+    for (let i = 0; i < 200; i++) {
+      sessions.push(['u', `s${i}`]);
+    }
+
+    const { tracked, deleted } = simulateEviction(sessions);
+
+    // Store stays bounded at the limit regardless of how many distinct sessions arrive.
+    expect(tracked.size).toBe(SESSION_LIMIT);
+    // 200 inserts - 128 retained = 72 evictions, oldest first.
+    expect(deleted.length).toBe(200 - SESSION_LIMIT);
+    expect(deleted[0]).toEqual(['u', 's0']);
+    expect(deleted[deleted.length - 1]).toEqual(['u', `s${200 - SESSION_LIMIT - 1}`]);
+    // The most recent session is retained; the first evicted one is gone.
+    expect(tracked.has(`u${SEP}s199`)).toBe(true);
+    expect(tracked.has(`u${SEP}s0`)).toBe(false);
+  });
+});

@@ -11,7 +11,7 @@ code is wired to call `retrieve` against the KB through the gateway.
 
 ```bash
 # 1. Create a project
-agentcore create --name MyProject --defaults
+agentcore create --name MyProject --framework Strands --model-provider Bedrock
 cd MyProject
 
 # 2. Add a gateway

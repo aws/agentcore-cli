@@ -1,6 +1,6 @@
 import { ConfigIO, requireConfigRoot } from '../../../lib';
 import { ValidationError } from '../../../lib/errors/types';
-import type { DeployedResourceState } from '../../../schema';
+import type { DeployedResourceState, HarnessSpec } from '../../../schema';
 import { DEFAULT_SYSTEM_PROMPT } from './constants';
 import type { ResolvedHarnessContext } from './types';
 import { existsSync, readFileSync } from 'node:fs';
@@ -10,23 +10,36 @@ import { join } from 'node:path';
  * Read and validate all on-disk inputs for the harness export.
  * Throws ValidationError for user-fixable problems.
  */
+/**
+ * A harness spec + system prompt fetched out-of-band (the `--arn` path), used instead of reading
+ * a local in-project harness. When provided, the local harness-registry lookup and file reads are
+ * skipped; the current project is still used for target validation, deployed state, and region.
+ */
+export interface PrefetchedHarness {
+  spec: HarnessSpec;
+  systemPrompt?: string;
+}
+
 export async function resolveHarnessContext(
   harnessName: string,
   targetAgentName: string,
-  configBaseDir?: string
+  configBaseDir?: string,
+  prefetched?: PrefetchedHarness
 ): Promise<ResolvedHarnessContext> {
   const baseDir = configBaseDir ?? requireConfigRoot();
   const configIO = new ConfigIO({ baseDir });
   const projectRoot = join(baseDir, '..');
 
-  // 1. Read project spec and validate harness exists before any harness file I/O
+  // 1. Read project spec. For a local harness, validate it is registered before any file I/O.
   const projectSpec = await configIO.readProjectSpec();
 
-  const harnessEntry = projectSpec.harnesses?.find(h => h.name === harnessName);
-  if (!harnessEntry) {
-    throw new ValidationError(
-      `Harness "${harnessName}" not found in agentcore.json. Available harnesses: ${(projectSpec.harnesses ?? []).map(h => h.name).join(', ') || 'none'}`
-    );
+  if (!prefetched) {
+    const harnessEntry = projectSpec.harnesses?.find(h => h.name === harnessName);
+    if (!harnessEntry) {
+      throw new ValidationError(
+        `Harness "${harnessName}" not found in agentcore.json. Available harnesses: ${(projectSpec.harnesses ?? []).map(h => h.name).join(', ') || 'none'}`
+      );
+    }
   }
 
   // 2. Validate target agent name not already taken
@@ -46,19 +59,26 @@ export async function resolveHarnessContext(
     );
   }
 
-  // 3. Read harness spec
-  const spec = await configIO.readHarnessSpec(harnessName);
-
-  // 4. Read system prompt — harness app files live in projectRoot/app/<name>/
-  const harnessDir = join(projectRoot, 'app', harnessName);
-  const systemPromptPath = join(harnessDir, 'system-prompt.md');
+  // 3 + 4. Resolve the harness spec and system prompt — from the fetched payload (`--arn`) or
+  //        from local files (in-project harness).
+  let spec: HarnessSpec;
   let systemPrompt: string;
-  if (existsSync(systemPromptPath)) {
-    systemPrompt = readFileSync(systemPromptPath, 'utf8').trim();
-  } else if (spec.systemPrompt) {
-    systemPrompt = spec.systemPrompt;
+  if (prefetched) {
+    spec = prefetched.spec;
+    const trimmedPrompt = prefetched.systemPrompt?.trim();
+    const nonEmptyPrompt = trimmedPrompt && trimmedPrompt.length > 0 ? trimmedPrompt : undefined;
+    systemPrompt = nonEmptyPrompt ?? prefetched.spec.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
   } else {
-    systemPrompt = DEFAULT_SYSTEM_PROMPT;
+    spec = await configIO.readHarnessSpec(harnessName);
+    const harnessDir = join(projectRoot, 'app', harnessName);
+    const systemPromptPath = join(harnessDir, 'system-prompt.md');
+    if (existsSync(systemPromptPath)) {
+      systemPrompt = readFileSync(systemPromptPath, 'utf8').trim();
+    } else if (spec.systemPrompt) {
+      systemPrompt = spec.systemPrompt;
+    } else {
+      systemPrompt = DEFAULT_SYSTEM_PROMPT;
+    }
   }
 
   // 5. Read deployed state (optional — absent before first deploy)
@@ -91,5 +111,8 @@ export async function resolveHarnessContext(
     projectRoot,
     exportNotes: [],
     region,
+    localEnvVars: {},
+    generatedPolicyFiles: {},
+    additionalPolicies: [],
   };
 }

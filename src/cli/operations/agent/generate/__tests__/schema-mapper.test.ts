@@ -580,12 +580,41 @@ describe('mapGenerateConfigToRenderConfig - needsOs', () => {
     expect(result.s3Mounts).toEqual([{ mountPath: '/mnt/s3' }]);
   });
 
-  it('TypeScript agents have hasMemory=false and empty memoryProviders', async () => {
+  it('TypeScript Strands agents populate memoryProviders for longAndShortTerm', async () => {
     const result = await mapGenerateConfigToRenderConfig(
       { ...base, language: 'TypeScript', memory: 'longAndShortTerm' as const },
       []
     );
+    expect(result.hasMemory).toBe(true);
+    expect(result.memoryProviders).toHaveLength(1);
+    expect(result.memoryProviders[0]!.name).toBe('RenderAgentMemory');
+    expect(result.memoryProviders[0]!.envVarName).toBe('MEMORY_RENDERAGENTMEMORY_ID');
+    expect(result.memoryProviders[0]!.strategies).toEqual(['SEMANTIC', 'USER_PREFERENCE', 'SUMMARIZATION', 'EPISODIC']);
+  });
+
+  it('TypeScript Strands agents have hasMemory=false when memory is "none"', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, language: 'TypeScript', memory: 'none' as const },
+      []
+    );
     expect(result.hasMemory).toBe(false);
     expect(result.memoryProviders).toEqual([]);
+  });
+
+  it('TypeScript non-Strands agents have hasMemory=false even with memory selected', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, language: 'TypeScript', sdk: 'VercelAI', memory: 'longAndShortTerm' as const },
+      []
+    );
+    expect(result.hasMemory).toBe(false);
+    expect(result.memoryProviders).toEqual([]);
+  });
+
+  it('TypeScript Strands agents have hasMemory=false for shortTerm only', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, language: 'TypeScript', memory: 'shortTerm' as const },
+      []
+    );
+    expect(result.hasMemory).toBe(false);
   });
 });

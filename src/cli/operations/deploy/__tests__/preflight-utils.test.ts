@@ -18,13 +18,24 @@ describe('formatError', () => {
     expect(formatError(err)).toBe('something failed');
   });
 
-  it('includes stack trace when available', () => {
+  it('omits the stack trace by default (no raw JS frames for users)', () => {
     const err = new Error('with stack');
 
     const result = formatError(err);
 
     expect(result).toContain('with stack');
-    expect(result).toContain('Stack trace:');
+    expect(result).not.toContain('Stack trace:');
+  });
+
+  it('includes the stack trace when AGENTCORE_DEBUG is set', () => {
+    const prev = process.env.AGENTCORE_DEBUG;
+    process.env.AGENTCORE_DEBUG = '1';
+    try {
+      expect(formatError(new Error('with stack'))).toContain('Stack trace:');
+    } finally {
+      if (prev === undefined) delete process.env.AGENTCORE_DEBUG;
+      else process.env.AGENTCORE_DEBUG = prev;
+    }
   });
 
   it('formats nested cause', () => {

@@ -129,7 +129,7 @@ When using `--bundle-name`, the completed result also includes `configurationBun
 1. Create agent with config bundle:
 
    ```bash
-   agentcore create --name MyAgent --defaults --with-config-bundle
+   agentcore create --name MyAgent --framework Strands --model-provider Bedrock --with-config-bundle
    agentcore deploy
    ```
 

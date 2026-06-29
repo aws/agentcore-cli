@@ -24,9 +24,12 @@ export const registerImport = (program: Command) => {
     .option('-y, --yes', 'Auto-confirm prompts')
     .action(async (cliOptions: { source?: string; target?: string; yes?: boolean }) => {
       if (!cliOptions.source) {
-        // No --source and no subcommand — launch interactive TUI
-        const { requireProject } = await import('../../tui/guards/project');
+        // No --source and no subcommand — launch interactive TUI.
+        // requireProject() first so users who haven't cd'd to a project get the
+        // more actionable error before the TTY check (consistent with `view`).
+        const { requireProject, requireTTY } = await import('../../tui/guards');
         requireProject();
+        requireTTY();
         const { render } = await import('ink');
         const React = await import('react');
         const { ImportFlow } = await import('../../tui/screens/import');

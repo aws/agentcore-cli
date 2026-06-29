@@ -226,5 +226,7 @@ export function getProviderInfo(provider: ModelProvider): { name: string; envVar
       return { name: 'Google Gemini', envVarName: 'GEMINI_API_KEY' };
     case 'Bedrock':
       return { name: 'Amazon Bedrock', envVarName: '' };
+    case 'LiteLLM':
+      return { name: 'LiteLLM', envVarName: 'LITELLM_API_KEY' };
   }
 }

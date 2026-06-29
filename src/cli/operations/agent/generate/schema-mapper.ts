@@ -113,10 +113,19 @@ export function mapModelProviderToCredentials(modelProvider: ModelProvider, proj
 /**
  * Maps GenerateConfig to v2 AgentEnvSpec resource.
  */
+const ACTOR_ID_HEADER = 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-Actor-Id';
+
 export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
   const codeLocation = `${APP_DIR}/${config.projectName}/`;
   const protocol = config.protocol ?? 'HTTP';
   const networkMode = config.networkMode ?? DEFAULT_NETWORK_MODE;
+
+  const needsActorHeader =
+    config.language === 'TypeScript' && config.sdk === 'Strands' && config.memory === 'longAndShortTerm';
+  const headerAllowlist = [
+    ...(config.requestHeaderAllowlist ?? []),
+    ...(needsActorHeader && !(config.requestHeaderAllowlist ?? []).includes(ACTOR_ID_HEADER) ? [ACTOR_ID_HEADER] : []),
+  ];
 
   return {
     name: config.projectName,
@@ -137,8 +146,8 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
           securityGroups: config.securityGroups,
         },
       }),
-    ...(config.requestHeaderAllowlist?.length && {
-      requestHeaderAllowlist: config.requestHeaderAllowlist,
+    ...(headerAllowlist.length > 0 && {
+      requestHeaderAllowlist: headerAllowlist,
     }),
     ...(config.authorizerType && { authorizerType: config.authorizerType }),
     ...(config.authorizerType === 'CUSTOM_JWT' &&
@@ -276,7 +285,12 @@ export async function mapGenerateConfigToRenderConfig(
     sdkFramework: config.sdk,
     targetLanguage: config.language,
     modelProvider: config.modelProvider,
-    hasMemory: isMcp || config.language === 'TypeScript' ? false : config.memory !== 'none',
+    hasMemory:
+      isMcp || (config.language === 'TypeScript' && config.sdk !== 'Strands')
+        ? false
+        : config.language === 'TypeScript'
+          ? config.memory === 'longAndShortTerm'
+          : config.memory !== 'none',
     hasIdentity: isMcp ? false : identityProviders.length > 0,
     hasGateway: gatewayProviders.length > 0,
     hasPayment: await (async () => {
@@ -290,7 +304,7 @@ export async function mapGenerateConfigToRenderConfig(
     isVpc: config.networkMode === 'VPC',
     buildType: config.buildType,
     memoryProviders:
-      isMcp || config.language === 'TypeScript'
+      isMcp || (config.language === 'TypeScript' && config.sdk !== 'Strands')
         ? []
         : mapMemoryOptionToMemoryProviders(config.memory, config.projectName),
     identityProviders: isMcp ? [] : identityProviders,

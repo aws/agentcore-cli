@@ -30,8 +30,11 @@ Create a new AgentCore project.
 # Interactive wizard
 agentcore create
 
-# Fully non-interactive with defaults
-agentcore create --name MyProject --defaults
+# Non-interactive harness project (this is the default)
+agentcore create --name MyProject
+
+# Non-interactive agent project
+agentcore create --name MyProject --framework Strands --model-provider Bedrock
 
 # Custom configuration
 agentcore create \
@@ -44,7 +47,8 @@ agentcore create \
 # With networking
 agentcore create \
   --name MyProject \
-  --defaults \
+  --framework Strands \
+  --model-provider Bedrock \
   --network-mode VPC \
   --subnets subnet-abc,subnet-def \
   --security-groups sg-123
@@ -60,7 +64,7 @@ agentcore create \
   --model-provider Bedrock
 
 # Preview without creating
-agentcore create --name MyProject --defaults --dry-run
+agentcore create --name MyProject --framework Strands --model-provider Bedrock --dry-run
 
 # Import from Bedrock Agents
 agentcore create \
@@ -77,7 +81,7 @@ agentcore create \
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `--name <name>`                       | Agent (resource) name; also used as project directory name when `--project-name` is omitted                    |
 | `--project-name <name>`               | Project directory name (alphanumeric, starts with letter, max 23 chars)                                        |
-| `--defaults`                          | Use defaults (Python, Strands, Bedrock, no memory)                                                             |
+| `--defaults`                          | Create a harness project with default settings (this is the default)                                           |
 | `--no-agent`                          | Skip agent creation                                                                                            |
 | `--type <type>`                       | `create` (default) or `import`                                                                                 |
 | `--language <lang>`                   | `Python` (default) or `TypeScript` (Strands-only; see [Frameworks](frameworks.md#supported-languages))         |
@@ -1385,21 +1389,26 @@ agentcore dataset remove-version 2 --name MyDataset
 
 ### fetch access
 
-Fetch access info (URL, token, auth guidance) for a deployed gateway or agent.
+Fetch access info (URL, token, auth guidance) for a deployed gateway, agent, or harness.
 
 ```bash
 agentcore fetch access
 agentcore fetch access --name MyGateway --type gateway --json
 agentcore fetch access --name MyAgent --type agent --target staging
+agentcore fetch access --name MyHarness --type harness --json
 ```
 
-| Flag                     | Description                                   |
-| ------------------------ | --------------------------------------------- |
-| `--name <name>`          | Gateway or agent name                         |
-| `--type <type>`          | Resource type: `gateway` (default) or `agent` |
-| `--target <name>`        | Deployment target                             |
-| `--identity-name <name>` | Identity credential name for token fetch      |
-| `--json`                 | JSON output                                   |
+| Flag                     | Description                                               |
+| ------------------------ | --------------------------------------------------------- |
+| `--name <name>`          | Gateway, agent, or harness name                           |
+| `--type <type>`          | Resource type: `gateway` (default), `agent`, or `harness` |
+| `--target <name>`        | Deployment target                                         |
+| `--identity-name <name>` | Identity credential name for token fetch                  |
+| `--json`                 | JSON output                                               |
+
+For an `agent` or `harness` configured with a `CUSTOM_JWT` authorizer, this mints an OAuth bearer token via the
+resource's managed OAuth credential (override the credential with `--identity-name`). A resource using `AWS_IAM` auth
+has no token to fetch — use AWS SigV4 signing to invoke it.
 
 ### package
 
@@ -1487,7 +1496,7 @@ agentcore deploy -y --json            # Deploy with auto-confirm
 ### Scripted Project Setup
 
 ```bash
-agentcore create --name MyProject --defaults
+agentcore create --name MyProject --framework Strands --model-provider Bedrock
 cd MyProject
 agentcore add memory --name SharedMemory --strategies SEMANTIC
 agentcore deploy -y

@@ -106,16 +106,20 @@ async function executeDeploy(options: DeployOptions): Promise<DeployResult> {
     : undefined;
 
   // One-shot user-facing notices (e.g. the managed-memory heads-up before the slow CFN apply).
-  // Always shown, independent of --progress/--verbose. Clear any active spinner line first so the
-  // multi-line notice prints cleanly, then resume the spinner frame on the next onProgress tick.
-  const onNotice = (message: string) => {
-    if (spinner) {
-      clearInterval(spinner);
-      spinner = undefined;
-      process.stdout.write('\r\x1b[K');
-    }
-    console.log(`\n${message}\n`);
-  };
+  // Shown independent of --progress/--verbose, but NEVER under --json: stdout must stay pure
+  // machine-readable JSON there (the notice would corrupt it, breaking `deploy --json` parsing for
+  // any managed-memory harness). The notice is still captured in the deploy log via logger.log.
+  // Clear any active spinner line first so the multi-line notice prints cleanly.
+  const onNotice = options.json
+    ? undefined
+    : (message: string) => {
+        if (spinner) {
+          clearInterval(spinner);
+          spinner = undefined;
+          process.stdout.write('\r\x1b[K');
+        }
+        console.log(`\n${message}\n`);
+      };
 
   const result = await handleDeploy({
     target: options.target!,

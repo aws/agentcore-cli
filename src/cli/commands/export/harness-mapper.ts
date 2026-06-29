@@ -1,8 +1,17 @@
 import { APP_DIR } from '../../../lib';
 import { ValidationError } from '../../../lib/errors/types';
+import {
+  BROWSER_ARN_PATTERN,
+  CODE_INTERPRETER_ARN_PATTERN,
+  connectionEnvToken,
+  connectionIdForTarget,
+  resourceIdFromArn,
+} from '../../../schema';
 import type {
   AgentEnvSpec,
   BuildType,
+  Connection,
+  ConnectionTarget,
   Credential,
   DirectoryPath,
   FilePath,
@@ -39,19 +48,17 @@ import {
   ALLOWED_TOOLS_NOTE_CATEGORY,
   AWS_SKILLS_NOTE_CATEGORY,
   BROWSER_CODZIP_NOTE_CATEGORY,
-  BROWSER_IAM_POLICY_NOTE_CATEGORY,
-  CODE_INTERPRETER_IAM_POLICY_NOTE_CATEGORY,
   CONTAINER_URI_ECR_PULL_NOTE_CATEGORY,
   CONTAINER_URI_NOTE_CATEGORY,
-  EXTERNAL_GATEWAY_NOTE_CATEGORY,
-  GATEWAY_IAM_POLICY_NOTE_CATEGORY,
+  GATEWAY_GRANT_TYPE_NOTE_CATEGORY,
   GIT_SKILLS_CONTAINER_NOTE_CATEGORY,
+  LITELLM_NO_API_KEY_NOTE_CATEGORY,
+  MALFORMED_S3_SKILL_NOTE_CATEGORY,
+  MALFORMED_TOOL_ARN_NOTE_CATEGORY,
   MCP_HEADER_CREDS_NOTE_CATEGORY,
-  MEMORY_ARN_NOTE_CATEGORY,
   PATH_SKILLS_NOTE_CATEGORY,
-  S3_SKILLS_IAM_POLICY_NOTE_CATEGORY,
 } from './constants';
-import type { HarnessMappingResult, ResolvedHarnessContext } from './types';
+import type { ExportNote, HarnessMappingResult, ResolvedHarnessContext } from './types';
 
 // ============================================================================
 // Public entry point
@@ -75,10 +82,31 @@ export function mapHarnessToExportConfig(
   const modelProvider = resolveModelProvider(spec.model.provider);
   const allowedToolPatterns = spec.allowedTools ?? ['*'];
   const identityResult = resolveIdentityProvider(spec, context);
+
+  // LiteLLM keyless-but-key-requiring warning. A `bedrock/...` LiteLLM model authenticates via the
+  // execution role (no key needed) — the common, valid case. Any other provider prefix (openai/,
+  // anthropic/, ...) typically needs an API key; if the harness set no apiKeyArn, the generated
+  // client is built keyless and fails at first invocation. Keyless is schema- and runtime-valid,
+  // so this is a note, not an error — export is just the right place to flag it.
+  if (spec.model.provider === 'lite_llm' && !spec.model.apiKeyArn && !spec.model.modelId.startsWith('bedrock/')) {
+    context.exportNotes.push({
+      category: LITELLM_NO_API_KEY_NOTE_CATEGORY,
+      message:
+        `The LiteLLM model "${spec.model.modelId}" is not a Bedrock-backed (bedrock/...) model, but the ` +
+        `harness has no apiKeyArn. The exported agent constructs LiteLLMModel without an API key and will ` +
+        `fail at first invocation if the provider requires one. Add an API-key credential to the harness ` +
+        `(model apiKeyArn), or use a bedrock/ model id (which authenticates via the execution role).`,
+    });
+  }
+  // Bedrock Mantle models are invoked via the bedrock-mantle service (not bedrock:InvokeModel), so
+  // the runtime role's default Bedrock grant is insufficient. Generate the bedrock-mantle:CreateInference
+  // policy and wire it via additionalPolicies, mirroring the S3-skills opaque-AWS-access pattern.
+  resolveBedrockMantlePolicy(spec, context);
+
   const memoryResult = resolveMemoryProviders(spec, context);
   const gatewayResult = resolveGatewayProviders(spec, context, allowedToolPatterns);
   const hasGateway = gatewayResult.providers.length > 0;
-  addBrowserCodeInterpreterNotes(spec, allowedToolPatterns, buildType, context);
+  const toolResult = resolveBrowserCodeInterpreterConnections(spec, allowedToolPatterns, buildType, context);
   const hasExecutionLimits =
     spec.maxIterations !== undefined || spec.maxTokens !== undefined || spec.timeoutSeconds !== undefined;
   const hasSkillsFetcher = spec.skills.length > 0;
@@ -124,36 +152,43 @@ export function mapHarnessToExportConfig(
   // agent fails at first invocation with an opaque S3 AccessDenied. Independent of build type.
   const s3Skills = spec.skills.filter(isS3Skill);
   if (s3Skills.length > 0) {
-    const arns = s3Skills
-      .map(s => parseS3SkillArns(s.s3Uri, context.region))
-      .filter((a): a is NonNullable<typeof a> => a !== undefined);
+    // Parse each URI ONCE, partitioning into resolvable ARNs vs malformed URIs. (A second parse pass
+    // would be wasted work and risks the two passes ever classifying a URI differently.)
+    const malformedUris: string[] = [];
+    const arns: NonNullable<ReturnType<typeof parseS3SkillArns>>[] = [];
+    for (const { s3Uri } of s3Skills) {
+      const parsed = parseS3SkillArns(s3Uri, context.region);
+      if (parsed) arns.push(parsed);
+      else malformedUris.push(s3Uri);
+    }
+    // Warn on malformed URIs instead of silently shipping a skills fetcher with no matching S3 IAM
+    // (which would fail at runtime with an opaque AccessDenied).
+    if (malformedUris.length > 0) {
+      context.exportNotes.push({
+        category: MALFORMED_S3_SKILL_NOTE_CATEGORY,
+        message:
+          `These S3 skill URIs could not be parsed into a bucket, so no S3 read permission was ` +
+          `generated for them: ${malformedUris.map(u => `"${u}"`).join(', ')}. The exported agent ` +
+          `still attempts to fetch these skills at runtime and will fail with S3 AccessDenied. Fix the ` +
+          `s3Uri values (expected \`s3://<bucket>/<prefix>\`) on this agent's skills in ` +
+          `agentcore/agentcore.json and re-deploy.`,
+      });
+    }
     if (arns.length > 0) {
       const objectResources = [...new Set(arns.map(a => a.objectArn))];
       const bucketResources = [...new Set(arns.map(a => a.bucketArn))];
-      const fmt = (rs: string[]) => rs.map(r => `'${r}'`).join(', ');
-      const agentName = context.targetAgentName ?? 'YourAgentName';
-      context.exportNotes.push({
-        category: S3_SKILLS_IAM_POLICY_NOTE_CATEGORY,
-        message:
-          `This agent downloads its S3 skills (${s3Skills.map(s => s.s3Uri).join(', ')}) at runtime with boto3. ` +
-          `The exported runtime execution role is not automatically granted permission to read them, so the ` +
-          `agent will fail on its first invocation with an S3 AccessDenied.\n\n` +
-          `Add the following to agentcore/cdk/lib/cdk-stack.ts after \`this.application\` is created,\n` +
-          `replacing "${agentName}" if you renamed the agent:\n\n` +
-          `  const agentEnv = this.application.environments.get('${agentName}');\n` +
-          `  agentEnv?.runtime.role.addToPrincipalPolicy(\n` +
-          `    new iam.PolicyStatement({\n` +
-          `      actions: ['s3:GetObject'],\n` +
-          `      resources: [${fmt(objectResources)}],\n` +
-          `    })\n` +
-          `  );\n` +
-          `  agentEnv?.runtime.role.addToPrincipalPolicy(\n` +
-          `    new iam.PolicyStatement({\n` +
-          `      actions: ['s3:ListBucket'],\n` +
-          `      resources: [${fmt(bucketResources)}],\n` +
-          `    })\n` +
-          `  );`,
-      });
+      // Generate an inline IAM policy file (opaque AWS access — not a typed connection) and wire it
+      // via AgentEnvSpec.additionalPolicies. The CDK attaches it to the runtime role at deploy.
+      const policyDoc = {
+        Version: '2012-10-17',
+        Statement: [
+          { Effect: 'Allow', Action: 's3:GetObject', Resource: objectResources },
+          { Effect: 'Allow', Action: 's3:ListBucket', Resource: bucketResources },
+        ],
+      };
+      const policyFile = 's3-skills-policy.json';
+      context.generatedPolicyFiles[policyFile] = policyDoc;
+      if (!context.additionalPolicies.includes(policyFile)) context.additionalPolicies.push(policyFile);
     }
   }
 
@@ -234,22 +269,54 @@ export function mapHarnessToExportConfig(
     // Skills (path/s3/git) — consumed by main.py + skills/fetcher.py templates
     ...buildSkillsRenderConfig(spec, hasSkillsFetcher),
     // Inline + builtin + browser/code-interpreter tools (after allowedTools filter)
-    ...buildToolsRenderConfig(spec, allowedToolPatterns, buildType),
+    ...buildToolsRenderConfig(spec, allowedToolPatterns, toolResult),
     hasExecutionLimits,
     isExportHarness: true,
     modelId: spec.model.modelId,
+    // LiteLLM-only model config (apiBase + additionalParams), threaded into load.py. The model
+    // schema is a flat object, so apiBase/additionalParams are always typed-present — only the
+    // provider check + a truthiness check are needed.
+    ...(spec.model.provider === 'lite_llm' && spec.model.apiBase ? { litellmApiBase: spec.model.apiBase } : {}),
+    ...(spec.model.provider === 'lite_llm' &&
+    spec.model.additionalParams &&
+    Object.keys(spec.model.additionalParams).length > 0
+      ? { litellmAdditionalParams: spec.model.additionalParams }
+      : {}),
+    // Bedrock Mantle (OpenAI-compatible Bedrock models served via the Mantle endpoint, not Converse).
+    // Empty for ordinary Converse Bedrock models and all other providers.
+    ...buildBedrockMantleRenderConfig(spec),
     // System prompt (written verbatim into main.py)
     systemPromptText: context.systemPrompt,
     actorId: spec.memory?.mode === 'existing' ? spec.memory.actorId : undefined,
   };
 
-  const agentEnvSpec = buildAgentEnvSpec(context, targetAgentName, buildType);
+  const connections = [
+    ...(memoryResult.connections ?? []),
+    ...(gatewayResult.connections ?? []),
+    ...toolResult.connections,
+  ];
+  const agentEnvSpec = buildAgentEnvSpec(context, targetAgentName, buildType, connections);
+
+  // Private git skills reference an API-key credential provider for clone auth. Persist a name-only
+  // credential entry per distinct provider so the deployed agent's role is granted GetResourceApiKey
+  // (via wireCredentialsToAgents → grantCredentialAccess). The provider itself already exists in
+  // AgentCore Identity (created out-of-band or in the source project); export only references it.
+  const gitCredentialEntries: Credential[] = [];
+  const seenGitCred = new Set<string>();
+  for (const skill of spec.skills) {
+    if (!isGitSkill(skill) || !skill.auth?.credentialName) continue;
+    const credName = resourceIdFromArn(skill.auth.credentialName); // bare name or last ARN segment
+    if (seenGitCred.has(credName)) continue;
+    seenGitCred.add(credName);
+    gitCredentialEntries.push({ authorizerType: 'ApiKeyCredentialProvider', name: credName });
+  }
 
   return {
     renderConfig,
     agentEnvSpec,
     credentialEntry: identityResult.credentialEntry,
     mcpCredentialEntries: mcpResolution.credentialEntries,
+    gitCredentialEntries,
   };
 }
 
@@ -296,33 +363,31 @@ function buildSkillsRenderConfig(
   };
 }
 
-/** Inline, builtin, and browser/code-interpreter tools (after allowedTools filter). */
+/**
+ * Inline + builtin tools (after allowedTools filter), plus the browser/code-interpreter render
+ * fields lifted straight from the already-resolved BrowserCodeInterpreterResult — the single source
+ * for those values, so the identifier env var here always matches the connection that injects it.
+ */
 function buildToolsRenderConfig(
   spec: HarnessSpec,
   allowedToolPatterns: string[],
-  buildType: BuildType
+  toolResult: BrowserCodeInterpreterResult
 ): Pick<
   AgentRenderConfig,
   | 'inlineFunctionTools'
   | 'hasBrowser'
-  | 'browserIdentifier'
+  | 'browserIdentifierEnvVar'
   | 'hasCodeInterpreter'
-  | 'codeInterpreterIdentifier'
+  | 'codeInterpreterIdentifierEnvVar'
   | 'hasShell'
   | 'hasFileOperations'
 > {
   return {
     inlineFunctionTools: resolveInlineFunctionTools(spec, allowedToolPatterns),
-    // Browser requires a Container build (Playwright driver can't spawn subprocesses in CodeZip Lambda sandbox).
-    hasBrowser: isToolIncluded('agentcore_browser', spec, allowedToolPatterns) && buildType === 'Container',
-    browserIdentifier: extractToolIdentifier(spec, 'agentcore_browser', 'agentCoreBrowser', 'browserArn'),
-    hasCodeInterpreter: isToolIncluded('agentcore_code_interpreter', spec, allowedToolPatterns),
-    codeInterpreterIdentifier: extractToolIdentifier(
-      spec,
-      'agentcore_code_interpreter',
-      'agentCoreCodeInterpreter',
-      'codeInterpreterArn'
-    ),
+    hasBrowser: toolResult.hasBrowser,
+    browserIdentifierEnvVar: toolResult.browserIdentifierEnvVar,
+    hasCodeInterpreter: toolResult.hasCodeInterpreter,
+    codeInterpreterIdentifierEnvVar: toolResult.codeInterpreterIdentifierEnvVar,
     // Builtin tools — always available in the Harness runtime, included unless filtered out by allowedTools
     hasShell: isBuiltinIncluded('shell', allowedToolPatterns),
     hasFileOperations: isBuiltinIncluded('file_operations', allowedToolPatterns),
@@ -336,7 +401,8 @@ function buildToolsRenderConfig(
 function buildAgentEnvSpec(
   context: ResolvedHarnessContext,
   targetAgentName: string,
-  buildType: BuildType
+  buildType: BuildType,
+  connections: Connection[] = []
 ): AgentEnvSpec {
   const { spec } = context;
   const codeLocation = `${APP_DIR}/${targetAgentName}/` as DirectoryPath;
@@ -367,9 +433,85 @@ function buildAgentEnvSpec(
     }),
     ...(spec.executionRoleArn && { executionRoleArn: spec.executionRoleArn }),
     ...(envVars.length > 0 && { envVars }),
+    ...(connections.length > 0 && { connections }),
+    ...(context.additionalPolicies.length > 0 && { additionalPolicies: context.additionalPolicies }),
     ...(spec.tags && { tags: spec.tags }),
     ...buildFilesystemConfigurations(spec.sessionStoragePath, spec.efsAccessPoints, spec.s3AccessPoints),
   };
+}
+
+// ============================================================================
+// Connection helpers (external resources)
+// ============================================================================
+
+/**
+ * Stable connection id for an external target, by kind + arn. Thin adapter over the schema's
+ * canonical `connectionIdForTarget` (the single source of truth shared with the CDK) — kept because
+ * the call sites here have a kind+arn rather than a built target object.
+ */
+function externalConnectionId(
+  kind: 'memory' | 'gateway' | 'runtime' | 'browser' | 'codeInterpreter',
+  arn: string
+): string {
+  return connectionIdForTarget({ type: kind, arn } as ConnectionTarget);
+}
+
+/**
+ * Discovery env-var name `<PREFIX>_<TOKEN>_<SUFFIX>` from a connection id. The token derivation is
+ * the schema's canonical `connectionEnvToken` — the single source of truth the CDK wiring also uses,
+ * so the name baked into generated code always matches what deploy injects.
+ */
+function connectionEnvVarName(prefix: string, connectionId: string, suffix: string): string {
+  return `${prefix}_${connectionEnvToken(connectionId)}_${suffix}`;
+}
+
+/**
+ * Map a harness gateway outboundAuth onto the connection's GatewayOutboundAuth. The shapes match
+ * except for the oauth grant-type enum: the harness uses CLIENT_CREDENTIALS | USER_FEDERATION,
+ * while the connection (matching the runtime/Smithy model) uses CLIENT_CREDENTIALS |
+ * AUTHORIZATION_CODE | TOKEN_EXCHANGE. USER_FEDERATION maps to AUTHORIZATION_CODE.
+ */
+function toConnectionGatewayAuth(
+  outboundAuth: HarnessGatewayOutboundAuth | undefined
+): Extract<ConnectionTarget, { type: 'gateway' }>['outboundAuth'] {
+  if (!outboundAuth) return undefined;
+  if ('awsIam' in outboundAuth) return { awsIam: {} };
+  if ('none' in outboundAuth) return { none: {} };
+  const { providerArn, scopes, grantType, customParameters } = outboundAuth.oauth;
+  const mappedGrant =
+    grantType === 'USER_FEDERATION'
+      ? 'AUTHORIZATION_CODE'
+      : grantType === 'CLIENT_CREDENTIALS'
+        ? 'CLIENT_CREDENTIALS'
+        : undefined;
+  return {
+    oauth: {
+      providerArn,
+      scopes,
+      ...(mappedGrant && { grantType: mappedGrant }),
+      ...(customParameters && { customParameters }),
+    },
+  };
+}
+
+/**
+ * Map a HARNESS OAuth grant type to the AgentCore Identity auth flow consumed by the generated
+ * client's `@requires_access_token(auth_flow=...)`. The harness enum is CLIENT_CREDENTIALS |
+ * USER_FEDERATION (see HarnessGatewayOutboundAuth); both have a decorator equivalent:
+ *   CLIENT_CREDENTIALS -> M2M, USER_FEDERATION -> USER_FEDERATION.
+ * The SDK decorator's auth_flow is `Literal["M2M","USER_FEDERATION"]`. Unset grant defaults to M2M.
+ * Returns undefined only for an unrecognized value (caller emits a manual-step note).
+ */
+function grantTypeToAuthFlow(grantType: string | undefined): string | undefined {
+  switch (grantType) {
+    case undefined:
+    case 'CLIENT_CREDENTIALS':
+      return 'M2M';
+    case 'USER_FEDERATION':
+      return 'USER_FEDERATION';
+    default:
+      return undefined; // unrecognized — not expressible via the decorator
+  }
 }
 
 // ============================================================================
@@ -385,11 +527,79 @@ function resolveModelProvider(provider: 'bedrock' | 'open_ai' | 'gemini' | 'lite
     case 'gemini':
       return 'Gemini';
     case 'lite_llm':
-      throw new ValidationError(
-        'Harness uses the "lite_llm" model provider, which the Strands export does not support. ' +
-          'Switch the harness to bedrock, open_ai, or gemini before exporting.'
-      );
+      return 'LiteLLM';
   }
+}
+
+/**
+ * Proprietary OpenAI models (e.g. openai.gpt-5.4, openai.gpt-5.5) are served on the Bedrock Mantle
+ * `/openai/v1` path; open-source OpenAI models (openai.gpt-oss-*) use `/v1`.
+ */
+function isProprietaryOpenAiModel(modelId: string): boolean {
+  return modelId.startsWith('openai.') && !modelId.includes('gpt-oss');
+}
+
+/**
+ * Bedrock Mantle render config. A Bedrock model whose apiFormat is `responses`/`chat_completions`
+ * (not `converse_stream`) is an OpenAI-compatible model served via the Bedrock Mantle endpoint, NOT
+ * the Converse API — building a plain BedrockModel for it makes invocation fail with
+ * "The provided model identifier is invalid" on ConverseStream. When that combination is detected,
+ * emit the fields load.py needs to construct the OpenAI-style Mantle client (base URL is derived at
+ * runtime from AWS_REGION). Returns {} for ordinary Converse Bedrock models.
+ */
+function buildBedrockMantleRenderConfig(spec: HarnessSpec): Partial<AgentRenderConfig> {
+  if (!isBedrockMantleModel(spec)) return {};
+  const apiFormat = spec.model.apiFormat as 'responses' | 'chat_completions';
+  return {
+    bedrockMantle: true,
+    mantleApiFormat: apiFormat,
+    mantleProprietary: isProprietaryOpenAiModel(spec.model.modelId),
+    modelTemperature: spec.model.temperature,
+    modelTopP: spec.model.topP,
+    modelMaxTokens: spec.model.maxTokens,
+  };
+}
+
+/** A Bedrock model whose apiFormat routes it through the OpenAI-compatible Mantle endpoint. */
+function isBedrockMantleModel(spec: HarnessSpec): boolean {
+  return (
+    spec.model.provider === 'bedrock' &&
+    (spec.model.apiFormat === 'responses' || spec.model.apiFormat === 'chat_completions')
+  );
+}
+
+/**
+ * Bedrock Mantle invocation goes through the `bedrock-mantle` service (CreateInference), NOT
+ * `bedrock:InvokeModel`, so the runtime role's default Bedrock grant does not cover it. Emit an
+ * inline IAM policy (opaque AWS access, like S3 skills) granting bedrock-mantle:CreateInference on
+ * the account's default Mantle project, wired via AgentEnvSpec.additionalPolicies.
+ */
+function resolveBedrockMantlePolicy(spec: HarnessSpec, context: ResolvedHarnessContext): void {
+  if (!isBedrockMantleModel(spec)) return;
+  // arnPrefix returns `arn:<partition>` (e.g. arn:aws); region defaults to us-east-1 only to pick the
+  // partition — the ARN itself wildcards region/account so the runtime works wherever it deploys.
+  const prefix = arnPrefix(context.region ?? 'us-east-1');
+  const policyDoc = {
+    Version: '2012-10-17',
+    Statement: [
+      {
+        Effect: 'Allow',
+        Action: 'bedrock-mantle:CreateInference',
+        // The Mantle endpoint resolves the caller's account; access is scoped to the default project.
+        Resource: `${prefix}:bedrock-mantle:*:*:project/default`,
+      },
+      {
+        // The bearer-token auth path (provide_token -> Mantle) requires CallWithBearerToken, which
+        // the service authorizes against resource `*` (it is not resource-scoped).
+        Effect: 'Allow',
+        Action: 'bedrock-mantle:CallWithBearerToken',
+        Resource: '*',
+      },
+    ],
+  };
+  const policyFile = 'bedrock-mantle-policy.json';
+  context.generatedPolicyFiles[policyFile] = policyDoc;
+  if (!context.additionalPolicies.includes(policyFile)) context.additionalPolicies.push(policyFile);
 }
 
 // ============================================================================
@@ -451,6 +661,8 @@ function resolveIdentityProvider(spec: HarnessSpec, context: ResolvedHarnessCont
 
 interface MemoryResult {
   providers: MemoryProviderRenderConfig[];
+  /** Connections to external memories (IAM + env wiring generated at deploy). */
+  connections?: Connection[];
 }
 
 function resolveMemoryProviders(spec: HarnessSpec, context: ResolvedHarnessContext): MemoryResult {
@@ -484,16 +696,21 @@ function resolveMemoryProviders(spec: HarnessSpec, context: ResolvedHarnessConte
       };
     }
 
-    // External memory — hardcode ARN as env var
-    context.exportNotes.push({
-      category: MEMORY_ARN_NOTE_CATEGORY,
-      message:
-        `The harness memory was referenced by ARN (${memArn}) and could not be matched to a ` +
-        'same-project memory. A MEMORY_ARN env var will be used. Ensure the runtime IAM execution role ' +
-        'has bedrock-agentcore:GetMemory and bedrock-agentcore:InvokeMemory on the above ARN.',
-    });
+    // External memory — model as a connection. The CDK generates the correct IAM (the full
+    // memory action set scoped to the ARN) and injects the discovery env var at deploy. The
+    // env var name MUST match what the connection wiring injects (MEMORY_<TOKEN>_ID).
+    // access: 'readwrite' — the agent both reads conversation history and writes events
+    // (CreateEvent) to memory at runtime, so read-only would fail with AccessDenied on writes.
+    const connectionId = externalConnectionId('memory', memArn);
+    const envVarName = connectionEnvVarName('MEMORY', connectionId, 'ID');
+    // Write the discovery value to .env.local for local dev (`agentcore dev`), mirroring the
+    // gateway/browser/code-interpreter branches. At deploy the CDK connection wiring injects the
+    // same MEMORY_<TOKEN>_ID = resourceIdFromArn(arn); without this, the var is unset locally and
+    // session.py silently disables memory (get_memory_session_manager returns None).
+    context.localEnvVars[envVarName] = resourceIdFromArn(memArn);
     return {
-      providers: [{ name: 'ExternalMemory', envVarName: 'MEMORY_ARN', strategies: [] }],
+      providers: [{ name: connectionId, envVarName, strategies: [] }],
+      connections: [{ id: connectionId, to: { type: 'memory', arn: memArn }, access: 'readwrite' }],
     };
   }
 
@@ -506,6 +723,8 @@ function resolveMemoryProviders(spec: HarnessSpec, context: ResolvedHarnessConte
 
 interface GatewayResult {
   providers: GatewayProviderRenderConfig[];
+  /** Connections to external gateways (IAM generated at deploy from outboundAuth). */
+  connections?: Connection[];
 }
 
 function resolveGatewayProviders(
@@ -514,6 +733,7 @@ function resolveGatewayProviders(
   allowedToolPatterns: string[]
 ): GatewayResult {
   const providers: GatewayProviderRenderConfig[] = [];
+  const connections: Connection[] = [];
 
   for (const tool of spec.tools) {
     if (tool.type !== 'agentcore_gateway') continue;
@@ -555,16 +775,10 @@ function resolveGatewayProviders(
       // Same-project gateway: AgentCoreMcp.wireGatewayUrlsToAgents() auto-grants InvokeGateway
       // to all runtime environments — no manual IAM step needed.
     } else {
-      // External gateway — derive URL from ARN
-      const hardcodedUrl = deriveGatewayUrl(gatewayArn);
-      context.exportNotes.push({
-        category: EXTERNAL_GATEWAY_NOTE_CATEGORY,
-        message:
-          `Gateway tool "${tool.name}" (ARN: ${gatewayArn}) was not found in this project's deployed state. ` +
-          `The URL has been hardcoded as "${hardcodedUrl}" in mcp_client/client.py. ` +
-          'If the ARN changes (e.g. after re-deployment), update mcp_client/client.py manually.',
-      });
-
+      // External gateway — model as a connection. The CDK generates the correct IAM
+      // (InvokeGateway for awsIam, token-fetch for oauth) AND injects the discovery env vars
+      // (GATEWAY_<id>_URL derived from the ARN, AUTH_TYPE, credential provider) at deploy, so the
+      // generated client reads the URL from the env var rather than a hardcoded literal.
       const outboundAuth = gwConfig.outboundAuth;
       const authType = outboundAuth
         ? 'oauth' in outboundAuth
@@ -574,36 +788,50 @@ function resolveGatewayProviders(
             : 'NONE'
         : 'AWS_IAM';
 
-      if (authType === 'AWS_IAM') {
-        context.exportNotes.push({
-          category: GATEWAY_IAM_POLICY_NOTE_CATEGORY,
-          message:
-            `Gateway tool "${tool.name}" (ARN: ${gatewayArn}) uses AWS_IAM auth. ` +
-            `The exported runtime execution role is not automatically granted permission to invoke it.\n\n` +
-            `Add the following to agentcore/cdk/lib/cdk-stack.ts after \`this.application\` is created,\n` +
-            `replacing "YourAgentName" with the name of the exported agent (e.g. "${context.targetAgentName ?? 'MyHarnessAgent'}"):\n\n` +
-            `  const agentEnv = this.application.environments.get('${context.targetAgentName ?? 'YourAgentName'}');\n` +
-            `  agentEnv?.runtime.role.addToPrincipalPolicy(\n` +
-            `    new iam.PolicyStatement({\n` +
-            `      actions: ['bedrock-agentcore:InvokeGateway'],\n` +
-            `      resources: ['${gatewayArn}'],\n` +
-            `    })\n` +
-            `  );`,
-        });
-      }
+      const connectionId = externalConnectionId('gateway', gatewayArn);
+      connections.push({
+        id: connectionId,
+        to: { type: 'gateway', arn: gatewayArn, outboundAuth: toConnectionGatewayAuth(outboundAuth) },
+      });
+
+      // The env var the connection wiring injects (GATEWAY_<token>_URL) — the generated client
+      // reads it via os.environ.get. Also written to .env.local for local dev (static, from ARN).
+      const urlEnvVar = connectionEnvVarName('GATEWAY', connectionId, 'URL');
+      context.localEnvVars[urlEnvVar] = deriveGatewayUrl(gatewayArn);
 
       const provider: GatewayProviderRenderConfig = {
         name: tool.name,
-        envVarName: '',
+        envVarName: urlEnvVar,
         authType,
-        hardcodedUrl,
       };
 
       if (authType === 'CUSTOM_JWT' && outboundAuth && 'oauth' in outboundAuth) {
-        provider.credentialProviderName = computeManagedOAuthCredentialName(tool.name);
+        // The credential provider name the generated client passes to @requires_access_token MUST
+        // be the real provider behind the ARN (the harness already created it) — derive it from the
+        // providerArn, not a name synthesized from the tool.
+        provider.credentialProviderName = resourceIdFromArn(outboundAuth.oauth.providerArn);
         const scopes = outboundAuth.oauth.scopes;
         if (scopes?.length) {
           provider.scopes = scopes.join(' ');
+        }
+        // Thread the grant type through to the generated client's auth_flow, so a
+        // USER_FEDERATION harness gateway exports a USER_FEDERATION client instead of a hardcoded M2M.
+        const authFlow = grantTypeToAuthFlow(outboundAuth.oauth.grantType);
+        if (authFlow) provider.authFlow = authFlow;
+        if (outboundAuth.oauth.customParameters && Object.keys(outboundAuth.oauth.customParameters).length > 0) {
+          provider.customParameters = outboundAuth.oauth.customParameters;
+        }
+        // Only TOKEN_EXCHANGE has no @requires_access_token equivalent (auth_flow is
+        // Literal["M2M","USER_FEDERATION"]) — surface that as the one remaining manual case.
+        if (!authFlow) {
+          context.exportNotes.push({
+            category: GATEWAY_GRANT_TYPE_NOTE_CATEGORY,
+            message:
+              `Gateway tool "${tool.name}" uses OAuth grant type "${outboundAuth.oauth.grantType}", which the ` +
+              `generated MCP client cannot express (the AgentCore Identity decorator supports only M2M and ` +
+              `USER_FEDERATION flows). Update mcp_client/client.py to perform the token exchange manually, or ` +
+              `reconfigure the gateway to use CLIENT_CREDENTIALS or AUTHORIZATION_CODE.`,
+          });
         }
       }
 
@@ -611,7 +839,7 @@ function resolveGatewayProviders(
     }
   }
 
-  return { providers };
+  return { providers, connections };
 }
 
 // ============================================================================
@@ -747,7 +975,7 @@ function ecrArnFromUri(uri: string, region?: string): string | undefined {
   return `${arnPrefix(ecrRegion)}:ecr:${ecrRegion}:${account}:repository/${repoName}`;
 }
 
-function isPathSkill(skill: HarnessSkill): skill is HarnessSkillPathSource {
+export function isPathSkill(skill: HarnessSkill): skill is HarnessSkillPathSource {
   return 'path' in skill && !('gitUrl' in skill);
 }
 
@@ -843,36 +1071,49 @@ function resolveTruncationConfig(truncation: HarnessTruncationConfig | undefined
   return undefined;
 }
 
-function extractToolIdentifier(
-  spec: HarnessSpec,
-  toolType: HarnessToolType,
-  configKey: string,
-  arnField: string
-): string | undefined {
-  const tool = spec.tools.find(t => t.type === toolType);
-  if (!tool?.config || !(configKey in tool.config)) return undefined;
-  const arn = (tool.config as Record<string, Record<string, string | undefined>>)[configKey]?.[arnField];
-  if (!arn) return undefined;
-  // ARN format: arn:aws:bedrock-agentcore:<region>:<account>:<resource-type>/<identifier>
-  const slashIdx = arn.lastIndexOf('/');
-  return slashIdx === -1 ? undefined : arn.slice(slashIdx + 1);
-}
-
 function isBuiltinIncluded(builtinName: string, patterns: string[]): boolean {
   // Mirrors Harness runtime: builtins are keyed as "builtin/<name>", so only @builtin or @builtin/<name> patterns match.
   // Plain "shell" does NOT match the "builtin/shell" builtin (it would match a tool literally named "shell").
   return matchesAllowedTools(`builtin/${builtinName}`, patterns);
 }
 
-function addBrowserCodeInterpreterNotes(
+/**
+ * Build connections for the browser / code-interpreter tools (so the CDK generates their IAM at
+ * deploy) and emit only the genuinely-non-IAM note (browser requires a Container build). Returns
+ * the connections to add to the exported agent.
+ */
+interface BrowserCodeInterpreterResult {
+  /** Browser/code-interpreter connections (IAM + env wiring generated at deploy). */
+  connections: Connection[];
+  /** True when the browser tool is included AND the build can run it (Container). */
+  hasBrowser: boolean;
+  /** True when the code-interpreter tool is included. */
+  hasCodeInterpreter: boolean;
+  /** Discovery env var the generated code reads for the browser identifier (custom ARN only). */
+  browserIdentifierEnvVar?: string;
+  /** Discovery env var the generated code reads for the code-interpreter identifier (custom ARN only). */
+  codeInterpreterIdentifierEnvVar?: string;
+}
+
+/**
+ * The single owner of browser/code-interpreter resolution: extracts + validates each tool's ARN
+ * exactly once and derives the connection, the local discovery env var, and the render-config
+ * identifier env var from the same values — so the IAM grant, the injected env var, and the name
+ * baked into the generated code can never diverge. Browser requires a Container build; in CodeZip
+ * it is excluded (no connection, no identifier) with an explanatory note.
+ */
+function resolveBrowserCodeInterpreterConnections(
   spec: HarnessSpec,
   allowedToolPatterns: string[],
   buildType: BuildType,
   context: ResolvedHarnessContext
-): void {
+): BrowserCodeInterpreterResult {
+  const result: BrowserCodeInterpreterResult = { connections: [], hasBrowser: false, hasCodeInterpreter: false };
   const agentName = context.targetAgentName;
 
   if (isToolIncluded('agentcore_browser', spec, allowedToolPatterns)) {
+    // Browser requires a Container build (Playwright driver can't spawn subprocesses in the CodeZip
+    // Lambda sandbox). In CodeZip it is excluded entirely — note only, no connection/identifier.
     if (buildType !== 'Container') {
       context.exportNotes.push({
         category: BROWSER_CODZIP_NOTE_CATEGORY,
@@ -883,64 +1124,83 @@ function addBrowserCodeInterpreterNotes(
           `  agentcore export harness --name ${spec.name} --target-agent-name ${agentName} --build Container`,
       });
     } else {
-      const browserTool = spec.tools.find(t => t.type === 'agentcore_browser');
-      const customArn =
-        browserTool?.config && 'agentCoreBrowser' in browserTool.config
-          ? (browserTool.config as { agentCoreBrowser: { browserArn?: string } }).agentCoreBrowser.browserArn
-          : undefined;
-      const resource = customArn ?? `arn:*:bedrock-agentcore:\${Stack.of(this).region}:aws:browser/*`;
-      context.exportNotes.push({
-        category: BROWSER_IAM_POLICY_NOTE_CATEGORY,
-        message:
-          `The exported runtime execution role is not automatically granted permission to use the browser tool.\n\n` +
-          `Add the following to agentcore/cdk/lib/cdk-stack.ts after \`this.application\` is created:\n\n` +
-          `  const agentEnv = this.application.environments.get('${agentName}');\n` +
-          `  agentEnv?.runtime.role.addToPrincipalPolicy(\n` +
-          `    new iam.PolicyStatement({\n` +
-          `      actions: [\n` +
-          `        'bedrock-agentcore:StartBrowserSession',\n` +
-          `        'bedrock-agentcore:StopBrowserSession',\n` +
-          `        'bedrock-agentcore:GetBrowserSession',\n` +
-          `        'bedrock-agentcore:ListBrowserSessions',\n` +
-          `        'bedrock-agentcore:UpdateBrowserStream',\n` +
-          `        'bedrock-agentcore:ConnectBrowserAutomationStream',\n` +
-          `        'bedrock-agentcore:ConnectBrowserLiveViewStream',\n` +
-          `      ],\n` +
-          `      resources: [\`${resource}\`],\n` +
-          `    })\n` +
-          `  );`,
-      });
+      result.hasBrowser = true;
+      const rawArn = extractRawToolArn(spec, 'agentcore_browser', 'agentCoreBrowser', 'browserArn');
+      const arn = validToolArn(rawArn, 'browser');
+      if (arn) {
+        const id = externalConnectionId('browser', arn);
+        const envVar = connectionEnvVarName('BROWSER', id, 'ID');
+        result.connections.push({ id, to: { type: 'browser', arn } });
+        result.browserIdentifierEnvVar = envVar;
+        context.localEnvVars[envVar] = resourceIdFromArn(arn);
+      } else {
+        // No custom ARN (or malformed) → AWS-managed default browser; connection grants browser/*.
+        if (rawArn) context.exportNotes.push(buildMalformedToolArnNote('browser', rawArn));
+        result.connections.push({ id: 'browser-default', to: { type: 'browser' } });
+      }
     }
   }
 
   if (isToolIncluded('agentcore_code_interpreter', spec, allowedToolPatterns)) {
-    const ciTool = spec.tools.find(t => t.type === 'agentcore_code_interpreter');
-    const customArn =
-      ciTool?.config && 'agentCoreCodeInterpreter' in ciTool.config
-        ? (ciTool.config as { agentCoreCodeInterpreter: { codeInterpreterArn?: string } }).agentCoreCodeInterpreter
-            .codeInterpreterArn
-        : undefined;
-    const resource = customArn ?? `arn:*:bedrock-agentcore:\${Stack.of(this).region}:aws:code-interpreter/*`;
-    context.exportNotes.push({
-      category: CODE_INTERPRETER_IAM_POLICY_NOTE_CATEGORY,
-      message:
-        `The exported runtime execution role is not automatically granted permission to use the code interpreter tool.\n\n` +
-        `Add the following to agentcore/cdk/lib/cdk-stack.ts after \`this.application\` is created:\n\n` +
-        `  const agentEnv = this.application.environments.get('${agentName}');\n` +
-        `  agentEnv?.runtime.role.addToPrincipalPolicy(\n` +
-        `    new iam.PolicyStatement({\n` +
-        `      actions: [\n` +
-        `        'bedrock-agentcore:StartCodeInterpreterSession',\n` +
-        `        'bedrock-agentcore:StopCodeInterpreterSession',\n` +
-        `        'bedrock-agentcore:GetCodeInterpreterSession',\n` +
-        `        'bedrock-agentcore:ListCodeInterpreterSessions',\n` +
-        `        'bedrock-agentcore:InvokeCodeInterpreter',\n` +
-        `      ],\n` +
-        `      resources: [\`${resource}\`],\n` +
-        `    })\n` +
-        `  );`,
-    });
+    result.hasCodeInterpreter = true;
+    const rawArn = extractRawToolArn(
+      spec,
+      'agentcore_code_interpreter',
+      'agentCoreCodeInterpreter',
+      'codeInterpreterArn'
+    );
+    const arn = validToolArn(rawArn, 'code-interpreter');
+    if (arn) {
+      const id = externalConnectionId('codeInterpreter', arn);
+      const envVar = connectionEnvVarName('CODE_INTERPRETER', id, 'ID');
+      result.connections.push({ id, to: { type: 'codeInterpreter', arn } });
+      result.codeInterpreterIdentifierEnvVar = envVar;
+      context.localEnvVars[envVar] = resourceIdFromArn(arn);
+    } else {
+      if (rawArn) context.exportNotes.push(buildMalformedToolArnNote('code-interpreter', rawArn));
+      result.connections.push({ id: 'codeInterpreter-default', to: { type: 'codeInterpreter' } });
+    }
   }
+
+  return result;
+}
+
+/**
+ * Note emitted when a harness supplies a browser/code-interpreter ARN that does not match the
+ * expected ARN shape. The exported agent falls back to the AWS-managed default (a different
+ * resource, with a broader `*` IAM grant), so the user is told to verify and fix the value rather
+ * than silently get the wrong tool target.
+ */
+function buildMalformedToolArnNote(kind: 'browser' | 'code-interpreter', rawArn: string): ExportNote {
+  return {
+    category: MALFORMED_TOOL_ARN_NOTE_CATEGORY,
+    message:
+      `The ${kind} tool specified ARN "${rawArn}", which is not a valid bedrock-agentcore ${kind} ARN. ` +
+      `The exported agent will use the AWS-managed default ${kind} instead (a different resource, granted ` +
+      `broader \`${kind}/*\` permissions). If you intended to target a specific ${kind}, fix the ARN in the ` +
+      `connection on this agent in agentcore/agentcore.json and re-deploy.`,
+  };
+}
+
+/** Raw ARN string from a tool's config (no validation). */
+function extractRawToolArn(
+  spec: HarnessSpec,
+  toolType: HarnessToolType,
+  configKey: string,
+  arnField: string
+): string | undefined {
+  const tool = spec.tools.find(t => t.type === toolType);
+  if (!tool?.config || !(configKey in tool.config)) return undefined;
+  return (tool.config as Record<string, Record<string, string | undefined>>)[configKey]?.[arnField];
+}
+
+/** Returns the ARN only if it is a well-formed browser/code-interpreter ARN; else undefined (→ default). */
+function validToolArn(arn: string | undefined, kind: 'browser' | 'code-interpreter'): string | undefined {
+  if (!arn) return undefined;
+  // Reuse the canonical schema patterns (single source of truth for the two legitimate
+  // resource-segment forms: customer-owned `<kind>-custom/...` and AWS-managed `<kind>/...`).
+  const re = kind === 'browser' ? BROWSER_ARN_PATTERN : CODE_INTERPRETER_ARN_PATTERN;
+  return re.test(arn) ? arn : undefined;
 }
 
 function fnmatch(pattern: string, str: string): boolean {

@@ -1,6 +1,7 @@
 {{#if needsOs}}
 import os
 {{/if}}
+from collections import OrderedDict
 from autogen_agentchat.agents import AssistantAgent
 from autogen_core.tools import FunctionTool
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
@@ -91,23 +92,45 @@ You have access to the following mounted filesystems. Use file_read, file_write,
 {{/each}}{{/if}}
 """
 
+# Reuses one AssistantAgent per session_id so each session keeps its own
+# in-process conversation history (best-effort; resets on cold start). Caches up
+# to 128 active sessions with LRU eviction (least-recently-used is dropped and
+# its history reset).
+_agents = OrderedDict()
+
+
+async def get_or_create_agent(session_id):
+    if session_id in _agents:
+        _agents.move_to_end(session_id)
+        return _agents[session_id]
+    if len(_agents) >= 128:
+        _agents.popitem(last=False)
+    # Get MCP Tools
+    mcp_tools = await get_streamable_http_mcp_tools()
+    # Re-check after the await: a concurrent first-invocation for the same
+    # session_id may have built and stored the agent while we were awaiting.
+    # Don't overwrite it (that would orphan the agent the other request is using).
+    if session_id not in _agents:
+        _agents[session_id] = AssistantAgent(
+            name="{{ name }}",
+            model_client=load_model(),
+            tools=tools + mcp_tools,
+            system_message=SYSTEM_MESSAGE,
+        )
+    _agents.move_to_end(session_id)
+    return _agents[session_id]
+
+
 @app.entrypoint
 async def invoke(payload, context):
     log.info("Invoking Agent.....")
 
-    # Get MCP Tools
-    mcp_tools = await get_streamable_http_mcp_tools()
-
-    # Define an AssistantAgent with the model and tools
-    agent = AssistantAgent(
-        name="{{ name }}",
-        model_client=load_model(),
-        tools=tools + mcp_tools,
-        system_message=SYSTEM_MESSAGE,
-    )
-
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    session_id = getattr(context, "session_id", "default-session")
+
+    # Reuse the per-session agent (preserves conversation history)
+    agent = await get_or_create_agent(session_id)
 
     # Run the agent
     result = await agent.run(task=prompt)

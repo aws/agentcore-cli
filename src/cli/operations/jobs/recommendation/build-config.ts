@@ -75,6 +75,29 @@ export function resolveComponentKeyForJsonPath(key: string, deployedState: Deplo
   return key;
 }
 
+/**
+ * Resolve a config-bundle version reference to a concrete version UUID.
+ *
+ * The recommendation API only accepts a concrete versionId — passing the literal 'LATEST' through
+ * yields a 400 (versionId fails the UUID pattern). When 'LATEST' is given, look the bundle up in
+ * deployed state (by ARN) and return its deployed versionId. An explicit version is returned
+ * verbatim. Returns undefined when 'LATEST' cannot be resolved (bundle not deployed) so the caller
+ * can surface a friendly error instead of sending 'LATEST' to the API. Mirrors the ab-test path's
+ * resolveConfigBundleVersion.
+ */
+export function resolveBundleVersionId(
+  bundleArn: string,
+  versionRef: string,
+  deployedState: DeployedState
+): string | undefined {
+  if (versionRef !== 'LATEST') return versionRef;
+  for (const target of Object.values(deployedState.targets ?? {})) {
+    const bundle = Object.values(target.resources?.configBundles ?? {}).find(b => b.bundleArn === bundleArn);
+    if (bundle?.versionId) return bundle.versionId;
+  }
+  return undefined;
+}
+
 /** Flatten statusReasons + result errorCode/errorMessage into a single display string (FAILED only). */
 export function extractFailureDetails(pollResult: {
   statusReasons?: string[];

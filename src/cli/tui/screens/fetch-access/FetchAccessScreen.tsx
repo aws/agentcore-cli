@@ -21,7 +21,9 @@ function authColor(authType: string): string {
 }
 
 function resourceLabel(resourceType: string): string {
-  return resourceType === 'agent' ? 'Agent' : 'Gateway';
+  if (resourceType === 'agent') return 'Agent';
+  if (resourceType === 'harness') return 'Harness';
+  return 'Gateway';
 }
 
 export function FetchAccessScreen({ isInteractive: _isInteractive, onExit }: FetchAccessScreenProps) {

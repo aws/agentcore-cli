@@ -7,6 +7,7 @@ import {
   SessionStorageSchema,
 } from '../agent-env';
 import { AuthorizerConfigSchema, RuntimeAuthorizerTypeSchema } from '../auth';
+import { ConnectionSchema } from '../connections';
 import { uniqueBy } from '../zod-util';
 import { TagsSchema } from './tags';
 import { z } from 'zod';
@@ -605,6 +606,9 @@ export const HarnessSpecSchema = z
     authorizerType: RuntimeAuthorizerTypeSchema.optional(),
     /** Authorizer configuration. Required when authorizerType is CUSTOM_JWT. */
     authorizerConfiguration: AuthorizerConfigSchema.optional(),
+    /** Connections to external AgentCore resources (memory/gateway/runtime). The construct
+     *  generates IAM + discovery env vars onto this harness's execution role. */
+    connections: z.array(ConnectionSchema).optional(),
     tags: TagsSchema.optional(),
   })
   .superRefine((data, ctx) => {

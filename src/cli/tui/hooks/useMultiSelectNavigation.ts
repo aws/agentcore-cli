@@ -108,12 +108,17 @@ export function useMultiSelectNavigation<T>({
         return;
       }
 
-      // Handle Enter confirm
+      // Handle Enter confirm. Only return selections that are still VISIBLE in `items`: a selection
+      // can go stale if the option set changes after a toggle (e.g. the mode-scoped "memory tuning"
+      // option is filtered out when the user switches memory mode). Returning a stale id pushes a
+      // step that isn't in the wizard's step list, corrupting navigation — so reconcile here.
       if (key.return) {
-        if (requireSelection && selectedIds.size === 0) {
-          return; // Don't confirm if selection required but none selected
+        const visibleIds = new Set(items.map(getId));
+        const confirmed = Array.from(selectedIds).filter(id => visibleIds.has(id));
+        if (requireSelection && confirmed.length === 0) {
+          return; // Don't confirm if selection required but none (visible) selected
         }
-        onConfirm?.(Array.from(selectedIds));
+        onConfirm?.(confirmed);
       }
     },
     { isActive }
