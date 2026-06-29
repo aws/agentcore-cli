@@ -8121,14 +8121,14 @@ const app = new BedrockAgentCoreApp({
   invocationHandler: {
     async *process(payload: any, context: any) {
       const sessionId = context?.sessionId ?? 'default-session';
-      const messages = getHistory(sessionId);
-      messages.push({ role: 'user', content: payload.prompt ?? '' });
+      const history = getHistory(sessionId);
+      const userMessage: ModelMessage = { role: 'user', content: payload.prompt ?? '' };
 
       const model = await loadModel();
       const result = streamText({
         model,
         system: SYSTEM_PROMPT,
-        messages,
+        messages: [...history, userMessage],
       });
 
       let assistant = '';
@@ -8136,7 +8136,14 @@ const app = new BedrockAgentCoreApp({
         assistant += chunk;
         yield { data: chunk };
       }
-      messages.push({ role: 'assistant', content: assistant });
+
+      // Commit the exchange to history only after a non-empty reply. On a failed
+      // or empty stream the turn is dropped instead of leaving a dangling user
+      // (or empty assistant) message — consecutive same-role or empty-content
+      // messages would otherwise be rejected on the next turn for this session.
+      if (assistant.length > 0) {
+        history.push(userMessage, { role: 'assistant', content: assistant });
+      }
     },
   },
 });
