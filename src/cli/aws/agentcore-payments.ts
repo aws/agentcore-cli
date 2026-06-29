@@ -86,7 +86,7 @@ interface PaymentManagerDetail {
  * Wrap an inner error with a contextual prefix while preserving its
  * structured `.code` (the parsed `__type` / `code` from the server response).
  */
-function rethrowWithContext(prefix: string, err: unknown): Error & { code?: string } {
+export function rethrowWithContext(prefix: string, err: unknown): Error & { code?: string } {
   const innerMsg = err instanceof Error ? err.message : String(err);
   const wrapped = new Error(`${prefix}: ${innerMsg}`) as Error & { code?: string };
   const innerCode = (err as { code?: unknown })?.code;
@@ -95,27 +95,45 @@ function rethrowWithContext(prefix: string, err: unknown): Error & { code?: stri
 }
 
 /**
- * Build a debug-only excerpt of a non-2xx response body, with every literal
- * secret value the CLI just sent stripped out.
- *
- * Default (no DEBUG): returns `''` so callers can omit the body from
- * `Error.message` entirely. The structured `code`/`__type` extracted by the
- * caller is what programmatic consumers should use.
- *
- * With DEBUG set: returns the body with each `secret` substring replaced by
- * `[REDACTED]` and capped at 500 chars. Value-based redaction is robust to
- * server-side reshaping (snake_case, nesting, free-text echoes) in a way the
- * old key-name regex was not.
+ * Redact every literal secret value from a string, replacing occurrences with
+ * `[REDACTED]`. Value-based redaction is robust to server-side reshaping
  */
-function sanitizeErrorBody(body: string, secrets: Iterable<string> | undefined): string {
-  if (!process.env.DEBUG || !body) return '';
-  let out = body;
+export function redactSecrets(text: string, secrets: Iterable<string> | undefined): string {
+  let out = text;
   for (const secret of secrets ?? []) {
     if (typeof secret === 'string' && secret.length > 0) {
       out = out.split(secret).join('[REDACTED]');
     }
   }
-  return out.slice(0, 500);
+  return out;
+}
+
+/**
+ * Build an error message excerpt from a non-2xx response body.
+ *
+ * - Always includes the parsed `code`/`__type` and `message` field
+ *   (run through value-based redaction) so users get actionable context.
+ * - With DEBUG set: appends the full (redacted) body
+ */
+export function sanitizeErrorBody(body: string, secrets: Iterable<string> | undefined): string {
+  if (!body) return '';
+
+  const parts: string[] = [];
+  try {
+    const parsed = JSON.parse(body) as Record<string, unknown>;
+    const code = parsed.code ?? parsed.__type;
+    if (typeof code === 'string') parts.push(code);
+    const message = parsed.message ?? parsed.Message ?? parsed.errorMessage;
+    if (typeof message === 'string') parts.push(redactSecrets(message, secrets));
+  } catch (_err) {
+    /* body is not JSON — fall through */
+  }
+
+  if (process.env.DEBUG) {
+    parts.push(redactSecrets(body, secrets).slice(0, 500));
+  }
+
+  return parts.join(' — ');
 }
 
 async function signedRequest(options: {
@@ -178,8 +196,8 @@ async function signedRequest(options: {
   if (!response.ok) {
     const errorBody = await response.text().catch(() => '');
     const baseMsg = `Payment API error (${response.status})`;
-    const debugExcerpt = sanitizeErrorBody(errorBody, secretsToRedact);
-    const error = new Error(debugExcerpt ? `${baseMsg}: ${debugExcerpt}` : baseMsg) as Error & {
+    const excerpt = sanitizeErrorBody(errorBody, secretsToRedact);
+    const error = new Error(excerpt ? `${baseMsg}: ${excerpt}` : baseMsg) as Error & {
       code?: string;
     };
     try {
@@ -305,7 +323,7 @@ export async function getPaymentCredentialProvider(
     const msg = err instanceof Error ? err.message : String(err);
     const code = (err as { code?: unknown }).code;
     if (code === 'ResourceNotFoundException' || msg.includes('(404)')) return null;
-    throw new Error(`Failed to get payment credential provider "${options.name}": ${msg}`);
+    throw rethrowWithContext(`Failed to get payment credential provider "${options.name}"`, err);
   }
 }
 
@@ -337,7 +355,7 @@ export async function getPaymentManager(options: GetPaymentManagerOptions): Prom
     const msg = err instanceof Error ? err.message : String(err);
     const code = (err as { code?: unknown }).code;
     if (code === 'ResourceNotFoundException' || msg.includes('(404)')) return null;
-    throw new Error(`Failed to get payment manager "${options.paymentManagerId}": ${msg}`);
+    throw rethrowWithContext(`Failed to get payment manager "${options.paymentManagerId}"`, err);
   }
 }
 
@@ -408,8 +426,8 @@ async function signedDataPlaneRequest(options: {
   if (!response.ok) {
     const errorBody = await response.text().catch(() => '');
     const baseMsg = `Payment data plane API error (${response.status})`;
-    const debugExcerpt = sanitizeErrorBody(errorBody, secretsToRedact);
-    const error = new Error(debugExcerpt ? `${baseMsg}: ${debugExcerpt}` : baseMsg) as Error & {
+    const excerpt = sanitizeErrorBody(errorBody, secretsToRedact);
+    const error = new Error(excerpt ? `${baseMsg}: ${excerpt}` : baseMsg) as Error & {
       code?: string;
     };
     try {
