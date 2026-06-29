@@ -53,18 +53,35 @@ async function getOrCreateAgent(sessionId: string, actorId: string): Promise<Age
   return agent;
 }
 {{else}}
-let cachedAgent: Agent | null = null;
+const AGENT_CACHE_LIMIT = 128;
 
-async function getOrCreateAgent(): Promise<Agent> {
-  if (!cachedAgent) {
-    const model = await loadModel();
-    cachedAgent = new Agent({
-      model,
-      systemPrompt: SYSTEM_PROMPT,
-      tools,
-    });
+// Reuses one Agent per sessionId so each session keeps its own in-process
+// conversation history (best-effort; resets on cold start). A Map preserves
+// insertion order, so it doubles as an LRU bounded to 128 sessions — a local
+// dev process serving many sessions cannot leak history between them or grow
+// without bound. On AgentCore Runtime each microVM serves a single session, so
+// this holds one entry. For durable history, attach memory.
+const agentCache = new Map<string, Agent>();
+
+async function getOrCreateAgent(sessionId: string): Promise<Agent> {
+  const existing = agentCache.get(sessionId);
+  if (existing) {
+    agentCache.delete(sessionId);
+    agentCache.set(sessionId, existing);
+    return existing;
   }
-  return cachedAgent;
+  if (agentCache.size >= AGENT_CACHE_LIMIT) {
+    const oldest = agentCache.keys().next().value;
+    if (oldest !== undefined) agentCache.delete(oldest);
+  }
+  const model = await loadModel();
+  const agent = new Agent({
+    model,
+    systemPrompt: SYSTEM_PROMPT,
+    tools,
+  });
+  agentCache.set(sessionId, agent);
+  return agent;
 }
 {{/if}}
 
@@ -76,7 +93,8 @@ const app = new BedrockAgentCoreApp({
       const actorId = getActorId(payload, context);
       const agent = await getOrCreateAgent(sessionId, actorId);
       {{else}}
-      const agent = await getOrCreateAgent();
+      const sessionId = context?.sessionId ?? 'default-session';
+      const agent = await getOrCreateAgent(sessionId);
       {{/if}}
 
       {{#if hasMemory}}
