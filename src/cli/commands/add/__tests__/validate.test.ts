@@ -469,8 +469,7 @@ describe('validate', () => {
       expect(result.valid).toBe(true);
     });
 
-    // Passthrough is gated behind ENABLE_GATED_FEATURES
-    describe('passthrough feature flag', () => {
+    describe('passthrough target type', () => {
       const passthroughOpts: AddGatewayTargetOptions = {
         name: 'pt-target',
         type: 'passthrough',
@@ -478,31 +477,18 @@ describe('validate', () => {
         passthroughEndpoint: 'https://api.example.com',
       } as AddGatewayTargetOptions;
 
-      afterEach(() => {
-        delete process.env.ENABLE_GATED_FEATURES;
-      });
-
-      it('rejects passthrough when the flag is off', async () => {
-        delete process.env.ENABLE_GATED_FEATURES;
+      it('accepts a valid passthrough target', async () => {
         const result = await validateAddGatewayTargetOptions({ ...passthroughOpts });
-        expect(result.valid).toBe(false);
-        expect(result.error).toBe('Passthrough targets are not yet available.');
+        expect(result.valid).toBe(true);
       });
 
-      it('omits passthrough from the invalid-type error when the flag is off', async () => {
-        delete process.env.ENABLE_GATED_FEATURES;
+      it('lists passthrough in the invalid-type error', async () => {
         const result = await validateAddGatewayTargetOptions({
           ...validGatewayTargetOptions,
           type: 'bogus-type',
         } as AddGatewayTargetOptions);
         expect(result.valid).toBe(false);
-        expect(result.error).not.toContain('passthrough');
-      });
-
-      it('allows passthrough when the flag is on', async () => {
-        process.env.ENABLE_GATED_FEATURES = '1';
-        const result = await validateAddGatewayTargetOptions({ ...passthroughOpts });
-        expect(result.valid).toBe(true);
+        expect(result.error).toContain('passthrough');
       });
     });
     // AC20: type validation

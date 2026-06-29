@@ -6,7 +6,7 @@ import { printBatchEvaluationDetail, printBatchEvaluationHistory } from '../../o
 import { printInsightsDetail, printInsightsHistory } from '../../operations/jobs/insights/format';
 import { printRecommendationDetail, printRecommendationHistory } from '../../operations/jobs/recommendation/format';
 import { runCliCommand } from '../../telemetry/cli-command-run';
-import { requireProject } from '../../tui/guards';
+import { requireProject, requireTTY } from '../../tui/guards';
 import type { Command } from '@commander-js/extra-typings';
 
 const TYPE_META: Record<
@@ -95,6 +95,7 @@ function registerViewSubcommand(viewCmd: Command, type: JobType) {
 }
 
 async function launchTuiList(type: JobType): Promise<never> {
+  requireTTY();
   const [{ render }, { default: React }] = await Promise.all([import('ink'), import('react')]);
 
   if (type === 'ab-test') {
@@ -114,6 +115,7 @@ async function launchTuiList(type: JobType): Promise<never> {
 }
 
 async function launchTuiDetail(type: JobType, id: string): Promise<never> {
+  requireTTY();
   const [{ render }, { default: React }] = await Promise.all([import('ink'), import('react')]);
   const { JobDetailScreen } = await import('./JobDetailScreen');
   render(React.createElement(JobDetailScreen, { type, id, onExit: () => process.exit(0) }));

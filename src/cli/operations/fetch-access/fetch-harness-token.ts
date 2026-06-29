@@ -47,7 +47,7 @@ export async function canFetchHarnessToken(
  */
 export async function fetchHarnessToken(
   harnessName: string,
-  options: { configIO?: ConfigIO; deployTarget?: string } = {}
+  options: { configIO?: ConfigIO; deployTarget?: string; identityName?: string } = {}
 ): Promise<OAuthTokenResult> {
   const configIO = options.configIO ?? new ConfigIO();
 
@@ -79,5 +79,6 @@ export async function fetchHarnessToken(
     deployedState,
     targetName,
     credentials: projectSpec.credentials,
+    credentialName: options.identityName,
   });
 }

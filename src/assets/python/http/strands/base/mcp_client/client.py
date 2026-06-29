@@ -18,7 +18,10 @@ from bedrock_agentcore.identity import requires_access_token
 @requires_access_token(
     provider_name="{{credentialProviderName}}",
     scopes=[{{#if scopes}}"{{scopes}}"{{/if}}],
-    auth_flow="M2M",
+    auth_flow="{{#if authFlow}}{{authFlow}}{{else}}M2M{{/if}}",
+{{#if customParameters}}
+    custom_parameters={{safeJson customParameters}},
+{{/if}}
 )
 def _get_bearer_token_{{snakeCase name}}(*, access_token: str):
     """Obtain OAuth access token via AgentCore Identity for {{name}}."""

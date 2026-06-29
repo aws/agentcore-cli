@@ -25,11 +25,6 @@ vi.mock('../../../aws/bedrock-agent', () => ({
   getLatestIngestionJob: (...args: unknown[]) => mockGetLatestIngestionJob(...args),
 }));
 
-const mockIsGatedFeaturesEnabled = vi.fn(() => true);
-vi.mock('../../../feature-flags', () => ({
-  isGatedFeaturesEnabled: () => mockIsGatedFeaturesEnabled(),
-}));
-
 const loggedLines: string[] = [];
 vi.mock('../../../logging', () => {
   return {
@@ -483,7 +478,7 @@ describe('computeResourceStatuses', () => {
     expect(harnessEntry!.identifier).toBe('arn:aws:bedrock:us-east-1:123456789:harness/h-456');
   });
 
-  it('renders the config version (v{N}) on a deployed harness when gated features are enabled', () => {
+  it('renders the config version (v{N}) on a deployed harness', () => {
     const project = {
       ...baseProject,
       harnesses: [{ name: 'my-harness', path: 'harnesses/my-harness' }],
@@ -503,29 +498,6 @@ describe('computeResourceStatuses', () => {
     const result = computeResourceStatuses(project, resources);
     const harnessEntry = result.find(r => r.resourceType === 'harness' && r.name === 'my-harness');
     expect(harnessEntry!.detail).toBe('v3');
-  });
-
-  it('does not render the config version when gated features are disabled', () => {
-    mockIsGatedFeaturesEnabled.mockReturnValueOnce(false);
-    const project = {
-      ...baseProject,
-      harnesses: [{ name: 'my-harness', path: 'harnesses/my-harness' }],
-    } as unknown as AgentCoreProjectSpec;
-    const resources: DeployedResourceState = {
-      harnesses: {
-        'my-harness': {
-          harnessId: 'h-123',
-          harnessArn: 'arn:aws:bedrock:us-east-1:123456789:harness/h-123',
-          roleArn: 'arn:aws:iam::123456789:role/test',
-          status: 'READY',
-          harnessVersion: 3,
-        },
-      },
-    };
-
-    const result = computeResourceStatuses(project, resources);
-    const harnessEntry = result.find(r => r.resourceType === 'harness' && r.name === 'my-harness');
-    expect(harnessEntry!.detail).toBeUndefined();
   });
 
   it('handles mixed deployed and local-only resources', () => {

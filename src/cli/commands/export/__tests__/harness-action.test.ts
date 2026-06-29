@@ -1,5 +1,14 @@
-import { CUSTOM_DOCKERFILE_NOTE_CATEGORY } from '../constants';
-import { buildCustomDockerfileNote, buildMissingDockerfileNote } from '../harness-action';
+import {
+  CUSTOM_DOCKERFILE_NOTE_CATEGORY,
+  PATH_SKILLS_COPIED_NOTE_CATEGORY,
+  PATH_SKILLS_VERIFY_BASE_IMAGE_NOTE_CATEGORY,
+} from '../constants';
+import {
+  buildCustomDockerfileNote,
+  buildMissingDockerfileNote,
+  buildPathSkillsCopiedNote,
+  buildPathSkillsVerifyNote,
+} from '../harness-action';
 import { describe, expect, it } from 'vitest';
 
 // ============================================================================
@@ -38,5 +47,32 @@ describe('buildMissingDockerfileNote', () => {
     expect(note.category).toMatch(/Dockerfile not found/);
     expect(note.message).toContain('app/MyHarness/');
     expect(note.message).toContain('app/MyHarnessAgent/Harness.Dockerfile');
+  });
+});
+
+describe('buildPathSkillsCopiedNote', () => {
+  it('lists the copied skill dirs and states no manual step is required', () => {
+    const note = buildPathSkillsCopiedNote(['skills/greeting'], 'MyAgent');
+    expect(note.category).toBe(PATH_SKILLS_COPIED_NOTE_CATEGORY);
+    expect(note.message).toContain('"skills/greeting"');
+    expect(note.message).toContain('app/MyAgent/');
+    expect(note.message).toContain('no manual step');
+  });
+
+  it('pluralizes for multiple skills', () => {
+    const note = buildPathSkillsCopiedNote(['skills/a', 'skills/b'], 'MyAgent');
+    expect(note.message).toContain('directories were copied');
+    expect(note.message).toContain('"skills/a"');
+    expect(note.message).toContain('"skills/b"');
+  });
+});
+
+describe('buildPathSkillsVerifyNote', () => {
+  it('tells the user the path was not found and must exist in the image', () => {
+    const note = buildPathSkillsVerifyNote(['skills/nonexistent'], 'MyAgent');
+    expect(note.category).toBe(PATH_SKILLS_VERIFY_BASE_IMAGE_NOTE_CATEGORY);
+    expect(note.message).toContain('"skills/nonexistent"');
+    expect(note.message).toContain('NOT copied');
+    expect(note.message).toMatch(/base image|Dockerfile COPY/);
   });
 });

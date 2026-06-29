@@ -241,14 +241,17 @@ describe('create command', () => {
   });
 
   describe('--defaults', () => {
-    it('creates project with defaults', async () => {
-      const name = `Defaults${Date.now()}`;
+    // --defaults creates a harness project (the default), identical to passing no routing flags.
+    // The harness path returns `harnessName` and writes app/<name>/harness.json.
+    it('creates a harness project', async () => {
+      const name = `Def${Date.now().toString().slice(-6)}`;
       const result = await runCLI(['create', '--name', name, '--defaults', '--json'], testDir);
 
       expect(result.exitCode, `stderr: ${result.stderr}`).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
-      expect(await exists(join(testDir, name))).toBeTruthy();
+      expect(json.harnessName).toBe(name);
+      expect(await exists(join(json.projectPath, 'app', name, 'harness.json'))).toBeTruthy();
     });
   });
 

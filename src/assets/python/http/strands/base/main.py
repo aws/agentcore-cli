@@ -1,4 +1,5 @@
 from typing import Any
+from collections import OrderedDict
 {{#if inlineFunctionTools}}
 import json
 
@@ -66,7 +67,7 @@ from mcp_client.client import get_streamable_http_mcp_client
 from memory.session import get_memory_session_manager
 {{/if}}
 {{#unless hasFileOperations}}
-{{#if (or needsOs (some gitSkills "credentialArn"))}}
+{{#if (or needsOs browserIdentifierEnvVar codeInterpreterIdentifierEnvVar (some gitSkills "credentialArn"))}}
 import os
 {{/if}}
 {{/unless}}
@@ -152,10 +153,20 @@ tools.append(add_numbers)
 {{/unless}}
 {{/if}}
 {{#if hasBrowser}}
-tools.append(AgentCoreBrowser({{#if browserIdentifier}}identifier="{{browserIdentifier}}"{{/if}}).browser)
+{{#if browserIdentifierEnvVar}}
+_browser_id = os.getenv("{{browserIdentifierEnvVar}}")
+tools.append(AgentCoreBrowser(**({"identifier": _browser_id} if _browser_id else {})).browser)
+{{else}}
+tools.append(AgentCoreBrowser().browser)
+{{/if}}
 {{/if}}
 {{#if hasCodeInterpreter}}
-tools.append(AgentCoreCodeInterpreter({{#if codeInterpreterIdentifier}}identifier="{{codeInterpreterIdentifier}}"{{/if}}).code_interpreter)
+{{#if codeInterpreterIdentifierEnvVar}}
+_code_interpreter_id = os.getenv("{{codeInterpreterIdentifierEnvVar}}")
+tools.append(AgentCoreCodeInterpreter(**({"identifier": _code_interpreter_id} if _code_interpreter_id else {})).code_interpreter)
+{{else}}
+tools.append(AgentCoreCodeInterpreter().code_interpreter)
+{{/if}}
 {{/if}}
 {{#if hasShell}}
 @tool
@@ -424,26 +435,21 @@ def agent_factory():
 get_or_create_agent = agent_factory()
 {{/unless}}
 {{else}}
-{{#if hasConfigBundle}}
-def create_agent({{#if hasSkillsFetcher}}skill_plugins=None{{/if}}):
-    return Agent(
-        model=load_model(),
-        system_prompt=DEFAULT_SYSTEM_PROMPT,
-        tools=tools,
-        conversation_manager=_make_conversation_manager(),
-        {{#if hasSkillsFetcher}}
-        plugins=skill_plugins or None,
-        {{/if}}
-        hooks=[ConfigBundleHook()],
-    )
-{{else}}
 {{#unless hasPayment}}
-_agent = None
-
-def get_or_create_agent({{#if hasSkillsFetcher}}skill_plugins=None{{/if}}):
-    global _agent
-    if _agent is None:
-        _agent = Agent(
+# Reuses one Agent per session_id so each session keeps its own in-process
+# conversation history (best-effort; resets on cold start). The cache is bounded
+# to 128 sessions with LRU eviction (least-recently-used is dropped and its
+# history reset) so a single process serving many sessions cannot leak history
+# between them or grow without limit. For durable history, attach a session manager.
+def agent_factory():
+    cache = OrderedDict()
+    def get_or_create_agent(session_id{{#if hasSkillsFetcher}}, skill_plugins=None{{/if}}):
+        if session_id in cache:
+            cache.move_to_end(session_id)
+            return cache[session_id]
+        if len(cache) >= 128:
+            cache.popitem(last=False)
+        cache[session_id] = Agent(
             model=load_model(),
             system_prompt=DEFAULT_SYSTEM_PROMPT,
             tools=tools,
@@ -463,11 +469,15 @@ def get_or_create_agent({{#if hasSkillsFetcher}}skill_plugins=None{{/if}}):
                     {{#if timeoutSeconds}}timeout_seconds={{timeoutSeconds}},{{/if}}
                 ),
                 {{/if}}
+                {{#if hasConfigBundle}}
+                ConfigBundleHook(),
+                {{/if}}
             ],
         )
-    return _agent
+        return cache[session_id]
+    return get_or_create_agent
+get_or_create_agent = agent_factory()
 {{/unless}}
-{{/if}}
 {{/if}}
 
 
@@ -575,11 +585,8 @@ async def invoke(payload, context):
         hooks=[ConfigBundleHook()],{{/if}}
     )
 {{else}}
-{{#if hasConfigBundle}}
-    agent = create_agent({{#if hasSkillsFetcher}}_skill_plugins{{/if}})
-{{else}}
-    agent = get_or_create_agent({{#if hasSkillsFetcher}}_skill_plugins{{/if}})
-{{/if}}
+    session_id = getattr(context, 'session_id', 'default-session')
+    agent = get_or_create_agent(session_id{{#if hasSkillsFetcher}}, _skill_plugins{{/if}})
 {{/if}}
 {{/if}}
 

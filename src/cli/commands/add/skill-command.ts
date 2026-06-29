@@ -1,6 +1,5 @@
 import { findConfigRoot } from '../../../lib';
 import { getErrorMessage } from '../../errors';
-import { isGatedFeaturesEnabled } from '../../feature-flags';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { SkillSourceType, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { handleAddSkill } from './skill-action';
@@ -23,7 +22,7 @@ export function registerAddSkill(addCmd: Command): void {
     .option('--git-path <path>', 'Subdirectory within the git repo (for --git)')
     .option('--credential <name>', 'Name of an API key credential in the project (for git auth)')
     .option('--username <name>', 'Username for git auth (for --git)')
-    .addOption(isGatedFeaturesEnabled() ? awsSkillsOption : awsSkillsOption.hideHelp())
+    .addOption(awsSkillsOption)
     .option('--json', 'Output as JSON')
     .action(async cliOptions => {
       if (!findConfigRoot()) {

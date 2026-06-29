@@ -10,6 +10,7 @@ import {
 } from '../constants';
 import type { DirectoryPath, FilePath } from '../types';
 import { AuthorizerConfigSchema, RuntimeAuthorizerTypeSchema } from './auth';
+import { ConnectionSchema } from './connections';
 import { TagsSchema } from './primitives/tags';
 import { z } from 'zod';
 
@@ -333,6 +334,13 @@ export const AgentEnvSpecSchema = z
     requestHeaderAllowlist: RequestHeaderAllowlistSchema.optional(),
     /** ARN of an existing IAM execution role to use instead of creating a new one. */
     executionRoleArn: z.string().optional(),
+    /**
+     * Additional IAM policies attached to the runtime execution role. Each entry is either a
+     * managed-policy ARN (attached directly) or a `.json` policy-document file path relative to
+     * `codeLocation` (attached as an inline policy). For opaque AWS access (e.g. S3) the CLI does
+     * not model as a typed connection.
+     */
+    additionalPolicies: z.array(z.string().min(1)).optional(),
     /** Authorizer type for inbound requests. Defaults to AWS_IAM. */
     authorizerType: RuntimeAuthorizerTypeSchema.optional(),
     /** Authorizer configuration. Required when authorizerType is CUSTOM_JWT. */
@@ -344,6 +352,9 @@ export const AgentEnvSpecSchema = z
     filesystemConfigurations: z.array(FilesystemConfigurationSchema).optional(),
     /** Named endpoints (version aliases) for this runtime. Keys are endpoint names. */
     endpoints: z.record(RuntimeEndpointNameSchema, RuntimeEndpointSchema).optional(),
+    /** Connections to external AgentCore resources (memory/gateway/runtime). The construct
+     *  generates IAM + discovery env vars onto this runtime's execution role. */
+    connections: z.array(ConnectionSchema).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.networkMode === 'VPC' && !data.networkConfig) {

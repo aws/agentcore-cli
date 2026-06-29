@@ -8,7 +8,6 @@ import type {
   ListConfigurationBundleVersionsFilter,
 } from '../../aws/agentcore-config-bundles';
 import { getErrorMessage } from '../../errors';
-import { isGatedFeaturesEnabled } from '../../feature-flags';
 import { deepDiff } from '../../operations/config-bundle/diff-versions';
 import { resolveBundleByName } from '../../operations/config-bundle/resolve-bundle';
 import { requireProject } from '../../tui/guards';
@@ -259,8 +258,7 @@ export const registerConfigBundle = (program: Command) => {
       }
     });
 
-  // --- create-branch: gated until upstream CFN read-back bug is fixed for non-default branches ---
-  if (!isGatedFeaturesEnabled()) return cmd;
+  // --- create-branch ---
   cmd
     .command('create-branch')
     .description('Create a new branch on an existing configuration bundle')

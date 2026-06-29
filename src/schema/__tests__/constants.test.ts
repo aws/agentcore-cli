@@ -86,8 +86,8 @@ describe('NetworkModeSchema', () => {
 });
 
 describe('getSupportedModelProviders', () => {
-  it('returns all 4 providers for Strands', () => {
-    expect(getSupportedModelProviders('Strands')).toEqual(['Bedrock', 'Anthropic', 'OpenAI', 'Gemini']);
+  it('returns all providers (incl. LiteLLM) for Strands', () => {
+    expect(getSupportedModelProviders('Strands')).toEqual(['Bedrock', 'Anthropic', 'OpenAI', 'Gemini', 'LiteLLM']);
   });
 
   it('returns only Gemini for GoogleADK', () => {

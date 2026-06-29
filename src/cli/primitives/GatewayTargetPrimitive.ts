@@ -29,7 +29,7 @@ import {
 import type { AddGatewayTargetOptions as CLIAddGatewayTargetOptions } from '../commands/add/types';
 import { validateAddGatewayTargetOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
-import { isGatedFeaturesEnabled } from '../feature-flags';
+import { isGatedFeaturesEnabled } from '../feature-flags.js';
 import { upsertAgenticRetrieveTarget } from '../operations/knowledge-base/agentic-retrieve-upsert';
 import type { RemovableGatewayTarget } from '../operations/remove/remove-gateway-target';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
@@ -62,14 +62,6 @@ import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 
 const MCP_DEFS_FILE = 'mcp-defs.json';
-
-/**
- * Hide a passthrough-only CLI option from --help unless gated features are enabled.
- * The option is still parsed if passed; the runtime guard in validate.ts rejects it.
- */
-function gatePassthroughOption(option: Option): Option {
-  return isGatedFeaturesEnabled() ? option : option.hideHelp();
-}
 
 /**
  * Options for adding a gateway target (CLI-level).
@@ -283,9 +275,12 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
   }
 
   registerCommands(addCmd: Command, removeCmd: Command): void {
+    // Hide gated options from `--help` unless ENABLE_GATED_FEATURES is set.
+    const gate = <T extends Option>(option: T): T => (isGatedFeaturesEnabled() ? option : option.hideHelp());
+
     const typeDescription = isGatedFeaturesEnabled()
       ? 'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn, http-runtime, connector, passthrough, web-search [non-interactive]'
-      : 'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn, http-runtime, connector, web-search [non-interactive]';
+      : 'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn, http-runtime, connector, passthrough [non-interactive]';
 
     // Reject repeated use of --exclude-domains. Domains must be passed as a
     // single comma-separated value.
@@ -315,10 +310,13 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
         (val: string, acc: string[]) => [...acc, val],
         [] as string[]
       )
-      .option(
-        '--exclude-domains <list>',
-        'Comma-separated domains to exclude from results (for --type web-search only) [non-interactive]',
-        excludeDomainsCoercer
+      .addOption(
+        gate(
+          new Option(
+            '--exclude-domains <list>',
+            'Comma-separated domains to exclude from results (for --type web-search only) [non-interactive]'
+          ).argParser(excludeDomainsCoercer)
+        )
       )
       .option('--endpoint <endpoint>', 'Server endpoint URL (for mcp-server type) [non-interactive]')
       .option('--language <lang>', 'Language of target code: Python, TypeScript, Other [non-interactive]')
@@ -357,47 +355,35 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
       )
       .option('--runtime <name>', 'Runtime from your project (for http-runtime type) [non-interactive]')
       .option('--runtime-endpoint <name>', 'Runtime endpoint / version alias (for http-runtime type) [non-interactive]')
-      // Passthrough-only flags are gated behind ENABLE_GATED_FEATURES — hidden from help when off.
+      // Passthrough-only flags.
       .addOption(
-        gatePassthroughOption(
-          new Option('--passthrough-endpoint <url>', 'HTTPS endpoint URL for passthrough targets [non-interactive]')
+        new Option('--passthrough-endpoint <url>', 'HTTPS endpoint URL for passthrough targets [non-interactive]')
+      )
+      .addOption(
+        new Option(
+          '--passthrough-protocol <type>',
+          'Passthrough protocol: MCP | A2A | INFERENCE | CUSTOM (default: CUSTOM) [non-interactive]'
         )
       )
       .addOption(
-        gatePassthroughOption(
-          new Option(
-            '--passthrough-protocol <type>',
-            'Passthrough protocol: MCP | A2A | INFERENCE | CUSTOM (default: CUSTOM) [non-interactive]'
-          )
+        new Option(
+          '--stickiness-identifier <expr>',
+          'Session routing expression for passthrough targets [non-interactive]'
         )
       )
       .addOption(
-        gatePassthroughOption(
-          new Option(
-            '--stickiness-identifier <expr>',
-            'Session routing expression for passthrough targets [non-interactive]'
-          )
+        new Option('--stickiness-timeout <seconds>', 'Sticky session timeout in seconds (1-86400) [non-interactive]')
+      )
+      .addOption(
+        new Option(
+          '--signing-service <name>',
+          'SigV4 signing service name for passthrough GATEWAY_IAM_ROLE auth [non-interactive]'
         )
       )
       .addOption(
-        gatePassthroughOption(
-          new Option('--stickiness-timeout <seconds>', 'Sticky session timeout in seconds (1-86400) [non-interactive]')
-        )
-      )
-      .addOption(
-        gatePassthroughOption(
-          new Option(
-            '--signing-service <name>',
-            'SigV4 signing service name for passthrough GATEWAY_IAM_ROLE auth [non-interactive]'
-          )
-        )
-      )
-      .addOption(
-        gatePassthroughOption(
-          new Option(
-            '--signing-region <region>',
-            'SigV4 signing region for passthrough (defaults to project region) [non-interactive]'
-          )
+        new Option(
+          '--signing-region <region>',
+          'SigV4 signing region for passthrough (defaults to project region) [non-interactive]'
         )
       )
       .option('--json', 'Output as JSON [non-interactive]')
@@ -430,17 +416,13 @@ Target types and their options:
   connector — Wire a managed AWS connector (Bedrock KB, agentic-retrieve)
     --connector <id>               bedrock-knowledge-bases or bedrock-agentic-retrieve
     --knowledge-base-id <id>       Project KB name or 10-char external KB id (repeatable for agentic-retrieve)
-${
-  isGatedFeaturesEnabled()
-    ? `
+
   passthrough — Route to an external HTTPS endpoint
     --passthrough-endpoint <url>   HTTPS endpoint URL
     --stickiness-identifier <expr> Session routing expression (optional)
     --stickiness-timeout <seconds> Sticky session timeout in seconds (optional)
-`
-    : ''
-}
-  Auth (mcp-server, open-api-schema, smithy-model, lambda-function-arn${isGatedFeaturesEnabled() ? ', passthrough' : ''}):
+
+  Auth (mcp-server, open-api-schema, smithy-model, lambda-function-arn, passthrough):
     --outbound-auth <type>         oauth, api-key, or none
     --credential-name <name>       Existing credential name
 `
@@ -613,6 +595,9 @@ ${
 
           // Handle Amazon Web Search targets (managed-service backed via gateway IAM role)
           if (cliOptions.type === 'webSearch') {
+            if (!isGatedFeaturesEnabled()) {
+              throw new ValidationError('Web search target type is not yet available.');
+            }
             const excludeDomains =
               typeof cliOptions.excludeDomains === 'string'
                 ? cliOptions.excludeDomains
@@ -902,13 +887,17 @@ ${
     // Top-level shortcuts: agentcore add web-search / remove web-search
     // ──────────────────────────────────────────────────────────────────
     addCmd
-      .command('web-search')
+      .command('web-search', { hidden: !isGatedFeaturesEnabled() })
       .description('Wire the Amazon Web Search managed connector to a gateway as a target.')
       .option('--name <name>', 'Target name (default: web-search) [non-interactive]')
       .option('--gateway <name>', 'Gateway to attach this target to [non-interactive]')
       .option('--exclude-domains <list>', 'Comma-separated domains to exclude from results [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(async (cliOptions: { name?: string; gateway?: string; excludeDomains?: string; json?: boolean }) => {
+        if (!isGatedFeaturesEnabled()) {
+          console.error('Error: Web search target type is not yet available.');
+          process.exit(1);
+        }
         if (!findConfigRoot()) {
           console.error('No agentcore project found. Run `agentcore create` first.');
           process.exit(1);
@@ -996,13 +985,17 @@ ${
       });
 
     removeCmd
-      .command('web-search')
+      .command('web-search', { hidden: !isGatedFeaturesEnabled() })
       .description('Remove an Amazon Web Search gateway target from the project')
       .option('--name <name>', 'Name of the web-search target to remove [non-interactive]')
       .option('-y, --yes', 'Skip confirmation prompt [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(async (cliOptions: { name?: string; yes?: boolean; json?: boolean }) => {
         try {
+          if (!isGatedFeaturesEnabled()) {
+            console.error('Web search target type is not yet available.');
+            process.exit(1);
+          }
           if (!findConfigRoot()) {
             console.error('No agentcore project found. Run `agentcore create` first.');
             process.exit(1);

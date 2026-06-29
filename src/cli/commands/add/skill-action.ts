@@ -1,6 +1,5 @@
 import { ConfigIO } from '../../../lib';
 import type { HarnessSpec } from '../../../schema';
-import { isGatedFeaturesEnabled } from '@/cli/feature-flags';
 import { getSkillKey, validateGitSkillCredential } from '@/cli/operations/harness/skill-utils';
 import { ValidationError } from '@/lib/errors/types';
 import type { Result } from '@/lib/result';
@@ -34,23 +33,12 @@ export async function handleAddSkill(
     };
   }
 
-  if (options.awsSkills && !isGatedFeaturesEnabled()) {
-    return {
-      success: false,
-      error: new ValidationError('AWS skills are not yet available.'),
-    };
-  }
-
-  const sources = [options.path, options.s3, options.git, ...(isGatedFeaturesEnabled() ? [options.awsSkills] : [])];
+  const sources = [options.path, options.s3, options.git, options.awsSkills];
   const sourceCount = sources.filter(Boolean).length;
   if (sourceCount !== 1) {
     return {
       success: false,
-      error: new ValidationError(
-        isGatedFeaturesEnabled()
-          ? 'Exactly one of --path, --s3, --git, or --aws-skills is required'
-          : 'Exactly one of --path, --s3, or --git is required'
-      ),
+      error: new ValidationError('Exactly one of --path, --s3, --git, or --aws-skills is required'),
     };
   }
 

@@ -154,6 +154,13 @@
           "executionRoleArn": {
             "type": "string"
           },
+          "additionalPolicies": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
           "authorizerType": {
             "type": "string",
             "enum": ["AWS_IAM", "CUSTOM_JWT"]
@@ -534,6 +541,183 @@
                 }
               },
               "required": ["version"],
+              "additionalProperties": false
+            }
+          },
+          "connections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+                },
+                "to": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "memory"
+                        },
+                        "arn": {
+                          "type": "string",
+                          "pattern": "^arn:[^:]+:bedrock-agentcore:[a-z0-9-]+:\\d{12}:memory\\/.+$"
+                        },
+                        "namespaces": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "required": ["type", "arn"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "gateway"
+                        },
+                        "arn": {
+                          "type": "string",
+                          "pattern": "^arn:[^:]+:bedrock-agentcore:[a-z0-9-]+:\\d{12}:gateway\\/.+$"
+                        },
+                        "outboundAuth": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "awsIam": {
+                                  "type": "object",
+                                  "properties": {},
+                                  "additionalProperties": false
+                                }
+                              },
+                              "required": ["awsIam"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "none": {
+                                  "type": "object",
+                                  "properties": {},
+                                  "additionalProperties": false
+                                }
+                              },
+                              "required": ["none"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "oauth": {
+                                  "type": "object",
+                                  "properties": {
+                                    "providerArn": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "scopes": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      }
+                                    },
+                                    "grantType": {
+                                      "type": "string",
+                                      "enum": ["CLIENT_CREDENTIALS", "AUTHORIZATION_CODE", "TOKEN_EXCHANGE"]
+                                    },
+                                    "customParameters": {
+                                      "type": "object",
+                                      "propertyNames": {
+                                        "type": "string"
+                                      },
+                                      "additionalProperties": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  "required": ["providerArn", "scopes"],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "required": ["oauth"],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["type", "arn"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "runtime"
+                        },
+                        "arn": {
+                          "type": "string",
+                          "pattern": "^arn:[^:]+:bedrock-agentcore:[a-z0-9-]+:\\d{12}:runtime\\/.+$"
+                        },
+                        "exec": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": ["type", "arn"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "browser"
+                        },
+                        "arn": {
+                          "type": "string",
+                          "pattern": "^arn:[^:]+:bedrock-agentcore:[a-z0-9-]+:(\\d{12}|aws):browser(-custom)?\\/.+$"
+                        }
+                      },
+                      "required": ["type"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "codeInterpreter"
+                        },
+                        "arn": {
+                          "type": "string",
+                          "pattern": "^arn:[^:]+:bedrock-agentcore:[a-z0-9-]+:(\\d{12}|aws):code-interpreter(-custom)?\\/.+$"
+                        }
+                      },
+                      "required": ["type"],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "access": {
+                  "type": "string",
+                  "enum": ["read", "readwrite"]
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 200
+                }
+              },
+              "required": ["to"],
               "additionalProperties": false
             }
           }

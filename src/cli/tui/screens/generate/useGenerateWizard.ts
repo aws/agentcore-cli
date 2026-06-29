@@ -54,7 +54,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
       if (config.modelProvider === 'Bedrock') {
         filtered = filtered.filter(s => s !== 'apiKey');
       }
-      if (sdkSelected && config.sdk === 'Strands' && config.language !== 'TypeScript') {
+      if (sdkSelected && config.sdk === 'Strands') {
         const advancedIndex = filtered.indexOf('advanced');
         filtered = [...filtered.slice(0, advancedIndex), 'memory', ...filtered.slice(advancedIndex)];
       }
@@ -136,7 +136,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
   }, []);
 
   const setLanguage = useCallback((language: GenerateConfig['language']) => {
-    setConfig(c => ({ ...c, language, memory: language === 'TypeScript' ? 'none' : c.memory }));
+    setConfig(c => ({ ...c, language }));
     setStep('buildType');
   }, []);
 
@@ -174,34 +174,34 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
       // Non-Bedrock providers need API key step
       if (modelProvider !== 'Bedrock') {
         setStep('apiKey');
-      } else if (config.sdk === 'Strands' && config.language !== 'TypeScript') {
+      } else if (config.sdk === 'Strands') {
         setStep('memory');
       } else {
         setStep('advanced');
       }
     },
-    [config.sdk, config.language]
+    [config.sdk]
   );
 
   const setApiKey = useCallback(
     (apiKey: string | undefined) => {
       setConfig(c => ({ ...c, apiKey }));
-      if (config.sdk === 'Strands' && config.language !== 'TypeScript') {
+      if (config.sdk === 'Strands') {
         setStep('memory');
       } else {
         setStep('advanced');
       }
     },
-    [config.sdk, config.language]
+    [config.sdk]
   );
 
   const skipApiKey = useCallback(() => {
-    if (config.sdk === 'Strands' && config.language !== 'TypeScript') {
+    if (config.sdk === 'Strands') {
       setStep('memory');
     } else {
       setStep('advanced');
     }
-  }, [config.sdk, config.language]);
+  }, [config.sdk]);
 
   const setMemory = useCallback((memory: MemoryOption) => {
     setConfig(c => ({ ...c, memory }));

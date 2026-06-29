@@ -3,17 +3,15 @@ import {
   ALLOWED_TOOLS_NOTE_CATEGORY,
   AWS_SKILLS_NOTE_CATEGORY,
   BROWSER_CODZIP_NOTE_CATEGORY,
-  BROWSER_IAM_POLICY_NOTE_CATEGORY,
-  CODE_INTERPRETER_IAM_POLICY_NOTE_CATEGORY,
   CONTAINER_URI_ECR_PULL_NOTE_CATEGORY,
   CONTAINER_URI_NOTE_CATEGORY,
-  EXTERNAL_GATEWAY_NOTE_CATEGORY,
-  GATEWAY_IAM_POLICY_NOTE_CATEGORY,
+  GATEWAY_GRANT_TYPE_NOTE_CATEGORY,
   GIT_SKILLS_CONTAINER_NOTE_CATEGORY,
+  LITELLM_NO_API_KEY_NOTE_CATEGORY,
+  MALFORMED_S3_SKILL_NOTE_CATEGORY,
+  MALFORMED_TOOL_ARN_NOTE_CATEGORY,
   MCP_HEADER_CREDS_NOTE_CATEGORY,
-  MEMORY_ARN_NOTE_CATEGORY,
   PATH_SKILLS_NOTE_CATEGORY,
-  S3_SKILLS_IAM_POLICY_NOTE_CATEGORY,
 } from '../constants';
 import { mapHarnessToExportConfig } from '../harness-mapper';
 import type { ResolvedHarnessContext } from '../types';
@@ -48,6 +46,9 @@ function baseContext(
     projectRoot: '/project',
     exportNotes: [],
     region: 'us-east-1',
+    localEnvVars: {},
+    generatedPolicyFiles: {},
+    additionalPolicies: [],
     ...contextOverrides,
   };
 }
@@ -125,11 +126,22 @@ describe('browser tool handling', () => {
     expect(noteCategories(ctx)).toContain(BROWSER_CODZIP_NOTE_CATEGORY);
   });
 
-  it('sets hasBrowser=true and emits IAM note for Container build', () => {
+  it('does not populate browserIdentifierEnvVar on a CodeZip build even with a custom ARN', () => {
+    // The identifier env var and hasBrowser come from one resolution gated on Container; a CodeZip
+    // build must not advertise an env var that no connection injects.
+    const arn = 'arn:aws:bedrock-agentcore:us-east-1:123456789012:browser-custom/my_browser_id';
+    const ctx = baseContext({ tools: [{ ...browserTool, config: { agentCoreBrowser: { browserArn: arn } } }] });
+    const { renderConfig, agentEnvSpec } = mapHarnessToExportConfig(ctx, 'CodeZip');
+    expect(renderConfig.hasBrowser).toBe(false);
+    expect(renderConfig.browserIdentifierEnvVar).toBeUndefined();
+    expect(agentEnvSpec.connections?.some(c => c.to.type === 'browser')).toBeFalsy();
+  });
+
+  it('sets hasBrowser=true and adds a browser connection (not an IAM note) for Container build', () => {
     const ctx = baseContext({ tools: [browserTool] });
-    const { renderConfig } = mapHarnessToExportConfig(ctx, 'Container');
+    const { renderConfig, agentEnvSpec } = mapHarnessToExportConfig(ctx, 'Container');
     expect(renderConfig.hasBrowser).toBe(true);
-    expect(noteCategories(ctx)).toContain(BROWSER_IAM_POLICY_NOTE_CATEGORY);
+    expect(agentEnvSpec.connections?.some(c => c.to.type === 'browser')).toBe(true);
   });
 
   it('CodeZip note re-export hint uses --name flag', () => {
@@ -140,27 +152,46 @@ describe('browser tool handling', () => {
     expect(note.message).not.toContain('--harness');
   });
 
-  it('IAM note uses default browser ARN when no custom browserArn', () => {
+  it('adds a default-browser connection (no env var) when no custom browserArn', () => {
     const ctx = baseContext({ tools: [browserTool] });
-    mapHarnessToExportConfig(ctx, 'Container');
-    const note = ctx.exportNotes.find(n => n.category === BROWSER_IAM_POLICY_NOTE_CATEGORY)!;
-    expect(note.message).toContain(':aws:browser/*');
+    const { renderConfig, agentEnvSpec } = mapHarnessToExportConfig(ctx, 'Container');
+    expect(renderConfig.browserIdentifierEnvVar).toBeUndefined();
+    const conn = agentEnvSpec.connections?.find(c => c.to.type === 'browser');
+    expect(conn?.to).toEqual({ type: 'browser' });
   });
 
-  it('IAM note uses custom browserArn when provided', () => {
+  it('adds a browser connection with the custom ARN + env var when provided', () => {
+    const arn = 'arn:aws:bedrock-agentcore:us-east-1:123456789012:browser-custom/my_browser_id';
     const ctx = baseContext({
-      tools: [
-        {
-          ...browserTool,
-          config: {
-            agentCoreBrowser: { browserArn: 'arn:aws:bedrock-agentcore:us-east-1:123:browser-custom/my_browser_id' },
-          },
-        },
-      ],
+      tools: [{ ...browserTool, config: { agentCoreBrowser: { browserArn: arn } } }],
+    });
+    const { renderConfig, agentEnvSpec } = mapHarnessToExportConfig(ctx, 'Container');
+    const conn = agentEnvSpec.connections?.find(c => c.to.type === 'browser');
+    expect(conn?.to).toMatchObject({ type: 'browser', arn });
+    expect(renderConfig.browserIdentifierEnvVar).toBeTruthy();
+  });
+
+  it('emits a malformed-ARN note and falls back to the default when browserArn is invalid', () => {
+    const badArn = 'arn:aws:bedrock-agentcore:us-east-1:123456789012:brower/typo'; // misspelled segment
+    const ctx = baseContext({
+      tools: [{ ...browserTool, config: { agentCoreBrowser: { browserArn: badArn } } }],
+    });
+    const { agentEnvSpec } = mapHarnessToExportConfig(ctx, 'Container');
+    expect(noteCategories(ctx)).toContain(MALFORMED_TOOL_ARN_NOTE_CATEGORY);
+    const note = ctx.exportNotes.find(n => n.category === MALFORMED_TOOL_ARN_NOTE_CATEGORY);
+    expect(note?.message).toContain(badArn);
+    // Falls back to the AWS-managed default (no arn on the connection).
+    const conn = agentEnvSpec.connections?.find(c => c.to.type === 'browser');
+    expect(conn?.to).toEqual({ type: 'browser' });
+  });
+
+  it('emits no malformed-ARN note when browserArn is well-formed', () => {
+    const arn = 'arn:aws:bedrock-agentcore:us-east-1:123456789012:browser-custom/my_browser_id';
+    const ctx = baseContext({
+      tools: [{ ...browserTool, config: { agentCoreBrowser: { browserArn: arn } } }],
     });
     mapHarnessToExportConfig(ctx, 'Container');
-    const note = ctx.exportNotes.find(n => n.category === BROWSER_IAM_POLICY_NOTE_CATEGORY)!;
-    expect(note.message).toContain('arn:aws:bedrock-agentcore:us-east-1:123:browser-custom/my_browser_id');
+    expect(noteCategories(ctx)).not.toContain(MALFORMED_TOOL_ARN_NOTE_CATEGORY);
   });
 });
 
@@ -177,29 +208,34 @@ describe('code interpreter tool handling', () => {
     expect(renderConfig.hasCodeInterpreter).toBe(true);
   });
 
-  it('emits IAM note with default ARN', () => {
+  it('adds a default code-interpreter connection (no env var) when no custom ARN', () => {
     const ctx = baseContext({ tools: [ciTool] });
-    mapHarnessToExportConfig(ctx, 'CodeZip');
-    const note = ctx.exportNotes.find(n => n.category === CODE_INTERPRETER_IAM_POLICY_NOTE_CATEGORY)!;
-    expect(note.message).toContain(':aws:code-interpreter/*');
+    const { renderConfig, agentEnvSpec } = mapHarnessToExportConfig(ctx, 'CodeZip');
+    expect(renderConfig.codeInterpreterIdentifierEnvVar).toBeUndefined();
+    const conn = agentEnvSpec.connections?.find(c => c.to.type === 'codeInterpreter');
+    expect(conn?.to).toEqual({ type: 'codeInterpreter' });
   });
 
-  it('emits IAM note with custom codeInterpreterArn when provided', () => {
+  it('adds a code-interpreter connection with the custom ARN + env var when provided', () => {
+    const arn = 'arn:aws:bedrock-agentcore:us-east-1:123456789012:code-interpreter-custom/my_ci_id';
     const ctx = baseContext({
-      tools: [
-        {
-          ...ciTool,
-          config: {
-            agentCoreCodeInterpreter: {
-              codeInterpreterArn: 'arn:aws:bedrock-agentcore:us-east-1:123:code-interpreter-custom/my_ci_id',
-            },
-          },
-        },
-      ],
+      tools: [{ ...ciTool, config: { agentCoreCodeInterpreter: { codeInterpreterArn: arn } } }],
     });
-    mapHarnessToExportConfig(ctx, 'CodeZip');
-    const note = ctx.exportNotes.find(n => n.category === CODE_INTERPRETER_IAM_POLICY_NOTE_CATEGORY)!;
-    expect(note.message).toContain('arn:aws:bedrock-agentcore:us-east-1:123:code-interpreter-custom/my_ci_id');
+    const { renderConfig, agentEnvSpec } = mapHarnessToExportConfig(ctx, 'CodeZip');
+    const conn = agentEnvSpec.connections?.find(c => c.to.type === 'codeInterpreter');
+    expect(conn?.to).toMatchObject({ type: 'codeInterpreter', arn });
+    expect(renderConfig.codeInterpreterIdentifierEnvVar).toBeTruthy();
+  });
+
+  it('emits a malformed-ARN note and falls back to the default when codeInterpreterArn is invalid', () => {
+    const badArn = 'not-an-arn';
+    const ctx = baseContext({
+      tools: [{ ...ciTool, config: { agentCoreCodeInterpreter: { codeInterpreterArn: badArn } } }],
+    });
+    const { agentEnvSpec } = mapHarnessToExportConfig(ctx, 'CodeZip');
+    expect(noteCategories(ctx)).toContain(MALFORMED_TOOL_ARN_NOTE_CATEGORY);
+    const conn = agentEnvSpec.connections?.find(c => c.to.type === 'codeInterpreter');
+    expect(conn?.to).toEqual({ type: 'codeInterpreter' });
   });
 });
 
@@ -215,22 +251,29 @@ describe('custom tool identifier extraction', () => {
           type: 'agentcore_browser' as const,
           name: 'browser',
           config: {
-            agentCoreBrowser: { browserArn: 'arn:aws:bedrock-agentcore:us-east-1:123:browser-custom/browser_abc123' },
+            agentCoreBrowser: {
+              browserArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:browser-custom/browser_abc123',
+            },
           },
         },
       ],
     });
-    const { renderConfig } = mapHarnessToExportConfig(ctx, 'Container');
-    expect(renderConfig.browserIdentifier).toBe('browser_abc123');
+    const { renderConfig, agentEnvSpec } = mapHarnessToExportConfig(ctx, 'Container');
+    // The identifier is read at runtime from the connection-injected env var, not baked in.
+    expect(renderConfig.browserIdentifierEnvVar).toBe('BROWSER_BROWSER_BROWSER_ABC123_ID');
+    // A browser connection is added so the CDK grants the browser IAM.
+    expect(agentEnvSpec.connections?.some(c => c.to.type === 'browser')).toBe(true);
   });
 
-  it('sets browserIdentifier=undefined when no custom browserArn', () => {
+  it('uses the AWS-managed default browser (no env var) when no custom browserArn', () => {
     const ctx = baseContext({ tools: [{ type: 'agentcore_browser' as const, name: 'browser' }] });
-    const { renderConfig } = mapHarnessToExportConfig(ctx, 'Container');
-    expect(renderConfig.browserIdentifier).toBeUndefined();
+    const { renderConfig, agentEnvSpec } = mapHarnessToExportConfig(ctx, 'Container');
+    expect(renderConfig.browserIdentifierEnvVar).toBeUndefined();
+    // Still adds a connection (for the default browser/* IAM grant).
+    expect(agentEnvSpec.connections?.some(c => c.to.type === 'browser')).toBe(true);
   });
 
-  it('extracts codeInterpreterIdentifier from codeInterpreterArn', () => {
+  it('wires a code-interpreter connection + env var from codeInterpreterArn', () => {
     const ctx = baseContext({
       tools: [
         {
@@ -238,20 +281,22 @@ describe('custom tool identifier extraction', () => {
           name: 'ci',
           config: {
             agentCoreCodeInterpreter: {
-              codeInterpreterArn: 'arn:aws:bedrock-agentcore:us-east-1:123:code-interpreter-custom/ci_xyz789',
+              codeInterpreterArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:code-interpreter-custom/ci_xyz789',
             },
           },
         },
       ],
     });
-    const { renderConfig } = mapHarnessToExportConfig(ctx, 'CodeZip');
-    expect(renderConfig.codeInterpreterIdentifier).toBe('ci_xyz789');
+    const { renderConfig, agentEnvSpec } = mapHarnessToExportConfig(ctx, 'CodeZip');
+    expect(renderConfig.codeInterpreterIdentifierEnvVar).toBe('CODE_INTERPRETER_CODEINTERPRETER_CI_XYZ789_ID');
+    expect(agentEnvSpec.connections?.some(c => c.to.type === 'codeInterpreter')).toBe(true);
   });
 
-  it('sets codeInterpreterIdentifier=undefined when no custom codeInterpreterArn', () => {
+  it('uses the AWS-managed default code interpreter (no env var) when no custom codeInterpreterArn', () => {
     const ctx = baseContext({ tools: [{ type: 'agentcore_code_interpreter' as const, name: 'ci' }] });
-    const { renderConfig } = mapHarnessToExportConfig(ctx, 'CodeZip');
-    expect(renderConfig.codeInterpreterIdentifier).toBeUndefined();
+    const { renderConfig, agentEnvSpec } = mapHarnessToExportConfig(ctx, 'CodeZip');
+    expect(renderConfig.codeInterpreterIdentifierEnvVar).toBeUndefined();
+    expect(agentEnvSpec.connections?.some(c => c.to.type === 'codeInterpreter')).toBe(true);
   });
 });
 
@@ -302,16 +347,16 @@ describe('allowedTools filtering', () => {
     expect(noteCategories(ctx)).not.toContain(ALLOWED_TOOLS_NOTE_CATEGORY);
   });
 
-  it('does not emit browser IAM note when browser excluded by allowedTools on Container build', () => {
+  it('adds no browser connection when browser is excluded by allowedTools on Container build', () => {
     const ctx = baseContext({ tools: [browserTool, ciTool], allowedTools: ['code-interpreter'] });
-    mapHarnessToExportConfig(ctx, 'Container');
-    expect(noteCategories(ctx)).not.toContain(BROWSER_IAM_POLICY_NOTE_CATEGORY);
+    const { agentEnvSpec } = mapHarnessToExportConfig(ctx, 'Container');
+    expect(agentEnvSpec.connections?.some(c => c.to.type === 'browser')).toBeFalsy();
   });
 
-  it('does not emit code interpreter IAM note when CI excluded by allowedTools', () => {
+  it('adds no code-interpreter connection when CI is excluded by allowedTools', () => {
     const ctx = baseContext({ tools: [browserTool, ciTool], allowedTools: ['browser'] });
-    mapHarnessToExportConfig(ctx, 'Container');
-    expect(noteCategories(ctx)).not.toContain(CODE_INTERPRETER_IAM_POLICY_NOTE_CATEGORY);
+    const { agentEnvSpec } = mapHarnessToExportConfig(ctx, 'Container');
+    expect(agentEnvSpec.connections?.some(c => c.to.type === 'codeInterpreter')).toBeFalsy();
   });
 });
 
@@ -440,58 +485,93 @@ describe('skills notes', () => {
     expect(noteCategories(ctx)).not.toContain(GIT_SKILLS_CONTAINER_NOTE_CATEGORY);
   });
 
-  it('emits s3 skills IAM note with GetObject + ListBucket ARNs for CodeZip', () => {
+  /** The single S3-skills statement set from the generated policy file. */
+  function s3PolicyStatements(ctx: ReturnType<typeof baseContext>): { Action: string; Resource: string[] }[] {
+    const doc = ctx.generatedPolicyFiles['s3-skills-policy.json'] as
+      | { Statement: { Action: string; Resource: string[] }[] }
+      | undefined;
+    return doc?.Statement ?? [];
+  }
+
+  it('generates an s3-skills policy file + additionalPolicies entry (no manual IAM note) for CodeZip', () => {
     const ctx = baseContext({ skills: [{ s3Uri: 's3://my-bucket/skills/weather/' }] }, { targetAgentName: 'MyAgent' });
-    mapHarnessToExportConfig(ctx, 'CodeZip');
-    expect(noteCategories(ctx)).toContain(S3_SKILLS_IAM_POLICY_NOTE_CATEGORY);
-    const note = ctx.exportNotes.find(n => n.category === S3_SKILLS_IAM_POLICY_NOTE_CATEGORY);
-    // Object-level read scoped to the prefix
-    expect(note?.message).toContain("actions: ['s3:GetObject']");
-    expect(note?.message).toContain("'arn:aws:s3:::my-bucket/skills/weather/*'");
-    // List scoped to the bucket
-    expect(note?.message).toContain("actions: ['s3:ListBucket']");
-    expect(note?.message).toContain("'arn:aws:s3:::my-bucket'");
-    // Snippet targets the renamed agent
-    expect(note?.message).toContain("this.application.environments.get('MyAgent')");
+    const { agentEnvSpec } = mapHarnessToExportConfig(ctx, 'CodeZip');
+
+    // No manual IAM note; instead a generated policy file referenced from additionalPolicies.
+    expect(ctx.additionalPolicies).toContain('s3-skills-policy.json');
+    expect(agentEnvSpec.additionalPolicies).toContain('s3-skills-policy.json');
+
+    const stmts = s3PolicyStatements(ctx);
+    const get = stmts.find(s => s.Action === 's3:GetObject')!;
+    const list = stmts.find(s => s.Action === 's3:ListBucket')!;
+    expect(get.Resource).toContain('arn:aws:s3:::my-bucket/skills/weather/*');
+    expect(list.Resource).toContain('arn:aws:s3:::my-bucket');
   });
 
-  it('emits s3 skills IAM note for Container builds too (independent of build type)', () => {
+  it('generates the s3-skills policy for Container builds too (independent of build type)', () => {
     const ctx = baseContext({ skills: [{ s3Uri: 's3://my-bucket/skills/weather/' }] });
     mapHarnessToExportConfig(ctx, 'Container');
-    expect(noteCategories(ctx)).toContain(S3_SKILLS_IAM_POLICY_NOTE_CATEGORY);
+    expect(ctx.additionalPolicies).toContain('s3-skills-policy.json');
   });
 
   it('uses bucket-root object ARN when the s3 URI has no prefix', () => {
     const ctx = baseContext({ skills: [{ s3Uri: 's3://my-bucket' }] });
     mapHarnessToExportConfig(ctx, 'CodeZip');
-    const note = ctx.exportNotes.find(n => n.category === S3_SKILLS_IAM_POLICY_NOTE_CATEGORY);
-    expect(note?.message).toContain("'arn:aws:s3:::my-bucket/*'");
-    expect(note?.message).toContain("'arn:aws:s3:::my-bucket'");
+    const stmts = s3PolicyStatements(ctx);
+    expect(stmts.find(s => s.Action === 's3:GetObject')!.Resource).toContain('arn:aws:s3:::my-bucket/*');
+    expect(stmts.find(s => s.Action === 's3:ListBucket')!.Resource).toContain('arn:aws:s3:::my-bucket');
   });
 
   it('deduplicates ARNs across multiple s3 skills in the same bucket', () => {
-    const ctx = baseContext({
-      skills: [{ s3Uri: 's3://shared/a/' }, { s3Uri: 's3://shared/b/' }],
-    });
+    const ctx = baseContext({ skills: [{ s3Uri: 's3://shared/a/' }, { s3Uri: 's3://shared/b/' }] });
     mapHarnessToExportConfig(ctx, 'CodeZip');
-    const note = ctx.exportNotes.find(n => n.category === S3_SKILLS_IAM_POLICY_NOTE_CATEGORY);
-    // One ListBucket resource for the shared bucket, two distinct object ARNs
-    expect(note?.message).toContain("'arn:aws:s3:::shared/a/*'");
-    expect(note?.message).toContain("'arn:aws:s3:::shared/b/*'");
-    expect(note?.message.match(/arn:aws:s3:::shared'/g)?.length).toBe(1);
+    const stmts = s3PolicyStatements(ctx);
+    expect(stmts.find(s => s.Action === 's3:GetObject')!.Resource).toEqual(
+      expect.arrayContaining(['arn:aws:s3:::shared/a/*', 'arn:aws:s3:::shared/b/*'])
+    );
+    // One ListBucket resource for the shared bucket.
+    expect(stmts.find(s => s.Action === 's3:ListBucket')!.Resource).toEqual(['arn:aws:s3:::shared']);
   });
 
   it('uses the GovCloud partition prefix for gov regions', () => {
     const ctx = baseContext({ skills: [{ s3Uri: 's3://gov-bucket/skills/' }] }, { region: 'us-gov-west-1' });
     mapHarnessToExportConfig(ctx, 'CodeZip');
-    const note = ctx.exportNotes.find(n => n.category === S3_SKILLS_IAM_POLICY_NOTE_CATEGORY);
-    expect(note?.message).toContain("'arn:aws-us-gov:s3:::gov-bucket/skills/*'");
+    expect(s3PolicyStatements(ctx).find(s => s.Action === 's3:GetObject')!.Resource).toContain(
+      'arn:aws-us-gov:s3:::gov-bucket/skills/*'
+    );
   });
 
-  it('does not emit s3 skills IAM note when there are no s3 skills', () => {
+  it('does not generate an s3-skills policy when there are no s3 skills', () => {
     const ctx = baseContext({ skills: [{ path: 'skills/local' }] });
     mapHarnessToExportConfig(ctx, 'CodeZip');
-    expect(noteCategories(ctx)).not.toContain(S3_SKILLS_IAM_POLICY_NOTE_CATEGORY);
+    expect(ctx.additionalPolicies).not.toContain('s3-skills-policy.json');
+    expect(Object.keys(ctx.generatedPolicyFiles)).toHaveLength(0);
+  });
+
+  it('emits a malformed-S3 note and generates no policy when every s3 URI is bucketless', () => {
+    // `s3://` is schema-valid (≥5 chars, s3:// prefix) but has no bucket to parse.
+    const ctx = baseContext({ skills: [{ s3Uri: 's3://' }] });
+    mapHarnessToExportConfig(ctx, 'CodeZip');
+    expect(noteCategories(ctx)).toContain(MALFORMED_S3_SKILL_NOTE_CATEGORY);
+    expect(ctx.additionalPolicies).not.toContain('s3-skills-policy.json');
+    expect(Object.keys(ctx.generatedPolicyFiles)).toHaveLength(0);
+  });
+
+  it('warns about the malformed URI but still generates a policy for the valid ones', () => {
+    const ctx = baseContext({ skills: [{ s3Uri: 's3://good-bucket/skills/' }, { s3Uri: 's3://' }] });
+    mapHarnessToExportConfig(ctx, 'CodeZip');
+    expect(noteCategories(ctx)).toContain(MALFORMED_S3_SKILL_NOTE_CATEGORY);
+    // Valid URI still produces its policy.
+    expect(ctx.additionalPolicies).toContain('s3-skills-policy.json');
+    expect(s3PolicyStatements(ctx).find(s => s.Action === 's3:GetObject')!.Resource).toContain(
+      'arn:aws:s3:::good-bucket/skills/*'
+    );
+  });
+
+  it('emits no malformed-S3 note when all s3 URIs are well-formed', () => {
+    const ctx = baseContext({ skills: [{ s3Uri: 's3://my-bucket/skills/' }] });
+    mapHarnessToExportConfig(ctx, 'CodeZip');
+    expect(noteCategories(ctx)).not.toContain(MALFORMED_S3_SKILL_NOTE_CATEGORY);
   });
 });
 
@@ -550,9 +630,57 @@ describe('skills render config mapping', () => {
 // ============================================================================
 
 describe('resolveModelProvider', () => {
-  it('rejects the lite_llm provider (unsupported by Strands export)', () => {
-    const ctx = baseContext({ model: { provider: 'lite_llm', modelId: 'some-model' } as never });
-    expect(() => mapHarnessToExportConfig(ctx, 'CodeZip')).toThrow(/lite_llm.*does not support/);
+  it('supports the lite_llm provider, threading apiBase + additionalParams into the render config', () => {
+    const ctx = baseContext({
+      model: {
+        provider: 'lite_llm',
+        modelId: 'bedrock/some-model',
+        apiBase: 'https://proxy.example/v1',
+        additionalParams: { timeout: 120 },
+      } as never,
+    });
+    const { renderConfig } = mapHarnessToExportConfig(ctx, 'CodeZip');
+    expect(renderConfig.modelProvider).toBe('LiteLLM');
+    expect(renderConfig.modelId).toBe('bedrock/some-model');
+    expect(renderConfig.litellmApiBase).toBe('https://proxy.example/v1');
+    expect(renderConfig.litellmAdditionalParams).toEqual({ timeout: 120 });
+  });
+
+  it('supports a minimal lite_llm provider (no apiBase / additionalParams)', () => {
+    const ctx = baseContext({ model: { provider: 'lite_llm', modelId: 'openai/gpt-4o' } as never });
+    const { renderConfig } = mapHarnessToExportConfig(ctx, 'CodeZip');
+    expect(renderConfig.modelProvider).toBe('LiteLLM');
+    expect(renderConfig.litellmApiBase).toBeUndefined();
+    expect(renderConfig.litellmAdditionalParams).toBeUndefined();
+  });
+
+  it('notes a keyless non-Bedrock lite_llm model (openai/...) that likely needs an API key', () => {
+    const ctx = baseContext({ model: { provider: 'lite_llm', modelId: 'openai/gpt-4o' } as never });
+    mapHarnessToExportConfig(ctx, 'CodeZip');
+    expect(noteCategories(ctx)).toContain(LITELLM_NO_API_KEY_NOTE_CATEGORY);
+    expect(ctx.exportNotes.find(n => n.category === LITELLM_NO_API_KEY_NOTE_CATEGORY)?.message).toContain(
+      'openai/gpt-4o'
+    );
+  });
+
+  it('does NOT note a keyless bedrock/... lite_llm model (authenticates via execution role)', () => {
+    const ctx = baseContext({
+      model: { provider: 'lite_llm', modelId: 'bedrock/us.anthropic.claude-sonnet-4-6' } as never,
+    });
+    mapHarnessToExportConfig(ctx, 'CodeZip');
+    expect(noteCategories(ctx)).not.toContain(LITELLM_NO_API_KEY_NOTE_CATEGORY);
+  });
+
+  it('does NOT note a non-Bedrock lite_llm model when apiKeyArn is set', () => {
+    const ctx = baseContext({
+      model: {
+        provider: 'lite_llm',
+        modelId: 'openai/gpt-4o',
+        apiKeyArn: 'arn:aws:bedrock-agentcore:us-east-1:111122223333:token-vault/default/apikeycredentialprovider/k',
+      } as never,
+    });
+    mapHarnessToExportConfig(ctx, 'CodeZip');
+    expect(noteCategories(ctx)).not.toContain(LITELLM_NO_API_KEY_NOTE_CATEGORY);
   });
 });
 
@@ -560,8 +688,8 @@ describe('resolveModelProvider', () => {
 // extractToolIdentifier edge cases
 // ============================================================================
 
-describe('extractToolIdentifier edge cases', () => {
-  it('returns undefined when ARN has no slash', () => {
+describe('browser/code-interpreter ARN edge cases', () => {
+  it('falls back to the default browser (no env var) when the ARN is malformed', () => {
     const ctx = baseContext({
       tools: [
         {
@@ -571,11 +699,13 @@ describe('extractToolIdentifier edge cases', () => {
         },
       ],
     });
-    const { renderConfig } = mapHarnessToExportConfig(ctx, 'Container');
-    expect(renderConfig.browserIdentifier).toBeUndefined();
+    const { renderConfig, agentEnvSpec } = mapHarnessToExportConfig(ctx, 'Container');
+    expect(renderConfig.browserIdentifierEnvVar).toBeUndefined();
+    // A default browser connection is still added (grants browser/*), and never fails validation.
+    expect(agentEnvSpec.connections?.some(c => c.to.type === 'browser')).toBe(true);
   });
 
-  it('returns undefined when browserArn is empty string', () => {
+  it('falls back to the default browser when browserArn is an empty string', () => {
     const ctx = baseContext({
       tools: [
         {
@@ -586,7 +716,7 @@ describe('extractToolIdentifier edge cases', () => {
       ],
     });
     const { renderConfig } = mapHarnessToExportConfig(ctx, 'Container');
-    expect(renderConfig.browserIdentifier).toBeUndefined();
+    expect(renderConfig.browserIdentifierEnvVar).toBeUndefined();
   });
 });
 
@@ -667,15 +797,28 @@ describe('resolveMemoryProviders', () => {
     expect(renderConfig.memoryProviders?.at(0)!.envVarName).toBe('MEMORY_DEPLOYEDMEM_ID');
   });
 
-  it('falls back to MEMORY_ARN env var for external memory ARN and emits note', () => {
-    const ctx = baseContext(
-      { memory: { mode: 'existing', arn: 'arn:aws:bedrock-agentcore:us-east-1:999:memory/external' } },
-      { deployedResources: null }
-    );
-    const { renderConfig } = mapHarnessToExportConfig(ctx, 'CodeZip');
+  it('models external memory as a connection (IAM generated at deploy, no manual note)', () => {
+    const arn = 'arn:aws:bedrock-agentcore:us-east-1:999:memory/external';
+    const ctx = baseContext({ memory: { mode: 'existing', arn } }, { deployedResources: null });
+    const { renderConfig, agentEnvSpec } = mapHarnessToExportConfig(ctx, 'CodeZip');
+
     expect(renderConfig.hasMemory).toBe(true);
-    expect(renderConfig.memoryProviders?.at(0)!.envVarName).toBe('MEMORY_ARN');
-    expect(noteCategories(ctx)).toContain(MEMORY_ARN_NOTE_CATEGORY);
+
+    // A memory connection is added to the exported agent.
+    const conn = agentEnvSpec.connections?.find(c => c.to.type === 'memory');
+    expect(conn).toBeDefined();
+    expect(conn!.to).toMatchObject({ type: 'memory', arn });
+    // readwrite: the agent writes events (CreateEvent) to memory, not just reads.
+    expect(conn!.access).toBe('readwrite');
+
+    // The render config env-var name lines up with the connection's id-derived token.
+    const envVarName = renderConfig.memoryProviders?.at(0)!.envVarName;
+    expect(envVarName).toBe(`MEMORY_${conn!.id!.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_ID`);
+
+    // The discovery value is written to .env.local for local dev (matching the CDK deploy-time
+    // injection: MEMORY_<TOKEN>_ID = the memory id). Without this, `agentcore dev` silently disables
+    // memory (session.py returns None when the env var is unset).
+    expect(ctx.localEnvVars[envVarName]).toBe('external'); // resourceIdFromArn('...:memory/external')
   });
 });
 
@@ -822,7 +965,6 @@ describe('resolveGatewayProviders', () => {
     expect(renderConfig.hasGateway).toBe(true);
     expect(renderConfig.gatewayProviders?.at(0)!.name).toBe('MyGateway');
     expect(renderConfig.gatewayProviders?.at(0)!.authType).toBe('AWS_IAM');
-    expect(noteCategories(ctx)).not.toContain(GATEWAY_IAM_POLICY_NOTE_CATEGORY);
   });
 
   it('resolves same-project CUSTOM_JWT gateway with discoveryUrl and scopes', () => {
@@ -858,23 +1000,100 @@ describe('resolveGatewayProviders', () => {
     expect(provider?.authType).toBe('CUSTOM_JWT');
     expect(provider?.discoveryUrl).toBe('https://auth.example.com/.well-known/openid-configuration');
     expect(provider?.scopes).toBe('read write');
-    expect(noteCategories(ctx)).not.toContain(GATEWAY_IAM_POLICY_NOTE_CATEGORY);
   });
 
-  it('hardcodes URL for external gateway and emits external note + IAM note', () => {
+  it('models an external gateway as a connection — URL via env var, no hardcoded URL, no IAM note', () => {
     const ctx = baseContext({ tools: [gatewayTool] }, { deployedResources: null });
-    const { renderConfig } = mapHarnessToExportConfig(ctx, 'CodeZip');
+    const { renderConfig, agentEnvSpec } = mapHarnessToExportConfig(ctx, 'CodeZip');
     expect(renderConfig.hasGateway).toBe(true);
     const provider = renderConfig.gatewayProviders.find(() => true);
-    expect(provider?.hardcodedUrl).toContain('gateway.bedrock-agentcore');
-    expect(noteCategories(ctx)).toContain(EXTERNAL_GATEWAY_NOTE_CATEGORY);
-    expect(noteCategories(ctx)).toContain(GATEWAY_IAM_POLICY_NOTE_CATEGORY);
+    // URL now comes from the connection-injected env var, not a hardcoded literal.
+    expect(provider?.hardcodedUrl).toBeUndefined();
+    expect(provider?.envVarName).toMatch(/^GATEWAY_.*_URL$/);
+    // The URL value is written to .env.local for local dev.
+    expect(Object.keys(ctx.localEnvVars).some(k => k.endsWith('_URL'))).toBe(true);
+    // A gateway connection (default awsIam outbound) is added so the CDK grants InvokeGateway.
+    const conn = agentEnvSpec.connections?.find(c => c.to.type === 'gateway');
+    expect(conn?.to).toMatchObject({ type: 'gateway', arn: gatewayArn });
   });
 
   it('excludes gateway tool filtered out by allowedTools', () => {
     const ctx = baseContext({ tools: [gatewayTool], allowedTools: ['other-tool'] });
     const { renderConfig } = mapHarnessToExportConfig(ctx, 'CodeZip');
     expect(renderConfig.hasGateway).toBe(false);
+  });
+
+  describe('external oauth gateway connection (toConnectionGatewayAuth)', () => {
+    const providerArn =
+      'arn:aws:bedrock-agentcore:us-east-1:123456789012:token-vault/default/oauth2credentialprovider/partner';
+    const oauthTool = (grantType?: 'CLIENT_CREDENTIALS' | 'USER_FEDERATION') =>
+      ({
+        type: 'agentcore_gateway' as const,
+        name: 'my-gateway',
+        config: {
+          agentCoreGateway: {
+            gatewayArn,
+            outboundAuth: { oauth: { providerArn, scopes: ['read'], ...(grantType && { grantType }) } },
+          },
+        },
+      }) as unknown as HarnessSpec['tools'][number];
+
+    function gwProvider(ctx: ReturnType<typeof baseContext>) {
+      const { renderConfig } = mapHarnessToExportConfig(ctx, 'CodeZip');
+      return renderConfig.gatewayProviders.find(() => true);
+    }
+
+    it('maps a CLIENT_CREDENTIALS harness grant to M2M auth_flow, no note', () => {
+      const ctx = baseContext({ tools: [oauthTool('CLIENT_CREDENTIALS')] }, { deployedResources: null });
+      const provider = gwProvider(ctx);
+      expect(provider?.authFlow).toBe('M2M');
+      // credential provider name is derived from the providerArn, not the tool name.
+      expect(provider?.credentialProviderName).toBe('partner');
+      expect(noteCategories(ctx)).not.toContain(GATEWAY_GRANT_TYPE_NOTE_CATEGORY);
+    });
+
+    it('remaps USER_FEDERATION to AUTHORIZATION_CODE on the connection AND threads USER_FEDERATION auth_flow, no note', () => {
+      const ctx = baseContext({ tools: [oauthTool('USER_FEDERATION')] }, { deployedResources: null });
+      const { renderConfig, agentEnvSpec } = mapHarnessToExportConfig(ctx, 'CodeZip');
+      // Connection carries the runtime/Smithy grant value (AUTHORIZATION_CODE)...
+      const conn = agentEnvSpec.connections?.find(c => c.to.type === 'gateway');
+      expect((conn?.to as { outboundAuth: { oauth: { grantType: string } } }).outboundAuth.oauth.grantType).toBe(
+        'AUTHORIZATION_CODE'
+      );
+      // ...and the generated client gets the corresponding USER_FEDERATION auth_flow.
+      expect(renderConfig.gatewayProviders.find(() => true)?.authFlow).toBe('USER_FEDERATION');
+      // USER_FEDERATION is now expressible by the decorator → no manual-step note.
+      expect(noteCategories(ctx)).not.toContain(GATEWAY_GRANT_TYPE_NOTE_CATEGORY);
+    });
+
+    it('defaults to M2M auth_flow when the harness specifies no grant type', () => {
+      const ctx = baseContext({ tools: [oauthTool()] }, { deployedResources: null });
+      const provider = gwProvider(ctx);
+      // No explicit authFlow set → template default applies; mapper leaves it M2M.
+      expect(provider?.authFlow).toBe('M2M');
+      expect(noteCategories(ctx)).not.toContain(GATEWAY_GRANT_TYPE_NOTE_CATEGORY);
+    });
+
+    it('carries customParameters as an OBJECT (not a pre-stringified string) so safeJson renders valid Python', () => {
+      // Regression: a pre-stringified value rendered via an escaped mustache produced &quot; in the
+      // generated client.py (SyntaxError). The render config must carry the object; the template uses
+      // {{safeJson customParameters}} (a SafeString) to emit a valid Python dict literal.
+      const tool = {
+        type: 'agentcore_gateway' as const,
+        name: 'my-gateway',
+        config: {
+          agentCoreGateway: {
+            gatewayArn,
+            outboundAuth: {
+              oauth: { providerArn, scopes: ['read'], customParameters: { audience: 'https://api.example.com' } },
+            },
+          },
+        },
+      } as unknown as HarnessSpec['tools'][number];
+      const provider = gwProvider(baseContext({ tools: [tool] }, { deployedResources: null }));
+      expect(provider?.customParameters).toEqual({ audience: 'https://api.example.com' });
+      expect(typeof provider?.customParameters).toBe('object');
+    });
   });
 });
 

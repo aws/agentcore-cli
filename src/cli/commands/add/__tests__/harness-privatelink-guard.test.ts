@@ -1,6 +1,6 @@
 import type { AddHarnessCliOptions } from '../types';
 import { validateAddHarnessOptions } from '../validate';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 const base: AddHarnessCliOptions = {
   name: 'h1',
@@ -73,6 +73,32 @@ describe('validateAddHarnessOptions — memory flag coupling', () => {
     if (!result.valid) expect(result.error).toContain('--no-memory');
   });
 
+  // --no-memory means disabled memory, so managed-only knobs (strategies/event-expiry/KMS) are
+  // contradictory and must be rejected, not silently dropped. Without an explicit --memory-mode the
+  // earlier `noMemory && memoryMode in {managed,existing}` guard doesn't fire, so this is the case
+  // that guards against silently discarding the flags.
+  it('rejects --no-memory combined with --memory-strategies (managed-only flag)', () => {
+    const result = validateAddHarnessOptions({ ...base, memory: false, memoryStrategies: 'SEMANTIC' });
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.error).toContain('--no-memory');
+  });
+
+  it('rejects --no-memory combined with --memory-event-expiry-days', () => {
+    const result = validateAddHarnessOptions({ ...base, memory: false, memoryEventExpiryDays: 30 });
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.error).toContain('--no-memory');
+  });
+
+  it('rejects --no-memory combined with --memory-encryption-key-arn', () => {
+    const result = validateAddHarnessOptions({
+      ...base,
+      memory: false,
+      memoryEncryptionKeyArn: 'arn:aws:kms:us-west-2:123456789012:key/abc',
+    });
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.error).toContain('--no-memory');
+  });
+
   it('accepts --memory-name alone', () => {
     expect(validateAddHarnessOptions({ ...base, memoryName: 'mem' }).valid).toBe(true);
   });
@@ -103,41 +129,9 @@ describe('validateAddHarnessOptions — gateway oauth flag coupling', () => {
   });
 });
 
-describe('validateAddHarnessOptions — memory modes (gated OFF)', () => {
-  const prev = process.env.ENABLE_GATED_FEATURES;
-  beforeEach(() => {
-    delete process.env.ENABLE_GATED_FEATURES;
-  });
-  afterEach(() => {
-    if (prev === undefined) delete process.env.ENABLE_GATED_FEATURES;
-    else process.env.ENABLE_GATED_FEATURES = prev;
-  });
-
-  it('rejects --memory-mode as not-yet-available', () => {
-    const r = validateAddHarnessOptions({ ...base, memoryMode: 'managed' });
-    expect(r.valid).toBe(false);
-    if (!r.valid) expect(r.error).toContain('not yet available');
-  });
-
-  it('rejects managed-only flags as not-yet-available', () => {
-    const r = validateAddHarnessOptions({ ...base, memoryStrategies: 'SEMANTIC' });
-    expect(r.valid).toBe(false);
-    if (!r.valid) expect(r.error).toContain('not yet available');
-  });
-
-  it('still accepts the legacy --memory-name reference', () => {
+describe('validateAddHarnessOptions — memory modes', () => {
+  it('accepts an existing --memory-name reference', () => {
     expect(validateAddHarnessOptions({ ...base, memoryName: 'mem' }).valid).toBe(true);
-  });
-});
-
-describe('validateAddHarnessOptions — memory modes (gated ON)', () => {
-  const prev = process.env.ENABLE_GATED_FEATURES;
-  beforeEach(() => {
-    process.env.ENABLE_GATED_FEATURES = '1';
-  });
-  afterEach(() => {
-    if (prev === undefined) delete process.env.ENABLE_GATED_FEATURES;
-    else process.env.ENABLE_GATED_FEATURES = prev;
   });
 
   it('rejects --memory-mode existing with neither arn nor name', () => {
@@ -155,6 +149,40 @@ describe('validateAddHarnessOptions — memory modes (gated ON)', () => {
     });
     expect(r.valid).toBe(false);
     if (!r.valid) expect(r.error).toContain('--memory-event-expiry-days');
+  });
+
+  it('rejects --memory-mode managed combined with --memory-arn (contradictory)', () => {
+    const r = validateAddHarnessOptions({
+      ...base,
+      memoryMode: 'managed',
+      memoryArn: 'arn:aws:bedrock-agentcore:us-west-2:1:memory/m-aBcD012345',
+    });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.error).toContain('managed');
+  });
+
+  it('rejects --memory-mode disabled combined with --memory-name (contradictory)', () => {
+    const r = validateAddHarnessOptions({ ...base, memoryMode: 'disabled', memoryName: 'mem' });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.error).toContain('disabled');
+  });
+
+  it('rejects existing-only tuning flags given without an existing reference', () => {
+    // --memory-top-k alone would otherwise be silently dropped (resolves to disabled).
+    const r = validateAddHarnessOptions({ ...base, memoryTopK: 5 });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.error).toContain('existing memory');
+  });
+
+  it('accepts existing-only tuning flags WITH an existing reference', () => {
+    const r = validateAddHarnessOptions({ ...base, memoryName: 'mem', memoryTopK: 5, memoryMessagesCount: 10 });
+    expect(r.valid).toBe(true);
+  });
+
+  it('rejects a malformed --memory-arn (not an ARN)', () => {
+    const r = validateAddHarnessOptions({ ...base, memoryArn: 'not-an-arn' });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.error).toContain('--memory-arn');
   });
 
   it('rejects an invalid managed strategy', () => {

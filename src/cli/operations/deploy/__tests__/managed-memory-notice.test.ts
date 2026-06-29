@@ -4,7 +4,7 @@ import {
   MANAGED_MEMORY_DEPLOY_NOTICE,
   hasManagedMemoryHarness,
 } from '../managed-memory-notice';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * Builds a stub ConfigIO whose readHarnessSpec returns the given mode per harness name.
@@ -23,25 +23,8 @@ function stubConfigIO(modes: Record<string, string | undefined>): ConfigIO {
 }
 
 describe('hasManagedMemoryHarness', () => {
-  const originalGate = process.env.ENABLE_GATED_FEATURES;
-
-  beforeEach(() => {
-    process.env.ENABLE_GATED_FEATURES = '1';
-  });
-
   afterEach(() => {
-    if (originalGate === undefined) {
-      delete process.env.ENABLE_GATED_FEATURES;
-    } else {
-      process.env.ENABLE_GATED_FEATURES = originalGate;
-    }
     vi.clearAllMocks();
-  });
-
-  it('returns false when the gate is off, even with a managed harness', async () => {
-    delete process.env.ENABLE_GATED_FEATURES;
-    const configIO = stubConfigIO({ h1: 'managed' });
-    expect(await hasManagedMemoryHarness(configIO, [{ name: 'h1' }])).toBe(false);
   });
 
   it('returns false when there are no harnesses', async () => {
@@ -59,6 +42,13 @@ describe('hasManagedMemoryHarness', () => {
     expect(await hasManagedMemoryHarness(configIO, [{ name: 'h1' }, { name: 'h2' }])).toBe(false);
   });
 
+  it('returns false for a harness whose memory config is OMITTED (omitted opts out → Disabled, no provisioning)', async () => {
+    // mode undefined → stub resolves { memory: undefined } (omitted). The CDK now synthesizes
+    // Memory: { Disabled: {} } for omitted, so no memory is provisioned and the notice must not fire.
+    const configIO = stubConfigIO({ h1: undefined });
+    expect(await hasManagedMemoryHarness(configIO, [{ name: 'h1' }])).toBe(false);
+  });
+
   it('treats an unreadable harness spec as non-managed (does not throw)', async () => {
     const configIO = stubConfigIO({ h1: 'managed' });
     expect(await hasManagedMemoryHarness(configIO, [{ name: 'missing' }, { name: 'h1' }])).toBe(true);
@@ -72,7 +62,13 @@ describe('managed-memory notice text', () => {
   });
 
   it('add notice is future-tense and points at the next deploy', () => {
-    expect(MANAGED_MEMORY_ADD_NOTICE).toContain('will automatically provision');
+    expect(MANAGED_MEMORY_ADD_NOTICE).toContain('will provision');
     expect(MANAGED_MEMORY_ADD_NOTICE).toContain('on deploy');
+  });
+
+  it('notices reflect opt-in managed (do NOT call managed the default)', () => {
+    expect(MANAGED_MEMORY_DEPLOY_NOTICE).not.toContain('the default');
+    expect(MANAGED_MEMORY_ADD_NOTICE).not.toContain('the default');
+    expect(MANAGED_MEMORY_DEPLOY_NOTICE).toContain('--memory-mode managed');
   });
 });

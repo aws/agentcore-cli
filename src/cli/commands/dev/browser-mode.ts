@@ -15,6 +15,7 @@ import { listMemoryRecords, retrieveMemoryRecords } from '../../operations/memor
 import { loadDeployedProjectConfig, resolveAgentOrHarness } from '../../operations/resolve-agent';
 import { fetchTraceRecords, listTraces } from '../../operations/traces';
 import { LayoutProvider } from '../../tui/context';
+import { requireTTY } from '../../tui/guards';
 import { runCliDeploy } from '../deploy/progress';
 import { render } from 'ink';
 import path from 'node:path';
@@ -328,6 +329,7 @@ export async function launchTuiDevScreenWithPicker(
   workingDir: string,
   options?: { skipDeploy?: boolean }
 ): Promise<TuiPickerResult | undefined> {
+  requireTTY();
   process.stdout.write(ENTER_ALT_SCREEN);
 
   const exitAltScreen = () => {

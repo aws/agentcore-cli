@@ -24,7 +24,6 @@ import {
   matchEnumValue,
   validateApiFormat,
 } from '../../../schema';
-import { isGatedFeaturesEnabled } from '../../feature-flags';
 import { ARN_VALIDATION_MESSAGE, isValidArn } from '../shared/arn-utils';
 import { validateHeaderAllowlist } from '../shared/header-utils';
 import { MAX_INDEXED_KEYS, parseIndexedKeyArg } from '../shared/indexed-key-parser';
@@ -399,7 +398,6 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     return { valid: false, error: '--name is required' };
   }
 
-  // passthrough is gated; omit it from advertised type lists when the flag is off.
   const validTypeList = [
     'mcp-server',
     'api-gateway',
@@ -408,7 +406,7 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     'lambda-function-arn',
     'http-runtime',
     'connector',
-    ...(isGatedFeaturesEnabled() ? ['passthrough'] : []),
+    'passthrough',
     'web-search',
   ].join(', ');
 
@@ -727,9 +725,6 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
 
   // Passthrough targets: validate early and return
   if (mappedType === 'passthrough') {
-    if (!isGatedFeaturesEnabled()) {
-      return { valid: false, error: 'Passthrough targets are not yet available.' };
-    }
     const passthroughEndpoint = (options as Record<string, string | undefined>).passthroughEndpoint;
     if (!passthroughEndpoint) {
       return { valid: false, error: '--passthrough-endpoint is required for passthrough type' };
@@ -1207,62 +1202,77 @@ export function validateAddHarnessOptions(options: AddHarnessCliOptions): Valida
     options.memoryMessagesCount !== undefined ||
     options.memoryTopK !== undefined ||
     options.memoryRelevanceScore !== undefined;
-  if (options.memoryArn && options.memoryName) {
-    return { valid: false, error: '--memory-arn and --memory-name are mutually exclusive' };
-  }
-  if (noMemory && (options.memoryArn || options.memoryName || memoryTuningGiven)) {
-    return {
-      valid: false,
-      error: '--no-memory cannot be combined with --memory-arn, --memory-name, or memory tuning flags',
-    };
-  }
-
-  // Managed-memory mode validation — only when the gated feature is enabled. When gated off, any
-  // --memory-mode / managed-only flag is rejected up front as "not yet available".
+  // Managed-only knobs (strategies/event-expiry/KMS) describe a managed memory; they are meaningless
+  // with --no-memory (which produces disabled memory) and on non-managed modes.
   const managedOnlyFlags =
     options.memoryStrategies !== undefined ||
     options.memoryEventExpiryDays !== undefined ||
     options.memoryEncryptionKeyArn !== undefined;
-  if (!isGatedFeaturesEnabled()) {
-    if (options.memoryMode !== undefined || managedOnlyFlags) {
+  if (options.memoryArn && options.memoryName) {
+    return { valid: false, error: '--memory-arn and --memory-name are mutually exclusive' };
+  }
+  if (options.memoryArn && !isValidArn(options.memoryArn)) {
+    return { valid: false, error: `--memory-arn: ${ARN_VALIDATION_MESSAGE}` };
+  }
+  if (noMemory && (options.memoryArn || options.memoryName || memoryTuningGiven || managedOnlyFlags)) {
+    return {
+      valid: false,
+      error:
+        '--no-memory cannot be combined with --memory-arn, --memory-name, memory tuning flags, or managed-memory flags (--memory-strategies, --memory-event-expiry-days, --memory-encryption-key-arn)',
+    };
+  }
+
+  // Managed-memory mode validation.
+  if (options.memoryMode && !VALID_MEMORY_MODES.includes(options.memoryMode as (typeof VALID_MEMORY_MODES)[number])) {
+    return {
+      valid: false,
+      error: `Invalid --memory-mode '${options.memoryMode}'. Use ${VALID_MEMORY_MODES.join(', ')}.`,
+    };
+  }
+  if (noMemory && (options.memoryMode === 'managed' || options.memoryMode === 'existing')) {
+    return { valid: false, error: '--no-memory cannot be combined with --memory-mode managed/existing' };
+  }
+  if (options.memoryMode === 'existing' && !options.memoryArn && !options.memoryName) {
+    return { valid: false, error: '--memory-mode existing requires --memory-arn or --memory-name' };
+  }
+  // A memory reference (--memory-arn/--memory-name) is an `existing` selector. It is contradictory
+  // with an explicit managed or disabled mode — reject rather than silently downgrading to existing.
+  if (
+    (options.memoryArn || options.memoryName) &&
+    (options.memoryMode === 'managed' || options.memoryMode === 'disabled')
+  ) {
+    return {
+      valid: false,
+      error: `--memory-arn/--memory-name reference an existing memory and cannot be combined with --memory-mode ${options.memoryMode}`,
+    };
+  }
+  // Existing-only retrieval tuning (actorId/messagesCount/topK/relevanceScore) only applies to an
+  // existing memory. Given without an existing reference it would be silently dropped — require the ref.
+  if (memoryTuningGiven && !options.memoryArn && !options.memoryName && options.memoryMode !== 'existing') {
+    return {
+      valid: false,
+      error:
+        'memory tuning flags (--memory-actor-id, --memory-messages-count, --memory-top-k, --memory-relevance-score) require an existing memory (--memory-arn, --memory-name, or --memory-mode existing)',
+    };
+  }
+  if (managedOnlyFlags && options.memoryMode && options.memoryMode !== 'managed') {
+    return {
+      valid: false,
+      error:
+        '--memory-strategies, --memory-event-expiry-days, and --memory-encryption-key-arn are only valid with --memory-mode managed',
+    };
+  }
+  if (options.memoryStrategies) {
+    const bad = options.memoryStrategies
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .filter(s => !VALID_MANAGED_STRATEGIES.includes(s as (typeof VALID_MANAGED_STRATEGIES)[number]));
+    if (bad.length) {
       return {
         valid: false,
-        error:
-          '--memory-mode and managed-memory flags (--memory-strategies, --memory-event-expiry-days, --memory-encryption-key-arn) are not yet available.',
+        error: `Invalid managed memory strateg${bad.length > 1 ? 'ies' : 'y'}: ${bad.join(', ')}. Valid: ${VALID_MANAGED_STRATEGIES.join(', ')}`,
       };
-    }
-  } else {
-    if (options.memoryMode && !VALID_MEMORY_MODES.includes(options.memoryMode as (typeof VALID_MEMORY_MODES)[number])) {
-      return {
-        valid: false,
-        error: `Invalid --memory-mode '${options.memoryMode}'. Use ${VALID_MEMORY_MODES.join(', ')}.`,
-      };
-    }
-    if (noMemory && (options.memoryMode === 'managed' || options.memoryMode === 'existing')) {
-      return { valid: false, error: '--no-memory cannot be combined with --memory-mode managed/existing' };
-    }
-    if (options.memoryMode === 'existing' && !options.memoryArn && !options.memoryName) {
-      return { valid: false, error: '--memory-mode existing requires --memory-arn or --memory-name' };
-    }
-    if (managedOnlyFlags && options.memoryMode && options.memoryMode !== 'managed') {
-      return {
-        valid: false,
-        error:
-          '--memory-strategies, --memory-event-expiry-days, and --memory-encryption-key-arn are only valid with --memory-mode managed',
-      };
-    }
-    if (options.memoryStrategies) {
-      const bad = options.memoryStrategies
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean)
-        .filter(s => !VALID_MANAGED_STRATEGIES.includes(s as (typeof VALID_MANAGED_STRATEGIES)[number]));
-      if (bad.length) {
-        return {
-          valid: false,
-          error: `Invalid managed memory strateg${bad.length > 1 ? 'ies' : 'y'}: ${bad.join(', ')}. Valid: ${VALID_MANAGED_STRATEGIES.join(', ')}`,
-        };
-      }
     }
   }
 

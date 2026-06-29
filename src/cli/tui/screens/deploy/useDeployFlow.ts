@@ -656,6 +656,10 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
         logger.endStep('error', message);
         setOnlineEvalStep(prev => ({ ...prev, status: 'error', error: message }));
       }
+    } else if (onlineEvalFullSpecs.length > 0) {
+      // Step is rendered whenever onlineEvalConfigs is non-empty, but only runs for newly
+      // deployed configs. With nothing new to enable, mark it terminal so the deploy completes.
+      setOnlineEvalStep(prev => ({ ...prev, status: 'success' }));
     }
 
     // Config bundles are now managed via CloudFormation; their state is parsed

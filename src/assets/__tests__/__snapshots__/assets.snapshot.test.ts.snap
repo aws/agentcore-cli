@@ -831,6 +831,7 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "python/http/strands/base/mcp_client/client.py",
   "python/http/strands/base/model/__init__.py",
   "python/http/strands/base/model/load.py",
+  "python/http/strands/base/model/mantle_compat.py",
   "python/http/strands/base/pyproject.toml",
   "python/http/strands/base/skills/fetcher.py",
   "python/http/strands/capabilities/execution-limits/hooks/execution_limits.py",
@@ -850,6 +851,7 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "typescript/http/strands/base/model/load.ts",
   "typescript/http/strands/base/package.json",
   "typescript/http/strands/base/tsconfig.json",
+  "typescript/http/strands/capabilities/memory/memory.ts",
   "typescript/http/vercelai/base/README.md",
   "typescript/http/vercelai/base/gitignore.template",
   "typescript/http/vercelai/base/main.ts",
@@ -3388,6 +3390,7 @@ exports[`Assets Directory Snapshots > Python framework assets > python/python/ht
 "{{#if needsOs}}
 import os
 {{/if}}
+from collections import OrderedDict
 from autogen_agentchat.agents import AssistantAgent
 from autogen_core.tools import FunctionTool
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
@@ -3478,23 +3481,45 @@ You have access to the following mounted filesystems. Use file_read, file_write,
 {{/each}}{{/if}}
 """
 
+# Reuses one AssistantAgent per session_id so each session keeps its own
+# in-process conversation history (best-effort; resets on cold start). Caches up
+# to 128 active sessions with LRU eviction (least-recently-used is dropped and
+# its history reset).
+_agents = OrderedDict()
+
+
+async def get_or_create_agent(session_id):
+    if session_id in _agents:
+        _agents.move_to_end(session_id)
+        return _agents[session_id]
+    if len(_agents) >= 128:
+        _agents.popitem(last=False)
+    # Get MCP Tools
+    mcp_tools = await get_streamable_http_mcp_tools()
+    # Re-check after the await: a concurrent first-invocation for the same
+    # session_id may have built and stored the agent while we were awaiting.
+    # Don't overwrite it (that would orphan the agent the other request is using).
+    if session_id not in _agents:
+        _agents[session_id] = AssistantAgent(
+            name="{{ name }}",
+            model_client=load_model(),
+            tools=tools + mcp_tools,
+            system_message=SYSTEM_MESSAGE,
+        )
+    _agents.move_to_end(session_id)
+    return _agents[session_id]
+
+
 @app.entrypoint
 async def invoke(payload, context):
     log.info("Invoking Agent.....")
 
-    # Get MCP Tools
-    mcp_tools = await get_streamable_http_mcp_tools()
-
-    # Define an AssistantAgent with the model and tools
-    agent = AssistantAgent(
-        name="{{ name }}",
-        model_client=load_model(),
-        tools=tools + mcp_tools,
-        system_message=SYSTEM_MESSAGE,
-    )
-
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    session_id = getattr(context, "session_id", "default-session")
+
+    # Reuse the per-session agent (preserves conversation history)
+    agent = await get_or_create_agent(session_id)
 
     # Run the agent
     result = await agent.run(task=prompt)
@@ -3820,6 +3845,7 @@ exports[`Assets Directory Snapshots > Python framework assets > python/python/ht
 "{{#if needsOs}}
 import os
 {{/if}}
+from collections import OrderedDict
 from google.adk.agents import Agent
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
@@ -3940,21 +3966,57 @@ agent = Agent(
 )
 
 
-# Session and Runner
-async def setup_session_and_runner(user_id, session_id):
-    ensure_credentials_loaded()
-    session_service = InMemorySessionService()
-    session = await session_service.create_session(
+# Module-level session service and runner preserve history across invocations.
+# InMemorySessionService retains every (app_name, user_id, session_id) triple
+# forever, so we bound it to 128 active sessions with LRU eviction (the
+# least-recently-used session is deleted and its history reset) to keep a
+# long-running process from growing without limit. For durable history, swap in
+# a persistent session service (e.g. DatabaseSessionService).
+_SESSION_LIMIT = 128
+_session_service = InMemorySessionService()
+_session_keys = OrderedDict()
+_runner = None
+
+
+def get_or_create_runner():
+    global _runner
+    if _runner is None:
+        ensure_credentials_loaded()
+        _runner = Runner(
+            agent=agent,
+            app_name=APP_NAME,
+            session_service=_session_service,
+        )
+    return _runner
+
+
+async def get_or_create_session(user_id, session_id):
+    key = (user_id, session_id)
+    if key in _session_keys:
+        _session_keys.move_to_end(key)
+    else:
+        while len(_session_keys) >= _SESSION_LIMIT:
+            (old_user_id, old_session_id), _ = _session_keys.popitem(last=False)
+            await _session_service.delete_session(
+                app_name=APP_NAME, user_id=old_user_id, session_id=old_session_id
+            )
+        _session_keys[key] = True
+
+    session = await _session_service.get_session(
         app_name=APP_NAME, user_id=user_id, session_id=session_id
     )
-    runner = Runner(agent=agent, app_name=APP_NAME, session_service=session_service)
-    return session, runner
+    if session is None:
+        session = await _session_service.create_session(
+            app_name=APP_NAME, user_id=user_id, session_id=session_id
+        )
+    return session
 
 
 # Agent Interaction
 async def call_agent_async(query, user_id, session_id):
     content = types.Content(role="user", parts=[types.Part(text=query)])
-    session, runner = await setup_session_and_runner(user_id, session_id)
+    runner = get_or_create_runner()
+    session = await get_or_create_session(user_id, session_id)
     events = runner.run_async(
         user_id=user_id, session_id=session.id, new_message=content
     )
@@ -4241,9 +4303,11 @@ exports[`Assets Directory Snapshots > Python framework assets > python/python/ht
 "{{#if needsOs}}
 import os
 {{/if}}
+from collections import OrderedDict
 from typing import Any
 
 from langchain_core.messages import HumanMessage{{#if hasConfigBundle}}, SystemMessage{{/if}}
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.prebuilt import create_react_agent
 from langchain.tools import tool
 {{#if hasConfigBundle}}
@@ -4293,6 +4357,26 @@ def add_numbers(a: int, b: int) -> int:
 
 # Define a collection of tools used by the model
 tools = [add_numbers]
+
+# Module-level checkpointer preserves conversation history across invocations.
+# InMemorySaver keeps every thread_id (= session_id) checkpoint in memory
+# forever, so we bound it to 128 active threads with LRU eviction (the
+# least-recently-used thread is deleted and its history reset) to keep a
+# long-running process from growing without limit. For durable history, swap in
+# a persistent checkpointer (e.g. SqliteSaver/AsyncSqliteSaver with a file path).
+_CHECKPOINT_LIMIT = 128
+_checkpointer = InMemorySaver()
+_thread_ids = OrderedDict()
+
+
+def touch_thread(thread_id):
+    if thread_id in _thread_ids:
+        _thread_ids.move_to_end(thread_id)
+        return
+    while len(_thread_ids) >= _CHECKPOINT_LIMIT:
+        evicted, _ = _thread_ids.popitem(last=False)
+        _checkpointer.delete_thread(evicted)
+    _thread_ids[thread_id] = True
 
 {{#if needsOs}}
 _MOUNT_PATHS = [
@@ -4389,29 +4473,46 @@ async def invoke(payload, context):
     if mcp_client:
         mcp_tools = await mcp_client.get_tools()
 
-    # Define the agent using create_react_agent
+    # Define the agent using create_react_agent (checkpointer is shared across invocations)
 {{#if hasConfigBundle}}
-    graph = create_react_agent(get_or_create_model(), tools=mcp_tools + tools, prompt=DEFAULT_SYSTEM_PROMPT)
+    graph = create_react_agent(
+        get_or_create_model(),
+        tools=mcp_tools + tools,
+        prompt=DEFAULT_SYSTEM_PROMPT,
+        checkpointer=_checkpointer,
+    )
     callback = ConfigBundleCallback()
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    session_id = getattr(context, "session_id", "default-session")
+    touch_thread(session_id)
     log.info(f"Agent input: {prompt}")
 
-    # Run the agent with config bundle callback
+    # Run the agent with config bundle callback (checkpointer auto-loads/saves history per session)
     result = await graph.ainvoke(
         {"messages": [HumanMessage(content=prompt)]},
-        config={"callbacks": [callback]},
+        config={"callbacks": [callback], "configurable": {"thread_id": session_id}},
     )
 {{else}}
-    graph = create_react_agent(get_or_create_model(), tools=mcp_tools + tools, prompt=DEFAULT_SYSTEM_PROMPT)
+    graph = create_react_agent(
+        get_or_create_model(),
+        tools=mcp_tools + tools,
+        prompt=DEFAULT_SYSTEM_PROMPT,
+        checkpointer=_checkpointer,
+    )
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    session_id = getattr(context, "session_id", "default-session")
+    touch_thread(session_id)
     log.info(f"Agent input: {prompt}")
 
-    # Run the agent
-    result = await graph.ainvoke({"messages": [HumanMessage(content=prompt)]})
+    # Run the agent (checkpointer auto-loads/saves history per session)
+    result = await graph.ainvoke(
+        {"messages": [HumanMessage(content=prompt)]},
+        config={"configurable": {"thread_id": session_id}},
+    )
 {{/if}}
 
     # Return result
@@ -4782,7 +4883,8 @@ import os
 {{#if hasGateway}}
 from contextlib import AsyncExitStack
 {{/if}}
-from agents import Agent, Runner, function_tool
+from functools import lru_cache
+from agents import Agent, Runner, SQLiteSession, function_tool
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
 {{#if hasGateway}}
@@ -4886,8 +4988,16 @@ You have access to the following mounted filesystems. Use file_read, file_write,
 {{/each}}{{/if}}
 """
 
+# Caches up to 128 active sessions; LRU eviction silently resets history for
+# the oldest session. For production use, replace with a durable session store
+# (e.g. SQLiteSession with a file path).
+@lru_cache(maxsize=128)
+def get_session(session_id):
+    return SQLiteSession(session_id)
+
+
 # Define the agent execution
-async def main(query):
+async def main(query, session):
     ensure_credentials_loaded()
     try:
         {{#if hasGateway}}
@@ -4906,7 +5016,7 @@ async def main(query):
                     tools=tools,
                     mcp_config={"include_server_in_tool_names": True},
                 )
-                result = await Runner.run(agent, query)
+                result = await Runner.run(agent, query, session=session)
                 return result
         else:
             agent = Agent(
@@ -4916,7 +5026,7 @@ async def main(query):
                 mcp_servers=[],
                 tools=tools
             )
-            result = await Runner.run(agent, query)
+            result = await Runner.run(agent, query, session=session)
             return result
         {{else}}
         if mcp_servers:
@@ -4929,7 +5039,7 @@ async def main(query):
                     mcp_servers=active_servers,
                     tools=tools
                 )
-                result = await Runner.run(agent, query)
+                result = await Runner.run(agent, query, session=session)
                 return result
         else:
             agent = Agent(
@@ -4939,7 +5049,7 @@ async def main(query):
                 mcp_servers=[],
                 tools=tools
             )
-            result = await Runner.run(agent, query)
+            result = await Runner.run(agent, query, session=session)
             return result
         {{/if}}
     except Exception as e:
@@ -4953,9 +5063,11 @@ async def invoke(payload, context):
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    session_id = getattr(context, "session_id", "default-session")
+    session = get_session(session_id)
 
-    # Run the agent
-    result = await main(prompt)
+    # Run the agent (session automatically loads/saves conversation history)
+    result = await main(prompt, session)
 
     # Return result
     return {"result": result.final_output}
@@ -5209,6 +5321,7 @@ Thumbs.db"
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/http/strands/base/main.py should match snapshot 1`] = `
 "from typing import Any
+from collections import OrderedDict
 {{#if inlineFunctionTools}}
 import json
 
@@ -5276,7 +5389,7 @@ from mcp_client.client import get_streamable_http_mcp_client
 from memory.session import get_memory_session_manager
 {{/if}}
 {{#unless hasFileOperations}}
-{{#if (or needsOs (some gitSkills "credentialArn"))}}
+{{#if (or needsOs browserIdentifierEnvVar codeInterpreterIdentifierEnvVar (some gitSkills "credentialArn"))}}
 import os
 {{/if}}
 {{/unless}}
@@ -5362,10 +5475,20 @@ tools.append(add_numbers)
 {{/unless}}
 {{/if}}
 {{#if hasBrowser}}
-tools.append(AgentCoreBrowser({{#if browserIdentifier}}identifier="{{browserIdentifier}}"{{/if}}).browser)
+{{#if browserIdentifierEnvVar}}
+_browser_id = os.getenv("{{browserIdentifierEnvVar}}")
+tools.append(AgentCoreBrowser(**({"identifier": _browser_id} if _browser_id else {})).browser)
+{{else}}
+tools.append(AgentCoreBrowser().browser)
+{{/if}}
 {{/if}}
 {{#if hasCodeInterpreter}}
-tools.append(AgentCoreCodeInterpreter({{#if codeInterpreterIdentifier}}identifier="{{codeInterpreterIdentifier}}"{{/if}}).code_interpreter)
+{{#if codeInterpreterIdentifierEnvVar}}
+_code_interpreter_id = os.getenv("{{codeInterpreterIdentifierEnvVar}}")
+tools.append(AgentCoreCodeInterpreter(**({"identifier": _code_interpreter_id} if _code_interpreter_id else {})).code_interpreter)
+{{else}}
+tools.append(AgentCoreCodeInterpreter().code_interpreter)
+{{/if}}
 {{/if}}
 {{#if hasShell}}
 @tool
@@ -5634,26 +5757,21 @@ def agent_factory():
 get_or_create_agent = agent_factory()
 {{/unless}}
 {{else}}
-{{#if hasConfigBundle}}
-def create_agent({{#if hasSkillsFetcher}}skill_plugins=None{{/if}}):
-    return Agent(
-        model=load_model(),
-        system_prompt=DEFAULT_SYSTEM_PROMPT,
-        tools=tools,
-        conversation_manager=_make_conversation_manager(),
-        {{#if hasSkillsFetcher}}
-        plugins=skill_plugins or None,
-        {{/if}}
-        hooks=[ConfigBundleHook()],
-    )
-{{else}}
 {{#unless hasPayment}}
-_agent = None
-
-def get_or_create_agent({{#if hasSkillsFetcher}}skill_plugins=None{{/if}}):
-    global _agent
-    if _agent is None:
-        _agent = Agent(
+# Reuses one Agent per session_id so each session keeps its own in-process
+# conversation history (best-effort; resets on cold start). The cache is bounded
+# to 128 sessions with LRU eviction (least-recently-used is dropped and its
+# history reset) so a single process serving many sessions cannot leak history
+# between them or grow without limit. For durable history, attach a session manager.
+def agent_factory():
+    cache = OrderedDict()
+    def get_or_create_agent(session_id{{#if hasSkillsFetcher}}, skill_plugins=None{{/if}}):
+        if session_id in cache:
+            cache.move_to_end(session_id)
+            return cache[session_id]
+        if len(cache) >= 128:
+            cache.popitem(last=False)
+        cache[session_id] = Agent(
             model=load_model(),
             system_prompt=DEFAULT_SYSTEM_PROMPT,
             tools=tools,
@@ -5673,11 +5791,15 @@ def get_or_create_agent({{#if hasSkillsFetcher}}skill_plugins=None{{/if}}):
                     {{#if timeoutSeconds}}timeout_seconds={{timeoutSeconds}},{{/if}}
                 ),
                 {{/if}}
+                {{#if hasConfigBundle}}
+                ConfigBundleHook(),
+                {{/if}}
             ],
         )
-    return _agent
+        return cache[session_id]
+    return get_or_create_agent
+get_or_create_agent = agent_factory()
 {{/unless}}
-{{/if}}
 {{/if}}
 
 
@@ -5785,11 +5907,8 @@ async def invoke(payload, context):
         hooks=[ConfigBundleHook()],{{/if}}
     )
 {{else}}
-{{#if hasConfigBundle}}
-    agent = create_agent({{#if hasSkillsFetcher}}_skill_plugins{{/if}})
-{{else}}
-    agent = get_or_create_agent({{#if hasSkillsFetcher}}_skill_plugins{{/if}})
-{{/if}}
+    session_id = getattr(context, 'session_id', 'default-session')
+    agent = get_or_create_agent(session_id{{#if hasSkillsFetcher}}, _skill_plugins{{/if}})
 {{/if}}
 {{/if}}
 
@@ -5908,7 +6027,10 @@ from bedrock_agentcore.identity import requires_access_token
 @requires_access_token(
     provider_name="{{credentialProviderName}}",
     scopes=[{{#if scopes}}"{{scopes}}"{{/if}}],
-    auth_flow="M2M",
+    auth_flow="{{#if authFlow}}{{authFlow}}{{else}}M2M{{/if}}",
+{{#if customParameters}}
+    custom_parameters={{safeJson customParameters}},
+{{/if}}
 )
 def _get_bearer_token_{{snakeCase name}}(*, access_token: str):
     """Obtain OAuth access token via AgentCore Identity for {{name}}."""
@@ -6011,12 +6133,74 @@ exports[`Assets Directory Snapshots > Python framework assets > python/python/ht
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/http/strands/base/model/load.py should match snapshot 1`] = `
 "{{#if (eq modelProvider "Bedrock")}}
+{{#if bedrockMantle}}
+import os
+
+from aws_bedrock_token_generator import provide_token
+{{#if (eq mantleApiFormat "chat_completions")}}
+from strands.models.openai import OpenAIModel
+{{else}}
+{{#if mantleProprietary}}
+from strands.models.openai_responses import OpenAIResponsesModel
+{{else}}
+from model.mantle_compat import MantleCompatResponsesModel
+{{/if}}
+{{/if}}
+
+MODEL_ID = "{{modelId}}"
+
+
+def load_model():
+    """
+    Get a Bedrock Mantle model client. These OpenAI-compatible models (e.g. openai.gpt-5.5,
+    openai.gpt-oss-120b) are served via the Bedrock Mantle endpoint, NOT the Converse API — so they
+    are invoked through an OpenAI-style client authenticated with a short-lived Bedrock bearer token.
+    Region is read from AWS_REGION (set by the AgentCore runtime).
+    """
+    region = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
+    token = provide_token(region=region)
+    {{#if mantleProprietary}}
+    # Proprietary OpenAI models only work on the /openai/v1 Mantle path.
+    base_url = f"https://bedrock-mantle.{region}.api.aws/openai/v1"
+    {{else}}
+    # Open-source OpenAI models (gpt-oss-*) only work on the /v1 Mantle path.
+    base_url = f"https://bedrock-mantle.{region}.api.aws/v1"
+    {{/if}}
+    client_args = {"api_key": token, "base_url": base_url}
+
+    params = {}
+    {{#if modelMaxTokens}}
+    {{#if (eq mantleApiFormat "chat_completions")}}
+    params["max_completion_tokens"] = {{modelMaxTokens}}
+    {{else}}
+    params["max_output_tokens"] = {{modelMaxTokens}}
+    {{/if}}
+    {{/if}}
+    {{#if modelTemperature}}
+    params["temperature"] = {{modelTemperature}}
+    {{/if}}
+    {{#if modelTopP}}
+    params["top_p"] = {{modelTopP}}
+    {{/if}}
+    {{#if (eq mantleApiFormat "chat_completions")}}
+    return OpenAIModel(client_args=client_args, model_id=MODEL_ID, params=params)
+    {{else}}
+    # Responses API: Mantle does not persist responses, so disable server-side storage.
+    params["store"] = False
+    {{#if mantleProprietary}}
+    return OpenAIResponsesModel(client_args=client_args, model_id=MODEL_ID, params=params)
+    {{else}}
+    return MantleCompatResponsesModel(client_args=client_args, model_id=MODEL_ID, params=params)
+    {{/if}}
+    {{/if}}
+{{else}}
 from strands.models.bedrock import BedrockModel
 
 
 def load_model() -> BedrockModel:
     """Get Bedrock model client using IAM credentials."""
     return BedrockModel(model_id="{{#if modelId}}{{modelId}}{{else}}global.anthropic.claude-sonnet-4-5-20250929-v1:0{{/if}}")
+{{/if}}
 {{/if}}
 {{#if (eq modelProvider "Anthropic")}}
 import os
@@ -6133,6 +6317,85 @@ def load_model() -> GeminiModel:
         model_id="{{#if modelId}}{{modelId}}{{else}}gemini-2.5-flash{{/if}}",
     )
 {{/if}}
+{{#if (eq modelProvider "LiteLLM")}}
+import os
+{{#if litellmAdditionalParams}}
+import json
+{{/if}}
+
+from strands.models.litellm import LiteLLMModel
+{{#if identityProviders.[0].name}}
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+{{/if}}
+
+
+
+
+def load_model() -> LiteLLMModel:
+    """Get a LiteLLM model client (proxies to the provider encoded in model_id)."""
+    client_args = {}
+    {{#if identityProviders.[0].name}}
+    client_args["api_key"] = _get_api_key()
+    {{/if}}
+    {{#if litellmApiBase}}
+    client_args["api_base"] = {{safeJson litellmApiBase}}
+    {{/if}}
+    params = {{#if litellmAdditionalParams}}json.loads({{pyJsonStr litellmAdditionalParams}}){{else}}{}{{/if}}
+    return LiteLLMModel(
+        client_args=client_args,
+        model_id="{{#if modelId}}{{modelId}}{{else}}bedrock/us.anthropic.claude-sonnet-4-5-20250514-v1:0{{/if}}",
+        params=params,
+    )
+{{/if}}
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/http/strands/base/model/mantle_compat.py should match snapshot 1`] = `
+"from strands.models.openai_responses import OpenAIResponsesModel
+
+
+class MantleCompatResponsesModel(OpenAIResponsesModel):
+    """Workaround for Bedrock Mantle rejecting output_text in EasyInputMessage content arrays.
+
+    Mantle's Pydantic validation only accepts content as a plain string for assistant messages, while
+    real OpenAI accepts both formats. Flatten assistant content arrays to strings so multi-turn works.
+    Used for open-source OpenAI models (gpt-oss-*) on the /v1 Mantle path; proprietary models use the
+    plain OpenAIResponsesModel on /openai/v1.
+    """
+
+    @classmethod
+    def _format_request_messages(cls, messages):
+        formatted = super()._format_request_messages(messages)
+        for msg in formatted:
+            if msg.get("role") == "assistant" and isinstance(msg.get("content"), list):
+                msg["content"] = "".join(
+                    part.get("text", "") for part in msg["content"] if part.get("type") == "output_text"
+                )
+        return formatted
 "
 `;
 
@@ -6155,6 +6418,9 @@ dependencies = [
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
     {{/if}}"mcp >= 1.19.0",
     {{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",
+    {{/if}}{{#if (eq modelProvider "LiteLLM")}}"litellm >= 1.0.0",
+    {{/if}}{{#if bedrockMantle}}"openai >= 1.0.0",
+    "aws-bedrock-token-generator >= 1.0.0",
     {{/if}}"strands-agents >= 1.15.0",
     {{#if (or hasBrowser hasCodeInterpreter)}}"strands-agents-tools >= 0.1.0",
     {{/if}}{{#if hasBrowser}}"nest-asyncio >= 1.5.0",
@@ -7379,6 +7645,9 @@ import { Agent, McpClient, tool, type ToolList } from '@strands-agents/sdk';
 import { z } from 'zod';
 import { loadModel } from './model/load.js';
 import { getStreamableHttpMcpClient } from './mcp_client/client.js';
+{{#if hasMemory}}
+import { getActorId, getOrCreateMemoryManager } from './memory/memory.js';
+{{/if}}
 
 // Define a collection of MCP clients (filter out anything that failed to initialize)
 const mcpClients: McpClient[] = [getStreamableHttpMcpClient()].filter(
@@ -7407,6 +7676,25 @@ const SYSTEM_PROMPT = \`
 You are a helpful assistant. Use tools when appropriate.
 \`;
 
+{{#if hasMemory}}
+const agentCache = new Map<string, Agent>();
+
+async function getOrCreateAgent(sessionId: string, actorId: string): Promise<Agent> {
+  const key = \`\${actorId}:\${sessionId}\`;
+  let agent = agentCache.get(key);
+  if (agent) return agent;
+
+  const model = await loadModel();
+  agent = new Agent({
+    model,
+    systemPrompt: SYSTEM_PROMPT,
+    tools,
+    memoryManager: getOrCreateMemoryManager(sessionId, actorId) ?? undefined,
+  });
+  agentCache.set(key, agent);
+  return agent;
+}
+{{else}}
 let cachedAgent: Agent | null = null;
 
 async function getOrCreateAgent(): Promise<Agent> {
@@ -7420,12 +7708,37 @@ async function getOrCreateAgent(): Promise<Agent> {
   }
   return cachedAgent;
 }
+{{/if}}
 
 const app = new BedrockAgentCoreApp({
   invocationHandler: {
     async *process(payload: any, context: any) {
+      {{#if hasMemory}}
+      const sessionId = context?.sessionId ?? 'default-session';
+      const actorId = getActorId(payload, context);
+      const agent = await getOrCreateAgent(sessionId, actorId);
+      {{else}}
       const agent = await getOrCreateAgent();
+      {{/if}}
 
+      {{#if hasMemory}}
+      try {
+        for await (const event of agent.stream(payload.prompt ?? '')) {
+          if (
+            event.type === 'modelStreamUpdateEvent' &&
+            event.event?.type === 'modelContentBlockDeltaEvent' &&
+            event.event.delta?.type === 'textDelta'
+          ) {
+            yield { data: event.event.delta.text };
+          }
+        }
+      } finally {
+        // Drain in-flight createEvent calls before the runtime can reclaim
+        // the session microVM. flush() is the durability mechanism — without
+        // it, an idle reclamation can lose the tail of the conversation.
+        await agent.memoryManager?.flush();
+      }
+      {{else}}
       for await (const event of agent.stream(payload.prompt ?? '')) {
         if (
           event.type === 'modelStreamUpdateEvent' &&
@@ -7435,6 +7748,7 @@ const app = new BedrockAgentCoreApp({
           yield { data: event.event.delta.text };
         }
       }
+      {{/if}}
     },
   },
 });
@@ -7587,8 +7901,9 @@ exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/
     "@google/genai": "^1.40.0",
     {{/if}}
     "@modelcontextprotocol/sdk": "^1.25.2",
-    "@strands-agents/sdk": "1.0.0-rc.4",
-    "bedrock-agentcore": "^0.2.4",
+    "@opentelemetry/api": "^1.9.0",
+    "@strands-agents/sdk": "^1.5.0",
+    "bedrock-agentcore": "^0.3.0",
     "tsx": "^4.19.0",
     "zod": "^4.4.3"
   },
@@ -7624,6 +7939,62 @@ exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist"]
+}
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/capabilities/memory/memory.ts should match snapshot 1`] = `
+"import { randomUUID } from 'node:crypto';
+import { MemoryManager } from '@strands-agents/sdk';
+import { createAgentCoreMemoryStores } from 'bedrock-agentcore/experimental/memory/strands';
+
+const MEMORY_ID = process.env.{{memoryProviders.[0].envVarName}};
+
+const CUSTOM_ACTOR_ID_HEADER = 'x-amzn-bedrock-agentcore-runtime-custom-actor-id';
+
+export function getActorId(payload: any, context: any): string {
+  const raw =
+    context?.headers?.[CUSTOM_ACTOR_ID_HEADER] ||
+    payload?.userId ||
+    context?.sessionId;
+  return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : randomUUID();
+}
+
+const memoryManagerCache = new Map<string, MemoryManager>();
+
+export function getOrCreateMemoryManager(sessionId: string, actorId: string): MemoryManager | null {
+  if (!MEMORY_ID) return null;
+
+  const key = \`\${actorId}:\${sessionId}\`;
+  let manager = memoryManagerCache.get(key);
+  if (manager) return manager;
+
+  const stores = createAgentCoreMemoryStores({
+    memoryId: MEMORY_ID,
+    actorId,
+    sessionId,
+    namespaces: [
+{{#if (includes memoryProviders.[0].strategies "SEMANTIC")}}
+      { namespace: '/users/{actorId}/facts' },
+{{/if}}
+{{#if (includes memoryProviders.[0].strategies "USER_PREFERENCE")}}
+      { namespace: '/users/{actorId}/preferences' },
+{{/if}}
+{{#if (includes memoryProviders.[0].strategies "EPISODIC")}}
+      { namespace: '/episodes/{actorId}/{sessionId}' },
+{{/if}}
+{{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
+      { namespace: '/summaries/{actorId}/{sessionId}' },
+{{/if}}
+    ],
+    // readMode defaults to 'per-namespace' (one retrieve call per namespace).
+    // Switch to 'subtree' to consolidate to a single hierarchical recall call.
+    extraction: true,
+  });
+
+  manager = new MemoryManager({ stores });
+  memoryManagerCache.set(key, manager);
+  return manager;
 }
 "
 `;
