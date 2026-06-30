@@ -35,7 +35,8 @@ export async function handleExportHarness(
   options: ExportHarnessOptions,
   progress?: ExportHarnessProgress
 ): Promise<
-  { success: true; agentName: string; agentPath: string; notesPath: string } | { success: false; error: Error }
+  | { success: true; agentName: string; agentPath: string; notesPath: string; notes: ExportNote[] }
+  | { success: false; error: Error }
 > {
   const log = (msg: string) => progress?.onProgress?.(msg);
 
@@ -280,6 +281,7 @@ export async function handleExportHarness(
         agentName: targetAgentName,
         agentPath: agentDir,
         notesPath: join(agentDir, EXPORT_NOTES_FILENAME),
+        notes: context.exportNotes,
       };
     }
   );

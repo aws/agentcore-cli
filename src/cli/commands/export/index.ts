@@ -4,7 +4,7 @@ import { renderTUI } from '../../tui/render';
 import { handleExportHarness } from './harness-action';
 import type { Command } from '@commander-js/extra-typings';
 
-const { green, red, cyan, dim, reset } = ANSI;
+const { green, red, cyan, dim, yellow, reset } = ANSI;
 
 export function registerExport(program: Command): void {
   const exportCmd = program
@@ -75,8 +75,28 @@ export function registerExport(program: Command): void {
       console.log(`${dim}Generated:${reset}`);
       console.log(`  app/${targetAgentName}/    Python agent (Strands)`);
       console.log(`  agentcore/agentcore.json  updated`);
-      console.log(`  EXPORT_NOTES.md           review for manual follow-up items`);
       console.log('');
+
+      // Surface any manual follow-up notes inline so they aren't missed (also written to
+      // app/<agent>/EXPORT_NOTES.md). Each note is a category + a (possibly multi-line) message.
+      if (result.notes.length > 0) {
+        const label = result.notes.length === 1 ? 'note' : 'notes';
+        console.log(`${yellow}⚠ ${result.notes.length} export ${label} requiring manual follow-up:${reset}`);
+        console.log('');
+        for (const note of result.notes) {
+          console.log(`  ${yellow}• ${note.category}${reset}`);
+          for (const line of note.message.split('\n')) {
+            console.log(`    ${dim}${line}${reset}`);
+          }
+          console.log('');
+        }
+        console.log(`${dim}These notes are also saved to app/${targetAgentName}/EXPORT_NOTES.md${reset}`);
+        console.log('');
+      } else {
+        console.log(`${dim}No manual follow-up required. (Details: app/${targetAgentName}/EXPORT_NOTES.md)${reset}`);
+        console.log('');
+      }
+
       console.log('Next steps:');
       console.log('');
       console.log(`  ${cyan}agentcore deploy${reset}     ${dim}Deploy the new runtime agent${reset}`);

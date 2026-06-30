@@ -1,3 +1,4 @@
+import type { ExportNote } from '../../../commands/export/types';
 import { ErrorPrompt, GradientText, NextSteps, Screen, StepProgress } from '../../components';
 import type { NextStep, Step } from '../../components';
 import { ExportHarnessScreen } from './ExportHarnessScreen';
@@ -10,7 +11,7 @@ type FlowState =
   | { name: 'wizard'; harnessNames: string[]; existingAgentNames: string[]; containerOnlyHarnesses: Set<string> }
   | { name: 'no-harnesses' }
   | { name: 'exporting'; steps: Step[] }
-  | { name: 'success'; agentName: string; notesPath: string }
+  | { name: 'success'; agentName: string; notesPath: string; notes: ExportNote[] }
   | { name: 'error'; message: string };
 
 interface ExportHarnessFlowProps {
@@ -112,7 +113,7 @@ export function ExportHarnessFlow({ isInteractive = true, onExit, onBack, onDepl
         return;
       }
 
-      setFlow({ name: 'success', agentName: result.agentName, notesPath: result.notesPath });
+      setFlow({ name: 'success', agentName: result.agentName, notesPath: result.notesPath, notes: result.notes });
     } catch (err) {
       const { getErrorMessage } = await import('../../../errors');
       setFlow({ name: 'error', message: getErrorMessage(err) });
@@ -178,8 +179,31 @@ export function ExportHarnessFlow({ isInteractive = true, onExit, onBack, onDepl
           <Box flexDirection="column">
             <Text color="green">✓ Exported harness → runtime agent {flow.agentName}</Text>
             <Text dimColor>Generated: app/{flow.agentName}/ · agentcore/agentcore.json updated</Text>
-            <Text dimColor>Review export notes: {flow.notesPath}</Text>
           </Box>
+
+          {/* Surface manual follow-up notes inline so they aren't missed (also in EXPORT_NOTES.md). */}
+          {flow.notes.length > 0 ? (
+            <Box flexDirection="column">
+              <Text color="yellow">
+                ⚠ {flow.notes.length} export {flow.notes.length === 1 ? 'note' : 'notes'} requiring manual follow-up:
+              </Text>
+              {flow.notes.map((note, i) => (
+                <Box key={i} flexDirection="column" marginTop={1}>
+                  <Text color="yellow"> • {note.category}</Text>
+                  {note.message.split('\n').map((line, j) => (
+                    <Text key={j} dimColor>
+                      {'   '}
+                      {line}
+                    </Text>
+                  ))}
+                </Box>
+              ))}
+              <Text dimColor>Also saved to {flow.notesPath}</Text>
+            </Box>
+          ) : (
+            <Text dimColor>No manual follow-up required. (Details: {flow.notesPath})</Text>
+          )}
+
           {isInteractive && (
             <NextSteps steps={EXPORT_SUCCESS_STEPS} isInteractive={true} onSelect={handleSelect} onBack={onExit} />
           )}
