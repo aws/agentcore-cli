@@ -624,3 +624,92 @@ describe('AgentEnvSpecSchema - endpoints', () => {
     }
   });
 });
+
+describe('NetworkConfigSchema - vpcId', () => {
+  it('accepts valid vpcId', () => {
+    const result = NetworkConfigSchema.safeParse({
+      subnets: ['subnet-12345678'],
+      securityGroups: ['sg-12345678'],
+      vpcId: 'vpc-12345678',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects malformed vpcId', () => {
+    expect(
+      NetworkConfigSchema.safeParse({
+        subnets: ['subnet-12345678'],
+        securityGroups: ['sg-12345678'],
+        vpcId: 'invalid-vpc',
+      }).success
+    ).toBe(false);
+    expect(
+      NetworkConfigSchema.safeParse({
+        subnets: ['subnet-12345678'],
+        securityGroups: ['sg-12345678'],
+        vpcId: 'vpc-1234567',
+      }).success
+    ).toBe(false);
+  });
+
+  it('omits vpcId when not provided (optional)', () => {
+    const result = NetworkConfigSchema.safeParse({
+      subnets: ['subnet-12345678'],
+      securityGroups: ['sg-12345678'],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.vpcId).toBeUndefined();
+    }
+  });
+});
+
+describe('AgentEnvSpecSchema - vpcId validation', () => {
+  const baseVpcAgent = {
+    name: 'VpcAgent',
+    build: 'Container',
+    entrypoint: 'main.py',
+    codeLocation: './agents/vpc',
+    networkMode: 'VPC',
+    networkConfig: {
+      subnets: ['subnet-12345678'],
+      securityGroups: ['sg-12345678'],
+    },
+  };
+
+  it('requires vpcId for Container builds in VPC mode', () => {
+    const result = AgentEnvSpecSchema.safeParse(baseVpcAgent);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.path.includes('vpcId'))).toBe(true);
+    }
+  });
+
+  it('accepts Container+VPC agent with vpcId', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...baseVpcAgent,
+      networkConfig: {
+        subnets: ['subnet-12345678'],
+        securityGroups: ['sg-12345678'],
+        vpcId: 'vpc-12345678',
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('does not require vpcId for CodeZip+VPC', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      name: 'CodeZipVpcAgent',
+      build: 'CodeZip',
+      entrypoint: 'main.py:handler',
+      codeLocation: './agents/codezipvpc',
+      runtimeVersion: 'PYTHON_3_12',
+      networkMode: 'VPC',
+      networkConfig: {
+        subnets: ['subnet-12345678'],
+        securityGroups: ['sg-12345678'],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+});

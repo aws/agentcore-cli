@@ -121,6 +121,14 @@ export const NetworkConfigSchema = z.object({
     .array(z.string().regex(/^sg-[0-9a-zA-Z]{8,17}$/))
     .min(1)
     .max(16),
+  /**
+   * VPC ID. Required for Container builds in VPC mode because CodeBuild needs an explicit VPC ID;
+   * it cannot infer the VPC from subnets alone. Runtime/Lambda builds can omit this.
+   */
+  vpcId: z
+    .string()
+    .regex(/^vpc-[0-9a-zA-Z]{8,17}$/)
+    .optional(),
 });
 export type NetworkConfig = z.infer<typeof NetworkConfigSchema>;
 
@@ -369,6 +377,14 @@ export const AgentEnvSpecSchema = z
         code: z.ZodIssueCode.custom,
         message: 'networkConfig is only allowed when networkMode is VPC',
         path: ['networkConfig'],
+      });
+    }
+    if (data.networkMode === 'VPC' && data.build === 'Container' && !data.networkConfig?.vpcId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'networkConfig.vpcId is required for Container builds in VPC mode (CodeBuild cannot infer the VPC from subnets)',
+        path: ['networkConfig', 'vpcId'],
       });
     }
     if (data.authorizerType === 'CUSTOM_JWT' && !data.authorizerConfiguration?.customJwtAuthorizer) {
