@@ -15,13 +15,15 @@ jobs:
     steps:
       - name: Check authorization
         id: check
+        env:
+          AUTHORIZED_USERS: ${{ secrets.AUTHORIZED_USERS }}
+          GITHUB_ACTOR: ${{ github.actor }}
         run: |
-          AUTHORIZED_USERS="${{ secrets.AUTHORIZED_USERS }}"
-          if [[ ",$AUTHORIZED_USERS," == *",${{ github.actor }},"* ]]; then
-            echo "✅ User ${{ github.actor }} is authorized"
+          if [[ ",$AUTHORIZED_USERS," == *",${GITHUB_ACTOR},"* ]]; then
+            echo "✅ User ${GITHUB_ACTOR} is authorized"
             echo "is_authorized=true" >> "$GITHUB_OUTPUT"
           else
-            echo "⏭️ User ${{ github.actor }} is not in AUTHORIZED_USERS — skipping."
+            echo "⏭️ User ${GITHUB_ACTOR} is not in AUTHORIZED_USERS — skipping."
             echo "is_authorized=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -62,6 +64,8 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           TARBALL_NAME: ${{ steps.tarball.outputs.name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           TAG="pr-${PR_NUMBER}-tarball"
 
@@ -74,9 +78,9 @@ jobs:
             --title "PR #${PR_NUMBER} Tarball" \
             --notes "Auto-generated tarball for PR #${PR_NUMBER}." \
             --draft \
-            --target "${{ github.event.pull_request.head.sha }}"
+            --target "$HEAD_SHA"
 
-          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${TARBALL_NAME}"
+          DOWNLOAD_URL="https://github.com/${REPOSITORY}/releases/download/${TAG}/${TARBALL_NAME}"
           echo "url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
       - name: Comment on PR
         uses: marocchino/sticky-pull-request-comment@v3

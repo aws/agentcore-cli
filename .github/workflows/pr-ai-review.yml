@@ -75,25 +75,32 @@ jobs:
     steps:
       - name: Determine PR URL
         id: pr-url
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PR_URL: ${{ inputs.pr_url }}
+          PR_HTML_URL: ${{ github.event.pull_request.html_url }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "url=${{ inputs.pr_url }}" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "url=$INPUT_PR_URL" >> "$GITHUB_OUTPUT"
           else
-            echo "url=${{ github.event.pull_request.html_url }}" >> "$GITHUB_OUTPUT"
+            echo "url=$PR_HTML_URL" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Extract PR number
         id: pr-number
+        env:
+          PR_URL: ${{ steps.pr-url.outputs.url }}
         run: |
-          PR_URL="${{ steps.pr-url.outputs.url }}"
           PR_NUM="${PR_URL##*/}"
           echo "number=$PR_NUM" >> "$GITHUB_OUTPUT"
 
       - name: Add agentcore-harness-reviewing label
         uses: actions/github-script@v9
+        env:
+          PR_NUMBER: ${{ steps.pr-number.outputs.number }}
         with:
           script: |
-            const prNumber = parseInt('${{ steps.pr-number.outputs.number }}');
+            const prNumber = parseInt(process.env.PR_NUMBER);
             try {
               await github.rest.issues.getLabel({
                 owner: context.repo.owner,
@@ -147,9 +154,11 @@ jobs:
       - name: Remove agentcore-harness-reviewing label
         if: always()
         uses: actions/github-script@v9
+        env:
+          PR_NUMBER: ${{ steps.pr-number.outputs.number }}
         with:
           script: |
-            const prNumber = parseInt('${{ steps.pr-number.outputs.number }}');
+            const prNumber = parseInt(process.env.PR_NUMBER);
             try {
               await github.rest.issues.removeLabel({
                 owner: context.repo.owner,

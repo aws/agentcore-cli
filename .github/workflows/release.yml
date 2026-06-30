@@ -39,10 +39,10 @@ jobs:
     steps:
       - name: Determine release metadata
         id: release-meta
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+          VERSION_BUMP: ${{ github.event.inputs.bump_type }}
         run: |
-          BRANCH_NAME="${{ github.ref_name }}"
-          VERSION_BUMP="${{ github.event.inputs.bump_type }}"
-
           if [[ "$BRANCH_NAME" == "main" ]]; then
             echo "dist_tag=latest" >> $GITHUB_OUTPUT
             echo "base_branch=main" >> $GITHUB_OUTPUT
@@ -314,8 +314,10 @@ jobs:
           fetch-depth: 0
 
       - name: Verify we have the merged code
+        env:
+          BASE_BRANCH: ${{ needs.prepare-release.outputs.base_branch }}
         run: |
-          echo "Branch: ${{ needs.prepare-release.outputs.base_branch }}"
+          echo "Branch: $BASE_BRANCH"
           echo "Current version in package.json:"
           cat package.json | grep '"version"'
           echo ""
