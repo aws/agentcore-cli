@@ -1,4 +1,10 @@
-import { parseCommaSeparatedList, validateSecurityGroupIds, validateSubnetIds, validateVpcOptions } from '../vpc-utils';
+import {
+  parseCommaSeparatedList,
+  validateSecurityGroupIds,
+  validateSubnetIds,
+  validateVpcId,
+  validateVpcOptions,
+} from '../vpc-utils';
 import { describe, expect, it } from 'vitest';
 
 describe('parseCommaSeparatedList', () => {
@@ -77,6 +83,44 @@ describe('validateSecurityGroupIds', () => {
     const result = validateSecurityGroupIds('sg-12345678, bad-id');
     expect(result).not.toBe(true);
     expect(result).toContain('Invalid security group ID format');
+  });
+});
+
+describe('validateVpcId', () => {
+  it('accepts a valid vpc id', () => {
+    expect(validateVpcId('vpc-0123456789abcdef0')).toBe(true);
+  });
+  it('rejects a malformed vpc id', () => {
+    expect(typeof validateVpcId('vpc-xyz')).toBe('string');
+  });
+});
+
+describe('validateVpcOptions vpcId requirement', () => {
+  it('requires vpcId for Container + VPC', () => {
+    const r = validateVpcOptions(
+      { networkMode: 'VPC', subnets: 'subnet-0123456789abcdef0', securityGroups: 'sg-0123456789abcdef0' },
+      'Container'
+    );
+    expect(r.valid).toBe(false);
+  });
+  it('accepts Container + VPC with vpcId', () => {
+    const r = validateVpcOptions(
+      {
+        networkMode: 'VPC',
+        subnets: 'subnet-0123456789abcdef0',
+        securityGroups: 'sg-0123456789abcdef0',
+        vpcId: 'vpc-0123456789abcdef0',
+      },
+      'Container'
+    );
+    expect(r.valid).toBe(true);
+  });
+  it('does not require vpcId for CodeZip + VPC', () => {
+    const r = validateVpcOptions(
+      { networkMode: 'VPC', subnets: 'subnet-0123456789abcdef0', securityGroups: 'sg-0123456789abcdef0' },
+      'CodeZip'
+    );
+    expect(r.valid).toBe(true);
   });
 });
 

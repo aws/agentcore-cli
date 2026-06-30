@@ -310,7 +310,7 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
   }
 
   // Validate VPC options
-  const vpcResult = validateVpcOptions(options);
+  const vpcResult = validateVpcOptions(options, options.build);
   if (!vpcResult.valid) {
     return { valid: false, error: vpcResult.error };
   }

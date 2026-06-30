@@ -2,6 +2,7 @@ export interface VpcOptions {
   networkMode?: string;
   subnets?: string;
   securityGroups?: string;
+  vpcId?: string;
 }
 
 export interface VpcValidationResult {
@@ -18,6 +19,7 @@ export const VPC_ENDPOINT_WARNING =
 
 const SUBNET_PATTERN = /^subnet-[0-9a-zA-Z]{8,17}$/;
 const SECURITY_GROUP_PATTERN = /^sg-[0-9a-zA-Z]{8,17}$/;
+const VPC_ID_PATTERN = /^vpc-[0-9a-zA-Z]{8,17}$/;
 
 export function parseCommaSeparatedList(value: string | undefined): string[] | undefined {
   if (!value) return undefined;
@@ -57,7 +59,14 @@ export function validateSecurityGroupIds(value: string): true | string {
   return true;
 }
 
-export function validateVpcOptions(options: VpcOptions): VpcValidationResult {
+export function validateVpcId(value: string): true | string {
+  if (!VPC_ID_PATTERN.test(value.trim())) {
+    return `Invalid VPC ID format: ${value}. Expected vpc-xxxxxxxx`;
+  }
+  return true;
+}
+
+export function validateVpcOptions(options: VpcOptions, buildType?: string): VpcValidationResult {
   if (options.networkMode && options.networkMode !== 'PUBLIC' && options.networkMode !== 'VPC') {
     return { valid: false, error: `Invalid network mode: ${options.networkMode}. Use PUBLIC or VPC` };
   }
@@ -74,10 +83,18 @@ export function validateVpcOptions(options: VpcOptions): VpcValidationResult {
     if (subnetResult !== true) return { valid: false, error: subnetResult };
     const sgResult = validateSecurityGroupIds(options.securityGroups);
     if (sgResult !== true) return { valid: false, error: sgResult };
+
+    if (buildType === 'Container') {
+      if (!options.vpcId) {
+        return { valid: false, error: '--vpc-id is required for Container builds with --network-mode VPC' };
+      }
+      const vpcResult = validateVpcId(options.vpcId);
+      if (vpcResult !== true) return { valid: false, error: vpcResult };
+    }
   }
 
-  if (options.networkMode !== 'VPC' && (options.subnets || options.securityGroups)) {
-    return { valid: false, error: '--subnets and --security-groups are only valid with --network-mode VPC' };
+  if (options.networkMode !== 'VPC' && (options.subnets || options.securityGroups || options.vpcId)) {
+    return { valid: false, error: '--subnets, --security-groups, and --vpc-id are only valid with --network-mode VPC' };
   }
 
   return { valid: true };
