@@ -69,7 +69,7 @@ describe('status command', () => {
 
   it('emits failure telemetry for invalid --type', async () => {
     const result = await runCLI(['status', '--type', 'bogus'], projectDir, { env: telemetry.env });
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(1);
     telemetry.assertMetricEmitted({
       command: 'status',
       exit_reason: 'failure',
@@ -80,7 +80,7 @@ describe('status command', () => {
 
   it('emits failure telemetry for invalid --state', async () => {
     const result = await runCLI(['status', '--state', 'bogus'], projectDir, { env: telemetry.env });
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(1);
     telemetry.assertMetricEmitted({
       command: 'status',
       exit_reason: 'failure',
