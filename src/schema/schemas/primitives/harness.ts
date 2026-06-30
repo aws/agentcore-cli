@@ -633,6 +633,14 @@ export const HarnessSpecSchema = z
         path: ['networkConfig'],
       });
     }
+    if (data.networkMode === 'VPC' && data.dockerfile && !data.networkConfig?.vpcId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'networkConfig.vpcId is required for container (dockerfile) builds in VPC mode (CodeBuild cannot infer the VPC from subnets)',
+        path: ['networkConfig', 'vpcId'],
+      });
+    }
     if ((data.efsAccessPoints?.length || data.s3AccessPoints?.length) && data.networkMode !== 'VPC') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

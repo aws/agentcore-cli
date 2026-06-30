@@ -1256,3 +1256,42 @@ describe('HarnessSpecSchema skills field', () => {
     }
   });
 });
+
+describe('HarnessSpecSchema vpcId for container builds', () => {
+  const minimalHarnessForVpc = {
+    name: 'myHarness',
+    model: {
+      provider: 'bedrock' as const,
+      modelId: 'us.anthropic.claude-sonnet-4-5-20250514-v1:0',
+    },
+  };
+  const baseDockerfileHarness = {
+    ...minimalHarnessForVpc,
+    dockerfile: 'Dockerfile',
+    networkMode: 'VPC' as const,
+    networkConfig: { subnets: ['subnet-0123456789abcdef0'], securityGroups: ['sg-0123456789abcdef0'] },
+  };
+
+  it('requires vpcId for a dockerfile build in VPC mode', () => {
+    const r = HarnessSpecSchema.safeParse(baseDockerfileHarness);
+    expect(r.success).toBe(false);
+  });
+
+  it('accepts a dockerfile build in VPC mode when vpcId is present', () => {
+    const r = HarnessSpecSchema.safeParse({
+      ...baseDockerfileHarness,
+      networkConfig: { ...baseDockerfileHarness.networkConfig, vpcId: 'vpc-0123456789abcdef0' },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('does NOT require vpcId for a containerUri harness in VPC mode (no build)', () => {
+    const r = HarnessSpecSchema.safeParse({
+      ...minimalHarnessForVpc,
+      containerUri: '123456789012.dkr.ecr.us-east-1.amazonaws.com/repo:tag',
+      networkMode: 'VPC',
+      networkConfig: { subnets: ['subnet-0123456789abcdef0'], securityGroups: ['sg-0123456789abcdef0'] },
+    });
+    expect(r.success).toBe(true);
+  });
+});
