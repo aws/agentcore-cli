@@ -12,6 +12,7 @@ import { arnPrefix } from '../../aws/partition';
 import { ANSI, PYTHON_BASE_IMAGE } from '../../constants';
 import { ExecLogger } from '../../logging';
 import { setupPythonProject } from '../../operations/python/setup';
+import { resolveVpcIdFromSubnets } from '../shared/vpc-utils';
 import { executeCdkImportPipeline } from './import-pipeline';
 import { copyDirRecursive, fixPyprojectForSetuptools, toStackName } from './import-utils';
 import { findLogicalIdByProperty, findLogicalIdsByType } from './template-utils';
@@ -332,6 +333,31 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       } else {
         logger.log(`Skipping credential "${cred.name}" (already exists in project)`);
         onProgress?.(`Skipping credential "${cred.name}" (already exists in project)`);
+      }
+    }
+
+    // Resolve vpcId for any Container+VPC agents that don't have it yet.
+    // The starter-toolkit YAML omits vpc_id; we resolve it from the first subnet via DescribeSubnets.
+    const importRegion = parsed.awsTarget.region ?? target?.region;
+    for (const agentSpec of projectSpec.runtimes) {
+      if (
+        agentSpec.build === 'Container' &&
+        agentSpec.networkMode === 'VPC' &&
+        agentSpec.networkConfig &&
+        agentSpec.networkConfig.subnets.length > 0 &&
+        !agentSpec.networkConfig.vpcId
+      ) {
+        if (!importRegion) {
+          const error =
+            `Cannot resolve VPC ID for agent "${agentSpec.name}": no AWS region available. ` +
+            'Add an aws.region to the YAML or set up a deployment target first.';
+          logger.endStep('error', error);
+          logger.finalize(false);
+          return { success: false, error: new ValidationError(error), logPath: logger.getRelativeLogPath() };
+        }
+        agentSpec.networkConfig.vpcId = await resolveVpcIdFromSubnets(agentSpec.networkConfig.subnets, importRegion);
+        logger.log(`Resolved vpcId for agent "${agentSpec.name}": ${agentSpec.networkConfig.vpcId}`);
+        onProgress?.(`Resolved vpcId for agent "${agentSpec.name}": ${agentSpec.networkConfig.vpcId}`);
       }
     }
 
