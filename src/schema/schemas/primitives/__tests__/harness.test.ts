@@ -1295,3 +1295,66 @@ describe('HarnessSpecSchema vpcId for container builds', () => {
     expect(r.success).toBe(true);
   });
 });
+
+describe('HarnessSpecSchema — SG≤5 for dockerfile builds in VPC mode', () => {
+  const minimalHarnessForSg = {
+    name: 'myHarness',
+    model: {
+      provider: 'bedrock' as const,
+      modelId: 'us.anthropic.claude-sonnet-4-5-20250514-v1:0',
+    },
+  };
+  const sixSgs = [
+    'sg-00000000000000001',
+    'sg-00000000000000002',
+    'sg-00000000000000003',
+    'sg-00000000000000004',
+    'sg-00000000000000005',
+    'sg-00000000000000006',
+  ];
+  const fiveSgs = sixSgs.slice(0, 5);
+
+  it('rejects dockerfile+VPC with 6 security groups', () => {
+    const r = HarnessSpecSchema.safeParse({
+      ...minimalHarnessForSg,
+      dockerfile: 'Dockerfile',
+      networkMode: 'VPC' as const,
+      networkConfig: {
+        subnets: ['subnet-0123456789abcdef0'],
+        securityGroups: sixSgs,
+        vpcId: 'vpc-0123456789abcdef0',
+      },
+    });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      expect(r.error.issues.some(i => i.message.includes('5 security groups'))).toBe(true);
+    }
+  });
+
+  it('accepts dockerfile+VPC with exactly 5 security groups', () => {
+    const r = HarnessSpecSchema.safeParse({
+      ...minimalHarnessForSg,
+      dockerfile: 'Dockerfile',
+      networkMode: 'VPC' as const,
+      networkConfig: {
+        subnets: ['subnet-0123456789abcdef0'],
+        securityGroups: fiveSgs,
+        vpcId: 'vpc-0123456789abcdef0',
+      },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts containerUri+VPC with 6 security groups (no build, no cap)', () => {
+    const r = HarnessSpecSchema.safeParse({
+      ...minimalHarnessForSg,
+      containerUri: '123456789012.dkr.ecr.us-east-1.amazonaws.com/repo:tag',
+      networkMode: 'VPC',
+      networkConfig: {
+        subnets: ['subnet-0123456789abcdef0'],
+        securityGroups: sixSgs,
+      },
+    });
+    expect(r.success).toBe(true);
+  });
+});

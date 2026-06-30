@@ -387,6 +387,18 @@ export const AgentEnvSpecSchema = z
         path: ['networkConfig', 'vpcId'],
       });
     }
+    if (
+      data.networkMode === 'VPC' &&
+      data.build === 'Container' &&
+      data.networkConfig &&
+      data.networkConfig.securityGroups.length > 5
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Container builds in VPC mode allow at most 5 security groups (CodeBuild limit)',
+        path: ['networkConfig', 'securityGroups'],
+      });
+    }
     if (data.authorizerType === 'CUSTOM_JWT' && !data.authorizerConfiguration?.customJwtAuthorizer) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

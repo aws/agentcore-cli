@@ -713,3 +713,66 @@ describe('AgentEnvSpecSchema - vpcId validation', () => {
     expect(result.success).toBe(true);
   });
 });
+
+describe('AgentEnvSpecSchema — SG≤5 for Container builds in VPC mode', () => {
+  const sixSgs = [
+    'sg-00000000000000001',
+    'sg-00000000000000002',
+    'sg-00000000000000003',
+    'sg-00000000000000004',
+    'sg-00000000000000005',
+    'sg-00000000000000006',
+  ];
+  const fiveSgs = sixSgs.slice(0, 5);
+
+  it('rejects Container+VPC with 6 security groups', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      name: 'ContainerVpcAgent',
+      build: 'Container',
+      entrypoint: 'main.py',
+      codeLocation: './agents/container',
+      networkMode: 'VPC',
+      networkConfig: {
+        subnets: ['subnet-0123456789abcdef0'],
+        securityGroups: sixSgs,
+        vpcId: 'vpc-0123456789abcdef0',
+      },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('5 security groups'))).toBe(true);
+    }
+  });
+
+  it('accepts Container+VPC with exactly 5 security groups', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      name: 'ContainerVpcAgent',
+      build: 'Container',
+      entrypoint: 'main.py',
+      codeLocation: './agents/container',
+      networkMode: 'VPC',
+      networkConfig: {
+        subnets: ['subnet-0123456789abcdef0'],
+        securityGroups: fiveSgs,
+        vpcId: 'vpc-0123456789abcdef0',
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts CodeZip+VPC with 6 security groups (no CodeBuild, no cap)', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      name: 'CodeZipVpcAgent',
+      build: 'CodeZip',
+      entrypoint: 'main.py:handler',
+      codeLocation: './agents/codezipvpc',
+      runtimeVersion: 'PYTHON_3_12',
+      networkMode: 'VPC',
+      networkConfig: {
+        subnets: ['subnet-0123456789abcdef0'],
+        securityGroups: sixSgs,
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+});

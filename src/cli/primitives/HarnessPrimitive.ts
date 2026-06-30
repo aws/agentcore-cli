@@ -675,6 +675,7 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
       .option('--network-mode <mode>', 'Network mode: PUBLIC or VPC')
       .option('--subnets <ids>', 'Comma-separated subnet IDs (for VPC mode)')
       .option('--security-groups <ids>', 'Comma-separated security group IDs (for VPC mode)')
+      .option('--vpc-id <id>', 'VPC ID for dockerfile (container) builds in VPC mode')
       .option('--idle-timeout <seconds>', 'Idle timeout in seconds', strictInt('--idle-timeout'))
       .option('--max-lifetime <seconds>', 'Max lifetime in seconds', strictInt('--max-lifetime'))
       .option('--session-storage <path>', 'Mount path for persistent session storage (e.g., /mnt/data/)')
@@ -784,6 +785,7 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
           networkMode?: string;
           subnets?: string;
           securityGroups?: string;
+          vpcId?: string;
           idleTimeout?: number;
           maxLifetime?: number;
           sessionStorage?: string;
@@ -925,6 +927,7 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
                 networkMode: cliOptions.networkMode as NetworkMode | undefined,
                 subnets: cliOptions.subnets?.split(',').map(s => s.trim()),
                 securityGroups: cliOptions.securityGroups?.split(',').map(s => s.trim()),
+                vpcId: cliOptions.vpcId,
                 idleTimeout: cliOptions.idleTimeout,
                 maxLifetime: cliOptions.maxLifetime,
                 sessionStoragePath: cliOptions.sessionStorage,

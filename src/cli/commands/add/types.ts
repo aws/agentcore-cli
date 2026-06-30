@@ -130,6 +130,7 @@ export interface AddHarnessCliOptions {
   networkMode?: string;
   subnets?: string;
   securityGroups?: string;
+  vpcId?: string;
   idleTimeout?: number;
   maxLifetime?: number;
   sessionStorage?: string;

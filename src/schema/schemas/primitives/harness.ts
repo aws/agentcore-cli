@@ -641,6 +641,18 @@ export const HarnessSpecSchema = z
         path: ['networkConfig', 'vpcId'],
       });
     }
+    if (
+      data.networkMode === 'VPC' &&
+      data.dockerfile &&
+      data.networkConfig &&
+      data.networkConfig.securityGroups.length > 5
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Container (dockerfile) builds in VPC mode allow at most 5 security groups (CodeBuild limit)',
+        path: ['networkConfig', 'securityGroups'],
+      });
+    }
     if ((data.efsAccessPoints?.length || data.s3AccessPoints?.length) && data.networkMode !== 'VPC') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
