@@ -139,6 +139,8 @@ export interface AddHarnessOptions {
   networkMode?: NetworkMode;
   subnets?: string[];
   securityGroups?: string[];
+  /** VPC ID for dockerfile (container) builds in VPC mode; CodeBuild cannot infer it from subnets. */
+  vpcId?: string;
   idleTimeout?: number;
   maxLifetime?: number;
   sessionStoragePath?: string;
@@ -349,6 +351,7 @@ export class HarnessPrimitive extends BasePrimitive<AddHarnessOptions, Removable
             networkConfig: {
               subnets: options.subnets,
               securityGroups: options.securityGroups,
+              ...(options.vpcId && { vpcId: options.vpcId }),
             },
           }),
         ...(this.buildLifecycleConfig(options) && { lifecycleConfig: this.buildLifecycleConfig(options) }),

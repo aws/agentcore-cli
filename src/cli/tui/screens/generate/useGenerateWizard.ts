@@ -72,6 +72,11 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
         subSteps.push('networkMode');
         if (config.networkMode === 'VPC') {
           subSteps.push('subnets', 'securityGroups');
+          // vpcId is required by the schema for Container builds in VPC mode (CodeBuild cannot
+          // infer the VPC from subnets). CodeZip builds no container, so it is not collected there.
+          if (config.buildType === 'Container') {
+            subSteps.push('vpcId');
+          }
         }
       }
       // Headers
@@ -261,6 +266,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
           networkMode: 'PUBLIC',
           subnets: undefined,
           securityGroups: undefined,
+          vpcId: undefined,
           requestHeaderAllowlist: undefined,
           authorizerType: undefined,
           jwtConfig: undefined,
@@ -337,7 +343,17 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
   const setSecurityGroups = useCallback(
     (securityGroups: string[]) => {
       setConfig(c => ({ ...c, securityGroups }));
+      // When the vpcId step is active (Container build) goToNextStep advances to it; otherwise it
+      // advances past the network section — mirroring how subnets → securityGroups already works.
       setTimeout(() => goToNextStep('securityGroups'), 0);
+    },
+    [goToNextStep]
+  );
+
+  const setVpcId = useCallback(
+    (vpcId: string) => {
+      setConfig(c => ({ ...c, vpcId }));
+      setTimeout(() => goToNextStep('vpcId'), 0);
     },
     [goToNextStep]
   );
@@ -528,6 +544,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     setNetworkMode,
     setSubnets,
     setSecurityGroups,
+    setVpcId,
     setRequestHeaderAllowlist,
     skipRequestHeaderAllowlist,
     setAuthorizerType,

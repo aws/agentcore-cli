@@ -40,6 +40,7 @@ export type AddHarnessStep =
   | 'network-mode'
   | 'subnets'
   | 'security-groups'
+  | 'vpc-id'
   | 'idle-timeout'
   | 'max-lifetime'
   | 'max-iterations'
@@ -104,6 +105,8 @@ export interface AddHarnessConfig {
   networkMode?: NetworkMode;
   subnets?: string[];
   securityGroups?: string[];
+  /** VPC ID for dockerfile (container) builds in VPC mode (CodeBuild cannot infer it from subnets) */
+  vpcId?: string;
   idleTimeout?: number;
   maxLifetime?: number;
   sessionStoragePath?: string;
@@ -170,6 +173,7 @@ export const HARNESS_STEP_LABELS: Record<AddHarnessStep, string> = {
   'network-mode': 'Network mode',
   subnets: 'Subnets',
   'security-groups': 'Security groups',
+  'vpc-id': 'VPC ID',
   'idle-timeout': 'Idle timeout',
   'max-lifetime': 'Max lifetime',
   'max-iterations': 'Max iterations',

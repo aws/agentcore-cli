@@ -52,6 +52,7 @@ export type AddAgentStep =
   | 'networkMode'
   | 'subnets'
   | 'securityGroups'
+  | 'vpcId'
   | 'requestHeaderAllowlist'
   | 'authorizerType'
   | 'jwtConfig'
@@ -93,6 +94,8 @@ export interface AddAgentConfig {
   subnets?: string[];
   /** Security group IDs for VPC mode */
   securityGroups?: string[];
+  /** VPC ID for Container builds in VPC mode (CodeBuild cannot infer it from subnets) */
+  vpcId?: string;
   /** Allowed request headers for the runtime */
   requestHeaderAllowlist?: string[];
   /** Authorizer type for inbound requests */
@@ -138,6 +141,7 @@ export const ADD_AGENT_STEP_LABELS: Record<AddAgentStep, string> = {
   networkMode: 'Network',
   subnets: 'Subnets',
   securityGroups: 'Security Groups',
+  vpcId: 'VPC ID',
   requestHeaderAllowlist: 'Headers',
   authorizerType: 'Auth',
   jwtConfig: 'JWT Config',

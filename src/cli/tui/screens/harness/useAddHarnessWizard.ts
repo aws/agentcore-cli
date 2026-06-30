@@ -137,6 +137,12 @@ export function useAddHarnessWizard() {
       steps.push('network-mode');
       if (config.networkMode === 'VPC') {
         steps.push('subnets', 'security-groups');
+        // vpcId is required by the schema for dockerfile (container) builds in VPC mode — CodeBuild
+        // cannot infer the VPC from subnets. A prebuilt containerUri ('uri') or the default env
+        // ('none') runs no build, so vpcId is not collected for those.
+        if (config.containerMode === 'dockerfile') {
+          steps.push('vpc-id');
+        }
       }
     }
 
@@ -633,7 +639,18 @@ export function useAddHarnessWizard() {
         .map(s => s.trim())
         .filter(Boolean);
       setConfig(c => ({ ...c, securityGroups }));
+      // When the vpc-id step is active (dockerfile build) nextStep advances to it; otherwise it
+      // advances past the network section — mirroring how subnets → security-groups already works.
       const next = nextStep('security-groups');
+      if (next) setStep(next);
+    },
+    [nextStep]
+  );
+
+  const setVpcId = useCallback(
+    (vpcId: string) => {
+      setConfig(c => ({ ...c, vpcId: vpcId.trim() }));
+      const next = nextStep('vpc-id');
       if (next) setStep(next);
     },
     [nextStep]
@@ -932,6 +949,7 @@ export function useAddHarnessWizard() {
     setNetworkMode,
     setSubnets,
     setSecurityGroups,
+    setVpcId,
     setIdleTimeout,
     setMaxLifetime,
     setMaxIterations,

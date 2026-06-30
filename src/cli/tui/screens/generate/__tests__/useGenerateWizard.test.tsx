@@ -800,6 +800,86 @@ describe('useGenerateWizard — advanced config gate', () => {
   });
 });
 
+describe('useGenerateWizard — vpcId step (Container + VPC)', () => {
+  function walkToAdvanced(ref: React.RefObject<HarnessHandle | null>, build: 'CodeZip' | 'Container') {
+    act(() => {
+      ref.current!.wizard.setProjectName('Test');
+      ref.current!.wizard.setLanguage('Python');
+      ref.current!.wizard.setBuildType(build);
+      ref.current!.wizard.setProtocol('HTTP');
+      ref.current!.wizard.setSdk('Strands');
+      ref.current!.wizard.setModelProvider('Bedrock');
+      ref.current!.wizard.setMemory('none');
+    });
+  }
+
+  it('Container + VPC: steps include vpcId immediately after securityGroups', () => {
+    const { ref } = setup();
+    walkToAdvanced(ref, 'Container');
+
+    act(() => ref.current!.wizard.setAdvanced(['network']));
+    act(() => ref.current!.wizard.setNetworkMode('VPC'));
+
+    const steps = ref.current!.wizard.steps;
+    expect(steps).toContain('vpcId');
+    const sgIdx = steps.indexOf('securityGroups');
+    expect(steps[sgIdx + 1]).toBe('vpcId');
+  });
+
+  it('Container + VPC: setVpcId persists into config and advances to confirm', () => {
+    vi.useFakeTimers();
+    const { ref } = setup();
+    walkToAdvanced(ref, 'Container');
+
+    act(() => ref.current!.wizard.setAdvanced(['network']));
+    act(() => ref.current!.wizard.setNetworkMode('VPC'));
+    act(() => ref.current!.wizard.setSubnets(['subnet-0123456789abcdef0']));
+    act(() => {
+      vi.runAllTimers();
+    });
+    act(() => ref.current!.wizard.setSecurityGroups(['sg-0123456789abcdef0']));
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(ref.current!.wizard.step).toBe('vpcId');
+
+    act(() => ref.current!.wizard.setVpcId('vpc-0123456789abcdef0'));
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(ref.current!.wizard.config.vpcId).toBe('vpc-0123456789abcdef0');
+    expect(ref.current!.wizard.step).toBe('confirm');
+    vi.useRealTimers();
+  });
+
+  it('CodeZip + VPC: steps do NOT include vpcId', () => {
+    const { ref } = setup();
+    walkToAdvanced(ref, 'CodeZip');
+
+    act(() => ref.current!.wizard.setAdvanced(['network']));
+    act(() => ref.current!.wizard.setNetworkMode('VPC'));
+
+    const steps = ref.current!.wizard.steps;
+    expect(steps).toContain('subnets');
+    expect(steps).toContain('securityGroups');
+    expect(steps).not.toContain('vpcId');
+  });
+
+  it('Container + PUBLIC: steps do NOT include vpcId (or subnets/securityGroups)', () => {
+    const { ref } = setup();
+    walkToAdvanced(ref, 'Container');
+
+    act(() => ref.current!.wizard.setAdvanced(['network']));
+    act(() => ref.current!.wizard.setNetworkMode('PUBLIC'));
+
+    const steps = ref.current!.wizard.steps;
+    expect(steps).not.toContain('vpcId');
+    expect(steps).not.toContain('subnets');
+    expect(steps).not.toContain('securityGroups');
+  });
+});
+
 describe('validateDockerfileInput', () => {
   it('accepts empty string (use default)', () => {
     expect(validateDockerfileInput('')).toBe(true);

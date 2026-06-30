@@ -14,7 +14,7 @@ import {
   validateS3FilesAccessPointArn,
 } from '../../../commands/shared/filesystem-utils';
 import { parseAndNormalizeHeaders, validateHeaderAllowlist } from '../../../commands/shared/header-utils';
-import { validateSecurityGroupIds, validateSubnetIds } from '../../../commands/shared/vpc-utils';
+import { validateSecurityGroupIds, validateSubnetIds, validateVpcId } from '../../../commands/shared/vpc-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import {
   ApiKeySecretInput,
@@ -115,6 +115,7 @@ export function GenerateWizardUI({
   const isApiKeyStep = wizard.step === 'apiKey';
   const isSubnetsStep = wizard.step === 'subnets';
   const isSecurityGroupsStep = wizard.step === 'securityGroups';
+  const isVpcIdStep = wizard.step === 'vpcId';
   const isRequestHeaderAllowlistStep = wizard.step === 'requestHeaderAllowlist';
   const isJwtConfigStep = wizard.step === 'jwtConfig';
   const isIdleTimeoutStep = wizard.step === 'idleTimeout';
@@ -332,6 +333,19 @@ export function GenerateWizardUI({
                 .map(s => s.trim())
                 .filter(Boolean)
             );
+          }}
+          onCancel={onBack}
+        />
+      )}
+
+      {isVpcIdStep && (
+        <TextInput
+          prompt="VPC ID"
+          placeholder="vpc-xxxxxxxxxxxx"
+          initialValue={wizard.config.vpcId ?? ''}
+          customValidation={validateVpcId}
+          onSubmit={value => {
+            wizard.setVpcId(value.trim());
           }}
           onCancel={onBack}
         />
@@ -560,6 +574,7 @@ export function getWizardHelpText(step: GenerateStep): string {
     step === 'dockerfile' ||
     step === 'subnets' ||
     step === 'securityGroups' ||
+    step === 'vpcId' ||
     step === 'requestHeaderAllowlist' ||
     step === 'idleTimeout' ||
     step === 'maxLifetime' ||
@@ -673,6 +688,12 @@ function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig
           <Text>
             <Text dimColor>Security Groups: </Text>
             <Text>{config.securityGroups.join(', ')}</Text>
+          </Text>
+        )}
+        {config.networkMode === 'VPC' && config.vpcId && (
+          <Text>
+            <Text dimColor>VPC ID: </Text>
+            <Text>{config.vpcId}</Text>
           </Text>
         )}
         {config.requestHeaderAllowlist && config.requestHeaderAllowlist.length > 0 && (

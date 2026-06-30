@@ -14,6 +14,7 @@ import {
   validateEfsAccessPointArn,
   validateS3FilesAccessPointArn,
 } from '../../../commands/shared/filesystem-utils';
+import { validateVpcId } from '../../../commands/shared/vpc-utils';
 import { computeManagedOAuthCredentialName } from '../../../primitives/credential-utils';
 import {
   ConfirmReview,
@@ -183,6 +184,7 @@ export function AddHarnessScreen({
   const isNetworkModeStep = wizard.step === 'network-mode';
   const isSubnetsStep = wizard.step === 'subnets';
   const isSecurityGroupsStep = wizard.step === 'security-groups';
+  const isVpcIdStep = wizard.step === 'vpc-id';
   const isIdleTimeoutStep = wizard.step === 'idle-timeout';
   const isMaxLifetimeStep = wizard.step === 'max-lifetime';
   const isMaxIterationsStep = wizard.step === 'max-iterations';
@@ -568,6 +570,9 @@ export function AddHarnessScreen({
         }
         if (wizard.config.securityGroups) {
           fields.push({ label: 'Security Groups', value: wizard.config.securityGroups.join(', ') });
+        }
+        if (wizard.config.vpcId) {
+          fields.push({ label: 'VPC ID', value: wizard.config.vpcId });
         }
       }
     }
@@ -1151,6 +1156,19 @@ export function AddHarnessScreen({
             customValidation={value =>
               validateIdList(value, SECURITY_GROUP_ID_PATTERN, 'security group', 'sg-0abc123def456')
             }
+          />
+        )}
+
+        {isVpcIdStep && (
+          <TextInput
+            key="vpc-id"
+            prompt="VPC ID"
+            description="Required for Dockerfile (container) builds in VPC mode; CodeBuild cannot infer it from subnets"
+            placeholder="vpc-xxxxxxxxxxxx"
+            initialValue={wizard.config.vpcId ?? ''}
+            onSubmit={wizard.setVpcId}
+            onCancel={() => wizard.goBack()}
+            customValidation={validateVpcId}
           />
         )}
 

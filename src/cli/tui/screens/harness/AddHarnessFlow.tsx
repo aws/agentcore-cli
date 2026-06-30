@@ -81,6 +81,7 @@ export function AddHarnessFlow({ isInteractive = true, onExit, onBack, onDev, on
         networkMode: config.networkMode,
         subnets: config.subnets,
         securityGroups: config.securityGroups,
+        vpcId: config.vpcId,
         idleTimeout: config.idleTimeout,
         maxLifetime: config.maxLifetime,
         sessionStoragePath: config.sessionStoragePath,

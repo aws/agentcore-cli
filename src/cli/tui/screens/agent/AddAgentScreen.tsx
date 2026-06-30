@@ -21,6 +21,7 @@ import {
   parseCommaSeparatedList,
   validateSecurityGroupIds,
   validateSubnetIds,
+  validateVpcId,
 } from '../../../commands/shared/vpc-utils';
 import { BEDROCK_REGIONS, IMPORT_FRAMEWORK_OPTIONS } from '../../../operations/agent/import/constants';
 import type { JwtConfigOptions } from '../../../primitives/auth-utils';
@@ -84,6 +85,7 @@ type ByoStep =
   | 'networkMode'
   | 'subnets'
   | 'securityGroups'
+  | 'vpcId'
   | 'requestHeaderAllowlist'
   | 'authorizerType'
   | 'jwtConfig'
@@ -126,6 +128,11 @@ export function computeByoSteps(input: ComputeByoStepsInput): ByoStep[] {
       subSteps.push('networkMode');
       if (input.networkMode === 'VPC') {
         subSteps.push('subnets', 'securityGroups');
+        // vpcId is required by the schema for Container builds in VPC mode (CodeBuild cannot infer
+        // the VPC from subnets). CodeZip builds no container, so it is not collected there.
+        if (input.buildType === 'Container') {
+          subSteps.push('vpcId');
+        }
       }
     }
     if (input.advancedSettings.has('headers')) {
@@ -198,6 +205,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     networkMode: 'PUBLIC' as NetworkMode,
     subnets: '' as string,
     securityGroups: '' as string,
+    vpcId: '' as string,
     requestHeaderAllowlist: '' as string,
     idleTimeout: '' as string,
     maxLifetime: '' as string,
@@ -319,6 +327,9 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       networkMode: generateWizard.config.networkMode,
       subnets: generateWizard.config.networkMode === 'VPC' ? generateWizard.config.subnets : undefined,
       securityGroups: generateWizard.config.networkMode === 'VPC' ? generateWizard.config.securityGroups : undefined,
+      ...(generateWizard.config.networkMode === 'VPC' &&
+        generateWizard.config.buildType === 'Container' &&
+        generateWizard.config.vpcId && { vpcId: generateWizard.config.vpcId }),
       requestHeaderAllowlist: generateWizard.config.requestHeaderAllowlist,
       ...(generateWizard.config.authorizerType &&
         generateWizard.config.authorizerType !== 'AWS_IAM' && {
@@ -514,6 +525,9 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       networkMode: byoConfig.networkMode,
       subnets: byoConfig.networkMode === 'VPC' ? parseCommaSeparatedList(byoConfig.subnets) : undefined,
       securityGroups: byoConfig.networkMode === 'VPC' ? parseCommaSeparatedList(byoConfig.securityGroups) : undefined,
+      ...(byoConfig.networkMode === 'VPC' &&
+        byoConfig.buildType === 'Container' &&
+        byoConfig.vpcId && { vpcId: byoConfig.vpcId }),
       ...(requestHeaderAllowlist.length > 0 && { requestHeaderAllowlist }),
       ...(byoAuthorizerType !== 'AWS_IAM' && { authorizerType: byoAuthorizerType }),
       ...(byoAuthorizerType === 'CUSTOM_JWT' && byoJwtConfig && { jwtConfig: byoJwtConfig }),
@@ -580,6 +594,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
           networkMode: 'PUBLIC' as NetworkMode,
           subnets: '',
           securityGroups: '',
+          vpcId: '',
           requestHeaderAllowlist: '',
           idleTimeout: '',
           maxLifetime: '',
@@ -944,6 +959,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       byoStep === 'apiKey' ||
       byoStep === 'subnets' ||
       byoStep === 'securityGroups' ||
+      byoStep === 'vpcId' ||
       byoStep === 'requestHeaderAllowlist' ||
       byoStep === 'idleTimeout' ||
       byoStep === 'maxLifetime' ||
@@ -1287,6 +1303,20 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
           />
         )}
 
+        {byoStep === 'vpcId' && (
+          <TextInput
+            prompt="VPC ID"
+            placeholder="vpc-xxxxxxxxxxxx"
+            initialValue={byoConfig.vpcId}
+            customValidation={validateVpcId}
+            onSubmit={value => {
+              setByoConfig(c => ({ ...c, vpcId: value.trim() }));
+              goToNextByoStep('vpcId');
+            }}
+            onCancel={handleByoBack}
+          />
+        )}
+
         {byoStep === 'requestHeaderAllowlist' && (
           <Box flexDirection="column">
             <TextInput
@@ -1533,6 +1563,9 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
                 ? [
                     { label: 'Subnets', value: byoConfig.subnets || '(none)' },
                     { label: 'Security Groups', value: byoConfig.securityGroups || '(none)' },
+                    ...(byoConfig.buildType === 'Container'
+                      ? [{ label: 'VPC ID', value: byoConfig.vpcId || '(none)' }]
+                      : []),
                   ]
                 : []),
               ...(() => {

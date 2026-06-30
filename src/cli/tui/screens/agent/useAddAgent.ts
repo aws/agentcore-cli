@@ -97,6 +97,7 @@ export function mapByoConfigToAgent(config: AddAgentConfig): AgentEnvSpec {
         networkConfig: {
           subnets: config.subnets,
           securityGroups: config.securityGroups,
+          ...(config.vpcId && { vpcId: config.vpcId }),
         },
       }),
     ...(config.requestHeaderAllowlist?.length && {
@@ -137,6 +138,7 @@ function mapAddAgentConfigToGenerateConfig(config: AddAgentConfig): GenerateConf
     networkMode: config.networkMode,
     subnets: config.subnets,
     securityGroups: config.securityGroups,
+    vpcId: config.vpcId,
     requestHeaderAllowlist: config.requestHeaderAllowlist,
     authorizerType: config.authorizerType,
     jwtConfig: config.jwtConfig,
