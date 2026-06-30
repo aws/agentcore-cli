@@ -381,8 +381,15 @@ describe('fetchHarnessSpecByArn — VPC vpcId resolution', () => {
     vi.clearAllMocks();
   });
 
+  // A Container (containerUri) harness in VPC mode — exercises the vpcId-resolution path, since the
+  // schema requires vpcId for Container builds and a containerUri export still runs CodeBuild.
   function makeVpcHarness(): Harness {
     return makeApiHarness({
+      environmentArtifact: {
+        containerConfiguration: {
+          containerUri: '111122223333.dkr.ecr.us-east-1.amazonaws.com/my-harness:latest',
+        },
+      },
       environment: {
         agentCoreRuntimeEnvironment: {
           networkConfiguration: {
@@ -444,14 +451,11 @@ describe('fetchHarnessSpecByArn — VPC vpcId resolution', () => {
     expect(mockResolveVpcId).not.toHaveBeenCalled();
   });
 
-  it('does not call resolveVpcIdFromSubnets for a prebuilt-containerUri VPC harness (no build → no vpcId needed)', async () => {
+  it('does NOT resolve vpcId for a CodeZip VPC harness (no containerUri/dockerfile → no CodeBuild → vpcId not required)', async () => {
+    // Neither containerUri nor dockerfile → CodeZip build. The schema does not require vpcId for it,
+    // so we must not make a needless DescribeSubnets call (and must not demand that IAM permission).
     mockGetHarness.mockResolvedValue({
       harness: makeApiHarness({
-        environmentArtifact: {
-          containerConfiguration: {
-            containerUri: '111122223333.dkr.ecr.us-east-1.amazonaws.com/my-harness:latest',
-          },
-        },
         environment: {
           agentCoreRuntimeEnvironment: {
             networkConfiguration: {
@@ -471,8 +475,7 @@ describe('fetchHarnessSpecByArn — VPC vpcId resolution', () => {
       'us-east-1'
     );
 
-    // Prebuilt image → containerUri present, no vpcId resolution, no DescribeSubnets call.
-    expect(spec.containerUri).toBeDefined();
+    expect(spec.containerUri).toBeUndefined();
     expect(spec.networkConfig?.vpcId).toBeUndefined();
     expect(mockResolveVpcId).not.toHaveBeenCalled();
   });
