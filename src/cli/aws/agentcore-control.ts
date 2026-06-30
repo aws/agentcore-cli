@@ -1,4 +1,5 @@
 import type { EvaluationLevel } from '../../schema/schemas/primitives/evaluator';
+import { resolveVpcIdFromSubnets } from '../commands/shared/vpc-utils';
 import { getCredentialProvider } from './account';
 import { controlPlaneEndpoint } from './stage-endpoint';
 import {
@@ -190,7 +191,7 @@ export interface AgentRuntimeDetail {
   description?: string;
   roleArn: string;
   networkMode: string;
-  networkConfig?: { subnets: string[]; securityGroups: string[] };
+  networkConfig?: { subnets: string[]; securityGroups: string[]; vpcId?: string };
   protocol: string;
   runtimeVersion?: string;
   entryPoint?: string[];
@@ -223,13 +224,16 @@ export async function getAgentRuntimeDetail(options: GetAgentRuntimeOptions): Pr
   const response = await client.send(command);
 
   const networkMode = response.networkConfiguration?.networkMode ?? 'PUBLIC';
-  const networkConfig =
-    networkMode === 'VPC' && response.networkConfiguration?.networkModeConfig
-      ? {
-          subnets: response.networkConfiguration.networkModeConfig.subnets ?? [],
-          securityGroups: response.networkConfiguration.networkModeConfig.securityGroups ?? [],
-        }
-      : undefined;
+  let networkConfig: AgentRuntimeDetail['networkConfig'];
+  if (networkMode === 'VPC' && response.networkConfiguration?.networkModeConfig) {
+    const subnets = response.networkConfiguration.networkModeConfig.subnets ?? [];
+    const securityGroups = response.networkConfiguration.networkModeConfig.securityGroups ?? [];
+    let vpcId: string | undefined;
+    if (subnets.length > 0) {
+      vpcId = await resolveVpcIdFromSubnets(subnets, options.region);
+    }
+    networkConfig = { subnets, securityGroups, vpcId };
+  }
 
   const isContainer = !!response.agentRuntimeArtifact?.containerConfiguration;
   const codeConfig = response.agentRuntimeArtifact?.codeConfiguration;

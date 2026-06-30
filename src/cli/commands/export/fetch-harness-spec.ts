@@ -8,6 +8,7 @@ import type {
   HarnessModelConfiguration,
 } from '../../aws/agentcore-harness';
 import { getHarness } from '../../aws/agentcore-harness';
+import { resolveVpcIdFromSubnets } from '../shared/vpc-utils';
 
 /**
  * Fetch a harness by ARN from the control plane and map it to a local HarnessSpec — the same
@@ -21,7 +22,12 @@ export async function fetchHarnessSpecByArn(
 ): Promise<{ spec: HarnessSpec; systemPrompt?: string }> {
   const harnessId = harnessIdFromArn(arn);
   const { harness } = await getHarness({ region, harnessId });
-  return mapApiHarnessToSpec(harness);
+  const result = mapApiHarnessToSpec(harness);
+  const nc = result.spec.networkConfig;
+  if (result.spec.networkMode === 'VPC' && nc && nc.subnets.length > 0 && !nc.vpcId) {
+    nc.vpcId = await resolveVpcIdFromSubnets(nc.subnets, region);
+  }
+  return result;
 }
 
 /** Extract the harness id from a harness ARN (`.../harness/<id>` -> `<id>`). */

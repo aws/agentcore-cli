@@ -1,6 +1,21 @@
 import type { Harness } from '../../../aws/agentcore-harness';
-import { harnessIdFromArn, mapApiHarnessToSpec } from '../fetch-harness-spec';
-import { describe, expect, it } from 'vitest';
+import { fetchHarnessSpecByArn, harnessIdFromArn, mapApiHarnessToSpec } from '../fetch-harness-spec';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { mockGetHarness } = vi.hoisted(() => ({ mockGetHarness: vi.fn() }));
+const { mockResolveVpcId } = vi.hoisted(() => ({ mockResolveVpcId: vi.fn() }));
+
+vi.mock('../../../aws/agentcore-harness', async () => {
+  const actual = await vi.importActual<typeof import('../../../aws/agentcore-harness')>(
+    '../../../aws/agentcore-harness'
+  );
+  return { ...actual, getHarness: (...args: unknown[]) => mockGetHarness(...args) };
+});
+
+vi.mock('../../shared/vpc-utils', async () => {
+  const actual = await vi.importActual<typeof import('../../shared/vpc-utils')>('../../shared/vpc-utils');
+  return { ...actual, resolveVpcIdFromSubnets: (...args: unknown[]) => mockResolveVpcId(...args) };
+});
 
 function makeApiHarness(overrides: Partial<Harness> = {}): Harness {
   return {
@@ -358,5 +373,86 @@ describe('mapApiHarnessToSpec', () => {
     // optional fields absent from the API payload must not appear as `undefined` keys
     expect('memory' in spec).toBe(false);
     expect('containerUri' in spec).toBe(false);
+  });
+});
+
+describe('fetchHarnessSpecByArn — VPC vpcId resolution', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function makeVpcHarness(): Harness {
+    return makeApiHarness({
+      environment: {
+        agentCoreRuntimeEnvironment: {
+          networkConfiguration: {
+            networkMode: 'VPC',
+            networkModeConfig: {
+              subnets: ['subnet-0a1b2c3d4e5f6a7b8'],
+              securityGroups: ['sg-0a1b2c3d4e5f6a7b8'],
+            },
+          },
+        },
+      },
+    });
+  }
+
+  it('resolves vpcId from subnets for a VPC harness and includes it in networkConfig', async () => {
+    mockGetHarness.mockResolvedValue({ harness: makeVpcHarness() });
+    mockResolveVpcId.mockResolvedValue('vpc-0abc1234567890def');
+
+    const { spec } = await fetchHarnessSpecByArn(
+      'arn:aws:bedrock-agentcore:us-east-1:111122223333:harness/h-123',
+      'us-east-1'
+    );
+
+    expect(spec.networkMode).toBe('VPC');
+    expect(spec.networkConfig?.vpcId).toBe('vpc-0abc1234567890def');
+    expect(spec.networkConfig?.subnets).toEqual(['subnet-0a1b2c3d4e5f6a7b8']);
+    expect(spec.networkConfig?.securityGroups).toEqual(['sg-0a1b2c3d4e5f6a7b8']);
+    expect(mockResolveVpcId).toHaveBeenCalledWith(['subnet-0a1b2c3d4e5f6a7b8'], 'us-east-1');
+  });
+
+  it('propagates DescribeSubnets error with actionable message naming ec2:DescribeSubnets', async () => {
+    mockGetHarness.mockResolvedValue({ harness: makeVpcHarness() });
+    mockResolveVpcId.mockRejectedValue(
+      new Error(
+        'Failed to resolve VPC ID from subnet subnet-0a1b2c3d4e5f6a7b8: ec2:DescribeSubnets permission is required.'
+      )
+    );
+
+    await expect(
+      fetchHarnessSpecByArn('arn:aws:bedrock-agentcore:us-east-1:111122223333:harness/h-123', 'us-east-1')
+    ).rejects.toThrow('ec2:DescribeSubnets');
+  });
+
+  it('does not call resolveVpcIdFromSubnets for PUBLIC mode harnesses', async () => {
+    mockGetHarness.mockResolvedValue({
+      harness: makeApiHarness({
+        environment: {
+          agentCoreRuntimeEnvironment: { networkConfiguration: { networkMode: 'PUBLIC' } },
+        },
+      }),
+    });
+
+    const { spec } = await fetchHarnessSpecByArn(
+      'arn:aws:bedrock-agentcore:us-east-1:111122223333:harness/h-123',
+      'us-east-1'
+    );
+
+    expect('networkMode' in spec).toBe(false);
+    expect(mockResolveVpcId).not.toHaveBeenCalled();
+  });
+
+  it('does not call resolveVpcIdFromSubnets when harness has no environment block', async () => {
+    mockGetHarness.mockResolvedValue({ harness: makeApiHarness() });
+
+    const { spec } = await fetchHarnessSpecByArn(
+      'arn:aws:bedrock-agentcore:us-east-1:111122223333:harness/h-123',
+      'us-east-1'
+    );
+
+    expect('networkMode' in spec).toBe(false);
+    expect(mockResolveVpcId).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,6 @@
 import { SECURITY_GROUP_ID_PATTERN, SUBNET_ID_PATTERN, VPC_ID_PATTERN } from '../../../schema/constants';
+import { getCredentialProvider } from '../../aws/account';
+import { DescribeSubnetsCommand, EC2Client } from '@aws-sdk/client-ec2';
 
 export interface VpcOptions {
   networkMode?: string;
@@ -62,6 +64,29 @@ export function validateVpcId(value: string): true | string {
     return `Invalid VPC ID format: ${value}. Expected vpc-xxxxxxxx`;
   }
   return true;
+}
+
+/**
+ * Resolve the VPC ID from the first subnet via ec2:DescribeSubnets.
+ * Throws a clear error naming the required permission if the call fails.
+ */
+export async function resolveVpcIdFromSubnets(subnetIds: string[], region: string): Promise<string> {
+  const ec2 = new EC2Client({ region, credentials: getCredentialProvider() });
+  let vpcId: string | undefined;
+  try {
+    const resp = await ec2.send(new DescribeSubnetsCommand({ SubnetIds: subnetIds }));
+    vpcId = resp.Subnets?.[0]?.VpcId;
+  } catch (err) {
+    throw new Error(
+      `Failed to resolve VPC ID from subnet ${subnetIds[0]}: ec2:DescribeSubnets permission is required. Cause: ${(err as Error).message ?? String(err)}`
+    );
+  }
+  if (!vpcId) {
+    throw new Error(
+      `ec2:DescribeSubnets returned no VPC ID for subnet ${subnetIds[0]}. Verify the subnet exists and ec2:DescribeSubnets permission is granted.`
+    );
+  }
+  return vpcId;
 }
 
 export function validateVpcOptions(options: VpcOptions, buildType?: string): VpcValidationResult {
