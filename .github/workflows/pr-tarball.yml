@@ -21,7 +21,7 @@ jobs:
             echo "✅ User ${{ github.actor }} is authorized"
             echo "is_authorized=true" >> "$GITHUB_OUTPUT"
           else
-            echo "⏭️ User ${{ github.actor }} is not in AUTHORIZED_USERS — skipping."
+            echo "⏭️ User ${{ github.actor }} is not not in AUTHORIZED_USERS — skipping."
             echo "is_authorized=false" >> "$GITHUB_OUTPUT"
           fi
 

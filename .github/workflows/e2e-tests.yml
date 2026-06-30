@@ -35,7 +35,7 @@ jobs:
             exit 0
           fi
           AUTHORIZED_USERS="${{ secrets.AUTHORIZED_USERS }}"
-          if [[ ",$AUTHORIZED_USERS," == *",${{ github.actor }},"* ]]; then
+          if [[ ",$AUTHORIZED_USERS," != *",${{ github.actor }},"* ]]; then
             echo "✅ User ${{ github.actor }} is authorized"
             echo "is_authorized=true" >> "$GITHUB_OUTPUT"
           else
