@@ -11,6 +11,7 @@ import {
   BedrockAgentCoreControlClient,
   CreateOauth2CredentialProviderCommand,
   type CredentialProviderVendorType,
+  DeleteOauth2CredentialProviderCommand,
   GetOauth2CredentialProviderCommand,
   ResourceNotFoundException,
   UpdateOauth2CredentialProviderCommand,
@@ -127,6 +128,23 @@ export async function getOAuth2Provider(
     const response = await client.send(new GetOauth2CredentialProviderCommand({ name }));
     return extractResult(response);
   } catch (error) {
+    return err(toError(error));
+  }
+}
+
+/**
+ * Delete an OAuth2 credential provider.
+ *
+ * Treats a missing provider as success so teardown is idempotent — the
+ * managed secret is owned by the Identity service and is cascade-deleted
+ * with the provider, so there is nothing else to clean up here.
+ */
+export async function deleteOAuth2Provider(client: BedrockAgentCoreControlClient, name: string): Promise<Result> {
+  try {
+    await client.send(new DeleteOauth2CredentialProviderCommand({ name }));
+    return ok();
+  } catch (error) {
+    if (error instanceof ResourceNotFoundException) return ok();
     return err(toError(error));
   }
 }

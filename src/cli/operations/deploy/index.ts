@@ -47,9 +47,11 @@ export {
   setupPaymentCredentialProviders,
   hasPaymentCredentialProviders,
   cleanupPaymentCredentialProviders,
+  reconcileCredentialProviders,
   type SetupPaymentCredentialProvidersOptions,
   type PaymentCredentialProvidersResult,
   type PaymentCredentialProviderResult,
+  type ReconcileCredentialProvidersResult,
 } from './pre-deploy-identity';
 
 // Post-deploy observability setup

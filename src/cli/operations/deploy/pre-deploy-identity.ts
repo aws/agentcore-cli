@@ -7,7 +7,7 @@ import {
   readEnvFile,
   toError,
 } from '../../../lib';
-import type { AgentCoreProjectSpec, Credential } from '../../../schema';
+import type { AgentCoreProjectSpec, Credential, CredentialDeployedState } from '../../../schema';
 import { getCredentialProvider } from '../../aws';
 import {
   createPaymentCredentialProvider,
@@ -26,6 +26,8 @@ import {
   apiKeyProviderExists,
   createApiKeyProvider,
   createOAuth2Provider,
+  deleteApiKeyProvider,
+  deleteOAuth2Provider,
   oAuth2ProviderExists,
   setTokenVaultKmsKey,
   updateApiKeyProvider,
@@ -594,6 +596,72 @@ export async function cleanupPaymentCredentialProviders(options: {
       }
     }
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Orphaned Credential Provider Reconciliation
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** ARN resource segment that identifies an OAuth2 credential provider. */
+const OAUTH2_PROVIDER_ARN_SEGMENT = '/oauth2credentialprovider/';
+/** ARN resource segment that identifies an API key credential provider. */
+const API_KEY_PROVIDER_ARN_SEGMENT = '/apikeycredentialprovider/';
+
+export interface ReconcileCredentialProvidersResult {
+  deleted: string[];
+  errors: { providerName: string; error: Error }[];
+}
+
+/**
+ * Delete OAuth2 and API key credential providers the CLI created on a prior deploy
+ * but that are no longer referenced by the project spec.
+ *
+ * OAuth2 and API key providers are created imperatively pre-deploy, outside the
+ * CloudFormation stack (see {@link setupOAuth2Providers} / {@link setupApiKeyProviders}),
+ * so stack teardown never removes them and they accumulate against the account's
+ * 50-provider quota. This reconciles AWS with the spec on every deploy: tearing the
+ * project down (empty spec) deletes all recorded providers; removing a single
+ * credential deletes just that one.
+ *
+ * Safety:
+ * - Operates ONLY on providers recorded in deployed state — i.e. providers the CLI
+ *   created. Imported/pre-existing providers are never recorded (they are skipped at
+ *   creation time for lacking a discoveryUrl), so they are never deleted here.
+ * - Routes by ARN resource segment, so payment provider ARNs recorded in the same map
+ *   are left untouched (payments have their own {@link cleanupPaymentCredentialProviders}).
+ * - Best-effort: a delete failure is collected, not thrown, so it never aborts teardown.
+ */
+export async function reconcileCredentialProviders(options: {
+  region: string;
+  /** Providers recorded in deployed state on the prior deploy (CLI-created only). */
+  priorCredentials: Record<string, CredentialDeployedState>;
+  /** Credential names still present in the project spec (these are kept). */
+  retainedCredentialNames: Set<string>;
+}): Promise<ReconcileCredentialProvidersResult> {
+  const { region, priorCredentials, retainedCredentialNames } = options;
+  const result: ReconcileCredentialProvidersResult = { deleted: [], errors: [] };
+
+  const client = new BedrockAgentCoreControlClient({ region, credentials: getCredentialProvider() });
+
+  for (const [providerName, state] of Object.entries(priorCredentials)) {
+    if (retainedCredentialNames.has(providerName)) continue;
+
+    const arn = state.credentialProviderArn;
+    const deleteResult = arn.includes(OAUTH2_PROVIDER_ARN_SEGMENT)
+      ? await deleteOAuth2Provider(client, providerName)
+      : arn.includes(API_KEY_PROVIDER_ARN_SEGMENT)
+        ? await deleteApiKeyProvider(client, providerName)
+        : undefined; // payment or unknown ARN — not ours to reap here
+
+    if (deleteResult === undefined) continue;
+    if (deleteResult.success) {
+      result.deleted.push(providerName);
+    } else {
+      result.errors.push({ providerName, error: deleteResult.error });
+    }
+  }
+
+  return result;
 }
 
 // ── Payment Credential Provider Helper ────────────────────────────────────

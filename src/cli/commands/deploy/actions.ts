@@ -51,6 +51,7 @@ import { enableOnlineEvalConfigs } from '../../operations/deploy/post-deploy-onl
 import {
   cleanupPaymentCredentialProviders,
   hasPaymentCredentialProviders,
+  reconcileCredentialProviders,
   setupPaymentCredentialProviders,
 } from '../../operations/deploy/pre-deploy-identity';
 import { findOrphanHarnesses } from '../../operations/harness/orphan';
@@ -288,6 +289,13 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       string,
       { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }
     > = {};
+
+    // Snapshot the credential providers recorded on the prior deploy BEFORE any state
+    // mutation below overwrites them. These are CLI-created OAuth2/ApiKey providers; after
+    // a successful deploy we reconcile this against the current spec to delete the ones no
+    // longer referenced (they live outside the CFN stack, so teardown wouldn't reap them).
+    const priorRecordedCredentials =
+      (await configIO.readDeployedState().catch(() => undefined))?.targets?.[target.name]?.resources?.credentials ?? {};
 
     if (hasIdentityApiProviders(context.projectSpec)) {
       startStep('Creating credentials...');
@@ -532,6 +540,29 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     }
 
     endStep('success');
+
+    // Reap OAuth2/ApiKey credential providers the CLI created on a prior deploy that the
+    // current spec no longer references. These are created imperatively outside the CFN
+    // stack, so stack teardown never removes them — without this they leak against the
+    // account's 50-provider quota (teardown deletes all; a single remove deletes just that
+    // provider). Only providers recorded in deployed state are touched, so imported/
+    // pre-existing providers (never recorded) are never deleted.
+    if (Object.keys(priorRecordedCredentials).length > 0) {
+      const retainedCredentialNames = new Set(context.projectSpec.credentials.map(c => c.name));
+      const hasOrphans = Object.keys(priorRecordedCredentials).some(name => !retainedCredentialNames.has(name));
+      if (hasOrphans) {
+        startStep('Clean up unused credentials');
+        const reconcileResult = await reconcileCredentialProviders({
+          region: target.region,
+          priorCredentials: priorRecordedCredentials,
+          retainedCredentialNames,
+        });
+        for (const { providerName, error } of reconcileResult.errors) {
+          logger.log(`Failed to delete unused credential provider '${providerName}': ${error.message}`, 'warn');
+        }
+        endStep(reconcileResult.errors.length > 0 ? 'error' : 'success');
+      }
+    }
 
     if (context.isTeardownDeploy) {
       // Clean up imperative payment credential providers (CFN stack delete handles manager/connector/roles).

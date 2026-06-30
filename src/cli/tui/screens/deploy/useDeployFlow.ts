@@ -25,6 +25,7 @@ import {
   cleanupPaymentCredentialProviders,
   hasManagedMemoryHarness,
   performStackTeardown,
+  reconcileCredentialProviders,
   setupTransactionSearch,
 } from '../../../operations/deploy';
 import { computeProjectDeployHash } from '../../../operations/deploy/change-detection';
@@ -700,6 +701,21 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     const attrs = context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS };
 
     const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
+      // Snapshot credential providers recorded on the prior deploy before persistDeployedState
+      // overwrites them. After deploy we reconcile these CLI-created OAuth2/ApiKey providers
+      // against the current spec and delete the ones no longer referenced — they live outside
+      // the CFN stack, so teardown wouldn't reap them. Mirrors the CLI command deploy path.
+      const reconcileTargetName = context?.awsTargets[0]?.name;
+      let priorRecordedCredentials: Record<string, { credentialProviderArn: string }> = {};
+      if (reconcileTargetName) {
+        try {
+          const priorState = await new ConfigIO().readDeployedState();
+          priorRecordedCredentials = priorState?.targets?.[reconcileTargetName]?.resources?.credentials ?? {};
+        } catch {
+          // No prior deployed state — nothing to reconcile
+        }
+      }
+
       // Run diff before deploy to capture pre-deploy differences.
       // Skip for brand new stacks: CDK changeset-based diff creates a temporary stack
       // in REVIEW_IN_PROGRESS then deletes it without waiting, racing with the deploy
@@ -796,6 +812,29 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
           prev.status === 'success' || prev.status === 'error' ? prev : { ...prev, status: 'success' }
         );
         setDeployStep(prev => ({ ...prev, status: 'success' }));
+
+        // Reap OAuth2/ApiKey credential providers the CLI created on a prior deploy that the
+        // current spec no longer references (created outside the CFN stack, so teardown won't
+        // reap them — they'd leak against the 50-provider quota). Only providers recorded in
+        // deployed state are touched, so imported/pre-existing providers are never deleted.
+        if (reconcileTargetName && context && Object.keys(priorRecordedCredentials).length > 0) {
+          const retainedCredentialNames = new Set(context.projectSpec.credentials.map(c => c.name));
+          const hasOrphans = Object.keys(priorRecordedCredentials).some(name => !retainedCredentialNames.has(name));
+          if (hasOrphans) {
+            try {
+              const result = await reconcileCredentialProviders({
+                region: context.awsTargets[0]!.region,
+                priorCredentials: priorRecordedCredentials,
+                retainedCredentialNames,
+              });
+              for (const { providerName, error } of result.errors) {
+                logger.log(`Failed to delete unused credential provider '${providerName}': ${error.message}`, 'warn');
+              }
+            } catch (error) {
+              logger.log(`Credential provider reconciliation failed: ${getErrorMessage(error)}`, 'warn');
+            }
+          }
+        }
 
         if (context?.isTeardownDeploy) {
           // After deploying the empty spec, destroy the stack entirely.

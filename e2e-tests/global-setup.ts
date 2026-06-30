@@ -1,7 +1,4 @@
-import {
-  cleanupStaleCredentialProviders,
-  cleanupStaleOAuth2CredentialProviders,
-} from './utils/credential-provider-cleanup';
+import { cleanupStaleCredentialProviders } from './utils/credential-provider-cleanup';
 import { getLogger } from './utils/logger';
 import { cleanupStaleRecommendations } from './utils/recommendation-cleanup';
 import { cleanUpOldStacks } from './utils/stack-cleanup';
@@ -48,22 +45,6 @@ export default async function setup(_project: TestProject): Promise<() => void> 
   } catch (e) {
     logger.error(String(e));
     logger.warn(`failed to clean up all credential providers`);
-  }
-
-  // OAuth2 credential providers (managed OAuth creds for CUSTOM_JWT harnesses/gateways)
-  // are created imperatively pre-deploy and live outside the CDK stack, so `remove all`
-  // never reaps them. The account caps OAuth2 providers at 50 (quota L-431051DC); leaked
-  // providers accumulate until every CUSTOM_JWT deploy fails with a quota error. Reap them
-  // here the same way as stale stacks and recommendations.
-  logger.info(`cleaning up stale OAuth2 credential providers...`);
-  try {
-    await cleanupStaleOAuth2CredentialProviders(bedrockCPClient, logger.child('oauth2-credential-provider-cleanup'), {
-      minAgeMs: 30 * 60 * 1000,
-      prefix: 'E2e',
-    });
-  } catch (e) {
-    logger.error(String(e));
-    logger.warn(`failed to clean up all OAuth2 credential providers`);
   } finally {
     bedrockCPClient.destroy();
   }

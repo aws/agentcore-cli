@@ -1,11 +1,13 @@
 export {
   apiKeyProviderExists,
   createApiKeyProvider,
+  deleteApiKeyProvider,
   setTokenVaultKmsKey,
   updateApiKeyProvider,
 } from './api-key-credential-provider';
 export {
   createOAuth2Provider,
+  deleteOAuth2Provider,
   getOAuth2Provider,
   oAuth2ProviderExists,
   updateOAuth2Provider,

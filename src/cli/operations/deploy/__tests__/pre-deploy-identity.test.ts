@@ -1,6 +1,7 @@
 import {
   getAllCredentials,
   hasIdentityOAuthProviders,
+  reconcileCredentialProviders,
   setupApiKeyProviders,
   setupOAuth2Providers,
 } from '../pre-deploy-identity.js';
@@ -15,6 +16,8 @@ const {
   mockOAuth2ProviderExists,
   mockCreateOAuth2Provider,
   mockUpdateOAuth2Provider,
+  mockDeleteOAuth2Provider,
+  mockDeleteApiKeyProvider,
 } = vi.hoisted(() => ({
   mockKmsSend: vi.fn(),
   mockControlSend: vi.fn(),
@@ -24,6 +27,8 @@ const {
   mockOAuth2ProviderExists: vi.fn(),
   mockCreateOAuth2Provider: vi.fn(),
   mockUpdateOAuth2Provider: vi.fn(),
+  mockDeleteOAuth2Provider: vi.fn(),
+  mockDeleteApiKeyProvider: vi.fn(),
 }));
 
 vi.mock('@aws-sdk/client-kms', () => ({
@@ -47,10 +52,12 @@ vi.mock('@aws-sdk/client-bedrock-agentcore-control', () => ({
 vi.mock('../../identity/index.js', () => ({
   apiKeyProviderExists: vi.fn(),
   createApiKeyProvider: vi.fn(),
+  deleteApiKeyProvider: mockDeleteApiKeyProvider,
   setTokenVaultKmsKey: mockSetTokenVaultKmsKey,
   updateApiKeyProvider: vi.fn(),
   oAuth2ProviderExists: mockOAuth2ProviderExists,
   createOAuth2Provider: mockCreateOAuth2Provider,
+  deleteOAuth2Provider: mockDeleteOAuth2Provider,
   updateOAuth2Provider: mockUpdateOAuth2Provider,
 }));
 
@@ -397,5 +404,104 @@ describe('setupOAuth2Providers', () => {
     expect(result.results).toHaveLength(1);
     expect(result.results[0]!.status).toBe('error');
     expect(result.results[0]!.error).toBe('Creation failed');
+  });
+});
+
+describe('reconcileCredentialProviders', () => {
+  const ARN_BASE = 'arn:aws:bedrock-agentcore:us-east-1:123456789012:token-vault/default';
+  const oauth2Arn = (name: string) => `${ARN_BASE}/oauth2credentialprovider/${name}`;
+  const apiKeyArn = (name: string) => `${ARN_BASE}/apikeycredentialprovider/${name}`;
+  const paymentArn = (name: string) => `${ARN_BASE}/paymentcredentialprovider/${name}`;
+
+  beforeEach(() => {
+    mockGetCredentialProvider.mockReturnValue({});
+    mockDeleteOAuth2Provider.mockResolvedValue({ success: true });
+    mockDeleteApiKeyProvider.mockResolvedValue({ success: true });
+  });
+
+  afterEach(() => vi.clearAllMocks());
+
+  it('deletes an OAuth2 provider no longer in the spec, routing by ARN', async () => {
+    const result = await reconcileCredentialProviders({
+      region: 'us-east-1',
+      priorCredentials: { 'my-harness-oauth': { credentialProviderArn: oauth2Arn('my-harness-oauth') } },
+      retainedCredentialNames: new Set(),
+    });
+
+    expect(mockDeleteOAuth2Provider).toHaveBeenCalledWith(expect.anything(), 'my-harness-oauth');
+    expect(mockDeleteApiKeyProvider).not.toHaveBeenCalled();
+    expect(result.deleted).toEqual(['my-harness-oauth']);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('deletes an ApiKey provider no longer in the spec, routing by ARN', async () => {
+    const result = await reconcileCredentialProviders({
+      region: 'us-east-1',
+      priorCredentials: { 'gemini-key': { credentialProviderArn: apiKeyArn('gemini-key') } },
+      retainedCredentialNames: new Set(),
+    });
+
+    expect(mockDeleteApiKeyProvider).toHaveBeenCalledWith(expect.anything(), 'gemini-key');
+    expect(mockDeleteOAuth2Provider).not.toHaveBeenCalled();
+    expect(result.deleted).toEqual(['gemini-key']);
+  });
+
+  it('keeps providers still referenced by the spec', async () => {
+    const result = await reconcileCredentialProviders({
+      region: 'us-east-1',
+      priorCredentials: {
+        'kept-oauth': { credentialProviderArn: oauth2Arn('kept-oauth') },
+        'gone-oauth': { credentialProviderArn: oauth2Arn('gone-oauth') },
+      },
+      retainedCredentialNames: new Set(['kept-oauth']),
+    });
+
+    expect(mockDeleteOAuth2Provider).toHaveBeenCalledTimes(1);
+    expect(mockDeleteOAuth2Provider).toHaveBeenCalledWith(expect.anything(), 'gone-oauth');
+    expect(result.deleted).toEqual(['gone-oauth']);
+  });
+
+  it('never touches payment provider ARNs (handled separately)', async () => {
+    const result = await reconcileCredentialProviders({
+      region: 'us-east-1',
+      priorCredentials: { 'pay-cred': { credentialProviderArn: paymentArn('pay-cred') } },
+      retainedCredentialNames: new Set(),
+    });
+
+    expect(mockDeleteOAuth2Provider).not.toHaveBeenCalled();
+    expect(mockDeleteApiKeyProvider).not.toHaveBeenCalled();
+    expect(result.deleted).toEqual([]);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('collects delete failures without throwing', async () => {
+    mockDeleteOAuth2Provider.mockResolvedValue({ success: false, error: new Error('quota throttled') });
+
+    const result = await reconcileCredentialProviders({
+      region: 'us-east-1',
+      priorCredentials: { 'bad-oauth': { credentialProviderArn: oauth2Arn('bad-oauth') } },
+      retainedCredentialNames: new Set(),
+    });
+
+    expect(result.deleted).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.providerName).toBe('bad-oauth');
+    expect(result.errors[0]!.error.message).toBe('quota throttled');
+  });
+
+  it('deletes all recorded providers on teardown (empty retained set)', async () => {
+    const result = await reconcileCredentialProviders({
+      region: 'us-east-1',
+      priorCredentials: {
+        'h-oauth': { credentialProviderArn: oauth2Arn('h-oauth') },
+        'k-key': { credentialProviderArn: apiKeyArn('k-key') },
+      },
+      retainedCredentialNames: new Set(),
+    });
+
+    expect(mockDeleteOAuth2Provider).toHaveBeenCalledWith(expect.anything(), 'h-oauth');
+    expect(mockDeleteApiKeyProvider).toHaveBeenCalledWith(expect.anything(), 'k-key');
+    expect(result.deleted).toEqual(expect.arrayContaining(['h-oauth', 'k-key']));
+    expect(result.deleted).toHaveLength(2);
   });
 });

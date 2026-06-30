@@ -10,6 +10,7 @@ import { err, ok } from '@/lib/result';
 import {
   BedrockAgentCoreControlClient,
   CreateApiKeyCredentialProviderCommand,
+  DeleteApiKeyCredentialProviderCommand,
   GetApiKeyCredentialProviderCommand,
   ResourceNotFoundException,
   SetTokenVaultCMKCommand,
@@ -86,6 +87,23 @@ export async function updateApiKeyProvider(
     const getResponse = await client.send(new GetApiKeyCredentialProviderCommand({ name: providerName }));
     return ok({ credentialProviderArn: getResponse.credentialProviderArn });
   } catch (error) {
+    return err(toError(error));
+  }
+}
+
+/**
+ * Delete an API key credential provider.
+ *
+ * Treats a missing provider as success so teardown is idempotent — the
+ * stored key lives in the service-managed token vault and is removed with
+ * the provider, so there is nothing else to clean up here.
+ */
+export async function deleteApiKeyProvider(client: BedrockAgentCoreControlClient, name: string): Promise<Result> {
+  try {
+    await client.send(new DeleteApiKeyCredentialProviderCommand({ name }));
+    return ok();
+  } catch (error) {
+    if (error instanceof ResourceNotFoundException) return ok();
     return err(toError(error));
   }
 }

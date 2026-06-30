@@ -15,9 +15,11 @@
 import { computeManagedOAuthCredentialName } from '../src/cli/primitives/credential-utils.js';
 import { hasAwsCredentials, parseJsonOutput, prereqs, runCLI, stripAnsi } from '../src/test-utils/index.js';
 import { installCdkTarball, writeAwsTargets } from './e2e-helper.js';
-import { deleteOAuth2CredentialProvider } from './utils/credential-provider-cleanup.js';
-import { getLogger } from './utils/logger.js';
-import { BedrockAgentCoreControlClient } from '@aws-sdk/client-bedrock-agentcore-control';
+import {
+  BedrockAgentCoreControlClient,
+  GetOauth2CredentialProviderCommand,
+  ResourceNotFoundException,
+} from '@aws-sdk/client-bedrock-agentcore-control';
 import { CloudFormationClient, GetTemplateCommand } from '@aws-sdk/client-cloudformation';
 import {
   CognitoIdentityProviderClient,
@@ -167,30 +169,15 @@ describe.sequential('e2e: harness with CUSTOM_JWT auth', () => {
     if (!canRun) return;
 
     // ── Tear down deployed stack ──
+    // The final test ('teardown deletes the managed OAuth2 credential provider') normally tears the
+    // project down. This is a best-effort safety net for when an earlier test failed before reaching
+    // it — it re-runs the teardown (idempotent; no-ops if already torn down).
     if (projectPath) {
       try {
         await runCLI(['remove', 'all', '--json'], projectPath, { skipInstall: false });
         await runCLI(['deploy', '--yes', '--json'], projectPath, { skipInstall: false });
       } catch {
         // Best-effort cleanup
-      }
-    }
-
-    // ── Delete the managed OAuth2 credential provider ──
-    // `add harness --client-id/--client-secret` registers a managed OAuth credential, and
-    // deploy creates it in AgentCore Identity as a pre-deploy step outside the CDK stack.
-    // `remove all` tears down the stack but not this provider, so it would leak and count
-    // against the account's 50-provider OAuth2 quota (L-431051DC). Delete it explicitly.
-    if (harnessName) {
-      const controlClient = new BedrockAgentCoreControlClient({ region });
-      try {
-        await deleteOAuth2CredentialProvider(
-          controlClient,
-          getLogger('teardown-hrns-jwt'),
-          computeManagedOAuthCredentialName(harnessName)
-        );
-      } finally {
-        controlClient.destroy();
       }
     }
 
@@ -349,5 +336,38 @@ describe.sequential('e2e: harness with CUSTOM_JWT auth', () => {
       expect(harness!.deploymentState).toBe('deployed');
     },
     120000
+  );
+
+  it.skipIf(!canRun)(
+    'teardown deletes the managed OAuth2 credential provider',
+    async () => {
+      // Regression test for the orphaned-provider leak: `add harness --client-id/--client-secret`
+      // registers a managed OAuth2 credential provider that deploy creates imperatively, outside the
+      // CloudFormation stack. Tearing the project down must delete it — otherwise it leaks and counts
+      // against the account's 50-provider OAuth2 quota (which previously broke the e2e suite).
+      const controlClient = new BedrockAgentCoreControlClient({ region });
+      const providerName = computeManagedOAuthCredentialName(harnessName);
+
+      // Precondition: the provider exists while the harness is deployed (proves the test is meaningful).
+      await expect(
+        controlClient.send(new GetOauth2CredentialProviderCommand({ name: providerName })),
+        `Managed OAuth2 provider "${providerName}" should exist before teardown`
+      ).resolves.toBeTruthy();
+
+      // Tear the project down: empty the spec, then deploy the empty spec (teardown deploy).
+      const removeResult = await runCLI(['remove', 'all', '--json'], projectPath, { skipInstall: false });
+      expect(removeResult.exitCode, `remove all failed: ${removeResult.stderr}`).toBe(0);
+      const teardownResult = await runCLI(['deploy', '--yes', '--json'], projectPath, { skipInstall: false });
+      expect(teardownResult.exitCode, `teardown deploy failed: ${teardownResult.stderr}`).toBe(0);
+
+      // The provider must be gone after teardown.
+      await expect(
+        controlClient.send(new GetOauth2CredentialProviderCommand({ name: providerName })),
+        `Managed OAuth2 provider "${providerName}" should be deleted after teardown`
+      ).rejects.toBeInstanceOf(ResourceNotFoundException);
+
+      controlClient.destroy();
+    },
+    600000
   );
 });
