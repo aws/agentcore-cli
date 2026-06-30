@@ -1,4 +1,6 @@
 import type { CredentialStrategy } from '../../../../primitives/CredentialPrimitive.js';
+import type { AddAgentConfig } from '../../../../tui/screens/agent/types.js';
+import { mapAddAgentConfigToGenerateConfig } from '../../../../tui/screens/agent/useAddAgent.js';
 import type { GenerateConfig } from '../../../../tui/screens/generate/types.js';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
@@ -135,6 +137,44 @@ describe('writeAgentToProject with credentialStrategy', () => {
       expect(project.name).toBe('TestAgent');
       expect(project.runtimes).toHaveLength(1);
       expect(project.runtimes[0].name).toBe('TestAgent');
+    });
+  });
+
+  describe('Container + VPC create path persists vpcId', () => {
+    // Mirrors the interactive `agentcore create` wizard: AddAgentConfig → GenerateConfig
+    // (via the shared mapper used by useCreateFlow) → writeAgentToProject. Regression for the
+    // wizard dropping vpcId and failing schema validation with empty runtimes.
+    const containerVpcAddAgentConfig: AddAgentConfig = {
+      name: 'VpcAgent',
+      agentType: 'create',
+      codeLocation: 'VpcAgent/',
+      entrypoint: 'main.py',
+      language: 'Python',
+      buildType: 'Container',
+      protocol: 'HTTP',
+      framework: 'Strands',
+      modelProvider: 'Bedrock',
+      pythonVersion: 'PYTHON_3_12',
+      memory: 'none',
+      networkMode: 'VPC',
+      subnets: ['subnet-05169b775866f2440'],
+      securityGroups: ['sg-0390682a9d9f7dd8d'],
+      vpcId: 'vpc-07086549ccf106a5d',
+    };
+
+    it('writes networkConfig.vpcId into the runtime spec', async () => {
+      const writeAgentToProject = await getWriteAgentToProject();
+      const generateConfig = mapAddAgentConfigToGenerateConfig(containerVpcAddAgentConfig);
+
+      await writeAgentToProject(generateConfig, { configBaseDir });
+
+      const project = await readProject();
+      expect(project.runtimes).toHaveLength(1);
+      expect(project.runtimes[0].networkConfig).toEqual({
+        subnets: ['subnet-05169b775866f2440'],
+        securityGroups: ['sg-0390682a9d9f7dd8d'],
+        vpcId: 'vpc-07086549ccf106a5d',
+      });
     });
   });
 

@@ -41,7 +41,7 @@ import {
 import { CDKRenderer, createRenderer } from '../../../templates';
 import { type Step, areStepsComplete, hasStepError } from '../../components';
 import { withMinDuration } from '../../utils';
-import { mapByoConfigToAgent } from '../agent';
+import { mapAddAgentConfigToGenerateConfig, mapByoConfigToAgent } from '../agent';
 import type { AddAgentConfig } from '../agent/types';
 import type { GenerateConfig } from '../generate/types';
 import { toMemoryAddOptions } from '../harness/memory-options';
@@ -380,29 +380,12 @@ export function useCreateFlow(cwd: string): CreateFlowState {
               if (addAgentConfig.agentType === 'create') {
                 await validateFilesystemMounts();
 
-                // Create path: generate agent from template
+                // Create path: generate agent from template. Reuse the shared mapper so this path
+                // carries every field the add-agent path does — notably vpcId, required by the
+                // schema for Container builds in VPC mode.
                 const generateConfig: GenerateConfig = {
-                  projectName: addAgentConfig.name,
-                  buildType: addAgentConfig.buildType,
-                  ...(addAgentConfig.dockerfile && { dockerfile: addAgentConfig.dockerfile }),
-                  protocol: addAgentConfig.protocol,
-                  sdk: addAgentConfig.framework,
-                  modelProvider: addAgentConfig.modelProvider,
-                  memory: addAgentConfig.memory,
-                  language: addAgentConfig.language,
+                  ...mapAddAgentConfigToGenerateConfig(addAgentConfig),
                   apiKey: addAgentConfig.apiKey,
-                  networkMode: addAgentConfig.networkMode,
-                  subnets: addAgentConfig.subnets,
-                  securityGroups: addAgentConfig.securityGroups,
-                  requestHeaderAllowlist: addAgentConfig.requestHeaderAllowlist,
-                  authorizerType: addAgentConfig.authorizerType,
-                  jwtConfig: addAgentConfig.jwtConfig,
-                  idleRuntimeSessionTimeout: addAgentConfig.idleRuntimeSessionTimeout,
-                  maxLifetime: addAgentConfig.maxLifetime,
-                  sessionStorageMountPath: addAgentConfig.sessionStorageMountPath,
-                  efsAccessPoints: addAgentConfig.efsAccessPoints,
-                  s3AccessPoints: addAgentConfig.s3AccessPoints,
-                  withConfigBundle: addAgentConfig.withConfigBundle,
                 };
 
                 logger.logSubStep(`Framework: ${generateConfig.sdk}`);

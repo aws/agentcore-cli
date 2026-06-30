@@ -1,5 +1,6 @@
 import { computeManagedOAuthCredentialName } from '../../../../primitives/credential-utils.js';
-import { mapByoConfigToAgent } from '../../../../tui/screens/agent/useAddAgent.js';
+import type { AddAgentConfig } from '../../../../tui/screens/agent/types.js';
+import { mapAddAgentConfigToGenerateConfig, mapByoConfigToAgent } from '../../../../tui/screens/agent/useAddAgent.js';
 import type { GenerateConfig } from '../../../../tui/screens/generate/types.js';
 import {
   mapGenerateConfigToAgent,
@@ -629,5 +630,49 @@ describe('mapGenerateConfigToRenderConfig - needsOs', () => {
       []
     );
     expect(result.hasMemory).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mapAddAgentConfigToGenerateConfig - create-wizard persistence path (vpcId)
+//
+// Regression for the interactive `agentcore create` wizard dropping vpcId for
+// Container + VPC builds: the AddAgentConfig produced by the wizard MUST round-trip
+// vpcId through GenerateConfig so mapGenerateConfigToAgent persists
+// networkConfig.vpcId (required by the schema for Container builds in VPC mode).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('mapAddAgentConfigToGenerateConfig - Container + VPC vpcId', () => {
+  const containerVpcAddAgentConfig: AddAgentConfig = {
+    name: 'VpcAgent',
+    agentType: 'create',
+    codeLocation: 'VpcAgent/',
+    entrypoint: 'main.py',
+    language: 'Python',
+    buildType: 'Container',
+    protocol: 'HTTP',
+    framework: 'Strands',
+    modelProvider: 'Bedrock',
+    pythonVersion: 'PYTHON_3_12',
+    memory: 'none',
+    networkMode: 'VPC',
+    subnets: ['subnet-05169b775866f2440'],
+    securityGroups: ['sg-0390682a9d9f7dd8d'],
+    vpcId: 'vpc-07086549ccf106a5d',
+  };
+
+  it('carries vpcId from AddAgentConfig into GenerateConfig', () => {
+    const generateConfig = mapAddAgentConfigToGenerateConfig(containerVpcAddAgentConfig);
+    expect(generateConfig.vpcId).toBe('vpc-07086549ccf106a5d');
+  });
+
+  it('persists networkConfig.vpcId end-to-end for the create path', () => {
+    const generateConfig = mapAddAgentConfigToGenerateConfig(containerVpcAddAgentConfig);
+    const agent = mapGenerateConfigToAgent(generateConfig);
+    expect(agent.networkConfig).toEqual({
+      subnets: ['subnet-05169b775866f2440'],
+      securityGroups: ['sg-0390682a9d9f7dd8d'],
+      vpcId: 'vpc-07086549ccf106a5d',
+    });
   });
 });
