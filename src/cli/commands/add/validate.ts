@@ -1131,7 +1131,16 @@ export function validateAddHarnessOptions(options: AddHarnessCliOptions): Valida
 
   // VPC network-mode coupling: reject --subnets/--security-groups when network mode isn't VPC
   // (and require them when it is), instead of silently dropping them. Mirrors the agent path.
-  const vpcResult = validateVpcOptions(options);
+  // Derive build type from --container: a dockerfile path means Container, absent/URI means CodeZip.
+  const containerValue = options.container;
+  const looksLikeDockerfile =
+    containerValue !== undefined &&
+    (containerValue.endsWith('Dockerfile') ||
+      containerValue.endsWith('.dockerfile') ||
+      containerValue.startsWith('./') ||
+      containerValue.startsWith('../'));
+  const harnessBuildType = looksLikeDockerfile ? 'Container' : undefined;
+  const vpcResult = validateVpcOptions(options, harnessBuildType);
   if (!vpcResult.valid) {
     return vpcResult;
   }
