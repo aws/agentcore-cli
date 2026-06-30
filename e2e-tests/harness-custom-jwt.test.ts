@@ -13,7 +13,7 @@
  * Requires: AWS credentials, npm, git.
  */
 import { computeManagedOAuthCredentialName } from '../src/cli/primitives/credential-utils.js';
-import { hasAwsCredentials, parseJsonOutput, prereqs, runCLI, stripAnsi } from '../src/test-utils/index.js';
+import { hasAwsCredentials, parseJsonOutput, prereqs, retry, runCLI, stripAnsi } from '../src/test-utils/index.js';
 import { installCdkTarball, writeAwsTargets } from './e2e-helper.js';
 import {
   BedrockAgentCoreControlClient,
@@ -360,11 +360,23 @@ describe.sequential('e2e: harness with CUSTOM_JWT auth', () => {
       const teardownResult = await runCLI(['deploy', '--yes', '--json'], projectPath, { skipInstall: false });
       expect(teardownResult.exitCode, `teardown deploy failed: ${teardownResult.stderr}`).toBe(0);
 
-      // The provider must be gone after teardown.
-      await expect(
-        controlClient.send(new GetOauth2CredentialProviderCommand({ name: providerName })),
-        `Managed OAuth2 provider "${providerName}" should be deleted after teardown`
-      ).rejects.toBeInstanceOf(ResourceNotFoundException);
+      // The provider must be gone after teardown. Retry to tolerate read-after-delete
+      // eventual consistency — the delete is issued during teardown, but the GET may briefly
+      // still see it. Resolves as soon as the GET throws ResourceNotFoundException.
+      await retry(
+        async () => {
+          let stillExists = false;
+          try {
+            await controlClient.send(new GetOauth2CredentialProviderCommand({ name: providerName }));
+            stillExists = true;
+          } catch (error) {
+            if (!(error instanceof ResourceNotFoundException)) throw error;
+          }
+          expect(stillExists, `Managed OAuth2 provider "${providerName}" should be deleted after teardown`).toBe(false);
+        },
+        5,
+        3000
+      );
 
       controlClient.destroy();
     },

@@ -547,21 +547,31 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // account's 50-provider quota (teardown deletes all; a single remove deletes just that
     // provider). Only providers recorded in deployed state are touched, so imported/
     // pre-existing providers (never recorded) are never deleted.
-    if (Object.keys(priorRecordedCredentials).length > 0) {
+    //
+    // On a teardown deploy this MUST run after performStackTeardown (below): the harness
+    // runtime in the stack references the provider, so deleting it before the stack is gone
+    // can fail. On a normal deploy the removed resource is already detached by the deploy
+    // above, so reconcile runs here.
+    const reconcileUnusedCredentials = async (): Promise<void> => {
+      if (Object.keys(priorRecordedCredentials).length === 0) return;
       const retainedCredentialNames = new Set(context.projectSpec.credentials.map(c => c.name));
       const hasOrphans = Object.keys(priorRecordedCredentials).some(name => !retainedCredentialNames.has(name));
-      if (hasOrphans) {
-        startStep('Clean up unused credentials');
-        const reconcileResult = await reconcileCredentialProviders({
-          region: target.region,
-          priorCredentials: priorRecordedCredentials,
-          retainedCredentialNames,
-        });
-        for (const { providerName, error } of reconcileResult.errors) {
-          logger.log(`Failed to delete unused credential provider '${providerName}': ${error.message}`, 'warn');
-        }
-        endStep(reconcileResult.errors.length > 0 ? 'error' : 'success');
+      if (!hasOrphans) return;
+
+      startStep('Clean up unused credentials');
+      const reconcileResult = await reconcileCredentialProviders({
+        region: target.region,
+        priorCredentials: priorRecordedCredentials,
+        retainedCredentialNames,
+      });
+      for (const { providerName, error } of reconcileResult.errors) {
+        logger.log(`Failed to delete unused credential provider '${providerName}': ${error.message}`, 'warn');
       }
+      endStep(reconcileResult.errors.length > 0 ? 'error' : 'success');
+    };
+
+    if (!context.isTeardownDeploy) {
+      await reconcileUnusedCredentials();
     }
 
     if (context.isTeardownDeploy) {
@@ -594,6 +604,10 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         };
       }
       endStep('success');
+
+      // Now that the stack (and the harness/agent referencing them) is gone, reap the
+      // imperative OAuth2/ApiKey providers it left behind.
+      await reconcileUnusedCredentials();
 
       logger.finalize(true);
 

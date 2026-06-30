@@ -641,7 +641,9 @@ export async function reconcileCredentialProviders(options: {
   const { region, priorCredentials, retainedCredentialNames } = options;
   const result: ReconcileCredentialProvidersResult = { deleted: [], errors: [] };
 
-  const client = new BedrockAgentCoreControlClient({ region, credentials: getCredentialProvider() });
+  // maxAttempts > 1 so a throttled/transient delete is retried by the SDK rather than
+  // silently left as an orphan (this runs alongside other e2e shards hammering the same APIs).
+  const client = new BedrockAgentCoreControlClient({ region, credentials: getCredentialProvider(), maxAttempts: 5 });
 
   for (const [providerName, state] of Object.entries(priorCredentials)) {
     if (retainedCredentialNames.has(providerName)) continue;

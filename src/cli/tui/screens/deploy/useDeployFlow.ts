@@ -817,24 +817,27 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
         // current spec no longer references (created outside the CFN stack, so teardown won't
         // reap them — they'd leak against the 50-provider quota). Only providers recorded in
         // deployed state are touched, so imported/pre-existing providers are never deleted.
-        if (reconcileTargetName && context && Object.keys(priorRecordedCredentials).length > 0) {
+        //
+        // On a teardown deploy this MUST run after performStackTeardown: the harness runtime in
+        // the stack references the provider, so deleting it before the stack is gone can fail.
+        const reconcileUnusedCredentials = async (): Promise<void> => {
+          if (!reconcileTargetName || !context || Object.keys(priorRecordedCredentials).length === 0) return;
           const retainedCredentialNames = new Set(context.projectSpec.credentials.map(c => c.name));
           const hasOrphans = Object.keys(priorRecordedCredentials).some(name => !retainedCredentialNames.has(name));
-          if (hasOrphans) {
-            try {
-              const result = await reconcileCredentialProviders({
-                region: context.awsTargets[0]!.region,
-                priorCredentials: priorRecordedCredentials,
-                retainedCredentialNames,
-              });
-              for (const { providerName, error } of result.errors) {
-                logger.log(`Failed to delete unused credential provider '${providerName}': ${error.message}`, 'warn');
-              }
-            } catch (error) {
-              logger.log(`Credential provider reconciliation failed: ${getErrorMessage(error)}`, 'warn');
+          if (!hasOrphans) return;
+          try {
+            const result = await reconcileCredentialProviders({
+              region: context.awsTargets[0]!.region,
+              priorCredentials: priorRecordedCredentials,
+              retainedCredentialNames,
+            });
+            for (const { providerName, error } of result.errors) {
+              logger.log(`Failed to delete unused credential provider '${providerName}': ${error.message}`, 'warn');
             }
+          } catch (error) {
+            logger.log(`Credential provider reconciliation failed: ${getErrorMessage(error)}`, 'warn');
           }
-        }
+        };
 
         if (context?.isTeardownDeploy) {
           // After deploying the empty spec, destroy the stack entirely.
@@ -858,8 +861,12 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
             if (!teardown.success) {
               throw new Error(`Stack teardown failed: ${teardown.error.message}`);
             }
+
+            // Stack (and the harness referencing them) is gone — now reap the imperative providers.
+            await reconcileUnusedCredentials();
           }
         } else {
+          await reconcileUnusedCredentials();
           // Deploy succeeded - persist state
           try {
             await persistDeployedState();
