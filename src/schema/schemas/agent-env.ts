@@ -7,6 +7,9 @@ import {
   NetworkModeSchema,
   ProtocolModeSchema,
   RuntimeVersionSchema as RuntimeVersionSchemaFromConstants,
+  SECURITY_GROUP_ID_PATTERN,
+  SUBNET_ID_PATTERN,
+  VPC_ID_PATTERN,
 } from '../constants';
 import type { DirectoryPath, FilePath } from '../types';
 import { AuthorizerConfigSchema, RuntimeAuthorizerTypeSchema } from './auth';
@@ -113,22 +116,16 @@ export type Instrumentation = z.infer<typeof InstrumentationSchema>;
  * Required when networkMode is 'VPC'.
  */
 export const NetworkConfigSchema = z.object({
-  subnets: z
-    .array(z.string().regex(/^subnet-(?:[0-9a-f]{8}|[0-9a-f]{17})$/))
-    .min(1)
-    .max(16),
+  subnets: z.array(z.string().regex(SUBNET_ID_PATTERN, 'Must be a subnet id (subnet-...)')).min(1).max(16),
   securityGroups: z
-    .array(z.string().regex(/^sg-(?:[0-9a-f]{8}|[0-9a-f]{17})$/))
+    .array(z.string().regex(SECURITY_GROUP_ID_PATTERN, 'Must be a security group id (sg-...)'))
     .min(1)
     .max(16),
   /**
    * VPC ID. Required for Container builds in VPC mode because CodeBuild needs an explicit VPC ID;
    * it cannot infer the VPC from subnets alone. Runtime/Lambda builds can omit this.
    */
-  vpcId: z
-    .string()
-    .regex(/^vpc-(?:[0-9a-f]{8}|[0-9a-f]{17})$/)
-    .optional(),
+  vpcId: z.string().regex(VPC_ID_PATTERN, 'Must be a VPC id (vpc-...)').optional(),
 });
 export type NetworkConfig = z.infer<typeof NetworkConfigSchema>;
 

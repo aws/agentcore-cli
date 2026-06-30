@@ -1,5 +1,9 @@
+import { SECURITY_GROUP_ID_PATTERN, SUBNET_ID_PATTERN, VPC_ID_PATTERN } from '../constants';
 import { TagsSchema } from './primitives/tags';
 import { z } from 'zod';
+
+// Re-exported so TUI components that import *_ID_PATTERN from schemas/auth keep working.
+export { SECURITY_GROUP_ID_PATTERN, SUBNET_ID_PATTERN, VPC_ID_PATTERN };
 
 // ============================================================================
 // Shared Authorization Schemas
@@ -98,9 +102,6 @@ export type CustomClaimValidation = z.infer<typeof CustomClaimValidationSchema>;
 // schema regex (single source of truth) instead of hand-rolled checks that drift from it.
 export const LATTICE_RESOURCE_CONFIG_PATTERN =
   /^((rcfg-[0-9a-z]{17})|(arn:[a-z0-9-]+:vpc-lattice:[a-zA-Z0-9-]+:\d{12}:resourceconfiguration\/rcfg-[0-9a-z]{17}))$/;
-export const VPC_ID_PATTERN = /^vpc-(([0-9a-z]{8})|([0-9a-z]{17}))$/;
-export const SUBNET_ID_PATTERN = /^subnet-[0-9a-zA-Z]{8,17}$/;
-export const SECURITY_GROUP_ID_PATTERN = /^sg-(([0-9a-z]{8})|([0-9a-z]{17}))$/;
 
 export const EndpointIpAddressTypeSchema = z.enum(['IPV4', 'IPV6']);
 export type EndpointIpAddressType = z.infer<typeof EndpointIpAddressTypeSchema>;

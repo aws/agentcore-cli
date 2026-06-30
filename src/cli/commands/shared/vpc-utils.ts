@@ -1,3 +1,5 @@
+import { SECURITY_GROUP_ID_PATTERN, SUBNET_ID_PATTERN, VPC_ID_PATTERN } from '../../../schema/constants';
+
 export interface VpcOptions {
   networkMode?: string;
   subnets?: string;
@@ -17,10 +19,6 @@ export interface VpcValidationResult {
 export const VPC_ENDPOINT_WARNING =
   'VPC mode may require VPC endpoints for CloudWatch, X-Ray, ECR, and Bedrock depending on your agent configuration. If your agent calls public APIs or uses an API-key-based provider, a NAT gateway or additional endpoints may also be needed.';
 
-const SUBNET_PATTERN = /^subnet-(?:[0-9a-f]{8}|[0-9a-f]{17})$/;
-const SECURITY_GROUP_PATTERN = /^sg-(?:[0-9a-f]{8}|[0-9a-f]{17})$/;
-const VPC_ID_PATTERN = /^vpc-(?:[0-9a-f]{8}|[0-9a-f]{17})$/;
-
 export function parseCommaSeparatedList(value: string | undefined): string[] | undefined {
   if (!value) return undefined;
   return value
@@ -39,7 +37,7 @@ export function validateSubnetIds(value: string): true | string {
     .map(s => s.trim())
     .filter(Boolean);
   if (ids.length === 0) return 'At least one subnet ID is required';
-  const invalid = ids.filter(id => !SUBNET_PATTERN.test(id));
+  const invalid = ids.filter(id => !SUBNET_ID_PATTERN.test(id));
   if (invalid.length > 0) return `Invalid subnet ID format: ${invalid[0]}. Expected subnet-xxxxxxxx`;
   return true;
 }
@@ -54,7 +52,7 @@ export function validateSecurityGroupIds(value: string): true | string {
     .map(s => s.trim())
     .filter(Boolean);
   if (ids.length === 0) return 'At least one security group ID is required';
-  const invalid = ids.filter(id => !SECURITY_GROUP_PATTERN.test(id));
+  const invalid = ids.filter(id => !SECURITY_GROUP_ID_PATTERN.test(id));
   if (invalid.length > 0) return `Invalid security group ID format: ${invalid[0]}. Expected sg-xxxxxxxx`;
   return true;
 }

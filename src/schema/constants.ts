@@ -181,6 +181,22 @@ export const NetworkModeSchema = z.enum(['PUBLIC', 'VPC']);
 export type NetworkMode = z.infer<typeof NetworkModeSchema>;
 
 // ============================================================================
+// AWS Network Resource ID Patterns (single source of truth)
+//
+// Canonical AWS resource ID format: lowercase hex, exactly 8 chars (legacy) or
+// 17 chars (current). These are shared by NetworkConfigSchema (agent VPC config)
+// and the auth/PrivateLink schema (ManagedVpcResource). All consumers must import
+// from here rather than defining their own copies.
+// ============================================================================
+
+/** Matches a VPC ID: vpc- followed by 8 or 17 lowercase hex digits. */
+export const VPC_ID_PATTERN = /^vpc-(?:[0-9a-f]{8}|[0-9a-f]{17})$/;
+/** Matches a subnet ID: subnet- followed by 8 or 17 lowercase hex digits. */
+export const SUBNET_ID_PATTERN = /^subnet-(?:[0-9a-f]{8}|[0-9a-f]{17})$/;
+/** Matches a security group ID: sg- followed by 8 or 17 lowercase hex digits. */
+export const SECURITY_GROUP_ID_PATTERN = /^sg-(?:[0-9a-f]{8}|[0-9a-f]{17})$/;
+
+// ============================================================================
 // Protocol Mode
 // ============================================================================
 

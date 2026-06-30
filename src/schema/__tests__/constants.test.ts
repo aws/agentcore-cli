@@ -8,7 +8,10 @@ import {
   RESERVED_PROJECT_NAMES,
   RuntimeVersionSchema,
   SDKFrameworkSchema,
+  SECURITY_GROUP_ID_PATTERN,
+  SUBNET_ID_PATTERN,
   TargetLanguageSchema,
+  VPC_ID_PATTERN,
   getFrameworksForLanguage,
   getSupportedFrameworksForProtocol,
   getSupportedModelProviders,
@@ -242,5 +245,72 @@ describe('isFrameworkSupportedForProtocol', () => {
   it('returns false for any framework + MCP', () => {
     expect(isFrameworkSupportedForProtocol('MCP', 'Strands')).toBe(false);
     expect(isFrameworkSupportedForProtocol('MCP', 'OpenAIAgents')).toBe(false);
+  });
+});
+
+// ============================================================================
+// AWS Network Resource ID Patterns — canonical hex 8/17 form
+// ============================================================================
+
+describe('VPC_ID_PATTERN', () => {
+  it('accepts 8-char lowercase-hex vpc id', () => {
+    expect(VPC_ID_PATTERN.test('vpc-0a1b2c3d')).toBe(true);
+  });
+  it('accepts 17-char lowercase-hex vpc id', () => {
+    expect(VPC_ID_PATTERN.test('vpc-0123456789abcdef0')).toBe(true);
+  });
+  it('rejects uppercase hex vpc id', () => {
+    expect(VPC_ID_PATTERN.test('vpc-ABCDEFGH')).toBe(false);
+  });
+  it('rejects non-hex vpc id', () => {
+    expect(VPC_ID_PATTERN.test('vpc-zzzzzzzz')).toBe(false);
+  });
+  it('rejects 9-char vpc id', () => {
+    expect(VPC_ID_PATTERN.test('vpc-123456789')).toBe(false);
+  });
+  it('rejects wrong prefix', () => {
+    expect(VPC_ID_PATTERN.test('subnet-0a1b2c3d')).toBe(false);
+  });
+});
+
+describe('SUBNET_ID_PATTERN', () => {
+  it('accepts 8-char lowercase-hex subnet id', () => {
+    expect(SUBNET_ID_PATTERN.test('subnet-0a1b2c3d')).toBe(true);
+  });
+  it('accepts 17-char lowercase-hex subnet id', () => {
+    expect(SUBNET_ID_PATTERN.test('subnet-0123456789abcdef0')).toBe(true);
+  });
+  it('rejects uppercase hex subnet id', () => {
+    expect(SUBNET_ID_PATTERN.test('subnet-ABCDEFGH')).toBe(false);
+  });
+  it('rejects non-hex subnet id', () => {
+    expect(SUBNET_ID_PATTERN.test('subnet-zzzzzzzz')).toBe(false);
+  });
+  it('rejects 9-char subnet id', () => {
+    expect(SUBNET_ID_PATTERN.test('subnet-123456789')).toBe(false);
+  });
+  it('rejects wrong prefix', () => {
+    expect(SUBNET_ID_PATTERN.test('vpc-0a1b2c3d')).toBe(false);
+  });
+});
+
+describe('SECURITY_GROUP_ID_PATTERN', () => {
+  it('accepts 8-char lowercase-hex sg id', () => {
+    expect(SECURITY_GROUP_ID_PATTERN.test('sg-0a1b2c3d')).toBe(true);
+  });
+  it('accepts 17-char lowercase-hex sg id', () => {
+    expect(SECURITY_GROUP_ID_PATTERN.test('sg-0123456789abcdef0')).toBe(true);
+  });
+  it('rejects uppercase hex sg id', () => {
+    expect(SECURITY_GROUP_ID_PATTERN.test('sg-ABCDEFGH')).toBe(false);
+  });
+  it('rejects non-hex sg id', () => {
+    expect(SECURITY_GROUP_ID_PATTERN.test('sg-zzzzzzzz')).toBe(false);
+  });
+  it('rejects 9-char sg id', () => {
+    expect(SECURITY_GROUP_ID_PATTERN.test('sg-123456789')).toBe(false);
+  });
+  it('rejects wrong prefix', () => {
+    expect(SECURITY_GROUP_ID_PATTERN.test('subnet-0a1b2c3d')).toBe(false);
   });
 });
