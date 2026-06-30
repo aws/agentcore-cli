@@ -223,20 +223,23 @@ export async function getAgentRuntimeDetail(options: GetAgentRuntimeOptions): Pr
 
   const response = await client.send(command);
 
+  const isContainer = !!response.agentRuntimeArtifact?.containerConfiguration;
+  const codeConfig = response.agentRuntimeArtifact?.codeConfiguration;
+
   const networkMode = response.networkConfiguration?.networkMode ?? 'PUBLIC';
   let networkConfig: AgentRuntimeDetail['networkConfig'];
   if (networkMode === 'VPC' && response.networkConfiguration?.networkModeConfig) {
     const subnets = response.networkConfiguration.networkModeConfig.subnets ?? [];
     const securityGroups = response.networkConfiguration.networkModeConfig.securityGroups ?? [];
+    // Only resolve the VPC ID for Container builds: that's the only case the schema requires it
+    // (CodeBuild can't infer the VPC). CodeZip+VPC runtimes don't need it, so we avoid the extra
+    // ec2:DescribeSubnets call (and the IAM it would demand) for them.
     let vpcId: string | undefined;
-    if (subnets.length > 0) {
+    if (isContainer && subnets.length > 0) {
       vpcId = await resolveVpcIdFromSubnets(subnets, options.region);
     }
     networkConfig = { subnets, securityGroups, vpcId };
   }
-
-  const isContainer = !!response.agentRuntimeArtifact?.containerConfiguration;
-  const codeConfig = response.agentRuntimeArtifact?.codeConfiguration;
 
   let authorizerType: string | undefined;
   let authorizerConfiguration: AgentRuntimeDetail['authorizerConfiguration'];

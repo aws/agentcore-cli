@@ -24,7 +24,12 @@ export async function fetchHarnessSpecByArn(
   const { harness } = await getHarness({ region, harnessId });
   const result = mapApiHarnessToSpec(harness);
   const nc = result.spec.networkConfig;
-  if (result.spec.networkMode === 'VPC' && nc && nc.subnets.length > 0 && !nc.vpcId) {
+  // Resolve the VPC ID unless the harness is a prebuilt-containerUri export — that case runs no
+  // CodeBuild and so never needs vpcId, while a from-source export becomes a Container build that
+  // does. Skipping the prebuilt case avoids a needless ec2:DescribeSubnets call (and the IAM it
+  // would otherwise demand).
+  const isPrebuiltImage = !!result.spec.containerUri;
+  if (!isPrebuiltImage && result.spec.networkMode === 'VPC' && nc && nc.subnets.length > 0 && !nc.vpcId) {
     nc.vpcId = await resolveVpcIdFromSubnets(nc.subnets, region);
   }
   return result;

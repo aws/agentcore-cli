@@ -444,6 +444,39 @@ describe('fetchHarnessSpecByArn — VPC vpcId resolution', () => {
     expect(mockResolveVpcId).not.toHaveBeenCalled();
   });
 
+  it('does not call resolveVpcIdFromSubnets for a prebuilt-containerUri VPC harness (no build → no vpcId needed)', async () => {
+    mockGetHarness.mockResolvedValue({
+      harness: makeApiHarness({
+        environmentArtifact: {
+          containerConfiguration: {
+            containerUri: '111122223333.dkr.ecr.us-east-1.amazonaws.com/my-harness:latest',
+          },
+        },
+        environment: {
+          agentCoreRuntimeEnvironment: {
+            networkConfiguration: {
+              networkMode: 'VPC',
+              networkModeConfig: {
+                subnets: ['subnet-0a1b2c3d4e5f6a7b8'],
+                securityGroups: ['sg-0a1b2c3d4e5f6a7b8'],
+              },
+            },
+          },
+        },
+      }),
+    });
+
+    const { spec } = await fetchHarnessSpecByArn(
+      'arn:aws:bedrock-agentcore:us-east-1:111122223333:harness/h-123',
+      'us-east-1'
+    );
+
+    // Prebuilt image → containerUri present, no vpcId resolution, no DescribeSubnets call.
+    expect(spec.containerUri).toBeDefined();
+    expect(spec.networkConfig?.vpcId).toBeUndefined();
+    expect(mockResolveVpcId).not.toHaveBeenCalled();
+  });
+
   it('does not call resolveVpcIdFromSubnets when harness has no environment block', async () => {
     mockGetHarness.mockResolvedValue({ harness: makeApiHarness() });
 
