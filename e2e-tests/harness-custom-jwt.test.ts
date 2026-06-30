@@ -12,8 +12,12 @@
  *
  * Requires: AWS credentials, npm, git.
  */
+import { computeManagedOAuthCredentialName } from '../src/cli/primitives/credential-utils.js';
 import { hasAwsCredentials, parseJsonOutput, prereqs, runCLI, stripAnsi } from '../src/test-utils/index.js';
 import { installCdkTarball, writeAwsTargets } from './e2e-helper.js';
+import { deleteOAuth2CredentialProvider } from './utils/credential-provider-cleanup.js';
+import { getLogger } from './utils/logger.js';
+import { BedrockAgentCoreControlClient } from '@aws-sdk/client-bedrock-agentcore-control';
 import { CloudFormationClient, GetTemplateCommand } from '@aws-sdk/client-cloudformation';
 import {
   CognitoIdentityProviderClient,
@@ -169,6 +173,24 @@ describe.sequential('e2e: harness with CUSTOM_JWT auth', () => {
         await runCLI(['deploy', '--yes', '--json'], projectPath, { skipInstall: false });
       } catch {
         // Best-effort cleanup
+      }
+    }
+
+    // ── Delete the managed OAuth2 credential provider ──
+    // `add harness --client-id/--client-secret` registers a managed OAuth credential, and
+    // deploy creates it in AgentCore Identity as a pre-deploy step outside the CDK stack.
+    // `remove all` tears down the stack but not this provider, so it would leak and count
+    // against the account's 50-provider OAuth2 quota (L-431051DC). Delete it explicitly.
+    if (harnessName) {
+      const controlClient = new BedrockAgentCoreControlClient({ region });
+      try {
+        await deleteOAuth2CredentialProvider(
+          controlClient,
+          getLogger('teardown-hrns-jwt'),
+          computeManagedOAuthCredentialName(harnessName)
+        );
+      } finally {
+        controlClient.destroy();
       }
     }
 
