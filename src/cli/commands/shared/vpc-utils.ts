@@ -17,9 +17,9 @@ export interface VpcValidationResult {
 export const VPC_ENDPOINT_WARNING =
   'VPC mode may require VPC endpoints for CloudWatch, X-Ray, ECR, and Bedrock depending on your agent configuration. If your agent calls public APIs or uses an API-key-based provider, a NAT gateway or additional endpoints may also be needed.';
 
-const SUBNET_PATTERN = /^subnet-[0-9a-zA-Z]{8,17}$/;
-const SECURITY_GROUP_PATTERN = /^sg-[0-9a-zA-Z]{8,17}$/;
-const VPC_ID_PATTERN = /^vpc-[0-9a-zA-Z]{8,17}$/;
+const SUBNET_PATTERN = /^subnet-(?:[0-9a-f]{8}|[0-9a-f]{17})$/;
+const SECURITY_GROUP_PATTERN = /^sg-(?:[0-9a-f]{8}|[0-9a-f]{17})$/;
+const VPC_ID_PATTERN = /^vpc-(?:[0-9a-f]{8}|[0-9a-f]{17})$/;
 
 export function parseCommaSeparatedList(value: string | undefined): string[] | undefined {
   if (!value) return undefined;

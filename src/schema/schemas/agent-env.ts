@@ -114,11 +114,11 @@ export type Instrumentation = z.infer<typeof InstrumentationSchema>;
  */
 export const NetworkConfigSchema = z.object({
   subnets: z
-    .array(z.string().regex(/^subnet-[0-9a-zA-Z]{8,17}$/))
+    .array(z.string().regex(/^subnet-(?:[0-9a-f]{8}|[0-9a-f]{17})$/))
     .min(1)
     .max(16),
   securityGroups: z
-    .array(z.string().regex(/^sg-[0-9a-zA-Z]{8,17}$/))
+    .array(z.string().regex(/^sg-(?:[0-9a-f]{8}|[0-9a-f]{17})$/))
     .min(1)
     .max(16),
   /**
@@ -127,7 +127,7 @@ export const NetworkConfigSchema = z.object({
    */
   vpcId: z
     .string()
-    .regex(/^vpc-[0-9a-zA-Z]{8,17}$/)
+    .regex(/^vpc-(?:[0-9a-f]{8}|[0-9a-f]{17})$/)
     .optional(),
 });
 export type NetworkConfig = z.infer<typeof NetworkConfigSchema>;

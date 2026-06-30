@@ -274,6 +274,97 @@ describe('AgentEnvSpecSchema', () => {
   });
 });
 
+describe('NetworkConfigSchema — strict AWS ID format', () => {
+  it('accepts 8-char lowercase-hex IDs', () => {
+    expect(
+      NetworkConfigSchema.safeParse({ subnets: ['subnet-0a1b2c3d'], securityGroups: ['sg-0a1b2c3d'] }).success
+    ).toBe(true);
+  });
+
+  it('accepts 17-char lowercase-hex IDs', () => {
+    expect(
+      NetworkConfigSchema.safeParse({
+        subnets: ['subnet-0a1b2c3d4e5f60718'],
+        securityGroups: ['sg-0a1b2c3d4e5f60718'],
+        vpcId: 'vpc-0a1b2c3d4e5f60718',
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects uppercase vpcId', () => {
+    expect(
+      NetworkConfigSchema.safeParse({
+        subnets: ['subnet-0a1b2c3d'],
+        securityGroups: ['sg-0a1b2c3d'],
+        vpcId: 'vpc-ABCDEFGH',
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects non-hex vpcId', () => {
+    expect(
+      NetworkConfigSchema.safeParse({
+        subnets: ['subnet-0a1b2c3d'],
+        securityGroups: ['sg-0a1b2c3d'],
+        vpcId: 'vpc-zzzzzzzz',
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects 9-char vpcId', () => {
+    expect(
+      NetworkConfigSchema.safeParse({
+        subnets: ['subnet-0a1b2c3d'],
+        securityGroups: ['sg-0a1b2c3d'],
+        vpcId: 'vpc-123456789',
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects too-short vpcId', () => {
+    expect(
+      NetworkConfigSchema.safeParse({ subnets: ['subnet-0a1b2c3d'], securityGroups: ['sg-0a1b2c3d'], vpcId: 'vpc-xyz' })
+        .success
+    ).toBe(false);
+  });
+
+  it('rejects uppercase subnet ID', () => {
+    expect(
+      NetworkConfigSchema.safeParse({ subnets: ['subnet-ABCDEFGH'], securityGroups: ['sg-0a1b2c3d'] }).success
+    ).toBe(false);
+  });
+
+  it('rejects non-hex subnet ID', () => {
+    expect(
+      NetworkConfigSchema.safeParse({ subnets: ['subnet-zzzzzzzz'], securityGroups: ['sg-0a1b2c3d'] }).success
+    ).toBe(false);
+  });
+
+  it('rejects 9-char subnet ID', () => {
+    expect(
+      NetworkConfigSchema.safeParse({ subnets: ['subnet-123456789'], securityGroups: ['sg-0a1b2c3d'] }).success
+    ).toBe(false);
+  });
+
+  it('rejects uppercase security group ID', () => {
+    expect(
+      NetworkConfigSchema.safeParse({ subnets: ['subnet-0a1b2c3d'], securityGroups: ['sg-ABCDEFGH'] }).success
+    ).toBe(false);
+  });
+
+  it('rejects non-hex security group ID', () => {
+    expect(
+      NetworkConfigSchema.safeParse({ subnets: ['subnet-0a1b2c3d'], securityGroups: ['sg-zzzzzzzz'] }).success
+    ).toBe(false);
+  });
+
+  it('rejects 9-char security group ID', () => {
+    expect(
+      NetworkConfigSchema.safeParse({ subnets: ['subnet-0a1b2c3d'], securityGroups: ['sg-123456789'] }).success
+    ).toBe(false);
+  });
+});
+
 describe('NetworkConfigSchema', () => {
   it('accepts valid subnets and security groups', () => {
     const result = NetworkConfigSchema.safeParse({

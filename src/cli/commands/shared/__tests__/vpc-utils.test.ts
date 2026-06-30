@@ -33,7 +33,7 @@ describe('validateSubnetIds', () => {
   it('accepts valid subnet IDs', () => {
     expect(validateSubnetIds('subnet-12345678')).toBe(true);
     expect(validateSubnetIds('subnet-12345678, subnet-abcdef12')).toBe(true);
-    expect(validateSubnetIds('subnet-12345678abcdef12')).toBe(true);
+    expect(validateSubnetIds('subnet-0123456789abcdef0')).toBe(true);
   });
 
   it('rejects empty input', () => {
@@ -64,7 +64,7 @@ describe('validateSecurityGroupIds', () => {
   it('accepts valid security group IDs', () => {
     expect(validateSecurityGroupIds('sg-12345678')).toBe(true);
     expect(validateSecurityGroupIds('sg-12345678, sg-abcdef12')).toBe(true);
-    expect(validateSecurityGroupIds('sg-12345678abcdef12')).toBe(true);
+    expect(validateSecurityGroupIds('sg-0123456789abcdef0')).toBe(true);
   });
 
   it('rejects empty input', () => {
@@ -92,6 +92,48 @@ describe('validateVpcId', () => {
   });
   it('rejects a malformed vpc id', () => {
     expect(typeof validateVpcId('vpc-xyz')).toBe('string');
+  });
+  it('accepts 8-char lowercase-hex vpc id', () => {
+    expect(validateVpcId('vpc-0a1b2c3d')).toBe(true);
+  });
+  it('rejects uppercase vpc id', () => {
+    expect(validateVpcId('vpc-ABCDEFGH')).toBeTypeOf('string');
+  });
+  it('rejects non-hex vpc id', () => {
+    expect(validateVpcId('vpc-zzzzzzzz')).toBeTypeOf('string');
+  });
+  it('rejects 9-char vpc id', () => {
+    expect(validateVpcId('vpc-123456789')).toBeTypeOf('string');
+  });
+});
+
+describe('validateSubnetIds — strict format', () => {
+  it('accepts 8-char lowercase-hex subnet id', () => {
+    expect(validateSubnetIds('subnet-0a1b2c3d')).toBe(true);
+  });
+  it('rejects uppercase subnet id', () => {
+    expect(validateSubnetIds('subnet-ABCDEFGH')).toBeTypeOf('string');
+  });
+  it('rejects non-hex subnet id', () => {
+    expect(validateSubnetIds('subnet-zzzzzzzz')).toBeTypeOf('string');
+  });
+  it('rejects 9-char subnet id', () => {
+    expect(validateSubnetIds('subnet-0a1b2c3d4')).toBeTypeOf('string');
+  });
+});
+
+describe('validateSecurityGroupIds — strict format', () => {
+  it('accepts 8-char lowercase-hex sg id', () => {
+    expect(validateSecurityGroupIds('sg-0a1b2c3d')).toBe(true);
+  });
+  it('rejects uppercase sg id', () => {
+    expect(validateSecurityGroupIds('sg-ZZZZZZZZ')).toBeTypeOf('string');
+  });
+  it('rejects non-hex sg id', () => {
+    expect(validateSecurityGroupIds('sg-zzzzzzzz')).toBeTypeOf('string');
+  });
+  it('rejects 9-char sg id', () => {
+    expect(validateSecurityGroupIds('sg-0a1b2c3d4')).toBeTypeOf('string');
   });
 });
 
