@@ -144,6 +144,7 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
         networkConfig: {
           subnets: config.subnets,
           securityGroups: config.securityGroups,
+          ...(config.vpcId && { vpcId: config.vpcId }),
         },
       }),
     ...(headerAllowlist.length > 0 && {

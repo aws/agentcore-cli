@@ -19,7 +19,7 @@ export interface ParsedStarterToolkitAgent {
   language: 'python' | 'typescript';
   sourcePath?: string;
   networkMode: 'PUBLIC' | 'VPC';
-  networkConfig?: { subnets: string[]; securityGroups: string[] };
+  networkConfig?: { subnets: string[]; securityGroups: string[]; vpcId?: string };
   protocol: 'HTTP' | 'MCP' | 'A2A' | 'AGUI';
   enableOtel: boolean;
   /** Physical agent runtime ID from the starter toolkit deployment */

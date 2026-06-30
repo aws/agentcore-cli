@@ -65,6 +65,7 @@ export interface GenerateConfig {
   networkMode?: NetworkMode;
   subnets?: string[];
   securityGroups?: string[];
+  vpcId?: string;
   /** Allowed request headers for the runtime */
   requestHeaderAllowlist?: string[];
   /** Authorizer type for inbound requests */

@@ -143,6 +143,7 @@ export interface CreateWithAgentOptions {
   networkMode?: NetworkMode;
   subnets?: string[];
   securityGroups?: string[];
+  vpcId?: string;
   requestHeaderAllowlist?: string[];
   agentId?: string;
   agentAliasId?: string;
@@ -174,6 +175,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     networkMode,
     subnets,
     securityGroups,
+    vpcId,
     requestHeaderAllowlist,
     idleTimeout,
     maxLifetime: maxLifetimeOpt,
@@ -276,6 +278,7 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       networkMode,
       subnets,
       securityGroups,
+      vpcId,
       requestHeaderAllowlist,
       ...(idleTimeout !== undefined && { idleRuntimeSessionTimeout: idleTimeout }),
       ...(maxLifetimeOpt !== undefined && { maxLifetime: maxLifetimeOpt }),

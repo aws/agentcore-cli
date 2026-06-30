@@ -221,6 +221,9 @@ export function parseStarterToolkitYaml(filePath: string): ParsedStarterToolkitC
                 securityGroups: Array.isArray(networkModeConfig.security_groups)
                   ? (networkModeConfig.security_groups as string[])
                   : [],
+                ...(typeof networkModeConfig.vpc_id === 'string' && networkModeConfig.vpc_id
+                  ? { vpcId: networkModeConfig.vpc_id }
+                  : {}),
               }
             : undefined,
         protocol,

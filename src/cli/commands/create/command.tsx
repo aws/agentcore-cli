@@ -404,6 +404,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
             networkMode: options.networkMode as NetworkMode | undefined,
             subnets: parseCommaSeparatedList(options.subnets),
             securityGroups: parseCommaSeparatedList(options.securityGroups),
+            vpcId: options.vpcId,
             idleTimeout: options.idleTimeout ? Number(options.idleTimeout) : undefined,
             maxLifetime: options.maxLifetime ? Number(options.maxLifetime) : undefined,
             sessionStorageMountPath: options.sessionStorageMountPath,
@@ -465,6 +466,7 @@ export const registerCreate = (program: Command) => {
     .option('--network-mode <mode>', 'Network mode (PUBLIC, VPC) [non-interactive]')
     .option('--subnets <ids>', 'Comma-separated subnet IDs (required for VPC mode) [non-interactive]')
     .option('--security-groups <ids>', 'Comma-separated security group IDs (required for VPC mode) [non-interactive]')
+    .option('--vpc-id <id>', 'VPC ID (required for Container builds with VPC mode) [non-interactive]')
     .option(
       '--idle-timeout <seconds>',
       `Idle session timeout in seconds (${LIFECYCLE_TIMEOUT_MIN}-${LIFECYCLE_TIMEOUT_MAX}) [non-interactive]`
@@ -547,6 +549,7 @@ export const registerCreate = (program: Command) => {
       networkMode?: string;
       subnets?: string;
       securityGroups?: string;
+      vpcId?: string;
       idleTimeout?: string;
       maxLifetime?: string;
       sessionStorageMountPath?: string;
@@ -587,6 +590,7 @@ export const registerCreate = (program: Command) => {
         options.networkMode ??
         options.subnets ??
         options.securityGroups ??
+        options.vpcId ??
         options.idleTimeout ??
         options.maxLifetime ??
         options.outputDir ??

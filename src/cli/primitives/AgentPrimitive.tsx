@@ -274,6 +274,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       .option('--network-mode <mode>', 'Network mode (PUBLIC, VPC) [non-interactive]')
       .option('--subnets <ids>', 'Comma-separated subnet IDs (required for VPC mode) [non-interactive]')
       .option('--security-groups <ids>', 'Comma-separated security group IDs (required for VPC mode) [non-interactive]')
+      .option('--vpc-id <id>', 'VPC ID (required for Container builds with VPC mode) [non-interactive]')
       .option('--authorizer-type <type>', 'Inbound auth: AWS_IAM or CUSTOM_JWT [non-interactive]')
       .option('--discovery-url <url>', 'OIDC discovery URL (for CUSTOM_JWT) [non-interactive]')
       .option('--allowed-audience <audience>', 'Comma-separated allowed audiences (for CUSTOM_JWT) [non-interactive]')
@@ -421,6 +422,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
               networkMode: cliOptions.networkMode,
               subnets: cliOptions.subnets,
               securityGroups: cliOptions.securityGroups,
+              vpcId: cliOptions.vpcId,
               requestHeaderAllowlist,
               codeLocation: cliOptions.codeLocation,
               entrypoint: cliOptions.entrypoint,
@@ -531,6 +533,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       networkMode: options.networkMode as NetworkMode | undefined,
       subnets: parseCommaSeparatedList(options.subnets),
       securityGroups: parseCommaSeparatedList(options.securityGroups),
+      vpcId: options.vpcId,
       authorizerType: options.authorizerType,
       ...(options.authorizerType === 'CUSTOM_JWT' &&
         options.discoveryUrl && {
@@ -719,7 +722,11 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       ...(networkMode === 'VPC' &&
         subnets &&
         securityGroups && {
-          networkConfig: { subnets, securityGroups },
+          networkConfig: {
+            subnets,
+            securityGroups,
+            ...(options.vpcId && { vpcId: options.vpcId }),
+          },
         }),
       // MCP uses mcp.run() which is incompatible with the opentelemetry-instrument wrapper
       ...(protocol === 'MCP' && { instrumentation: { enableOtel: false } }),

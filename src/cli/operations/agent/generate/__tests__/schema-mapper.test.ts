@@ -245,6 +245,19 @@ describe('mapGenerateConfigToAgent - VPC support', () => {
     language: 'Python' as const,
   };
 
+  it('persists vpcId into networkConfig for Container + VPC', () => {
+    const agent = mapGenerateConfigToAgent({
+      ...vpcBaseConfig,
+      buildType: 'Container',
+      dockerfile: 'Dockerfile',
+      networkMode: 'VPC',
+      subnets: ['subnet-0123456789abcdef0'],
+      securityGroups: ['sg-0123456789abcdef0'],
+      vpcId: 'vpc-0123456789abcdef0',
+    });
+    expect(agent.networkConfig?.vpcId).toBe('vpc-0123456789abcdef0');
+  });
+
   it('defaults to PUBLIC network mode when networkMode is absent', () => {
     const result = mapGenerateConfigToAgent(vpcBaseConfig);
     expect(result.networkMode).toBe('PUBLIC');
