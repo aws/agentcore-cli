@@ -1,7 +1,4 @@
-import {
-  cleanupStaleCredentialProviders,
-  cleanupStaleOAuth2CredentialProviders,
-} from './utils/credential-provider-cleanup';
+import { cleanupStaleCredentialProviders } from './utils/credential-provider-cleanup';
 import { getLogger } from './utils/logger';
 import { cleanupStaleRecommendations } from './utils/recommendation-cleanup';
 import { cleanUpOldStacks } from './utils/stack-cleanup';
@@ -48,21 +45,6 @@ export default async function setup(_project: TestProject): Promise<() => void> 
   } catch (e) {
     logger.error(String(e));
     logger.warn(`failed to clean up all credential providers`);
-  }
-
-  // OAuth2 providers are a separate resource type with their own List/Delete APIs — they do
-  // NOT show up in ListApiKeyCredentialProviders, so the reaper above can't touch them. The
-  // CUSTOM_JWT harness test leaks `<name>-oauth` providers (created outside the CFN stack), so
-  // reap them here too or the account's 50-provider OAuth2 quota fills up and CUSTOM_JWT deploys fail.
-  logger.info(`cleaning up stale OAuth2 credential providers...`);
-  try {
-    await cleanupStaleOAuth2CredentialProviders(bedrockCPClient, logger.child('oauth2-credential-provider-cleanup'), {
-      minAgeMs: 30 * 60 * 1000,
-      prefix: 'E2e',
-    });
-  } catch (e) {
-    logger.error(String(e));
-    logger.warn(`failed to clean up all OAuth2 credential providers`);
   } finally {
     bedrockCPClient.destroy();
   }

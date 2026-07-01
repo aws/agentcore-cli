@@ -35,6 +35,17 @@ export async function deleteOAuth2CredentialProvider(
   }
 }
 
+/**
+ * Delete stale credential providers matching `prefix` and older than `minAgeMs`.
+ *
+ * Reaps BOTH provider types the e2e suite creates: API key providers and OAuth2 providers.
+ * These are distinct resource types with separate List/Delete APIs — an OAuth2 provider does
+ * NOT appear in ListApiKeyCredentialProviders — so both lists must be walked. The CUSTOM_JWT
+ * harness test registers a managed OAuth2 provider (`<name>-oauth`) created outside the
+ * CloudFormation stack, so teardown leaves it behind; without reaping it here, they accumulate
+ * against the account's 50-provider OAuth2 quota (L-431051DC) until every CUSTOM_JWT deploy
+ * fails with a limit-reached error.
+ */
 export async function cleanupStaleCredentialProviders(
   client: BedrockAgentCoreControlClient,
   logger: Logger,
@@ -44,48 +55,22 @@ export async function cleanupStaleCredentialProviders(
   }
 ): Promise<void> {
   const cutoff = new Date(Date.now() - options.minAgeMs);
+  const isStale = (p: { name?: string; createdTime?: Date }): boolean =>
+    !!p.name?.startsWith(options.prefix) && !!p.createdTime && p.createdTime < cutoff;
 
-  let nextToken: string | undefined;
+  let apiKeyNextToken: string | undefined;
   do {
-    const response = await client.send(new ListApiKeyCredentialProvidersCommand({ nextToken }));
-    const providers = response.credentialProviders ?? [];
-    const stale = providers.filter(p => p.name?.startsWith(options.prefix) && p.createdTime && p.createdTime < cutoff);
-
+    const response = await client.send(new ListApiKeyCredentialProvidersCommand({ nextToken: apiKeyNextToken }));
+    const stale = (response.credentialProviders ?? []).filter(isStale);
     await Promise.all(stale.map(p => deleteCredentialProvider(client, logger, p.name!)));
+    apiKeyNextToken = response.nextToken;
+  } while (apiKeyNextToken);
 
-    nextToken = response.nextToken;
-  } while (nextToken);
-}
-
-/**
- * Delete stale OAuth2 credential providers matching `prefix` and older than `minAgeMs`.
- *
- * OAuth2 providers are a distinct resource type from API key providers — they have their
- * own List/Delete APIs and do NOT appear in ListApiKeyCredentialProviders. So
- * `cleanupStaleCredentialProviders` (which lists only API key providers) can never reap
- * them. The CUSTOM_JWT harness e2e test registers a managed OAuth2 provider (`<name>-oauth`)
- * that is created outside the CloudFormation stack, so teardown leaves it behind. Without
- * this reaper they accumulate against the account's 50-provider OAuth2 quota (L-431051DC)
- * until every CUSTOM_JWT deploy fails with a limit-reached error.
- */
-export async function cleanupStaleOAuth2CredentialProviders(
-  client: BedrockAgentCoreControlClient,
-  logger: Logger,
-  options: {
-    minAgeMs: number;
-    prefix: string;
-  }
-): Promise<void> {
-  const cutoff = new Date(Date.now() - options.minAgeMs);
-
-  let nextToken: string | undefined;
+  let oauth2NextToken: string | undefined;
   do {
-    const response = await client.send(new ListOauth2CredentialProvidersCommand({ nextToken }));
-    const providers = response.credentialProviders ?? [];
-    const stale = providers.filter(p => p.name?.startsWith(options.prefix) && p.createdTime && p.createdTime < cutoff);
-
+    const response = await client.send(new ListOauth2CredentialProvidersCommand({ nextToken: oauth2NextToken }));
+    const stale = (response.credentialProviders ?? []).filter(isStale);
     await Promise.all(stale.map(p => deleteOAuth2CredentialProvider(client, logger, p.name!)));
-
-    nextToken = response.nextToken;
-  } while (nextToken);
+    oauth2NextToken = response.nextToken;
+  } while (oauth2NextToken);
 }
