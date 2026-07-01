@@ -24,7 +24,6 @@ import {
   getOutboundAuthOptions,
 } from './types';
 import { useAddGatewayTargetWizard } from './useAddGatewayTargetWizard';
-import { isGatedFeaturesEnabled } from '@/cli/feature-flags';
 import { Box, Text } from 'ink';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -114,17 +113,17 @@ export function AddGatewayTargetScreen({
   const isAuthStep = isOutboundAuthStep || isApiGatewayAuthStep;
   const noGatewaysAvailable = isGatewayStep && existingGateways.length === 0;
 
-  // Auto-select the gateway for webSearch targets when there's exactly one option.
+  // Auto-select the gateway for web-search connector when there's exactly one option.
   useEffect(() => {
     if (
       isGatewayStep &&
-      wizard.config.targetType === 'webSearch' &&
+      wizard.config.connectorId === 'web-search' &&
       existingGateways.length === 1 &&
       !wizard.config.gateway
     ) {
       wizard.setGateway(existingGateways[0]!);
     }
-  }, [isGatewayStep, wizard.config.targetType, existingGateways, wizard.config.gateway, wizard.setGateway]);
+  }, [isGatewayStep, wizard.config.connectorId, existingGateways, wizard.config.gateway, wizard.setGateway]);
 
   // ── Selectable item lists ──
   const isNonMcpTarget = wizard.config.targetType === 'httpRuntime' || wizard.config.targetType === 'passthrough';
@@ -153,16 +152,7 @@ export function AddGatewayTargetScreen({
     [existingGateways, mcpGatewayNames, isHttpRuntimeTarget]
   );
   const targetTypeItems: SelectableItem[] = useMemo(
-    () =>
-      TARGET_TYPE_OPTIONS.map(o => {
-        const gated = o.id === 'webSearch' && !isGatedFeaturesEnabled();
-        return {
-          id: o.id,
-          title: o.title,
-          description: gated ? 'Coming soon' : o.description,
-          disabled: gated,
-        };
-      }),
+    () => TARGET_TYPE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description })),
     []
   );
   const outboundAuthItems: SelectableItem[] = useMemo(
@@ -237,7 +227,11 @@ export function AddGatewayTargetScreen({
     items: targetTypeItems,
     onSelect: item => {
       if ((item as SelectableItem & { disabled?: boolean }).disabled) return;
-      wizard.setTargetType(item.id as GatewayTargetType);
+      if (item.id === 'webSearch') {
+        wizard.setTargetType('connector', 'web-search');
+      } else {
+        wizard.setTargetType(item.id as GatewayTargetType);
+      }
     },
     onExit: () => wizard.goBack(),
     isActive: isTargetTypeStep,
@@ -425,24 +419,23 @@ export function AddGatewayTargetScreen({
           endpoint: c.endpoint,
           outboundAuth: c.outboundAuth,
         });
-      } else if (c.targetType === 'webSearch') {
-        onComplete({
-          targetType: 'webSearch',
-          name: c.name,
-          gateway: c.gateway!,
-          ...(c.excludeDomains && c.excludeDomains.length > 0 ? { excludeDomains: c.excludeDomains } : {}),
-        });
       } else if (c.targetType === 'connector') {
-        // KB connector path. `bedrock-agentic-retrieve` is gateway-managed by
-        // the Add Knowledge Base flow, so the TUI only emits
-        // `bedrock-knowledge-bases` here.
-        onComplete({
-          targetType: 'connector',
-          connectorId: 'bedrock-knowledge-bases',
-          name: c.name,
-          gateway: c.gateway!,
-          knowledgeBaseId: c.knowledgeBaseId!,
-        });
+        if (c.connectorId === 'web-search') {
+          onComplete({
+            targetType: 'webSearch',
+            name: c.name,
+            gateway: c.gateway!,
+            ...(c.excludeDomains && c.excludeDomains.length > 0 ? { excludeDomains: c.excludeDomains } : {}),
+          });
+        } else {
+          onComplete({
+            targetType: 'connector',
+            connectorId: 'bedrock-knowledge-bases',
+            name: c.name,
+            gateway: c.gateway!,
+            knowledgeBaseId: c.knowledgeBaseId!,
+          });
+        }
       } else if (c.targetType === 'passthrough') {
         onComplete({
           targetType: 'passthrough',
@@ -842,7 +835,9 @@ export function AddGatewayTargetScreen({
               {
                 label: 'Target Type',
                 value:
-                  TARGET_TYPE_OPTIONS.find(o => o.id === wizard.config.targetType)?.title ??
+                  (wizard.config.targetType === 'connector' && wizard.config.connectorId === 'web-search'
+                    ? TARGET_TYPE_OPTIONS.find(o => o.id === 'webSearch')?.title
+                    : TARGET_TYPE_OPTIONS.find(o => o.id === wizard.config.targetType)?.title) ??
                   wizard.config.targetType ??
                   '',
               },
@@ -869,10 +864,10 @@ export function AddGatewayTargetScreen({
                     ...(wizard.config.endpoint ? [{ label: 'Runtime Endpoint', value: wizard.config.endpoint }] : []),
                   ]
                 : []),
-              ...(wizard.config.targetType === 'webSearch'
+              ...(wizard.config.connectorId === 'web-search'
                 ? [{ label: 'Exclude domains', value: wizard.config.excludeDomains?.join(', ') ?? '(none)' }]
                 : []),
-              ...(wizard.config.targetType === 'connector'
+              ...(wizard.config.targetType === 'connector' && wizard.config.connectorId !== 'web-search'
                 ? [
                     { label: 'Connector', value: wizard.config.connectorId ?? 'bedrock-knowledge-bases' },
                     { label: 'Knowledge Base', value: wizard.config.knowledgeBaseId ?? '' },

@@ -20,7 +20,6 @@ import { AddOnlineInsightsFlow } from '../online-insights';
 import { AddPaymentFlow } from '../payment';
 import { AddPolicyFlow } from '../policy';
 import { AddRuntimeEndpointFlow } from '../runtime-endpoint';
-import { AddWebSearchFlow } from '../web-search';
 import type { AddResourceType } from './AddScreen';
 import { AddScreen } from './AddScreen';
 import { AddSuccessScreen } from './AddSuccessScreen';
@@ -36,7 +35,6 @@ type FlowState =
   | { name: 'tool-wizard' }
   | { name: 'memory-wizard' }
   | { name: 'knowledge-base-wizard' }
-  | { name: 'web-search-wizard' }
   | { name: 'identity-wizard' }
   | { name: 'evaluator-wizard' }
   | { name: 'online-eval-wizard' }
@@ -192,8 +190,6 @@ function getInitialFlowState(resource?: AddResourceType): FlowState {
       return { name: 'memory-wizard' };
     case 'knowledge-base':
       return { name: 'knowledge-base-wizard' };
-    case 'web-search':
-      return { name: 'web-search-wizard' };
     case 'credential':
       return { name: 'identity-wizard' };
     case 'evaluator':
@@ -254,9 +250,6 @@ export function AddFlow(props: AddFlowProps) {
         break;
       case 'knowledge-base':
         setFlow({ name: 'knowledge-base-wizard' });
-        break;
-      case 'web-search':
-        setFlow({ name: 'web-search-wizard' });
         break;
       case 'credential':
         setFlow({ name: 'identity-wizard' });
@@ -492,19 +485,6 @@ export function AddFlow(props: AddFlowProps) {
   if (flow.name === 'knowledge-base-wizard') {
     return (
       <AddKnowledgeBaseFlow
-        isInteractive={props.isInteractive}
-        onBack={() => setFlow({ name: 'select' })}
-        onExit={props.onExit}
-        onDev={props.onDev}
-        onDeploy={props.onDeploy}
-      />
-    );
-  }
-
-  // Web search wizard
-  if (flow.name === 'web-search-wizard') {
-    return (
-      <AddWebSearchFlow
         isInteractive={props.isInteractive}
         onBack={() => setFlow({ name: 'select' })}
         onExit={props.onExit}

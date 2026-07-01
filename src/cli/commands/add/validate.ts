@@ -394,7 +394,9 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     options.language =
       (matchEnumValue(TargetLanguageSchema, options.language) as typeof options.language) ?? options.language;
 
-  if (!options.name) {
+  const kbConnectors = ['bedrock-knowledge-bases', 'bedrock-agentic-retrieve'];
+  const nameOptional = options.type === 'connector' && kbConnectors.includes(options.connector ?? '');
+  if (!options.name && !nameOptional) {
     return { valid: false, error: '--name is required' };
   }
 
@@ -407,7 +409,6 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     'http-runtime',
     'connector',
     'passthrough',
-    'web-search',
   ].join(', ');
 
   if (!options.type) {
@@ -426,7 +427,6 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     'http-runtime': 'httpRuntime',
     connector: 'connector',
     passthrough: 'passthrough',
-    'web-search': 'webSearch',
   };
   const mappedType = typeMap[options.type];
   if (!mappedType) {
@@ -437,11 +437,11 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
   }
   options.type = mappedType;
 
-  // --exclude-domains is webSearch-target-only. Reject it on every other target type.
-  if (mappedType !== 'webSearch' && options.excludeDomains) {
+  // --exclude-domains only applies to the web-search connector.
+  if (options.excludeDomains && !(mappedType === 'connector' && options.connector === 'web-search')) {
     return {
       valid: false,
-      error: '--exclude-domains only applies to --type web-search',
+      error: '--exclude-domains only applies to --connector web-search',
     };
   }
 
@@ -630,43 +630,6 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     return { valid: true };
   }
 
-  // Web search targets (Amazon Web Search managed connector): validate early and return
-  if (mappedType === 'webSearch') {
-    const WEB_SEARCH_DISALLOWED_OPTIONS: [string, string][] = [
-      ['connector', '--connector'],
-      ['knowledgeBaseId', '--knowledge-base-id'],
-      ['endpoint', '--endpoint'],
-      ['host', '--host'],
-      ['restApiId', '--rest-api-id'],
-      ['stage', '--stage'],
-      ['lambdaArn', '--lambda-arn'],
-      ['toolSchemaFile', '--tool-schema-file'],
-      ['toolFilterPath', '--tool-filter-path'],
-      ['toolFilterMethods', '--tool-filter-methods'],
-      ['schema', '--schema'],
-      ['schemaS3Account', '--schema-s3-account'],
-      ['outboundAuthType', '--outbound-auth'],
-      ['credentialName', '--credential-name'],
-      ['oauthClientId', '--oauth-client-id'],
-      ['oauthClientSecret', '--oauth-client-secret'],
-      ['oauthDiscoveryUrl', '--oauth-discovery-url'],
-      ['oauthScopes', '--oauth-scopes'],
-    ];
-    for (const [key, flag] of WEB_SEARCH_DISALLOWED_OPTIONS) {
-      const v = (options as unknown as Record<string, unknown>)[key];
-      // knowledgeBaseId is a string[]; treat empty array as absent
-      const present = Array.isArray(v) ? v.length > 0 : !!v;
-      if (present) {
-        return { valid: false, error: `${flag} is not applicable for web-search type` };
-      }
-    }
-    if (options.language && options.language !== 'Other') {
-      return { valid: false, error: '--language is not applicable for web-search type' };
-    }
-    options.language = 'Other';
-    return { valid: true };
-  }
-
   // Connector targets (Bedrock KB, agentic-retrieve): validate early and return
   if (mappedType === 'connector') {
     const validConnectors = CONNECTOR_ID_VALUES.join(', ');
@@ -682,13 +645,13 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
         error: `Invalid --connector "${options.connector}". Valid: ${validConnectors}`,
       };
     }
-    if (!options.knowledgeBaseId || options.knowledgeBaseId.length === 0) {
+    if (options.connector !== 'web-search' && (!options.knowledgeBaseId || options.knowledgeBaseId.length === 0)) {
       return {
         valid: false,
         error: `--knowledge-base-id is required for --connector ${options.connector}`,
       };
     }
-    if (options.connector === 'bedrock-knowledge-bases' && options.knowledgeBaseId.length > 1) {
+    if (options.connector === 'bedrock-knowledge-bases' && (options.knowledgeBaseId?.length ?? 0) > 1) {
       return {
         valid: false,
         error:

@@ -57,10 +57,11 @@ export function useAddGatewayTargetWizard(
           baseSteps.push('runtime', 'runtime-endpoint', 'gateway', 'outbound-auth');
           break;
         case 'connector':
-          // Connector (Knowledge Base) flow: select a KB (project name or
-          // literal 10-char ID), then attach to a gateway. No outbound auth —
-          // connector targets are managed by the gateway IAM role.
-          baseSteps.push('kb-select', 'gateway');
+          if (config.connectorId === 'web-search') {
+            baseSteps.push('gateway', 'exclude-domains');
+          } else {
+            baseSteps.push('kb-select', 'gateway');
+          }
           break;
         case 'passthrough':
           baseSteps.push(
@@ -73,11 +74,6 @@ export function useAddGatewayTargetWizard(
             'signing-region'
           );
           break;
-        case 'webSearch':
-          // Amazon Web Search flow: pick a gateway, optionally specify domains
-          // to exclude. No outbound auth — managed by the gateway IAM role.
-          baseSteps.push('gateway', 'exclude-domains');
-          break;
         case 'mcpServer':
         default:
           baseSteps.push('endpoint', 'gateway', 'outbound-auth');
@@ -86,7 +82,7 @@ export function useAddGatewayTargetWizard(
       baseSteps.push('confirm');
     }
     return baseSteps;
-  }, [config.targetType]);
+  }, [config.targetType, config.connectorId]);
 
   // The 'kb-id' step is a sub-step of 'kb-select' for manual literal-KB-ID entry.
   // It is not part of the canonical step list, so map it onto kb-select for
@@ -127,20 +123,14 @@ export function useAddGatewayTargetWizard(
     [goToNextStep]
   );
 
-  const setTargetType = useCallback((targetType: GatewayTargetType) => {
-    // KB connector targets default to 'bedrock-knowledge-bases' for the TUI;
-    // 'bedrock-agentic-retrieve' is gateway-managed by the Add Knowledge Base
-    // flow and not directly exposed here. webSearch targets carry no connectorId.
-    const connectorIdDefault = targetType === 'connector' ? ('bedrock-knowledge-bases' as const) : undefined;
+  const setTargetType = useCallback((targetType: GatewayTargetType, connectorId?: string) => {
+    const resolvedConnectorId = targetType === 'connector' ? (connectorId ?? 'bedrock-knowledge-bases') : undefined;
     setConfig(c => ({
       ...c,
       targetType,
-      ...(connectorIdDefault ? { connectorId: connectorIdDefault } : { connectorId: undefined }),
-      ...(targetType !== 'webSearch' ? { excludeDomains: undefined } : {}),
+      connectorId: resolvedConnectorId,
+      ...(resolvedConnectorId !== 'web-search' ? { excludeDomains: undefined } : {}),
     }));
-    // Cannot use goToNextStep() here — config.targetType is changing, which triggers
-    // useMemo to recompute steps, but goToNextStep captures the OLD steps via closure.
-    // Must explicitly set the first type-specific step.
     switch (targetType) {
       case 'apiGateway':
         setStep('rest-api-id');
@@ -156,13 +146,10 @@ export function useAddGatewayTargetWizard(
         setStep('runtime');
         break;
       case 'connector':
-        setStep('kb-select');
+        setStep(resolvedConnectorId === 'web-search' ? 'gateway' : 'kb-select');
         break;
       case 'passthrough':
         setStep('passthrough-endpoint');
-        break;
-      case 'webSearch':
-        setStep('gateway');
         break;
       case 'mcpServer':
       default:

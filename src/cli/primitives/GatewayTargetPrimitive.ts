@@ -29,7 +29,6 @@ import {
 import type { AddGatewayTargetOptions as CLIAddGatewayTargetOptions } from '../commands/add/types';
 import { validateAddGatewayTargetOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
-import { isGatedFeaturesEnabled } from '../feature-flags.js';
 import { upsertAgenticRetrieveTarget } from '../operations/knowledge-base/agentic-retrieve-upsert';
 import type { RemovableGatewayTarget } from '../operations/remove/remove-gateway-target';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
@@ -275,12 +274,8 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
   }
 
   registerCommands(addCmd: Command, removeCmd: Command): void {
-    // Hide gated options from `--help` unless ENABLE_GATED_FEATURES is set.
-    const gate = <T extends Option>(option: T): T => (isGatedFeaturesEnabled() ? option : option.hideHelp());
-
-    const typeDescription = isGatedFeaturesEnabled()
-      ? 'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn, http-runtime, connector, passthrough, web-search [non-interactive]'
-      : 'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn, http-runtime, connector, passthrough [non-interactive]';
+    const typeDescription =
+      'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn, http-runtime, connector, passthrough [non-interactive]';
 
     // Reject repeated use of --exclude-domains. Domains must be passed as a
     // single comma-separated value.
@@ -302,7 +297,7 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
       .option('--type <type>', typeDescription)
       .option(
         '--connector <id>',
-        'Connector id (for connector type): bedrock-knowledge-bases or bedrock-agentic-retrieve [non-interactive]'
+        'Connector id (for connector type): bedrock-knowledge-bases, bedrock-agentic-retrieve, or web-search [non-interactive]'
       )
       .option(
         '--knowledge-base-id <id>',
@@ -310,13 +305,10 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
         (val: string, acc: string[]) => [...acc, val],
         [] as string[]
       )
-      .addOption(
-        gate(
-          new Option(
-            '--exclude-domains <list>',
-            'Comma-separated domains to exclude from results (for --type web-search only) [non-interactive]'
-          ).argParser(excludeDomainsCoercer)
-        )
+      .option(
+        '--exclude-domains <list>',
+        'Comma-separated domains to exclude from results (for --connector web-search) [non-interactive]',
+        excludeDomainsCoercer
       )
       .option('--endpoint <endpoint>', 'Server endpoint URL (for mcp-server type) [non-interactive]')
       .option('--language <lang>', 'Language of target code: Python, TypeScript, Other [non-interactive]')
@@ -413,9 +405,10 @@ Target types and their options:
     --lambda-arn <arn>             Lambda function ARN
     --tool-schema-file <path>      Tool schema JSON file
 
-  connector — Wire a managed AWS connector (Bedrock KB, agentic-retrieve)
-    --connector <id>               bedrock-knowledge-bases or bedrock-agentic-retrieve
-    --knowledge-base-id <id>       Project KB name or 10-char external KB id (repeatable for agentic-retrieve)
+  connector — Wire a managed AWS connector (bedrock-knowledge-bases, bedrock-agentic-retrieve, web-search)
+    --connector <id>               bedrock-knowledge-bases, bedrock-agentic-retrieve, or web-search
+    --knowledge-base-id <id>       Project KB name or 10-char external KB id (for KB connectors)
+    --exclude-domains <list>       Comma-separated domains to exclude (for web-search connector)
 
   passthrough — Route to an external HTTPS endpoint
     --passthrough-endpoint <url>   HTTPS endpoint URL
@@ -437,6 +430,38 @@ Target types and their options:
         if (!findConfigRoot()) {
           console.error('No agentcore project found. Run `agentcore create` first.');
           process.exit(1);
+        }
+
+        const userPassedAnyFlag =
+          !!cliOptions.name ||
+          !!cliOptions.type ||
+          !!cliOptions.connector ||
+          !!cliOptions.endpoint ||
+          !!cliOptions.json;
+        if (!userPassedAnyFlag) {
+          try {
+            requireTTY();
+            const [{ render }, { default: React }, { AddFlow }] = await Promise.all([
+              import('ink'),
+              import('react'),
+              import('../tui/screens/add/AddFlow'),
+            ]);
+            const { clear, unmount } = render(
+              React.createElement(AddFlow, {
+                isInteractive: false,
+                initialResource: 'gateway-target',
+                onExit: () => {
+                  clear();
+                  unmount();
+                  process.exit(0);
+                },
+              })
+            );
+            return;
+          } catch (error) {
+            console.error(getErrorMessage(error));
+            process.exit(1);
+          }
         }
 
         await runCliCommand('add.gateway-target', !!cliOptions.json, async () => {
@@ -593,35 +618,7 @@ Target types and their options:
             return telemetryAttrs;
           }
 
-          // Handle Amazon Web Search targets (managed-service backed via gateway IAM role)
-          if (cliOptions.type === 'webSearch') {
-            if (!isGatedFeaturesEnabled()) {
-              throw new ValidationError('Web search target type is not yet available.');
-            }
-            const excludeDomains =
-              typeof cliOptions.excludeDomains === 'string'
-                ? cliOptions.excludeDomains
-                    .split(',')
-                    .map((d: string) => d.trim())
-                    .filter((d: string) => d.length > 0)
-                : undefined;
-            const config: WebSearchTargetConfig = {
-              targetType: 'webSearch',
-              name: cliOptions.name!,
-              gateway: cliOptions.gateway!,
-              ...(excludeDomains && excludeDomains.length > 0 ? { excludeDomains } : {}),
-            };
-            const result = await this.createWebSearchGatewayTarget(config);
-            if (cliOptions.json) {
-              console.log(JSON.stringify({ success: true, toolName: result.toolName }));
-            } else {
-              const suffix = config.excludeDomains ? ` (excludeDomains=${config.excludeDomains.join(',')})` : '';
-              console.log(`Added web-search gateway target '${result.toolName}' on '${config.gateway}'${suffix}`);
-            }
-            return telemetryAttrs;
-          }
-
-          // Handle connector targets (managed-service backed: KB single-retrieve, agentic-retrieve fan-out)
+          // Handle connector targets (managed-service backed: KB, agentic-retrieve, web-search)
           if (cliOptions.type === 'connector') {
             const validConnectors = CONNECTOR_ID_VALUES.join(', ');
             if (!cliOptions.connector) {
@@ -633,10 +630,43 @@ Target types and their options:
               );
             }
             const connectorId = cliOptions.connector as ConnectorId;
+
+            // Web search connector
+            if (connectorId === 'web-search') {
+              const excludeDomains =
+                typeof cliOptions.excludeDomains === 'string'
+                  ? cliOptions.excludeDomains
+                      .split(',')
+                      .map((d: string) => d.trim())
+                      .filter((d: string) => d.length > 0)
+                  : undefined;
+              const config: WebSearchTargetConfig = {
+                targetType: 'webSearch',
+                name: cliOptions.name!,
+                gateway: cliOptions.gateway!,
+                ...(excludeDomains && excludeDomains.length > 0 ? { excludeDomains } : {}),
+              };
+              const result = await this.createWebSearchGatewayTarget(config);
+              if (cliOptions.json) {
+                console.log(JSON.stringify({ success: true, toolName: result.toolName }));
+              } else {
+                const suffix = config.excludeDomains ? ` (excludeDomains=${config.excludeDomains.join(',')})` : '';
+                console.log(`Added web-search gateway target '${result.toolName}' on '${config.gateway}'${suffix}`);
+              }
+              return { ...telemetryAttrs, gateway_target_type: 'web-search' as const };
+            }
+
+            // KB connectors require --knowledge-base-id
             const kbRefs = cliOptions.knowledgeBaseId ?? [];
             if (kbRefs.length === 0) {
               throw new ValidationError(`--knowledge-base-id is required for --connector ${connectorId}.`);
             }
+
+            const resolvedName =
+              cliOptions.name ??
+              (connectorId === 'bedrock-knowledge-bases'
+                ? `kb-${cliOptions.gateway}-${kbRefs[0]}`
+                : `kb-${cliOptions.gateway}-agentic`);
 
             let config: ConnectorTargetConfig;
             if (connectorId === 'bedrock-knowledge-bases') {
@@ -648,7 +678,7 @@ Target types and their options:
               }
               config = {
                 targetType: 'connector',
-                name: cliOptions.name!,
+                name: resolvedName,
                 gateway: cliOptions.gateway!,
                 connectorId,
                 knowledgeBaseId: kbRefs[0]!,
@@ -658,7 +688,7 @@ Target types and their options:
               // bedrock-agentic-retrieve: fan-out via knowledgeBaseIds[].
               config = {
                 targetType: 'connector',
-                name: cliOptions.name!,
+                name: resolvedName,
                 gateway: cliOptions.gateway!,
                 connectorId,
                 knowledgeBaseIds: kbRefs,
@@ -873,166 +903,6 @@ Target types and their options:
               })
             );
           }
-        } catch (error) {
-          if (cliOptions.json) {
-            console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
-          } else {
-            console.error(`Error: ${getErrorMessage(error)}`);
-          }
-          process.exit(1);
-        }
-      });
-
-    // ──────────────────────────────────────────────────────────────────
-    // Top-level shortcuts: agentcore add web-search / remove web-search
-    // ──────────────────────────────────────────────────────────────────
-    addCmd
-      .command('web-search', { hidden: !isGatedFeaturesEnabled() })
-      .description('Wire the Amazon Web Search managed connector to a gateway as a target.')
-      .option('--name <name>', 'Target name (default: web-search) [non-interactive]')
-      .option('--gateway <name>', 'Gateway to attach this target to [non-interactive]')
-      .option('--exclude-domains <list>', 'Comma-separated domains to exclude from results [non-interactive]')
-      .option('--json', 'Output as JSON [non-interactive]')
-      .action(async (cliOptions: { name?: string; gateway?: string; excludeDomains?: string; json?: boolean }) => {
-        if (!isGatedFeaturesEnabled()) {
-          console.error('Error: Web search target type is not yet available.');
-          process.exit(1);
-        }
-        if (!findConfigRoot()) {
-          console.error('No agentcore project found. Run `agentcore create` first.');
-          process.exit(1);
-        }
-
-        const userPassedAnyFlag =
-          !!cliOptions.name || !!cliOptions.gateway || !!cliOptions.excludeDomains || !!cliOptions.json;
-        if (!userPassedAnyFlag) {
-          try {
-            requireTTY();
-            const [{ render }, { default: React }, { AddWebSearchFlow }] = await Promise.all([
-              import('ink'),
-              import('react'),
-              import('../tui/screens/web-search'),
-            ]);
-            const { clear, unmount } = render(
-              React.createElement(AddWebSearchFlow, {
-                isInteractive: false,
-                onBack: () => {
-                  clear();
-                  unmount();
-                  process.exit(0);
-                },
-                onExit: () => {
-                  clear();
-                  unmount();
-                  process.exit(0);
-                },
-              })
-            );
-            return;
-          } catch (error) {
-            console.error(getErrorMessage(error));
-            process.exit(1);
-          }
-        }
-
-        await runCliCommand('add.web-search', !!cliOptions.json, async () => {
-          // Default name `web-search` is convenient for the first invocation
-          // but produces a duplicate-target error on the second. Require an
-          // explicit --name when the default is already taken.
-          let resolvedName = cliOptions.name;
-          if (!resolvedName) {
-            const project = await this.readProjectSpec();
-            const nameTaken = project.agentCoreGateways.some(g => (g.targets ?? []).some(t => t.name === 'web-search'));
-            if (nameTaken) {
-              throw new ValidationError(
-                'A gateway target named "web-search" already exists. Pass --name <unique-name> to add another.'
-              );
-            }
-            resolvedName = 'web-search';
-          }
-          const forwardedOptions: CLIAddGatewayTargetOptions = {
-            name: resolvedName,
-            type: 'web-search',
-            gateway: cliOptions.gateway,
-            ...(cliOptions.excludeDomains && { excludeDomains: cliOptions.excludeDomains }),
-          };
-          const validation = await validateAddGatewayTargetOptions(forwardedOptions);
-          if (!validation.valid) {
-            throw new ValidationError(validation.error!);
-          }
-          const excludeDomains =
-            typeof forwardedOptions.excludeDomains === 'string'
-              ? forwardedOptions.excludeDomains
-                  .split(',')
-                  .map((d: string) => d.trim())
-                  .filter((d: string) => d.length > 0)
-              : undefined;
-          const config: WebSearchTargetConfig = {
-            targetType: 'webSearch',
-            name: forwardedOptions.name!,
-            gateway: forwardedOptions.gateway!,
-            ...(excludeDomains && excludeDomains.length > 0 ? { excludeDomains } : {}),
-          };
-          const result = await this.createWebSearchGatewayTarget(config);
-          if (cliOptions.json) {
-            console.log(JSON.stringify({ success: true, toolName: result.toolName }));
-          } else {
-            const suffix = config.excludeDomains ? ` (excludeDomains=${config.excludeDomains.join(',')})` : '';
-            console.log(`Added web-search gateway target '${result.toolName}' on '${config.gateway}'${suffix}`);
-          }
-          return {};
-        });
-      });
-
-    removeCmd
-      .command('web-search', { hidden: !isGatedFeaturesEnabled() })
-      .description('Remove an Amazon Web Search gateway target from the project')
-      .option('--name <name>', 'Name of the web-search target to remove [non-interactive]')
-      .option('-y, --yes', 'Skip confirmation prompt [non-interactive]')
-      .option('--json', 'Output as JSON [non-interactive]')
-      .action(async (cliOptions: { name?: string; yes?: boolean; json?: boolean }) => {
-        try {
-          if (!isGatedFeaturesEnabled()) {
-            console.error('Web search target type is not yet available.');
-            process.exit(1);
-          }
-          if (!findConfigRoot()) {
-            console.error('No agentcore project found. Run `agentcore create` first.');
-            process.exit(1);
-          }
-
-          if (!cliOptions.name) {
-            throw new ValidationError('A --name is required for `agentcore remove web-search`.');
-          }
-          const project = await this.readProjectSpec();
-          const match = project.agentCoreGateways
-            .flatMap(g => (g.targets ?? []).map(t => ({ gateway: g.name, target: t })))
-            .find(({ target }) => target.name === cliOptions.name);
-          if (!match) {
-            throw new ValidationError(`Gateway target "${cliOptions.name}" not found.`);
-          }
-          if (match.target.targetType !== 'webSearch') {
-            throw new ValidationError(
-              `Gateway target "${cliOptions.name}" is type "${match.target.targetType}", not webSearch. Use 'agentcore remove gateway-target --name ${cliOptions.name}' instead.`
-            );
-          }
-          const result = await withCommandRunTelemetry('remove.web-search', {}, () => this.remove(cliOptions.name!));
-          if (cliOptions.json) {
-            console.log(
-              JSON.stringify({
-                success: result.success,
-                resourceType: this.kind,
-                resourceName: cliOptions.name,
-                message: result.success ? `Removed web-search gateway target '${cliOptions.name}'` : undefined,
-                error: !result.success ? result.error.message : undefined,
-              })
-            );
-          } else if (result.success) {
-            console.log(`Removed web-search gateway target '${cliOptions.name}'`);
-          } else {
-            throw result.error;
-          }
-          process.exit(result.success ? 0 : 1);
         } catch (error) {
           if (cliOptions.json) {
             console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
@@ -1404,7 +1274,8 @@ Target types and their options:
 
     const target: AgentCoreGatewayTarget = {
       name: config.name,
-      targetType: 'webSearch',
+      targetType: 'connector',
+      connectorId: 'web-search',
       ...(config.excludeDomains && config.excludeDomains.length > 0 ? { excludeDomains: config.excludeDomains } : {}),
     } as AgentCoreGatewayTarget;
 

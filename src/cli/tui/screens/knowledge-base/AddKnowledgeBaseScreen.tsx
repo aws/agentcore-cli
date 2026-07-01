@@ -1,4 +1,4 @@
-import { GatewayNameSchema, KnowledgeBaseNameSchema, S3DataSourceSchema } from '../../../../schema';
+import { KnowledgeBaseNameSchema, S3DataSourceSchema } from '../../../../schema';
 import { type DataSourceTypeFlag, flagToWireType } from '../../../operations/knowledge-base/connector-config';
 import { ConfirmReview, Panel, Screen, StepIndicator, TextInput, WizardSelect } from '../../components';
 import type { SelectableItem } from '../../components';
@@ -10,15 +10,11 @@ import type { AddKnowledgeBaseConfig, CapturedDataSource } from './types';
 import React, { useMemo, useState } from 'react';
 import { z } from 'zod';
 
-// Canonical step list. The 'new-gateway-name' state is intentionally a
-// sub-step of 'gateway' (mirrors the kb-id sub-step pattern in
-// useAddGatewayTargetWizard) and is not in this list — it maps onto 'gateway'
-// for the StepIndicator/index lookup.
-type Step = 'name' | 'description' | 'data-source-type' | 'sources' | 'add-another' | 'gateway' | 'confirm';
+type Step = 'name' | 'description' | 'data-source-type' | 'sources' | 'add-another' | 'confirm';
 // 'remove-source' is a sub-step of 'add-another' — it shows a picker of
 // captured sources so the user can drop one before continuing. Mapped onto
-// 'add-another' for the StepIndicator. Same pattern as 'new-gateway-name'.
-type WizardState = Step | 'new-gateway-name' | 'remove-source';
+// 'add-another' for the StepIndicator.
+type WizardState = Step | 'remove-source';
 
 const STEP_LABELS: Record<Step, string> = {
   name: 'Name',
@@ -26,11 +22,10 @@ const STEP_LABELS: Record<Step, string> = {
   'data-source-type': 'Source Type',
   sources: 'Sources',
   'add-another': 'Add another?',
-  gateway: 'Gateway',
   confirm: 'Confirm',
 };
 
-const STEPS: Step[] = ['name', 'description', 'data-source-type', 'sources', 'add-another', 'gateway', 'confirm'];
+const STEPS: Step[] = ['name', 'description', 'data-source-type', 'sources', 'add-another', 'confirm'];
 
 // Each source carries its own type, so a single wizard run can mix S3 with one
 // or more connector types. The Flow groups by `dataSourceType` and dispatches
@@ -126,9 +121,6 @@ function makeConnectorConfigSchema(pendingType: string) {
     });
 }
 
-const SKIP_GATEWAY_ID = '__skip__';
-const CREATE_NEW_GATEWAY_ID = '__create_new__';
-
 // Extract just the URI piece of S3DataSourceSchema for inline validation in
 // the TextInput component.
 const S3UriSchema = z
@@ -142,14 +134,12 @@ interface AddKnowledgeBaseScreenProps {
   onComplete: (config: AddKnowledgeBaseConfig) => void;
   onExit: () => void;
   existingKnowledgeBaseNames: string[];
-  existingGatewayNames: string[];
 }
 
 export function AddKnowledgeBaseScreen({
   onComplete,
   onExit,
   existingKnowledgeBaseNames,
-  existingGatewayNames,
 }: AddKnowledgeBaseScreenProps) {
   const [step, setStep] = useState<WizardState>('name');
   const [name, setName] = useState('');
@@ -160,11 +150,6 @@ export function AddKnowledgeBaseScreen({
   // active at the moment it was entered.
   const [pendingType, setPendingType] = useState<DataSourceTypeFlag>('s3');
   const [dataSources, setDataSources] = useState<CapturedDataSource[]>([]);
-  const [gateway, setGateway] = useState<string | undefined>(undefined);
-  // When the user chose "Create a new gateway and attach", this holds the
-  // typed name. The KB Flow consumes this and creates the gateway first
-  // before adding the KB. Mutually exclusive with `gateway`.
-  const [newGatewayName, setNewGatewayName] = useState<string | undefined>(undefined);
 
   const isPendingS3 = pendingType === 's3';
 
@@ -174,11 +159,7 @@ export function AddKnowledgeBaseScreen({
   const isSourcesStep = step === 'sources';
   const isAddAnotherStep = step === 'add-another';
   const isRemoveSourceStep = step === 'remove-source';
-  const isGatewayStep = step === 'gateway';
-  const isNewGatewayNameStep = step === 'new-gateway-name';
   const isConfirmStep = step === 'confirm';
-
-  const hasGateways = existingGatewayNames.length > 0;
 
   // Number of sources already captured for the *current* pendingType run, used
   // to label inputs ("S3 URI #2") and decide where Esc returns to.
@@ -186,24 +167,6 @@ export function AddKnowledgeBaseScreen({
     () => dataSources.filter(ds => ds.dataSourceType === pendingType).length,
     [dataSources, pendingType]
   );
-
-  // Gateway-step picker contents adapt to whether any gateways exist:
-  //   - Zero gateways: ["Create a new gateway and attach", "Skip — KB will be standalone"].
-  //   - One or more gateways: existing names + "Skip" sentinel + "Create a new gateway and attach"
-  //     appended at the end.
-  const gatewayItems: SelectableItem[] = useMemo(() => {
-    if (!hasGateways) {
-      return [
-        { id: CREATE_NEW_GATEWAY_ID, title: 'Create a new gateway and attach' },
-        { id: SKIP_GATEWAY_ID, title: 'Skip — KB will be standalone (you can attach later)' },
-      ];
-    }
-    return [
-      ...existingGatewayNames.map(g => ({ id: g, title: g })),
-      { id: SKIP_GATEWAY_ID, title: 'Skip — don’t wire to a gateway' },
-      { id: CREATE_NEW_GATEWAY_ID, title: 'Create a new gateway and attach' },
-    ];
-  }, [existingGatewayNames, hasGateways]);
 
   const dataSourceTypeNav = useListNavigation({
     items: DATA_SOURCE_TYPE_OPTIONS,
@@ -234,7 +197,7 @@ export function AddKnowledgeBaseScreen({
       } else if (item.id === 'remove-source') {
         setStep('remove-source');
       } else {
-        setStep('gateway');
+        setStep('confirm');
       }
     },
     onExit: () => setStep('data-source-type'),
@@ -267,25 +230,6 @@ export function AddKnowledgeBaseScreen({
     onExit: () => setStep('add-another'),
   });
 
-  const gatewayNav = useListNavigation({
-    items: gatewayItems,
-    isActive: isGatewayStep,
-    onSelect: (item: SelectableItem) => {
-      if (item.id === CREATE_NEW_GATEWAY_ID) {
-        // Sub-step: prompt for a new gateway name. Don't create it yet — the
-        // Flow does the create + KB add as a single submit so the user only
-        // sees the gateway materialise after confirming.
-        setGateway(undefined);
-        setStep('new-gateway-name');
-        return;
-      }
-      setNewGatewayName(undefined);
-      setGateway(item.id === SKIP_GATEWAY_ID ? undefined : item.id);
-      setStep('confirm');
-    },
-    onExit: () => setStep('add-another'),
-  });
-
   useListNavigation({
     items: [{ id: 'confirm', title: 'Confirm' }],
     onSelect: () =>
@@ -293,24 +237,20 @@ export function AddKnowledgeBaseScreen({
         name,
         dataSources,
         description: description || undefined,
-        gateway,
-        newGatewayName,
       }),
-    onExit: () => setStep('gateway'),
+    onExit: () => setStep('add-another'),
     isActive: isConfirmStep,
   });
 
   const helpText =
-    isDataSourceTypeStep || isAddAnotherStep || isGatewayStep || isRemoveSourceStep
+    isDataSourceTypeStep || isAddAnotherStep || isRemoveSourceStep
       ? HELP_TEXT.NAVIGATE_SELECT
       : isConfirmStep
         ? HELP_TEXT.CONFIRM_CANCEL
         : HELP_TEXT.TEXT_INPUT;
 
-  // The new-gateway-name and remove-source sub-steps map onto their parents
-  // for the StepIndicator, mirroring the kb-id sub-step pattern in
-  // useAddGatewayTargetWizard.
-  const indicatorStep: Step = isNewGatewayNameStep ? 'gateway' : isRemoveSourceStep ? 'add-another' : step;
+  // The remove-source sub-step maps onto its parent for the StepIndicator.
+  const indicatorStep: Step = isRemoveSourceStep ? 'add-another' : step;
   const headerContent = <StepIndicator steps={STEPS} currentStep={indicatorStep} labels={STEP_LABELS} />;
 
   // Confirm view: render every captured source on its own line, prefixed by
@@ -333,20 +273,13 @@ export function AddKnowledgeBaseScreen({
       .join('\n');
   }, [dataSources, name]);
 
-  const gatewayConfirmValue = useMemo(() => {
-    if (newGatewayName) return `${newGatewayName} (will be created)`;
-    if (gateway) return `${gateway} (existing)`;
-    return 'none — KB will be standalone';
-  }, [gateway, newGatewayName]);
-
   const confirmFields = useMemo(
     () => [
       { label: 'Name', value: name },
       ...(description ? [{ label: 'Description', value: description }] : []),
       { label: `Data Sources (${dataSources.length})`, value: dataSourcesSummary },
-      { label: 'Gateway', value: gatewayConfirmValue },
     ],
-    [name, description, dataSources.length, dataSourcesSummary, gatewayConfirmValue]
+    [name, description, dataSources.length, dataSourcesSummary]
   );
 
   return (
@@ -464,38 +397,6 @@ export function AddKnowledgeBaseScreen({
             description="Pick a source to drop. Press Esc to keep all and go back."
             items={removableSourceItems}
             selectedIndex={removeSourceNav.selectedIndex}
-          />
-        )}
-
-        {isGatewayStep && (
-          <WizardSelect
-            title="Wire this knowledge base to a gateway?"
-            description={
-              hasGateways
-                ? 'A connector target will be created on the selected gateway, exposing this KB as an MCP retrieval tool.'
-                : 'No gateways exist in this project yet. Create one inline, or skip and attach later.'
-            }
-            items={gatewayItems}
-            selectedIndex={gatewayNav.selectedIndex}
-          />
-        )}
-
-        {isNewGatewayNameStep && (
-          <TextInput
-            key="new-gateway-name"
-            prompt="New gateway name"
-            description="The gateway will be created when you submit this wizard, then the KB will be wired to it."
-            initialValue={`${name}-gw`}
-            onSubmit={(value: string) => {
-              setNewGatewayName(value);
-              setGateway(undefined);
-              setStep('confirm');
-            }}
-            onCancel={() => setStep('gateway')}
-            schema={GatewayNameSchema}
-            customValidation={value =>
-              !existingGatewayNames.includes(value) || 'Gateway name already exists in this project'
-            }
           />
         )}
 

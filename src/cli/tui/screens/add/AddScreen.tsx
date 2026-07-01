@@ -7,7 +7,6 @@ export type AddResourceType =
   | 'agent'
   | 'memory'
   | 'knowledge-base'
-  | 'web-search'
   | 'credential'
   | 'evaluator'
   | 'online-eval'
@@ -25,7 +24,6 @@ const BASE_ADD_RESOURCES: { id: AddResourceType; title: string; description: str
   { id: 'agent', title: 'Agent', description: 'Deploy an HTTP, MCP, A2A, or AG-UI agent' },
   { id: 'memory', title: 'Memory', description: 'Persistent context storage' },
   { id: 'knowledge-base', title: 'Knowledge Base', description: 'Create a managed knowledge base for retrieval' },
-  { id: 'web-search', title: 'Web Search', description: 'Wire the Amazon Web Search managed connector to a gateway' },
   { id: 'credential', title: 'Credential', description: 'API key credential providers' },
   { id: 'evaluator', title: 'Evaluator', description: 'Custom LLM-as-a-Judge evaluator' },
   { id: 'online-eval', title: 'Online Eval Config', description: 'Continuous evaluation pipeline' },
@@ -50,7 +48,7 @@ const ADD_RESOURCES: { id: AddResourceType; title: string; description: string }
 ];
 
 const ADD_RESOURCE_ITEMS: SelectableItem[] = ADD_RESOURCES.map(r => {
-  const gated = (r.id === 'knowledge-base' || r.id === 'web-search') && !isGatedFeaturesEnabled();
+  const gated = r.id === 'knowledge-base' && !isGatedFeaturesEnabled();
   return {
     ...r,
     disabled: gated,

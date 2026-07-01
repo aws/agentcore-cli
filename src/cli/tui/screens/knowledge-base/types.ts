@@ -26,18 +26,4 @@ export interface AddKnowledgeBaseConfig {
    * first call creates the KB, subsequent calls append.
    */
   dataSources: CapturedDataSource[];
-  /**
-   * Wave 2: optional name of an existing gateway to wire the new KB to as a
-   * connector target. Undefined when the user skips gateway-wiring or chose
-   * to create a new gateway (see `newGatewayName`). Mutually exclusive with
-   * `newGatewayName`.
-   */
-  gateway?: string;
-  /**
-   * When the user chose "Create a new gateway and attach", this is the name
-   * of the gateway to create. The Flow creates the gateway first, then
-   * passes this name as the gateway for the KB add. Mutually exclusive with
-   * `gateway`.
-   */
-  newGatewayName?: string;
 }

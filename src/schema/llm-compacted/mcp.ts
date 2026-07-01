@@ -55,8 +55,8 @@ interface AgentCoreGatewayTarget {
    */
   knowledgeBaseIds?: string[];
   /**
-   * For `webSearch` target type only — domains to exclude from search results.
-   * Maps to the connector's `domainFilter.exclude` parameterValue at synth.
+   * For connector targets with connectorId 'web-search'. Domains to exclude
+   * from search results. Maps to `domainFilter.exclude` parameterValue at synth.
    */
   excludeDomains?: string[];
 }
@@ -203,9 +203,8 @@ type GatewayTargetType =
   | 'lambdaFunctionArn'
   | 'httpRuntime'
   | 'connector'
-  | 'passthrough'
-  | 'webSearch';
-type ConnectorId = 'bedrock-knowledge-bases' | 'bedrock-agentic-retrieve';
+  | 'passthrough';
+type ConnectorId = 'bedrock-knowledge-bases' | 'bedrock-agentic-retrieve' | 'web-search';
 type PythonRuntime = 'PYTHON_3_10' | 'PYTHON_3_11' | 'PYTHON_3_12' | 'PYTHON_3_13' | 'PYTHON_3_14';
 type NodeRuntime = 'NODE_18' | 'NODE_20' | 'NODE_22';
 type NetworkMode = 'PUBLIC' | 'VPC';

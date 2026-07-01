@@ -173,7 +173,7 @@ export function computeResourceStatuses(
         t => t.targetType === 'connector' && t.connectorId === 'bedrock-knowledge-bases'
       ).length;
       const agentic = targets.find(t => t.targetType === 'connector' && t.connectorId === 'bedrock-agentic-retrieve');
-      const webSearchCount = targets.filter(t => t.targetType === 'webSearch').length;
+      const webSearchCount = targets.filter(t => t.targetType === 'connector' && t.connectorId === 'web-search').length;
       const base = `${targets.length} target${targets.length !== 1 ? 's' : ''}`;
       const parts: string[] = [];
       if (retrieveCount > 0) parts.push(`${retrieveCount} retrieve`);

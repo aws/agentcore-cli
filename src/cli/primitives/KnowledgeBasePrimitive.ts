@@ -51,8 +51,6 @@ export interface AddKnowledgeBaseOptions {
   connectorConfig?: string[];
   /** `--data-source-type` flag (s3 default, or web-crawler/confluence/...). */
   dataSourceType?: DataSourceTypeFlag;
-  /** Gateway to wire the KB into via a connector target. Optional. */
-  gateway?: string;
   json?: boolean;
 }
 
@@ -62,8 +60,6 @@ export interface AddKnowledgeBaseSuccess extends Record<string, unknown> {
   appended: boolean;
   /** New data source URIs added by this invocation (matches the order of --source flags). */
   newDataSources: string[];
-  /** Gateway the KB was wired to via a connector target, if any. */
-  gatewayWired?: string;
 }
 
 export type RemovableKnowledgeBase = RemovableResource;
@@ -196,15 +192,6 @@ export class KnowledgeBasePrimitive extends BasePrimitive<AddKnowledgeBaseOption
       const project = await this.readProjectSpec();
 
       // Validate gateway exists (no auto-create) BEFORE any file copy.
-      if (options.gateway) {
-        const gw = project.agentCoreGateways.find(g => g.name === options.gateway);
-        if (!gw) {
-          throw new Error(
-            `Gateway "${options.gateway}" not found in agentcore.json. Add it first with 'agentcore add gateway --name ${options.gateway}'.`
-          );
-        }
-      }
-
       // Phase 3 — all validation passed; now materialize (copy connector
       // configs into app/<kb>/) and build the data sources.
       const newDataSources: DataSource[] = buildDataSources();
@@ -218,18 +205,9 @@ export class KnowledgeBasePrimitive extends BasePrimitive<AddKnowledgeBaseOption
         name: options.name,
         ...(options.description && { description: options.description }),
         dataSources: newDataSources,
-        ...(options.gateway && { gateway: options.gateway }),
       });
 
       project.knowledgeBases.push(kb);
-
-      // --gateway: append the connector targets — one Retrieve per KB plus the
-      // shared gateway-scoped agentic-retrieve target (this KB gets appended
-      // to its knowledgeBaseIds[]).
-      if (options.gateway) {
-        this.appendConnectorTargets(project, options.gateway, kb.name, kb.name);
-      }
-
       await this.writeProjectSpec(project);
 
       if (!options.json) for (const w of warnings) console.warn(w);
@@ -239,7 +217,6 @@ export class KnowledgeBasePrimitive extends BasePrimitive<AddKnowledgeBaseOption
         knowledgeBaseName: kb.name,
         appended: false,
         newDataSources: newDataSources.map(dataSourceKey),
-        ...(options.gateway && { gatewayWired: options.gateway }),
       };
     } catch (err) {
       return { success: false, error: toError(err) };
@@ -322,12 +299,6 @@ export class KnowledgeBasePrimitive extends BasePrimitive<AddKnowledgeBaseOption
         `Knowledge base "${options.name}" already exists. Update operations are not supported in Wave 1; edit agentcore.json directly to change the description.`
       );
     }
-    if (options.gateway !== undefined && options.gateway !== existing.gateway) {
-      throw new Error(
-        `Knowledge base "${options.name}" already exists with a different gateway setting. Update operations are not supported in Wave 1.`
-      );
-    }
-
     const existingKeys = new Set(existing.dataSources.map(dataSourceKey));
     for (const ds of newDataSources) {
       const key = dataSourceKey(ds);
@@ -337,13 +308,6 @@ export class KnowledgeBasePrimitive extends BasePrimitive<AddKnowledgeBaseOption
     }
 
     existing.dataSources.push(...newDataSources);
-
-    // If the KB already has a gateway set and the connector target hasn't been
-    // appended yet (e.g. it was added before Wave 2 went live), append it now.
-    if (existing.gateway) {
-      this.appendConnectorTargets(project, existing.gateway, existing.name, existing.name);
-    }
-
     await this.writeProjectSpec(project);
 
     if (!options.json) for (const w of warnings) console.warn(w);
@@ -353,7 +317,6 @@ export class KnowledgeBasePrimitive extends BasePrimitive<AddKnowledgeBaseOption
       knowledgeBaseName: existing.name,
       appended: true,
       newDataSources: newDataSources.map(dataSourceKey),
-      ...(existing.gateway && { gatewayWired: existing.gateway }),
     };
   }
 
@@ -522,7 +485,7 @@ export class KnowledgeBasePrimitive extends BasePrimitive<AddKnowledgeBaseOption
     addCmd
       .command(this.kind, { hidden: !isGatedFeaturesEnabled() })
       .description('Add a knowledge base (FMKB) to the project, optionally wiring it to a gateway.')
-      .option('--name <name>', 'Knowledge base name (1-48 chars, starts with letter)')
+      .option('--name <name>', 'Knowledge base name (default: kb-quick-start-xxxxx)')
       .option('--description <text>', 'Optional description (used for tool discovery)')
       .option(
         '--source <uri>',
@@ -541,7 +504,6 @@ export class KnowledgeBasePrimitive extends BasePrimitive<AddKnowledgeBaseOption
         (val: string, acc: string[]) => [...acc, val],
         [] as string[]
       )
-      .option('--gateway <name>', 'Gateway to attach the KB to as a connector target.')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(
         async (cliOptions: {
@@ -550,7 +512,6 @@ export class KnowledgeBasePrimitive extends BasePrimitive<AddKnowledgeBaseOption
           source?: string[];
           dataSourceType?: string;
           connectorConfig?: string[];
-          gateway?: string;
           json?: boolean;
         }) => {
           if (!isGatedFeaturesEnabled()) {
@@ -572,7 +533,6 @@ export class KnowledgeBasePrimitive extends BasePrimitive<AddKnowledgeBaseOption
             !!cliOptions.description ||
             (cliOptions.source?.length ?? 0) > 0 ||
             (cliOptions.connectorConfig?.length ?? 0) > 0 ||
-            !!cliOptions.gateway ||
             !!cliOptions.json;
           if (!userPassedAnyFlag) {
             try {
@@ -601,17 +561,14 @@ export class KnowledgeBasePrimitive extends BasePrimitive<AddKnowledgeBaseOption
           }
 
           await runCliCommand('add.knowledge-base', !!cliOptions.json, async () => {
-            if (!cliOptions.name) {
-              throw new ValidationError('A --name is required for `agentcore add knowledge-base`.');
-            }
+            const resolvedName = cliOptions.name ?? `kb-quick-start-${Math.random().toString(36).slice(2, 7)}`;
 
             const result = await this.add({
-              name: cliOptions.name,
+              name: resolvedName,
               description: cliOptions.description,
               source: cliOptions.source,
               dataSourceType: cliOptions.dataSourceType as DataSourceTypeFlag | undefined,
               connectorConfig: cliOptions.connectorConfig,
-              gateway: cliOptions.gateway,
               json: cliOptions.json,
             });
 
@@ -625,16 +582,10 @@ export class KnowledgeBasePrimitive extends BasePrimitive<AddKnowledgeBaseOption
               for (const uri of result.newDataSources) {
                 console.log(`Added data source '${uri}' to knowledge-base '${result.knowledgeBaseName}'`);
               }
-              if (result.gatewayWired) {
-                console.log(`  (gateway '${result.gatewayWired}' connector target ensured)`);
-              }
             } else {
               console.log(`Added knowledge base '${result.knowledgeBaseName}'`);
               for (const uri of result.newDataSources) {
                 console.log(`  with data source '${uri}'`);
-              }
-              if (result.gatewayWired) {
-                console.log(`  wired to gateway '${result.gatewayWired}' as connector target`);
               }
             }
 
@@ -642,7 +593,6 @@ export class KnowledgeBasePrimitive extends BasePrimitive<AddKnowledgeBaseOption
               data_source_count: result.newDataSources.length,
               data_source_type: cliOptions.dataSourceType ?? 's3',
               has_description: !!cliOptions.description,
-              has_gateway: !!cliOptions.gateway,
               is_append: result.appended,
             };
           });

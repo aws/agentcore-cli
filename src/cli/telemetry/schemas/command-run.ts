@@ -97,7 +97,6 @@ const AddPolicyEngineAttrs = safeSchema({ attach_gateway_count: Count, attach_mo
 const AddKnowledgeBaseAttrs = safeSchema({
   data_source_count: Count,
   has_description: z.boolean(),
-  has_gateway: z.boolean(),
   is_append: z.boolean(),
 });
 
@@ -226,7 +225,6 @@ export const COMMAND_SCHEMAS = {
   'add.online-insights': AddOnlineInsightsAttrs,
   'add.gateway': AddGatewayAttrs,
   'add.gateway-target': AddGatewayTargetAttrs,
-  'add.web-search': NoAttrs,
   'add.policy-engine': AddPolicyEngineAttrs,
   'add.policy': AddPolicyAttrs,
   'add.runtime-endpoint': NoAttrs,
@@ -286,7 +284,6 @@ export const COMMAND_SCHEMAS = {
   'remove.online-insights': NoAttrs,
   'remove.gateway': NoAttrs,
   'remove.gateway-target': NoAttrs,
-  'remove.web-search': NoAttrs,
   'remove.policy-engine': NoAttrs,
   'remove.policy': NoAttrs,
   'remove.runtime-endpoint': NoAttrs,
