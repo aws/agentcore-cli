@@ -1,3 +1,4 @@
+import { formatExportNotes } from '../../../commands/export/types';
 import type { ExportNote } from '../../../commands/export/types';
 import { ErrorPrompt, GradientText, NextSteps, Screen, StepProgress } from '../../components';
 import type { NextStep, Step } from '../../components';
@@ -181,28 +182,15 @@ export function ExportHarnessFlow({ isInteractive = true, onExit, onBack, onDepl
             <Text dimColor>Generated: app/{flow.agentName}/ · agentcore/agentcore.json updated</Text>
           </Box>
 
-          {/* Surface manual follow-up notes inline so they aren't missed (also in EXPORT_NOTES.md). */}
-          {flow.notes.length > 0 ? (
-            <Box flexDirection="column">
-              <Text color="yellow">
-                ⚠ {flow.notes.length} export {flow.notes.length === 1 ? 'note' : 'notes'} requiring manual follow-up:
+          {/* Surface manual follow-up notes inline so they aren't missed (also in EXPORT_NOTES.md).
+              Shared formatter keeps the wording in sync with the CLI. */}
+          <Box flexDirection="column">
+            {formatExportNotes(flow.notes, flow.notesPath).map((line, i) => (
+              <Text key={i} color={line.tone === 'warn' ? 'yellow' : undefined} dimColor={line.tone === 'dim'}>
+                {line.text}
               </Text>
-              {flow.notes.map((note, i) => (
-                <Box key={i} flexDirection="column" marginTop={1}>
-                  <Text color="yellow"> • {note.category}</Text>
-                  {note.message.split('\n').map((line, j) => (
-                    <Text key={j} dimColor>
-                      {'   '}
-                      {line}
-                    </Text>
-                  ))}
-                </Box>
-              ))}
-              <Text dimColor>Also saved to {flow.notesPath}</Text>
-            </Box>
-          ) : (
-            <Text dimColor>No manual follow-up required. (Details: {flow.notesPath})</Text>
-          )}
+            ))}
+          </Box>
 
           {isInteractive && (
             <NextSteps steps={EXPORT_SUCCESS_STEPS} isInteractive={true} onSelect={handleSelect} onBack={onExit} />

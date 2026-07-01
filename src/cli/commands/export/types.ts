@@ -61,6 +61,37 @@ export interface ExportNote {
   message: string;
 }
 
+/** A single rendered output line + a tone the caller maps to its own styling (ANSI, Ink, plain). */
+export interface ExportNoteLine {
+  text: string;
+  tone: 'warn' | 'dim';
+}
+
+/**
+ * Format export notes into styled lines for display on the export success path (CLI + TUI). Pure and
+ * side-effect-free so it can be unit-tested and shared, keeping the two surfaces' wording in sync.
+ * Returns a warning block listing each note's category + (multi-line) message when notes exist, or a
+ * single "no follow-up required" line otherwise. `notesFileHint` is the path shown for EXPORT_NOTES.md.
+ */
+export function formatExportNotes(notes: ExportNote[], notesFileHint: string): ExportNoteLine[] {
+  if (notes.length === 0) {
+    return [{ text: `No manual follow-up required. (Details: ${notesFileHint})`, tone: 'dim' }];
+  }
+
+  const label = notes.length === 1 ? 'note' : 'notes';
+  const lines: ExportNoteLine[] = [
+    { text: `⚠ ${notes.length} export ${label} requiring manual follow-up:`, tone: 'warn' },
+  ];
+  for (const note of notes) {
+    lines.push({ text: `  • ${note.category}`, tone: 'warn' });
+    for (const messageLine of note.message.split('\n')) {
+      lines.push({ text: `    ${messageLine}`, tone: 'dim' });
+    }
+  }
+  lines.push({ text: `These notes are also saved to ${notesFileHint}`, tone: 'dim' });
+  return lines;
+}
+
 // ============================================================================
 // Mapping output
 // ============================================================================
