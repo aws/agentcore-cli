@@ -411,10 +411,12 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     }
 
     // Backfill vpcId for pre-existing Container+VPC configs written before vpcId was required. This
-    // resolves the VPC from the subnets (ec2:DescribeSubnets) and persists it to disk so the CDK
-    // synth process — which re-reads agentcore.json / harness.json — has the value it needs. Fresh
-    // creates already carry a vpcId, so this is a no-op for them.
-    const backfill = await backfillContainerVpcIds(configIO, context.projectSpec, target.region);
+    // resolves the VPC from the subnets (ec2:DescribeSubnets) and writes it to disk so the CDK synth
+    // process — which re-reads agentcore.json / harness.json — has the value it needs. Fresh creates
+    // already carry a vpcId, so this is a no-op for them. In preview modes (--dry-run / --diff) the
+    // write is reverted after synth via backfill.restore() so a preview leaves the working tree clean.
+    const isPreview = !!options.plan || !!options.diff;
+    const backfill = await backfillContainerVpcIds(configIO, context.projectSpec, target.region, !isPreview);
     if (backfill.backfilled.length > 0) {
       logger.log(`Resolved networkConfig.vpcId for Container+VPC build(s): ${backfill.backfilled.join(', ')}`, 'info');
     }
@@ -477,8 +479,10 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     }
     endStep('success');
 
-    // Plan mode: stop after synth and checks, don't deploy
+    // Plan mode: stop after synth and checks, don't deploy. Revert any vpcId the backfill wrote to
+    // disk for synth — a preview must not dirty the working tree.
     if (options.plan) {
+      await backfill.restore();
       logger.finalize(true);
       await toolkitWrapper.dispose();
       toolkitWrapper = null;
@@ -490,12 +494,14 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       };
     }
 
-    // Diff mode: run cdk diff and exit without deploying
+    // Diff mode: run cdk diff and exit without deploying. Revert any vpcId the backfill wrote to disk
+    // for synth — like plan mode, a diff preview must not dirty the working tree.
     if (options.diff) {
       startStep('Run CDK diff');
       await runDiff(toolkitWrapper, stackName, switchableIoHost);
       endStep('success');
 
+      await backfill.restore();
       logger.finalize(true);
       await toolkitWrapper.dispose();
       toolkitWrapper = null;

@@ -106,6 +106,20 @@ export class ConfigIO {
   }
 
   /**
+   * Absolute path to the project config file (agentcore.json).
+   */
+  getAgentConfigPath(): string {
+    return this.pathResolver.getAgentConfigPath();
+  }
+
+  /**
+   * Absolute path to a harness's config file (app/<name>/harness.json).
+   */
+  getHarnessConfigPath(harnessName: string): string {
+    return this.pathResolver.getHarnessConfigPath(harnessName);
+  }
+
+  /**
    * Read and validate the project configuration.
    */
   async readProjectSpec(): Promise<AgentCoreProjectSpec> {

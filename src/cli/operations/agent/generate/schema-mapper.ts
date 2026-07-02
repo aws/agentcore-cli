@@ -144,7 +144,9 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
         networkConfig: {
           subnets: config.subnets,
           securityGroups: config.securityGroups,
-          ...(config.vpcId && { vpcId: config.vpcId }),
+          // Only a Container build carries a vpcId; guard so a stale value left over from a
+          // Container→CodeZip switch in the wizard doesn't leak into a CodeZip networkConfig.
+          ...(config.buildType === 'Container' && config.vpcId && { vpcId: config.vpcId }),
         },
       }),
     ...(headerAllowlist.length > 0 && {

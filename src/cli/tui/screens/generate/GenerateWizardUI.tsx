@@ -690,7 +690,7 @@ function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig
             <Text>{config.securityGroups.join(', ')}</Text>
           </Text>
         )}
-        {config.networkMode === 'VPC' && config.vpcId && (
+        {config.networkMode === 'VPC' && config.buildType === 'Container' && config.vpcId && (
           <Text>
             <Text dimColor>VPC ID: </Text>
             <Text>{config.vpcId}</Text>

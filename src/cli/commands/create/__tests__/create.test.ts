@@ -333,4 +333,97 @@ describe('create command', () => {
       expect(result.stderr).not.toContain('--name is required');
     });
   });
+
+  // Regression coverage for the create-harness VPC dispatch: the unit tests on
+  // validateCreateHarnessOptions call the validator directly with a full options object, so they
+  // could not catch command.tsx failing to forward container/subnets/securityGroups/vpcId into it.
+  // These drive the real CLI dispatch (via runCLI --dry-run, no AWS) so the wiring is exercised.
+  describe('harness VPC dispatch (--dry-run)', () => {
+    const SUBNET = 'subnet-05169b775866f2440';
+    const SG = 'sg-0390682a9d9f7dd8d';
+    const VPC = 'vpc-07086549ccf106a5d';
+
+    it('accepts a Container+VPC dockerfile harness when all VPC flags incl --vpc-id are supplied', async () => {
+      const name = `HVpcOk${Date.now().toString().slice(-6)}`;
+      const result = await runCLI(
+        [
+          'create',
+          '--name',
+          name,
+          '--container',
+          './Dockerfile',
+          '--network-mode',
+          'VPC',
+          '--subnets',
+          SUBNET,
+          '--security-groups',
+          SG,
+          '--vpc-id',
+          VPC,
+          '--model-provider',
+          'bedrock',
+          '--dry-run',
+        ],
+        testDir
+      );
+      // Must NOT fail with the bogus "--subnets is required" (the regression); dry-run reaches synth-info.
+      expect(result.exitCode, `stderr: ${result.stderr}, stdout: ${result.stdout}`).toBe(0);
+      expect(result.stderr).not.toContain('--subnets is required');
+    });
+
+    it('rejects a Container+VPC harness missing --vpc-id with the friendly error', async () => {
+      const name = `HVpcNoId${Date.now().toString().slice(-6)}`;
+      const result = await runCLI(
+        [
+          'create',
+          '--name',
+          name,
+          '--container',
+          './Dockerfile',
+          '--network-mode',
+          'VPC',
+          '--subnets',
+          SUBNET,
+          '--security-groups',
+          SG,
+          '--model-provider',
+          'bedrock',
+          '--dry-run',
+        ],
+        testDir
+      );
+      expect(result.exitCode).toBe(1);
+      const out = `${result.stderr}${result.stdout}`;
+      expect(out).toContain('--vpc-id is required');
+      // It must NOT be the misleading "--subnets is required" message.
+      expect(out).not.toContain('--subnets is required');
+    });
+
+    it('rejects a malformed --vpc-id on the harness path', async () => {
+      const name = `HVpcBad${Date.now().toString().slice(-6)}`;
+      const result = await runCLI(
+        [
+          'create',
+          '--name',
+          name,
+          '--container',
+          './Dockerfile',
+          '--network-mode',
+          'VPC',
+          '--subnets',
+          SUBNET,
+          '--security-groups',
+          SG,
+          '--vpc-id',
+          'vpc-XYZ',
+          '--model-provider',
+          'bedrock',
+          '--dry-run',
+        ],
+        testDir
+      );
+      expect(result.exitCode).toBe(1);
+      expect(`${result.stderr}${result.stdout}`).toContain('Invalid VPC ID format');
+    });
+  });
 });
