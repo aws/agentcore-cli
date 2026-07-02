@@ -11,6 +11,7 @@ import {
   validateS3FilesAccessPointArn,
   zipAccessPointPairs,
 } from '../shared/filesystem-utils';
+import { validateVpcOptions } from '../shared/vpc-utils';
 import { validateFolderNotExists } from './validate';
 
 export interface CreateHarnessCliOptions {
@@ -29,6 +30,7 @@ export interface CreateHarnessCliOptions {
   networkMode?: string;
   subnets?: string;
   securityGroups?: string;
+  vpcId?: string;
   sessionStorageMountPath?: string;
   efsAccessPointArn?: string[];
   efsMountPath?: string[];
@@ -158,6 +160,23 @@ export function validateCreateHarnessOptions(options: CreateHarnessCliOptions, c
           'S3 Files filesystem mounts require VPC network mode. Add --network-mode VPC --subnets <ids> --security-groups <ids>.',
       };
     }
+  }
+
+  // VPC coupling for the create-harness path (mirrors validateAddHarnessOptions). Any --container
+  // value is a container build (dockerfile OR prebuilt image URI — both run CodeBuild), so --vpc-id
+  // is required in VPC mode; validate + surface the friendly error at CLI time instead of dropping it.
+  const harnessBuildType = options.container ? 'Container' : undefined;
+  const vpcResult = validateVpcOptions(
+    {
+      networkMode: options.networkMode,
+      subnets: options.subnets,
+      securityGroups: options.securityGroups,
+      vpcId: options.vpcId,
+    },
+    harnessBuildType
+  );
+  if (!vpcResult.valid) {
+    return vpcResult;
   }
 
   return { valid: true };

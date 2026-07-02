@@ -287,3 +287,59 @@ describe('validateCreateHarnessOptions - S3 Files access points', () => {
     expect(result.error).toContain('matching pairs');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VPC / vpcId validation on the create-harness path (parity with add harness)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('validateCreateHarnessOptions - VPC networking', () => {
+  const VALID_VPC = 'vpc-07086549ccf106a5d';
+
+  it('requires --vpc-id for a dockerfile container build in VPC mode', () => {
+    const result = validateCreateHarnessOptions(
+      { ...baseOptions, ...vpcOptions, container: './Dockerfile' },
+      makeCwd()
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--vpc-id is required');
+  });
+
+  it('requires --vpc-id for a prebuilt containerUri build in VPC mode (still runs CodeBuild)', () => {
+    const result = validateCreateHarnessOptions(
+      {
+        ...baseOptions,
+        ...vpcOptions,
+        container: '123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest',
+      },
+      makeCwd()
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('--vpc-id is required');
+  });
+
+  it('accepts a container build in VPC mode when --vpc-id is provided', () => {
+    const result = validateCreateHarnessOptions(
+      { ...baseOptions, ...vpcOptions, container: './Dockerfile', vpcId: VALID_VPC },
+      makeCwd()
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects a malformed --vpc-id', () => {
+    const result = validateCreateHarnessOptions(
+      { ...baseOptions, ...vpcOptions, container: './Dockerfile', vpcId: 'vpc-XYZ' },
+      makeCwd()
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('Invalid VPC ID format');
+  });
+
+  it('rejects --vpc-id supplied without --network-mode VPC', () => {
+    const result = validateCreateHarnessOptions(
+      { ...baseOptions, container: './Dockerfile', vpcId: VALID_VPC },
+      makeCwd()
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('only valid with --network-mode VPC');
+  });
+});

@@ -26,6 +26,7 @@ export interface CreateHarnessProjectOptions {
   networkMode?: NetworkMode;
   subnets?: string[];
   securityGroups?: string[];
+  vpcId?: string;
   idleTimeout?: number;
   maxLifetime?: number;
   sessionStoragePath?: string;
@@ -76,6 +77,7 @@ export async function createProjectWithHarness(options: CreateHarnessProjectOpti
       networkMode: options.networkMode,
       subnets: options.subnets,
       securityGroups: options.securityGroups,
+      vpcId: options.vpcId,
       idleTimeout: options.idleTimeout,
       maxLifetime: options.maxLifetime,
       sessionStoragePath: options.sessionStoragePath,

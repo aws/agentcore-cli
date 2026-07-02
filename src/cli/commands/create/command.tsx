@@ -282,6 +282,7 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
         networkMode: options.networkMode as NetworkMode | undefined,
         subnets: parseCommaSeparatedList(options.subnets),
         securityGroups: parseCommaSeparatedList(options.securityGroups),
+        vpcId: options.vpcId,
         idleTimeout: options.idleTimeout ? Number(options.idleTimeout) : undefined,
         maxLifetime: options.maxLifetime ? Number(options.maxLifetime) : undefined,
         sessionStoragePath: options.sessionStorageMountPath,
