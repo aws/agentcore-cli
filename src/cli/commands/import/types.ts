@@ -3,6 +3,7 @@ import type {
   AgentCoreProjectSpec,
   AuthorizerConfig,
   AwsDeploymentTarget,
+  NetworkConfig,
   RuntimeAuthorizerType,
 } from '../../../schema';
 import type { ExecLogger } from '../../logging';
@@ -19,7 +20,7 @@ export interface ParsedStarterToolkitAgent {
   language: 'python' | 'typescript';
   sourcePath?: string;
   networkMode: 'PUBLIC' | 'VPC';
-  networkConfig?: { subnets: string[]; securityGroups: string[]; vpcId?: string };
+  networkConfig?: NetworkConfig;
   protocol: 'HTTP' | 'MCP' | 'A2A' | 'AGUI';
   enableOtel: boolean;
   /** Physical agent runtime ID from the starter toolkit deployment */

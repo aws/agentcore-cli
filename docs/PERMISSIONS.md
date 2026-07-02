@@ -323,12 +323,20 @@ These EC2 and EFS `Describe*` actions do not support resource-level scoping, so 
 
 | Action                                                | CLI Commands       | Purpose                                                            |
 | ----------------------------------------------------- | ------------------ | ------------------------------------------------------------------ |
-| `ec2:DescribeSecurityGroups`                          | `create`, `deploy` | Validate agent/mount-target security groups allow NFS (port 2049)  |
-| `ec2:DescribeSubnets`                                 | `create`, `deploy` | Validate mount-target subnets are in the agent's VPC and AZs       |
-| `elasticfilesystem:DescribeAccessPoints`              | `create`, `deploy` | Resolve the EFS access point and its file system                   |
-| `elasticfilesystem:DescribeMountTargets`              | `create`, `deploy` | Find the EFS mount targets to validate against the agent's subnets |
-| `elasticfilesystem:DescribeMountTargetSecurityGroups` | `create`, `deploy` | Check mount-target security groups allow NFS from the agent        |
-| `s3files:ListMountTargets`                            | `create`, `deploy` | List the S3 Files access point's mount targets                     |
+| `ec2:DescribeSecurityGroups`                          | `create`, `deploy`           | Validate agent/mount-target security groups allow NFS (port 2049)  |
+| `ec2:DescribeSubnets`                                 | `create`, `deploy`, `import` | Validate mount-target subnets are in the agent's VPC and AZs; resolve the VPC ID for Container+VPC builds (see note below) |
+| `elasticfilesystem:DescribeAccessPoints`              | `create`, `deploy`           | Resolve the EFS access point and its file system                   |
+| `elasticfilesystem:DescribeMountTargets`              | `create`, `deploy`           | Find the EFS mount targets to validate against the agent's subnets |
+| `elasticfilesystem:DescribeMountTargetSecurityGroups` | `create`, `deploy`           | Check mount-target security groups allow NFS from the agent        |
+| `s3files:ListMountTargets`                            | `create`, `deploy`           | List the S3 Files access point's mount targets                     |
+
+> **Container builds in VPC mode also require `ec2:DescribeSubnets`.** A Container build (agent or
+> dockerfile/prebuilt-image harness) that deploys in VPC mode needs an explicit VPC ID — CodeBuild's
+> `CreateProject` cannot infer the VPC from subnets. When the VPC ID is not already in the config
+> (e.g. `import` of a deployed Container+VPC runtime, `export` of a container harness, or `deploy` of
+> a project created before the VPC ID field existed), the CLI resolves it from the first subnet via
+> `ec2:DescribeSubnets`. Grant this action for `import`, `export`, and `deploy` if you use Container
+> builds in VPC mode, even without filesystem mounts.
 | `s3files:GetMountTarget`                              | `create`, `deploy` | Inspect an S3 Files mount target's subnet/network configuration    |
 
 ### Agent invocation

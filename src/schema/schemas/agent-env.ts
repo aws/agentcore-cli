@@ -4,6 +4,8 @@
  * @module agent-env
  */
 import {
+  isContainerBuild,
+  MAX_CONTAINER_BUILD_SECURITY_GROUPS,
   NetworkModeSchema,
   ProtocolModeSchema,
   RuntimeVersionSchema as RuntimeVersionSchemaFromConstants,
@@ -376,23 +378,21 @@ export const AgentEnvSpecSchema = z
         path: ['networkConfig'],
       });
     }
-    if (data.networkMode === 'VPC' && data.build === 'Container' && !data.networkConfig?.vpcId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          'networkConfig.vpcId is required for Container builds in VPC mode (CodeBuild cannot infer the VPC from subnets)',
-        path: ['networkConfig', 'vpcId'],
-      });
-    }
+    // NOTE: vpcId is NOT required here at the schema (read/write) level. A Container+VPC agent needs
+    // a vpcId to build (CodeBuild can't infer it), but enforcing that on read would hard-fail
+    // pre-existing agentcore.json files written before vpcId existed. Instead: the CLI input
+    // validators require --vpc-id for fresh Container+VPC creates, deploy backfills a missing vpcId
+    // from the subnets (ec2:DescribeSubnets) and persists it, and the CDK construct fails fast if it
+    // is still missing at synth. This keeps `status`/`remove`/`validate` working on old configs.
     if (
       data.networkMode === 'VPC' &&
-      data.build === 'Container' &&
+      isContainerBuild(data) &&
       data.networkConfig &&
-      data.networkConfig.securityGroups.length > 5
+      data.networkConfig.securityGroups.length > MAX_CONTAINER_BUILD_SECURITY_GROUPS
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Container builds in VPC mode allow at most 5 security groups (CodeBuild limit)',
+        message: `Container builds in VPC mode allow at most ${MAX_CONTAINER_BUILD_SECURITY_GROUPS} security groups (CodeBuild limit)`,
         path: ['networkConfig', 'securityGroups'],
       });
     }

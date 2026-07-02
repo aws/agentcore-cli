@@ -27,6 +27,7 @@ import { ExecLogger } from '../../logging';
 import {
   MANAGED_MEMORY_DEPLOY_NOTICE,
   assertEnvFileExists,
+  backfillContainerVpcIds,
   bootstrapEnvironment,
   buildCdkProject,
   checkBootstrapNeeded,
@@ -407,6 +408,15 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         ...existingPreSynthState,
         targets: { ...existingPreSynthState.targets, [target.name]: targetState },
       });
+    }
+
+    // Backfill vpcId for pre-existing Container+VPC configs written before vpcId was required. This
+    // resolves the VPC from the subnets (ec2:DescribeSubnets) and persists it to disk so the CDK
+    // synth process — which re-reads agentcore.json / harness.json — has the value it needs. Fresh
+    // creates already carry a vpcId, so this is a no-op for them.
+    const backfill = await backfillContainerVpcIds(configIO, context.projectSpec, target.region);
+    if (backfill.backfilled.length > 0) {
+      logger.log(`Resolved networkConfig.vpcId for Container+VPC build(s): ${backfill.backfilled.join(', ')}`, 'info');
     }
 
     // Synthesize CloudFormation templates

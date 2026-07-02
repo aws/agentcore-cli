@@ -67,26 +67,38 @@ export function validateVpcId(value: string): true | string {
 }
 
 /**
- * Resolve the VPC ID from the first subnet via ec2:DescribeSubnets.
- * Throws a clear error naming the required permission if the call fails.
+ * Resolve the VPC ID that a set of subnets belongs to, via ec2:DescribeSubnets.
+ *
+ * All subnets in a build's network config must live in one VPC (CodeBuild and Lambda both require
+ * it), so this asserts they resolve to a single VpcId rather than blindly trusting the first result
+ * — DescribeSubnets does not guarantee response order matches the request, and a wrong vpcId would
+ * silently misconfigure the build. Throws a clear error naming ec2:DescribeSubnets on failure.
  */
 export async function resolveVpcIdFromSubnets(subnetIds: string[], region: string): Promise<string> {
   const ec2 = new EC2Client({ region, credentials: getCredentialProvider() });
-  let vpcId: string | undefined;
+  let subnets: { SubnetId?: string; VpcId?: string }[];
   try {
     const resp = await ec2.send(new DescribeSubnetsCommand({ SubnetIds: subnetIds }));
-    vpcId = resp.Subnets?.[0]?.VpcId;
+    subnets = resp.Subnets ?? [];
   } catch (err) {
     throw new Error(
-      `Failed to resolve VPC ID from subnet ${subnetIds[0]}: ec2:DescribeSubnets permission is required. Cause: ${(err as Error).message ?? String(err)}`
+      `Failed to resolve VPC ID from subnets [${subnetIds.join(', ')}]: ec2:DescribeSubnets permission is required. Cause: ${(err as Error).message ?? String(err)}`
     );
   }
-  if (!vpcId) {
+
+  const vpcIds = new Set(subnets.map(s => s.VpcId).filter((v): v is string => !!v));
+  if (vpcIds.size === 0) {
     throw new Error(
-      `ec2:DescribeSubnets returned no VPC ID for subnet ${subnetIds[0]}. Verify the subnet exists and ec2:DescribeSubnets permission is granted.`
+      `ec2:DescribeSubnets returned no VPC ID for subnets [${subnetIds.join(', ')}]. Verify the subnets exist and ec2:DescribeSubnets permission is granted.`
     );
   }
-  return vpcId;
+  if (vpcIds.size > 1) {
+    throw new Error(
+      `Subnets [${subnetIds.join(', ')}] span multiple VPCs (${[...vpcIds].join(', ')}). ` +
+        `All subnets for a container build must be in the same VPC.`
+    );
+  }
+  return [...vpcIds][0]!;
 }
 
 export function validateVpcOptions(options: VpcOptions, buildType?: string): VpcValidationResult {

@@ -1272,9 +1272,11 @@ describe('HarnessSpecSchema vpcId for container builds', () => {
     networkConfig: { subnets: ['subnet-0123456789abcdef0'], securityGroups: ['sg-0123456789abcdef0'] },
   };
 
-  it('requires vpcId for a dockerfile build in VPC mode', () => {
+  it('accepts a dockerfile build in VPC mode WITHOUT vpcId at the schema level (backfilled at deploy)', () => {
+    // vpcId is required to build but not enforced on read/write — old configs must still load. See the
+    // matching note in agent-env.ts; deploy backfills it and the CDK construct fails fast if missing.
     const r = HarnessSpecSchema.safeParse(baseDockerfileHarness);
-    expect(r.success).toBe(false);
+    expect(r.success).toBe(true);
   });
 
   it('accepts a dockerfile build in VPC mode when vpcId is present', () => {
@@ -1285,7 +1287,10 @@ describe('HarnessSpecSchema vpcId for container builds', () => {
     expect(r.success).toBe(true);
   });
 
-  it('does NOT require vpcId for a containerUri harness in VPC mode (no build)', () => {
+  it('accepts a containerUri harness in VPC mode without vpcId (backfilled at deploy, like dockerfile)', () => {
+    // A containerUri harness IS a container build (export emits a `FROM <uri>` Dockerfile that
+    // CodeBuild builds), so it is treated the same as a dockerfile harness — lenient on read, vpcId
+    // backfilled at deploy.
     const r = HarnessSpecSchema.safeParse({
       ...minimalHarnessForVpc,
       containerUri: '123456789012.dkr.ecr.us-east-1.amazonaws.com/repo:tag',
@@ -1345,7 +1350,7 @@ describe('HarnessSpecSchema — SG≤5 for dockerfile builds in VPC mode', () =>
     expect(r.success).toBe(true);
   });
 
-  it('accepts containerUri+VPC with 6 security groups (no build, no cap)', () => {
+  it('rejects containerUri+VPC with 6 security groups (a containerUri harness is a container build, so the cap applies)', () => {
     const r = HarnessSpecSchema.safeParse({
       ...minimalHarnessForSg,
       containerUri: '123456789012.dkr.ecr.us-east-1.amazonaws.com/repo:tag',
@@ -1353,8 +1358,12 @@ describe('HarnessSpecSchema — SG≤5 for dockerfile builds in VPC mode', () =>
       networkConfig: {
         subnets: ['subnet-0123456789abcdef0'],
         securityGroups: sixSgs,
+        vpcId: 'vpc-0123456789abcdef0',
       },
     });
-    expect(r.success).toBe(true);
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      expect(r.error.issues.some(i => i.message.includes('5 security groups'))).toBe(true);
+    }
   });
 });

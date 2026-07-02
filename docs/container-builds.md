@@ -115,6 +115,36 @@ agentcore deploy -y            # Build via CodeBuild, push to ECR
 Local packaging validates the image size (1 GB limit). If no local runtime is available, packaging is skipped and
 deployment handles the build remotely.
 
+## VPC network mode
+
+A container agent (or dockerfile/prebuilt-image harness) can build and run inside a VPC. The build infrastructure — the
+orchestrator Lambda and the shared CodeBuild project — is placed in the same VPC as the runtime:
+
+```bash
+agentcore create --project-name MyProject --name myagent \
+  --build Container --network-mode VPC \
+  --subnets subnet-0123456789abcdef0 --security-groups sg-0123456789abcdef0 \
+  --vpc-id vpc-0123456789abcdef0 \
+  --language Python --framework Strands --model-provider Bedrock
+```
+
+Key points:
+
+- **`--vpc-id` is required for Container builds in VPC mode.** CodeBuild's `CreateProject` cannot infer the VPC from
+  subnets alone (unlike Lambda, which does). CodeZip builds and any PUBLIC build neither need nor accept a VPC ID.
+- **At most 5 security groups** for a container build in VPC mode (a CodeBuild limit; the runtime itself allows 16).
+- **A NAT-routed subnet or VPC endpoints are required** so the in-VPC CodeBuild/Lambda can reach ECR, S3, CloudWatch
+  Logs, STS, and CodeBuild. An isolated subnet with no egress will hang the build.
+- **The build needs `ec2:DescribeSubnets`** on `import`/`export`/`deploy` to resolve the VPC ID — see
+  [PERMISSIONS.md](./PERMISSIONS.md#filesystem-network-validation).
+
+### Upgrading a project created before the VPC ID field existed
+
+Earlier CLI versions let a Container+VPC agent be configured with only subnets and security groups. If you upgrade and
+your `agentcore.json` has a Container+VPC agent with no `networkConfig.vpcId`, `deploy` resolves it automatically from
+the first subnet (via `ec2:DescribeSubnets`) and writes it back to the config — no manual edit needed. Grant
+`ec2:DescribeSubnets` before deploying, or add the `vpcId` to the config by hand.
+
 ## Troubleshooting
 
 | Error                      | Fix                                                                                                                                    |
@@ -123,4 +153,6 @@ deployment handles the build remotely.
 | Runtime not ready          | Docker: start Docker Desktop / `sudo systemctl start docker`. Podman: `podman machine start`. Finch: `finch vm init && finch vm start` |
 | Dockerfile not found       | Ensure `Dockerfile` exists in the agent's `codeLocation` directory                                                                     |
 | Image exceeds 2 GB         | Use multi-stage builds, minimize packages, review `.dockerignore`                                                                      |
+| `vpcId is required` at deploy/synth | Container+VPC build with no VPC ID. Grant `ec2:DescribeSubnets` so deploy can resolve it, or add `networkConfig.vpcId` to the config manually |
+| Build hangs in VPC mode    | The subnet has no egress. Use a NAT-routed subnet or add VPC endpoints (ECR api+dkr, S3, CloudWatch Logs, STS, CodeBuild)               |
 | Build fails                | Check `pyproject.toml` is valid; verify network access for dependency installation                                                     |

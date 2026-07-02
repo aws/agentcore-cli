@@ -63,13 +63,29 @@ describe('validateAddHarnessOptions — VPC network-mode guard', () => {
     expect(result.valid).toBe(true);
   });
 
-  it('does not require --vpc-id for a container URI (non-dockerfile) harness in VPC mode', () => {
+  it('requires --vpc-id for a container URI harness in VPC mode (a prebuilt image still runs CodeBuild)', () => {
+    // A --container <ecr-uri> harness is a container build: export emits a `FROM <uri>` Dockerfile
+    // that CodeBuild builds, so it needs a vpcId just like a dockerfile harness. Previously this
+    // slipped through and dead-ended at deploy/export.
     const result = validateAddHarnessOptions({
       ...base,
       container: '123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest',
       networkMode: 'VPC',
       subnets: 'subnet-0a1b2c3d',
       securityGroups: 'sg-0a1b2c3d',
+    });
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.error).toContain('--vpc-id is required');
+  });
+
+  it('accepts a container URI harness in VPC mode when --vpc-id is provided', () => {
+    const result = validateAddHarnessOptions({
+      ...base,
+      container: '123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest',
+      networkMode: 'VPC',
+      subnets: 'subnet-0a1b2c3d',
+      securityGroups: 'sg-0a1b2c3d',
+      vpcId: 'vpc-0a1b2c3d',
     });
     expect(result.valid).toBe(true);
   });

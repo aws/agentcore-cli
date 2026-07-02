@@ -768,12 +768,13 @@ describe('AgentEnvSpecSchema - vpcId validation', () => {
     },
   };
 
-  it('requires vpcId for Container builds in VPC mode', () => {
+  it('accepts a Container+VPC agent WITHOUT vpcId at the schema level (backfilled at deploy)', () => {
+    // vpcId is required to build, but NOT enforced on read/write: pre-existing agentcore.json files
+    // written before the vpcId field existed must still load. The CLI validators require --vpc-id for
+    // fresh creates, deploy backfills a missing vpcId from the subnets, and the CDK construct fails
+    // fast at synth. Keeping the schema lenient is what lets status/remove/validate work on old configs.
     const result = AgentEnvSpecSchema.safeParse(baseVpcAgent);
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues.some(i => i.path.includes('vpcId'))).toBe(true);
-    }
+    expect(result.success).toBe(true);
   });
 
   it('accepts Container+VPC agent with vpcId', () => {

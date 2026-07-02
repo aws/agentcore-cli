@@ -12,6 +12,7 @@ import { arnPrefix } from '../../aws/partition';
 import { ANSI, PYTHON_BASE_IMAGE } from '../../constants';
 import { ExecLogger } from '../../logging';
 import { setupPythonProject } from '../../operations/python/setup';
+import { isContainerBuild } from '../../../schema/constants';
 import { resolveVpcIdFromSubnets } from '../shared/vpc-utils';
 import { executeCdkImportPipeline } from './import-pipeline';
 import { copyDirRecursive, fixPyprojectForSetuptools, toStackName } from './import-utils';
@@ -341,7 +342,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
     const importRegion = parsed.awsTarget.region ?? target?.region;
     for (const agentSpec of projectSpec.runtimes) {
       if (
-        agentSpec.build === 'Container' &&
+        isContainerBuild(agentSpec) &&
         agentSpec.networkMode === 'VPC' &&
         agentSpec.networkConfig &&
         agentSpec.networkConfig.subnets.length > 0 &&

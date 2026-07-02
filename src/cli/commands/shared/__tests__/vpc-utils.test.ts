@@ -1,11 +1,26 @@
 import {
   parseCommaSeparatedList,
+  resolveVpcIdFromSubnets,
   validateSecurityGroupIds,
   validateSubnetIds,
   validateVpcId,
   validateVpcOptions,
 } from '../vpc-utils';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { mockSend } = vi.hoisted(() => ({ mockSend: vi.fn() }));
+
+vi.mock('@aws-sdk/client-ec2', async () => {
+  const actual = await vi.importActual<typeof import('@aws-sdk/client-ec2')>('@aws-sdk/client-ec2');
+  return {
+    ...actual,
+    EC2Client: class {
+      send = mockSend;
+    },
+  };
+});
+
+vi.mock('../../../aws/account', () => ({ getCredentialProvider: () => undefined }));
 
 describe('parseCommaSeparatedList', () => {
   it('returns undefined for undefined input', () => {
@@ -163,6 +178,58 @@ describe('validateVpcOptions vpcId requirement', () => {
       'CodeZip'
     );
     expect(r.valid).toBe(true);
+  });
+});
+
+describe('resolveVpcIdFromSubnets', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns the VPC ID when all subnets resolve to one VPC', async () => {
+    mockSend.mockResolvedValue({
+      Subnets: [
+        { SubnetId: 'subnet-0000000000000000a', VpcId: 'vpc-0123456789abcdef0' },
+        { SubnetId: 'subnet-0000000000000000b', VpcId: 'vpc-0123456789abcdef0' },
+      ],
+    });
+    const vpcId = await resolveVpcIdFromSubnets(['subnet-0000000000000000a', 'subnet-0000000000000000b'], 'us-east-1');
+    expect(vpcId).toBe('vpc-0123456789abcdef0');
+  });
+
+  it('does NOT blindly trust Subnets[0]: rejects when subnets span multiple VPCs', async () => {
+    // DescribeSubnets does not guarantee response order, and cross-VPC subnets would misconfigure the
+    // build. The result must not silently be whichever VpcId happened to come back first.
+    mockSend.mockResolvedValue({
+      Subnets: [
+        { SubnetId: 'subnet-0000000000000000a', VpcId: 'vpc-0000000000000000a' },
+        { SubnetId: 'subnet-0000000000000000b', VpcId: 'vpc-0000000000000000b' },
+      ],
+    });
+    await expect(
+      resolveVpcIdFromSubnets(['subnet-0000000000000000a', 'subnet-0000000000000000b'], 'us-east-1')
+    ).rejects.toThrow(/span multiple VPCs/);
+  });
+
+  it('throws naming ec2:DescribeSubnets when the API call fails', async () => {
+    mockSend.mockRejectedValue(new Error('AccessDenied'));
+    await expect(resolveVpcIdFromSubnets(['subnet-0000000000000000a'], 'us-east-1')).rejects.toThrow(
+      /ec2:DescribeSubnets permission is required/
+    );
+  });
+
+  it('throws when DescribeSubnets returns no VPC ID', async () => {
+    mockSend.mockResolvedValue({ Subnets: [] });
+    await expect(resolveVpcIdFromSubnets(['subnet-0000000000000000a'], 'us-east-1')).rejects.toThrow(
+      /returned no VPC ID/
+    );
+  });
+
+  it('lists all requested subnets in the error (not just the first) on failure', async () => {
+    mockSend.mockRejectedValue(new Error('boom'));
+    await expect(
+      resolveVpcIdFromSubnets(['subnet-0000000000000000a', 'subnet-0000000000000000b'], 'us-east-1')
+    ).rejects.toThrow(/subnet-0000000000000000a, subnet-0000000000000000b/);
   });
 });
 
