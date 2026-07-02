@@ -1,5 +1,6 @@
 import { ValidationError } from '../../../lib/errors/types';
 import type { HarnessSpec } from '../../../schema';
+import { isContainerBuild } from '../../../schema/constants';
 import type {
   HarnessSkill as ApiHarnessSkill,
   HarnessTool as ApiHarnessTool,
@@ -8,7 +9,6 @@ import type {
   HarnessModelConfiguration,
 } from '../../aws/agentcore-harness';
 import { getHarness } from '../../aws/agentcore-harness';
-import { isContainerBuild } from '../../../schema/constants';
 import { resolveVpcIdFromSubnets } from '../shared/vpc-utils';
 
 /**

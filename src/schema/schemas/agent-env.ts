@@ -4,7 +4,6 @@
  * @module agent-env
  */
 import {
-  isContainerBuild,
   MAX_CONTAINER_BUILD_SECURITY_GROUPS,
   NetworkModeSchema,
   ProtocolModeSchema,
@@ -12,6 +11,7 @@ import {
   SECURITY_GROUP_ID_PATTERN,
   SUBNET_ID_PATTERN,
   VPC_ID_PATTERN,
+  isContainerBuild,
 } from '../constants';
 import type { DirectoryPath, FilePath } from '../types';
 import { AuthorizerConfigSchema, RuntimeAuthorizerTypeSchema } from './auth';

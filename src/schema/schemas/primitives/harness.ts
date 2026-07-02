@@ -1,4 +1,4 @@
-import { isContainerBuild, MAX_CONTAINER_BUILD_SECURITY_GROUPS, NetworkModeSchema } from '../../constants';
+import { MAX_CONTAINER_BUILD_SECURITY_GROUPS, NetworkModeSchema, isContainerBuild } from '../../constants';
 import {
   EfsAccessPointConfigSchema,
   LifecycleConfigurationSchema,

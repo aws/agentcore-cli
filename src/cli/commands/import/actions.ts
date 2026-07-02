@@ -7,12 +7,12 @@ import type {
   Credential,
   Memory,
 } from '../../../schema';
+import { isContainerBuild } from '../../../schema/constants';
 import { validateAwsCredentials } from '../../aws/account';
 import { arnPrefix } from '../../aws/partition';
 import { ANSI, PYTHON_BASE_IMAGE } from '../../constants';
 import { ExecLogger } from '../../logging';
 import { setupPythonProject } from '../../operations/python/setup';
-import { isContainerBuild } from '../../../schema/constants';
 import { resolveVpcIdFromSubnets } from '../shared/vpc-utils';
 import { executeCdkImportPipeline } from './import-pipeline';
 import { copyDirRecursive, fixPyprojectForSetuptools, toStackName } from './import-utils';

@@ -147,12 +147,12 @@ the first subnet (via `ec2:DescribeSubnets`) and writes it back to the config â€
 
 ## Troubleshooting
 
-| Error                      | Fix                                                                                                                                    |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| No container runtime found | Install Docker, Podman, or Finch                                                                                                       |
-| Runtime not ready          | Docker: start Docker Desktop / `sudo systemctl start docker`. Podman: `podman machine start`. Finch: `finch vm init && finch vm start` |
-| Dockerfile not found       | Ensure `Dockerfile` exists in the agent's `codeLocation` directory                                                                     |
-| Image exceeds 2 GB         | Use multi-stage builds, minimize packages, review `.dockerignore`                                                                      |
+| Error                               | Fix                                                                                                                                           |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| No container runtime found          | Install Docker, Podman, or Finch                                                                                                              |
+| Runtime not ready                   | Docker: start Docker Desktop / `sudo systemctl start docker`. Podman: `podman machine start`. Finch: `finch vm init && finch vm start`        |
+| Dockerfile not found                | Ensure `Dockerfile` exists in the agent's `codeLocation` directory                                                                            |
+| Image exceeds 2 GB                  | Use multi-stage builds, minimize packages, review `.dockerignore`                                                                             |
 | `vpcId is required` at deploy/synth | Container+VPC build with no VPC ID. Grant `ec2:DescribeSubnets` so deploy can resolve it, or add `networkConfig.vpcId` to the config manually |
-| Build hangs in VPC mode    | The subnet has no egress. Use a NAT-routed subnet or add VPC endpoints (ECR api+dkr, S3, CloudWatch Logs, STS, CodeBuild)               |
-| Build fails                | Check `pyproject.toml` is valid; verify network access for dependency installation                                                     |
+| Build hangs in VPC mode             | The subnet has no egress. Use a NAT-routed subnet or add VPC endpoints (ECR api+dkr, S3, CloudWatch Logs, STS, CodeBuild)                     |
+| Build fails                         | Check `pyproject.toml` is valid; verify network access for dependency installation                                                            |

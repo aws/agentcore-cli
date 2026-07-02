@@ -1,6 +1,6 @@
 import type { ConfigIO } from '../../../lib';
-import { isContainerBuild } from '../../../schema/constants';
 import type { AgentCoreProjectSpec } from '../../../schema';
+import { isContainerBuild } from '../../../schema/constants';
 import { resolveVpcIdFromSubnets } from '../../commands/shared/vpc-utils';
 
 export interface BackfillVpcIdResult {
@@ -33,13 +33,7 @@ export async function backfillContainerVpcIds(
   let runtimesChanged = false;
   for (const runtime of projectSpec.runtimes ?? []) {
     const nc = runtime.networkConfig;
-    if (
-      isContainerBuild(runtime) &&
-      runtime.networkMode === 'VPC' &&
-      nc &&
-      nc.subnets.length > 0 &&
-      !nc.vpcId
-    ) {
+    if (isContainerBuild(runtime) && runtime.networkMode === 'VPC' && nc && nc.subnets.length > 0 && !nc.vpcId) {
       nc.vpcId = await resolveVpcIdFromSubnets(nc.subnets, region);
       runtimesChanged = true;
       backfilled.push(runtime.name);
@@ -53,13 +47,7 @@ export async function backfillContainerVpcIds(
   for (const entry of projectSpec.harnesses ?? []) {
     const harness = await configIO.readHarnessSpec(entry.name);
     const nc = harness.networkConfig;
-    if (
-      isContainerBuild(harness) &&
-      harness.networkMode === 'VPC' &&
-      nc &&
-      nc.subnets.length > 0 &&
-      !nc.vpcId
-    ) {
+    if (isContainerBuild(harness) && harness.networkMode === 'VPC' && nc && nc.subnets.length > 0 && !nc.vpcId) {
       nc.vpcId = await resolveVpcIdFromSubnets(nc.subnets, region);
       await configIO.writeHarnessSpec(entry.name, harness);
       backfilled.push(entry.name);
