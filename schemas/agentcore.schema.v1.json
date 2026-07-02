@@ -114,7 +114,7 @@
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "pattern": "^subnet-[0-9a-zA-Z]{8,17}$"
+                  "pattern": "^subnet-(?:[0-9a-f]{8}|[0-9a-f]{17})$"
                 }
               },
               "securityGroups": {
@@ -123,8 +123,12 @@
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "pattern": "^sg-[0-9a-zA-Z]{8,17}$"
+                  "pattern": "^sg-(?:[0-9a-f]{8}|[0-9a-f]{17})$"
                 }
+              },
+              "vpcId": {
+                "type": "string",
+                "pattern": "^vpc-(?:[0-9a-f]{8}|[0-9a-f]{17})$"
               }
             },
             "required": ["subnets", "securityGroups"],
@@ -274,14 +278,14 @@
                         "properties": {
                           "vpcIdentifier": {
                             "type": "string",
-                            "pattern": "^vpc-(([0-9a-z]{8})|([0-9a-z]{17}))$"
+                            "pattern": "^vpc-(?:[0-9a-f]{8}|[0-9a-f]{17})$"
                           },
                           "subnetIds": {
                             "minItems": 1,
                             "type": "array",
                             "items": {
                               "type": "string",
-                              "pattern": "^subnet-[0-9a-zA-Z]{8,17}$"
+                              "pattern": "^subnet-(?:[0-9a-f]{8}|[0-9a-f]{17})$"
                             }
                           },
                           "endpointIpAddressType": {
@@ -293,7 +297,7 @@
                             "type": "array",
                             "items": {
                               "type": "string",
-                              "pattern": "^sg-(([0-9a-z]{8})|([0-9a-z]{17}))$"
+                              "pattern": "^sg-(?:[0-9a-f]{8}|[0-9a-f]{17})$"
                             }
                           },
                           "tags": {
@@ -354,14 +358,14 @@
                               "properties": {
                                 "vpcIdentifier": {
                                   "type": "string",
-                                  "pattern": "^vpc-(([0-9a-z]{8})|([0-9a-z]{17}))$"
+                                  "pattern": "^vpc-(?:[0-9a-f]{8}|[0-9a-f]{17})$"
                                 },
                                 "subnetIds": {
                                   "minItems": 1,
                                   "type": "array",
                                   "items": {
                                     "type": "string",
-                                    "pattern": "^subnet-[0-9a-zA-Z]{8,17}$"
+                                    "pattern": "^subnet-(?:[0-9a-f]{8}|[0-9a-f]{17})$"
                                   }
                                 },
                                 "endpointIpAddressType": {
@@ -373,7 +377,7 @@
                                   "type": "array",
                                   "items": {
                                     "type": "string",
-                                    "pattern": "^sg-(([0-9a-z]{8})|([0-9a-z]{17}))$"
+                                    "pattern": "^sg-(?:[0-9a-f]{8}|[0-9a-f]{17})$"
                                   }
                                 },
                                 "tags": {
@@ -1889,14 +1893,14 @@
                         "properties": {
                           "vpcIdentifier": {
                             "type": "string",
-                            "pattern": "^vpc-(([0-9a-z]{8})|([0-9a-z]{17}))$"
+                            "pattern": "^vpc-(?:[0-9a-f]{8}|[0-9a-f]{17})$"
                           },
                           "subnetIds": {
                             "minItems": 1,
                             "type": "array",
                             "items": {
                               "type": "string",
-                              "pattern": "^subnet-[0-9a-zA-Z]{8,17}$"
+                              "pattern": "^subnet-(?:[0-9a-f]{8}|[0-9a-f]{17})$"
                             }
                           },
                           "endpointIpAddressType": {
@@ -1908,7 +1912,7 @@
                             "type": "array",
                             "items": {
                               "type": "string",
-                              "pattern": "^sg-(([0-9a-z]{8})|([0-9a-z]{17}))$"
+                              "pattern": "^sg-(?:[0-9a-f]{8}|[0-9a-f]{17})$"
                             }
                           },
                           "tags": {
@@ -1969,14 +1973,14 @@
                               "properties": {
                                 "vpcIdentifier": {
                                   "type": "string",
-                                  "pattern": "^vpc-(([0-9a-z]{8})|([0-9a-z]{17}))$"
+                                  "pattern": "^vpc-(?:[0-9a-f]{8}|[0-9a-f]{17})$"
                                 },
                                 "subnetIds": {
                                   "minItems": 1,
                                   "type": "array",
                                   "items": {
                                     "type": "string",
-                                    "pattern": "^subnet-[0-9a-zA-Z]{8,17}$"
+                                    "pattern": "^subnet-(?:[0-9a-f]{8}|[0-9a-f]{17})$"
                                   }
                                 },
                                 "endpointIpAddressType": {
@@ -1988,7 +1992,7 @@
                                   "type": "array",
                                   "items": {
                                     "type": "string",
-                                    "pattern": "^sg-(([0-9a-z]{8})|([0-9a-z]{17}))$"
+                                    "pattern": "^sg-(?:[0-9a-f]{8}|[0-9a-f]{17})$"
                                   }
                                 },
                                 "tags": {
@@ -2819,6 +2823,10 @@
           "commitMessage": {
             "type": "string",
             "maxLength": 500
+          },
+          "kmsKeyArn": {
+            "type": "string",
+            "pattern": "^arn:[^:]+:kms:[a-zA-Z0-9-]*:[0-9]{12}:key\\/[a-zA-Z0-9-]{36}$"
           }
         },
         "required": ["name", "components"],

@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.22.0] - 2026-07-02
+
+### Added
+- feat: thread vpcId for container build VPC placement (#297) (#1671) (48157b6b)
+- feat(export): surface export notes inline in the CLI and TUI (#1676) (2953d613)
+- feat(config-bundle): add --kms-key for customer-managed encryption (#1642) (de94f49d)
+- feat(secrets): encrypt sensitive .env.local values at rest (#1621) (c4124231)
+
+### Fixed
+- fix(templates): retrieve SUMMARIZATION summaries with an actor-scoped namespace (#665) (#1660) (f4e4aa4a)
+- fix(dev): honor explicit --port literally instead of silently offsetting by runtime index (#1079) (#1661) (1a91c994)
+- fix(e2e): reap stale OAuth2 credential providers alongside API key providers (#1679) (5e9f6d0a)
+- fix(tui): validate empty input in SecretInput before triggering cancel (#1668) (2718db39)
+- fix(ci): prevent script injection in GitHub Actions workflows (#1669) (7a9bcbde)
+- fix(deploy): surface CloudFormation rollback events in the deploy TUI (#1610) (#1662) (1aa6e3db)
+- fix(templates): give TypeScript templates per-session in-process short-term memory (#1666) (e37cc56a)
+- fix: batch-eval docs + preserve config-bundle placeholders on AB-test promote (#1638) (e26bfcb8)
+- fix: tighten sanitize logic on payment secrets (#1631) (368709e2)
+- fix(policy): resolve HTTP gateways for policy generation and guardrails (#1658) (#1663) (e4b4da46)
+- fix(invoke): add bearer-token support to the A2A invoke path for CUSTOM_JWT (#815) (#1647) (2eeba2b1)
+- fix(payment-manager): warn when auto-payment is enabled by default (#1556) (60891b78)
+- fix(run-insights): reject empty --name "" instead of auto-generating (#1600) (85f5ecff)
+- fix(pause-online-insights): reject mismatched --name and --arn (#1601) (7ba36572)
+- fix(run-insights): TUI wizard state, inline name validation, job history (#1602) (3874af6e)
+- fix: surface stale CDK construct synth errors and validate gateway name length (#1652) (9323f82f)
+- fix: include harness Dockerfiles in deploy hash (#1587) (d302382d)
+- fix(templates): key per-session agent state by context.session_id across all HTTP starter templates (#808, #809) (#1639) (d791bfa9)
+- fix(cli): add requireTTY() before each unguarded interactive TUI launch (#982) (#1640) (370175ba)
+
+### Other Changes
+- test(e2e): add insights and online-insights lifecycle tests (#1599) (2e2e4bb0)
+- test(e2e): add A/B test and all-gateway-target lifecycle suites (#1584) (33f7e530)
+- Enhance harness documentation in README (#1656) (76dcef8f)
+
 ## [0.21.1] - 2026-06-25
 
 ### Added
