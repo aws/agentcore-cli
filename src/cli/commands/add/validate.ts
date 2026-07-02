@@ -645,6 +645,12 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
         error: `Invalid --connector "${options.connector}". Valid: ${validConnectors}`,
       };
     }
+    if (options.connector === 'web-search' && options.knowledgeBaseId && options.knowledgeBaseId.length > 0) {
+      return {
+        valid: false,
+        error: '--knowledge-base-id is not applicable for --connector web-search',
+      };
+    }
     if (options.connector !== 'web-search' && (!options.knowledgeBaseId || options.knowledgeBaseId.length === 0)) {
       return {
         valid: false,

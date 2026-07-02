@@ -6,20 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // ─── mocks ───────────────────────────────────────────────────────────────────
 const mockKbAdd = vi.fn();
 const mockKbGetRemovable = vi.fn();
-const mockGatewayAdd = vi.fn();
 
 vi.mock('../../../../primitives/registry', () => ({
   knowledgeBasePrimitive: {
     add: (...args: unknown[]) => mockKbAdd(...args),
     getRemovable: (...args: unknown[]) => mockKbGetRemovable(...args),
   },
-  gatewayPrimitive: {
-    add: (...args: unknown[]) => mockGatewayAdd(...args),
-  },
-}));
-
-vi.mock('../../../hooks/useCreateMcp', () => ({
-  useExistingGateways: () => ({ gateways: [] }),
 }));
 
 // Replace the screen with a stub that immediately invokes onComplete with a
@@ -44,7 +36,6 @@ const delay = (ms = 50) => new Promise(resolve => setTimeout(resolve, ms));
 beforeEach(() => {
   mockKbAdd.mockReset();
   mockKbGetRemovable.mockReset();
-  mockGatewayAdd.mockReset();
   mockKbGetRemovable.mockResolvedValue([]);
   mockKbAdd.mockResolvedValue({
     success: true,
@@ -52,7 +43,6 @@ beforeEach(() => {
     newDataSources: ['s3-1'],
     gatewayWired: undefined,
   });
-  mockGatewayAdd.mockResolvedValue({ success: true, gatewayName: 'tui-kb-gw' });
 });
 
 afterEach(() => {
@@ -61,54 +51,18 @@ afterEach(() => {
 });
 
 // ─── tests ───────────────────────────────────────────────────────────────────
-describe('AddKnowledgeBaseFlow — newGatewayName path', () => {
-  it('creates the gateway first, then adds the KB with that gateway name', async () => {
-    (globalThis as { __KB_FLOW_TEST_CFG?: unknown }).__KB_FLOW_TEST_CFG = {
-      name: 'tui-kb',
-      dataSources: [{ dataSourceType: 's3', value: 's3://b/' }],
-      newGatewayName: 'tui-kb-gw',
-    };
-    mockKbAdd.mockResolvedValueOnce({ success: true, newDataSources: ['s3-1'], gatewayWired: 'tui-kb-gw' });
 
-    render(<AddKnowledgeBaseFlow onExit={vi.fn()} onBack={vi.fn()} />);
-    await delay(80);
-
-    expect(mockGatewayAdd).toHaveBeenCalledTimes(1);
-    expect(mockGatewayAdd.mock.calls[0]![0]).toMatchObject({ name: 'tui-kb-gw', authorizerType: 'NONE' });
-    expect(mockKbAdd).toHaveBeenCalledTimes(1);
-    expect(mockKbAdd.mock.calls[0]![0]).toMatchObject({ name: 'tui-kb', gateway: 'tui-kb-gw' });
-  });
-
-  it('aborts (no KB add) if the gateway create fails', async () => {
-    (globalThis as { __KB_FLOW_TEST_CFG?: unknown }).__KB_FLOW_TEST_CFG = {
-      name: 'tui-kb',
-      dataSources: [{ dataSourceType: 's3', value: 's3://b/' }],
-      newGatewayName: 'tui-kb-gw',
-    };
-    mockGatewayAdd.mockResolvedValueOnce({ success: false, error: new Error('boom') });
-
-    const { lastFrame } = render(<AddKnowledgeBaseFlow onExit={vi.fn()} onBack={vi.fn()} />);
-    await delay(80);
-
-    expect(mockGatewayAdd).toHaveBeenCalledTimes(1);
-    expect(mockKbAdd).not.toHaveBeenCalled();
-    expect(lastFrame() ?? '').toContain('Failed');
-  });
-});
-
-describe('AddKnowledgeBaseFlow — Skip / standalone path (zero gateways case)', () => {
-  it('does not call gatewayPrimitive.add and adds the KB with no gateway', async () => {
+describe('AddKnowledgeBaseFlow — standalone path', () => {
+  it('adds the KB with no gateway', async () => {
     (globalThis as { __KB_FLOW_TEST_CFG?: unknown }).__KB_FLOW_TEST_CFG = {
       name: 'standalone-kb',
       dataSources: [{ dataSourceType: 's3', value: 's3://b/' }],
-      // No gateway, no newGatewayName
     };
     mockKbAdd.mockResolvedValueOnce({ success: true, newDataSources: ['s3-1'], gatewayWired: undefined });
 
     render(<AddKnowledgeBaseFlow onExit={vi.fn()} onBack={vi.fn()} />);
     await delay(80);
 
-    expect(mockGatewayAdd).not.toHaveBeenCalled();
     expect(mockKbAdd).toHaveBeenCalledTimes(1);
     expect(mockKbAdd.mock.calls[0]![0]).toMatchObject({ name: 'standalone-kb' });
     expect(mockKbAdd.mock.calls[0]![0].gateway).toBeUndefined();
@@ -116,7 +70,7 @@ describe('AddKnowledgeBaseFlow — Skip / standalone path (zero gateways case)',
 });
 
 describe('AddKnowledgeBaseFlow — existing gateway path', () => {
-  it('passes the existing gateway through to KB add and skips gateway create', async () => {
+  it('adds the KB when gateway is provided in config', async () => {
     (globalThis as { __KB_FLOW_TEST_CFG?: unknown }).__KB_FLOW_TEST_CFG = {
       name: 'kb-existing',
       dataSources: [{ dataSourceType: 's3', value: 's3://b/' }],
@@ -127,8 +81,7 @@ describe('AddKnowledgeBaseFlow — existing gateway path', () => {
     render(<AddKnowledgeBaseFlow onExit={vi.fn()} onBack={vi.fn()} />);
     await delay(80);
 
-    expect(mockGatewayAdd).not.toHaveBeenCalled();
     expect(mockKbAdd).toHaveBeenCalledTimes(1);
-    expect(mockKbAdd.mock.calls[0]![0]).toMatchObject({ name: 'kb-existing', gateway: 'g1' });
+    expect(mockKbAdd.mock.calls[0]![0]).toMatchObject({ name: 'kb-existing' });
   });
 });

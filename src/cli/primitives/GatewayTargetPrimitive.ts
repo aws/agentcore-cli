@@ -437,6 +437,17 @@ Target types and their options:
           !!cliOptions.type ||
           !!cliOptions.connector ||
           !!cliOptions.endpoint ||
+          !!cliOptions.gateway ||
+          !!cliOptions.lambdaArn ||
+          !!cliOptions.restApiId ||
+          !!cliOptions.schema ||
+          !!cliOptions.runtime ||
+          !!cliOptions.passthroughEndpoint ||
+          !!cliOptions.host ||
+          !!cliOptions.language ||
+          !!cliOptions.outboundAuthType ||
+          !!cliOptions.excludeDomains ||
+          !!(cliOptions.knowledgeBaseId && cliOptions.knowledgeBaseId.length > 0) ||
           !!cliOptions.json;
         if (!userPassedAnyFlag) {
           try {

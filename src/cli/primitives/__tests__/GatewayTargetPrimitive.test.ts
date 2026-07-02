@@ -357,7 +357,7 @@ describe('GatewayTargetPrimitive — createConnectorGatewayTarget', () => {
 describe('GatewayTargetPrimitive — createWebSearchGatewayTarget', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('writes a webSearch target with no excludeDomains when omitted', async () => {
+  it('writes a connector target with connectorId web-search when excludeDomains omitted', async () => {
     const { primitive, getProject } = makePrimitive(emptyProject());
     const result = await primitive.createWebSearchGatewayTarget({
       targetType: 'webSearch',
@@ -366,7 +366,8 @@ describe('GatewayTargetPrimitive — createWebSearchGatewayTarget', () => {
     });
     expect(result.toolName).toBe('web-search');
     const target = getProject().agentCoreGateways[0]?.targets[0];
-    expect(target?.targetType).toBe('webSearch');
+    expect(target?.targetType).toBe('connector');
+    expect(target?.connectorId).toBe('web-search');
     expect(target?.name).toBe('web-search');
     expect(target?.excludeDomains).toBeUndefined();
   });
