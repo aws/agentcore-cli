@@ -299,9 +299,13 @@ async function handleAguiInvocation(
     return;
   }
 
-  // Build RunAgentInput — the body format AGUI agents expect
+  // Build RunAgentInput — the body format AGUI agents expect.
+  // Reuse the stable per-chat sessionId as threadId so multi-turn session state
+  // (e.g. AgentCore Memory STM) persists across messages. Mirrors the deployed
+  // path, which builds this input via buildAguiRunInput(prompt, sessionId).
+  // See #1678.
   const aguiBody = JSON.stringify({
-    threadId: randomUUID(),
+    threadId: sessionId ?? randomUUID(),
     runId: randomUUID(),
     messages: [{ id: randomUUID(), role: 'user', content: prompt }],
     tools: [],
