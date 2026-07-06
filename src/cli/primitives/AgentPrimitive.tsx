@@ -71,6 +71,7 @@ import {
 } from '../telemetry/schemas/common-shapes.js';
 import { createRenderer } from '../templates';
 import { requireTTY } from '../tui/guards/tty';
+import type { AddFlowExitSummary } from '../tui/screens/add/AddFlow';
 import type { GenerateConfig, MemoryOption } from '../tui/screens/generate/types';
 import { BasePrimitive } from './BasePrimitive';
 import { CredentialPrimitive } from './CredentialPrimitive';
@@ -490,9 +491,18 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
               React.createElement(AddFlow, {
                 isInteractive: false,
                 initialResource: 'agent',
-                onExit: () => {
+                onExit: (summary?: AddFlowExitSummary) => {
                   clear();
                   unmount();
+                  // The TUI success screen is torn down by clear(); print a plain-text
+                  // confirmation so the user is not left at an empty prompt (#671).
+                  if (summary) {
+                    console.log(`✓ Created agent: ${summary.agentName}`);
+                    if (summary.projectPath) {
+                      console.log(`Agent code: ${summary.projectPath}`);
+                    }
+                    console.log('Next: run `agentcore dev` to test locally, or `agentcore deploy` to deploy.');
+                  }
                   process.exit(0);
                 },
               })
