@@ -92,13 +92,12 @@ export interface AddGatewayTargetOptions {
   schemaS3Account?: string;
   runtime?: string;
   runtimeEndpoint?: string;
-  /** Connector id (for --type connector): bedrock-knowledge-bases | bedrock-agentic-retrieve | web-search. */
+  /** Connector id (for --type connector): bedrock-knowledge-bases | web-search. */
   connector?: string;
   /**
    * KB reference for --type connector — either a project KB name (entry in
-   * knowledgeBases[]) or a literal 10-char external KB ID. Repeatable when
-   * --connector is bedrock-agentic-retrieve (fan-out); single-valued for
-   * bedrock-knowledge-bases. Not applicable to --connector web-search.
+   * knowledgeBases[]) or a literal 10-char external KB ID. Not applicable to
+   * --connector web-search.
    */
   knowledgeBaseId?: string[];
   passthroughEndpoint?: string;

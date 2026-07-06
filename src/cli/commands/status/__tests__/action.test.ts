@@ -626,7 +626,7 @@ describe('computeResourceStatuses', () => {
               name: 'docs',
               targetType: 'connector',
               connectorId: 'bedrock-knowledge-bases',
-              knowledgeBaseId: 'docs',
+              configurations: [{ name: 'Retrieve', parameterValues: { knowledgeBaseId: 'docs' } }],
             },
           ],
         },
@@ -653,7 +653,18 @@ describe('computeResourceStatuses', () => {
           name: 'main-gw',
           targets: [
             { name: 't1', targetType: 'mcpServer' },
-            { name: 'docs', targetType: 'connector', connectorId: 'bedrock-knowledge-bases', knowledgeBaseId: 'docs' },
+            {
+              name: 'docs',
+              targetType: 'connector',
+              connectorId: 'bedrock-knowledge-bases',
+              configurations: [
+                { name: 'Retrieve', parameterValues: { knowledgeBaseId: 'docs' } },
+                {
+                  name: 'AgenticRetrieveStream',
+                  parameterValues: { retrievers: [{ configuration: { knowledgeBase: { knowledgeBaseId: 'docs' } } }] },
+                },
+              ],
+            },
           ],
         },
       ],
@@ -661,7 +672,7 @@ describe('computeResourceStatuses', () => {
 
     const result = computeResourceStatuses(project, undefined);
     const gwEntry = result.find(r => r.resourceType === 'gateway' && r.name === 'main-gw');
-    expect(gwEntry?.detail).toBe('2 targets (1 retrieve)');
+    expect(gwEntry?.detail).toBe('2 targets (1 retrieve, agentic ×1)');
   });
 
   it('annotates gateway detail with both retrieve count and agentic fan-out', () => {
@@ -671,13 +682,29 @@ describe('computeResourceStatuses', () => {
         {
           name: 'main-gw',
           targets: [
-            { name: 'docs', targetType: 'connector', connectorId: 'bedrock-knowledge-bases', knowledgeBaseId: 'docs' },
-            { name: 'hr', targetType: 'connector', connectorId: 'bedrock-knowledge-bases', knowledgeBaseId: 'hr' },
             {
-              name: 'main-gw-agentic',
+              name: 'docs',
               targetType: 'connector',
-              connectorId: 'bedrock-agentic-retrieve',
-              knowledgeBaseIds: ['docs', 'hr'],
+              connectorId: 'bedrock-knowledge-bases',
+              configurations: [
+                { name: 'Retrieve', parameterValues: { knowledgeBaseId: 'docs' } },
+                {
+                  name: 'AgenticRetrieveStream',
+                  parameterValues: { retrievers: [{ configuration: { knowledgeBase: { knowledgeBaseId: 'docs' } } }] },
+                },
+              ],
+            },
+            {
+              name: 'hr',
+              targetType: 'connector',
+              connectorId: 'bedrock-knowledge-bases',
+              configurations: [
+                { name: 'Retrieve', parameterValues: { knowledgeBaseId: 'hr' } },
+                {
+                  name: 'AgenticRetrieveStream',
+                  parameterValues: { retrievers: [{ configuration: { knowledgeBase: { knowledgeBaseId: 'hr' } } }] },
+                },
+              ],
             },
           ],
         },
@@ -686,10 +713,10 @@ describe('computeResourceStatuses', () => {
 
     const result = computeResourceStatuses(project, undefined);
     const gwEntry = result.find(r => r.resourceType === 'gateway' && r.name === 'main-gw');
-    expect(gwEntry?.detail).toBe('3 targets (2 retrieve, agentic ×2)');
+    expect(gwEntry?.detail).toBe('2 targets (2 retrieve, agentic ×2)');
   });
 
-  it('KB detail surfaces wiring from agentic-retrieve fan-out target', () => {
+  it('KB detail surfaces wiring from configurations', () => {
     const project = {
       ...baseProject,
       agentCoreGateways: [
@@ -697,10 +724,16 @@ describe('computeResourceStatuses', () => {
           name: 'main-gw',
           targets: [
             {
-              name: 'main-gw-agentic',
+              name: 'docs-target',
               targetType: 'connector',
-              connectorId: 'bedrock-agentic-retrieve',
-              knowledgeBaseIds: ['docs'],
+              connectorId: 'bedrock-knowledge-bases',
+              configurations: [
+                { name: 'Retrieve', parameterValues: { knowledgeBaseId: 'docs' } },
+                {
+                  name: 'AgenticRetrieveStream',
+                  parameterValues: { retrievers: [{ configuration: { knowledgeBase: { knowledgeBaseId: 'docs' } } }] },
+                },
+              ],
             },
           ],
         },
@@ -929,7 +962,7 @@ describe('handleProjectStatus — knowledge base enrichment', () => {
                 name: 'docs',
                 targetType: 'connector',
                 connectorId: 'bedrock-knowledge-bases',
-                knowledgeBaseId: 'product-docs',
+                configurations: [{ name: 'Retrieve', parameterValues: { knowledgeBaseId: 'product-docs' } }],
               },
             ],
           },

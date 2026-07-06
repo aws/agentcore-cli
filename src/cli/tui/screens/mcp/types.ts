@@ -146,7 +146,7 @@ export interface GatewayTargetWizardState {
   /**
    * Connector identifier when targetType is 'connector'.
    */
-  connectorId?: 'bedrock-knowledge-bases' | 'bedrock-agentic-retrieve' | 'web-search';
+  connectorId?: 'bedrock-knowledge-bases' | 'web-search';
   /** Passthrough endpoint URL for passthrough targets */
   passthroughEndpoint?: string;
   /** Passthrough protocol type for passthrough targets */
@@ -240,15 +240,7 @@ export interface BedrockKnowledgeBasesConnectorTargetConfig extends ConnectorTar
   knowledgeBaseId: string;
 }
 
-export interface BedrockAgenticRetrieveConnectorTargetConfig extends ConnectorTargetConfigBase {
-  connectorId: 'bedrock-agentic-retrieve';
-  /** Fan-out: project KB names and/or literal 10-char external KB IDs. */
-  knowledgeBaseIds: string[];
-}
-
-export type ConnectorTargetConfig =
-  | BedrockKnowledgeBasesConnectorTargetConfig
-  | BedrockAgenticRetrieveConnectorTargetConfig;
+export type ConnectorTargetConfig = BedrockKnowledgeBasesConnectorTargetConfig;
 
 export interface PassthroughTargetConfig {
   targetType: 'passthrough';

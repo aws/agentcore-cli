@@ -29,7 +29,7 @@ import {
 import type { AddGatewayTargetOptions as CLIAddGatewayTargetOptions } from '../commands/add/types';
 import { validateAddGatewayTargetOptions } from '../commands/add/validate';
 import { getErrorMessage } from '../errors';
-import { upsertAgenticRetrieveTarget } from '../operations/knowledge-base/agentic-retrieve-upsert';
+import { translateConnector } from '../operations/connectors';
 import type { RemovableGatewayTarget } from '../operations/remove/remove-gateway-target';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand, withCommandRunTelemetry } from '../telemetry/cli-command-run.js';
@@ -297,11 +297,11 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
       .option('--type <type>', typeDescription)
       .option(
         '--connector <id>',
-        'Connector id (for connector type): bedrock-knowledge-bases, bedrock-agentic-retrieve, or web-search [non-interactive]'
+        'Connector id (for connector type): bedrock-knowledge-bases or web-search [non-interactive]'
       )
       .option(
         '--knowledge-base-id <id>',
-        'KB reference for connector type — either a project KB name (entry in knowledgeBases[]) or a 10-char Bedrock KB id for an external KB. Repeatable for --connector bedrock-agentic-retrieve to fan out across multiple KBs. [non-interactive]',
+        'KB reference for connector type — either a project KB name (entry in knowledgeBases[]) or a 10-char Bedrock KB id for an external KB. [non-interactive]',
         (val: string, acc: string[]) => [...acc, val],
         [] as string[]
       )
@@ -405,8 +405,8 @@ Target types and their options:
     --lambda-arn <arn>             Lambda function ARN
     --tool-schema-file <path>      Tool schema JSON file
 
-  connector — Wire a managed AWS connector (bedrock-knowledge-bases, bedrock-agentic-retrieve, web-search)
-    --connector <id>               bedrock-knowledge-bases, bedrock-agentic-retrieve, or web-search
+  connector — Wire a managed AWS connector (bedrock-knowledge-bases, web-search)
+    --connector <id>               bedrock-knowledge-bases or web-search
     --knowledge-base-id <id>       Project KB name or 10-char external KB id (for KB connectors)
     --exclude-domains <list>       Comma-separated domains to exclude (for web-search connector)
 
@@ -432,23 +432,9 @@ Target types and their options:
           process.exit(1);
         }
 
-        const userPassedAnyFlag =
-          !!cliOptions.name ||
-          !!cliOptions.type ||
-          !!cliOptions.connector ||
-          !!cliOptions.endpoint ||
-          !!cliOptions.gateway ||
-          !!cliOptions.lambdaArn ||
-          !!cliOptions.restApiId ||
-          !!cliOptions.schema ||
-          !!cliOptions.runtime ||
-          !!cliOptions.passthroughEndpoint ||
-          !!cliOptions.host ||
-          !!cliOptions.language ||
-          !!cliOptions.outboundAuthType ||
-          !!cliOptions.excludeDomains ||
-          !!(cliOptions.knowledgeBaseId && cliOptions.knowledgeBaseId.length > 0) ||
-          !!cliOptions.json;
+        const userPassedAnyFlag = Object.entries(rawOptions).some(
+          ([, v]) => v !== undefined && v !== false && !(Array.isArray(v) && v.length === 0)
+        );
         if (!userPassedAnyFlag) {
           try {
             requireTTY();
@@ -629,7 +615,7 @@ Target types and their options:
             return telemetryAttrs;
           }
 
-          // Handle connector targets (managed-service backed: KB, agentic-retrieve, web-search)
+          // Handle connector targets (managed-service backed: KB, web-search)
           if (cliOptions.type === 'connector') {
             const validConnectors = CONNECTOR_ID_VALUES.join(', ');
             if (!cliOptions.connector) {
@@ -673,53 +659,30 @@ Target types and their options:
               throw new ValidationError(`--knowledge-base-id is required for --connector ${connectorId}.`);
             }
 
-            const resolvedName =
-              cliOptions.name ??
-              (connectorId === 'bedrock-knowledge-bases'
-                ? `kb-${cliOptions.gateway}-${kbRefs[0]}`
-                : `kb-${cliOptions.gateway}-agentic`);
-
-            let config: ConnectorTargetConfig;
-            if (connectorId === 'bedrock-knowledge-bases') {
-              if (kbRefs.length > 1) {
-                throw new ValidationError(
-                  '--knowledge-base-id may only be specified once for --connector bedrock-knowledge-bases. ' +
-                    'Use --connector bedrock-agentic-retrieve for fan-out across multiple KBs.'
-                );
-              }
-              config = {
-                targetType: 'connector',
-                name: resolvedName,
-                gateway: cliOptions.gateway!,
-                connectorId,
-                knowledgeBaseId: kbRefs[0]!,
-                ...(cliOptions.description && { description: cliOptions.description }),
-              };
-            } else {
-              // bedrock-agentic-retrieve: fan-out via knowledgeBaseIds[].
-              config = {
-                targetType: 'connector',
-                name: resolvedName,
-                gateway: cliOptions.gateway!,
-                connectorId,
-                knowledgeBaseIds: kbRefs,
-                ...(cliOptions.description && { description: cliOptions.description }),
-              };
+            if (kbRefs.length > 1) {
+              throw new ValidationError(
+                '--knowledge-base-id may only be specified once for --connector bedrock-knowledge-bases.'
+              );
             }
+
+            const resolvedName =
+              cliOptions.name ?? `kb-${cliOptions.gateway}-${kbRefs[0]}`.replace(/_/g, '-').slice(0, 128);
+
+            const config: ConnectorTargetConfig = {
+              targetType: 'connector',
+              name: resolvedName,
+              gateway: cliOptions.gateway!,
+              connectorId,
+              knowledgeBaseId: kbRefs[0]!,
+              ...(cliOptions.description && { description: cliOptions.description }),
+            };
             const result = await this.createConnectorGatewayTarget(config);
             const output = { success: true, toolName: result.toolName };
             if (cliOptions.json) {
               console.log(JSON.stringify(output));
-            } else if (config.connectorId === 'bedrock-agentic-retrieve') {
-              console.log(
-                `Added connector gateway target '${result.toolName}' on '${config.gateway}' → ${config.connectorId} (KBs ${kbRefs.join(', ')})`
-              );
             } else {
               console.log(
                 `Added connector gateway target '${result.toolName}' on '${config.gateway}' → ${config.connectorId} (KB ${kbRefs[0]})`
-              );
-              console.log(
-                `Also wired KB '${kbRefs[0]}' into gateway '${config.gateway}'-agentic (bedrock-agentic-retrieve fan-out)`
               );
             }
             return telemetryAttrs;
@@ -1121,7 +1084,7 @@ Target types and their options:
 
   /**
    * Create a connector-typed gateway target backed by a managed AWS service
-   * (currently bedrock-knowledge-bases or bedrock-agentic-retrieve).
+   * (bedrock-knowledge-bases).
    *
    * Project-owned KB: config.knowledgeBaseId is a knowledgeBases[] entry name;
    * the L3 resolves it at synth time via application.knowledgeBases.
@@ -1144,49 +1107,19 @@ Target types and their options:
       throw new Error(`Target "${config.name}" already exists in gateway "${gateway.name}".`);
     }
 
-    // For agentic-retrieve, refuse to silently shadow an existing one on the
-    // same gateway — the KB primitive would have created `${gateway}-agentic`
-    // already, and a user-driven low-level add should be an explicit choice.
-    if (config.connectorId === 'bedrock-agentic-retrieve') {
-      const existingAgentic = gateway.targets.find(
-        t => t.targetType === 'connector' && t.connectorId === 'bedrock-agentic-retrieve'
-      );
-      if (existingAgentic) {
-        throw new Error(
-          `Gateway "${gateway.name}" already has a bedrock-agentic-retrieve target ("${existingAgentic.name}"). ` +
-            `Edit agentcore/agentcore.json directly to extend its knowledgeBaseIds[].`
-        );
-      }
-    }
+    const configurations = translateConnector({
+      connectorId: 'bedrock-knowledge-bases',
+      input: { knowledgeBaseId: config.knowledgeBaseId },
+    });
 
-    let target: AgentCoreGatewayTarget;
-    if (config.connectorId === 'bedrock-agentic-retrieve') {
-      target = {
-        name: config.name,
-        targetType: 'connector',
-        connectorId: config.connectorId,
-        knowledgeBaseIds: config.knowledgeBaseIds,
-      } as AgentCoreGatewayTarget;
-    } else {
-      target = {
-        name: config.name,
-        targetType: 'connector',
-        connectorId: config.connectorId,
-        knowledgeBaseId: config.knowledgeBaseId,
-      } as AgentCoreGatewayTarget;
-    }
+    const target: AgentCoreGatewayTarget = {
+      name: config.name,
+      targetType: 'connector',
+      connectorId: 'bedrock-knowledge-bases',
+      configurations,
+    } as AgentCoreGatewayTarget;
 
     gateway.targets.push(target);
-
-    // Auto-upsert the shared agentic-retrieve target when wiring a single-KB
-    // Retrieve via this path, mirroring KnowledgeBasePrimitive.add({...gateway}).
-    // Without this, KBs added via `add gateway-target --type connector
-    // --connector bedrock-knowledge-bases` would be missing from the gateway's
-    // agentic-retrieve fan-out.
-    if (config.connectorId === 'bedrock-knowledge-bases') {
-      upsertAgenticRetrieveTarget(gateway, config.knowledgeBaseId);
-    }
-
     await this.writeProjectSpec(project);
 
     return { toolName: config.name };
@@ -1283,11 +1216,16 @@ Target types and their options:
       throw new Error(`Target "${config.name}" already exists in gateway "${gateway.name}".`);
     }
 
+    const configurations = translateConnector({
+      connectorId: 'web-search',
+      input: { excludeDomains: config.excludeDomains },
+    });
+
     const target: AgentCoreGatewayTarget = {
       name: config.name,
       targetType: 'connector',
       connectorId: 'web-search',
-      ...(config.excludeDomains && config.excludeDomains.length > 0 ? { excludeDomains: config.excludeDomains } : {}),
+      configurations,
     } as AgentCoreGatewayTarget;
 
     gateway.targets.push(target);

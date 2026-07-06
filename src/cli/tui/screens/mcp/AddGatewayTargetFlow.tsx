@@ -139,13 +139,7 @@ export function AddGatewayTargetFlow({
       void gatewayTargetPrimitive
         .createConnectorGatewayTarget(config)
         .then((result: { toolName: string }) => {
-          // For single-KB Retrieve adds, the primitive also upserts the
-          // gateway's shared agentic-retrieve target. Surface that to the user.
-          const detail =
-            config.connectorId === 'bedrock-knowledge-bases'
-              ? `Also wired KB '${config.knowledgeBaseId}' into '${config.gateway}-agentic' (bedrock-agentic-retrieve fan-out)`
-              : undefined;
-          setFlow({ name: 'create-success', toolName: result.toolName, projectPath: '', detail });
+          setFlow({ name: 'create-success', toolName: result.toolName, projectPath: '' });
         })
         .catch((err: unknown) => {
           setFlow({ name: 'error', message: err instanceof Error ? err.message : 'Unknown error' });

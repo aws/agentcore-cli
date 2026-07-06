@@ -172,15 +172,21 @@ export function computeResourceStatuses(
       const retrieveCount = targets.filter(
         t => t.targetType === 'connector' && t.connectorId === 'bedrock-knowledge-bases'
       ).length;
-      const agentic = targets.find(t => t.targetType === 'connector' && t.connectorId === 'bedrock-agentic-retrieve');
       const webSearchCount = targets.filter(t => t.targetType === 'connector' && t.connectorId === 'web-search').length;
       const base = `${targets.length} target${targets.length !== 1 ? 's' : ''}`;
       const parts: string[] = [];
       if (retrieveCount > 0) parts.push(`${retrieveCount} retrieve`);
-      if (agentic) {
-        const fanOut = agentic.knowledgeBaseIds?.length ?? 0;
-        parts.push(`agentic ×${fanOut}`);
+      // Count agentic retrievers from AgenticRetrieveStream configurations within KB connector targets
+      let agenticFanOut = 0;
+      for (const t of targets) {
+        if (t.targetType !== 'connector' || t.connectorId !== 'bedrock-knowledge-bases') continue;
+        const agenticConfig = (t.configurations ?? []).find(c => c.name === 'AgenticRetrieveStream');
+        if (agenticConfig) {
+          const retrievers = agenticConfig.parameterValues?.retrievers as unknown[] | undefined;
+          agenticFanOut += retrievers?.length ?? 0;
+        }
       }
+      if (agenticFanOut > 0) parts.push(`agentic ×${agenticFanOut}`);
       if (webSearchCount > 0) parts.push(`${webSearchCount} web-search`);
       return parts.length > 0 ? `${base} (${parts.join(', ')})` : base;
     },
@@ -248,9 +254,8 @@ export function computeResourceStatuses(
   });
 
   // Reverse-index: KB name -> list of gateways with a connector target referencing it.
-  // Walks both knowledgeBaseId (single-KB Retrieve) and knowledgeBaseIds[]
-  // (agentic-retrieve fan-out) so a KB shows its wiring no matter which
-  // connector kind references it.
+  // Walks both Retrieve (knowledgeBaseId) and AgenticRetrieveStream (retrievers[])
+  // configurations so a KB shows its wiring no matter which configuration references it.
   const kbToGateways = new Map<string, Set<string>>();
   const recordKbWiring = (kbRef: string, gatewayName: string): void => {
     const set = kbToGateways.get(kbRef) ?? new Set<string>();
@@ -260,8 +265,22 @@ export function computeResourceStatuses(
   for (const gw of project.agentCoreGateways ?? []) {
     for (const t of gw.targets ?? []) {
       if (t.targetType !== 'connector') continue;
-      if (t.knowledgeBaseId) recordKbWiring(t.knowledgeBaseId, gw.name);
-      for (const ref of t.knowledgeBaseIds ?? []) recordKbWiring(ref, gw.name);
+      for (const cfg of t.configurations ?? []) {
+        const pv = cfg.parameterValues;
+        if (cfg.name === 'Retrieve') {
+          const kbId = pv?.knowledgeBaseId as string | undefined;
+          if (kbId) recordKbWiring(kbId, gw.name);
+        }
+        if (cfg.name === 'AgenticRetrieveStream') {
+          const retrievers = pv?.retrievers as
+            | { configuration?: { knowledgeBase?: { knowledgeBaseId?: string } } }[]
+            | undefined;
+          for (const r of retrievers ?? []) {
+            const ref = r?.configuration?.knowledgeBase?.knowledgeBaseId;
+            if (ref) recordKbWiring(ref, gw.name);
+          }
+        }
+      }
     }
   }
 
@@ -532,10 +551,9 @@ export async function handleProjectStatus(
       logger.startStep(`Fetch knowledge base status (${deployedKbs.length} KB${deployedKbs.length !== 1 ? 's' : ''})`);
 
       // Reverse-index: KB spec name -> gateways whose connector targets
-      // reference it. Project-owned KBs are stored by *name* on connector
-      // targets (single-KB Retrieve on `knowledgeBaseId`, agentic-retrieve
-      // fan-out on `knowledgeBaseIds[]`), so we key by the spec name
-      // (entry.name) below.
+      // reference it. Project-owned KBs are stored by *name* in connector
+      // target configurations (Retrieve on `knowledgeBaseId`, AgenticRetrieveStream
+      // on `retrievers[]`), so we key by the spec name (entry.name) below.
       const kbNameToGateways = new Map<string, Set<string>>();
       const recordKbWiring = (kbRef: string, gatewayName: string): void => {
         const set = kbNameToGateways.get(kbRef) ?? new Set<string>();
@@ -545,8 +563,22 @@ export async function handleProjectStatus(
       for (const gw of project.agentCoreGateways ?? []) {
         for (const t of gw.targets ?? []) {
           if (t.targetType !== 'connector') continue;
-          if (t.knowledgeBaseId) recordKbWiring(t.knowledgeBaseId, gw.name);
-          for (const ref of t.knowledgeBaseIds ?? []) recordKbWiring(ref, gw.name);
+          for (const cfg of t.configurations ?? []) {
+            const pv = cfg.parameterValues;
+            if (cfg.name === 'Retrieve') {
+              const kbId = pv?.knowledgeBaseId as string | undefined;
+              if (kbId) recordKbWiring(kbId, gw.name);
+            }
+            if (cfg.name === 'AgenticRetrieveStream') {
+              const retrievers = pv?.retrievers as
+                | { configuration?: { knowledgeBase?: { knowledgeBaseId?: string } } }[]
+                | undefined;
+              for (const r of retrievers ?? []) {
+                const ref = r?.configuration?.knowledgeBase?.knowledgeBaseId;
+                if (ref) recordKbWiring(ref, gw.name);
+              }
+            }
+          }
         }
       }
 

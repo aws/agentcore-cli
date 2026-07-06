@@ -394,7 +394,7 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     options.language =
       (matchEnumValue(TargetLanguageSchema, options.language) as typeof options.language) ?? options.language;
 
-  const kbConnectors = ['bedrock-knowledge-bases', 'bedrock-agentic-retrieve'];
+  const kbConnectors = ['bedrock-knowledge-bases'];
   const nameOptional = options.type === 'connector' && kbConnectors.includes(options.connector ?? '');
   if (!options.name && !nameOptional) {
     return { valid: false, error: '--name is required' };
@@ -660,8 +660,7 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
     if (options.connector === 'bedrock-knowledge-bases' && (options.knowledgeBaseId?.length ?? 0) > 1) {
       return {
         valid: false,
-        error:
-          '--knowledge-base-id may only be specified once for --connector bedrock-knowledge-bases. Use --connector bedrock-agentic-retrieve for fan-out.',
+        error: '--knowledge-base-id may only be specified once for --connector bedrock-knowledge-bases.',
       };
     }
     const irrelevant: [string, string][] = [
@@ -673,6 +672,8 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
       ['toolSchemaFile', '--tool-schema-file'],
       ['toolFilterPath', '--tool-filter-path'],
       ['toolFilterMethods', '--tool-filter-methods'],
+      ['schema', '--schema'],
+      ['schemaS3Account', '--schema-s3-account'],
       ['outboundAuthType', '--outbound-auth'],
       ['credentialName', '--credential-name'],
       ['oauthClientId', '--oauth-client-id'],

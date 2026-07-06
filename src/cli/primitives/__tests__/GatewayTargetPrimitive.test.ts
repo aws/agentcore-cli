@@ -231,7 +231,7 @@ function makePrimitive(initial: AgentCoreProjectSpec) {
 describe('GatewayTargetPrimitive — createConnectorGatewayTarget', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('writes a single-KB Retrieve target for bedrock-knowledge-bases', async () => {
+  it('writes a connector target with configurations for bedrock-knowledge-bases', async () => {
     const { primitive, getProject } = makePrimitive(emptyProject());
     const result = await primitive.createConnectorGatewayTarget({
       targetType: 'connector',
@@ -244,11 +244,11 @@ describe('GatewayTargetPrimitive — createConnectorGatewayTarget', () => {
     const targets = getProject().agentCoreGateways[0]?.targets ?? [];
     const retrieve = targets.find(t => t.connectorId === 'bedrock-knowledge-bases');
     expect(retrieve?.connectorId).toBe('bedrock-knowledge-bases');
-    expect(retrieve?.knowledgeBaseId).toBe('ABCDEFGHIJ');
-    expect(retrieve?.knowledgeBaseIds).toBeUndefined();
+    const retrieveConfig = (retrieve?.configurations ?? []).find(c => c.name === 'Retrieve');
+    expect((retrieveConfig?.parameterValues as any)?.knowledgeBaseId).toBe('ABCDEFGHIJ');
   });
 
-  it('bedrock-knowledge-bases create also upserts a shared agentic-retrieve target', async () => {
+  it('bedrock-knowledge-bases creates target with both Retrieve and AgenticRetrieveStream configurations', async () => {
     const { primitive, getProject } = makePrimitive(emptyProject());
     await primitive.createConnectorGatewayTarget({
       targetType: 'connector',
@@ -258,16 +258,18 @@ describe('GatewayTargetPrimitive — createConnectorGatewayTarget', () => {
       knowledgeBaseId: 'ABCDEFGHIJ',
     });
     const targets = getProject().agentCoreGateways[0]?.targets ?? [];
-    expect(targets).toHaveLength(2);
-    const retrieve = targets.find(t => t.connectorId === 'bedrock-knowledge-bases');
-    expect(retrieve?.name).toBe('product-docs');
-    expect(retrieve?.knowledgeBaseId).toBe('ABCDEFGHIJ');
-    const agentic = targets.find(t => t.connectorId === 'bedrock-agentic-retrieve');
-    expect(agentic?.name).toBe('main-gw-agentic');
-    expect(agentic?.knowledgeBaseIds).toEqual(['ABCDEFGHIJ']);
+    expect(targets).toHaveLength(1);
+    const target = targets.find(t => t.connectorId === 'bedrock-knowledge-bases');
+    expect(target?.name).toBe('product-docs');
+    const retrieveConfig = (target?.configurations ?? []).find(c => c.name === 'Retrieve');
+    expect((retrieveConfig?.parameterValues as any)?.knowledgeBaseId).toBe('ABCDEFGHIJ');
+    const agenticConfig = (target?.configurations ?? []).find(c => c.name === 'AgenticRetrieveStream');
+    expect(agenticConfig).toBeDefined();
+    const retrievers = (agenticConfig?.parameterValues as any)?.retrievers as any[];
+    expect(retrievers?.map((r: any) => r.configuration.knowledgeBase.knowledgeBaseId)).toEqual(['ABCDEFGHIJ']);
   });
 
-  it('two bedrock-knowledge-bases creates share a single agentic target with both KBs', async () => {
+  it('two bedrock-knowledge-bases creates produce two separate targets each with their own configurations', async () => {
     const { primitive, getProject } = makePrimitive(emptyProject());
     await primitive.createConnectorGatewayTarget({
       targetType: 'connector',
@@ -284,24 +286,21 @@ describe('GatewayTargetPrimitive — createConnectorGatewayTarget', () => {
       knowledgeBaseId: 'KLMNOPQRST',
     });
     const targets = getProject().agentCoreGateways[0]?.targets ?? [];
-    // Two Retrieve targets + one shared agentic target.
-    expect(targets).toHaveLength(3);
-    const agentics = targets.filter(t => t.connectorId === 'bedrock-agentic-retrieve');
-    expect(agentics).toHaveLength(1);
-    expect(agentics[0]?.knowledgeBaseIds).toEqual(['ABCDEFGHIJ', 'KLMNOPQRST']);
+    expect(targets).toHaveLength(2);
+    const targetA = targets.find(t => t.name === 'docs-a');
+    const targetB = targets.find(t => t.name === 'docs-b');
+    const agenticA = (targetA?.configurations ?? []).find(c => c.name === 'AgenticRetrieveStream');
+    const agenticB = (targetB?.configurations ?? []).find(c => c.name === 'AgenticRetrieveStream');
+    expect((agenticA?.parameterValues as any)?.retrievers?.[0]?.configuration?.knowledgeBase?.knowledgeBaseId).toBe(
+      'ABCDEFGHIJ'
+    );
+    expect((agenticB?.parameterValues as any)?.retrievers?.[0]?.configuration?.knowledgeBase?.knowledgeBaseId).toBe(
+      'KLMNOPQRST'
+    );
   });
 
-  it('appends to an existing agentic target created earlier (e.g. via the KB primitive)', async () => {
-    const initial = emptyProject();
-    initial.agentCoreGateways[0]!.targets = [
-      {
-        name: 'main-gw-agentic',
-        targetType: 'connector',
-        connectorId: 'bedrock-agentic-retrieve',
-        knowledgeBaseIds: ['existing-kb'],
-      } as unknown as AgentCoreProjectSpec['agentCoreGateways'][0]['targets'][0],
-    ];
-    const { primitive, getProject } = makePrimitive(initial);
+  it('rejects a duplicate target name on the same gateway', async () => {
+    const { primitive } = makePrimitive(emptyProject());
     await primitive.createConnectorGatewayTarget({
       targetType: 'connector',
       name: 'product-docs',
@@ -309,48 +308,15 @@ describe('GatewayTargetPrimitive — createConnectorGatewayTarget', () => {
       connectorId: 'bedrock-knowledge-bases',
       knowledgeBaseId: 'ABCDEFGHIJ',
     });
-    const targets = getProject().agentCoreGateways[0]?.targets ?? [];
-    const agentics = targets.filter(t => t.connectorId === 'bedrock-agentic-retrieve');
-    expect(agentics).toHaveLength(1);
-    expect(agentics[0]?.knowledgeBaseIds).toEqual(['existing-kb', 'ABCDEFGHIJ']);
-    expect(targets.find(t => t.connectorId === 'bedrock-knowledge-bases')?.name).toBe('product-docs');
-  });
-
-  it('writes a fan-out agentic-retrieve target with knowledgeBaseIds[]', async () => {
-    const { primitive, getProject } = makePrimitive(emptyProject());
-    await primitive.createConnectorGatewayTarget({
-      targetType: 'connector',
-      name: 'agentic',
-      gateway: 'main-gw',
-      connectorId: 'bedrock-agentic-retrieve',
-      knowledgeBaseIds: ['ABCDEFGHIJ', 'KLMNOPQRST'],
-    });
-    const target = getProject().agentCoreGateways[0]?.targets[0];
-    expect(target?.connectorId).toBe('bedrock-agentic-retrieve');
-    expect(target?.knowledgeBaseIds).toEqual(['ABCDEFGHIJ', 'KLMNOPQRST']);
-    expect(target?.knowledgeBaseId).toBeUndefined();
-  });
-
-  it('rejects a second agentic-retrieve target on the same gateway', async () => {
-    const initial = emptyProject();
-    initial.agentCoreGateways[0]!.targets = [
-      {
-        name: 'main-gw-agentic',
-        targetType: 'connector',
-        connectorId: 'bedrock-agentic-retrieve',
-        knowledgeBaseIds: ['existing'],
-      } as unknown as AgentCoreProjectSpec['agentCoreGateways'][0]['targets'][0],
-    ];
-    const { primitive } = makePrimitive(initial);
     await expect(
       primitive.createConnectorGatewayTarget({
         targetType: 'connector',
-        name: 'another-agentic',
+        name: 'product-docs',
         gateway: 'main-gw',
-        connectorId: 'bedrock-agentic-retrieve',
-        knowledgeBaseIds: ['ABCDEFGHIJ'],
+        connectorId: 'bedrock-knowledge-bases',
+        knowledgeBaseId: 'KLMNOPQRST',
       })
-    ).rejects.toThrow(/already has a bedrock-agentic-retrieve target/);
+    ).rejects.toThrow(/already exists/);
   });
 });
 
@@ -369,10 +335,12 @@ describe('GatewayTargetPrimitive — createWebSearchGatewayTarget', () => {
     expect(target?.targetType).toBe('connector');
     expect(target?.connectorId).toBe('web-search');
     expect(target?.name).toBe('web-search');
-    expect(target?.excludeDomains).toBeUndefined();
+    const wsConfig = (target?.configurations ?? []).find(c => c.name === 'WebSearch');
+    expect(wsConfig).toBeDefined();
+    expect(wsConfig?.parameterValues).toEqual({});
   });
 
-  it('persists excludeDomains when provided', async () => {
+  it('persists excludeDomains in configurations when provided', async () => {
     const { primitive, getProject } = makePrimitive(emptyProject());
     await primitive.createWebSearchGatewayTarget({
       targetType: 'webSearch',
@@ -381,7 +349,11 @@ describe('GatewayTargetPrimitive — createWebSearchGatewayTarget', () => {
       excludeDomains: ['internal.example.com', 'staging.example.com'],
     });
     const target = getProject().agentCoreGateways[0]?.targets[0];
-    expect(target?.excludeDomains).toEqual(['internal.example.com', 'staging.example.com']);
+    const wsConfig = (target?.configurations ?? []).find(c => c.name === 'WebSearch');
+    expect((wsConfig?.parameterValues as any)?.domainFilter?.exclude).toEqual([
+      'internal.example.com',
+      'staging.example.com',
+    ]);
   });
 
   it('rejects a duplicate target name on the same gateway', async () => {

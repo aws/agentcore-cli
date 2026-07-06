@@ -711,7 +711,7 @@ describe('AgentCoreProjectSpecSchema', () => {
               name: 'kb-target',
               targetType: 'connector',
               connectorId: 'bedrock-knowledge-bases',
-              knowledgeBaseId: 'ABCDEFGHIJ',
+              configurations: [{ name: 'Retrieve', parameterValues: { knowledgeBaseId: 'ABCDEFGHIJ' } }],
             },
           ],
         },

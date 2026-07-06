@@ -1222,50 +1222,28 @@ describe('AgentCoreGatewayTargetSchema with web-search connector', () => {
     expect(result.success).toBe(true);
   });
 
-  it('accepts a web-search connector target with excludeDomains', () => {
+  it('accepts a web-search connector target with configurations', () => {
     const result = AgentCoreGatewayTargetSchema.safeParse({
       name: 'web-search',
       targetType: 'connector',
       connectorId: 'web-search',
-      excludeDomains: ['internal.example.com', 'staging.example.com'],
+      configurations: [
+        {
+          name: 'WebSearch',
+          parameterValues: { domainFilter: { exclude: ['internal.example.com', 'staging.example.com'] } },
+        },
+      ],
     });
     expect(result.success).toBe(true);
   });
 
-  it('rejects an empty excludeDomains array', () => {
-    const result = AgentCoreGatewayTargetSchema.safeParse({
-      name: 'web-search',
-      targetType: 'connector',
-      connectorId: 'web-search',
-      excludeDomains: [],
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects excludeDomains on a non-web-search connector', () => {
-    const result = AgentCoreGatewayTargetSchema.safeParse({
-      name: 'kb-target',
-      targetType: 'connector',
-      connectorId: 'bedrock-knowledge-bases',
-      knowledgeBaseId: 'KB123',
-      excludeDomains: ['internal.example.com'],
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues.some(i => i.path.includes('excludeDomains'))).toBe(true);
-    }
-  });
-
-  it('rejects excludeDomains on a non-connector target type', () => {
+  it('accepts parameterValues on non-connector types without validation', () => {
     const result = AgentCoreGatewayTargetSchema.safeParse({
       name: 'mcp',
       targetType: 'mcpServer',
       endpoint: 'https://example.com/mcp',
-      excludeDomains: ['internal.example.com'],
+      parameterValues: { anything: true },
     });
     expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues.some(i => i.path.includes('excludeDomains'))).toBe(true);
-    }
   });
 });

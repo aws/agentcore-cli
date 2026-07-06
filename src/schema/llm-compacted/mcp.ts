@@ -45,15 +45,9 @@ interface AgentCoreGatewayTarget {
   connectorId?: ConnectorId;
   /**
    * For bedrock-knowledge-bases connector targets — a project KB name or a
-   * literal 10-char external KB ID. Mutually exclusive with `knowledgeBaseIds`.
+   * literal 10-char external KB ID.
    */
   knowledgeBaseId?: string;
-  /**
-   * For bedrock-agentic-retrieve connector targets — fan-out list of project
-   * KB names or literal 10-char external KB IDs. Mutually exclusive with
-   * `knowledgeBaseId`.
-   */
-  knowledgeBaseIds?: string[];
   /**
    * For connector targets with connectorId 'web-search'. Domains to exclude
    * from search results. Maps to `domainFilter.exclude` parameterValue at synth.
@@ -204,7 +198,7 @@ type GatewayTargetType =
   | 'httpRuntime'
   | 'connector'
   | 'passthrough';
-type ConnectorId = 'bedrock-knowledge-bases' | 'bedrock-agentic-retrieve' | 'web-search';
+type ConnectorId = 'bedrock-knowledge-bases' | 'web-search';
 type PythonRuntime = 'PYTHON_3_10' | 'PYTHON_3_11' | 'PYTHON_3_12' | 'PYTHON_3_13' | 'PYTHON_3_14';
 type NodeRuntime = 'NODE_18' | 'NODE_20' | 'NODE_22';
 type NetworkMode = 'PUBLIC' | 'VPC';

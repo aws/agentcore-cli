@@ -50,27 +50,22 @@ export const MCP_TARGET_TYPES: readonly GatewayTargetType[] = [
  * name + Enabled list via CONNECTOR_DEFAULTS.
  *
  * Spec note: the original DevEx doc (cli-knowledge-bases-devex.md) uses
- * `agentic-retrieve`, but the service accepts `bedrock-agentic-retrieve`. The
- * latter is canonical.
+ * `agentic-retrieve`, but that is now a configuration within bedrock-knowledge-bases
+ * rather than a standalone connector ID.
  */
 export const CONNECTOR_ID = {
   BEDROCK_KNOWLEDGE_BASES: 'bedrock-knowledge-bases',
-  BEDROCK_AGENTIC_RETRIEVE: 'bedrock-agentic-retrieve',
   WEB_SEARCH: 'web-search',
 } as const;
-export const CONNECTOR_ID_VALUES = [
-  CONNECTOR_ID.BEDROCK_KNOWLEDGE_BASES,
-  CONNECTOR_ID.BEDROCK_AGENTIC_RETRIEVE,
-  CONNECTOR_ID.WEB_SEARCH,
-] as const;
+export const CONNECTOR_ID_VALUES = [CONNECTOR_ID.BEDROCK_KNOWLEDGE_BASES, CONNECTOR_ID.WEB_SEARCH] as const;
 export const ConnectorIdSchema = z.enum(CONNECTOR_ID_VALUES);
 export type ConnectorId = z.infer<typeof ConnectorIdSchema>;
 
 /**
  * Real Bedrock Knowledge Base IDs are 10 uppercase alphanumeric chars.
  * KB names follow the standard primitive-name shape (1-48 chars, starts with a letter).
- * The two formats can never collide, so a connector target's `knowledgeBaseId`
- * field is unambiguously a project KB name or a literal external KB ID.
+ * The two formats can never collide, so a KB reference in parameterValues
+ * is unambiguously a project KB name or a literal external KB ID.
  */
 export const REAL_KB_ID_PATTERN = /^[A-Z0-9]{10}$/;
 
@@ -470,42 +465,30 @@ export const AgentCoreGatewayTargetSchema = z
      */
     connectorId: ConnectorIdSchema.optional(),
     /**
-     * For `bedrock-knowledge-bases` connector targets: either a project KB
-     * name (references an entry in `knowledgeBases[]` on the project spec)
-     * or a literal 10-character KB ID (refers to an external KB this project
-     * does not own). The L3 disambiguates by regex match. Mutually exclusive
-     * with `knowledgeBaseIds`.
+     * Per-operation configuration entries for connector targets. Each entry
+     * represents a tool the connector exposes (e.g. "Retrieve", "AgenticRetrieveStream",
+     * "WebSearch"). Written by the CLI translator from bespoke flags or hand-edited
+     * by customers for advanced settings.
      */
-    knowledgeBaseId: z
-      .string()
-      .min(1)
-      .max(48)
-      .regex(/^[a-zA-Z0-9_-]+$/, 'Must be a KB name (1-48 chars, letters/digits/dash/underscore) or a 10-char KB ID')
-      .optional(),
-    /**
-     * For `bedrock-agentic-retrieve` connector targets only. List of project
-     * KB names or literal 10-char external KB IDs that this orchestrated
-     * retriever should fan out across. Each entry is disambiguated the same
-     * way `knowledgeBaseId` is. Mutually exclusive with `knowledgeBaseId`.
-     */
-    knowledgeBaseIds: z
+    configurations: z
       .array(
-        z
-          .string()
-          .min(1)
-          .max(48)
-          .regex(/^[a-zA-Z0-9_-]+$/, 'Each entry must be a KB name (1-48 chars) or a 10-char KB ID')
+        z.object({
+          name: z.string(),
+          parameterValues: z.record(z.string(), z.unknown()).optional(),
+          parameterOverrides: z
+            .array(
+              z.object({
+                path: z.string(),
+                description: z.string().optional(),
+                visible: z.boolean().optional(),
+              })
+            )
+            .optional(),
+        })
       )
-      .min(1)
       .optional(),
     /** Passthrough configuration. Required for passthrough target type. */
     passthrough: PassthroughConfigSchema.optional(),
-    /**
-     * For connector targets with connectorId 'web-search'. Domains to exclude
-     * from search results. Maps to `domainFilter.exclude` parameterValue at
-     * synth time.
-     */
-    excludeDomains: z.array(z.string().min(1)).min(1).optional(),
   })
   .strict()
   .superRefine((data, ctx) => {
@@ -767,45 +750,6 @@ export const AgentCoreGatewayTargetSchema = z
           path: ['connectorId'],
         });
       }
-      if (data.connectorId === CONNECTOR_ID.BEDROCK_KNOWLEDGE_BASES) {
-        if (!data.knowledgeBaseId) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `knowledgeBaseId is required for connectorId '${data.connectorId}'`,
-            path: ['knowledgeBaseId'],
-          });
-        }
-        if (data.knowledgeBaseIds) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `knowledgeBaseIds is not applicable for connectorId '${data.connectorId}' (use knowledgeBaseId)`,
-            path: ['knowledgeBaseIds'],
-          });
-        }
-      }
-      if (data.connectorId === CONNECTOR_ID.BEDROCK_AGENTIC_RETRIEVE) {
-        if (!data.knowledgeBaseIds || data.knowledgeBaseIds.length === 0) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `knowledgeBaseIds (non-empty) is required for connectorId '${data.connectorId}'`,
-            path: ['knowledgeBaseIds'],
-          });
-        }
-        if (data.knowledgeBaseId) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `knowledgeBaseId is not applicable for connectorId '${data.connectorId}' (use knowledgeBaseIds)`,
-            path: ['knowledgeBaseId'],
-          });
-        }
-      }
-      if (data.excludeDomains && data.connectorId !== 'web-search') {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `excludeDomains only applies to connector with connectorId 'web-search'`,
-          path: ['excludeDomains'],
-        });
-      }
       if (data.compute) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -848,6 +792,20 @@ export const AgentCoreGatewayTargetSchema = z
           path: ['schemaSource'],
         });
       }
+      if (data.httpRuntime) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'httpRuntime is not applicable for connector target type',
+          path: ['httpRuntime'],
+        });
+      }
+      if (data.passthrough) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'passthrough is not applicable for connector target type',
+          path: ['passthrough'],
+        });
+      }
     }
     if (data.targetType !== 'connector') {
       if (data.connectorId) {
@@ -857,25 +815,11 @@ export const AgentCoreGatewayTargetSchema = z
           path: ['connectorId'],
         });
       }
-      if (data.knowledgeBaseId) {
+      if (data.configurations && data.configurations.length > 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `knowledgeBaseId only applies to connector target type`,
-          path: ['knowledgeBaseId'],
-        });
-      }
-      if (data.knowledgeBaseIds) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `knowledgeBaseIds only applies to connector target type`,
-          path: ['knowledgeBaseIds'],
-        });
-      }
-      if (data.excludeDomains) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `excludeDomains only applies to connector target type with connectorId 'web-search'`,
-          path: ['excludeDomains'],
+          message: `configurations only applies to connector target type`,
+          path: ['configurations'],
         });
       }
     }

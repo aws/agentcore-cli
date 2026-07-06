@@ -7430,7 +7430,7 @@ file maps to a JSON config file and includes validation constraints as comments 
 - **NetworkMode**: \`'PUBLIC'\` | \`'VPC'\`
 - **RuntimeVersion**: \`'PYTHON_3_10'\` | \`'PYTHON_3_11'\` | \`'PYTHON_3_12'\` | \`'PYTHON_3_13'\` | \`'PYTHON_3_14'\` | \`'NODE_18'\` | \`'NODE_20'\` | \`'NODE_22'\`
 - **MemoryStrategyType**: \`'SEMANTIC'\` | \`'SUMMARIZATION'\` | \`'USER_PREFERENCE'\` | \`'EPISODIC'\`
-- **GatewayTargetType**: \`'lambda'\` | \`'mcpServer'\` | \`'openApiSchema'\` | \`'smithyModel'\` | \`'apiGateway'\` | \`'lambdaFunctionArn'\` | \`'connector'\` (web-search, bedrock-knowledge-bases, bedrock-agentic-retrieve)
+- **GatewayTargetType**: \`'lambda'\` | \`'mcpServer'\` | \`'openApiSchema'\` | \`'smithyModel'\` | \`'apiGateway'\` | \`'lambdaFunctionArn'\` | \`'connector'\` (web-search, bedrock-knowledge-bases)
 - **ModelProvider**: \`'Bedrock'\` | \`'Gemini'\` | \`'OpenAI'\` | \`'Anthropic'\`
 - **PaymentProvider**: \`'CoinbaseCDP'\` | \`'StripePrivy'\`
 - **PolicyEnforcementMode**: \`'ACTIVE'\` | \`'PASSIVE'\`
