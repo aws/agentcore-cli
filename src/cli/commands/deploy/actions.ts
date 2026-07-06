@@ -160,6 +160,10 @@ export async function runDeploy(toolkitWrapper: CdkToolkitWrapper, stackName: st
 export async function handleDeploy(options: ValidatedDeployOptions): Promise<DeployResult> {
   let toolkitWrapper = null;
   let restoreEnv: (() => void) | null = null;
+  // In preview modes (--dry-run / --diff) the vpcId backfill writes to agentcore.json/harness.json so
+  // the synth subprocess can read it; this reverts those writes on EVERY exit path (success, early
+  // return, or throw) so a preview never leaves the working tree dirty. No-op on a real deploy.
+  let previewRestore: (() => Promise<void>) | null = null;
   const logger = new ExecLogger({ command: 'deploy' });
   const { onProgress } = options;
   let currentStepName = '';
@@ -417,6 +421,9 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // write is reverted after synth via backfill.restore() so a preview leaves the working tree clean.
     const isPreview = !!options.plan || !!options.diff;
     const backfill = await backfillContainerVpcIds(configIO, context.projectSpec, target.region, !isPreview);
+    // In preview mode, revert the on-disk backfill in `finally` so every exit path (including a synth
+    // throw or an early return) leaves the working tree clean. restore() is a no-op on a real deploy.
+    if (isPreview) previewRestore = backfill.restore;
     if (backfill.backfilled.length > 0) {
       logger.log(`Resolved networkConfig.vpcId for Container+VPC build(s): ${backfill.backfilled.join(', ')}`, 'info');
     }
@@ -479,10 +486,9 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     }
     endStep('success');
 
-    // Plan mode: stop after synth and checks, don't deploy. Revert any vpcId the backfill wrote to
-    // disk for synth — a preview must not dirty the working tree.
+    // Plan mode: stop after synth and checks, don't deploy. The backfilled vpcId written to disk for
+    // synth is reverted in the `finally` (covers this and every other preview exit path).
     if (options.plan) {
-      await backfill.restore();
       logger.finalize(true);
       await toolkitWrapper.dispose();
       toolkitWrapper = null;
@@ -494,14 +500,13 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       };
     }
 
-    // Diff mode: run cdk diff and exit without deploying. Revert any vpcId the backfill wrote to disk
-    // for synth — like plan mode, a diff preview must not dirty the working tree.
+    // Diff mode: run cdk diff and exit without deploying. Like plan mode, the backfilled vpcId is
+    // reverted in the `finally`, so even a throw in runDiff leaves the working tree clean.
     if (options.diff) {
       startStep('Run CDK diff');
       await runDiff(toolkitWrapper, stackName, switchableIoHost);
       endStep('success');
 
-      await backfill.restore();
       logger.finalize(true);
       await toolkitWrapper.dispose();
       toolkitWrapper = null;
@@ -986,6 +991,10 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
   } finally {
     if (toolkitWrapper) {
       await toolkitWrapper.dispose();
+    }
+    // Revert the preview-mode vpcId backfill on every exit path (success, early return, or throw).
+    if (previewRestore) {
+      await previewRestore();
     }
     restoreEnv?.();
   }
