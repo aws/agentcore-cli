@@ -160,27 +160,29 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
   const name = options.name ?? options.projectName;
   const projectName = options.projectName ?? name;
 
+  // Single source for the harness validation input, shared by the dry-run and telemetry-wrapped
+  // paths below. Keeping ONE object prevents the two call sites from drifting — forwarding a field
+  // on one path but not the other is exactly what caused the create-harness VPC validation blocker.
+  const harnessValidationInput = {
+    name,
+    projectName,
+    modelProvider: options.modelProvider,
+    modelId: options.modelId,
+    apiKeyArn: options.apiKeyArn,
+    container: options.container,
+    networkMode: options.networkMode,
+    subnets: options.subnets,
+    securityGroups: options.securityGroups,
+    vpcId: options.vpcId,
+    efsAccessPointArn: options.efsAccessPointArn,
+    efsMountPath: options.efsMountPath,
+    s3AccessPointArn: options.s3AccessPointArn,
+    s3MountPath: options.s3MountPath,
+  };
+
   // Handle dry-run mode (no telemetry for dry-run)
   if (options.dryRun) {
-    const validation = validateCreateHarnessOptions(
-      {
-        name,
-        projectName,
-        modelProvider: options.modelProvider,
-        modelId: options.modelId,
-        apiKeyArn: options.apiKeyArn,
-        container: options.container,
-        networkMode: options.networkMode,
-        subnets: options.subnets,
-        securityGroups: options.securityGroups,
-        vpcId: options.vpcId,
-        efsAccessPointArn: options.efsAccessPointArn,
-        efsMountPath: options.efsMountPath,
-        s3AccessPointArn: options.s3AccessPointArn,
-        s3MountPath: options.s3MountPath,
-      },
-      cwd
-    );
+    const validation = validateCreateHarnessOptions(harnessValidationInput, cwd);
     if (!validation.valid) {
       if (options.json) {
         console.log(JSON.stringify({ success: false, error: validation.error }));
@@ -213,25 +215,7 @@ async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
       network_mode: standardize(NetworkModeEnum, options.networkMode ?? 'public'),
     },
     async () => {
-      const validation = validateCreateHarnessOptions(
-        {
-          name,
-          projectName,
-          modelProvider: options.modelProvider,
-          modelId: options.modelId,
-          apiKeyArn: options.apiKeyArn,
-          container: options.container,
-          networkMode: options.networkMode,
-          subnets: options.subnets,
-          securityGroups: options.securityGroups,
-          vpcId: options.vpcId,
-          efsAccessPointArn: options.efsAccessPointArn,
-          efsMountPath: options.efsMountPath,
-          s3AccessPointArn: options.s3AccessPointArn,
-          s3MountPath: options.s3MountPath,
-        },
-        cwd
-      );
+      const validation = validateCreateHarnessOptions(harnessValidationInput, cwd);
       if (!validation.valid) {
         return { success: false as const, error: new ValidationError(validation.error!) };
       }

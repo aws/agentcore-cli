@@ -32,6 +32,10 @@ function makeConfigIO(overrides: Partial<ConfigIO> = {}): {
     writeProjectSpec,
     writeHarnessSpec,
     readHarnessSpec: (name: string) => Promise.resolve(harnessSpecs[name]),
+    // Path getters are part of the real ConfigIO interface; snapshot() calls them on the preview
+    // (persist=false) path. Stub them so the mock matches the interface even for persist=true tests.
+    getAgentConfigPath: () => '/tmp/mock-agentcore.json',
+    getHarnessConfigPath: (name: string) => `/tmp/mock-${name}.json`,
     ...overrides,
   } as unknown as ConfigIO;
   return { configIO, writeProjectSpec, writeHarnessSpec, harnessSpecs };
@@ -206,6 +210,50 @@ describe('backfillContainerVpcIds', () => {
       const result = await backfillContainerVpcIds(configIO, spec, 'us-east-1', true);
       await result.restore(); // no-op on a real deploy
       expect(readFileSync(agentPath, 'utf-8')).toContain('vpc-0123456789abcdef0');
+    });
+
+    it('rolls back an already-written file when a LATER resource resolve throws (multi-resource preview)', async () => {
+      // Runtime resolves + writes agentcore.json, THEN the harness resolve throws (e.g. DescribeSubnets
+      // denied / subnets span VPCs). The function rejects before returning `restore`, so the caller
+      // can't revert — the rollback must happen internally so the preview never leaves the tree dirty.
+      const dir = mkdtempSync(join(tmpdir(), `backfill-${randomUUID()}-`));
+      const agentPath = join(dir, 'agentcore.json');
+      const original = JSON.stringify({ name: 'proj', runtimes: [{ name: 'a' }] }, null, 2);
+      writeFileSync(agentPath, original, 'utf-8');
+
+      const runtime = containerVpcRuntime();
+      const harness = {
+        name: 'h1',
+        dockerfile: 'Dockerfile',
+        networkMode: 'VPC',
+        networkConfig: { subnets: ['subnet-0000000000000000b'], securityGroups: ['sg-0000000000000000b'] },
+      } as unknown as HarnessSpec;
+      const spec = {
+        name: 'proj',
+        runtimes: [runtime],
+        harnesses: [{ name: 'h1' }],
+      } as unknown as AgentCoreProjectSpec;
+
+      const configIO = {
+        getAgentConfigPath: () => agentPath,
+        getHarnessConfigPath: (n: string) => join(dir, `${n}.json`),
+        writeProjectSpec: (s: AgentCoreProjectSpec) => {
+          writeFileSync(agentPath, JSON.stringify(s, null, 2), 'utf-8');
+          return Promise.resolve();
+        },
+        readHarnessSpec: () => Promise.resolve(harness),
+        writeHarnessSpec: () => Promise.resolve(),
+      } as unknown as ConfigIO;
+
+      // First subnet (runtime) resolves; second (harness) throws.
+      mockResolveVpcId
+        .mockResolvedValueOnce('vpc-0123456789abcdef0')
+        .mockRejectedValueOnce(new Error('Subnets span multiple VPCs'));
+
+      await expect(backfillContainerVpcIds(configIO, spec, 'us-east-1', false)).rejects.toThrow(/span multiple VPCs/);
+
+      // The runtime write must have been rolled back — agentcore.json is byte-for-byte the original.
+      expect(readFileSync(agentPath, 'utf-8')).toBe(original);
     });
   });
 });

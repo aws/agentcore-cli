@@ -989,12 +989,23 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     logger.finalize(false);
     return { success: false, error: toError(err), logPath: logger.getRelativeLogPath() };
   } finally {
+    // Each cleanup step must run regardless of whether an earlier one fails — a throw from
+    // dispose() (common after a synth/bootstrap failure on a creds-less preview) must not skip the
+    // vpcId-backfill revert or the env restore. Isolate each with try/catch.
     if (toolkitWrapper) {
-      await toolkitWrapper.dispose();
+      try {
+        await toolkitWrapper.dispose();
+      } catch (disposeErr) {
+        logger.log(`CDK toolkit dispose failed: ${getErrorMessage(disposeErr)}`, 'warn');
+      }
     }
     // Revert the preview-mode vpcId backfill on every exit path (success, early return, or throw).
     if (previewRestore) {
-      await previewRestore();
+      try {
+        await previewRestore();
+      } catch (restoreErr) {
+        logger.log(`Failed to revert preview vpcId backfill: ${getErrorMessage(restoreErr)}`, 'warn');
+      }
     }
     restoreEnv?.();
   }
