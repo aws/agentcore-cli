@@ -11,6 +11,7 @@ import {
   ApiGatewayConfigSchema,
   GatewayExceptionLevelSchema,
   GatewayTargetTypeSchema,
+  HttpRuntimeConfigSchema,
   LambdaFunctionArnConfigSchema,
   McpImplLanguageSchema,
   RuntimeConfigSchema,
@@ -29,6 +30,9 @@ describe('GatewayTargetTypeSchema', () => {
       'smithyModel',
       'apiGateway',
       'lambdaFunctionArn',
+      'httpRuntime',
+      'connector',
+      'passthrough',
     ]);
   });
 
@@ -1051,6 +1055,194 @@ describe('CustomClaimValidationSchema', () => {
         claimMatchValue: { matchValueString: 'engineering' },
       },
       extraField: 'not-allowed',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('HttpRuntimeConfigSchema', () => {
+  it('accepts config with runtime only', () => {
+    const result = HttpRuntimeConfigSchema.safeParse({ runtime: 'my-agent' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts config with runtime and runtimeEndpoint', () => {
+    const result = HttpRuntimeConfigSchema.safeParse({ runtime: 'my-agent', runtimeEndpoint: 'LIVE' });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects when runtime is missing', () => {
+    const result = HttpRuntimeConfigSchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects extra fields (strict)', () => {
+    const result = HttpRuntimeConfigSchema.safeParse({ runtime: 'my-agent', extra: 'not-allowed' });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('AgentCoreGatewayTargetSchema with httpRuntime', () => {
+  it('accepts valid httpRuntime target with httpRuntime object', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'my-http-target',
+      targetType: 'httpRuntime',
+      httpRuntime: { runtime: 'my-agent' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts httpRuntime target with runtimeEndpoint', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'my-http-target',
+      targetType: 'httpRuntime',
+      httpRuntime: { runtime: 'my-agent', runtimeEndpoint: 'LIVE' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects httpRuntime target without httpRuntime object', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'my-http-target',
+      targetType: 'httpRuntime',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('httpRuntime'))).toBe(true);
+    }
+  });
+
+  it('rejects httpRuntime target with endpoint set (should use httpRuntime.runtimeEndpoint)', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'my-http-target',
+      targetType: 'httpRuntime',
+      httpRuntime: { runtime: 'my-agent' },
+      endpoint: 'https://example.com/runtime',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('httpRuntime.runtimeEndpoint'))).toBe(true);
+    }
+  });
+
+  it('rejects httpRuntime target with compute', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'my-http-target',
+      targetType: 'httpRuntime',
+      httpRuntime: { runtime: 'my-agent' },
+      compute: {
+        host: 'Lambda',
+        implementation: { language: 'Python', path: 'tools', handler: 'h' },
+        pythonVersion: 'PYTHON_3_12',
+      },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('compute'))).toBe(true);
+    }
+  });
+
+  it('rejects httpRuntime target with apiGateway config', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'my-http-target',
+      targetType: 'httpRuntime',
+      httpRuntime: { runtime: 'my-agent' },
+      apiGateway: {
+        restApiId: 'abc123',
+        stage: 'prod',
+        apiGatewayToolConfiguration: { toolFilters: [{ filterPath: '/*', methods: ['GET'] }] },
+      },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('apiGateway'))).toBe(true);
+    }
+  });
+
+  it('rejects httpRuntime target with lambdaFunctionArn config', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'my-http-target',
+      targetType: 'httpRuntime',
+      httpRuntime: { runtime: 'my-agent' },
+      lambdaFunctionArn: {
+        lambdaArn: 'arn:aws:lambda:us-east-1:123456789012:function:my-func',
+        toolSchemaFile: './tools.json',
+      },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('lambdaFunctionArn'))).toBe(true);
+    }
+  });
+
+  it('rejects httpRuntime target with toolDefinitions', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'my-http-target',
+      targetType: 'httpRuntime',
+      httpRuntime: { runtime: 'my-agent' },
+      toolDefinitions: [{ name: 'myTool', description: 'A tool', inputSchema: { type: 'object' as const } }],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('toolDefinitions'))).toBe(true);
+    }
+  });
+
+  it('accepts httpRuntime target with OAUTH outbound auth', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'my-http-target',
+      targetType: 'httpRuntime',
+      httpRuntime: { runtime: 'my-agent' },
+      outboundAuth: { type: 'OAUTH', credentialName: 'my-cred' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects httpRuntime target with API_KEY outbound auth (not supported)', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'my-http-target',
+      targetType: 'httpRuntime',
+      httpRuntime: { runtime: 'my-agent' },
+      outboundAuth: { type: 'API_KEY', credentialName: 'my-cred' },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('API_KEY'))).toBe(true);
+    }
+  });
+});
+
+describe('AgentCoreGatewayTargetSchema with web-search connector', () => {
+  it('accepts a minimal web-search connector target', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'web-search',
+      targetType: 'connector',
+      connectorId: 'web-search',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a web-search connector target with configurations', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'web-search',
+      targetType: 'connector',
+      connectorId: 'web-search',
+      configurations: [
+        {
+          name: 'WebSearch',
+          parameterValues: { domainFilter: { exclude: ['internal.example.com', 'staging.example.com'] } },
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts parameterValues on non-connector types without validation', () => {
+    const result = AgentCoreGatewayTargetSchema.safeParse({
+      name: 'mcp',
+      targetType: 'mcpServer',
+      endpoint: 'https://example.com/mcp',
+      parameterValues: { anything: true },
     });
     expect(result.success).toBe(false);
   });

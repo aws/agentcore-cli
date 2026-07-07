@@ -5,6 +5,8 @@
  * as CDK constructs. These operations run as a pre-deploy step outside the
  * main CDK synthesis/deploy path.
  */
+import { type Result, toError } from '@/lib';
+import { err, ok } from '@/lib/result';
 import {
   BedrockAgentCoreControlClient,
   CreateApiKeyCredentialProviderCommand,
@@ -40,7 +42,7 @@ export async function createApiKeyProvider(
   client: BedrockAgentCoreControlClient,
   providerName: string,
   apiKey: string
-): Promise<{ success: boolean; credentialProviderArn?: string; error?: string }> {
+): Promise<Result<{ credentialProviderArn?: string }>> {
   try {
     await client.send(
       new CreateApiKeyCredentialProviderCommand({
@@ -50,21 +52,18 @@ export async function createApiKeyProvider(
     );
     // Create response doesn't include credentialProviderArn — fetch it
     const getResponse = await client.send(new GetApiKeyCredentialProviderCommand({ name: providerName }));
-    return { success: true, credentialProviderArn: getResponse.credentialProviderArn };
+    return ok({ credentialProviderArn: getResponse.credentialProviderArn });
   } catch (error) {
     const errorName = (error as { name?: string }).name;
     if (errorName === 'ConflictException' || errorName === 'ResourceAlreadyExistsException') {
       try {
         const getResponse = await client.send(new GetApiKeyCredentialProviderCommand({ name: providerName }));
-        return { success: true, credentialProviderArn: getResponse.credentialProviderArn };
+        return ok({ credentialProviderArn: getResponse.credentialProviderArn });
       } catch {
-        return { success: true };
+        return ok();
       }
     }
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
+    return err(toError(error));
   }
 }
 
@@ -75,7 +74,7 @@ export async function updateApiKeyProvider(
   client: BedrockAgentCoreControlClient,
   providerName: string,
   apiKey: string
-): Promise<{ success: boolean; credentialProviderArn?: string; error?: string }> {
+): Promise<Result<{ credentialProviderArn?: string }>> {
   try {
     await client.send(
       new UpdateApiKeyCredentialProviderCommand({
@@ -85,12 +84,9 @@ export async function updateApiKeyProvider(
     );
     // Update response doesn't include credentialProviderArn — fetch it
     const getResponse = await client.send(new GetApiKeyCredentialProviderCommand({ name: providerName }));
-    return { success: true, credentialProviderArn: getResponse.credentialProviderArn };
+    return ok({ credentialProviderArn: getResponse.credentialProviderArn });
   } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
+    return err(toError(error));
   }
 }
 
@@ -102,7 +98,7 @@ export async function setTokenVaultKmsKey(
   client: BedrockAgentCoreControlClient,
   kmsKeyArn: string,
   tokenVaultId?: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<Result> {
   try {
     await client.send(
       new SetTokenVaultCMKCommand({
@@ -113,11 +109,8 @@ export async function setTokenVaultKmsKey(
         },
       })
     );
-    return { success: true };
+    return ok();
   } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
+    return err(toError(error));
   }
 }

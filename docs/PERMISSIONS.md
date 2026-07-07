@@ -37,12 +37,23 @@ Attach this to every IAM user or role that will run AgentCore CLI commands. The 
 
 - `sts:AssumeRole` on the four CDK bootstrap roles (deploy, file-publishing, image-publishing, lookup)
 - `sts:GetCallerIdentity`, `cloudformation:DescribeStacks`, `tag:GetResources` for basic operations
+- `ec2:DescribeSecurityGroups` and `ec2:DescribeSubnets` for validating VPC network configuration when deploying agents
+  with EFS or S3 filesystem mounts (optional, see [Scoping down by feature](#scoping-down-by-feature))
 - `bedrock-agentcore:Invoke*`, `bedrock-agentcore:Get*`, `bedrock-agentcore:List*` for invoking agents and checking
   status
+- `bedrock-agentcore` create/update/delete actions for runtimes, memories, gateways, gateway targets, evaluators,
+  workload identities, and configuration bundles (see [AgentCore resource management](#agentcore-resource-management))
 - Credential provider and token vault actions for `deploy` when the project uses identity features
+- Payment credential provider and payment session actions for `deploy`, `status`, and `invoke` when the project uses
+  payment connectors
 - CloudWatch Logs, X-Ray, and Application Signals actions for `logs`, `traces`, and observability setup
 - Bedrock actions for agent import and AI-assisted code generation (optional, see
   [Scoping down by feature](#scoping-down-by-feature))
+- `cloudformation:*` for the full deploy/diff/destroy stack lifecycle the CLI drives directly
+- `iam:CreateRole`/`DeleteRole`/`PutRolePolicy`/`PassRole` scoped to `role/AgentCore-*` for HTTP gateway role
+  management, plus `iam:PassRole` (scoped to `bedrock-agentcore.amazonaws.com`) for passing execution roles to the
+  service
+- `secretsmanager` and `cognito-idp` actions used by identity and custom-JWT setup flows
 
 To create this policy:
 
@@ -162,15 +173,29 @@ The policy files provided cover every AgentCore feature. If your team only uses 
 corresponding statements to further tighten the policies. This table maps features to the policy statements that can be
 safely removed:
 
-| If your team does not use...    | Remove from user policy                                              | Remove from CFN execution policy                                                                       |
-| ------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Container builds (CodeZip only) | _(no change)_                                                        | `EcrContainerBuilds`, `CodeBuildContainerBuilds`                                                       |
-| MCP Lambda compute              | _(no change)_                                                        | `LambdaMcpAndCustomResources` (keep if using container builds, which need Lambda for custom resources) |
-| Agent import from Bedrock       | `BedrockAgentImport`                                                 | _(no change)_                                                                                          |
-| AI-assisted code generation     | `BedrockModelInvocation`                                             | _(no change)_                                                                                          |
-| Identity/credential providers   | `IdentityCredentialManagement`, `TokenVaultKmsKeyCreation`           | `SecretsManagerForCredentials`                                                                         |
-| Policy engine                   | `PolicyGeneration`                                                   | Remove `*PolicyEngine*` and `*Policy` actions from `BedrockAgentCoreResources`                         |
-| Online evaluations              | Remove `UpdateOnlineEvaluationConfig` from `AgentCoreResourceStatus` | Remove `*OnlineEvaluationConfig*` actions from `BedrockAgentCoreResources`                             |
+| If your team does not use...    | Remove from user policy                                                 | Remove from CFN execution policy                                                                       |
+| ------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Container builds (CodeZip only) | _(no change)_                                                           | `EcrContainerBuilds`, `CodeBuildContainerBuilds`                                                       |
+| MCP Lambda compute              | _(no change)_                                                           | `LambdaMcpAndCustomResources` (keep if using container builds, which need Lambda for custom resources) |
+| Agent import from Bedrock       | `BedrockAgentImport`                                                    | _(no change)_                                                                                          |
+| Filesystem mounts (EFS/S3)      | `FilesystemNetworkValidation`                                           | _(no change)_                                                                                          |
+| AI-assisted code generation     | `BedrockModelInvocation`                                                | _(no change)_                                                                                          |
+| Identity/credential providers   | `IdentityCredentialManagement`, `TokenVaultKmsKeyCreation`              | `SecretsManagerForCredentials`                                                                         |
+| Payment connectors              | `PaymentCredentialManagement`, `PaymentCredentialSecrets`               | _(no change)_                                                                                          |
+| Policy engine                   | `PolicyGeneration`                                                      | Remove `*PolicyEngine*` and `*Policy` actions from `BedrockAgentCoreResources`                         |
+| Online evaluations              | Remove `UpdateOnlineEvaluationConfig` from `AgentCoreResourceStatus`    | Remove `*OnlineEvaluationConfig*` actions from `BedrockAgentCoreResources`                             |
+| HTTP gateways                   | `HttpGatewayIamRoleManagement`                                          | _(no change)_                                                                                          |
+| Custom JWT / Cognito authorizer | `CustomJwtCognitoSetup`                                                 | _(no change)_                                                                                          |
+| Harnesses                       | `HarnessManagement`, `HarnessPassRole`                                  | _(no change)_                                                                                          |
+| Configuration bundles           | `ConfigBundleManagement`                                                | _(no change)_                                                                                          |
+| End-to-end testing              | `ImportTestIam`, `ImportTestPassRole`, `ImportTestS3`, `SecretsManager` | _(no change)_                                                                                          |
+
+> **Reducing to least privilege.** Beyond the per-feature removals above, the developer policy also grants
+> `AgentCoreResourceManagement` (direct resource create/update/delete) and `CloudFormationFull` (`cloudformation:*`).
+> These exist because the policy doubles as the end-to-end test permission set. For a real developer, most resource
+> creation happens through CloudFormation, so you can move `AgentCoreResourceManagement` onto the
+> [CFN execution role](#cfn-execution-role-permissions) and narrow `cloudformation:*` toward the specific actions listed
+> under [CloudFormation](#cloudformation).
 
 ## Hardening with permission boundaries
 
@@ -309,6 +334,29 @@ Required for all deployment operations (`deploy`, `status`, `diff`).
 | `cloudformation:DescribeStacks` | `deploy`, `status`                   | Check bootstrap status, stack status, read outputs |
 | `tag:GetResources`              | `status`, `deploy`, `invoke`, `logs` | Discover deployed stacks by project tags           |
 
+### Filesystem network validation
+
+Required only when deploying an agent with EFS or S3 filesystem mounts and a VPC network configuration. The CLI runs a
+preflight check that the agent's subnets and security groups are correctly set up for NFS (port 2049) before deploying.
+These EC2 and EFS `Describe*` actions do not support resource-level scoping, so `Resource` must be `*`.
+
+| Action                                                | CLI Commands                 | Purpose                                                                                                                    |
+| ----------------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `ec2:DescribeSecurityGroups`                          | `create`, `deploy`           | Validate agent/mount-target security groups allow NFS (port 2049)                                                          |
+| `ec2:DescribeSubnets`                                 | `create`, `deploy`, `import` | Validate mount-target subnets are in the agent's VPC and AZs; resolve the VPC ID for Container+VPC builds (see note below) |
+| `elasticfilesystem:DescribeAccessPoints`              | `create`, `deploy`           | Resolve the EFS access point and its file system                                                                           |
+| `elasticfilesystem:DescribeMountTargets`              | `create`, `deploy`           | Find the EFS mount targets to validate against the agent's subnets                                                         |
+| `elasticfilesystem:DescribeMountTargetSecurityGroups` | `create`, `deploy`           | Check mount-target security groups allow NFS from the agent                                                                |
+| `s3files:ListMountTargets`                            | `create`, `deploy`           | List the S3 Files access point's mount targets                                                                             |
+
+> **Container builds in VPC mode also require `ec2:DescribeSubnets`.** A Container build (agent or
+> dockerfile/prebuilt-image harness) that deploys in VPC mode needs an explicit VPC ID — CodeBuild's `CreateProject`
+> cannot infer the VPC from subnets. When the VPC ID is not already in the config (e.g. `import` of a deployed
+> Container+VPC runtime, `export` of a container harness, or `deploy` of a project created before the VPC ID field
+> existed), the CLI resolves it from the first subnet via `ec2:DescribeSubnets`. Grant this action for `import`,
+> `export`, and `deploy` if you use Container builds in VPC mode, even without filesystem mounts. |
+> `s3files:GetMountTarget` | `create`, `deploy` | Inspect an S3 Files mount target's subnet/network configuration |
+
 ### Agent invocation
 
 | Action                                        | CLI Commands    | Purpose                                                                                   |
@@ -337,17 +385,17 @@ Required for all deployment operations (`deploy`, `status`, `diff`).
 
 ### Batch evaluation and recommendations
 
-| Action                                    | CLI Commands     | Purpose                        |
-| ----------------------------------------- | ---------------- | ------------------------------ |
-| `bedrock-agentcore:StartBatchEvaluation`  | `run batch-eval` | Start a batch evaluation job   |
-| `bedrock-agentcore:GetBatchEvaluation`    | `run batch-eval` | Poll batch evaluation status   |
-| `bedrock-agentcore:ListBatchEvaluations`  | `evals history`  | List past batch evaluations    |
-| `bedrock-agentcore:StopBatchEvaluation`   | `run batch-eval` | Stop an in-progress batch eval |
-| `bedrock-agentcore:DeleteBatchEvaluation` | `run batch-eval` | Delete a batch evaluation      |
-| `bedrock-agentcore:StartRecommendation`   | `run recommend`  | Start a recommendation job     |
-| `bedrock-agentcore:GetRecommendation`     | `run recommend`  | Poll recommendation status     |
-| `bedrock-agentcore:ListRecommendations`   | `run recommend`  | List past recommendations      |
-| `bedrock-agentcore:DeleteRecommendation`  | `run recommend`  | Stop/delete a recommendation   |
+| Action                                    | CLI Commands           | Purpose                        |
+| ----------------------------------------- | ---------------------- | ------------------------------ |
+| `bedrock-agentcore:StartBatchEvaluation`  | `run batch-evaluation` | Start a batch evaluation job   |
+| `bedrock-agentcore:GetBatchEvaluation`    | `run batch-evaluation` | Poll batch evaluation status   |
+| `bedrock-agentcore:ListBatchEvaluations`  | `evals history`        | List past batch evaluations    |
+| `bedrock-agentcore:StopBatchEvaluation`   | `run batch-evaluation` | Stop an in-progress batch eval |
+| `bedrock-agentcore:DeleteBatchEvaluation` | `run batch-evaluation` | Delete a batch evaluation      |
+| `bedrock-agentcore:StartRecommendation`   | `run recommendation`   | Start a recommendation job     |
+| `bedrock-agentcore:GetRecommendation`     | `run recommendation`   | Poll recommendation status     |
+| `bedrock-agentcore:ListRecommendations`   | `run recommendation`   | List past recommendations      |
+| `bedrock-agentcore:DeleteRecommendation`  | `run recommendation`   | Stop/delete a recommendation   |
 
 ### Identity and credential management
 
@@ -365,6 +413,36 @@ Required for all deployment operations (`deploy`, `status`, `diff`).
 | `kms:CreateKey`                                    | `deploy`     | Create KMS key for token vault encryption |
 | `kms:TagResource`                                  | `deploy`     | Tag the created KMS key                   |
 
+### Payment credential management
+
+Required only when the project defines payment managers and connectors (the `payments` block in the project spec). The
+CLI calls the Payment control-plane and data-plane APIs directly with the developer's credentials; both are signed under
+the `bedrock-agentcore` service.
+
+| Action                                              | CLI Commands | Purpose                                                              |
+| --------------------------------------------------- | ------------ | -------------------------------------------------------------------- |
+| `bedrock-agentcore:GetPaymentCredentialProvider`    | `deploy`     | Check if a payment credential provider already exists                |
+| `bedrock-agentcore:CreatePaymentCredentialProvider` | `deploy`     | Create a payment credential provider from connector secrets          |
+| `bedrock-agentcore:UpdatePaymentCredentialProvider` | `deploy`     | Update a payment credential provider with new secret values          |
+| `bedrock-agentcore:DeletePaymentCredentialProvider` | `deploy`     | Remove a payment credential provider when a connector is removed     |
+| `bedrock-agentcore:GetPaymentManager`               | `status`     | Look up payment manager status                                       |
+| `bedrock-agentcore:ListPaymentSessions`             | `invoke`     | Find an existing active payment session before creating a new one    |
+| `bedrock-agentcore:CreatePaymentSession`            | `invoke`     | Create a payment session with a default budget for `invoke` auto-pay |
+
+Creating or updating a payment credential provider also writes the connector secrets into a service-managed Secrets
+Manager secret (named `bedrock-agentcore-identity!default/payment/*`). Unlike API key and OAuth2 providers, the Payment
+API performs these Secrets Manager operations with the **caller's** credentials, so the developer policy must allow them
+directly. These actions are scoped to the managed payment secret prefix.
+
+| Action                          | CLI Commands | Purpose                                                         |
+| ------------------------------- | ------------ | --------------------------------------------------------------- |
+| `secretsmanager:CreateSecret`   | `deploy`     | Create the managed secret backing a new payment credential      |
+| `secretsmanager:PutSecretValue` | `deploy`     | Write updated connector secret values when a credential changes |
+| `secretsmanager:GetSecretValue` | `deploy`     | Read the managed secret during provider create/update           |
+| `secretsmanager:DescribeSecret` | `deploy`     | Inspect the managed secret metadata                             |
+| `secretsmanager:TagResource`    | `deploy`     | Tag the managed secret on creation                              |
+| `secretsmanager:DeleteSecret`   | `deploy`     | Remove the managed secret when a payment connector is removed   |
+
 ### Policy generation
 
 | Action                                         | CLI Commands      | Purpose                          |
@@ -375,19 +453,19 @@ Required for all deployment operations (`deploy`, `status`, `diff`).
 
 ### Logging, traces, and observability
 
-| Action                          | CLI Commands                             | Purpose                                                    |
-| ------------------------------- | ---------------------------------------- | ---------------------------------------------------------- |
-| `logs:StartLiveTail`            | `logs`                                   | Stream agent logs in real-time                             |
-| `logs:FilterLogEvents`          | `logs`                                   | Search agent logs                                          |
-| `logs:StartQuery`               | `traces list`, `traces get`, `run evals` | Run CloudWatch Logs Insights queries                       |
-| `logs:GetQueryResults`          | `traces list`, `traces get`, `run evals` | Retrieve query results                                     |
-| `logs:DescribeResourcePolicies` | `deploy`                                 | Check for X-Ray log resource policy                        |
-| `logs:PutResourcePolicy`        | `deploy`                                 | Create resource policy for X-Ray trace access              |
-| `logs:DescribeLogGroups`        | `run batch-eval`, `run recommend`        | Discover runtime log groups for evaluation data sources    |
-| `logs:CreateLogGroup`           | `run batch-eval`                         | Create log group for batch evaluation results output       |
-| `logs:CreateLogStream`          | `run batch-eval`                         | Create log stream for batch evaluation results             |
-| `logs:PutLogEvents`             | `run batch-eval`                         | Write batch evaluation results to CloudWatch Logs          |
-| `logs:PutRetentionPolicy`       | `run batch-eval`                         | Set retention policy on batch evaluation results log group |
+| Action                          | CLI Commands                                 | Purpose                                                    |
+| ------------------------------- | -------------------------------------------- | ---------------------------------------------------------- |
+| `logs:StartLiveTail`            | `logs`                                       | Stream agent logs in real-time                             |
+| `logs:FilterLogEvents`          | `logs`                                       | Search agent logs                                          |
+| `logs:StartQuery`               | `traces list`, `traces get`, `run evals`     | Run CloudWatch Logs Insights queries                       |
+| `logs:GetQueryResults`          | `traces list`, `traces get`, `run evals`     | Retrieve query results                                     |
+| `logs:DescribeResourcePolicies` | `deploy`                                     | Check for X-Ray log resource policy                        |
+| `logs:PutResourcePolicy`        | `deploy`                                     | Create resource policy for X-Ray trace access              |
+| `logs:DescribeLogGroups`        | `run batch-evaluation`, `run recommendation` | Discover runtime log groups for evaluation data sources    |
+| `logs:CreateLogGroup`           | `run batch-evaluation`                       | Create log group for batch evaluation results output       |
+| `logs:CreateLogStream`          | `run batch-evaluation`                       | Create log stream for batch evaluation results             |
+| `logs:PutLogEvents`             | `run batch-evaluation`                       | Write batch evaluation results to CloudWatch Logs          |
+| `logs:PutRetentionPolicy`       | `run batch-evaluation`                       | Set retention policy on batch evaluation results log group |
 
 ### Transaction search setup
 
@@ -421,9 +499,104 @@ Only required when using `agentcore add agent --type import` to import an existi
 
 ### Bedrock model invocation
 
-| Action                | CLI Commands            | Purpose                                       |
-| --------------------- | ----------------------- | --------------------------------------------- |
-| `bedrock:InvokeModel` | `add` (code generation) | Invoke Claude for AI-assisted code generation |
+| Action                                  | CLI Commands            | Purpose                                       |
+| --------------------------------------- | ----------------------- | --------------------------------------------- |
+| `bedrock:InvokeModel`                   | `add` (code generation) | Invoke Claude for AI-assisted code generation |
+| `bedrock:InvokeModelWithResponseStream` | `add` (code generation) | Stream Claude responses during generation     |
+| `bedrock:CountTokens`                   | `add` (code generation) | Count tokens for context-window budgeting     |
+
+### AgentCore resource management
+
+The developer policy grants direct create/update/delete access to AgentCore resources. Most of these resources are
+normally provisioned by CloudFormation through the CFN execution role during `deploy`; they are also granted directly on
+the developer principal so the CLI (and its end-to-end test suite) can manage resources outside of a stack. If you scope
+this policy down for production, consider moving these to the [CFN execution role](#cfn-execution-role-permissions)
+instead.
+
+| Action                                                                                                    | Purpose                                   |
+| --------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `bedrock-agentcore:CreateAgentRuntime`, `UpdateAgentRuntime`, `DeleteAgentRuntime`, `ListAgentRuntimes`   | Manage agent runtimes                     |
+| `bedrock-agentcore:CreateAgentRuntimeEndpoint`                                                            | Create runtime endpoints                  |
+| `bedrock-agentcore:CreateWorkloadIdentity`, `DeleteWorkloadIdentity`                                      | Manage workload identities                |
+| `bedrock-agentcore:CreateMemory`, `GetMemory`, `UpdateMemory`, `DeleteMemory`, `ListMemories`             | Manage memories                           |
+| `bedrock-agentcore:CreateEvaluator`, `DeleteEvaluator`, `ListOnlineEvaluationConfigs`                     | Manage evaluators and online eval configs |
+| `bedrock-agentcore:CreateGateway`, `UpdateGateway`, `DeleteGateway`, `GetGateway`, `ListGateways`         | Manage gateways                           |
+| `bedrock-agentcore:CreateGatewayTarget`, `UpdateGatewayTarget`, `DeleteGatewayTarget`, `GetGatewayTarget` | Manage gateway targets                    |
+| `bedrock-agentcore:SynchronizeGatewayTargets`                                                             | Sync gateway targets                      |
+| `bedrock-agentcore:TagResource`, `ListTagsForResource`                                                    | Tag and read tags on AgentCore resources  |
+
+### Configuration bundle management
+
+| Action                                                                                                                                     | Purpose                      |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
+| `bedrock-agentcore:CreateConfigurationBundle`, `UpdateConfigurationBundle`, `DeleteConfigurationBundle`                                    | Manage configuration bundles |
+| `bedrock-agentcore:GetConfigurationBundle`, `GetConfigurationBundleVersion`, `ListConfigurationBundles`, `ListConfigurationBundleVersions` | Read configuration bundles   |
+
+### Harness management
+
+Used by the CLI's harness workflows (dockerfile/prebuilt-image harnesses and the end-to-end test suite).
+
+| Action                                                                                                              | Purpose                                                       |
+| ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `bedrock-agentcore:CreateHarness`, `GetHarness`, `UpdateHarness`, `DeleteHarness`, `ListHarnesses`, `InvokeHarness` | Manage and invoke harnesses                                   |
+| `iam:PassRole` (`role/*`, scoped to `bedrock-agentcore.amazonaws.com`)                                              | Pass an execution role to the AgentCore service when invoking |
+
+### CloudFormation (full lifecycle)
+
+The developer principal drives the full CloudFormation stack lifecycle directly during `deploy`, `diff`, and
+`remove all`, so the policy grants `cloudformation:*`.
+
+| Action                                  | CLI Commands                | Purpose                                                   |
+| --------------------------------------- | --------------------------- | --------------------------------------------------------- |
+| `cloudformation:*`                      | `deploy`, `diff`, `destroy` | Create, update, describe, and delete deploy stacks        |
+| `ssm:GetParameters`, `ssm:GetParameter` | `deploy`                    | CDK bootstrap version lookup (`/cdk-bootstrap/*/version`) |
+
+### HTTP gateway IAM role management
+
+When deploying an HTTP gateway, the CLI creates and manages the gateway's execution role directly. These IAM actions are
+scoped to roles named `AgentCore-*`.
+
+| Action                                                           | CLI Commands | Purpose                                        |
+| ---------------------------------------------------------------- | ------------ | ---------------------------------------------- |
+| `iam:CreateRole`, `iam:DeleteRole`, `iam:GetRole`, `iam:TagRole` | `deploy`     | Create and manage the gateway execution role   |
+| `iam:PutRolePolicy`, `iam:DeleteRolePolicy`                      | `deploy`     | Attach/remove the gateway role's inline policy |
+| `iam:PassRole` (`role/AgentCore-*`)                              | `deploy`     | Pass the gateway role to the service           |
+
+> **Privilege-escalation note.** Because this statement allows `iam:CreateRole` and `iam:PutRolePolicy` on
+> `role/AgentCore-*` (and `HarnessManagement` allows `iam:PassRole` on `role/*`), a principal with the developer policy
+> can create an IAM role and grant it permissions. In production, prefer letting CloudFormation create these roles via
+> the [CFN execution role](#cfn-execution-role-permissions) — constrained by a
+> [permission boundary](#hardening-with-permission-boundaries) — rather than granting IAM write actions on the
+> developer.
+
+### Custom JWT / Cognito setup
+
+Used when configuring a custom JWT authorizer backed by an Amazon Cognito user pool.
+
+| Action                                                                                               | CLI Commands       | Purpose                                 |
+| ---------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------- |
+| `cognito-idp:CreateUserPool`, `CreateUserPoolDomain`, `CreateResourceServer`, `CreateUserPoolClient` | `create`, `deploy` | Provision the Cognito user pool for JWT |
+| `cognito-idp:DeleteResourceServer`, `DeleteUserPoolDomain`, `DeleteUserPool`                         | `remove`           | Tear down the Cognito user pool         |
+
+### Secrets Manager (broad)
+
+In addition to the payment-scoped [Secrets Manager statement](#payment-credential-management), the policy includes a
+broad `secretsmanager` grant on `Resource: "*"` used by credential-provider setup flows.
+
+| Action                                                                | CLI Commands | Purpose                                    |
+| --------------------------------------------------------------------- | ------------ | ------------------------------------------ |
+| `secretsmanager:GetSecretValue`, `CreateSecret`, `DeleteSecret` (`*`) | `deploy`     | Read/create/delete secrets for credentials |
+
+### End-to-end test statements
+
+The following statements exist because this policy doubles as the permission set for the project's end-to-end test
+suite. They are **not required for normal CLI use** and can be removed when scoping the policy for real developers.
+
+| Sid                  | Action                                                                                           | Purpose                              |
+| -------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------ |
+| `ImportTestIam`      | `iam:GetRole`, `CreateRole`, `AttachRolePolicy`, `PutRolePolicy` (`role/bugbash-agentcore-role`) | Set up the test agent execution role |
+| `ImportTestPassRole` | `iam:PassRole` (`role/bugbash-agentcore-role`, to `bedrock-agentcore.amazonaws.com`)             | Pass the test role to the service    |
+| `ImportTestS3`       | `s3:ListBucket`, `CreateBucket`, `PutObject`                                                     | Stage test import artifacts in S3    |
 
 ## CFN execution role permissions
 

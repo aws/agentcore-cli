@@ -1,9 +1,9 @@
 import { ConfigIO, serializeResult } from '../../../lib';
+import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
+import { renderTUI } from '../../tui';
 import { requireProject, requireTTY } from '../../tui/guards';
-import { DeployScreen } from '../../tui/screens/deploy/DeployScreen';
 import { handleDeploy } from './actions';
 import type { DeployOptions, DeployResult } from './types';
 import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs } from './utils';
@@ -14,20 +14,14 @@ import React from 'react';
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-function handleDeployTUI(options: { autoConfirm?: boolean; diffMode?: boolean } = {}): void {
+function handleDeployTUI(options: { diffMode?: boolean } = {}): Promise<void> {
   requireProject();
-
-  const { unmount } = render(
-    <DeployScreen
-      isInteractive={false}
-      autoConfirm={options.autoConfirm}
-      diffMode={options.diffMode}
-      onExit={() => {
-        unmount();
-        process.exit(0);
-      }}
-    />
-  );
+  return renderTUI({
+    initialRoute: { name: 'deploy', diffMode: options.diffMode },
+    enterAltScreen: false,
+    actionOnBack: 'exit',
+    isInteractive: false,
+  });
 }
 
 async function handleDeployCLI(options: DeployOptions): Promise<void> {
@@ -111,6 +105,22 @@ async function executeDeploy(options: DeployOptions): Promise<DeployResult> {
       }
     : undefined;
 
+  // One-shot user-facing notices (e.g. the managed-memory heads-up before the slow CFN apply).
+  // Shown independent of --progress/--verbose, but NEVER under --json: stdout must stay pure
+  // machine-readable JSON there (the notice would corrupt it, breaking `deploy --json` parsing for
+  // any managed-memory harness). The notice is still captured in the deploy log via logger.log.
+  // Clear any active spinner line first so the multi-line notice prints cleanly.
+  const onNotice = options.json
+    ? undefined
+    : (message: string) => {
+        if (spinner) {
+          clearInterval(spinner);
+          spinner = undefined;
+          process.stdout.write('\r\x1b[K');
+        }
+        console.log(`\n${message}\n`);
+      };
+
   const result = await handleDeploy({
     target: options.target!,
     autoConfirm: options.yes,
@@ -119,6 +129,7 @@ async function executeDeploy(options: DeployOptions): Promise<DeployResult> {
     diff: options.diff,
     onProgress,
     onResourceEvent,
+    onNotice,
   });
 
   if (spinner) {
@@ -204,14 +215,15 @@ export const registerDeploy = (program: Command) => {
               target: cliOptions.target ?? 'default',
               progress: !cliOptions.json,
             };
+
             await handleDeployCLI(options as DeployOptions);
           } else if (cliOptions.diff) {
             // Diff-only: use TUI with diff mode
             requireTTY();
-            handleDeployTUI({ diffMode: true });
+            await handleDeployTUI({ diffMode: true });
           } else {
             requireTTY();
-            handleDeployTUI();
+            await handleDeployTUI();
           }
         } catch (error) {
           if (cliOptions.json) {

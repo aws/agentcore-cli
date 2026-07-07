@@ -1,9 +1,27 @@
-import { SecureCredentials, readEnvFile } from '../../../lib';
+import {
+  AwsCredentialsError,
+  MissingCredentialsError,
+  SecureCredentials,
+  ServiceQuotaError,
+  ValidationError,
+  readEnvFile,
+  toError,
+} from '../../../lib';
 import type { AgentCoreProjectSpec, Credential } from '../../../schema';
 import { getCredentialProvider } from '../../aws';
-import { isNoCredentialsError } from '../../errors';
+import {
+  createPaymentCredentialProvider,
+  deletePaymentCredentialProvider,
+  getPaymentCredentialProvider,
+  updatePaymentCredentialProvider,
+} from '../../aws/agentcore-payments';
+import { isNoCredentialsError, isQuotaExceededError } from '../../errors';
 import { getAwsLoginGuidance } from '../../external-requirements/checks';
-import { computeDefaultCredentialEnvVarName } from '../../primitives/credential-utils';
+import {
+  computeDefaultCredentialEnvVarName,
+  computePaymentCredentialEnvVarNames,
+  computeStripePrivyCredentialEnvVarNames,
+} from '../../primitives/credential-utils';
 import {
   apiKeyProviderExists,
   createApiKeyProvider,
@@ -13,8 +31,11 @@ import {
   updateApiKeyProvider,
   updateOAuth2Provider,
 } from '../identity';
+import { type Result, err, ok } from '@/lib/result';
 import { BedrockAgentCoreControlClient, GetTokenVaultCommand } from '@aws-sdk/client-bedrock-agentcore-control';
 import { CreateKeyCommand, KMSClient } from '@aws-sdk/client-kms';
+import { existsSync } from 'fs';
+import { join } from 'path';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -24,7 +45,7 @@ export interface ApiKeyProviderSetupResult {
   providerName: string;
   status: 'created' | 'updated' | 'exists' | 'skipped' | 'error';
   credentialProviderArn?: string;
-  error?: string;
+  error?: Error;
 }
 
 export interface PreDeployIdentityResult {
@@ -74,7 +95,7 @@ export async function setupApiKeyProviders(options: SetupApiKeyProvidersOptions)
           {
             providerName: 'TokenVault',
             status: 'error',
-            error: `Failed to configure KMS: ${kmsResult.error}`,
+            error: kmsResult.error,
           },
         ],
         hasErrors: true,
@@ -85,6 +106,9 @@ export async function setupApiKeyProviders(options: SetupApiKeyProvidersOptions)
 
   // Set up each credential in the project
   for (const credential of projectSpec.credentials) {
+    // Skip payment credentials — handled by setupPaymentCredentialProviders below
+    if (credential.authorizerType === 'PaymentCredentialProvider') continue;
+
     if (credential.authorizerType === 'ApiKeyCredentialProvider') {
       const result = await setupApiKeyCredentialProvider(client, credential, allCredentials);
       results.push(result);
@@ -102,7 +126,7 @@ async function setupTokenVaultKms(
   region: string,
   credentials: ReturnType<typeof getCredentialProvider>,
   projectSpec: AgentCoreProjectSpec
-): Promise<{ success: boolean; keyArn?: string; error?: string }> {
+): Promise<Result<{ keyArn?: string }>> {
   try {
     const controlClient = new BedrockAgentCoreControlClient({ region, credentials });
 
@@ -113,7 +137,7 @@ async function setupTokenVaultKms(
         vaultResponse.kmsConfiguration?.keyType === 'CustomerManagedKey' &&
         vaultResponse.kmsConfiguration.kmsKeyArn
       ) {
-        return { success: true, keyArn: vaultResponse.kmsConfiguration.kmsKeyArn };
+        return ok({ keyArn: vaultResponse.kmsConfiguration.kmsKeyArn });
       }
     } catch {
       // Vault may not exist yet or access denied — fall through to create key
@@ -129,17 +153,14 @@ async function setupTokenVaultKms(
     );
     const keyArn = response.KeyMetadata?.Arn;
     if (!keyArn) {
-      return { success: false, error: 'Failed to create KMS key' };
+      return err(new Error('Failed to create KMS key'));
     }
 
     const result = await setTokenVaultKmsKey(controlClient, keyArn);
-    if (!result.success) {
-      return { success: false, error: result.error };
-    }
-
-    return { success: true, keyArn };
+    if (!result.success) return result;
+    return ok({ keyArn });
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return err(toError(error));
   }
 }
 
@@ -155,7 +176,7 @@ async function setupApiKeyCredentialProvider(
     return {
       providerName: credential.name,
       status: 'skipped',
-      error: `No ${envVarName} found in agentcore/.env.local`,
+      error: new Error(`No ${envVarName} found in agentcore/.env.local`),
     };
   }
 
@@ -167,8 +188,8 @@ async function setupApiKeyCredentialProvider(
       return {
         providerName: credential.name,
         status: updateResult.success ? 'updated' : 'error',
-        credentialProviderArn: updateResult.credentialProviderArn,
-        error: updateResult.error,
+        credentialProviderArn: updateResult.success ? updateResult.credentialProviderArn : undefined,
+        error: updateResult.success ? undefined : updateResult.error,
       };
     }
 
@@ -176,22 +197,25 @@ async function setupApiKeyCredentialProvider(
     return {
       providerName: credential.name,
       status: createResult.success ? 'created' : 'error',
-      credentialProviderArn: createResult.credentialProviderArn,
-      error: createResult.error,
+      credentialProviderArn: createResult.success ? createResult.credentialProviderArn : undefined,
+      error: createResult.success ? undefined : createResult.error,
     };
   } catch (error) {
     // Provide clearer error message for AWS credentials issues
-    let errorMessage: string;
     if (isNoCredentialsError(error)) {
-      errorMessage = `AWS credentials not found. ${await getAwsLoginGuidance()}`;
-    } else {
-      errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        providerName: credential.name,
+        status: 'error',
+        error: new AwsCredentialsError(`AWS credentials not found. ${await getAwsLoginGuidance()}`, undefined, {
+          cause: error,
+        }),
+      };
     }
 
     return {
       providerName: credential.name,
       status: 'error',
-      error: errorMessage,
+      error: toError(error),
     };
   }
 }
@@ -235,6 +259,7 @@ export async function getMissingCredentials(
 
 /**
  * Get list of all credentials in the project that need env vars (for manual entry prompt and runtime credential reading).
+ * Covers ApiKey, OAuth2, and Payment connectors.
  */
 export function getAllCredentials(projectSpec: AgentCoreProjectSpec): MissingCredential[] {
   const credentials: MissingCredential[] = [];
@@ -254,7 +279,51 @@ export function getAllCredentials(projectSpec: AgentCoreProjectSpec): MissingCre
     }
   }
 
+  for (const payment of projectSpec.payments ?? []) {
+    for (const connector of payment.connectors) {
+      if (connector.provider === 'StripePrivy') {
+        const vars = computeStripePrivyCredentialEnvVarNames(connector.credentialName);
+        credentials.push(
+          { providerName: connector.credentialName, envVarName: vars.appId },
+          { providerName: connector.credentialName, envVarName: vars.appSecret },
+          { providerName: connector.credentialName, envVarName: vars.authorizationPrivateKey },
+          { providerName: connector.credentialName, envVarName: vars.authorizationId }
+        );
+      } else {
+        const vars = computePaymentCredentialEnvVarNames(connector.credentialName);
+        credentials.push(
+          { providerName: connector.credentialName, envVarName: vars.apiKeyId },
+          { providerName: connector.credentialName, envVarName: vars.apiKeySecret },
+          { providerName: connector.credentialName, envVarName: vars.walletSecret }
+        );
+      }
+    }
+  }
+
   return credentials;
+}
+
+/**
+ * Assert that .env.local exists if any credentials require it.
+ * Returns null if file exists or no credentials need it; an error message otherwise.
+ *
+ * The error lists every required env var across ApiKey, OAuth2, and Payment connectors
+ * so the user can populate the file in one shot rather than discovering missing vars
+ * one at a time across separate setup steps.
+ */
+export function assertEnvFileExists(projectSpec: AgentCoreProjectSpec, configBaseDir: string): Result {
+  const allCredentials = getAllCredentials(projectSpec);
+  if (allCredentials.length === 0) return ok();
+
+  const envFilePath = join(configBaseDir, '.env.local');
+  if (existsSync(envFilePath)) return ok();
+
+  const varList = allCredentials.map(c => `  ${c.envVarName}`).join('\n');
+  return err(
+    new MissingCredentialsError(
+      `agentcore/.env.local not found. Credentials require environment variables.\n\nRequired variables:\n${varList}\n\nTo fix: create agentcore/.env.local with the variables above, or re-run the relevant 'agentcore add' command to enter credentials interactively.`
+    )
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -264,7 +333,7 @@ export function getAllCredentials(projectSpec: AgentCoreProjectSpec): MissingCre
 export interface OAuth2ProviderSetupResult {
   providerName: string;
   status: 'created' | 'updated' | 'skipped' | 'error';
-  error?: string;
+  error?: Error;
   credentialProviderArn?: string;
   clientSecretArn?: string;
   callbackUrl?: string;
@@ -323,7 +392,7 @@ async function setupSingleOAuth2Provider(
   credentials: SecureCredentials
 ): Promise<OAuth2ProviderSetupResult> {
   if (credential.authorizerType !== 'OAuthCredentialProvider') {
-    return { providerName: credential.name, status: 'error', error: 'Invalid credential type' };
+    return { providerName: credential.name, status: 'error', error: new ValidationError('Invalid credential type') };
   }
 
   const nameKey = credential.name.toUpperCase().replace(/-/g, '_');
@@ -337,7 +406,7 @@ async function setupSingleOAuth2Provider(
     return {
       providerName: credential.name,
       status: 'skipped',
-      error: `Missing ${clientIdEnvVar} or ${clientSecretEnvVar} in agentcore/.env.local`,
+      error: new MissingCredentialsError(`Missing ${clientIdEnvVar} or ${clientSecretEnvVar} in agentcore/.env.local`),
     };
   }
 
@@ -347,7 +416,9 @@ async function setupSingleOAuth2Provider(
     return {
       providerName: credential.name,
       status: 'skipped',
-      error: `No discoveryUrl configured for "${credential.name}". Provider already exists in Identity service — credentials in .env.local will be ignored.`,
+      error: new MissingCredentialsError(
+        `No discoveryUrl configured for "${credential.name}". Provider already exists in Identity service — credentials in .env.local will be ignored.`
+      ),
     };
   }
 
@@ -367,10 +438,10 @@ async function setupSingleOAuth2Provider(
       return {
         providerName: credential.name,
         status: updateResult.success ? 'updated' : 'error',
-        error: updateResult.error,
-        credentialProviderArn: updateResult.result?.credentialProviderArn,
-        clientSecretArn: updateResult.result?.clientSecretArn,
-        callbackUrl: updateResult.result?.callbackUrl,
+        error: updateResult.success ? undefined : updateResult.error,
+        credentialProviderArn: updateResult.success ? updateResult.credentialProviderArn : undefined,
+        clientSecretArn: updateResult.success ? updateResult.clientSecretArn : undefined,
+        callbackUrl: updateResult.success ? updateResult.callbackUrl : undefined,
       };
     }
 
@@ -378,18 +449,230 @@ async function setupSingleOAuth2Provider(
     return {
       providerName: credential.name,
       status: createResult.success ? 'created' : 'error',
-      error: createResult.error,
-      credentialProviderArn: createResult.result?.credentialProviderArn,
-      clientSecretArn: createResult.result?.clientSecretArn,
-      callbackUrl: createResult.result?.callbackUrl,
+      error: createResult.success ? undefined : createResult.error,
+      credentialProviderArn: createResult.success ? createResult.credentialProviderArn : undefined,
+      clientSecretArn: createResult.success ? createResult.clientSecretArn : undefined,
+      callbackUrl: createResult.success ? createResult.callbackUrl : undefined,
     };
-  } catch (error) {
-    let errorMessage: string;
+  } catch (e) {
+    const error = toError(e);
     if (isNoCredentialsError(error)) {
-      errorMessage = 'AWS credentials not found. Run `aws sso login` or set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY.';
-    } else {
-      errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        providerName: credential.name,
+        status: 'error',
+        error: new AwsCredentialsError(`AWS crdentials not found. ${await getAwsLoginGuidance()}`, undefined, {
+          cause: error,
+        }),
+      };
     }
-    return { providerName: credential.name, status: 'error', error: errorMessage };
+    return { providerName: credential.name, status: 'error', error: error };
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Payment Credential Providers
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface PaymentCredentialProviderResult {
+  credentialProviderArn: string;
+  credentialProviderName: string;
+}
+
+export interface PaymentCredentialProvidersResult {
+  credentialProviders: Record<string, PaymentCredentialProviderResult>;
+  hasErrors: boolean;
+  errors: Error[];
+}
+
+export interface SetupPaymentCredentialProvidersOptions {
+  projectSpec: AgentCoreProjectSpec;
+  configBaseDir: string;
+  region: string;
+  runtimeCredentials?: SecureCredentials;
+}
+
+export function hasPaymentCredentialProviders(projectSpec: AgentCoreProjectSpec): boolean {
+  return (projectSpec.payments ?? []).length > 0;
+}
+
+export async function setupPaymentCredentialProviders(
+  options: SetupPaymentCredentialProvidersOptions
+): Promise<PaymentCredentialProvidersResult> {
+  const { projectSpec, configBaseDir, region, runtimeCredentials } = options;
+
+  const result: PaymentCredentialProvidersResult = {
+    credentialProviders: {},
+    hasErrors: false,
+    errors: [],
+  };
+
+  if ((projectSpec.payments ?? []).length === 0) {
+    return result;
+  }
+
+  // The unified .env.local check runs at the top of the deploy flow (assertEnvFileExists).
+  // By the time we get here, the file exists; per-var validation below catches empty values.
+
+  const envVars = await readEnvFile(configBaseDir);
+  const envCredentials = SecureCredentials.fromEnvVars(envVars);
+  const allCredentials = runtimeCredentials ? envCredentials.merge(runtimeCredentials) : envCredentials;
+
+  for (const payment of projectSpec.payments ?? []) {
+    for (const connector of payment.connectors) {
+      try {
+        const credentialName = connector.credentialName;
+        const credential = projectSpec.credentials.find(
+          c => c.name === credentialName && c.authorizerType === 'PaymentCredentialProvider'
+        );
+        if (!credential) {
+          result.hasErrors = true;
+          result.errors.push(
+            new ValidationError(
+              `Payment manager "${payment.name}" connector "${connector.name}" references credential "${credentialName}" which is not a PaymentCredentialProvider`
+            )
+          );
+          continue;
+        }
+
+        const credentialProviderArn = await createOrUpdatePaymentCredentialProvider({
+          connector,
+          credential,
+          region,
+          credentials: allCredentials,
+        });
+
+        result.credentialProviders[credentialName] = {
+          credentialProviderArn,
+          credentialProviderName: credentialName,
+        };
+      } catch (e) {
+        result.hasErrors = true;
+        const error = toError(e);
+        if (isNoCredentialsError(error)) {
+          result.errors.push(
+            new AwsCredentialsError(`AWS credentials not found. ${await getAwsLoginGuidance()}`, undefined, {
+              cause: error,
+            })
+          );
+        } else if (isQuotaExceededError(error)) {
+          result.errors.push(
+            new ServiceQuotaError(
+              `Service quota exceeded. Delete unused credential providers, or request a limit increase via the AWS Service Quotas console.`
+            )
+          );
+        } else {
+          result.errors.push(error);
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+export async function cleanupPaymentCredentialProviders(options: {
+  region: string;
+  payments: Record<string, { connectors?: Record<string, { credentialProviderArn: string }> }>;
+}): Promise<void> {
+  const { region, payments } = options;
+
+  for (const [name, state] of Object.entries(payments)) {
+    for (const [connName, conn] of Object.entries(state.connectors ?? {})) {
+      const credName = conn.credentialProviderArn.split('/').pop() ?? '';
+      if (credName) {
+        try {
+          await deletePaymentCredentialProvider({ region, name: credName });
+        } catch (credErr) {
+          const msg = credErr instanceof Error ? credErr.message : String(credErr);
+          const code = (credErr as { code?: unknown })?.code;
+          if (code !== 'ResourceNotFoundException' && !msg.includes('404')) {
+            console.warn(
+              `Failed to delete credential provider for connector '${connName}' (payment '${name}'): ${msg}`
+            );
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── Payment Credential Provider Helper ────────────────────────────────────
+
+interface CreateOrUpdatePaymentCredentialProviderOptions {
+  connector: NonNullable<AgentCoreProjectSpec['payments']>[number]['connectors'][number];
+  credential: AgentCoreProjectSpec['credentials'][number];
+  region: string;
+  credentials: SecureCredentials;
+}
+
+async function createOrUpdatePaymentCredentialProvider(
+  options: CreateOrUpdatePaymentCredentialProviderOptions
+): Promise<string> {
+  const { connector, credential, region, credentials } = options;
+  const vendor = connector.provider ?? 'CoinbaseCDP';
+
+  let credProviderOptions: Parameters<typeof createPaymentCredentialProvider>[0];
+
+  if (vendor === 'StripePrivy') {
+    const envVarNames = computeStripePrivyCredentialEnvVarNames(credential.name);
+    const appId = credentials.get(envVarNames.appId);
+    const appSecret = credentials.get(envVarNames.appSecret);
+    const authorizationPrivateKey = credentials.get(envVarNames.authorizationPrivateKey);
+    const authorizationId = credentials.get(envVarNames.authorizationId);
+
+    if (!appId || !appSecret || !authorizationPrivateKey || !authorizationId) {
+      const missing = [
+        !appId && envVarNames.appId,
+        !appSecret && envVarNames.appSecret,
+        !authorizationPrivateKey && envVarNames.authorizationPrivateKey,
+        !authorizationId && envVarNames.authorizationId,
+      ].filter(Boolean);
+      throw new MissingCredentialsError(
+        `Missing StripePrivy credentials for connector "${connector.name}" in agentcore/.env.local: ${missing.join(', ')}`
+      );
+    }
+
+    credProviderOptions = {
+      region,
+      name: credential.name,
+      vendor: 'StripePrivy',
+      appId,
+      appSecret,
+      authorizationPrivateKey,
+      authorizationId,
+    };
+  } else {
+    const envVarNames = computePaymentCredentialEnvVarNames(credential.name);
+    const apiKeyId = credentials.get(envVarNames.apiKeyId);
+    const apiKeySecret = credentials.get(envVarNames.apiKeySecret);
+    const walletSecret = credentials.get(envVarNames.walletSecret);
+
+    if (!apiKeyId || !apiKeySecret || !walletSecret) {
+      const missing = [
+        !apiKeyId && envVarNames.apiKeyId,
+        !apiKeySecret && envVarNames.apiKeySecret,
+        !walletSecret && envVarNames.walletSecret,
+      ].filter(Boolean);
+      throw new MissingCredentialsError(
+        `Missing CDP credentials for connector "${connector.name}" in agentcore/.env.local: ${missing.join(', ')}`
+      );
+    }
+
+    credProviderOptions = {
+      region,
+      name: credential.name,
+      vendor: 'CoinbaseCDP',
+      apiKeyId,
+      apiKeySecret,
+      walletSecret,
+    };
+  }
+
+  const existingProvider = await getPaymentCredentialProvider({ region, name: credential.name });
+  if (existingProvider) {
+    const updateResult = await updatePaymentCredentialProvider(credProviderOptions);
+    return updateResult.credentialProviderArn;
+  }
+  const createResult = await createPaymentCredentialProvider(credProviderOptions);
+  return createResult.credentialProviderArn;
 }

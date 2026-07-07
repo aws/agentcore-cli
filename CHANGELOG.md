@@ -2,6 +2,415 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.22.0] - 2026-07-02
+
+### Added
+- feat: thread vpcId for container build VPC placement (#297) (#1671) (48157b6b)
+- feat(export): surface export notes inline in the CLI and TUI (#1676) (2953d613)
+- feat(config-bundle): add --kms-key for customer-managed encryption (#1642) (de94f49d)
+- feat(secrets): encrypt sensitive .env.local values at rest (#1621) (c4124231)
+
+### Fixed
+- fix(templates): retrieve SUMMARIZATION summaries with an actor-scoped namespace (#665) (#1660) (f4e4aa4a)
+- fix(dev): honor explicit --port literally instead of silently offsetting by runtime index (#1079) (#1661) (1a91c994)
+- fix(e2e): reap stale OAuth2 credential providers alongside API key providers (#1679) (5e9f6d0a)
+- fix(tui): validate empty input in SecretInput before triggering cancel (#1668) (2718db39)
+- fix(ci): prevent script injection in GitHub Actions workflows (#1669) (7a9bcbde)
+- fix(deploy): surface CloudFormation rollback events in the deploy TUI (#1610) (#1662) (1aa6e3db)
+- fix(templates): give TypeScript templates per-session in-process short-term memory (#1666) (e37cc56a)
+- fix: batch-eval docs + preserve config-bundle placeholders on AB-test promote (#1638) (e26bfcb8)
+- fix: tighten sanitize logic on payment secrets (#1631) (368709e2)
+- fix(policy): resolve HTTP gateways for policy generation and guardrails (#1658) (#1663) (e4b4da46)
+- fix(invoke): add bearer-token support to the A2A invoke path for CUSTOM_JWT (#815) (#1647) (2eeba2b1)
+- fix(payment-manager): warn when auto-payment is enabled by default (#1556) (60891b78)
+- fix(run-insights): reject empty --name "" instead of auto-generating (#1600) (85f5ecff)
+- fix(pause-online-insights): reject mismatched --name and --arn (#1601) (7ba36572)
+- fix(run-insights): TUI wizard state, inline name validation, job history (#1602) (3874af6e)
+- fix: surface stale CDK construct synth errors and validate gateway name length (#1652) (9323f82f)
+- fix: include harness Dockerfiles in deploy hash (#1587) (d302382d)
+- fix(templates): key per-session agent state by context.session_id across all HTTP starter templates (#808, #809) (#1639) (d791bfa9)
+- fix(cli): add requireTTY() before each unguarded interactive TUI launch (#982) (#1640) (370175ba)
+
+### Other Changes
+- test(e2e): add insights and online-insights lifecycle tests (#1599) (2e2e4bb0)
+- test(e2e): add A/B test and all-gateway-target lifecycle suites (#1584) (33f7e530)
+- Enhance harness documentation in README (#1656) (76dcef8f)
+
+## [0.21.1] - 2026-06-25
+
+### Added
+- feat: add support for TS memory (#1636) (39a47fa8)
+- feat(export): export harnesses to standalone Strands agents with connections (#1630) (2ffbd9a7)
+
+### Fixed
+- fix(create): make --defaults create a harness project (#1644) (eb2cc233)
+
+### Other Changes
+- test(e2e): export a fully-featured harness in-project and by ARN (#1641) (aba397a7)
+
+## [0.21.0] - 2026-06-24
+
+### Added
+- feat: ungate AWS skills, managed memory, and read-only harness Version (#1620) (e9cd559a)
+- feat(fetch): support harness in fetch access (CLI + TUI) (#1611) (12fd67a4)
+- feat: upgrade agent inspector to 0.6.1 (#1607) (1329cebb)
+- feat: bring harness flows into latest version of cli (#1598) (6f95ed43)
+
+### Fixed
+- fix(config-bundle): ungate custom branchName feature (#1632) (2fdec1ea)
+- fix(tui): use "No memory" instead of "Disabled" in harness memory picker (#1635) (bac7f61e)
+- fix(deploy): resolve online-eval step on re-deploys with no new configs (#1615) (fa35b69d)
+- fix: gate `agentcore run ingest` behind ENABLE_GATED_FEATURES (#1619) (5d4719af)
+- fix: select deployed target's stack at Persist instead of stackNames[0] (#1612) (93d104c7)
+- fix(recommendation): resolve --bundle-version LATEST to deployed versionId (#1566) (9fdab064)
+- fix: dont show deploy screen when deploy is skipped (#1585) (692103c8)
+
+### Other Changes
+- chore: re-gate web search (#1625) (9e39abf2)
+- test(e2e): fix harness CUSTOM_JWT auth to validate allowedClients (#1624) (a880f45a)
+- Ungate passthrough gateway targets (#1617) (30ae7683)
+- chore: add e2e & integ tests for web-search (#1604) (1339f4f2)
+- test(e2e): add harness E2E coverage for lite_llm, tools, and CUSTOM_JWT (#1609) (c4e54be1)
+- test(integ): expand harness config-shape coverage (#1608) (5fd591ae)
+- chore: ungate web-search commands (#1558) (#1597) (61e405e3)
+
+## [0.20.2] - 2026-06-18
+
+### Fixed
+- fix(policy): correct INSULTS content-filter enum and validate --form-filters (#1576) (5fe72af6)
+- fix(deploy): surface original error types in preflight steps.  (#1525) (1f5d7948)
+- fix(payment-connector): validate secret key formats client-side at add time (#1573) (fc905f8c)
+- fix: stop web-search TUI early exit when no gateway (#1575) (48374862)
+
+### Documentation
+- docs: cover payments, policies/guardrails, insights, harness, datasets, web-search (#1577) (954b97b5)
+
+### Other Changes
+- test(e2e): use real key formats in payment-validation CDP fixtures (#1592) (69547c3f)
+- test(e2e): enable policy guardrail suite with two-deploy form-policy flow (#1582) (687029c6)
+
+## [0.20.1] - 2026-06-17
+
+### Other Changes
+- Revert "chore: ungate web-search commands (#1558)" (#1567) (b0961814)
+- test(e2e): fix shard 4/5 stale paths and missing --wait (#1560) (abccd4fe)
+
+## [0.20.0] - 2026-06-17
+
+### Added
+- feat: upgrade agent inspector to v0.6.0 (#1546) (d2f22e37)
+- feat: send model config to agent inspector (#1516) (3097e031)
+- feat(e2e): enable gemini tests (#1503) (c3d7565a)
+- feat(ci): clean up stale stacks with global vitest setup hook (#1499) (9966e9d2)
+- feat(ci): shard integ tests for faster runs.  (#1484) (9f755cb4)
+- feat(ci): add hourly canary for smoke test (#1486) (6c57e789)
+
+### Fixed
+- fix(harness): surface managed-memory heads-up on dev deploy + validate session storage path in TUI (#1555) (23d6ef22)
+- fix(ci): avoid running pr reviewer on closed prs (#1536) (ef1e0667)
+- fix(assets): prevent multi-gateway tool-name collisions across HTTP frameworks (#1518) (c217b169)
+- fix(e2e): add harness tests to e2e workflow (#1515) (0d93b006)
+- fix(ci): make /security-review fail loudly when the model never runs (#1482) (202eed9c)
+- fix(e2e): wire up payments env vars for full test suite (#1505) (ea2df09f)
+- fix(scripts): avoid overwriting git local config in e2e script (#1501) (f62329b0)
+
+### Other Changes
+- chore: ungate web-search commands (#1558) (6bb2ca45)
+- chore(policy): ungate guardrail policy form (#1552) (d5745af0)
+- release: nys summit (#1547) (845c1bdb)
+- script: bundle agent inspector (#1529) (2166bd87)
+
+## [0.19.0] - 2026-06-09
+
+### Added
+- feat(payments): add AgentCore Payments as first-class CLI resource (#1261) (44693333)
+- feat: add Bedrock Mantle API format support for harness (#1412) (78d1d58a)
+
+### Fixed
+- fix(ci): avoid formatting lock file (#1489) (d34b823f)
+- fix(invoke): adjust redaction regex to allow words following bearer (#1480) (a9b01608)
+- fix(deploy): auto-populate default target on non-interactive deploy (#1478) (96be0034)
+- fix(e2e): address failing byo e2e tests.  (#1476) (5d108679)
+- fix: redact sensitive tokens from invoke CLI output (#1419) (88fff673)
+
+### Documentation
+- docs(permissions): update permissions role to include new permissions for BYOF (#1483) (9c41832e)
+
+### Other Changes
+- chore(ci): add longer timeout and retries for deploying memory (#1491) (23947adb)
+- chore(deps-dev): bump @vitest/coverage-v8 from 4.1.6 to 4.1.8 (#1332) (a2119e87)
+- chore(deps): bump fflate from 0.8.2 to 0.8.3 (#1335) (f0bc9dec)
+- chore: update e2e test script to include new paramters (#1477) (04bf884f)
+
+## [0.18.0] - 2026-06-05
+
+### Added
+- feat: add agentcore exec command with interactive shell and one-shot support (#1464) (259654b6)
+- feat: add BYO filesystem e2e test and supporting infrastructure (#1461) (dd255e3e)
+- feat: upgrade agent-inspector to v0.5.0 (#1458) (d14504ff)
+- feat: add EFS and S3 filesystem mount support (#1436) (64b9b636)
+
+### Fixed
+- fix(ci): pass filesystem env vars to e2e-tests-full vitest step (#1470) (a4c75ec8)
+- fix(deploy): bump aws-cdk-lib to ^2.258.0 to unblock e2e workspace resolution (#1469) (b4a7620c)
+- fix(deploy): bump @aws-cdk/cdk-assets-lib to read schema 54 asset manifests (#1468) (b071a9f9)
+- fix(deploy): bump @aws-cdk/toolkit-lib to read cloud-assembly schema 54 (#1465) (c42c5b4e)
+- fix(logs): wire up cli telemetry and model user errors (#1460) (5b98e76e)
+- fix(deploy): preserve error typing through CDK wrapper and preflight (#1459) (31269050)
+- fix(telemetry): re-throw exceptions in withCommandRunTelemetry (#1437) (15618b6f)
+- fix: agentcore dev orphaned processes (#1438) (c9d78ea2)
+
+### Documentation
+- docs: add documentation for telemetry (#1432) (65ba4850)
+
+### Other Changes
+- refactor: move command descriptions out of TUI module (#1451) (5e035d05)
+- Update image size limit from 1 GB to 2 GB (#1452) (77c3de39)
+
+## [0.17.0] - 2026-06-02
+
+### Added
+- feat(workflows): add closed-PR comment redirect (#1328) (a84cee4f)
+- feat: add invoke APIs for agent inspector (#1326) (14da3f9b)
+- feat: launch telemetry (#1430) (0e866052)
+- feat(telemetry): support agent_environment for runtime/harness distinction (#1405) (72574bd6)
+- feat: wire telemetry for validate command (#1423) (e3009801)
+
+### Fixed
+- fix(scripts): filter non-version tags in changelog auto-generation (#1444) (38f71440)
+- fix(ci): disable telemetry in release workflow to fix test failures (#1442) (dbe34ac1)
+- fix(e2e): skip Gemini invoke and logs tests (#1434) (a2bd0a79)
+- fix: pin google-genai < 2.0.0 in Gemini agent templates (#1433) (b4f5daa5)
+- fix: Patch CVE-2026-42010 GnuTLS auth bypass in Python Dockerfile (#1397) (5a0fb0b3)
+- fix(telemetry): track preflight error for telemetry (#1403) (13a03912)
+- fix: restore --skills invoke override for harness (preview regression) (#1418) (285b0107)
+
+### Documentation
+- docs(commands): document missing commands and subcommands (#1425) (0a321df1)
+
+### Other Changes
+- refactor(telemetry): rename AgentType to AgentSource to remove ambiguity (#1422) (15d14389)
+- ci: disable telemetry in e2e and integ test workflows (#1421) (eaa4bcf9)
+- chore: remove sync-preview job from sync-from-public workflow (#1416) (d2192fce)
+
+## [0.16.0] - 2026-05-28
+* feat: instrument telemetry for status command by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1317
+* fix(telemetry): emit dev command telemetry before blocking by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1375
+* feat: compile-time feature flag for preview/GA consolidation by @jesseturner21 in https://github.com/aws/agentcore-cli/pull/1341
+* fix(ci): upload both GA and preview tarballs in prerelease workflow by @jesseturner21 in https://github.com/aws/agentcore-cli/pull/1386
+* feat(scripts): extend bundle to support injectable output and version suffix by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1389
+* fix(ci): use cache for eslint/prettier/typecheck to speed up dev cycle by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1390
+* fix(dataset): tui back-navigation bugs + kmsKeyArn support by @jariy17 in https://github.com/aws/agentcore-cli/pull/1379
+* fix: create global entrypoint for tui by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1365
+* fix: centralize ANSI codes and disable colors in non-TTY output by @Hweinstock in https://github.com/aws/agentcore-cli/pull/1399
+* docs: Link to agentcore-samples repository in README by @notgitika in https://github.com/aws/agentcore-cli/pull/1400
+* fix: allow skipping optional KMS key ARN in evaluator wizard by @notgitika in https://github.com/aws/agentcore-cli/pull/1402
+* fix(status): show harnesses in agentcore status output by @jesseturner21 in https://github.com/aws/agentcore-cli/pull/1396
+* fix(deploy): add harness teardown to TUI deploy flow by @jesseturner21 in https://github.com/aws/agentcore-cli/pull/1394
+* feat: check for spans in agent log group by @avi-alpert in https://github.com/aws/agentcore-cli/pull/1404
+* fix(dev): skip redundant deploy when TUI deploy already succeeded by @jesseturner21 in https://github.com/aws/agentcore-cli/pull/1395
+* fix(harness): resolve memorySpec by deployed ARN for arn-only memory refs by @jesseturner21 in https://github.com/aws/agentcore-cli/pull/1407
+* chore: simplify release-main-and-preview workflow by @jesseturner21 in https://github.com/aws/agentcore-cli/pull/1415
+
+## [0.15.0] - 2026-05-22
+
+## [0.14.2] - 2026-05-21
+
+### Added
+- feat: add support for LTM metadata (#1281) (44b5c2cf)
+- feat: instrument telemetry for import command (#1312) (2cc0a4cb)
+
+### Fixed
+- fix(import): escape triple-quotes in collaborationInstruction to prevent docstring injection (#1329) (ae1b932e)
+- fix(ci): use npm-shrinkwrap.json for node_modules cache key (#1325) (a6872ca5)
+- fix: ship npm-shrinkwrap.json to eliminate glob@10 deprecation warning on install (#1315) (4c5077c2)
+- fix: scope summaries retrieval to actor, not session, for cross-session memory (#1299) (1402057e)
+
+### Documentation
+- docs: sync CLI documentation with actual command surface (#1296) (5ae559ae)
+
+### Other Changes
+- Revert "feat: add support for LTM metadata (#1281)" (#1338) (2d8b9d7b)
+- ci(security-review): drop pull_request_review trigger (broken on fork PRs) (#1310) (43607fa1)
+- chore: replace CDK_REPO_TOKEN PAT with GitHub App token in e2e workflows (#1201) (fc675346)
+- chore(deps): bump ws from 8.20.0 to 8.20.1 (#1298) (52d3e847)
+
+## [0.14.1] - 2026-05-19
+
+### Added
+- feat(tui): add dedicated Logs screen for streaming runtime logs (#1274) (2f3040a6)
+- feat: upgrade agent inspector to 0.4.2 (#1305) (7fac9a35)
+- feat: upgrade agent inspector to 0.4.2 (36399dbf)
+- feat: expose ability to publish otel metrics to remote endpoint (#1244) (721c2a95)
+
+### Fixed
+- fix(templates): pin google-adk < 2.0.0 to prevent runtime init timeout (#1309) (397530ad)
+- fix: update PR tarball install instructions to use gh CLI (55f124ee)
+- fix: hoist TypeScript session-storage check before early returns, add test (040f4c1f)
+- fix: remove session storage option from TypeScript agent advanced config (0c6f0431)
+- fix(test): strip ANSI codes from Ink TUI test assertions (#1301) (ab4c19ec)
+- fix(templates): make Strands TypeScript template strict-typecheck clean (#1300) (9bada857)
+- fix: handle scoped conventional commits in changelog categorization (#1289) (fc135b0a)
+- fix: build CLI before running integration tests (#1286) (306c9e84)
+- fix: skip schema-check and pr-title validation on release PRs (#1272) (d92fac29)
+
+### Other Changes
+- Merge pull request #1307 from aws/fix-pr-tarball-install-instructions (e0c2d5bb)
+- Merge pull request #1306 from aws/remove-session-storage-typescript (f1f6719c)
+- ci(security-review): add safe-to-review label as alternate trigger (#1297) (4f89e0df)
+- ci(security-review): drop sticky comment, post workflow summary, re-enable synchronize (#1293) (fcbdf592)
+- ci: add Claude Code /security-review workflow on PRs (#1285) (ac6cf4a9)
+- refactor(telemetry): make attributes globally unique (#1246) (574375ba)
+- Merge pull request #1273 from notgitika/chore/remove-dead-tag-command (10294f1b)
+- refactor: centralize error types for consistent definition shapes (#1238) (5e1a24f3)
+- chore: remove dead tag command (1f21ad05)
+
+## [0.14.0] - 2026-05-15
+
+### Added
+- feat: upgrade agent inspector to 0.4.1 (f012107c)
+- feat: upgrade agent inspector to 0.4.0 (9b494b56)
+- feat: instrument telemetry for invoke command (#1227) (b6e44184)
+- feat: instrument telemetry for dev command (#1223) (fdf145d0)
+- feat: add Node.js OTEL support and fix CJS import.meta.url crash (76e3fffc)
+- feat: instrument telemetry for deploy command (CLI + TUI) (#1206) (ce00f570)
+- feat: record command attrs on telemetry failure via fallbackAttrs (#1204) (f69e2524)
+- feat: instrument telemetry for create command (CLI + TUI) (#1202) (bcedddec)
+- feat: wire telemetry into all remove.* commands (#1069) (52a24ce9)
+
+### Fixed
+- fix: remove early --version interception, keep only the dep fix (3b667587)
+- fix: resolve crash on agentcore --version due to missing transitive dep (ff8ac7bd)
+- fix: add workflow_dispatch trigger to sync-preview workflow (#1255) (7836897f)
+- fix: replace third-party base image with AWS public ECR image (CVE-2026-31789) (#1250) (530394b1)
+- fix: disambiguate sync-from-public branch checkout (d7a7798d)
+- fix: hide traces UI for TypeScript agents (9fc7adbf)
+- fix: make reserved-name error message language-neutral (1c291bce)
+- fix: use Resource class instead of resourceFromAttributes for OTEL v1.x compat (95437e8a)
+- fix: TypeScript template and packaging fixes for Node CodeZip (b8dd9e27)
+- fix: update otel-register.ts to use OpenTelemetry SDK v2.x API (174e9fcf)
+- fix: copy dynamic require deps into _deps dir for Node CodeZip bundles (7da712fb)
+- fix: use CJS format with package.json type:commonjs in zip (198b69e7)
+- fix: add createRequire banner to ESM bundles for CJS compat (8a7ac68c)
+- fix: switch Node CodeZip bundling to ESM format (87b2f661)
+- fix: wire up agent templates with PORT option (f140073c)
+- fix: update runCLI call to use options object and format frameworks.md (afdc9f16)
+- fix: set typescript agent port to 8080 (fddaad1e)
+- fix: sync-preview pushes directly on clean merge, PRs only on conflict (#1078) (01536945)
+- fix: bump versions to resolve security audit failure (f1788bc5)
+- fix: add batch eval, recommendation, and CloudWatch Logs write permissions to docs (#1113) (ce50d524)
+- fix: widen TUI panel to prevent text truncation (#1191) (#1193) (6ee1141c)
+- fix: resolve target-based AB test target name mismatch (#1188) (eb2e1475)
+- fix: handle CloudFormation throttling in import gateway polling (#1185) (df27f122)
+- fix: resolve high-severity npm audit vulnerabilities (#1184) (715a5a28)
+- fix: use search API with listForRepo fallback for issue dedup (#1180) (e247d995)
+- fix: apply prettier formatting to review.md (#1167) (ab82c66d)
+- fix: pin a2a-sdk below 1.0 to prevent breaking changes (42487c0c)
+
+### Documentation
+- docs: add VercelAI to CLI help text and documentation (590b1369)
+- docs: add explanatory comments for container credentials and node path resolution (301e2867)
+- docs: update bugbash status — withApiKey fix resolves deployed invoke (ef6f1f36)
+- docs: update bugbash status — deploy, invoke, and remove lifecycle tested (9219f894)
+- docs: update bugbash status — all Container + non-Bedrock combos tested (1d1cf0c8)
+- docs: add telemetry instrumentation guide (#1197) (340878c9)
+- docs: split TESTING.md into focused per-type docs (#1192) (be652019)
+- docs: add bedrock:CountTokens to IAM policy examples (#1181) (804e0419)
+
+### Other Changes
+- Merge pull request #1276 from aws/fix/version-crash-missing-region-config-resolver (7acd86ea)
+- chore(deps): bump react from 19.2.5 to 19.2.6 (#1228) (5539677c)
+- chore(deps-dev): bump @vitest/coverage-v8 from 4.1.5 to 4.1.6 (#1229) (98720a30)
+- chore(deps): bump zod from 4.3.6 to 4.4.3 (#1230) (b5ae6b7a)
+- chore(deps): bump yaml from 2.8.3 to 2.9.0 (#1231) (c4b0d930)
+- chore(deps-dev): bump @playwright/test from 1.59.1 to 1.60.0 (#1234) (65ab3666)
+- chore: update namespace design for data plane (#1114) (28541506)
+- chore: update CP semantics to expect redesigned namespaces field (#1115) (a4605ef3)
+- Merge pull request #1251 from avi-alpert/aalpert/inspector-0.4.1 (a8e9a1e0)
+- Merge pull request #1249 from avi-alpert/aalpert/inspector-0.4.0 (df51f041)
+- Merge pull request #981 from aws/fix/strands-ts-stream-events (6d8aed58)
+- docs(templates): fix stale README info in TS templates (18e4f89c)
+- fix(templates): remove unused deps from Strands TS package.json (904cd703)
+- fix(templates): rename handler to callback in Strands TS tool config (402af8e8)
+- fix(schema): relax request header allowlist to accept documented header patterns (#1163) (613c9958)
+- Merge pull request #1235 from aws/fix/sync-from-public-ambiguous-preview (95032396)
+- fix(dev): use dynamic port assignment for TS HTTP agents in web UI (485cbdab)
+- fix(templates): remove OTEL, session storage, and gateway from TS templates (580cd10b)
+- Reapply "ci(e2e): add cdk_branch input to override CDK source branch" (521e6436)
+- Revert "ci(e2e): add cdk_branch input to override CDK source branch" (cd1ee54d)
+- ci(e2e): add cdk_branch input to override CDK source branch (1f9b3309)
+- fix(tui): remove duplicate project name in create-prompt phase (f6dd69cb)
+- fix(templates): bump bedrock-agentcore SDK to ^0.2.4 (16060192)
+- test(e2e): skip logs and traces tests for TypeScript agents (8fe40a9c)
+- test(e2e): add TypeScript Strands and VercelAI e2e tests (39c1837b)
+- fix(dev): allow web UI port fallback for TypeScript HTTP agents (ac5876f8)
+- fix(templates): fix withApiKey call syntax in TypeScript non-Bedrock templates (235df8f2)
+- fix(templates): fix TypeScript non-Bedrock model provider templates (4fdb5076)
+- fix(dev): use fixed port 8080 for TypeScript HTTP agents in web UI (1581f971)
+- test: update asset snapshots for otel-register import in main.ts (23e09650)
+- refactor: inline otel-register into main.ts for local + deployed tracing (0e81fd54)
+- test: fix node-packager tests and update snapshots for CJS bundling (1ed9e14d)
+- style: format container-dev-server test with prettier (b7bd53eb)
+- fix(test): update container-dev-server test for resolveHostCredentials spawnSync call (5576fbeb)
+- chore: remove development tracking docs from PR (aebae2c1)
+- fix(dev): detect and skip container runtime shims that masquerade as real runtimes (7fa54adc)
+- fix(dev): resolve AWS credentials on host for container dev mode (b632ac2a)
+- fix(dev): prefer explicit credentials over AWS_PROFILE in container dev (730e01c5)
+- fix(vercelai): fix dependency versions, model ID, and Bedrock credentials (fbdeb95b)
+- feat(typescript): add Vercel AI SDK framework for TypeScript agents (b60db2de)
+- fix(typescript): disable memory for TypeScript agents and clean up templates (cafed9c1)
+- fix(invoke): include text/event-stream in Accept header for HTTP invoke (a21dbfda)
+- fix(typescript): use correct Strands SDK stream event types in template (32d006a9)
+- fix(dev): detect TS server readiness in terminal TUI mode (fe56048a)
+- feat(dev): enable dev mode for TypeScript agents (CodeZip + Container, browser + no-browser) (091ce803)
+- fix(typescript): gate MCP and A2A protocols behind Python-only until TS templates land (a927a9a1)
+- fix(typescript): enable TypeScript option in interactive create wizard (51261427)
+- fix(typescript): reject --protocol MCP + --language TypeScript with a clear error (9472f8e8)
+- fix(typescript): move tsx into dependencies so containers boot without re-install (e5ad996d)
+- fix(typescript): make container build succeed for scaffolded TS agent (70c79537)
+- docs(typescript): add completed test plan results for TS support bug bash (ca77d1d4)
+- fix(typescript): surface real npm install error in interactive create TUI (40d0e361)
+- fix(typescript): run npm install during non-interactive create for TS projects (89e33231)
+- fix(typescript): make scaffolded TS agent installable and bootable (997c1e80)
+- docs(typescript): add code pointers to TS test plan for targeted fixes (c14cc782)
+- docs(typescript): add manual test plan with progress-tracker checklist (b2eb1fa3)
+- docs(typescript): phase 7 user docs + phase 8 verification log (c339f670)
+- fix(typescript): replace Python-only guard in create validator with Strands gate (fce50f47)
+- docs(typescript): log 7af265e in progress tracker (197e41f8)
+- test(typescript): add TUI walkthrough for create TypeScript + Strands (71ee6438)
+- docs(typescript): log c22147d in progress tracker (4c73b4e7)
+- test(typescript): add TS dev-server spec + create-flow integ block; fix spawn entrypoint rewrite (1e24a985)
+- docs(typescript): log f015ce7 + 5c2af7d in progress tracker (e5590cf2)
+- feat(typescript): Node setup helper + create-flow wiring (Phase 5) (9d493e3f)
+- docs(typescript): log 003f672 + 076a4aa in progress tracker (aca0e694)
+- feat(typescript): add container template for TS agents (Phase 4) (ecfbc2a1)
+- docs(typescript): log 6f1aeed + f6ed2e9 in progress tracker (fe47baed)
+- feat(typescript): author TS/Strands HTTP template assets (Phase 3) (2c1e7fc7)
+- docs(typescript): log a487f19 in progress tracker (56429216)
+- feat(typescript): unblock dev mode for TS agents (Phase 2) (ca7264b1)
+- docs(typescript): log 3417f9a in progress tracker (0a87cdbd)
+- docs(typescript): add progress tracker for TS support initiative (b37d4933)
+- feat(typescript): scaffold TypeScript language support (WIP checkpoint) (358ed7e2)
+- refactor: unify result types with discriminated Result<T, E> union (#1125) (f010c126)
+- feat(evaluator): add kmsKeyArn support for custom evaluator (#994) (7d27f47b)
+- Merge pull request #1210 from aws/chore/replace-github-token-with-app-token (6dc4b7fd)
+- revert: keep pr-title.yml using GITHUB_TOKEN (read-only access sufficient) (0e6d5778)
+- Merge pull request #1211 from Hweinstock/fix/old-deps (a15c7565)
+- chore: replace all github.token/GITHUB_TOKEN with GitHub App token (5767d93e)
+- chore: replace PAT tokens with GitHub App token (#1198) (eba0e40e)
+- test: remove unnecessary mocks, use real filesystem (#1156) (9063a776)
+- chore(deps-dev): bump hono from 4.12.14 to 4.12.18 (#1152) (7bf41ddd)
+- ci: use AUTOMATION_ACCOUNT_PAT_TOKEN for issue creation (#1176) (d8fc802f)
+- ci: add workflow to create issues on CI failure (#1174) (714b1785)
+- Merge pull request #1137 from aws/dependabot/npm_and_yarn/secretlint-13.0.0 (2c34489e)
+- Add labels to Slack issue notification payload (#1162) (6b2be998)
+- feat(harness): add verdict prefix to reviewer comments (#1153) (a3f504ae)
+- Merge pull request #1145 from aws/fix/pin-a2a-sdk-below-1.0 (2923dea3)
+- fix(deploy): pass stack selection to diff and deploy for --target filtering (#980) (#1148) (d9ec423b)
+- chore(deps): bump react from 19.2.5 to 19.2.6 (#1136) (ec92d3fe)
+- chore(deps): bump @opentelemetry/exporter-metrics-otlp-http (#1141) (9716db05)
+- chore(deps-dev): bump secretlint from 12.3.1 to 13.0.0 (4ac28c23)
+
 ## [0.13.1] - 2026-05-06
 
 ### Added

@@ -1,21 +1,30 @@
 import { getOrCreateInstallationId } from '../lib/schemas/io/global-config';
-import { registerABTestCommand } from './commands/abtest';
 import { registerAdd } from './commands/add';
+import { registerAddSkill } from './commands/add/skill-command';
+import { registerAddTool } from './commands/add/tool-command';
 import { registerArchive } from './commands/archive';
+import { registerBatchEvaluations } from './commands/batch-evaluations';
+import { registerConfig } from './commands/config';
 import { registerConfigBundle } from './commands/config-bundle';
 import { registerCreate } from './commands/create';
+import { registerDataset } from './commands/dataset';
 import { registerDeploy } from './commands/deploy';
 import { registerDev } from './commands/dev';
 import { registerEval } from './commands/eval';
+import { registerExec } from './commands/exec';
+import { registerExport } from './commands/export';
+import { registerFeedback } from './commands/feedback';
 import { registerFetch } from './commands/fetch';
 import { registerHelp } from './commands/help';
 import { registerImport } from './commands/import';
 import { registerInvoke } from './commands/invoke';
 import { registerLogs } from './commands/logs';
 import { registerPackage } from './commands/package';
-import { registerPause, registerPromote } from './commands/pause';
-import { registerRecommendations } from './commands/recommendations';
+import { registerPause } from './commands/pause';
+import { registerPromote } from './commands/promote';
 import { registerRemove } from './commands/remove';
+import { registerRemoveSkill } from './commands/remove/skill-command';
+import { registerRemoveTool } from './commands/remove/tool-command';
 import { registerResume } from './commands/resume';
 import { registerRun } from './commands/run';
 import { registerStatus } from './commands/status';
@@ -24,114 +33,21 @@ import { registerTelemetry } from './commands/telemetry';
 import { registerTraces } from './commands/traces';
 import { registerUpdate } from './commands/update';
 import { registerValidate } from './commands/validate';
-import { PACKAGE_VERSION } from './constants';
+import { registerView } from './commands/view';
+import { COMMAND_DESCRIPTIONS, PACKAGE_VERSION } from './constants';
+import { printPostCommandNotices, printTelemetryNotice } from './notices';
 import { ALL_PRIMITIVES } from './primitives';
 import { TelemetryClientAccessor } from './telemetry';
-import { App } from './tui/App';
+import { renderTUI, setupAltScreenCleanup } from './tui';
 import { LayoutProvider } from './tui/context';
-import { COMMAND_DESCRIPTIONS } from './tui/copy';
-import { clearExitAction, getExitAction } from './tui/exit-action';
 import { clearExitMessage, getExitMessage } from './tui/exit-message';
 import { requireTTY } from './tui/guards';
 import { CommandListScreen } from './tui/screens/home';
 import { getCommandsForUI } from './tui/utils';
-import { type UpdateCheckResult, checkForUpdate, printUpdateNotification } from './update-notifier';
+import { checkForUpdate } from './update-notifier';
 import { Command } from '@commander-js/extra-typings';
 import { render } from 'ink';
 import React from 'react';
-
-// ANSI escape sequences
-const ENTER_ALT_SCREEN = '\x1B[?1049h\x1B[H';
-const EXIT_ALT_SCREEN = '\x1B[?1049l';
-const SHOW_CURSOR = '\x1B[?25h';
-
-// Track if we're in alternate screen mode
-let inAltScreen = false;
-
-/**
- * Global terminal cleanup - ensures cursor is always restored on exit.
- * Registered once at startup, catches all exit scenarios.
- */
-function setupGlobalCleanup() {
-  const cleanup = () => {
-    if (inAltScreen) {
-      process.stdout.write(EXIT_ALT_SCREEN);
-    }
-    process.stdout.write(SHOW_CURSOR);
-  };
-
-  process.on('exit', cleanup);
-  process.on('SIGINT', () => {
-    cleanup();
-    process.exit(0);
-  });
-  process.on('SIGTERM', () => {
-    cleanup();
-    process.exit(0);
-  });
-}
-
-function printTelemetryNotice(): void {
-  const yellow = '\x1b[33m';
-  const reset = '\x1b[0m';
-  process.stderr.write(
-    [
-      '',
-      `${yellow}The AgentCore CLI will soon begin collecting aggregated, anonymous usage`,
-      'analytics to help improve the tool.',
-      'To opt out:          agentcore telemetry disable',
-      `To learn more:       agentcore telemetry --help${reset}`,
-      '',
-      '',
-    ].join('\n')
-  );
-}
-
-function printPostCommandNotices(isFirstRun: boolean, updateCheck: Promise<UpdateCheckResult | null>): Promise<void> {
-  if (isFirstRun) {
-    printTelemetryNotice();
-  }
-  return updateCheck.then(result => {
-    if (result?.updateAvailable) {
-      printUpdateNotification(result);
-    }
-  });
-}
-
-/**
- * Render the TUI in alternate screen buffer mode.
- */
-function renderTUI(updateCheck: Promise<UpdateCheckResult | null>, isFirstRun: boolean) {
-  inAltScreen = true;
-  process.stdout.write(ENTER_ALT_SCREEN);
-
-  const { waitUntilExit } = render(React.createElement(App));
-
-  void waitUntilExit().then(async () => {
-    inAltScreen = false;
-    process.stdout.write(EXIT_ALT_SCREEN);
-    process.stdout.write(SHOW_CURSOR);
-
-    // Check if the TUI requested a post-exit action (e.g., launch browser dev mode)
-    const action = getExitAction();
-    clearExitAction();
-
-    if (action?.type === 'dev') {
-      const { launchBrowserDev } = await import('./commands/dev/browser-mode');
-      await launchBrowserDev();
-      return;
-    }
-
-    // Print any exit message set by screens (e.g., after successful project creation)
-    const exitMessage = getExitMessage();
-    if (exitMessage) {
-      console.log(exitMessage);
-      clearExitMessage();
-    }
-
-    await printPostCommandNotices(isFirstRun, updateCheck);
-  });
-}
 
 function renderHelp(program: Command): void {
   const commands = getCommandsForUI(program);
@@ -178,8 +94,10 @@ export function registerCommands(program: Command) {
   const addCmd = registerAdd(program);
   registerDev(program);
   registerDeploy(program);
+  registerExec(program);
   registerCreate(program);
   registerEval(program);
+  registerFeedback(program);
   registerFetch(program);
   registerHelp(program);
   registerImport(program);
@@ -187,7 +105,8 @@ export function registerCommands(program: Command) {
   registerLogs(program);
   registerPackage(program);
   registerPause(program);
-  registerRecommendations(program);
+  registerView(program);
+  registerBatchEvaluations(program);
   const removeCmd = registerRemove(program);
   registerResume(program);
   registerRun(program);
@@ -199,23 +118,32 @@ export function registerCommands(program: Command) {
   registerUpdate(program);
   registerValidate(program);
   registerConfigBundle(program);
+  registerConfig(program);
+  registerDataset(program);
   registerArchive(program);
+  // Register export command
+  registerExport(program);
 
   // Register primitive subcommands (add agent, remove agent, add memory, etc.)
   for (const primitive of ALL_PRIMITIVES) {
     primitive.registerCommands(addCmd, removeCmd);
   }
 
-  // Register AB test detail command
-  registerABTestCommand(program);
+  // Register standalone add/remove subcommands
+  registerAddTool(addCmd);
+  registerRemoveTool(removeCmd);
+  registerAddSkill(addCmd);
+  registerRemoveSkill(removeCmd);
 }
 
 export const main = async (argv: string[]) => {
   // Register global cleanup handlers once at startup
-  setupGlobalCleanup();
+  setupAltScreenCleanup();
 
-  // Generate installationId on first run and show telemetry notice
-  const { created: isFirstRun } = await getOrCreateInstallationId();
+  // Generate installationId on first run and show telemetry notice. If we
+  // could not persist the id, suppress the notice so it doesn't fire every run.
+  const installationIdResult = await getOrCreateInstallationId();
+  const isFirstRun = installationIdResult.success && installationIdResult.created;
 
   const program = createProgram();
 
@@ -228,15 +156,15 @@ export const main = async (argv: string[]) => {
   // Show TUI for no arguments, commander handles --help via configureHelp()
   if (args.length === 0) {
     requireTTY();
-    renderTUI(updateCheck, isFirstRun);
+    await renderTUI({ updateCheck, isFirstRun });
     return;
   }
 
   if (isFirstRun) {
-    printTelemetryNotice();
+    await printTelemetryNotice();
   }
 
-  TelemetryClientAccessor.init(args[0] ?? 'unknown');
+  await TelemetryClientAccessor.init(args[0] ?? 'unknown');
   try {
     await program.parseAsync(argv);
   } finally {

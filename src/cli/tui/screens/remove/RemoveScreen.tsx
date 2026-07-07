@@ -2,29 +2,55 @@ import type { SelectableItem } from '../../components';
 import { SelectScreen } from '../../components';
 import { useMemo } from 'react';
 
-const REMOVE_RESOURCES = [
+export type RemoveResourceType =
+  | 'agent'
+  | 'harness'
+  | 'memory'
+  | 'credential'
+  | 'evaluator'
+  | 'online-eval'
+  | 'online-insights'
+  | 'policy-engine'
+  | 'policy'
+  | 'gateway'
+  | 'gateway-target'
+  | 'knowledge-base'
+  | 'config-bundle'
+  | 'runtime-endpoint'
+  | 'dataset'
+  | 'payment'
+  | 'all';
+
+const REMOVE_RESOURCES: { id: RemoveResourceType; title: string; description: string }[] = [
   { id: 'agent', title: 'Agent', description: 'Remove an agent from the project' },
+  { id: 'harness', title: 'Harness', description: 'Remove a harness from the project' },
   { id: 'memory', title: 'Memory', description: 'Remove a memory provider' },
   { id: 'credential', title: 'Credential', description: 'Remove a credential' },
   { id: 'evaluator', title: 'Evaluator', description: 'Remove a custom evaluator' },
   { id: 'online-eval', title: 'Online Eval Config', description: 'Remove an online eval config' },
   { id: 'policy-engine', title: 'Policy Engine', description: 'Remove a policy engine' },
   { id: 'policy', title: 'Policy', description: 'Remove a policy from a policy engine' },
+  { id: 'payment', title: 'Payment [preview]', description: 'Remove a payment manager' },
   { id: 'gateway', title: 'Gateway', description: 'Remove a gateway' },
   { id: 'gateway-target', title: 'Gateway Target', description: 'Remove a gateway target' },
-  { id: 'config-bundle', title: 'Configuration Bundle [preview]', description: 'Remove a configuration bundle' },
-  { id: 'ab-test', title: 'AB Test [preview]', description: 'Remove an A/B test' },
+  {
+    id: 'knowledge-base',
+    title: 'Knowledge Base',
+    description: 'Remove a knowledge base (cascade-prunes connector gateway targets)',
+  },
+  { id: 'config-bundle', title: 'Configuration Bundle', description: 'Remove a configuration bundle' },
   { id: 'runtime-endpoint', title: 'Runtime Endpoint', description: 'Remove a runtime endpoint' },
+  { id: 'dataset', title: 'Dataset', description: 'Remove a dataset' },
   { id: 'all', title: 'All', description: 'Reset entire agentcore project' },
-] as const;
-
-export type RemoveResourceType = (typeof REMOVE_RESOURCES)[number]['id'];
+];
 
 interface RemoveScreenProps {
   onSelect: (resourceType: RemoveResourceType) => void;
   onExit: () => void;
   /** Number of agents available for removal */
   agentCount: number;
+  /** Number of harnesses available for removal */
+  harnessCount: number;
   /** Number of gateways available for removal */
   gatewayCount: number;
   /** Number of gateway targets available for removal */
@@ -43,16 +69,21 @@ interface RemoveScreenProps {
   policyCount: number;
   /** Number of configuration bundles available for removal */
   configBundleCount: number;
-  /** Number of AB tests available for removal */
-  abTestCount: number;
   /** Number of runtime endpoints available for removal */
   runtimeEndpointCount: number;
+  /** Number of datasets available for removal */
+  datasetCount: number;
+  /** Number of knowledge bases available for removal */
+  knowledgeBaseCount: number;
+  /** Number of payment managers available for removal */
+  paymentCount: number;
 }
 
 export function RemoveScreen({
   onSelect,
   onExit,
   agentCount,
+  harnessCount,
   gatewayCount,
   mcpToolCount,
   memoryCount,
@@ -62,8 +93,10 @@ export function RemoveScreen({
   policyEngineCount,
   policyCount,
   configBundleCount,
-  abTestCount,
   runtimeEndpointCount,
+  datasetCount,
+  knowledgeBaseCount,
+  paymentCount,
 }: RemoveScreenProps) {
   const items: SelectableItem[] = useMemo(() => {
     return REMOVE_RESOURCES.map(r => {
@@ -75,6 +108,12 @@ export function RemoveScreen({
           if (agentCount === 0) {
             disabled = true;
             description = 'No agents to remove';
+          }
+          break;
+        case 'harness':
+          if (harnessCount === 0) {
+            disabled = true;
+            description = 'No harnesses to remove';
           }
           break;
         case 'gateway':
@@ -131,16 +170,28 @@ export function RemoveScreen({
             description = 'No configuration bundles to remove';
           }
           break;
-        case 'ab-test':
-          if (abTestCount === 0) {
-            disabled = true;
-            description = 'No AB tests to remove';
-          }
-          break;
         case 'runtime-endpoint':
           if (runtimeEndpointCount === 0) {
             disabled = true;
             description = 'No runtime endpoints to remove';
+          }
+          break;
+        case 'dataset':
+          if (datasetCount === 0) {
+            disabled = true;
+            description = 'No datasets to remove';
+          }
+          break;
+        case 'knowledge-base':
+          if (knowledgeBaseCount === 0) {
+            disabled = true;
+            description = 'No knowledge bases to remove';
+          }
+          break;
+        case 'payment':
+          if (paymentCount === 0) {
+            disabled = true;
+            description = 'No payment managers to remove';
           }
           break;
         case 'all':
@@ -152,6 +203,7 @@ export function RemoveScreen({
     });
   }, [
     agentCount,
+    harnessCount,
     gatewayCount,
     mcpToolCount,
     memoryCount,
@@ -161,8 +213,10 @@ export function RemoveScreen({
     policyEngineCount,
     policyCount,
     configBundleCount,
-    abTestCount,
     runtimeEndpointCount,
+    datasetCount,
+    knowledgeBaseCount,
+    paymentCount,
   ]);
 
   const isDisabled = (item: SelectableItem) => item.disabled ?? false;

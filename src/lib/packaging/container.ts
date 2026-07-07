@@ -1,7 +1,7 @@
 import type { AgentEnvSpec } from '../../schema';
 import { CONTAINER_RUNTIMES, DOCKERFILE_NAME, ONE_GB, getDockerfilePath } from '../constants';
+import { PackagingError } from '../errors/types';
 import { getUvBuildArgs } from './build-args';
-import { PackagingError } from './errors';
 import { resolveCodeLocation } from './helpers';
 import type { ArtifactResult, PackageOptions, RuntimePackager } from './types/packaging';
 import { spawnSync } from 'child_process';
@@ -35,10 +35,11 @@ export class ContainerPackager implements RuntimePackager {
     const agentName = options.agentName ?? spec.name;
     const configBaseDir = options.artifactDir ?? options.projectRoot ?? process.cwd();
     const codeLocation = resolveCodeLocation(spec.codeLocation, configBaseDir);
-    const dockerfilePath = getDockerfilePath(codeLocation, spec.dockerfile);
     const buildContext = spec.buildContextPath
       ? resolveCodeLocation(spec.buildContextPath, configBaseDir)
       : codeLocation;
+    // Dockerfile is resolved relative to the build context (matches the deploy/CodeBuild path).
+    const dockerfilePath = getDockerfilePath(buildContext, spec.dockerfile);
 
     // Preflight: Dockerfile must exist
     if (!existsSync(dockerfilePath)) {

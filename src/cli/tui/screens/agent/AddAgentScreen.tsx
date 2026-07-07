@@ -1,13 +1,27 @@
 import { APP_DIR, ConfigIO } from '../../../../lib';
 import type { ModelProvider, NetworkMode, RuntimeAuthorizerType, SDKFramework } from '../../../../schema';
-import { AgentNameSchema, DEFAULT_MODEL_IDS, LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../../schema';
+import {
+  AgentNameSchema,
+  DEFAULT_MODEL_IDS,
+  LIFECYCLE_TIMEOUT_MAX,
+  LIFECYCLE_TIMEOUT_MIN,
+  MAX_EFS_MOUNTS,
+  MAX_S3_MOUNTS,
+  SessionStorageSchema,
+} from '../../../../schema';
 import { listBedrockAgentAliases, listBedrockAgents } from '../../../aws/bedrock-import';
 import type { BedrockAgentSummary, BedrockAliasSummary } from '../../../aws/bedrock-import-types';
+import {
+  validateBYOMountPath,
+  validateEfsAccessPointArn,
+  validateS3FilesAccessPointArn,
+} from '../../../commands/shared/filesystem-utils';
 import { parseAndNormalizeHeaders, validateHeaderAllowlist } from '../../../commands/shared/header-utils';
 import {
   parseCommaSeparatedList,
   validateSecurityGroupIds,
   validateSubnetIds,
+  validateVpcId,
 } from '../../../commands/shared/vpc-utils';
 import { BEDROCK_REGIONS, IMPORT_FRAMEWORK_OPTIONS } from '../../../operations/agent/import/constants';
 import type { JwtConfigOptions } from '../../../primitives/auth-utils';
@@ -19,6 +33,7 @@ import {
   Panel,
   PathInput,
   Screen,
+  SelectList,
   StepIndicator,
   TextInput,
   WizardMultiSelect,
@@ -28,11 +43,13 @@ import type { SelectableItem } from '../../components';
 import { JwtConfigInput, useJwtConfigFlow } from '../../components/jwt-config';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation, useMultiSelectNavigation, useProject } from '../../hooks';
+import { useFilesystemMountState } from '../../hooks/useFilesystemMountState';
 import { generateUniqueName } from '../../utils';
 import { BUILD_TYPE_OPTIONS, GenerateWizardUI, getWizardHelpText, useGenerateWizard } from '../generate';
 import type { BuildType, MemoryOption } from '../generate';
 import type { AdvancedSettingId } from '../generate/types';
 import { ADVANCED_SETTING_OPTIONS, MEMORY_OPTIONS } from '../generate/types';
+import { buildMountListItems } from './buildMountListItems';
 import type { AddAgentConfig, AddAgentStep, AgentType } from './types';
 import {
   ADD_AGENT_STEP_LABELS,
@@ -42,25 +59,12 @@ import {
   MODEL_PROVIDER_OPTIONS,
   NETWORK_MODE_OPTIONS,
   RUNTIME_AUTHORIZER_TYPE_OPTIONS,
+  getProviderInfo,
 } from './types';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
 import { basename, resolve } from 'path';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-
-// Helper to get provider display name and env var name from ModelProvider
-function getProviderInfo(provider: ModelProvider): { name: string; envVarName: string } {
-  switch (provider) {
-    case 'OpenAI':
-      return { name: 'OpenAI', envVarName: 'OPENAI_API_KEY' };
-    case 'Anthropic':
-      return { name: 'Anthropic', envVarName: 'ANTHROPIC_API_KEY' };
-    case 'Gemini':
-      return { name: 'Google Gemini', envVarName: 'GEMINI_API_KEY' };
-    case 'Bedrock':
-      return { name: 'Amazon Bedrock', envVarName: '' };
-  }
-}
 
 interface AddAgentScreenProps {
   existingAgentNames: string[];
@@ -81,12 +85,19 @@ type ByoStep =
   | 'networkMode'
   | 'subnets'
   | 'securityGroups'
+  | 'vpcId'
   | 'requestHeaderAllowlist'
   | 'authorizerType'
   | 'jwtConfig'
   | 'idleTimeout'
   | 'maxLifetime'
   | 'sessionStorageMountPath'
+  | 'efsArn'
+  | 'efsMountPath'
+  | 'efsAddAnother'
+  | 's3Arn'
+  | 's3MountPath'
+  | 's3AddAnother'
   | 'confirm';
 
 const INITIAL_STEPS: InitialStep[] = ['name', 'agentType'];
@@ -117,6 +128,11 @@ export function computeByoSteps(input: ComputeByoStepsInput): ByoStep[] {
       subSteps.push('networkMode');
       if (input.networkMode === 'VPC') {
         subSteps.push('subnets', 'securityGroups');
+        // vpcId is required by the schema for Container builds in VPC mode (CodeBuild cannot infer
+        // the VPC from subnets). CodeZip builds no container, so it is not collected there.
+        if (input.buildType === 'Container') {
+          subSteps.push('vpcId');
+        }
       }
     }
     if (input.advancedSettings.has('headers')) {
@@ -129,7 +145,15 @@ export function computeByoSteps(input: ComputeByoStepsInput): ByoStep[] {
       subSteps.push('idleTimeout', 'maxLifetime');
     }
     if (input.advancedSettings.has('filesystem')) {
-      subSteps.push('sessionStorageMountPath');
+      subSteps.push(
+        'sessionStorageMountPath',
+        'efsArn',
+        'efsMountPath',
+        'efsAddAnother',
+        's3Arn',
+        's3MountPath',
+        's3AddAnother'
+      );
     }
     steps = [...steps.slice(0, afterAdvanced), ...subSteps, ...steps.slice(afterAdvanced)];
   }
@@ -181,10 +205,13 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     networkMode: 'PUBLIC' as NetworkMode,
     subnets: '' as string,
     securityGroups: '' as string,
+    vpcId: '' as string,
     requestHeaderAllowlist: '' as string,
     idleTimeout: '' as string,
     maxLifetime: '' as string,
     sessionStorageMountPath: '' as string,
+    efsAccessPoints: [] as { accessPointArn: string; mountPath: string }[],
+    s3AccessPoints: [] as { accessPointArn: string; mountPath: string }[],
     withConfigBundle: undefined as boolean | undefined,
   });
   const [byoAdvancedSettings, setByoAdvancedSettings] = useState<Set<AdvancedSettingId>>(new Set());
@@ -300,6 +327,9 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       networkMode: generateWizard.config.networkMode,
       subnets: generateWizard.config.networkMode === 'VPC' ? generateWizard.config.subnets : undefined,
       securityGroups: generateWizard.config.networkMode === 'VPC' ? generateWizard.config.securityGroups : undefined,
+      ...(generateWizard.config.networkMode === 'VPC' &&
+        generateWizard.config.buildType === 'Container' &&
+        generateWizard.config.vpcId && { vpcId: generateWizard.config.vpcId }),
       requestHeaderAllowlist: generateWizard.config.requestHeaderAllowlist,
       ...(generateWizard.config.authorizerType &&
         generateWizard.config.authorizerType !== 'AWS_IAM' && {
@@ -312,6 +342,8 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       idleRuntimeSessionTimeout: generateWizard.config.idleRuntimeSessionTimeout,
       maxLifetime: generateWizard.config.maxLifetime,
       sessionStorageMountPath: generateWizard.config.sessionStorageMountPath,
+      ...(generateWizard.config.efsAccessPoints?.length && { efsAccessPoints: generateWizard.config.efsAccessPoints }),
+      ...(generateWizard.config.s3AccessPoints?.length && { s3AccessPoints: generateWizard.config.s3AccessPoints }),
       withConfigBundle: generateWizard.config.withConfigBundle,
       pythonVersion: DEFAULT_PYTHON_VERSION,
       memory: generateWizard.config.memory,
@@ -334,7 +366,6 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
   // ─────────────────────────────────────────────────────────────────────────────
 
   // BYO steps filtering (apiKey for Bedrock, advanced sub-steps based on multi-select, jwtConfig for CUSTOM_JWT)
-  const byoAdvancedActive = byoAdvancedSettings.size > 0;
   const byoSteps = useMemo(
     () =>
       computeByoSteps({
@@ -344,14 +375,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
         authorizerType: byoAuthorizerType,
         advancedSettings: byoAdvancedSettings,
       }),
-    [
-      byoConfig.buildType,
-      byoConfig.modelProvider,
-      byoConfig.networkMode,
-      byoAdvancedActive,
-      byoAdvancedSettings,
-      byoAuthorizerType,
-    ]
+    [byoConfig.buildType, byoConfig.modelProvider, byoConfig.networkMode, byoAdvancedSettings, byoAuthorizerType]
   );
 
   const byoCurrentIndex = byoSteps.indexOf(byoStep);
@@ -365,6 +389,28 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     },
     [byoSteps]
   );
+
+  const {
+    pendingEfsArn,
+    pendingS3Arn,
+    editingEfsIndex,
+    editingS3Index,
+    submitEfsArn: submitByoEfsArn,
+    submitEfsMountPath: submitByoEfsMountPath,
+    submitEfsAddAnother: submitByoEfsAddAnother,
+    submitS3Arn: submitByoS3Arn,
+    submitS3MountPath: submitByoS3MountPath,
+    submitS3AddAnother: submitByoS3AddAnother,
+    resetFilesystemState: resetByoFilesystemState,
+  } = useFilesystemMountState({
+    currentStep: byoStep,
+    efsMounts: byoConfig.efsAccessPoints,
+    s3Mounts: byoConfig.s3AccessPoints,
+    setEfsMounts: updater => setByoConfig(c => ({ ...c, efsAccessPoints: updater(c.efsAccessPoints) })),
+    setS3Mounts: updater => setByoConfig(c => ({ ...c, s3AccessPoints: updater(c.s3AccessPoints) })),
+    goToNextStep: goToNextByoStep as (afterStep: string) => void,
+    setStep: setByoStep as (step: string) => void,
+  });
 
   // Advanced multi-select items — filter out dockerfile when not a Container build
   const byoAdvancedItems: SelectableItem[] = useMemo(
@@ -401,14 +447,64 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
 
   const handleByoBack = useCallback(() => {
     if (byoCurrentIndex === 0) {
-      // Go back to agentType selection
       setAgentType(null);
       setInitialStep('agentType');
-    } else {
-      const prevStep = byoSteps[byoCurrentIndex - 1];
-      if (prevStep) setByoStep(prevStep);
+      return;
     }
-  }, [byoCurrentIndex, byoSteps]);
+    // efsArn: editing → back to review; mounts exist → back to review; no mounts → step before efsArn
+    if (byoStep === 'efsArn') {
+      if (editingEfsIndex >= 0) {
+        resetByoFilesystemState();
+        setByoStep('efsAddAnother');
+      } else if (byoConfig.efsAccessPoints.length > 0) {
+        setByoStep('efsAddAnother');
+      } else {
+        const prev = byoSteps[byoSteps.indexOf('efsArn') - 1];
+        if (prev) setByoStep(prev);
+      }
+      return;
+    }
+    // efsAddAnother: always exit EFS sub-flow (step before efsArn)
+    if (byoStep === 'efsAddAnother') {
+      const prev = byoSteps[byoSteps.indexOf('efsArn') - 1];
+      if (prev) setByoStep(prev);
+      return;
+    }
+    // s3Arn: editing → back to s3 review; S3 mounts exist → back to s3 review; else → EFS section
+    if (byoStep === 's3Arn') {
+      if (editingS3Index >= 0) {
+        resetByoFilesystemState();
+        setByoStep('s3AddAnother');
+      } else if (byoConfig.s3AccessPoints.length > 0) {
+        setByoStep('s3AddAnother');
+      } else if (byoConfig.efsAccessPoints.length > 0) {
+        setByoStep('efsAddAnother');
+      } else {
+        setByoStep('efsArn');
+      }
+      return;
+    }
+    // s3AddAnother: always exit S3 sub-flow → back to EFS section end/start
+    if (byoStep === 's3AddAnother') {
+      if (byoConfig.efsAccessPoints.length > 0) {
+        setByoStep('efsAddAnother');
+      } else {
+        setByoStep('efsArn');
+      }
+      return;
+    }
+    const prevStep = byoSteps[byoCurrentIndex - 1];
+    if (prevStep) setByoStep(prevStep);
+  }, [
+    byoCurrentIndex,
+    byoStep,
+    byoSteps,
+    byoConfig.efsAccessPoints,
+    byoConfig.s3AccessPoints,
+    editingEfsIndex,
+    editingS3Index,
+    resetByoFilesystemState,
+  ]);
 
   const handleByoComplete = useCallback(() => {
     // For BYO, language/framework are not asked - we default to Python/Strands
@@ -429,12 +525,17 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       networkMode: byoConfig.networkMode,
       subnets: byoConfig.networkMode === 'VPC' ? parseCommaSeparatedList(byoConfig.subnets) : undefined,
       securityGroups: byoConfig.networkMode === 'VPC' ? parseCommaSeparatedList(byoConfig.securityGroups) : undefined,
+      ...(byoConfig.networkMode === 'VPC' &&
+        byoConfig.buildType === 'Container' &&
+        byoConfig.vpcId && { vpcId: byoConfig.vpcId }),
       ...(requestHeaderAllowlist.length > 0 && { requestHeaderAllowlist }),
       ...(byoAuthorizerType !== 'AWS_IAM' && { authorizerType: byoAuthorizerType }),
       ...(byoAuthorizerType === 'CUSTOM_JWT' && byoJwtConfig && { jwtConfig: byoJwtConfig }),
       ...(byoConfig.idleTimeout && { idleRuntimeSessionTimeout: Number(byoConfig.idleTimeout) }),
       ...(byoConfig.maxLifetime && { maxLifetime: Number(byoConfig.maxLifetime) }),
       ...(byoConfig.sessionStorageMountPath && { sessionStorageMountPath: byoConfig.sessionStorageMountPath }),
+      ...(byoConfig.efsAccessPoints.length > 0 && { efsAccessPoints: byoConfig.efsAccessPoints }),
+      ...(byoConfig.s3AccessPoints.length > 0 && { s3AccessPoints: byoConfig.s3AccessPoints }),
       ...(byoConfig.withConfigBundle && { withConfigBundle: true }),
       pythonVersion: DEFAULT_PYTHON_VERSION,
       memory: 'none',
@@ -493,18 +594,30 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
           networkMode: 'PUBLIC' as NetworkMode,
           subnets: '',
           securityGroups: '',
+          vpcId: '',
           requestHeaderAllowlist: '',
           idleTimeout: '',
           maxLifetime: '',
           sessionStorageMountPath: '',
+          efsAccessPoints: [],
+          s3AccessPoints: [],
           withConfigBundle: undefined,
         }));
+        resetByoFilesystemState();
         setByoAuthorizerType('AWS_IAM');
         setByoJwtConfig(undefined);
         setByoStep('confirm');
       } else {
+        // Clear filesystem state if filesystem was deselected
+        if (!selected.has('filesystem')) {
+          setByoConfig(c => ({ ...c, sessionStorageMountPath: '', efsAccessPoints: [], s3AccessPoints: [] }));
+          resetByoFilesystemState();
+        }
         // Config bundle has no sub-steps — set flag immediately
-        setByoConfig(c => ({ ...c, withConfigBundle: selected.has('configBundle') || undefined }));
+        setByoConfig(c => ({
+          ...c,
+          withConfigBundle: selected.has('configBundle') || undefined,
+        }));
         // Navigate to first advanced sub-step (steps memo hasn't updated yet)
         setTimeout(() => {
           if (selected.has('dockerfile') && byoConfig.buildType === 'Container') {
@@ -577,6 +690,28 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     onBack: () => {
       setByoStep('authorizerType');
     },
+  });
+
+  const efsAddAnotherItems = useMemo(
+    () => buildMountListItems(byoConfig.efsAccessPoints, 'EFS', MAX_EFS_MOUNTS),
+    [byoConfig.efsAccessPoints]
+  );
+  const efsAddAnotherNav = useListNavigation({
+    items: efsAddAnotherItems,
+    onSelect: item => submitByoEfsAddAnother(item.id),
+    onExit: handleByoBack,
+    isActive: isByoPath && byoStep === 'efsAddAnother',
+  });
+
+  const s3AddAnotherItems = useMemo(
+    () => buildMountListItems(byoConfig.s3AccessPoints, 'S3 Files', MAX_S3_MOUNTS),
+    [byoConfig.s3AccessPoints]
+  );
+  const s3AddAnotherNav = useListNavigation({
+    items: s3AddAnotherItems,
+    onSelect: item => submitByoS3AddAnother(item.id),
+    onExit: handleByoBack,
+    isActive: isByoPath && byoStep === 's3AddAnother',
   });
 
   useListNavigation({
@@ -824,10 +959,15 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       byoStep === 'apiKey' ||
       byoStep === 'subnets' ||
       byoStep === 'securityGroups' ||
+      byoStep === 'vpcId' ||
       byoStep === 'requestHeaderAllowlist' ||
       byoStep === 'idleTimeout' ||
       byoStep === 'maxLifetime' ||
-      byoStep === 'sessionStorageMountPath'
+      byoStep === 'sessionStorageMountPath' ||
+      byoStep === 'efsArn' ||
+      byoStep === 'efsMountPath' ||
+      byoStep === 's3Arn' ||
+      byoStep === 's3MountPath'
     ) {
       return HELP_TEXT.TEXT_INPUT;
     }
@@ -1163,6 +1303,20 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
           />
         )}
 
+        {byoStep === 'vpcId' && (
+          <TextInput
+            prompt="VPC ID"
+            placeholder="vpc-xxxxxxxxxxxx"
+            initialValue={byoConfig.vpcId}
+            customValidation={validateVpcId}
+            onSubmit={value => {
+              setByoConfig(c => ({ ...c, vpcId: value.trim() }));
+              goToNextByoStep('vpcId');
+            }}
+            onCancel={handleByoBack}
+          />
+        )}
+
         {byoStep === 'requestHeaderAllowlist' && (
           <Box flexDirection="column">
             <TextInput
@@ -1181,8 +1335,8 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
             />
             <Box marginTop={1}>
               <Text dimColor>
-                Enter header suffixes or full names. We auto-prefix with X-Amzn-Bedrock-AgentCore-Runtime-Custom- if
-                needed. &apos;Authorization&apos; is also accepted.
+                Enter header names (e.g. Authorization, X-Api-Key, X-Custom-Signature). Bare names without X- prefix are
+                auto-prefixed with X-Amzn-Bedrock-AgentCore-Runtime-Custom- for backward compatibility.
               </Text>
             </Box>
           </Box>
@@ -1270,17 +1424,105 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
             prompt="Session storage mount path (e.g. /mnt/session-storage, or press Enter to skip)"
             initialValue={byoConfig.sessionStorageMountPath}
             allowEmpty
-            customValidation={value => {
-              if (!value) return true;
-              if (!value.startsWith('/')) return 'Must be an absolute path starting with /';
-              return true;
-            }}
+            schema={SessionStorageSchema.shape.mountPath}
             onSubmit={value => {
               setByoConfig(c => ({ ...c, sessionStorageMountPath: value }));
               goToNextByoStep('sessionStorageMountPath');
             }}
             onCancel={handleByoBack}
           />
+        )}
+
+        {byoStep === 'efsArn' && (
+          <>
+            {byoConfig.networkMode !== 'VPC' && (
+              <Text color="yellow">⚠ EFS mounts require VPC network mode. Press Enter to skip or Esc to go back.</Text>
+            )}
+            <TextInput
+              prompt={
+                editingEfsIndex >= 0
+                  ? `Edit EFS access point ARN (mount ${editingEfsIndex + 1}/${MAX_EFS_MOUNTS}):`
+                  : `EFS access point ARN ${byoConfig.efsAccessPoints.length + 1}/${MAX_EFS_MOUNTS} (press Enter to skip):`
+              }
+              initialValue={editingEfsIndex >= 0 ? pendingEfsArn : ''}
+              allowEmpty={editingEfsIndex < 0}
+              customValidation={value => {
+                if (!value && editingEfsIndex < 0) return true;
+                if (byoConfig.networkMode !== 'VPC') return 'EFS mounts require VPC network mode';
+                const r = validateEfsAccessPointArn(value);
+                return r === true ? true : r;
+              }}
+              onSubmit={submitByoEfsArn}
+              onCancel={handleByoBack}
+            />
+          </>
+        )}
+
+        {byoStep === 'efsMountPath' && (
+          <TextInput
+            prompt={`EFS mount path for ...${pendingEfsArn.slice(-30)} (e.g. /mnt/efs-data):`}
+            initialValue={editingEfsIndex >= 0 ? (byoConfig.efsAccessPoints[editingEfsIndex]?.mountPath ?? '') : ''}
+            customValidation={value => {
+              const r = validateBYOMountPath(value);
+              return r === true ? true : r;
+            }}
+            onSubmit={submitByoEfsMountPath}
+            onCancel={() => {
+              resetByoFilesystemState();
+              setByoStep(editingEfsIndex >= 0 ? 'efsAddAnother' : 'efsArn');
+            }}
+          />
+        )}
+
+        {byoStep === 'efsAddAnother' && (
+          <SelectList items={efsAddAnotherItems} selectedIndex={efsAddAnotherNav.selectedIndex} />
+        )}
+
+        {byoStep === 's3Arn' && (
+          <>
+            {byoConfig.networkMode !== 'VPC' && (
+              <Text color="yellow">
+                ⚠ S3 Files mounts require VPC network mode. Press Enter to skip or Esc to go back.
+              </Text>
+            )}
+            <TextInput
+              prompt={
+                editingS3Index >= 0
+                  ? `Edit S3 Files access point ARN (mount ${editingS3Index + 1}/${MAX_S3_MOUNTS}):`
+                  : `S3 Files access point ARN ${byoConfig.s3AccessPoints.length + 1}/${MAX_S3_MOUNTS} (press Enter to skip):`
+              }
+              initialValue={editingS3Index >= 0 ? pendingS3Arn : ''}
+              allowEmpty={editingS3Index < 0}
+              customValidation={value => {
+                if (!value && editingS3Index < 0) return true;
+                if (byoConfig.networkMode !== 'VPC') return 'S3 Files mounts require VPC network mode';
+                const r = validateS3FilesAccessPointArn(value);
+                return r === true ? true : r;
+              }}
+              onSubmit={submitByoS3Arn}
+              onCancel={handleByoBack}
+            />
+          </>
+        )}
+
+        {byoStep === 's3MountPath' && (
+          <TextInput
+            prompt={`S3 Files mount path for ...${pendingS3Arn.slice(-30)} (e.g. /mnt/s3-data):`}
+            initialValue={editingS3Index >= 0 ? (byoConfig.s3AccessPoints[editingS3Index]?.mountPath ?? '') : ''}
+            customValidation={value => {
+              const r = validateBYOMountPath(value);
+              return r === true ? true : r;
+            }}
+            onSubmit={submitByoS3MountPath}
+            onCancel={() => {
+              resetByoFilesystemState();
+              setByoStep(editingS3Index >= 0 ? 's3AddAnother' : 's3Arn');
+            }}
+          />
+        )}
+
+        {byoStep === 's3AddAnother' && (
+          <SelectList items={s3AddAnotherItems} selectedIndex={s3AddAnotherNav.selectedIndex} />
         )}
 
         {byoStep === 'confirm' && (
@@ -1321,6 +1563,9 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
                 ? [
                     { label: 'Subnets', value: byoConfig.subnets || '(none)' },
                     { label: 'Security Groups', value: byoConfig.securityGroups || '(none)' },
+                    ...(byoConfig.buildType === 'Container'
+                      ? [{ label: 'VPC ID', value: byoConfig.vpcId || '(none)' }]
+                      : []),
                   ]
                 : []),
               ...(() => {
@@ -1354,6 +1599,14 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
               ...(byoConfig.sessionStorageMountPath
                 ? [{ label: 'Session Storage', value: byoConfig.sessionStorageMountPath }]
                 : []),
+              ...byoConfig.efsAccessPoints.map((m, i) => ({
+                label: `EFS Mount ${i + 1}`,
+                value: `${m.accessPointArn.slice(-30)} → ${m.mountPath}`,
+              })),
+              ...byoConfig.s3AccessPoints.map((m, i) => ({
+                label: `S3 Files Mount ${i + 1}`,
+                value: `${m.accessPointArn.slice(-30)} → ${m.mountPath}`,
+              })),
               ...(byoConfig.withConfigBundle
                 ? [{ label: 'Config Bundle', value: 'Yes (auto-created on deploy)' }]
                 : []),

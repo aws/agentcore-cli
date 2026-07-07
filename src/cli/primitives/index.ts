@@ -1,8 +1,11 @@
-export { ABTestPrimitive } from './ABTestPrimitive';
 export { BasePrimitive } from './BasePrimitive';
+export { DatasetPrimitive } from './DatasetPrimitive';
+export type { AddDatasetOptions } from '../commands/add/types';
+export type { RemovableDataset } from './DatasetPrimitive';
 export { MemoryPrimitive } from './MemoryPrimitive';
 export { CredentialPrimitive } from './CredentialPrimitive';
 export { AgentPrimitive } from './AgentPrimitive';
+export { HarnessPrimitive } from './HarnessPrimitive';
 export { EvaluatorPrimitive } from './EvaluatorPrimitive';
 export { OnlineEvalConfigPrimitive } from './OnlineEvalConfigPrimitive';
 export { GatewayPrimitive } from './GatewayPrimitive';
@@ -12,16 +15,18 @@ export type { AddRuntimeEndpointOptions, RemovableRuntimeEndpoint } from './Runt
 export {
   ALL_PRIMITIVES,
   agentPrimitive,
+  harnessPrimitive,
   memoryPrimitive,
+  datasetPrimitive,
   credentialPrimitive,
   evaluatorPrimitive,
   onlineEvalConfigPrimitive,
   gatewayPrimitive,
   gatewayTargetPrimitive,
   configBundlePrimitive,
-  abTestPrimitive,
   runtimeEndpointPrimitive,
   getPrimitive,
 } from './registry';
 export { SOURCE_CODE_NOTE } from './constants';
 export type { AddResult, AddScreenComponent, RemovableResource, RemovalPreview, Result } from './types';
+export type { AddHarnessOptions } from './HarnessPrimitive';

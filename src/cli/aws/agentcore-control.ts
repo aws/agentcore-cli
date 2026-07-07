@@ -1,5 +1,8 @@
+import type { NetworkConfig } from '../../schema';
 import type { EvaluationLevel } from '../../schema/schemas/primitives/evaluator';
+import { resolveVpcIdFromSubnets } from '../commands/shared/vpc-utils';
 import { getCredentialProvider } from './account';
+import { controlPlaneEndpoint } from './stage-endpoint';
 import {
   BedrockAgentCoreControlClient,
   GetAgentRuntimeCommand,
@@ -20,13 +23,17 @@ import {
 
 /**
  * Create a shared BedrockAgentCoreControlClient for the given region.
+ * Respects AGENTCORE_STAGE env var for pre-release endpoint override.
  * Callers should create one client and reuse it across related operations
  * to benefit from connection pooling and credential caching.
  */
 export function createControlClient(region: string): BedrockAgentCoreControlClient {
+  const stage = process.env.AGENTCORE_STAGE?.toLowerCase();
+  const endpointOverride = stage === 'beta' || stage === 'gamma' ? controlPlaneEndpoint(region) : undefined;
   return new BedrockAgentCoreControlClient({
     region,
     credentials: getCredentialProvider(),
+    ...(endpointOverride ? { endpoint: endpointOverride } : {}),
   });
 }
 
@@ -185,7 +192,7 @@ export interface AgentRuntimeDetail {
   description?: string;
   roleArn: string;
   networkMode: string;
-  networkConfig?: { subnets: string[]; securityGroups: string[] };
+  networkConfig?: NetworkConfig;
   protocol: string;
   runtimeVersion?: string;
   entryPoint?: string[];
@@ -217,17 +224,21 @@ export async function getAgentRuntimeDetail(options: GetAgentRuntimeOptions): Pr
 
   const response = await client.send(command);
 
-  const networkMode = response.networkConfiguration?.networkMode ?? 'PUBLIC';
-  const networkConfig =
-    networkMode === 'VPC' && response.networkConfiguration?.networkModeConfig
-      ? {
-          subnets: response.networkConfiguration.networkModeConfig.subnets ?? [],
-          securityGroups: response.networkConfiguration.networkModeConfig.securityGroups ?? [],
-        }
-      : undefined;
-
   const isContainer = !!response.agentRuntimeArtifact?.containerConfiguration;
   const codeConfig = response.agentRuntimeArtifact?.codeConfiguration;
+
+  const networkMode = response.networkConfiguration?.networkMode ?? 'PUBLIC';
+  let networkConfig: AgentRuntimeDetail['networkConfig'];
+  if (networkMode === 'VPC' && response.networkConfiguration?.networkModeConfig) {
+    const subnets = response.networkConfiguration.networkModeConfig.subnets ?? [];
+    const securityGroups = response.networkConfiguration.networkModeConfig.securityGroups ?? [];
+    // Resolve the VPC ID only for Container builds (the case that requires it — CodeBuild can't infer
+    // the VPC). CodeZip+VPC runtimes don't need it, so this avoids the extra ec2:DescribeSubnets call
+    // (and its IAM) for them. `isContainer` here comes from the runtime's containerConfiguration.
+    const vpcId =
+      isContainer && subnets.length > 0 ? await resolveVpcIdFromSubnets(subnets, options.region) : undefined;
+    networkConfig = { subnets, securityGroups, vpcId };
+  }
 
   let authorizerType: string | undefined;
   let authorizerConfiguration: AgentRuntimeDetail['authorizerConfiguration'];
@@ -368,9 +379,10 @@ export interface MemoryDetail {
     type: string;
     name?: string;
     description?: string;
-    namespaces?: string[];
-    reflectionNamespaces?: string[];
+    namespaceTemplates?: string[];
+    reflectionNamespaceTemplates?: string[];
   }[];
+  indexedKeys?: { key: string; type: string }[];
   tags?: Record<string, string>;
   encryptionKeyArn?: string;
   executionRoleArn?: string;
@@ -408,6 +420,17 @@ export async function getMemoryDetail(options: GetMemoryOptions): Promise<Memory
 
   const tags = await fetchTags(client, memory.arn, 'memory');
 
+  const rawKeys = (memory as unknown as Record<string, unknown>).indexedKeys as
+    | { key?: string; type?: string }[]
+    | undefined;
+  const indexedKeys = rawKeys?.flatMap((k: { key?: string; type?: string }) => {
+    if (!k.key || !k.type) {
+      console.warn(`Warning: Skipping malformed indexed key from API response: ${JSON.stringify(k)}`);
+      return [];
+    }
+    return [{ key: k.key, type: k.type }];
+  });
+
   return {
     memoryId: memory.id,
     memoryArn: memory.arn,
@@ -418,17 +441,22 @@ export async function getMemoryDetail(options: GetMemoryOptions): Promise<Memory
     tags,
     encryptionKeyArn: memory.encryptionKeyArn,
     executionRoleArn: memory.memoryExecutionRoleArn,
+    ...(indexedKeys && indexedKeys.length > 0 && { indexedKeys }),
     strategies: (memory.strategies ?? []).map(s => {
       if (!s.type) {
         throw new Error(`Memory ${options.memoryId} has a strategy with missing required field: type`);
       }
-      const episodicNamespaces = s.configuration?.reflection?.episodicReflectionConfiguration?.namespaces;
+      // Prefer the new `namespaceTemplates` field; fall back to the deprecated `namespaces` field.
+      const namespaceTemplates = s.namespaceTemplates ?? s.namespaces;
+      const reflectionConfig = s.configuration?.reflection?.episodicReflectionConfiguration;
+      const reflectionTemplates = reflectionConfig?.namespaceTemplates ?? reflectionConfig?.namespaces;
       return {
         type: s.type,
         name: s.name,
         description: s.description,
-        namespaces: s.namespaces,
-        ...(episodicNamespaces && episodicNamespaces.length > 0 && { reflectionNamespaces: episodicNamespaces }),
+        ...(namespaceTemplates && namespaceTemplates.length > 0 && { namespaceTemplates }),
+        ...(reflectionTemplates &&
+          reflectionTemplates.length > 0 && { reflectionNamespaceTemplates: reflectionTemplates }),
       };
     }),
   };
@@ -546,7 +574,7 @@ export async function getEvaluator(options: GetEvaluatorOptions): Promise<GetEva
     status: response.status ?? 'UNKNOWN',
     description: response.description,
     evaluatorConfig,
-    kmsKeyArn: response.kmsKeyArn,
+    kmsKeyArn: (response as unknown as Record<string, unknown>).kmsKeyArn as string | undefined,
     tags,
   };
 }
@@ -825,6 +853,7 @@ export interface GatewayDetail {
       }[];
     };
   };
+  protocolType?: string;
   protocolConfiguration?: {
     mcp?: { searchType?: string };
   };
@@ -931,6 +960,9 @@ export async function getGatewayDetail(options: { region: string; gatewayId: str
 
   const tags = await fetchTags(client, response.gatewayArn, 'gateway');
 
+  // Service returns protocolType 'MCP' or null. Null = non-MCP gateway.
+  const protocolType = response.protocolType === 'MCP' ? 'MCP' : 'None';
+
   return {
     gatewayId: response.gatewayId ?? '',
     gatewayArn: response.gatewayArn ?? '',
@@ -940,13 +972,14 @@ export async function getGatewayDetail(options: { region: string; gatewayId: str
     description: response.description,
     authorizerType: response.authorizerType ?? 'NONE',
     roleArn: response.roleArn,
-    authorizerConfiguration,
-    protocolConfiguration,
+    authorizerConfiguration: authorizerConfiguration,
+    protocolType: protocolType,
+    protocolConfiguration: protocolConfiguration,
     exceptionLevel: response.exceptionLevel,
     policyEngineConfiguration: response.policyEngineConfiguration
       ? { arn: response.policyEngineConfiguration.arn ?? '', mode: response.policyEngineConfiguration.mode ?? '' }
       : undefined,
-    tags,
+    tags: tags,
   };
 }
 
@@ -981,6 +1014,10 @@ export interface GatewayTargetDetail {
       openApiSchema?: { s3?: { uri: string; bucketOwnerAccountId?: string }; inlinePayload?: string };
       smithyModel?: { s3?: { uri: string; bucketOwnerAccountId?: string }; inlinePayload?: string };
       lambda?: { lambdaArn: string; toolSchema?: any };
+    };
+    http?: {
+      agentcoreRuntime?: { runtimeArn: string; qualifier?: string };
+      runtimeTargetConfiguration?: { runtimeArn: string; qualifier?: string };
     };
   };
   credentialProviderConfigurations?: {
@@ -1112,6 +1149,24 @@ export async function getGatewayTargetDetail(options: {
       targetConfiguration.mcp!.lambda = {
         lambdaArn: mcp.lambda.lambdaArn ?? '',
         toolSchema: mcp.lambda.toolSchema,
+      };
+    }
+  }
+
+  if (response.targetConfiguration && 'http' in response.targetConfiguration) {
+    const http = (response.targetConfiguration as any).http;
+    targetConfiguration ??= {};
+    targetConfiguration.http = {};
+    if (http?.agentcoreRuntime) {
+      targetConfiguration.http.agentcoreRuntime = {
+        runtimeArn: http.agentcoreRuntime.arn ?? http.agentcoreRuntime.runtimeArn ?? '',
+        qualifier: http.agentcoreRuntime.qualifier,
+      };
+    }
+    if (http?.runtimeTargetConfiguration) {
+      targetConfiguration.http.runtimeTargetConfiguration = {
+        runtimeArn: http.runtimeTargetConfiguration.arn ?? http.runtimeTargetConfiguration.runtimeArn ?? '',
+        qualifier: http.runtimeTargetConfiguration.qualifier,
       };
     }
   }

@@ -1,4 +1,4 @@
-import { detectRegion } from '../../../aws/region';
+import { getRegion } from '../../../commands/shared/region-utils';
 import type { SessionInfo } from '../../../operations/eval';
 import { discoverSessions } from '../../../operations/eval';
 import { loadDeployedProjectConfig, resolveAgent } from '../../../operations/resolve-agent';
@@ -26,12 +26,19 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 interface RunEvalScreenProps {
   agents: AgentItem[];
   evaluatorItems: EvaluatorItem[];
+  source?: 'dataset' | 'traces';
   onComplete: (config: RunEvalConfig) => void;
   onExit: () => void;
 }
 
-export function RunEvalScreen({ agents, evaluatorItems: rawEvaluatorItems, onComplete, onExit }: RunEvalScreenProps) {
-  const wizard = useRunEvalWizard(agents.length);
+export function RunEvalScreen({
+  agents,
+  evaluatorItems: rawEvaluatorItems,
+  source = 'traces',
+  onComplete,
+  onExit,
+}: RunEvalScreenProps) {
+  const wizard = useRunEvalWizard(agents.length, source);
 
   // Auto-select agent if only one
   const singleAgent = agents.length === 1 ? agents[0]!.name : null;
@@ -81,7 +88,7 @@ export function RunEvalScreen({ agents, evaluatorItems: rawEvaluatorItems, onCom
     void (async () => {
       try {
         const context = await loadDeployedProjectConfig();
-        const { region } = await detectRegion();
+        const region = await getRegion();
         const agentResult = resolveAgent(context, { runtime: wizard.config.agent });
         if (!agentResult.success) {
           if (!cancelled) setSessionResult({ key: fetchKey, phase: 'error', message: agentResult.error });
@@ -157,6 +164,14 @@ export function RunEvalScreen({ agents, evaluatorItems: rawEvaluatorItems, onCom
     requireSelection: true,
   });
 
+  // Handle Esc during session loading/error
+  useListNavigation({
+    items: [{ id: 'back', title: 'Back' }],
+    onSelect: () => wizard.goBack(),
+    onExit: () => wizard.goBack(),
+    isActive: isSessionsStep && sessionPhase !== 'loaded',
+  });
+
   const sessionsNav = useMultiSelectNavigation({
     items: sessionItems,
     getId: item => item.id,
@@ -195,11 +210,12 @@ export function RunEvalScreen({ agents, evaluatorItems: rawEvaluatorItems, onCom
   const confirmFields = [
     { label: 'Agent', value: wizard.config.agent },
     { label: 'Evaluators', value: wizard.config.evaluators.join(', ') },
-    { label: 'Lookback', value: `${wizard.config.days} day${wizard.config.days !== 1 ? 's' : ''}` },
-    {
-      label: 'Sessions',
-      value: `${wizard.config.sessionIds.length} selected`,
-    },
+    ...(source === 'traces'
+      ? [
+          { label: 'Lookback', value: `${wizard.config.days} day${wizard.config.days !== 1 ? 's' : ''}` },
+          { label: 'Sessions', value: `${wizard.config.sessionIds.length} selected` },
+        ]
+      : [{ label: 'Source', value: 'Dataset' }]),
     ...(wizard.config.assertions.length > 0
       ? [{ label: 'Assertions', value: `${wizard.config.assertions.length} assertion(s)` }]
       : []),

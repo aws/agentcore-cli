@@ -1,61 +1,65 @@
 import {
-  Action,
-  AgentType,
+  AgentEnvironment,
+  AgentFramework,
+  AgentLanguage,
+  AgentProtocol,
+  AgentSource,
   AttachMode,
   AuthType,
   AuthorizerType,
-  Build,
+  BuildType,
   Count,
   CredentialType,
+  DeployModeSchema,
+  DevAction,
+  EvaluatorLevel,
   EvaluatorType,
   FilterState,
   FilterType,
-  Framework,
   GatewayTargetHost,
   GatewayTargetType,
-  Language,
-  Level,
-  Memory,
+  JobType,
+  MemoryType,
+  Mode,
   ModelProvider,
   NetworkMode,
-  OutboundAuth,
+  OutboundAuthType,
+  PolicyAttrSourceType,
   PolicyEngineMode,
-  Protocol,
+  PolicyValidationMode,
   RefType,
   ResourceType,
-  SourceType,
-  ValidationMode,
+  SkillSourceType,
+  UiMode,
   safeSchema,
 } from './common-shapes.js';
 import { z } from 'zod';
 
-// ---------------------------------------------------------------------------
-// Per-command attribute schemas
-// All schemas use safeSchema() which rejects z.string() at compile time.
-// ---------------------------------------------------------------------------
-
 const CreateAttrs = safeSchema({
-  language: Language,
-  framework: Framework,
+  agent_environment: AgentEnvironment,
+  agent_language: AgentLanguage.optional(),
+  agent_framework: AgentFramework.optional(),
   model_provider: ModelProvider,
-  memory: Memory,
-  protocol: Protocol,
-  build: Build,
-  agent_type: AgentType,
+  memory_type: MemoryType,
+  agent_protocol: AgentProtocol.optional(),
+  build_type: BuildType.optional(),
+  agent_source: AgentSource.optional(),
   network_mode: NetworkMode,
   has_agent: z.boolean(),
 });
 
 const AddAgentAttrs = safeSchema({
-  language: Language,
-  framework: Framework,
+  agent_language: AgentLanguage,
+  agent_framework: AgentFramework,
   model_provider: ModelProvider,
-  agent_type: AgentType,
-  build: Build,
-  protocol: Protocol,
+  agent_source: AgentSource,
+  build_type: BuildType,
+  agent_protocol: AgentProtocol,
   network_mode: NetworkMode,
   authorizer_type: AuthorizerType,
-  memory: Memory,
+  memory_type: MemoryType,
+  efs_mount_count: Count,
+  s3_mount_count: Count,
 });
 
 const AddMemoryAttrs = safeSchema({
@@ -64,11 +68,13 @@ const AddMemoryAttrs = safeSchema({
   strategy_summarization: z.boolean(),
   strategy_user_preference: z.boolean(),
   strategy_episodic: z.boolean(),
+  indexed_key_count: Count,
+  has_indexed_keys: z.boolean(),
 });
 
 const AddCredentialAttrs = safeSchema({ credential_type: CredentialType });
 
-const AddEvaluatorAttrs = safeSchema({ evaluator_type: EvaluatorType, level: Level });
+const AddEvaluatorAttrs = safeSchema({ evaluator_type: EvaluatorType, evaluator_level: EvaluatorLevel });
 
 const AddOnlineEvalAttrs = safeSchema({ evaluator_count: Count, enable_on_create: z.boolean() });
 
@@ -81,17 +87,29 @@ const AddGatewayAttrs = safeSchema({
 });
 
 const AddGatewayTargetAttrs = safeSchema({
-  target_type: GatewayTargetType,
-  host: GatewayTargetHost,
-  outbound_auth: OutboundAuth,
+  gateway_target_type: GatewayTargetType,
+  gateway_target_host: GatewayTargetHost,
+  outbound_auth_type: OutboundAuthType,
 });
 
 const AddPolicyEngineAttrs = safeSchema({ attach_gateway_count: Count, attach_mode: AttachMode });
 
-const AddPolicyAttrs = safeSchema({ source_type: SourceType, validation_mode: ValidationMode });
+const AddKnowledgeBaseAttrs = safeSchema({
+  data_source_count: Count,
+  has_description: z.boolean(),
+  is_append: z.boolean(),
+});
+
+const AddPolicyAttrs = safeSchema({
+  policy_attr_source_type: PolicyAttrSourceType,
+  policy_validation_mode: PolicyValidationMode,
+});
+
+const AddSkillAttrs = safeSchema({ skill_source_type: SkillSourceType });
 
 const DeployAttrs = safeSchema({
   runtime_count: Count,
+  harness_count: Count,
   memory_count: Count,
   credential_count: Count,
   evaluator_count: Count,
@@ -100,21 +118,40 @@ const DeployAttrs = safeSchema({
   gateway_target_count: Count,
   policy_engine_count: Count,
   policy_count: Count,
-  mode: z.enum(['deploy', 'dry-run', 'diff']),
+  deploy_mode: DeployModeSchema,
 });
 
 const DevAttrs = safeSchema({
-  action: Action,
+  agent_environment: AgentEnvironment,
+  dev_action: DevAction,
+  ui_mode: UiMode,
   has_stream: z.boolean(),
-  protocol: Protocol,
+  agent_protocol: AgentProtocol.optional(),
   invoke_count: Count,
+  // Whether -p/--port was set explicitly (vs the default). Lets us track adoption
+  // of the explicit-port-honored behavior introduced for #1079.
+  port_explicit: z.boolean().optional(),
 });
 
 const InvokeAttrs = safeSchema({
+  agent_environment: AgentEnvironment,
   has_stream: z.boolean(),
   has_session_id: z.boolean(),
   auth_type: AuthType,
-  protocol: Protocol,
+  agent_protocol: AgentProtocol.optional(),
+});
+
+const ExecAttrs = safeSchema({
+  interactive: z.boolean(),
+  has_runtime: z.boolean(),
+  has_shell_id: z.boolean(),
+  has_session_id: z.boolean(),
+  is_one_shot: z.boolean(),
+  auth_type: AuthType,
+  is_reconnect: z.boolean(),
+  exit_code: Count,
+  reconnect_attempts: Count,
+  was_kicked: z.boolean(),
 });
 
 const StatusAttrs = safeSchema({ filter_type: FilterType, filter_state: FilterState });
@@ -131,86 +168,137 @@ const RunEvalAttrs = safeSchema({
   has_expected_response: z.boolean(),
 });
 
+const RunIngestAttrs = safeSchema({
+  data_source_count: Count,
+});
+
 const FetchAccessAttrs = safeSchema({ resource_type: ResourceType });
 
-const UpdateAttrs = safeSchema({ check_only: z.boolean() });
+/**
+ * Async job commands (recommendation + batch-evaluation), keyed by verb with job_type to disambiguate.
+ * safeSchema only permits required enum/boolean/number/literal fields, so per-type detail enums
+ * (recommendation_kind, batch_eval_source, …) are recorded via the shared ATTRIBUTES set on the
+ * recorder when present rather than as required fields here.
+ */
+const RunJobAttrs = safeSchema({
+  job_type: JobType,
+  has_wait: z.boolean(),
+});
+
+const JobTypeOnlyAttrs = safeSchema({ job_type: JobType });
+
+const UpdateAttrs = safeSchema({ is_dry_run: z.boolean() });
+
+const FeedbackAttrs = safeSchema({
+  mode: Mode,
+  has_screenshot: z.boolean(),
+});
 
 const PauseResumeOnlineEvalAttrs = safeSchema({ ref_type: RefType });
 
+const AddOnlineInsightsAttrs = safeSchema({ insights_count: Count, enable_on_create: z.boolean() });
+
+const ExportHarnessAttrs = safeSchema({
+  build_type: BuildType,
+  model_provider: ModelProvider,
+  has_memory: z.boolean(),
+  has_gateway: z.boolean(),
+  has_container: z.boolean(),
+  has_execution_limits: z.boolean(),
+  notes_count: Count,
+});
+
 const NoAttrs = safeSchema({});
 
-// ---------------------------------------------------------------------------
-// Command schema registry — single source of truth
-// ---------------------------------------------------------------------------
-
+/*
+  Mapping of commands to required attributes. 
+  This is chosen over discriminated unions to avoid complexity in the root-level definition. 
+*/
 export const COMMAND_SCHEMAS = {
-  // create
   create: CreateAttrs,
-
-  // add
   'add.agent': AddAgentAttrs,
   'add.memory': AddMemoryAttrs,
+  'add.dataset': NoAttrs,
   'add.credential': AddCredentialAttrs,
   'add.evaluator': AddEvaluatorAttrs,
   'add.online-eval': AddOnlineEvalAttrs,
+  'add.online-insights': AddOnlineInsightsAttrs,
   'add.gateway': AddGatewayAttrs,
   'add.gateway-target': AddGatewayTargetAttrs,
   'add.policy-engine': AddPolicyEngineAttrs,
   'add.policy': AddPolicyAttrs,
   'add.runtime-endpoint': NoAttrs,
-
-  // deploy
+  'add.knowledge-base': AddKnowledgeBaseAttrs,
+  'add.payment-manager': NoAttrs,
+  'add.payment-connector': NoAttrs,
+  'add.skill': AddSkillAttrs,
   deploy: DeployAttrs,
 
-  // dev / invoke
+  // dev / invoke / exec
   dev: DevAttrs,
   invoke: InvokeAttrs,
+  exec: ExecAttrs,
 
   // status / logs
   status: StatusAttrs,
   logs: LogsAttrs,
   'logs.evals': LogsEvalsAttrs,
-
-  // run
   'run.eval': RunEvalAttrs,
-
-  // fetch
+  'run.job': RunJobAttrs,
+  'job.history': JobTypeOnlyAttrs,
+  'job.get': JobTypeOnlyAttrs,
+  'archive.job': JobTypeOnlyAttrs,
+  'stop.job': JobTypeOnlyAttrs,
+  'run.ingest': RunIngestAttrs,
+  'pause.job': JobTypeOnlyAttrs,
+  'resume.job': JobTypeOnlyAttrs,
+  'promote.job': JobTypeOnlyAttrs,
   'fetch.access': FetchAccessAttrs,
-
-  // update
+  feedback: FeedbackAttrs,
   update: UpdateAttrs,
-
-  // pause / resume
   'pause.online-eval': PauseResumeOnlineEvalAttrs,
   'resume.online-eval': PauseResumeOnlineEvalAttrs,
-
-  // no command-specific attributes
+  'pause.online-insights': PauseResumeOnlineEvalAttrs,
+  'resume.online-insights': PauseResumeOnlineEvalAttrs,
   'traces.list': NoAttrs,
   'traces.get': NoAttrs,
   'evals.history': NoAttrs,
   import: NoAttrs,
   'import.runtime': NoAttrs,
   'import.memory': NoAttrs,
+  'import.evaluator': NoAttrs,
+  'import.online-eval': NoAttrs,
+  'import.gateway': NoAttrs,
   package: NoAttrs,
   validate: NoAttrs,
   'help.modes': NoAttrs,
   help: NoAttrs,
   'remove.all': NoAttrs,
   'remove.agent': NoAttrs,
+  'remove.harness': NoAttrs,
   'remove.memory': NoAttrs,
+  'remove.dataset': NoAttrs,
   'remove.credential': NoAttrs,
   'remove.evaluator': NoAttrs,
   'remove.online-eval': NoAttrs,
+  'remove.online-insights': NoAttrs,
   'remove.gateway': NoAttrs,
   'remove.gateway-target': NoAttrs,
   'remove.policy-engine': NoAttrs,
   'remove.policy': NoAttrs,
   'remove.runtime-endpoint': NoAttrs,
   'remove.config-bundle': NoAttrs,
-  'remove.ab-test': NoAttrs,
+  'remove.knowledge-base': NoAttrs,
+  'dataset.download': NoAttrs,
+  'dataset.publish-version': NoAttrs,
+  'dataset.remove-version': NoAttrs,
+  'remove.payment-manager': NoAttrs,
+  'remove.payment-connector': NoAttrs,
+  'remove.skill': NoAttrs,
   'telemetry.disable': NoAttrs,
   'telemetry.enable': NoAttrs,
   'telemetry.status': NoAttrs,
+  'export.harness': ExportHarnessAttrs,
 } as const satisfies Record<string, z.ZodObject<z.ZodRawShape>>;
 
 // ---------------------------------------------------------------------------
@@ -218,26 +306,13 @@ export const COMMAND_SCHEMAS = {
 // ---------------------------------------------------------------------------
 
 export type Command = keyof typeof COMMAND_SCHEMAS;
+export type CommandGroup = { [C in Command]: C extends `${infer G}.${string}` ? G : C }[Command];
 export type CommandAttrs<C extends Command> = z.infer<(typeof COMMAND_SCHEMAS)[C]>;
 
-/** Extract the command group prefix from a dotted command key (e.g. 'add' from 'add.agent'). */
-type CommandGroup = {
-  [C in Command]: C extends `${infer G}.${string}` ? G : C;
-}[Command];
-
-/**
- * Type-safe lookup of a subcommand under a command group.
- * Produces a compile-time error if `${G}.${S}` is not a registered command.
- *
- * @example
- * SubCommand<'remove', 'agent'>  // → 'remove.agent'
- * SubCommand<'add', 'memory'>    // → 'add.memory'
- * SubCommand<'remove', 'bogus'>  // → never (compile error at call site)
- */
 export type SubCommand<G extends CommandGroup, S extends string> = Extract<Command, `${G}.${S}`>;
 
 /** Derive command_group from command key (e.g. 'add.agent' → 'add') */
-export function deriveCommandGroup(command: Command): string {
+export function deriveCommandGroup(command: Command): CommandGroup {
   const dot = command.indexOf('.');
-  return dot === -1 ? command : command.slice(0, dot);
+  return (dot === -1 ? command : command.slice(0, dot)) as CommandGroup;
 }

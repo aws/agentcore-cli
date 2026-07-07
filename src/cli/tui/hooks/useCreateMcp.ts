@@ -2,6 +2,7 @@ import {
   agentPrimitive,
   gatewayPrimitive,
   gatewayTargetPrimitive,
+  knowledgeBasePrimitive,
   policyEnginePrimitive,
 } from '../../primitives/registry';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
@@ -91,6 +92,56 @@ export function useExistingGateways() {
   return { gateways, refresh };
 }
 
+export function useMcpGatewayNames() {
+  const [mcpGateways, setMcpGateways] = useState<string[]>([]);
+
+  useEffect(() => {
+    async function load() {
+      const result = await gatewayPrimitive.getMcpGatewayNames();
+      setMcpGateways(result);
+    }
+    void load();
+  }, []);
+
+  return { mcpGateways };
+}
+
+export function useExistingRuntimeNames() {
+  const [runtimeNames, setRuntimeNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    async function load() {
+      const result = await gatewayPrimitive.getRuntimeNames();
+      setRuntimeNames(result);
+    }
+    void load();
+  }, []);
+
+  return { runtimeNames };
+}
+
+export function useRuntimeEndpoints(runtimeName: string | undefined) {
+  const [endpoints, setEndpoints] = useState<{ name: string; version: number }[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      if (!runtimeName) {
+        setEndpoints([]);
+        setLoaded(false);
+        return;
+      }
+      setLoaded(false);
+      const result = await gatewayPrimitive.getRuntimeEndpoints(runtimeName);
+      setEndpoints(result);
+      setLoaded(true);
+    }
+    void load();
+  }, [runtimeName]);
+
+  return { endpoints, loaded };
+}
+
 export function useExistingPolicyEngines() {
   const [engines, setEngines] = useState<string[]>([]);
 
@@ -154,6 +205,33 @@ export function useExistingToolNames() {
   }, []);
 
   return { toolNames, refresh };
+}
+
+export function useExistingKnowledgeBases() {
+  const [knowledgeBases, setKnowledgeBases] = useState<string[]>([]);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const removable = await knowledgeBasePrimitive.getRemovable();
+        setKnowledgeBases(removable.map(kb => kb.name));
+      } catch {
+        setKnowledgeBases([]);
+      }
+    }
+    void load();
+  }, []);
+
+  const refresh = useCallback(async () => {
+    try {
+      const removable = await knowledgeBasePrimitive.getRemovable();
+      setKnowledgeBases(removable.map(kb => kb.name));
+    } catch {
+      setKnowledgeBases([]);
+    }
+  }, []);
+
+  return { knowledgeBases, refresh };
 }
 
 export function useUnassignedTargets() {

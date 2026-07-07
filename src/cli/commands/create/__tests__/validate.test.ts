@@ -125,13 +125,53 @@ describe('validateCreateOptions', () => {
     expect(result.error).toContain('Invalid language');
   });
 
-  it('returns invalid for TypeScript language', () => {
+  it('accepts TypeScript with Strands framework', () => {
     const result = validateCreateOptions(
       { name: 'TestProj4', language: 'TypeScript', framework: 'Strands', modelProvider: 'Bedrock', memory: 'none' },
       testDir
     );
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects TypeScript with a non-Strands framework', () => {
+    const result = validateCreateOptions(
+      {
+        name: 'TestProj4b',
+        language: 'TypeScript',
+        framework: 'LangChain_LangGraph',
+        modelProvider: 'Bedrock',
+        memory: 'none',
+      },
+      testDir
+    );
     expect(result.valid).toBe(false);
-    expect(result.error).toContain('TypeScript is not yet supported');
+    expect(result.error).toContain('is not yet available for TypeScript');
+  });
+
+  it('rejects Python with the Vercel AI framework (TypeScript-only)', () => {
+    const result = validateCreateOptions(
+      { name: 'TestProjVercel', language: 'Python', framework: 'VercelAI', modelProvider: 'Bedrock', memory: 'none' },
+      testDir
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('is not yet available for Python');
+    // Message lists the language's supported frameworks (derived from the matrix), not a hardcoded one
+    expect(result.error).toContain('Strands');
+    expect(result.error).toContain('OpenAIAgents');
+  });
+
+  it('accepts TypeScript with the Vercel AI framework', () => {
+    const result = validateCreateOptions(
+      {
+        name: 'TestProjVercelTs',
+        language: 'TypeScript',
+        framework: 'VercelAI',
+        modelProvider: 'Bedrock',
+        memory: 'none',
+      },
+      testDir
+    );
+    expect(result.valid).toBe(true);
   });
 
   it('returns invalid for invalid framework', () => {
@@ -421,6 +461,202 @@ describe('validateCreateOptions - session storage mount path', () => {
 
   it('accepts omitted mount path', () => {
     const result = validateCreateOptions({ ...baseOptions }, cwd);
+    expect(result.valid).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EFS access point validation
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('validateCreateOptions - EFS access points', () => {
+  const cwd = join(tmpdir(), `create-efs-${randomUUID()}`);
+
+  const baseOptions = {
+    name: 'TestProject',
+    language: 'Python',
+    framework: 'Strands',
+    modelProvider: 'Bedrock',
+    memory: 'none',
+    networkMode: 'VPC',
+    subnets: 'subnet-0bd65c3a6eaa74d99',
+    securityGroups: 'sg-07234e16e36d51629',
+  };
+
+  const validEfsArn = 'arn:aws:elasticfilesystem:us-east-1:053460373529:access-point/fsap-084270434ad6d5dcb';
+
+  it('accepts valid EFS ARN + path pair', () => {
+    const result = validateCreateOptions(
+      { ...baseOptions, efsAccessPointArn: [validEfsArn], efsMountPath: ['/mnt/efs'] },
+      cwd
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts two EFS mounts (at max)', () => {
+    const result = validateCreateOptions(
+      {
+        ...baseOptions,
+        efsAccessPointArn: [validEfsArn, validEfsArn],
+        efsMountPath: ['/mnt/efs1', '/mnt/efs2'],
+      },
+      cwd
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects three EFS mounts (exceeds max)', () => {
+    const result = validateCreateOptions(
+      {
+        ...baseOptions,
+        efsAccessPointArn: [validEfsArn, validEfsArn, validEfsArn],
+        efsMountPath: ['/mnt/efs1', '/mnt/efs2', '/mnt/efs3'],
+      },
+      cwd
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('Maximum 2 EFS mounts');
+  });
+
+  it('rejects mismatched ARN/path counts', () => {
+    const result = validateCreateOptions(
+      { ...baseOptions, efsAccessPointArn: [validEfsArn, validEfsArn], efsMountPath: ['/mnt/efs'] },
+      cwd
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('matching pairs');
+  });
+
+  it('rejects invalid EFS ARN format', () => {
+    const result = validateCreateOptions(
+      { ...baseOptions, efsAccessPointArn: ['not-an-arn'], efsMountPath: ['/mnt/efs'] },
+      cwd
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('Invalid EFS access point ARN');
+  });
+
+  it('rejects EFS without VPC network mode', () => {
+    const result = validateCreateOptions(
+      {
+        name: 'TestProject',
+        language: 'Python',
+        framework: 'Strands',
+        modelProvider: 'Bedrock',
+        memory: 'none',
+        efsAccessPointArn: [validEfsArn],
+        efsMountPath: ['/mnt/efs'],
+      },
+      cwd
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('VPC network mode');
+  });
+
+  it('rejects EFS for TypeScript agents', () => {
+    const result = validateCreateOptions(
+      {
+        name: 'TestProject',
+        language: 'TypeScript',
+        framework: 'Strands',
+        modelProvider: 'Bedrock',
+        memory: 'none',
+        efsAccessPointArn: [validEfsArn],
+        efsMountPath: ['/mnt/efs'],
+      },
+      cwd
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('not supported for TypeScript');
+  });
+
+  it('rejects path-only with no ARN', () => {
+    const result = validateCreateOptions({ ...baseOptions, efsMountPath: ['/mnt/efs'] }, cwd);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('matching pairs');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S3 Files access point validation
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('validateCreateOptions - S3 Files access points', () => {
+  const cwd = join(tmpdir(), `create-s3-${randomUUID()}`);
+
+  const baseOptions = {
+    name: 'TestProject',
+    language: 'Python',
+    framework: 'Strands',
+    modelProvider: 'Bedrock',
+    memory: 'none',
+    networkMode: 'VPC',
+    subnets: 'subnet-0bd65c3a6eaa74d99',
+    securityGroups: 'sg-07234e16e36d51629',
+  };
+
+  const validS3Arn =
+    'arn:aws:s3files:us-east-1:053460373529:file-system/fs-04191956416f17799/access-point/fsap-01bff5a982cb35c1d';
+
+  it('accepts valid S3 ARN + path pair', () => {
+    const result = validateCreateOptions(
+      { ...baseOptions, s3AccessPointArn: [validS3Arn], s3MountPath: ['/mnt/s3'] },
+      cwd
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects two S3 mounts exceeding max', () => {
+    const result = validateCreateOptions(
+      {
+        ...baseOptions,
+        s3AccessPointArn: [validS3Arn, validS3Arn, validS3Arn],
+        s3MountPath: ['/mnt/s31', '/mnt/s32', '/mnt/s33'],
+      },
+      cwd
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('Maximum 2 S3 Files mounts');
+  });
+
+  it('rejects invalid S3 ARN format', () => {
+    const result = validateCreateOptions(
+      { ...baseOptions, s3AccessPointArn: ['not-an-arn'], s3MountPath: ['/mnt/s3'] },
+      cwd
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('Invalid S3 Files access point ARN');
+  });
+
+  it('rejects S3 without VPC network mode', () => {
+    const result = validateCreateOptions(
+      {
+        name: 'TestProject',
+        language: 'Python',
+        framework: 'Strands',
+        modelProvider: 'Bedrock',
+        memory: 'none',
+        s3AccessPointArn: [validS3Arn],
+        s3MountPath: ['/mnt/s3'],
+      },
+      cwd
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('VPC network mode');
+  });
+
+  it('accepts EFS + S3 together', () => {
+    const validEfsArn = 'arn:aws:elasticfilesystem:us-east-1:053460373529:access-point/fsap-084270434ad6d5dcb';
+    const result = validateCreateOptions(
+      {
+        ...baseOptions,
+        efsAccessPointArn: [validEfsArn],
+        efsMountPath: ['/mnt/efs'],
+        s3AccessPointArn: [validS3Arn],
+        s3MountPath: ['/mnt/s3'],
+      },
+      cwd
+    );
     expect(result.valid).toBe(true);
   });
 });

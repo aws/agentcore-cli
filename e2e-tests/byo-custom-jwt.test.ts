@@ -7,11 +7,7 @@
  * - SigV4 invocation is rejected (auth method mismatch)
  * - Status reports the agent as deployed
  *
- * Unlike other E2E tests that use the globally installed CLI, this test uses
- * the local build (`runCLI`) because it exercises unreleased schema and CDK
- * changes. Set CDK_TARBALL to a path to the modified CDK package tarball.
- *
- * Requires: AWS credentials, npm, git, uv, CDK_TARBALL env var.
+ * Requires: AWS credentials, npm, git, uv
  */
 import {
   type RunResult,
@@ -21,6 +17,7 @@ import {
   runCLI,
   stripAnsi,
 } from '../src/test-utils/index.js';
+import { installCdkTarball, writeAwsTargets } from './e2e-helper.js';
 import { CloudFormationClient, GetTemplateCommand } from '@aws-sdk/client-cloudformation';
 import {
   CognitoIdentityProviderClient,
@@ -32,7 +29,6 @@ import {
   DeleteUserPoolCommand,
   DeleteUserPoolDomainCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
-import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -40,9 +36,9 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const hasAws = hasAwsCredentials();
-const hasCdkTarball = !!process.env.CDK_TARBALL;
-const canRun = prereqs.npm && prereqs.git && prereqs.uv && hasAws && hasCdkTarball;
+const canRun = prereqs.npm && prereqs.git && prereqs.uv && hasAws;
 const region = process.env.AWS_REGION ?? 'us-east-1';
+const customJWTRejectMsgRegex = /configured for CUSTOM_JWT|[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i;
 
 /**
  * Run the local CLI build without skipping install (needed for deploy).
@@ -149,19 +145,8 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
     projectPath = createJson.projectPath;
 
     // Write AWS targets
-    const account =
-      process.env.AWS_ACCOUNT_ID ??
-      execSync('aws sts get-caller-identity --query Account --output text').toString().trim();
-    await writeFile(
-      join(projectPath, 'agentcore', 'aws-targets.json'),
-      JSON.stringify([{ name: 'default', account, region }])
-    );
-
-    // Install modified CDK tarball (required for auth fields support)
-    execSync(`npm install -f ${process.env.CDK_TARBALL}`, {
-      cwd: join(projectPath, 'agentcore', 'cdk'),
-      stdio: 'pipe',
-    });
+    await writeAwsTargets(projectPath);
+    installCdkTarball(projectPath);
 
     // ── Add an MCP protocol agent to the same project ──
     mcpAgentName = `E2eMcp${String(Date.now()).slice(-8)}`;
@@ -274,9 +259,9 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
 
       // Expect failure due to auth method mismatch (client-side fast-fail or server-side rejection)
       const output = stripAnsi(result.stdout + result.stderr);
-      expect(output).toMatch(
-        /configured for CUSTOM_JWT but no bearer token|[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i
-      );
+
+      expect(result.exitCode, `failure: stderr=${result.stderr}\n\nstdout=${result.stdout}`).not.toBe(0);
+      expect(output).toMatch(customJWTRejectMsgRegex);
     },
     180000
   );
@@ -296,9 +281,7 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
 
       const output = stripAnsi(result.stdout + result.stderr);
       // The invoke may fail for other reasons (agent logic), but it should NOT fail with auth mismatch
-      expect(output).not.toMatch(
-        /configured for CUSTOM_JWT but no bearer token|[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i
-      );
+      expect(output).not.toMatch(customJWTRejectMsgRegex);
     },
     180000
   );
@@ -311,9 +294,8 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
       const result = await runLocalCLI(['invoke', '--runtime', mcpAgentName, 'list-tools', '--json'], projectPath);
 
       const output = stripAnsi(result.stdout + result.stderr);
-      expect(output).toMatch(
-        /configured for CUSTOM_JWT but no bearer token|[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i
-      );
+      expect(result.exitCode, `failure: stderr=${result.stderr}\n\nstdout=${result.stdout}`).not.toBe(0);
+      expect(output).toMatch(customJWTRejectMsgRegex);
     },
     180000
   );
@@ -331,9 +313,7 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
       );
 
       const output = stripAnsi(result.stdout + result.stderr);
-      expect(output).not.toMatch(
-        /configured for CUSTOM_JWT but no bearer token|[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i
-      );
+      expect(output).not.toMatch(customJWTRejectMsgRegex);
     },
     180000
   );
@@ -363,9 +343,7 @@ describe.sequential('e2e: BYO agent with CUSTOM_JWT auth', () => {
       );
 
       const output = stripAnsi(result.stdout + result.stderr);
-      expect(output).not.toMatch(
-        /configured for CUSTOM_JWT but no bearer token|[Aa]uthoriz(ation|er).*mismatch|different.*authorization/i
-      );
+      expect(output).not.toMatch(customJWTRejectMsgRegex);
     },
     180000
   );

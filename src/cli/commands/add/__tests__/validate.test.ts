@@ -173,12 +173,44 @@ describe('validate', () => {
     });
 
     // AC5: Create path language restrictions
-    it('returns error for create path with TypeScript or Other', () => {
-      let result = validateAddAgentOptions({ ...validAgentOptionsCreate, language: 'TypeScript' });
-      expect(result.valid).toBe(false);
-      expect(result.error?.includes('Python')).toBeTruthy();
+    it('accepts TypeScript with Strands and rejects TypeScript with other frameworks', () => {
+      let result = validateAddAgentOptions({
+        ...validAgentOptionsCreate,
+        language: 'TypeScript',
+        framework: 'Strands',
+      });
+      expect(result.valid).toBe(true);
 
-      result = validateAddAgentOptions({ ...validAgentOptionsCreate, language: 'Other' });
+      result = validateAddAgentOptions({
+        ...validAgentOptionsCreate,
+        language: 'TypeScript',
+        framework: 'LangChain_LangGraph',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error?.includes('Strands')).toBeTruthy();
+    });
+
+    it('rejects Python with the Vercel AI framework (TypeScript-only)', () => {
+      const result = validateAddAgentOptions({
+        ...validAgentOptionsCreate,
+        language: 'Python',
+        framework: 'VercelAI',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error?.includes('is not yet available for Python')).toBeTruthy();
+    });
+
+    it('accepts TypeScript with the Vercel AI framework', () => {
+      const result = validateAddAgentOptions({
+        ...validAgentOptionsCreate,
+        language: 'TypeScript',
+        framework: 'VercelAI',
+      });
+      expect(result.valid).toBe(true);
+    });
+
+    it('returns error for create path with Other language', () => {
+      const result = validateAddAgentOptions({ ...validAgentOptionsCreate, language: 'Other' });
       expect(result.valid).toBe(false);
       expect(result.error?.includes('Python')).toBeTruthy();
     });
@@ -435,6 +467,29 @@ describe('validate', () => {
     it('passes for valid gateway target options', async () => {
       const result = await validateAddGatewayTargetOptions({ ...validGatewayTargetOptions });
       expect(result.valid).toBe(true);
+    });
+
+    describe('passthrough target type', () => {
+      const passthroughOpts: AddGatewayTargetOptions = {
+        name: 'pt-target',
+        type: 'passthrough',
+        gateway: 'my-gateway',
+        passthroughEndpoint: 'https://api.example.com',
+      } as AddGatewayTargetOptions;
+
+      it('accepts a valid passthrough target', async () => {
+        const result = await validateAddGatewayTargetOptions({ ...passthroughOpts });
+        expect(result.valid).toBe(true);
+      });
+
+      it('lists passthrough in the invalid-type error', async () => {
+        const result = await validateAddGatewayTargetOptions({
+          ...validGatewayTargetOptions,
+          type: 'bogus-type',
+        } as AddGatewayTargetOptions);
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('passthrough');
+      });
     });
     // AC20: type validation
     it('returns error when --type is missing', async () => {
@@ -927,6 +982,98 @@ describe('validate', () => {
       expect(result.valid).toBe(false);
       expect(result.error).toBe('--host is not applicable for MCP server targets');
     });
+
+    // HTTP Runtime target validation
+    it('accepts valid http-runtime options with --runtime', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-http-target',
+        type: 'http-runtime',
+        runtime: 'my-agent',
+        gateway: 'my-gateway',
+      });
+      expect(result.valid).toBe(true);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('rejects http-runtime without --runtime', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-http-target',
+        type: 'http-runtime',
+        gateway: 'my-gateway',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('--runtime is required');
+    });
+
+    it('rejects http-runtime with --host', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-http-target',
+        type: 'http-runtime',
+        runtime: 'my-agent',
+        gateway: 'my-gateway',
+        host: 'Lambda',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('not applicable for http-runtime type');
+    });
+
+    it('rejects http-runtime with --rest-api-id', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-http-target',
+        type: 'http-runtime',
+        runtime: 'my-agent',
+        gateway: 'my-gateway',
+        restApiId: 'abc123',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('not applicable for http-runtime type');
+    });
+
+    it('rejects http-runtime with --lambda-arn', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-http-target',
+        type: 'http-runtime',
+        runtime: 'my-agent',
+        gateway: 'my-gateway',
+        lambdaArn: 'arn:aws:lambda:us-east-1:123456789012:function:my-func',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('not applicable for http-runtime type');
+    });
+
+    it('rejects http-runtime with --tool-schema-file', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-http-target',
+        type: 'http-runtime',
+        runtime: 'my-agent',
+        gateway: 'my-gateway',
+        toolSchemaFile: './tools.json',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('not applicable for http-runtime type');
+    });
+
+    it('accepts http-runtime with --runtime-endpoint', async () => {
+      const result = await validateAddGatewayTargetOptions({
+        name: 'my-http-target',
+        type: 'http-runtime',
+        runtime: 'my-agent',
+        runtimeEndpoint: 'LIVE',
+        gateway: 'my-gateway',
+      });
+      expect(result.valid).toBe(true);
+    });
+
+    it('sets language to Other for http-runtime type', async () => {
+      const opts: AddGatewayTargetOptions = {
+        name: 'my-http-target',
+        type: 'http-runtime',
+        runtime: 'my-agent',
+        gateway: 'my-gateway',
+      };
+      await validateAddGatewayTargetOptions(opts);
+      expect(opts.language).toBe('Other');
+    });
   });
 
   describe('validateAddMemoryOptions', () => {
@@ -1112,6 +1259,118 @@ describe('validate', () => {
       });
       expect(result.valid).toBe(false);
       expect(result.error).toContain('does not match the expected schema');
+    });
+
+    // Indexed keys: requires LTM strategy
+    it('rejects --indexed-key without any LTM strategy', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        strategies: undefined,
+        indexedKey: ['priority:NUMBER'],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('requires at least one long-term memory strategy');
+    });
+
+    it('accepts --indexed-key with an LTM strategy', () => {
+      expect(
+        validateAddMemoryOptions({
+          ...validMemoryOptions,
+          strategies: 'SEMANTIC',
+          indexedKey: ['priority:NUMBER'],
+        })
+      ).toEqual({ valid: true });
+    });
+
+    it('rejects more than 10 indexed keys', () => {
+      const eleven = Array.from({ length: 11 }, (_, i) => `k${i}:STRING`);
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        strategies: 'SEMANTIC',
+        indexedKey: eleven,
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Maximum 10 indexed keys');
+    });
+
+    it('accepts exactly 10 indexed keys (boundary)', () => {
+      const ten = Array.from({ length: 10 }, (_, i) => `k${i}:STRING`);
+      expect(validateAddMemoryOptions({ ...validMemoryOptions, strategies: 'SEMANTIC', indexedKey: ten })).toEqual({
+        valid: true,
+      });
+    });
+
+    it('rejects an empty key (":STRING")', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        strategies: 'SEMANTIC',
+        indexedKey: [':STRING'],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Key name cannot be empty');
+    });
+
+    it('rejects a key longer than 128 characters', () => {
+      const longKey = 'a'.repeat(129);
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        strategies: 'SEMANTIC',
+        indexedKey: [`${longKey}:STRING`],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('exceeds maximum length');
+    });
+
+    it('rejects an invalid type token', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        strategies: 'SEMANTIC',
+        indexedKey: ['priority:INTEGER'],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Invalid type');
+    });
+
+    it('rejects duplicate keys', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        strategies: 'SEMANTIC',
+        indexedKey: ['priority:NUMBER', 'priority:STRING'],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Duplicate indexed key');
+    });
+
+    it('rejects whitespace-only key', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        strategies: 'SEMANTIC',
+        indexedKey: ['   :STRING'],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('whitespace');
+    });
+
+    it('rejects malformed entry without colon', () => {
+      const result = validateAddMemoryOptions({
+        ...validMemoryOptions,
+        strategies: 'SEMANTIC',
+        indexedKey: ['priority'],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Expected key:TYPE');
+    });
+
+    it.each([
+      ['user.email:STRING'],
+      ['tag/v2:STRINGLIST'],
+      ['kebab-case:STRING'],
+      ['x-custom:STRING'],
+      ['has:colons:in:key:NUMBER'],
+    ])('accepts punctuation-rich key %s', raw => {
+      expect(validateAddMemoryOptions({ ...validMemoryOptions, strategies: 'SEMANTIC', indexedKey: [raw] })).toEqual({
+        valid: true,
+      });
     });
   });
 
@@ -1569,5 +1828,16 @@ describe('validateAddAgentOptions - session storage mount path', () => {
   it('accepts omitted mount path', () => {
     const result = validateAddAgentOptions({ ...baseOptions });
     expect(result.valid).toBe(true);
+  });
+
+  it('rejects session storage for TypeScript agents', () => {
+    const result = validateAddAgentOptions({
+      ...baseOptions,
+      language: 'TypeScript',
+      framework: 'Strands',
+      sessionStorageMountPath: '/mnt/data',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe('--session-storage-mount-path is not supported for TypeScript agents');
   });
 });

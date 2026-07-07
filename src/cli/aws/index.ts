@@ -26,6 +26,31 @@ export {
   type GetPolicyGenerationOptions,
   type GetPolicyGenerationResult,
 } from './policy-generation';
+export { AgentCoreApiClient, AgentCoreApiError, type ApiClientOptions, type ApiPlane } from './api-client';
+export {
+  getHarness,
+  deleteHarness,
+  invokeHarness,
+  type Harness,
+  type HarnessStatus,
+  type HarnessStreamEvent,
+  type HarnessStopReason,
+  type TokenUsage,
+  type StreamMetrics,
+  type GetHarnessOptions,
+  type GetHarnessResult,
+  type DeleteHarnessOptions,
+  type DeleteHarnessResult,
+  type InvokeHarnessOptions,
+} from './agentcore-harness';
+export {
+  createPaymentCredentialProvider,
+  updatePaymentCredentialProvider,
+  getPaymentCredentialProvider,
+  deletePaymentCredentialProvider,
+  getPaymentManager,
+  getOrCreatePaymentSession,
+} from './agentcore-payments';
 export {
   DEFAULT_RUNTIME_USER_ID,
   executeBashCommand,
@@ -35,6 +60,8 @@ export {
   mcpInitSession,
   mcpListTools,
   mcpCallTool,
+  parseSSE,
+  extractResult,
   stopRuntimeSession,
   type ExecuteBashOptions,
   type ExecuteBashResult,

@@ -77,12 +77,13 @@ describe('integration: add and remove config-bundle', () => {
       expect(Object.keys(bundle!.components)).toHaveLength(2);
     });
 
-    it('adds a config bundle with optional description, branch, and commit message', async () => {
+    it('adds a config bundle with optional description, branch, commit message, and KMS key', async () => {
       const components = JSON.stringify({
         '{{runtime:MyAgent}}': {
           configuration: { systemPrompt: 'Placeholder-based bundle' },
         },
       });
+      const kmsKeyArn = 'arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012';
 
       const json = await runSuccess(
         [
@@ -98,6 +99,8 @@ describe('integration: add and remove config-bundle', () => {
           'feature-branch',
           '--commit-message',
           'initial config',
+          '--kms-key',
+          kmsKeyArn,
           '--json',
         ],
         project.projectPath
@@ -111,6 +114,7 @@ describe('integration: add and remove config-bundle', () => {
       expect(bundle!.description).toBe('A bundle with all optional fields');
       expect(bundle!.branchName).toBe('feature-branch');
       expect(bundle!.commitMessage).toBe('initial config');
+      expect(bundle!.kmsKeyArn).toBe(kmsKeyArn);
     });
 
     it('adds a config bundle with placeholder component keys', async () => {
@@ -212,6 +216,31 @@ describe('integration: add and remove config-bundle', () => {
       );
 
       expect(json.error).toBeDefined();
+    });
+
+    it('rejects an invalid KMS key ARN', async () => {
+      const components = JSON.stringify({
+        'arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/rt-kms': {
+          configuration: { foo: 'bar' },
+        },
+      });
+
+      const json = await runFailure(
+        [
+          'add',
+          'config-bundle',
+          '--name',
+          'BadKmsBundle',
+          '--components',
+          components,
+          '--kms-key',
+          'not-a-valid-kms-arn',
+          '--json',
+        ],
+        project.projectPath
+      );
+
+      expect(json.error).toContain('--kms-key must be a valid KMS key ARN');
     });
 
     it('rejects bundle name starting with a number', async () => {

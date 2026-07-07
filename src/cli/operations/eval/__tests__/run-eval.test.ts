@@ -118,20 +118,29 @@ function makeToolCallSpanRow(sessionId: string, traceId: string, spanId: string,
 
 function setupCloudWatchToReturn(spanRows: unknown[][], runtimeLogRows: unknown[][] = []) {
   let queryCount = 0;
+  const queryResults = new Map<string, unknown[][]>();
+
   mockSend.mockImplementation((cmd: { input: unknown }) => {
     const input = cmd.input as Record<string, unknown>;
 
     if ('queryString' in input) {
-      // StartQueryCommand
       queryCount++;
-      return Promise.resolve({ queryId: `q-${queryCount}` });
+      const queryId = `q-${queryCount}`;
+      const logGroup = input.logGroupName as string;
+      const queryStr = input.queryString as string;
+
+      if (logGroup === 'aws/spans') {
+        queryResults.set(queryId, spanRows);
+      } else if (queryStr.includes('filter traceId in')) {
+        queryResults.set(queryId, runtimeLogRows);
+      } else {
+        queryResults.set(queryId, []);
+      }
+      return Promise.resolve({ queryId });
     }
 
-    // GetQueryResultsCommand — return Complete immediately
-    if (queryCount === 1) {
-      return Promise.resolve({ status: 'Complete', results: spanRows });
-    }
-    return Promise.resolve({ status: 'Complete', results: runtimeLogRows });
+    const queryId = (input as { queryId?: string }).queryId ?? '';
+    return Promise.resolve({ status: 'Complete', results: queryResults.get(queryId) ?? [] });
   });
 }
 

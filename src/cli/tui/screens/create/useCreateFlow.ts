@@ -8,9 +8,11 @@ import {
   setSessionProjectRoot,
 } from '../../../../lib';
 import type { DeployedState } from '../../../../schema';
+import { getCredentialProvider } from '../../../aws/account';
+import { validateFilesystemMountsConfiguration } from '../../../commands/shared/filesystem-utils';
 import { getErrorMessage } from '../../../errors';
 import { CreateLogger } from '../../../logging';
-import { initGitRepo, setupPythonProject, writeEnvFile, writeGitignore } from '../../../operations';
+import { initGitRepo, setupNodeProject, setupPythonProject, writeEnvFile, writeGitignore } from '../../../operations';
 import { createConfigBundleForAgent } from '../../../operations/agent/config-bundle-defaults';
 import {
   mapGenerateConfigToRenderConfig,
@@ -25,22 +27,26 @@ import { credentialPrimitive } from '../../../primitives/registry';
 import { createDefaultProjectSpec } from '../../../project';
 import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
 import {
-  AgentType,
-  Build,
-  Framework,
-  Language,
-  Memory as MemoryEnum,
+  AgentEnvironment,
+  AgentFramework,
+  AgentLanguage,
+  AgentProtocol,
+  AgentSource,
+  BuildType,
+  MemoryType as MemoryEnum,
   ModelProvider,
   NetworkMode,
-  Protocol,
   standardize,
 } from '../../../telemetry/schemas/common-shapes.js';
 import { CDKRenderer, createRenderer } from '../../../templates';
 import { type Step, areStepsComplete, hasStepError } from '../../components';
 import { withMinDuration } from '../../utils';
-import { mapByoConfigToAgent } from '../agent';
+import { mapAddAgentConfigToGenerateConfig, mapByoConfigToAgent } from '../agent';
 import type { AddAgentConfig } from '../agent/types';
 import type { GenerateConfig } from '../generate/types';
+import { toMemoryAddOptions } from '../harness/memory-options';
+import type { AddHarnessConfig } from '../harness/types';
+import { DescribeSubnetsCommand, EC2Client } from '@aws-sdk/client-ec2';
 import { mkdir } from 'fs/promises';
 import { basename, join } from 'path';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -49,8 +55,9 @@ type CreatePhase =
   | 'checking'
   | 'existing-project-error'
   | 'input'
-  | 'create-prompt'
+  | 'create-type-prompt'
   | 'create-wizard'
+  | 'harness-wizard'
   | 'running'
   | 'complete';
 
@@ -66,16 +73,23 @@ interface CreateFlowState {
   // Project name actions
   setProjectName: (name: string) => void;
   confirmProjectName: () => void;
-  // Create prompt actions
-  wantsCreate: boolean;
-  setWantsCreate: (wants: boolean) => void;
+  // Create type selection
+  handleCreateTypeSelection: (choice: 'harness' | 'agent' | 'skip') => void;
   // Add agent config (set when AddAgentScreen completes)
   addAgentConfig: AddAgentConfig | null;
   handleAddAgentComplete: (config: AddAgentConfig) => void;
   goBackFromAddAgent: () => void;
+  // Add harness config (preview mode, set when AddHarnessScreen completes)
+  addHarnessConfig: AddHarnessConfig | null;
+  handleAddHarnessComplete: (config: AddHarnessConfig) => void;
+  goBackFromHarnessWizard: () => void;
 }
 
-function getCreateSteps(projectName: string, agentConfig: AddAgentConfig | null): Step[] {
+function getCreateSteps(
+  projectName: string,
+  agentConfig: AddAgentConfig | null,
+  harnessConfig: AddHarnessConfig | null = null
+): Step[] {
   const steps: Step[] = [{ label: `Create ${projectName}/ project directory`, status: 'pending' }];
 
   if (agentConfig) {
@@ -83,6 +97,11 @@ function getCreateSteps(projectName: string, agentConfig: AddAgentConfig | null)
     if (agentConfig.language === 'Python' && agentConfig.agentType === 'create') {
       steps.push({ label: 'Set up Python environment', status: 'pending' });
     }
+    if (agentConfig.language === 'TypeScript' && agentConfig.agentType === 'create') {
+      steps.push({ label: 'Set up Node environment', status: 'pending' });
+    }
+  } else if (harnessConfig) {
+    steps.push({ label: 'Add harness to project', status: 'pending' });
   }
 
   steps.push({ label: 'Prepare agentcore/ directory', status: 'pending' });
@@ -128,11 +147,11 @@ export function useCreateFlow(cwd: string): CreateFlowState {
   const [outputDir, setOutputDir] = useState<string>();
   const [logFilePath, setLogFilePath] = useState<string | undefined>();
 
-  // Create prompt state
-  const [wantsCreate, setWantsCreate] = useState(false);
-
   // Add agent config (from AddAgentScreen)
   const [addAgentConfig, setAddAgentConfig] = useState<AddAgentConfig | null>(null);
+
+  // Add harness config (from AddHarnessScreen, preview mode)
+  const [addHarnessConfig, setAddHarnessConfig] = useState<AddHarnessConfig | null>(null);
 
   // Logger ref for the create operation
   const loggerRef = useRef<CreateLogger | null>(null);
@@ -158,29 +177,12 @@ export function useCreateFlow(cwd: string): CreateFlowState {
   }, [cwd, phase]);
 
   const confirmProjectName = useCallback(() => {
-    setPhase('create-prompt');
+    setPhase('create-type-prompt');
   }, []);
 
   const updateStep = (index: number, update: Partial<Step>) => {
     setSteps(prev => prev.map((s, i) => (i === index ? { ...s, ...update } : s)));
   };
-
-  // Create prompt handlers
-  const handleSetWantsCreate = useCallback(
-    (wants: boolean) => {
-      setWantsCreate(wants);
-      if (wants) {
-        setAddAgentConfig(null); // Reset any previous config
-        setPhase('create-wizard');
-      } else {
-        // Skip add agent, go straight to running
-        setAddAgentConfig(null);
-        setSteps(getCreateSteps(projectName, null));
-        setPhase('running');
-      }
-    },
-    [projectName]
-  );
 
   // Handle completion from AddAgentScreen
   const handleAddAgentComplete = useCallback(
@@ -194,23 +196,79 @@ export function useCreateFlow(cwd: string): CreateFlowState {
 
   // Go back from add agent wizard to create prompt
   const goBackFromAddAgent = useCallback(() => {
-    setPhase('create-prompt');
+    setPhase('create-type-prompt');
+  }, []);
+
+  // Preview mode: create type selection handler
+  const handleCreateTypeSelection = useCallback(
+    (choice: 'harness' | 'agent' | 'skip') => {
+      if (choice === 'harness') {
+        setAddAgentConfig(null);
+        setAddHarnessConfig(null);
+        setPhase('harness-wizard');
+      } else if (choice === 'agent') {
+        setAddAgentConfig(null);
+        setAddHarnessConfig(null);
+        setPhase('create-wizard');
+      } else {
+        setAddAgentConfig(null);
+        setAddHarnessConfig(null);
+        setSteps(getCreateSteps(projectName, null, null));
+        setPhase('running');
+      }
+    },
+    [projectName]
+  );
+
+  // Preview mode: handle completion from AddHarnessScreen
+  const handleAddHarnessComplete = useCallback(
+    (config: AddHarnessConfig) => {
+      setAddHarnessConfig(config);
+      setSteps(getCreateSteps(projectName, null, config));
+      setPhase('running');
+    },
+    [projectName]
+  );
+
+  // Preview mode: go back from harness wizard to create type prompt
+  const goBackFromHarnessWizard = useCallback(() => {
+    setPhase('create-type-prompt');
   }, []);
 
   // Main running effect
   useEffect(() => {
     if (phase !== 'running') return;
 
+    const isHarness = addHarnessConfig !== null;
     const attrs = {
-      language: standardize(Language, addAgentConfig?.language ?? 'Python'),
-      framework: standardize(Framework, addAgentConfig?.framework),
-      model_provider: standardize(ModelProvider, addAgentConfig?.modelProvider),
-      memory: standardize(MemoryEnum, addAgentConfig?.memory ?? 'none'),
-      protocol: standardize(Protocol, addAgentConfig?.protocol ?? 'HTTP'),
-      build: standardize(Build, addAgentConfig?.buildType ?? 'CodeZip'),
-      agent_type: standardize(AgentType, addAgentConfig?.agentType ?? 'create'),
-      network_mode: standardize(NetworkMode, addAgentConfig?.networkMode ?? 'PUBLIC'),
-      has_agent: addAgentConfig !== null,
+      agent_environment: standardize(AgentEnvironment, isHarness ? 'harness' : 'runtime'),
+      // true when either an agent or harness config is set (non-null/non-undefined)
+      has_agent: Boolean(addAgentConfig) || Boolean(addHarnessConfig),
+      model_provider: standardize(
+        ModelProvider,
+        isHarness ? addHarnessConfig?.modelProvider : addAgentConfig?.modelProvider
+      ),
+      memory_type: standardize(
+        MemoryEnum,
+        isHarness
+          ? addHarnessConfig?.memory?.mode === 'disabled'
+            ? 'none'
+            : 'longandshortterm'
+          : (addAgentConfig?.memory ?? 'none')
+      ),
+      build_type: isHarness ? undefined : standardize(BuildType, addAgentConfig?.buildType ?? 'CodeZip'),
+      network_mode: standardize(
+        NetworkMode,
+        isHarness ? (addHarnessConfig?.networkMode ?? 'PUBLIC') : (addAgentConfig?.networkMode ?? 'PUBLIC')
+      ),
+      ...(isHarness
+        ? {}
+        : {
+            agent_language: standardize(AgentLanguage, addAgentConfig?.language ?? 'Python'),
+            agent_framework: standardize(AgentFramework, addAgentConfig?.framework),
+            agent_protocol: standardize(AgentProtocol, addAgentConfig?.protocol ?? 'HTTP'),
+            agent_type: standardize(AgentSource, addAgentConfig?.agentType ?? 'create'),
+          }),
     };
 
     const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
@@ -288,28 +346,46 @@ export function useCreateFlow(cwd: string): CreateFlowState {
               logger.logSubStep(`Adding agent: ${addAgentConfig.name}`);
               logger.logSubStep(`Type: ${addAgentConfig.agentType}, Language: ${addAgentConfig.language}`);
 
+              // Validate EFS/S3 filesystem mounts before writing anything (shared by create and BYO paths)
+              const validateFilesystemMounts = async () => {
+                const efsMounts = addAgentConfig.efsAccessPoints ?? [];
+                const s3FilesMounts = addAgentConfig.s3AccessPoints ?? [];
+                if (efsMounts.length === 0 && s3FilesMounts.length === 0) return;
+                const awsRegion = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? 'us-east-1';
+                const subnetIds = addAgentConfig.subnets ?? [];
+                let agentVpcId: string | undefined;
+                if (subnetIds.length > 0) {
+                  try {
+                    const ec2 = new EC2Client({ region: awsRegion, credentials: getCredentialProvider() });
+                    const subnetResp = await ec2.send(new DescribeSubnetsCommand({ SubnetIds: subnetIds }));
+                    agentVpcId = subnetResp.Subnets?.[0]?.VpcId;
+                  } catch {
+                    // non-fatal: Level 2 topology checks are skipped when VPC ID cannot be resolved
+                  }
+                }
+                logger.logSubStep('Validating filesystem mounts...');
+                const fsValidation = await validateFilesystemMountsConfiguration({
+                  efsMounts,
+                  s3FilesMounts,
+                  agentVpcId,
+                  agentSubnetIds: subnetIds,
+                  agentSecurityGroupIds: addAgentConfig.securityGroups ?? [],
+                  region: awsRegion,
+                });
+                if (!fsValidation.success) {
+                  throw new Error(fsValidation.error);
+                }
+              };
+
               if (addAgentConfig.agentType === 'create') {
-                // Create path: generate agent from template
+                await validateFilesystemMounts();
+
+                // Create path: generate agent from template. Reuse the shared mapper so this path
+                // carries every field the add-agent path does — notably vpcId, required by the
+                // schema for Container builds in VPC mode.
                 const generateConfig: GenerateConfig = {
-                  projectName: addAgentConfig.name,
-                  buildType: addAgentConfig.buildType,
-                  ...(addAgentConfig.dockerfile && { dockerfile: addAgentConfig.dockerfile }),
-                  protocol: addAgentConfig.protocol,
-                  sdk: addAgentConfig.framework,
-                  modelProvider: addAgentConfig.modelProvider,
-                  memory: addAgentConfig.memory,
-                  language: addAgentConfig.language,
+                  ...mapAddAgentConfigToGenerateConfig(addAgentConfig),
                   apiKey: addAgentConfig.apiKey,
-                  networkMode: addAgentConfig.networkMode,
-                  subnets: addAgentConfig.subnets,
-                  securityGroups: addAgentConfig.securityGroups,
-                  requestHeaderAllowlist: addAgentConfig.requestHeaderAllowlist,
-                  authorizerType: addAgentConfig.authorizerType,
-                  jwtConfig: addAgentConfig.jwtConfig,
-                  idleRuntimeSessionTimeout: addAgentConfig.idleRuntimeSessionTimeout,
-                  maxLifetime: addAgentConfig.maxLifetime,
-                  sessionStorageMountPath: addAgentConfig.sessionStorageMountPath,
-                  withConfigBundle: addAgentConfig.withConfigBundle,
                 };
 
                 logger.logSubStep(`Framework: ${generateConfig.sdk}`);
@@ -393,6 +469,8 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                   idleTimeout: addAgentConfig.idleRuntimeSessionTimeout,
                   maxLifetime: addAgentConfig.maxLifetime,
                   sessionStorageMountPath: addAgentConfig.sessionStorageMountPath,
+                  efsAccessPoints: addAgentConfig.efsAccessPoints,
+                  s3AccessPoints: addAgentConfig.s3AccessPoints,
                 });
                 if (!importResult.success) {
                   throw new Error(importResult.error?.message ?? 'Import failed');
@@ -400,6 +478,8 @@ export function useCreateFlow(cwd: string): CreateFlowState {
               } else {
                 // BYO path: just write config to project (no file generation)
                 logger.logSubStep('Writing BYO agent config to project...');
+
+                await validateFilesystemMounts();
 
                 // Create the agent code directory so users know where to put their code
                 const codeDir = join(projectRoot, addAgentConfig.codeLocation.replace(/\/$/, ''));
@@ -489,6 +569,101 @@ export function useCreateFlow(cwd: string): CreateFlowState {
             }
             stepIndex++;
           }
+
+          // Step: Set up Node environment (if TypeScript and create path)
+          if (addAgentConfig.language === 'TypeScript' && addAgentConfig.agentType === 'create') {
+            logger.startStep('Set up Node environment');
+            updateStep(stepIndex, { status: 'running' });
+            const agentDir = join(projectRoot, APP_DIR, addAgentConfig.name);
+            logger.logSubStep(`Agent directory: ${agentDir}`);
+            logger.logSubStep('Running npm install...');
+            const result = await setupNodeProject({ projectDir: agentDir });
+
+            if (result.status === 'success') {
+              logger.endStep('success');
+              updateStep(stepIndex, { status: 'success' });
+            } else {
+              const firstLine = (result.error ?? '').split('\n').find(l => l.trim().length > 0) ?? '';
+              const shortReason = firstLine.replace(/^npm (error|warn) /i, '').slice(0, 160);
+              const warnMsg =
+                result.status === 'npm_not_found'
+                  ? 'npm not found on PATH. Install Node.js 20+ from https://nodejs.org/ and rerun `npm install` in the agent directory.'
+                  : `npm install failed${shortReason ? `: ${shortReason}` : ''}. Run \`npm install\` in ${agentDir} to see the full error.`;
+              if (result.error) {
+                for (const line of result.error.split('\n')) {
+                  if (line.trim().length > 0) logger.logSubStep(line);
+                }
+              }
+              logger.endStep('warn', warnMsg);
+              updateStep(stepIndex, { status: 'warn', warn: warnMsg });
+            }
+            stepIndex++;
+          }
+        }
+
+        // Step: Add harness to project (if addHarnessConfig is set, preview mode)
+        if (!addAgentConfig && addHarnessConfig) {
+          logger.startStep('Add harness to project');
+          updateStep(stepIndex, { status: 'running' });
+          try {
+            await withMinDuration(async () => {
+              logger.logSubStep(`Adding harness: ${addHarnessConfig.name}`);
+              const { harnessPrimitive: hp } = await import('../../../primitives/registry');
+              const memoryOptions = toMemoryAddOptions(addHarnessConfig.memory);
+              const result = await hp.add({
+                name: addHarnessConfig.name,
+                modelProvider: addHarnessConfig.modelProvider,
+                modelId: addHarnessConfig.modelId,
+                apiFormat: addHarnessConfig.apiFormat,
+                apiKeyArn: addHarnessConfig.apiKeyArn,
+                ...memoryOptions,
+                containerUri: addHarnessConfig.containerUri,
+                dockerfilePath: addHarnessConfig.dockerfilePath,
+                maxIterations: addHarnessConfig.maxIterations,
+                maxTokens: addHarnessConfig.maxTokens,
+                timeoutSeconds: addHarnessConfig.timeoutSeconds,
+                truncationStrategy: addHarnessConfig.truncationStrategy,
+                networkMode: addHarnessConfig.networkMode,
+                subnets: addHarnessConfig.subnets,
+                securityGroups: addHarnessConfig.securityGroups,
+                idleTimeout: addHarnessConfig.idleTimeout,
+                maxLifetime: addHarnessConfig.maxLifetime,
+                sessionStoragePath: addHarnessConfig.sessionStoragePath,
+                efsAccessPoints: addHarnessConfig.efsAccessPoints,
+                s3AccessPoints: addHarnessConfig.s3AccessPoints,
+                selectedTools: addHarnessConfig.selectedTools,
+                mcpName: addHarnessConfig.mcpName,
+                mcpUrl: addHarnessConfig.mcpUrl,
+                gatewayArn: addHarnessConfig.gatewayArn,
+                skills: addHarnessConfig.skills,
+                authorizerType: addHarnessConfig.authorizerType,
+                jwtConfig: addHarnessConfig.jwtConfig
+                  ? {
+                      discoveryUrl: addHarnessConfig.jwtConfig.discoveryUrl,
+                      allowedAudience: addHarnessConfig.jwtConfig.allowedAudience,
+                      allowedClients: addHarnessConfig.jwtConfig.allowedClients,
+                      allowedScopes: addHarnessConfig.jwtConfig.allowedScopes,
+                      customClaims: addHarnessConfig.jwtConfig.customClaims,
+                      clientId: addHarnessConfig.jwtConfig.clientId,
+                      clientSecret: addHarnessConfig.jwtConfig.clientSecret,
+                    }
+                  : undefined,
+                configBaseDir,
+              });
+              if (!result.success) {
+                throw result.error;
+              }
+            });
+            logger.endStep('success');
+            updateStep(stepIndex, { status: 'success' });
+            stepIndex++;
+          } catch (err) {
+            const errMsg = getErrorMessage(err);
+            logger.endStep('error', errMsg);
+            updateStep(stepIndex, { status: 'error', error: errMsg });
+            logger.finalize(false);
+            return { success: false, error: new Error(errMsg) };
+          }
         }
 
         // Step: Create CDK project
@@ -564,12 +739,15 @@ export function useCreateFlow(cwd: string): CreateFlowState {
     logFilePath,
     setProjectName,
     confirmProjectName,
-    // Create prompt
-    wantsCreate,
-    setWantsCreate: handleSetWantsCreate,
+    // Create type selection
+    handleCreateTypeSelection,
     // Add agent
     addAgentConfig,
     handleAddAgentComplete,
     goBackFromAddAgent,
+    // Add harness (preview)
+    addHarnessConfig,
+    handleAddHarnessComplete,
+    goBackFromHarnessWizard,
   };
 }

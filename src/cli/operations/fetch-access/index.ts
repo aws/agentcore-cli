@@ -1,7 +1,9 @@
 export { fetchGatewayToken } from './fetch-gateway-token';
+export { canFetchHarnessToken, fetchHarnessToken } from './fetch-harness-token';
 export { canFetchRuntimeToken, fetchRuntimeToken } from './fetch-runtime-token';
 export { fetchOAuthToken } from './oauth-token';
 export type { OAuthTokenResult } from './oauth-token';
 export { listAgents } from './list-agents';
 export { listGateways } from './list-gateways';
-export type { TokenFetchResult, GatewayInfo, AgentInfo, ResourceInfo } from './types';
+export { listHarnesses } from './list-harnesses';
+export type { TokenFetchResult, GatewayInfo, AgentInfo, HarnessInfo, ResourceInfo } from './types';

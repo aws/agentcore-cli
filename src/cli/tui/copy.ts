@@ -42,19 +42,23 @@ export const COMMAND_DESCRIPTIONS = {
   status: 'Show deployed resource details and status.',
   traces: 'View and download agent traces.',
   evals: 'View saved eval and batch eval results from past runs.',
+  feedback: 'Send feedback about the AgentCore CLI to the team.',
   fetch: 'Fetch access info for deployed resources.',
   pause: 'Pause a deployed resource (online eval config, A/B test).',
   resume: 'Resume a paused resource (online eval config, A/B test).',
-  recommend: '[preview] Run optimization recommendations for system prompts and tool descriptions.',
-  recommendations: '[preview] View recommendation history from past runs.',
-  run: 'Run evaluations, batch evaluations, or optimization recommendations.',
+  recommend: 'Run optimization recommendations for system prompts and tool descriptions.',
+  recommendations: 'View recommendation jobs and their results.',
+  batchEvaluations: 'View batch evaluation jobs and their results.',
+  abTests: 'View A/B test jobs and their results.',
+  insights: '[preview] Manage insights analysis jobs.',
+  run: 'Run evaluations, batch evaluations, insights [preview], or optimization recommendations.',
   stop: 'Stop a running batch evaluation or A/B test.',
   import: 'Import a runtime, memory, or starter toolkit into this project. [experimental]',
   telemetry: 'Manage anonymous usage analytics preferences.',
   update: 'Check for and install CLI updates',
   validate: 'Validate agentcore/ config files.',
-  'config-bundle': '[preview] Manage configuration bundle versions and diffs.',
-  archive: '[preview] Archive (delete) a batch evaluation or recommendation on the service and clear local history.',
+  'config-bundle': 'Manage configuration bundle versions and diffs.',
+  archive: 'Archive (delete) a batch evaluation or recommendation on the service and clear local history.',
 } as const;
 
 /**
@@ -62,15 +66,6 @@ export const COMMAND_DESCRIPTIONS = {
  * These commands must run in the terminal, not in the TUI.
  */
 export const CLI_ONLY_EXAMPLES: Record<string, { description: string; examples: string[] }> = {
-  logs: {
-    description: 'Stream or search agent runtime logs. This command runs in the terminal.',
-    examples: [
-      'agentcore logs',
-      'agentcore logs --since 30m --level error',
-      'agentcore logs --runtime MyAgent --query "timeout"',
-      'agentcore logs evals --since 1h',
-    ],
-  },
   traces: {
     description: 'View and download agent traces. This command runs in the terminal.',
     examples: [
@@ -101,7 +96,7 @@ export const CLI_ONLY_EXAMPLES: Record<string, { description: string; examples: 
     examples: [
       'agentcore run batch-evaluation -r MyAgent -e Builtin.Correctness',
       'agentcore run batch-evaluation -r MyAgent -e Builtin.Correctness Builtin.Faithfulness --json',
-      'agentcore run batch-evaluation -r MyAgent -e Builtin.Completeness -n "weekly-check"',
+      'agentcore run batch-evaluation -r MyAgent -e Builtin.Correctness -n "weekly-check"',
     ],
   },
   'run recommendation': {
@@ -131,5 +126,25 @@ export const CLI_ONLY_EXAMPLES: Record<string, { description: string; examples: 
       'agentcore archive recommendation -i <recommendation-id> --region us-west-2',
       'agentcore archive recommendation -i <recommendation-id> --json',
     ],
+  },
+  'run-insights': {
+    description: '[preview] Run failure analysis on agent sessions. This command runs in the terminal.',
+    examples: [
+      'agentcore run insights -r MyAgent -i FailureAnalysis',
+      'agentcore run insights -r MyAgent -i FailureAnalysis --lookback 7',
+      'agentcore run insights -r MyAgent -i FailureAnalysis --wait',
+    ],
+  },
+  feedback: {
+    description: 'Send feedback about the AgentCore CLI to the team.',
+    examples: ['agentcore feedback', 'agentcore feedback --screenshot'],
+  },
+  config: {
+    description: 'Adjust global configuration settings such as telemetry opt-out status.',
+    examples: ['agentcore config'],
+  },
+  insights: {
+    description: '[preview] View insights analysis jobs and results.',
+    examples: ['agentcore insights history', 'agentcore insights results --id <id>'],
   },
 };

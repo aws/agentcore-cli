@@ -1,3 +1,4 @@
+import type { MetricName } from '../schemas/registry.js';
 import type { MetricSink } from './metric-sink.js';
 import { appendFile, mkdir } from 'fs/promises';
 import { dirname } from 'path';
@@ -20,10 +21,10 @@ export class FileSystemSink implements MetricSink {
     this.log = config.log ?? (msg => console.log(msg));
   }
 
-  record(value: number, attrs: Record<string, string | number>): void {
+  record(metricName: MetricName, value: number, attrs: Record<string, string | number>): void {
     this.hasRecords = true;
     this.pendingWrite = this.pendingWrite.then(() =>
-      this.appendEntry({ value, attrs: { ...this.resource, ...attrs } })
+      this.appendEntry({ metric: metricName, value, attrs: { ...this.resource, ...attrs } })
     );
   }
 
@@ -38,10 +39,13 @@ export class FileSystemSink implements MetricSink {
     }
   }
 
-  // Promise chain that serializes async writes so record() can stay synchronous.
   private pendingWrite: Promise<void> = Promise.resolve();
 
-  private async appendEntry(entry: { value: number; attrs: Record<string, string | number> }): Promise<void> {
+  private async appendEntry(entry: {
+    metric: string;
+    value: number;
+    attrs: Record<string, string | number>;
+  }): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
     await appendFile(this.filePath, JSON.stringify(entry) + '\n');
   }

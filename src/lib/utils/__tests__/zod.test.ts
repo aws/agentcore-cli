@@ -1,5 +1,6 @@
-import { validateAgentSchema, validateProjectSchema } from '../zod.js';
+import { resilientParse, validateAgentSchema, validateProjectSchema } from '../zod.js';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 describe('validateAgentSchema', () => {
   const validAgent = {
@@ -77,5 +78,65 @@ describe('validateProjectSchema', () => {
         runtimes: [agent, agent],
       })
     ).toThrow('Invalid AgentCoreProjectSpec');
+  });
+});
+
+describe('resilientParse', () => {
+  it('passes valid fields through unchanged', () => {
+    const schema = z.object({ name: z.string(), age: z.number() });
+    const result = resilientParse(schema, { name: 'valid', age: 42 });
+    expect(result.name).toBe('valid');
+    expect(result.age).toBe(42);
+  });
+
+  it('defaults invalid fields to undefined', () => {
+    const schema = z.object({ name: z.string(), age: z.number() });
+    const result = resilientParse(schema, { name: 'valid', age: 'not a number' });
+    expect(result.name).toBe('valid');
+    expect(result.age).toBeUndefined();
+  });
+
+  it('recursively parses nested objects', () => {
+    const schema = z.object({
+      settings: z.object({
+        enabled: z.boolean(),
+        name: z.string(),
+      }),
+    });
+    const result = resilientParse(schema, { settings: { enabled: 'bad', name: 'good' } });
+    expect(result.settings).toEqual({ name: 'good' });
+  });
+
+  it('skips keys not present in data', () => {
+    const schema = z.object({ name: z.string(), age: z.number() });
+    const result = resilientParse(schema, { name: 'valid' });
+    expect(result).toEqual({ name: 'valid' });
+    expect('age' in result).toBe(false);
+  });
+
+  it('preserves unknown keys', () => {
+    const schema = z.object({ known: z.string() });
+    const result = resilientParse(schema, { known: 'hello', extra: 'world' });
+    expect(result.known).toBe('hello');
+    expect((result as Record<string, unknown>).extra).toBe('world');
+  });
+
+  it('recursively parses nested objects wrapped in ZodOptional', () => {
+    const schema = z.object({
+      settings: z
+        .object({
+          enabled: z.boolean(),
+          name: z.string(),
+        })
+        .optional(),
+    });
+    const result = resilientParse(schema, { settings: { enabled: 'bad', name: 'good' } });
+    expect(result.settings).toEqual({ name: 'good' });
+  });
+
+  it('supports custom fallback value', () => {
+    const schema = z.object({ name: z.string() });
+    const result = resilientParse(schema, { name: 123 }, { fallback: 'unknown' });
+    expect(result.name).toBe('unknown');
   });
 });

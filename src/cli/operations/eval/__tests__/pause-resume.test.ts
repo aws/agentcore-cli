@@ -176,4 +176,54 @@ describe('handlePauseResume', () => {
       expect(result.error.message).toContain('Could not extract config ID');
     });
   });
+
+  describe('name + ARN cross-validation', () => {
+    it('accepts matching name and ARN', async () => {
+      mockLoadDeployedProjectConfig.mockResolvedValue(makeContext('my-config', 'cfg-123'));
+      mockUpdateOnlineEvalExecutionStatus.mockResolvedValue({
+        configId: 'cfg-123',
+        executionStatus: 'DISABLED',
+        status: 'ACTIVE',
+      });
+
+      const arn = 'arn:aws:bedrock-agentcore:us-east-1:123456789012:online-evaluation-config/cfg-123';
+      const result = await handlePauseResume({ name: 'my-config', arn }, 'pause');
+
+      assert(result.success);
+      expect(result.executionStatus).toBe('DISABLED');
+    });
+
+    it('rejects mismatched name and ARN', async () => {
+      mockLoadDeployedProjectConfig.mockResolvedValue(makeContext('my-config', 'cfg-123'));
+
+      const arn = 'arn:aws:bedrock-agentcore:us-east-1:123456789012:online-evaluation-config/different-cfg';
+      const result = await handlePauseResume({ name: 'my-config', arn }, 'pause');
+
+      assert(!result.success);
+      expect(result.error.message).toContain('refer to different configs');
+      expect(mockUpdateOnlineEvalExecutionStatus).not.toHaveBeenCalled();
+    });
+
+    it('rejects mismatched regions between name and ARN', async () => {
+      mockLoadDeployedProjectConfig.mockResolvedValue(makeContext('my-config', 'cfg-123', 'dev', 'us-west-2'));
+
+      const arn = 'arn:aws:bedrock-agentcore:us-east-1:123456789012:online-evaluation-config/cfg-123';
+      const result = await handlePauseResume({ name: 'my-config', arn }, 'pause');
+
+      assert(!result.success);
+      expect(result.error.message).toContain('different regions');
+      expect(mockUpdateOnlineEvalExecutionStatus).not.toHaveBeenCalled();
+    });
+
+    it('returns name-lookup error when both are passed but name is unknown', async () => {
+      mockLoadDeployedProjectConfig.mockResolvedValue(makeContext('other-config', 'cfg-999'));
+
+      const arn = 'arn:aws:bedrock-agentcore:us-east-1:123456789012:online-evaluation-config/cfg-999';
+      const result = await handlePauseResume({ name: 'missing-config', arn }, 'pause');
+
+      assert(!result.success);
+      expect(result.error.message).toContain('missing-config');
+      expect(result.error.message).toContain('not found');
+    });
+  });
 });

@@ -212,7 +212,7 @@ describe('usePanelNavigation', () => {
         if (nav.position.layer === 'active') {
           nav.deactivate();
         }
-      }, [nav.position.layer, nav.position.column, nav.position.field, nav.deactivate]);
+      }, [nav]);
 
       return (
         <Text>

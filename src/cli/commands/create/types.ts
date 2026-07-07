@@ -20,6 +20,10 @@ export interface CreateOptions extends VpcOptions {
   idleTimeout?: number | string;
   maxLifetime?: number | string;
   sessionStorageMountPath?: string;
+  efsAccessPointArn?: string[];
+  efsMountPath?: string[];
+  s3AccessPointArn?: string[];
+  s3MountPath?: string[];
   withConfigBundle?: boolean;
   outputDir?: string;
   skipGit?: boolean;
@@ -27,11 +31,23 @@ export interface CreateOptions extends VpcOptions {
   skipInstall?: boolean;
   dryRun?: boolean;
   json?: boolean;
+  // Harness-specific (preview only)
+  modelId?: string;
+  apiKeyArn?: string;
+  apiBase?: string;
+  additionalParams?: string;
+  container?: string;
+  harnessMemory?: boolean;
+  maxIterations?: string;
+  maxTokens?: string;
+  timeout?: string;
+  truncationStrategy?: string;
 }
 
 export type CreateResult = Result<{
   projectPath?: string;
   agentName?: string;
+  harnessName?: string;
   dryRun?: boolean;
   wouldCreate?: string[];
 }> & { warnings?: string[] };

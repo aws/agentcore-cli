@@ -1,6 +1,7 @@
 import {
   ConflictError,
   ResourceNotFoundError,
+  ValidationError,
   findConfigRoot,
   getEnvVar,
   serializeResult,
@@ -8,6 +9,7 @@ import {
   toError,
 } from '../../lib';
 import type { Result } from '../../lib/result';
+import { validateCredentialNameEncryptable } from '../../lib/secrets';
 import type { Credential, ModelProvider } from '../../schema';
 import { CredentialSchema } from '../../schema';
 import { validateAddCredentialOptions } from '../commands/add/validate';
@@ -18,6 +20,7 @@ import { CredentialType, standardize } from '../telemetry/schemas/common-shapes.
 import { requireTTY } from '../tui/guards/tty';
 import { BasePrimitive } from './BasePrimitive';
 import { computeDefaultCredentialEnvVarName } from './credential-utils';
+import { warnOnLiteralSecretFlag } from './secret-flag-warning';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
 
@@ -83,6 +86,16 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
 
   async add(options: AddCredentialOptions): Promise<AddResult<{ credentialName: string }>> {
     try {
+      // Fail closed: an API-key credential stores its secret in the bare
+      // AGENTCORE_CREDENTIAL_<NAME> var. If <NAME> normalizes to a reserved
+      // reference suffix, the value would be left unencrypted at rest. OAuth
+      // appends _CLIENT_SECRET, so its name is always safe.
+      if (options.authorizerType === 'ApiKeyCredentialProvider') {
+        const nameCheck = validateCredentialNameEncryptable(options.name);
+        if (nameCheck !== true) {
+          return { success: false, error: new ValidationError(nameCheck) };
+        }
+      }
       const credential = await this.createCredential(options);
       return { success: true, credentialName: credential.name };
     } catch (err) {
@@ -304,6 +317,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
           ) {
             // CLI mode
             await runCliCommand('add.credential', !!cliOptions.json, async () => {
+              warnOnLiteralSecretFlag([cliOptions.apiKey, cliOptions.clientSecret], cliOptions.json, 'add credential');
               const validation = validateAddCredentialOptions({
                 name: cliOptions.name,
                 type: cliOptions.type as 'api-key' | 'oauth' | undefined,
@@ -315,7 +329,7 @@ export class CredentialPrimitive extends BasePrimitive<AddCredentialOptions, Rem
               });
 
               if (!validation.valid) {
-                throw new Error(validation.error);
+                throw new ValidationError(validation.error!);
               }
 
               const addOptions =

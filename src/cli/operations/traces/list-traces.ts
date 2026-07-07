@@ -1,4 +1,4 @@
-import { DEFAULT_ENDPOINT_NAME } from '../../constants';
+import { runtimeLogGroup } from '../../aws/cloudwatch';
 import { runInsightsQuery } from './insights-query';
 import type { ListTracesOptions, ListTracesResult, TraceEntry } from './types';
 
@@ -11,7 +11,7 @@ import type { ListTracesOptions, ListTracesResult, TraceEntry } from './types';
 export async function listTraces(options: ListTracesOptions): Promise<ListTracesResult> {
   const { region, runtimeId, limit = 20 } = options;
 
-  const logGroupName = `/aws/bedrock-agentcore/runtimes/${runtimeId}-${DEFAULT_ENDPOINT_NAME}`;
+  const logGroupName = runtimeLogGroup(runtimeId);
 
   const result = await runInsightsQuery({
     region,

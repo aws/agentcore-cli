@@ -1,4 +1,10 @@
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+FROM public.ecr.aws/docker/library/python:3.12-slim-trixie
+
+{{#if gitSkills}}
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+
+{{/if}}
+RUN pip install --no-cache-dir uv
 
 ARG UV_DEFAULT_INDEX
 ARG UV_INDEX

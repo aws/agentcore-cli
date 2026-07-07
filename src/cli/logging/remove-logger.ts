@@ -9,6 +9,7 @@ export interface RemoveLoggerOptions {
   /** Type of resource being removed */
   resourceType:
     | 'agent'
+    | 'harness'
     | 'memory'
     | 'credential'
     | 'gateway'
@@ -16,10 +17,14 @@ export interface RemoveLoggerOptions {
     | 'runtime-endpoint'
     | 'evaluator'
     | 'online-eval'
+    | 'online-insights'
     | 'policy-engine'
     | 'policy'
     | 'config-bundle'
-    | 'ab-test';
+    | 'dataset'
+    | 'knowledge-base'
+    | 'payment-manager'
+    | 'payment-connector';
   /** Name of the resource being removed */
   resourceName: string;
 }

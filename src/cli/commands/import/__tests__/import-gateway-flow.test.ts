@@ -63,6 +63,13 @@ vi.mock('../../../../lib', () => ({
       this.name = 'NoProjectError';
     }
   },
+  ValidationError: class ValidationError extends Error {
+    constructor(msg: string) {
+      super(msg);
+      this.name = 'ValidationError';
+    }
+  },
+  toError: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),
   findConfigRoot: (...args: unknown[]) => mockFindConfigRoot(...args),
 }));
 
@@ -169,12 +176,27 @@ function setupCommonMocks() {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('handleImportGateway', () => {
+  let originalAwsRegion: string | undefined;
+  let originalAwsDefaultRegion: string | undefined;
+
   beforeEach(() => {
+    originalAwsRegion = process.env.AWS_REGION;
+    originalAwsDefaultRegion = process.env.AWS_DEFAULT_REGION;
+    process.env.AWS_REGION = REGION;
+    delete process.env.AWS_DEFAULT_REGION;
     vi.clearAllMocks();
     setupCommonMocks();
   });
 
   afterEach(() => {
+    if (originalAwsRegion !== undefined) {
+      process.env.AWS_REGION = originalAwsRegion;
+    } else {
+      delete process.env.AWS_REGION;
+    }
+    if (originalAwsDefaultRegion !== undefined) {
+      process.env.AWS_DEFAULT_REGION = originalAwsDefaultRegion;
+    }
     vi.restoreAllMocks();
   });
 

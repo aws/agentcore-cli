@@ -75,6 +75,19 @@ describe('useGenerateWizard — advanced config gate', () => {
       const frame = lastFrame()!;
       expect(frame).toMatch(/memory,advanced/);
     });
+
+    it('Strands SDK inserts memory before advanced for TypeScript', () => {
+      const { ref, lastFrame } = setup();
+      act(() => {
+        ref.current!.wizard.setProjectName('Test');
+        ref.current!.wizard.setLanguage('TypeScript');
+        ref.current!.wizard.setBuildType('CodeZip');
+        ref.current!.wizard.setProtocol('HTTP');
+        ref.current!.wizard.setSdk('Strands');
+      });
+      const frame = lastFrame()!;
+      expect(frame).toMatch(/memory,advanced/);
+    });
   });
 
   describe('setAdvanced routing', () => {
@@ -465,7 +478,7 @@ describe('useGenerateWizard — advanced config gate', () => {
 
       expect(result).toBe(true);
       expect(ref.current!.wizard.error).toBeNull();
-      expect(lastFrame()).toContain('step:confirm');
+      expect(lastFrame()).toContain('step:efsArn');
       expect(ref.current!.wizard.config.sessionStorageMountPath).toBe('/mnt/data');
       vi.useRealTimers();
     });
@@ -483,6 +496,12 @@ describe('useGenerateWizard — advanced config gate', () => {
         'idleTimeout',
         'maxLifetime',
         'sessionStorageMountPath',
+        'efsArn',
+        'efsMountPath',
+        'efsAddAnother',
+        's3Arn',
+        's3MountPath',
+        's3AddAnother',
         'confirm',
       ]);
     });
@@ -512,6 +531,253 @@ describe('useGenerateWizard — advanced config gate', () => {
     });
   });
 
+  describe('EFS mount flow', () => {
+    function walkToEfsArn(ref: React.RefObject<HarnessHandle | null>) {
+      act(() => {
+        ref.current!.wizard.setProjectName('Test');
+        ref.current!.wizard.setLanguage('Python');
+        ref.current!.wizard.setBuildType('CodeZip');
+        ref.current!.wizard.setProtocol('HTTP');
+        ref.current!.wizard.setSdk('Strands');
+        ref.current!.wizard.setModelProvider('Bedrock');
+        ref.current!.wizard.setMemory('none');
+      });
+      act(() => ref.current!.wizard.setAdvanced(['filesystem']));
+      void act(() => ref.current!.wizard.setSessionStorageMountPath(''));
+    }
+
+    it('skipping EFS ARN (empty submit) advances past EFS steps to s3Arn', () => {
+      vi.useFakeTimers();
+      const { ref, lastFrame } = setup();
+      walkToEfsArn(ref);
+      void act(() => vi.runAllTimers());
+
+      void act(() => ref.current!.wizard.submitEfsArn(''));
+      void act(() => vi.runAllTimers());
+
+      expect(lastFrame()).toContain('step:s3Arn');
+      expect(ref.current!.wizard.config.efsAccessPoints).toBeUndefined();
+      vi.useRealTimers();
+    });
+
+    it('submitting EFS ARN advances to efsMountPath', () => {
+      vi.useFakeTimers();
+      const { ref, lastFrame } = setup();
+      walkToEfsArn(ref);
+      void act(() => vi.runAllTimers());
+
+      void act(() =>
+        ref.current!.wizard.submitEfsArn(
+          'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0'
+        )
+      );
+
+      expect(lastFrame()).toContain('step:efsMountPath');
+      expect(ref.current!.wizard.pendingEfsArn).toBe(
+        'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0'
+      );
+      vi.useRealTimers();
+    });
+
+    it('submitting EFS mount path saves mount and goes to efsAddAnother', () => {
+      vi.useFakeTimers();
+      const { ref, lastFrame } = setup();
+      walkToEfsArn(ref);
+      void act(() => vi.runAllTimers());
+
+      void act(() =>
+        ref.current!.wizard.submitEfsArn(
+          'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0'
+        )
+      );
+      void act(() => ref.current!.wizard.submitEfsMountPath('/mnt/efs-data'));
+
+      expect(lastFrame()).toContain('step:efsAddAnother');
+      expect(ref.current!.wizard.config.efsAccessPoints).toHaveLength(1);
+      expect(ref.current!.wizard.config.efsAccessPoints?.[0]?.mountPath).toBe('/mnt/efs-data');
+      vi.useRealTimers();
+    });
+
+    it('submitEfsAddAnother("done") advances to s3Arn', () => {
+      vi.useFakeTimers();
+      const { ref, lastFrame } = setup();
+      walkToEfsArn(ref);
+      void act(() => vi.runAllTimers());
+
+      void act(() =>
+        ref.current!.wizard.submitEfsArn(
+          'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0'
+        )
+      );
+      void act(() => ref.current!.wizard.submitEfsMountPath('/mnt/efs-data'));
+      void act(() => ref.current!.wizard.submitEfsAddAnother('done'));
+      void act(() => vi.runAllTimers());
+
+      expect(lastFrame()).toContain('step:s3Arn');
+      vi.useRealTimers();
+    });
+
+    it('submitEfsAddAnother("remove:0") removes mount and stays on efsAddAnother', () => {
+      vi.useFakeTimers();
+      const { ref, lastFrame } = setup();
+      walkToEfsArn(ref);
+      void act(() => vi.runAllTimers());
+
+      void act(() =>
+        ref.current!.wizard.submitEfsArn(
+          'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0'
+        )
+      );
+      void act(() => ref.current!.wizard.submitEfsMountPath('/mnt/efs-data'));
+      void act(() => ref.current!.wizard.submitEfsAddAnother('remove:0'));
+
+      expect(ref.current!.wizard.config.efsAccessPoints).toHaveLength(0);
+      expect(lastFrame()).toContain('step:efsAddAnother');
+      vi.useRealTimers();
+    });
+
+    it('submitEfsAddAnother("edit:0") goes to efsArn with pre-filled ARN', () => {
+      vi.useFakeTimers();
+      const { ref, lastFrame } = setup();
+      walkToEfsArn(ref);
+      void act(() => vi.runAllTimers());
+
+      const arn = 'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0';
+      void act(() => ref.current!.wizard.submitEfsArn(arn));
+      void act(() => ref.current!.wizard.submitEfsMountPath('/mnt/efs-data'));
+      void act(() => ref.current!.wizard.submitEfsAddAnother('edit:0'));
+
+      expect(lastFrame()).toContain('step:efsArn');
+      expect(ref.current!.wizard.pendingEfsArn).toBe(arn);
+      expect(ref.current!.wizard.editingEfsIndex).toBe(0);
+      vi.useRealTimers();
+    });
+  });
+
+  describe('S3 Files mount flow', () => {
+    const validS3Arn =
+      'arn:aws:s3files:us-east-1:123456789012:file-system/fs-12345678901234567/access-point/fsap-12345678901234567';
+
+    function walkToS3Arn(ref: React.RefObject<HarnessHandle | null>) {
+      act(() => {
+        ref.current!.wizard.setProjectName('Test');
+        ref.current!.wizard.setLanguage('Python');
+        ref.current!.wizard.setBuildType('CodeZip');
+        ref.current!.wizard.setProtocol('HTTP');
+        ref.current!.wizard.setSdk('Strands');
+        ref.current!.wizard.setModelProvider('Bedrock');
+        ref.current!.wizard.setMemory('none');
+      });
+      act(() => ref.current!.wizard.setAdvanced(['filesystem']));
+      void act(() => ref.current!.wizard.setSessionStorageMountPath(''));
+      void act(() => ref.current!.wizard.submitEfsArn(''));
+    }
+
+    it('skipping S3 ARN (empty submit) advances to confirm', () => {
+      vi.useFakeTimers();
+      const { ref, lastFrame } = setup();
+      walkToS3Arn(ref);
+      void act(() => vi.runAllTimers());
+
+      void act(() => ref.current!.wizard.submitS3Arn(''));
+      void act(() => vi.runAllTimers());
+
+      expect(lastFrame()).toContain('step:confirm');
+      expect(ref.current!.wizard.config.s3AccessPoints).toBeUndefined();
+      vi.useRealTimers();
+    });
+
+    it('submitting S3 ARN advances to s3MountPath', () => {
+      vi.useFakeTimers();
+      const { ref, lastFrame } = setup();
+      walkToS3Arn(ref);
+      void act(() => vi.runAllTimers());
+
+      void act(() => ref.current!.wizard.submitS3Arn(validS3Arn));
+
+      expect(lastFrame()).toContain('step:s3MountPath');
+      expect(ref.current!.wizard.pendingS3Arn).toBe(validS3Arn);
+      vi.useRealTimers();
+    });
+
+    it('submitting S3 mount path saves mount and goes to s3AddAnother', () => {
+      vi.useFakeTimers();
+      const { ref, lastFrame } = setup();
+      walkToS3Arn(ref);
+      void act(() => vi.runAllTimers());
+
+      void act(() => ref.current!.wizard.submitS3Arn(validS3Arn));
+      void act(() => ref.current!.wizard.submitS3MountPath('/mnt/s3-data'));
+
+      expect(lastFrame()).toContain('step:s3AddAnother');
+      expect(ref.current!.wizard.config.s3AccessPoints).toHaveLength(1);
+      expect(ref.current!.wizard.config.s3AccessPoints?.[0]?.mountPath).toBe('/mnt/s3-data');
+      vi.useRealTimers();
+    });
+
+    it('submitS3AddAnother("done") advances to confirm', () => {
+      vi.useFakeTimers();
+      const { ref, lastFrame } = setup();
+      walkToS3Arn(ref);
+      void act(() => vi.runAllTimers());
+
+      void act(() => ref.current!.wizard.submitS3Arn(validS3Arn));
+      void act(() => ref.current!.wizard.submitS3MountPath('/mnt/s3-data'));
+      void act(() => ref.current!.wizard.submitS3AddAnother('done'));
+      void act(() => vi.runAllTimers());
+
+      expect(lastFrame()).toContain('step:confirm');
+      vi.useRealTimers();
+    });
+
+    it('submitS3AddAnother("remove:0") removes mount and stays on s3AddAnother', () => {
+      vi.useFakeTimers();
+      const { ref, lastFrame } = setup();
+      walkToS3Arn(ref);
+      void act(() => vi.runAllTimers());
+
+      void act(() => ref.current!.wizard.submitS3Arn(validS3Arn));
+      void act(() => ref.current!.wizard.submitS3MountPath('/mnt/s3-data'));
+      void act(() => ref.current!.wizard.submitS3AddAnother('remove:0'));
+
+      expect(ref.current!.wizard.config.s3AccessPoints).toHaveLength(0);
+      expect(lastFrame()).toContain('step:s3AddAnother');
+      vi.useRealTimers();
+    });
+  });
+
+  describe('filesystem state cleared on deselect', () => {
+    it('deselecting filesystem clears efsAccessPoints and s3AccessPoints', () => {
+      vi.useFakeTimers();
+      const { ref } = setup();
+      act(() => {
+        ref.current!.wizard.setProjectName('Test');
+        ref.current!.wizard.setLanguage('Python');
+        ref.current!.wizard.setBuildType('CodeZip');
+        ref.current!.wizard.setProtocol('HTTP');
+        ref.current!.wizard.setSdk('Strands');
+        ref.current!.wizard.setModelProvider('Bedrock');
+        ref.current!.wizard.setMemory('none');
+      });
+      act(() => ref.current!.wizard.setAdvanced(['filesystem']));
+      void act(() => ref.current!.wizard.setSessionStorageMountPath(''));
+      void act(() =>
+        ref.current!.wizard.submitEfsArn(
+          'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0'
+        )
+      );
+      void act(() => ref.current!.wizard.submitEfsMountPath('/mnt/efs-data'));
+      expect(ref.current!.wizard.config.efsAccessPoints).toHaveLength(1);
+
+      act(() => ref.current!.wizard.setAdvanced([]));
+
+      expect(ref.current!.wizard.config.efsAccessPoints).toBeUndefined();
+      expect(ref.current!.wizard.config.s3AccessPoints).toBeUndefined();
+      expect(ref.current!.wizard.config.sessionStorageMountPath).toBeUndefined();
+      vi.useRealTimers();
+    });
+  });
+
   describe('reset clears advancedSelected', () => {
     it('reset returns advancedSelected to false', () => {
       const { ref, lastFrame } = setup();
@@ -531,6 +797,86 @@ describe('useGenerateWizard — advanced config gate', () => {
 
       expect(lastFrame()).toContain('advancedSelected:false');
     });
+  });
+});
+
+describe('useGenerateWizard — vpcId step (Container + VPC)', () => {
+  function walkToAdvanced(ref: React.RefObject<HarnessHandle | null>, build: 'CodeZip' | 'Container') {
+    act(() => {
+      ref.current!.wizard.setProjectName('Test');
+      ref.current!.wizard.setLanguage('Python');
+      ref.current!.wizard.setBuildType(build);
+      ref.current!.wizard.setProtocol('HTTP');
+      ref.current!.wizard.setSdk('Strands');
+      ref.current!.wizard.setModelProvider('Bedrock');
+      ref.current!.wizard.setMemory('none');
+    });
+  }
+
+  it('Container + VPC: steps include vpcId immediately after securityGroups', () => {
+    const { ref } = setup();
+    walkToAdvanced(ref, 'Container');
+
+    act(() => ref.current!.wizard.setAdvanced(['network']));
+    act(() => ref.current!.wizard.setNetworkMode('VPC'));
+
+    const steps = ref.current!.wizard.steps;
+    expect(steps).toContain('vpcId');
+    const sgIdx = steps.indexOf('securityGroups');
+    expect(steps[sgIdx + 1]).toBe('vpcId');
+  });
+
+  it('Container + VPC: setVpcId persists into config and advances to confirm', () => {
+    vi.useFakeTimers();
+    const { ref } = setup();
+    walkToAdvanced(ref, 'Container');
+
+    act(() => ref.current!.wizard.setAdvanced(['network']));
+    act(() => ref.current!.wizard.setNetworkMode('VPC'));
+    act(() => ref.current!.wizard.setSubnets(['subnet-0123456789abcdef0']));
+    act(() => {
+      vi.runAllTimers();
+    });
+    act(() => ref.current!.wizard.setSecurityGroups(['sg-0123456789abcdef0']));
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(ref.current!.wizard.step).toBe('vpcId');
+
+    act(() => ref.current!.wizard.setVpcId('vpc-0123456789abcdef0'));
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(ref.current!.wizard.config.vpcId).toBe('vpc-0123456789abcdef0');
+    expect(ref.current!.wizard.step).toBe('confirm');
+    vi.useRealTimers();
+  });
+
+  it('CodeZip + VPC: steps do NOT include vpcId', () => {
+    const { ref } = setup();
+    walkToAdvanced(ref, 'CodeZip');
+
+    act(() => ref.current!.wizard.setAdvanced(['network']));
+    act(() => ref.current!.wizard.setNetworkMode('VPC'));
+
+    const steps = ref.current!.wizard.steps;
+    expect(steps).toContain('subnets');
+    expect(steps).toContain('securityGroups');
+    expect(steps).not.toContain('vpcId');
+  });
+
+  it('Container + PUBLIC: steps do NOT include vpcId (or subnets/securityGroups)', () => {
+    const { ref } = setup();
+    walkToAdvanced(ref, 'Container');
+
+    act(() => ref.current!.wizard.setAdvanced(['network']));
+    act(() => ref.current!.wizard.setNetworkMode('PUBLIC'));
+
+    const steps = ref.current!.wizard.steps;
+    expect(steps).not.toContain('vpcId');
+    expect(steps).not.toContain('subnets');
+    expect(steps).not.toContain('securityGroups');
   });
 });
 

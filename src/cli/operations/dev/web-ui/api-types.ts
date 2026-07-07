@@ -8,6 +8,8 @@
  * TODO: Extract these types into a shared package so both repos import
  * from a single source of truth instead of manually duplicating.
  */
+import type { HarnessModel } from '../../../../schema';
+import type { HarnessModelConfiguration, HarnessSkill, HarnessTool } from '../../../aws/agentcore-harness';
 import type { CloudWatchSpanRecord, CloudWatchTraceRecord } from '../../traces/types';
 
 // ---------------------------------------------------------------------------
@@ -116,6 +118,14 @@ export interface ResourcesResponse {
   onlineEvalConfigs: ResourceOnlineEvalConfig[];
   policyEngines: ResourcePolicyEngine[];
   unassignedTargets: ResourceUnassignedTarget[];
+  deploymentTargets: ResourceDeploymentTarget[];
+}
+
+/** Deployment target (from aws-targets) in the resources response */
+export interface ResourceDeploymentTarget {
+  name: string;
+  region: string;
+  description?: string;
 }
 
 /** Agent details in the resources response */
@@ -145,8 +155,8 @@ export interface ResourceMemory {
 /** Memory strategy with namespace patterns */
 export interface ResourceMemoryStrategy {
   type: string;
-  /** Namespace patterns, e.g. "/users/{actorId}/facts", "/summaries/{actorId}/{sessionId}" */
-  namespaces: string[];
+  /** Namespace templates, e.g. "/users/{actorId}/facts", "/summaries/{actorId}/{sessionId}" */
+  namespaceTemplates: string[];
 }
 
 /** Credential details in the resources response */
@@ -197,10 +207,13 @@ export interface ResourceEvaluator {
 /** Online eval config details in the resources response */
 export interface ResourceOnlineEvalConfig {
   name: string;
-  agent: string;
-  evaluators: string[];
+  agent?: string;
+  evaluators?: string[];
+  insights?: string[];
   samplingRate: number;
   description?: string;
+  logGroupNames?: string[];
+  serviceNames?: string[];
   deploymentStatus?: ResourceDeploymentStatus;
   deployed?: DeployedOnlineEvalState;
 }
@@ -252,6 +265,7 @@ export interface StartResponse {
 /** Request body for POST /invocations */
 export interface InvocationRequest {
   agentName?: string;
+  targetName?: string;
   prompt?: string;
   sessionId?: string;
   userId?: string;
@@ -314,8 +328,17 @@ export interface GetCloudWatchTraceResponse {
 export type { CloudWatchTraceRecord, CloudWatchSpanRecord } from '../../traces/types';
 
 // ---------------------------------------------------------------------------
-// GET /api/memory?memoryName=xxx&namespace=yyy[&strategyId=zzz]
+// GET /api/memory?memoryName=xxx&(namespace=yyy|namespacePath=yyy)[&strategyId=zzz]
 // ---------------------------------------------------------------------------
+
+/**
+ * Query parameters for GET /api/memory. Exactly one of `namespace` (exact match) or
+ * `namespacePath` (hierarchical path prefix) must be provided.
+ */
+export type ListMemoryRecordsQuery = {
+  memoryName: string;
+  strategyId?: string;
+} & ({ namespace: string; namespacePath?: never } | { namespace?: never; namespacePath: string });
 
 /** Response shape for GET /api/memory */
 export interface ListMemoryRecordsResponse {
@@ -340,13 +363,15 @@ export interface MemoryRecordResponse {
 // POST /api/memory/search
 // ---------------------------------------------------------------------------
 
-/** Request body for POST /api/memory/search */
-export interface RetrieveMemoryRecordsRequest {
+/**
+ * Request body for POST /api/memory/search. Exactly one of `namespace` (exact match) or
+ * `namespacePath` (hierarchical path prefix) must be provided.
+ */
+export type RetrieveMemoryRecordsRequest = {
   memoryName: string;
-  namespace: string;
   searchQuery: string;
   strategyId?: string;
-}
+} & ({ namespace: string; namespacePath?: never } | { namespace?: never; namespacePath: string });
 
 /** Response shape for POST /api/memory/search */
 export interface RetrieveMemoryRecordsResponse {
@@ -411,4 +436,55 @@ export interface A2AAgentCard {
 export interface A2AAgentCardResponse {
   success: true;
   card: A2AAgentCard;
+}
+
+// ---------------------------------------------------------------------------
+// Harness invocation types
+// ---------------------------------------------------------------------------
+
+export interface HarnessInvocationOverrides {
+  model?: HarnessModelConfiguration;
+  systemPrompt?: string;
+  skills?: HarnessSkill[];
+  actorId?: string;
+  maxIterations?: number;
+  maxTokens?: number;
+  timeoutSeconds?: number;
+  allowedTools?: string[];
+  tools?: HarnessTool[];
+}
+
+export interface HarnessToolResponseRequest {
+  harnessName: string;
+  sessionId: string;
+  messages: { role: string; content: Record<string, unknown>[] }[];
+  harnessOverrides?: HarnessInvocationOverrides;
+}
+
+export interface StatusHarness {
+  name: string;
+}
+
+export type ResourceSkillSource =
+  | { path: string }
+  | { s3: { uri: string } }
+  | {
+      git: { url: string; path?: string; auth?: { credentialName: string; credentialArn?: string; username?: string } };
+    }
+  | { awsSkills: { paths?: string[] } };
+
+export interface ResourceHarness {
+  name: string;
+  /** @deprecated Use modelConfig instead. */
+  model: string;
+  modelConfig?: HarnessModel;
+  tools: string[];
+  skills?: ResourceSkillSource[];
+  deploymentStatus?: ResourceDeploymentStatus;
+  deployed?: DeployedHarnessState;
+}
+
+export interface DeployedHarnessState {
+  harnessId: string;
+  harnessArn: string;
 }

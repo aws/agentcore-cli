@@ -3,17 +3,21 @@ import { VPC_ENDPOINT_WARNING } from '../../../commands/shared/vpc-utils';
 import { computeDefaultCredentialEnvVarName } from '../../../primitives/credential-utils';
 import { ErrorPrompt } from '../../components';
 import { useAvailableAgents } from '../../hooks/useCreateMcp';
-import { AddABTestFlow } from '../ab-test';
 import { AddAgentFlow } from '../agent/AddAgentFlow';
 import type { AddAgentConfig } from '../agent/types';
 import { FRAMEWORK_OPTIONS } from '../agent/types';
 import { useAddAgent } from '../agent/useAddAgent';
 import { AddConfigBundleFlow } from '../config-bundle';
+import { AddDatasetFlow } from '../dataset';
 import { AddEvaluatorFlow } from '../evaluator';
+import { AddHarnessFlow } from '../harness/AddHarnessFlow';
 import { AddIdentityFlow } from '../identity';
+import { AddKnowledgeBaseFlow } from '../knowledge-base';
 import { AddGatewayFlow, AddGatewayTargetFlow } from '../mcp';
 import { AddMemoryFlow } from '../memory/AddMemoryFlow';
 import { AddOnlineEvalFlow } from '../online-eval';
+import { AddOnlineInsightsFlow } from '../online-insights';
+import { AddPaymentFlow } from '../payment';
 import { AddPolicyFlow } from '../policy';
 import { AddRuntimeEndpointFlow } from '../runtime-endpoint';
 import type { AddResourceType } from './AddScreen';
@@ -25,17 +29,22 @@ import React, { useCallback, useEffect, useState } from 'react';
 
 type FlowState =
   | { name: 'select' }
+  | { name: 'harness-wizard' }
   | { name: 'agent-wizard' }
   | { name: 'gateway-wizard' }
   | { name: 'tool-wizard' }
   | { name: 'memory-wizard' }
+  | { name: 'knowledge-base-wizard' }
   | { name: 'identity-wizard' }
   | { name: 'evaluator-wizard' }
   | { name: 'online-eval-wizard' }
+  | { name: 'online-insights-wizard' }
   | { name: 'policy-wizard' }
+  | { name: 'dataset-wizard' }
   | { name: 'config-bundle-wizard' }
-  | { name: 'ab-test-wizard' }
   | { name: 'runtime-endpoint-wizard' }
+  | { name: 'payment-manager-wizard' }
+  | { name: 'payment-connector-wizard' }
   | {
       name: 'agent-create-success';
       agentName: string;
@@ -169,6 +178,8 @@ interface AddFlowProps {
 
 function getInitialFlowState(resource?: AddResourceType): FlowState {
   switch (resource) {
+    case 'harness':
+      return { name: 'harness-wizard' };
     case 'agent':
       return { name: 'agent-wizard' };
     case 'gateway':
@@ -177,20 +188,28 @@ function getInitialFlowState(resource?: AddResourceType): FlowState {
       return { name: 'tool-wizard' };
     case 'memory':
       return { name: 'memory-wizard' };
+    case 'knowledge-base':
+      return { name: 'knowledge-base-wizard' };
     case 'credential':
       return { name: 'identity-wizard' };
     case 'evaluator':
       return { name: 'evaluator-wizard' };
     case 'online-eval':
       return { name: 'online-eval-wizard' };
+    case 'online-insights':
+      return { name: 'online-insights-wizard' };
     case 'policy':
       return { name: 'policy-wizard' };
     case 'runtime-endpoint':
       return { name: 'runtime-endpoint-wizard' };
+    case 'dataset':
+      return { name: 'dataset-wizard' };
     case 'config-bundle':
       return { name: 'config-bundle-wizard' };
-    case 'ab-test':
-      return { name: 'ab-test-wizard' };
+    case 'payment-manager':
+      return { name: 'payment-manager-wizard' };
+    case 'payment-connector':
+      return { name: 'payment-connector-wizard' };
     default:
       return { name: 'select' };
   }
@@ -214,6 +233,9 @@ export function AddFlow(props: AddFlowProps) {
 
   const handleSelectResource = useCallback((resourceType: AddResourceType) => {
     switch (resourceType) {
+      case 'harness':
+        setFlow({ name: 'harness-wizard' });
+        break;
       case 'agent':
         setFlow({ name: 'agent-wizard' });
         break;
@@ -226,6 +248,9 @@ export function AddFlow(props: AddFlowProps) {
       case 'memory':
         setFlow({ name: 'memory-wizard' });
         break;
+      case 'knowledge-base':
+        setFlow({ name: 'knowledge-base-wizard' });
+        break;
       case 'credential':
         setFlow({ name: 'identity-wizard' });
         break;
@@ -235,17 +260,26 @@ export function AddFlow(props: AddFlowProps) {
       case 'online-eval':
         setFlow({ name: 'online-eval-wizard' });
         break;
+      case 'online-insights':
+        setFlow({ name: 'online-insights-wizard' });
+        break;
       case 'policy':
         setFlow({ name: 'policy-wizard' });
+        break;
+      case 'dataset':
+        setFlow({ name: 'dataset-wizard' });
         break;
       case 'config-bundle':
         setFlow({ name: 'config-bundle-wizard' });
         break;
-      case 'ab-test':
-        setFlow({ name: 'ab-test-wizard' });
-        break;
       case 'runtime-endpoint':
         setFlow({ name: 'runtime-endpoint-wizard' });
+        break;
+      case 'payment-manager':
+        setFlow({ name: 'payment-manager-wizard' });
+        break;
+      case 'payment-connector':
+        setFlow({ name: 'payment-connector-wizard' });
         break;
     }
   }, []);
@@ -260,30 +294,37 @@ export function AddFlow(props: AddFlowProps) {
         projectPath: '',
         config,
         loading: true,
-        loadingMessage: 'Creating agent...',
+        loadingMessage:
+          config.efsAccessPoints?.length || config.s3AccessPoints?.length
+            ? 'Validating filesystem mounts...'
+            : 'Creating agent...',
       });
-      void addAgent(config).then(result => {
-        if (result.ok) {
-          if (result.type === 'create') {
-            setFlow({
-              name: 'agent-create-success',
-              agentName: result.agentName,
-              projectName: result.projectName,
-              projectPath: result.projectPath,
-              config,
-            });
+      void addAgent(config)
+        .then(result => {
+          if (result.ok) {
+            if (result.type === 'create') {
+              setFlow({
+                name: 'agent-create-success',
+                agentName: result.agentName,
+                projectName: result.projectName,
+                projectPath: result.projectPath,
+                config,
+              });
+            } else {
+              setFlow({
+                name: 'agent-byo-success',
+                agentName: result.agentName,
+                projectName: result.projectName,
+                config,
+              });
+            }
           } else {
-            setFlow({
-              name: 'agent-byo-success',
-              agentName: result.agentName,
-              projectName: result.projectName,
-              config,
-            });
+            setFlow({ name: 'error', message: result.error });
           }
-        } else {
-          setFlow({ name: 'error', message: result.error });
-        }
-      });
+        })
+        .catch((err: unknown) => {
+          setFlow({ name: 'error', message: err instanceof Error ? err.message : String(err) });
+        });
     },
     [addAgent]
   );
@@ -291,6 +332,18 @@ export function AddFlow(props: AddFlowProps) {
   if (flow.name === 'select') {
     // Show screen immediately - loading is instant for local files
     return <AddScreen onSelect={handleSelectResource} onExit={props.onExit} />;
+  }
+
+  if (flow.name === 'harness-wizard') {
+    return (
+      <AddHarnessFlow
+        isInteractive={props.isInteractive}
+        onBack={() => setFlow({ name: 'select' })}
+        onExit={props.onExit}
+        onDev={props.onDev}
+        onDeploy={props.onDeploy}
+      />
+    );
   }
 
   // Agent wizard - now uses AddAgentFlow with mode selection
@@ -428,6 +481,19 @@ export function AddFlow(props: AddFlowProps) {
     );
   }
 
+  // Knowledge base wizard
+  if (flow.name === 'knowledge-base-wizard') {
+    return (
+      <AddKnowledgeBaseFlow
+        isInteractive={props.isInteractive}
+        onBack={() => setFlow({ name: 'select' })}
+        onExit={props.onExit}
+        onDev={props.onDev}
+        onDeploy={props.onDeploy}
+      />
+    );
+  }
+
   // Identity wizard - now uses AddIdentityFlow with mode selection
   if (flow.name === 'identity-wizard') {
     return (
@@ -467,10 +533,36 @@ export function AddFlow(props: AddFlowProps) {
     );
   }
 
+  // Online insights wizard
+  if (flow.name === 'online-insights-wizard') {
+    return (
+      <AddOnlineInsightsFlow
+        isInteractive={props.isInteractive}
+        onExit={props.onExit}
+        onBack={() => setFlow({ name: 'select' })}
+        onDev={props.onDev}
+        onDeploy={props.onDeploy}
+      />
+    );
+  }
+
   // Policy wizard - picker for policy engine vs policy, then wizard
   if (flow.name === 'policy-wizard') {
     return (
       <AddPolicyFlow
+        isInteractive={props.isInteractive}
+        onExit={props.onExit}
+        onBack={() => setFlow({ name: 'select' })}
+        onDev={props.onDev}
+        onDeploy={props.onDeploy}
+      />
+    );
+  }
+
+  // Dataset wizard
+  if (flow.name === 'dataset-wizard') {
+    return (
+      <AddDatasetFlow
         isInteractive={props.isInteractive}
         onExit={props.onExit}
         onBack={() => setFlow({ name: 'select' })}
@@ -493,10 +585,9 @@ export function AddFlow(props: AddFlowProps) {
     );
   }
 
-  // AB test wizard
-  if (flow.name === 'ab-test-wizard') {
+  if (flow.name === 'runtime-endpoint-wizard') {
     return (
-      <AddABTestFlow
+      <AddRuntimeEndpointFlow
         isInteractive={props.isInteractive}
         onExit={props.onExit}
         onBack={() => setFlow({ name: 'select' })}
@@ -506,10 +597,26 @@ export function AddFlow(props: AddFlowProps) {
     );
   }
 
-  if (flow.name === 'runtime-endpoint-wizard') {
+  // Payment manager wizard
+  if (flow.name === 'payment-manager-wizard') {
     return (
-      <AddRuntimeEndpointFlow
+      <AddPaymentFlow
         isInteractive={props.isInteractive}
+        initialAction="manager"
+        onExit={props.onExit}
+        onBack={() => setFlow({ name: 'select' })}
+        onDev={props.onDev}
+        onDeploy={props.onDeploy}
+      />
+    );
+  }
+
+  // Payment connector wizard
+  if (flow.name === 'payment-connector-wizard') {
+    return (
+      <AddPaymentFlow
+        isInteractive={props.isInteractive}
+        initialAction="connector"
         onExit={props.onExit}
         onBack={() => setFlow({ name: 'select' })}
         onDev={props.onDev}

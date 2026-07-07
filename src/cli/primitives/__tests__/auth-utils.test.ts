@@ -88,6 +88,7 @@ describe('createManagedOAuthCredential', () => {
     managedBy: 'CDK' as const,
     runtimes: [],
     memories: [],
+    knowledgeBases: [],
     credentials: [],
     evaluators: [],
     onlineEvalConfigs: [],
@@ -95,7 +96,9 @@ describe('createManagedOAuthCredential', () => {
     policyEngines: [],
     configBundles: [],
     abTests: [],
-    httpGateways: [],
+    harnesses: [],
+    datasets: [],
+    payments: [],
   };
 
   const jwtConfig: JwtConfigOptions = {

@@ -16,6 +16,7 @@ describe('getDevConfig', () => {
       managedBy: 'CDK' as const,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -23,7 +24,9 @@ describe('getDevConfig', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     const config = getDevConfig(workingDir, project);
@@ -35,17 +38,19 @@ describe('getDevConfig', () => {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
+      // Agent with no entrypoint — not dev-supported
       runtimes: [
         {
-          name: 'NodeAgent',
+          name: 'BrokenAgent',
           build: 'CodeZip',
-          runtimeVersion: 'NODE_20',
-          entrypoint: filePath('index.js'), // Not a Python agent
-          codeLocation: dirPath('./agents/node'),
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: filePath(''),
+          codeLocation: dirPath('./agents/broken'),
           protocol: 'HTTP',
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -53,7 +58,9 @@ describe('getDevConfig', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     const config = getDevConfig(workingDir, project);
@@ -76,6 +83,7 @@ describe('getDevConfig', () => {
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -83,7 +91,9 @@ describe('getDevConfig', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -112,6 +122,7 @@ describe('getDevConfig', () => {
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -119,7 +130,9 @@ describe('getDevConfig', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     expect(() => getDevConfig(workingDir, project, undefined, 'NonExistentAgent')).toThrow(
@@ -127,22 +140,23 @@ describe('getDevConfig', () => {
     );
   });
 
-  it('throws when specified agent is not Python', () => {
+  it('returns TypeScript config when project has a Node agent with .ts entrypoint', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
       managedBy: 'CDK' as const,
       runtimes: [
         {
-          name: 'NodeAgent',
+          name: 'TsAgent',
           build: 'CodeZip',
-          runtimeVersion: 'NODE_20',
-          entrypoint: filePath('index.js'),
-          codeLocation: dirPath('./agents/node'),
+          runtimeVersion: 'NODE_22',
+          entrypoint: filePath('main.ts'),
+          codeLocation: dirPath('./agents/ts'),
           protocol: 'HTTP',
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -150,10 +164,15 @@ describe('getDevConfig', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
-    expect(() => getDevConfig(workingDir, project, undefined, 'NodeAgent')).toThrow('Dev mode only supports Python');
+    const config = getDevConfig(workingDir, project, undefined, 'TsAgent');
+    expect(config).not.toBeNull();
+    expect(config?.agentName).toBe('TsAgent');
+    expect(config?.isPython).toBe(false);
   });
 
   it('resolves directory from codeLocation relative to configRoot', () => {
@@ -172,6 +191,7 @@ describe('getDevConfig', () => {
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -179,7 +199,9 @@ describe('getDevConfig', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -204,6 +226,7 @@ describe('getDevConfig', () => {
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -211,7 +234,9 @@ describe('getDevConfig', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     // No configRoot provided
@@ -236,6 +261,7 @@ describe('getDevConfig', () => {
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -243,7 +269,9 @@ describe('getDevConfig', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -268,6 +296,7 @@ describe('getDevConfig', () => {
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -275,7 +304,9 @@ describe('getDevConfig', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -299,6 +330,7 @@ describe('getDevConfig', () => {
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -306,7 +338,9 @@ describe('getDevConfig', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -330,6 +364,7 @@ describe('getDevConfig', () => {
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -337,7 +372,9 @@ describe('getDevConfig', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -361,6 +398,7 @@ describe('getDevConfig', () => {
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -368,7 +406,9 @@ describe('getDevConfig', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -392,6 +432,7 @@ describe('getDevConfig', () => {
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -399,7 +440,9 @@ describe('getDevConfig', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -424,6 +467,7 @@ describe('getDevConfig', () => {
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -431,7 +475,9 @@ describe('getDevConfig', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -456,6 +502,7 @@ describe('getDevConfig', () => {
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -463,7 +510,9 @@ describe('getDevConfig', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -489,6 +538,7 @@ describe('getDevConfig', () => {
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -496,7 +546,9 @@ describe('getDevConfig', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     const config = getDevConfig(workingDir, project, '/test/project/agentcore');
@@ -534,6 +586,7 @@ describe('getAgentPort', () => {
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -541,11 +594,57 @@ describe('getAgentPort', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
+    // Default (implicit) port: offset by runtime index so parallel runtimes differ.
     expect(getAgentPort(project, 'Agent1', 8080)).toBe(8080);
     expect(getAgentPort(project, 'Agent2', 8080)).toBe(8081);
+  });
+
+  it('honors an explicit port literally with no index offset', () => {
+    const project: AgentCoreProjectSpec = {
+      name: 'TestProject',
+      version: 1,
+      managedBy: 'CDK' as const,
+      runtimes: [
+        {
+          name: 'AgentA',
+          build: 'CodeZip',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: filePath('main.py'),
+          codeLocation: dirPath('./agents/a'),
+          protocol: 'HTTP',
+        },
+        {
+          name: 'AgentB',
+          build: 'CodeZip',
+          runtimeVersion: 'PYTHON_3_12',
+          entrypoint: filePath('main.py'),
+          codeLocation: dirPath('./agents/b'),
+          protocol: 'HTTP',
+        },
+      ],
+      memories: [],
+      knowledgeBases: [],
+      credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
+    };
+
+    // Explicit -p: 2nd runtime resolves to the literal value (8788), not 8789.
+    expect(getAgentPort(project, 'AgentB', 8788, true)).toBe(8788);
+    // Default -p: 2nd runtime still resolves to base + index (8789).
+    expect(getAgentPort(project, 'AgentB', 8788, false)).toBe(8789);
   });
 
   it('returns basePort when agent not found', () => {
@@ -555,6 +654,7 @@ describe('getAgentPort', () => {
       managedBy: 'CDK' as const,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -562,7 +662,9 @@ describe('getAgentPort', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     expect(getAgentPort(project, 'NonExistent', 9000)).toBe(9000);
@@ -581,6 +683,7 @@ describe('getDevSupportedAgents', () => {
       managedBy: 'CDK' as const,
       runtimes: [],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -588,13 +691,15 @@ describe('getDevSupportedAgents', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     expect(getDevSupportedAgents(project)).toEqual([]);
   });
 
-  it('returns empty array when no agents are Python', () => {
+  it('returns Node agents as dev-supported alongside Python', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
@@ -603,13 +708,14 @@ describe('getDevSupportedAgents', () => {
         {
           name: 'NodeAgent',
           build: 'CodeZip',
-          runtimeVersion: 'NODE_20',
-          entrypoint: filePath('index.js'),
+          runtimeVersion: 'NODE_22',
+          entrypoint: filePath('main.ts'),
           codeLocation: dirPath('./agents/node'),
           protocol: 'HTTP',
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -617,13 +723,17 @@ describe('getDevSupportedAgents', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
-    expect(getDevSupportedAgents(project)).toEqual([]);
+    const supported = getDevSupportedAgents(project);
+    expect(supported).toHaveLength(1);
+    expect(supported[0]?.name).toBe('NodeAgent');
   });
 
-  it('returns only Python agents with entrypoints', () => {
+  it('returns both Python and Node agents with entrypoints', () => {
     const project: AgentCoreProjectSpec = {
       name: 'TestProject',
       version: 1,
@@ -640,13 +750,14 @@ describe('getDevSupportedAgents', () => {
         {
           name: 'NodeAgent',
           build: 'CodeZip',
-          runtimeVersion: 'NODE_20',
-          entrypoint: filePath('index.js'),
+          runtimeVersion: 'NODE_22',
+          entrypoint: filePath('main.ts'),
           codeLocation: dirPath('./agents/node'),
           protocol: 'HTTP',
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -654,12 +765,12 @@ describe('getDevSupportedAgents', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      payments: [],
     };
 
     const supported = getDevSupportedAgents(project);
-    expect(supported).toHaveLength(1);
-    expect(supported[0]?.name).toBe('PythonAgent');
+    expect(supported.map(a => a.name)).toEqual(['PythonAgent', 'NodeAgent']);
   });
 
   it('includes Container agents with entrypoints', () => {
@@ -678,6 +789,7 @@ describe('getDevSupportedAgents', () => {
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -685,7 +797,9 @@ describe('getDevSupportedAgents', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     const supported = getDevSupportedAgents(project);
@@ -717,6 +831,7 @@ describe('getDevSupportedAgents', () => {
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -724,7 +839,9 @@ describe('getDevSupportedAgents', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     };
 
     const supported = getDevSupportedAgents(project);

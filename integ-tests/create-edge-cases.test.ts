@@ -1,4 +1,3 @@
-/* eslint-disable security/detect-non-literal-fs-filename */
 import { exists, prereqs, runCLI } from '../src/test-utils/index.js';
 import { createTelemetryHelper } from '../src/test-utils/telemetry-helper.js';
 import { randomUUID } from 'node:crypto';
@@ -35,10 +34,13 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create edge cases', 
         `Error should mention reserved/conflict: ${json.error}`
       ).toBeTruthy();
 
+      // No agent-path flags -> create defaults to the harness path.
       telemetry.assertMetricEmitted({
         command: 'create',
         exit_reason: 'failure',
-        language: 'python',
+        error_name: 'ValidationError',
+        error_source: 'user',
+        agent_environment: 'harness',
         has_agent: 'true',
       });
     });
@@ -139,11 +141,11 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create edge cases', 
       expect(json.success).toBe(true);
       expect(json.projectPath).toBeTruthy();
 
+      // No agent-path flags -> create defaults to the harness path.
       telemetry.assertMetricEmitted({
         command: 'create',
         exit_reason: 'success',
-        language: 'python',
-        framework: 'strands',
+        agent_environment: 'harness',
         model_provider: 'bedrock',
         has_agent: 'true',
       });
@@ -190,6 +192,39 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create edge cases', 
 
       const gitExists = await exists(join(json.projectPath, '.git'));
       expect(gitExists, '.git should not exist when --skip-git is used').toBe(false);
+    });
+  });
+});
+
+describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create harness project', () => {
+  let testDir: string;
+  const telemetry = createTelemetryHelper();
+
+  beforeAll(async () => {
+    testDir = join(tmpdir(), `agentcore-integ-create-harness-${randomUUID()}`);
+    await mkdir(testDir, { recursive: true });
+  });
+
+  afterAll(async () => {
+    telemetry.destroy();
+    await rm(testDir, { recursive: true, force: true });
+  });
+
+  it('creates a harness project with defaults', async () => {
+    const name = `Hrn${Date.now().toString().slice(-6)}`;
+    const result = await runCLI(['create', '--name', name, '--model-provider', 'bedrock', '--json'], testDir, {
+      env: telemetry.env,
+    });
+
+    expect(result.exitCode, `stderr: ${result.stderr}`).toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.success).toBe(true);
+
+    telemetry.assertMetricEmitted({
+      command: 'create',
+      exit_reason: 'success',
+      agent_environment: 'harness',
+      has_agent: 'true',
     });
   });
 });

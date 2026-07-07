@@ -1,6 +1,6 @@
 import { CONFIG_DIR } from '../../../lib';
 import { CDK_APP_ENTRY, CDK_PROJECT_DIR } from '../../constants';
-import { getErrorMessage, isChangesetInProgressError } from '../../errors';
+import { isChangesetInProgressError } from '../../errors';
 import type { CdkToolkitWrapperOptions, DeployOptions, DestroyOptions, DiffOptions, ListOptions } from './types';
 import {
   BaseCredentials,
@@ -36,18 +36,10 @@ async function withErrorContext<T>(context: string, operation: () => Promise<T>)
   try {
     return await operation();
   } catch (err) {
-    const message = getErrorMessage(err);
-    const stack = err instanceof Error ? err.stack : undefined;
-    const cause = err instanceof Error ? err.cause : undefined;
-
-    const error = new Error(`CDK ${context} failed: ${message}`);
-    if (stack) {
-      error.stack = `CDK ${context} failed: ${message}\n\nOriginal stack:\n${stack}`;
+    if (err instanceof Error) {
+      err.message = `CDK ${context} failed: ${err.message}`;
     }
-    if (cause) {
-      error.cause = cause;
-    }
-    throw error;
+    throw err;
   }
 }
 
@@ -102,17 +94,27 @@ export class CdkToolkitWrapper {
    */
   async initialize(): Promise<void> {
     return withErrorContext(`initialize (project: ${this.projectDir})`, async () => {
-      // Use explicit profile, fall back to AWS_PROFILE env var per AWS SDK precedence
+      // Use explicit profile and region, fall back to env vars per AWS SDK precedence
       const profile = this.options.profile ?? process.env.AWS_PROFILE;
-      const sdkConfig = profile ? { baseCredentials: BaseCredentials.awsCliCompatible({ profile }) } : undefined;
+      const region = this.options.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
+      const sdkConfig =
+        profile || region
+          ? { baseCredentials: BaseCredentials.awsCliCompatible({ profile, defaultRegion: region }) }
+          : undefined;
 
       this.toolkit = new Toolkit({
         ioHost: this.options.ioHost,
         sdkConfig,
       });
 
+      // The vended CDK app (dist/bin/cdk.js) runs as a child process. Forward the region
+      // override through the child env when present. The toolkit overlays this on top of
+      // process.env, so PATH/AWS_PROFILE are preserved.
       this.cloudAssemblySource = await this.toolkit.fromCdkApp(this.getCdkAppCommand(), {
         workingDirectory: this.projectDir,
+        env: {
+          ...(region && { AWS_REGION: region, AWS_DEFAULT_REGION: region }),
+        },
       });
     });
   }

@@ -40,14 +40,15 @@ describe('JSON output structure', () => {
       ).toBeTruthy();
     });
 
-    it('missing required options returns error JSON', async () => {
-      // Missing --language, --framework, etc without --no-agent
+    it('bare create (no agent flags) returns harness success JSON', async () => {
+      // Without agent-path flags or --no-agent, create defaults to the harness path
+      // and succeeds rather than erroring on missing agent options.
       const result = await runCLI(['create', '--name', 'ValidName', '--json'], testDir);
 
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
       const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
-      expect(typeof json.error).toBe('string');
+      expect(json.success).toBe(true);
+      expect(typeof json.projectPath).toBe('string');
     });
 
     it('invalid framework returns error JSON', async () => {

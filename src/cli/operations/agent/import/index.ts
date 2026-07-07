@@ -4,7 +4,12 @@
  * the TUI hook (useAddAgent) and the non-interactive CLI (AgentPrimitive).
  */
 import { APP_DIR, ConfigIO, toError } from '../../../../lib';
-import type { RuntimeAuthorizerType, SDKFramework } from '../../../../schema';
+import type {
+  EfsAccessPointConfig,
+  RuntimeAuthorizerType,
+  S3FilesAccessPointConfig,
+  SDKFramework,
+} from '../../../../schema';
 import { getBedrockAgentConfig } from '../../../aws/bedrock-import';
 import type { JwtConfigOptions } from '../../../primitives/auth-utils';
 import { createManagedOAuthCredential } from '../../../primitives/auth-utils';
@@ -31,6 +36,8 @@ export interface ExecuteImportAgentParams {
   idleTimeout?: number;
   maxLifetime?: number;
   sessionStorageMountPath?: string;
+  efsAccessPoints?: EfsAccessPointConfig[];
+  s3AccessPoints?: S3FilesAccessPointConfig[];
 }
 
 export async function executeImportAgent(
@@ -49,6 +56,8 @@ export async function executeImportAgent(
     idleTimeout,
     maxLifetime,
     sessionStorageMountPath,
+    efsAccessPoints,
+    s3AccessPoints,
   } = params;
   const projectRoot = dirname(configBaseDir);
   const agentPath = join(projectRoot, APP_DIR, name);
@@ -100,6 +109,8 @@ export async function executeImportAgent(
       idleRuntimeSessionTimeout: idleTimeout,
       maxLifetime,
       sessionStorageMountPath,
+      efsAccessPoints,
+      s3AccessPoints,
     };
     await writeAgentToProject(generateConfig, { configBaseDir });
 

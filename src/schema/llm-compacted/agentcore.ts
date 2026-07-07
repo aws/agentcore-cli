@@ -26,8 +26,16 @@ interface AgentCoreProjectSpec {
   policyEngines: PolicyEngine[]; // Unique by name — Cedar policy engines
   configBundles: ConfigBundle[]; // Unique by name — configuration bundles for versioned config
   abTests: ABTest[]; // Unique by name — A/B test experiments
-  /** @internal Auto-managed by AB test creation. Do not configure directly. */
-  httpGateways: HttpGateway[]; // Unique by name — HTTP gateways bound to a runtime
+  datasets: DatasetSpec[]; // Unique by name — datasets for Dataset Management
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DATASET
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface DatasetSpec {
+  name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
+  description?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -47,7 +55,14 @@ interface NetworkConfig {
 type MemoryStrategyType = 'SEMANTIC' | 'SUMMARIZATION' | 'USER_PREFERENCE' | 'EPISODIC';
 type ModelProvider = 'Bedrock' | 'Gemini' | 'OpenAI' | 'Anthropic';
 type EvaluationLevel = 'SESSION' | 'TRACE' | 'TOOL_CALL';
-type GatewayTargetType = 'lambda' | 'mcpServer' | 'openApiSchema' | 'smithyModel' | 'apiGateway' | 'lambdaFunctionArn';
+type GatewayTargetType =
+  | 'lambda'
+  | 'mcpServer'
+  | 'openApiSchema'
+  | 'smithyModel'
+  | 'apiGateway'
+  | 'lambdaFunctionArn'
+  | 'httpRuntime';
 type OutboundAuthType = 'OAUTH' | 'API_KEY' | 'NONE';
 type GatewayAuthorizerType = 'NONE' | 'AWS_IAM' | 'CUSTOM_JWT';
 type GatewayExceptionLevel = 'NONE' | 'DEBUG';
@@ -62,14 +77,34 @@ type ABTestVariantName = 'C' | 'T1';
 
 type ProtocolMode = 'HTTP' | 'MCP' | 'A2A' | 'AGUI';
 
+interface SessionStorage {
+  mountPath: string; // /mnt/<name> @min 6 @max 200
+}
+
+interface EfsAccessPointConfig {
+  accessPointArn: string; // arn:aws[-a-z]*:elasticfilesystem:{region}:{account}:access-point/fsap-{8-40 hex}
+  mountPath: string; // /mnt/<name> @min 6 @max 200
+}
+
+interface S3FilesAccessPointConfig {
+  accessPointArn: string; // arn:aws[-a-z]*:s3files:{region}:{account}:file-system/fs-{id}/access-point/fsap-{id}
+  mountPath: string; // /mnt/<name> @min 6 @max 200
+}
+
+// Exactly one key present per entry
+type FilesystemConfiguration =
+  | { sessionStorage: SessionStorage }
+  | { efsAccessPoint: EfsAccessPointConfig }
+  | { s3FilesAccessPoint: S3FilesAccessPointConfig };
+
 interface AgentEnvSpec {
   name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
   build: BuildType;
   entrypoint: string; // @regex ^[a-zA-Z0-9_][a-zA-Z0-9_/.-]*\.(py|ts|js)(:[a-zA-Z_][a-zA-Z0-9_]*)?$ e.g. "main.py:handler" or "index.ts"
   codeLocation: string; // Directory path
-  dockerfile?: string; // Custom Dockerfile name for Container builds (default: 'Dockerfile'). Must be a filename, not a path.
-  buildContextPath?: string; // Docker build context directory for Container builds. Replaces codeLocation as the positional `docker build` argument.
-  customDockerBuildArgs?: Record<string, string>; // Key/value pairs forwarded as --build-arg flags. Container builds only.
+  dockerfile?: string; // Dockerfile for Container builds, resolved relative to the build context (buildContextPath ?? codeLocation). Filename or relative subpath; no traversal. Default: 'Dockerfile'.
+  buildContextPath?: string; // Container only. Docker build context directory; replaces codeLocation as the `docker build` context (e.g. a monorepo root shared across agents).
+  customDockerBuildArgs?: Record<string, string>; // Container only. Key/value pairs forwarded as --build-arg flags. Keys must be valid identifiers.
   runtimeVersion?: RuntimeVersion;
   envVars?: EnvVar[];
   networkMode?: NetworkMode; // default 'PUBLIC'
@@ -77,7 +112,40 @@ interface AgentEnvSpec {
   instrumentation?: Instrumentation; // OTel settings
   protocol?: ProtocolMode; // default 'HTTP'
   tags?: Record<string, string>;
+  filesystemConfigurations?: FilesystemConfiguration[]; // max 5 total, max 1 sessionStorage, max 2 efsAccessPoint, max 2 s3FilesAccessPoint; efsAccessPoint/s3FilesAccessPoint require networkMode: VPC
+  connections?: Connection[]; // Access to EXTERNAL AgentCore resources (memory/gateway/runtime/browser/codeInterpreter); generates IAM + discovery env vars on the execution role
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONNECTIONS — access to EXTERNAL AgentCore resources (not in this project).
+// In-project access stays implicit (all-to-all). Connections only ADD external grants.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface Connection {
+  id?: string; // @regex ^[a-zA-Z][a-zA-Z0-9_-]{0,63}$
+  to: ConnectionTarget;
+  access?: 'read' | 'readwrite'; // memory only; default 'read'
+  description?: string; // @max 200
+}
+
+type ConnectionTarget =
+  | { type: 'memory'; arn: string; namespaces?: string[] } // external memory ARN; namespaces scope retrieval
+  | { type: 'gateway'; arn: string; outboundAuth?: GatewayOutboundAuth } // external gateway ARN
+  | { type: 'runtime'; arn: string; exec?: boolean } // external agent runtime ARN; exec adds container-exec
+  | { type: 'browser'; arn?: string } // customer-owned browser ARN; omit for the AWS-managed default
+  | { type: 'codeInterpreter'; arn?: string }; // customer-owned code-interpreter ARN; omit for the AWS-managed default
+
+type GatewayOutboundAuth =
+  | { awsIam: {} } // SigV4 with the execution role (default)
+  | { none: {} }
+  | {
+      oauth: {
+        providerArn: string;
+        scopes: string[];
+        grantType?: 'CLIENT_CREDENTIALS' | 'AUTHORIZATION_CODE' | 'TOKEN_EXCHANGE';
+        customParameters?: Record<string, string>;
+      };
+    };
 
 interface Instrumentation {
   enableOtel: boolean; // default true - wrap entrypoint with opentelemetry-instrument
@@ -105,8 +173,12 @@ interface MemoryStrategy {
   type: MemoryStrategyType;
   name?: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @max 48
   description?: string;
+  namespaceTemplates?: string[];
+  reflectionNamespaceTemplates?: string[]; // EPISODIC only: templates for cross-episode reflections
+  /** @deprecated Use namespaceTemplates instead. */
   namespaces?: string[];
-  reflectionNamespaces?: string[]; // EPISODIC only: namespaces for cross-episode reflections
+  /** @deprecated Use reflectionNamespaceTemplates instead. */
+  reflectionNamespaces?: string[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -188,6 +260,7 @@ interface OnlineEvalConfig {
 
 interface AgentCoreGateway {
   name: string; // @regex ^[0-9a-zA-Z](?:[0-9a-zA-Z-]*[0-9a-zA-Z])?$ @max 100
+  protocolType?: 'MCP' | 'None';
   description?: string;
   targets: AgentCoreGatewayTarget[]; // Gateway targets
   authorizerType?: GatewayAuthorizerType; // default 'NONE'
@@ -229,16 +302,22 @@ interface GatewayPolicyEngineConfiguration {
 // GATEWAY TARGET
 // ─────────────────────────────────────────────────────────────────────────────
 
+interface HttpRuntimeConfig {
+  runtime: string; // Reference to a runtime name in spec.runtimes
+  runtimeEndpoint?: string; // Version alias / qualifier
+}
+
 interface AgentCoreGatewayTarget {
   name: string;
   targetType: GatewayTargetType;
   toolDefinitions?: ToolDefinition[]; // Required for 'lambda' targets
   compute?: ToolComputeConfig; // Required for 'lambda' and scaffold targets
-  endpoint?: string; // URL — required for external 'mcpServer' targets
+  endpoint?: string; // URL for 'mcpServer' targets
   outboundAuth?: OutboundAuth;
   apiGateway?: ApiGatewayConfig; // Required for 'apiGateway' target type
   schemaSource?: SchemaSource; // Required for 'openApiSchema' / 'smithyModel' targets
   lambdaFunctionArn?: LambdaFunctionArnConfig; // Required for 'lambdaFunctionArn' target type
+  httpRuntime?: HttpRuntimeConfig; // Required for 'httpRuntime' targets
 }
 
 interface OutboundAuth {
@@ -374,10 +453,6 @@ interface ABTest {
   evaluationConfig: {
     onlineEvaluationConfigArn: string;
   };
-  trafficAllocationConfig?: {
-    routeOnHeader: { headerName: string };
-  };
-  maxDurationDays?: number; // @min 1 @max 90
   enableOnCreate?: boolean;
 }
 
@@ -390,16 +465,4 @@ interface ABTestVariant {
       bundleVersion: string;
     };
   };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HTTP GATEWAY
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** @internal HTTP gateway auto-created when setting up an AB test. */
-interface HttpGateway {
-  name: string; // @regex ^[a-zA-Z][a-zA-Z0-9-]{0,47}$ @max 48
-  description?: string; // @max 200
-  runtimeRef: string; // Reference to a runtime name from spec.runtimes
-  roleArn?: string; // IAM role ARN — auto-created if omitted
 }

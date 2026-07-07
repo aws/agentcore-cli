@@ -32,9 +32,9 @@ These options are available on all commands:
 
 - `create` - Create new AgentCore project
 - `add` - Add resources (agent, memory, credential, evaluator, online-eval, gateway, gateway-target, policy-engine,
-  policy)
+  policy, payment-manager, payment-connector)
 - `remove` - Remove resources (agent, memory, credential, evaluator, online-eval, gateway, gateway-target,
-  policy-engine, policy, all)
+  policy-engine, policy, payment-manager, payment-connector, all)
 - `deploy` - Deploy infrastructure to AWS
 - `status` - Check deployment status
 - `dev` - Local development server (CodeZip: uvicorn with hot-reload; Container: Docker build + run with volume mount)
@@ -78,7 +78,8 @@ Each primitive extends `BasePrimitive` and implements: `add()`, `remove()`, `pre
 
 Current primitives:
 
-- `AgentPrimitive` — agent creation (template + BYO), removal, credential resolution
+- `AgentPrimitive` — agent creation (template + BYO), removal, credential resolution. Template agents: Strands,
+  LangChain_LangGraph, GoogleADK, OpenAIAgents, VercelAI
 - `MemoryPrimitive` — memory creation with strategies, removal
 - `CredentialPrimitive` — credential creation, .env management, removal
 - `EvaluatorPrimitive` — custom evaluator creation/removal with cross-reference validation
@@ -87,6 +88,8 @@ Current primitives:
 - `GatewayTargetPrimitive` — gateway target creation/removal with code generation
 - `PolicyEnginePrimitive` — Cedar policy engine creation/removal
 - `PolicyPrimitive` — Cedar policy creation/removal within policy engines
+- `PaymentManagerPrimitive` — payment manager creation/removal with agent code wiring
+- `PaymentConnectorPrimitive` — payment connector creation/removal with credential management
 
 Singletons are created in `registry.ts` and wired into CLI commands via `cli.ts`. See `src/cli/AGENTS.md` for details on
 adding new primitives.
@@ -146,6 +149,38 @@ See `docs/TESTING.md` for details.
 ## Telemetry
 
 New features must include telemetry instrumentation. See `src/cli/telemetry/README.md` for how to add metrics.
+
+## Error Types
+
+Custom error types are encouraged — each distinct error class appears as its own category in telemetry, giving more
+granular failure data. All errors live in `src/lib/errors/types.ts`.
+
+To add a new error:
+
+1. Define a class in `src/lib/errors/types.ts` extending `BaseError` with a default `errorSource`:
+   - `'user'` — user-fixable (bad input, missing credentials, invalid config)
+   - `'client'` — our bug or unexpected local failure
+   - `'service'` — remote service issue (timeout, connection failure, server error)
+   - `'unknown'` — source cannot be determined
+
+```ts
+export class MyNewError extends BaseError {
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'user', ...options });
+  }
+}
+```
+
+Callers can override the source per throw site:
+
+```ts
+throw new MyNewError('not found', { errorSource: 'service', cause: originalErr });
+```
+
+2. Add `'MyNewError'` to the `ErrorName` enum in `src/cli/telemetry/schemas/common-shapes.ts`.
+
+That's it. The telemetry client reads `errorSource` and `name` directly from `BaseError` instances — no classification
+logic to update.
 
 ## Multi-Partition Support (GovCloud, China)
 

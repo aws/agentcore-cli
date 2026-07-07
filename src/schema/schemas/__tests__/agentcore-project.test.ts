@@ -1,7 +1,9 @@
+import type { DirectoryPath, FilePath } from '../../types/index.js';
 import {
   AgentCoreProjectSpecSchema,
   CredentialNameSchema,
   CredentialSchema,
+  HarnessRegistryEntrySchema,
   MemoryNameSchema,
   MemorySchema,
   ProjectNameSchema,
@@ -378,6 +380,18 @@ describe('CredentialSchema', () => {
   });
 });
 
+describe('HarnessRegistryEntrySchema', () => {
+  it('accepts valid entry', () => {
+    const result = HarnessRegistryEntrySchema.safeParse({ name: 'myHarness', path: './harnesses/myHarness' });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects name starting with digit', () => {
+    const result = HarnessRegistryEntrySchema.safeParse({ name: '1harness', path: './harnesses/1harness' });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe('AgentCoreProjectSpecSchema', () => {
   const minimalProject = {
     name: 'TestProject',
@@ -391,6 +405,42 @@ describe('AgentCoreProjectSpecSchema', () => {
       expect(result.data.runtimes).toEqual([]);
       expect(result.data.memories).toEqual([]);
       expect(result.data.credentials).toEqual([]);
+    }
+  });
+
+  it('leaves payments undefined when absent (optional, non-breaking round-trip)', () => {
+    // payments is .optional(), NOT .default([]) — parsing a project without a
+    // payments key must NOT materialize `payments: []`, so re-serializing an
+    // older config does not inject a payments field for customers who never
+    // used payments. See PR discussion on agentcore-l3-cdk-constructs#219.
+    const result = AgentCoreProjectSpecSchema.safeParse(minimalProject);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.payments).toBeUndefined();
+      expect('payments' in result.data).toBe(false);
+    }
+  });
+
+  it('accepts and validates a payments array when present', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      payments: [
+        {
+          name: 'paymgr',
+          authorizerType: 'AWS_IAM',
+          // `pattern` is a removed field; an older agentcore.json may still carry it.
+          // Zod strips unknown keys (the schema is not .strict()), so old configs keep parsing.
+          pattern: 'interceptor',
+          connectors: [],
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.payments).toHaveLength(1);
+      expect(result.data.payments![0]!.name).toBe('paymgr');
+      // Back-compat: the legacy `pattern` key is dropped, not surfaced.
+      expect('pattern' in result.data.payments![0]!).toBe(false);
     }
   });
 
@@ -522,5 +572,270 @@ describe('AgentCoreProjectSpecSchema', () => {
       version: 1.5,
     });
     expect(result.success).toBe(false);
+  });
+
+  it('accepts project with harnesses array', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      harnesses: [{ name: 'myHarness', path: './harnesses/myHarness' }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('harnesses is undefined when not provided', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse(minimalProject);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.harnesses).toEqual([]);
+    }
+  });
+
+  it('rejects duplicate harness names', () => {
+    const harness = { name: 'myHarness', path: './harnesses/myHarness' };
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      harnesses: [harness, harness],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('Duplicate harness name'))).toBe(true);
+    }
+  });
+
+  it('rejects harness with empty name', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      harnesses: [{ name: '', path: './harnesses/empty' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects harness with empty path', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      harnesses: [{ name: 'myHarness', path: '' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('httpGateways empty array passes silently', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      httpGateways: [],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('httpGateways with entries produces migration error', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      httpGateways: [{ name: 'old-gw' }],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('deprecated'))).toBe(true);
+    }
+  });
+
+  it('rejects httpRuntime target on MCP gateway (no protocolType None)', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      agentCoreGateways: [
+        {
+          name: 'mcp-gw',
+          targets: [
+            {
+              name: 'http-target',
+              targetType: 'httpRuntime',
+              httpRuntime: { runtime: 'MyAgent' },
+            },
+          ],
+        },
+      ],
+      runtimes: [
+        {
+          name: 'MyAgent',
+          build: 'CodeZip',
+          entrypoint: 'main.py' as FilePath,
+          codeLocation: './src' as DirectoryPath,
+          runtimeVersion: 'PYTHON_3_12',
+          protocol: 'HTTP',
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('protocolType'))).toBe(true);
+    }
+  });
+
+  it('accepts httpRuntime target on gateway with protocolType None', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      agentCoreGateways: [
+        {
+          name: 'http-gw',
+          protocolType: 'None',
+          targets: [
+            {
+              name: 'http-target',
+              targetType: 'httpRuntime',
+              httpRuntime: { runtime: 'MyAgent' },
+            },
+          ],
+        },
+      ],
+      runtimes: [
+        {
+          name: 'MyAgent',
+          build: 'CodeZip',
+          entrypoint: 'main.py' as FilePath,
+          codeLocation: './src' as DirectoryPath,
+          runtimeVersion: 'PYTHON_3_12',
+          protocol: 'HTTP',
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts connector target on gateway with protocolType None (HTTP is a superset of MCP)', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      agentCoreGateways: [
+        {
+          name: 'http-gw',
+          protocolType: 'None',
+          targets: [
+            {
+              name: 'kb-target',
+              targetType: 'connector',
+              connectorId: 'bedrock-knowledge-bases',
+              configurations: [{ name: 'Retrieve', parameterValues: { knowledgeBaseId: 'ABCDEFGHIJ' } }],
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts mcpServer target on gateway with protocolType None (HTTP is a superset of MCP)', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      agentCoreGateways: [
+        {
+          name: 'http-gw',
+          protocolType: 'None',
+          targets: [
+            {
+              name: 'mytool',
+              targetType: 'mcpServer',
+              endpoint: 'https://example.com/mcp',
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects httpRuntime target referencing non-existent runtime', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      agentCoreGateways: [
+        {
+          name: 'http-gw',
+          protocolType: 'None',
+          targets: [
+            {
+              name: 'http-target',
+              targetType: 'httpRuntime',
+              httpRuntime: { runtime: 'NonExistentAgent' },
+            },
+          ],
+        },
+      ],
+      runtimes: [],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('unknown runtime'))).toBe(true);
+    }
+  });
+
+  it('rejects httpRuntime target referencing non-existent runtimeEndpoint', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      ...minimalProject,
+      agentCoreGateways: [
+        {
+          name: 'http-gw',
+          protocolType: 'None',
+          targets: [
+            {
+              name: 'http-target',
+              targetType: 'httpRuntime',
+              httpRuntime: { runtime: 'MyAgent', runtimeEndpoint: 'NONEXISTENT' },
+            },
+          ],
+        },
+      ],
+      runtimes: [
+        {
+          name: 'MyAgent',
+          build: 'CodeZip',
+          entrypoint: 'main.py' as FilePath,
+          codeLocation: './src' as DirectoryPath,
+          runtimeVersion: 'PYTHON_3_12',
+          protocol: 'HTTP',
+          endpoints: {
+            LIVE: { version: 1, description: 'Live endpoint' },
+          },
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('does not exist on runtime'))).toBe(true);
+    }
+  });
+});
+
+describe('AgentCoreProjectSpec — knowledgeBases', () => {
+  it('defaults knowledgeBases to []', () => {
+    const result = AgentCoreProjectSpecSchema.parse({
+      name: 'TestProj',
+      version: 1,
+    });
+    expect(result.knowledgeBases).toEqual([]);
+  });
+
+  it('accepts a populated knowledgeBases array', () => {
+    const result = AgentCoreProjectSpecSchema.parse({
+      name: 'TestProj',
+      version: 1,
+      knowledgeBases: [
+        {
+          name: 'product-docs',
+          dataSources: [{ type: 'S3', uri: 's3://my-bucket/docs/' }],
+        },
+      ],
+    });
+    expect(result.knowledgeBases).toHaveLength(1);
+    expect(result.knowledgeBases[0]?.name).toBe('product-docs');
+    expect(result.knowledgeBases[0]?.type).toBe('AgentCoreKnowledgeBase');
+  });
+
+  it('rejects duplicate knowledge base names', () => {
+    expect(() =>
+      AgentCoreProjectSpecSchema.parse({
+        name: 'TestProj',
+        version: 1,
+        knowledgeBases: [
+          { name: 'docs', dataSources: [{ type: 'S3', uri: 's3://my-bucket/a/' }] },
+          { name: 'docs', dataSources: [{ type: 'S3', uri: 's3://my-bucket/b/' }] },
+        ],
+      })
+    ).toThrow(/Duplicate knowledge base name/);
   });
 });

@@ -55,6 +55,7 @@ describe('resolveAgentContext', () => {
         },
       ],
       memories: [],
+      knowledgeBases: [],
       credentials: [],
       evaluators: [],
       onlineEvalConfigs: [],
@@ -62,7 +63,9 @@ describe('resolveAgentContext', () => {
       policyEngines: [],
       configBundles: [],
       abTests: [],
-      httpGateways: [],
+      harnesses: [],
+      datasets: [],
+      payments: [],
     },
     deployedState: {
       targets: {
@@ -119,6 +122,7 @@ describe('resolveAgentContext', () => {
           },
         ],
         memories: [],
+        knowledgeBases: [],
         credentials: [],
         evaluators: [],
         onlineEvalConfigs: [],
@@ -126,7 +130,9 @@ describe('resolveAgentContext', () => {
         policyEngines: [],
         configBundles: [],
         abTests: [],
-        httpGateways: [],
+        harnesses: [],
+        datasets: [],
+        payments: [],
       },
     });
     const result = resolveAgentContext(context, {});
@@ -163,6 +169,7 @@ describe('resolveAgentContext', () => {
           },
         ],
         memories: [],
+        knowledgeBases: [],
         credentials: [],
         evaluators: [],
         onlineEvalConfigs: [],
@@ -170,7 +177,9 @@ describe('resolveAgentContext', () => {
         policyEngines: [],
         configBundles: [],
         abTests: [],
-        httpGateways: [],
+        harnesses: [],
+        datasets: [],
+        payments: [],
       },
       deployedState: {
         targets: {
@@ -217,6 +226,7 @@ describe('resolveAgentContext', () => {
         managedBy: 'CDK' as const,
         runtimes: [],
         memories: [],
+        knowledgeBases: [],
         credentials: [],
         evaluators: [],
         onlineEvalConfigs: [],
@@ -224,7 +234,9 @@ describe('resolveAgentContext', () => {
         policyEngines: [],
         configBundles: [],
         abTests: [],
-        httpGateways: [],
+        harnesses: [],
+        datasets: [],
+        payments: [],
       },
     });
     const result = resolveAgentContext(context, {});

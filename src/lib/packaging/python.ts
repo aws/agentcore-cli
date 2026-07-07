@@ -1,8 +1,8 @@
 import type { AgentEnvSpec, PythonRuntime, RuntimeVersion } from '../../schema';
 import { DEFAULT_PYTHON_VERSION } from '../../schema';
 import { UV_INSTALL_HINT, getArtifactZipName } from '../constants';
+import { PackagingError } from '../errors/types';
 import { runSubprocessCapture, runSubprocessCaptureSync } from '../utils/subprocess';
-import { PackagingError } from './errors';
 import {
   convertWindowsScriptsToLinux,
   convertWindowsScriptsToLinuxSync,

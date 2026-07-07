@@ -21,6 +21,7 @@ export {
   hasIdentityOAuthProviders,
   getMissingCredentials,
   getAllCredentials,
+  assertEnvFileExists,
   type SetupApiKeyProvidersOptions,
   type SetupOAuth2ProvidersOptions,
   type PreDeployIdentityResult,
@@ -41,16 +42,18 @@ export {
   type DestroyTargetOptions,
 } from './teardown';
 
+// Pre-deploy payment credential setup
+export {
+  setupPaymentCredentialProviders,
+  hasPaymentCredentialProviders,
+  cleanupPaymentCredentialProviders,
+  type SetupPaymentCredentialProvidersOptions,
+  type PaymentCredentialProvidersResult,
+  type PaymentCredentialProviderResult,
+} from './pre-deploy-identity';
+
 // Post-deploy observability setup
 export { setupTransactionSearch } from './post-deploy-observability';
-
-// Post-deploy HTTP gateways
-export {
-  setupHttpGateways,
-  type SetupHttpGatewaysOptions,
-  type SetupHttpGatewaysResult,
-  type HttpGatewaySetupResult,
-} from './post-deploy-http-gateways';
 
 // Post-deploy online eval enablement
 export {
@@ -60,13 +63,17 @@ export {
   type OnlineEvalEnableResult,
 } from './post-deploy-online-evals';
 
-// Post-deploy config bundles
+export { ensureDefaultDeploymentTarget } from './ensure-target';
+
+// Pre-synth backfill of vpcId for pre-existing Container+VPC configs written before vpcId was added
+export { backfillContainerVpcIds, type BackfillVpcIdResult } from './backfill-vpc-id';
+
+// Managed-memory heads-up (shared by the CLI command + TUI deploy flow + add harness)
 export {
-  setupConfigBundles,
-  type SetupConfigBundlesOptions,
-  type SetupConfigBundlesResult,
-  type ConfigBundleSetupResult,
-} from './post-deploy-config-bundles';
+  MANAGED_MEMORY_DEPLOY_NOTICE,
+  MANAGED_MEMORY_ADD_NOTICE,
+  hasManagedMemoryHarness,
+} from './managed-memory-notice';
 
 // Re-export external requirements for convenience
 export {

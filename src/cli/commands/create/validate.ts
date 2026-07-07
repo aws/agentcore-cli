@@ -1,17 +1,27 @@
 import {
   AgentNameSchema,
   BuildTypeSchema,
+  MAX_EFS_MOUNTS,
+  MAX_S3_MOUNTS,
   ModelProviderSchema,
   ProjectNameSchema,
   ProtocolModeSchema,
   SDKFrameworkSchema,
   SessionStorageSchema,
   TargetLanguageSchema,
+  getFrameworksForLanguage,
   getSupportedFrameworksForProtocol,
   getSupportedModelProviders,
+  isFrameworkSupportedForLanguage,
   matchEnumValue,
 } from '../../../schema';
 import type { ProtocolMode } from '../../../schema';
+import {
+  validateAccessPointMounts,
+  validateEfsAccessPointArn,
+  validateS3FilesAccessPointArn,
+  zipAccessPointPairs,
+} from '../shared/filesystem-utils';
 import { parseAndValidateLifecycleOptions } from '../shared/lifecycle-utils';
 import { validateVpcOptions } from '../shared/vpc-utils';
 import type { CreateOptions } from './types';
@@ -113,6 +123,14 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
     }
   }
 
+  // TypeScript only supports HTTP today; MCP and A2A templates have not been authored yet
+  if (protocol !== 'HTTP' && options.language === 'TypeScript') {
+    return {
+      valid: false,
+      error: `${protocol} protocol is not yet supported for TypeScript. Use --protocol HTTP or --language Python.`,
+    };
+  }
+
   // MCP protocol: only name, language, and build type required
   if (protocol === 'MCP') {
     if (options.framework) {
@@ -161,7 +179,7 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
     // Validate language
     const langResult = TargetLanguageSchema.safeParse(options.language);
     if (!langResult.success) {
-      return { valid: false, error: `Invalid language: ${options.language}. Use Python` };
+      return { valid: false, error: `Invalid language: ${options.language}. Use Python or TypeScript` };
     }
 
     // Validate framework
@@ -184,9 +202,17 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
       return { valid: false, error: `Invalid model provider: ${options.modelProvider}` };
     }
 
-    // Validate language is supported
-    if (options.language === 'TypeScript') {
-      return { valid: false, error: 'TypeScript is not yet supported. Currently supported: Python' };
+    // Framework must ship a template for the chosen language (e.g. Vercel AI is
+    // TypeScript-only, the other open-source frameworks are Python-only).
+    if (
+      (langResult.data === 'Python' || langResult.data === 'TypeScript') &&
+      !isFrameworkSupportedForLanguage(langResult.data, fwResult.data)
+    ) {
+      const supported = getFrameworksForLanguage(langResult.data).join(', ');
+      return {
+        valid: false,
+        error: `Framework ${options.framework} is not yet available for ${langResult.data}. Supported: ${supported}.`,
+      };
     }
 
     // Validate framework/model compatibility
@@ -205,7 +231,7 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
   }
 
   // Validate VPC options
-  const vpcResult = validateVpcOptions(options);
+  const vpcResult = validateVpcOptions(options, options.build);
   if (!vpcResult.valid) {
     return { valid: false, error: vpcResult.error };
   }
@@ -216,11 +242,64 @@ export function validateCreateOptions(options: CreateOptions, cwd?: string): Val
   if (lifecycleResult.idleTimeout !== undefined) options.idleTimeout = lifecycleResult.idleTimeout;
   if (lifecycleResult.maxLifetime !== undefined) options.maxLifetime = lifecycleResult.maxLifetime;
 
+  // Filesystem mounts are not supported for TypeScript agents (no needsOs template blocks)
+  if (options.language === 'TypeScript') {
+    if (options.sessionStorageMountPath) {
+      return { valid: false, error: '--session-storage-mount-path is not supported for TypeScript agents' };
+    }
+    if ((options.efsAccessPointArn ?? []).length > 0 || (options.efsMountPath ?? []).length > 0) {
+      return { valid: false, error: '--efs-access-point-arn is not supported for TypeScript agents' };
+    }
+    if ((options.s3AccessPointArn ?? []).length > 0 || (options.s3MountPath ?? []).length > 0) {
+      return { valid: false, error: '--s3-access-point-arn is not supported for TypeScript agents' };
+    }
+  }
+
   // Validate session storage mount path
   if (options.sessionStorageMountPath) {
     const mountPathResult = SessionStorageSchema.shape.mountPath.safeParse(options.sessionStorageMountPath);
     if (!mountPathResult.success) {
       return { valid: false, error: `--session-storage-mount-path: ${mountPathResult.error.issues[0]?.message}` };
+    }
+  }
+
+  // Validate EFS access point ARN/path pairs
+  const efsArns = options.efsAccessPointArn ?? [];
+  const efsPaths = options.efsMountPath ?? [];
+  if (efsArns.length > 0 || efsPaths.length > 0) {
+    const efsPairsResult = zipAccessPointPairs(efsArns, efsPaths, 'EFS');
+    if (!efsPairsResult.success) return { valid: false, error: efsPairsResult.error };
+    const efsValidation = validateAccessPointMounts(efsPairsResult.mounts, validateEfsAccessPointArn);
+    if (!efsValidation.success) return { valid: false, error: efsValidation.error };
+    if (efsArns.length > MAX_EFS_MOUNTS) {
+      return { valid: false, error: `Maximum ${MAX_EFS_MOUNTS} EFS mounts allowed (got ${efsArns.length})` };
+    }
+    if (options.networkMode !== 'VPC') {
+      return {
+        valid: false,
+        error:
+          'EFS filesystem mounts require VPC network mode. Add --network-mode VPC --subnets <ids> --security-groups <ids>.',
+      };
+    }
+  }
+
+  // Validate S3 Files access point ARN/path pairs
+  const s3Arns = options.s3AccessPointArn ?? [];
+  const s3Paths = options.s3MountPath ?? [];
+  if (s3Arns.length > 0 || s3Paths.length > 0) {
+    const s3PairsResult = zipAccessPointPairs(s3Arns, s3Paths, 'S3 Files');
+    if (!s3PairsResult.success) return { valid: false, error: s3PairsResult.error };
+    const s3Validation = validateAccessPointMounts(s3PairsResult.mounts, validateS3FilesAccessPointArn);
+    if (!s3Validation.success) return { valid: false, error: s3Validation.error };
+    if (s3Arns.length > MAX_S3_MOUNTS) {
+      return { valid: false, error: `Maximum ${MAX_S3_MOUNTS} S3 Files mounts allowed (got ${s3Arns.length})` };
+    }
+    if (options.networkMode !== 'VPC') {
+      return {
+        valid: false,
+        error:
+          'S3 Files filesystem mounts require VPC network mode. Add --network-mode VPC --subnets <ids> --security-groups <ids>.',
+      };
     }
   }
 

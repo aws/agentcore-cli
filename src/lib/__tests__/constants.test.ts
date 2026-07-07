@@ -25,23 +25,31 @@ describe('getDockerfilePath', () => {
     expect(getDockerfilePath('/app/code')).toBe(join('/app/code', 'Dockerfile'));
   });
 
-  it('returns custom dockerfile name joined to code location', () => {
+  it('returns custom dockerfile name joined to the build context', () => {
     expect(getDockerfilePath('/app/code', 'Dockerfile.gpu')).toBe(join('/app/code', 'Dockerfile.gpu'));
   });
 
-  it('rejects forward slash in dockerfile name', () => {
-    expect(() => getDockerfilePath('/app/code', '../Dockerfile')).toThrow(/Invalid dockerfile name/);
+  it('allows a relative subpath within the build context', () => {
+    expect(getDockerfilePath('/app/code', 'path/to/Dockerfile')).toBe(join('/app/code', 'path/to/Dockerfile'));
   });
 
-  it('rejects backslash in dockerfile name', () => {
-    expect(() => getDockerfilePath('/app/code', 'Dockerfile\\..\\secret')).toThrow(/Invalid dockerfile name/);
+  it('rejects an absolute dockerfile path', () => {
+    expect(() => getDockerfilePath('/app/code', '/etc/Dockerfile')).toThrow(/Invalid dockerfile path/);
   });
 
-  it('rejects dot-dot traversal in dockerfile name', () => {
-    expect(() => getDockerfilePath('/app/code', '..')).toThrow(/Invalid dockerfile name/);
+  it('rejects leading dot-dot traversal', () => {
+    expect(() => getDockerfilePath('/app/code', '../Dockerfile')).toThrow(/Invalid dockerfile path/);
   });
 
-  it('rejects path/to/Dockerfile', () => {
-    expect(() => getDockerfilePath('/app/code', 'path/to/Dockerfile')).toThrow(/Invalid dockerfile name/);
+  it('rejects a dot-dot traversal segment mid-path', () => {
+    expect(() => getDockerfilePath('/app/code', 'a/../secret')).toThrow(/Invalid dockerfile path/);
+  });
+
+  it('rejects backslash in dockerfile path', () => {
+    expect(() => getDockerfilePath('/app/code', 'Dockerfile\\..\\secret')).toThrow(/Invalid dockerfile path/);
+  });
+
+  it('rejects a bare dot-dot', () => {
+    expect(() => getDockerfilePath('/app/code', '..')).toThrow(/Invalid dockerfile path/);
   });
 });

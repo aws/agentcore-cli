@@ -41,26 +41,29 @@ const textLoaderPlugin = {
   },
 };
 
+const outfile = process.env.ESBUILD_OUTFILE || './dist/cli/index.mjs';
+
 await esbuild.build({
   entryPoints: ['./src/cli/index.ts'],
-  outfile: './dist/cli/index.mjs',
+  outfile,
   bundle: true,
   platform: 'node',
   format: 'esm',
   minify: true,
+  keepNames: true,
   jsx: 'automatic',
   // Inject require shim for ESM compatibility with CommonJS dependencies
   banner: {
     js: `import { createRequire } from 'module'; import { fileURLToPath as __ef } from 'url'; import { dirname as __ed } from 'path'; const require = createRequire(import.meta.url); const __filename = __ef(import.meta.url); const __dirname = __ed(__filename);`,
   },
-  external: ['fsevents', '@aws-cdk/toolkit-lib'],
+  external: ['fsevents', '@aws-cdk/toolkit-lib', '@napi-rs/keyring'],
   plugins: [optionalDepsPlugin, textLoaderPlugin],
 });
 
 // Make executable
-fs.chmodSync('./dist/cli/index.mjs', '755');
+fs.chmodSync(outfile, '755');
 
-console.log('CLI build complete: dist/cli/index.mjs');
+console.log(`CLI build complete: ${outfile}`);
 
 // ---------------------------------------------------------------------------
 // MCP harness build — opt-in via BUILD_HARNESS=1

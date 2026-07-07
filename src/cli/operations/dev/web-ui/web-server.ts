@@ -1,11 +1,12 @@
 import type { DevConfig } from '../config';
 import type { DevServer } from '../server';
-import { type AgentError, type AgentInfo, WEB_UI_LOCAL_URL } from './constants';
+import { type AgentError, type AgentInfo, type HarnessInfo, WEB_UI_LOCAL_URL } from './constants';
 import {
   type RouteContext,
   handleA2AAgentCard,
   handleGetCloudWatchTrace,
   handleGetTrace,
+  handleHarnessToolResponse,
   handleInvocations,
   handleListCloudWatchTraces,
   handleListMemoryRecords,
@@ -104,24 +105,38 @@ export type GetCloudWatchTraceHandler = (
 ) => Promise<{ success: boolean; records?: unknown[]; spans?: unknown[]; error?: string }>;
 
 /**
+ * Arguments for {@link ListMemoryRecordsHandler}. Exactly one of `namespace` (exact match)
+ * or `namespacePath` (hierarchical path prefix) must be provided.
+ */
+export type ListMemoryRecordsArgs = {
+  memoryName: string;
+  strategyId?: string;
+} & ({ namespace: string; namespacePath?: never } | { namespace?: never; namespacePath: string });
+
+/**
  * Custom handler for GET /api/memory.
- * Returns a list of memory records for a given memory + namespace.
+ * Returns a list of memory records for a given memory + namespace/namespacePath.
  */
 export type ListMemoryRecordsHandler = (
-  memoryName: string,
-  namespace: string,
-  strategyId?: string
+  args: ListMemoryRecordsArgs
 ) => Promise<{ success: boolean; records?: unknown[]; error?: string }>;
+
+/**
+ * Arguments for {@link RetrieveMemoryRecordsHandler}. Exactly one of `namespace` (exact match)
+ * or `namespacePath` (hierarchical path prefix) must be provided.
+ */
+export type RetrieveMemoryRecordsArgs = {
+  memoryName: string;
+  searchQuery: string;
+  strategyId?: string;
+} & ({ namespace: string; namespacePath?: never } | { namespace?: never; namespacePath: string });
 
 /**
  * Custom handler for POST /api/memory/search.
  * Performs semantic search across memory records.
  */
 export type RetrieveMemoryRecordsHandler = (
-  memoryName: string,
-  namespace: string,
-  searchQuery: string,
-  strategyId?: string
+  args: RetrieveMemoryRecordsArgs
 ) => Promise<{ success: boolean; records?: unknown[]; error?: string }>;
 
 export interface WebUIOptions {
@@ -131,6 +146,16 @@ export interface WebUIOptions {
   uiPort: number;
   /** Available agents (metadata only — servers are started on demand) */
   agents: AgentInfo[];
+  /**
+   * Explicit agent base port from -p/--port. When set, the selected runtime
+   * ({@link selectedAgent}) is honored literally (binds exactly this value, no
+   * offset); other HTTP runtimes keep the default uiPort + 1 + index allocation.
+   * This keeps an explicit `-p` consistent with the --logs and TUI paths without
+   * remapping runtimes the user didn't ask for.
+   */
+  agentBasePort?: number;
+  /** Deployed harnesses available for invocation (metadata only — no local server needed) */
+  harnesses?: HarnessInfo[];
   /** Dev config factory — called when an agent needs to be started. Required for dev mode, unused when onStart is provided. */
   getDevConfig?: (agentName: string) => DevConfig | null | Promise<DevConfig | null>;
   /** Env vars to pass to started agent servers */
@@ -159,6 +184,8 @@ export interface WebUIOptions {
   onRetrieveMemoryRecords?: RetrieveMemoryRecordsHandler;
   /** Agent to pre-select in the UI dropdown (set when --runtime is specified) */
   selectedAgent?: string;
+  /** Harness to pre-select in the UI */
+  selectedHarness?: string;
   /** Callback to reload the agents list from config. When provided, the server watches agentcore.json and calls this on change. */
   reloadAgents?: () => Promise<AgentInfo[]>;
 }
@@ -326,9 +353,11 @@ export class WebUIServer {
       await handleListCloudWatchTraces(ctx, req, res, origin);
     } else if (req.method === 'POST' && req.url === '/api/start') {
       await handleStart(ctx, req, res, origin);
-    } else if (req.method === 'POST' && req.url === '/invocations') {
+    } else if (req.method === 'POST' && req.url === '/api/harness/tool-response') {
+      await handleHarnessToolResponse(ctx, req, res, origin);
+    } else if (req.method === 'POST' && (req.url === '/invocations' || req.url?.startsWith('/invocations?'))) {
       await handleInvocations(ctx, req, res, origin);
-    } else if (req.method === 'POST' && req.url === '/api/mcp') {
+    } else if (req.method === 'POST' && (req.url === '/api/mcp' || req.url?.startsWith('/api/mcp?'))) {
       await handleMcpProxy(ctx, req, res, origin);
     } else if (req.method === 'GET' && req.url?.startsWith('/api/a2a/agent-card')) {
       await handleA2AAgentCard(ctx, req, res, origin);

@@ -46,8 +46,8 @@ describe('remove gateway command', () => {
       throw new Error(`Failed to create agent: ${result.stdout} ${result.stderr}`);
     }
 
-    // Add gateway
-    result = await runCLI(['add', 'gateway', '--name', gatewayName, '--json'], projectDir);
+    // Add gateway with MCP protocol (required for mcp-server targets)
+    result = await runCLI(['add', 'gateway', '--name', gatewayName, '--protocol-type', 'MCP', '--json'], projectDir);
     if (result.exitCode !== 0) {
       throw new Error(`Failed to create gateway: ${result.stdout} ${result.stderr}`);
     }
@@ -93,8 +93,8 @@ describe('remove gateway command', () => {
     });
 
     it('removes gateway with targets attached', async () => {
-      // Re-add gateway since previous test may have removed it
-      await runCLI(['add', 'gateway', '--name', gatewayName, '--json'], projectDir);
+      // Re-add gateway since previous test may have removed it (with MCP protocol for mcp-server targets)
+      await runCLI(['add', 'gateway', '--name', gatewayName, '--protocol-type', 'MCP', '--json'], projectDir);
 
       // Add a target to the gateway
       const targetName = `target${Date.now()}`;

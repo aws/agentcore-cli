@@ -11,20 +11,34 @@ import { AgentEnvSpecSchema } from './agent-env';
 import { AgentCoreGatewaySchema, AgentCoreGatewayTargetSchema, AgentCoreMcpRuntimeToolSchema } from './mcp';
 import { ABTestSchema } from './primitives/ab-test';
 import { ConfigBundleSchema } from './primitives/config-bundle';
+import { DatasetSchema } from './primitives/dataset';
 import {
   EvaluationLevelSchema,
   EvaluatorConfigSchema,
   EvaluatorNameSchema,
   KmsKeyArnSchema,
 } from './primitives/evaluator';
-import { HttpGatewaySchema } from './primitives/http-gateway';
+import { HarnessNameSchema } from './primitives/harness';
+import { KnowledgeBaseSchema } from './primitives/knowledge-base';
 import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACES,
+  DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
   DEFAULT_STRATEGY_NAMESPACES,
+  DEFAULT_STRATEGY_NAMESPACE_TEMPLATES,
   MemoryStrategySchema,
   MemoryStrategyTypeSchema,
 } from './primitives/memory';
 import { OnlineEvalConfigSchema } from './primitives/online-eval-config';
+import {
+  DEFAULT_AUTO_PAYMENT,
+  DEFAULT_SPEND_LIMIT,
+  PaymentAuthorizerTypeSchema,
+  PaymentConnectorNameSchema,
+  PaymentConnectorSchema,
+  PaymentManagerNameSchema,
+  PaymentManagerSchema,
+  PaymentProviderSchema,
+} from './primitives/payment';
 import { PolicyEngineSchema } from './primitives/policy';
 import { TagsSchema } from './primitives/tags';
 import { uniqueBy } from './zod-util';
@@ -32,7 +46,9 @@ import { z } from 'zod';
 
 // Re-export for convenience
 export {
+  DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
   DEFAULT_EPISODIC_REFLECTION_NAMESPACES,
+  DEFAULT_STRATEGY_NAMESPACE_TEMPLATES,
   DEFAULT_STRATEGY_NAMESPACES,
   MemoryStrategySchema,
   MemoryStrategyTypeSchema,
@@ -61,14 +77,72 @@ export { ConfigBundleSchema };
 export type { ComponentConfiguration, ComponentConfigurationMap, ConfigBundle } from './primitives/config-bundle';
 export { ConfigBundleNameSchema, ComponentConfigurationMapSchema } from './primitives/config-bundle';
 export { PolicyEngineSchema };
-export type { Policy, PolicyEngine, ValidationMode } from './primitives/policy';
-export { PolicyEngineNameSchema, PolicyNameSchema, PolicySchema, ValidationModeSchema } from './primitives/policy';
+export type { AuthorizationPhase, EnforcementMode, Policy, PolicyEngine, ValidationMode } from './primitives/policy';
+export {
+  AuthorizationPhaseSchema,
+  EnforcementModeSchema,
+  PolicyEngineNameSchema,
+  PolicyNameSchema,
+  PolicySchema,
+  ValidationModeSchema,
+} from './primitives/policy';
 export { TagsSchema };
 export type { Tags } from './primitives/tags';
+export { DatasetSchema };
+export { DatasetNameSchema, DatasetSchemaTypeSchema } from './primitives/dataset';
+export type { Dataset, DatasetSchemaType } from './primitives/dataset';
 export type { ABTestMode, TargetRef, GatewayFilter, PerVariantOnlineEvaluationConfig } from './primitives/ab-test';
 export { ABTestModeSchema, TargetRefSchema, GatewayFilterSchema } from './primitives/ab-test';
-export type { HttpGatewayTarget } from './primitives/http-gateway';
-export { HttpGatewayTargetSchema } from './primitives/http-gateway';
+export type {
+  BedrockApiFormat,
+  HarnessApiFormat,
+  HarnessGatewayOutboundAuth,
+  HarnessMemoryRef,
+  HarnessModel,
+  HarnessModelProvider,
+  HarnessSpec,
+  ManagedMemoryStrategy,
+  OpenAiApiFormat,
+} from './primitives/harness';
+export {
+  BedrockApiFormatSchema,
+  HarnessApiFormatSchema,
+  OpenAiApiFormatSchema,
+  GatewayOAuthGrantTypeSchema,
+  HarnessGatewayOutboundAuthSchema,
+  HarnessModelProviderSchema,
+  HarnessNameSchema,
+  HarnessSpecSchema,
+  HarnessToolTypeSchema,
+  ManagedMemoryStrategySchema,
+  validateApiFormat,
+} from './primitives/harness';
+export type {
+  KnowledgeBase,
+  DataSource,
+  S3DataSource,
+  ConnectorDataSourceType,
+  ConnectorFileDataSource,
+} from './primitives/knowledge-base';
+export {
+  KnowledgeBaseNameSchema,
+  KnowledgeBaseSchema,
+  S3DataSourceSchema,
+  DataSourceSchema,
+  ConnectorDataSourceTypeSchema,
+  ConnectorFileDataSourceSchema,
+} from './primitives/knowledge-base';
+export {
+  DEFAULT_AUTO_PAYMENT,
+  DEFAULT_SPEND_LIMIT,
+  PaymentManagerSchema,
+  PaymentManagerNameSchema,
+  PaymentConnectorSchema,
+  PaymentConnectorNameSchema,
+  PaymentProviderSchema,
+  PaymentAuthorizerTypeSchema,
+};
+export type { PaymentManager, PaymentConnector, PaymentProvider, PaymentAuthorizerType } from './primitives/payment';
 
 // ============================================================================
 // ManagedBy Schema
@@ -96,7 +170,7 @@ export const ProjectNameSchema = z
     'Project name must start with a letter and contain only alphanumeric characters'
   )
   .refine(name => !isReservedProjectName(name), {
-    message: 'This name conflicts with a Python package dependency. Please choose a different name.',
+    message: 'This name conflicts with a reserved package dependency. Please choose a different name.',
   });
 
 // ============================================================================
@@ -145,25 +219,77 @@ export const StreamDeliveryResourcesSchema = z.object({
 
 export type StreamDeliveryResources = z.infer<typeof StreamDeliveryResourcesSchema>;
 
-export const MemorySchema = z.object({
-  name: MemoryNameSchema,
-  eventExpiryDuration: z.number().int().min(3).max(365),
-  // Strategies array can be empty for short-term memory (just base memory with expiration)
-  // Long-term memory includes strategies like SEMANTIC, SUMMARIZATION, USER_PREFERENCE
-  strategies: z
-    .array(MemoryStrategySchema)
-    .default([])
-    .superRefine(
-      uniqueBy(
-        strategy => strategy.type,
-        type => `Duplicate memory strategy type: ${type}`
-      )
-    ),
-  tags: TagsSchema.optional(),
-  encryptionKeyArn: z.string().optional(),
-  executionRoleArn: z.string().optional(),
-  streamDeliveryResources: StreamDeliveryResourcesSchema.optional(),
+export const IndexedKeyTypeSchema = z.enum(['STRING', 'STRINGLIST', 'NUMBER']);
+export type IndexedKeyType = z.infer<typeof IndexedKeyTypeSchema>;
+
+/**
+ * Indexed metadata key declaration on a Memory.
+ * Indexed keys enable filtering memory records on retrieval by attached metadata.
+ *
+ * Key pattern matches the AgentCore Control API: alphanumeric characters, whitespace,
+ * and the symbols `. _ : / = + @ -` (max 128 chars).
+ *
+ * Note: indexed keys are append-only on the AWS service side — once added to a Memory,
+ * a key cannot be removed. Reducing the array on update will fail at deploy time.
+ */
+export const INDEXED_KEY_NAME_PATTERN = /^[a-zA-Z0-9\s._:/=+@-]+$/;
+export const INDEXED_KEY_NAME_PATTERN_MESSAGE =
+  'Must contain only alphanumeric characters, whitespace, or the symbols . _ : / = + @ -';
+export const MAX_INDEXED_KEY_NAME_LENGTH = 128;
+export const MAX_INDEXED_KEYS = 10;
+
+export const IndexedKeySchema = z.object({
+  key: z
+    .string()
+    .min(1)
+    .max(MAX_INDEXED_KEY_NAME_LENGTH)
+    .regex(INDEXED_KEY_NAME_PATTERN, INDEXED_KEY_NAME_PATTERN_MESSAGE)
+    .refine(s => s.trim().length > 0, 'Key cannot be only whitespace'),
+  type: IndexedKeyTypeSchema,
 });
+export type IndexedKey = z.infer<typeof IndexedKeySchema>;
+
+export const MemorySchema = z
+  .object({
+    name: MemoryNameSchema,
+    eventExpiryDuration: z.number().int().min(3).max(365),
+    // Strategies array can be empty for short-term memory (just base memory with expiration)
+    // Long-term memory includes strategies like SEMANTIC, SUMMARIZATION, USER_PREFERENCE
+    strategies: z
+      .array(MemoryStrategySchema)
+      .default([])
+      .superRefine(
+        uniqueBy(
+          strategy => strategy.type,
+          type => `Duplicate memory strategy type: ${type}`
+        )
+      ),
+    indexedKeys: z
+      .array(IndexedKeySchema)
+      .max(MAX_INDEXED_KEYS)
+      .superRefine(
+        uniqueBy(
+          entry => entry.key,
+          key => `Duplicate indexed key: ${key}`
+        )
+      )
+      .optional(),
+    tags: TagsSchema.optional(),
+    encryptionKeyArn: z.string().optional(),
+    executionRoleArn: z.string().optional(),
+    streamDeliveryResources: StreamDeliveryResourcesSchema.optional(),
+  })
+  .superRefine((memory, ctx) => {
+    // Indexed keys filter long-term memory records on retrieval; they have no
+    // meaning on a short-term-only memory (no strategies => no LTM records).
+    if (memory.indexedKeys && memory.indexedKeys.length > 0 && memory.strategies.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['indexedKeys'],
+        message: 'indexedKeys requires at least one memory strategy (long-term memory)',
+      });
+    }
+  });
 
 export type Memory = z.infer<typeof MemorySchema>;
 
@@ -178,7 +304,11 @@ export const CredentialNameSchema = z
   .max(128, 'Credential name must be 128 characters or less')
   .regex(/^[a-zA-Z0-9\-_]+$/, 'Must contain only alphanumeric characters, hyphens, and underscores (1-128 chars)');
 
-export const CredentialTypeSchema = z.enum(['ApiKeyCredentialProvider', 'OAuthCredentialProvider']);
+export const CredentialTypeSchema = z.enum([
+  'ApiKeyCredentialProvider',
+  'OAuthCredentialProvider',
+  'PaymentCredentialProvider',
+]);
 export type CredentialType = z.infer<typeof CredentialTypeSchema>;
 
 export const ApiKeyCredentialSchema = z.object({
@@ -205,7 +335,19 @@ export const OAuthCredentialSchema = z.object({
 
 export type OAuthCredential = z.infer<typeof OAuthCredentialSchema>;
 
-export const CredentialSchema = z.discriminatedUnion('authorizerType', [ApiKeyCredentialSchema, OAuthCredentialSchema]);
+export const PaymentCredentialSchema = z.object({
+  authorizerType: z.literal('PaymentCredentialProvider'),
+  name: CredentialNameSchema,
+  provider: PaymentProviderSchema,
+});
+
+export type PaymentCredential = z.infer<typeof PaymentCredentialSchema>;
+
+export const CredentialSchema = z.discriminatedUnion('authorizerType', [
+  ApiKeyCredentialSchema,
+  OAuthCredentialSchema,
+  PaymentCredentialSchema,
+]);
 
 export type Credential = z.infer<typeof CredentialSchema>;
 
@@ -226,6 +368,17 @@ export const EvaluatorSchema = z.object({
 });
 
 export type Evaluator = z.infer<typeof EvaluatorSchema>;
+
+// ============================================================================
+// Harness Registry Schema
+// ============================================================================
+
+export const HarnessRegistryEntrySchema = z.object({
+  name: HarnessNameSchema,
+  path: z.string().min(1, 'Path to harness config directory is required'),
+});
+
+export type HarnessRegistryEntry = z.infer<typeof HarnessRegistryEntrySchema>;
 
 // ============================================================================
 // Project Schema (Top Level)
@@ -259,6 +412,16 @@ export const AgentCoreProjectSpecSchema = z
         uniqueBy(
           memory => memory.name,
           name => `Duplicate memory name: ${name}`
+        )
+      ),
+
+    knowledgeBases: z
+      .array(KnowledgeBaseSchema)
+      .default([])
+      .superRefine(
+        uniqueBy(
+          kb => kb.name,
+          name => `Duplicate knowledge base name: ${name}`
         )
       ),
 
@@ -355,15 +518,48 @@ export const AgentCoreProjectSpecSchema = z
         )
       ),
 
-    httpGateways: z
-      .array(HttpGatewaySchema)
+    harnesses: z
+      .array(HarnessRegistryEntrySchema)
       .default([])
       .superRefine(
         uniqueBy(
-          gw => gw.name,
-          name => `Duplicate HTTP gateway name: ${name}`
+          harness => harness.name,
+          name => `Duplicate harness name: ${name}`
         )
       ),
+
+    datasets: z
+      .array(DatasetSchema)
+      .optional()
+      .superRefine((val, ctx) => {
+        if (!val) return;
+        const seen = new Set<string>();
+        for (const dataset of val) {
+          if (seen.has(dataset.name)) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Duplicate dataset name: ${dataset.name}` });
+          }
+          seen.add(dataset.name);
+        }
+      }),
+
+    httpGateways: z
+      .array(z.unknown())
+      .max(
+        0,
+        '"httpGateways" is deprecated. Migrate to agentCoreGateways with protocolType: "None", or use "agentcore import gateway".'
+      )
+      .optional(),
+
+    payments: z
+      .array(PaymentManagerSchema)
+      .optional()
+      .superRefine((items, ctx) => {
+        if (!items) return;
+        uniqueBy(
+          (manager: { name: string }) => manager.name,
+          (name: string) => `Duplicate payment manager name: ${name}`
+        )(items, ctx);
+      }),
   })
   .strict()
   .superRefine((spec, ctx) => {
@@ -371,8 +567,8 @@ export const AgentCoreProjectSpecSchema = z
     const evaluatorNames = new Set(spec.evaluators.map(e => e.name));
 
     for (const config of spec.onlineEvalConfigs) {
-      // Validate agent reference
-      if (!agentNames.has(config.agent)) {
+      // Validate agent reference (only when agent is specified — custom log groups don't need one)
+      if (config.agent && !agentNames.has(config.agent)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `Online eval config "${config.name}" references unknown agent "${config.agent}"`,
@@ -380,7 +576,7 @@ export const AgentCoreProjectSpecSchema = z
       }
 
       // Validate evaluator references
-      for (const evalName of config.evaluators) {
+      for (const evalName of config.evaluators ?? []) {
         // Skip built-in evaluators and ARN references (externally managed)
         if (evalName.startsWith(BUILTIN_EVALUATOR_PREFIX) || evalName.startsWith(ARN_PREFIX)) continue;
         if (!evaluatorNames.has(evalName)) {
@@ -392,14 +588,28 @@ export const AgentCoreProjectSpecSchema = z
       }
     }
 
-    // Validate HTTP gateway runtimeRef references
-    for (const gw of spec.httpGateways ?? []) {
-      const runtimeExists = spec.runtimes.some(r => r.name === gw.runtimeRef);
-      if (!runtimeExists) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `HTTP gateway "${gw.name}" references unknown runtime "${gw.runtimeRef}"`,
-        });
+    // Validate httpRuntime target runtime references
+    for (const gw of spec.agentCoreGateways ?? []) {
+      for (const target of gw.targets) {
+        if (target.targetType === 'httpRuntime') {
+          if (target.httpRuntime?.runtime) {
+            const runtimeExists = spec.runtimes.some(r => r.name === target.httpRuntime!.runtime);
+            if (!runtimeExists) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Gateway "${gw.name}" target "${target.name}" references unknown runtime "${target.httpRuntime.runtime}". Check spec.runtimes.`,
+              });
+            } else if (target.httpRuntime.runtimeEndpoint && target.httpRuntime.runtimeEndpoint !== 'DEFAULT') {
+              const runtime = spec.runtimes.find(r => r.name === target.httpRuntime!.runtime);
+              if (runtime && !runtime.endpoints?.[target.httpRuntime.runtimeEndpoint]) {
+                ctx.addIssue({
+                  code: z.ZodIssueCode.custom,
+                  message: `Gateway "${gw.name}" target "${target.name}" references endpoint "${target.httpRuntime.runtimeEndpoint}" which does not exist on runtime "${target.httpRuntime.runtime}".`,
+                });
+              }
+            }
+          }
+        }
       }
     }
 
@@ -410,17 +620,17 @@ export const AgentCoreProjectSpecSchema = z
         const match = /^\{\{gateway:(.+)\}\}$/.exec(gwField);
         if (match) {
           const gwName = match[1];
-          const gwExists = (spec.httpGateways ?? []).some(gw => gw.name === gwName);
+          const gwExists = (spec.agentCoreGateways ?? []).some(gw => gw.name === gwName);
           if (!gwExists) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: `AB test "${test.name}" references gateway "${gwName}" which does not exist in httpGateways`,
+              message: `AB test "${test.name}" references gateway "${gwName}" which does not exist in agentCoreGateways`,
             });
           }
 
           // For target-based AB tests, validate target names exist in the gateway's targets array
           if (test.mode === 'target-based') {
-            const gw = (spec.httpGateways ?? []).find(g => g.name === gwName);
+            const gw = (spec.agentCoreGateways ?? []).find(g => g.name === gwName);
             if (gw) {
               const gwTargetNames = new Set((gw.targets ?? []).map(t => t.name));
               for (const variant of test.variants) {
@@ -438,19 +648,75 @@ export const AgentCoreProjectSpecSchema = z
       }
     }
 
-    // Validate HTTP gateway target runtimeRef and qualifier references
-    for (const gw of spec.httpGateways ?? []) {
-      for (const target of gw.targets ?? []) {
-        const runtime = spec.runtimes.find(r => r.name === target.runtimeRef);
-        if (!runtime) {
+    // Connector gateway target KB reference: a project KB name (entry in
+    // knowledgeBases[]) or a literal 10-char KB ID (an external KB this
+    // project does not own). Real KB IDs match ^[A-Z0-9]{10}$; KB names
+    // start with a letter and may include dashes/underscores. The two
+    // formats can never collide.
+    const knowledgeBaseNames = new Set((spec.knowledgeBases ?? []).map(kb => kb.name));
+    const REAL_KB_ID_PATTERN = /^[A-Z0-9]{10}$/;
+    const validateKbReference = (target: { name: string }, value: string, fieldLabel: string): void => {
+      const looksLikeRealId = REAL_KB_ID_PATTERN.test(value);
+      if (looksLikeRealId) {
+        if (knowledgeBaseNames.has(value)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: `HTTP gateway "${gw.name}" target "${target.name}" references unknown runtime "${target.runtimeRef}"`,
+            message: `Connector target "${target.name}" ${fieldLabel} "${value}" looks like a literal KB ID but also matches a knowledgeBases[] entry. Rename the knowledge base or reference it by its project name instead.`,
           });
-        } else if (target.qualifier && target.qualifier !== 'DEFAULT' && !runtime.endpoints?.[target.qualifier]) {
+        }
+      } else {
+        if (!knowledgeBaseNames.has(value)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: `HTTP gateway "${gw.name}" target "${target.name}" references qualifier "${target.qualifier}" which is not an endpoint on runtime "${target.runtimeRef}"`,
+            message: `Connector target "${target.name}" ${fieldLabel} "${value}" does not match any knowledgeBases[] entry. To wire an external KB that this project does not own, use its 10-character KB ID.`,
+          });
+        }
+      }
+    };
+
+    for (const gateway of spec.agentCoreGateways ?? []) {
+      for (const target of gateway.targets ?? []) {
+        if (target.targetType !== 'connector') continue;
+        if (target.connectorId !== 'bedrock-knowledge-bases') {
+          continue;
+        }
+        for (const cfg of target.configurations ?? []) {
+          const pv = cfg.parameterValues;
+          if (cfg.name === 'Retrieve' && pv?.knowledgeBaseId && typeof pv.knowledgeBaseId === 'string') {
+            validateKbReference(target, pv.knowledgeBaseId, 'configurations[].parameterValues.knowledgeBaseId');
+          }
+          if (cfg.name === 'AgenticRetrieveStream') {
+            const rawRetrievers = pv?.retrievers;
+            if (!Array.isArray(rawRetrievers)) continue;
+            for (const r of rawRetrievers) {
+              if (!r || typeof r !== 'object') continue;
+              const kbId = (r as { configuration?: { knowledgeBase?: { knowledgeBaseId?: string } } }).configuration
+                ?.knowledgeBase?.knowledgeBaseId;
+              if (kbId)
+                validateKbReference(target, kbId, 'configurations[].parameterValues.retrievers[].knowledgeBaseId');
+            }
+          }
+        }
+      }
+    }
+
+    // Validate payment connector credential references
+    for (const payment of spec.payments ?? []) {
+      const paymentIndex = (spec.payments ?? []).indexOf(payment);
+      for (const connector of payment.connectors) {
+        const connectorIndex = payment.connectors.indexOf(connector);
+        const credential = spec.credentials.find(c => c.name === connector.credentialName);
+        if (!credential) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Payment connector "${connector.name}" in manager "${payment.name}" references credential "${connector.credentialName}" which does not exist in credentials[]`,
+            path: ['payments', paymentIndex, 'connectors', connectorIndex, 'credentialName'],
+          });
+        } else if (credential.authorizerType !== 'PaymentCredentialProvider') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Payment connector "${connector.name}" in manager "${payment.name}" references credential "${connector.credentialName}" which is a ${credential.authorizerType}, not a PaymentCredentialProvider`,
+            path: ['payments', paymentIndex, 'connectors', connectorIndex, 'credentialName'],
           });
         }
       }

@@ -136,9 +136,9 @@ describe.sequential('e2e: archive command lifecycle', () => {
           );
           const json = parseJsonOutput(result.stdout) as Record<string, unknown>;
           expect(json).toHaveProperty('success', true);
-          expect(json.batchEvaluationId).toBeTruthy();
+          expect(json.id).toBeTruthy();
           expect(json.status).not.toBe('FAILED');
-          batchEvaluationId = json.batchEvaluationId as string;
+          batchEvaluationId = json.id as string;
         },
         6,
         15000
@@ -151,7 +151,14 @@ describe.sequential('e2e: archive command lifecycle', () => {
     'local .cli/batch-eval-results contains the run record',
     () => {
       expect(batchEvaluationId, 'batchEvaluationId should have been captured').toBeTruthy();
-      const filePath = join(projectPath, 'agentcore', '.cli', 'batch-eval-results', `${batchEvaluationId}.json`);
+      const filePath = join(
+        projectPath,
+        'agentcore',
+        '.cli',
+        'jobs',
+        'batch-eval-results',
+        `${batchEvaluationId}.json`
+      );
       expect(existsSync(filePath), `Expected local record at ${filePath}`).toBe(true);
     },
     30000
@@ -182,8 +189,8 @@ describe.sequential('e2e: archive command lifecycle', () => {
           expect(result.exitCode, `recommendation failed (stdout: ${result.stdout}, stderr: ${result.stderr})`).toBe(0);
           const json = parseJsonOutput(result.stdout) as Record<string, unknown>;
           expect(json).toHaveProperty('success', true);
-          expect(json.recommendationId).toBeTruthy();
-          recommendationId = json.recommendationId as string;
+          expect(json.id).toBeTruthy();
+          recommendationId = json.id as string;
         },
         6,
         30000
@@ -196,7 +203,7 @@ describe.sequential('e2e: archive command lifecycle', () => {
     'local .cli/recommendations contains the run record',
     () => {
       expect(recommendationId, 'recommendationId should have been captured').toBeTruthy();
-      const filePath = join(projectPath, 'agentcore', '.cli', 'recommendations', `${recommendationId}.json`);
+      const filePath = join(projectPath, 'agentcore', '.cli', 'jobs', 'recommendations', `${recommendationId}.json`);
       expect(existsSync(filePath), `Expected local record at ${filePath}`).toBe(true);
     },
     30000
@@ -225,9 +232,7 @@ describe.sequential('e2e: archive command lifecycle', () => {
 
       const json = parseJsonOutput(result.stdout) as Record<string, unknown>;
       expect(json).toHaveProperty('success', true);
-      expect(json.batchEvaluationId).toBe(batchEvaluationId);
-      expect(json).toHaveProperty('localCliHistoryDeleted', true);
-      expect(json.localDeleteWarning).toBeUndefined();
+      expect(json.id).toBe(batchEvaluationId);
     },
     120000
   );
@@ -235,7 +240,14 @@ describe.sequential('e2e: archive command lifecycle', () => {
   it.skipIf(!canRun)(
     'local .cli/batch-eval-results no longer contains the archived record',
     () => {
-      const filePath = join(projectPath, 'agentcore', '.cli', 'batch-eval-results', `${batchEvaluationId}.json`);
+      const filePath = join(
+        projectPath,
+        'agentcore',
+        '.cli',
+        'jobs',
+        'batch-eval-results',
+        `${batchEvaluationId}.json`
+      );
       expect(existsSync(filePath), `Local record should have been deleted from ${filePath}`).toBe(false);
     },
     30000
@@ -291,9 +303,7 @@ describe.sequential('e2e: archive command lifecycle', () => {
 
       const json = parseJsonOutput(result.stdout) as Record<string, unknown>;
       expect(json).toHaveProperty('success', true);
-      expect(json.recommendationId).toBe(recommendationId);
-      expect(json).toHaveProperty('localCliHistoryDeleted', true);
-      expect(json.localDeleteWarning).toBeUndefined();
+      expect(json.id).toBe(recommendationId);
     },
     120000
   );
@@ -301,22 +311,10 @@ describe.sequential('e2e: archive command lifecycle', () => {
   it.skipIf(!canRun)(
     'local .cli/recommendations no longer contains the archived record',
     () => {
-      const filePath = join(projectPath, 'agentcore', '.cli', 'recommendations', `${recommendationId}.json`);
+      const filePath = join(projectPath, 'agentcore', '.cli', 'jobs', 'recommendations', `${recommendationId}.json`);
       expect(existsSync(filePath), `Local record should have been deleted from ${filePath}`).toBe(false);
     },
     30000
-  );
-
-  it.skipIf(!canRun)(
-    'recommendations history no longer includes the archived entry',
-    async () => {
-      const result = await run(['recommendations', 'history', '--json']);
-      expect(result.exitCode, `recommendations history failed: ${result.stderr}`).toBe(0);
-      const json = parseJsonOutput(result.stdout) as { recommendations: { recommendationId: string }[] };
-      const ids = (json.recommendations ?? []).map(r => r.recommendationId);
-      expect(ids).not.toContain(recommendationId);
-    },
-    60000
   );
 
   it.skipIf(!canRun)(

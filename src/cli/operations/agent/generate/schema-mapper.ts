@@ -9,7 +9,13 @@ import type {
   MemoryStrategyType,
   ModelProvider,
 } from '../../../../schema';
-import { DEFAULT_EPISODIC_REFLECTION_NAMESPACES, DEFAULT_STRATEGY_NAMESPACES } from '../../../../schema';
+import {
+  DEFAULT_ENTRYPOINT_BY_LANGUAGE,
+  DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
+  DEFAULT_RUNTIME_BY_LANGUAGE,
+  DEFAULT_STRATEGY_NAMESPACE_TEMPLATES,
+} from '../../../../schema';
+import { buildFilesystemConfigurations } from '../../../commands/shared/filesystem-utils';
 import { GatewayPrimitive } from '../../../primitives/GatewayPrimitive';
 import { buildAuthorizerConfigFromJwtConfig } from '../../../primitives/auth-utils';
 import {
@@ -69,11 +75,11 @@ export function mapGenerateInputToMemories(memory: MemoryOption, projectName: st
   if (memory === 'longAndShortTerm') {
     const strategyTypes: MemoryStrategyType[] = ['SEMANTIC', 'USER_PREFERENCE', 'SUMMARIZATION', 'EPISODIC'];
     for (const type of strategyTypes) {
-      const defaultNamespaces = DEFAULT_STRATEGY_NAMESPACES[type];
+      const defaultTemplates = DEFAULT_STRATEGY_NAMESPACE_TEMPLATES[type];
       strategies.push({
         type,
-        ...(defaultNamespaces && { namespaces: defaultNamespaces }),
-        ...(type === 'EPISODIC' && { reflectionNamespaces: DEFAULT_EPISODIC_REFLECTION_NAMESPACES }),
+        ...(defaultTemplates && { namespaceTemplates: defaultTemplates }),
+        ...(type === 'EPISODIC' && { reflectionNamespaceTemplates: DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES }),
       });
     }
   }
@@ -107,18 +113,29 @@ export function mapModelProviderToCredentials(modelProvider: ModelProvider, proj
 /**
  * Maps GenerateConfig to v2 AgentEnvSpec resource.
  */
+const ACTOR_ID_HEADER = 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-Actor-Id';
+
 export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
   const codeLocation = `${APP_DIR}/${config.projectName}/`;
   const protocol = config.protocol ?? 'HTTP';
   const networkMode = config.networkMode ?? DEFAULT_NETWORK_MODE;
 
+  const needsActorHeader =
+    config.language === 'TypeScript' && config.sdk === 'Strands' && config.memory === 'longAndShortTerm';
+  const headerAllowlist = [
+    ...(config.requestHeaderAllowlist ?? []),
+    ...(needsActorHeader && !(config.requestHeaderAllowlist ?? []).includes(ACTOR_ID_HEADER) ? [ACTOR_ID_HEADER] : []),
+  ];
+
   return {
     name: config.projectName,
     build: config.buildType ?? 'CodeZip',
     ...(config.dockerfile && { dockerfile: config.dockerfile }),
-    entrypoint: DEFAULT_PYTHON_ENTRYPOINT as FilePath,
+    entrypoint: (config.language === 'TypeScript'
+      ? DEFAULT_ENTRYPOINT_BY_LANGUAGE.TypeScript
+      : DEFAULT_PYTHON_ENTRYPOINT) as FilePath,
     codeLocation: codeLocation as DirectoryPath,
-    runtimeVersion: DEFAULT_PYTHON_VERSION,
+    runtimeVersion: config.language === 'TypeScript' ? DEFAULT_RUNTIME_BY_LANGUAGE.TypeScript : DEFAULT_PYTHON_VERSION,
     networkMode,
     protocol,
     ...(networkMode === 'VPC' &&
@@ -127,10 +144,13 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
         networkConfig: {
           subnets: config.subnets,
           securityGroups: config.securityGroups,
+          // Only a Container build carries a vpcId; guard so a stale value left over from a
+          // Container→CodeZip switch in the wizard doesn't leak into a CodeZip networkConfig.
+          ...(config.buildType === 'Container' && config.vpcId && { vpcId: config.vpcId }),
         },
       }),
-    ...(config.requestHeaderAllowlist?.length && {
-      requestHeaderAllowlist: config.requestHeaderAllowlist,
+    ...(headerAllowlist.length > 0 && {
+      requestHeaderAllowlist: headerAllowlist,
     }),
     ...(config.authorizerType && { authorizerType: config.authorizerType }),
     ...(config.authorizerType === 'CUSTOM_JWT' &&
@@ -147,10 +167,7 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
           },
         }
       : {}),
-    ...(config.sessionStorageMountPath && {
-      filesystemConfigurations: [{ sessionStorage: { mountPath: config.sessionStorageMountPath } }],
-    }),
-    // MCP uses mcp.run() which is incompatible with the opentelemetry-instrument wrapper
+    ...buildFilesystemConfigurations(config.sessionStorageMountPath, config.efsAccessPoints, config.s3AccessPoints),
     ...(protocol === 'MCP' && { instrumentation: { enableOtel: false } }),
   };
 }
@@ -264,25 +281,44 @@ export async function mapGenerateConfigToRenderConfig(
 ): Promise<AgentRenderConfig> {
   const isMcp = config.protocol === 'MCP';
   const gatewayProviders = isMcp ? [] : await mapGatewaysToGatewayProviders();
-  const enableOtel = !isMcp;
+  const enableOtel = !isMcp && config.language !== 'TypeScript';
 
   return {
     name: config.projectName,
     sdkFramework: config.sdk,
     targetLanguage: config.language,
     modelProvider: config.modelProvider,
-    hasMemory: isMcp ? false : config.memory !== 'none',
+    hasMemory:
+      isMcp || (config.language === 'TypeScript' && config.sdk !== 'Strands')
+        ? false
+        : config.language === 'TypeScript'
+          ? config.memory === 'longAndShortTerm'
+          : config.memory !== 'none',
     hasIdentity: isMcp ? false : identityProviders.length > 0,
     hasGateway: gatewayProviders.length > 0,
+    hasPayment: await (async () => {
+      try {
+        const spec = await new ConfigIO().readProjectSpec();
+        return (spec.payments ?? []).length > 0;
+      } catch {
+        return false;
+      }
+    })(),
     isVpc: config.networkMode === 'VPC',
     buildType: config.buildType,
-    memoryProviders: isMcp ? [] : mapMemoryOptionToMemoryProviders(config.memory, config.projectName),
+    memoryProviders:
+      isMcp || (config.language === 'TypeScript' && config.sdk !== 'Strands')
+        ? []
+        : mapMemoryOptionToMemoryProviders(config.memory, config.projectName),
     identityProviders: isMcp ? [] : identityProviders,
     gatewayProviders,
     gatewayAuthTypes: [...new Set(gatewayProviders.map(g => g.authType))],
     protocol: config.protocol,
     dockerfile: config.dockerfile,
     sessionStorageMountPath: config.sessionStorageMountPath,
+    efsMounts: (config.efsAccessPoints ?? []).map(ap => ({ mountPath: ap.mountPath })),
+    s3Mounts: (config.s3AccessPoints ?? []).map(ap => ({ mountPath: ap.mountPath })),
+    needsOs: !!config.sessionStorageMountPath || !!config.efsAccessPoints?.length || !!config.s3AccessPoints?.length,
     enableOtel,
     hasConfigBundle: config.withConfigBundle,
   };

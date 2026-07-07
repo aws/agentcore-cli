@@ -1,0 +1,1 @@
+export { registerBatchEvaluations } from './command';

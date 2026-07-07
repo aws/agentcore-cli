@@ -1,4 +1,5 @@
 import {
+  LANGUAGE_FRAMEWORK_MATRIX,
   ModelProviderSchema,
   NetworkModeSchema,
   NodeRuntimeSchema,
@@ -7,9 +8,14 @@ import {
   RESERVED_PROJECT_NAMES,
   RuntimeVersionSchema,
   SDKFrameworkSchema,
+  SECURITY_GROUP_ID_PATTERN,
+  SUBNET_ID_PATTERN,
   TargetLanguageSchema,
+  VPC_ID_PATTERN,
+  getFrameworksForLanguage,
   getSupportedFrameworksForProtocol,
   getSupportedModelProviders,
+  isFrameworkSupportedForLanguage,
   isFrameworkSupportedForProtocol,
   isModelProviderSupported,
   isReservedProjectName,
@@ -83,8 +89,8 @@ describe('NetworkModeSchema', () => {
 });
 
 describe('getSupportedModelProviders', () => {
-  it('returns all 4 providers for Strands', () => {
-    expect(getSupportedModelProviders('Strands')).toEqual(['Bedrock', 'Anthropic', 'OpenAI', 'Gemini']);
+  it('returns all providers (incl. LiteLLM) for Strands', () => {
+    expect(getSupportedModelProviders('Strands')).toEqual(['Bedrock', 'Anthropic', 'OpenAI', 'Gemini', 'LiteLLM']);
   });
 
   it('returns only Gemini for GoogleADK', () => {
@@ -175,6 +181,54 @@ describe('getSupportedFrameworksForProtocol', () => {
   });
 });
 
+describe('LANGUAGE_FRAMEWORK_MATRIX', () => {
+  it('defines Python and TypeScript', () => {
+    expect(Object.keys(LANGUAGE_FRAMEWORK_MATRIX)).toEqual(expect.arrayContaining(['Python', 'TypeScript']));
+  });
+
+  it('Python supports the open-source frameworks but not Vercel AI (TypeScript-only)', () => {
+    expect(LANGUAGE_FRAMEWORK_MATRIX.Python).toEqual(
+      expect.arrayContaining(['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents'])
+    );
+    expect(LANGUAGE_FRAMEWORK_MATRIX.Python).not.toContain('VercelAI');
+  });
+
+  it('TypeScript supports only Strands and Vercel AI', () => {
+    expect([...LANGUAGE_FRAMEWORK_MATRIX.TypeScript].sort()).toEqual(['Strands', 'VercelAI']);
+  });
+});
+
+describe('getFrameworksForLanguage', () => {
+  it('returns Python frameworks without Vercel AI', () => {
+    const frameworks = getFrameworksForLanguage('Python');
+    expect(frameworks).toContain('Strands');
+    expect(frameworks).not.toContain('VercelAI');
+  });
+
+  it('returns TypeScript frameworks including Vercel AI', () => {
+    const frameworks = getFrameworksForLanguage('TypeScript');
+    expect(frameworks).toContain('Strands');
+    expect(frameworks).toContain('VercelAI');
+  });
+});
+
+describe('isFrameworkSupportedForLanguage', () => {
+  it('returns true for supported combinations', () => {
+    expect(isFrameworkSupportedForLanguage('Python', 'Strands')).toBe(true);
+    expect(isFrameworkSupportedForLanguage('TypeScript', 'VercelAI')).toBe(true);
+    expect(isFrameworkSupportedForLanguage('TypeScript', 'Strands')).toBe(true);
+  });
+
+  it('returns false for Python + Vercel AI (the bug being fixed)', () => {
+    expect(isFrameworkSupportedForLanguage('Python', 'VercelAI')).toBe(false);
+  });
+
+  it('returns false for TypeScript + a Python-only framework', () => {
+    expect(isFrameworkSupportedForLanguage('TypeScript', 'LangChain_LangGraph')).toBe(false);
+    expect(isFrameworkSupportedForLanguage('TypeScript', 'GoogleADK')).toBe(false);
+  });
+});
+
 describe('isFrameworkSupportedForProtocol', () => {
   it('returns true for Strands + HTTP', () => {
     expect(isFrameworkSupportedForProtocol('HTTP', 'Strands')).toBe(true);
@@ -191,5 +245,72 @@ describe('isFrameworkSupportedForProtocol', () => {
   it('returns false for any framework + MCP', () => {
     expect(isFrameworkSupportedForProtocol('MCP', 'Strands')).toBe(false);
     expect(isFrameworkSupportedForProtocol('MCP', 'OpenAIAgents')).toBe(false);
+  });
+});
+
+// ============================================================================
+// AWS Network Resource ID Patterns — canonical hex 8/17 form
+// ============================================================================
+
+describe('VPC_ID_PATTERN', () => {
+  it('accepts 8-char lowercase-hex vpc id', () => {
+    expect(VPC_ID_PATTERN.test('vpc-0a1b2c3d')).toBe(true);
+  });
+  it('accepts 17-char lowercase-hex vpc id', () => {
+    expect(VPC_ID_PATTERN.test('vpc-0123456789abcdef0')).toBe(true);
+  });
+  it('rejects uppercase hex vpc id', () => {
+    expect(VPC_ID_PATTERN.test('vpc-ABCDEFGH')).toBe(false);
+  });
+  it('rejects non-hex vpc id', () => {
+    expect(VPC_ID_PATTERN.test('vpc-zzzzzzzz')).toBe(false);
+  });
+  it('rejects 9-char vpc id', () => {
+    expect(VPC_ID_PATTERN.test('vpc-123456789')).toBe(false);
+  });
+  it('rejects wrong prefix', () => {
+    expect(VPC_ID_PATTERN.test('subnet-0a1b2c3d')).toBe(false);
+  });
+});
+
+describe('SUBNET_ID_PATTERN', () => {
+  it('accepts 8-char lowercase-hex subnet id', () => {
+    expect(SUBNET_ID_PATTERN.test('subnet-0a1b2c3d')).toBe(true);
+  });
+  it('accepts 17-char lowercase-hex subnet id', () => {
+    expect(SUBNET_ID_PATTERN.test('subnet-0123456789abcdef0')).toBe(true);
+  });
+  it('rejects uppercase hex subnet id', () => {
+    expect(SUBNET_ID_PATTERN.test('subnet-ABCDEFGH')).toBe(false);
+  });
+  it('rejects non-hex subnet id', () => {
+    expect(SUBNET_ID_PATTERN.test('subnet-zzzzzzzz')).toBe(false);
+  });
+  it('rejects 9-char subnet id', () => {
+    expect(SUBNET_ID_PATTERN.test('subnet-123456789')).toBe(false);
+  });
+  it('rejects wrong prefix', () => {
+    expect(SUBNET_ID_PATTERN.test('vpc-0a1b2c3d')).toBe(false);
+  });
+});
+
+describe('SECURITY_GROUP_ID_PATTERN', () => {
+  it('accepts 8-char lowercase-hex sg id', () => {
+    expect(SECURITY_GROUP_ID_PATTERN.test('sg-0a1b2c3d')).toBe(true);
+  });
+  it('accepts 17-char lowercase-hex sg id', () => {
+    expect(SECURITY_GROUP_ID_PATTERN.test('sg-0123456789abcdef0')).toBe(true);
+  });
+  it('rejects uppercase hex sg id', () => {
+    expect(SECURITY_GROUP_ID_PATTERN.test('sg-ABCDEFGH')).toBe(false);
+  });
+  it('rejects non-hex sg id', () => {
+    expect(SECURITY_GROUP_ID_PATTERN.test('sg-zzzzzzzz')).toBe(false);
+  });
+  it('rejects 9-char sg id', () => {
+    expect(SECURITY_GROUP_ID_PATTERN.test('sg-123456789')).toBe(false);
+  });
+  it('rejects wrong prefix', () => {
+    expect(SECURITY_GROUP_ID_PATTERN.test('subnet-0a1b2c3d')).toBe(false);
   });
 });

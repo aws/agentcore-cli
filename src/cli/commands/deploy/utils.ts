@@ -1,9 +1,9 @@
 import type { AgentCoreProjectSpec } from '../../../schema';
-
-export type DeployMode = 'deploy' | 'dry-run' | 'diff';
+import type { DeployMode } from '../../telemetry/schemas/common-shapes';
 
 export const DEFAULT_DEPLOY_ATTRS = {
   runtime_count: 0,
+  harness_count: 0,
   memory_count: 0,
   credential_count: 0,
   evaluator_count: 0,
@@ -12,7 +12,7 @@ export const DEFAULT_DEPLOY_ATTRS = {
   gateway_target_count: 0,
   policy_engine_count: 0,
   policy_count: 0,
-  mode: 'deploy' as DeployMode,
+  deploy_mode: 'deploy' as DeployMode,
 };
 
 export function computeDeployAttrs(projectSpec: Partial<AgentCoreProjectSpec>, mode: DeployMode) {
@@ -20,6 +20,7 @@ export function computeDeployAttrs(projectSpec: Partial<AgentCoreProjectSpec>, m
   const policyEngines = projectSpec.policyEngines ?? [];
   return {
     runtime_count: (projectSpec.runtimes ?? []).length,
+    harness_count: (projectSpec.harnesses ?? []).length,
     memory_count: (projectSpec.memories ?? []).length,
     credential_count: (projectSpec.credentials ?? []).length,
     evaluator_count: (projectSpec.evaluators ?? []).length,
@@ -28,6 +29,6 @@ export function computeDeployAttrs(projectSpec: Partial<AgentCoreProjectSpec>, m
     gateway_target_count: gateways.reduce((sum, g) => sum + (g.targets ?? []).length, 0),
     policy_engine_count: policyEngines.length,
     policy_count: policyEngines.reduce((sum, pe) => sum + (pe.policies ?? []).length, 0),
-    mode,
+    deploy_mode: mode,
   };
 }

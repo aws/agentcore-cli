@@ -15,12 +15,26 @@ export interface RunResult {
 
 /**
  * Build a clean env for spawned CLI processes.
- * Strips INIT_CWD which npm/npx sets to the runner's directory — without this,
- * the CLI resolves the working directory from INIT_CWD instead of the spawn's cwd.
- * @see https://docs.npmjs.com/cli/v10/commands/npm-run-script
+ *
+ * - Strips INIT_CWD which npm/npx sets to the runner's directory — without this,
+ *   the CLI resolves the working directory from INIT_CWD instead of the spawn's cwd.
+ *   See https://docs.npmjs.com/cli/v10/commands/npm-run-script.
+ * - Strips AGENTCORE_TELEMETRY_DISABLED so a host-level opt-out (set by CI workflows
+ *   or developer shells) cannot silently mask telemetry-behavior tests. Tests that
+ *   want telemetry disabled set it explicitly via `extraEnv`.
+ * - Defaults AGENTCORE_TELEMETRY_ENDPOINT to a reserved-port URL so any export attempt
+ *   is refused by the kernel (no DNS, no network egress) — prevents accidentally
+ *   publishing test traffic to the production endpoint. Tests that need to override
+ *   the endpoint pass their own value via `extraEnv`.
  */
 export function cleanSpawnEnv(extraEnv: Record<string, string> = {}): NodeJS.ProcessEnv {
-  return { ...process.env, INIT_CWD: undefined, ...extraEnv };
+  const { AGENTCORE_TELEMETRY_DISABLED: _ignored, ...inherited } = process.env;
+  return {
+    ...inherited,
+    INIT_CWD: undefined,
+    AGENTCORE_TELEMETRY_ENDPOINT: 'http://127.0.0.1:1',
+    ...extraEnv,
+  };
 }
 
 /**

@@ -1,0 +1,16 @@
+{
+  "type": "CONFLUENCE",
+  "version": "1",
+  "connectionConfiguration": {
+    "hostUrl": "https://your-domain.atlassian.net",
+    "authType": "OAUTH2",
+    "type": "SAAS",
+    "secretArn": "arn:aws:secretsmanager:us-west-2:111122223333:secret:confluence-creds",
+    "rotateSecret": false
+  },
+  "dataEntityConfiguration": {
+    "crawlPage": true,
+    "crawlBlog": false,
+    "crawlPageAttachment": true
+  }
+}

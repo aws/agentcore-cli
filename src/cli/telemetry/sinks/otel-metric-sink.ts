@@ -1,6 +1,7 @@
 import type { ResourceAttributes } from '../schemas/common-attributes.js';
+import { METRICS, type MetricName } from '../schemas/registry.js';
 import type { MetricSink } from './metric-sink.js';
-import type { Histogram } from '@opentelemetry/api';
+import type { Histogram, Meter } from '@opentelemetry/api';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { AggregationTemporality, MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
@@ -13,15 +14,18 @@ export interface OtelMetricSinkConfig {
 
 export class OtelMetricSink implements MetricSink {
   private readonly meterProvider: MeterProvider;
-  private readonly histogram: Histogram;
+  private readonly meter: Meter;
+  private readonly histograms = new Map<string, Histogram>();
 
   constructor(config: OtelMetricSinkConfig) {
     const resource = resourceFromAttributes(config.resource);
+    const url = config.endpoint.endsWith('/v1/metrics') ? config.endpoint : `${config.endpoint}/v1/metrics`;
     const exporter = new OTLPMetricExporter({
-      url: `${config.endpoint}/v1/metrics`,
+      url,
       headers: { 'X-Installation-Id': config.resource['agentcore-cli.installation_id'] },
       temporalityPreference: AggregationTemporality.DELTA,
     });
+
     this.meterProvider = new MeterProvider({
       resource,
       readers: [
@@ -32,13 +36,16 @@ export class OtelMetricSink implements MetricSink {
         }),
       ],
     });
-    this.histogram = this.meterProvider
-      .getMeter('agentcore-cli')
-      .createHistogram('cli.command_run', { description: 'CLI command execution' });
+    this.meter = this.meterProvider.getMeter('agentcore-cli');
   }
 
-  record(value: number, attrs: Record<string, string | number>): void {
-    this.histogram.record(value, attrs);
+  record(metricName: MetricName, value: number, attrs: Record<string, string | number>): void {
+    let histogram = this.histograms.get(metricName);
+    if (!histogram) {
+      histogram = this.meter.createHistogram(metricName, { description: METRICS[metricName].description });
+      this.histograms.set(metricName, histogram);
+    }
+    histogram.record(value, attrs);
   }
 
   async flush(timeoutMs = 5_000): Promise<void> {

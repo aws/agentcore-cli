@@ -30,7 +30,7 @@ export function createTelemetryHelper(): TelemetryHelper {
     dir,
     env: { AGENTCORE_TELEMETRY_AUDIT: '1', AGENTCORE_CONFIG_DIR: dir },
     readEntries() {
-      return globSync(join(dir, 'telemetry', '*.json')).flatMap(f =>
+      return globSync(join(dir, 'telemetry', '*.jsonl')).flatMap(f =>
         readFileSync(f, 'utf-8')
           .trim()
           .split('\n')

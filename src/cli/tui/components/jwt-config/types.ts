@@ -9,8 +9,38 @@ export type JwtSubStep =
   | 'clients'
   | 'scopes'
   | 'customClaims'
+  | 'privateEndpointType'
+  | 'latticeResourceId'
+  | 'domainOverrides'
+  | 'vpcId'
+  | 'vpcSubnets'
+  | 'vpcIpType'
+  | 'vpcSecurityGroups'
+  | 'vpcRoutingDomain'
   | 'clientId'
   | 'clientSecret';
+
+/** Which PrivateLink endpoint arm the user is configuring (or none). */
+export type PrivateEndpointType = 'none' | 'lattice' | 'vpc';
+
+export const PRIVATE_ENDPOINT_TYPE_ITEMS: SelectableItem[] = [
+  { id: 'none', title: 'None', description: 'The IdP discovery endpoint is publicly reachable' },
+  {
+    id: 'lattice',
+    title: 'VPC Lattice resource',
+    description: 'Reach the discovery endpoint via a self-managed VPC Lattice resource configuration',
+  },
+  {
+    id: 'vpc',
+    title: 'Managed VPC endpoint',
+    description: 'Reach the discovery endpoint via a service-managed VPC interface endpoint',
+  },
+];
+
+export const ENDPOINT_IP_TYPE_ITEMS: SelectableItem[] = [
+  { id: 'IPV4', title: 'IPV4', description: 'IPv4 addressing' },
+  { id: 'IPV6', title: 'IPV6', description: 'IPv6 addressing' },
+];
 
 export type ClaimValueType = 'STRING' | 'STRING_ARRAY';
 export type ClaimOperator = 'EQUALS' | 'CONTAINS' | 'CONTAINS_ANY';
@@ -23,6 +53,22 @@ export interface CustomClaimEntry {
 }
 
 export type ClaimsManagerMode = 'list' | 'add' | 'edit-pick' | 'edit' | 'delete-pick';
+
+/**
+ * A per-domain private-endpoint override. Lattice-only: a domain mapped to its own VPC Lattice
+ * resource-config (mirrors the AWS Console, which surfaces overrides only under the self-managed arm
+ * and only as a {domain, resourceConfigurationId} pair).
+ */
+export interface DomainOverrideEntry {
+  domain: string;
+  resourceConfigurationId: string;
+}
+
+export type DomainOverridesManagerMode = 'list' | 'add' | 'edit-pick' | 'edit' | 'delete-pick';
+
+export function formatOverrideSummary(o: DomainOverrideEntry): string {
+  return `${o.domain} → ${o.resourceConfigurationId}`;
+}
 
 export const CONSTRAINT_ITEMS: SelectableItem[] = [
   { id: 'audience', title: 'Allowed Audiences', description: 'Validate token audience claims' },

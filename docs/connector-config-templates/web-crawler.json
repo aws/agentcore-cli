@@ -1,0 +1,16 @@
+{
+  "type": "WEB",
+  "version": "1",
+  "connectionConfiguration": {
+    "authType": "NO_AUTH",
+    "seedUrls": ["https://docs.example.com/"],
+    "siteMapUrls": []
+  },
+  "crawlConfiguration": {
+    "syncScope": "PATH_SPECIFIC",
+    "crawlDepth": 2,
+    "maxCrawledUrlsPerMinute": 300,
+    "maxLinksPerUrl": 100,
+    "crawlAttachments": false
+  }
+}

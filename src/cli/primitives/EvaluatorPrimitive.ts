@@ -5,7 +5,7 @@ import { EvaluationLevelSchema, EvaluatorSchema, isValidKmsKeyArn } from '../../
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand } from '../telemetry/cli-command-run.js';
-import { EvaluatorType, Level, standardize } from '../telemetry/schemas/common-shapes.js';
+import { EvaluatorLevel, EvaluatorType, standardize } from '../telemetry/schemas/common-shapes.js';
 import { renderCodeBasedEvaluatorTemplate } from '../templates/EvaluatorRenderer';
 import { requireTTY } from '../tui/guards/tty';
 import {
@@ -73,7 +73,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
       }
 
       // Warn if referenced by online eval configs
-      const referencingConfigs = project.onlineEvalConfigs.filter(c => c.evaluators.includes(evaluatorName));
+      const referencingConfigs = project.onlineEvalConfigs.filter(c => c.evaluators?.includes(evaluatorName));
       if (referencingConfigs.length > 0) {
         const configNames = referencingConfigs.map(c => c.name).join(', ');
         return {
@@ -116,7 +116,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
     const directoriesToDelete: string[] = [];
     const schemaChanges: SchemaChange[] = [];
 
-    const referencingConfigs = project.onlineEvalConfigs.filter(c => c.evaluators.includes(evaluatorName));
+    const referencingConfigs = project.onlineEvalConfigs.filter(c => c.evaluators?.includes(evaluatorName));
     if (referencingConfigs.length > 0) {
       summary.push(
         `Blocked: Referenced by online eval config(s): ${referencingConfigs.map(c => c.name).join(', ')}. Remove those references first.`
@@ -329,7 +329,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
 
               return {
                 evaluator_type: standardize(EvaluatorType, evalType),
-                level: standardize(Level, levelResult.data),
+                evaluator_level: standardize(EvaluatorLevel, levelResult.data),
               };
             });
           } else {

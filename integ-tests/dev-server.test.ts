@@ -1,4 +1,4 @@
-import { runCLI } from '../src/test-utils/index.js';
+import { createTelemetryHelper, runCLI } from '../src/test-utils/index.js';
 import { type ChildProcess, execSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
@@ -38,6 +38,8 @@ describe('integration: dev server', () => {
   let projectPath: string;
   let devProcess: ChildProcess | null = null;
 
+  const telemetry = createTelemetryHelper();
+
   beforeAll(async () => {
     testDir = join(tmpdir(), `agentcore-integ-dev-${randomUUID()}`);
     await mkdir(testDir, { recursive: true });
@@ -63,10 +65,12 @@ describe('integration: dev server', () => {
       { skipInstall: false }
     );
 
-    if (result.exitCode === 0) {
-      const json = JSON.parse(result.stdout);
-      projectPath = json.projectPath;
+    if (result.exitCode !== 0) {
+      throw new Error(`Project creation failed (exit ${result.exitCode}): ${result.stderr || result.stdout}`);
     }
+
+    const json = JSON.parse(result.stdout);
+    projectPath = json.projectPath;
   }, 120000);
 
   afterEach(() => {
@@ -81,11 +85,12 @@ describe('integration: dev server', () => {
     if (devProcess) {
       devProcess.kill('SIGKILL');
     }
+    telemetry.destroy();
     await rm(testDir, { recursive: true, force: true });
   });
 
   it.skipIf(!hasNpm || !hasGit || !hasUv)(
-    'starts dev server and responds to health check',
+    'starts dev server, responds to health check, and emits telemetry',
     async () => {
       expect(projectPath, 'Project should have been created').toBeTruthy();
 
@@ -95,16 +100,116 @@ describe('integration: dev server', () => {
       devProcess = spawn('node', [cliPath, 'dev', '--port', String(port), '--logs'], {
         cwd: projectPath,
         stdio: 'pipe',
-        env: { ...process.env, INIT_CWD: undefined },
+        env: { ...process.env, INIT_CWD: undefined, ...telemetry.env },
       });
 
       const serverReady = await waitForServer(port, 20000);
       expect(serverReady, 'Dev server should respond to ping within 20s').toBeTruthy();
 
+      // Verify telemetry was emitted for the server startup (before blocking)
+      telemetry.assertMetricEmitted({
+        command: 'dev',
+        dev_action: 'server',
+        ui_mode: 'terminal',
+        agent_environment: 'runtime',
+        exit_reason: 'success',
+      });
+      telemetry.clearEntries();
+
+      // Invoke the running server and verify telemetry
+      const invokeResult = await runCLI(['dev', 'hello', '--port', String(port)], projectPath, {
+        env: telemetry.env,
+      });
+      expect(invokeResult.exitCode).toBe(0);
+
+      telemetry.assertMetricEmitted({
+        command: 'dev',
+        dev_action: 'invoke',
+        ui_mode: 'terminal',
+        agent_environment: 'runtime',
+        exit_reason: 'success',
+        agent_protocol: 'http',
+      });
+
+      // Verify failure telemetry when invoking a non-running port
+      telemetry.clearEntries();
+      const failResult = await runCLI(['dev', 'hello', '--port', '19999'], projectPath, { env: telemetry.env });
+      expect(failResult.exitCode).toBe(1);
+
+      telemetry.assertMetricEmitted({
+        command: 'dev',
+        dev_action: 'invoke',
+        agent_environment: 'runtime',
+        exit_reason: 'failure',
+      });
+
       // Clean shutdown
       devProcess.kill('SIGTERM');
       devProcess = null;
     },
-    30000
+    60000
   );
+
+  it.skipIf(!hasNpm || !hasGit || !hasUv)(
+    'exits with error when runtime not found and emits failure telemetry',
+    async () => {
+      expect(projectPath, 'Project should have been created').toBeTruthy();
+
+      telemetry.clearEntries();
+      const result = await runCLI(['dev', '--logs', '--runtime', 'nonexistent-agent'], projectPath, {
+        env: telemetry.env,
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('nonexistent-agent');
+      expect(result.stderr).toContain('not found');
+
+      telemetry.assertMetricEmitted({
+        command: 'dev',
+        dev_action: 'server',
+        agent_environment: 'runtime',
+        exit_reason: 'failure',
+      });
+    },
+    15000
+  );
+});
+
+describe.skipIf(!hasNpm || !hasGit || !hasUv)('integration: dev with harness-only project', () => {
+  const telemetry = createTelemetryHelper();
+  let projectPath: string;
+
+  beforeAll(async () => {
+    const dir = join(tmpdir(), `agentcore-dev-harness-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+
+    // Create a harness-only project
+    const createResult = await runCLI(
+      ['create', '--name', 'DevHarness', '--model-provider', 'bedrock', '--json'],
+      dir,
+      { env: telemetry.env }
+    );
+    const json = JSON.parse(createResult.stdout);
+    projectPath = json.projectPath;
+  });
+
+  afterAll(async () => {
+    telemetry.destroy();
+    if (projectPath) await rm(projectPath, { recursive: true, force: true });
+  });
+
+  // This test currently fails due to https://github.com/aws/agentcore-cli/issues/1406
+  it.skip('dev --logs on harness-only project should fail with validation error', async () => {
+    telemetry.clearEntries();
+    const result = await runCLI(['dev', '--logs', '--skip-deploy'], projectPath, { env: telemetry.env });
+
+    expect(result.exitCode).toBe(1);
+
+    telemetry.assertMetricEmitted({
+      command: 'dev',
+      dev_action: 'server',
+      agent_environment: 'harness',
+      exit_reason: 'failure',
+    });
+  });
 });

@@ -9,7 +9,6 @@ import { describe, expect, it } from 'vitest';
 describe('ToolNameSchema', () => {
   it('accepts valid names', () => {
     expect(ToolNameSchema.safeParse('myTool').success).toBe(true);
-    expect(ToolNameSchema.safeParse('get_user').success).toBe(true);
     expect(ToolNameSchema.safeParse('search-results').success).toBe(true);
   });
 
@@ -18,6 +17,10 @@ describe('ToolNameSchema', () => {
     expect(ToolNameSchema.safeParse('1tool').success).toBe(false);
     expect(ToolNameSchema.safeParse('-tool').success).toBe(false);
     expect(ToolNameSchema.safeParse('my.tool').success).toBe(false);
+  });
+
+  it('rejects underscores', () => {
+    expect(ToolNameSchema.safeParse('get_user').success).toBe(false);
   });
 
   it('enforces 128-char boundary', () => {

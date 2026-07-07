@@ -1,13 +1,35 @@
-import type { AddOnlineEvalConfig, AddOnlineEvalStep } from './types';
+import type { AddOnlineEvalConfig, AddOnlineEvalStep, OnlineEvalSource } from './types';
 import { DEFAULT_SAMPLING_RATE } from './types';
 import { useCallback, useRef, useState } from 'react';
 
 function getAllSteps(agentCount: number): AddOnlineEvalStep[] {
   if (agentCount <= 1) {
     // endpoint step is included but will be skipped dynamically when no endpoints exist
-    return ['name', 'endpoint', 'evaluators', 'samplingRate', 'enableOnCreate', 'confirm'];
+    // source step routes to either agent/endpoint OR logGroupNames/serviceName
+    return [
+      'name',
+      'source',
+      'endpoint',
+      'logGroupNames',
+      'serviceName',
+      'evaluators',
+      'samplingRate',
+      'enableOnCreate',
+      'confirm',
+    ];
   }
-  return ['name', 'agent', 'endpoint', 'evaluators', 'samplingRate', 'enableOnCreate', 'confirm'];
+  return [
+    'name',
+    'source',
+    'agent',
+    'endpoint',
+    'logGroupNames',
+    'serviceName',
+    'evaluators',
+    'samplingRate',
+    'enableOnCreate',
+    'confirm',
+  ];
 }
 
 function getDefaultConfig(): AddOnlineEvalConfig {
@@ -15,6 +37,8 @@ function getDefaultConfig(): AddOnlineEvalConfig {
     name: '',
     agent: '',
     endpoint: undefined,
+    logGroupNames: undefined,
+    serviceNames: undefined,
     evaluators: [],
     samplingRate: DEFAULT_SAMPLING_RATE,
     enableOnCreate: true,
@@ -27,6 +51,7 @@ export function useAddOnlineEvalWizard(agentCount: number) {
   const allSteps = getAllSteps(agentCount);
   const [config, setConfig] = useState<AddOnlineEvalConfig>(getDefaultConfig);
   const [step, setStep] = useState<AddOnlineEvalStep>(allSteps[0]!);
+  const [source, setSourceState] = useState<OnlineEvalSource>('agentcore-runtime');
   const skipCheckRef = useRef<StepSkipCheck>(() => false);
 
   const currentIndex = allSteps.indexOf(step);
@@ -66,6 +91,21 @@ export function useAddOnlineEvalWizard(agentCount: number) {
     [nextStep, setConfig, setStep]
   );
 
+  const setSource = useCallback(
+    (selectedSource: OnlineEvalSource) => {
+      setSourceState(selectedSource);
+      // Reset fields based on source selection
+      if (selectedSource === 'cloudwatch-logs') {
+        setConfig(c => ({ ...c, agent: '', endpoint: undefined, logGroupNames: undefined, serviceNames: undefined }));
+      } else {
+        setConfig(c => ({ ...c, logGroupNames: undefined, serviceNames: undefined }));
+      }
+      const next = nextStep('source');
+      if (next) setStep(next);
+    },
+    [nextStep, setSourceState, setConfig, setStep]
+  );
+
   const setAgent = useCallback(
     (agent: string) => {
       setConfig(c => ({ ...c, agent, endpoint: undefined }));
@@ -79,6 +119,24 @@ export function useAddOnlineEvalWizard(agentCount: number) {
     (endpoint: string | undefined) => {
       setConfig(c => ({ ...c, endpoint }));
       const next = nextStep('endpoint');
+      if (next) setStep(next);
+    },
+    [nextStep, setConfig, setStep]
+  );
+
+  const setLogGroupNames = useCallback(
+    (logGroupNames: string[]) => {
+      setConfig(c => ({ ...c, logGroupNames }));
+      const next = nextStep('logGroupNames');
+      if (next) setStep(next);
+    },
+    [nextStep, setConfig, setStep]
+  );
+
+  const setServiceNames = useCallback(
+    (serviceNames: string[]) => {
+      setConfig(c => ({ ...c, serviceNames: serviceNames.length > 0 ? serviceNames : undefined }));
+      const next = nextStep('serviceName');
       if (next) setStep(next);
     },
     [nextStep, setConfig, setStep]
@@ -113,19 +171,24 @@ export function useAddOnlineEvalWizard(agentCount: number) {
 
   const reset = useCallback(() => {
     setConfig(getDefaultConfig());
+    setSourceState('agentcore-runtime');
     setStep(allSteps[0]!);
-  }, [allSteps, setConfig, setStep]);
+  }, [allSteps, setSourceState, setConfig, setStep]);
 
   return {
     config,
     step,
     steps: allSteps,
     currentIndex,
+    source,
     goBack,
     setSkipCheck,
     setName,
+    setSource,
     setAgent,
     setEndpoint,
+    setLogGroupNames,
+    setServiceNames,
     setEvaluators,
     setSamplingRate,
     setEnableOnCreate,

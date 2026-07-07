@@ -183,7 +183,7 @@ function getGitLog(sinceTag?: string): string {
     } else {
       // Try to get the last tag
       try {
-        const lastTag = execSync('git describe --tags --abbrev=0', { encoding: 'utf-8' }).trim();
+        const lastTag = execSync("git describe --tags --abbrev=0 --match 'v*'", { encoding: 'utf-8' }).trim();
         cmd += ` ${lastTag}..HEAD`;
       } catch {
         // No tags exist, get last 20 commits
@@ -218,11 +218,11 @@ function categorizeCommits(gitLog: string): CategorizedChanges {
 
     const msg = trimmed.slice(2).trim();
 
-    if (msg.startsWith('feat:') || msg.startsWith('feature:')) {
+    if (/^(feat|feature)(\(.*?\))?:/.test(msg)) {
       result.features.push(msg);
-    } else if (msg.startsWith('fix:') || msg.startsWith('bugfix:')) {
+    } else if (/^(fix|bugfix)(\(.*?\))?:/.test(msg)) {
       result.fixes.push(msg);
-    } else if (msg.startsWith('docs:') || msg.startsWith('doc:')) {
+    } else if (/^docs?(\(.*?\))?:/.test(msg)) {
       result.docs.push(msg);
     } else {
       result.other.push(msg);

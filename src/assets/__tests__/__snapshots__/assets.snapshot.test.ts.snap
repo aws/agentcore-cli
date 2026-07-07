@@ -44,8 +44,8 @@ agentcore status    # checks deployment status
 
 exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/bin/cdk.ts should match snapshot 1`] = `
 "#!/usr/bin/env node
-import { AgentCoreStack } from '../lib/cdk-stack';
-import { ConfigIO, type AwsDeploymentTarget } from '@aws/agentcore-cdk';
+import { AgentCoreStack, type HarnessConfig } from '../lib/cdk-stack';
+import { ConfigIO, HarnessSpecSchema, type AwsDeploymentTarget } from '@aws/agentcore-cdk';
 import { App, type Environment } from 'aws-cdk-lib';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -73,12 +73,14 @@ async function main() {
   const spec = await configIO.readProjectSpec();
   const targets = await configIO.readAWSDeploymentTargets();
 
-  // Extract MCP configuration from project spec.
-  // Gateway fields are stored in agentcore.json but may not yet be on the
-  // AgentCoreProjectSpec type from @aws/agentcore-cdk, so we read them
-  // dynamically and cast the resulting object.
+  // The vended CDK project compiles against the published @aws/agentcore-cdk
+  // schema type, which may lag the CLI's own AgentCoreProjectSpec (e.g. payments,
+  // harnesses, gateway fields). Cast once so those fields are reachable.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const specAny = spec as any;
+
+  // Extract MCP configuration from project spec.
+  // Gateway fields are stored in agentcore.json but may not yet be on the
   const mcpSpec = specAny.agentCoreGateways?.length
     ? {
         agentCoreGateways: specAny.agentCoreGateways,
@@ -99,6 +101,63 @@ async function main() {
     throw new Error('No deployment targets configured. Please define targets in agentcore/aws-targets.json');
   }
 
+  // Read harness configs: the full validated spec drives the CFN resource; the
+  // role-scoped fields drive the IAM role + container build.
+  const projectRoot = path.resolve(configRoot, '..');
+
+  // Read non-S3 KB connector-config files and pass their parsed contents to the
+  // L3 verbatim. The L3 does not read files; it expects the parsed
+  // connectorParameters keyed by the data source's connectorConfigFile path.
+  const connectorParametersByFile: Record<string, Record<string, unknown>> = {};
+  for (const kb of specAny.knowledgeBases ?? []) {
+    for (const ds of kb.dataSources ?? []) {
+      if (ds.type !== 'S3' && ds.connectorConfigFile) {
+        const abs = path.resolve(projectRoot, ds.connectorConfigFile);
+        try {
+          connectorParametersByFile[ds.connectorConfigFile] = JSON.parse(fs.readFileSync(abs, 'utf-8'));
+        } catch (err) {
+          throw new Error(
+            \`Could not read connector config '\${ds.connectorConfigFile}' for knowledge base '\${kb.name}' at \${abs}: \${err instanceof Error ? err.message : err}\`
+          );
+        }
+      }
+    }
+  }
+
+  // Synthesize an AWS::BedrockAgentCore::Harness resource for each harness entry in the spec.
+  const harnessConfigs: HarnessConfig[] = [];
+  for (const entry of specAny.harnesses ?? []) {
+    const harnessDir = path.resolve(projectRoot, entry.path);
+    const harnessPath = path.resolve(harnessDir, 'harness.json');
+    try {
+      const harnessSpec = HarnessSpecSchema.parse(JSON.parse(fs.readFileSync(harnessPath, 'utf-8')));
+      harnessConfigs.push({
+        name: entry.name,
+        executionRoleArn: harnessSpec.executionRoleArn,
+        // Only an \`existing\` memory ref carries a name to wire IAM against; managed memory is
+        // owned by the harness (no sibling) and disabled has none — both resolve to undefined.
+        memoryName: harnessSpec.memory?.mode === 'existing' ? harnessSpec.memory.name : undefined,
+        containerUri: harnessSpec.containerUri,
+        hasDockerfile: !!harnessSpec.dockerfile,
+        dockerfile: harnessSpec.dockerfile,
+        codeLocation: harnessSpec.dockerfile ? harnessDir : undefined,
+        tools: harnessSpec.tools,
+        skills: harnessSpec.skills,
+        apiKeyArn: harnessSpec.model?.apiKeyArn,
+        efsAccessPoints: harnessSpec.efsAccessPoints,
+        s3AccessPoints: harnessSpec.s3AccessPoints,
+        apiFormat: harnessSpec.model?.apiFormat,
+        // Full spec + dir drive the AWS::BedrockAgentCore::Harness CFN resource.
+        spec: harnessSpec,
+        harnessDir,
+      });
+    } catch (err) {
+      throw new Error(
+        \`Could not read harness.json for "\${entry.name}" at \${harnessPath}: \${err instanceof Error ? err.message : err}\`
+      );
+    }
+  }
+
   const app = new App();
 
   for (const target of targets) {
@@ -114,10 +173,52 @@ async function main() {
       | Record<string, { credentialProviderArn: string; clientSecretArn?: string }>
       | undefined;
 
+    // Payment credential provider ARNs live in the same credentials map as identity credentials
+    const paymentCredentials = credentials;
+
+    const paymentSpec = specAny.payments?.length
+      ? specAny.payments.map(
+          (p: {
+            name: string;
+            description?: string;
+            authorizerType: 'AWS_IAM' | 'CUSTOM_JWT';
+            authorizerConfiguration?: unknown;
+            autoPayment?: boolean;
+            paymentToolAllowlist?: string[];
+            networkPreferences?: string[];
+            connectors: { name: string; provider?: string; credentialName: string }[];
+          }) => ({
+            name: p.name,
+            description: p.description,
+            authorizerType: p.authorizerType,
+            authorizerConfiguration: p.authorizerConfiguration,
+            autoPayment: p.autoPayment,
+            paymentToolAllowlist: p.paymentToolAllowlist,
+            networkPreferences: p.networkPreferences,
+            connectors: p.connectors.map(c => {
+              const credentialProviderArn = paymentCredentials?.[c.credentialName]?.credentialProviderArn;
+              if (!credentialProviderArn) {
+                // Fail fast with an actionable message rather than passing an empty
+                // ARN that fails opaquely server-side at CreatePaymentConnector.
+                throw new Error(
+                  \`Payment connector "\${c.name}" on manager "\${p.name}" references credential \` +
+                    \`"\${c.credentialName}", but no deployed credential provider was found for it. \` +
+                    \`Run \\\`agentcore deploy\\\` so the credential provider is created first.\`
+                );
+              }
+              return { name: c.name, provider: c.provider, credentialProviderArn };
+            }),
+          })
+        )
+      : undefined;
+
     new AgentCoreStack(app, stackName, {
       spec,
       mcpSpec,
       credentials,
+      connectorParametersByFile,
+      harnesses: harnessConfigs.length > 0 ? harnessConfigs : undefined,
+      paymentSpec,
       env,
       description: \`AgentCore stack for \${spec.name} deployed to \${target.name} (\${target.region})\`,
       tags: {
@@ -132,7 +233,7 @@ async function main() {
 
 main().catch((error: unknown) => {
   console.error('AgentCore CDK synthesis failed:', error instanceof Error ? error.message : error);
-  process.exitCode = 1;
+  process.exit(1);
 });
 "
 `;
@@ -259,11 +360,40 @@ exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/lib/cdk-stack.ts shou
 "import {
   AgentCoreApplication,
   AgentCoreMcp,
+  AgentCorePaymentManager,
+  AgentCorePaymentConnector,
   type AgentCoreProjectSpec,
   type AgentCoreMcpSpec,
+  type CustomJWTAuthorizerConfig,
+  type HarnessDeploymentConfig,
 } from '@aws/agentcore-cdk';
 import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
+
+/**
+ * Harness deployment config: role-scoped fields (for IAM role + container build)
+ * plus the full validated spec + its config directory so the L3 construct can
+ * synthesize the AWS::BedrockAgentCore::Harness resource.
+ */
+export type HarnessConfig = HarnessDeploymentConfig;
+
+export interface PaymentConnectorSpec {
+  name: string;
+  provider: 'CoinbaseCDP' | 'StripePrivy';
+  credentialProviderArn: string;
+}
+
+export interface PaymentSpec {
+  name: string;
+  description?: string;
+  authorizerType: 'AWS_IAM' | 'CUSTOM_JWT';
+  authorizerConfiguration?: { customJWTAuthorizer: CustomJWTAuthorizerConfig };
+  autoPayment?: boolean;
+  paymentToolAllowlist?: string[];
+  networkPreferences?: string[];
+  connectors: PaymentConnectorSpec[];
+}
 
 export interface AgentCoreStackProps extends StackProps {
   /**
@@ -278,6 +408,39 @@ export interface AgentCoreStackProps extends StackProps {
    * Credential provider ARNs from deployed state, keyed by credential name.
    */
   credentials?: Record<string, { credentialProviderArn: string; clientSecretArn?: string }>;
+  /**
+   * Harness role configurations.
+   */
+  harnesses?: HarnessConfig[];
+  /**
+   * Parsed connectorParameters for non-S3 KB data sources, keyed by
+   * connectorConfigFile path. Forwarded to AgentCoreApplication.
+   */
+  connectorParametersByFile?: Record<string, Record<string, unknown>>;
+  /**
+   * Payment specifications with resolved credential provider ARNs.
+   */
+  paymentSpec?: PaymentSpec[];
+}
+
+function toCdkId(name: string): string {
+  return name.replace(/_/g, '');
+}
+
+/**
+ * Decide whether a deployed runtime should receive payment env vars + IAM grants.
+ * Payments today only ships a runtime shim for Python HTTP runtimes; injecting
+ * AGENTCORE_PAYMENT_* env vars into TypeScript / MCP / A2A / AGUI runtimes
+ * would surface env vars they cannot consume and would dilute least-privilege
+ * IAM grants for runtimes that never call ProcessPayment.
+ */
+function isPaymentEligibleAgent(agent: { entrypoint?: string; protocol?: string }): boolean {
+  if (agent.protocol && agent.protocol !== 'HTTP') {
+    return false;
+  }
+  const entrypoint = typeof agent.entrypoint === 'string' ? agent.entrypoint : '';
+  const entrypointFile = entrypoint.split(':')[0] ?? '';
+  return entrypointFile.endsWith('.py');
 }
 
 /**
@@ -293,12 +456,21 @@ export class AgentCoreStack extends Stack {
   constructor(scope: Construct, id: string, props: AgentCoreStackProps) {
     super(scope, id, props);
 
-    const { spec, mcpSpec, credentials } = props;
+    const { spec, mcpSpec, credentials, harnesses, connectorParametersByFile, paymentSpec } = props;
 
-    // Create AgentCoreApplication with all agents
-    this.application = new AgentCoreApplication(this, 'Application', {
-      spec,
-    });
+    // Create AgentCoreApplication with all agents and harness roles
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const appProps: Record<string, unknown> = { spec };
+    if (harnesses?.length) {
+      appProps.harnesses = harnesses;
+    }
+    if (connectorParametersByFile && Object.keys(connectorParametersByFile).length > 0) {
+      appProps.connectorParametersByFile = connectorParametersByFile;
+    }
+    if (credentials) {
+      appProps.credentials = credentials;
+    }
+    this.application = new AgentCoreApplication(this, 'Application', appProps as any);
 
     // Create AgentCoreMcp if there are gateways configured
     if (mcpSpec?.agentCoreGateways && mcpSpec.agentCoreGateways.length > 0) {
@@ -309,6 +481,122 @@ export class AgentCoreStack extends Stack {
         credentials,
         projectTags: spec.tags,
       });
+    }
+
+    // Create payment infrastructure via CFN constructs
+    if (paymentSpec && paymentSpec.length > 0) {
+      for (const payment of paymentSpec) {
+        const mgrId = toCdkId(payment.name);
+        const manager = new AgentCorePaymentManager(this, \`Payment\${mgrId}\`, {
+          projectName: spec.name,
+          name: payment.name,
+          authorizerType: payment.authorizerType,
+          description: payment.description,
+          authorizerConfiguration: payment.authorizerConfiguration,
+          tags: spec.tags,
+        });
+
+        const prefix = \`AGENTCORE_PAYMENT_\${payment.name.toUpperCase().replace(/-/g, '_')}\`;
+
+        // Wire env vars from construct output tokens into eligible agent environments only.
+        // See isPaymentEligibleAgent — non-Python or non-HTTP runtimes have no shim that
+        // can consume these env vars, and giving them sts:AssumeRole on the
+        // ProcessPaymentRole would broaden the privilege surface unnecessarily.
+        for (const env of this.application.environments.values()) {
+          if (!isPaymentEligibleAgent(env.agent)) {
+            continue;
+          }
+          env.runtime.addEnvironmentVariable(\`\${prefix}_MANAGER_ARN\`, manager.paymentManagerArn);
+          env.runtime.addEnvironmentVariable(\`\${prefix}_PROCESS_PAYMENT_ROLE_ARN\`, manager.processPaymentRoleArn);
+
+          // Grant runtime execution role permission to assume the ProcessPaymentRole.
+          // The ProcessPaymentRole's trust policy allows AccountRootPrincipal, but the
+          // caller still needs sts:AssumeRole on its own role to perform the assumption.
+          env.runtime.role.addToPrincipalPolicy(
+            new iam.PolicyStatement({
+              actions: ['sts:AssumeRole'],
+              resources: [manager.processPaymentRoleArn],
+            })
+          );
+
+          // Grant payment data-plane actions directly to the runtime role.
+          //
+          // NOTE: This deviates from the canonical role model in the AgentCore Payments
+          // beta guide, which assigns Get/List/Create instrument+session actions to a
+          // separate ManagementRole and limits the agent's role to ProcessPayment only.
+          // The current SDK plugin (AgentCorePaymentsPlugin.generate_payment_header)
+          // calls GetPaymentInstrument internally during the 402 auto-pay path, so the
+          // runtime role needs read access. CreatePaymentSession is included so
+          // \`agentcore invoke --auto-session\` works without a separate ManagementRole
+          // call. Tighten this if the SDK is updated to accept pre-fetched instrument
+          // details and split create-session into a backend-only flow.
+          env.runtime.role.addToPrincipalPolicy(
+            new iam.PolicyStatement({
+              actions: [
+                'bedrock-agentcore:GetPaymentInstrument',
+                'bedrock-agentcore:ListPaymentInstruments',
+                'bedrock-agentcore:GetPaymentInstrumentBalance',
+                'bedrock-agentcore:GetPaymentSession',
+                'bedrock-agentcore:ListPaymentSessions',
+                'bedrock-agentcore:CreatePaymentSession',
+                'bedrock-agentcore:ProcessPayment',
+              ],
+              resources: [manager.paymentManagerArn, \`\${manager.paymentManagerArn}/*\`],
+            })
+          );
+
+          if (payment.autoPayment !== undefined) {
+            env.runtime.addEnvironmentVariable(\`\${prefix}_AUTO_PAYMENT\`, String(payment.autoPayment));
+          }
+          if (payment.paymentToolAllowlist) {
+            env.runtime.addEnvironmentVariable(\`\${prefix}_TOOL_ALLOWLIST\`, payment.paymentToolAllowlist.join(','));
+          }
+          if (payment.networkPreferences) {
+            env.runtime.addEnvironmentVariable(\`\${prefix}_NETWORK_PREFERENCES\`, payment.networkPreferences.join(','));
+          }
+          if (payment.authorizerType === 'CUSTOM_JWT') {
+            env.runtime.addEnvironmentVariable(\`\${prefix}_AUTH_MODE\`, 'bearer');
+          }
+        }
+
+        // Create connectors for this manager
+        for (const connector of payment.connectors) {
+          const connId = toCdkId(connector.name);
+          const conn = new AgentCorePaymentConnector(this, \`Payment\${mgrId}\${connId}\`, {
+            projectName: spec.name,
+            paymentManager: manager,
+            connectorName: connector.name,
+            connectorType: connector.provider,
+            credentialProviderArn: connector.credentialProviderArn,
+          });
+
+          // Wire first connector's ID as env var (eligible agents only)
+          if (connector === payment.connectors[0]) {
+            for (const env of this.application.environments.values()) {
+              if (!isPaymentEligibleAgent(env.agent)) continue;
+              env.runtime.addEnvironmentVariable(\`\${prefix}_CONNECTOR_ID\`, conn.paymentConnectorId);
+            }
+          }
+
+          new CfnOutput(this, \`Payment\${mgrId}\${connId}ConnectorId\`, {
+            value: conn.paymentConnectorId,
+          });
+        }
+
+        // CFN Outputs for post-deploy state parsing
+        new CfnOutput(this, \`Payment\${mgrId}ManagerArn\`, {
+          value: manager.paymentManagerArn,
+        });
+        new CfnOutput(this, \`Payment\${mgrId}ManagerId\`, {
+          value: manager.paymentManagerId,
+        });
+        new CfnOutput(this, \`Payment\${mgrId}ProcessPaymentRoleArn\`, {
+          value: manager.processPaymentRoleArn,
+        });
+        new CfnOutput(this, \`Payment\${mgrId}ResourceRetrievalRoleArn\`, {
+          value: manager.resourceRetrievalRoleArn,
+        });
+      }
     }
 
     // Stack-level output
@@ -352,7 +640,7 @@ exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/package.json should m
     "@types/node": "^24.10.1",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.5",
-    "aws-cdk": "2.1100.1",
+    "aws-cdk": "2.1126.0",
     "prettier": "^3.4.2",
     "typescript": "~5.9.3"
   },
@@ -384,9 +672,12 @@ test('AgentCoreStack synthesizes with empty spec', () => {
       onlineEvalConfigs: [],
       configBundles: [],
       policyEngines: [],
+      payments: [],
       agentCoreGateways: [],
       mcpRuntimeTools: [],
       unassignedTargets: [],
+      datasets: [],
+      knowledgeBases: [],
     },
   });
   const template = Template.fromStack(stack);
@@ -447,9 +738,14 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "cdk/tsconfig.json",
   "container/python/Dockerfile",
   "container/python/dockerignore.template",
+  "container/typescript/Dockerfile",
+  "container/typescript/dockerignore.template",
+  "datasets/predefined-v1.jsonl",
+  "datasets/simulated-v1.jsonl",
   "evaluators/python-lambda/execution-role-policy.json",
   "evaluators/python-lambda/lambda_function.py",
   "evaluators/python-lambda/pyproject.toml",
+  "harness/invoke.py.template",
   "mcp/python-lambda/README.md",
   "mcp/python-lambda/handler.py",
   "mcp/python-lambda/pyproject.toml",
@@ -535,14 +831,33 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "python/http/strands/base/mcp_client/client.py",
   "python/http/strands/base/model/__init__.py",
   "python/http/strands/base/model/load.py",
+  "python/http/strands/base/model/mantle_compat.py",
   "python/http/strands/base/pyproject.toml",
+  "python/http/strands/base/skills/fetcher.py",
+  "python/http/strands/capabilities/execution-limits/hooks/execution_limits.py",
   "python/http/strands/capabilities/memory/__init__.py",
   "python/http/strands/capabilities/memory/session.py",
+  "python/http/strands/capabilities/payments/__init__.py",
+  "python/http/strands/capabilities/payments/payments.py",
   "python/mcp/standalone/base/README.md",
   "python/mcp/standalone/base/gitignore.template",
   "python/mcp/standalone/base/main.py",
   "python/mcp/standalone/base/pyproject.toml",
   "typescript/.gitkeep",
+  "typescript/http/strands/base/README.md",
+  "typescript/http/strands/base/gitignore.template",
+  "typescript/http/strands/base/main.ts",
+  "typescript/http/strands/base/mcp_client/client.ts",
+  "typescript/http/strands/base/model/load.ts",
+  "typescript/http/strands/base/package.json",
+  "typescript/http/strands/base/tsconfig.json",
+  "typescript/http/strands/capabilities/memory/memory.ts",
+  "typescript/http/vercelai/base/README.md",
+  "typescript/http/vercelai/base/gitignore.template",
+  "typescript/http/vercelai/base/main.ts",
+  "typescript/http/vercelai/base/model/load.ts",
+  "typescript/http/vercelai/base/package.json",
+  "typescript/http/vercelai/base/tsconfig.json",
 ]
 `;
 
@@ -989,7 +1304,9 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/googleadk/base/main.py should match snapshot 1`] = `
-"import os
+"{{#if needsOs}}
+import os
+{{/if}}
 from google.adk.agents import Agent
 from google.adk.a2a.executor.a2a_agent_executor import A2aAgentExecutor
 from google.adk.runners import Runner
@@ -1008,18 +1325,21 @@ def add_numbers(a: int, b: int) -> int:
 
 tools = [add_numbers]
 
-{{#if sessionStorageMountPath}}
-SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
 
 def _safe_resolve(path: str) -> str:
-    """Resolve path safely within the storage boundary."""
-    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
-    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
-        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 
 def file_read(path: str) -> str:
-    """Read a file from persistent storage. The path is relative to the storage root."""
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         with open(full_path) as f:
@@ -1030,7 +1350,7 @@ def file_read(path: str) -> str:
         return f"Error reading '{path}': {e.strerror}"
 
 def file_write(path: str, content: str) -> str:
-    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         parent = os.path.dirname(full_path)
@@ -1044,25 +1364,28 @@ def file_write(path: str, content: str) -> str:
     except OSError as e:
         return f"Error writing '{path}': {e.strerror}"
 
-def list_files(directory: str = "") -> str:
-    """List files in persistent storage. The directory is relative to the storage root."""
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
     try:
-        target = _safe_resolve(directory)
-        entries = os.listdir(target)
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
         return "\\n".join(entries) if entries else "(empty directory)"
     except ValueError as e:
         return str(e)
     except OSError as e:
-        return f"Error listing '{directory}': {e.strerror}"
+        return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([file_read, file_write, list_files])
 {{/if}}
 
 AGENT_INSTRUCTION = """
 You are a helpful assistant. Use tools when appropriate.
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}
 """
 
 agent = Agent(
@@ -1167,8 +1490,8 @@ dependencies = [
     "a2a-sdk >= 0.2.0, < 1.0.0",
     "aws-opentelemetry-distro",
     "bedrock-agentcore[a2a] >= 1.0.3",
-    "google-adk >= 1.0.0",
-    "google-genai >= 1.0.0",
+    "google-adk >= 1.0.0, < 2.0.0",
+    "google-genai >= 1.0.0, < 2.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -1248,7 +1571,9 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/langchain_langgraph/base/main.py should match snapshot 1`] = `
-"import os
+"{{#if needsOs}}
+import os
+{{/if}}
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 from opentelemetry.instrumentation.langchain import LangchainInstrumentor
@@ -1271,19 +1596,22 @@ def add_numbers(a: int, b: int) -> int:
 
 tools = [add_numbers]
 
-{{#if sessionStorageMountPath}}
-SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
 
 def _safe_resolve(path: str) -> str:
-    """Resolve path safely within the storage boundary."""
-    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
-    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
-        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 
 @tool
 def file_read(path: str) -> str:
-    """Read a file from persistent storage. The path is relative to the storage root."""
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         with open(full_path) as f:
@@ -1295,7 +1623,7 @@ def file_read(path: str) -> str:
 
 @tool
 def file_write(path: str, content: str) -> str:
-    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         parent = os.path.dirname(full_path)
@@ -1310,25 +1638,28 @@ def file_write(path: str, content: str) -> str:
         return f"Error writing '{path}': {e.strerror}"
 
 @tool
-def list_files(directory: str = "") -> str:
-    """List files in persistent storage. The directory is relative to the storage root."""
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
     try:
-        target = _safe_resolve(directory)
-        entries = os.listdir(target)
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
         return "\\n".join(entries) if entries else "(empty directory)"
     except ValueError as e:
         return str(e)
     except OSError as e:
-        return f"Error listing '{directory}': {e.strerror}"
+        return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([file_read, file_write, list_files])
 {{/if}}
 
 SYSTEM_PROMPT = """
 You are a helpful assistant. Use tools when appropriate.
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}
 """
 
 model = load_model()
@@ -1529,10 +1860,11 @@ dependencies = [
     {{#if (eq modelProvider "Anthropic")}}"langchain-anthropic >= 0.3.0",
     {{/if}}{{#if (eq modelProvider "Bedrock")}}"langchain-aws >= 0.2.0",
     {{/if}}{{#if (eq modelProvider "Gemini")}}"langchain-google-genai >= 2.0.0",
+    "google-genai >= 1.0.0, < 2.0.0",
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"langchain-openai >= 0.2.0",
     {{/if}}"aws-opentelemetry-distro",
     "opentelemetry-instrumentation-langchain >= 0.59.0",
-    "bedrock-agentcore[a2a] >= 1.0.3",
+    "bedrock-agentcore[a2a] >= 1.8.0",
     "botocore[crt] >= 1.35.0",
     "langgraph >= 0.2.0",
 ]
@@ -1621,7 +1953,7 @@ from model.load import load_model
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
 {{/if}}
-{{#if sessionStorageMountPath}}
+{{#if needsOs}}
 import os
 {{/if}}
 
@@ -1634,19 +1966,22 @@ def add_numbers(a: int, b: int) -> int:
 
 tools = [add_numbers]
 
-{{#if sessionStorageMountPath}}
-SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
 
 def _safe_resolve(path: str) -> str:
-    """Resolve path safely within the storage boundary."""
-    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
-    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
-        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 
 @tool
 def file_read(path: str) -> str:
-    """Read a file from persistent storage. The path is relative to the storage root."""
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         with open(full_path) as f:
@@ -1658,7 +1993,7 @@ def file_read(path: str) -> str:
 
 @tool
 def file_write(path: str, content: str) -> str:
-    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         parent = os.path.dirname(full_path)
@@ -1673,25 +2008,28 @@ def file_write(path: str, content: str) -> str:
         return f"Error writing '{path}': {e.strerror}"
 
 @tool
-def list_files(directory: str = "") -> str:
-    """List files in persistent storage. The directory is relative to the storage root."""
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
     try:
-        target = _safe_resolve(directory)
-        entries = os.listdir(target)
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
         return "\\n".join(entries) if entries else "(empty directory)"
     except ValueError as e:
         return str(e)
     except OSError as e:
-        return f"Error listing '{directory}': {e.strerror}"
+        return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([file_read, file_write, list_files])
 {{/if}}
 
 SYSTEM_PROMPT = """
 You are a helpful assistant. Use tools when appropriate.
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}
 """
 
 {{#if hasMemory}}
@@ -1871,7 +2209,7 @@ dependencies = [
     {{#if (eq modelProvider "Anthropic")}}"anthropic >= 0.30.0",
     {{/if}}"a2a-sdk[all] >= 0.2.0, < 1.0.0",
     "aws-opentelemetry-distro",
-    "bedrock-agentcore[a2a] >= 1.0.3",
+    "bedrock-agentcore[a2a] >= 1.9.1",
     "botocore[crt] >= 1.35.0",
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",
@@ -1915,8 +2253,11 @@ def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Opti
 {{#if (includes memoryProviders.[0].strategies "USER_PREFERENCE")}}
         f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
+{{#if (includes memoryProviders.[0].strategies "EPISODIC")}}
+        f"/episodes/{actor_id}/{session_id}": RetrievalConfig(top_k=5, relevance_score=0.5),
+{{/if}}
 {{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
-        f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
+        f"/summaries/{actor_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
     }
 {{/if}}
@@ -2018,16 +2359,76 @@ exports[`Assets Directory Snapshots > Python framework assets > python/python/ag
 "import os
 import uvicorn
 from google.adk.agents import LlmAgent
+from google.adk.tools import FunctionTool
 from ag_ui_adk import ADKAgent, AGUIToolset, create_adk_app
 from model.load import load_model
 
 load_model()
 
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
+
+def _safe_resolve(path: str) -> str:
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
+    return resolved
+
+def file_read(path: str) -> str:
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+def file_write(path: str, content: str) -> str:
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
+    try:
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{path}': {e.strerror}"
+
+_fs_tools = [FunctionTool(file_read), FunctionTool(file_write), FunctionTool(list_files)]
+{{/if}}
+
 agent = LlmAgent(
     name="{{ name }}",
     model="gemini-2.5-flash",
-    instruction="You are a helpful assistant.",
-    tools=[AGUIToolset()],
+    instruction="""You are a helpful assistant.
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}""",
+    tools=[AGUIToolset(), {{#if needsOs}}*_fs_tools{{/if}}],
 )
 
 adk_agent = ADKAgent(
@@ -2113,10 +2514,10 @@ requires-python = ">=3.10"
 dependencies = [
     "ag-ui-adk >= 0.6.0",
     "ag-ui-protocol >= 0.1.10",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore >= 1.8.0",
     "fastapi >= 0.115.12",
-    "google-adk >= 1.16.0",
-    "google-genai >= 1.0.0",
+    "google-adk >= 1.16.0, < 2.0.0",
+    "google-genai >= 1.0.0, < 2.0.0",
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
     "uvicorn >= 0.34.3",
@@ -2226,6 +2627,62 @@ def add_numbers(a: int, b: int) -> int:
 
 
 backend_tools = [add_numbers]
+
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
+
+def _safe_resolve(path: str) -> str:
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
+    return resolved
+
+@tool
+def file_read(path: str) -> str:
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+@tool
+def file_write(path: str, content: str) -> str:
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+@tool
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
+    try:
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{path}': {e.strerror}"
+
+backend_tools.extend([file_read, file_write, list_files])
+{{/if}}
 model = load_model()
 
 
@@ -2425,10 +2882,11 @@ dependencies = [
     {{#if (eq modelProvider "Anthropic")}}"langchain-anthropic >= 0.3.0",
     {{/if}}{{#if (eq modelProvider "Bedrock")}}"langchain-aws >= 0.2.0",
     {{/if}}{{#if (eq modelProvider "Gemini")}}"langchain-google-genai >= 2.0.0",
+    "google-genai >= 1.0.0, < 2.0.0",
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"langchain-openai >= 0.2.0",
     {{/if}}"aws-opentelemetry-distro",
     "opentelemetry-instrumentation-langchain >= 0.59.0",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore >= 1.8.0",
     "botocore[crt] >= 1.35.0",
     "langgraph >= 0.3.25",
     "langchain >= 0.3.0",
@@ -2537,9 +2995,71 @@ def add_numbers(a: int, b: int) -> int:
 
 tools = [add_numbers]
 
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
+
+def _safe_resolve(path: str) -> str:
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
+    return resolved
+
+@tool
+def file_read(path: str) -> str:
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+@tool
+def file_write(path: str, content: str) -> str:
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+@tool
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
+    try:
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{path}': {e.strerror}"
+
+tools.extend([file_read, file_write, list_files])
+{{/if}}
+
 agent = Agent(
     model=load_model(),
-    system_prompt="You are a helpful assistant. Use tools when appropriate.",
+    system_prompt="""You are a helpful assistant. Use tools when appropriate.
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}""",
     tools=tools,
 )
 
@@ -2708,7 +3228,7 @@ dependencies = [
     {{/if}}"ag-ui-strands >= 0.1.7",
     "ag-ui-protocol >= 0.1.10",
     "aws-opentelemetry-distro",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore >= 1.9.1",
     "botocore[crt] >= 1.35.0",
     "fastapi >= 0.115.12",
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
@@ -2755,8 +3275,11 @@ def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Opti
 {{#if (includes memoryProviders.[0].strategies "USER_PREFERENCE")}}
         f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
+{{#if (includes memoryProviders.[0].strategies "EPISODIC")}}
+        f"/episodes/{actor_id}/{session_id}": RetrievalConfig(top_k=5, relevance_score=0.5),
+{{/if}}
 {{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
-        f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
+        f"/summaries/{actor_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
     }
 {{/if}}
@@ -2864,7 +3387,10 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/http/autogen/base/main.py should match snapshot 1`] = `
-"import os
+"{{#if needsOs}}
+import os
+{{/if}}
+from collections import OrderedDict
 from autogen_agentchat.agents import AssistantAgent
 from autogen_core.tools import FunctionTool
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
@@ -2888,18 +3414,21 @@ add_numbers_tool = FunctionTool(
 # Define a collection of tools used by the model
 tools = [add_numbers_tool]
 
-{{#if sessionStorageMountPath}}
-SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
 
 def _safe_resolve(path: str) -> str:
-    """Resolve path safely within the storage boundary."""
-    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
-    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
-        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 
 def file_read(path: str) -> str:
-    """Read a file from persistent storage. The path is relative to the storage root."""
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         with open(full_path) as f:
@@ -2910,7 +3439,7 @@ def file_read(path: str) -> str:
         return f"Error reading '{path}': {e.strerror}"
 
 def file_write(path: str, content: str) -> str:
-    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         parent = os.path.dirname(full_path)
@@ -2924,48 +3453,73 @@ def file_write(path: str, content: str) -> str:
     except OSError as e:
         return f"Error writing '{path}': {e.strerror}"
 
-def list_files(directory: str = "") -> str:
-    """List files in persistent storage. The directory is relative to the storage root."""
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
     try:
-        target = _safe_resolve(directory)
-        entries = os.listdir(target)
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
         return "\\n".join(entries) if entries else "(empty directory)"
     except ValueError as e:
         return str(e)
     except OSError as e:
-        return f"Error listing '{directory}': {e.strerror}"
+        return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([
-    FunctionTool(file_read, description="Read a file from persistent storage. The path is relative to the storage root."),
-    FunctionTool(file_write, description="Write content to a file in persistent storage. The path is relative to the storage root."),
-    FunctionTool(list_files, description="List files in persistent storage. The directory is relative to the storage root."),
+    FunctionTool(file_read, description="Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."),
+    FunctionTool(file_write, description="Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."),
+    FunctionTool(list_files, description="List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."),
 ])
 {{/if}}
 
 SYSTEM_MESSAGE = """
 You are a helpful assistant. Use tools when appropriate.
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}
 """
+
+# Reuses one AssistantAgent per session_id so each session keeps its own
+# in-process conversation history (best-effort; resets on cold start). Caches up
+# to 128 active sessions with LRU eviction (least-recently-used is dropped and
+# its history reset).
+_agents = OrderedDict()
+
+
+async def get_or_create_agent(session_id):
+    if session_id in _agents:
+        _agents.move_to_end(session_id)
+        return _agents[session_id]
+    if len(_agents) >= 128:
+        _agents.popitem(last=False)
+    # Get MCP Tools
+    mcp_tools = await get_streamable_http_mcp_tools()
+    # Re-check after the await: a concurrent first-invocation for the same
+    # session_id may have built and stored the agent while we were awaiting.
+    # Don't overwrite it (that would orphan the agent the other request is using).
+    if session_id not in _agents:
+        _agents[session_id] = AssistantAgent(
+            name="{{ name }}",
+            model_client=load_model(),
+            tools=tools + mcp_tools,
+            system_message=SYSTEM_MESSAGE,
+        )
+    _agents.move_to_end(session_id)
+    return _agents[session_id]
+
 
 @app.entrypoint
 async def invoke(payload, context):
     log.info("Invoking Agent.....")
 
-    # Get MCP Tools
-    mcp_tools = await get_streamable_http_mcp_tools()
-
-    # Define an AssistantAgent with the model and tools
-    agent = AssistantAgent(
-        name="{{ name }}",
-        model_client=load_model(),
-        tools=tools + mcp_tools,
-        system_message=SYSTEM_MESSAGE,
-    )
-
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    session_id = getattr(context, "session_id", "default-session")
+
+    # Reuse the per-session agent (preserves conversation history)
+    agent = await get_or_create_agent(session_id)
 
     # Run the agent
     result = await agent.run(task=prompt)
@@ -3177,7 +3731,7 @@ dependencies = [
     "autogen-ext[mcp] >= 0.7.5",
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore >= 1.8.0",
     "botocore[crt] >= 1.35.0",
     "tiktoken",
 {{#if (eq modelProvider "Bedrock")}}
@@ -3288,7 +3842,10 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/http/googleadk/base/main.py should match snapshot 1`] = `
-"import os
+"{{#if needsOs}}
+import os
+{{/if}}
+from collections import OrderedDict
 from google.adk.agents import Agent
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
@@ -3319,18 +3876,21 @@ def add_numbers(a: int, b: int) -> int:
 # Define a collection of tools used by the model
 tools = [add_numbers]
 
-{{#if sessionStorageMountPath}}
-SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
 
 def _safe_resolve(path: str) -> str:
-    """Resolve path safely within the storage boundary."""
-    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
-    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
-        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 
 def file_read(path: str) -> str:
-    """Read a file from persistent storage. The path is relative to the storage root."""
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         with open(full_path) as f:
@@ -3341,7 +3901,7 @@ def file_read(path: str) -> str:
         return f"Error reading '{path}': {e.strerror}"
 
 def file_write(path: str, content: str) -> str:
-    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         parent = os.path.dirname(full_path)
@@ -3355,25 +3915,28 @@ def file_write(path: str, content: str) -> str:
     except OSError as e:
         return f"Error writing '{path}': {e.strerror}"
 
-def list_files(directory: str = "") -> str:
-    """List files in persistent storage. The directory is relative to the storage root."""
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
     try:
-        target = _safe_resolve(directory)
-        entries = os.listdir(target)
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
         return "\\n".join(entries) if entries else "(empty directory)"
     except ValueError as e:
         return str(e)
     except OSError as e:
-        return f"Error listing '{directory}': {e.strerror}"
+        return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([file_read, file_write, list_files])
 {{/if}}
 
 AGENT_INSTRUCTION = """
 I can answer your questions using the knowledge I have!
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}
 """
 
 # Get MCP Toolset
@@ -3403,21 +3966,57 @@ agent = Agent(
 )
 
 
-# Session and Runner
-async def setup_session_and_runner(user_id, session_id):
-    ensure_credentials_loaded()
-    session_service = InMemorySessionService()
-    session = await session_service.create_session(
+# Module-level session service and runner preserve history across invocations.
+# InMemorySessionService retains every (app_name, user_id, session_id) triple
+# forever, so we bound it to 128 active sessions with LRU eviction (the
+# least-recently-used session is deleted and its history reset) to keep a
+# long-running process from growing without limit. For durable history, swap in
+# a persistent session service (e.g. DatabaseSessionService).
+_SESSION_LIMIT = 128
+_session_service = InMemorySessionService()
+_session_keys = OrderedDict()
+_runner = None
+
+
+def get_or_create_runner():
+    global _runner
+    if _runner is None:
+        ensure_credentials_loaded()
+        _runner = Runner(
+            agent=agent,
+            app_name=APP_NAME,
+            session_service=_session_service,
+        )
+    return _runner
+
+
+async def get_or_create_session(user_id, session_id):
+    key = (user_id, session_id)
+    if key in _session_keys:
+        _session_keys.move_to_end(key)
+    else:
+        while len(_session_keys) >= _SESSION_LIMIT:
+            (old_user_id, old_session_id), _ = _session_keys.popitem(last=False)
+            await _session_service.delete_session(
+                app_name=APP_NAME, user_id=old_user_id, session_id=old_session_id
+            )
+        _session_keys[key] = True
+
+    session = await _session_service.get_session(
         app_name=APP_NAME, user_id=user_id, session_id=session_id
     )
-    runner = Runner(agent=agent, app_name=APP_NAME, session_service=session_service)
-    return session, runner
+    if session is None:
+        session = await _session_service.create_session(
+            app_name=APP_NAME, user_id=user_id, session_id=session_id
+        )
+    return session
 
 
 # Agent Interaction
 async def call_agent_async(query, user_id, session_id):
     content = types.Content(role="user", parts=[types.Part(text=query)])
-    session, runner = await setup_session_and_runner(user_id, session_id)
+    runner = get_or_create_runner()
+    session = await get_or_create_session(user_id, session_id)
     events = runner.run_async(
         user_id=user_id, session_id=session.id, new_message=content
     )
@@ -3493,20 +4092,20 @@ def get_all_gateway_mcp_toolsets() -> list[MCPToolset]:
     {{#each gatewayProviders}}
     url = os.environ.get("{{envVarName}}")
     if url:
-        {{#if (eq authType "AWS_IAM")}}
+{{#if (eq authType "AWS_IAM")}}
         session = create_aws_session()
         auth = SigV4HTTPXAuth(session.get_credentials(), "bedrock-agentcore", session.region_name)
-        toolsets.append(MCPToolset(connection_params=StreamableHTTPConnectionParams(
+        toolsets.append(MCPToolset(tool_name_prefix="{{snakeCase name}}", connection_params=StreamableHTTPConnectionParams(
             url=url,
             httpx_client_factory=lambda **kwargs: httpx.AsyncClient(auth=auth, **kwargs)
         )))
-        {{else if (eq authType "CUSTOM_JWT")}}
+{{else if (eq authType "CUSTOM_JWT")}}
         token = _get_bearer_token_{{snakeCase name}}()
         headers = {"Authorization": f"Bearer {token}"} if token else None
-        toolsets.append(MCPToolset(connection_params=StreamableHTTPConnectionParams(url=url, headers=headers)))
-        {{else}}
-        toolsets.append(MCPToolset(connection_params=StreamableHTTPConnectionParams(url=url)))
-        {{/if}}
+        toolsets.append(MCPToolset(tool_name_prefix="{{snakeCase name}}", connection_params=StreamableHTTPConnectionParams(url=url, headers=headers)))
+{{else}}
+        toolsets.append(MCPToolset(tool_name_prefix="{{snakeCase name}}", connection_params=StreamableHTTPConnectionParams(url=url)))
+{{/if}}
     else:
         logger.warning("{{envVarName}} not set — {{name}} gateway tools unavailable")
     {{/each}}
@@ -3599,7 +4198,8 @@ requires-python = ">=3.10"
 dependencies = [
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
-    "google-adk >= 1.17.0",
+    "google-adk >= 1.35.0, < 2.0.0",
+    "google-genai >= 1.0.0, < 2.0.0",
     "bedrock-agentcore >= 1.0.3",
     "botocore[crt] >= 1.35.0",
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
@@ -3700,10 +4300,14 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/http/langchain_langgraph/base/main.py should match snapshot 1`] = `
-"import os
+"{{#if needsOs}}
+import os
+{{/if}}
+from collections import OrderedDict
 from typing import Any
 
 from langchain_core.messages import HumanMessage{{#if hasConfigBundle}}, SystemMessage{{/if}}
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.prebuilt import create_react_agent
 from langchain.tools import tool
 {{#if hasConfigBundle}}
@@ -3735,9 +4339,12 @@ def get_or_create_model():
 
 DEFAULT_SYSTEM_PROMPT = """
 You are a helpful assistant. Use tools when appropriate.
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}
 """
 
 
@@ -3751,19 +4358,42 @@ def add_numbers(a: int, b: int) -> int:
 # Define a collection of tools used by the model
 tools = [add_numbers]
 
-{{#if sessionStorageMountPath}}
-SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+# Module-level checkpointer preserves conversation history across invocations.
+# InMemorySaver keeps every thread_id (= session_id) checkpoint in memory
+# forever, so we bound it to 128 active threads with LRU eviction (the
+# least-recently-used thread is deleted and its history reset) to keep a
+# long-running process from growing without limit. For durable history, swap in
+# a persistent checkpointer (e.g. SqliteSaver/AsyncSqliteSaver with a file path).
+_CHECKPOINT_LIMIT = 128
+_checkpointer = InMemorySaver()
+_thread_ids = OrderedDict()
+
+
+def touch_thread(thread_id):
+    if thread_id in _thread_ids:
+        _thread_ids.move_to_end(thread_id)
+        return
+    while len(_thread_ids) >= _CHECKPOINT_LIMIT:
+        evicted, _ = _thread_ids.popitem(last=False)
+        _checkpointer.delete_thread(evicted)
+    _thread_ids[thread_id] = True
+
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
 
 def _safe_resolve(path: str) -> str:
-    """Resolve path safely within the storage boundary."""
-    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
-    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
-        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 
 @tool
 def file_read(path: str) -> str:
-    """Read a file from persistent storage. The path is relative to the storage root."""
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         with open(full_path) as f:
@@ -3775,7 +4405,7 @@ def file_read(path: str) -> str:
 
 @tool
 def file_write(path: str, content: str) -> str:
-    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         parent = os.path.dirname(full_path)
@@ -3790,16 +4420,16 @@ def file_write(path: str, content: str) -> str:
         return f"Error writing '{path}': {e.strerror}"
 
 @tool
-def list_files(directory: str = "") -> str:
-    """List files in persistent storage. The directory is relative to the storage root."""
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
     try:
-        target = _safe_resolve(directory)
-        entries = os.listdir(target)
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
         return "\\n".join(entries) if entries else "(empty directory)"
     except ValueError as e:
         return str(e)
     except OSError as e:
-        return f"Error listing '{directory}': {e.strerror}"
+        return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([file_read, file_write, list_files])
 {{/if}}
@@ -3843,29 +4473,46 @@ async def invoke(payload, context):
     if mcp_client:
         mcp_tools = await mcp_client.get_tools()
 
-    # Define the agent using create_react_agent
+    # Define the agent using create_react_agent (checkpointer is shared across invocations)
 {{#if hasConfigBundle}}
-    graph = create_react_agent(get_or_create_model(), tools=mcp_tools + tools, prompt=DEFAULT_SYSTEM_PROMPT)
+    graph = create_react_agent(
+        get_or_create_model(),
+        tools=mcp_tools + tools,
+        prompt=DEFAULT_SYSTEM_PROMPT,
+        checkpointer=_checkpointer,
+    )
     callback = ConfigBundleCallback()
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    session_id = getattr(context, "session_id", "default-session")
+    touch_thread(session_id)
     log.info(f"Agent input: {prompt}")
 
-    # Run the agent with config bundle callback
+    # Run the agent with config bundle callback (checkpointer auto-loads/saves history per session)
     result = await graph.ainvoke(
         {"messages": [HumanMessage(content=prompt)]},
-        config={"callbacks": [callback]},
+        config={"callbacks": [callback], "configurable": {"thread_id": session_id}},
     )
 {{else}}
-    graph = create_react_agent(get_or_create_model(), tools=mcp_tools + tools, prompt=DEFAULT_SYSTEM_PROMPT)
+    graph = create_react_agent(
+        get_or_create_model(),
+        tools=mcp_tools + tools,
+        prompt=DEFAULT_SYSTEM_PROMPT,
+        checkpointer=_checkpointer,
+    )
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    session_id = getattr(context, "session_id", "default-session")
+    touch_thread(session_id)
     log.info(f"Agent input: {prompt}")
 
-    # Run the agent
-    result = await graph.ainvoke({"messages": [HumanMessage(content=prompt)]})
+    # Run the agent (checkpointer auto-loads/saves history per session)
+    result = await graph.ainvoke(
+        {"messages": [HumanMessage(content=prompt)]},
+        config={"configurable": {"thread_id": session_id}},
+    )
 {{/if}}
 
     # Return result
@@ -3919,23 +4566,25 @@ def get_all_gateway_mcp_client() -> MultiServerMCPClient | None:
     {{#each gatewayProviders}}
     url = os.environ.get("{{envVarName}}")
     if url:
-        {{#if (eq authType "AWS_IAM")}}
+{{#if (eq authType "AWS_IAM")}}
         session = create_aws_session()
         auth = SigV4HTTPXAuth(session.get_credentials(), "bedrock-agentcore", session.region_name)
-        servers["{{name}}"] = {"transport": "streamable_http", "url": url, "auth": auth}
-        {{else if (eq authType "CUSTOM_JWT")}}
+        servers["{{snakeCase name}}"] = {"transport": "streamable_http", "url": url, "auth": auth}
+{{else if (eq authType "CUSTOM_JWT")}}
         token = _get_bearer_token_{{snakeCase name}}()
         headers = {"Authorization": f"Bearer {token}"} if token else None
-        servers["{{name}}"] = {"transport": "streamable_http", "url": url, "headers": headers}
-        {{else}}
-        servers["{{name}}"] = {"transport": "streamable_http", "url": url}
-        {{/if}}
+        servers["{{snakeCase name}}"] = {"transport": "streamable_http", "url": url, "headers": headers}
+{{else}}
+        servers["{{snakeCase name}}"] = {"transport": "streamable_http", "url": url}
+{{/if}}
     else:
         logger.warning("{{envVarName}} not set — {{name}} gateway tools unavailable")
     {{/each}}
     if not servers:
         return None
-    return MultiServerMCPClient(servers)
+    # tool_name_prefix namespaces each gateway's tools by server key so multiple
+    # gateways exposing the same tool (e.g. x_amz_bedrock_agentcore_search) don't collide.
+    return MultiServerMCPClient(servers, tool_name_prefix=True)
 {{else}}
 {{#if isVpc}}
 # VPC mode: external MCP endpoints are not reachable without a NAT gateway.
@@ -4113,9 +4762,9 @@ dependencies = [
     "opentelemetry-instrumentation-langchain >= 0.59.0",
     "langgraph >= 1.0.2",
     "mcp >= 1.19.0",
-    "langchain-mcp-adapters >= 0.1.11",
+    "langchain-mcp-adapters >= 0.2.0",
     "langchain >= 1.0.3",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore >= 1.8.0",
     "botocore[crt] >= 1.35.0",
 {{#if (eq modelProvider "Bedrock")}}
     "langchain-aws >= 1.0.0",
@@ -4128,6 +4777,7 @@ dependencies = [
 {{/if}}
 {{#if (eq modelProvider "Gemini")}}
     "langchain-google-genai >= 3.0.3",
+    "google-genai >= 1.0.0, < 2.0.0",
 {{/if}}
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
     {{/if}}{{/if}}
@@ -4227,8 +4877,14 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/http/openaiagents/base/main.py should match snapshot 1`] = `
-"import os
-from agents import Agent, Runner, function_tool
+"{{#if needsOs}}
+import os
+{{/if}}
+{{#if hasGateway}}
+from contextlib import AsyncExitStack
+{{/if}}
+from functools import lru_cache
+from agents import Agent, Runner, SQLiteSession, function_tool
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
 {{#if hasGateway}}
@@ -4266,19 +4922,22 @@ def add_numbers(a: int, b: int) -> int:
 
 tools = [add_numbers]
 
-{{#if sessionStorageMountPath}}
-SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
 
 def _safe_resolve(path: str) -> str:
-    """Resolve path safely within the storage boundary."""
-    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
-    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
-        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 
 @function_tool
 def file_read(path: str) -> str:
-    """Read a file from persistent storage. The path is relative to the storage root."""
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         with open(full_path) as f:
@@ -4290,7 +4949,7 @@ def file_read(path: str) -> str:
 
 @function_tool
 def file_write(path: str, content: str) -> str:
-    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         parent = os.path.dirname(full_path)
@@ -4305,42 +4964,60 @@ def file_write(path: str, content: str) -> str:
         return f"Error writing '{path}': {e.strerror}"
 
 @function_tool
-def list_files(directory: str = "") -> str:
-    """List files in persistent storage. The directory is relative to the storage root."""
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
     try:
-        target = _safe_resolve(directory)
-        entries = os.listdir(target)
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
         return "\\n".join(entries) if entries else "(empty directory)"
     except ValueError as e:
         return str(e)
     except OSError as e:
-        return f"Error listing '{directory}': {e.strerror}"
+        return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([file_read, file_write, list_files])
 {{/if}}
 
 INSTRUCTIONS = """
 You are a helpful assistant. Use tools when appropriate.
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
+{{#if needsOs}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/if}}
 """
 
+# Caches up to 128 active sessions; LRU eviction silently resets history for
+# the oldest session. For production use, replace with a durable session store
+# (e.g. SQLiteSession with a file path).
+@lru_cache(maxsize=128)
+def get_session(session_id):
+    return SQLiteSession(session_id)
+
+
 # Define the agent execution
-async def main(query):
+async def main(query, session):
     ensure_credentials_loaded()
     try:
         {{#if hasGateway}}
         if mcp_servers:
-            agent = Agent(
-                name="{{ name }}",
-                model="gpt-4.1",
-                instructions=INSTRUCTIONS,
-                mcp_servers=mcp_servers,
-                tools=tools
-            )
-            result = await Runner.run(agent, query)
-            return result
+            # Connect every gateway server before the run; include_server_in_tool_names
+            # namespaces each server's tools so multiple gateways exposing the same tool
+            # (e.g. x_amz_bedrock_agentcore_search) don't collide.
+            async with AsyncExitStack() as stack:
+                for server in mcp_servers:
+                    await stack.enter_async_context(server)
+                agent = Agent(
+                    name="{{ name }}",
+                    model="gpt-4.1",
+                    instructions=INSTRUCTIONS,
+                    mcp_servers=mcp_servers,
+                    tools=tools,
+                    mcp_config={"include_server_in_tool_names": True},
+                )
+                result = await Runner.run(agent, query, session=session)
+                return result
         else:
             agent = Agent(
                 name="{{ name }}",
@@ -4349,7 +5026,7 @@ async def main(query):
                 mcp_servers=[],
                 tools=tools
             )
-            result = await Runner.run(agent, query)
+            result = await Runner.run(agent, query, session=session)
             return result
         {{else}}
         if mcp_servers:
@@ -4362,7 +5039,7 @@ async def main(query):
                     mcp_servers=active_servers,
                     tools=tools
                 )
-                result = await Runner.run(agent, query)
+                result = await Runner.run(agent, query, session=session)
                 return result
         else:
             agent = Agent(
@@ -4372,7 +5049,7 @@ async def main(query):
                 mcp_servers=[],
                 tools=tools
             )
-            result = await Runner.run(agent, query)
+            result = await Runner.run(agent, query, session=session)
             return result
         {{/if}}
     except Exception as e:
@@ -4386,9 +5063,11 @@ async def invoke(payload, context):
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    session_id = getattr(context, "session_id", "default-session")
+    session = get_session(session_id)
 
-    # Run the agent
-    result = await main(prompt)
+    # Run the agent (session automatically loads/saves conversation history)
+    result = await main(prompt, session)
 
     # Return result
     return {"result": result.final_output}
@@ -4440,20 +5119,20 @@ def get_all_gateway_mcp_servers() -> list[MCPServerStreamableHttp]:
     {{#each gatewayProviders}}
     url = os.environ.get("{{envVarName}}")
     if url:
-        {{#if (eq authType "AWS_IAM")}}
+{{#if (eq authType "AWS_IAM")}}
         session = create_aws_session()
         auth = SigV4HTTPXAuth(session.get_credentials(), "bedrock-agentcore", session.region_name)
         servers.append(MCPServerStreamableHttp(
             name="{{name}}",
             params={"url": url, "httpx_client_factory": lambda **kwargs: httpx.AsyncClient(auth=auth, **kwargs)}
         ))
-        {{else if (eq authType "CUSTOM_JWT")}}
+{{else if (eq authType "CUSTOM_JWT")}}
         token = _get_bearer_token_{{snakeCase name}}()
         headers = {"Authorization": f"Bearer {token}"} if token else {}
         servers.append(MCPServerStreamableHttp(name="{{name}}", params={"url": url, "headers": headers}))
-        {{else}}
+{{else}}
         servers.append(MCPServerStreamableHttp(name="{{name}}", params={"url": url}))
-        {{/if}}
+{{/if}}
     else:
         logger.warning("{{envVarName}} not set — {{name}} gateway tools unavailable")
     {{/each}}
@@ -4541,8 +5220,8 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "aws-opentelemetry-distro",
-    "openai-agents >= 0.4.2",
-    "bedrock-agentcore >= 1.0.3",
+    "openai-agents >= 0.16.0",
+    "bedrock-agentcore >= 1.8.0",
     "botocore[crt] >= 1.35.0",
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
     {{/if}}{{/if}}
@@ -4642,42 +5321,114 @@ Thumbs.db"
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/http/strands/base/main.py should match snapshot 1`] = `
 "from typing import Any
+from collections import OrderedDict
+{{#if inlineFunctionTools}}
+import json
 
+from strands.tools.tools import PythonAgentTool
+from strands.types.tools import ToolResult, ToolUse
+{{/if}}
 from strands import Agent, tool
+{{#if hasSkillsFetcher}}
+from strands import AgentSkills
+{{#if hasFetchedSkills}}
+from skills.fetcher import resolve_s3_skills, resolve_git_skills
+{{/if}}
+{{#if (some gitSkills "credentialArn")}}
+from bedrock_agentcore.services.identity import IdentityClient
+{{/if}}
+{{/if}}
+import asyncio
+{{#if hasShell}}
+import subprocess
+{{/if}}
+{{#if hasFileOperations}}
+import os
+{{/if}}
+{{#if hasExecutionLimits}}
+from strands.tools.executors import SequentialToolExecutor
+from strands.types.exceptions import EventLoopException
+from hooks.execution_limits import ExecutionLimitExceeded, ExecutionLimitsHook
+{{/if}}
 {{#if hasConfigBundle}}
 from strands.hooks import HookProvider, HookRegistry, BeforeInvocationEvent, BeforeToolCallEvent
+{{/if}}
+{{#if truncationStrategy}}
+{{#if (eq truncationStrategy "sliding_window")}}
+from strands.agent.conversation_manager.sliding_window_conversation_manager import SlidingWindowConversationManager
+{{/if}}
+{{#if (eq truncationStrategy "summarization")}}
+from strands.agent.conversation_manager.summarizing_conversation_manager import SummarizingConversationManager
+{{/if}}
+{{else}}
+from strands.agent.conversation_manager.null_conversation_manager import NullConversationManager
+{{/if}}
+{{#if hasConfigBundle}}
 from bedrock_agentcore.runtime.context import BedrockAgentCoreContext
+{{/if}}
+{{#if hasBrowser}}
+from strands_tools.browser import AgentCoreBrowser
+{{/if}}
+{{#if hasCodeInterpreter}}
+from strands_tools.code_interpreter import AgentCoreCodeInterpreter
 {{/if}}
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
 {{#if hasGateway}}
 from mcp_client.client import get_all_gateway_mcp_clients
-{{else}}
-from mcp_client.client import get_streamable_http_mcp_client
 {{/if}}
+{{#if remoteMcpTools}}
+from mcp_client.client import get_all_remote_mcp_clients
+{{/if}}
+{{#unless (or hasGateway remoteMcpTools)}}
+{{#unless isExportHarness}}
+from mcp_client.client import get_streamable_http_mcp_client
+{{/unless}}
+{{/unless}}
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
 {{/if}}
-{{#if sessionStorageMountPath}}
+{{#unless hasFileOperations}}
+{{#if (or needsOs browserIdentifierEnvVar codeInterpreterIdentifierEnvVar (some gitSkills "credentialArn"))}}
 import os
+{{/if}}
+{{/unless}}
+{{#if hasPayment}}
+from capabilities.payments.payments import create_payments_plugin, PAYMENT_SYSTEM_PROMPT
 {{/if}}
 
 app = BedrockAgentCoreApp()
 log = app.logger
 
-# Define a Streamable HTTP MCP Client
+{{#if (or hasGateway remoteMcpTools)}}
+# Define MCP clients for all configured MCP servers (gateways and/or remote MCP)
+mcp_clients = []
 {{#if hasGateway}}
-mcp_clients = get_all_gateway_mcp_clients()
+mcp_clients += get_all_gateway_mcp_clients()
+{{/if}}
+{{#if remoteMcpTools}}
+mcp_clients += get_all_remote_mcp_clients()
+{{/if}}
 {{else}}
+{{#unless isExportHarness}}
+# Define a Streamable HTTP MCP Client
 mcp_clients = [get_streamable_http_mcp_client()]
+{{/unless}}
 {{/if}}
 
+{{#if systemPromptText}}
+DEFAULT_SYSTEM_PROMPT = """{{escapePyStr systemPromptText}}"""
+{{else}}
 DEFAULT_SYSTEM_PROMPT = """
 You are a helpful assistant. Use tools when appropriate.
-{{#if sessionStorageMountPath}}
-You have persistent storage at {{sessionStorageMountPath}}. Use file tools to read and write files. Data persists across sessions.
-{{/if}}
+{{#if needsOs}}{{#unless isExportHarness}}
+You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
+{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
+{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
+{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{/unless}}{{/if}}
 """
+{{/if}}
 
 {{#if hasConfigBundle}}
 DEFAULT_TOOL_DESC = "Return the sum of two numbers"
@@ -4686,6 +5437,30 @@ DEFAULT_TOOL_DESC = "Return the sum of two numbers"
 # Define a collection of tools used by the model
 tools = []
 
+{{#if inlineFunctionTools}}
+# Inline function tools — stop the agent loop so the tool call streams back to the caller
+def _make_inline_tool(name: str, spec: dict) -> PythonAgentTool:
+    def _handler(tool: ToolUse, **kwargs: Any) -> ToolResult:
+        kwargs.get("request_state", {})["stop_event_loop"] = True
+        return {"toolUseId": tool["toolUseId"], "status": "success", "content": [{"text": " "}]}
+    _handler.__name__ = name
+    return PythonAgentTool(tool_name=name, tool_spec=spec, tool_func=_handler)
+
+{{#each inlineFunctionTools}}
+_INLINE_SPEC_{{snakeCase name}} = {
+    "name": "{{name}}",
+    "description": {{safeJson description}},
+    "inputSchema": {"json": json.loads({{pyJsonStr inputSchema}}) },
+}
+tools.append(_make_inline_tool("{{name}}", _INLINE_SPEC_{{snakeCase name}}))
+{{/each}}
+
+_INLINE_FUNCTION_NAMES = { {{#each inlineFunctionTools}}"{{name}}"{{#unless @last}}, {{/unless}}{{/each}} }
+
+{{else}}
+_INLINE_FUNCTION_NAMES = set()
+
+{{#unless isExportHarness}}
 # Define a simple function tool
 {{#if hasConfigBundle}}
 @tool(description=DEFAULT_TOOL_DESC)
@@ -4697,19 +5472,141 @@ def add_numbers(a: int, b: int) -> int:
     return a+b
 tools.append(add_numbers)
 
-{{#if sessionStorageMountPath}}
-SESSION_STORAGE_PATH = "{{sessionStorageMountPath}}"
+{{/unless}}
+{{/if}}
+{{#if hasBrowser}}
+{{#if browserIdentifierEnvVar}}
+_browser_id = os.getenv("{{browserIdentifierEnvVar}}")
+tools.append(AgentCoreBrowser(**({"identifier": _browser_id} if _browser_id else {})).browser)
+{{else}}
+tools.append(AgentCoreBrowser().browser)
+{{/if}}
+{{/if}}
+{{#if hasCodeInterpreter}}
+{{#if codeInterpreterIdentifierEnvVar}}
+_code_interpreter_id = os.getenv("{{codeInterpreterIdentifierEnvVar}}")
+tools.append(AgentCoreCodeInterpreter(**({"identifier": _code_interpreter_id} if _code_interpreter_id else {})).code_interpreter)
+{{else}}
+tools.append(AgentCoreCodeInterpreter().code_interpreter)
+{{/if}}
+{{/if}}
+{{#if hasShell}}
+@tool
+def shell(command: str, timeout: int = 300) -> dict:
+    """Execute a bash command and return the results.
+
+    Args:
+        command: The bash command to execute
+        timeout: Timeout in seconds (default: 300)
+
+    Returns:
+        Dict with stdout, stderr, and exit_code
+    """
+    result = subprocess.run(
+        command, shell=True, capture_output=True, text=True, timeout=timeout
+    )
+    return {"stdout": result.stdout, "stderr": result.stderr, "exit_code": result.returncode}
+
+tools.append(shell)
+{{/if}}
+{{#if hasFileOperations}}
+@tool
+def file_operations(
+    command: str,
+    path: str,
+    old_str: str = None,
+    new_str: str = None,
+    file_text: str = None,
+    insert_line: int = None,
+    view_range: list = None,
+) -> str:
+    """Text editor tool for viewing and modifying files.
+
+    Args:
+        command: The command to execute ("view", "str_replace", "create", "insert")
+        path: Path to the file or directory
+        old_str: Text to replace (for str_replace command)
+        new_str: Replacement text (for str_replace and insert commands)
+        file_text: Content for new file (for create command)
+        insert_line: Line number to insert after (for insert command)
+        view_range: [start_line, end_line] for viewing specific lines (for view command)
+
+    Returns:
+        Result of the operation
+    """
+    try:
+        if command == "view":
+            if not os.path.exists(path):
+                return f"Error: Path '{path}' does not exist"
+            if os.path.isdir(path):
+                return "\\n".join(os.listdir(path))
+            with open(path) as f:
+                lines = f.read().splitlines()
+            if view_range:
+                start, end = view_range
+                start_idx = max(0, start - 1)
+                end_idx = len(lines) if end == -1 else min(len(lines), end)
+                lines = lines[start_idx:end_idx]
+                start_num = start_idx + 1
+            else:
+                start_num = 1
+            return "\\n".join(f"{start_num + i}: {line}" for i, line in enumerate(lines))
+        elif command == "str_replace":
+            if old_str is None or new_str is None:
+                return "Error: str_replace requires both old_str and new_str parameters"
+            if not os.path.exists(path):
+                return f"Error: File '{path}' does not exist"
+            content = open(path).read()
+            if old_str not in content:
+                return "Error: Text not found in file"
+            count = content.count(old_str)
+            if count > 1:
+                return f"Error: Text appears {count} times in file. Please be more specific."
+            open(path, "w").write(content.replace(old_str, new_str, 1))
+            return f"Successfully replaced text in '{path}'"
+        elif command == "create":
+            if file_text is None:
+                return "Error: create requires file_text parameter"
+            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+            open(path, "w").write(file_text)
+            return f"Successfully created file '{path}'"
+        elif command == "insert":
+            if new_str is None or insert_line is None:
+                return "Error: insert requires both new_str and insert_line parameters"
+            if not os.path.exists(path):
+                return f"Error: File '{path}' does not exist"
+            lines = open(path).read().splitlines(True)
+            if insert_line == 0:
+                lines.insert(0, new_str + "\\n")
+            elif insert_line >= len(lines):
+                lines.append(new_str + "\\n")
+            else:
+                lines.insert(insert_line, new_str + "\\n")
+            open(path, "w").write("".join(lines))
+            return f"Successfully inserted text in '{path}' at line {insert_line + 1}"
+        else:
+            return f"Error: Unknown command '{command}'"
+    except Exception as e:
+        return f"Error: {e}"
+
+tools.append(file_operations)
+{{/if}}
+{{#if needsOs}}{{#unless isExportHarness}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
 
 def _safe_resolve(path: str) -> str:
-    """Resolve path safely within the storage boundary."""
-    resolved = os.path.realpath(os.path.join(SESSION_STORAGE_PATH, path.lstrip("/")))
-    if not resolved.startswith(os.path.realpath(SESSION_STORAGE_PATH)):
-        raise ValueError(f"Path '{path}' is outside the storage boundary")
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
     return resolved
 
 @tool
 def file_read(path: str) -> str:
-    """Read a file from persistent storage. The path is relative to the storage root."""
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         with open(full_path) as f:
@@ -4721,7 +5618,7 @@ def file_read(path: str) -> str:
 
 @tool
 def file_write(path: str, content: str) -> str:
-    """Write content to a file in persistent storage. The path is relative to the storage root."""
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
     try:
         full_path = _safe_resolve(path)
         parent = os.path.dirname(full_path)
@@ -4736,24 +5633,33 @@ def file_write(path: str, content: str) -> str:
         return f"Error writing '{path}': {e.strerror}"
 
 @tool
-def list_files(directory: str = "") -> str:
-    """List files in persistent storage. The directory is relative to the storage root."""
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
     try:
-        target = _safe_resolve(directory)
-        entries = os.listdir(target)
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
         return "\\n".join(entries) if entries else "(empty directory)"
     except ValueError as e:
         return str(e)
     except OSError as e:
-        return f"Error listing '{directory}': {e.strerror}"
+        return f"Error listing '{path}': {e.strerror}"
 
 tools.extend([file_read, file_write, list_files])
-{{/if}}
+{{/unless}}{{/if}}
 
+{{#if (or hasGateway remoteMcpTools)}}
+# Add MCP clients to tools
+for mcp_client in mcp_clients:
+    if mcp_client:
+        tools.append(mcp_client)
+{{else}}
+{{#unless isExportHarness}}
 # Add MCP client to tools if available
 for mcp_client in mcp_clients:
     if mcp_client:
         tools.append(mcp_client)
+{{/unless}}
+{{/if}}
 
 {{#if hasConfigBundle}}
 
@@ -4789,71 +5695,305 @@ class ConfigBundleHook(HookProvider):
 
 {{/if}}
 
+def _make_conversation_manager():
+{{#if truncationStrategy}}
+{{#if (eq truncationStrategy "sliding_window")}}
+{{#if truncationConfig}}
+    return SlidingWindowConversationManager(**{{safeJson truncationConfig}}, per_turn=True)
+{{else}}
+    return SlidingWindowConversationManager(per_turn=True)
+{{/if}}
+{{else}}
+{{#if truncationConfig}}
+    return SummarizingConversationManager(**{{safeJson truncationConfig}})
+{{else}}
+    return SummarizingConversationManager()
+{{/if}}
+{{/if}}
+{{else}}
+    return NullConversationManager()
+{{/if}}
+
 {{#if hasMemory}}
+{{#unless hasPayment}}
 def agent_factory():
     cache = {}
-    def get_or_create_agent(session_id, user_id):
-        key = f"{session_id}/{user_id}"
+    def get_or_create_agent(session_id, user_id{{#if hasSkillsFetcher}}, skill_plugins=None{{/if}}):
+        {{#if actorId}}
+        _actor_id = "{{actorId}}"
+        {{else}}
+        _actor_id = user_id
+        {{/if}}
+        key = f"{session_id}/{_actor_id}"
         if key not in cache:
-            # Create an agent for the given session_id and user_id
             cache[key] = Agent(
                 model=load_model(),
-                session_manager=get_memory_session_manager(session_id, user_id),
+                session_manager=get_memory_session_manager(session_id, _actor_id),
+                conversation_manager=_make_conversation_manager(),
                 system_prompt=DEFAULT_SYSTEM_PROMPT,
-                tools=tools{{#if hasConfigBundle}},
-                hooks=[ConfigBundleHook()]{{/if}}
+                tools=tools,
+                {{#if hasSkillsFetcher}}
+                plugins=skill_plugins or None,
+                {{/if}}
+                {{#if hasExecutionLimits}}
+                tool_executor=SequentialToolExecutor(),
+                callback_handler=None,
+                {{/if}}
+                hooks=[
+                    {{#if hasExecutionLimits}}
+                    ExecutionLimitsHook(
+                        {{#if maxIterations}}max_iterations={{maxIterations}},{{/if}}
+                        {{#if maxTokens}}max_tokens={{maxTokens}},{{/if}}
+                        {{#if timeoutSeconds}}timeout_seconds={{timeoutSeconds}},{{/if}}
+                    ),
+                    {{/if}}
+                    {{#if hasConfigBundle}}
+                    ConfigBundleHook(),
+                    {{/if}}
+                ],
             )
         return cache[key]
     return get_or_create_agent
 get_or_create_agent = agent_factory()
+{{/unless}}
 {{else}}
-{{#if hasConfigBundle}}
-def create_agent():
-    return Agent(
-        model=load_model(),
-        system_prompt=DEFAULT_SYSTEM_PROMPT,
-        tools=tools,
-        hooks=[ConfigBundleHook()],
-    )
-{{else}}
-_agent = None
-
-def get_or_create_agent():
-    global _agent
-    if _agent is None:
-        _agent = Agent(
+{{#unless hasPayment}}
+# Reuses one Agent per session_id so each session keeps its own in-process
+# conversation history (best-effort; resets on cold start). The cache is bounded
+# to 128 sessions with LRU eviction (least-recently-used is dropped and its
+# history reset) so a single process serving many sessions cannot leak history
+# between them or grow without limit. For durable history, attach a session manager.
+def agent_factory():
+    cache = OrderedDict()
+    def get_or_create_agent(session_id{{#if hasSkillsFetcher}}, skill_plugins=None{{/if}}):
+        if session_id in cache:
+            cache.move_to_end(session_id)
+            return cache[session_id]
+        if len(cache) >= 128:
+            cache.popitem(last=False)
+        cache[session_id] = Agent(
             model=load_model(),
             system_prompt=DEFAULT_SYSTEM_PROMPT,
-            tools=tools
+            tools=tools,
+            conversation_manager=_make_conversation_manager(),
+            {{#if hasSkillsFetcher}}
+            plugins=skill_plugins or None,
+            {{/if}}
+            {{#if hasExecutionLimits}}
+            tool_executor=SequentialToolExecutor(),
+            callback_handler=None,
+            {{/if}}
+            hooks=[
+                {{#if hasExecutionLimits}}
+                ExecutionLimitsHook(
+                    {{#if maxIterations}}max_iterations={{maxIterations}},{{/if}}
+                    {{#if maxTokens}}max_tokens={{maxTokens}},{{/if}}
+                    {{#if timeoutSeconds}}timeout_seconds={{timeoutSeconds}},{{/if}}
+                ),
+                {{/if}}
+                {{#if hasConfigBundle}}
+                ConfigBundleHook(),
+                {{/if}}
+            ],
         )
-    return _agent
+        return cache[session_id]
+    return get_or_create_agent
+get_or_create_agent = agent_factory()
+{{/unless}}
 {{/if}}
-{{/if}}
+
+
+def _extract_prompt(payload: dict):
+    """Accept harness-style messages[], tool_results[], or plain prompt string payloads."""
+    if "messages" in payload:
+        return payload["messages"]
+    if "tool_results" in payload:
+        return [{"role": "user", "content": [{"toolResult": {
+            "toolUseId": tr["toolUseId"],
+            "status": tr.get("status", "success"),
+            "content": tr.get("content", []),
+        }} for tr in payload["tool_results"]]}]
+    return payload.get("prompt", "")
+
+
+def _has_inline_function_call(messages) -> bool:
+    """Return True if messages contains an assistant toolUse for an inline function tool."""
+    if not _INLINE_FUNCTION_NAMES or not isinstance(messages, list):
+        return False
+    for msg in messages:
+        if msg.get("role") == "assistant":
+            for block in msg.get("content", []):
+                if isinstance(block, dict) and block.get("toolUse", {}).get("name") in _INLINE_FUNCTION_NAMES:
+                    return True
+    return False
+
+
+def _is_inline_function_call(event: dict) -> bool:
+    """Check if a contentBlockStart event is for an inline function tool."""
+    if not _INLINE_FUNCTION_NAMES:
+        return False
+    cbs = event.get("contentBlockStart", {})
+    start = cbs.get("start", {})
+    tool_use = start.get("toolUse") if isinstance(start, dict) else None
+    return tool_use is not None and tool_use.get("name") in _INLINE_FUNCTION_NAMES
+
 
 
 @app.entrypoint
 async def invoke(payload, context):
     log.info("Invoking Agent.....")
 
+{{#if hasPayment}}
+    user_id = payload.get("user_id") or getattr(context, "user_id", "default-user")
+    instrument_id = payload.get("payment_instrument_id")
+    session_id = payload.get("payment_session_id")
+    payments_plugin = create_payments_plugin(user_id, instrument_id, session_id)
+    plugins = [payments_plugin] if payments_plugin else []
+{{/if}}
+{{#if hasSkillsFetcher}}
+    skill_paths = [{{#each pathSkills}}{{safeJson this}}{{#unless @last}}, {{/unless}}{{/each}}]
+    {{#if s3Skills}}
+    s3_skill_sources = [{{#each s3Skills}}{{safeJson this}}{{#unless @last}}, {{/unless}}{{/each}}]
+    skill_paths.extend(await asyncio.to_thread(resolve_s3_skills, s3_skill_sources, None))
+    {{/if}}
+    {{#if gitSkills}}
+    git_skill_sources = [
+        {{#each gitSkills}}
+        dict(url={{safeJson this.url}}{{#if this.path}}, path={{safeJson this.path}}{{/if}}{{#if this.credentialArn}}, credentialArn={{safeJson this.credentialArn}}{{#if this.username}}, username={{safeJson this.username}}{{/if}}{{/if}}),
+        {{/each}}
+    ]
+    {{#if (some gitSkills "credentialArn")}}
+    _git_identity_client = IdentityClient(os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1")))
+    {{else}}
+    _git_identity_client = None
+    {{/if}}
+    skill_paths.extend(await asyncio.to_thread(resolve_git_skills, git_skill_sources, _git_identity_client))
+    {{/if}}
+    _skill_plugins = [AgentSkills(skills=skill_paths)] if skill_paths else []
+{{/if}}
+
 {{#if hasMemory}}
+{{#if hasPayment}}
+    mem_session_id = getattr(context, 'session_id', 'default-session')
+    {{#if actorId}}
+    mem_user_id = "{{actorId}}"
+    {{else}}
+    mem_user_id = getattr(context, 'user_id', 'default-user')
+    {{/if}}
+    agent = Agent(
+        model=load_model(),
+        session_manager=get_memory_session_manager(mem_session_id, mem_user_id),
+        system_prompt=DEFAULT_SYSTEM_PROMPT + PAYMENT_SYSTEM_PROMPT,
+        tools=tools,
+        plugins=plugins{{#if hasSkillsFetcher}} + _skill_plugins{{/if}},{{#if hasConfigBundle}}
+        hooks=[ConfigBundleHook()],{{/if}}
+    )
+{{else}}
     session_id = getattr(context, 'session_id', 'default-session')
+    {{#if actorId}}
+    user_id = "{{actorId}}"
+    {{else}}
     user_id = getattr(context, 'user_id', 'default-user')
-    agent = get_or_create_agent(session_id, user_id)
+    {{/if}}
+    agent = get_or_create_agent(session_id, user_id{{#if hasSkillsFetcher}}, _skill_plugins{{/if}})
+{{/if}}
 {{else}}
-{{#if hasConfigBundle}}
-    agent = create_agent()
+{{#if hasPayment}}
+    agent = Agent(
+        model=load_model(),
+        system_prompt=DEFAULT_SYSTEM_PROMPT + PAYMENT_SYSTEM_PROMPT,
+        tools=tools,
+        plugins=plugins{{#if hasSkillsFetcher}} + _skill_plugins{{/if}},{{#if hasConfigBundle}}
+        hooks=[ConfigBundleHook()],{{/if}}
+    )
 {{else}}
-    agent = get_or_create_agent()
+    session_id = getattr(context, 'session_id', 'default-session')
+    agent = get_or_create_agent(session_id{{#if hasSkillsFetcher}}, _skill_plugins{{/if}})
 {{/if}}
 {{/if}}
 
-    # Execute and format response
-    stream = agent.stream_async(payload.get("prompt"))
+    prompt = _extract_prompt(payload)
 
-    async for event in stream:
-        # Handle Text parts of the response
-        if "data" in event and isinstance(event["data"], str):
-            yield event["data"]
+    {{#if inlineFunctionTools}}
+    # If Turn 2 carries the harness-style assistant(toolUse)+user(toolResult) pair,
+    # strip the placeholder turn Strands stored during Turn 1 so the real toolResult
+    # is injected cleanly — same protocol as the harness runtime.
+    if _has_inline_function_call(prompt):
+        msgs = agent.messages
+        if len(msgs) >= 2 and any("toolResult" in b for b in msgs[-1].get("content", [])):
+            del msgs[-2:]
+    {{/if}}
+
+    {{#if hasExecutionLimits}}
+    timeout_seconds = {{#if timeoutSeconds}}{{timeoutSeconds}}{{else}}None{{/if}}
+    timeout_fired = False
+    watchdog_task = None
+    if timeout_seconds is not None:
+        async def _timeout_watchdog():
+            nonlocal timeout_fired
+            await asyncio.sleep(timeout_seconds)
+            timeout_fired = True
+            agent.cancel()
+        watchdog_task = asyncio.create_task(_timeout_watchdog())
+
+    try:
+        {{#if inlineFunctionTools}}
+        hit_inline_function = False
+        {{/if}}
+        async for event in agent.stream_async(
+            prompt,
+        ):
+            if not isinstance(event, dict) or "event" not in event:
+                continue
+            cbs = event["event"].get("contentBlockStart")
+            if cbs is not None and not cbs.get("start"):
+                continue
+            {{#if inlineFunctionTools}}
+            if not hit_inline_function:
+                hit_inline_function = _is_inline_function_call(event["event"])
+            {{/if}}
+            yield event
+            {{#if inlineFunctionTools}}
+            if hit_inline_function and "messageStop" in event["event"]:
+                return
+            {{/if}}
+
+        if timeout_fired:
+            yield {"event": {"messageStop": {"stopReason": "timeout_exceeded"}}}
+    except EventLoopException as e:
+        if isinstance(e.original_exception, ExecutionLimitExceeded):
+            yield {"event": {"messageStop": {"stopReason": str(e.original_exception)}}}
+            return
+        raise
+    finally:
+        if watchdog_task is not None:
+            watchdog_task.cancel()
+            try:
+                await watchdog_task
+            except asyncio.CancelledError:
+                pass
+    {{else}}
+    {{#if inlineFunctionTools}}
+    hit_inline_function = False
+    {{/if}}
+    async for event in agent.stream_async(
+        prompt,
+    ):
+        if not isinstance(event, dict) or "event" not in event:
+            continue
+        cbs = event["event"].get("contentBlockStart")
+        if cbs is not None and not cbs.get("start"):
+            continue
+        {{#if inlineFunctionTools}}
+        if not hit_inline_function:
+            hit_inline_function = _is_inline_function_call(event["event"])
+        {{/if}}
+        yield event
+        {{#if inlineFunctionTools}}
+        if hit_inline_function and "messageStop" in event["event"]:
+            return
+        {{/if}}
+    {{/if}}
 
 
 if __name__ == "__main__":
@@ -4887,7 +6027,10 @@ from bedrock_agentcore.identity import requires_access_token
 @requires_access_token(
     provider_name="{{credentialProviderName}}",
     scopes=[{{#if scopes}}"{{scopes}}"{{/if}}],
-    auth_flow="M2M",
+    auth_flow="{{#if authFlow}}{{authFlow}}{{else}}M2M{{/if}}",
+{{#if customParameters}}
+    custom_parameters={{safeJson customParameters}},
+{{/if}}
 )
 def _get_bearer_token_{{snakeCase name}}(*, access_token: str):
     """Obtain OAuth access token via AgentCore Identity for {{name}}."""
@@ -4898,18 +6041,22 @@ def _get_bearer_token_{{snakeCase name}}(*, access_token: str):
 {{#each gatewayProviders}}
 def get_{{snakeCase name}}_mcp_client() -> MCPClient | None:
     """Returns an MCP Client connected to the {{name}} gateway."""
+    {{#if hardcodedUrl}}
+    url = {{safeJson hardcodedUrl}}
+    {{else}}
     url = os.environ.get("{{envVarName}}")
     if not url:
         logger.warning("{{envVarName}} not set — {{name}} gateway tools unavailable")
         return None
+    {{/if}}
     {{#if (eq authType "AWS_IAM")}}
-    return MCPClient(lambda: aws_iam_streamablehttp_client(url, aws_service="bedrock-agentcore", aws_region=os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION"))))
+    return MCPClient(lambda: aws_iam_streamablehttp_client(url, aws_service="bedrock-agentcore", aws_region=os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION"))), prefix="{{snakeCase name}}")
     {{else if (eq authType "CUSTOM_JWT")}}
     token = _get_bearer_token_{{snakeCase name}}()
     headers = {"Authorization": f"Bearer {token}"} if token else {}
-    return MCPClient(lambda: streamablehttp_client(url, headers=headers))
+    return MCPClient(lambda: streamablehttp_client(url, headers=headers), prefix="{{snakeCase name}}")
     {{else}}
-    return MCPClient(lambda: streamablehttp_client(url))
+    return MCPClient(lambda: streamablehttp_client(url), prefix="{{snakeCase name}}")
     {{/if}}
 
 {{/each}}
@@ -4922,7 +6069,41 @@ def get_all_gateway_mcp_clients() -> list[MCPClient]:
         clients.append(client)
     {{/each}}
     return clients
-{{else}}
+{{/if}}
+{{#if remoteMcpTools}}
+{{#if (some remoteMcpTools "headerCredentials")}}
+from bedrock_agentcore.identity.auth import requires_api_key
+{{/if}}
+{{#each remoteMcpTools}}
+{{#if headerCredentials}}
+{{#each headerCredentials}}
+@requires_api_key(provider_name="{{credentialName}}")
+def _get_{{snakeCase ../name}}_{{snakeCase headerKey}}_key(api_key: str) -> str:
+    """Fetch {{headerKey}} credential for {{../name}} from AgentCore Identity."""
+    return api_key
+
+{{/each}}
+{{/if}}
+def get_{{snakeCase name}}_mcp_client() -> MCPClient | None:
+    """Returns an MCP Client for the {{name}} remote MCP server."""
+    url = {{safeJson url}}
+    {{#if headerCredentials}}
+    if os.getenv("LOCAL_DEV") == "1":
+        headers = { {{#each headerCredentials}}{{safeJson headerKey}}: os.environ.get("{{envVarName}}", ""){{#unless @last}}, {{/unless}}{{/each}} }
+    else:
+        headers = { {{#each headerCredentials}}{{safeJson headerKey}}: _get_{{snakeCase ../name}}_{{snakeCase headerKey}}_key(){{#unless @last}}, {{/unless}}{{/each}} }
+    return MCPClient(lambda: streamablehttp_client(url, headers=headers))
+    {{else}}
+    return MCPClient(lambda: streamablehttp_client(url))
+    {{/if}}
+
+{{/each}}
+def get_all_remote_mcp_clients() -> list[MCPClient]:
+    """Returns all configured remote MCP clients."""
+    clients = [{{#each remoteMcpTools}}get_{{snakeCase name}}_mcp_client(){{#unless @last}}, {{/unless}}{{/each}}]
+    return [c for c in clients if c is not None]
+{{/if}}
+{{#unless (or hasGateway remoteMcpTools)}}
 {{#if isVpc}}
 # VPC mode: external MCP endpoints are not reachable without a NAT gateway.
 # Add an AgentCore Gateway with \`agentcore add gateway\`, or configure your own endpoint below.
@@ -4931,6 +6112,7 @@ def get_streamable_http_mcp_client() -> MCPClient | None:
     """No MCP server configured. Add a gateway with \`agentcore add gateway\`."""
     return None
 {{else}}
+{{#unless isExportHarness}}
 # ExaAI provides information about code through web searches, crawling and code context searches through their platform. Requires no authentication
 EXAMPLE_MCP_ENDPOINT = "https://mcp.exa.ai/mcp"
 
@@ -4938,8 +6120,9 @@ def get_streamable_http_mcp_client() -> MCPClient:
     """Returns an MCP Client compatible with Strands"""
     # to use an MCP server that supports bearer authentication, add headers={"Authorization": f"Bearer {access_token}"}
     return MCPClient(lambda: streamablehttp_client(EXAMPLE_MCP_ENDPOINT))
+{{/unless}}
 {{/if}}
-{{/if}}
+{{/unless}}
 "
 `;
 
@@ -4950,12 +6133,74 @@ exports[`Assets Directory Snapshots > Python framework assets > python/python/ht
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/http/strands/base/model/load.py should match snapshot 1`] = `
 "{{#if (eq modelProvider "Bedrock")}}
+{{#if bedrockMantle}}
+import os
+
+from aws_bedrock_token_generator import provide_token
+{{#if (eq mantleApiFormat "chat_completions")}}
+from strands.models.openai import OpenAIModel
+{{else}}
+{{#if mantleProprietary}}
+from strands.models.openai_responses import OpenAIResponsesModel
+{{else}}
+from model.mantle_compat import MantleCompatResponsesModel
+{{/if}}
+{{/if}}
+
+MODEL_ID = "{{modelId}}"
+
+
+def load_model():
+    """
+    Get a Bedrock Mantle model client. These OpenAI-compatible models (e.g. openai.gpt-5.5,
+    openai.gpt-oss-120b) are served via the Bedrock Mantle endpoint, NOT the Converse API — so they
+    are invoked through an OpenAI-style client authenticated with a short-lived Bedrock bearer token.
+    Region is read from AWS_REGION (set by the AgentCore runtime).
+    """
+    region = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
+    token = provide_token(region=region)
+    {{#if mantleProprietary}}
+    # Proprietary OpenAI models only work on the /openai/v1 Mantle path.
+    base_url = f"https://bedrock-mantle.{region}.api.aws/openai/v1"
+    {{else}}
+    # Open-source OpenAI models (gpt-oss-*) only work on the /v1 Mantle path.
+    base_url = f"https://bedrock-mantle.{region}.api.aws/v1"
+    {{/if}}
+    client_args = {"api_key": token, "base_url": base_url}
+
+    params = {}
+    {{#if modelMaxTokens}}
+    {{#if (eq mantleApiFormat "chat_completions")}}
+    params["max_completion_tokens"] = {{modelMaxTokens}}
+    {{else}}
+    params["max_output_tokens"] = {{modelMaxTokens}}
+    {{/if}}
+    {{/if}}
+    {{#if modelTemperature}}
+    params["temperature"] = {{modelTemperature}}
+    {{/if}}
+    {{#if modelTopP}}
+    params["top_p"] = {{modelTopP}}
+    {{/if}}
+    {{#if (eq mantleApiFormat "chat_completions")}}
+    return OpenAIModel(client_args=client_args, model_id=MODEL_ID, params=params)
+    {{else}}
+    # Responses API: Mantle does not persist responses, so disable server-side storage.
+    params["store"] = False
+    {{#if mantleProprietary}}
+    return OpenAIResponsesModel(client_args=client_args, model_id=MODEL_ID, params=params)
+    {{else}}
+    return MantleCompatResponsesModel(client_args=client_args, model_id=MODEL_ID, params=params)
+    {{/if}}
+    {{/if}}
+{{else}}
 from strands.models.bedrock import BedrockModel
 
 
 def load_model() -> BedrockModel:
     """Get Bedrock model client using IAM credentials."""
-    return BedrockModel(model_id="global.anthropic.claude-sonnet-4-5-20250929-v1:0")
+    return BedrockModel(model_id="{{#if modelId}}{{modelId}}{{else}}global.anthropic.claude-sonnet-4-5-20250929-v1:0{{/if}}")
+{{/if}}
 {{/if}}
 {{#if (eq modelProvider "Anthropic")}}
 import os
@@ -5031,7 +6276,7 @@ def load_model() -> OpenAIModel:
     """Get authenticated OpenAI model client."""
     return OpenAIModel(
         client_args={"api_key": _get_api_key()},
-        model_id="gpt-4.1",
+        model_id="{{#if modelId}}{{modelId}}{{else}}gpt-4.1{{/if}}",
     )
 {{/if}}
 {{#if (eq modelProvider "Gemini")}}
@@ -5069,9 +6314,88 @@ def load_model() -> GeminiModel:
     """Get authenticated Gemini model client."""
     return GeminiModel(
         client_args={"api_key": _get_api_key()},
-        model_id="gemini-2.5-flash",
+        model_id="{{#if modelId}}{{modelId}}{{else}}gemini-2.5-flash{{/if}}",
     )
 {{/if}}
+{{#if (eq modelProvider "LiteLLM")}}
+import os
+{{#if litellmAdditionalParams}}
+import json
+{{/if}}
+
+from strands.models.litellm import LiteLLMModel
+{{#if identityProviders.[0].name}}
+from bedrock_agentcore.identity.auth import requires_api_key
+
+IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)
+def _agentcore_identity_api_key_provider(api_key: str) -> str:
+    """Fetch API key from AgentCore Identity."""
+    return api_key
+
+
+def _get_api_key() -> str:
+    """
+    Uses AgentCore Identity for API key management in deployed environments.
+    For local development, run via 'agentcore dev' which loads agentcore/.env.
+    """
+    if os.getenv("LOCAL_DEV") == "1":
+        api_key = os.getenv(IDENTITY_ENV_VAR)
+        if not api_key:
+            raise RuntimeError(
+                f"{IDENTITY_ENV_VAR} not found. Add {IDENTITY_ENV_VAR}=your-key to .env.local"
+            )
+        return api_key
+    return _agentcore_identity_api_key_provider()
+{{/if}}
+
+
+
+
+def load_model() -> LiteLLMModel:
+    """Get a LiteLLM model client (proxies to the provider encoded in model_id)."""
+    client_args = {}
+    {{#if identityProviders.[0].name}}
+    client_args["api_key"] = _get_api_key()
+    {{/if}}
+    {{#if litellmApiBase}}
+    client_args["api_base"] = {{safeJson litellmApiBase}}
+    {{/if}}
+    params = {{#if litellmAdditionalParams}}json.loads({{pyJsonStr litellmAdditionalParams}}){{else}}{}{{/if}}
+    return LiteLLMModel(
+        client_args=client_args,
+        model_id="{{#if modelId}}{{modelId}}{{else}}bedrock/us.anthropic.claude-sonnet-4-5-20250514-v1:0{{/if}}",
+        params=params,
+    )
+{{/if}}
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/http/strands/base/model/mantle_compat.py should match snapshot 1`] = `
+"from strands.models.openai_responses import OpenAIResponsesModel
+
+
+class MantleCompatResponsesModel(OpenAIResponsesModel):
+    """Workaround for Bedrock Mantle rejecting output_text in EasyInputMessage content arrays.
+
+    Mantle's Pydantic validation only accepts content as a plain string for assistant messages, while
+    real OpenAI accepts both formats. Flatten assistant content arrays to strings so multi-turn works.
+    Used for open-source OpenAI models (gpt-oss-*) on the /v1 Mantle path; proprietary models use the
+    plain OpenAIResponsesModel on /openai/v1.
+    """
+
+    @classmethod
+    def _format_request_messages(cls, messages):
+        formatted = super()._format_request_messages(messages)
+        for msg in formatted:
+            if msg.get("role") == "assistant" and isinstance(msg.get("content"), list):
+                msg["content"] = "".join(
+                    part.get("text", "") for part in msg["content"] if part.get("type") == "output_text"
+                )
+        return formatted
 "
 `;
 
@@ -5089,18 +6413,365 @@ requires-python = ">=3.10"
 dependencies = [
     {{#if (eq modelProvider "Anthropic")}}"anthropic >= 0.30.0",
     {{/if}}"aws-opentelemetry-distro",
-    "bedrock-agentcore >= 1.0.3",
+    "bedrock-agentcore >= 1.9.1",
     "botocore[crt] >= 1.35.0",
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
     {{/if}}"mcp >= 1.19.0",
     {{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",
-    {{/if}}"strands-agents >= 1.13.0",
-    {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
+    {{/if}}{{#if (eq modelProvider "LiteLLM")}}"litellm >= 1.0.0",
+    {{/if}}{{#if bedrockMantle}}"openai >= 1.0.0",
+    "aws-bedrock-token-generator >= 1.0.0",
+    {{/if}}"strands-agents >= 1.15.0",
+    {{#if (or hasBrowser hasCodeInterpreter)}}"strands-agents-tools >= 0.1.0",
+    {{/if}}{{#if hasBrowser}}"nest-asyncio >= 1.5.0",
+    "playwright >= 1.42.0",
+    {{/if}}{{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
     {{/if}}{{/if}}
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["."]
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/http/strands/base/skills/fetcher.py should match snapshot 1`] = `
+""""Skill fetcher — downloads s3/git skills to local filesystem on first use.
+
+Resolved paths are passed to AgentSkills(skills=...) in main.py.
+Cache directory: <tmpdir>/.agents/skills/ — an absolute path under the system temp
+directory (honors $TMPDIR, defaults to /tmp). The runtime working directory (e.g.
+/var/task in a CodeZip runtime) is read-only, so the cache must live somewhere
+guaranteed-writable.
+"""
+
+import base64
+import hashlib
+import json
+import logging
+import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+_SKILLS_BASE = Path(tempfile.gettempdir()) / ".agents" / "skills"
+_GIT_TIMEOUT = 60
+_S3_MAX_SIZE_BYTES = 1 * 1024 * 1024 * 1024  # 1 GB
+
+
+def _stable_hash(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()[:12]
+
+
+def _cleanup(path: Path) -> None:
+    """Remove a partially-created skill directory so retries don't see stale state."""
+    shutil.rmtree(path, ignore_errors=True)
+
+
+def _read_map(type_dir: Path) -> dict:
+    map_file = type_dir / ".map.json"
+    return json.loads(map_file.read_text()) if map_file.exists() else {}
+
+
+def _write_map(type_dir: Path, mapping: dict) -> None:
+    type_dir.mkdir(parents=True, exist_ok=True)
+    (type_dir / ".map.json").write_text(json.dumps(mapping))
+
+
+def _resolve_cached(type_dir: Path, source_hash: str) -> Optional[str]:
+    """Return the cached skill directory for a source hash, or None if not on disk."""
+    mapping = _read_map(type_dir)
+    dir_name = mapping.get(source_hash)
+    if dir_name and (type_dir / dir_name).exists():
+        return str(type_dir / dir_name)
+    return None
+
+
+def _read_skill_name(skill_dir: Path) -> str:
+    """Extract the skill name from SKILL.md YAML frontmatter."""
+    content = (skill_dir / "SKILL.md").read_text()
+    if not content.startswith("---"):
+        raise ValueError(f"SKILL.md in {skill_dir} has no YAML frontmatter (must start with ---)")
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        raise ValueError(f"SKILL.md in {skill_dir} has malformed frontmatter (missing closing ---)")
+    for line in parts[1].strip().splitlines():
+        if line.startswith("name:"):
+            name = line[len("name:"):].strip().strip("\\"'")
+            if name:
+                return name
+    raise ValueError(f"SKILL.md in {skill_dir} is missing a 'name' field in frontmatter")
+
+
+def _pick_dir_name(type_dir: Path, name: str, source_hash: str) -> str:
+    """Pick a unique directory name, appending a hash suffix on collision."""
+    if not (type_dir / name).exists():
+        return name
+    return f"{name}-{source_hash[:8]}"
+
+
+def _rename_and_cache_skill(type_dir: Path, temp_dir: Path, source_hash: str, skill_root: Path,
+                            source_label: str = "") -> Path:
+    """Validate SKILL.md, rename the temp dir to the skill's declared name, and update the map.
+
+    Raises ValueError if SKILL.md is missing or has invalid frontmatter.
+    """
+    if not (skill_root / "SKILL.md").exists():
+        _cleanup(temp_dir)
+        hint = f" (source: {source_label})" if source_label else ""
+        raise ValueError(f"No SKILL.md found in fetched skill{hint}")
+
+    name = _read_skill_name(skill_root)
+    dir_name = _pick_dir_name(type_dir, name, source_hash)
+    final_dir = type_dir / dir_name
+    if final_dir != temp_dir:
+        temp_dir.rename(final_dir)
+
+    mapping = _read_map(type_dir)
+    mapping[source_hash] = dir_name
+    _write_map(type_dir, mapping)
+    return final_dir
+
+
+def _fetch_s3_skill(source: str, s3_client=None) -> Path:
+    """Download an s3:// skill prefix and return the local directory."""
+    uri = source if source.endswith("/") else source + "/"
+    source_hash = _stable_hash(uri)
+    type_dir = _SKILLS_BASE / "s3"
+
+    cached = _resolve_cached(type_dir, source_hash)
+    if cached:
+        return Path(cached)
+
+    import boto3
+    client = s3_client or boto3.client("s3")
+    bucket, _, prefix = uri[len("s3://"):].partition("/")
+    if not bucket:
+        raise ValueError(f"Invalid S3 URI (no bucket): {uri}")
+
+    temp_dir = type_dir / source_hash
+    _cleanup(temp_dir)
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_root = temp_dir.resolve()
+
+    paginator = client.get_paginator("list_objects_v2")
+    total = 0
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            total += obj["Size"]
+            if total > _S3_MAX_SIZE_BYTES:
+                _cleanup(temp_dir)
+                raise ValueError(f"S3 skill {uri} exceeds 1 GB size limit")
+            rel = obj["Key"][len(prefix):].lstrip("/")
+            if not rel:
+                continue
+            dest = (temp_dir / rel).resolve()
+            if dest != temp_root and not str(dest).startswith(str(temp_root) + os.sep):
+                _cleanup(temp_dir)
+                raise ValueError(f"Path traversal detected in S3 key: {obj['Key']}")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            client.download_file(bucket, obj["Key"], str(dest))
+
+    if total == 0:
+        _cleanup(temp_dir)
+        raise ValueError(f"No files found at S3 URI: {uri}")
+
+    return _rename_and_cache_skill(type_dir, temp_dir, source_hash, temp_dir, source_label=uri)
+
+
+def _resolve_credential_arn(credential_arn: str, identity_client) -> str:
+    """Resolve a Token Vault API-key credential ARN to its secret value via AgentCore Identity.
+
+    ARN format: arn:<p>:bedrock-agentcore:<region>:<account>:token-vault/<vault>/apikeycredentialprovider/<name>
+    """
+    from bedrock_agentcore.runtime.context import BedrockAgentCoreContext  # noqa: PLC0415
+
+    provider_name = credential_arn.rsplit("/", 1)[-1]
+    if not provider_name:
+        raise ValueError(f"Invalid credential ARN: {credential_arn}")
+    workload_token = BedrockAgentCoreContext.get_workload_access_token()
+    if not workload_token:
+        raise ValueError("Credential ARN resolution requires a workload access token")
+    api_key = identity_client.dp_client.get_resource_api_key(
+        resourceCredentialProviderName=provider_name,
+        workloadIdentityToken=workload_token,
+    )["apiKey"]
+    if not api_key:
+        raise ValueError(f"Identity returned empty API key for provider: {provider_name}")
+    return api_key
+
+
+def _build_git_auth_env(credential_arn: Optional[str], username: Optional[str], identity_client=None) -> dict:
+    """Build GIT_CONFIG_* env vars for HTTP Basic auth using a Token Vault credential ARN.
+
+    Uses env vars instead of -c args to avoid leaking credentials in /proc/*/cmdline,
+    and so auth propagates to sub-commands (e.g. sparse-checkout triggering a fetch).
+    """
+    if not credential_arn or not identity_client:
+        return {}
+    password = _resolve_credential_arn(credential_arn, identity_client)
+    user = username or "oauth2"
+    encoded = base64.b64encode(f"{user}:{password}".encode()).decode()
+    return {
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "http.extraHeader",
+        "GIT_CONFIG_VALUE_0": f"Authorization: Basic {encoded}",
+    }
+
+
+def _fetch_git_skill(url: str, skill_path: str = "", credential_arn: Optional[str] = None,
+                     username: Optional[str] = None, identity_client=None) -> Path:
+    """Shallow-clone a git skill repository and return the local skill directory.
+
+    Returns the directory containing SKILL.md (the subdir itself for sparse checkouts).
+    """
+    if skill_path and (os.path.isabs(skill_path) or ".." in Path(skill_path).parts):
+        raise ValueError(f"Path traversal detected in skill path: {skill_path}")
+
+    source_hash = _stable_hash(f"{url}:{skill_path}")
+    type_dir = _SKILLS_BASE / "git"
+
+    cached = _resolve_cached(type_dir, source_hash)
+    if cached:
+        return Path(cached) / skill_path if skill_path else Path(cached)
+
+    temp_dir = type_dir / source_hash
+    _cleanup(temp_dir)
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    extra_env = _build_git_auth_env(credential_arn, username, identity_client)
+    git_env = {**os.environ, **extra_env} if extra_env else None
+
+    try:
+        if skill_path:
+            subprocess.run(
+                ["git", "clone", "--depth", "1", "--filter=blob:none", "--sparse", url, str(temp_dir)],
+                check=True, timeout=_GIT_TIMEOUT, capture_output=True, env=git_env,
+            )
+            subprocess.run(
+                ["git", "sparse-checkout", "set", skill_path],
+                check=True, timeout=_GIT_TIMEOUT, capture_output=True, cwd=str(temp_dir), env=git_env,
+            )
+        else:
+            subprocess.run(
+                ["git", "clone", "--depth", "1", url, str(temp_dir)],
+                check=True, timeout=_GIT_TIMEOUT, capture_output=True, env=git_env,
+            )
+    except Exception:
+        _cleanup(temp_dir)
+        raise
+
+    if skill_path and not (temp_dir / skill_path).exists():
+        _cleanup(temp_dir)
+        raise ValueError(f"Skill path '{skill_path}' not found in repository '{url}'")
+
+    # SKILL.md lives inside the subdir for sparse checkouts.
+    skill_root = temp_dir / skill_path if skill_path else temp_dir
+    label = f"{url}:{skill_path}" if skill_path else url
+    final_dir = _rename_and_cache_skill(type_dir, temp_dir, source_hash, skill_root, source_label=label)
+    return final_dir / skill_path if skill_path else final_dir
+
+
+def resolve_s3_skills(sources: list, s3_client=None) -> list:
+    """Resolve s3:// skill URIs to local filesystem paths.
+
+    Any fetch failure raises and fails the invocation — a partial skill set
+    would silently run the agent without capabilities the harness declared.
+    """
+    paths = []
+    for uri in sources:
+        try:
+            skill_dir = _fetch_s3_skill(uri, s3_client)
+        except Exception as e:
+            raise ValueError(f"Failed to resolve S3 skill '{uri}': {e}") from e
+        paths.append(str(skill_dir.resolve()))
+    return paths
+
+
+def resolve_git_skills(sources: list, identity_client=None) -> list:
+    """Resolve git skill dicts to local filesystem paths.
+
+    Each source is a dict with keys: url (required), path (optional),
+    credentialArn (optional), username (optional).
+
+    Any fetch failure raises and fails the invocation — a partial skill set
+    would silently run the agent without capabilities the harness declared.
+    """
+    paths = []
+    for source in sources:
+        try:
+            skill_dir = _fetch_git_skill(
+                url=source["url"],
+                skill_path=source.get("path") or "",
+                credential_arn=source.get("credentialArn"),
+                username=source.get("username"),
+                identity_client=identity_client,
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to resolve git skill '{source.get('url', source)}': {e}") from e
+        paths.append(str(skill_dir.resolve()))
+    return paths
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/http/strands/capabilities/execution-limits/hooks/execution_limits.py should match snapshot 1`] = `
+"import time
+from typing import Optional
+
+from strands.hooks import BeforeModelCallEvent
+from strands.hooks.registry import HookProvider, HookRegistry
+from strands.types.exceptions import EventLoopException
+
+
+class ExecutionLimitExceeded(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
+class ExecutionLimitsHook(HookProvider):
+    def __init__(
+        self,
+        max_iterations: Optional[int] = None,
+        max_tokens: Optional[int] = None,
+        timeout_seconds: Optional[float] = None,
+    ) -> None:
+        self._max_iterations = max_iterations
+        self._max_tokens = max_tokens
+        self._timeout_seconds = timeout_seconds
+        self._iteration_count = 0
+        self._start_time = time.monotonic()
+
+    def register_hooks(self, registry: HookRegistry, **kwargs) -> None:
+        registry.add_callback(BeforeModelCallEvent, self._check_limits)
+
+    def _check_limits(self, event: BeforeModelCallEvent) -> None:
+        self._iteration_count += 1
+
+        if self._max_iterations is not None and self._iteration_count > self._max_iterations:
+            raise EventLoopException(
+                ExecutionLimitExceeded(f"Max iterations exceeded: {self._max_iterations}")
+            )
+
+        if self._timeout_seconds is not None:
+            elapsed = time.monotonic() - self._start_time
+            if elapsed > self._timeout_seconds:
+                raise EventLoopException(
+                    ExecutionLimitExceeded(
+                        f"Timeout exceeded: {self._timeout_seconds}s (elapsed {elapsed:.1f}s)"
+                    )
+                )
+
+        if self._max_tokens is not None:
+            used = event.agent.event_loop_metrics.accumulated_usage.get("outputTokens", 0)
+            if used >= self._max_tokens:
+                raise EventLoopException(
+                    ExecutionLimitExceeded(
+                        f"Max output tokens exceeded: {used}/{self._max_tokens}"
+                    )
+                )
 "
 `;
 
@@ -5136,8 +6807,11 @@ def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Opti
 {{#if (includes memoryProviders.[0].strategies "USER_PREFERENCE")}}
         f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
+{{#if (includes memoryProviders.[0].strategies "EPISODIC")}}
+        f"/episodes/{actor_id}/{session_id}": RetrievalConfig(top_k=5, relevance_score=0.5),
+{{/if}}
 {{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
-        f"/summaries/{actor_id}/{session_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
+        f"/summaries/{actor_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
 {{/if}}
     }
 {{/if}}
@@ -5154,6 +6828,160 @@ def get_memory_session_manager(session_id: Optional[str], actor_id: str) -> Opti
         REGION
     )
 
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/http/strands/capabilities/payments/__init__.py should match snapshot 1`] = `
+""""Payment capabilities for Strands agents."""
+from .payments import create_payments_plugin
+
+__all__ = ["create_payments_plugin"]
+"
+`;
+
+exports[`Assets Directory Snapshots > Python framework assets > python/python/http/strands/capabilities/payments/payments.py should match snapshot 1`] = `
+""""Payment capability -- auto-generated by agentcore CLI.
+
+Configures AgentCorePaymentsPlugin for Strands agents.
+Manager config is auto-discovered from AGENTCORE_PAYMENT_*
+environment variables set at deploy time.
+
+Uses a per-invocation factory pattern so each request gets its own
+plugin instance with the correct user_id, instrument_id, and session_id.
+This prevents concurrency bugs where one user's payment context
+could leak to another user's request.
+
+Uses the official SDK plugin which handles:
+- x402 v1 (body-based) and v2 (header-based) payment detection
+- Automatic 402 response interception and payment processing
+- Retry limiting (max 3 payment retries per tool use)
+- Error management and logging
+"""
+import os
+import logging
+
+import boto3
+from bedrock_agentcore.payments.integrations.strands import AgentCorePaymentsPlugin
+from bedrock_agentcore.payments.integrations.config import AgentCorePaymentsPluginConfig
+
+logger = logging.getLogger(__name__)
+
+PAYMENT_SYSTEM_PROMPT = """
+You have payment capabilities via the x402 protocol:
+- Use http_request to call HTTP endpoints. 402 Payment Required responses are settled automatically by the plugin and the call is retried.
+- Use get_payment_session to check your remaining budget before expensive operations
+- Use get_payment_instrument_balance to check wallet USDC balance
+- Use list_payment_instruments to see available payment instruments
+- If budget is low, inform the user before proceeding with paid requests
+"""
+
+_manager_arn = None
+_connector_id = None
+_process_payment_role_arn = None
+_name_segment = None
+_region = None
+_auth_mode = None
+_manager_count = 0
+for key, value in os.environ.items():
+    if key.startswith("AGENTCORE_PAYMENT_") and key.endswith("_MANAGER_ARN"):
+        if _manager_arn is None:
+            _manager_arn = value
+            _name_segment = key[len("AGENTCORE_PAYMENT_"):-len("_MANAGER_ARN")]
+        _manager_count += 1
+if _manager_count > 1:
+    logger.warning(
+        "Multiple payment managers detected in environment. Using the first one found. "
+        "Remove extra AGENTCORE_PAYMENT_*_MANAGER_ARN env vars to eliminate ambiguity."
+    )
+_region = os.getenv("AWS_REGION")
+
+_prefix = f"AGENTCORE_PAYMENT_{_name_segment}_" if _name_segment else "AGENTCORE_PAYMENT_"
+_auth_mode = os.getenv(f"{_prefix}AUTH_MODE", "sigv4")
+_connector_id = os.getenv(f"{_prefix}CONNECTOR_ID")
+_process_payment_role_arn = os.getenv(f"{_prefix}PROCESS_PAYMENT_ROLE_ARN")
+_auto_payment = os.getenv(f"{_prefix}AUTO_PAYMENT", "true").lower() == "true"
+_allowlist_raw = os.getenv(f"{_prefix}TOOL_ALLOWLIST")
+_allowlist = _allowlist_raw.split(",") if _allowlist_raw else None
+_network_prefs_raw = os.getenv(f"{_prefix}NETWORK_PREFERENCES")
+_network_prefs = _network_prefs_raw.split(",") if _network_prefs_raw else None
+
+if not _manager_arn:
+    logger.warning("No payment manager config found in environment")
+if not _connector_id:
+    logger.warning("No payment connector config found in environment")
+
+
+def _assume_role_session(role_arn):
+    """Assume an IAM role and return a boto3 session with temporary credentials."""
+    sts = boto3.client("sts", region_name=_region)
+    creds = sts.assume_role(
+        RoleArn=role_arn,
+        RoleSessionName="agentcore-payment-plugin",
+    )["Credentials"]
+    return boto3.Session(
+        aws_access_key_id=creds["AccessKeyId"],
+        aws_secret_access_key=creds["SecretAccessKey"],
+        aws_session_token=creds["SessionToken"],
+        region_name=_region,
+    )
+
+
+def create_payments_plugin(user_id, instrument_id=None, session_id=None):
+    """Create a fresh plugin instance per invocation.
+
+    Args:
+        user_id: From invocation context (required for SigV4, derived from JWT for bearer)
+        instrument_id: From invocation payload (created by app backend per user)
+        session_id: From invocation payload (created by app backend per conversation)
+
+    Returns:
+        AgentCorePaymentsPlugin instance, or None if no manager is configured.
+    """
+    if not _manager_arn:
+        return None
+
+    config_kwargs = {
+        "payment_manager_arn": _manager_arn,
+        "region": _region,
+        "payment_instrument_id": instrument_id,
+        "payment_session_id": session_id,
+        "payment_connector_id": _connector_id,
+    }
+
+    config_kwargs["auto_payment"] = _auto_payment
+    if _allowlist:
+        config_kwargs["payment_tool_allowlist"] = _allowlist
+    if _network_prefs:
+        config_kwargs["network_preferences_config"] = _network_prefs
+
+    if _process_payment_role_arn:
+        # Only pass boto3_session if SDK supports it (added in bedrock-agentcore >= 1.11).
+        # Older SDKs use the runtime role's default credentials and can still call ProcessPayment
+        # if the runtime role has been granted permission directly.
+        import inspect
+        if "boto3_session" in inspect.signature(AgentCorePaymentsPluginConfig).parameters:
+            config_kwargs["boto3_session"] = _assume_role_session(_process_payment_role_arn)
+        else:
+            logger.warning(
+                "PROCESS_PAYMENT_ROLE_ARN set but bedrock-agentcore SDK does not support boto3_session. "
+                "Upgrade to bedrock-agentcore>=1.11 to enable cross-role payment processing."
+            )
+
+    if _auth_mode == "bearer":
+        bearer_token = os.getenv("AGENTCORE_BEARER_TOKEN")
+        if bearer_token:
+            config_kwargs["bearer_token"] = bearer_token
+        else:
+            logger.warning(
+                "Bearer auth mode configured but AGENTCORE_BEARER_TOKEN not set. "
+                "Falling back to SigV4. Set AGENTCORE_BEARER_TOKEN or pass bearer_token in invoke context."
+            )
+            config_kwargs["user_id"] = user_id or "default-user"
+    else:
+        config_kwargs["user_id"] = user_id or "default-user"
+
+    config = AgentCorePaymentsPluginConfig(**config_kwargs)
+    return AgentCorePaymentsPlugin(config=config)
 "
 `;
 
@@ -5243,9 +7071,67 @@ Thumbs.db
 `;
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/mcp/standalone/base/main.py should match snapshot 1`] = `
-"from mcp.server.fastmcp import FastMCP
+"{{#if needsOs}}
+import os
+{{/if}}
+from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("{{ name }}", host="0.0.0.0", stateless_http=True)
+
+{{#if needsOs}}
+_MOUNT_PATHS = [
+    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
+    {{#each efsMounts}}"{{mountPath}}",{{/each}}
+    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+]
+
+def _safe_resolve(path: str) -> str:
+    resolved = os.path.realpath(path)
+    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
+        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
+    return resolved
+
+@mcp.tool()
+def file_read(path: str) -> str:
+    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
+    try:
+        full_path = _safe_resolve(path)
+        with open(full_path) as f:
+            return f.read()
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error reading '{path}': {e.strerror}"
+
+@mcp.tool()
+def file_write(path: str, content: str) -> str:
+    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
+    try:
+        full_path = _safe_resolve(path)
+        parent = os.path.dirname(full_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full_path, "w") as f:
+            f.write(content)
+        return f"Written to {path}"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error writing '{path}': {e.strerror}"
+
+@mcp.tool()
+def list_files(path: str) -> str:
+    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
+    try:
+        full_path = _safe_resolve(path)
+        entries = os.listdir(full_path)
+        return "\\n".join(entries) if entries else "(empty directory)"
+    except ValueError as e:
+        return str(e)
+    except OSError as e:
+        return f"Error listing '{path}': {e.strerror}"
+
+{{/if}}
 
 
 @mcp.tool()
@@ -5522,13 +7408,21 @@ file maps to a JSON config file and includes validation constraints as comments 
 
 ### Key Types
 
-- **AgentCoreProjectSpec**: Root config with \`runtimes\`, \`memories\`, \`credentials\`, \`agentCoreGateways\`, \`evaluators\`, \`onlineEvalConfigs\`, \`policyEngines\` arrays
+- **AgentCoreProjectSpec**: Root config with \`runtimes\`, \`memories\`, \`credentials\`, \`agentCoreGateways\`, \`evaluators\`, \`onlineEvalConfigs\`, \`onlineInsightsConfigs\`, \`knowledgeBases\`, \`harnesses\`, \`policyEngines\`, \`policies\`, \`payments\` (managers + connectors), \`configBundles\`, \`datasets\`, \`runtimeEndpoints\` arrays
 - **AgentEnvSpec**: Agent configuration (build type, entrypoint, code location, runtime version, network mode)
 - **Memory**: Memory resource with strategies (SEMANTIC, SUMMARIZATION, USER_PREFERENCE, EPISODIC) and expiry
 - **Credential**: API key or OAuth credential provider
-- **AgentCoreGateway**: MCP gateway with targets (Lambda, MCP server, OpenAPI, Smithy, API Gateway)
+- **AgentCoreGateway**: MCP gateway with targets (Lambda, MCP server, OpenAPI, Smithy, API Gateway, web-search, knowledge-base)
 - **Evaluator**: LLM-as-a-Judge or code-based evaluator
 - **OnlineEvalConfig**: Continuous evaluation pipeline bound to an agent
+- **OnlineInsightsConfig** _[preview]_: Continuous failure-pattern analysis bound to an agent
+- **KnowledgeBase**: Managed Bedrock Knowledge Base auto-wired to a gateway
+- **Harness**: Declarative agent — runtime + tools + skills + memory + observability without writing agent code
+- **PolicyEngine** + **Policy**: Cedar policy engine with form-based guardrails (Bedrock content filters, prompt-attack, sensitive-info) or raw Cedar policies
+- **PaymentManager** + **PaymentConnector**: x402-protocol payment orchestration with provider credentials (CoinbaseCDP, StripePrivy)
+- **ConfigBundle**: Versioned runtime configuration as a separately-deployable resource
+- **Dataset**: Curated session dataset for batch evaluation and recommendation runs
+- **RuntimeEndpoint**: Named endpoint (e.g. \`PROMPT_V1\`) targeting a specific runtime version
 
 ### Common Enum Values
 
@@ -5536,8 +7430,11 @@ file maps to a JSON config file and includes validation constraints as comments 
 - **NetworkMode**: \`'PUBLIC'\` | \`'VPC'\`
 - **RuntimeVersion**: \`'PYTHON_3_10'\` | \`'PYTHON_3_11'\` | \`'PYTHON_3_12'\` | \`'PYTHON_3_13'\` | \`'PYTHON_3_14'\` | \`'NODE_18'\` | \`'NODE_20'\` | \`'NODE_22'\`
 - **MemoryStrategyType**: \`'SEMANTIC'\` | \`'SUMMARIZATION'\` | \`'USER_PREFERENCE'\` | \`'EPISODIC'\`
-- **GatewayTargetType**: \`'lambda'\` | \`'mcpServer'\` | \`'openApiSchema'\` | \`'smithyModel'\` | \`'apiGateway'\` | \`'lambdaFunctionArn'\`
+- **GatewayTargetType**: \`'lambda'\` | \`'mcpServer'\` | \`'openApiSchema'\` | \`'smithyModel'\` | \`'apiGateway'\` | \`'lambdaFunctionArn'\` | \`'connector'\` (web-search, bedrock-knowledge-bases)
 - **ModelProvider**: \`'Bedrock'\` | \`'Gemini'\` | \`'OpenAI'\` | \`'Anthropic'\`
+- **PaymentProvider**: \`'CoinbaseCDP'\` | \`'StripePrivy'\`
+- **PolicyEnforcementMode**: \`'ACTIVE'\` | \`'PASSIVE'\`
+- **GuardrailContentFilter**: \`'VIOLENCE'\` | \`'HATE'\` | \`'SEXUAL'\` | \`'MISCONDUCT'\` | \`'INSULTS'\`
 
 ### Build Types
 
@@ -5588,24 +7485,868 @@ When modifying JSON config files:
 4. Use CloudFormation-safe names (alphanumeric, start with letter)
 5. Run \`agentcore validate\` to verify changes
 
+## Harness Export
+
+\`agentcore export harness\` converts a harness configuration into a deployable Strands Python agent under \`app/<agentName>/\`.
+
+**After every export, you MUST read \`app/<agentName>/EXPORT_NOTES.md\` before proceeding.**
+
+This file lists any manual follow-up items required before the agent will deploy or run correctly — missing files to create, IAM policies to add, or configuration steps the exporter could not automate. A clean export produces "No manual steps required." Complete every item in the file before running \`agentcore deploy\`.
+
+\`\`\`bash
+agentcore export harness --name <harnessName>   # generates app/<agentName>/EXPORT_NOTES.md
+cat app/<agentName>/EXPORT_NOTES.md             # read this before touching anything else
+\`\`\`
+
 ## CLI Commands
+
+Run \`agentcore --help\` or \`agentcore <command> --help\` for full flags. Commonly used:
+
+**Project lifecycle**
 
 | Command | Description |
 | --- | --- |
 | \`agentcore create\` | Create a new project |
-| \`agentcore add <resource>\` | Add agent, memory, credential, gateway, evaluator, policy |
-| \`agentcore remove <resource>\` | Remove a resource |
 | \`agentcore dev\` | Run agent locally with hot-reload |
 | \`agentcore deploy\` | Deploy to AWS |
-| \`agentcore status\` | Show deployment status |
 | \`agentcore invoke\` | Invoke agent (local or deployed) |
-| \`agentcore logs\` | View agent logs |
-| \`agentcore traces\` | View agent traces |
-| \`agentcore eval\` | Run evaluations against an agent |
-| \`agentcore package\` | Package agent artifacts |
+| \`agentcore status\` | Show deployment status |
 | \`agentcore validate\` | Validate configuration |
-| \`agentcore pause\` / \`resume\` | Pause or resume a deployed agent |
+| \`agentcore package\` | Package agent artifacts |
+| \`agentcore import\` | Import resources from a Bedrock AgentCore Starter Toolkit project |
+
+**Resources**
+
+| Command | Description |
+| --- | --- |
+| \`agentcore add <resource>\` | Add agent, memory, credential, gateway, gateway-target, evaluator, online-eval, online-insights, knowledge-base, harness, policy-engine, policy, payment-manager, payment-connector, config-bundle, dataset, runtime-endpoint |
+| \`agentcore remove <resource>\` | Remove any resource |
+| \`agentcore export harness\` | Export a harness to a Strands runtime agent under \`app/<agentName>/\` |
+
+**Jobs (run, view, archive, lifecycle)**
+
+| Command | Description |
+| --- | --- |
+| \`agentcore run eval\` | Run on-demand evaluation against agent traces |
+| \`agentcore run batch-evaluation\` | Run evaluators across all sessions at scale |
+| \`agentcore run recommendation\` | Optimize prompts or tool descriptions from real traces |
+| \`agentcore run insights\` _[preview]_ | Run failure-pattern analysis across sessions |
+| \`agentcore run ab-test\` | Start an A/B test (config-bundle or target-based) |
+| \`agentcore run ingest\` | Start a fresh ingestion job for every data source on a deployed knowledge base |
+| \`agentcore view <type>\` | List or view jobs (recommendation, batch-evaluation, ab-test, insights) |
+| \`agentcore archive <type>\` | Delete a job on the service + clear local history |
+| \`agentcore stop <type>\` | Stop a running batch-evaluation or ab-test |
+| \`agentcore promote ab-test\` | Apply the winning variant to \`agentcore.json\` |
+| \`agentcore pause <type>\` / \`agentcore resume <type>\` | Pause/resume a deployed online-eval, online-insights, or ab-test |
+
+**Config bundles & datasets**
+
+| Command | Description |
+| --- | --- |
+| \`agentcore config-bundle versions\` (alias \`cb versions\`) | List version history for a bundle |
+| \`agentcore config-bundle diff\` | Diff two versions of a bundle |
+| \`agentcore config-bundle create-branch\` | Create a new branch on an existing bundle |
+| \`agentcore dataset download\` | Download a dataset version locally |
+| \`agentcore dataset publish-version\` | Publish a new dataset version |
+| \`agentcore dataset remove-version\` | Remove a dataset version |
+
+**Observability & history**
+
+| Command | Description |
+| --- | --- |
+| \`agentcore logs\` | Stream/search agent runtime logs |
+| \`agentcore logs evals\` | Stream/search online-eval logs |
+| \`agentcore traces list\` / \`agentcore traces get\` | List recent traces or download one to JSON |
+| \`agentcore evals history\` | View past on-demand eval results |
+
+**Utilities**
+
+| Command | Description |
+| --- | --- |
+| \`agentcore fetch access\` | Fetch access info for deployed gateway or agent |
+| \`agentcore feedback\` | Send feedback (with optional screenshot) to the AgentCore team |
+| \`agentcore update\` | Check for and install CLI updates |
+| \`agentcore telemetry\` | View or change telemetry preferences |
 "
 `;
 
 exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/.gitkeep should match snapshot 1`] = `""`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/base/README.md should match snapshot 1`] = `
+"This is a project generated by the AgentCore CLI!
+
+# Layout
+
+The generated application code lives at the agent root directory. At the root, there is a \`.gitignore\` file, an
+\`agentcore/\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
+commands like \`deploy\`, \`dev\`, and \`invoke\` rely on the configuration stored here.
+
+## Agent Root
+
+The main entrypoint to your app is defined in \`main.ts\`. Using the AgentCore SDK \`BedrockAgentCoreApp\`, this file
+defines an HTTP server that streams tokens from your chosen Agent framework SDK.
+
+\`model/load.ts\` instantiates your chosen model provider.
+
+## Environment Variables
+
+| Variable | Required | Description |
+| --- | --- | --- |
+{{#if hasIdentity}}| \`{{identityProviders.[0].envVarName}}\` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
+{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`.env.local\` instead of AgentCore Identity |
+
+# Developing locally
+
+If installation was successful, \`node_modules/\` is already populated with dependencies.
+
+\`agentcore dev\` will start a local server using \`npx tsx watch main.ts\` for hot reload. The port is logged to the terminal (default \`8080\`).
+
+In a new terminal, you can invoke that server with:
+
+\`agentcore invoke --dev "What can you do"\`
+
+# Deployment
+
+After providing credentials, \`agentcore deploy\` will deploy your project into Amazon Bedrock AgentCore.
+
+Use \`agentcore invoke\` to invoke your deployed agent.
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/base/gitignore.template should match snapshot 1`] = `
+"# Environment variables
+.env
+.env.*
+
+# Node
+node_modules/
+dist/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/base/main.ts should match snapshot 1`] = `
+"import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime';
+import { Agent, McpClient, tool, type ToolList } from '@strands-agents/sdk';
+import { z } from 'zod';
+import { loadModel } from './model/load.js';
+import { getStreamableHttpMcpClient } from './mcp_client/client.js';
+{{#if hasMemory}}
+import { getActorId, getOrCreateMemoryManager } from './memory/memory.js';
+{{/if}}
+
+// Define a collection of MCP clients (filter out anything that failed to initialize)
+const mcpClients: McpClient[] = [getStreamableHttpMcpClient()].filter(
+  (client): client is McpClient => Boolean(client)
+);
+
+// Define a collection of tools used by the model
+const tools: ToolList = [];
+
+// Define a simple function tool — the Zod schema gives us type inference and runtime validation for free
+const addNumbers = tool({
+  name: 'add_numbers',
+  description: 'Return the sum of two numbers',
+  inputSchema: z.object({
+    a: z.number(),
+    b: z.number(),
+  }),
+  callback: async ({ a, b }) => a + b,
+});
+tools.push(addNumbers);
+
+// Add MCP clients to tools
+tools.push(...mcpClients);
+
+const SYSTEM_PROMPT = \`
+You are a helpful assistant. Use tools when appropriate.
+\`;
+
+{{#if hasMemory}}
+const agentCache = new Map<string, Agent>();
+
+async function getOrCreateAgent(sessionId: string, actorId: string): Promise<Agent> {
+  const key = \`\${actorId}:\${sessionId}\`;
+  let agent = agentCache.get(key);
+  if (agent) return agent;
+
+  const model = await loadModel();
+  agent = new Agent({
+    model,
+    systemPrompt: SYSTEM_PROMPT,
+    tools,
+    memoryManager: getOrCreateMemoryManager(sessionId, actorId) ?? undefined,
+  });
+  agentCache.set(key, agent);
+  return agent;
+}
+{{else}}
+const AGENT_CACHE_LIMIT = 128;
+
+// Reuses one Agent per sessionId so each session keeps its own in-process
+// conversation history (best-effort; resets on cold start). A Map preserves
+// insertion order, so it doubles as an LRU bounded to 128 sessions — a local
+// dev process serving many sessions cannot leak history between them or grow
+// without bound. On AgentCore Runtime each microVM serves a single session, so
+// this holds one entry. For durable history, attach memory.
+const agentCache = new Map<string, Agent>();
+
+async function getOrCreateAgent(sessionId: string): Promise<Agent> {
+  const existing = agentCache.get(sessionId);
+  if (existing) {
+    agentCache.delete(sessionId);
+    agentCache.set(sessionId, existing);
+    return existing;
+  }
+  if (agentCache.size >= AGENT_CACHE_LIMIT) {
+    const oldest = agentCache.keys().next().value;
+    if (oldest !== undefined) agentCache.delete(oldest);
+  }
+  const model = await loadModel();
+  const agent = new Agent({
+    model,
+    systemPrompt: SYSTEM_PROMPT,
+    tools,
+  });
+  agentCache.set(sessionId, agent);
+  return agent;
+}
+{{/if}}
+
+const app = new BedrockAgentCoreApp({
+  invocationHandler: {
+    async *process(payload: any, context: any) {
+      {{#if hasMemory}}
+      const sessionId = context?.sessionId ?? 'default-session';
+      const actorId = getActorId(payload, context);
+      const agent = await getOrCreateAgent(sessionId, actorId);
+      {{else}}
+      const sessionId = context?.sessionId ?? 'default-session';
+      const agent = await getOrCreateAgent(sessionId);
+      {{/if}}
+
+      {{#if hasMemory}}
+      try {
+        for await (const event of agent.stream(payload.prompt ?? '')) {
+          if (
+            event.type === 'modelStreamUpdateEvent' &&
+            event.event?.type === 'modelContentBlockDeltaEvent' &&
+            event.event.delta?.type === 'textDelta'
+          ) {
+            yield { data: event.event.delta.text };
+          }
+        }
+      } finally {
+        // Drain in-flight createEvent calls before the runtime can reclaim
+        // the session microVM. flush() is the durability mechanism — without
+        // it, an idle reclamation can lose the tail of the conversation.
+        await agent.memoryManager?.flush();
+      }
+      {{else}}
+      // Snapshot history before streaming so a failed turn can be rolled back.
+      // Agent.stream() appends the user message before invoking the model; on a
+      // mid-stream error that user turn would otherwise linger in the cached
+      // agent, and the next turn for this session would send consecutive user
+      // messages (rejected by providers that require strict role alternation,
+      // e.g. Anthropic). Restoring on error keeps the session reusable.
+      const snapshot = agent.takeSnapshot({ include: ['messages'] });
+      try {
+        for await (const event of agent.stream(payload.prompt ?? '')) {
+          if (
+            event.type === 'modelStreamUpdateEvent' &&
+            event.event?.type === 'modelContentBlockDeltaEvent' &&
+            event.event.delta?.type === 'textDelta'
+          ) {
+            yield { data: event.event.delta.text };
+          }
+        }
+      } catch (error) {
+        agent.loadSnapshot(snapshot);
+        throw error;
+      }
+      {{/if}}
+    },
+  },
+});
+
+app.run({ port: parseInt(process.env.PORT ?? '8080') });
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/base/mcp_client/client.ts should match snapshot 1`] = `
+"import { McpClient } from '@strands-agents/sdk';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+
+// ExaAI provides information about code through web searches, crawling and code context searches through their platform. Requires no authentication
+const EXAMPLE_MCP_ENDPOINT = 'https://mcp.exa.ai/mcp';
+
+export function getStreamableHttpMcpClient(): McpClient {
+  // to use an MCP server that supports bearer authentication, add a headers() callback to requestInit
+  const transport = new StreamableHTTPClientTransport(new URL(EXAMPLE_MCP_ENDPOINT));
+  return new McpClient({ transport });
+}
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/base/model/load.ts should match snapshot 1`] = `
+"{{#if (eq modelProvider "Bedrock")}}
+import { BedrockModel } from '@strands-agents/sdk/models/bedrock';
+
+export function loadModel(): BedrockModel {
+  return new BedrockModel({ modelId: 'global.anthropic.claude-sonnet-4-5-20250929-v1:0' });
+}
+{{/if}}
+{{#if (eq modelProvider "Anthropic")}}
+import { AnthropicModel } from '@strands-agents/sdk/models/anthropic';
+import { withApiKey } from 'bedrock-agentcore/identity';
+
+const IDENTITY_PROVIDER_NAME = '{{identityProviders.[0].name}}';
+const IDENTITY_ENV_VAR = '{{identityProviders.[0].envVarName}}';
+
+async function getApiKey(): Promise<string> {
+  if (process.env.LOCAL_DEV === '1') {
+    const apiKey = process.env[IDENTITY_ENV_VAR] ?? process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error(\`\${IDENTITY_ENV_VAR} or ANTHROPIC_API_KEY not found. Add your key to agentcore/.env.local\`);
+    }
+    return apiKey;
+  }
+  return withApiKey({ providerName: IDENTITY_PROVIDER_NAME })(async (apiKey: string) => apiKey)();
+}
+
+let _model: AnthropicModel | undefined;
+
+export async function loadModel(): Promise<AnthropicModel> {
+  if (!_model) {
+    const apiKey = await getApiKey();
+    _model = new AnthropicModel({
+      apiKey,
+      modelId: 'claude-sonnet-4-5-20250929',
+      maxTokens: 5000,
+    });
+  }
+  return _model;
+}
+{{/if}}
+{{#if (eq modelProvider "OpenAI")}}
+import { OpenAIModel } from '@strands-agents/sdk/models/openai';
+import { withApiKey } from 'bedrock-agentcore/identity';
+
+const IDENTITY_PROVIDER_NAME = '{{identityProviders.[0].name}}';
+const IDENTITY_ENV_VAR = '{{identityProviders.[0].envVarName}}';
+
+async function getApiKey(): Promise<string> {
+  if (process.env.LOCAL_DEV === '1') {
+    const apiKey = process.env[IDENTITY_ENV_VAR] ?? process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error(\`\${IDENTITY_ENV_VAR} or OPENAI_API_KEY not found. Add your key to agentcore/.env.local\`);
+    }
+    return apiKey;
+  }
+  return withApiKey({ providerName: IDENTITY_PROVIDER_NAME })(async (apiKey: string) => apiKey)();
+}
+
+let _model: OpenAIModel | undefined;
+
+export async function loadModel(): Promise<OpenAIModel> {
+  if (!_model) {
+    const apiKey = await getApiKey();
+    _model = new OpenAIModel({
+      api: 'chat',
+      apiKey,
+      modelId: 'gpt-4.1',
+    });
+  }
+  return _model;
+}
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+import { GoogleModel } from '@strands-agents/sdk/models/google';
+import { withApiKey } from 'bedrock-agentcore/identity';
+
+const IDENTITY_PROVIDER_NAME = '{{identityProviders.[0].name}}';
+const IDENTITY_ENV_VAR = '{{identityProviders.[0].envVarName}}';
+
+async function getApiKey(): Promise<string> {
+  if (process.env.LOCAL_DEV === '1') {
+    const apiKey = process.env[IDENTITY_ENV_VAR] ?? process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error(\`\${IDENTITY_ENV_VAR} or GEMINI_API_KEY not found. Add your key to agentcore/.env.local\`);
+    }
+    return apiKey;
+  }
+  return withApiKey({ providerName: IDENTITY_PROVIDER_NAME })(async (apiKey: string) => apiKey)();
+}
+
+let _model: GoogleModel | undefined;
+
+export async function loadModel(): Promise<GoogleModel> {
+  if (!_model) {
+    const apiKey = await getApiKey();
+    _model = new GoogleModel({
+      apiKey,
+      modelId: 'gemini-2.5-flash',
+    });
+  }
+  return _model;
+}
+{{/if}}
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/base/package.json should match snapshot 1`] = `
+"{
+  "name": "{{name}}",
+  "version": "0.1.0",
+  "description": "AgentCore Runtime Application using Strands TypeScript SDK",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "tsx watch main.ts"
+  },
+  "dependencies": {
+    {{#if (eq modelProvider "Anthropic")}}
+    "@anthropic-ai/sdk": "^0.71.2",
+    {{/if}}
+    {{#if (eq modelProvider "OpenAI")}}
+    "openai": "^6.7.0",
+    {{/if}}
+    {{#if (eq modelProvider "Gemini")}}
+    "@google/genai": "^1.40.0",
+    {{/if}}
+    "@modelcontextprotocol/sdk": "^1.25.2",
+    "@opentelemetry/api": "^1.9.0",
+    "@strands-agents/sdk": "^1.5.0",
+    "bedrock-agentcore": "^0.3.0",
+    "tsx": "^4.19.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "overrides": {
+    "bedrock-agentcore": {
+      "@strands-agents/sdk": "$@strands-agents/sdk"
+    }
+  }
+}
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/base/tsconfig.json should match snapshot 1`] = `
+"{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "sourceMap": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/strands/capabilities/memory/memory.ts should match snapshot 1`] = `
+"import { randomUUID } from 'node:crypto';
+import { MemoryManager } from '@strands-agents/sdk';
+import { createAgentCoreMemoryStores } from 'bedrock-agentcore/experimental/memory/strands';
+
+const MEMORY_ID = process.env.{{memoryProviders.[0].envVarName}};
+
+const CUSTOM_ACTOR_ID_HEADER = 'x-amzn-bedrock-agentcore-runtime-custom-actor-id';
+
+export function getActorId(payload: any, context: any): string {
+  const raw =
+    context?.headers?.[CUSTOM_ACTOR_ID_HEADER] ||
+    payload?.userId ||
+    context?.sessionId;
+  return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : randomUUID();
+}
+
+const memoryManagerCache = new Map<string, MemoryManager>();
+
+export function getOrCreateMemoryManager(sessionId: string, actorId: string): MemoryManager | null {
+  if (!MEMORY_ID) return null;
+
+  const key = \`\${actorId}:\${sessionId}\`;
+  let manager = memoryManagerCache.get(key);
+  if (manager) return manager;
+
+  const stores = createAgentCoreMemoryStores({
+    memoryId: MEMORY_ID,
+    actorId,
+    sessionId,
+    namespaces: [
+{{#if (includes memoryProviders.[0].strategies "SEMANTIC")}}
+      { namespace: '/users/{actorId}/facts' },
+{{/if}}
+{{#if (includes memoryProviders.[0].strategies "USER_PREFERENCE")}}
+      { namespace: '/users/{actorId}/preferences' },
+{{/if}}
+{{#if (includes memoryProviders.[0].strategies "EPISODIC")}}
+      { namespace: '/episodes/{actorId}/{sessionId}' },
+{{/if}}
+{{#if (includes memoryProviders.[0].strategies "SUMMARIZATION")}}
+      { namespace: '/summaries/{actorId}/{sessionId}' },
+{{/if}}
+    ],
+    // readMode defaults to 'per-namespace' (one retrieve call per namespace).
+    // Switch to 'subtree' to consolidate to a single hierarchical recall call.
+    extraction: true,
+  });
+
+  manager = new MemoryManager({ stores });
+  memoryManagerCache.set(key, manager);
+  return manager;
+}
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/vercelai/base/README.md should match snapshot 1`] = `
+"This is a project generated by the AgentCore CLI!
+
+# Layout
+
+The generated application code lives at the agent root directory. At the root, there is a \`.gitignore\` file, an
+\`agentcore/\` folder which represents the configurations and state associated with this project. Other \`agentcore\`
+commands like \`deploy\`, \`dev\`, and \`invoke\` rely on the configuration stored here.
+
+## Agent Root
+
+The main entrypoint to your app is defined in \`main.ts\`. Using the AgentCore SDK \`BedrockAgentCoreApp\`, this file
+defines an HTTP app that streams tokens using the Vercel AI SDK's \`streamText\` API.
+
+\`model/load.ts\` instantiates your chosen model provider.
+
+## Environment Variables
+
+| Variable | Required | Description |
+| --- | --- | --- |
+{{#if hasIdentity}}| \`{{identityProviders.[0].envVarName}}\` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
+{{/if}}| \`LOCAL_DEV\` | No | Set to \`1\` to use \`.env.local\` instead of AgentCore Identity |
+
+# Developing locally
+
+If installation was successful, \`node_modules/\` is already populated with dependencies.
+
+\`agentcore dev\` will start a local server using \`npx tsx watch main.ts\` for hot reload. The port is logged to the terminal (default \`8080\`).
+
+In a new terminal, you can invoke that server with:
+
+\`agentcore invoke --dev "What can you do"\`
+
+# Deployment
+
+After providing credentials, \`agentcore deploy\` will deploy your project into Amazon Bedrock AgentCore.
+
+Use \`agentcore invoke\` to invoke your deployed agent.
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/vercelai/base/gitignore.template should match snapshot 1`] = `
+"# Environment variables
+.env
+.env.*
+
+# Node
+node_modules/
+dist/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/vercelai/base/main.ts should match snapshot 1`] = `
+"import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime';
+import { streamText, type ModelMessage } from 'ai';
+import { loadModel } from './model/load.js';
+
+const SYSTEM_PROMPT = \`You are a helpful assistant.\`;
+
+const HISTORY_LIMIT = 128;
+
+// Keeps one message history per sessionId so each session remembers its own
+// turns (best-effort; resets on cold start). A Map preserves insertion order,
+// so it doubles as an LRU bounded to 128 sessions — a local dev process serving
+// many sessions cannot leak history between them or grow without bound. On
+// AgentCore Runtime each microVM serves a single session, so this holds one
+// entry. For durable history, persist messages to an external store.
+const histories = new Map<string, ModelMessage[]>();
+
+function getHistory(sessionId: string): ModelMessage[] {
+  const existing = histories.get(sessionId);
+  if (existing) {
+    histories.delete(sessionId);
+    histories.set(sessionId, existing);
+    return existing;
+  }
+  if (histories.size >= HISTORY_LIMIT) {
+    const oldest = histories.keys().next().value;
+    if (oldest !== undefined) histories.delete(oldest);
+  }
+  const fresh: ModelMessage[] = [];
+  histories.set(sessionId, fresh);
+  return fresh;
+}
+
+const app = new BedrockAgentCoreApp({
+  invocationHandler: {
+    async *process(payload: any, context: any) {
+      const sessionId = context?.sessionId ?? 'default-session';
+      const history = getHistory(sessionId);
+      const userMessage: ModelMessage = { role: 'user', content: payload.prompt ?? '' };
+
+      const model = await loadModel();
+      const result = streamText({
+        model,
+        system: SYSTEM_PROMPT,
+        messages: [...history, userMessage],
+      });
+
+      let assistant = '';
+      for await (const chunk of result.textStream) {
+        assistant += chunk;
+        yield { data: chunk };
+      }
+
+      // Commit the exchange to history only after a non-empty reply. On a failed
+      // or empty stream the turn is dropped instead of leaving a dangling user
+      // (or empty assistant) message — consecutive same-role or empty-content
+      // messages would otherwise be rejected on the next turn for this session.
+      if (assistant.length > 0) {
+        history.push(userMessage, { role: 'assistant', content: assistant });
+      }
+    },
+  },
+});
+
+app.run({ port: parseInt(process.env.PORT ?? '8080') });
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/vercelai/base/model/load.ts should match snapshot 1`] = `
+"{{#if (eq modelProvider "Bedrock")}}
+import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
+import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
+
+const provider = fromNodeProviderChain();
+
+const bedrock = createAmazonBedrock({
+  region: process.env.AWS_REGION ?? 'us-east-1',
+  credentialProvider: async () => {
+    const creds = await provider();
+    return {
+      accessKeyId: creds.accessKeyId,
+      secretAccessKey: creds.secretAccessKey,
+      sessionToken: creds.sessionToken,
+    };
+  },
+});
+
+export function loadModel() {
+  return bedrock('us.anthropic.claude-sonnet-4-5-20250929-v1:0');
+}
+{{/if}}
+{{#if (eq modelProvider "Anthropic")}}
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { withApiKey } from 'bedrock-agentcore/identity';
+
+const IDENTITY_PROVIDER_NAME = '{{identityProviders.[0].name}}';
+const IDENTITY_ENV_VAR = '{{identityProviders.[0].envVarName}}';
+
+async function getApiKey(): Promise<string> {
+  if (process.env.LOCAL_DEV === '1') {
+    const apiKey = process.env[IDENTITY_ENV_VAR] ?? process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error(\`\${IDENTITY_ENV_VAR} or ANTHROPIC_API_KEY not found. Add your key to agentcore/.env.local\`);
+    }
+    return apiKey;
+  }
+  return withApiKey({ providerName: IDENTITY_PROVIDER_NAME })(async (apiKey: string) => apiKey)();
+}
+
+let _anthropic: ReturnType<typeof createAnthropic> | undefined;
+
+async function getProvider() {
+  if (!_anthropic) {
+    const apiKey = await getApiKey();
+    _anthropic = createAnthropic({ apiKey });
+  }
+  return _anthropic;
+}
+
+export async function loadModel() {
+  const anthropic = await getProvider();
+  return anthropic('claude-sonnet-4-5-20250929');
+}
+{{/if}}
+{{#if (eq modelProvider "OpenAI")}}
+import { createOpenAI } from '@ai-sdk/openai';
+import { withApiKey } from 'bedrock-agentcore/identity';
+
+const IDENTITY_PROVIDER_NAME = '{{identityProviders.[0].name}}';
+const IDENTITY_ENV_VAR = '{{identityProviders.[0].envVarName}}';
+
+async function getApiKey(): Promise<string> {
+  if (process.env.LOCAL_DEV === '1') {
+    const apiKey = process.env[IDENTITY_ENV_VAR] ?? process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error(\`\${IDENTITY_ENV_VAR} or OPENAI_API_KEY not found. Add your key to agentcore/.env.local\`);
+    }
+    return apiKey;
+  }
+  return withApiKey({ providerName: IDENTITY_PROVIDER_NAME })(async (apiKey: string) => apiKey)();
+}
+
+let _openai: ReturnType<typeof createOpenAI> | undefined;
+
+async function getProvider() {
+  if (!_openai) {
+    const apiKey = await getApiKey();
+    _openai = createOpenAI({ apiKey });
+  }
+  return _openai;
+}
+
+export async function loadModel() {
+  const openai = await getProvider();
+  return openai('gpt-4.1');
+}
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { withApiKey } from 'bedrock-agentcore/identity';
+
+const IDENTITY_PROVIDER_NAME = '{{identityProviders.[0].name}}';
+const IDENTITY_ENV_VAR = '{{identityProviders.[0].envVarName}}';
+
+async function getApiKey(): Promise<string> {
+  if (process.env.LOCAL_DEV === '1') {
+    const apiKey = process.env[IDENTITY_ENV_VAR] ?? process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error(\`\${IDENTITY_ENV_VAR} or GEMINI_API_KEY not found. Add your key to agentcore/.env.local\`);
+    }
+    return apiKey;
+  }
+  return withApiKey({ providerName: IDENTITY_PROVIDER_NAME })(async (apiKey: string) => apiKey)();
+}
+
+let _google: ReturnType<typeof createGoogleGenerativeAI> | undefined;
+
+async function getProvider() {
+  if (!_google) {
+    const apiKey = await getApiKey();
+    _google = createGoogleGenerativeAI({ apiKey });
+  }
+  return _google;
+}
+
+export async function loadModel() {
+  const google = await getProvider();
+  return google('gemini-2.5-flash');
+}
+{{/if}}
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/vercelai/base/package.json should match snapshot 1`] = `
+"{
+  "name": "{{name}}",
+  "version": "0.1.0",
+  "description": "AgentCore Runtime Application using Vercel AI SDK",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "tsx watch main.ts"
+  },
+  "dependencies": {
+    "ai": "^6.0.0",
+    {{#if (eq modelProvider "Bedrock")}}
+    "@ai-sdk/amazon-bedrock": "^4.0.0",
+    "@aws-sdk/credential-providers": "^3.0.0",
+    {{/if}}
+    {{#if (eq modelProvider "Anthropic")}}
+    "@ai-sdk/anthropic": "^3.0.0",
+    {{/if}}
+    {{#if (eq modelProvider "OpenAI")}}
+    "@ai-sdk/openai": "^3.0.0",
+    {{/if}}
+    {{#if (eq modelProvider "Gemini")}}
+    "@ai-sdk/google": "^3.0.0",
+    {{/if}}
+    "bedrock-agentcore": "^0.2.4",
+    "tsx": "^4.19.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
+"
+`;
+
+exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/vercelai/base/tsconfig.json should match snapshot 1`] = `
+"{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "sourceMap": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
+"
+`;

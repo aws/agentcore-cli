@@ -1,8 +1,11 @@
 import { ConfigIO, ResourceNotFoundError, ValidationError } from '../../../lib';
-import type { AgentCoreProjectSpec, AwsDeploymentTargets, DeployedState } from '../../../schema';
+import type { AgentCoreProjectSpec, AwsDeploymentTargets, DeployedState, HarnessModel } from '../../../schema';
 import {
+  DEFAULT_RUNTIME_USER_ID,
   buildAguiRunInput,
   executeBashCommand,
+  extractResult,
+  getOrCreatePaymentSession,
   invokeA2ARuntime,
   invokeAgentRuntime,
   invokeAgentRuntimeStreaming,
@@ -10,12 +13,17 @@ import {
   mcpCallTool,
   mcpInitSession,
   mcpListTools,
+  parseSSE,
 } from '../../aws';
+import { invokeHarness } from '../../aws/agentcore-harness';
+import { dnsSuffix } from '../../aws/partition';
+import { ANSI } from '../../constants';
 import { InvokeLogger } from '../../logging';
 import { formatMcpToolList } from '../../operations/dev/utils';
-import { canFetchRuntimeToken, fetchRuntimeToken } from '../../operations/fetch-access';
-import { generateSessionId } from '../../operations/session';
+import { canFetchHarnessToken, fetchHarnessToken } from '../../operations/fetch-access';
+import { resolveInvokeTarget } from './resolve';
 import type { InvokeOptions, InvokeResult } from './types';
+import { randomUUID } from 'node:crypto';
 
 export interface InvokeContext {
   project: AgentCoreProjectSpec;
@@ -40,133 +48,350 @@ export async function loadInvokeConfig(configIO: ConfigIO = new ConfigIO()): Pro
 export async function handleInvoke(context: InvokeContext, options: InvokeOptions = {}): Promise<InvokeResult> {
   const { project, deployedState, awsTargets } = context;
 
-  // Resolve target
-  const targetNames = Object.keys(deployedState.targets);
-  if (targetNames.length === 0) {
+  // Gateway invoke: route through a deployed gateway
+  if (options.gateway) {
+    const targetNames = Object.keys(deployedState.targets);
+    if (targetNames.length === 0) {
+      return {
+        success: false,
+        error: new ResourceNotFoundError('No deployed targets found. Run `agentcore deploy` first.'),
+      };
+    }
+    const gwSelectedTarget = options.targetName ?? targetNames[0]!;
+    const gwTargetState = deployedState.targets[gwSelectedTarget];
+    const gwTargetConfig = awsTargets.find(t => t.name === gwSelectedTarget);
+    if (!gwTargetConfig) {
+      return {
+        success: false,
+        error: new ResourceNotFoundError(`Target config '${gwSelectedTarget}' not found in aws-targets`),
+      };
+    }
+    const gwState =
+      gwTargetState?.resources?.gateways?.[options.gateway] ??
+      gwTargetState?.resources?.mcp?.gateways?.[options.gateway];
+    if (!gwState) {
+      return {
+        success: false,
+        error: new ResourceNotFoundError(
+          `Gateway '${options.gateway}' is not deployed. Run \`agentcore deploy\` first.`
+        ),
+      };
+    }
+
+    const gwSpec = project.agentCoreGateways?.find(g => g.name === options.gateway);
+    const isMcpGateway = gwSpec?.protocolType === 'MCP';
+
+    // Require bearer token for CUSTOM_JWT gateways
+    if (gwSpec?.authorizerType === 'CUSTOM_JWT' && !options.bearerToken) {
+      return {
+        success: false,
+        error: new ValidationError('Gateway requires --bearer-token (CUSTOM_JWT authorizer).'),
+      };
+    }
+
+    const region = gwTargetConfig.region;
+    const gatewayUrl =
+      gwState.gatewayUrl ??
+      (() => {
+        const r = gwState.gatewayArn?.split(':')[3];
+        return r ? `https://${gwState.gatewayId}.gateway.bedrock-agentcore.${r}.${dnsSuffix(r)}` : undefined;
+      })();
+
+    if (!gatewayUrl) {
+      return { success: false, error: new ValidationError('Could not determine gateway URL.') };
+    }
+
+    let invocationUrl: string;
+    let body: string;
+
+    if (!isMcpGateway) {
+      // HTTP gateway: requires --target-name and --prompt
+      if (!options.gatewayTarget) {
+        const httpTargets = (gwSpec?.targets ?? [])
+          .filter((t: { targetType?: string }) => t.targetType === 'httpRuntime')
+          .map((t: { name: string }) => t.name);
+        return {
+          success: false,
+          error: new ValidationError(
+            `--target-name is required for HTTP gateways. Available targets: ${httpTargets.join(', ')}`
+          ),
+        };
+      }
+      const targetSpec = gwSpec?.targets?.find(
+        (t: { name: string; targetType?: string }) => t.name === options.gatewayTarget
+      );
+      if (!targetSpec) {
+        return {
+          success: false,
+          error: new ResourceNotFoundError(
+            `Target '${options.gatewayTarget}' not found on gateway '${options.gateway}'.`
+          ),
+        };
+      }
+      if (targetSpec.targetType !== 'httpRuntime') {
+        return {
+          success: false,
+          error: new ValidationError(`Target '${options.gatewayTarget}' is not an httpRuntime target.`),
+        };
+      }
+      invocationUrl = `${gatewayUrl}/${options.gatewayTarget}/invocations`;
+      if (!options.prompt) {
+        return { success: false, error: new ValidationError('--prompt is required for HTTP gateway invoke.') };
+      }
+      // Wrap plain strings into {"prompt": "..."} so the body field matches both the
+      // agent template (reads payload.get("prompt")) and the guardrail form default
+      // data path (context.input.prompt). If the prompt is already valid JSON, pass
+      // it through as-is.
+      try {
+        JSON.parse(options.prompt);
+        body = options.prompt;
+      } catch {
+        body = JSON.stringify({ prompt: options.prompt });
+      }
+    } else {
+      // MCP gateway: direct HTTP POST to gateway /mcp endpoint
+      if (!options.tool) {
+        return {
+          success: false,
+          error: new ValidationError('--tool is required for MCP gateway invoke.'),
+        };
+      }
+
+      invocationUrl = gatewayUrl.endsWith('/mcp') ? gatewayUrl : `${gatewayUrl}/mcp`;
+      body = JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: options.tool,
+          arguments: options.input ? (JSON.parse(options.input) as Record<string, unknown>) : {},
+        },
+      });
+    }
+
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      ...(options.sessionId && { 'x-amz-bedrock-agentcore-session-id': options.sessionId }),
+      ...(isMcpGateway && { Accept: 'application/json, text/event-stream', 'Mcp-Protocol-Version': '2025-03-26' }),
+    };
+
+    let fetchHeaders = headers;
+
+    if (gwSpec?.authorizerType === 'CUSTOM_JWT') {
+      // CUSTOM_JWT: use bearer token
+      fetchHeaders = { ...headers, authorization: `Bearer ${options.bearerToken}` };
+    } else if (gwSpec?.authorizerType === 'AWS_IAM') {
+      // AWS_IAM: SigV4 sign the request
+      const { SignatureV4 } = await import('@smithy/signature-v4');
+      const { Sha256 } = await import('@aws-crypto/sha256-js');
+      const { fromNodeProviderChain } = await import('@aws-sdk/credential-providers');
+
+      const url = new URL(invocationUrl);
+      const signer = new SignatureV4({
+        service: 'bedrock-agentcore',
+        region,
+        credentials: fromNodeProviderChain(),
+        sha256: Sha256,
+      });
+
+      const signed = await signer.sign({
+        method: 'POST',
+        protocol: 'https:',
+        hostname: url.hostname,
+        path: url.pathname,
+        headers: { ...headers, host: url.hostname },
+        body,
+      });
+
+      fetchHeaders = signed.headers as Record<string, string>;
+    }
+    // NONE: no auth needed, use headers as-is
+
+    const response = await fetch(invocationUrl, {
+      method: 'POST',
+      headers: fetchHeaders,
+      body,
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      return { success: false, error: new Error(`Gateway invoke failed (${response.status}): ${errText}`) };
+    }
+
+    const responseText = await response.text();
+
+    // HTTP gateways stream back the same SSE / JSON envelope as a direct runtime
+    // invoke, so parse it the same way (mirrors invokeAgentRuntime) to render clean
+    // text instead of raw `data: "..."` frames. MCP gateways return JSON-RPC, which
+    // the caller renders as-is.
+    const responseBody = isMcpGateway
+      ? responseText
+      : responseText.includes('data: ')
+        ? parseSSE(responseText)
+        : extractResult(responseText);
+
     return {
-      success: false,
-      error: new ResourceNotFoundError('No deployed targets found. Run `agentcore deploy` first.'),
+      success: true,
+      response: responseBody,
+      agentName: options.gatewayTarget ?? options.gateway,
+      targetName: gwSelectedTarget,
     };
   }
 
-  const selectedTargetName = options.targetName ?? targetNames[0]!;
+  // Route to harness before runtime resolution
+  const harnessEntries = project.harnesses ?? [];
+  const isHarnessInvoke = options.harnessName != null || (harnessEntries.length > 0 && project.runtimes.length === 0);
 
-  if (options.targetName && !targetNames.includes(options.targetName)) {
+  if (isHarnessInvoke) {
+    const targetNames = Object.keys(deployedState.targets);
+    if (targetNames.length === 0) {
+      return {
+        success: false,
+        error: new ResourceNotFoundError('No deployed targets found. Run `agentcore deploy` first.'),
+      };
+    }
+    const selectedTarget = options.targetName ?? targetNames[0]!;
+    if (options.targetName && !targetNames.includes(options.targetName)) {
+      return {
+        success: false,
+        error: new ResourceNotFoundError(
+          `Target '${options.targetName}' not found. Available: ${targetNames.join(', ')}`
+        ),
+      };
+    }
+    const harnessTargetState = deployedState.targets[selectedTarget];
+    const harnessTargetConfig = awsTargets.find(t => t.name === selectedTarget);
+    if (!harnessTargetConfig) {
+      return {
+        success: false,
+        error: new ResourceNotFoundError(`Target config '${selectedTarget}' not found in aws-targets`),
+      };
+    }
+    return handleHarnessInvoke(project, harnessTargetState, harnessTargetConfig, selectedTarget, options);
+  }
+
+  if (harnessEntries.length > 0 && project.runtimes.length > 0 && !options.agentName) {
+    const runtimeNames = project.runtimes.map(a => a.name);
+    const harnessNames = harnessEntries.map(h => h.name);
     return {
       success: false,
-      error: new ResourceNotFoundError(
-        `Target '${options.targetName}' not found. Available: ${targetNames.join(', ')}`
+      error: new ValidationError(
+        `Project has both runtimes and harnesses. Specify one:\n` +
+          `  --runtime: ${runtimeNames.join(', ')}\n` +
+          `  --harness: ${harnessNames.join(', ')}`
       ),
     };
   }
 
-  const targetState = deployedState.targets[selectedTargetName];
-  const targetConfig = awsTargets.find(t => t.name === selectedTargetName);
+  const resolved = await resolveInvokeTarget({
+    project,
+    deployedState,
+    awsTargets,
+    agentName: options.agentName,
+    targetName: options.targetName,
+    bearerToken: options.bearerToken,
+    sessionId: options.sessionId,
+  });
 
-  if (!targetConfig) {
-    return {
-      success: false,
-      error: new ResourceNotFoundError(`Target config '${selectedTargetName}' not found in aws-targets`),
-    };
+  if (!resolved.success) {
+    return { success: false, error: resolved.error };
   }
 
-  if (project.runtimes.length === 0) {
-    return { success: false, error: new ValidationError('No agents defined in configuration') };
-  }
-
-  // Resolve agent
-  const agentNames = project.runtimes.map(a => a.name);
-
-  if (!options.agentName && project.runtimes.length > 1) {
-    return {
-      success: false,
-      error: new ValidationError(`Multiple runtimes found. Use --runtime to specify one: ${agentNames.join(', ')}`),
-    };
-  }
-
-  const agentSpec = options.agentName ? project.runtimes.find(a => a.name === options.agentName) : project.runtimes[0];
-
-  if (options.agentName && !agentSpec) {
-    return {
-      success: false,
-      error: new ResourceNotFoundError(`Agent '${options.agentName}' not found. Available: ${agentNames.join(', ')}`),
-    };
-  }
-
-  if (!agentSpec) {
-    return { success: false, error: new ValidationError('No agents defined in configuration') };
-  }
+  const { agentSpec, targetName: selectedTargetName, targetConfig, runtimeArn, baggage } = resolved;
+  options = {
+    ...options,
+    bearerToken: resolved.bearerToken ?? options.bearerToken,
+    sessionId: resolved.sessionId ?? options.sessionId,
+  };
 
   // Warn about VPC mode endpoint requirements
-  if (agentSpec.networkMode === 'VPC') {
+  if (agentSpec.networkMode === 'VPC' && !options.json) {
     console.log(
-      '\x1b[33mWarning: This agent uses VPC network mode. Ensure your VPC endpoints are configured for invocation.\x1b[0m'
+      `${ANSI.yellow}Warning: This agent uses VPC network mode. Ensure your VPC endpoints are configured for invocation.${ANSI.reset}`
     );
   }
 
-  // Get the deployed state for this specific agent
-  const agentState = targetState?.resources?.runtimes?.[agentSpec.name];
-
-  if (!agentState) {
+  // Payment flags are only supported for HTTP protocol
+  if (
+    (options.paymentInstrumentId || options.paymentSessionId || options.autoSession) &&
+    agentSpec.protocol &&
+    agentSpec.protocol !== 'HTTP'
+  ) {
     return {
       success: false,
-      error: new ValidationError(`Agent '${agentSpec.name}' is not deployed to target '${selectedTargetName}'`),
+      error: new Error(
+        `Payment flags are only supported for HTTP protocol agents. Agent '${agentSpec.name}' uses '${agentSpec.protocol}'.`
+      ),
     };
   }
 
-  // Build config bundle baggage if a bundle is associated with this agent
-  const deployedBundles = targetState?.resources?.configBundles ?? {};
-  let baggage: string | undefined;
-  const bundleSpec = project.configBundles?.find(b => {
-    const keys = Object.keys(b.components ?? {});
-    return keys.some(k => k === `{{runtime:${agentSpec.name}}}`);
-  });
-  if (bundleSpec) {
-    const bundleState = deployedBundles[bundleSpec.name];
-    if (bundleState?.bundleArn && bundleState?.versionId) {
-      baggage = `aws.agentcore.configbundle_arn=${encodeURIComponent(bundleState.bundleArn)},aws.agentcore.configbundle_version=${encodeURIComponent(bundleState.versionId)}`;
-    }
+  // Conflict: --auto-session and --payment-session-id are mutually exclusive
+  if (options.autoSession && options.paymentSessionId) {
+    return {
+      success: false,
+      error: new Error('--auto-session and --payment-session-id are mutually exclusive. Use one or the other.'),
+    };
   }
 
-  // Auto-fetch bearer token for CUSTOM_JWT agents when not provided
-  if (agentSpec.authorizerType === 'CUSTOM_JWT' && !options.bearerToken) {
-    const canFetch = await canFetchRuntimeToken(agentSpec.name);
-    if (canFetch) {
-      try {
-        const tokenResult = await fetchRuntimeToken(agentSpec.name, { deployTarget: selectedTargetName });
-        options = { ...options, bearerToken: tokenResult.token };
-      } catch (err) {
-        return {
-          success: false,
-          error: new ValidationError(
-            `CUSTOM_JWT agent requires a bearer token. Auto-fetch failed: ${err instanceof Error ? err.message : String(err)}\nProvide one manually with --bearer-token.`,
-            { cause: err }
-          ),
-        };
-      }
-    } else {
+  // Resolve the payments end-user identity (wallet owner). Prefer the explicit
+  // --payment-user-id; fall back to the runtime --user-id. When neither is set,
+  // leave it undefined so the agent applies its own "default-user" fallback and
+  // we warn below — we never silently scope a real wallet to "default-user".
+  const resolvedPaymentUserId = options.paymentUserId ?? options.userId;
+  options = { ...options, paymentUserId: resolvedPaymentUserId };
+
+  // Footgun guard: a payments-enabled project invoked without an explicit
+  // payments identity will scope the wallet/budget to "default-user" on the
+  // agent side, commingling spend across users. Warn loudly (test-only), never
+  // hard-fail (backward-compatible).
+  const usingPaymentContext =
+    Boolean(options.paymentInstrumentId) || Boolean(options.paymentSessionId) || Boolean(options.autoSession);
+  const projectHasPayments = (project.payments?.length ?? 0) > 0;
+  if ((usingPaymentContext || projectHasPayments) && !resolvedPaymentUserId) {
+    process.stderr.write(
+      `${ANSI.yellow}Warning: no --payment-user-id (or --user-id) provided. Payments will be scoped to ` +
+        `"${DEFAULT_RUNTIME_USER_ID}" on the agent. This is intended for single-user testing only; ` +
+        `production should set --payment-user-id per end user so wallets and budgets are not shared.${ANSI.reset}\n`
+    );
+  }
+
+  // Auto-session: get or create a payment session when --auto-session is set
+  if (options.autoSession && !options.paymentSessionId) {
+    const targetState = deployedState.targets[selectedTargetName];
+    const payments = targetState?.resources?.payments;
+    const firstManager = payments ? Object.values(payments)[0] : undefined;
+    if (!firstManager?.managerArn) {
       return {
         success: false,
-        error: new ValidationError(
-          `Agent '${agentSpec.name}' is configured for CUSTOM_JWT but no bearer token is available.\nEither provide --bearer-token or re-add the agent with --client-id and --client-secret to enable auto-fetch.`
+        error: new Error('--auto-session requires a deployed payment manager. Run `agentcore deploy` first.'),
+      };
+    }
+    try {
+      const paymentSpec = project.payments?.find(p => p.name === Object.keys(payments!)[0]);
+      const sessionId = await getOrCreatePaymentSession({
+        region: targetConfig.region,
+        // Scope the session to the SAME identity the agent will pay as, so the
+        // session, instrument, and payload user_id all align.
+        userId: resolvedPaymentUserId ?? DEFAULT_RUNTIME_USER_ID,
+        managerArn: firstManager.managerArn,
+        defaultSpendLimit: paymentSpec?.defaultSpendLimit,
+      });
+      options = { ...options, paymentSessionId: sessionId };
+    } catch (err) {
+      return {
+        success: false,
+        error: new Error(
+          `--auto-session failed to create payment session: ${err instanceof Error ? err.message : String(err)}`
         ),
       };
     }
-  }
-
-  // When invoking with a bearer token (OAuth/CUSTOM_JWT), AgentCore does not
-  // auto-generate a runtime session ID the way it does for SigV4 callers. Templates
-  // that wire up AgentCoreMemorySessionManager require a non-null session_id, so
-  // generate one here if the caller didn't pass --session-id.
-  if (options.bearerToken && !options.sessionId) {
-    options = { ...options, sessionId: generateSessionId() };
   }
 
   // Exec mode: run shell command in runtime container
   if (options.exec) {
     const logger = new InvokeLogger({
       agentName: agentSpec.name,
-      runtimeArn: agentState.runtimeArn,
+      runtimeArn: runtimeArn,
       region: targetConfig.region,
       sessionId: options.sessionId,
     });
@@ -179,7 +404,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     try {
       const result = await executeBashCommand({
         region: targetConfig.region,
-        runtimeArn: agentState.runtimeArn,
+        runtimeArn: runtimeArn,
         command,
         sessionId: options.sessionId,
         timeout: options.timeout,
@@ -223,6 +448,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
         if (exitCode === 0) {
           return {
             success: true,
+            exitCode,
             agentName: agentSpec.name,
             targetName: selectedTargetName,
             response: JSON.stringify({ stdout, stderr, exitCode, status }),
@@ -231,6 +457,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
         }
         return {
           success: false,
+          exitCode,
           error: new Error(`Command exited with code ${exitCode}`),
           agentName: agentSpec.name,
           targetName: selectedTargetName,
@@ -252,6 +479,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       if (exitCode !== 0) {
         return {
           success: false,
+          exitCode,
           error: new Error(`Command exited with code ${exitCode}${status === 'TIMED_OUT' ? ' (timed out)' : ''}`),
           agentName: agentSpec.name,
           targetName: selectedTargetName,
@@ -262,6 +490,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
 
       return {
         success: true,
+        exitCode,
         agentName: agentSpec.name,
         targetName: selectedTargetName,
         logFilePath: logger.logFilePath,
@@ -276,7 +505,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
   if (agentSpec.protocol === 'MCP') {
     const mcpOpts = {
       region: targetConfig.region,
-      runtimeArn: agentState.runtimeArn,
+      runtimeArn: runtimeArn,
       userId: options.userId,
       headers: options.headers,
       bearerToken: options.bearerToken,
@@ -360,10 +589,11 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       const a2aResult = await invokeA2ARuntime(
         {
           region: targetConfig.region,
-          runtimeArn: agentState.runtimeArn,
+          runtimeArn: runtimeArn,
           userId: options.userId,
           sessionId: options.sessionId,
           headers: options.headers,
+          bearerToken: options.bearerToken,
         },
         options.prompt
       );
@@ -395,7 +625,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
   if (agentSpec.protocol === 'AGUI') {
     const logger = new InvokeLogger({
       agentName: agentSpec.name,
-      runtimeArn: agentState.runtimeArn,
+      runtimeArn: runtimeArn,
       region: targetConfig.region,
     });
 
@@ -406,7 +636,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
       const aguiResult = await invokeAguiRuntime(
         {
           region: targetConfig.region,
-          runtimeArn: agentState.runtimeArn,
+          runtimeArn: runtimeArn,
           sessionId: options.sessionId,
           userId: options.userId,
           logger,
@@ -464,7 +694,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
   // Create logger for this invocation
   const logger = new InvokeLogger({
     agentName: agentSpec.name,
-    runtimeArn: agentState.runtimeArn,
+    runtimeArn: runtimeArn,
     region: targetConfig.region,
     sessionId: options.sessionId,
   });
@@ -477,7 +707,7 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     try {
       const result = await invokeAgentRuntimeStreaming({
         region: targetConfig.region,
-        runtimeArn: agentState.runtimeArn,
+        runtimeArn: runtimeArn,
         payload: options.prompt,
         sessionId: options.sessionId,
         userId: options.userId,
@@ -485,6 +715,9 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
         headers: options.headers,
         bearerToken: options.bearerToken,
         baggage,
+        paymentInstrumentId: options.paymentInstrumentId,
+        paymentSessionId: options.paymentSessionId,
+        paymentUserId: options.paymentUserId,
       });
 
       for await (const chunk of result.stream) {
@@ -512,13 +745,16 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
   // Non-streaming mode
   const response = await invokeAgentRuntime({
     region: targetConfig.region,
-    runtimeArn: agentState.runtimeArn,
+    runtimeArn: runtimeArn,
     payload: options.prompt,
     sessionId: options.sessionId,
     userId: options.userId,
     headers: options.headers,
     bearerToken: options.bearerToken,
     baggage,
+    paymentInstrumentId: options.paymentInstrumentId,
+    paymentSessionId: options.paymentSessionId,
+    paymentUserId: options.paymentUserId,
   });
 
   logger.logResponse(response.content);
@@ -531,4 +767,284 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     sessionId: response.sessionId,
     logFilePath: logger.logFilePath,
   };
+}
+
+// ============================================================================
+// Harness Invoke (preview mode)
+// ============================================================================
+
+export function buildHarnessBaseOpts(
+  options: InvokeOptions,
+  harnessSpec?: Partial<HarnessModel>
+): Partial<import('../../aws/agentcore-harness').InvokeHarnessOptions> {
+  const baseOpts: Partial<import('../../aws/agentcore-harness').InvokeHarnessOptions> = {};
+  if (options.modelId || options.modelProvider || options.apiKeyArn || options.apiBase || options.additionalParams) {
+    const provider = options.modelProvider ?? harnessSpec?.provider;
+    const modelId = options.modelId ?? harnessSpec?.modelId ?? '';
+    const apiKeyArn = options.apiKeyArn ?? harnessSpec?.apiKeyArn;
+    const apiBase = options.apiBase ?? harnessSpec?.apiBase;
+    const additionalParams = options.additionalParams ?? harnessSpec?.additionalParams;
+    switch (provider) {
+      case 'open_ai':
+        baseOpts.model = {
+          openAiModelConfig: { modelId, ...(apiKeyArn && { apiKeyArn }) },
+        };
+        break;
+      case 'gemini':
+        baseOpts.model = {
+          geminiModelConfig: { modelId, ...(apiKeyArn && { apiKeyArn }) },
+        };
+        break;
+      case 'lite_llm':
+        baseOpts.model = {
+          liteLlmModelConfig: {
+            modelId,
+            ...(apiKeyArn && { apiKeyArn }),
+            ...(apiBase && { apiBase }),
+            ...(additionalParams && { additionalParams }),
+          },
+        };
+        break;
+      default:
+        baseOpts.model = {
+          bedrockModelConfig: { modelId },
+        };
+        break;
+    }
+  }
+  if (options.tools) {
+    baseOpts.tools = options.tools.split(',').map(t => {
+      const type = t.trim();
+      return { type, name: type };
+    });
+  }
+  if (options.maxIterations != null) baseOpts.maxIterations = options.maxIterations;
+  if (options.maxTokens != null) baseOpts.maxTokens = options.maxTokens;
+  if (options.harnessTimeout != null) baseOpts.timeoutSeconds = options.harnessTimeout;
+  if (options.skills) {
+    baseOpts.skills = options.skills.split(',').map(s => {
+      const trimmed = s.trim();
+      if (trimmed.startsWith('s3://')) return { s3Uri: trimmed };
+      if (trimmed.startsWith('https://')) return { gitUrl: trimmed };
+      return { path: trimmed };
+    });
+  }
+  if (options.systemPrompt) baseOpts.systemPrompt = [{ text: options.systemPrompt }];
+  if (options.allowedTools) baseOpts.allowedTools = options.allowedTools.split(',').map(t => t.trim());
+  if (options.actorId) baseOpts.actorId = options.actorId;
+  return baseOpts;
+}
+
+export async function handleHarnessInvokeByArn(
+  harnessArn: string,
+  region: string,
+  options: InvokeOptions
+): Promise<InvokeResult> {
+  if (!options.prompt) {
+    return {
+      success: false,
+      error: new ValidationError(
+        'No prompt provided. Usage: agentcore invoke --harness-arn <arn> --region <region> "your prompt"'
+      ),
+    };
+  }
+
+  const sessionId = options.sessionId ?? randomUUID();
+  const logger = new InvokeLogger({ agentName: 'external-harness', runtimeArn: harnessArn, region, sessionId });
+  logger.logPrompt(options.prompt, sessionId, options.userId);
+
+  const baseOpts = buildHarnessBaseOpts(options);
+  return streamHarnessInvoke({ region, harnessArn, sessionId, prompt: options.prompt, options, logger, baseOpts });
+}
+
+interface StreamHarnessParams {
+  region: string;
+  harnessArn: string;
+  sessionId: string;
+  prompt: string;
+  options: InvokeOptions;
+  logger: InvokeLogger;
+  baseOpts: Partial<import('../../aws/agentcore-harness').InvokeHarnessOptions>;
+}
+
+async function streamHarnessInvoke(params: StreamHarnessParams): Promise<InvokeResult> {
+  const { region, harnessArn, sessionId, prompt, options, logger, baseOpts } = params;
+  let fullResponse = '';
+
+  try {
+    const messages: { role: string; content: Record<string, unknown>[] }[] = [
+      { role: 'user', content: [{ text: prompt }] },
+    ];
+
+    const stream = invokeHarness({
+      region,
+      harnessArn,
+      runtimeSessionId: sessionId,
+      messages,
+      bearerToken: options.bearerToken,
+      ...baseOpts,
+    });
+
+    for await (const event of stream) {
+      if (options.verbose) {
+        console.log(JSON.stringify(event));
+        continue;
+      }
+
+      switch (event.type) {
+        case 'contentBlockDelta':
+          if (event.delta.type === 'text') {
+            fullResponse += event.delta.text;
+            if (!options.json) {
+              process.stdout.write(event.delta.text);
+            }
+          }
+          break;
+        case 'messageStop':
+          if (!options.json && event.stopReason !== 'tool_use' && event.stopReason !== 'tool_result') {
+            process.stdout.write('\n');
+          }
+          break;
+        case 'error':
+          logger.logError(new Error(`${event.errorType}: ${event.message}`), 'stream error');
+          if (options.json) {
+            return { success: false, error: new Error(`${event.errorType}: ${event.message}`) };
+          }
+          process.stderr.write(`\nError: ${event.message}\n`);
+          break;
+      }
+    }
+
+    logger.logResponse(fullResponse);
+
+    if (options.json) {
+      return {
+        success: true,
+        response: JSON.stringify({ text: fullResponse, sessionId }),
+        sessionId,
+        logFilePath: logger.logFilePath,
+      };
+    }
+
+    return { success: true, sessionId, logFilePath: logger.logFilePath };
+  } catch (err) {
+    logger.logError(err, 'harness invoke failed');
+    return {
+      success: false,
+      error: new Error(`Harness invoke failed: ${err instanceof Error ? err.message : String(err)}`),
+      logFilePath: logger.logFilePath,
+    };
+  }
+}
+
+async function handleHarnessInvoke(
+  project: AgentCoreProjectSpec,
+  targetState: DeployedState['targets'][string] | undefined,
+  targetConfig: { region: string; name: string },
+  selectedTargetName: string,
+  options: InvokeOptions
+): Promise<InvokeResult> {
+  const harnessEntries = project.harnesses ?? [];
+
+  if (harnessEntries.length === 0) {
+    return { success: false, error: new ValidationError('No harnesses defined in configuration') };
+  }
+
+  let harnessName = options.harnessName;
+  if (!harnessName) {
+    if (harnessEntries.length > 1) {
+      const names = harnessEntries.map(h => h.name);
+      return {
+        success: false,
+        error: new ValidationError(`Multiple harnesses found. Use --harness to specify one: ${names.join(', ')}`),
+      };
+    }
+    harnessName = harnessEntries[0]!.name;
+  }
+
+  const harnessEntry = harnessEntries.find(h => h.name === harnessName);
+  if (!harnessEntry) {
+    const names = harnessEntries.map(h => h.name);
+    return {
+      success: false,
+      error: new ResourceNotFoundError(`Harness '${harnessName}' not found. Available: ${names.join(', ')}`),
+    };
+  }
+
+  const harnessState = targetState?.resources?.harnesses?.[harnessName];
+  if (!harnessState) {
+    return {
+      success: false,
+      error: new ValidationError(
+        `Harness '${harnessName}' is not deployed to target '${selectedTargetName}'. Run \`agentcore deploy\` first.`
+      ),
+    };
+  }
+
+  const sessionId = options.sessionId ?? randomUUID();
+  const region = targetConfig.region;
+
+  const logger = new InvokeLogger({
+    agentName: harnessName,
+    runtimeArn: harnessState.harnessArn,
+    region,
+    sessionId,
+  });
+
+  // Read harness spec for auth config
+  const configIO = new ConfigIO();
+  let harnessSpec;
+  try {
+    harnessSpec = await configIO.readHarnessSpec(harnessName);
+  } catch {
+    // spec read is best-effort
+  }
+
+  // Auto-fetch bearer token for CUSTOM_JWT harnesses
+  if (harnessSpec?.authorizerType === 'CUSTOM_JWT' && !options.bearerToken) {
+    const canFetch = await canFetchHarnessToken(harnessName);
+    if (canFetch) {
+      try {
+        const tokenResult = await fetchHarnessToken(harnessName, { deployTarget: selectedTargetName });
+        options = { ...options, bearerToken: tokenResult.token };
+      } catch (err) {
+        return {
+          success: false,
+          error: new ValidationError(
+            `CUSTOM_JWT harness requires a bearer token. Auto-fetch failed: ${err instanceof Error ? err.message : String(err)}\nProvide one manually with --bearer-token.`
+          ),
+        };
+      }
+    } else {
+      return {
+        success: false,
+        error: new ValidationError(
+          `Harness '${harnessName}' is configured for CUSTOM_JWT but no bearer token is available.\nEither provide --bearer-token or re-add the harness with --client-id and --client-secret to enable auto-fetch.`
+        ),
+      };
+    }
+  }
+
+  if (!options.prompt) {
+    return {
+      success: false,
+      error: new ValidationError('No prompt provided. Usage: agentcore invoke --harness <name> "your prompt"'),
+    };
+  }
+
+  logger.logPrompt(options.prompt, sessionId, options.userId);
+
+  const baseOpts = buildHarnessBaseOpts(options, harnessSpec?.model);
+
+  const result = await streamHarnessInvoke({
+    region,
+    harnessArn: harnessState.harnessArn,
+    sessionId,
+    prompt: options.prompt,
+    options,
+    logger,
+    baseOpts,
+  });
+
+  return { ...result, targetName: selectedTargetName };
 }

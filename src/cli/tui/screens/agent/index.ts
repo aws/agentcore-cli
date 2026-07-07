@@ -1,4 +1,4 @@
 export { AddAgentFlow } from './AddAgentFlow';
 export { AddAgentScreen } from './AddAgentScreen';
 export type { AddAgentConfig, AddAgentStep } from './types';
-export { mapByoConfigToAgent, useAddAgent } from './useAddAgent';
+export { mapAddAgentConfigToGenerateConfig, mapByoConfigToAgent, useAddAgent } from './useAddAgent';

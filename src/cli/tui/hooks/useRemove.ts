@@ -3,19 +3,24 @@ import type { ResourceType } from '../../commands/remove/types';
 import { RemoveLogger } from '../../logging';
 import type { RemovableGatewayTarget, RemovalPreview } from '../../operations/remove';
 import type { RemovableCredential } from '../../primitives/CredentialPrimitive';
+import type { RemovableKnowledgeBase } from '../../primitives/KnowledgeBasePrimitive';
 import type { RemovableMemory } from '../../primitives/MemoryPrimitive';
 import type { RemovablePolicyResource } from '../../primitives/PolicyPrimitive';
 import type { RemovableRuntimeEndpoint } from '../../primitives/RuntimeEndpointPrimitive';
 import {
-  abTestPrimitive,
   agentPrimitive,
   configBundlePrimitive,
   credentialPrimitive,
+  datasetPrimitive,
   evaluatorPrimitive,
   gatewayPrimitive,
   gatewayTargetPrimitive,
+  harnessPrimitive,
+  knowledgeBasePrimitive,
   memoryPrimitive,
   onlineEvalConfigPrimitive,
+  paymentConnectorPrimitive,
+  paymentManagerPrimitive,
   policyEnginePrimitive,
   policyPrimitive,
   runtimeEndpointPrimitive,
@@ -29,6 +34,7 @@ export type {
   RemovableMemory,
   RemovableCredential as RemovableIdentity,
   RemovableGatewayTarget,
+  RemovableKnowledgeBase,
   RemovablePolicyResource,
   RemovableRuntimeEndpoint,
 };
@@ -117,6 +123,13 @@ export function useRemovableAgents() {
   return { agents, ...rest };
 }
 
+export function useRemovableHarnesses() {
+  const { items: harnesses, ...rest } = useRemovableResources(() =>
+    harnessPrimitive.getRemovable().then(r => r.map(h => h.name))
+  );
+  return { harnesses, ...rest };
+}
+
 export function useRemovableGateways() {
   const { items: gateways, ...rest } = useRemovableResources(() =>
     gatewayPrimitive.getRemovable().then(r => r.map(g => g.name))
@@ -144,6 +157,16 @@ export function useRemovableEvaluators() {
   return { evaluators, ...rest };
 }
 
+export function useRemovableDatasets() {
+  const { items: datasets, ...rest } = useRemovableResources(() => datasetPrimitive.getRemovable());
+  return { datasets, ...rest };
+}
+
+export function useRemovableKnowledgeBases() {
+  const { items: knowledgeBases, ...rest } = useRemovableResources(() => knowledgeBasePrimitive.getRemovable());
+  return { knowledgeBases, ...rest };
+}
+
 export function useRemovableOnlineEvalConfigs() {
   const { items: onlineEvalConfigs, ...rest } = useRemovableResources(() => onlineEvalConfigPrimitive.getRemovable());
   return { onlineEvalConfigs, ...rest };
@@ -164,24 +187,21 @@ export function useRemovableConfigBundles() {
   return { configBundles, ...rest };
 }
 
-export function useRemovableABTests() {
-  const { items: abTests, ...rest } = useRemovableResources(() => abTestPrimitive.getRemovable());
-  return { abTests, ...rest };
-}
-
-export function useRemoveABTest() {
-  return useRemoveResource(
-    (name: string) => abTestPrimitive.remove(name),
-    'ab-test',
-    name => name
-  );
-}
-
 export function useRemovableRuntimeEndpoints() {
   const { items: endpoints, ...rest } = useRemovableResources<RemovableRuntimeEndpoint>(() =>
     runtimeEndpointPrimitive.getRemovable()
   );
   return { endpoints, ...rest };
+}
+
+export function useRemovablePaymentManagers() {
+  const { items: paymentManagers, ...rest } = useRemovableResources(() => paymentManagerPrimitive.getRemovable());
+  return { paymentManagers, ...rest };
+}
+
+export function useRemovablePaymentConnectors() {
+  const { items: paymentConnectors, ...rest } = useRemovableResources(() => paymentConnectorPrimitive.getRemovable());
+  return { paymentConnectors, ...rest };
 }
 
 // ============================================================================
@@ -223,6 +243,10 @@ export function useRemovalPreview() {
     (name: string) => loadPreview(n => agentPrimitive.previewRemove(n), name),
     [loadPreview]
   );
+  const loadHarnessPreview = useCallback(
+    (name: string) => loadPreview(n => harnessPrimitive.previewRemove(n), name),
+    [loadPreview]
+  );
   const loadGatewayPreview = useCallback(
     (name: string) => loadPreview(n => gatewayPrimitive.previewRemove(n), name),
     [loadPreview]
@@ -243,6 +267,14 @@ export function useRemovalPreview() {
     (name: string) => loadPreview(n => evaluatorPrimitive.previewRemove(n), name),
     [loadPreview]
   );
+  const loadDatasetPreview = useCallback(
+    (name: string) => loadPreview(n => datasetPrimitive.previewRemove(n), name),
+    [loadPreview]
+  );
+  const loadKnowledgeBasePreview = useCallback(
+    (name: string) => loadPreview(n => knowledgeBasePrimitive.previewRemove(n), name),
+    [loadPreview]
+  );
   const loadOnlineEvalPreview = useCallback(
     (name: string) => loadPreview(n => onlineEvalConfigPrimitive.previewRemove(n), name),
     [loadPreview]
@@ -260,11 +292,6 @@ export function useRemovalPreview() {
     [loadPreview]
   );
 
-  const loadABTestPreview = useCallback(
-    (name: string) => loadPreview(n => abTestPrimitive.previewRemove(n), name),
-    [loadPreview]
-  );
-
   const loadRuntimeEndpointPreview = useCallback(
     (name: string) => loadPreview(n => runtimeEndpointPrimitive.previewRemove(n), name),
     [loadPreview]
@@ -277,16 +304,18 @@ export function useRemovalPreview() {
   return {
     ...state,
     loadAgentPreview,
+    loadHarnessPreview,
     loadGatewayPreview,
     loadGatewayTargetPreview,
     loadMemoryPreview,
     loadIdentityPreview,
     loadEvaluatorPreview,
+    loadDatasetPreview,
+    loadKnowledgeBasePreview,
     loadOnlineEvalPreview,
     loadPolicyEnginePreview,
     loadPolicyPreview,
     loadConfigBundlePreview,
-    loadABTestPreview,
     loadRuntimeEndpointPreview,
     reset,
   };
@@ -307,6 +336,14 @@ export function useRemoveAgent() {
   return useRemoveResource(
     (name: string) => agentPrimitive.remove(name),
     'agent',
+    name => name
+  );
+}
+
+export function useRemoveHarness() {
+  return useRemoveResource(
+    (name: string) => harnessPrimitive.remove(name),
+    'harness',
     name => name
   );
 }
@@ -347,6 +384,22 @@ export function useRemoveEvaluator() {
   return useRemoveResource(
     (name: string) => evaluatorPrimitive.remove(name),
     'evaluator',
+    name => name
+  );
+}
+
+export function useRemoveDataset() {
+  return useRemoveResource(
+    (name: string) => datasetPrimitive.remove(name),
+    'dataset',
+    name => name
+  );
+}
+
+export function useRemoveKnowledgeBase() {
+  return useRemoveResource(
+    (name: string) => knowledgeBasePrimitive.remove(name),
+    'knowledge-base',
     name => name
   );
 }

@@ -1,9 +1,16 @@
-import type { AgentCoreCliMcpDefs, AgentCoreProjectSpec, AwsDeploymentTarget, DeployedState } from '../../../schema';
+import type {
+  AgentCoreCliMcpDefs,
+  AgentCoreProjectSpec,
+  AwsDeploymentTarget,
+  DeployedState,
+  HarnessSpec,
+} from '../../../schema';
 import {
   AgentCoreCliMcpDefsSchema,
   AgentCoreProjectSpecSchema,
   AgentCoreRegionSchema,
   AwsDeploymentTargetsSchema,
+  HarnessSpecSchema,
   createValidatedDeployedStateSchema,
 } from '../../../schema';
 import {
@@ -12,8 +19,8 @@ import {
   ConfigReadError,
   ConfigValidationError,
   ConfigWriteError,
+  NoProjectError,
 } from '../../errors';
-import { NoProjectError } from '../../errors';
 import { detectAwsAccount } from '../../utils';
 import { type PathConfig, PathResolver, findConfigRoot } from './path-resolver';
 import { loadSharedConfigFiles } from '@smithy/shared-ini-file-loader';
@@ -99,6 +106,20 @@ export class ConfigIO {
   }
 
   /**
+   * Absolute path to the project config file (agentcore.json).
+   */
+  getAgentConfigPath(): string {
+    return this.pathResolver.getAgentConfigPath();
+  }
+
+  /**
+   * Absolute path to a harness's config file (app/<name>/harness.json).
+   */
+  getHarnessConfigPath(harnessName: string): string {
+    return this.pathResolver.getHarnessConfigPath(harnessName);
+  }
+
+  /**
    * Read and validate the project configuration.
    */
   async readProjectSpec(): Promise<AgentCoreProjectSpec> {
@@ -115,7 +136,6 @@ export class ConfigIO {
     const cleaned = { ...data };
     if (cleaned.configBundles?.length === 0) delete (cleaned as Record<string, unknown>).configBundles;
     if (cleaned.abTests?.length === 0) delete (cleaned as Record<string, unknown>).abTests;
-    if (cleaned.httpGateways?.length === 0) delete (cleaned as Record<string, unknown>).httpGateways;
     await this.validateAndWrite(filePath, 'AgentCore Project Config', AgentCoreProjectSpecSchema, cleaned);
   }
 
@@ -229,6 +249,22 @@ export class ConfigIO {
   async writeMcpDefs(data: AgentCoreCliMcpDefs): Promise<void> {
     const filePath = this.pathResolver.getMcpDefsPath();
     await this.validateAndWrite(filePath, 'MCP Definitions', AgentCoreCliMcpDefsSchema, data);
+  }
+
+  /**
+   * Read and validate a harness specification file
+   */
+  async readHarnessSpec(harnessName: string): Promise<HarnessSpec> {
+    const filePath = this.pathResolver.getHarnessConfigPath(harnessName);
+    return this.readAndValidate(filePath, 'Harness Spec', HarnessSpecSchema);
+  }
+
+  /**
+   * Write and validate a harness specification file
+   */
+  async writeHarnessSpec(harnessName: string, data: HarnessSpec): Promise<void> {
+    const filePath = this.pathResolver.getHarnessConfigPath(harnessName);
+    await this.validateAndWrite(filePath, 'Harness Spec', HarnessSpecSchema, data);
   }
 
   /**

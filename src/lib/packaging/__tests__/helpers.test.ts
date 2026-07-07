@@ -162,6 +162,32 @@ describe('copySourceTree', () => {
     expect(existsSync(join(dest, '.venv'))).toBe(false);
   });
 
+  it('excludes .env, .env.local and .env.* files at any depth (C-05-3 secret leak guard)', async () => {
+    const src = join(root, 'src-env-secrets');
+    const dest = join(root, 'dest-env-secrets');
+    mkdirSync(join(src, 'nested', 'deep'), { recursive: true });
+    writeFileSync(join(src, '.env'), 'TOP_LEVEL_SECRET=abc');
+    writeFileSync(join(src, '.env.local'), 'CDP_PRIVATE_KEY=xyz');
+    writeFileSync(join(src, '.env.production'), 'PROD_SECRET=zzz');
+    writeFileSync(join(src, 'nested', '.env.local'), 'NESTED_SECRET=def');
+    writeFileSync(join(src, 'nested', 'deep', '.env'), 'DEEP_SECRET=ghi');
+    writeFileSync(join(src, 'app.py'), 'pass');
+    writeFileSync(join(src, 'nested', 'deep', 'lib.py'), 'pass');
+    mkdirSync(dest, { recursive: true });
+
+    await copySourceTree(src, dest);
+
+    // No env file at any depth survives.
+    expect(existsSync(join(dest, '.env'))).toBe(false);
+    expect(existsSync(join(dest, '.env.local'))).toBe(false);
+    expect(existsSync(join(dest, '.env.production'))).toBe(false);
+    expect(existsSync(join(dest, 'nested', '.env.local'))).toBe(false);
+    expect(existsSync(join(dest, 'nested', 'deep', '.env'))).toBe(false);
+    // Source files preserved.
+    expect(existsSync(join(dest, 'app.py'))).toBe(true);
+    expect(existsSync(join(dest, 'nested', 'deep', 'lib.py'))).toBe(true);
+  });
+
   it('throws for non-existent source', async () => {
     await expect(copySourceTree(join(root, 'nope'), join(root, 'x'))).rejects.toThrow('not found');
   });
@@ -475,44 +501,68 @@ describe('nested agentcore directory is preserved (issue #843)', () => {
     expect(existsSync(join(dest, 'lib', 'langgraph_checkpoint_aws', 'agentcore', '__init__.py'))).toBe(true);
     expect(existsSync(join(dest, 'lib', 'langgraph_checkpoint_aws', 'agentcore', 'core.py'))).toBe(true);
   });
+});
 
-  // ── createZipFromDir (async) ──
+// ── Issue #1408: zip stage must not drop top-level agentcore Python packages ──
 
-  it('zip: excludes top-level agentcore/ but includes nested agentcore/', async () => {
-    const src = buildFixture(join(root, 'zip-async'));
+describe('top-level agentcore Python package is preserved in zip (issue #1408)', () => {
+  let root: string;
+
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), 'helpers-zip-agentcore-pkg-'));
+  });
+
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  /**
+   * Mimics a staging directory after `uv pip install --target staging`
+   * has installed a third-party package whose top-level module happens to
+   * be named `agentcore`. The zip stage runs against staging, where the
+   * project's own `agentcore/` config dir is already absent, so a
+   * top-level `agentcore/` here is a real Python package and must be
+   * included in the deployment artifact.
+   */
+  function buildStagingFixture(base: string): string {
+    const staging = join(base, 'staging');
+
+    mkdirSync(staging, { recursive: true });
+    writeFileSync(join(staging, 'main.py'), 'print("hello")');
+
+    // Top-level `agentcore` Python package (e.g. an installed dependency)
+    mkdirSync(join(staging, 'agentcore'), { recursive: true });
+    writeFileSync(join(staging, 'agentcore', '__init__.py'), '# package init');
+    writeFileSync(join(staging, 'agentcore', 'runtime.py'), 'def run(): pass');
+
+    return staging;
+  }
+
+  it('createZipFromDir includes a top-level agentcore Python package', async () => {
+    const staging = buildStagingFixture(join(root, 'zip-async'));
     const zipPath = join(root, 'zip-async.zip');
 
-    await createZipFromDir(src, zipPath);
+    await createZipFromDir(staging, zipPath);
 
     const zipBuffer = await readFile(zipPath);
     const entries = Object.keys(unzipSync(new Uint8Array(zipBuffer)));
 
-    // Top-level agentcore/ should NOT appear
-    expect(entries.some(e => e === 'agentcore/config.yaml')).toBe(false);
-    expect(entries.some(e => e.startsWith('agentcore/'))).toBe(false);
-
-    // Nested agentcore/ SHOULD appear
-    expect(entries).toContain('lib/langgraph_checkpoint_aws/agentcore/__init__.py');
-    expect(entries).toContain('lib/langgraph_checkpoint_aws/agentcore/core.py');
-
-    // Regular files present
+    expect(entries).toContain('agentcore/__init__.py');
+    expect(entries).toContain('agentcore/runtime.py');
     expect(entries).toContain('main.py');
   });
 
-  // ── createZipFromDirSync ──
-
-  it('sync zip: excludes top-level agentcore/ but includes nested agentcore/', () => {
-    const src = buildFixture(join(root, 'zip-sync'));
+  it('createZipFromDirSync includes a top-level agentcore Python package', () => {
+    const staging = buildStagingFixture(join(root, 'zip-sync'));
     const zipPath = join(root, 'zip-sync.zip');
 
-    createZipFromDirSync(src, zipPath);
+    createZipFromDirSync(staging, zipPath);
 
     const zipBuffer = readFileSync(zipPath);
     const entries = Object.keys(unzipSync(new Uint8Array(zipBuffer)));
 
-    expect(entries.some(e => e.startsWith('agentcore/'))).toBe(false);
-    expect(entries).toContain('lib/langgraph_checkpoint_aws/agentcore/__init__.py');
-    expect(entries).toContain('lib/langgraph_checkpoint_aws/agentcore/core.py');
+    expect(entries).toContain('agentcore/__init__.py');
+    expect(entries).toContain('agentcore/runtime.py');
     expect(entries).toContain('main.py');
   });
 });

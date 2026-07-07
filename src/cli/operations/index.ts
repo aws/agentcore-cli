@@ -4,6 +4,7 @@ export * from './dev';
 export * from './fetch-access';
 export * from './init';
 export * from './mcp';
+export * from './node';
 export * from './python';
 export * from './remove';
 export * from './resolve-agent';

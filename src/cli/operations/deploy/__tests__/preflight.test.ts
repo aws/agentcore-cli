@@ -1,4 +1,5 @@
-import { formatError, validateProject } from '../preflight.js';
+import { StaleCdkConstructError } from '../../../../lib/errors/types.js';
+import { extractUnknownKeys, formatError, rewriteIfStaleCdkConstruct, validateProject } from '../preflight.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const { mockReadProjectSpec, mockReadAWSDeploymentTargets, mockReadDeployedState, mockConfigExists } = vi.hoisted(
@@ -88,8 +89,33 @@ describe('validateProject', () => {
     mockReadDeployedState.mockRejectedValue(new Error('No deployed state'));
 
     await expect(validateProject()).rejects.toThrow(
-      'No resources defined in project. Add at least one resource (agent, memory, evaluator, or gateway) before deploying.'
+      'No resources defined in project. Add at least one resource (agent, memory, knowledge base, evaluator, or gateway) before deploying.'
     );
+  });
+
+  it('allows deploy when only a knowledge base is defined (no agents or gateways)', async () => {
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'test-project',
+      runtimes: [],
+      memories: [],
+      knowledgeBases: [
+        {
+          type: 'AgentCoreKnowledgeBase',
+          name: 'docs',
+          dataSources: [{ type: 'S3', uri: 's3://my-bucket/' }],
+        },
+      ],
+      agentCoreGateways: [],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([]);
+    mockValidateAwsCredentials.mockResolvedValue(undefined);
+
+    const result = await validateProject();
+
+    expect(result.projectSpec.name).toBe('test-project');
+    expect(result.isTeardownDeploy).toBe(false);
   });
 
   it('allows deploy when memories exist but no agents or gateways', async () => {
@@ -99,6 +125,32 @@ describe('validateProject', () => {
       name: 'test-project',
       runtimes: [],
       memories: [{ name: 'test-memory', strategies: [] }],
+      agentCoreGateways: [],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([]);
+    mockValidateAwsCredentials.mockResolvedValue(undefined);
+
+    const result = await validateProject();
+
+    expect(result.projectSpec.name).toBe('test-project');
+    expect(result.isTeardownDeploy).toBe(false);
+  });
+
+  it('allows deploy when datasets exist but no agents or gateways', async () => {
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'test-project',
+      runtimes: [],
+      memories: [],
+      knowledgeBases: [],
+      datasets: [
+        {
+          name: 'test-dataset',
+          schemaType: 'AGENTCORE_EVALUATION_PREDEFINED_V1',
+          config: { managed: { location: 'datasets/test.jsonl' } },
+        },
+      ],
       agentCoreGateways: [],
     });
     mockReadAWSDeploymentTargets.mockResolvedValue([]);
@@ -127,29 +179,6 @@ describe('validateProject', () => {
     expect(result.isTeardownDeploy).toBe(false);
   });
 
-  it('rejects gateway target name that exceeds 48 chars when prefixed with project name', async () => {
-    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
-    mockValidate.mockReturnValue(undefined);
-    // projectName "myproject" (9) + "-" (1) + targetName (39) = 49 > 48
-    mockReadProjectSpec.mockResolvedValue({
-      name: 'myproject',
-      runtimes: [],
-      httpGateways: [
-        {
-          name: 'gw',
-          targets: [{ name: 'a'.repeat(39), runtimeRef: 'rt', qualifier: 'DEFAULT' }],
-        },
-      ],
-      agentCoreGateways: [{ name: 'gw' }],
-    });
-    mockReadAWSDeploymentTargets.mockResolvedValue([]);
-    mockValidateAwsCredentials.mockResolvedValue(undefined);
-
-    await expect(validateProject()).rejects.toThrow(
-      'HTTP gateway target "' + 'a'.repeat(39) + '" in gateway "gw" would exceed the 48-character AWS limit'
-    );
-  });
-
   it('accepts gateway target name within 48 chars when prefixed with project name', async () => {
     mockRequireConfigRoot.mockReturnValue('/project/agentcore');
     mockValidate.mockReturnValue(undefined);
@@ -157,12 +186,6 @@ describe('validateProject', () => {
     mockReadProjectSpec.mockResolvedValue({
       name: 'myproject',
       runtimes: [],
-      httpGateways: [
-        {
-          name: 'gw',
-          targets: [{ name: 'a'.repeat(38), runtimeRef: 'rt', qualifier: 'DEFAULT' }],
-        },
-      ],
       agentCoreGateways: [{ name: 'gw' }],
     });
     mockReadAWSDeploymentTargets.mockResolvedValue([]);
@@ -170,6 +193,55 @@ describe('validateProject', () => {
 
     const result = await validateProject();
     expect(result.projectSpec.name).toBe('myproject');
+  });
+
+  it('rejects a gateway whose composed name exceeds 48 chars', async () => {
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    // "ZeroTrustTodayACProj" (20) + "-" + "ZeroTrustTodayAgentCoreGateway" (30) = 51 > 48
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'ZeroTrustTodayACProj',
+      runtimes: [],
+      agentCoreGateways: [{ name: 'ZeroTrustTodayAgentCoreGateway' }],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([]);
+    mockValidateAwsCredentials.mockResolvedValue(undefined);
+
+    await expect(validateProject()).rejects.toThrow(
+      'Gateway name too long: "ZeroTrustTodayACProj-ZeroTrustTodayAgentCoreGateway" (51 chars).'
+    );
+  });
+
+  it('accepts a composed gateway name exactly at the 48-char limit', async () => {
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    // "proj" (4) + "-" (1) + 43-char name = 48 == limit
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'proj',
+      runtimes: [],
+      agentCoreGateways: [{ name: 'a'.repeat(43) }],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([]);
+    mockValidateAwsCredentials.mockResolvedValue(undefined);
+
+    const result = await validateProject();
+    expect(result.projectSpec.name).toBe('proj');
+  });
+
+  it('skips the length check for imported gateways that carry an explicit resourceName', async () => {
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    // Composed name would be 51 chars, but resourceName is AWS-accepted already → skip.
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'ZeroTrustTodayACProj',
+      runtimes: [],
+      agentCoreGateways: [{ name: 'ZeroTrustTodayAgentCoreGateway', resourceName: 'short-existing-gw' }],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([]);
+    mockValidateAwsCredentials.mockResolvedValue(undefined);
+
+    const result = await validateProject();
+    expect(result.projectSpec.name).toBe('ZeroTrustTodayACProj');
   });
 });
 
@@ -180,11 +252,19 @@ describe('formatError', () => {
     expect(result).toContain('Something went wrong');
   });
 
-  it('includes stack trace when present', () => {
+  it('omits the stack trace by default but includes it under AGENTCORE_DEBUG', () => {
     const err = new Error('oops');
-    const result = formatError(err);
-    expect(result).toContain('Stack trace:');
-    expect(result).toContain('oops');
+    expect(formatError(err)).not.toContain('Stack trace:');
+    expect(formatError(err)).toContain('oops');
+
+    const prev = process.env.AGENTCORE_DEBUG;
+    process.env.AGENTCORE_DEBUG = '1';
+    try {
+      expect(formatError(new Error('oops'))).toContain('Stack trace:');
+    } finally {
+      if (prev === undefined) delete process.env.AGENTCORE_DEBUG;
+      else process.env.AGENTCORE_DEBUG = prev;
+    }
   });
 
   it('formats nested cause errors', () => {
@@ -219,5 +299,53 @@ describe('formatError', () => {
     expect(result).toContain('outer');
     expect(result).toContain('mid');
     expect(result).toContain('inner');
+  });
+});
+
+describe('extractUnknownKeys', () => {
+  it('extracts a single rejected key', () => {
+    const err = new Error('agentCoreGateways[0]: unknown keys (remove): "protocolType"');
+    expect(extractUnknownKeys(err)).toEqual(['protocolType']);
+  });
+
+  it('extracts multiple rejected keys', () => {
+    const err = new Error('agentCoreGateways[0]: unknown keys (remove): "protocolType", "newField"');
+    expect(extractUnknownKeys(err)).toEqual(['protocolType', 'newField']);
+  });
+
+  it('finds the key when nested in a cause chain (how it reaches the CLI)', () => {
+    const cause = new Error('agentcore.json:\n - agentCoreGateways[0]: unknown keys (remove): "protocolType"');
+    const wrapped = new Error('CDK synth failed: Subprocess exited with error 1', { cause });
+    expect(extractUnknownKeys(wrapped)).toEqual(['protocolType']);
+  });
+
+  it('returns [] for unrelated synth errors', () => {
+    expect(extractUnknownKeys(new Error('CDK synth failed: bad region'))).toEqual([]);
+  });
+});
+
+describe('rewriteIfStaleCdkConstruct', () => {
+  it('rewrites an unknown-keys synth failure into a StaleCdkConstructError with a fix hint', () => {
+    const err = new Error('agentCoreGateways[0]: unknown keys (remove): "protocolType"');
+    const rewritten = rewriteIfStaleCdkConstruct(err, '/project/agentcore/cdk');
+    expect(rewritten).toBeInstanceOf(StaleCdkConstructError);
+    const message = (rewritten as Error).message;
+    expect(message).toContain('"protocolType"');
+    expect(message).toContain('npm update @aws/agentcore-cdk');
+    // Original error is preserved as the cause for debugging.
+    expect((rewritten as Error).cause).toBe(err);
+  });
+
+  it('passes unrelated synth errors through untouched', () => {
+    const err = new Error('CDK synth failed: insufficient permissions');
+    const result = rewriteIfStaleCdkConstruct(err, '/project/agentcore/cdk');
+    expect(result).toBe(err);
+    expect(result).not.toBeInstanceOf(StaleCdkConstructError);
+  });
+
+  it('normalizes a non-Error throw into an Error when not an unknown-keys failure', () => {
+    const result = rewriteIfStaleCdkConstruct('some string failure', '/project/agentcore/cdk');
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toBe('some string failure');
   });
 });

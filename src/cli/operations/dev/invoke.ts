@@ -1,21 +1,21 @@
+import { DevServerConnectionError, DevServerError } from '../../../lib/errors/types';
 import { invokeA2AStreaming } from './invoke-a2a';
 import { invokeAguiStreaming } from './invoke-agui';
-import { ConnectionError, type InvokeStreamingOptions, type SSELogger, ServerError } from './invoke-types';
+import { type InvokeStreamingOptions, type SSELogger } from './invoke-types';
 import { isConnectionError, sleep } from './utils';
 
-// Re-export shared types so existing consumers don't break
-export { ConnectionError, ServerError, type InvokeStreamingOptions, type SSELogger } from './invoke-types';
+export { type InvokeStreamingOptions, type SSELogger } from './invoke-types';
 
 /**
  * Parse a single SSE data line and extract the content.
  */
-function parseSSELine(line: string): { content: string | null; error: string | null } {
+export function parseSSELine(line: string): { content: string | null; error: string | null } {
   if (!line.startsWith('data: ')) {
     return { content: null, error: null };
   }
-  const content = line.slice(6);
+  const raw = line.slice(6);
   try {
-    const parsed: unknown = JSON.parse(content);
+    const parsed: unknown = JSON.parse(raw);
     if (typeof parsed === 'string') {
       return { content: parsed, error: null };
     } else if (parsed && typeof parsed === 'object') {
@@ -27,8 +27,14 @@ function parseSSELine(line: string): { content: string | null; error: string | n
         return { content: String((parsed as { text: unknown }).text), error: null };
       }
     }
+    // ConverseStream-shaped event: extract text delta
+    const event = (parsed as { event?: { contentBlockDelta?: { delta?: { text?: string } } } })?.event;
+    const text = event?.contentBlockDelta?.delta?.text;
+    if (typeof text === 'string') {
+      return { content: text, error: null };
+    }
   } catch {
-    return { content, error: null };
+    return { content: raw, error: null };
   }
   return { content: null, error: null };
 }
@@ -100,7 +106,7 @@ export async function* invokeAgentStreaming(
 
       if (!res.ok) {
         const body = await res.text();
-        throw new ServerError(res.status, body);
+        throw new DevServerError(res.status, body);
       }
 
       if (!res.body) {
@@ -171,8 +177,8 @@ export async function* invokeAgentStreaming(
 
       return;
     } catch (err) {
-      // Re-throw ServerError directly — no retries for HTTP errors
-      if (err instanceof ServerError) {
+      // Re-throw DevServerError directly — no retries for HTTP errors
+      if (err instanceof DevServerError) {
         logger?.log?.('error', `Server error (${err.statusCode}): ${err.message}`);
         throw err;
       }
@@ -196,7 +202,12 @@ export async function* invokeAgentStreaming(
   }
 
   // Log final failure after all retries exhausted with full details
-  const finalError = new ConnectionError(lastError ?? new Error('Failed to connect to dev server after retries'));
+  const finalError = new DevServerConnectionError(
+    lastError?.message ?? 'Failed to connect to dev server after retries',
+    {
+      cause: lastError,
+    }
+  );
   logger?.log?.('error', `Failed to connect after ${maxRetries} attempts: ${finalError.message}`);
   throw finalError;
 }
@@ -263,7 +274,7 @@ export async function invokeAgent(portOrOptions: number | InvokeOptions, message
 
       if (!res.ok) {
         const body = await res.text();
-        throw new ServerError(res.status, body);
+        throw new DevServerError(res.status, body);
       }
 
       const text = await res.text();
@@ -279,8 +290,8 @@ export async function invokeAgent(portOrOptions: number | InvokeOptions, message
       // Handle plain JSON response (non-streaming frameworks)
       return extractResult(text);
     } catch (err) {
-      // Re-throw ServerError directly — no retries for HTTP errors
-      if (err instanceof ServerError) {
+      // Re-throw DevServerError directly — no retries for HTTP errors
+      if (err instanceof DevServerError) {
         logger?.log?.('error', `Server error (${err.statusCode}): ${err.message}`);
         throw err;
       }
@@ -304,7 +315,12 @@ export async function invokeAgent(portOrOptions: number | InvokeOptions, message
   }
 
   // Log final failure after all retries exhausted with full details
-  const finalError = new ConnectionError(lastError ?? new Error('Failed to connect to dev server after retries'));
+  const finalError = new DevServerConnectionError(
+    lastError?.message ?? 'Failed to connect to dev server after retries',
+    {
+      cause: lastError,
+    }
+  );
   logger?.log?.('error', `Failed to connect after ${maxRetries} attempts: ${finalError.message}`);
   throw finalError;
 }

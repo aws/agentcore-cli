@@ -33,26 +33,39 @@ a 1–5 numerical scale produces a normalized score of `0.60`.
 # Interactive (TUI wizard)
 agentcore add evaluator
 
-# Non-interactive
+# Non-interactive — LLM-as-a-Judge (default type)
 agentcore add evaluator \
   --name ResponseQuality \
   --level SESSION \
   --model us.anthropic.claude-sonnet-4-5-20250514-v1:0 \
   --instructions "Evaluate the agent response quality. Context: {context}" \
   --rating-scale 1-5-quality
+
+# Non-interactive — Code-based (existing Lambda)
+agentcore add evaluator \
+  --name LatencyCheck \
+  --type code-based \
+  --level TRACE \
+  --lambda-arn arn:aws:lambda:us-east-1:123456789012:function:my-evaluator \
+  --timeout 60
 ```
 
 | Flag                      | Description                                                                             |
 | ------------------------- | --------------------------------------------------------------------------------------- |
 | `--name <name>`           | Evaluator name (alphanumeric + underscore, max 48 chars)                                |
+| `--type <type>`           | Evaluator type: `llm-as-a-judge` (default) or `code-based`                              |
 | `--level <level>`         | Evaluation level: `SESSION`, `TRACE`, `TOOL_CALL`                                       |
-| `--model <model>`         | Bedrock model ID for the LLM judge                                                      |
-| `--instructions <text>`   | Evaluation prompt (must include level-appropriate placeholders — see below)             |
-| `--rating-scale <preset>` | Rating scale preset or custom format (default: `1-5-quality`)                           |
+| `--model <model>`         | [LLM] Bedrock model ID for the LLM judge                                                |
+| `--instructions <text>`   | [LLM] Evaluation prompt (must include level-appropriate placeholders — see below)       |
+| `--rating-scale <preset>` | [LLM] Rating scale preset or custom format (default: `1-5-quality`)                     |
+| `--lambda-arn <arn>`      | [Code-based] Existing Lambda function ARN                                               |
+| `--timeout <seconds>`     | [Code-based] Lambda timeout in seconds, 1–300 (default: 60)                             |
+| `--kms-key-arn <arn>`     | KMS key ARN for evaluator encryption (optional)                                         |
 | `--config <path>`         | Path to evaluator config JSON (overrides `--model`, `--instructions`, `--rating-scale`) |
 | `--json`                  | JSON output                                                                             |
 
-> **Note**: `--instructions` is required in non-interactive mode unless `--config` is provided.
+> **Note**: For LLM-as-a-Judge, `--instructions` is required in non-interactive mode unless `--config` is provided. For
+> code-based evaluators, `--lambda-arn` is required.
 
 ### Instruction Placeholders
 
@@ -173,18 +186,22 @@ agentcore run eval \
   --days 7
 ```
 
-| Flag                         | Description                                        |
-| ---------------------------- | -------------------------------------------------- |
-| `-r, --runtime <name>`       | Runtime name from project config                   |
-| `--runtime-arn <arn>`        | Runtime ARN (standalone mode, no project required) |
-| `-e, --evaluator <names...>` | Evaluator name(s) from project or `Builtin.*` IDs  |
-| `--evaluator-arn <arns...>`  | Evaluator ARN(s) (use with `--runtime-arn`)        |
-| `--region <region>`          | AWS region (required with `--runtime-arn`)         |
-| `-s, --session-id <id>`      | Evaluate a specific session only                   |
-| `-t, --trace-id <id>`        | Evaluate a specific trace only                     |
-| `--days <days>`              | Lookback window in days (default: 7)               |
-| `--output <path>`            | Custom output file path                            |
-| `--json`                     | JSON output                                        |
+| Flag                            | Description                                                                                                |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `-r, --runtime <name>`          | Runtime name from project config                                                                           |
+| `--runtime-arn <arn>`           | Runtime ARN (standalone mode, no project required)                                                         |
+| `-e, --evaluator <names...>`    | Evaluator name(s) from project or `Builtin.*` IDs                                                          |
+| `--evaluator-arn <arns...>`     | Evaluator ARN(s) (use with `--runtime-arn`)                                                                |
+| `--region <region>`             | AWS region (required with `--runtime-arn`)                                                                 |
+| `-s, --session-id <id>`         | Evaluate a specific session only                                                                           |
+| `-t, --trace-id <id>`           | Evaluate a specific trace only                                                                             |
+| `--endpoint <name>`             | Runtime endpoint name (e.g. `PROMPT_V1`); defaults to `AGENTCORE_RUNTIME_ENDPOINT` env var, then `DEFAULT` |
+| `--days <days>`                 | Lookback window in days (default: 7)                                                                       |
+| `-A, --assertion <text...>`     | Ground truth assertion the agent response must satisfy (repeatable)                                        |
+| `--expected-trajectory <names>` | Ground truth: expected tool call names in order (comma-separated)                                          |
+| `--expected-response <text>`    | Ground truth: expected agent response text to compare against                                              |
+| `--output <path>`               | Custom output file path                                                                                    |
+| `--json`                        | JSON output                                                                                                |
 
 > **Note**: Traces may take 5–10 minutes to appear after agent invocations. If a run returns no sessions, try increasing
 > `--days` or waiting for traces to propagate.
@@ -249,6 +266,7 @@ agentcore add online-eval \
 | `-e, --evaluator <names...>` | Evaluator name(s), `Builtin.*` IDs, or ARNs           |
 | `--evaluator-arn <arns...>`  | Evaluator ARN(s)                                      |
 | `--sampling-rate <rate>`     | Percentage of requests to evaluate (0.01–100)         |
+| `--endpoint <name>`          | Runtime endpoint name to scope monitoring             |
 | `--enable-on-create`         | Enable immediately after deploy                       |
 | `--json`                     | JSON output                                           |
 

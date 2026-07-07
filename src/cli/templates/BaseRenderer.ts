@@ -1,7 +1,7 @@
 import { APP_DIR } from '../../lib';
 import { copyAndRenderDir } from './render';
 import type { AgentRenderConfig } from './types';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 
 export interface RendererContext {
@@ -12,7 +12,6 @@ type TemplateData = AgentRenderConfig &
   RendererContext & {
     projectName: string;
     Name: string;
-    hasMcp: boolean;
   };
 
 export abstract class BaseRenderer {
@@ -32,6 +31,14 @@ export abstract class BaseRenderer {
     return this.config.hasMemory;
   }
 
+  protected shouldRenderPayment(): boolean {
+    return this.config.hasPayment;
+  }
+
+  protected shouldRenderExecutionLimits(): boolean {
+    return !!(this.config.maxIterations ?? this.config.maxTokens ?? this.config.timeoutSeconds);
+  }
+
   protected getTemplateDir(): string {
     const language = this.config.targetLanguage.toLowerCase();
     return path.join(this.baseTemplateDir, language, this.protocolMode, this.sdkName);
@@ -48,7 +55,6 @@ export abstract class BaseRenderer {
       ...context,
       projectName,
       Name: projectName,
-      hasMcp: false, // MCP is configured separately
     };
 
     // Always render base template
@@ -62,6 +68,25 @@ export abstract class BaseRenderer {
       if (existsSync(memoryCapabilityDir)) {
         const memoryTargetDir = path.join(projectDir, 'memory');
         await copyAndRenderDir(memoryCapabilityDir, memoryTargetDir, templateData);
+      }
+    }
+
+    if (this.shouldRenderPayment()) {
+      const paymentCapabilityDir = path.join(templateDir, 'capabilities', 'payments');
+      if (existsSync(paymentCapabilityDir)) {
+        const capabilitiesDir = path.join(projectDir, 'capabilities');
+        mkdirSync(capabilitiesDir, { recursive: true });
+        const capInitPath = path.join(capabilitiesDir, '__init__.py');
+        if (!existsSync(capInitPath)) writeFileSync(capInitPath, '');
+        const paymentTargetDir = path.join(capabilitiesDir, 'payments');
+        await copyAndRenderDir(paymentCapabilityDir, paymentTargetDir, templateData);
+      }
+    }
+
+    if (this.shouldRenderExecutionLimits()) {
+      const limitsCapabilityDir = path.join(templateDir, 'capabilities', 'execution-limits');
+      if (existsSync(limitsCapabilityDir)) {
+        await copyAndRenderDir(limitsCapabilityDir, projectDir, templateData);
       }
     }
 

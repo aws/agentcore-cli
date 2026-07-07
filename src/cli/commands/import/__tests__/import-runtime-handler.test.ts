@@ -116,6 +116,7 @@ const defaultProjectSpec = {
   version: 1,
   runtimes: [],
   memories: [],
+  knowledgeBases: [],
   evaluators: [],
   onlineEvalConfigs: [],
 };

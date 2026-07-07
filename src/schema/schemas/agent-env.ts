@@ -4,12 +4,18 @@
  * @module agent-env
  */
 import {
+  MAX_CONTAINER_BUILD_SECURITY_GROUPS,
   NetworkModeSchema,
   ProtocolModeSchema,
   RuntimeVersionSchema as RuntimeVersionSchemaFromConstants,
+  SECURITY_GROUP_ID_PATTERN,
+  SUBNET_ID_PATTERN,
+  VPC_ID_PATTERN,
+  isContainerBuild,
 } from '../constants';
 import type { DirectoryPath, FilePath } from '../types';
 import { AuthorizerConfigSchema, RuntimeAuthorizerTypeSchema } from './auth';
+import { ConnectionSchema } from './connections';
 import { TagsSchema } from './primitives/tags';
 import { z } from 'zod';
 
@@ -88,6 +94,34 @@ export const EntrypointSchema = z
 
 const DirectoryPathSchema = z.string().min(1) as unknown as z.ZodType<DirectoryPath>;
 
+/**
+ * Dockerfile location for Container builds, resolved relative to the Docker build context
+ * (`buildContextPath` when set, otherwise `codeLocation`). Accepts a filename ('Dockerfile',
+ * 'Dockerfile.gpu') or a forward-slash relative subpath ('docker/Dockerfile'). Absolute paths
+ * and '..' traversal are rejected so the Dockerfile can never escape the build context.
+ */
+const DockerfilePathSchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .regex(
+    /^[a-zA-Z0-9][a-zA-Z0-9._/-]*$/,
+    'Must be a relative path (a filename or forward-slash subpath) with no leading slash or backslash'
+  )
+  .refine(p => !p.split('/').includes('..'), 'Must not contain path traversal ("..")');
+
+/**
+ * Build-arg name. Must be a valid identifier because on deploy each arg is forwarded to CodeBuild as
+ * an environment variable (values are inherited from the environment, never interpolated onto the
+ * shell command line) and consumed by Dockerfile `ARG` directives, which are themselves identifiers.
+ */
+const BuildArgKeySchema = z
+  .string()
+  .regex(
+    /^[A-Za-z_][A-Za-z0-9_]*$/,
+    'Build arg names must be valid identifiers (letters, digits, underscores; not starting with a digit)'
+  );
+
 export const EnvVarSchema = z.object({
   name: EnvVarNameSchema,
   value: z.string(),
@@ -112,33 +146,59 @@ export type Instrumentation = z.infer<typeof InstrumentationSchema>;
  * Required when networkMode is 'VPC'.
  */
 export const NetworkConfigSchema = z.object({
-  subnets: z
-    .array(z.string().regex(/^subnet-[0-9a-zA-Z]{8,17}$/))
-    .min(1)
-    .max(16),
+  subnets: z.array(z.string().regex(SUBNET_ID_PATTERN, 'Must be a subnet id (subnet-...)')).min(1).max(16),
   securityGroups: z
-    .array(z.string().regex(/^sg-[0-9a-zA-Z]{8,17}$/))
+    .array(z.string().regex(SECURITY_GROUP_ID_PATTERN, 'Must be a security group id (sg-...)'))
     .min(1)
     .max(16),
+  /**
+   * VPC ID. Required for Container builds in VPC mode because CodeBuild needs an explicit VPC ID;
+   * it cannot infer the VPC from subnets alone. Runtime/Lambda builds can omit this.
+   */
+  vpcId: z.string().regex(VPC_ID_PATTERN, 'Must be a VPC id (vpc-...)').optional(),
 });
 export type NetworkConfig = z.infer<typeof NetworkConfigSchema>;
 
 /**
  * Allowed request headers for the runtime.
- * Each header must be 'Authorization' or start with 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-'.
+ * Per https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-header-allowlist.html
+ * any valid HTTP header name (alphanumeric, hyphens, underscores) may be allow-listed,
+ * provided it is not structurally reserved (x-amz-*, x-amzn-* except Runtime-Custom-*).
  * Maximum 20 headers.
  */
 export const HEADER_ALLOWLIST_PREFIX = 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-';
+export const HEADER_NAME_PATTERN = /^[A-Za-z0-9\-_]+$/;
 export const MAX_HEADER_ALLOWLIST_SIZE = 20;
+
+/**
+ * Validate a single allowlist header name. Returns null if valid, or a specific
+ * error message describing which rule the input violated.
+ *
+ * Note: 'x-amz-' and 'x-amzn-' are disjoint prefixes (position 5 differs: '-' vs 'n'),
+ * so the two checks below are independent.
+ */
+export function checkAllowlistHeader(val: string): string | null {
+  if (!HEADER_NAME_PATTERN.test(val)) {
+    return `Header name "${val}" must contain only alphanumeric characters, hyphens, and underscores.`;
+  }
+  const lower = val.toLowerCase();
+  if (lower.startsWith('x-amz-')) {
+    return `Header "${val}" is not allowed. Headers starting with "x-amz-" are reserved for AWS request signing.`;
+  }
+  if (lower.startsWith('x-amzn-') && !lower.startsWith('x-amzn-bedrock-agentcore-runtime-custom-')) {
+    return `Header "${val}" is not allowed. Headers starting with "x-amzn-" are reserved, except for "X-Amzn-Bedrock-AgentCore-Runtime-Custom-*".`;
+  }
+  return null;
+}
 
 export const RequestHeaderAllowlistSchema = z
   .array(
-    z
-      .string()
-      .refine(
-        val => val === 'Authorization' || val.startsWith(HEADER_ALLOWLIST_PREFIX),
-        `Must be "Authorization" or start with "${HEADER_ALLOWLIST_PREFIX}"`
-      )
+    z.string().superRefine((val, ctx) => {
+      const error = checkAllowlistHeader(val);
+      if (error) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: error });
+      }
+    })
   )
   .max(MAX_HEADER_ALLOWLIST_SIZE, `Maximum ${MAX_HEADER_ALLOWLIST_SIZE} headers allowed`);
 
@@ -150,13 +210,75 @@ export const SessionStorageSchema = z.object({
   /** Absolute mount path under /mnt with exactly one subdirectory level (e.g. /mnt/data). */
   mountPath: z
     .string()
-    .regex(/^\/mnt\/[^/]+$/, 'Must be a path under /mnt with exactly one subdirectory (e.g. /mnt/data)'),
+    .min(6)
+    .max(200)
+    .regex(/^\/mnt\/[a-zA-Z0-9._-]+\/?$/, 'Must be a path under /mnt with exactly one subdirectory (e.g. /mnt/data)'),
 });
 export type SessionStorage = z.infer<typeof SessionStorageSchema>;
 
-export const FilesystemConfigurationSchema = z.object({
-  sessionStorage: SessionStorageSchema,
+export const EFS_ACCESS_POINT_ARN_PATTERN =
+  /^arn:aws[-a-z]*:elasticfilesystem:[a-z][a-z0-9-]*:[0-9]{12}:access-point\/fsap-[0-9a-f]{8,40}$/;
+
+export const S3_FILES_ACCESS_POINT_ARN_PATTERN =
+  /^arn:aws[-a-z]*:s3files:[a-z][a-z0-9-]*:[0-9]{12}:file-system\/fs-[0-9a-f]{17,40}\/access-point\/fsap-[0-9a-f]{17,40}$/;
+
+/** EFS access point mount configuration. Requires VPC network mode. */
+export const EfsAccessPointConfigSchema = z.object({
+  /** ARN of an EFS access point. */
+  accessPointArn: z
+    .string()
+    .regex(
+      EFS_ACCESS_POINT_ARN_PATTERN,
+      'Must be an EFS access point ARN (arn:aws[-a-z]*:elasticfilesystem:{region}:{account}:access-point/fsap-{id})'
+    ),
+  /** Absolute mount path under /mnt (e.g. /mnt/tools). */
+  mountPath: z
+    .string()
+    .min(6)
+    .max(200)
+    .regex(/^\/mnt\/[a-zA-Z0-9._-]+\/?$/, 'Must be a path under /mnt with exactly one subdirectory (e.g. /mnt/tools)'),
 });
+export type EfsAccessPointConfig = z.infer<typeof EfsAccessPointConfigSchema>;
+
+/** S3 Files access point mount configuration. Requires VPC network mode. */
+export const S3FilesAccessPointConfigSchema = z.object({
+  /** ARN of an S3 Files access point. */
+  accessPointArn: z
+    .string()
+    .regex(
+      S3_FILES_ACCESS_POINT_ARN_PATTERN,
+      'Must be an S3 Files access point ARN (arn:aws[-a-z]*:s3files:{region}:{account}:file-system/fs-{id}/access-point/fsap-{id})'
+    ),
+  /** Absolute mount path under /mnt (e.g. /mnt/datasets). */
+  mountPath: z
+    .string()
+    .min(6)
+    .max(200)
+    .regex(
+      /^\/mnt\/[a-zA-Z0-9._-]+\/?$/,
+      'Must be a path under /mnt with exactly one subdirectory (e.g. /mnt/datasets)'
+    ),
+});
+export type S3FilesAccessPointConfig = z.infer<typeof S3FilesAccessPointConfigSchema>;
+
+/** Maximum number of EFS access point mounts per runtime. */
+export const MAX_EFS_MOUNTS = 2;
+/** Maximum number of S3 Files access point mounts per runtime. */
+export const MAX_S3_MOUNTS = 2;
+
+/**
+ * Filesystem configuration — union of three mount types.
+ * Exactly one key must be present per entry.
+ *
+ * Service limits per runtime: max 5 total, max 1 sessionStorage,
+ * max MAX_EFS_MOUNTS efsAccessPoint, max MAX_S3_MOUNTS s3FilesAccessPoint.
+ * efsAccessPoint and s3FilesAccessPoint require networkMode: VPC.
+ */
+export const FilesystemConfigurationSchema = z.union([
+  z.strictObject({ sessionStorage: SessionStorageSchema }),
+  z.strictObject({ efsAccessPoint: EfsAccessPointConfigSchema }),
+  z.strictObject({ s3FilesAccessPoint: S3FilesAccessPointConfigSchema }),
+]);
 export type FilesystemConfiguration = z.infer<typeof FilesystemConfigurationSchema>;
 
 /** Minimum allowed value for lifecycle timeout fields (seconds). */
@@ -225,25 +347,24 @@ export const AgentEnvSpecSchema = z
     build: BuildTypeSchema,
     entrypoint: EntrypointSchema,
     codeLocation: DirectoryPathSchema,
-    /** Custom Dockerfile name for Container builds. Must be a filename, not a path. Default: 'Dockerfile' */
-    dockerfile: z
-      .string()
-      .min(1)
-      .max(255)
-      .regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/, 'Must be a filename (no path separators or traversal)')
-      .optional(),
     /**
-     * Docker build context directory for Container builds.
-     * When set, this path is used as the positional argument to `docker build` instead of `codeLocation`.
-     * Useful when a single Dockerfile is shared across multiple agents in a monorepo.
+     * Dockerfile for Container builds, resolved relative to the build context (`buildContextPath`
+     * when set, otherwise `codeLocation`). A filename or a relative subpath; no traversal. Default: 'Dockerfile'.
+     */
+    dockerfile: DockerfilePathSchema.optional(),
+    /**
+     * Docker build context directory for Container builds. When set, this directory (instead of
+     * `codeLocation`) is used as the `docker build` context and as the root the Dockerfile path is
+     * resolved against, so a single Dockerfile can be shared across multiple agents in a monorepo
+     * (e.g. so it can COPY files that live outside `codeLocation`). Container builds only.
      */
     buildContextPath: DirectoryPathSchema.optional(),
     /**
-     * Custom build arguments passed to `docker build` as `--build-arg KEY=VALUE` flags.
-     * Useful for parameterising a shared Dockerfile per agent (e.g. `{ "AGENT_NAME": "myagent" }`).
+     * Custom build arguments passed to `docker build` as `--build-arg` flags. Keys must be valid
+     * identifiers. Useful for parameterising a shared Dockerfile per agent (e.g. `{ "AGENT_NAME": "myagent" }`).
      * Container builds only.
      */
-    customDockerBuildArgs: z.record(z.string().min(1), z.string()).optional(),
+    customDockerBuildArgs: z.record(BuildArgKeySchema, z.string()).optional(),
     runtimeVersion: RuntimeVersionSchemaFromConstants.optional(),
     /** Environment variables to set on the runtime */
     envVars: z.array(EnvVarSchema).optional(),
@@ -259,6 +380,13 @@ export const AgentEnvSpecSchema = z
     requestHeaderAllowlist: RequestHeaderAllowlistSchema.optional(),
     /** ARN of an existing IAM execution role to use instead of creating a new one. */
     executionRoleArn: z.string().optional(),
+    /**
+     * Additional IAM policies attached to the runtime execution role. Each entry is either a
+     * managed-policy ARN (attached directly) or a `.json` policy-document file path relative to
+     * `codeLocation` (attached as an inline policy). For opaque AWS access (e.g. S3) the CLI does
+     * not model as a typed connection.
+     */
+    additionalPolicies: z.array(z.string().min(1)).optional(),
     /** Authorizer type for inbound requests. Defaults to AWS_IAM. */
     authorizerType: RuntimeAuthorizerTypeSchema.optional(),
     /** Authorizer configuration. Required when authorizerType is CUSTOM_JWT. */
@@ -270,6 +398,9 @@ export const AgentEnvSpecSchema = z
     filesystemConfigurations: z.array(FilesystemConfigurationSchema).optional(),
     /** Named endpoints (version aliases) for this runtime. Keys are endpoint names. */
     endpoints: z.record(RuntimeEndpointNameSchema, RuntimeEndpointSchema).optional(),
+    /** Connections to external AgentCore resources (memory/gateway/runtime). The construct
+     *  generates IAM + discovery env vars onto this runtime's execution role. */
+    connections: z.array(ConnectionSchema).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.networkMode === 'VPC' && !data.networkConfig) {
@@ -284,6 +415,24 @@ export const AgentEnvSpecSchema = z
         code: z.ZodIssueCode.custom,
         message: 'networkConfig is only allowed when networkMode is VPC',
         path: ['networkConfig'],
+      });
+    }
+    // NOTE: vpcId is NOT required here at the schema (read/write) level. A Container+VPC agent needs
+    // a vpcId to build (CodeBuild can't infer it), but enforcing that on read would hard-fail
+    // pre-existing agentcore.json files written before vpcId existed. Instead: the CLI input
+    // validators require --vpc-id for fresh Container+VPC creates, deploy backfills a missing vpcId
+    // from the subnets (ec2:DescribeSubnets) and persists it, and the CDK construct fails fast if it
+    // is still missing at synth. This keeps `status`/`remove`/`validate` working on old configs.
+    if (
+      data.networkMode === 'VPC' &&
+      isContainerBuild(data) &&
+      data.networkConfig &&
+      data.networkConfig.securityGroups.length > MAX_CONTAINER_BUILD_SECURITY_GROUPS
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Container builds in VPC mode allow at most ${MAX_CONTAINER_BUILD_SECURITY_GROUPS} security groups (CodeBuild limit)`,
+        path: ['networkConfig', 'securityGroups'],
       });
     }
     if (data.authorizerType === 'CUSTOM_JWT' && !data.authorizerConfiguration?.customJwtAuthorizer) {
@@ -321,6 +470,66 @@ export const AgentEnvSpecSchema = z
         message: 'customDockerBuildArgs is only allowed for Container builds',
         path: ['customDockerBuildArgs'],
       });
+    }
+    const fcs = data.filesystemConfigurations ?? [];
+    if (fcs.length > 0) {
+      const efsCount = fcs.filter(fc => 'efsAccessPoint' in fc).length;
+      const s3Count = fcs.filter(fc => 's3FilesAccessPoint' in fc).length;
+      const ssCount = fcs.filter(fc => 'sessionStorage' in fc).length;
+
+      if (fcs.length > 5) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Maximum 5 filesystem configurations allowed',
+          path: ['filesystemConfigurations'],
+        });
+      }
+      if (efsCount > MAX_EFS_MOUNTS) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Maximum ${MAX_EFS_MOUNTS} efsAccessPoint configurations allowed`,
+          path: ['filesystemConfigurations'],
+        });
+      }
+      if (s3Count > MAX_S3_MOUNTS) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Maximum ${MAX_S3_MOUNTS} s3FilesAccessPoint configurations allowed`,
+          path: ['filesystemConfigurations'],
+        });
+      }
+      if (ssCount > 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Maximum 1 sessionStorage configuration allowed',
+          path: ['filesystemConfigurations'],
+        });
+      }
+
+      const hasByo = efsCount > 0 || s3Count > 0;
+      if (hasByo && data.networkMode !== 'VPC') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'efsAccessPoint and s3FilesAccessPoint filesystem mounts require networkMode: VPC',
+          path: ['filesystemConfigurations'],
+        });
+      }
+
+      const mountPaths = fcs.map(fc =>
+        ('sessionStorage' in fc
+          ? fc.sessionStorage.mountPath
+          : 'efsAccessPoint' in fc
+            ? fc.efsAccessPoint.mountPath
+            : fc.s3FilesAccessPoint.mountPath
+        ).replace(/\/$/, '')
+      );
+      if (new Set(mountPaths).size !== mountPaths.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Filesystem mount paths must be unique',
+          path: ['filesystemConfigurations'],
+        });
+      }
     }
   });
 

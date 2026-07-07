@@ -10,6 +10,9 @@ export const CONFIG_DIR = 'agentcore';
 export const APP_DIR = 'app';
 export const MCP_APP_SUBDIR = 'mcp';
 
+// Harnesses directory
+export const HARNESS_DIR = 'harnesses';
+
 // CLI system subdirectory (inside CONFIG_DIR)
 export const CLI_SYSTEM_DIR = '.cli';
 export const CLI_LOGS_DIR = 'logs';
@@ -48,14 +51,20 @@ export type ContainerRuntime = 'docker' | 'podman' | 'finch';
 export const CONTAINER_RUNTIMES: ContainerRuntime[] = ['docker', 'podman', 'finch'];
 
 /**
- * Get the Dockerfile path for a given code location.
- * @param codeLocation - Directory containing the Dockerfile
- * @param dockerfile - Custom Dockerfile name (default: 'Dockerfile')
+ * Resolve the Dockerfile path against the Docker build context.
+ * @param buildContext - The build context directory (`buildContextPath` when set, else `codeLocation`)
+ * @param dockerfile - Dockerfile name or relative subpath within the context (default: 'Dockerfile')
+ *
+ * `dockerfile` may be a filename ('Dockerfile') or a forward-slash relative subpath
+ * ('docker/Dockerfile'); absolute paths, backslashes, and `..` traversal are rejected so it can
+ * never escape the build context.
  */
-export function getDockerfilePath(codeLocation: string, dockerfile?: string): string {
+export function getDockerfilePath(buildContext: string, dockerfile?: string): string {
   const name = dockerfile ?? DOCKERFILE_NAME;
-  if (name.includes('/') || name.includes('\\') || name.includes('..')) {
-    throw new Error(`Invalid dockerfile name: must be a filename without path separators or traversal`);
+  if (name.startsWith('/') || name.includes('\\') || name.split('/').includes('..')) {
+    throw new Error(
+      `Invalid dockerfile path: must be a relative path within the build context (no leading slash, backslash, or ".." traversal)`
+    );
   }
-  return join(codeLocation, name);
+  return join(buildContext, name);
 }

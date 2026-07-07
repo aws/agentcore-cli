@@ -38,14 +38,14 @@ export interface SecretInputProps {
 }
 
 function validateValue(value: string, schema?: ZodString, customValidation?: CustomValidation): string | undefined {
-  if (!value) return undefined;
-
   if (customValidation) {
     const result = customValidation(value);
     if (result !== true) {
       return result;
     }
   }
+
+  if (!value) return undefined;
 
   if (schema) {
     const parseResult = schema.safeParse(value);
@@ -89,6 +89,11 @@ export function SecretInput({
     onSubmit: val => {
       const trimmed = val.trim();
       if (!trimmed) {
+        const validationError = validateValue(trimmed, schema, customValidation);
+        if (validationError) {
+          setShowError(true);
+          return;
+        }
         if (onSkip) {
           onSkip();
         } else {

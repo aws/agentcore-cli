@@ -2,6 +2,7 @@ import type { Result } from '../../../lib/result';
 
 export type ResourceType =
   | 'agent'
+  | 'harness'
   | 'gateway'
   | 'gateway-target'
   | 'runtime-endpoint'
@@ -9,10 +10,14 @@ export type ResourceType =
   | 'credential'
   | 'evaluator'
   | 'online-eval'
+  | 'online-insights'
   | 'policy-engine'
   | 'policy'
   | 'config-bundle'
-  | 'ab-test';
+  | 'dataset'
+  | 'knowledge-base'
+  | 'payment-manager'
+  | 'payment-connector';
 
 export interface RemoveOptions {
   resourceType: ResourceType;

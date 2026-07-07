@@ -3,6 +3,7 @@ import type {
   AgentCoreProjectSpec,
   AuthorizerConfig,
   AwsDeploymentTarget,
+  NetworkConfig,
   RuntimeAuthorizerType,
 } from '../../../schema';
 import type { ExecLogger } from '../../logging';
@@ -19,7 +20,7 @@ export interface ParsedStarterToolkitAgent {
   language: 'python' | 'typescript';
   sourcePath?: string;
   networkMode: 'PUBLIC' | 'VPC';
-  networkConfig?: { subnets: string[]; securityGroups: string[] };
+  networkConfig?: NetworkConfig;
   protocol: 'HTTP' | 'MCP' | 'A2A' | 'AGUI';
   enableOtel: boolean;
   /** Physical agent runtime ID from the starter toolkit deployment */
@@ -202,7 +203,7 @@ export interface ResourceImportDescriptor<TDetail, TSummary> {
    * Convert the AWS detail to local spec and add it to the project spec.
    * Called after beforeConfigWrite — descriptor factories may rely on state set during that hook.
    */
-  addToProjectSpec: (detail: TDetail, localName: string, projectSpec: AgentCoreProjectSpec) => void;
+  addToProjectSpec: (detail: TDetail, localName: string, projectSpec: AgentCoreProjectSpec) => ImportResourceResult;
 
   // ---- CFN template matching ----
 

@@ -1,6 +1,7 @@
 import type { NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
 import { ProjectNameSchema, SessionStorageSchema } from '../../../../schema';
 import type { JwtConfigOptions } from '../../../primitives/auth-utils';
+import { useFilesystemMountState } from '../../hooks/useFilesystemMountState';
 import type { AdvancedSettingId, BuildType, GenerateConfig, GenerateStep, MemoryOption, ProtocolMode } from './types';
 import { BASE_GENERATE_STEPS, getModelProviderOptionsForSdk } from './types';
 import { useCallback, useMemo, useState } from 'react';
@@ -71,6 +72,11 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
         subSteps.push('networkMode');
         if (config.networkMode === 'VPC') {
           subSteps.push('subnets', 'securityGroups');
+          // vpcId is required by the schema for Container builds in VPC mode (CodeBuild cannot
+          // infer the VPC from subnets). CodeZip builds no container, so it is not collected there.
+          if (config.buildType === 'Container') {
+            subSteps.push('vpcId');
+          }
         }
       }
       // Headers
@@ -87,7 +93,15 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
       }
       // Filesystem
       if (advancedSettings.has('filesystem')) {
-        subSteps.push('sessionStorageMountPath');
+        subSteps.push(
+          'sessionStorageMountPath',
+          'efsArn',
+          'efsMountPath',
+          'efsAddAnother',
+          's3Arn',
+          's3MountPath',
+          's3AddAnother'
+        );
       }
       // Config bundle — no sub-steps needed, uses smart defaults
       filtered = [...filtered.slice(0, afterAdvanced), ...subSteps, ...filtered.slice(afterAdvanced)];
@@ -102,6 +116,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     config.buildType,
     config.modelProvider,
     config.sdk,
+    config.language,
     config.protocol,
     config.networkMode,
     config.authorizerType,
@@ -217,6 +232,28 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     [goToNextStep]
   );
 
+  const {
+    pendingEfsArn,
+    pendingS3Arn,
+    editingEfsIndex,
+    editingS3Index,
+    submitEfsArn,
+    submitEfsMountPath,
+    submitEfsAddAnother,
+    submitS3Arn,
+    submitS3MountPath,
+    submitS3AddAnother,
+    resetFilesystemState,
+  } = useFilesystemMountState({
+    currentStep: step,
+    efsMounts: config.efsAccessPoints ?? [],
+    s3Mounts: config.s3AccessPoints ?? [],
+    setEfsMounts: updater => setConfig(c => ({ ...c, efsAccessPoints: updater(c.efsAccessPoints ?? []) })),
+    setS3Mounts: updater => setConfig(c => ({ ...c, s3AccessPoints: updater(c.s3AccessPoints ?? []) })),
+    goToNextStep: goToNextStep as (afterStep: string) => void,
+    setStep: setStep as (step: string) => void,
+  });
+
   const setAdvanced = useCallback(
     (selectedIds: AdvancedSettingId[]) => {
       const selected = new Set(selectedIds);
@@ -229,18 +266,35 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
           networkMode: 'PUBLIC',
           subnets: undefined,
           securityGroups: undefined,
+          vpcId: undefined,
           requestHeaderAllowlist: undefined,
           authorizerType: undefined,
           jwtConfig: undefined,
           idleRuntimeSessionTimeout: undefined,
           maxLifetime: undefined,
           sessionStorageMountPath: undefined,
+          efsAccessPoints: undefined,
+          s3AccessPoints: undefined,
           withConfigBundle: undefined,
         }));
+        resetFilesystemState();
         setStep('confirm');
       } else {
+        // Clear filesystem state if filesystem was deselected
+        if (!selected.has('filesystem')) {
+          setConfig(c => ({
+            ...c,
+            sessionStorageMountPath: undefined,
+            efsAccessPoints: undefined,
+            s3AccessPoints: undefined,
+          }));
+          resetFilesystemState();
+        }
         // Config bundle has no sub-steps — set flag immediately
-        setConfig(c => ({ ...c, withConfigBundle: selected.has('configBundle') || undefined }));
+        setConfig(c => ({
+          ...c,
+          withConfigBundle: selected.has('configBundle') || undefined,
+        }));
         // Navigate to first advanced sub-step — determined by the steps memo on next render.
         // Use setTimeout so the steps memo recalculates with the new advancedSettings first.
         setTimeout(() => {
@@ -263,7 +317,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
         }, 0);
       }
     },
-    [config.buildType]
+    [config.buildType, resetFilesystemState]
   );
 
   const setNetworkMode = useCallback(
@@ -289,7 +343,17 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
   const setSecurityGroups = useCallback(
     (securityGroups: string[]) => {
       setConfig(c => ({ ...c, securityGroups }));
+      // When the vpcId step is active (Container build) goToNextStep advances to it; otherwise it
+      // advances past the network section — mirroring how subnets → securityGroups already works.
       setTimeout(() => goToNextStep('securityGroups'), 0);
+    },
+    [goToNextStep]
+  );
+
+  const setVpcId = useCallback(
+    (vpcId: string) => {
+      setConfig(c => ({ ...c, vpcId }));
+      setTimeout(() => goToNextStep('vpcId'), 0);
     },
     [goToNextStep]
   );
@@ -371,9 +435,71 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
 
   const goBack = useCallback(() => {
     setError(null);
+    // efsMountPath: editing → review screen, adding → ARN entry
+    if (step === 'efsMountPath') {
+      resetFilesystemState();
+      setStep(editingEfsIndex >= 0 ? 'efsAddAnother' : 'efsArn');
+      return;
+    }
+    if (step === 's3MountPath') {
+      resetFilesystemState();
+      setStep(editingS3Index >= 0 ? 's3AddAnother' : 's3Arn');
+      return;
+    }
+    // efsArn: editing → back to review; mounts exist → back to review; no mounts → step before efsArn
+    if (step === 'efsArn') {
+      if (editingEfsIndex >= 0) {
+        resetFilesystemState();
+        setStep('efsAddAnother');
+      } else if ((config.efsAccessPoints?.length ?? 0) > 0) {
+        setStep('efsAddAnother');
+      } else {
+        const prev = steps[steps.indexOf('efsArn') - 1];
+        if (prev) setStep(prev);
+      }
+      return;
+    }
+    // efsAddAnother: always exit EFS sub-flow (step before efsArn)
+    if (step === 'efsAddAnother') {
+      const prev = steps[steps.indexOf('efsArn') - 1];
+      if (prev) setStep(prev);
+      return;
+    }
+    // s3Arn: editing → back to s3 review; S3 mounts exist → back to s3 review; else → EFS section
+    if (step === 's3Arn') {
+      if (editingS3Index >= 0) {
+        resetFilesystemState();
+        setStep('s3AddAnother');
+      } else if ((config.s3AccessPoints?.length ?? 0) > 0) {
+        setStep('s3AddAnother');
+      } else if ((config.efsAccessPoints?.length ?? 0) > 0) {
+        setStep('efsAddAnother');
+      } else {
+        setStep('efsArn');
+      }
+      return;
+    }
+    // s3AddAnother: always exit S3 sub-flow → back to EFS section end/start
+    if (step === 's3AddAnother') {
+      if ((config.efsAccessPoints?.length ?? 0) > 0) {
+        setStep('efsAddAnother');
+      } else {
+        setStep('efsArn');
+      }
+      return;
+    }
     const prevStep = steps[currentIndex - 1];
     if (prevStep) setStep(prevStep);
-  }, [currentIndex, steps]);
+  }, [
+    config.efsAccessPoints,
+    config.s3AccessPoints,
+    currentIndex,
+    editingEfsIndex,
+    editingS3Index,
+    step,
+    steps,
+    resetFilesystemState,
+  ]);
 
   const reset = useCallback(() => {
     setStep('projectName');
@@ -381,7 +507,8 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     setError(null);
     setSdkSelected(false);
     setAdvancedSettings(new Set());
-  }, []);
+    resetFilesystemState();
+  }, [resetFilesystemState]);
 
   /**
    * Initialize the wizard with a pre-set name and skip to language step.
@@ -417,6 +544,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     setNetworkMode,
     setSubnets,
     setSecurityGroups,
+    setVpcId,
     setRequestHeaderAllowlist,
     skipRequestHeaderAllowlist,
     setAuthorizerType,
@@ -427,6 +555,16 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     skipMaxLifetime,
     setSessionStorageMountPath,
     skipSessionStorageMountPath,
+    pendingEfsArn,
+    editingEfsIndex,
+    submitEfsArn,
+    submitEfsMountPath,
+    submitEfsAddAnother,
+    pendingS3Arn,
+    editingS3Index,
+    submitS3Arn,
+    submitS3MountPath,
+    submitS3AddAnother,
     goBack,
     reset,
     initWithName,

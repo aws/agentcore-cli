@@ -4,17 +4,17 @@ import { z } from 'zod';
 // Feature Constants (shared across all schemas)
 // ============================================================================
 
-export const SDKFrameworkSchema = z.enum(['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents']);
+export const SDKFrameworkSchema = z.enum(['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents', 'VercelAI']);
 export type SDKFramework = z.infer<typeof SDKFrameworkSchema>;
 
 export const TargetLanguageSchema = z.enum(['Python', 'TypeScript', 'Other']);
 export type TargetLanguage = z.infer<typeof TargetLanguageSchema>;
 
-export const ModelProviderSchema = z.enum(['Bedrock', 'Gemini', 'OpenAI', 'Anthropic']);
+export const ModelProviderSchema = z.enum(['Bedrock', 'Gemini', 'OpenAI', 'Anthropic', 'LiteLLM']);
 export type ModelProvider = z.infer<typeof ModelProviderSchema>;
 
-/** Providers that use credentials (Bedrock uses IAM, no credential needed). */
-export const CREDENTIAL_PROVIDERS = ['Gemini', 'OpenAI', 'Anthropic'] as const;
+/** Providers that use credentials (Bedrock uses IAM, no credential needed). LiteLLM's API key is optional. */
+export const CREDENTIAL_PROVIDERS = ['Gemini', 'OpenAI', 'Anthropic', 'LiteLLM'] as const;
 
 /**
  * Case-insensitively match a user-provided value against a Zod enum's options.
@@ -34,6 +34,8 @@ export const DEFAULT_MODEL_IDS: Record<ModelProvider, string> = {
   Anthropic: 'claude-sonnet-4-5-20250514',
   OpenAI: 'gpt-4.1',
   Gemini: 'gemini-2.5-flash',
+  // LiteLLM model ids are provider-prefixed (e.g. "bedrock/...", "openai/gpt-4o"); no single default.
+  LiteLLM: 'bedrock/us.anthropic.claude-sonnet-4-5-20250514-v1:0',
 };
 
 /**
@@ -43,10 +45,12 @@ export const DEFAULT_MODEL_IDS: Record<ModelProvider, string> = {
  * - OpenAIAgents only supports OpenAI (uses OpenAI's native API)
  */
 export const SDK_MODEL_PROVIDER_MATRIX: Record<SDKFramework, readonly ModelProvider[]> = {
-  Strands: ['Bedrock', 'Anthropic', 'OpenAI', 'Gemini'] as const,
+  // LiteLLM is supported for Strands (used by harness export) — it proxies to any provider.
+  Strands: ['Bedrock', 'Anthropic', 'OpenAI', 'Gemini', 'LiteLLM'] as const,
   LangChain_LangGraph: ['Bedrock', 'Anthropic', 'OpenAI', 'Gemini'] as const,
   GoogleADK: ['Gemini'] as const,
   OpenAIAgents: ['OpenAI'] as const,
+  VercelAI: ['Bedrock', 'Anthropic', 'OpenAI', 'Gemini'] as const,
 };
 
 /**
@@ -105,6 +109,8 @@ export const RESERVED_PROJECT_NAMES: readonly string[] = [
   'aguilanggraph',
   'aguiadk',
   'aguiprotocol',
+  'vercelai',
+  'aisdk',
   // Common utilities
   'httpx',
   'pytest',
@@ -152,12 +158,63 @@ export const DEFAULT_PYTHON_VERSION: PythonRuntime = 'PYTHON_3_14';
 export const NodeRuntimeSchema = z.enum(['NODE_18', 'NODE_20', 'NODE_22']);
 export type NodeRuntime = z.infer<typeof NodeRuntimeSchema>;
 
+/** Default Node.js runtime version for new TypeScript agents */
+export const DEFAULT_NODE_VERSION: NodeRuntime = 'NODE_22';
+
 /** Combined runtime version schema supporting both Python and Node/TypeScript runtimes */
 export const RuntimeVersionSchema = z.union([PythonRuntimeSchema, NodeRuntimeSchema]);
 export type RuntimeVersion = z.infer<typeof RuntimeVersionSchema>;
 
+/** Default entrypoint filename for each target language (create path). */
+export const DEFAULT_ENTRYPOINT_BY_LANGUAGE: Record<'Python' | 'TypeScript', string> = {
+  Python: 'main.py',
+  TypeScript: 'main.js',
+};
+
+/** Default runtime version for each target language (create path). */
+export const DEFAULT_RUNTIME_BY_LANGUAGE: Record<'Python' | 'TypeScript', RuntimeVersion> = {
+  Python: DEFAULT_PYTHON_VERSION,
+  TypeScript: DEFAULT_NODE_VERSION,
+};
+
 export const NetworkModeSchema = z.enum(['PUBLIC', 'VPC']);
 export type NetworkMode = z.infer<typeof NetworkModeSchema>;
+
+// ============================================================================
+// AWS Network Resource ID Patterns (single source of truth)
+//
+// Canonical AWS resource ID format: lowercase hex, exactly 8 chars (legacy) or
+// 17 chars (current). These are shared by NetworkConfigSchema (agent VPC config)
+// and the auth/PrivateLink schema (ManagedVpcResource). All consumers must import
+// from here rather than defining their own copies.
+// ============================================================================
+
+/** Matches a VPC ID: vpc- followed by 8 or 17 lowercase hex digits. */
+export const VPC_ID_PATTERN = /^vpc-(?:[0-9a-f]{8}|[0-9a-f]{17})$/;
+/** Matches a subnet ID: subnet- followed by 8 or 17 lowercase hex digits. */
+export const SUBNET_ID_PATTERN = /^subnet-(?:[0-9a-f]{8}|[0-9a-f]{17})$/;
+/** Matches a security group ID: sg- followed by 8 or 17 lowercase hex digits. */
+export const SECURITY_GROUP_ID_PATTERN = /^sg-(?:[0-9a-f]{8}|[0-9a-f]{17})$/;
+
+/** CodeBuild caps a project's VPC config at 5 security groups (vs 16 for the runtime). */
+export const MAX_CONTAINER_BUILD_SECURITY_GROUPS = 5;
+
+/**
+ * Whether a build runs the container-image pipeline (CodeBuild) and therefore requires an explicit
+ * `networkConfig.vpcId` in VPC mode — CodeBuild's CreateProject cannot infer the VPC from subnets
+ * alone. This is the single source of truth for "is this a container build?", shared by the schema
+ * refinements (agent-env + harness), the CLI validators, and the import/export vpcId-resolution
+ * guards so the decision cannot drift between them.
+ *
+ * A build is a container build when ANY of these hold:
+ * - `build === 'Container'` (agent specs, and harnesses whose build type resolved to Container),
+ * - it carries a `dockerfile` (from-source container harness), or
+ * - it carries a `containerUri` (prebuilt image harness — export still emits a `FROM <uri>`
+ *   Dockerfile stub that CodeBuild builds, so it needs a vpcId too).
+ */
+export function isContainerBuild(spec: { build?: string; containerUri?: string; dockerfile?: string }): boolean {
+  return spec.build === 'Container' || !!spec.containerUri || !!spec.dockerfile;
+}
 
 // ============================================================================
 // Protocol Mode
@@ -171,7 +228,7 @@ export type ProtocolMode = z.infer<typeof ProtocolModeSchema>;
  * MCP is a standalone tool server with no framework.
  */
 export const PROTOCOL_FRAMEWORK_MATRIX: Record<ProtocolMode, readonly SDKFramework[]> = {
-  HTTP: ['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents'] as const,
+  HTTP: ['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents', 'VercelAI'] as const,
   MCP: [] as const,
   A2A: ['Strands', 'GoogleADK', 'LangChain_LangGraph'] as const,
   AGUI: ['Strands', 'LangChain_LangGraph', 'GoogleADK'] as const,
@@ -189,4 +246,32 @@ export function getSupportedFrameworksForProtocol(protocol: ProtocolMode): reado
  */
 export function isFrameworkSupportedForProtocol(protocol: ProtocolMode, framework: SDKFramework): boolean {
   return PROTOCOL_FRAMEWORK_MATRIX[protocol].includes(framework);
+}
+
+/**
+ * Matrix defining which SDK frameworks ship templates for each target language.
+ * Vercel AI is TypeScript-only; the remaining frameworks are Python-only today.
+ * Used to keep framework pickers and validation in sync with the templates that
+ * actually exist under `assets/<language>/...`.
+ */
+export const LANGUAGE_FRAMEWORK_MATRIX = {
+  Python: ['Strands', 'LangChain_LangGraph', 'GoogleADK', 'OpenAIAgents'],
+  TypeScript: ['Strands', 'VercelAI'],
+} as const satisfies Record<string, readonly SDKFramework[]>;
+
+/** Languages that scaffold from templates (excludes 'Other', which is BYO-only). */
+export type TemplateLanguage = keyof typeof LANGUAGE_FRAMEWORK_MATRIX;
+
+/**
+ * Returns the SDK frameworks that have templates for a given target language.
+ */
+export function getFrameworksForLanguage(language: TemplateLanguage): readonly SDKFramework[] {
+  return LANGUAGE_FRAMEWORK_MATRIX[language];
+}
+
+/**
+ * Checks if a framework has a template for a given target language.
+ */
+export function isFrameworkSupportedForLanguage(language: TemplateLanguage, framework: SDKFramework): boolean {
+  return getFrameworksForLanguage(language).includes(framework);
 }

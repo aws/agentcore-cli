@@ -1,3 +1,7 @@
+// eslint-disable-next-line @typescript-eslint/consistent-type-definitions -- discriminated union member; interface would allow declaration merging which breaks type narrowing
+type FailureResult<E extends Error> = { success: false; error: E };
+
+type SuccessResult<T extends Record<string, unknown>> = { success: true } & T;
 /**
  * Discriminated union for fallible operations, inspired by Rust's Result<T, E>.
  *
@@ -11,8 +15,8 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export type Result<T extends Record<string, unknown> = {}, E extends Error = Error> =
-  | ({ success: true } & T)
-  | { success: false; error: E };
+  | SuccessResult<T>
+  | FailureResult<E>;
 
 /**
  * Converts a Result object to a JSON-serializable form.
@@ -27,4 +31,52 @@ export function serializeResult<T extends Record<string, unknown>>(
     return { ...rest, error: error.message };
   }
   return result;
+}
+
+/**
+ * Extracts the data portion of a Result's success branch (everything except the
+ * `success` discriminant).
+ */
+type UnwrappedData<R extends Result> = Omit<Extract<R, { success: true }>, 'success'>;
+
+/**
+ * Unwrap a Result to its data portion.
+ * - On success: returns the data (Result minus the `success: true` discriminant).
+ * - On failure: throws the contained error, or returns `defaultValue` if provided.
+ */
+export function unwrapResult<R extends Result>(result: R): UnwrappedData<R>;
+export function unwrapResult<R extends Result>(result: R, defaultValue: UnwrappedData<R>): UnwrappedData<R>;
+export function unwrapResult<R extends Result>(result: R, defaultValue?: UnwrappedData<R>): UnwrappedData<R> {
+  if (result.success) {
+    const { success: _success, ...data } = result;
+    // TS treats destructured object as generic R type and does not respect type narrowing above. Known issue: https://github.com/microsoft/TypeScript/issues/46680
+    return data as UnwrappedData<R>;
+  }
+  if (defaultValue !== undefined) {
+    return defaultValue;
+  }
+  throw result.error;
+}
+
+export function failureResult<E extends Error>(e: E): FailureResult<E> {
+  return {
+    success: false,
+    error: e,
+  };
+}
+
+export function ok(): SuccessResult<Record<string, never>>;
+export function ok<T extends Record<string, unknown>>(data: T): SuccessResult<T>;
+export function ok(data?: Record<string, unknown>) {
+  return {
+    success: true,
+    ...(data ?? {}),
+  };
+}
+
+export function err<E extends Error>(e: E): FailureResult<E> {
+  return {
+    success: false,
+    error: e,
+  };
 }

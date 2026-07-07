@@ -11,14 +11,16 @@ import {
 import type {
   BuildType,
   DeployedState,
+  EfsAccessPointConfig,
   ModelProvider,
   NetworkMode,
   ProtocolMode,
+  S3FilesAccessPointConfig,
   SDKFramework,
   TargetLanguage,
 } from '../../../schema';
 import { checkCreateDependencies } from '../../external-requirements';
-import { initGitRepo, setupPythonProject, writeEnvFile, writeGitignore } from '../../operations';
+import { initGitRepo, setupNodeProject, setupPythonProject, writeEnvFile, writeGitignore } from '../../operations';
 import { createConfigBundleForAgent } from '../../operations/agent/config-bundle-defaults';
 import {
   mapGenerateConfigToRenderConfig,
@@ -141,6 +143,7 @@ export interface CreateWithAgentOptions {
   networkMode?: NetworkMode;
   subnets?: string[];
   securityGroups?: string[];
+  vpcId?: string;
   requestHeaderAllowlist?: string[];
   agentId?: string;
   agentAliasId?: string;
@@ -148,6 +151,8 @@ export interface CreateWithAgentOptions {
   idleTimeout?: number;
   maxLifetime?: number;
   sessionStorageMountPath?: string;
+  efsAccessPoints?: EfsAccessPointConfig[];
+  s3AccessPoints?: S3FilesAccessPointConfig[];
   withConfigBundle?: boolean;
   skipGit?: boolean;
   skipInstall?: boolean;
@@ -170,10 +175,13 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     networkMode,
     subnets,
     securityGroups,
+    vpcId,
     requestHeaderAllowlist,
     idleTimeout,
     maxLifetime: maxLifetimeOpt,
     sessionStorageMountPath,
+    efsAccessPoints,
+    s3AccessPoints,
     withConfigBundle,
     skipGit,
     skipInstall,
@@ -224,6 +232,8 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
         bedrockAgentId: options.agentId,
         bedrockAliasId: options.agentAliasId,
         configBaseDir,
+        efsAccessPoints,
+        s3AccessPoints,
       });
       if (!importResult.success) {
         onProgress?.('Import agent from Bedrock', 'error');
@@ -268,10 +278,13 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       networkMode,
       subnets,
       securityGroups,
+      vpcId,
       requestHeaderAllowlist,
       ...(idleTimeout !== undefined && { idleRuntimeSessionTimeout: idleTimeout }),
       ...(maxLifetimeOpt !== undefined && { maxLifetime: maxLifetimeOpt }),
       ...(sessionStorageMountPath && { sessionStorageMountPath }),
+      ...(efsAccessPoints?.length && { efsAccessPoints }),
+      ...(s3AccessPoints?.length && { s3AccessPoints }),
       ...(withConfigBundle && { withConfigBundle }),
     };
 
@@ -327,6 +340,24 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       onProgress?.('Set up Python environment', 'done');
     }
 
+    // Set up Node environment if needed (unless skipped)
+    if (language === 'TypeScript' && !skipInstall) {
+      onProgress?.('Set up Node environment', 'start');
+      const agentDir = join(projectRoot, APP_DIR, name);
+      const nodeResult = await setupNodeProject({ projectDir: agentDir });
+      if (nodeResult.status === 'success') {
+        onProgress?.('Set up Node environment', 'done');
+      } else {
+        const firstLine = (nodeResult.error ?? '').split('\n').find(l => l.trim().length > 0) ?? '';
+        const warn =
+          nodeResult.status === 'npm_not_found'
+            ? 'npm not found on PATH. Install Node.js 20+ and run `npm install` in the agent directory.'
+            : `npm install failed${firstLine ? `: ${firstLine.replace(/^npm (error|warn) /i, '').slice(0, 160)}` : ''}. Run \`npm install\` in ${agentDir} to retry and see the full error.`;
+        depWarnings.push(warn);
+        onProgress?.('Set up Node environment', 'done');
+      }
+    }
+
     return {
       success: true,
       projectPath: projectRoot,
@@ -351,22 +382,55 @@ export function getDryRunInfo(options: {
   const wouldCreate = [
     `${projectRoot}/`,
     `${projectRoot}/agentcore/`,
-    `${projectRoot}/agentcore/project.json`,
+    `${projectRoot}/agentcore/agentcore.json`,
     `${projectRoot}/agentcore/aws-targets.json`,
     `${projectRoot}/agentcore/.env.local`,
-    `${projectRoot}/cdk/`,
+    `${projectRoot}/agentcore/cdk/`,
   ];
 
   if (language === 'Python') {
     wouldCreate.push(`${projectRoot}/app/${name}/`);
     wouldCreate.push(`${projectRoot}/app/${name}/main.py`);
     wouldCreate.push(`${projectRoot}/app/${name}/pyproject.toml`);
+  } else if (language === 'TypeScript') {
+    wouldCreate.push(`${projectRoot}/app/${name}/`);
+    wouldCreate.push(`${projectRoot}/app/${name}/main.ts`);
+    wouldCreate.push(`${projectRoot}/app/${name}/package.json`);
+    wouldCreate.push(`${projectRoot}/app/${name}/tsconfig.json`);
+    wouldCreate.push(`${projectRoot}/app/${name}/model/load.ts`);
+    wouldCreate.push(`${projectRoot}/app/${name}/mcp_client/client.ts`);
   }
 
   return {
     success: true,
     dryRun: true,
     projectPath: projectRoot,
+    wouldCreate,
+  };
+}
+
+export function getHarnessDryRunInfo(options: { name: string; cwd: string; projectName?: string }): CreateResult {
+  const { name, cwd } = options;
+  const projectName = options.projectName ?? name;
+  const projectRoot = join(cwd, projectName);
+
+  const wouldCreate = [
+    `${projectRoot}/`,
+    `${projectRoot}/agentcore/`,
+    `${projectRoot}/agentcore/agentcore.json`,
+    `${projectRoot}/agentcore/aws-targets.json`,
+    `${projectRoot}/agentcore/.env.local`,
+    `${projectRoot}/agentcore/cdk/`,
+    `${projectRoot}/app/${name}/`,
+    `${projectRoot}/app/${name}/harness.json`,
+    `${projectRoot}/app/${name}/system-prompt.md`,
+  ];
+
+  return {
+    success: true,
+    dryRun: true,
+    projectPath: projectRoot,
+    harnessName: name,
     wouldCreate,
   };
 }

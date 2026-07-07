@@ -1,5 +1,6 @@
 import { computeManagedOAuthCredentialName } from '../../../../primitives/credential-utils.js';
-import { mapByoConfigToAgent } from '../../../../tui/screens/agent/useAddAgent.js';
+import type { AddAgentConfig } from '../../../../tui/screens/agent/types.js';
+import { mapAddAgentConfigToGenerateConfig, mapByoConfigToAgent } from '../../../../tui/screens/agent/useAddAgent.js';
 import type { GenerateConfig } from '../../../../tui/screens/generate/types.js';
 import {
   mapGenerateConfigToAgent,
@@ -46,10 +47,10 @@ describe('mapGenerateInputToMemories', () => {
     expect(types).toContain('EPISODIC');
   });
 
-  it('includes default namespaces for strategies', () => {
+  it('includes default namespace templates for strategies', () => {
     const result = mapGenerateInputToMemories('longAndShortTerm', 'Proj');
     const semantic = result[0]!.strategies.find(s => s.type === 'SEMANTIC');
-    expect(semantic?.namespaces).toEqual(['/users/{actorId}/facts']);
+    expect(semantic?.namespaceTemplates).toEqual(['/users/{actorId}/facts']);
   });
 
   it('uses project name in memory name', () => {
@@ -244,6 +245,19 @@ describe('mapGenerateConfigToAgent - VPC support', () => {
     memory: 'none' as const,
     language: 'Python' as const,
   };
+
+  it('persists vpcId into networkConfig for Container + VPC', () => {
+    const agent = mapGenerateConfigToAgent({
+      ...vpcBaseConfig,
+      buildType: 'Container',
+      dockerfile: 'Dockerfile',
+      networkMode: 'VPC',
+      subnets: ['subnet-0123456789abcdef0'],
+      securityGroups: ['sg-0123456789abcdef0'],
+      vpcId: 'vpc-0123456789abcdef0',
+    });
+    expect(agent.networkConfig?.vpcId).toBe('vpc-0123456789abcdef0');
+  });
 
   it('defaults to PUBLIC network mode when networkMode is absent', () => {
     const result = mapGenerateConfigToAgent(vpcBaseConfig);
@@ -453,5 +467,212 @@ describe('mapByoConfigToAgent - lifecycleConfiguration', () => {
   it('omits lifecycleConfiguration when neither field is set', () => {
     const result = mapByoConfigToAgent(baseByoConfig);
     expect(result.lifecycleConfiguration).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mapGenerateConfigToAgent - filesystem configurations
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('mapGenerateConfigToAgent - filesystem configurations', () => {
+  const fsBase: GenerateConfig = {
+    projectName: 'FsAgent',
+    buildType: 'CodeZip',
+    protocol: 'HTTP',
+    sdk: 'Strands',
+    modelProvider: 'Bedrock',
+    memory: 'none',
+    language: 'Python',
+    networkMode: 'VPC',
+    subnets: ['subnet-abc'],
+    securityGroups: ['sg-abc'],
+  };
+
+  const EFS_ARN = 'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0';
+  const S3_ARN =
+    'arn:aws:s3files:us-east-1:123456789012:file-system/fs-12345678901234567/access-point/fsap-12345678901234567';
+
+  it('omits filesystemConfigurations when none configured', () => {
+    const result = mapGenerateConfigToAgent(fsBase);
+    expect(result.filesystemConfigurations).toBeUndefined();
+  });
+
+  it('writes sessionStorage entry', () => {
+    const result = mapGenerateConfigToAgent({ ...fsBase, sessionStorageMountPath: '/mnt/data' });
+    expect(result.filesystemConfigurations).toContainEqual({ sessionStorage: { mountPath: '/mnt/data' } });
+  });
+
+  it('writes efsAccessPoint entry', () => {
+    const result = mapGenerateConfigToAgent({
+      ...fsBase,
+      efsAccessPoints: [{ accessPointArn: EFS_ARN, mountPath: '/mnt/efs' }],
+    });
+    expect(result.filesystemConfigurations).toContainEqual({
+      efsAccessPoint: { accessPointArn: EFS_ARN, mountPath: '/mnt/efs' },
+    });
+  });
+
+  it('writes s3FilesAccessPoint entry', () => {
+    const result = mapGenerateConfigToAgent({
+      ...fsBase,
+      s3AccessPoints: [{ accessPointArn: S3_ARN, mountPath: '/mnt/s3' }],
+    });
+    expect(result.filesystemConfigurations).toContainEqual({
+      s3FilesAccessPoint: { accessPointArn: S3_ARN, mountPath: '/mnt/s3' },
+    });
+  });
+
+  it('writes all three union variants together', () => {
+    const result = mapGenerateConfigToAgent({
+      ...fsBase,
+      sessionStorageMountPath: '/mnt/data',
+      efsAccessPoints: [{ accessPointArn: EFS_ARN, mountPath: '/mnt/efs' }],
+      s3AccessPoints: [{ accessPointArn: S3_ARN, mountPath: '/mnt/s3' }],
+    });
+    expect(result.filesystemConfigurations).toHaveLength(3);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mapGenerateConfigToRenderConfig - needsOs / efsMounts / s3Mounts
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('mapGenerateConfigToRenderConfig - needsOs', () => {
+  const base: GenerateConfig = {
+    projectName: 'RenderAgent',
+    buildType: 'CodeZip',
+    protocol: 'HTTP',
+    sdk: 'Strands',
+    modelProvider: 'Bedrock',
+    memory: 'none',
+    language: 'Python',
+  };
+
+  const EFS_ARN = 'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0';
+  const S3_ARN =
+    'arn:aws:s3files:us-east-1:123456789012:file-system/fs-12345678901234567/access-point/fsap-12345678901234567';
+
+  it('needsOs is false when no filesystem config', async () => {
+    const result = await mapGenerateConfigToRenderConfig(base, []);
+    expect(result.needsOs).toBe(false);
+  });
+
+  it('needsOs is true when sessionStorageMountPath is set', async () => {
+    const result = await mapGenerateConfigToRenderConfig({ ...base, sessionStorageMountPath: '/mnt/data' }, []);
+    expect(result.needsOs).toBe(true);
+  });
+
+  it('needsOs is true when only S3 mounts (no EFS)', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, s3AccessPoints: [{ accessPointArn: S3_ARN, mountPath: '/mnt/s3' }] },
+      []
+    );
+    expect(result.needsOs).toBe(true);
+  });
+
+  it('needsOs is true when only EFS mounts (no session storage)', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, efsAccessPoints: [{ accessPointArn: EFS_ARN, mountPath: '/mnt/efs' }] },
+      []
+    );
+    expect(result.needsOs).toBe(true);
+  });
+
+  it('efsMounts contains only mountPath (not ARN)', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, efsAccessPoints: [{ accessPointArn: EFS_ARN, mountPath: '/mnt/efs' }] },
+      []
+    );
+    expect(result.efsMounts).toEqual([{ mountPath: '/mnt/efs' }]);
+  });
+
+  it('s3Mounts contains only mountPath (not ARN)', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, s3AccessPoints: [{ accessPointArn: S3_ARN, mountPath: '/mnt/s3' }] },
+      []
+    );
+    expect(result.s3Mounts).toEqual([{ mountPath: '/mnt/s3' }]);
+  });
+
+  it('TypeScript Strands agents populate memoryProviders for longAndShortTerm', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, language: 'TypeScript', memory: 'longAndShortTerm' as const },
+      []
+    );
+    expect(result.hasMemory).toBe(true);
+    expect(result.memoryProviders).toHaveLength(1);
+    expect(result.memoryProviders[0]!.name).toBe('RenderAgentMemory');
+    expect(result.memoryProviders[0]!.envVarName).toBe('MEMORY_RENDERAGENTMEMORY_ID');
+    expect(result.memoryProviders[0]!.strategies).toEqual(['SEMANTIC', 'USER_PREFERENCE', 'SUMMARIZATION', 'EPISODIC']);
+  });
+
+  it('TypeScript Strands agents have hasMemory=false when memory is "none"', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, language: 'TypeScript', memory: 'none' as const },
+      []
+    );
+    expect(result.hasMemory).toBe(false);
+    expect(result.memoryProviders).toEqual([]);
+  });
+
+  it('TypeScript non-Strands agents have hasMemory=false even with memory selected', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, language: 'TypeScript', sdk: 'VercelAI', memory: 'longAndShortTerm' as const },
+      []
+    );
+    expect(result.hasMemory).toBe(false);
+    expect(result.memoryProviders).toEqual([]);
+  });
+
+  it('TypeScript Strands agents have hasMemory=false for shortTerm only', async () => {
+    const result = await mapGenerateConfigToRenderConfig(
+      { ...base, language: 'TypeScript', memory: 'shortTerm' as const },
+      []
+    );
+    expect(result.hasMemory).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mapAddAgentConfigToGenerateConfig - create-wizard persistence path (vpcId)
+//
+// Regression for the interactive `agentcore create` wizard dropping vpcId for
+// Container + VPC builds: the AddAgentConfig produced by the wizard MUST round-trip
+// vpcId through GenerateConfig so mapGenerateConfigToAgent persists
+// networkConfig.vpcId (required by the schema for Container builds in VPC mode).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('mapAddAgentConfigToGenerateConfig - Container + VPC vpcId', () => {
+  const containerVpcAddAgentConfig: AddAgentConfig = {
+    name: 'VpcAgent',
+    agentType: 'create',
+    codeLocation: 'VpcAgent/',
+    entrypoint: 'main.py',
+    language: 'Python',
+    buildType: 'Container',
+    protocol: 'HTTP',
+    framework: 'Strands',
+    modelProvider: 'Bedrock',
+    pythonVersion: 'PYTHON_3_12',
+    memory: 'none',
+    networkMode: 'VPC',
+    subnets: ['subnet-05169b775866f2440'],
+    securityGroups: ['sg-0390682a9d9f7dd8d'],
+    vpcId: 'vpc-07086549ccf106a5d',
+  };
+
+  it('carries vpcId from AddAgentConfig into GenerateConfig', () => {
+    const generateConfig = mapAddAgentConfigToGenerateConfig(containerVpcAddAgentConfig);
+    expect(generateConfig.vpcId).toBe('vpc-07086549ccf106a5d');
+  });
+
+  it('persists networkConfig.vpcId end-to-end for the create path', () => {
+    const generateConfig = mapAddAgentConfigToGenerateConfig(containerVpcAddAgentConfig);
+    const agent = mapGenerateConfigToAgent(generateConfig);
+    expect(agent.networkConfig).toEqual({
+      subnets: ['subnet-05169b775866f2440'],
+      securityGroups: ['sg-0390682a9d9f7dd8d'],
+      vpcId: 'vpc-07086549ccf106a5d',
+    });
   });
 });

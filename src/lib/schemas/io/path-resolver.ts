@@ -1,4 +1,4 @@
-import { CLI_LOGS_DIR, CLI_SYSTEM_DIR, CONFIG_DIR, CONFIG_FILES as _CONFIG_FILES } from '../../constants';
+import { APP_DIR, CLI_LOGS_DIR, CLI_SYSTEM_DIR, CONFIG_DIR, CONFIG_FILES as _CONFIG_FILES } from '../../constants';
 import { NoProjectError } from '../../errors';
 import { existsSync } from 'fs';
 import { dirname, join } from 'path';
@@ -190,6 +190,27 @@ export class PathResolver {
    */
   getMcpDefsPath(): string {
     return join(this.config.baseDir, CONFIG_FILES.MCP_DEFS);
+  }
+
+  /**
+   * Get the path to the harnesses directory (app/)
+   */
+  getHarnessesDir(): string {
+    return join(this.getProjectRoot(), APP_DIR);
+  }
+
+  /**
+   * Get the path to a specific harness directory (app/<harnessName>/)
+   */
+  getHarnessDir(harnessName: string): string {
+    return join(this.getProjectRoot(), APP_DIR, harnessName);
+  }
+
+  /**
+   * Get the path to a specific harness config file (app/<harnessName>/harness.json)
+   */
+  getHarnessConfigPath(harnessName: string): string {
+    return join(this.getProjectRoot(), APP_DIR, harnessName, 'harness.json');
   }
 
   /**

@@ -1,6 +1,7 @@
-import { getWorkingDirectory, serializeResult } from '../../../lib';
+import { ValidationError, getWorkingDirectory, serializeResult } from '../../../lib';
 import type {
   BuildType,
+  HarnessModelProvider,
   ModelProvider,
   NetworkMode,
   ProtocolMode,
@@ -8,42 +9,48 @@ import type {
   TargetLanguage,
 } from '../../../schema';
 import { LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../schema';
+import { ANSI, COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
-import { runCliCommand } from '../../telemetry/cli-command-run.js';
+import { ADDITIONAL_PARAMS_JSON_ERROR } from '../../primitives/constants';
+import { harnessPrimitive } from '../../primitives/registry';
+import { runCliCommand, withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import {
-  AgentType,
-  Build,
-  Framework,
-  Language,
-  Memory,
+  AgentFramework,
+  AgentLanguage,
+  AgentProtocol,
+  AgentSource,
+  MemoryType,
   ModelProvider as ModelProviderEnum,
   NetworkMode as NetworkModeEnum,
-  Protocol,
+  BuildType as TelemetryBuildType,
   standardize,
 } from '../../telemetry/schemas/common-shapes.js';
-import { COMMAND_DESCRIPTIONS } from '../../tui/copy';
+import { renderTUI } from '../../tui';
 import { requireTTY } from '../../tui/guards';
-import { CreateScreen } from '../../tui/screens/create';
+import { resolveAndValidateFilesystemMounts } from '../shared/filesystem-utils';
 import { parseCommaSeparatedList } from '../shared/vpc-utils';
-import { type ProgressCallback, createProject, createProjectWithAgent, getDryRunInfo } from './action';
+import {
+  type ProgressCallback,
+  createProject,
+  createProjectWithAgent,
+  getDryRunInfo,
+  getHarnessDryRunInfo,
+} from './action';
+import { createProjectWithHarness } from './harness-action';
+import { normalizeHarnessModelProvider, validateCreateHarnessOptions } from './harness-validate';
 import type { CreateOptions } from './types';
 import { validateCreateOptions } from './validate';
 import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';
 
 /** Render CreateScreen for interactive TUI mode */
-function handleCreateTUI(): void {
-  const cwd = getWorkingDirectory();
-  const { unmount } = render(
-    <CreateScreen
-      cwd={cwd}
-      isInteractive={false}
-      onExit={() => {
-        unmount();
-        process.exit(0);
-      }}
-    />
-  );
+function handleCreateTUI(): Promise<void> {
+  return renderTUI({
+    initialRoute: { name: 'create' },
+    enterAltScreen: false,
+    actionOnBack: 'exit',
+    isInteractive: false,
+  });
 }
 
 /** Print completion summary after successful create */
@@ -85,6 +92,211 @@ function printCreateSummary(
   console.log('');
 }
 
+/** Flags that trigger the agent/runtime path. `memory` (none/shortTerm/longAndShortTerm) is an
+ * agent-only concept — harnesses use --memory-mode/--no-memory — so it routes to the agent path
+ * (and conflicts with harness-only flags) rather than being silently ignored on the harness path. */
+const AGENT_PATH_FLAGS = [
+  'framework',
+  'language',
+  'build',
+  'protocol',
+  'type',
+  'agentId',
+  'agentAliasId',
+  'memory',
+] as const;
+
+/** Flags that are harness-only */
+const HARNESS_ONLY_FLAGS = [
+  'modelId',
+  'apiKeyArn',
+  'apiBase',
+  'additionalParams',
+  'maxIterations',
+  'maxTokens',
+  'timeout',
+  'truncationStrategy',
+  'container',
+] as const;
+
+/** Determines if the agent path should be taken based on provided flags */
+function isAgentPath(options: CreateOptions): boolean {
+  return AGENT_PATH_FLAGS.some(flag => options[flag] !== undefined);
+}
+
+/** Determines if any harness-only flags are present */
+function hasHarnessOnlyFlags(options: CreateOptions): boolean {
+  return HARNESS_ONLY_FLAGS.some(flag => options[flag] !== undefined);
+}
+
+/** Print completion summary after successful harness create */
+function printCreateHarnessSummary(projectName: string, harnessName: string): void {
+  const green = '\x1b[32m';
+  const cyan = '\x1b[36m';
+  const dim = '\x1b[2m';
+  const reset = '\x1b[0m';
+
+  console.log('');
+
+  // Created summary
+  console.log(`${dim}Created:${reset}`);
+  console.log(`  ${projectName}/`);
+  console.log(`    agentcore/              ${dim}Config and CDK project${reset}`);
+  console.log(`    app/${harnessName}/  ${dim}Harness config${reset}`);
+  console.log('');
+
+  // Success and next steps
+  console.log(`${green}Harness project created successfully!${reset}`);
+  console.log('');
+  console.log('To continue:');
+  console.log(`  ${cyan}cd ${projectName}${reset}`);
+  console.log(`  ${cyan}agentcore deploy${reset}`);
+  console.log('');
+}
+
+/** Handle CLI mode for the harness path */
+async function handleCreateHarnessCLI(options: CreateOptions): Promise<void> {
+  const cwd = options.outputDir ?? getWorkingDirectory();
+  const name = options.name ?? options.projectName;
+  const projectName = options.projectName ?? name;
+
+  // Single source for the harness validation input, shared by the dry-run and telemetry-wrapped
+  // paths below. Keeping ONE object prevents the two call sites from drifting — forwarding a field
+  // on one path but not the other is exactly what caused the create-harness VPC validation blocker.
+  const harnessValidationInput = {
+    name,
+    projectName,
+    modelProvider: options.modelProvider,
+    modelId: options.modelId,
+    apiKeyArn: options.apiKeyArn,
+    container: options.container,
+    networkMode: options.networkMode,
+    subnets: options.subnets,
+    securityGroups: options.securityGroups,
+    vpcId: options.vpcId,
+    efsAccessPointArn: options.efsAccessPointArn,
+    efsMountPath: options.efsMountPath,
+    s3AccessPointArn: options.s3AccessPointArn,
+    s3MountPath: options.s3MountPath,
+  };
+
+  // Handle dry-run mode (no telemetry for dry-run)
+  if (options.dryRun) {
+    const validation = validateCreateHarnessOptions(harnessValidationInput, cwd);
+    if (!validation.valid) {
+      if (options.json) {
+        console.log(JSON.stringify({ success: false, error: validation.error }));
+      } else {
+        console.error(validation.error);
+      }
+      process.exit(1);
+    }
+    const result = getHarnessDryRunInfo({ name: name!, projectName, cwd });
+    if (options.json) {
+      console.log(JSON.stringify(serializeResult(result)));
+    } else if (result.success) {
+      console.log('Dry run - would create:');
+      for (const path of result.wouldCreate ?? []) {
+        console.log(`  ${path}`);
+      }
+    }
+    process.exit(0);
+  }
+
+  const result = await withCommandRunTelemetry(
+    'create',
+    {
+      agent_environment: 'harness' as const,
+      has_agent: true,
+      model_provider: standardize(ModelProviderEnum, options.modelProvider ?? 'bedrock'),
+      // Harness memory is opt-in and defaults to disabled; only an explicit managed/existing request
+      // (not modeled by the legacy --harness-memory boolean) would be non-'none'.
+      memory_type: standardize(MemoryType, 'none'),
+      network_mode: standardize(NetworkModeEnum, options.networkMode ?? 'public'),
+    },
+    async () => {
+      const validation = validateCreateHarnessOptions(harnessValidationInput, cwd);
+      if (!validation.valid) {
+        return { success: false as const, error: new ValidationError(validation.error!) };
+      }
+
+      // Progress callback
+      const onProgress: ProgressCallback | undefined = options.json
+        ? undefined
+        : (step, status) => {
+            if (status === 'done') console.log(`${ANSI.green}[done]${ANSI.reset}  ${step}`);
+            else if (status === 'error') console.log(`${ANSI.red}[error]${ANSI.reset} ${step}`);
+          };
+
+      const provider = (
+        options.modelProvider ? normalizeHarnessModelProvider(options.modelProvider) : 'bedrock'
+      ) as HarnessModelProvider;
+      const defaultModelIds: Record<string, string> = {
+        bedrock: 'global.anthropic.claude-sonnet-4-6',
+        open_ai: 'gpt-5',
+        gemini: 'gemini-2.5-flash',
+        lite_llm: 'anthropic/claude-sonnet-4-5',
+      };
+      const modelId = options.modelId ?? defaultModelIds[provider] ?? 'global.anthropic.claude-sonnet-4-6';
+
+      const containerOption = harnessPrimitive.parseContainerFlag(options.container);
+
+      let additionalParams: Record<string, unknown> | undefined;
+      if (options.additionalParams) {
+        try {
+          additionalParams = JSON.parse(options.additionalParams) as Record<string, unknown>;
+        } catch {
+          throw new Error(ADDITIONAL_PARAMS_JSON_ERROR);
+        }
+      }
+
+      const { efsMounts: harnessEfsMounts, s3Mounts: harnessS3Mounts } = await resolveAndValidateFilesystemMounts(
+        options,
+        parseCommaSeparatedList
+      );
+
+      return createProjectWithHarness({
+        name: name!,
+        projectName: projectName!,
+        cwd,
+        modelProvider: provider,
+        modelId,
+        apiKeyArn: options.apiKeyArn,
+        apiBase: options.apiBase,
+        additionalParams,
+        containerUri: containerOption.containerUri,
+        dockerfilePath: containerOption.dockerfilePath,
+        skipMemory: options.harnessMemory === false,
+        maxIterations: options.maxIterations ? Number(options.maxIterations) : undefined,
+        maxTokens: options.maxTokens ? Number(options.maxTokens) : undefined,
+        timeoutSeconds: options.timeout ? Number(options.timeout) : undefined,
+        truncationStrategy: options.truncationStrategy as 'sliding_window' | 'summarization' | undefined,
+        networkMode: options.networkMode as NetworkMode | undefined,
+        subnets: parseCommaSeparatedList(options.subnets),
+        securityGroups: parseCommaSeparatedList(options.securityGroups),
+        vpcId: options.vpcId,
+        idleTimeout: options.idleTimeout ? Number(options.idleTimeout) : undefined,
+        maxLifetime: options.maxLifetime ? Number(options.maxLifetime) : undefined,
+        sessionStoragePath: options.sessionStorageMountPath,
+        efsAccessPoints: harnessEfsMounts,
+        s3AccessPoints: harnessS3Mounts,
+        skipGit: options.skipGit,
+        skipInstall: options.skipInstall,
+        onProgress,
+      });
+    }
+  );
+
+  if (options.json) {
+    console.log(JSON.stringify(serializeResult(result)));
+  } else if (result.success) {
+    printCreateHarnessSummary(projectName!, name!);
+  } else {
+    console.error(result.error instanceof Error ? result.error.message : 'Create failed');
+  }
+  process.exit(result.success ? 0 : 1);
+}
+
 /** Handle CLI mode with progress output */
 async function handleCreateCLI(options: CreateOptions): Promise<void> {
   const cwd = options.outputDir ?? getWorkingDirectory();
@@ -115,13 +327,14 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
   }
 
   const knownAttrs = {
-    language: standardize(Language, options.language),
-    framework: standardize(Framework, options.framework),
+    agent_environment: 'runtime' as const,
+    agent_language: standardize(AgentLanguage, options.language),
+    agent_framework: standardize(AgentFramework, options.framework),
     model_provider: standardize(ModelProviderEnum, options.modelProvider),
-    memory: standardize(Memory, options.memory ?? 'none'),
-    protocol: standardize(Protocol, options.protocol ?? 'http'),
-    build: standardize(Build, options.build ?? 'codezip'),
-    agent_type: standardize(AgentType, options.type ?? 'create'),
+    memory_type: standardize(MemoryType, options.memory ?? 'none'),
+    agent_protocol: standardize(AgentProtocol, options.protocol ?? 'http'),
+    build_type: standardize(TelemetryBuildType, options.build ?? 'codezip'),
+    agent_source: standardize(AgentSource, options.type ?? 'create'),
     network_mode: standardize(NetworkModeEnum, options.networkMode ?? 'public'),
     has_agent: options.agent !== false,
   };
@@ -132,7 +345,7 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
     async () => {
       const validation = validateCreateOptions(options, cwd);
       if (!validation.valid) {
-        throw new Error(validation.error);
+        throw new ValidationError(validation.error!);
       }
       const green = '\x1b[32m';
       const reset = '\x1b[0m';
@@ -151,6 +364,12 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
 
       // Commander.js --no-agent sets agent=false, not noAgent=true
       const skipAgent = options.agent === false;
+
+      // Build EFS/S3 mount pairs, resolve VPC, and run async filesystem validation (Levels 1–3)
+      const { efsMounts: efsPairsMounts, s3Mounts: s3PairsMounts } = await resolveAndValidateFilesystemMounts(
+        options,
+        parseCommaSeparatedList
+      );
 
       const result = skipAgent
         ? await createProject({
@@ -178,9 +397,12 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
             networkMode: options.networkMode as NetworkMode | undefined,
             subnets: parseCommaSeparatedList(options.subnets),
             securityGroups: parseCommaSeparatedList(options.securityGroups),
+            vpcId: options.vpcId,
             idleTimeout: options.idleTimeout ? Number(options.idleTimeout) : undefined,
             maxLifetime: options.maxLifetime ? Number(options.maxLifetime) : undefined,
             sessionStorageMountPath: options.sessionStorageMountPath,
+            efsAccessPoints: efsPairsMounts,
+            s3AccessPoints: s3PairsMounts,
             withConfigBundle: options.withConfigBundle,
             skipGit: options.skipGit,
             skipInstall: options.skipInstall,
@@ -210,21 +432,21 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
 }
 
 export const registerCreate = (program: Command) => {
-  program
+  const createCmd = program
     .command('create')
     .description(COMMAND_DESCRIPTIONS.create)
-    .option('--name <name>', 'Resource name (agent or harness) [non-interactive]')
+    .option('--name <name>', 'Resource name [non-interactive]')
     .option(
       '--project-name <name>',
       'Project name (start with letter, alphanumeric only, max 23 chars) [non-interactive]'
     )
     .option('--no-agent', 'Skip agent creation [non-interactive]')
-    .option('--defaults', 'Use defaults (Python, Strands, Bedrock, no memory) [non-interactive]')
+    .option('--defaults', 'Create a harness project with default settings (this is the default) [non-interactive]')
     .option('--build <type>', 'Build type: CodeZip or Container (default: CodeZip) [non-interactive]')
-    .option('--language <language>', 'Target language (default: Python) [non-interactive]')
+    .option('--language <language>', 'Target language: Python or TypeScript (default: Python) [non-interactive]')
     .option(
       '--framework <framework>',
-      'Agent framework (Strands, LangChain_LangGraph, GoogleADK, OpenAIAgents) [non-interactive]'
+      'Agent framework (Strands, LangChain_LangGraph, GoogleADK, OpenAIAgents, VercelAI) [non-interactive]'
     )
     .option('--model-provider <provider>', 'Model provider (Bedrock, Anthropic, OpenAI, Gemini) [non-interactive]')
     .option('--api-key <key>', 'API key for non-Bedrock providers [non-interactive]')
@@ -237,6 +459,7 @@ export const registerCreate = (program: Command) => {
     .option('--network-mode <mode>', 'Network mode (PUBLIC, VPC) [non-interactive]')
     .option('--subnets <ids>', 'Comma-separated subnet IDs (required for VPC mode) [non-interactive]')
     .option('--security-groups <ids>', 'Comma-separated security group IDs (required for VPC mode) [non-interactive]')
+    .option('--vpc-id <id>', 'VPC ID (required for Container builds with VPC mode) [non-interactive]')
     .option(
       '--idle-timeout <seconds>',
       `Idle session timeout in seconds (${LIFECYCLE_TIMEOUT_MIN}-${LIFECYCLE_TIMEOUT_MAX}) [non-interactive]`
@@ -249,55 +472,177 @@ export const registerCreate = (program: Command) => {
       '--session-storage-mount-path <path>',
       'Absolute mount path for session filesystem storage under /mnt (e.g. /mnt/data) [non-interactive]'
     )
-    .option('--with-config-bundle', 'Create a config bundle wired into the agent template [preview] [non-interactive]')
+    .option(
+      '--efs-access-point-arn <arn>',
+      'EFS access point ARN (repeatable, paired with --efs-mount-path) [non-interactive]',
+      (val: string, prev: string[]) => [...prev, val],
+      [] as string[]
+    )
+    .option(
+      '--efs-mount-path <path>',
+      'EFS mount path (e.g. /mnt/tools, paired with --efs-access-point-arn) [non-interactive]',
+      (val: string, prev: string[]) => [...prev, val],
+      [] as string[]
+    )
+    .option(
+      '--s3-access-point-arn <arn>',
+      'S3 Files access point ARN (repeatable, paired with --s3-mount-path) [non-interactive]',
+      (val: string, prev: string[]) => [...prev, val],
+      [] as string[]
+    )
+    .option(
+      '--s3-mount-path <path>',
+      'S3 Files mount path (e.g. /mnt/datasets, paired with --s3-access-point-arn) [non-interactive]',
+      (val: string, prev: string[]) => [...prev, val],
+      [] as string[]
+    )
+    .option('--with-config-bundle', 'Create a config bundle wired into the agent template [non-interactive]')
     .option('--output-dir <dir>', 'Output directory (default: current directory) [non-interactive]')
     .option('--skip-git', 'Skip git repository initialization [non-interactive]')
     .option('--skip-python-setup', 'Skip Python virtual environment setup [non-interactive]')
     .option('--skip-install', 'Skip all dependency installation (npm install, uv sync) [non-interactive]')
     .option('--dry-run', 'Preview what would be created without making changes [non-interactive]')
-    .option('--json', 'Output as JSON [non-interactive]')
-    .action(async options => {
-      try {
-        // Apply defaults if --defaults flag is set
-        if (options.defaults) {
-          options.language = options.language ?? 'Python';
-          options.build = options.build ?? 'CodeZip';
-          options.framework = options.framework ?? 'Strands';
-          options.modelProvider = options.modelProvider ?? 'Bedrock';
-          options.memory = options.memory ?? 'none';
-        }
+    .option('--json', 'Output as JSON [non-interactive]');
 
-        // Any flag triggers non-interactive CLI mode
-        const hasAnyFlag = Boolean(
-          options.name ??
-          options.projectName ??
-          (options.agent === false ? true : null) ??
-          options.defaults ??
-          options.build ??
-          options.language ??
-          options.framework ??
-          options.modelProvider ??
-          options.apiKey ??
-          options.memory ??
-          options.outputDir ??
-          options.skipGit ??
-          options.skipPythonSetup ??
-          options.skipInstall ??
-          options.dryRun ??
-          options.json
-        );
+  createCmd
+    .option('--model-id <id>', 'Model ID for harness [non-interactive]')
+    .option('--api-key-arn <arn>', 'API key ARN for non-Bedrock harness providers [non-interactive]')
+    .option('--api-base <url>', 'Base URL for the harness model provider API endpoint (lite_llm) [non-interactive]')
+    .option(
+      '--additional-params <json>',
+      'Provider-specific harness params as a JSON object (lite_llm) [non-interactive]'
+    )
+    .option('--no-harness-memory', 'Disable memory for the harness (this is the default) [non-interactive]')
+    .option('--max-iterations <n>', 'Max agent loop iterations (harness) [non-interactive]')
+    .option('--max-tokens <n>', 'Max tokens per iteration (harness) [non-interactive]')
+    .option('--timeout <seconds>', 'Max execution duration in seconds (harness) [non-interactive]')
+    .option(
+      '--truncation-strategy <strategy>',
+      'Truncation strategy: sliding_window or summarization (harness) [non-interactive]'
+    )
+    .option('--container <uri-or-path>', 'Container image URI or Dockerfile path (harness) [non-interactive]');
 
-        if (hasAnyFlag) {
-          // Default language to Python (only supported option) for CLI mode
-          options.language = options.language ?? 'Python';
-          await handleCreateCLI(options as CreateOptions);
+  createCmd.action(async (rawOptions: Record<string, unknown>) => {
+    const options = rawOptions as Record<string, unknown> & {
+      name?: string;
+      projectName?: string;
+      agent: boolean;
+      defaults?: true;
+      build?: string;
+      language?: string;
+      framework?: string;
+      modelProvider?: string;
+      apiKey?: string;
+      memory?: string;
+      protocol?: string;
+      type?: string;
+      agentId?: string;
+      agentAliasId?: string;
+      region?: string;
+      networkMode?: string;
+      subnets?: string;
+      securityGroups?: string;
+      vpcId?: string;
+      idleTimeout?: string;
+      maxLifetime?: string;
+      sessionStorageMountPath?: string;
+      withConfigBundle?: true;
+      outputDir?: string;
+      skipGit?: true;
+      skipPythonSetup?: true;
+      skipInstall?: true;
+      dryRun?: true;
+      json?: true;
+      modelId?: string;
+      apiKeyArn?: string;
+      harnessMemory?: boolean;
+      maxIterations?: string;
+      maxTokens?: string;
+      timeout?: string;
+      truncationStrategy?: string;
+      container?: string;
+    };
+    try {
+      // Fork between harness and agent paths
+      const hasAnyFlag = Boolean(
+        options.name ??
+        options.projectName ??
+        (options.agent === false ? true : null) ??
+        options.defaults ??
+        options.build ??
+        options.language ??
+        options.framework ??
+        options.modelProvider ??
+        options.apiKey ??
+        options.memory ??
+        options.protocol ??
+        options.type ??
+        options.agentId ??
+        options.agentAliasId ??
+        options.region ??
+        options.networkMode ??
+        options.subnets ??
+        options.securityGroups ??
+        options.vpcId ??
+        options.idleTimeout ??
+        options.maxLifetime ??
+        options.outputDir ??
+        options.skipGit ??
+        options.skipPythonSetup ??
+        options.skipInstall ??
+        options.dryRun ??
+        options.json ??
+        options.modelId ??
+        options.apiKeyArn ??
+        (options.harnessMemory === false ? true : null) ??
+        options.maxIterations ??
+        options.maxTokens ??
+        options.timeout ??
+        options.truncationStrategy
+      );
+
+      if (!hasAnyFlag) {
+        requireTTY();
+        await handleCreateTUI();
+        return;
+      }
+
+      const opts = options as CreateOptions;
+
+      // Conflict detection: agent-path flags + harness-only flags
+      if (isAgentPath(opts) && hasHarnessOnlyFlags(opts)) {
+        const error =
+          'Cannot mix agent-path flags (--framework, --language, etc.) with harness-only flags (--model-id, --max-iterations, etc.)';
+        if (opts.json) {
+          console.log(JSON.stringify({ success: false, error }));
         } else {
-          requireTTY();
-          handleCreateTUI();
+          console.error(error);
         }
-      } catch (error) {
-        render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
         process.exit(1);
       }
-    });
+
+      // --no-agent: bare project (no harness, no agent)
+      if (opts.agent === false) {
+        opts.language = opts.language ?? 'Python';
+        await handleCreateCLI(opts);
+        return;
+      }
+
+      // Agent path: any agent-specific flag triggers it
+      if (isAgentPath(opts)) {
+        opts.language = opts.language ?? 'Python';
+        await handleCreateCLI(opts);
+        return;
+      }
+
+      // Harness path (default)
+      if (!opts.json && !opts.modelProvider && !hasHarnessOnlyFlags(opts)) {
+        console.log('Creating a harness project (pass --framework to create an agent project instead).');
+      }
+      await handleCreateHarnessCLI(opts);
+    } catch (error) {
+      render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
+      process.exit(1);
+    }
+  });
 };

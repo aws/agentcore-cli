@@ -69,8 +69,9 @@ describe.skipIf(!prereqs.npm || !prereqs.git)('integration: create with differen
     telemetry.assertMetricEmitted({
       command: 'create',
       exit_reason: 'success',
-      language: 'python',
-      framework: 'langchain_langgraph',
+      agent_environment: 'runtime',
+      agent_language: 'python',
+      agent_framework: 'langchain_langgraph',
       model_provider: 'bedrock',
       has_agent: 'true',
     });

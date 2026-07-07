@@ -1,10 +1,12 @@
 import type {
   BuildType,
+  EfsAccessPointConfig,
   ModelProvider,
   NetworkMode,
   ProtocolMode,
   PythonRuntime,
   RuntimeAuthorizerType,
+  S3FilesAccessPointConfig,
   SDKFramework,
   TargetLanguage,
 } from '../../../../schema';
@@ -50,12 +52,19 @@ export type AddAgentStep =
   | 'networkMode'
   | 'subnets'
   | 'securityGroups'
+  | 'vpcId'
   | 'requestHeaderAllowlist'
   | 'authorizerType'
   | 'jwtConfig'
   | 'idleTimeout'
   | 'maxLifetime'
   | 'sessionStorageMountPath'
+  | 'efsArn'
+  | 'efsMountPath'
+  | 'efsAddAnother'
+  | 's3Arn'
+  | 's3MountPath'
+  | 's3AddAnother'
   | 'memory'
   | 'region'
   | 'bedrockAgent'
@@ -85,6 +94,8 @@ export interface AddAgentConfig {
   subnets?: string[];
   /** Security group IDs for VPC mode */
   securityGroups?: string[];
+  /** VPC ID for Container builds in VPC mode (CodeBuild cannot infer it from subnets) */
+  vpcId?: string;
   /** Allowed request headers for the runtime */
   requestHeaderAllowlist?: string[];
   /** Authorizer type for inbound requests */
@@ -97,6 +108,10 @@ export interface AddAgentConfig {
   maxLifetime?: number;
   /** Mount path for session filesystem storage (e.g. /mnt/session-storage) */
   sessionStorageMountPath?: string;
+  /** EFS access point mounts configured for this agent */
+  efsAccessPoints?: EfsAccessPointConfig[];
+  /** S3 Files access point mounts configured for this agent */
+  s3AccessPoints?: S3FilesAccessPointConfig[];
   /** When true, create a config bundle wired into the agent template */
   withConfigBundle?: boolean;
   /** Python version (only for Python agents) */
@@ -126,12 +141,19 @@ export const ADD_AGENT_STEP_LABELS: Record<AddAgentStep, string> = {
   networkMode: 'Network',
   subnets: 'Subnets',
   securityGroups: 'Security Groups',
+  vpcId: 'VPC ID',
   requestHeaderAllowlist: 'Headers',
   authorizerType: 'Auth',
   jwtConfig: 'JWT Config',
   idleTimeout: 'Idle Timeout',
   maxLifetime: 'Max Lifetime',
   sessionStorageMountPath: 'Session Storage',
+  efsArn: 'EFS ARN',
+  efsMountPath: 'EFS Path',
+  efsAddAnother: 'Add EFS',
+  s3Arn: 'S3 Files ARN',
+  s3MountPath: 'S3 Files Path',
+  s3AddAnother: 'Add S3 Files',
   memory: 'Memory',
   region: 'Region',
   bedrockAgent: 'Agent',
@@ -156,7 +178,7 @@ export const AGENT_TYPE_OPTIONS = [
 
 export const LANGUAGE_OPTIONS = [
   { id: 'Python', title: 'Python' },
-  { id: 'TypeScript', title: 'TypeScript (coming soon)', disabled: true },
+  { id: 'TypeScript', title: 'TypeScript' },
   { id: 'Other', title: 'Other' },
 ] as const;
 
@@ -197,3 +219,18 @@ export const NETWORK_MODE_OPTIONS = [
 
 export { DEFAULT_PYTHON_VERSION } from '../../../../schema';
 export const DEFAULT_ENTRYPOINT = 'main.py';
+
+export function getProviderInfo(provider: ModelProvider): { name: string; envVarName: string } {
+  switch (provider) {
+    case 'OpenAI':
+      return { name: 'OpenAI', envVarName: 'OPENAI_API_KEY' };
+    case 'Anthropic':
+      return { name: 'Anthropic', envVarName: 'ANTHROPIC_API_KEY' };
+    case 'Gemini':
+      return { name: 'Google Gemini', envVarName: 'GEMINI_API_KEY' };
+    case 'Bedrock':
+      return { name: 'Amazon Bedrock', envVarName: '' };
+    case 'LiteLLM':
+      return { name: 'LiteLLM', envVarName: 'LITELLM_API_KEY' };
+  }
+}

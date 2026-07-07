@@ -7,6 +7,7 @@ interface CreateConfigBundleConfig {
   components: Record<string, { configuration: Record<string, unknown> }>;
   branchName?: string;
   commitMessage?: string;
+  kmsKeyArn?: string;
 }
 
 export function useCreateConfigBundle() {
@@ -23,6 +24,7 @@ export function useCreateConfigBundle() {
         components: config.components,
         branchName: config.branchName,
         commitMessage: config.commitMessage,
+        kmsKeyArn: config.kmsKeyArn,
       });
       if (!addResult.success) {
         throw new Error(addResult.error?.message ?? 'Failed to create configuration bundle');

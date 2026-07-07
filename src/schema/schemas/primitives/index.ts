@@ -6,6 +6,9 @@ export type {
   TrafficAllocationConfig,
   VariantConfiguration,
 } from './ab-test';
+
+export type { Dataset, DatasetSchemaType } from './dataset';
+export { DatasetNameSchema, DatasetSchema, DatasetSchemaTypeSchema } from './dataset';
 export {
   ABTestNameSchema,
   ABTestDescriptionSchema,
@@ -21,7 +24,9 @@ export {
 
 export type { MemoryStrategy, MemoryStrategyType } from './memory';
 export {
+  DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
   DEFAULT_EPISODIC_REFLECTION_NAMESPACES,
+  DEFAULT_STRATEGY_NAMESPACE_TEMPLATES,
   DEFAULT_STRATEGY_NAMESPACES,
   MemoryStrategyNameSchema,
   MemoryStrategySchema,
@@ -54,11 +59,13 @@ export {
   RatingScaleSchema,
 } from './evaluator';
 
-export type { OnlineEvalConfig } from './online-eval-config';
-export { OnlineEvalConfigSchema, OnlineEvalConfigNameSchema } from './online-eval-config';
+export type { OnlineEvalConfig, ClusteringConfig } from './online-eval-config';
+export { OnlineEvalConfigSchema, OnlineEvalConfigNameSchema, ClusteringConfigSchema } from './online-eval-config';
 
-export type { Policy, PolicyEngine, ValidationMode } from './policy';
+export type { AuthorizationPhase, EnforcementMode, Policy, PolicyEngine, ValidationMode } from './policy';
 export {
+  AuthorizationPhaseSchema,
+  EnforcementModeSchema,
   PolicyEngineNameSchema,
   PolicyEngineSchema,
   PolicyNameSchema,
@@ -66,5 +73,49 @@ export {
   ValidationModeSchema,
 } from './policy';
 
-export type { HttpGateway } from './http-gateway';
-export { HttpGatewayNameSchema, HttpGatewaySchema } from './http-gateway';
+export type {
+  BedrockApiFormat,
+  HarnessApiFormat,
+  HarnessGatewayOutboundAuth,
+  HarnessMemoryRef,
+  HarnessModel,
+  HarnessModelProvider,
+  HarnessSpec,
+  HarnessTool,
+  HarnessToolType,
+  HarnessTruncationConfig,
+  ManagedMemoryStrategy,
+  OpenAiApiFormat,
+} from './harness';
+export {
+  AllowedToolSchema,
+  BedrockApiFormatSchema,
+  HarnessApiFormatSchema,
+  OpenAiApiFormatSchema,
+  GatewayOAuthGrantTypeSchema,
+  HarnessGatewayOutboundAuthSchema,
+  HarnessMemoryRefSchema,
+  HarnessModelProviderSchema,
+  HarnessModelSchema,
+  HarnessNameSchema,
+  HarnessSpecSchema,
+  HarnessToolConfigSchema,
+  HarnessToolNameSchema,
+  HarnessToolSchema,
+  HarnessToolTypeSchema,
+  HarnessTruncationConfigSchema,
+  HarnessTruncationStrategySchema,
+  ManagedMemoryStrategySchema,
+} from './harness';
+
+export type { PaymentManager, PaymentConnector, PaymentProvider, PaymentAuthorizerType } from './payment';
+export {
+  DEFAULT_AUTO_PAYMENT,
+  DEFAULT_SPEND_LIMIT,
+  PaymentManagerSchema,
+  PaymentManagerNameSchema,
+  PaymentConnectorSchema,
+  PaymentConnectorNameSchema,
+  PaymentProviderSchema,
+  PaymentAuthorizerTypeSchema,
+} from './payment';

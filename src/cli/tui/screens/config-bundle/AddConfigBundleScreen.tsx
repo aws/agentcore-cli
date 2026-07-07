@@ -1,9 +1,10 @@
-import { ConfigBundleNameSchema } from '../../../../schema';
+import { ConfigBundleNameSchema, isValidKmsKeyArn } from '../../../../schema';
 import type { SelectableItem } from '../../components';
 import { ConfirmReview, Panel, Screen, StepIndicator, TextInput, WizardSelect } from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
+import { COMPONENT_KEY_ERROR, COMPONENT_KEY_PATTERN } from './constants';
 import type { AddConfigBundleConfig, ComponentType, DeployedComponent } from './types';
 import { COMPONENT_TYPE_OPTIONS, CONFIG_BUNDLE_STEP_LABELS } from './types';
 import { useAddConfigBundleWizard } from './useAddConfigBundleWizard';
@@ -15,6 +16,10 @@ interface AddConfigBundleScreenProps {
   onExit: () => void;
   existingBundleNames: string[];
   deployedComponents: DeployedComponent[];
+}
+
+function validateComponentArn(value: string): string | true {
+  return COMPONENT_KEY_PATTERN.test(value) || COMPONENT_KEY_ERROR;
 }
 
 function validateConfigJson(value: string): string | true {
@@ -71,10 +76,12 @@ export function AddConfigBundleScreen({
   const isDescriptionStep = wizard.step === 'description';
   const isComponentTypeStep = wizard.step === 'componentType';
   const isComponentSelectStep = wizard.step === 'componentSelect';
+  const isComponentArnEntryStep = wizard.step === 'componentArnEntry';
   const isConfigurationStep = wizard.step === 'configuration';
   const isAddAnotherStep = wizard.step === 'addAnother';
   const isBranchNameStep = wizard.step === 'branchName';
   const isCommitMessageStep = wizard.step === 'commitMessage';
+  const isKmsKeyStep = wizard.step === 'kmsKey';
   const isConfirmStep = wizard.step === 'confirm';
 
   const componentTypeNav = useListNavigation({
@@ -185,6 +192,24 @@ export function AddConfigBundleScreen({
           </Box>
         )}
 
+        {isComponentArnEntryStep && (
+          <>
+            <Box flexDirection="column" marginBottom={1}>
+              <Text>Enter the component ARN</Text>
+              <Text dimColor>The resource this configuration applies to (e.g. a gateway target).</Text>
+            </Box>
+            <TextInput
+              key="componentArnEntry"
+              prompt="Component ARN"
+              placeholder="arn:aws:bedrock-agentcore:us-west-2:123456789012:gateway-target/orders-Tg9xK2"
+              initialValue=""
+              onSubmit={wizard.setCustomArn}
+              onCancel={() => wizard.goBack()}
+              customValidation={validateComponentArn}
+            />
+          </>
+        )}
+
         {isConfigurationStep && (
           <>
             <Box flexDirection="column" marginBottom={1}>
@@ -254,6 +279,19 @@ export function AddConfigBundleScreen({
           />
         )}
 
+        {isKmsKeyStep && (
+          <TextInput
+            key="kmsKey"
+            prompt="KMS key ARN (optional, press Enter to skip)"
+            placeholder="arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
+            initialValue=""
+            allowEmpty
+            onSubmit={wizard.setKmsKey}
+            onCancel={() => wizard.goBack()}
+            customValidation={value => value === '' || isValidKmsKeyArn(value) || 'Must be a valid KMS key ARN'}
+          />
+        )}
+
         {isConfirmStep && (
           <ConfirmReview
             fields={[
@@ -266,6 +304,7 @@ export function AddConfigBundleScreen({
               })),
               { label: 'Branch', value: wizard.config.branchName || 'mainline' },
               { label: 'Message', value: wizard.config.commitMessage || `Create ${wizard.config.name}` },
+              ...(wizard.config.kmsKeyArn ? [{ label: 'KMS Key', value: wizard.config.kmsKeyArn }] : []),
             ]}
           />
         )}

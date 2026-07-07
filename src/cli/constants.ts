@@ -6,6 +6,43 @@ const packageJson = require('../../package.json') as { version: string };
 export const PACKAGE_VERSION: string = packageJson.version;
 
 /**
+ * Command descriptions used in CLI help and TUI.
+ */
+export const COMMAND_DESCRIPTIONS = {
+  /** Main program description */
+  program: 'Build and deploy Agentic AI applications on AgentCore',
+  /** Command descriptions */
+  add: 'Add resources to project config.',
+  create: 'Create a new AgentCore project',
+  deploy: 'Deploy project infrastructure to AWS via CDK.',
+  dev: 'Launch local dev server, or invoke an agent locally.',
+  exec: 'Open an interactive shell or run a one-shot command in a deployed agent container.',
+  invoke: 'Invoke a deployed agent endpoint.',
+  logs: 'Stream or search agent runtime logs.',
+  package: 'Package agent artifacts without deploying.',
+  remove: 'Remove resources from project config.',
+  status: 'Show deployed resource details and status.',
+  traces: 'View and download agent traces.',
+  evals: 'View saved eval and batch eval results from past runs.',
+  feedback: 'Send feedback about the AgentCore CLI to the team.',
+  fetch: 'Fetch access info for deployed resources.',
+  pause: 'Pause a deployed resource (online eval config, A/B test).',
+  resume: 'Resume a paused resource (online eval config, A/B test).',
+  recommend: 'Run optimization recommendations for system prompts and tool descriptions.',
+  recommendations: 'View recommendation history from past runs.',
+  run: 'Run evaluations, batch evaluations, or optimization recommendations.',
+  stop: 'Stop a running batch evaluation or A/B test.',
+  import: 'Import a runtime, memory, or starter toolkit into this project. [experimental]',
+  telemetry: 'Manage anonymous usage analytics preferences.',
+  update: 'Check for and install CLI updates',
+  validate: 'Validate agentcore/ config files.',
+  'config-bundle': 'Manage configuration bundle versions and diffs.',
+  archive: 'Archive (delete) a batch evaluation or recommendation on the service and clear local history.',
+  config: 'Adjust global configuration settings such as telemetry opt-out status',
+  export: 'Export a harness to a Strands runtime agent.',
+} as const;
+
+/**
  * Distribution mode for the CLI.
  * - PROD_DISTRO: Public npm registry (npmjs.org)
  * - PRIVATE_DEV_DISTRO: GitHub Package Registry (private/scoped)
@@ -30,11 +67,21 @@ export const DISTRO_CONFIG = {
   },
 } as const;
 
+export function getNpmDistTag(): string {
+  return PACKAGE_VERSION.includes('-') ? 'preview' : 'latest';
+}
+
 /**
  * Get the current distribution configuration.
  */
 export function getDistroConfig() {
-  return DISTRO_CONFIG[DISTRO_MODE];
+  const base = DISTRO_CONFIG[DISTRO_MODE];
+  const distTag = getNpmDistTag();
+  return {
+    ...base,
+    distTag,
+    installCommand: base.installCommand.replace('@latest', `@${distTag}`),
+  };
 }
 
 /**
@@ -50,6 +97,18 @@ export const CDK_PROJECT_DIR = 'cdk';
 export const CDK_APP_ENTRY = 'dist/bin/cdk.js';
 
 /**
+ * Max length AWS BedrockAgentCore allows for a runtime name (combined projectName_agentName).
+ */
+export const MAX_RUNTIME_NAME_LENGTH = 48;
+
+/**
+ * Max length AWS BedrockAgentCore allows for a gateway name. The deployed name is composed as
+ * `${projectName}-${gatewayName}` (see @aws/agentcore-cdk Gateway.ts), and AWS rejects names
+ * over this limit at CreateGateway with pattern ([0-9a-zA-Z][-]?){1,48}.
+ */
+export const MAX_GATEWAY_NAME_LENGTH = 48;
+
+/**
  * Current schema version for AgentCore configuration files.
  */
 export const SCHEMA_VERSION = 1;
@@ -58,3 +117,40 @@ export const SCHEMA_VERSION = 1;
  * Default runtime endpoint name used in log group paths and console URLs.
  */
 export const DEFAULT_ENDPOINT_NAME = 'DEFAULT';
+
+export const TELEMETRY_ENDPOINT = 'https://telemetry.agentcore.aws.dev';
+
+/**
+ * Base image for generated Python Dockerfiles.
+ */
+export const PYTHON_BASE_IMAGE = 'public.ecr.aws/docker/library/python:3.12-slim-trixie';
+
+/**
+ * Color gating: emit ANSI codes only when both streams are attached to a terminal.
+ * Uses AND so that redirecting either stream (e.g. `2> log.txt`) disables colors,
+ * preventing escape codes from leaking into files.
+ * - FORCE_COLOR: override to enable colors regardless of TTY (e.g. in CI/tests).
+ * - NO_COLOR: standard (no-color.org) override to strip all color output.
+ */
+const stylingEnabled =
+  !!process.env.FORCE_COLOR || (!process.env.NO_COLOR && !!process.stdout.isTTY && !!process.stderr.isTTY);
+const style = (code: string) => (stylingEnabled ? code : '');
+
+/** ANSI escape codes for console output. Auto-disabled when piped or NO_COLOR is set. */
+export const ANSI = {
+  red: style('\x1b[31m'),
+  green: style('\x1b[32m'),
+  yellow: style('\x1b[33m'),
+  cyan: style('\x1b[36m'),
+  dim: style('\x1b[2m'),
+  reset: style('\x1b[0m'),
+  // Terminal control sequences (always active — only used when TTY is confirmed)
+  clearLine: '\x1b[K',
+  enterAltScreen: '\x1b[?1049h\x1b[H',
+  exitAltScreen: '\x1b[?1049l',
+  showCursor: '\x1b[?25h',
+  // TUI gradient colors
+  brightYellow: style('\x1b[38;2;255;255;0m'),
+  mutedYellow: style('\x1b[38;2;255;255;85m'),
+  darkYellow: style('\x1b[38;2;218;218;0m'),
+} as const;

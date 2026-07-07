@@ -33,27 +33,13 @@ function isPythonAgent(agent: AgentEnvSpec): boolean {
  * Checks if dev mode is supported for the given agent.
  *
  * Requirements:
- * - Agent must target Python (TypeScript support not yet implemented)
- * - CodeZip agents must have entrypoint
+ * - Agent must have an entrypoint
  */
 function isDevSupported(agent: AgentEnvSpec): DevSupportResult {
   if (!agent.entrypoint) {
     return {
       supported: false,
       reason: `Agent "${agent.name}" is missing entrypoint.`,
-    };
-  }
-
-  // Container agents are supported for dev mode (requires local container runtime)
-  if (agent.build === 'Container') {
-    return { supported: true };
-  }
-
-  // Currently only Python is supported for CodeZip dev mode
-  if (!isPythonAgent(agent)) {
-    return {
-      supported: false,
-      reason: `Dev mode only supports Python agents. Agent "${agent.name}" does not appear to be a Python agent.`,
     };
   }
 
@@ -84,11 +70,22 @@ export function getDevSupportedAgents(project: AgentCoreProjectSpec | null): Age
 }
 
 /**
- * Get the port for a specific agent based on its index in the project.
- * Base port + agent index = actual port
+ * Resolve the port for a specific agent.
+ *
+ * - When the user supplied `-p`/`--port` explicitly (`explicit === true`), the
+ *   port is honored literally with NO index offset, so `dev -r AgentB -p 8788`
+ *   binds exactly 8788 regardless of AgentB's position in the project.
+ * - When the port is the default (`explicit === false`), the agent's index in
+ *   the project is added so parallel runtimes bind distinct ports
+ *   (basePort, basePort + 1, ...).
  */
-export function getAgentPort(project: AgentCoreProjectSpec | null, agentName: string, basePort: number): number {
-  if (!project) return basePort;
+export function getAgentPort(
+  project: AgentCoreProjectSpec | null,
+  agentName: string,
+  basePort: number,
+  explicit = false
+): number {
+  if (explicit || !project) return basePort;
   const index = project.runtimes.findIndex(a => a.name === agentName);
   return index >= 0 ? basePort + index : basePort;
 }

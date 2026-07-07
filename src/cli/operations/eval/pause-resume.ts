@@ -68,11 +68,45 @@ function parseOnlineEvalConfigArn(
 }
 
 /**
- * Resolve config ID and region from either a project config name or an ARN.
+ * Resolve config ID and region from a project config name, an ARN, or both.
+ *
+ * When both are provided, the named config is looked up and its configId is
+ * cross-checked against the ARN. A mismatch means the user passed a name and
+ * ARN that point to different configs — we reject rather than silently
+ * preferring one (the ARN previously won, so the name was a no-op).
  */
 async function resolveConfig(
   options: OnlineEvalActionOptions
 ): Promise<{ success: true; configId: string; region: string } | { success: false; error: string }> {
+  if (options.arn && options.name) {
+    const arnResolution = parseOnlineEvalConfigArn(options.arn, options.region);
+    if (!arnResolution.success) return arnResolution;
+
+    const nameResolution = await resolveOnlineEvalConfig(options.name);
+    if (!nameResolution.success) return nameResolution;
+
+    if (nameResolution.configId !== arnResolution.configId) {
+      return {
+        success: false,
+        error:
+          `--arn and config name "${options.name}" refer to different configs ` +
+          `(name resolves to "${nameResolution.configId}", ARN resolves to "${arnResolution.configId}"). ` +
+          `Pass only one, or pass matching values.`,
+      };
+    }
+
+    if (nameResolution.region !== arnResolution.region) {
+      return {
+        success: false,
+        error:
+          `--arn and config name "${options.name}" resolve to different regions ` +
+          `(name resolves to "${nameResolution.region}", ARN resolves to "${arnResolution.region}"). ` +
+          `Pass only one, or use --region to override.`,
+      };
+    }
+
+    return arnResolution;
+  }
   if (options.arn) {
     return parseOnlineEvalConfigArn(options.arn, options.region);
   }

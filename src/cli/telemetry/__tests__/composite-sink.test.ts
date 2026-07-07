@@ -8,7 +8,7 @@ describe('CompositeSink', () => {
     const b = new InMemorySink();
     const composite = new CompositeSink([a, b]);
 
-    composite.record(100, { command: 'deploy' });
+    composite.record('cli.command_run', 100, { command: 'deploy' });
 
     expect(a.metrics).toHaveLength(1);
     expect(b.metrics).toHaveLength(1);
@@ -26,7 +26,7 @@ describe('CompositeSink', () => {
     const good = new InMemorySink();
     const composite = new CompositeSink([bad, good]);
 
-    composite.record(100, { command: 'deploy' });
+    composite.record('cli.command_run', 100, { command: 'deploy' });
 
     expect(good.metrics).toHaveLength(1);
   });

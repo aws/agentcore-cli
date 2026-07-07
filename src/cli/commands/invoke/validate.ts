@@ -21,5 +21,17 @@ export function validateInvokeOptions(options: InvokeOptions): ValidationResult 
   if (options.stream && !options.prompt) {
     return { valid: false, error: 'Prompt is required for streaming' };
   }
+  if (options.autoSession && options.paymentSessionId) {
+    return {
+      valid: false,
+      error: '--auto-session and --payment-session-id are mutually exclusive. Use one or the other.',
+    };
+  }
+  if (options.paymentInstrumentId?.trim() === '') {
+    return { valid: false, error: '--payment-instrument-id cannot be empty' };
+  }
+  if (options.paymentSessionId?.trim() === '') {
+    return { valid: false, error: '--payment-session-id cannot be empty' };
+  }
   return { valid: true };
 }

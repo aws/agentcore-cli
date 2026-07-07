@@ -1,6 +1,6 @@
 import { ExecLogger } from '../../../logging';
 import { findAvailablePort } from '../server';
-import { openBrowser } from '../utils';
+import { onShutdownSignal, openBrowser } from '../utils';
 import { WEB_UI_DEFAULT_PORT } from './constants';
 import { type WebUIOptions, WebUIServer } from './web-server';
 
@@ -49,7 +49,7 @@ export async function runWebUI(opts: RunWebUIOptions): Promise<void> {
 
   webUI.start();
 
-  process.on('SIGINT', () => {
+  onShutdownSignal(() => {
     console.log('\nStopping servers...');
     webUI.stop();
   });

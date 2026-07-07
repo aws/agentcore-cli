@@ -1,0 +1,41 @@
+{
+  "smithy": "2.0",
+  "shapes": {
+    "com.example#Greeter": {
+      "type": "service",
+      "version": "2024-01-01",
+      "operations": [{ "target": "com.example#SayHello" }],
+      "traits": {
+        "aws.api#service": { "sdkId": "Greeter", "arnNamespace": "greeter" },
+        "aws.auth#sigv4": { "name": "greeter" },
+        "aws.protocols#restJson1": {},
+        "smithy.api#documentation": "A minimal AWS service used by the smithy-model gateway-target e2e test."
+      }
+    },
+    "com.example#SayHello": {
+      "type": "operation",
+      "input": { "target": "com.example#SayHelloInput" },
+      "output": { "target": "com.example#SayHelloOutput" },
+      "traits": {
+        "smithy.api#documentation": "Returns a greeting for the given name.",
+        "smithy.api#http": { "method": "GET", "uri": "/hello", "code": 200 },
+        "smithy.api#readonly": {}
+      }
+    },
+    "com.example#SayHelloInput": {
+      "type": "structure",
+      "members": {
+        "name": {
+          "target": "smithy.api#String",
+          "traits": { "smithy.api#httpQuery": "name" }
+        }
+      }
+    },
+    "com.example#SayHelloOutput": {
+      "type": "structure",
+      "members": {
+        "message": { "target": "smithy.api#String" }
+      }
+    }
+  }
+}

@@ -1,12 +1,14 @@
 import { ConfigIO, DOCKERFILE_NAME, getDockerfilePath, requireConfigRoot, resolveCodeLocation } from '../../../lib';
+import { StaleCdkConstructError, ValidationError } from '../../../lib/errors/types';
 import type { AgentCoreProjectSpec, AwsDeploymentTarget } from '../../../schema';
 import { validateAwsCredentials } from '../../aws/account';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
 import { CdkToolkitWrapper, createCdkToolkitWrapper, silentIoHost } from '../../cdk/toolkit-lib';
 import { checkBootstrapStatus, checkStacksStatus, formatCdkEnvironment } from '../../cloudformation';
+import { MAX_GATEWAY_NAME_LENGTH, MAX_RUNTIME_NAME_LENGTH } from '../../constants';
 import { cleanupStaleLockFiles } from '../../tui/utils';
 import type { IIoHost } from '@aws-cdk/toolkit-lib';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
 
 export interface PreflightContext {
@@ -15,6 +17,8 @@ export interface PreflightContext {
   cdkProject: LocalCdkProject;
   /** True when agents array is empty but a deployed stack exists — deploy will tear down resources */
   isTeardownDeploy: boolean;
+  /** True when deployed-state.json has no targets — stack has never been deployed */
+  isFirstDeploy: boolean;
 }
 
 export interface SynthResult {
@@ -37,12 +41,14 @@ export interface StackStatusCheckResult {
 }
 
 /**
- * Format an error for user display, including stack trace if available.
+ * Format an error for user display. Shows the message and the cause chain, but NOT the raw JS stack
+ * trace — dumping `err.stack` (minified dist/cli/index.mjs frames) to users is noise for the common
+ * case (config/validation errors). Set AGENTCORE_DEBUG=1 to include the stack trace for debugging.
  */
 export function formatError(err: unknown): string {
   if (err instanceof Error) {
     const lines = [err.message];
-    if (err.stack) {
+    if (err.stack && process.env.AGENTCORE_DEBUG) {
       lines.push('', 'Stack trace:', err.stack);
     }
     if (err.cause) {
@@ -58,9 +64,6 @@ export function formatError(err: unknown): string {
  * Also validates AWS credentials are configured before proceeding.
  * Returns the project context needed for subsequent steps.
  */
-const MAX_RUNTIME_NAME_LENGTH = 48;
-const MAX_GATEWAY_COMBINED_NAME_LENGTH = 48;
-
 export async function validateProject(): Promise<PreflightContext> {
   // Find the agentcore config directory, walking up from cwd if needed
   const configRoot = requireConfigRoot();
@@ -77,30 +80,45 @@ export async function validateProject(): Promise<PreflightContext> {
 
   // Validate that at least one agent or gateway is defined, unless this is a teardown deploy.
   //
-  // Teardown detection: when agents is empty but deployed-state.json records existing
-  // targets, the user has run `remove all` and wants to tear down AWS resources via deploy.
   // deployed-state.json is written by the CLI after every successful deploy, so it is a
   // reliable indicator of whether a CloudFormation stack exists for this project.
+  let hasExistingStack = false;
+  try {
+    const deployedState = await configIO.readDeployedState();
+    hasExistingStack = Object.keys(deployedState.targets).length > 0;
+  } catch {
+    // No deployed state file — no existing stack
+  }
+
+  // Teardown detection: when agents is empty but deployed-state.json records existing
+  // targets, the user has run `remove all` and wants to tear down AWS resources via deploy.
   let isTeardownDeploy = false;
   const hasAgents = projectSpec.runtimes && projectSpec.runtimes.length > 0;
   const hasMemories = projectSpec.memories && projectSpec.memories.length > 0;
+  const hasKnowledgeBases = projectSpec.knowledgeBases && projectSpec.knowledgeBases.length > 0;
   const hasEvaluators = projectSpec.evaluators && projectSpec.evaluators.length > 0;
   const hasPolicyEngines = projectSpec.policyEngines && projectSpec.policyEngines.length > 0;
+  const hasHarnesses = projectSpec.harnesses && projectSpec.harnesses.length > 0;
+  const hasDatasets = projectSpec.datasets && projectSpec.datasets.length > 0;
 
   // Check for gateways in agentcore.json
   const hasGateways = projectSpec.agentCoreGateways && projectSpec.agentCoreGateways.length > 0;
+  const hasPayments = projectSpec.payments && projectSpec.payments.length > 0;
 
-  if (!hasAgents && !hasGateways && !hasMemories && !hasEvaluators && !hasPolicyEngines) {
-    let hasExistingStack = false;
-    try {
-      const deployedState = await configIO.readDeployedState();
-      hasExistingStack = Object.keys(deployedState.targets).length > 0;
-    } catch {
-      // No deployed state file — no existing stack
-    }
+  if (
+    !hasAgents &&
+    !hasGateways &&
+    !hasMemories &&
+    !hasKnowledgeBases &&
+    !hasEvaluators &&
+    !hasPolicyEngines &&
+    !hasHarnesses &&
+    !hasDatasets &&
+    !hasPayments
+  ) {
     if (!hasExistingStack) {
-      throw new Error(
-        'No resources defined in project. Add at least one resource (agent, memory, evaluator, or gateway) before deploying.'
+      throw new ValidationError(
+        'No resources defined in project. Add at least one resource (agent, memory, knowledge base, evaluator, or gateway) before deploying.'
       );
     }
     isTeardownDeploy = true;
@@ -109,11 +127,19 @@ export async function validateProject(): Promise<PreflightContext> {
   // Validate runtime names don't exceed AWS limits
   validateRuntimeNames(projectSpec);
 
-  // Validate HTTP gateway names don't exceed AWS limits when combined with project name
-  validateHttpGatewayNames(projectSpec);
+  // Validate gateway names don't exceed AWS limits
+  validateGatewayNames(projectSpec);
 
   // Validate Container agents have Dockerfiles
   validateContainerAgents(projectSpec, configRoot);
+
+  // Validate per-harness harness.json up front so a schema error shows its precise message
+  // here instead of as an opaque "CDK synth failed" during synth. Skipped on a teardown deploy:
+  // tearing down a project with a hand-broken harness.json must not be blocked by validating the
+  // very files the user is discarding (mirrors the credential-skip rationale below).
+  if (!isTeardownDeploy) {
+    await validateHarnessSpecs(projectSpec, configRoot);
+  }
 
   // Validate AWS credentials before proceeding with build/synth.
   // Skip for teardown deploys — callers validate after teardown confirmation.
@@ -121,7 +147,7 @@ export async function validateProject(): Promise<PreflightContext> {
     await validateAwsCredentials();
   }
 
-  return { projectSpec, awsTargets, cdkProject, isTeardownDeploy };
+  return { projectSpec, awsTargets, cdkProject, isTeardownDeploy, isFirstDeploy: !hasExistingStack };
 }
 
 /**
@@ -134,7 +160,7 @@ function validateRuntimeNames(projectSpec: AgentCoreProjectSpec): void {
     if (agentName) {
       const combinedName = `${projectName}_${agentName}`;
       if (combinedName.length > MAX_RUNTIME_NAME_LENGTH) {
-        throw new Error(
+        throw new ValidationError(
           `Runtime name too long: "${combinedName}" (${combinedName.length} chars). ` +
             `AWS limits runtime names to ${MAX_RUNTIME_NAME_LENGTH} characters. ` +
             `Shorten the project name or agent name in agentcore.json.`
@@ -145,31 +171,22 @@ function validateRuntimeNames(projectSpec: AgentCoreProjectSpec): void {
 }
 
 /**
- * Validates that combined HTTP gateway names (projectName-gatewayName) don't exceed AWS limits.
+ * Validates that combined gateway names (projectName-gatewayName) don't exceed AWS limits.
+ * The deployed gateway resource name is `${projectName}-${gatewayName}` and AWS rejects names
+ * over 48 chars at CreateGateway — surface that here instead of as an opaque CREATE_FAILED.
  */
-function validateHttpGatewayNames(projectSpec: AgentCoreProjectSpec): void {
+export function validateGatewayNames(projectSpec: AgentCoreProjectSpec): void {
   const projectName = projectSpec.name;
-  for (const gateway of projectSpec.httpGateways ?? []) {
-    const gwName = gateway.name;
-    if (gwName) {
-      const combinedName = `${projectName}-${gwName}`;
-      if (combinedName.length > MAX_GATEWAY_COMBINED_NAME_LENGTH) {
-        throw new Error(
-          `HTTP gateway name too long: "${combinedName}" (${combinedName.length} chars). ` +
-            `AWS limits gateway names to ${MAX_GATEWAY_COMBINED_NAME_LENGTH} characters. ` +
-            `Shorten the project name or gateway name in agentcore.json.`
-        );
-      }
-    }
-    for (const target of gateway.targets ?? []) {
-      const combined = `${projectName}-${target.name}`;
-      if (combined.length > MAX_GATEWAY_COMBINED_NAME_LENGTH) {
-        const maxTargetLen = MAX_GATEWAY_COMBINED_NAME_LENGTH - projectName.length - 1;
-        throw new Error(
-          `HTTP gateway target "${target.name}" in gateway "${gwName}" would exceed the ${MAX_GATEWAY_COMBINED_NAME_LENGTH}-character AWS limit when prefixed with project name "${projectName}-" (total: ${combined.length} chars). ` +
-            `Shorten the target name to ${maxTargetLen} characters or fewer.`
-        );
-      }
+  for (const gateway of projectSpec.agentCoreGateways || []) {
+    // Imported gateways carry an explicit resourceName that AWS already accepted; skip those.
+    if (gateway.resourceName) continue;
+    const combinedName = `${projectName}-${gateway.name}`;
+    if (combinedName.length > MAX_GATEWAY_NAME_LENGTH) {
+      throw new ValidationError(
+        `Gateway name too long: "${combinedName}" (${combinedName.length} chars). ` +
+          `AWS limits gateway names to ${MAX_GATEWAY_NAME_LENGTH} characters. ` +
+          `Shorten the project name or gateway name in agentcore.json.`
+      );
     }
   }
 }
@@ -181,18 +198,67 @@ export function validateContainerAgents(projectSpec: AgentCoreProjectSpec, confi
   const errors: string[] = [];
   for (const agent of projectSpec.runtimes || []) {
     if (agent.build === 'Container') {
-      const codeLocation = resolveCodeLocation(agent.codeLocation, configRoot);
-      const dockerfilePath = getDockerfilePath(codeLocation, agent.dockerfile);
+      // Resolve the Dockerfile against the build context (buildContextPath ?? codeLocation), matching
+      // how ContainerSourceAsset uploads the context and how the CodeBuild buildspec resolves it.
+      const buildContext = resolveCodeLocation(agent.buildContextPath ?? agent.codeLocation, configRoot);
+      const dockerfilePath = getDockerfilePath(buildContext, agent.dockerfile);
 
       if (!existsSync(dockerfilePath)) {
         errors.push(
           `Agent "${agent.name}": ${agent.dockerfile ?? DOCKERFILE_NAME} not found at ${dockerfilePath}. Container agents require a Dockerfile.`
         );
+      } else {
+        warnDeprecatedBaseImage(dockerfilePath, agent.name);
       }
     }
   }
   if (errors.length > 0) {
     throw new Error(errors.join('\n'));
+  }
+}
+
+/**
+ * Validate every per-harness `harness.json` against HarnessSpecSchema so a bad harness spec
+ * fails preflight with the precise Zod message (e.g. "sessionStoragePath ... pattern") instead
+ * of surfacing only "CDK synth failed: Subprocess exited with error 1" mid-deploy. The vended
+ * CDK app re-parses these at synth, so this just moves the same error earlier and makes it readable.
+ */
+export async function validateHarnessSpecs(projectSpec: AgentCoreProjectSpec, configRoot: string): Promise<void> {
+  const harnesses = projectSpec.harnesses ?? [];
+  if (harnesses.length === 0) return;
+
+  const configIO = new ConfigIO({ baseDir: configRoot });
+  const errors: string[] = [];
+  for (const harness of harnesses) {
+    try {
+      await configIO.readHarnessSpec(harness.name);
+    } catch (err) {
+      errors.push(`Harness "${harness.name}": ${formatError(err)}`);
+    }
+  }
+  if (errors.length > 0) {
+    throw new ValidationError(`Invalid harness configuration:\n${errors.join('\n')}`);
+  }
+}
+
+const DEPRECATED_BASE_IMAGES: Record<string, string> = {
+  'slim-bookworm':
+    'Affected by CVE-2026-42010 (GnuTLS authentication bypass). Update the FROM line to use a Trixie-based variant.',
+};
+
+function warnDeprecatedBaseImage(dockerfilePath: string, agentName: string): void {
+  try {
+    const content = readFileSync(dockerfilePath, 'utf-8');
+    for (const line of content.split('\n')) {
+      if (!/^\s*FROM\s+/i.test(line)) continue;
+      for (const [image, message] of Object.entries(DEPRECATED_BASE_IMAGES)) {
+        if (line.includes(image)) {
+          console.warn(`Warning: Agent "${agentName}" Dockerfile uses a base image containing "${image}". ${message}`);
+        }
+      }
+    }
+  } catch {
+    // Non-fatal — if we can't read the file, the existing validation will handle it
   }
 }
 
@@ -208,6 +274,8 @@ export interface SynthOptions {
   ioHost?: IIoHost;
   /** Previous toolkit wrapper to dispose before synthesis. */
   previousWrapper?: CdkToolkitWrapper | null;
+  /** Target region for CDK operations. Without this, toolkit may default to us-east-1. */
+  region?: string;
 }
 
 /**
@@ -228,15 +296,67 @@ export async function synthesizeCdk(cdkProject: LocalCdkProject, options?: Synth
   const toolkitWrapper = await createCdkToolkitWrapper({
     projectDir: cdkProject.projectDir,
     ioHost: options?.ioHost ?? silentIoHost,
+    region: options?.region,
   });
 
   // synth() produces the assembly internally and stores the directory for later use
-  const synthResult = await toolkitWrapper.synth();
+  let synthResult: { stackNames: string[]; assemblyDirectory: string };
+  try {
+    synthResult = await toolkitWrapper.synth();
+  } catch (err) {
+    throw rewriteIfStaleCdkConstruct(err, cdkProject.projectDir);
+  }
 
   return {
     toolkitWrapper,
     stackNames: synthResult.stackNames,
   };
+}
+
+// Matches the construct's config validator output: `path: unknown keys (remove): "a", "b"`.
+// See @aws/agentcore-cdk src/lib/errors/config.ts (unrecognized_keys formatting).
+const UNKNOWN_KEYS_PATTERN = /unknown keys \(remove\): (.+?)(?:\n|$)/;
+
+/**
+ * Pull the rejected key names out of an "unknown keys (remove)" message anywhere in the
+ * error's cause chain. Returns [] when the error is not an unknown-keys rejection.
+ */
+export function extractUnknownKeys(err: unknown): string[] {
+  const message = formatError(err);
+  const match = UNKNOWN_KEYS_PATTERN.exec(message);
+  if (!match?.[1]) return [];
+  return match[1]
+    .split(',')
+    .map(k => k.trim().replace(/^"|"$/g, ''))
+    .filter(Boolean);
+}
+
+/**
+ * Read the version of @aws/agentcore-cdk actually installed in the vended CDK project.
+ * Returns undefined when it can't be determined (the error message degrades gracefully).
+ */
+export function readInstalledCdkConstructVersion(cdkProjectDir: string): string | undefined {
+  try {
+    const pkgPath = path.join(cdkProjectDir, 'node_modules', '@aws', 'agentcore-cdk', 'package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: string };
+    return pkg.version;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * If a synth failure is an "unknown keys" rejection, it is provably a version skew: the CLI
+ * strict-validates agentcore.json against its own schema during preflight (validateProject),
+ * *before* synth runs. So any unknown-key the CLI wrote is one the CLI considers valid, and the
+ * rejection means the project's bundled @aws/agentcore-cdk is older than the CLI. Rewrite to a
+ * StaleCdkConstructError with an actionable hint. Any other error passes through untouched.
+ */
+export function rewriteIfStaleCdkConstruct(err: unknown, cdkProjectDir: string): unknown {
+  const rejectedKeys = extractUnknownKeys(err);
+  if (rejectedKeys.length === 0) return err instanceof Error ? err : new Error(String(err));
+  const installedVersion = readInstalledCdkConstructVersion(cdkProjectDir);
+  return new StaleCdkConstructError(rejectedKeys, installedVersion, { cause: err });
 }
 
 /**

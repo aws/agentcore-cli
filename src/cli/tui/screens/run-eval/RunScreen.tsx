@@ -1,3 +1,4 @@
+import { isGatedFeaturesEnabled } from '../../../feature-flags';
 import { Screen, WizardSelect } from '../../components';
 import type { SelectableItem } from '../../components';
 import { HELP_TEXT } from '../../constants';
@@ -7,11 +8,22 @@ import React, { useMemo } from 'react';
 interface RunScreenProps {
   onRunEval: () => void;
   onRunBatchEval: () => void;
+  onRunInsights: () => void;
   onRunRecommendation: () => void;
+  onRunIngest: () => void;
+  onRunABTest: () => void;
   onExit: () => void;
 }
 
-export function RunScreen({ onRunEval, onRunBatchEval, onRunRecommendation, onExit }: RunScreenProps) {
+export function RunScreen({
+  onRunEval,
+  onRunBatchEval,
+  onRunInsights,
+  onRunRecommendation,
+  onRunIngest,
+  onRunABTest,
+  onExit,
+}: RunScreenProps) {
   const items: SelectableItem[] = useMemo(
     () => [
       {
@@ -25,9 +37,31 @@ export function RunScreen({ onRunEval, onRunBatchEval, onRunRecommendation, onEx
         description: 'Run a batch evaluation against agent sessions via CloudWatch.',
       },
       {
+        id: 'run-insights',
+        title: 'Insights [preview]',
+        description: 'Run failure analysis across agent sessions to detect patterns and root causes.',
+      },
+      {
         id: 'run-recommendation',
         title: 'Recommendation',
         description: 'Optimize system prompts or tool descriptions using agent traces.',
+      },
+      // Knowledge base ingestion is part of FMKB, which is gated behind
+      // ENABLE_GATED_FEATURES. Hide the option entirely when the gate is off,
+      // matching the hidden `agentcore run ingest` CLI command.
+      ...(isGatedFeaturesEnabled()
+        ? [
+            {
+              id: 'run-ingest',
+              title: 'Ingest knowledge base',
+              description: 'Start an ingestion job for a deployed knowledge base.',
+            },
+          ]
+        : []),
+      {
+        id: 'run-ab-test',
+        title: 'A/B Test',
+        description: 'Compare two config-bundle or gateway-target variants live through a gateway.',
       },
     ],
     []
@@ -38,7 +72,10 @@ export function RunScreen({ onRunEval, onRunBatchEval, onRunRecommendation, onEx
     onSelect: item => {
       if (item.id === 'run-eval') onRunEval();
       else if (item.id === 'run-batch-eval') onRunBatchEval();
+      else if (item.id === 'run-insights') onRunInsights();
       else if (item.id === 'run-recommendation') onRunRecommendation();
+      else if (item.id === 'run-ingest') onRunIngest();
+      else if (item.id === 'run-ab-test') onRunABTest();
     },
     onExit,
     isActive: true,

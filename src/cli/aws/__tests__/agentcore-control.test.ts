@@ -48,6 +48,14 @@ vi.mock('../account', () => ({
   getCredentialProvider: vi.fn().mockReturnValue({}),
 }));
 
+const { mockResolveVpcId } = vi.hoisted(() => ({
+  mockResolveVpcId: vi.fn(),
+}));
+
+vi.mock('../../commands/shared/vpc-utils', () => ({
+  resolveVpcIdFromSubnets: (...args: unknown[]) => mockResolveVpcId(...args),
+}));
+
 describe('getAgentRuntimeStatus', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -499,6 +507,86 @@ describe('getAgentRuntimeDetail — new fields', () => {
 
     const result = await getAgentRuntimeDetail({ region: 'us-east-1', runtimeId: 'rt-123' });
     expect(result.tags).toBeUndefined();
+  });
+});
+
+describe('getAgentRuntimeDetail — VPC vpcId resolution', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const vpcBaseResponse = {
+    agentRuntimeId: 'rt-vpc',
+    agentRuntimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-vpc',
+    agentRuntimeName: 'vpc-runtime',
+    status: 'READY',
+    roleArn: 'arn:aws:iam::123:role/test',
+    networkConfiguration: {
+      networkMode: 'VPC',
+      networkModeConfig: {
+        subnets: ['subnet-0a1b2c3d4e5f6a7b8'],
+        securityGroups: ['sg-0a1b2c3d4e5f6a7b8'],
+      },
+    },
+    protocolConfiguration: { serverProtocol: 'HTTP' },
+    agentRuntimeArtifact: { containerConfiguration: { containerUri: 'ecr.io/repo:tag' } },
+  };
+
+  it('resolves vpcId from subnets for a VPC runtime and includes it in networkConfig', async () => {
+    mockSend.mockResolvedValueOnce(vpcBaseResponse).mockResolvedValueOnce({ tags: {} });
+    mockResolveVpcId.mockResolvedValue('vpc-0abc1234567890def');
+
+    const result = await getAgentRuntimeDetail({ region: 'us-east-1', runtimeId: 'rt-vpc' });
+
+    expect(result.networkMode).toBe('VPC');
+    expect(result.networkConfig).toEqual({
+      subnets: ['subnet-0a1b2c3d4e5f6a7b8'],
+      securityGroups: ['sg-0a1b2c3d4e5f6a7b8'],
+      vpcId: 'vpc-0abc1234567890def',
+    });
+    expect(mockResolveVpcId).toHaveBeenCalledWith(['subnet-0a1b2c3d4e5f6a7b8'], 'us-east-1');
+  });
+
+  it('propagates DescribeSubnets error with actionable message', async () => {
+    mockSend.mockResolvedValue(vpcBaseResponse);
+    mockResolveVpcId.mockRejectedValue(
+      new Error(
+        'Failed to resolve VPC ID from subnet subnet-0a1b2c3d4e5f6a7b8: ec2:DescribeSubnets permission is required.'
+      )
+    );
+
+    await expect(getAgentRuntimeDetail({ region: 'us-east-1', runtimeId: 'rt-vpc' })).rejects.toThrow(
+      'ec2:DescribeSubnets'
+    );
+  });
+
+  it('sets networkConfig without vpcId when subnets list is empty', async () => {
+    mockSend
+      .mockResolvedValueOnce({
+        ...vpcBaseResponse,
+        networkConfiguration: {
+          networkMode: 'VPC',
+          networkModeConfig: { subnets: [], securityGroups: ['sg-0a1b2c3d4e5f6a7b8'] },
+        },
+      })
+      .mockResolvedValueOnce({ tags: {} });
+
+    const result = await getAgentRuntimeDetail({ region: 'us-east-1', runtimeId: 'rt-vpc' });
+    expect(result.networkConfig?.vpcId).toBeUndefined();
+    expect(mockResolveVpcId).not.toHaveBeenCalled();
+  });
+
+  it('returns undefined networkConfig for PUBLIC mode', async () => {
+    mockSend
+      .mockResolvedValueOnce({
+        ...vpcBaseResponse,
+        networkConfiguration: { networkMode: 'PUBLIC' },
+      })
+      .mockResolvedValueOnce({ tags: {} });
+
+    const result = await getAgentRuntimeDetail({ region: 'us-east-1', runtimeId: 'rt-vpc' });
+    expect(result.networkConfig).toBeUndefined();
+    expect(mockResolveVpcId).not.toHaveBeenCalled();
   });
 });
 

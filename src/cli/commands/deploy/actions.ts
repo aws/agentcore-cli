@@ -1,17 +1,23 @@
 import { ConfigIO, ResourceNotFoundError, SecureCredentials, ValidationError, toError } from '../../../lib';
+import type { Result } from '../../../lib/result';
 import type { AgentCoreMcpSpec, DeployedState } from '../../../schema';
 import { applyTargetRegionToEnv } from '../../aws';
 import { validateAwsCredentials } from '../../aws/account';
 import { CdkToolkitWrapper, createSwitchableIoHost } from '../../cdk/toolkit-lib';
-import type { SwitchableIoHost } from '../../cdk/toolkit-lib';
+import type { DeployMessage, SwitchableIoHost } from '../../cdk/toolkit-lib';
 import {
   buildDeployedState,
   getStackOutputs,
   parseAgentOutputs,
+  parseConfigBundleOutputs,
+  parseDatasetOutputs,
   parseEvaluatorOutputs,
   parseGatewayOutputs,
+  parseHarnessOutputs,
+  parseKnowledgeBaseOutputs,
   parseMemoryOutputs,
   parseOnlineEvalOutputs,
+  parsePaymentOutputs,
   parsePolicyEngineOutputs,
   parsePolicyOutputs,
   parseRuntimeEndpointOutputs,
@@ -19,13 +25,18 @@ import {
 import { getErrorMessage } from '../../errors';
 import { ExecLogger } from '../../logging';
 import {
+  MANAGED_MEMORY_DEPLOY_NOTICE,
+  assertEnvFileExists,
+  backfillContainerVpcIds,
   bootstrapEnvironment,
   buildCdkProject,
   checkBootstrapNeeded,
   checkStackDeployability,
+  ensureDefaultDeploymentTarget,
   getAllCredentials,
   hasIdentityApiProviders,
   hasIdentityOAuthProviders,
+  hasManagedMemoryHarness,
   performStackTeardown,
   setupApiKeyProviders,
   setupOAuth2Providers,
@@ -33,14 +44,18 @@ import {
   synthesizeCdk,
   validateProject,
 } from '../../operations/deploy';
+import { computeProjectDeployHash } from '../../operations/deploy/change-detection';
 import { formatTargetStatus, getGatewayTargetStatuses } from '../../operations/deploy/gateway-status';
-import { deleteOrphanedABTests, setupABTests } from '../../operations/deploy/post-deploy-ab-tests';
-import {
-  resolveConfigBundleComponentKeys,
-  setupConfigBundles,
-} from '../../operations/deploy/post-deploy-config-bundles';
-import { setupHttpGateways } from '../../operations/deploy/post-deploy-http-gateways';
+import { syncDatasets } from '../../operations/deploy/post-deploy-datasets';
+import { autoIngestKnowledgeBases } from '../../operations/deploy/post-deploy-knowledge-bases';
 import { enableOnlineEvalConfigs } from '../../operations/deploy/post-deploy-online-evals';
+import {
+  cleanupPaymentCredentialProviders,
+  hasPaymentCredentialProviders,
+  setupPaymentCredentialProviders,
+} from '../../operations/deploy/pre-deploy-identity';
+import { findOrphanHarnesses } from '../../operations/harness/orphan';
+import { hydrateKnowledgeBaseDataSources } from '../../operations/knowledge-base/hydrate-data-sources';
 import { toStackName } from '../import/import-utils';
 import type { DeployResult } from './types';
 import { StackSelectionStrategy } from '@aws-cdk/toolkit-lib';
@@ -53,10 +68,62 @@ export interface ValidatedDeployOptions {
   diff?: boolean;
   onProgress?: (step: string, status: 'start' | 'success' | 'error') => void;
   onResourceEvent?: (message: string) => void;
+  onDeployMessage?: (message: DeployMessage) => void;
+  /** Emit a one-shot, user-facing notice to the terminal mid-deploy (e.g. the managed-memory heads-up
+   *  shown before the slow CFN apply). Always surfaced, independent of `verbose`. */
+  onNotice?: (message: string) => void;
 }
 
 const AGENT_NEXT_STEPS = ['agentcore invoke', 'agentcore status'];
 const MEMORY_ONLY_NEXT_STEPS = ['agentcore add agent', 'agentcore status'];
+
+/**
+ * Compute per-harness config-version drift between the previous deployed-state and the freshly-parsed
+ * harness outputs. Only harnesses that emit a version are considered; a changed (or first-seen) version
+ * yields a note. Pure + exported for unit testing.
+ */
+export function computeHarnessVersionDrift(
+  prev: Record<string, { harnessVersion?: number }> | undefined,
+  next: Record<string, { harnessVersion?: number }>
+): { name: string; from?: number; to: number }[] {
+  const notes: { name: string; from?: number; to: number }[] = [];
+  for (const [name, rec] of Object.entries(next)) {
+    if (rec.harnessVersion === undefined) continue;
+    const from = prev?.[name]?.harnessVersion;
+    if (from !== rec.harnessVersion) notes.push({ name, from, to: rec.harnessVersion });
+  }
+  return notes;
+}
+
+/**
+ * Pick the synthesized stack for the target being deployed.
+ *
+ * The vended CDK app synthesizes one stack per target in aws-targets.json, so a multi-target
+ * project's assembly contains every target's stack. Selecting `stackNames[0]` would describe/persist
+ * the *first* target's stack rather than the deployed one — for `deploy --target qa` that meant the
+ * Persist step ran `DescribeStacks` on a different (often undeployed) stack and failed. Matching on the
+ * deterministic `toStackName(project, target)` keeps the choice correct regardless of target ordering.
+ */
+export function selectTargetStack(
+  stackNames: string[],
+  projectName: string,
+  targetName: string
+): Result<{ stackName: string }, ValidationError> {
+  if (stackNames.length === 0) {
+    return { success: false, error: new ValidationError('No stacks found to deploy') };
+  }
+  const expected = toStackName(projectName, targetName);
+  if (!stackNames.includes(expected)) {
+    return {
+      success: false,
+      error: new ValidationError(
+        `Synthesized stacks [${stackNames.join(', ')}] do not include the stack for target ` +
+          `"${targetName}" (expected "${expected}").`
+      ),
+    };
+  }
+  return { success: true, stackName: expected };
+}
 
 export async function runDiff(
   toolkitWrapper: CdkToolkitWrapper,
@@ -93,6 +160,10 @@ export async function runDeploy(toolkitWrapper: CdkToolkitWrapper, stackName: st
 export async function handleDeploy(options: ValidatedDeployOptions): Promise<DeployResult> {
   let toolkitWrapper = null;
   let restoreEnv: (() => void) | null = null;
+  // In preview modes (--dry-run / --diff) the vpcId backfill writes to agentcore.json/harness.json so
+  // the synth subprocess can read it; this reverts those writes on EVERY exit path (success, early
+  // return, or throw) so a preview never leaves the working tree dirty. No-op on a real deploy.
+  let previewRestore: (() => Promise<void>) | null = null;
   const logger = new ExecLogger({ command: 'deploy' });
   const { onProgress } = options;
   let currentStepName = '';
@@ -111,8 +182,13 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
   try {
     const configIO = new ConfigIO();
 
-    // Load targets and find the specified one
+    // Load targets and find the specified one.
+    // Freshly-created projects have an empty aws-targets.json (populated at deploy
+    // time). The interactive flow prompts for the target; for non-interactive
+    // deploys (`--yes`/`--json`/`--target`) auto-populate a default from the
+    // detected AWS context so deploy doesn't fail with "target not found".
     startStep('Load deployment target');
+    await ensureDefaultDeploymentTarget(configIO);
     const targets = await configIO.resolveAWSDeploymentTargets();
     const target = targets.find(t => t.name === options.target);
     if (!target) {
@@ -144,12 +220,33 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const context = await validateProject();
     endStep('success');
 
+    // Warn about imperative-build orphan harnesses (preview→GA transition). These aren't
+    // managed by CloudFormation, so this deploy can't delete or adopt them; a same-named CFN
+    // harness would 409/rollback. Non-blocking — point the user at `remove harness`. Collected
+    // into postDeployWarnings at the success return so they reach the terminal, not just the log.
+    // Skipped on a teardown deploy: the "migrate it to GA with --keep" guidance is wrong when the
+    // user is tearing everything down, and teardown.ts emits the apt "--discard" warning instead.
+    const orphanWarnings: string[] = [];
+    if (!context.isTeardownDeploy) {
+      const preDeployState = await configIO.readDeployedState().catch(() => undefined);
+      for (const orphan of findOrphanHarnesses(preDeployState)) {
+        const warning =
+          `Harness "${orphan.name}" was created by the preview build and is not managed by ` +
+          `CloudFormation. This deploy won't touch it, and it keeps incurring cost. To migrate it ` +
+          `to GA, run \`agentcore remove harness ${orphan.name} --keep\` (deletes the old resource ` +
+          `but keeps it in agentcore.json), then deploy again so it's recreated under CloudFormation. ` +
+          `Use --discard instead if you no longer want it.`;
+        logger.log(warning, 'warn');
+        orphanWarnings.push(warning);
+      }
+    }
+
     // Teardown confirmation: if this is a teardown deploy, require --yes
     if (context.isTeardownDeploy && !options.autoConfirm) {
       logger.finalize(false);
       return {
         success: false,
-        error: new Error(
+        error: new ValidationError(
           'This will delete all deployed resources and the CloudFormation stack. Run with --yes to confirm teardown.'
         ),
         logPath: logger.getRelativeLogPath(),
@@ -170,6 +267,14 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     // Set up identity providers before CDK synth (CDK needs credential ARNs)
     let identityKmsKeyArn: string | undefined;
+
+    // Unified .env.local existence check across ApiKey, OAuth2, and Payment credentials.
+    // Lists every required env var upfront so the user can populate the file in one shot.
+    const envFileAssertionResult = assertEnvFileExists(context.projectSpec, configIO.getConfigRoot());
+    if (!envFileAssertionResult.success) {
+      logger.finalize(false);
+      return { success: false, error: envFileAssertionResult.error, logPath: logger.getRelativeLogPath() };
+    }
 
     // Read runtime credentials from process.env (enables non-interactive deploy with -y)
     const neededCredentials = getAllCredentials(context.projectSpec);
@@ -200,12 +305,16 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         enableKmsEncryption: true,
       });
       if (identityResult.hasErrors) {
-        const errorResult = identityResult.results.find(r => r.status === 'error');
-        const errorMsg =
-          errorResult?.error && typeof errorResult.error === 'string' ? errorResult.error : 'Identity setup failed';
+        const errorResult = identityResult.results.find(r => r.status === 'error' && r.error);
+        const errorMsg = errorResult?.error?.message ?? 'Identity setup failed';
         endStep('error', errorMsg);
         logger.finalize(false);
-        return { success: false, error: new Error(errorMsg), logPath: logger.getRelativeLogPath() };
+
+        return {
+          success: false,
+          error: errorResult?.error ?? new Error('unknown error occurred when setting up api key providers'),
+          logPath: logger.getRelativeLogPath(),
+        };
       }
       identityKmsKeyArn = identityResult.kmsKeyArn;
 
@@ -232,12 +341,17 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       });
       if (oauthResult.hasErrors) {
         // Log detailed error internally, return sanitized message to avoid leaking OAuth details
-        const errorResult = oauthResult.results.find(r => r.status === 'error');
+        const errorResult = oauthResult.results.find(r => r.status === 'error' && r.error);
         logger.log(`OAuth setup error: ${errorResult?.error ?? 'unknown'}`, 'error');
         const errorMsg = 'OAuth credential setup failed. Check the log for details.';
         endStep('error', errorMsg);
         logger.finalize(false);
-        return { success: false, error: new Error(errorMsg), logPath: logger.getRelativeLogPath() };
+
+        return {
+          success: false,
+          error: errorResult?.error ?? new Error(`an unexpected error ocurred when setting up oauth providers`),
+          logPath: logger.getRelativeLogPath(),
+        };
       }
 
       // Collect OAuth credential ARNs for deployed state
@@ -250,6 +364,40 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
           };
         }
       }
+      endStep('success');
+    }
+
+    // Set up payment credential providers before CDK synth (secrets stay imperative)
+    // PaymentManager, PaymentConnector, and IAM roles are created by CDK constructs
+    if (hasPaymentCredentialProviders(context.projectSpec)) {
+      startStep('Setting up payment credentials...');
+
+      const paymentPreDeployResult = await setupPaymentCredentialProviders({
+        projectSpec: context.projectSpec,
+        configBaseDir: configIO.getConfigRoot(),
+        region: target.region,
+        runtimeCredentials,
+      });
+
+      if (paymentPreDeployResult.hasErrors) {
+        const errorMsgs = paymentPreDeployResult.errors.map(e => e.message).join('; ');
+        endStep('error', errorMsgs);
+        logger.log(`Payment credential setup errors: ${errorMsgs}`, 'error');
+        logger.finalize(false);
+        return {
+          success: false,
+          error: paymentPreDeployResult.errors[0] ?? new Error('payment deploy preflight steps failed'),
+          logPath: logger.getRelativeLogPath(),
+        };
+      }
+
+      // Merge payment credential provider ARNs into deployedCredentials (same as identity credentials)
+      for (const [name, result] of Object.entries(paymentPreDeployResult.credentialProviders)) {
+        deployedCredentials[name] = {
+          credentialProviderArn: result.credentialProviderArn,
+        };
+      }
+
       endStep('success');
     }
 
@@ -266,28 +414,43 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       });
     }
 
+    // Backfill vpcId for pre-existing Container+VPC configs written before vpcId was required. This
+    // resolves the VPC from the subnets (ec2:DescribeSubnets) and writes it to disk so the CDK synth
+    // process — which re-reads agentcore.json / harness.json — has the value it needs. Fresh creates
+    // already carry a vpcId, so this is a no-op for them. In preview modes (--dry-run / --diff) the
+    // write is reverted after synth via backfill.restore() so a preview leaves the working tree clean.
+    const isPreview = !!options.plan || !!options.diff;
+    const backfill = await backfillContainerVpcIds(configIO, context.projectSpec, target.region, !isPreview);
+    // In preview mode, revert the on-disk backfill in `finally` so every exit path (including a synth
+    // throw or an early return) leaves the working tree clean. restore() is a no-op on a real deploy.
+    if (isPreview) previewRestore = backfill.restore;
+    if (backfill.backfilled.length > 0) {
+      logger.log(`Resolved networkConfig.vpcId for Container+VPC build(s): ${backfill.backfilled.join(', ')}`, 'info');
+    }
+
     // Synthesize CloudFormation templates
     startStep('Synthesize CloudFormation');
-    const switchableIoHost = options.verbose ? createSwitchableIoHost() : undefined;
-    const synthResult = await synthesizeCdk(
-      context.cdkProject,
-      switchableIoHost ? { ioHost: switchableIoHost.ioHost } : undefined
-    );
+    const switchableIoHost = options.verbose || options.onDeployMessage ? createSwitchableIoHost() : undefined;
+    const synthResult = await synthesizeCdk(context.cdkProject, {
+      ...(switchableIoHost && { ioHost: switchableIoHost.ioHost }),
+      region: target.region,
+    });
     toolkitWrapper = synthResult.toolkitWrapper;
-    const stackNames = synthResult.stackNames;
-    if (stackNames.length === 0) {
-      endStep('error', 'No stacks found');
+    // The assembly holds one stack per target in aws-targets.json. Select the deployed target's
+    // stack so every downstream step (deployability check, deploy, Persist/describe) acts on it
+    // rather than blindly on stackNames[0] — see selectTargetStack.
+    const stackSelection = selectTargetStack(synthResult.stackNames, context.projectSpec.name, target.name);
+    if (!stackSelection.success) {
+      endStep('error', stackSelection.error.message);
       logger.finalize(false);
       return {
         success: false,
-        error: new ValidationError('No stacks found to deploy'),
+        error: stackSelection.error,
         logPath: logger.getRelativeLogPath(),
       };
     }
-    const stackName = stackNames[0]!;
+    const stackName = stackSelection.stackName;
     endStep('success');
-
-    const targetStackName = toStackName(context.projectSpec.name, target.name);
 
     // Check if bootstrap needed
     startStep('Check bootstrap status');
@@ -301,16 +464,17 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         logger.finalize(false);
         return {
           success: false,
-          error: new Error('AWS environment needs bootstrapping. Run with --yes to auto-bootstrap.'),
+          error: new ValidationError('AWS environment needs bootstrapping. Run with --yes to auto-bootstrap.'),
           logPath: logger.getRelativeLogPath(),
         };
       }
     }
     endStep('success');
 
-    // Check stack deployability
+    // Check stack deployability — scope to the deployed target's stack only, not every
+    // synthesized target, so a sibling target's in-progress/failed stack can't block this deploy.
     startStep('Check stack status');
-    const deployabilityCheck = await checkStackDeployability(target.region, stackNames);
+    const deployabilityCheck = await checkStackDeployability(target.region, [stackName]);
     if (!deployabilityCheck.canDeploy) {
       endStep('error', deployabilityCheck.message);
       logger.finalize(false);
@@ -322,7 +486,8 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     }
     endStep('success');
 
-    // Plan mode: stop after synth and checks, don't deploy
+    // Plan mode: stop after synth and checks, don't deploy. The backfilled vpcId written to disk for
+    // synth is reverted in the `finally` (covers this and every other preview exit path).
     if (options.plan) {
       logger.finalize(true);
       await toolkitWrapper.dispose();
@@ -335,10 +500,11 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       };
     }
 
-    // Diff mode: run cdk diff and exit without deploying
+    // Diff mode: run cdk diff and exit without deploying. Like plan mode, the backfilled vpcId is
+    // reverted in the `finally`, so even a throw in runDiff leaves the working tree clean.
     if (options.diff) {
       startStep('Run CDK diff');
-      await runDiff(toolkitWrapper, targetStackName, switchableIoHost);
+      await runDiff(toolkitWrapper, stackName, switchableIoHost);
       endStep('success');
 
       logger.finalize(true);
@@ -352,20 +518,33 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       };
     }
 
+    // Managed-memory heads-up (gated): a harness with managed memory provisions a dedicated
+    // AgentCore Memory resource during this deploy, which is the slow part. Surface it before the
+    // CFN apply so the wait is explained while it happens. The memory mode lives in each harness's
+    // harness.json (not the agentcore.json pointer list), so read the specs to detect it.
+    if (!context.isTeardownDeploy && (await hasManagedMemoryHarness(configIO, context.projectSpec.harnesses))) {
+      logger.log(MANAGED_MEMORY_DEPLOY_NOTICE);
+      // Surface to the terminal too (logger.log only writes to the deploy log file). onNotice is wired
+      // by the CLI command so the heads-up prints WHILE the slow CFN apply runs, not just in the log.
+      // (The TUI deploy flow runs its own orchestrator and emits this notice itself.)
+      options.onNotice?.(MANAGED_MEMORY_DEPLOY_NOTICE);
+    }
+
     // Deploy
     const hasGateways = (mcpSpec?.agentCoreGateways?.length ?? 0) > 0;
     const deployStepName = hasGateways ? 'Deploying gateways...' : 'Deploy to AWS';
     startStep(deployStepName);
 
     // Enable verbose output for resource-level events
-    if (switchableIoHost && options.onResourceEvent) {
+    if (switchableIoHost && (options.onResourceEvent || options.onDeployMessage)) {
       switchableIoHost.setOnMessage(msg => {
-        options.onResourceEvent!(msg.message);
+        options.onResourceEvent?.(msg.message);
+        options.onDeployMessage?.(msg);
       });
       switchableIoHost.setVerbose(true);
     }
 
-    await runDeploy(toolkitWrapper, targetStackName);
+    await runDeploy(toolkitWrapper, stackName);
 
     // Disable verbose output
     if (switchableIoHost) {
@@ -376,6 +555,21 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     endStep('success');
 
     if (context.isTeardownDeploy) {
+      // Clean up imperative payment credential providers (CFN stack delete handles manager/connector/roles).
+      // Harnesses are part of the CloudFormation stack, so stack destroy handles them.
+      const existingDeployedState = await configIO.readDeployedState().catch(() => undefined);
+      const existingPayments = existingDeployedState?.targets?.[target.name]?.resources?.payments;
+      if (existingPayments && Object.keys(existingPayments).length > 0) {
+        startStep('Clean up payment credentials');
+        try {
+          await cleanupPaymentCredentialProviders({ region: target.region, payments: existingPayments });
+          endStep('success');
+        } catch (cleanupErr) {
+          endStep('error', `Payment cleanup: ${getErrorMessage(cleanupErr)}`);
+          // Continue with teardown -- payment cleanup is best-effort
+        }
+      }
+
       // After deploying the empty spec, destroy the stack entirely
       startStep('Tear down stack');
       const teardown = await performStackTeardown(target.name);
@@ -385,7 +579,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         logger.finalize(false);
         return {
           success: false,
-          error: new Error(`Stack teardown failed: ${teardownError}`),
+          error: teardown.error,
           logPath: logger.getRelativeLogPath(),
         };
       }
@@ -453,22 +647,104 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const runtimeEndpoints = parseRuntimeEndpointOutputs(outputs, endpointSpecs);
 
     // Parse gateway outputs
-    const gatewaySpecs =
-      mcpSpec?.agentCoreGateways?.reduce(
-        (acc, gateway) => {
-          acc[gateway.name] = gateway;
-          return acc;
-        },
-        {} as Record<string, unknown>
-      ) ?? {};
-    const gateways = parseGatewayOutputs(outputs, gatewaySpecs);
+    const allGatewaySpecs = mcpSpec?.agentCoreGateways ?? [];
+    const gatewaySpecs = allGatewaySpecs.reduce(
+      (acc, gateway) => {
+        acc[gateway.name] = gateway;
+        return acc;
+      },
+      {} as Record<string, unknown>
+    );
+    const allGateways = parseGatewayOutputs(outputs, gatewaySpecs);
+
+    // Split into MCP and HTTP gateways based on protocolType
+    const httpGatewayNames = new Set(allGatewaySpecs.filter(g => g.protocolType === 'None').map(g => g.name));
+    const gateways: Record<string, { gatewayId: string; gatewayArn: string; gatewayUrl?: string }> = {};
+    const httpGateways: Record<
+      string,
+      { gatewayId: string; gatewayArn: string; gatewayUrl?: string; targets?: Record<string, { targetId: string }> }
+    > = {};
+    for (const [name, state] of Object.entries(allGateways)) {
+      if (httpGatewayNames.has(name)) {
+        httpGateways[name] = state;
+      } else {
+        gateways[name] = state;
+      }
+    }
+
+    // Parse dataset outputs
+    const datasetNames = (context.projectSpec.datasets ?? []).map(d => d.name);
+    const datasets = parseDatasetOutputs(outputs, datasetNames);
+
+    // Parse config bundle outputs
+    const configBundleNames = (context.projectSpec.configBundles ?? []).map(b => b.name);
+    const configBundles = parseConfigBundleOutputs(outputs, configBundleNames);
+
+    // Parse knowledge base outputs (CFN emits id+arn; DSes hydrated next via SDK).
+    const knowledgeBaseSpecs = context.projectSpec.knowledgeBases ?? [];
+    const knowledgeBaseNames = knowledgeBaseSpecs.map(kb => kb.name);
+    const knowledgeBases = parseKnowledgeBaseOutputs(outputs, knowledgeBaseNames);
+
+    if (knowledgeBaseNames.length > 0 && Object.keys(knowledgeBases).length !== knowledgeBaseNames.length) {
+      logger.log(
+        `Deployed-state missing outputs for ${
+          knowledgeBaseNames.length - Object.keys(knowledgeBases).length
+        } knowledge base(s).`,
+        'warn'
+      );
+    }
+
+    // Hydrate dataSources[] for each KB by listing DSes via bedrock-agent
+    // (the L3 doesn't emit per-DS CFN outputs).
+    if (Object.keys(knowledgeBases).length > 0) {
+      try {
+        await hydrateKnowledgeBaseDataSources({
+          knowledgeBases,
+          knowledgeBaseSpecs,
+          region: target.region,
+        });
+      } catch (err) {
+        logger.log(`Failed to hydrate knowledge base data sources: ${getErrorMessage(err)}`, 'warn');
+      }
+    }
+
+    // Parse payment outputs from CFN stack
+    const paymentSpecs = (context.projectSpec.payments ?? []).map(p => ({
+      name: p.name,
+      authorizerType: p.authorizerType,
+      autoPayment: p.autoPayment,
+      paymentToolAllowlist: p.paymentToolAllowlist,
+      networkPreferences: p.networkPreferences,
+      connectors: p.connectors.map(c => ({
+        name: c.name,
+        credentialProviderArn: deployedCredentials[c.credentialName]?.credentialProviderArn ?? '',
+        credentialProviderName: c.credentialName,
+      })),
+    }));
+    const payments = paymentSpecs.length > 0 ? parsePaymentOutputs(outputs, paymentSpecs) : undefined;
+
+    // Parse harness outputs (harnesses are now part of the CloudFormation stack).
+    const harnessNames = (context.projectSpec.harnesses ?? []).map(h => h.name);
+    const deployedHarnesses = parseHarnessOutputs(outputs, harnessNames);
+
+    endStep('success');
+
+    let deployHash: string | undefined;
+    try {
+      deployHash = await computeProjectDeployHash(configIO);
+    } catch {
+      // hash computation is best-effort
+    }
 
     const existingState = await configIO.readDeployedState().catch(() => undefined);
+    // Capture prior harness version records BEFORE the new state overwrites them, for the drift note.
+    const prevHarnessRecords = existingState?.targets?.[target.name]?.resources?.harnesses;
     let deployedState = buildDeployedState({
       targetName: target.name,
       stackName,
       agents,
       gateways,
+      httpGateways: Object.keys(httpGateways).length > 0 ? httpGateways : undefined,
       existingState,
       identityKmsKeyArn,
       credentials: deployedCredentials,
@@ -477,9 +753,51 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       onlineEvalConfigs,
       policyEngines,
       policies,
+      harnesses: deployedHarnesses,
       runtimeEndpoints,
+      datasets,
+      configBundles,
+      knowledgeBases,
+      payments,
+      abTestNames: (context.projectSpec.abTests ?? []).map(t => t.name),
     });
-    await configIO.writeDeployedState(deployedState);
+
+    if (deployHash) {
+      const targetState = deployedState.targets[target.name];
+      if (targetState?.resources) {
+        targetState.resources.deployHash = deployHash;
+      }
+    }
+
+    // CFN succeeded by this point — failing to persist deployed-state.json
+    // would leave AWS resources without a local pointer for teardown. Surface
+    // a recovery message that names the stack + region so the user can
+    // either teardown manually or re-run `agentcore status` once the local
+    // I/O issue is resolved.
+    try {
+      await configIO.writeDeployedState(deployedState);
+    } catch (writeErr) {
+      const msg = writeErr instanceof Error ? writeErr.message : String(writeErr);
+      logger.log(
+        `WARNING: deploy succeeded but writing agentcore/deployed-state.json failed: ${msg}.\n` +
+          `  Stack: ${stackName} (region: ${target.region})\n` +
+          `  AWS resources are running but the CLI cannot track them locally.\n` +
+          `  Recovery options:\n` +
+          `    1) Fix the local I/O problem (disk space / permissions on agentcore/) and run \`agentcore status\` to refresh.\n` +
+          `    2) If you want to teardown what was deployed: \`aws cloudformation delete-stack --stack-name ${stackName} --region ${target.region}\``
+      );
+      throw writeErr;
+    }
+
+    // Harness config-version drift note: the service increments Version on every successful
+    // update, so surface what changed this deploy.
+    for (const drift of computeHarnessVersionDrift(prevHarnessRecords, deployedHarnesses)) {
+      logger.log(
+        drift.from !== undefined
+          ? `Harness ${drift.name}: config updated (v${drift.from} → v${drift.to})`
+          : `Harness ${drift.name}: deployed (v${drift.to})`
+      );
+    }
 
     // Show gateway URLs and target sync status
     if (Object.keys(gateways).length > 0) {
@@ -499,10 +817,27 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     endStep('success');
 
+    const postDeployWarnings: string[] = [];
+
+    // Auto-payment is a money-movement default; surface its posture per manager
+    // so an unattended-spend configuration is never silent at deploy time. This
+    // is an informational notice, not a failure — it goes through `notes` (exit
+    // 0), NOT postDeployWarnings (which signals partial failure and exits 2).
+    const autoPaymentNotices: string[] = [];
+    for (const manager of context.projectSpec.payments ?? []) {
+      if (manager.autoPayment !== false) {
+        const limit = manager.defaultSpendLimit ?? '10.00';
+        autoPaymentNotices.push(
+          `Payment manager "${manager.name}": auto-payment is ENABLED — the agent will settle ` +
+            `402 responses automatically up to the per-session spend limit ($${limit}) with no ` +
+            `human approval. Set --auto-payment false on the manager to require manual approval.`
+        );
+      }
+    }
+
     // Post-deploy: Enable online eval configs that have enableOnCreate (CFN deploys them as DISABLED).
     // Only enable configs that are newly deployed — skip configs that already existed before this
     // deploy run, so we don't re-enable configs a customer intentionally disabled.
-    const postDeployWarnings: string[] = [];
     const onlineEvalFullSpecs = context.projectSpec.onlineEvalConfigs ?? [];
     const deployedOnlineEvalConfigs = deployedState.targets?.[target.name]?.resources?.onlineEvalConfigs ?? {};
     const previouslyDeployedOnlineEvals = existingState?.targets?.[target.name]?.resources?.onlineEvalConfigs ?? {};
@@ -522,142 +857,98 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       }
     }
 
-    // Pre-gateway: Delete orphaned AB tests so their gateway rules are cleaned up
-    // before we attempt to delete orphaned HTTP gateways.
-    const existingABTestsForCleanup = deployedState.targets?.[target.name]?.resources?.abTests;
-    if (existingABTestsForCleanup && Object.keys(existingABTestsForCleanup).length > 0) {
-      const deleteResult = await deleteOrphanedABTests({
+    // Post-deploy: Sync dataset examples from local JSONL to service DRAFT.
+    // Uses a local content hash to skip unchanged files (hybrid approach).
+    const datasetSpecs = context.projectSpec.datasets ?? [];
+    const deployedDatasetsRecord = deployedState.targets?.[target.name]?.resources?.datasets ?? {};
+    if (datasetSpecs.length > 0 && Object.keys(deployedDatasetsRecord).length > 0) {
+      const datasetSyncResult = await syncDatasets({
         region: target.region,
-        projectSpec: context.projectSpec,
-        existingABTests: existingABTestsForCleanup,
+        datasets: datasetSpecs,
+        deployedDatasets: deployedDatasetsRecord,
+        configBaseDir: configIO.getConfigRoot(),
       });
 
-      if (deleteResult.hasErrors) {
-        const errors = deleteResult.results.filter(r => r.status === 'error');
-        const errorMessages = errors.map(err => `"${err.testName}": ${err.error}`).join('; ');
-        logger.log(`AB test orphan cleanup warnings: ${errorMessages}`, 'warn');
-        postDeployWarnings.push(...errors.map(err => `AB test "${err.testName}": ${err.error}`));
-      }
-
-      // Surface warnings (e.g., "AB test was stopped before deletion")
-      for (const r of deleteResult.results) {
-        if (r.warning) {
-          logger.log(r.warning, 'warn');
-          postDeployWarnings.push(r.warning);
+      // Update deployed state with new content hashes
+      if (datasetSyncResult.results.some(r => r.status === 'synced')) {
+        const updatedState = await configIO.readDeployedState().catch(() => deployedState);
+        const targetResources = updatedState.targets[target.name]?.resources;
+        if (targetResources) {
+          targetResources.datasets = datasetSyncResult.updatedDatasets;
+          await configIO.writeDeployedState(updatedState);
+          deployedState = updatedState;
         }
       }
 
-      // Update deployed state to remove deleted AB tests
-      if (deleteResult.results.some(r => r.status === 'deleted')) {
-        const updatedState = await configIO.readDeployedState().catch(() => deployedState);
-        const targetResources = updatedState.targets[target.name]?.resources;
-        if (targetResources?.abTests) {
-          for (const r of deleteResult.results) {
-            if (r.status === 'deleted') delete targetResources.abTests[r.testName];
+      if (datasetSyncResult.hasErrors) {
+        const errors = datasetSyncResult.results.filter(r => r.status === 'error');
+        const errorMessages = errors.map(err => `"${err.datasetName}": ${err.error}`).join('; ');
+        logger.log(`Dataset sync warnings: ${errorMessages}`, 'warn');
+        postDeployWarnings.push(...errors.map(err => `Dataset "${err.datasetName}": ${err.error}`));
+      }
+
+      for (const r of datasetSyncResult.results) {
+        if (r.status === 'synced') {
+          logger.log(`Dataset "${r.datasetName}": +${r.added} added, ~${r.updated} updated, -${r.deleted} deleted`);
+        }
+      }
+    }
+
+    // Post-deploy: auto-trigger ingestion for any KB whose data-source URIs
+    // changed since the last deploy (or has never been ingested before).
+    const knowledgeBaseSpecsForIngest = context.projectSpec.knowledgeBases ?? [];
+    if (knowledgeBaseSpecsForIngest.length > 0) {
+      startStep('Auto-ingest knowledge bases');
+      const ingestResult = await autoIngestKnowledgeBases({
+        region: target.region,
+        knowledgeBases: knowledgeBaseSpecsForIngest,
+        deployedKnowledgeBases: deployedState.targets?.[target.name]?.resources?.knowledgeBases ?? {},
+        previousKnowledgeBases: existingState?.targets?.[target.name]?.resources?.knowledgeBases,
+        targetName: target.name,
+        deployedState,
+        onProgress: msg => logger.log(msg),
+      });
+
+      // Persist new sourcesHash values for KBs whose ingestion fired.
+      const targetResources = deployedState.targets[target.name]?.resources;
+      if (targetResources?.knowledgeBases) {
+        for (const r of ingestResult.results) {
+          if (r.status === 'started' && r.newSourcesHash) {
+            const record = targetResources.knowledgeBases[r.knowledgeBaseName];
+            if (record) record.sourcesHash = r.newSourcesHash;
           }
-          await configIO.writeDeployedState(updatedState);
-          deployedState = updatedState;
+        }
+        await configIO.writeDeployedState(deployedState);
+      }
+
+      // Log per-KB result so the user sees what happened.
+      for (const r of ingestResult.results) {
+        if (r.status === 'started') {
+          logger.log(
+            `Knowledge base "${r.knowledgeBaseName}": ingestion started for ${r.startedJobCount} data source(s)`
+          );
+        } else if (r.status === 'skipped') {
+          logger.log(`Knowledge base "${r.knowledgeBaseName}": skipped (${r.reason})`);
+        } else {
+          logger.log(`Knowledge base "${r.knowledgeBaseName}": ${r.error}`, 'warn');
+          postDeployWarnings.push(`Knowledge base "${r.knowledgeBaseName}": ${r.error}`);
         }
       }
+      endStep(ingestResult.hasErrors ? 'error' : 'success');
     }
 
-    // Post-deploy: Create/update HTTP gateways for AB tests (must run BEFORE config bundles
-    // because config bundle component keys may reference gateway ARNs)
-    const httpGatewaySpecs = context.projectSpec.httpGateways ?? [];
-    const existingHttpGateways = deployedState.targets?.[target.name]?.resources?.httpGateways;
-    if (httpGatewaySpecs.length > 0 || Object.keys(existingHttpGateways ?? {}).length > 0) {
-      const deployedResources = deployedState.targets?.[target.name]?.resources;
-      const httpGatewayResult = await setupHttpGateways({
-        region: target.region,
-        projectName: context.projectSpec.name,
-        projectSpec: context.projectSpec,
-        existingHttpGateways,
-        deployedResources,
-      });
-
-      // Always merge HTTP gateway state (even if empty, to clear deleted gateways)
-      const updatedState = await configIO.readDeployedState().catch(() => deployedState);
-      const targetResources = updatedState.targets[target.name]?.resources;
-      if (targetResources) {
-        targetResources.httpGateways = httpGatewayResult.httpGateways;
-        await configIO.writeDeployedState(updatedState);
-        deployedState = updatedState;
-      }
-
-      if (httpGatewayResult.hasErrors) {
-        const errors = httpGatewayResult.results.filter(r => r.status === 'error');
-        const errorMessages = errors.map(err => `"${err.gatewayName}": ${err.error}`).join('; ');
-        logger.log(`HTTP gateway setup warnings: ${errorMessages}`, 'warn');
-        postDeployWarnings.push(...errors.map(err => `HTTP gateway "${err.gatewayName}": ${err.error}`));
-      }
-    }
-
-    // Post-deploy: Create/update configuration bundles
-    const configBundleSpecs = context.projectSpec.configBundles ?? [];
-    if (configBundleSpecs.length > 0) {
-      // Resolve component key placeholders (e.g., {{gateway:name}} → real ARN)
-      const resolvedProjectSpec = resolveConfigBundleComponentKeys(context.projectSpec, deployedState, target.name);
-
-      const existingConfigBundles = deployedState.targets?.[target.name]?.resources?.configBundles;
-      const configBundleResult = await setupConfigBundles({
-        region: target.region,
-        projectSpec: resolvedProjectSpec,
-        existingBundles: existingConfigBundles,
-      });
-
-      // Merge config bundle state into deployed state
-      if (Object.keys(configBundleResult.configBundles).length > 0) {
-        const updatedState = await configIO.readDeployedState().catch(() => deployedState);
-        const targetResources = updatedState.targets[target.name]?.resources;
-        if (targetResources) {
-          targetResources.configBundles = configBundleResult.configBundles;
-          await configIO.writeDeployedState(updatedState);
-          deployedState = updatedState;
-        }
-      }
-
-      if (configBundleResult.hasErrors) {
-        const errors = configBundleResult.results.filter(r => r.status === 'error');
-        const errorMessages = errors.map(err => `"${err.bundleName}": ${err.error}`).join('; ');
-        logger.log(`Config bundle setup warnings: ${errorMessages}`, 'warn');
-        postDeployWarnings.push(...errors.map(err => `Config bundle "${err.bundleName}": ${err.error}`));
-      }
-    }
-
-    // Post-deploy: Create/update AB tests
-    const abTestSpecs = context.projectSpec.abTests ?? [];
-    if (abTestSpecs.length > 0) {
-      const existingABTests = deployedState.targets?.[target.name]?.resources?.abTests;
-      const deployedResources = deployedState.targets?.[target.name]?.resources;
-      const abTestResult = await setupABTests({
-        region: target.region,
-        projectSpec: context.projectSpec,
-        existingABTests,
-        deployedResources,
-      });
-
-      // Merge AB test state into deployed state
-      if (Object.keys(abTestResult.abTests).length > 0) {
-        const updatedState = await configIO.readDeployedState().catch(() => deployedState);
-        const targetResources = updatedState.targets[target.name]?.resources;
-        if (targetResources) {
-          targetResources.abTests = abTestResult.abTests;
-          await configIO.writeDeployedState(updatedState);
-        }
-      }
-
-      if (abTestResult.hasErrors) {
-        const errors = abTestResult.results.filter(r => r.status === 'error');
-        const errorMessages = errors.map(err => `"${err.testName}": ${err.error}`).join('; ');
-        logger.log(`AB test setup warnings: ${errorMessages}`, 'warn');
-        postDeployWarnings.push(...errors.map(err => `AB test "${err.testName}": ${err.error}`));
-      }
-    }
+    // Config bundles are now managed via CloudFormation; their state is parsed
+    // from stack outputs above (no post-deploy API step). AB tests are managed
+    // as fire-and-forget jobs (agentcore run ab-test), not via the deploy path.
 
     // Post-deploy: Enable CloudWatch Transaction Search (non-blocking, silent)
-    const nextSteps = agentNames.length > 0 ? [...AGENT_NEXT_STEPS] : [...MEMORY_ONLY_NEXT_STEPS];
-    const notes: string[] = [];
-    if (agentNames.length > 0 || hasGateways) {
+    const hasHarnesses = (context.projectSpec.harnesses ?? []).length > 0;
+    const hasInvokable = agentNames.length > 0 || hasHarnesses;
+    const nextSteps = hasInvokable ? [...AGENT_NEXT_STEPS] : [...MEMORY_ONLY_NEXT_STEPS];
+    const notes: string[] = [...autoPaymentNotices];
+    const hasPythonAgent =
+      context.projectSpec.runtimes?.some(a => a.entrypoint?.endsWith('.py') || a.entrypoint?.includes('.py:')) ?? false;
+    if ((agentNames.length > 0 || hasGateways) && hasPythonAgent) {
       try {
         const tsResult = await setupTransactionSearch({
           region: target.region,
@@ -679,6 +970,10 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     logger.finalize(true);
 
+    // Surface orphan-harness warnings (collected pre-deploy) to the terminal alongside any
+    // post-deploy warnings — logger.log only writes to the log file.
+    const allWarnings = [...orphanWarnings, ...postDeployWarnings];
+
     return {
       success: true,
       targetName: target.name,
@@ -687,26 +982,31 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       logPath: logger.getRelativeLogPath(),
       nextSteps,
       notes,
-      postDeployWarnings: postDeployWarnings.length > 0 ? postDeployWarnings : undefined,
+      postDeployWarnings: allWarnings.length > 0 ? allWarnings : undefined,
     };
   } catch (err: unknown) {
     logger.log(getErrorMessage(err), 'error');
     logger.finalize(false);
     return { success: false, error: toError(err), logPath: logger.getRelativeLogPath() };
   } finally {
+    // Each cleanup step must run regardless of whether an earlier one fails — a throw from
+    // dispose() (common after a synth/bootstrap failure on a creds-less preview) must not skip the
+    // vpcId-backfill revert or the env restore. Isolate each with try/catch.
     if (toolkitWrapper) {
-      await toolkitWrapper.dispose();
+      try {
+        await toolkitWrapper.dispose();
+      } catch (disposeErr) {
+        logger.log(`CDK toolkit dispose failed: ${getErrorMessage(disposeErr)}`, 'warn');
+      }
+    }
+    // Revert the preview-mode vpcId backfill on every exit path (success, early return, or throw).
+    if (previewRestore) {
+      try {
+        await previewRestore();
+      } catch (restoreErr) {
+        logger.log(`Failed to revert preview vpcId backfill: ${getErrorMessage(restoreErr)}`, 'warn');
+      }
     }
     restoreEnv?.();
   }
 }
-
-/**
- * Resolve config bundle component key placeholders to real ARNs.
- *
- * Component keys like {{gateway:name}} or {{runtime:name}} are replaced
- * with the actual ARNs from deployed state. Keys that are already ARNs or
- * don't match a placeholder pattern are left unchanged.
- */
-// resolveConfigBundleComponentKeys and resolveComponentKey moved to
-// src/cli/operations/deploy/post-deploy-config-bundles.ts

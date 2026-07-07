@@ -60,3 +60,104 @@ describe('computeByoSteps - dockerfile', () => {
     expect(steps).not.toContain('networkMode');
   });
 });
+
+describe('computeByoSteps - vpcId (Container + VPC)', () => {
+  it('Container + VPC includes vpcId immediately after securityGroups', () => {
+    const steps = computeByoSteps(
+      makeInput({
+        buildType: 'Container',
+        networkMode: 'VPC',
+        advancedSettings: new Set<AdvancedSettingId>(['network']),
+      })
+    );
+    const advIdx = steps.indexOf('advanced');
+    expect(steps.slice(advIdx)).toEqual(['advanced', 'networkMode', 'subnets', 'securityGroups', 'vpcId', 'confirm']);
+  });
+
+  it('CodeZip + VPC does NOT include vpcId', () => {
+    const steps = computeByoSteps(
+      makeInput({
+        buildType: 'CodeZip',
+        networkMode: 'VPC',
+        advancedSettings: new Set<AdvancedSettingId>(['network']),
+      })
+    );
+    expect(steps).toContain('subnets');
+    expect(steps).toContain('securityGroups');
+    expect(steps).not.toContain('vpcId');
+  });
+
+  it('Container + PUBLIC does NOT include vpcId (or subnets/securityGroups)', () => {
+    const steps = computeByoSteps(
+      makeInput({
+        buildType: 'Container',
+        networkMode: 'PUBLIC',
+        advancedSettings: new Set<AdvancedSettingId>(['network']),
+      })
+    );
+    expect(steps).not.toContain('vpcId');
+    expect(steps).not.toContain('subnets');
+    expect(steps).not.toContain('securityGroups');
+  });
+});
+
+describe('computeByoSteps - filesystem', () => {
+  it('filesystem without VPC: includes all filesystem steps (EFS/S3 shown with VPC warning)', () => {
+    const steps = computeByoSteps(
+      makeInput({
+        networkMode: 'PUBLIC',
+        advancedSettings: new Set<AdvancedSettingId>(['filesystem']),
+      })
+    );
+    const advIdx = steps.indexOf('advanced');
+    expect(steps.slice(advIdx)).toEqual([
+      'advanced',
+      'sessionStorageMountPath',
+      'efsArn',
+      'efsMountPath',
+      'efsAddAnother',
+      's3Arn',
+      's3MountPath',
+      's3AddAnother',
+      'confirm',
+    ]);
+  });
+
+  it('filesystem with VPC: includes sessionStorageMountPath + EFS + S3 steps', () => {
+    const steps = computeByoSteps(
+      makeInput({
+        networkMode: 'VPC',
+        advancedSettings: new Set<AdvancedSettingId>(['network', 'filesystem']),
+      })
+    );
+    const advIdx = steps.indexOf('advanced');
+    expect(steps.slice(advIdx)).toEqual([
+      'advanced',
+      'networkMode',
+      'subnets',
+      'securityGroups',
+      'sessionStorageMountPath',
+      'efsArn',
+      'efsMountPath',
+      'efsAddAnother',
+      's3Arn',
+      's3MountPath',
+      's3AddAnother',
+      'confirm',
+    ]);
+  });
+
+  it('filesystem selected but VPC not selected: EFS/S3 steps still present', () => {
+    const steps = computeByoSteps(
+      makeInput({
+        networkMode: 'PUBLIC',
+        advancedSettings: new Set<AdvancedSettingId>(['network', 'filesystem']),
+      })
+    );
+    expect(steps).toContain('sessionStorageMountPath');
+    expect(steps).toContain('efsArn');
+    expect(steps).toContain('efsAddAnother');
+    expect(steps).toContain('s3Arn');
+    expect(steps).toContain('s3AddAnother');
+  });
+});

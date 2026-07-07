@@ -185,7 +185,7 @@ describe('toGatewayTargetSpec — mcpServer targets', () => {
     const result = toGatewayTargetSpec(detail, credentials, onProgress);
 
     expect(result).toBeUndefined();
-    expect(onProgress).toHaveBeenCalledWith(expect.stringContaining('no MCP configuration'));
+    expect(onProgress).toHaveBeenCalledWith(expect.stringContaining('no MCP or HTTP configuration'));
   });
 });
 

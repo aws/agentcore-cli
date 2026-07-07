@@ -35,8 +35,12 @@ function extractProgress(messages: DeployMessage[]): { current: number; total: n
  * Progress bar component.
  */
 function ProgressBar({ current, total }: { current: number; total: number }) {
-  const percent = total > 0 ? current / total : 0;
-  const filled = Math.round(percent * PROGRESS_BAR_WIDTH);
+  // CDK toolkit can briefly emit completed > total during graph expansion.
+  // Clamp here so the bar never asks String.repeat for a negative count.
+  const safeTotal = total > 0 ? total : 0;
+  const safeCurrent = Math.max(0, Math.min(current, safeTotal));
+  const percent = safeTotal > 0 ? safeCurrent / safeTotal : 0;
+  const filled = Math.min(PROGRESS_BAR_WIDTH, Math.max(0, Math.round(percent * PROGRESS_BAR_WIDTH)));
   const empty = PROGRESS_BAR_WIDTH - filled;
 
   return (
@@ -47,7 +51,7 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
       <Text color="cyan">]</Text>
       <Text>
         {' '}
-        {current}/{total}
+        {safeCurrent}/{safeTotal}
       </Text>
     </Box>
   );
@@ -62,7 +66,13 @@ type ResourceStatus =
   | 'UPDATE_FAILED'
   | 'DELETE_IN_PROGRESS'
   | 'DELETE_COMPLETE'
-  | 'DELETE_FAILED';
+  | 'DELETE_FAILED'
+  | 'ROLLBACK_IN_PROGRESS'
+  | 'ROLLBACK_COMPLETE'
+  | 'ROLLBACK_FAILED'
+  | 'UPDATE_ROLLBACK_IN_PROGRESS'
+  | 'UPDATE_ROLLBACK_COMPLETE'
+  | 'UPDATE_ROLLBACK_FAILED';
 
 interface ParsedResource {
   resourceType: string;
@@ -71,8 +81,16 @@ interface ParsedResource {
 
 /**
  * Get color for a resource status.
+ *
+ * Rollback states are checked first: in CloudFormation a ROLLBACK indicates a
+ * failed deploy whose changes are being reverted, so even a "clean" finish
+ * (ROLLBACK_COMPLETE / UPDATE_ROLLBACK_COMPLETE) is a failure, not a success.
+ * Coloring those green would mislead the user (see #1610). A failed rollback is
+ * the worst case (red); an in-progress or completed rollback signals
+ * "recovering from failure" (yellow).
  */
 function getStatusColor(status: ResourceStatus): string | undefined {
+  if (status.includes('ROLLBACK')) return status.endsWith('_FAILED') ? 'red' : 'yellow';
   if (status.endsWith('_COMPLETE')) return 'green';
   if (status.endsWith('_FAILED')) return 'red';
   if (status.endsWith('_IN_PROGRESS')) return 'cyan';
@@ -99,7 +117,7 @@ function parseResourceMessage(msg: DeployMessage): ParsedResource | null {
   // Format: "StackName | STATUS | AWS::Service::Resource | LogicalId"
   const resourceMatch = /(AWS::\S+)/.exec(text);
   const statusMatch =
-    /(CREATE_IN_PROGRESS|CREATE_COMPLETE|CREATE_FAILED|UPDATE_IN_PROGRESS|UPDATE_COMPLETE|UPDATE_FAILED|DELETE_IN_PROGRESS|DELETE_COMPLETE|DELETE_FAILED)/.exec(
+    /(UPDATE_ROLLBACK_IN_PROGRESS|UPDATE_ROLLBACK_COMPLETE|UPDATE_ROLLBACK_FAILED|ROLLBACK_IN_PROGRESS|ROLLBACK_COMPLETE|ROLLBACK_FAILED|CREATE_IN_PROGRESS|CREATE_COMPLETE|CREATE_FAILED|UPDATE_IN_PROGRESS|UPDATE_COMPLETE|UPDATE_FAILED|DELETE_IN_PROGRESS|DELETE_COMPLETE|DELETE_FAILED)/.exec(
       text
     );
 

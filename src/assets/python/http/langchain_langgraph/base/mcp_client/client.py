@@ -32,23 +32,25 @@ def get_all_gateway_mcp_client() -> MultiServerMCPClient | None:
     {{#each gatewayProviders}}
     url = os.environ.get("{{envVarName}}")
     if url:
-        {{#if (eq authType "AWS_IAM")}}
+{{#if (eq authType "AWS_IAM")}}
         session = create_aws_session()
         auth = SigV4HTTPXAuth(session.get_credentials(), "bedrock-agentcore", session.region_name)
-        servers["{{name}}"] = {"transport": "streamable_http", "url": url, "auth": auth}
-        {{else if (eq authType "CUSTOM_JWT")}}
+        servers["{{snakeCase name}}"] = {"transport": "streamable_http", "url": url, "auth": auth}
+{{else if (eq authType "CUSTOM_JWT")}}
         token = _get_bearer_token_{{snakeCase name}}()
         headers = {"Authorization": f"Bearer {token}"} if token else None
-        servers["{{name}}"] = {"transport": "streamable_http", "url": url, "headers": headers}
-        {{else}}
-        servers["{{name}}"] = {"transport": "streamable_http", "url": url}
-        {{/if}}
+        servers["{{snakeCase name}}"] = {"transport": "streamable_http", "url": url, "headers": headers}
+{{else}}
+        servers["{{snakeCase name}}"] = {"transport": "streamable_http", "url": url}
+{{/if}}
     else:
         logger.warning("{{envVarName}} not set — {{name}} gateway tools unavailable")
     {{/each}}
     if not servers:
         return None
-    return MultiServerMCPClient(servers)
+    # tool_name_prefix namespaces each gateway's tools by server key so multiple
+    # gateways exposing the same tool (e.g. x_amz_bedrock_agentcore_search) don't collide.
+    return MultiServerMCPClient(servers, tool_name_prefix=True)
 {{else}}
 {{#if isVpc}}
 # VPC mode: external MCP endpoints are not reachable without a NAT gateway.

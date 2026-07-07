@@ -1,4 +1,5 @@
-import { ConnectionError, type InvokeStreamingOptions, type SSELogger, ServerError } from './invoke-types';
+import { DevServerConnectionError, DevServerError } from '../../../lib/errors/types';
+import { type InvokeStreamingOptions, type SSELogger } from './invoke-types';
 import { isConnectionError, sleep } from './utils';
 import { randomUUID } from 'crypto';
 
@@ -90,7 +91,7 @@ export async function* invokeA2AStreaming(options: InvokeStreamingOptions): Asyn
 
       if (!res.ok) {
         const responseBody = await res.text();
-        throw new ServerError(res.status, responseBody);
+        throw new DevServerError(res.status, responseBody);
       }
 
       const contentType = res.headers.get('content-type') ?? '';
@@ -110,7 +111,7 @@ export async function* invokeA2AStreaming(options: InvokeStreamingOptions): Asyn
 
         if (json.error) {
           const rpcError = json.error as { message?: string; code?: number };
-          throw new ServerError(rpcError.code ?? 500, rpcError.message ?? 'A2A RPC error');
+          throw new DevServerError(rpcError.code ?? 500, rpcError.message ?? 'A2A RPC error');
         }
 
         const result = json.result as Record<string, unknown> | undefined;
@@ -125,13 +126,13 @@ export async function* invokeA2AStreaming(options: InvokeStreamingOptions): Asyn
           yield responseText;
         }
       } catch (e) {
-        if (e instanceof ServerError) throw e;
+        if (e instanceof DevServerError) throw e;
         yield responseText;
       }
 
       return;
     } catch (err) {
-      if (err instanceof ServerError) {
+      if (err instanceof DevServerError) {
         logger?.log?.('error', `Server error (${err.statusCode}): ${err.message}`);
         throw err;
       }
@@ -153,7 +154,12 @@ export async function* invokeA2AStreaming(options: InvokeStreamingOptions): Asyn
     }
   }
 
-  const finalError = new ConnectionError(lastError ?? new Error('Failed to connect to A2A server after retries'));
+  const finalError = new DevServerConnectionError(
+    lastError?.message ?? 'Failed to connect to A2A server after retries',
+    {
+      cause: lastError,
+    }
+  );
   logger?.log?.('error', `Failed to connect after ${maxRetries} attempts: ${finalError.message}`);
   throw finalError;
 }

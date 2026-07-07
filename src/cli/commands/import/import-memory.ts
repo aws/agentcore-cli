@@ -1,7 +1,9 @@
 import type { Memory } from '../../../schema';
+import { IndexedKeyTypeSchema } from '../../../schema';
 import type { MemoryDetail, MemorySummary } from '../../aws/agentcore-control';
 import { getMemoryDetail, listAllMemories } from '../../aws/agentcore-control';
-import { ANSI } from './constants';
+import { ANSI } from '../../constants';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { parseAndValidateArn } from './import-utils';
 import { executeResourceImport } from './resource-import';
 import type { ImportResourceOptions, ImportResourceResult, ResourceImportDescriptor } from './types';
@@ -42,21 +44,39 @@ function filterInternalNamespaces(namespaces: string[]): string[] {
 function toMemorySpec(memory: MemoryDetail, localName: string): Memory {
   const strategies: Memory['strategies'] = memory.strategies.map(s => {
     const mappedType = mapStrategyType(s.type);
-    const filteredNamespaces = s.namespaces ? filterInternalNamespaces(s.namespaces) : [];
+    const filteredTemplates = s.namespaceTemplates ? filterInternalNamespaces(s.namespaceTemplates) : [];
     return {
       type: mappedType as Memory['strategies'][number]['type'],
       ...(s.name && { name: s.name }),
       ...(s.description && { description: s.description }),
-      ...(filteredNamespaces.length > 0 && { namespaces: filteredNamespaces }),
-      ...(s.reflectionNamespaces &&
-        s.reflectionNamespaces.length > 0 && { reflectionNamespaces: s.reflectionNamespaces }),
+      ...(filteredTemplates.length > 0 && { namespaceTemplates: filteredTemplates }),
+      ...(s.reflectionNamespaceTemplates &&
+        s.reflectionNamespaceTemplates.length > 0 && {
+          reflectionNamespaceTemplates: s.reflectionNamespaceTemplates,
+        }),
     };
   });
+
+  // Validate each indexed key's type against our enum. Drop
+  // entries whose type is not one we recognize with a warning
+  const indexedKeys: Memory['indexedKeys'] = memory.indexedKeys
+    ?.flatMap(k => {
+      const parsedType = IndexedKeyTypeSchema.safeParse(k.type);
+      if (!parsedType.success) {
+        console.warn(
+          `${ANSI.yellow}[warn]${ANSI.reset} Skipping indexed key "${k.key}" with unrecognised type "${k.type}".`
+        );
+        return [];
+      }
+      return [{ key: k.key, type: parsedType.data }];
+    })
+    .filter(Boolean);
 
   return {
     name: localName,
     eventExpiryDuration: Math.max(3, Math.min(365, memory.eventExpiryDuration)),
     strategies,
+    ...(indexedKeys && indexedKeys.length > 0 && { indexedKeys }),
     ...(memory.tags && Object.keys(memory.tags).length > 0 && { tags: memory.tags }),
     ...(memory.encryptionKeyArn && { encryptionKeyArn: memory.encryptionKeyArn }),
     ...(memory.executionRoleArn && { executionRoleArn: memory.executionRoleArn }),
@@ -85,6 +105,7 @@ const memoryDescriptor: ResourceImportDescriptor<MemoryDetail, MemorySummary> = 
   getExistingNames: spec => (spec.memories ?? []).map(m => m.name),
   addToProjectSpec: (detail, localName, spec) => {
     (spec.memories ??= []).push(toMemorySpec(detail, localName));
+    return { success: true, resourceType: 'memory', resourceName: localName };
   },
 
   cfnResourceType: 'AWS::BedrockAgentCore::Memory',
@@ -112,7 +133,7 @@ export function registerImportMemory(importCmd: Command): void {
     .option('--name <name>', 'Local name for the imported memory')
     .option('-y, --yes', 'Auto-confirm prompts')
     .action(async (cliOptions: ImportResourceOptions) => {
-      const result = await handleImportMemory(cliOptions);
+      const result = await withCommandRunTelemetry('import.memory', {}, () => handleImportMemory(cliOptions));
 
       if (result.success) {
         console.log('');

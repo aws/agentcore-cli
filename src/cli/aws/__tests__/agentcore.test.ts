@@ -1,5 +1,14 @@
-import { buildBearerInvokeHeaders, extractResult, parseA2AResponse, parseSSE, parseSSELine } from '../agentcore.js';
+import {
+  buildBearerInvokeHeaders,
+  buildInvokePayload,
+  extractResult,
+  parseA2AResponse,
+  parseSSE,
+  parseSSELine,
+} from '../agentcore.js';
 import { describe, expect, it } from 'vitest';
+
+const BASE = { region: 'us-east-1', runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r' };
 
 describe('parseSSELine', () => {
   it('returns null content for non-data lines', () => {
@@ -28,6 +37,24 @@ describe('parseSSELine', () => {
 
   it('returns null for non-string non-error JSON objects', () => {
     const result = parseSSELine('data: {"key": "value"}');
+    expect(result.content).toBeNull();
+    expect(result.error).toBeNull();
+  });
+
+  it('extracts text delta from ConverseStream-shaped events', () => {
+    const result = parseSSELine('data: {"event": {"contentBlockDelta": {"delta": {"text": "Hello"}}}}');
+    expect(result.content).toBe('Hello');
+    expect(result.error).toBeNull();
+  });
+
+  it('preserves whitespace-only text deltas', () => {
+    const result = parseSSELine('data: {"event": {"contentBlockDelta": {"delta": {"text": " "}}}}');
+    expect(result.content).toBe(' ');
+    expect(result.error).toBeNull();
+  });
+
+  it('returns null for ConverseStream events without a text delta', () => {
+    const result = parseSSELine('data: {"event": {"messageStop": {"stopReason": "end_turn"}}}');
     expect(result.content).toBeNull();
     expect(result.error).toBeNull();
   });
@@ -214,5 +241,41 @@ describe('buildBearerInvokeHeaders', () => {
   it('returns correct headers when options.headers is undefined', () => {
     const headers = buildBearerInvokeHeaders({ bearerToken: 'tok' }, 'application/json');
     expect(Object.keys(headers)).toHaveLength(4); // Authorization, Content-Type, Accept, User-Id
+  });
+});
+
+describe('buildInvokePayload', () => {
+  it('is byte-identical to the pre-payment wire format when no payment fields are set', () => {
+    // Backward-compat guard: every already-deployed agent depends on this shape.
+    expect(buildInvokePayload({ ...BASE, payload: 'hello world' })).toBe('{"prompt":"hello world"}');
+  });
+
+  it('writes payment fields as snake_case keys the agent reads (never camelCase)', () => {
+    // The agent reads payload.user_id / payment_instrument_id / payment_session_id.
+    // A camelCase slip would serialize silently and the agent would ignore it.
+    const result = buildInvokePayload({
+      ...BASE,
+      payload: 'test',
+      userId: 'runtime-user', // runtime/Identity header axis — must NOT reach the body
+      paymentUserId: 'wallet-owner',
+      paymentInstrumentId: 'instr-1',
+      paymentSessionId: 'sess-1',
+    });
+    expect(JSON.parse(result)).toEqual({
+      prompt: 'test',
+      user_id: 'wallet-owner',
+      payment_instrument_id: 'instr-1',
+      payment_session_id: 'sess-1',
+    });
+    // Neither the camelCase option names nor the runtime userId leak onto the wire.
+    expect(result).not.toMatch(/userId|payment[A-Z]|runtimeArn|region/);
+  });
+
+  it('omits user_id when no payments identity is resolved (no baked-in default-user)', () => {
+    // We must NOT write user_id: "default-user" ourselves — the agent applies that
+    // fallback. Baking it into the body would defeat the no-user-id warning.
+    const result = buildInvokePayload({ ...BASE, payload: 'test', paymentInstrumentId: 'i' });
+    expect(JSON.parse(result)).toEqual({ prompt: 'test', payment_instrument_id: 'i' });
+    expect(result).not.toContain('user_id');
   });
 });

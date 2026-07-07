@@ -1,7 +1,8 @@
 import type { AgentEnvSpec } from '../../../schema';
 import type { AgentRuntimeDetail, AgentRuntimeSummary } from '../../aws/agentcore-control';
 import { getAgentRuntimeDetail, listAllAgentRuntimes } from '../../aws/agentcore-control';
-import { ANSI } from './constants';
+import { ANSI } from '../../constants';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { copyAgentSource, failResult, parseAndValidateArn } from './import-utils';
 import { executeResourceImport } from './resource-import';
 import type { ImportResourceResult, ResourceImportDescriptor, RuntimeImportOptions } from './types';
@@ -111,6 +112,7 @@ function createRuntimeDescriptor(
     getExistingNames: spec => spec.runtimes.map(r => r.name),
     addToProjectSpec: (detail, localName, spec) => {
       spec.runtimes.push(toAgentEnvSpec(detail, localName, resolvedCodeLocation, resolvedEntrypoint));
+      return { success: true, resourceType: 'runtime', resourceName: localName };
     },
 
     cfnResourceType: 'AWS::BedrockAgentCore::Runtime',
@@ -211,7 +213,7 @@ export function registerImportRuntime(importCmd: Command): void {
     .option('--name <name>', 'Local name for the imported runtime')
     .option('-y, --yes', 'Auto-confirm prompts')
     .action(async (cliOptions: RuntimeImportOptions) => {
-      const result = await handleImportRuntime(cliOptions);
+      const result = await withCommandRunTelemetry('import.runtime', {}, () => handleImportRuntime(cliOptions));
 
       if (result.success) {
         console.log('');

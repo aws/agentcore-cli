@@ -7,10 +7,13 @@ import type {
   Credential,
   Memory,
 } from '../../../schema';
+import { isContainerBuild } from '../../../schema/constants';
 import { validateAwsCredentials } from '../../aws/account';
 import { arnPrefix } from '../../aws/partition';
+import { ANSI, PYTHON_BASE_IMAGE } from '../../constants';
 import { ExecLogger } from '../../logging';
 import { setupPythonProject } from '../../operations/python/setup';
+import { resolveVpcIdFromSubnets } from '../shared/vpc-utils';
 import { executeCdkImportPipeline } from './import-pipeline';
 import { copyDirRecursive, fixPyprojectForSetuptools, toStackName } from './import-utils';
 import { findLogicalIdByProperty, findLogicalIdsByType } from './template-utils';
@@ -200,7 +203,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
           logger.finalize(false);
           return {
             success: false,
-            error: new Error(error),
+            error: new ValidationError(error),
             logPath: logger.getRelativeLogPath(),
           };
         }
@@ -224,7 +227,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
           logger.finalize(false);
           return {
             success: false,
-            error: new Error(error),
+            error: new ValidationError(error),
             logPath: logger.getRelativeLogPath(),
           };
         }
@@ -238,7 +241,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         logger.finalize(false);
         return {
           success: false,
-          error: new Error(error),
+          error: new ValidationError(error),
           logPath: logger.getRelativeLogPath(),
         };
       }
@@ -315,8 +318,8 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
         const cdkEnvVar = `MEMORY_${mem.name.toUpperCase().replace(/[.-]/g, '_')}_ID`;
         const warnMsg =
           `Warning: Memory "${mem.name}" env var must be updated in your agent code:\n` +
-          `  \x1b[31m- MEMORY_ID = os.getenv("BEDROCK_AGENTCORE_MEMORY_ID")\x1b[0m\n` +
-          `  \x1b[32m+ MEMORY_ID = os.getenv("${cdkEnvVar}")\x1b[0m`;
+          `  ${ANSI.red}- MEMORY_ID = os.getenv("BEDROCK_AGENTCORE_MEMORY_ID")${ANSI.reset}\n` +
+          `  ${ANSI.green}+ MEMORY_ID = os.getenv("${cdkEnvVar}")${ANSI.reset}`;
         logger.log(`Memory "${mem.name}" env var must be updated: use ${cdkEnvVar}`, 'warn');
         onProgress?.(warnMsg);
       }
@@ -331,6 +334,31 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
       } else {
         logger.log(`Skipping credential "${cred.name}" (already exists in project)`);
         onProgress?.(`Skipping credential "${cred.name}" (already exists in project)`);
+      }
+    }
+
+    // Resolve vpcId for any Container+VPC agents that don't have it yet.
+    // The starter-toolkit YAML omits vpc_id; we resolve it from the first subnet via DescribeSubnets.
+    const importRegion = parsed.awsTarget.region ?? target?.region;
+    for (const agentSpec of projectSpec.runtimes) {
+      if (
+        isContainerBuild(agentSpec) &&
+        agentSpec.networkMode === 'VPC' &&
+        agentSpec.networkConfig &&
+        agentSpec.networkConfig.subnets.length > 0 &&
+        !agentSpec.networkConfig.vpcId
+      ) {
+        if (!importRegion) {
+          const error =
+            `Cannot resolve VPC ID for agent "${agentSpec.name}": no AWS region available. ` +
+            'Add an aws.region to the YAML or set up a deployment target first.';
+          logger.endStep('error', error);
+          logger.finalize(false);
+          return { success: false, error: new ValidationError(error), logPath: logger.getRelativeLogPath() };
+        }
+        agentSpec.networkConfig.vpcId = await resolveVpcIdFromSubnets(agentSpec.networkConfig.subnets, importRegion);
+        logger.log(`Resolved vpcId for agent "${agentSpec.name}": ${agentSpec.networkConfig.vpcId}`);
+        onProgress?.(`Resolved vpcId for agent "${agentSpec.name}": ${agentSpec.networkConfig.vpcId}`);
       }
     }
 
@@ -383,7 +411,8 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
               fs.writeFileSync(
                 destDockerfile,
                 [
-                  'FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim',
+                  `FROM ${PYTHON_BASE_IMAGE}`,
+                  'RUN pip install --no-cache-dir uv',
                   'WORKDIR /app',
                   '',
                   'ENV UV_SYSTEM_PYTHON=1 \\',

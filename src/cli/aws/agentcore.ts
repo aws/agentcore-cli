@@ -2,6 +2,7 @@ import { parseJsonRpcResponse } from '../../lib/utils/json-rpc';
 import { getCredentialProvider } from './account';
 import { parseAguiSSEStream } from './agui-parser';
 import { serviceEndpoint } from './partition';
+import { dataPlaneEndpoint } from './stage-endpoint';
 import {
   BedrockAgentCoreClient,
   EvaluateCommand,
@@ -27,6 +28,7 @@ function createAgentCoreClient(region: string, headers?: Record<string, string>)
   const client = new BedrockAgentCoreClient({
     region,
     credentials: getCredentialProvider(),
+    endpoint: dataPlaneEndpoint(region),
   });
 
   if (headers && Object.keys(headers).length > 0) {
@@ -68,6 +70,20 @@ export interface InvokeAgentRuntimeOptions {
   bearerToken?: string;
   /** W3C baggage header value (e.g. config bundle ref for runtime) */
   baggage?: string;
+  /** Runtime endpoint qualifier (e.g. DEFAULT, PROMPT_V1). Defaults to DEFAULT. */
+  endpoint?: string;
+  /** Payment instrument ID for x402 payments */
+  paymentInstrumentId?: string;
+  /** Payment session ID for budget tracking */
+  paymentSessionId?: string;
+  /**
+   * Payments end-user identity, written into the invoke body as `user_id`.
+   * The agent scopes the payment instrument/session/budget to this value
+   * (the wallet owner). Distinct from `userId`, which is the runtime/Identity
+   * header (X-Amzn-Bedrock-AgentCore-Runtime-User-Id) used for OAuth token
+   * scoping and is NOT visible to the agent's payment plugin.
+   */
+  paymentUserId?: string;
 }
 
 export interface InvokeAgentRuntimeResult {
@@ -99,16 +115,22 @@ export function parseSSELine(line: string): { content: string | null; error: str
   if (!line.startsWith('data: ')) {
     return { content: null, error: null };
   }
-  const content = line.slice(6);
+  const raw = line.slice(6);
   try {
-    const parsed: unknown = JSON.parse(content);
+    const parsed: unknown = JSON.parse(raw);
     if (typeof parsed === 'string') {
       return { content: parsed, error: null };
     } else if (parsed && typeof parsed === 'object' && 'error' in parsed) {
       return { content: null, error: String((parsed as { error: unknown }).error) };
     }
+    // ConverseStream-shaped event: extract text delta
+    const event = (parsed as { event?: { contentBlockDelta?: { delta?: { text?: string } } } })?.event;
+    const text = event?.contentBlockDelta?.delta?.text;
+    if (typeof text === 'string') {
+      return { content: text, error: null };
+    }
   } catch {
-    return { content, error: null };
+    return { content: raw, error: null };
   }
   return { content: null, error: null };
 }
@@ -147,6 +169,28 @@ export function extractResult(text: string): string {
   }
 }
 
+/**
+ * Build the JSON payload body for an invoke request.
+ * Includes payment context fields only when provided.
+ */
+export function buildInvokePayload(options: InvokeAgentRuntimeOptions): string {
+  const body: Record<string, string> = { prompt: options.payload };
+  // The agent reads `payload.user_id` to scope the payment wallet/budget
+  // (main.py: payload.get("user_id") or context.user_id or "default-user").
+  // Only set it when resolved; when omitted the agent applies its own
+  // "default-user" fallback, so we never bake that magic value into the wire.
+  if (options.paymentUserId) {
+    body.user_id = options.paymentUserId;
+  }
+  if (options.paymentInstrumentId) {
+    body.payment_instrument_id = options.paymentInstrumentId;
+  }
+  if (options.paymentSessionId) {
+    body.payment_session_id = options.paymentSessionId;
+  }
+  return JSON.stringify(body);
+}
+
 // ---------------------------------------------------------------------------
 // Bearer token (CUSTOM_JWT) thin HTTP client
 // ---------------------------------------------------------------------------
@@ -154,9 +198,10 @@ export function extractResult(text: string): string {
 /**
  * Build the invoke URL for a runtime ARN.
  */
-function buildInvokeUrl(region: string, runtimeArn: string): string {
+function buildInvokeUrl(region: string, runtimeArn: string, endpoint?: string): string {
   const escapedArn = encodeURIComponent(runtimeArn);
-  return `https://${serviceEndpoint('bedrock-agentcore', region)}/runtimes/${escapedArn}/invocations?qualifier=DEFAULT`;
+  const qualifier = endpoint ?? 'DEFAULT';
+  return `https://${serviceEndpoint('bedrock-agentcore', region)}/runtimes/${escapedArn}/invocations?qualifier=${qualifier}`;
 }
 
 /**
@@ -192,13 +237,13 @@ export function buildBearerInvokeHeaders(
  * Used when the runtime has CUSTOM_JWT authorizer configured.
  */
 async function invokeWithBearerTokenStreaming(options: InvokeAgentRuntimeOptions): Promise<StreamingInvokeResult> {
-  const url = buildInvokeUrl(options.region, options.runtimeArn);
+  const url = buildInvokeUrl(options.region, options.runtimeArn, options.endpoint);
   const headers = buildBearerInvokeHeaders(options, 'application/json, text/event-stream');
 
   const res = await fetch(url, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ prompt: options.payload }),
+    body: buildInvokePayload(options),
   });
 
   if (!res.ok) {
@@ -278,13 +323,13 @@ async function invokeWithBearerTokenStreaming(options: InvokeAgentRuntimeOptions
  * Invoke an AgentCore Runtime using bearer token auth (non-streaming).
  */
 async function invokeWithBearerToken(options: InvokeAgentRuntimeOptions): Promise<InvokeAgentRuntimeResult> {
-  const url = buildInvokeUrl(options.region, options.runtimeArn);
+  const url = buildInvokeUrl(options.region, options.runtimeArn, options.endpoint);
   const headers = buildBearerInvokeHeaders(options, 'application/json');
 
   const res = await fetch(url, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ prompt: options.payload }),
+    body: buildInvokePayload(options),
   });
 
   if (!res.ok) {
@@ -316,9 +361,9 @@ export async function invokeAgentRuntimeStreaming(options: InvokeAgentRuntimeOpt
 
   const command = new InvokeAgentRuntimeCommand({
     agentRuntimeArn: options.runtimeArn,
-    payload: new TextEncoder().encode(JSON.stringify({ prompt: options.payload })),
+    payload: new TextEncoder().encode(buildInvokePayload(options)),
     contentType: 'application/json',
-    accept: 'application/json',
+    accept: 'application/json, text/event-stream',
     runtimeSessionId: options.sessionId,
     runtimeUserId: options.userId ?? DEFAULT_RUNTIME_USER_ID,
     ...(options.baggage && { baggage: options.baggage }),
@@ -412,9 +457,9 @@ export async function invokeAgentRuntime(options: InvokeAgentRuntimeOptions): Pr
 
   const command = new InvokeAgentRuntimeCommand({
     agentRuntimeArn: options.runtimeArn,
-    payload: new TextEncoder().encode(JSON.stringify({ prompt: options.payload })),
+    payload: new TextEncoder().encode(buildInvokePayload(options)),
     contentType: 'application/json',
-    accept: 'application/json',
+    accept: 'application/json, text/event-stream',
     runtimeSessionId: options.sessionId,
     runtimeUserId: options.userId ?? DEFAULT_RUNTIME_USER_ID,
     ...(options.baggage && { baggage: options.baggage }),
@@ -886,6 +931,8 @@ export interface A2AInvokeOptions {
   logger?: SSELogger;
   /** Custom headers to forward to the agent runtime */
   headers?: Record<string, string>;
+  /** Bearer token for CUSTOM_JWT auth. When provided, uses raw HTTP with Authorization header instead of SigV4. */
+  bearerToken?: string;
 }
 
 let a2aRequestId = 1;
@@ -895,8 +942,6 @@ let a2aRequestId = 1;
  * Streams text parts from the response artifacts.
  */
 export async function invokeA2ARuntime(options: A2AInvokeOptions, message: string): Promise<StreamingInvokeResult> {
-  const client = createAgentCoreClient(options.region, options.headers);
-
   const body = {
     jsonrpc: '2.0',
     id: a2aRequestId++,
@@ -911,6 +956,27 @@ export async function invokeA2ARuntime(options: A2AInvokeOptions, message: strin
   };
 
   options.logger?.logSSEEvent(`A2A request: ${JSON.stringify(body)}`);
+
+  if (options.bearerToken) {
+    const url = buildInvokeUrl(options.region, options.runtimeArn);
+    const headers = buildBearerInvokeHeaders(options, 'application/json, text/event-stream');
+
+    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`Invoke failed (${res.status}): ${errBody || res.statusText}`);
+    }
+
+    const text = await res.text();
+    options.logger?.logSSEEvent(`A2A response: ${text}`);
+
+    return {
+      stream: singleValueStream(parseA2AResponse(text)),
+      sessionId: res.headers.get('X-Amzn-Bedrock-AgentCore-Runtime-Session-Id') ?? undefined,
+    };
+  }
+
+  const client = createAgentCoreClient(options.region, options.headers);
 
   const command = new InvokeAgentRuntimeCommand({
     agentRuntimeArn: options.runtimeArn,

@@ -81,12 +81,18 @@ describe('create command', () => {
       expect(await exists(join(json.projectPath, 'app', name))).toBeTruthy();
     });
 
-    it('requires all options without --no-agent', async () => {
-      const result = await runCLI(['create', '--name', 'Incomplete', '--json'], testDir);
+    it('creates a harness project when no agent flags are given', async () => {
+      // Without agent-path flags (--framework/--language/etc.) or --no-agent, create
+      // defaults to the harness path rather than erroring on incomplete agent options.
+      // Harness names are limited to 23 chars, so keep this short.
+      const name = `H${Date.now().toString().slice(-6)}`;
+      const result = await runCLI(['create', '--name', name, '--json'], testDir);
 
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
       const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
+      expect(json.success).toBe(true);
+      expect(json.harnessName).toBe(name);
+      expect(await exists(join(json.projectPath, 'app', name, 'harness.json'))).toBeTruthy();
     });
 
     it('validates framework', async () => {
@@ -143,18 +149,56 @@ describe('create command', () => {
       const memory = projectSpec.memories[0];
 
       const semantic = memory?.strategies?.find((s: { type: string }) => s.type === 'SEMANTIC');
-      expect(semantic?.namespaces).toEqual(['/users/{actorId}/facts']);
+      expect(semantic?.namespaceTemplates).toEqual(['/users/{actorId}/facts']);
 
       const userPref = memory?.strategies?.find((s: { type: string }) => s.type === 'USER_PREFERENCE');
-      expect(userPref?.namespaces).toEqual(['/users/{actorId}/preferences']);
+      expect(userPref?.namespaceTemplates).toEqual(['/users/{actorId}/preferences']);
 
       const summarization = memory?.strategies?.find((s: { type: string }) => s.type === 'SUMMARIZATION');
-      expect(summarization?.namespaces).toEqual(['/summaries/{actorId}/{sessionId}']);
+      expect(summarization?.namespaceTemplates).toEqual(['/summaries/{actorId}/{sessionId}']);
 
       const episodic = memory?.strategies?.find((s: { type: string }) => s.type === 'EPISODIC');
       expect(episodic, 'EPISODIC strategy should exist in longAndShortTerm').toBeTruthy();
-      expect(episodic?.namespaces).toEqual(['/episodes/{actorId}/{sessionId}']);
-      expect(episodic?.reflectionNamespaces).toEqual(['/episodes/{actorId}']);
+      expect(episodic?.namespaceTemplates).toEqual(['/episodes/{actorId}/{sessionId}']);
+      expect(episodic?.reflectionNamespaceTemplates).toEqual(['/episodes/{actorId}']);
+    });
+
+    it('uses --project-name for project and --name for agent resource', async () => {
+      const projectName = `AgentProj${Date.now().toString().slice(-6)}`;
+      const agentName = `AgentResource${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+      const result = await runCLI(
+        [
+          'create',
+          '--project-name',
+          projectName,
+          '--name',
+          agentName,
+          '--language',
+          'Python',
+          '--framework',
+          'Strands',
+          '--model-provider',
+          'Bedrock',
+          '--memory',
+          'none',
+          '--skip-git',
+          '--skip-install',
+          '--json',
+        ],
+        testDir
+      );
+
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.projectPath).toMatch(new RegExp(`/${projectName}$`));
+      expect(json.agentName).toBe(agentName);
+      expect(await exists(join(json.projectPath, 'app', agentName))).toBeTruthy();
+
+      const projectSpec = JSON.parse(await readFile(join(json.projectPath, 'agentcore/agentcore.json'), 'utf-8'));
+      expect(projectSpec.name).toBe(projectName);
+      expect(projectSpec.runtimes[0].name).toBe(agentName);
     });
 
     it('uses --project-name for project and --name for agent resource', async () => {
@@ -197,14 +241,17 @@ describe('create command', () => {
   });
 
   describe('--defaults', () => {
-    it('creates project with defaults', async () => {
-      const name = `Defaults${Date.now()}`;
+    // --defaults creates a harness project (the default), identical to passing no routing flags.
+    // The harness path returns `harnessName` and writes app/<name>/harness.json.
+    it('creates a harness project', async () => {
+      const name = `Def${Date.now().toString().slice(-6)}`;
       const result = await runCLI(['create', '--name', name, '--defaults', '--json'], testDir);
 
       expect(result.exitCode, `stderr: ${result.stderr}`).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
-      expect(await exists(join(testDir, name))).toBeTruthy();
+      expect(json.harnessName).toBe(name);
+      expect(await exists(join(json.projectPath, 'app', name, 'harness.json'))).toBeTruthy();
     });
   });
 
@@ -284,6 +331,99 @@ describe('create command', () => {
       // CLI mode would show "--name is required" error in stderr
       // TUI mode does not - it launches the interactive wizard
       expect(result.stderr).not.toContain('--name is required');
+    });
+  });
+
+  // Regression coverage for the create-harness VPC dispatch: the unit tests on
+  // validateCreateHarnessOptions call the validator directly with a full options object, so they
+  // could not catch command.tsx failing to forward container/subnets/securityGroups/vpcId into it.
+  // These drive the real CLI dispatch (via runCLI --dry-run, no AWS) so the wiring is exercised.
+  describe('harness VPC dispatch (--dry-run)', () => {
+    const SUBNET = 'subnet-05169b775866f2440';
+    const SG = 'sg-0390682a9d9f7dd8d';
+    const VPC = 'vpc-07086549ccf106a5d';
+
+    it('accepts a Container+VPC dockerfile harness when all VPC flags incl --vpc-id are supplied', async () => {
+      const name = `HVpcOk${Date.now().toString().slice(-6)}`;
+      const result = await runCLI(
+        [
+          'create',
+          '--name',
+          name,
+          '--container',
+          './Dockerfile',
+          '--network-mode',
+          'VPC',
+          '--subnets',
+          SUBNET,
+          '--security-groups',
+          SG,
+          '--vpc-id',
+          VPC,
+          '--model-provider',
+          'bedrock',
+          '--dry-run',
+        ],
+        testDir
+      );
+      // Must NOT fail with the bogus "--subnets is required" (the regression); dry-run reaches synth-info.
+      expect(result.exitCode, `stderr: ${result.stderr}, stdout: ${result.stdout}`).toBe(0);
+      expect(result.stderr).not.toContain('--subnets is required');
+    });
+
+    it('rejects a Container+VPC harness missing --vpc-id with the friendly error', async () => {
+      const name = `HVpcNoId${Date.now().toString().slice(-6)}`;
+      const result = await runCLI(
+        [
+          'create',
+          '--name',
+          name,
+          '--container',
+          './Dockerfile',
+          '--network-mode',
+          'VPC',
+          '--subnets',
+          SUBNET,
+          '--security-groups',
+          SG,
+          '--model-provider',
+          'bedrock',
+          '--dry-run',
+        ],
+        testDir
+      );
+      expect(result.exitCode).toBe(1);
+      const out = `${result.stderr}${result.stdout}`;
+      expect(out).toContain('--vpc-id is required');
+      // It must NOT be the misleading "--subnets is required" message.
+      expect(out).not.toContain('--subnets is required');
+    });
+
+    it('rejects a malformed --vpc-id on the harness path', async () => {
+      const name = `HVpcBad${Date.now().toString().slice(-6)}`;
+      const result = await runCLI(
+        [
+          'create',
+          '--name',
+          name,
+          '--container',
+          './Dockerfile',
+          '--network-mode',
+          'VPC',
+          '--subnets',
+          SUBNET,
+          '--security-groups',
+          SG,
+          '--vpc-id',
+          'vpc-XYZ',
+          '--model-provider',
+          'bedrock',
+          '--dry-run',
+        ],
+        testDir
+      );
+      expect(result.exitCode).toBe(1);
+      expect(`${result.stderr}${result.stdout}`).toContain('Invalid VPC ID format');
     });
   });
 });

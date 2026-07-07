@@ -1,19 +1,19 @@
 import { findConfigRoot } from '../../../lib';
+import { DevServerConnectionError, DevServerError } from '../../../lib/errors/types';
 import type { AgentCoreProjectSpec, ProtocolMode } from '../../../schema';
 import { detectContainerRuntime } from '../../external-requirements';
 import { DevLogger } from '../../logging/dev-logger';
 import {
   type A2AAgentCard,
-  ConnectionError,
   type DevConfig,
   DevServer,
   type LogLevel,
   type McpTool,
-  ServerError,
   callMcpTool,
   createDevServer,
   fetchA2AAgentCard,
   findAvailablePort,
+  getAgentPort,
   getDevConfig,
   getEndpointUrl,
   invokeA2AStreaming,
@@ -48,6 +48,7 @@ const MAX_LOG_ENTRIES = 50;
 export function useDevServer(options: {
   workingDir: string;
   port: number;
+  portExplicit?: boolean;
   agentName?: string;
   onReady?: () => void;
   headers?: Record<string, string>;
@@ -111,7 +112,8 @@ export function useDevServer(options: {
 
       // Load env vars from deployed state + agentcore/.env
       if (root) {
-        const devEnv = await loadDevEnv(options.workingDir);
+        const selectedRuntime = options.agentName ? cfg?.runtimes.find(r => r.name === options.agentName) : undefined;
+        const devEnv = await loadDevEnv(options.workingDir, selectedRuntime);
         setEnvVars(devEnv.envVars);
 
         // Show warning only when some configured memories aren't deployed yet
@@ -124,7 +126,7 @@ export function useDevServer(options: {
       setConfigLoaded(true);
     };
     void load();
-  }, [options.workingDir]);
+  }, [options.workingDir, options.agentName]);
 
   const config: DevConfig | null = useMemo(() => {
     if (!project || !options.agentName) {
@@ -154,7 +156,10 @@ export function useDevServer(options: {
       // A2A servers always use port 9000, MCP servers use port 8000 (framework defaults, not configurable via env)
       const isA2A = config.protocol === 'A2A';
       const isMcp = config.protocol === 'MCP';
-      const fixedPort = isA2A ? 9000 : isMcp ? 8000 : targetPort;
+      // HTTP: honor an explicit -p literally; otherwise offset by the runtime index
+      // so parallel runtimes bind distinct ports (consistent with the --logs path).
+      const httpPort = getAgentPort(project, config.agentName, targetPort, options.portExplicit);
+      const fixedPort = isA2A ? 9000 : isMcp ? 8000 : httpPort;
 
       // On restart, reuse the same port. On initial start, find an available port.
       // If restart times out waiting for port, fall back to finding a new one.
@@ -180,6 +185,16 @@ export function useDevServer(options: {
       } else {
         port = isRestart && portFree ? actualPortRef.current : await findAvailablePort(fixedPort);
         if (!isRestart && port !== fixedPort) {
+          // An explicit -p must be honored literally; if it's taken, surface an error
+          // instead of silently rebinding (the silent-shift behavior #1079 removes).
+          if (options.portExplicit) {
+            addLog(
+              'error',
+              `Port ${fixedPort} is in use. Free it or pass a different --port (no port is chosen automatically when --port is set explicitly).`
+            );
+            setStatus('error');
+            return;
+          }
           addLog('warn', `Port ${fixedPort} in use, using ${port}`);
         }
       }
@@ -195,7 +210,9 @@ export function useDevServer(options: {
           // Detect when server is actually ready (only once)
           if (
             !serverReady &&
-            (message.includes('Application startup complete') || message.includes('Uvicorn running'))
+            (message.includes('Application startup complete') ||
+              message.includes('Uvicorn running') ||
+              message.includes('Server listening'))
           ) {
             serverReady = true;
             setStatus('running');
@@ -244,7 +261,9 @@ export function useDevServer(options: {
     config?.module,
     config?.directory,
     config?.isPython,
+    project,
     options.workingDir,
+    options.portExplicit,
     targetPort,
     restartTrigger,
     envVars,
@@ -379,11 +398,11 @@ export function useDevServer(options: {
 
       let errorMsg: string;
       let showHint = false;
-      if (err instanceof ServerError) {
+      if (err instanceof DevServerError) {
         // HTTP error — use the response body directly (avoids stderr race condition)
         errorMsg = err.message || `Server error (${err.statusCode})`;
         showHint = true;
-      } else if (err instanceof ConnectionError) {
+      } else if (err instanceof DevServerConnectionError) {
         // Connection failed after retries — check stderr logs for crash context
         const recentErrors = logsRef.current
           .filter(l => l.level === 'error')

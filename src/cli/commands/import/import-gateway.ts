@@ -18,8 +18,9 @@ import {
   listAllGatewayTargets,
   listAllGateways,
 } from '../../aws/agentcore-control';
+import { ANSI } from '../../constants';
 import { isAccessDeniedError } from '../../errors';
-import { ANSI } from './constants';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { executeCdkImportPipeline } from './import-pipeline';
 import {
   failResult,
@@ -43,11 +44,38 @@ import type { Command } from '@commander-js/extra-typings';
 function toGatewayTargetSpec(
   detail: GatewayTargetDetail,
   credentials: Map<string, string>,
-  onProgress: (msg: string) => void
+  onProgress: (msg: string) => void,
+  runtimeArnToName?: Map<string, string>
 ): AgentCoreGatewayTarget | undefined {
+  // Handle HTTP runtime targets
+  const http = detail.targetConfiguration?.http;
+  if (http) {
+    const runtimeConfig = http.agentcoreRuntime ?? http.runtimeTargetConfiguration;
+    if (runtimeConfig) {
+      const managedName = runtimeArnToName?.get(runtimeConfig.runtimeArn);
+      if (!managedName) {
+        onProgress(
+          `Error: Target "${detail.name}" references runtime "${runtimeConfig.runtimeArn}" which is not managed by this project. ` +
+            `Import the runtime first: agentcore import runtime --arn ${runtimeConfig.runtimeArn}`
+        );
+        return undefined;
+      }
+      return {
+        name: detail.name,
+        targetType: 'httpRuntime',
+        httpRuntime: {
+          runtime: managedName,
+          ...(runtimeConfig.qualifier && { runtimeEndpoint: runtimeConfig.qualifier }),
+        },
+      };
+    }
+    onProgress(`Warning: Target "${detail.name}" has HTTP configuration but no runtime, skipping`);
+    return undefined;
+  }
+
   const mcp = detail.targetConfiguration?.mcp;
   if (!mcp) {
-    onProgress(`Warning: Target "${detail.name}" has no MCP configuration, skipping`);
+    onProgress(`Warning: Target "${detail.name}" has no MCP or HTTP configuration, skipping`);
     return undefined;
   }
 
@@ -222,11 +250,12 @@ function resolveOutboundAuth(
  * Map GetGateway + GetGatewayTarget[] responses to CLI AgentCoreGateway schema.
  * @internal
  */
-export function toGatewaySpec(
-  gateway: GatewayDetail,
-  targets: AgentCoreGatewayTarget[],
-  localName: string
-): AgentCoreGateway {
+export function toGatewaySpec(options: {
+  gateway: GatewayDetail;
+  targets: AgentCoreGatewayTarget[];
+  localName: string;
+}): AgentCoreGateway {
+  const { gateway, targets, localName } = options;
   const authorizerType = (gateway.authorizerType ?? 'NONE') as GatewayAuthorizerType;
 
   let authorizerConfiguration: AuthorizerConfig | undefined;
@@ -264,6 +293,9 @@ export function toGatewaySpec(
     };
   }
 
+  // Service returns protocolType 'MCP' or null. Null = non-MCP gateway.
+  const protocolType = gateway.protocolType === 'MCP' ? 'MCP' : 'None';
+
   const enableSemanticSearch = gateway.protocolConfiguration?.mcp?.searchType === 'SEMANTIC';
   const exceptionLevel: GatewayExceptionLevel = gateway.exceptionLevel === 'DEBUG' ? 'DEBUG' : 'NONE';
 
@@ -281,6 +313,7 @@ export function toGatewaySpec(
   return {
     name: localName,
     resourceName: gateway.name,
+    ...(protocolType === 'None' && { protocolType: 'None' as const }),
     ...(gateway.description && { description: gateway.description }),
     targets,
     authorizerType,
@@ -466,15 +499,47 @@ export async function handleImportGateway(options: ImportResourceOptions): Promi
     logger.startStep('Map gateway to project schema');
     const credentialArnMap = await buildCredentialArnMap(ctx.configIO, targetName);
 
+    // Build reverse lookup: runtime ARN → local name (for managed target detection)
+    const runtimeArnToName = new Map<string, string>();
+    try {
+      const state = await ctx.configIO.readDeployedState();
+      const deployedTarget = state?.targets?.[targetName];
+      if (deployedTarget?.resources?.runtimes) {
+        for (const [name, rt] of Object.entries(deployedTarget.resources.runtimes)) {
+          runtimeArnToName.set(rt.runtimeArn, name);
+        }
+      }
+    } catch {
+      // No deployed state — httpRuntime targets without a matching runtime will be skipped
+    }
+
     const mappedTargets: AgentCoreGatewayTarget[] = [];
+    const unmanagedRuntimeArns: string[] = [];
     for (const td of targetDetails) {
-      const mapped = toGatewayTargetSpec(td, credentialArnMap, onProgress);
+      const http = td.targetConfiguration?.http;
+      const runtimeConfig = http?.agentcoreRuntime ?? http?.runtimeTargetConfiguration;
+      if (http && runtimeConfig && !runtimeArnToName.has(runtimeConfig.runtimeArn)) {
+        unmanagedRuntimeArns.push(runtimeConfig.runtimeArn);
+      }
+      const mapped = toGatewayTargetSpec(td, credentialArnMap, onProgress, runtimeArnToName);
       if (mapped) {
         mappedTargets.push(mapped);
       }
     }
 
-    const gatewaySpec = toGatewaySpec(gatewayDetail, mappedTargets, localName);
+    if (unmanagedRuntimeArns.length > 0) {
+      const arns = [...new Set(unmanagedRuntimeArns)];
+      const importCmds = arns.map(arn => `  agentcore import runtime --arn ${arn}`).join('\n');
+      return failResult(
+        logger,
+        `Gateway has ${unmanagedRuntimeArns.length} httpRuntime target(s) referencing runtimes not managed by this project.\n` +
+          `Import the runtime(s) first:\n${importCmds}\n\nThen retry: agentcore import gateway --arn ${options.arn ?? gatewayDetail.gatewayArn}`,
+        'gateway',
+        localName
+      );
+    }
+
+    const gatewaySpec = toGatewaySpec({ gateway: gatewayDetail, targets: mappedTargets, localName });
     onProgress(`Mapped gateway with ${mappedTargets.length} target(s)`);
     if (mappedTargets.length < targetDetails.length) {
       onProgress(
@@ -667,7 +732,7 @@ export function registerImportGateway(importCmd: Command): void {
     .description('Import an existing AgentCore Gateway (with targets) from your AWS account')
     .option('--arn <gatewayArn>', 'Gateway ARN to import')
     .action(async (cliOptions: ImportResourceOptions) => {
-      const result = await handleImportGateway(cliOptions);
+      const result = await withCommandRunTelemetry('import.gateway', {}, () => handleImportGateway(cliOptions));
 
       if (result.success) {
         console.log('');

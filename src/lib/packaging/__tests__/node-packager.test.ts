@@ -1,35 +1,37 @@
 import { NodeCodeZipPackager, NodeCodeZipPackagerSync } from '../node.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const mockRunSubprocessCapture = vi.fn();
-const mockRunSubprocessCaptureSync = vi.fn();
-const mockResolveProjectPaths = vi.fn();
-const mockResolveProjectPathsSync = vi.fn();
-const mockEnsureBinaryAvailable = vi.fn();
-const mockEnsureBinaryAvailableSync = vi.fn();
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs');
+  return {
+    ...actual,
+    writeFileSync: vi.fn(),
+    existsSync: vi.fn(() => false),
+    cpSync: vi.fn(),
+  };
+});
+
+const mockBuild = vi.fn();
+const mockBuildSync = vi.fn();
+const mockResolveNodeProjectPaths = vi.fn();
+const mockResolveNodeProjectPathsSync = vi.fn();
 const mockEnsureDirClean = vi.fn();
 const mockEnsureDirCleanSync = vi.fn();
-const mockCopySourceTree = vi.fn();
-const mockCopySourceTreeSync = vi.fn();
 const mockCreateZipFromDir = vi.fn();
 const mockCreateZipFromDirSync = vi.fn();
 const mockEnforceZipSizeLimit = vi.fn();
 const mockEnforceZipSizeLimitSync = vi.fn();
 
-vi.mock('../../utils/subprocess', () => ({
-  runSubprocessCapture: (...args: unknown[]) => mockRunSubprocessCapture(...args),
-  runSubprocessCaptureSync: (...args: unknown[]) => mockRunSubprocessCaptureSync(...args),
+vi.mock('esbuild', () => ({
+  build: (...args: unknown[]) => mockBuild(...args),
+  buildSync: (...args: unknown[]) => mockBuildSync(...args),
 }));
 
 vi.mock('../helpers', () => ({
-  resolveProjectPaths: (...args: unknown[]) => mockResolveProjectPaths(...args),
-  resolveProjectPathsSync: (...args: unknown[]) => mockResolveProjectPathsSync(...args),
-  ensureBinaryAvailable: (...args: unknown[]) => mockEnsureBinaryAvailable(...args),
-  ensureBinaryAvailableSync: (...args: unknown[]) => mockEnsureBinaryAvailableSync(...args),
+  resolveNodeProjectPaths: (...args: unknown[]) => mockResolveNodeProjectPaths(...args),
+  resolveNodeProjectPathsSync: (...args: unknown[]) => mockResolveNodeProjectPathsSync(...args),
   ensureDirClean: (...args: unknown[]) => mockEnsureDirClean(...args),
   ensureDirCleanSync: (...args: unknown[]) => mockEnsureDirCleanSync(...args),
-  copySourceTree: (...args: unknown[]) => mockCopySourceTree(...args),
-  copySourceTreeSync: (...args: unknown[]) => mockCopySourceTreeSync(...args),
   createZipFromDir: (...args: unknown[]) => mockCreateZipFromDir(...args),
   createZipFromDirSync: (...args: unknown[]) => mockCreateZipFromDirSync(...args),
   enforceZipSizeLimit: (...args: unknown[]) => mockEnforceZipSizeLimit(...args),
@@ -42,7 +44,7 @@ const defaultPaths = {
   srcDir: '/project/src',
   stagingDir: '/project/.staging',
   artifactsDir: '/project/artifacts',
-  pyprojectPath: '',
+  pyprojectPath: '/project/package.json',
 };
 
 describe('NodeCodeZipPackager', () => {
@@ -62,12 +64,10 @@ describe('NodeCodeZipPackager', () => {
     );
   });
 
-  it('packs successfully', async () => {
-    mockResolveProjectPaths.mockResolvedValue(defaultPaths);
-    mockEnsureBinaryAvailable.mockResolvedValue(undefined);
+  it('packs successfully using esbuild', async () => {
+    mockResolveNodeProjectPaths.mockResolvedValue(defaultPaths);
     mockEnsureDirClean.mockResolvedValue(undefined);
-    mockCopySourceTree.mockResolvedValue(undefined);
-    mockRunSubprocessCapture.mockResolvedValue({ code: 0, stdout: '', stderr: '', signal: null });
+    mockBuild.mockResolvedValue(undefined);
     mockCreateZipFromDir.mockResolvedValue(undefined);
     mockEnforceZipSizeLimit.mockResolvedValue(1024);
 
@@ -75,22 +75,24 @@ describe('NodeCodeZipPackager', () => {
 
     expect(result.sizeBytes).toBe(1024);
     expect(result.stagingPath).toBe('/project/.staging');
-    expect(mockRunSubprocessCapture).toHaveBeenCalledWith(
-      'npm',
-      expect.arrayContaining(['install', '--omit=dev']),
-      expect.any(Object)
+    expect(mockBuild).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entryPoints: ['/project/src/main.ts'],
+        bundle: true,
+        platform: 'node',
+        format: 'cjs',
+        target: 'node20',
+      })
     );
   });
 
-  it('throws when npm install fails', async () => {
-    mockResolveProjectPaths.mockResolvedValue(defaultPaths);
-    mockEnsureBinaryAvailable.mockResolvedValue(undefined);
+  it('throws when esbuild fails', async () => {
+    mockResolveNodeProjectPaths.mockResolvedValue(defaultPaths);
     mockEnsureDirClean.mockResolvedValue(undefined);
-    mockCopySourceTree.mockResolvedValue(undefined);
-    mockRunSubprocessCapture.mockResolvedValue({ code: 1, stdout: 'error output', stderr: '', signal: null });
+    mockBuild.mockRejectedValue(new Error('Build failed: could not resolve module'));
 
     await expect(packager.pack({ build: 'CodeZip', runtimeVersion: 'NODE_20', name: 'a' } as any)).rejects.toThrow(
-      'error output'
+      'could not resolve module'
     );
   });
 });
@@ -106,29 +108,36 @@ describe('NodeCodeZipPackagerSync', () => {
     );
   });
 
-  it('packs successfully', () => {
-    mockResolveProjectPathsSync.mockReturnValue(defaultPaths);
-    mockEnsureBinaryAvailableSync.mockReturnValue(undefined);
+  it('packs successfully using esbuild', () => {
+    mockResolveNodeProjectPathsSync.mockReturnValue(defaultPaths);
     mockEnsureDirCleanSync.mockReturnValue(undefined);
-    mockCopySourceTreeSync.mockReturnValue(undefined);
-    mockRunSubprocessCaptureSync.mockReturnValue({ code: 0, stdout: '', stderr: '', signal: null });
+    mockBuildSync.mockReturnValue(undefined);
     mockCreateZipFromDirSync.mockReturnValue(undefined);
     mockEnforceZipSizeLimitSync.mockReturnValue(2048);
 
     const result = packager.packCodeZip({ build: 'CodeZip', runtimeVersion: 'NODE_20', name: 'myAgent' } as any);
 
     expect(result.sizeBytes).toBe(2048);
+    expect(mockBuildSync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entryPoints: ['/project/src/main.ts'],
+        bundle: true,
+        platform: 'node',
+        format: 'cjs',
+        target: 'node20',
+      })
+    );
   });
 
-  it('throws when npm install fails', () => {
-    mockResolveProjectPathsSync.mockReturnValue(defaultPaths);
-    mockEnsureBinaryAvailableSync.mockReturnValue(undefined);
+  it('throws when esbuild fails', () => {
+    mockResolveNodeProjectPathsSync.mockReturnValue(defaultPaths);
     mockEnsureDirCleanSync.mockReturnValue(undefined);
-    mockCopySourceTreeSync.mockReturnValue(undefined);
-    mockRunSubprocessCaptureSync.mockReturnValue({ code: 1, stdout: '', stderr: 'install failed', signal: null });
+    mockBuildSync.mockImplementation(() => {
+      throw new Error('Build failed');
+    });
 
     expect(() => packager.packCodeZip({ build: 'CodeZip', runtimeVersion: 'NODE_20', name: 'a' } as any)).toThrow(
-      'install failed'
+      'Build failed'
     );
   });
 });

@@ -61,6 +61,18 @@ describe('add gateway command', () => {
       expect(json.success).toBe(false);
     });
 
+    it('rejects a gateway whose composed name exceeds the 48-char AWS limit', async () => {
+      // "TestProj" (8) + "-" (1) + 41-char name = 50 > 48
+      const gatewayName = 'a'.repeat(41);
+      const result = await runCLI(['add', 'gateway', '--name', gatewayName, '--json'], projectDir);
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error.includes('Gateway name too long'), `Error: ${json.error}`).toBeTruthy();
+      expect(json.error.includes('48 characters'), `Error: ${json.error}`).toBeTruthy();
+    });
+
     it('rejects duplicate gateway name', async () => {
       const gatewayName = 'dup-gateway';
 

@@ -1,11 +1,11 @@
 import {
-  ConfigError,
+  BaseError,
   ConfigNotFoundError,
   ConfigParseError,
   ConfigReadError,
   ConfigValidationError,
   ConfigWriteError,
-} from '../config.js';
+} from '../types.js';
 import { describe, expect, it } from 'vitest';
 import { ZodError, ZodIssueCode, z } from 'zod';
 
@@ -21,9 +21,9 @@ describe('ConfigNotFoundError', () => {
     expect(err.fileType).toBe('targets');
   });
 
-  it('is instance of ConfigError and Error', () => {
+  it('is instance of BaseError and Error', () => {
     const err = new ConfigNotFoundError('/path', 'project');
-    expect(err).toBeInstanceOf(ConfigError);
+    expect(err).toBeInstanceOf(BaseError);
     expect(err).toBeInstanceOf(Error);
   });
 
@@ -83,14 +83,14 @@ describe('ConfigParseError', () => {
 });
 
 describe('ConfigValidationError', () => {
-  it('stores zodError and is instance of ConfigError', () => {
+  it('stores zodError and is instance of BaseError', () => {
     const schema = z.object({ name: z.string() });
     const result = schema.safeParse({ name: 123 });
     expect(result.success).toBe(false);
     if (!result.success) {
       const err = new ConfigValidationError('/path', 'project', result.error);
       expect(err.zodError).toBe(result.error);
-      expect(err).toBeInstanceOf(ConfigError);
+      expect(err).toBeInstanceOf(BaseError);
       expect(err).toBeInstanceOf(Error);
     }
   });
@@ -217,16 +217,13 @@ describe('ConfigValidationError', () => {
       expect(err.message).toContain('invalid "type" value');
     });
 
-    it('crashes on invalid_union with nested errors missing path (known bug)', () => {
-      // z.union produces invalid_union issues where nested errors lack `path`.
-      // formatPath(issue.path) crashes because path is undefined.
+    it('handles invalid_union by surfacing a nested error message', () => {
       const schema = z.union([z.string(), z.number()]);
       const result = schema.safeParse(true);
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(() => new ConfigValidationError('/path', 'project', result.error)).toThrow(
-          /Cannot read properties of undefined/
-        );
+        const err = new ConfigValidationError('/path', 'project', result.error);
+        expect(err.message).toContain('expected "string"');
       }
     });
 

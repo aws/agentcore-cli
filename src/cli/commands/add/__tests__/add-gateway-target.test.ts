@@ -22,8 +22,11 @@ describe('add gateway-target command', () => {
     }
     projectDir = join(testDir, projectName);
 
-    // Create gateway for tests
-    const gwResult = await runCLI(['add', 'gateway', '--name', gatewayName, '--json'], projectDir);
+    // Create gateway for tests with MCP protocol (required for mcpServer and lambdaFunctionArn targets)
+    const gwResult = await runCLI(
+      ['add', 'gateway', '--name', gatewayName, '--protocol-type', 'MCP', '--json'],
+      projectDir
+    );
     if (gwResult.exitCode !== 0) {
       throw new Error(`Failed to create gateway: ${gwResult.stdout} ${gwResult.stderr}`);
     }

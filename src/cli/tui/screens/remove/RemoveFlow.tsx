@@ -1,41 +1,49 @@
 import type { RemovableGatewayTarget, RemovalPreview } from '../../../operations/remove';
-import { ErrorPrompt, Panel, Screen } from '../../components';
+import type { OrphanAction } from '../../../primitives/HarnessPrimitive';
+import { harnessPrimitive, paymentManagerPrimitive } from '../../../primitives/registry';
+import { ErrorPrompt, Panel, Screen, SelectScreen } from '../../components';
 import {
-  useRemovableABTests,
   useRemovableAgents,
   useRemovableConfigBundles,
+  useRemovableDatasets,
   useRemovableEvaluators,
   useRemovableGatewayTargets,
   useRemovableGateways,
+  useRemovableHarnesses,
   useRemovableIdentities,
+  useRemovableKnowledgeBases,
   useRemovableMemories,
   useRemovableOnlineEvalConfigs,
+  useRemovablePaymentManagers,
   useRemovablePolicies,
   useRemovablePolicyEngines,
   useRemovableRuntimeEndpoints,
   useRemovalPreview,
-  useRemoveABTest,
   useRemoveAgent,
   useRemoveConfigBundle,
+  useRemoveDataset,
   useRemoveEvaluator,
   useRemoveGateway,
   useRemoveGatewayTarget,
+  useRemoveHarness,
   useRemoveIdentity,
+  useRemoveKnowledgeBase,
   useRemoveMemory,
   useRemoveOnlineEvalConfig,
   useRemovePolicy,
   useRemovePolicyEngine,
   useRemoveRuntimeEndpoint,
 } from '../../hooks/useRemove';
-import { RemoveABTestScreen } from '../ab-test/RemoveABTestScreen';
 import { RemoveAgentScreen } from './RemoveAgentScreen';
 import { RemoveAllScreen } from './RemoveAllScreen';
 import { RemoveConfigBundleScreen } from './RemoveConfigBundleScreen';
 import { RemoveConfirmScreen } from './RemoveConfirmScreen';
+import { RemoveDatasetScreen } from './RemoveDatasetScreen';
 import { RemoveEvaluatorScreen } from './RemoveEvaluatorScreen';
 import { RemoveGatewayScreen } from './RemoveGatewayScreen';
 import { RemoveGatewayTargetScreen } from './RemoveGatewayTargetScreen';
 import { RemoveIdentityScreen } from './RemoveIdentityScreen';
+import { RemoveKnowledgeBaseScreen } from './RemoveKnowledgeBaseScreen';
 import { RemoveMemoryScreen } from './RemoveMemoryScreen';
 import { RemoveOnlineEvalScreen } from './RemoveOnlineEvalScreen';
 import { RemovePolicyEngineScreen } from './RemovePolicyEngineScreen';
@@ -56,37 +64,47 @@ type FlowState =
   | { name: 'select-memory' }
   | { name: 'select-identity' }
   | { name: 'select-evaluator' }
+  | { name: 'select-dataset' }
+  | { name: 'select-knowledge-base' }
   | { name: 'select-online-eval' }
   | { name: 'select-policy-engine' }
   | { name: 'select-policy' }
+  | { name: 'select-harness' }
+  | { name: 'confirm-harness'; harnessName: string; preview: RemovalPreview }
+  | { name: 'confirm-orphan-harness'; harnessName: string }
   | { name: 'select-config-bundle' }
-  | { name: 'select-ab-test' }
   | { name: 'select-runtime-endpoint' }
+  | { name: 'select-payment' }
   | { name: 'confirm-agent'; agentName: string; preview: RemovalPreview }
   | { name: 'confirm-gateway'; gatewayName: string; preview: RemovalPreview }
   | { name: 'confirm-gateway-target'; tool: RemovableGatewayTarget; preview: RemovalPreview }
   | { name: 'confirm-memory'; memoryName: string; preview: RemovalPreview }
   | { name: 'confirm-identity'; identityName: string; preview: RemovalPreview }
   | { name: 'confirm-evaluator'; evaluatorName: string; preview: RemovalPreview }
+  | { name: 'confirm-dataset'; datasetName: string; preview: RemovalPreview }
+  | { name: 'confirm-knowledge-base'; knowledgeBaseName: string; preview: RemovalPreview }
   | { name: 'confirm-online-eval'; configName: string; preview: RemovalPreview }
   | { name: 'confirm-policy-engine'; engineName: string; preview: RemovalPreview }
   | { name: 'confirm-policy'; compositeKey: string; policyName: string; preview: RemovalPreview }
   | { name: 'confirm-config-bundle'; bundleName: string; preview: RemovalPreview }
-  | { name: 'confirm-ab-test'; testName: string; preview: RemovalPreview }
   | { name: 'confirm-runtime-endpoint'; endpointName: string; preview: RemovalPreview }
+  | { name: 'confirm-payment'; managerName: string; preview: RemovalPreview }
   | { name: 'loading'; message: string }
+  | { name: 'harness-success'; harnessName: string; logFilePath?: string }
   | { name: 'agent-success'; agentName: string; logFilePath?: string }
   | { name: 'gateway-success'; gatewayName: string; logFilePath?: string }
   | { name: 'tool-success'; toolName: string; logFilePath?: string }
   | { name: 'memory-success'; memoryName: string; logFilePath?: string }
   | { name: 'identity-success'; identityName: string; logFilePath?: string }
   | { name: 'evaluator-success'; evaluatorName: string; logFilePath?: string }
+  | { name: 'dataset-success'; datasetName: string; logFilePath?: string }
+  | { name: 'knowledge-base-success'; knowledgeBaseName: string; logFilePath?: string }
   | { name: 'online-eval-success'; configName: string; logFilePath?: string }
   | { name: 'policy-engine-success'; engineName: string; logFilePath?: string }
   | { name: 'policy-success'; policyName: string; logFilePath?: string }
   | { name: 'config-bundle-success'; bundleName: string; logFilePath?: string }
-  | { name: 'ab-test-success'; testName: string; logFilePath?: string }
   | { name: 'runtime-endpoint-success'; endpointName: string; logFilePath?: string }
+  | { name: 'payment-success'; managerName: string }
   | { name: 'remove-all' }
   | { name: 'error'; message: string };
 
@@ -101,6 +119,7 @@ interface RemoveFlowProps {
   /** Initial resource type to start at (for CLI subcommands) */
   initialResourceType?:
     | 'agent'
+    | 'harness'
     | 'gateway'
     | 'gateway-target'
     | 'runtime-endpoint'
@@ -108,10 +127,16 @@ interface RemoveFlowProps {
     | 'credential'
     | 'evaluator'
     | 'online-eval'
+    | 'online-insights'
     | 'policy-engine'
     | 'policy'
     | 'config-bundle'
-    | 'ab-test';
+    | 'dataset'
+    | 'knowledge-base'
+    | 'payment'
+    | 'payment-manager'
+    | 'payment-connector'
+    | 'all';
   /** Initial resource name to auto-select (for CLI --name flag) */
   initialResourceName?: string;
 }
@@ -129,6 +154,8 @@ export function RemoveFlow({
     switch (initialResourceType) {
       case 'agent':
         return { name: 'select-agent' };
+      case 'harness':
+        return { name: 'select-harness' };
       case 'gateway':
         return { name: 'select-gateway' };
       case 'gateway-target':
@@ -139,7 +166,13 @@ export function RemoveFlow({
         return { name: 'select-identity' };
       case 'evaluator':
         return { name: 'select-evaluator' };
+      case 'dataset':
+        return { name: 'select-dataset' };
+      case 'knowledge-base':
+        return { name: 'select-knowledge-base' };
       case 'online-eval':
+        return { name: 'select-online-eval' };
+      case 'online-insights':
         return { name: 'select-online-eval' };
       case 'policy-engine':
         return { name: 'select-policy-engine' };
@@ -147,10 +180,14 @@ export function RemoveFlow({
         return { name: 'select-policy' };
       case 'config-bundle':
         return { name: 'select-config-bundle' };
-      case 'ab-test':
-        return { name: 'select-ab-test' };
       case 'runtime-endpoint':
         return { name: 'select-runtime-endpoint' };
+      case 'payment':
+      case 'payment-manager':
+      case 'payment-connector':
+        return { name: 'select-payment' };
+      case 'all':
+        return { name: 'remove-all' };
       default:
         return { name: 'select' };
     }
@@ -159,11 +196,18 @@ export function RemoveFlow({
 
   // Data hooks - need isLoading to avoid showing screen before data loads
   const { agents, isLoading: isLoadingAgents, refresh: refreshAgents } = useRemovableAgents();
+  const { harnesses, isLoading: isLoadingHarnesses, refresh: refreshHarnesses } = useRemovableHarnesses();
   const { gateways, isLoading: isLoadingGateways, refresh: refreshGateways } = useRemovableGateways();
   const { tools: mcpTools, isLoading: isLoadingTools, refresh: refreshTools } = useRemovableGatewayTargets();
   const { memories, isLoading: isLoadingMemories, refresh: refreshMemories } = useRemovableMemories();
   const { identities, isLoading: isLoadingIdentities, refresh: refreshIdentities } = useRemovableIdentities();
   const { evaluators, isLoading: isLoadingEvaluators, refresh: refreshEvaluators } = useRemovableEvaluators();
+  const { datasets, isLoading: isLoadingDatasets, refresh: refreshDatasets } = useRemovableDatasets();
+  const {
+    knowledgeBases,
+    isLoading: isLoadingKnowledgeBases,
+    refresh: refreshKnowledgeBases,
+  } = useRemovableKnowledgeBases();
   const {
     onlineEvalConfigs,
     isLoading: isLoadingOnlineEvals,
@@ -180,56 +224,64 @@ export function RemoveFlow({
     isLoading: isLoadingConfigBundles,
     refresh: refreshConfigBundles,
   } = useRemovableConfigBundles();
-  const { abTests } = useRemovableABTests();
   const {
     endpoints: runtimeEndpoints,
     isLoading: isLoadingRuntimeEndpoints,
     refresh: refreshRuntimeEndpoints,
   } = useRemovableRuntimeEndpoints();
+  const { paymentManagers, isLoading: isLoadingPayments, refresh: refreshPayments } = useRemovablePaymentManagers();
 
   // Check if any data is still loading
   const isLoading =
     isLoadingAgents ||
+    isLoadingHarnesses ||
     isLoadingGateways ||
     isLoadingTools ||
     isLoadingMemories ||
     isLoadingIdentities ||
     isLoadingEvaluators ||
+    isLoadingDatasets ||
+    isLoadingKnowledgeBases ||
     isLoadingOnlineEvals ||
     isLoadingPolicyEngines ||
     isLoadingPolicies ||
     isLoadingConfigBundles ||
-    isLoadingRuntimeEndpoints;
+    isLoadingRuntimeEndpoints ||
+    isLoadingPayments;
 
   // Preview hook
   const {
     loadAgentPreview,
+    loadHarnessPreview,
     loadGatewayPreview,
     loadGatewayTargetPreview,
     loadMemoryPreview,
     loadIdentityPreview,
     loadEvaluatorPreview,
+    loadDatasetPreview,
+    loadKnowledgeBasePreview,
     loadOnlineEvalPreview,
     loadPolicyEnginePreview,
     loadPolicyPreview,
     loadConfigBundlePreview,
-    loadABTestPreview,
     loadRuntimeEndpointPreview,
     reset: resetPreview,
   } = useRemovalPreview();
 
   // Removal hooks
   const { remove: removeAgentOp, reset: resetRemoveAgent } = useRemoveAgent();
+  const { remove: removeHarnessOp, reset: resetRemoveHarness } = useRemoveHarness();
   const { remove: removeGatewayOp, reset: resetRemoveGateway } = useRemoveGateway();
   const { remove: removeGatewayTargetOp, reset: resetRemoveGatewayTarget } = useRemoveGatewayTarget();
   const { remove: removeMemoryOp, reset: resetRemoveMemory } = useRemoveMemory();
   const { remove: removeIdentityOp, reset: resetRemoveIdentity } = useRemoveIdentity();
   const { remove: removeEvaluatorOp, reset: resetRemoveEvaluator } = useRemoveEvaluator();
+  const { remove: removeDatasetOp, reset: resetRemoveDataset } = useRemoveDataset();
+  const { remove: removeKnowledgeBaseOp, reset: resetRemoveKnowledgeBase } = useRemoveKnowledgeBase();
   const { remove: removeOnlineEvalOp, reset: resetRemoveOnlineEval } = useRemoveOnlineEvalConfig();
   const { remove: removePolicyEngineOp, reset: resetRemovePolicyEngine } = useRemovePolicyEngine();
   const { remove: removePolicyOp, reset: resetRemovePolicy } = useRemovePolicy();
   const { remove: removeConfigBundleOp, reset: resetRemoveConfigBundle } = useRemoveConfigBundle();
-  const { remove: removeABTestOp, reset: resetRemoveABTest } = useRemoveABTest();
   const { remove: removeRuntimeEndpointOp, reset: resetRemoveRuntimeEndpoint } = useRemoveRuntimeEndpoint();
 
   // Track pending result state
@@ -253,17 +305,20 @@ export function RemoveFlow({
     if (!isInteractive) {
       const successStates = [
         'agent-success',
+        'harness-success',
         'gateway-success',
         'tool-success',
         'memory-success',
         'identity-success',
         'evaluator-success',
+        'dataset-success',
+        'knowledge-base-success',
         'online-eval-success',
         'policy-engine-success',
         'policy-success',
         'config-bundle-success',
-        'ab-test-success',
         'runtime-endpoint-success',
+        'payment-success',
       ];
       if (successStates.includes(flow.name)) {
         onExit();
@@ -278,6 +333,9 @@ export function RemoveFlow({
     switch (resourceType) {
       case 'agent':
         setFlow({ name: 'select-agent' });
+        break;
+      case 'harness':
+        setFlow({ name: 'select-harness' });
         break;
       case 'gateway':
         setFlow({ name: 'select-gateway' });
@@ -294,6 +352,12 @@ export function RemoveFlow({
       case 'evaluator':
         setFlow({ name: 'select-evaluator' });
         break;
+      case 'dataset':
+        setFlow({ name: 'select-dataset' });
+        break;
+      case 'knowledge-base':
+        setFlow({ name: 'select-knowledge-base' });
+        break;
       case 'online-eval':
         setFlow({ name: 'select-online-eval' });
         break;
@@ -306,11 +370,11 @@ export function RemoveFlow({
       case 'config-bundle':
         setFlow({ name: 'select-config-bundle' });
         break;
-      case 'ab-test':
-        setFlow({ name: 'select-ab-test' });
-        break;
       case 'runtime-endpoint':
         setFlow({ name: 'select-runtime-endpoint' });
+        break;
+      case 'payment':
+        setFlow({ name: 'select-payment' });
         break;
       case 'all':
         setFlow({ name: 'remove-all' });
@@ -342,6 +406,45 @@ export function RemoveFlow({
     },
     [loadAgentPreview, force, removeAgentOp]
   );
+
+  const handleSelectHarness = useCallback(
+    async (harnessName: string) => {
+      // Imperative-build orphans need an explicit delete-and-keep / delete-and-discard choice
+      // (deleting a real AWS resource), so they bypass the plain confirm and the force path —
+      // we never auto-delete an orphan, even with --yes.
+      if (harnessPrimitive && (await harnessPrimitive.isOrphan(harnessName))) {
+        setFlow({ name: 'confirm-orphan-harness', harnessName });
+        return;
+      }
+      const result = await loadHarnessPreview(harnessName);
+      if (result.ok) {
+        if (force) {
+          setFlow({ name: 'loading', message: `Removing harness ${harnessName}...` });
+          const removeResult = await removeHarnessOp(harnessName, result.preview);
+          if (removeResult.success) {
+            setFlow({ name: 'harness-success', harnessName });
+          } else {
+            setFlow({ name: 'error', message: removeResult.error.message });
+          }
+        } else {
+          setFlow({ name: 'confirm-harness', harnessName, preview: result.preview });
+        }
+      } else {
+        setFlow({ name: 'error', message: result.error });
+      }
+    },
+    [loadHarnessPreview, force, removeHarnessOp]
+  );
+
+  const handleConfirmOrphanHarness = useCallback(async (harnessName: string, orphanAction: OrphanAction) => {
+    setFlow({ name: 'loading', message: `Deleting orphan harness ${harnessName} from AWS...` });
+    const result = await harnessPrimitive.remove(harnessName, { orphanAction });
+    if (result.success) {
+      setFlow({ name: 'harness-success', harnessName });
+    } else {
+      setFlow({ name: 'error', message: result.error.message });
+    }
+  }, []);
 
   const handleSelectGateway = useCallback(
     async (gatewayName: string) => {
@@ -453,6 +556,50 @@ export function RemoveFlow({
     [loadEvaluatorPreview, force, removeEvaluatorOp]
   );
 
+  const handleSelectDataset = useCallback(
+    async (datasetName: string) => {
+      const result = await loadDatasetPreview(datasetName);
+      if (result.ok) {
+        if (force) {
+          setFlow({ name: 'loading', message: `Removing dataset ${datasetName}...` });
+          const removeResult = await removeDatasetOp(datasetName, result.preview);
+          if (removeResult.success) {
+            setFlow({ name: 'dataset-success', datasetName });
+          } else {
+            setFlow({ name: 'error', message: removeResult.error.message });
+          }
+        } else {
+          setFlow({ name: 'confirm-dataset', datasetName, preview: result.preview });
+        }
+      } else {
+        setFlow({ name: 'error', message: result.error });
+      }
+    },
+    [loadDatasetPreview, force, removeDatasetOp]
+  );
+
+  const handleSelectKnowledgeBase = useCallback(
+    async (knowledgeBaseName: string) => {
+      const result = await loadKnowledgeBasePreview(knowledgeBaseName);
+      if (result.ok) {
+        if (force) {
+          setFlow({ name: 'loading', message: `Removing knowledge base ${knowledgeBaseName}...` });
+          const removeResult = await removeKnowledgeBaseOp(knowledgeBaseName, result.preview);
+          if (removeResult.success) {
+            setFlow({ name: 'knowledge-base-success', knowledgeBaseName });
+          } else {
+            setFlow({ name: 'error', message: removeResult.error.message });
+          }
+        } else {
+          setFlow({ name: 'confirm-knowledge-base', knowledgeBaseName, preview: result.preview });
+        }
+      } else {
+        setFlow({ name: 'error', message: result.error });
+      }
+    },
+    [loadKnowledgeBasePreview, force, removeKnowledgeBaseOp]
+  );
+
   const handleSelectOnlineEval = useCallback(
     async (configName: string) => {
       const result = await loadOnlineEvalPreview(configName);
@@ -544,28 +691,6 @@ export function RemoveFlow({
     [loadConfigBundlePreview, force, removeConfigBundleOp]
   );
 
-  const handleSelectABTest = useCallback(
-    async (testName: string) => {
-      const result = await loadABTestPreview(testName);
-      if (result.ok) {
-        if (force) {
-          setFlow({ name: 'loading', message: `Removing AB test ${testName}...` });
-          const removeResult = await removeABTestOp(testName, result.preview);
-          if (removeResult.success) {
-            setFlow({ name: 'ab-test-success', testName });
-          } else {
-            setFlow({ name: 'error', message: removeResult.error.message });
-          }
-        } else {
-          setFlow({ name: 'confirm-ab-test', testName, preview: result.preview });
-        }
-      } else {
-        setFlow({ name: 'error', message: result.error });
-      }
-    },
-    [loadABTestPreview, force, removeABTestOp]
-  );
-
   const handleSelectRuntimeEndpoint = useCallback(
     async (endpointName: string) => {
       const result = await loadRuntimeEndpointPreview(endpointName);
@@ -586,6 +711,28 @@ export function RemoveFlow({
       }
     },
     [loadRuntimeEndpointPreview, force, removeRuntimeEndpointOp]
+  );
+
+  const handleSelectPaymentManager = useCallback(
+    async (managerName: string) => {
+      try {
+        const preview = await paymentManagerPrimitive.previewRemove(managerName);
+        if (force) {
+          setFlow({ name: 'loading', message: `Removing payment manager ${managerName}...` });
+          const removeResult = await paymentManagerPrimitive.remove(managerName);
+          if (removeResult.success) {
+            setFlow({ name: 'payment-success', managerName });
+          } else {
+            setFlow({ name: 'error', message: removeResult.error?.message ?? 'Failed to remove payment manager' });
+          }
+        } else {
+          setFlow({ name: 'confirm-payment', managerName, preview });
+        }
+      } catch (err) {
+        setFlow({ name: 'error', message: err instanceof Error ? err.message : String(err) });
+      }
+    },
+    [force]
   );
 
   // Auto-select resource when initialResourceName is provided and data is loaded
@@ -618,6 +765,9 @@ export function RemoveFlow({
         case 'online-eval':
           void handleSelectOnlineEval(initialResourceName);
           break;
+        case 'online-insights':
+          void handleSelectOnlineEval(initialResourceName);
+          break;
         case 'policy-engine':
           void handleSelectPolicyEngine(initialResourceName);
           break;
@@ -627,11 +777,18 @@ export function RemoveFlow({
         case 'config-bundle':
           void handleSelectConfigBundle(initialResourceName);
           break;
-        case 'ab-test':
-          void handleSelectABTest(initialResourceName);
-          break;
         case 'runtime-endpoint':
           void handleSelectRuntimeEndpoint(initialResourceName);
+          break;
+        case 'dataset':
+          void handleSelectDataset(initialResourceName);
+          break;
+        case 'knowledge-base':
+          void handleSelectKnowledgeBase(initialResourceName);
+          break;
+        case 'payment':
+        case 'payment-manager':
+          void handleSelectPaymentManager(initialResourceName);
           break;
       }
     }, 0);
@@ -644,12 +801,14 @@ export function RemoveFlow({
     handleSelectMemory,
     handleSelectIdentity,
     handleSelectEvaluator,
+    handleSelectDataset,
+    handleSelectKnowledgeBase,
     handleSelectOnlineEval,
     handleSelectPolicyEngine,
     handleSelectPolicy,
     handleSelectConfigBundle,
-    handleSelectABTest,
     handleSelectRuntimeEndpoint,
+    handleSelectPaymentManager,
   ]);
 
   // Confirm handlers - pass preview for logging
@@ -667,6 +826,22 @@ export function RemoveFlow({
       setResultReady(true);
     },
     [removeAgentOp]
+  );
+
+  const handleConfirmHarness = useCallback(
+    async (harnessName: string, preview: RemovalPreview) => {
+      pendingResultRef.current = null;
+      setResultReady(false);
+      setFlow({ name: 'loading', message: `Removing harness ${harnessName}...` });
+      const result = await removeHarnessOp(harnessName, preview);
+      if (result.success) {
+        pendingResultRef.current = { name: 'harness-success', harnessName, logFilePath: result.logFilePath };
+      } else {
+        pendingResultRef.current = { name: 'error', message: result.error.message };
+      }
+      setResultReady(true);
+    },
+    [removeHarnessOp]
   );
 
   const handleConfirmGateway = useCallback(
@@ -749,6 +924,42 @@ export function RemoveFlow({
     [removeEvaluatorOp]
   );
 
+  const handleConfirmDataset = useCallback(
+    async (datasetName: string, preview: RemovalPreview) => {
+      pendingResultRef.current = null;
+      setResultReady(false);
+      setFlow({ name: 'loading', message: `Removing dataset ${datasetName}...` });
+      const result = await removeDatasetOp(datasetName, preview);
+      if (result.success) {
+        pendingResultRef.current = { name: 'dataset-success', datasetName, logFilePath: result.logFilePath };
+      } else {
+        pendingResultRef.current = { name: 'error', message: result.error.message };
+      }
+      setResultReady(true);
+    },
+    [removeDatasetOp]
+  );
+
+  const handleConfirmKnowledgeBase = useCallback(
+    async (knowledgeBaseName: string, preview: RemovalPreview) => {
+      pendingResultRef.current = null;
+      setResultReady(false);
+      setFlow({ name: 'loading', message: `Removing knowledge base ${knowledgeBaseName}...` });
+      const result = await removeKnowledgeBaseOp(knowledgeBaseName, preview);
+      if (result.success) {
+        pendingResultRef.current = {
+          name: 'knowledge-base-success',
+          knowledgeBaseName,
+          logFilePath: result.logFilePath,
+        };
+      } else {
+        pendingResultRef.current = { name: 'error', message: result.error.message };
+      }
+      setResultReady(true);
+    },
+    [removeKnowledgeBaseOp]
+  );
+
   const handleConfirmOnlineEval = useCallback(
     async (configName: string, preview: RemovalPreview) => {
       pendingResultRef.current = null;
@@ -813,22 +1024,6 @@ export function RemoveFlow({
     [removeConfigBundleOp]
   );
 
-  const handleConfirmABTest = useCallback(
-    async (testName: string, preview: RemovalPreview) => {
-      pendingResultRef.current = null;
-      setResultReady(false);
-      setFlow({ name: 'loading', message: `Removing AB test ${testName}...` });
-      const result = await removeABTestOp(testName, preview);
-      if (result.success) {
-        pendingResultRef.current = { name: 'ab-test-success', testName, logFilePath: result.logFilePath };
-      } else {
-        pendingResultRef.current = { name: 'error', message: result.error.message };
-      }
-      setResultReady(true);
-    },
-    [removeABTestOp]
-  );
-
   const handleConfirmRuntimeEndpoint = useCallback(
     async (endpointName: string, preview: RemovalPreview) => {
       pendingResultRef.current = null;
@@ -848,59 +1043,71 @@ export function RemoveFlow({
   const resetAll = useCallback(() => {
     resetPreview();
     resetRemoveAgent();
+    resetRemoveHarness();
     resetRemoveGateway();
     resetRemoveGatewayTarget();
     resetRemoveMemory();
     resetRemoveIdentity();
     resetRemoveEvaluator();
+    resetRemoveDataset();
+    resetRemoveKnowledgeBase();
     resetRemoveOnlineEval();
     resetRemovePolicyEngine();
     resetRemovePolicy();
     resetRemoveConfigBundle();
-    resetRemoveABTest();
     resetRemoveRuntimeEndpoint();
   }, [
     resetPreview,
     resetRemoveAgent,
+    resetRemoveHarness,
     resetRemoveGateway,
     resetRemoveGatewayTarget,
     resetRemoveMemory,
     resetRemoveIdentity,
     resetRemoveEvaluator,
+    resetRemoveDataset,
+    resetRemoveKnowledgeBase,
     resetRemoveOnlineEval,
     resetRemovePolicyEngine,
     resetRemovePolicy,
     resetRemoveConfigBundle,
-    resetRemoveABTest,
     resetRemoveRuntimeEndpoint,
   ]);
 
   const refreshAll = useCallback(async () => {
     await Promise.all([
       refreshAgents(),
+      refreshHarnesses(),
       refreshGateways(),
       refreshTools(),
       refreshMemories(),
       refreshIdentities(),
       refreshEvaluators(),
+      refreshDatasets(),
+      refreshKnowledgeBases(),
       refreshOnlineEvals(),
       refreshPolicyEngines(),
       refreshPolicies(),
       refreshConfigBundles(),
       refreshRuntimeEndpoints(),
+      refreshPayments(),
     ]);
   }, [
     refreshAgents,
+    refreshHarnesses,
     refreshGateways,
     refreshTools,
     refreshMemories,
     refreshIdentities,
     refreshEvaluators,
+    refreshDatasets,
+    refreshKnowledgeBases,
     refreshOnlineEvals,
     refreshPolicyEngines,
     refreshPolicies,
     refreshConfigBundles,
     refreshRuntimeEndpoints,
+    refreshPayments,
   ]);
 
   // Select screen - wait for data to load to avoid arrow position issues
@@ -913,6 +1120,7 @@ export function RemoveFlow({
         onSelect={handleSelectResource}
         onExit={onExit}
         agentCount={agents.length}
+        harnessCount={harnesses.length}
         gatewayCount={gateways.length}
         mcpToolCount={mcpTools.length}
         memoryCount={memories.length}
@@ -922,8 +1130,10 @@ export function RemoveFlow({
         policyEngineCount={policyEngines.length}
         policyCount={policies.length}
         configBundleCount={configBundles.length}
-        abTestCount={abTests.length}
         runtimeEndpointCount={runtimeEndpoints.length}
+        datasetCount={datasets.length}
+        knowledgeBaseCount={knowledgeBases.length}
+        paymentCount={paymentManagers.length}
       />
     );
   }
@@ -952,6 +1162,19 @@ export function RemoveFlow({
       <RemoveAgentScreen
         agents={agents}
         onSelect={(name: string) => void handleSelectAgent(name)}
+        onExit={() => setFlow({ name: 'select' })}
+      />
+    );
+  }
+
+  if (flow.name === 'select-harness') {
+    if (initialResourceName && isLoading) {
+      return null;
+    }
+    return (
+      <RemoveAgentScreen
+        agents={harnesses}
+        onSelect={(name: string) => void handleSelectHarness(name)}
         onExit={() => setFlow({ name: 'select' })}
       />
     );
@@ -1019,6 +1242,32 @@ export function RemoveFlow({
     );
   }
 
+  if (flow.name === 'select-dataset') {
+    if (initialResourceName && isLoading) {
+      return null;
+    }
+    return (
+      <RemoveDatasetScreen
+        datasets={datasets}
+        onSelect={(name: string) => void handleSelectDataset(name)}
+        onExit={() => setFlow({ name: 'select' })}
+      />
+    );
+  }
+
+  if (flow.name === 'select-knowledge-base') {
+    if (initialResourceName && isLoading) {
+      return null;
+    }
+    return (
+      <RemoveKnowledgeBaseScreen
+        knowledgeBases={knowledgeBases}
+        onSelect={(name: string) => void handleSelectKnowledgeBase(name)}
+        onExit={() => setFlow({ name: 'select' })}
+      />
+    );
+  }
+
   if (flow.name === 'select-online-eval') {
     if (initialResourceName && isLoading) {
       return null;
@@ -1071,19 +1320,6 @@ export function RemoveFlow({
     );
   }
 
-  if (flow.name === 'select-ab-test') {
-    if (initialResourceName && isLoading) {
-      return null;
-    }
-    return (
-      <RemoveABTestScreen
-        abTests={abTests}
-        onSelect={(name: string) => void handleSelectABTest(name)}
-        onExit={() => setFlow({ name: 'select' })}
-      />
-    );
-  }
-
   if (flow.name === 'select-runtime-endpoint') {
     if (initialResourceName && isLoading) {
       return null;
@@ -1097,6 +1333,28 @@ export function RemoveFlow({
     );
   }
 
+  if (flow.name === 'select-payment') {
+    if (isLoading) return null;
+    if (paymentManagers.length === 0) {
+      return (
+        <Screen title="Remove Payment" onExit={() => setFlow({ name: 'select' })}>
+          <Panel>
+            <Text dimColor>No payment managers to remove.</Text>
+          </Panel>
+        </Screen>
+      );
+    }
+    const items = paymentManagers.map(m => ({ id: m.name, title: m.name, description: 'Payment manager' }));
+    return (
+      <SelectScreen
+        title="Select Payment Manager to Remove"
+        items={items}
+        onSelect={item => void handleSelectPaymentManager(item.id)}
+        onExit={() => setFlow({ name: 'select' })}
+      />
+    );
+  }
+
   // Confirmation screens
   if (flow.name === 'confirm-agent') {
     return (
@@ -1105,6 +1363,53 @@ export function RemoveFlow({
         preview={flow.preview}
         onConfirm={() => void handleConfirmAgent(flow.agentName, flow.preview)}
         onCancel={() => setFlow({ name: 'select-agent' })}
+      />
+    );
+  }
+
+  if (flow.name === 'confirm-harness') {
+    return (
+      <RemoveConfirmScreen
+        title={`Remove Harness: ${flow.harnessName}`}
+        preview={flow.preview}
+        onConfirm={() => void handleConfirmHarness(flow.harnessName, flow.preview)}
+        onCancel={() => setFlow({ name: 'select-harness' })}
+      />
+    );
+  }
+
+  if (flow.name === 'confirm-orphan-harness') {
+    const orphanName = flow.harnessName;
+    return (
+      <SelectScreen<{ id: string; title: string; description?: string; spaceBefore?: boolean }>
+        title={`Remove Harness: ${orphanName}`}
+        color="yellow"
+        headerContent={
+          <Text>
+            {`"${orphanName}" was created by the preview build and is not managed by CloudFormation, so CloudFormation cannot delete it. This will delete it directly from your AWS account.`}
+          </Text>
+        }
+        items={[
+          {
+            id: 'keep',
+            title: 'Delete it and keep it in agentcore.json',
+            description: 'Moves to GA — the next `agentcore deploy` recreates it under CloudFormation.',
+          },
+          {
+            id: 'discard',
+            title: 'Delete it and remove it from agentcore.json',
+            description: 'You no longer want this harness.',
+          },
+          { id: 'cancel', title: 'Cancel', description: 'Leave the harness untouched.', spaceBefore: true },
+        ]}
+        onSelect={item => {
+          if (item.id === 'cancel') {
+            setFlow({ name: 'select-harness' });
+          } else {
+            void handleConfirmOrphanHarness(orphanName, item.id as OrphanAction);
+          }
+        }}
+        onExit={() => setFlow({ name: 'select-harness' })}
       />
     );
   }
@@ -1164,6 +1469,28 @@ export function RemoveFlow({
     );
   }
 
+  if (flow.name === 'confirm-dataset') {
+    return (
+      <RemoveConfirmScreen
+        title={`Remove Dataset: ${flow.datasetName}`}
+        preview={flow.preview}
+        onConfirm={() => void handleConfirmDataset(flow.datasetName, flow.preview)}
+        onCancel={() => setFlow({ name: 'select-dataset' })}
+      />
+    );
+  }
+
+  if (flow.name === 'confirm-knowledge-base') {
+    return (
+      <RemoveConfirmScreen
+        title={`Remove Knowledge Base: ${flow.knowledgeBaseName}`}
+        preview={flow.preview}
+        onConfirm={() => void handleConfirmKnowledgeBase(flow.knowledgeBaseName, flow.preview)}
+        onCancel={() => setFlow({ name: 'select-knowledge-base' })}
+      />
+    );
+  }
+
   if (flow.name === 'confirm-online-eval') {
     return (
       <RemoveConfirmScreen
@@ -1208,17 +1535,6 @@ export function RemoveFlow({
     );
   }
 
-  if (flow.name === 'confirm-ab-test') {
-    return (
-      <RemoveConfirmScreen
-        title={`Remove AB Test: ${flow.testName}`}
-        preview={flow.preview}
-        onConfirm={() => void handleConfirmABTest(flow.testName, flow.preview)}
-        onCancel={() => setFlow({ name: 'select-ab-test' })}
-      />
-    );
-  }
-
   if (flow.name === 'confirm-runtime-endpoint') {
     return (
       <RemoveConfirmScreen
@@ -1230,6 +1546,27 @@ export function RemoveFlow({
     );
   }
 
+  if (flow.name === 'confirm-payment') {
+    return (
+      <RemoveConfirmScreen
+        title={`Remove Payment Manager: ${flow.managerName}`}
+        preview={flow.preview}
+        onConfirm={() => {
+          void (async () => {
+            setFlow({ name: 'loading', message: `Removing payment manager ${flow.managerName}...` });
+            const result = await paymentManagerPrimitive.remove(flow.managerName);
+            if (result.success) {
+              setFlow({ name: 'payment-success', managerName: flow.managerName });
+            } else {
+              setFlow({ name: 'error', message: result.error?.message ?? 'Failed to remove payment manager' });
+            }
+          })();
+        }}
+        onCancel={() => setFlow({ name: 'select-payment' })}
+      />
+    );
+  }
+
   // Success screens
   if (flow.name === 'agent-success') {
     return (
@@ -1237,6 +1574,22 @@ export function RemoveFlow({
         isInteractive={isInteractive}
         message={`Removed agent: ${flow.agentName}`}
         detail="Agent removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
+        logFilePath={flow.logFilePath}
+        onRemoveAnother={() => {
+          resetAll();
+          void refreshAll().then(() => setFlow({ name: 'select' }));
+        }}
+        onExit={onExit}
+      />
+    );
+  }
+
+  if (flow.name === 'harness-success') {
+    return (
+      <RemoveSuccessScreen
+        isInteractive={isInteractive}
+        message={`Removed harness: ${flow.harnessName}`}
+        detail="Harness removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
         logFilePath={flow.logFilePath}
         onRemoveAnother={() => {
           resetAll();
@@ -1327,6 +1680,38 @@ export function RemoveFlow({
     );
   }
 
+  if (flow.name === 'dataset-success') {
+    return (
+      <RemoveSuccessScreen
+        isInteractive={isInteractive}
+        message={`Removed dataset: ${flow.datasetName}`}
+        detail="Dataset removed from agentcore.json. Deploy with `agentcore deploy` to apply changes. (Local JSONL is left on disk.)"
+        logFilePath={flow.logFilePath}
+        onRemoveAnother={() => {
+          resetAll();
+          void refreshAll().then(() => setFlow({ name: 'select' }));
+        }}
+        onExit={onExit}
+      />
+    );
+  }
+
+  if (flow.name === 'knowledge-base-success') {
+    return (
+      <RemoveSuccessScreen
+        isInteractive={isInteractive}
+        message={`Removed knowledge base: ${flow.knowledgeBaseName}`}
+        detail="Knowledge base removed from agentcore.json. Connector gateway targets and any orphaned agentic-retrieve targets were cascade-pruned. Deploy with `agentcore deploy` to apply changes."
+        logFilePath={flow.logFilePath}
+        onRemoveAnother={() => {
+          resetAll();
+          void refreshAll().then(() => setFlow({ name: 'select' }));
+        }}
+        onExit={onExit}
+      />
+    );
+  }
+
   if (flow.name === 'online-eval-success') {
     return (
       <RemoveSuccessScreen
@@ -1391,12 +1776,12 @@ export function RemoveFlow({
     );
   }
 
-  if (flow.name === 'ab-test-success') {
+  if (flow.name === 'runtime-endpoint-success') {
     return (
       <RemoveSuccessScreen
         isInteractive={isInteractive}
-        message={`Removed AB test: ${flow.testName}`}
-        detail="AB test removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
+        message={`Removed runtime endpoint: ${flow.endpointName}`}
+        detail="Runtime endpoint removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
         logFilePath={flow.logFilePath}
         onRemoveAnother={() => {
           resetAll();
@@ -1407,13 +1792,12 @@ export function RemoveFlow({
     );
   }
 
-  if (flow.name === 'runtime-endpoint-success') {
+  if (flow.name === 'payment-success') {
     return (
       <RemoveSuccessScreen
         isInteractive={isInteractive}
-        message={`Removed runtime endpoint: ${flow.endpointName}`}
-        detail="Runtime endpoint removed from agentcore.json. Deploy with `agentcore deploy` to apply changes."
-        logFilePath={flow.logFilePath}
+        message={`Removed payment manager: ${flow.managerName}`}
+        detail="Payment manager and connectors removed. Deploy with `agentcore deploy` to tear down AWS resources."
         onRemoveAnother={() => {
           resetAll();
           void refreshAll().then(() => setFlow({ name: 'select' }));

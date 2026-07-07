@@ -1,15 +1,26 @@
+import { readEnvFile } from '../src/lib/utils/env.js';
 import { createTestProject, readProjectConfig, runCLI } from '../src/test-utils/index.js';
 import type { TestProject } from '../src/test-utils/index.js';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 describe('integration: add BYO agent with CUSTOM_JWT auth', () => {
   let project: TestProject;
+  let keyDir: string;
+  const prevEnv = { kc: process.env.AGENTCORE_DISABLE_KEYCHAIN, cfg: process.env.AGENTCORE_CONFIG_DIR };
   const agentName = 'AuthAgent';
   const discoveryUrl = 'https://cognito-idp.us-east-1.amazonaws.com/us-east-1_test123/.well-known/openid-configuration';
 
   beforeAll(async () => {
+    // Isolate secret-at-rest encryption from the developer's real OS keychain and
+    // ~/.agentcore: force the keyfile provider into a throwaway dir. cleanSpawnEnv
+    // inherits process.env, so spawned CLI processes pick these up too.
+    keyDir = mkdtempSync(join(tmpdir(), 'agentcore-integ-keys-'));
+    process.env.AGENTCORE_DISABLE_KEYCHAIN = '1';
+    process.env.AGENTCORE_CONFIG_DIR = keyDir;
     project = await createTestProject({
       noAgent: true,
     });
@@ -17,6 +28,9 @@ describe('integration: add BYO agent with CUSTOM_JWT auth', () => {
 
   afterAll(async () => {
     await project.cleanup();
+    process.env.AGENTCORE_DISABLE_KEYCHAIN = prevEnv.kc;
+    process.env.AGENTCORE_CONFIG_DIR = prevEnv.cfg;
+    rmSync(keyDir, { recursive: true, force: true });
   });
 
   it('adds a BYO agent with CUSTOM_JWT authorizer and audience', async () => {
@@ -119,11 +133,13 @@ describe('integration: add BYO agent with CUSTOM_JWT auth', () => {
     expect(oauthCred!.authorizerType).toBe('OAuthCredentialProvider');
     expect((oauthCred as { managed?: boolean }).managed).toBe(true);
 
-    // Verify .env.local has client secrets (namespaced per credential)
+    // Client ID is a reference (plaintext); the client SECRET is encrypted at rest.
     const envPath = join(project.projectPath, 'agentcore', '.env.local');
     const envContent = await readFile(envPath, 'utf-8');
     expect(envContent).toContain('my-client-id');
-    expect(envContent).toContain('my-client-secret');
+    expect(envContent).not.toContain('my-client-secret'); // encrypted at rest
+    const env = await readEnvFile(join(project.projectPath, 'agentcore'));
+    expect(env.AGENTCORE_CREDENTIAL_AUTHAGENT2_OAUTH_CLIENT_SECRET).toBe('my-client-secret');
   });
 
   it('adds a BYO agent with default AWS_IAM auth (no auth flags)', async () => {

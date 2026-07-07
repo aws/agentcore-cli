@@ -274,6 +274,97 @@ describe('AgentEnvSpecSchema', () => {
   });
 });
 
+describe('NetworkConfigSchema — strict AWS ID format', () => {
+  it('accepts 8-char lowercase-hex IDs', () => {
+    expect(
+      NetworkConfigSchema.safeParse({ subnets: ['subnet-0a1b2c3d'], securityGroups: ['sg-0a1b2c3d'] }).success
+    ).toBe(true);
+  });
+
+  it('accepts 17-char lowercase-hex IDs', () => {
+    expect(
+      NetworkConfigSchema.safeParse({
+        subnets: ['subnet-0a1b2c3d4e5f60718'],
+        securityGroups: ['sg-0a1b2c3d4e5f60718'],
+        vpcId: 'vpc-0a1b2c3d4e5f60718',
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects uppercase vpcId', () => {
+    expect(
+      NetworkConfigSchema.safeParse({
+        subnets: ['subnet-0a1b2c3d'],
+        securityGroups: ['sg-0a1b2c3d'],
+        vpcId: 'vpc-ABCDEFGH',
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects non-hex vpcId', () => {
+    expect(
+      NetworkConfigSchema.safeParse({
+        subnets: ['subnet-0a1b2c3d'],
+        securityGroups: ['sg-0a1b2c3d'],
+        vpcId: 'vpc-zzzzzzzz',
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects 9-char vpcId', () => {
+    expect(
+      NetworkConfigSchema.safeParse({
+        subnets: ['subnet-0a1b2c3d'],
+        securityGroups: ['sg-0a1b2c3d'],
+        vpcId: 'vpc-123456789',
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects too-short vpcId', () => {
+    expect(
+      NetworkConfigSchema.safeParse({ subnets: ['subnet-0a1b2c3d'], securityGroups: ['sg-0a1b2c3d'], vpcId: 'vpc-xyz' })
+        .success
+    ).toBe(false);
+  });
+
+  it('rejects uppercase subnet ID', () => {
+    expect(
+      NetworkConfigSchema.safeParse({ subnets: ['subnet-ABCDEFGH'], securityGroups: ['sg-0a1b2c3d'] }).success
+    ).toBe(false);
+  });
+
+  it('rejects non-hex subnet ID', () => {
+    expect(
+      NetworkConfigSchema.safeParse({ subnets: ['subnet-zzzzzzzz'], securityGroups: ['sg-0a1b2c3d'] }).success
+    ).toBe(false);
+  });
+
+  it('rejects 9-char subnet ID', () => {
+    expect(
+      NetworkConfigSchema.safeParse({ subnets: ['subnet-123456789'], securityGroups: ['sg-0a1b2c3d'] }).success
+    ).toBe(false);
+  });
+
+  it('rejects uppercase security group ID', () => {
+    expect(
+      NetworkConfigSchema.safeParse({ subnets: ['subnet-0a1b2c3d'], securityGroups: ['sg-ABCDEFGH'] }).success
+    ).toBe(false);
+  });
+
+  it('rejects non-hex security group ID', () => {
+    expect(
+      NetworkConfigSchema.safeParse({ subnets: ['subnet-0a1b2c3d'], securityGroups: ['sg-zzzzzzzz'] }).success
+    ).toBe(false);
+  });
+
+  it('rejects 9-char security group ID', () => {
+    expect(
+      NetworkConfigSchema.safeParse({ subnets: ['subnet-0a1b2c3d'], securityGroups: ['sg-123456789'] }).success
+    ).toBe(false);
+  });
+});
+
 describe('NetworkConfigSchema', () => {
   it('accepts valid subnets and security groups', () => {
     const result = NetworkConfigSchema.safeParse({
@@ -415,6 +506,12 @@ describe('AgentEnvSpecSchema - dockerfile', () => {
     );
   });
 
+  it('accepts a relative subpath (resolved against the build context)', () => {
+    expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: 'docker/Dockerfile' }).success).toBe(
+      true
+    );
+  });
+
   it('rejects dockerfile on CodeZip builds', () => {
     const result = AgentEnvSpecSchema.safeParse({ ...validCodeZipAgent, dockerfile: 'Dockerfile.custom' });
     expect(result.success).toBe(false);
@@ -423,11 +520,10 @@ describe('AgentEnvSpecSchema - dockerfile', () => {
     }
   });
 
-  it('rejects path traversal or path separator in dockerfile', () => {
+  it('rejects path traversal and absolute paths in dockerfile', () => {
     expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: '../Dockerfile' }).success).toBe(false);
-    expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: 'path/to/Dockerfile' }).success).toBe(
-      false
-    );
+    expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: 'a/../secret' }).success).toBe(false);
+    expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: '/etc/Dockerfile' }).success).toBe(false);
   });
 
   it('rejects empty string dockerfile', () => {
@@ -712,5 +808,158 @@ describe('AgentEnvSpecSchema - endpoints', () => {
     if (result.success) {
       expect(result.data.endpoints!.prod).toEqual({ version: 5 });
     }
+  });
+});
+
+describe('NetworkConfigSchema - vpcId', () => {
+  it('accepts valid vpcId', () => {
+    const result = NetworkConfigSchema.safeParse({
+      subnets: ['subnet-12345678'],
+      securityGroups: ['sg-12345678'],
+      vpcId: 'vpc-12345678',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects malformed vpcId', () => {
+    expect(
+      NetworkConfigSchema.safeParse({
+        subnets: ['subnet-12345678'],
+        securityGroups: ['sg-12345678'],
+        vpcId: 'invalid-vpc',
+      }).success
+    ).toBe(false);
+    expect(
+      NetworkConfigSchema.safeParse({
+        subnets: ['subnet-12345678'],
+        securityGroups: ['sg-12345678'],
+        vpcId: 'vpc-1234567',
+      }).success
+    ).toBe(false);
+  });
+
+  it('omits vpcId when not provided (optional)', () => {
+    const result = NetworkConfigSchema.safeParse({
+      subnets: ['subnet-12345678'],
+      securityGroups: ['sg-12345678'],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.vpcId).toBeUndefined();
+    }
+  });
+});
+
+describe('AgentEnvSpecSchema - vpcId validation', () => {
+  const baseVpcAgent = {
+    name: 'VpcAgent',
+    build: 'Container',
+    entrypoint: 'main.py',
+    codeLocation: './agents/vpc',
+    networkMode: 'VPC',
+    networkConfig: {
+      subnets: ['subnet-12345678'],
+      securityGroups: ['sg-12345678'],
+    },
+  };
+
+  it('accepts a Container+VPC agent WITHOUT vpcId at the schema level (backfilled at deploy)', () => {
+    // vpcId is required to build, but NOT enforced on read/write: pre-existing agentcore.json files
+    // written before the vpcId field existed must still load. The CLI validators require --vpc-id for
+    // fresh creates, deploy backfills a missing vpcId from the subnets, and the CDK construct fails
+    // fast at synth. Keeping the schema lenient is what lets status/remove/validate work on old configs.
+    const result = AgentEnvSpecSchema.safeParse(baseVpcAgent);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts Container+VPC agent with vpcId', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...baseVpcAgent,
+      networkConfig: {
+        subnets: ['subnet-12345678'],
+        securityGroups: ['sg-12345678'],
+        vpcId: 'vpc-12345678',
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('does not require vpcId for CodeZip+VPC', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      name: 'CodeZipVpcAgent',
+      build: 'CodeZip',
+      entrypoint: 'main.py:handler',
+      codeLocation: './agents/codezipvpc',
+      runtimeVersion: 'PYTHON_3_12',
+      networkMode: 'VPC',
+      networkConfig: {
+        subnets: ['subnet-12345678'],
+        securityGroups: ['sg-12345678'],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('AgentEnvSpecSchema — SG≤5 for Container builds in VPC mode', () => {
+  const sixSgs = [
+    'sg-00000000000000001',
+    'sg-00000000000000002',
+    'sg-00000000000000003',
+    'sg-00000000000000004',
+    'sg-00000000000000005',
+    'sg-00000000000000006',
+  ];
+  const fiveSgs = sixSgs.slice(0, 5);
+
+  it('rejects Container+VPC with 6 security groups', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      name: 'ContainerVpcAgent',
+      build: 'Container',
+      entrypoint: 'main.py',
+      codeLocation: './agents/container',
+      networkMode: 'VPC',
+      networkConfig: {
+        subnets: ['subnet-0123456789abcdef0'],
+        securityGroups: sixSgs,
+        vpcId: 'vpc-0123456789abcdef0',
+      },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('5 security groups'))).toBe(true);
+    }
+  });
+
+  it('accepts Container+VPC with exactly 5 security groups', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      name: 'ContainerVpcAgent',
+      build: 'Container',
+      entrypoint: 'main.py',
+      codeLocation: './agents/container',
+      networkMode: 'VPC',
+      networkConfig: {
+        subnets: ['subnet-0123456789abcdef0'],
+        securityGroups: fiveSgs,
+        vpcId: 'vpc-0123456789abcdef0',
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts CodeZip+VPC with 6 security groups (no CodeBuild, no cap)', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      name: 'CodeZipVpcAgent',
+      build: 'CodeZip',
+      entrypoint: 'main.py:handler',
+      codeLocation: './agents/codezipvpc',
+      runtimeVersion: 'PYTHON_3_12',
+      networkMode: 'VPC',
+      networkConfig: {
+        subnets: ['subnet-0123456789abcdef0'],
+        securityGroups: sixSgs,
+      },
+    });
+    expect(result.success).toBe(true);
   });
 });

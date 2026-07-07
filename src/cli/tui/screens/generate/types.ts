@@ -1,13 +1,20 @@
 import type {
   BuildType,
+  EfsAccessPointConfig,
   ModelProvider,
   NetworkMode,
   ProtocolMode,
   RuntimeAuthorizerType,
+  S3FilesAccessPointConfig,
   SDKFramework,
   TargetLanguage,
 } from '../../../../schema';
-import { DEFAULT_MODEL_IDS, PROTOCOL_FRAMEWORK_MATRIX, getSupportedModelProviders } from '../../../../schema';
+import {
+  DEFAULT_MODEL_IDS,
+  PROTOCOL_FRAMEWORK_MATRIX,
+  getFrameworksForLanguage,
+  getSupportedModelProviders,
+} from '../../../../schema';
 import type { JwtConfigOptions } from '../../../primitives/auth-utils';
 
 export type GenerateStep =
@@ -24,12 +31,19 @@ export type GenerateStep =
   | 'networkMode'
   | 'subnets'
   | 'securityGroups'
+  | 'vpcId'
   | 'requestHeaderAllowlist'
   | 'authorizerType'
   | 'jwtConfig'
   | 'idleTimeout'
   | 'maxLifetime'
   | 'sessionStorageMountPath'
+  | 'efsArn'
+  | 'efsMountPath'
+  | 'efsAddAnother'
+  | 's3Arn'
+  | 's3MountPath'
+  | 's3AddAnother'
   | 'confirm';
 
 export type MemoryOption = 'none' | 'shortTerm' | 'longAndShortTerm';
@@ -52,6 +66,7 @@ export interface GenerateConfig {
   networkMode?: NetworkMode;
   subnets?: string[];
   securityGroups?: string[];
+  vpcId?: string;
   /** Allowed request headers for the runtime */
   requestHeaderAllowlist?: string[];
   /** Authorizer type for inbound requests */
@@ -64,6 +79,10 @@ export interface GenerateConfig {
   maxLifetime?: number;
   /** Mount path for session filesystem storage (e.g. /mnt/session-storage) */
   sessionStorageMountPath?: string;
+  /** EFS access point mounts configured for this agent */
+  efsAccessPoints?: EfsAccessPointConfig[];
+  /** S3 Files access point mounts configured for this agent */
+  s3AccessPoints?: S3FilesAccessPointConfig[];
   /** When true, create a config bundle wired into the agent template */
   withConfigBundle?: boolean;
 }
@@ -95,18 +114,25 @@ export const STEP_LABELS: Record<GenerateStep, string> = {
   networkMode: 'Network',
   subnets: 'Subnets',
   securityGroups: 'Security Groups',
+  vpcId: 'VPC ID',
   requestHeaderAllowlist: 'Headers',
   authorizerType: 'Auth',
   jwtConfig: 'JWT Config',
   idleTimeout: 'Idle Timeout',
   maxLifetime: 'Max Lifetime',
   sessionStorageMountPath: 'Session Storage',
+  efsArn: 'EFS ARN',
+  efsMountPath: 'EFS Path',
+  efsAddAnother: 'Add EFS',
+  s3Arn: 'S3 Files ARN',
+  s3MountPath: 'S3 Files Path',
+  s3AddAnother: 'Add S3 Files',
   confirm: 'Confirm',
 };
 
 export const LANGUAGE_OPTIONS = [
   { id: 'Python', title: 'Python' },
-  { id: 'TypeScript', title: 'TypeScript (coming soon)', disabled: true },
+  { id: 'TypeScript', title: 'TypeScript' },
 ] as const;
 
 export const BUILD_TYPE_OPTIONS = [
@@ -121,19 +147,38 @@ export const PROTOCOL_OPTIONS = [
   { id: 'AGUI', title: 'AG-UI', description: 'Stream rich agent events to frontends' },
 ] as const;
 
+/**
+ * Get protocol options filtered by target language.
+ * TypeScript only supports HTTP.
+ */
+export function getProtocolOptionsForLanguage(language?: TargetLanguage) {
+  if (language === 'TypeScript') {
+    return PROTOCOL_OPTIONS.filter(option => option.id === 'HTTP');
+  }
+  return [...PROTOCOL_OPTIONS];
+}
+
 export const SDK_OPTIONS = [
   { id: 'Strands', title: 'Strands Agents SDK', description: 'AWS native agent framework' },
   { id: 'LangChain_LangGraph', title: 'LangChain + LangGraph', description: 'Popular open-source frameworks' },
   { id: 'GoogleADK', title: 'Google ADK', description: 'Google Agent Development Kit' },
   { id: 'OpenAIAgents', title: 'OpenAI Agents', description: 'OpenAI native agent SDK' },
+  { id: 'VercelAI', title: 'Vercel AI SDK', description: 'Vercel AI SDK for TypeScript agents' },
 ] as const;
 
 /**
- * Get SDK options filtered by protocol compatibility.
+ * Get SDK options filtered by protocol compatibility and target language.
+ * Frameworks must ship a template for the chosen language — e.g. Vercel AI is
+ * TypeScript-only, so it never appears for Python agents.
  */
-export function getSDKOptionsForProtocol(protocol: ProtocolMode) {
+export function getSDKOptionsForProtocol(protocol: ProtocolMode, language?: TargetLanguage) {
   const supportedFrameworks = PROTOCOL_FRAMEWORK_MATRIX[protocol];
-  return SDK_OPTIONS.filter(option => supportedFrameworks.includes(option.id));
+  const byProtocol = SDK_OPTIONS.filter(option => supportedFrameworks.includes(option.id));
+  if (language === 'Python' || language === 'TypeScript') {
+    const byLanguage = getFrameworksForLanguage(language);
+    return byProtocol.filter(option => byLanguage.includes(option.id));
+  }
+  return byProtocol;
 }
 
 export const MODEL_PROVIDER_OPTIONS = [
@@ -175,10 +220,10 @@ export const ADVANCED_SETTING_OPTIONS = [
   { id: 'headers', title: 'Request header allowlist', description: 'Allow custom headers through to your agent' },
   { id: 'auth', title: 'Custom auth (JWT)', description: 'OIDC-based token validation for inbound requests' },
   { id: 'lifecycle', title: 'Lifecycle timeouts', description: 'Idle timeout & max instance lifetime' },
-  { id: 'filesystem', title: 'Session filesystem storage', description: 'Persist files across session stop/resume' },
+  { id: 'filesystem', title: 'Filesystem mounts', description: 'Session storage, EFS, and S3 Files mounts' },
   {
     id: 'configBundle',
-    title: 'Config bundle [preview]',
+    title: 'Config bundle',
     description: 'Manage system prompt and tool config without redeploying',
   },
 ] as const;

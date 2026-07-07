@@ -1,7 +1,7 @@
 import { ResourceNotFoundError, findConfigRoot, serializeResult, toError } from '../../lib';
 import type { Result } from '../../lib/result';
 import type { ConfigBundle } from '../../schema';
-import { ConfigBundleSchema } from '../../schema';
+import { ConfigBundleSchema, isValidKmsKeyArn } from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { BasePrimitive } from './BasePrimitive';
@@ -15,6 +15,7 @@ export interface AddConfigBundleOptions {
   components: Record<string, { configuration: Record<string, unknown> }>;
   branchName?: string;
   commitMessage?: string;
+  kmsKeyArn?: string;
 }
 
 export type RemovableConfigBundle = RemovableResource;
@@ -106,7 +107,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
   registerCommands(addCmd: Command, removeCmd: Command): void {
     addCmd
       .command(this.kind)
-      .description('[preview] Add a configuration bundle to the project')
+      .description('Add a configuration bundle to the project')
       .option('--name <name>', 'Bundle name')
       .option('--description <text>', 'Bundle description')
       .option(
@@ -116,6 +117,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
       .option('--components-file <path>', 'Path to components JSON file (same format as --components)')
       .option('--branch <name>', 'Branch name for versioning')
       .option('--commit-message <text>', 'Commit message for this version')
+      .option('--kms-key <arn>', 'KMS key ARN for encrypting the configuration bundle')
       .option('--json', 'Output as JSON')
       .action(
         async (cliOptions: {
@@ -125,6 +127,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
           componentsFile?: string;
           branch?: string;
           commitMessage?: string;
+          kmsKey?: string;
           json?: boolean;
         }) => {
           try {
@@ -151,6 +154,12 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
                 fail('Either --components or --components-file is required');
               }
 
+              if (cliOptions.kmsKey && !isValidKmsKeyArn(cliOptions.kmsKey)) {
+                fail(
+                  '--kms-key must be a valid KMS key ARN (e.g. arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012)'
+                );
+              }
+
               let components: Record<string, { configuration: Record<string, unknown> }>;
               if (cliOptions.componentsFile) {
                 const raw = readFileSync(cliOptions.componentsFile, 'utf-8');
@@ -168,6 +177,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
                 components,
                 branchName: cliOptions.branch,
                 commitMessage: cliOptions.commitMessage,
+                kmsKeyArn: cliOptions.kmsKey,
               });
 
               if (cliOptions.json) {
@@ -227,6 +237,7 @@ export class ConfigBundlePrimitive extends BasePrimitive<AddConfigBundleOptions,
       components: options.components,
       branchName: options.branchName ?? 'mainline',
       ...(options.commitMessage && { commitMessage: options.commitMessage }),
+      ...(options.kmsKeyArn && { kmsKeyArn: options.kmsKeyArn }),
     };
 
     project.configBundles ??= [];

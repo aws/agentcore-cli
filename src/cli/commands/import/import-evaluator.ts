@@ -1,3 +1,5 @@
+import { ValidationError } from '../../../lib';
+import { type Result, failureResult } from '../../../lib/result';
 import type { Evaluator } from '../../../schema';
 import type { EvaluatorSummary, GetEvaluatorResult } from '../../aws/agentcore-control';
 import {
@@ -6,7 +8,8 @@ import {
   listAllEvaluators,
   listAllOnlineEvaluationConfigs,
 } from '../../aws/agentcore-control';
-import { ANSI } from './constants';
+import { ANSI } from '../../constants';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { failResult, parseAndValidateArn } from './import-utils';
 import { executeResourceImport } from './resource-import';
 import type { ImportResourceOptions, ImportResourceResult, ResourceImportDescriptor } from './types';
@@ -16,7 +19,7 @@ import type { Command } from '@commander-js/extra-typings';
 /**
  * Map an AWS GetEvaluator response to the CLI Evaluator spec format.
  */
-export function toEvaluatorSpec(detail: GetEvaluatorResult, localName: string): Evaluator {
+export function toEvaluatorSpec(detail: GetEvaluatorResult, localName: string): Result<{ evaluator: Evaluator }> {
   const level = detail.level || 'SESSION';
 
   let config: Evaluator['config'];
@@ -39,19 +42,24 @@ export function toEvaluatorSpec(detail: GetEvaluatorResult, localName: string): 
       },
     };
   } else {
-    throw new Error(
-      `Evaluator "${detail.evaluatorName}" has no recognizable config. ` +
-        'Only LLM-as-a-Judge and code-based evaluators can be imported.'
+    return failureResult(
+      new ValidationError(
+        `Evaluator "${detail.evaluatorName}" has no recognizable config. ` +
+          'Only LLM-as-a-Judge and code-based evaluators can be imported.'
+      )
     );
   }
 
   return {
-    name: localName,
-    level,
-    ...(detail.description && { description: detail.description }),
-    config,
-    ...(detail.kmsKeyArn && { kmsKeyArn: detail.kmsKeyArn }),
-    ...(detail.tags && Object.keys(detail.tags).length > 0 && { tags: detail.tags }),
+    success: true,
+    evaluator: {
+      name: localName,
+      level,
+      ...(detail.description && { description: detail.description }),
+      config,
+      ...(detail.kmsKeyArn && { kmsKeyArn: detail.kmsKeyArn }),
+      ...(detail.tags && Object.keys(detail.tags).length > 0 && { tags: detail.tags }),
+    },
   };
 }
 
@@ -76,7 +84,11 @@ const evaluatorDescriptor: ResourceImportDescriptor<GetEvaluatorResult, Evaluato
 
   getExistingNames: spec => (spec.evaluators ?? []).map(e => e.name),
   addToProjectSpec: (detail, localName, spec) => {
-    (spec.evaluators ??= []).push(toEvaluatorSpec(detail, localName));
+    const result = toEvaluatorSpec(detail, localName);
+    if (!result.success)
+      return { success: false, error: result.error, resourceType: 'evaluator' as const, resourceName: localName };
+    (spec.evaluators ??= []).push(result.evaluator);
+    return { success: true, resourceType: 'evaluator', resourceName: localName };
   },
 
   cfnResourceType: 'AWS::BedrockAgentCore::Evaluator',
@@ -143,7 +155,7 @@ export function registerImportEvaluator(importCmd: Command): void {
     .option('--name <name>', 'Local name for the imported evaluator')
     .option('-y, --yes', 'Auto-confirm prompts')
     .action(async (cliOptions: ImportResourceOptions) => {
-      const result = await handleImportEvaluator(cliOptions);
+      const result = await withCommandRunTelemetry('import.evaluator', {}, () => handleImportEvaluator(cliOptions));
 
       if (result.success) {
         console.log('');

@@ -1,7 +1,7 @@
 import type { AgentCoreProjectSpec, AgentEnvSpec, RuntimeVersion } from '../../schema';
 import { DEFAULT_PYTHON_VERSION } from '../../schema';
+import { PackagingError } from '../errors/types';
 import { ContainerPackager } from './container';
-import { PackagingError } from './errors';
 import { isNodeRuntime, isPythonRuntime } from './helpers';
 import { NodeCodeZipPackager, NodeCodeZipPackagerSync } from './node';
 import { PythonCodeZipPackager, PythonCodeZipPackagerSync } from './python';
@@ -91,5 +91,5 @@ export type {
   PackageOptions,
   RuntimePackager,
 } from './types/packaging';
-export * from './errors';
+
 export { resolveCodeLocation } from './helpers';

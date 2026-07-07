@@ -1,1 +1,0 @@
-export { registerABTestCommand } from './command';
