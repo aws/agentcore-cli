@@ -1,6 +1,7 @@
 import { ConfigIO } from '../../../lib';
 import type { HarnessGatewayOutboundAuth, HarnessSpec } from '../../../schema';
 import type { HarnessToolType } from '../../../schema/schemas/primitives/harness';
+import { findDeployedGateway } from '../../primitives/deployed-gateways';
 import { readFileSync } from 'fs';
 
 export interface AddToolOptions {
@@ -152,17 +153,14 @@ export async function handleAddTool(options: AddToolOptions): Promise<AddToolRes
 
   const configIO = new ConfigIO();
 
-  // Resolve --gateway (project name) to ARN from deployed-state
+  // Resolve --gateway (project name) to ARN from deployed-state.
+  // Uses findDeployedGateway which searches both `resources.mcp.gateways` (MCP protocol)
+  // and `resources.gateways` (HTTP / protocolType: "None") across all targets.
   let resolvedGatewayArn = options.gatewayArn;
   if (toolType === 'agentcore_gateway' && options.gateway && !resolvedGatewayArn) {
     try {
       const deployedState = await configIO.readDeployedState();
-      const targetNames = Object.keys(deployedState.targets);
-      if (targetNames.length === 0) {
-        return { success: false, error: 'No deployed targets found. Deploy the gateway first.' };
-      }
-      const targetState = deployedState.targets[targetNames[0]!];
-      const gatewayState = targetState?.resources?.mcp?.gateways?.[options.gateway];
+      const gatewayState = findDeployedGateway(deployedState, options.gateway);
       if (!gatewayState) {
         return {
           success: false,
