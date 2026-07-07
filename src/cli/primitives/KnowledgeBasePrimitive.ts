@@ -394,29 +394,40 @@ export class KnowledgeBasePrimitive extends BasePrimitive<AddKnowledgeBaseOption
         const target = gw.targets[tIdx]!;
         if (target.targetType !== 'connector' || target.connectorId !== CONNECTOR_ID.BEDROCK_KNOWLEDGE_BASES) continue;
         const configs = target.configurations ?? [];
+
+        // Prune AgenticRetrieveStream: remove this KB from retrievers[]
         const agenticCfgIdx = configs.findIndex(c => c.name === 'AgenticRetrieveStream');
-        if (agenticCfgIdx === -1) continue;
-        const agenticCfg = configs[agenticCfgIdx]!;
-        const pv = agenticCfg.parameterValues;
-        const retrievers =
-          (pv?.retrievers as { configuration: { knowledgeBase: { knowledgeBaseId: string } } }[] | undefined) ?? [];
-        const ids = retrievers.map(r => r.configuration.knowledgeBase.knowledgeBaseId);
-        if (!ids.includes(kbReference)) continue;
-        const remaining = ids.filter(id => id !== kbReference);
-        if (remaining.length === 0) {
-          // Remove the AgenticRetrieveStream configuration entry
-          configs.splice(agenticCfgIdx, 1);
-          // If no configurations remain, remove the whole target
-          if (configs.length === 0) {
-            gw.targets.splice(tIdx, 1);
-            actions.push({ gatewayName: gw.name, targetName: target.name, removedTarget: true });
-          } else {
-            actions.push({ gatewayName: gw.name, targetName: target.name, removedTarget: false });
+        if (agenticCfgIdx !== -1) {
+          const agenticCfg = configs[agenticCfgIdx]!;
+          const pv = agenticCfg.parameterValues;
+          const retrievers =
+            (pv?.retrievers as { configuration: { knowledgeBase: { knowledgeBaseId: string } } }[] | undefined) ?? [];
+          const ids = retrievers.map(r => r.configuration.knowledgeBase.knowledgeBaseId);
+          if (ids.includes(kbReference)) {
+            const remaining = ids.filter(id => id !== kbReference);
+            if (remaining.length === 0) {
+              configs.splice(agenticCfgIdx, 1);
+            } else {
+              agenticCfg.parameterValues!.retrievers = remaining.map(id => ({
+                configuration: { knowledgeBase: { knowledgeBaseId: id } },
+              }));
+            }
           }
-        } else {
-          agenticCfg.parameterValues!.retrievers = remaining.map(id => ({
-            configuration: { knowledgeBase: { knowledgeBaseId: id } },
-          }));
+        }
+
+        // Prune Retrieve: remove the config if it references this KB
+        const retrieveCfgIdx = configs.findIndex(c => {
+          return c.name === 'Retrieve' && c.parameterValues?.knowledgeBaseId === kbReference;
+        });
+        if (retrieveCfgIdx !== -1) {
+          configs.splice(retrieveCfgIdx, 1);
+        }
+
+        // If no configurations remain, remove the whole target
+        if (configs.length === 0) {
+          gw.targets.splice(tIdx, 1);
+          actions.push({ gatewayName: gw.name, targetName: target.name, removedTarget: true });
+        } else if (agenticCfgIdx !== -1 || retrieveCfgIdx !== -1) {
           actions.push({ gatewayName: gw.name, targetName: target.name, removedTarget: false });
         }
       }

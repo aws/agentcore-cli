@@ -686,11 +686,12 @@ export const AgentCoreProjectSpecSchema = z
             validateKbReference(target, pv.knowledgeBaseId, 'configurations[].parameterValues.knowledgeBaseId');
           }
           if (cfg.name === 'AgenticRetrieveStream') {
-            const retrievers = pv?.retrievers as
-              | { configuration?: { knowledgeBase?: { knowledgeBaseId?: string } } }[]
-              | undefined;
-            for (const r of retrievers ?? []) {
-              const kbId = r.configuration?.knowledgeBase?.knowledgeBaseId;
+            const rawRetrievers = pv?.retrievers;
+            if (!Array.isArray(rawRetrievers)) continue;
+            for (const r of rawRetrievers) {
+              if (!r || typeof r !== 'object') continue;
+              const kbId = (r as { configuration?: { knowledgeBase?: { knowledgeBaseId?: string } } }).configuration
+                ?.knowledgeBase?.knowledgeBaseId;
               if (kbId)
                 validateKbReference(target, kbId, 'configurations[].parameterValues.retrievers[].knowledgeBaseId');
             }
