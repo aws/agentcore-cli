@@ -5,7 +5,7 @@
  * AND the HTTP-only target types — so one gateway carries all targets:
  *
  *   http-runtime, mcp-server, lambda-function-arn, api-gateway,
- *   open-api-schema, smithy-model, web-search, passthrough
+ *   open-api-schema, smithy-model, connector (web-search), passthrough
  *
  * Flow: create project → ensure external prereqs (Lambda, REST API via a boto3
  *       fixture) → add gateway + credential → add every target → deploy ONE
@@ -250,8 +250,8 @@ describe.sequential('e2e: HTTP gateway with all target types', () => {
     assertAddTarget(['--name', 'tSmithy', '--type', 'smithy-model', '--schema', 'smithy.json'], 'tSmithy')
   );
 
-  it.skipIf(!canRun)('adds a web-search target', () =>
-    assertAddTarget(['--name', 'tWebSearch', '--type', 'web-search'], 'tWebSearch')
+  it.skipIf(!canRun)('adds a web-search connector target', () =>
+    assertAddTarget(['--name', 'tWebSearch', '--type', 'connector', '--connector', 'web-search'], 'tWebSearch')
   );
 
   it.skipIf(!canRun)('adds a passthrough target (gated; gateway-iam-role auth)', () =>
@@ -287,7 +287,7 @@ describe.sequential('e2e: HTTP gateway with all target types', () => {
       const gw = config.agentCoreGateways.find(g => g.name === gatewayName);
       expect(gw, `gateway ${gatewayName} should be in config`).toBeDefined();
       const types = new Set(gw!.targets.map(t => t.targetType));
-      const expected = ['httpRuntime', 'mcpServer', 'openApiSchema', 'smithyModel', 'webSearch', 'passthrough'];
+      const expected = ['httpRuntime', 'mcpServer', 'openApiSchema', 'smithyModel', 'connector', 'passthrough'];
       // Only expected when the fixture could provision their external prereqs.
       if (prereqsData.lambdaArn) expected.push('lambdaFunctionArn');
       if (prereqsData.restApiId) expected.push('apiGateway');
