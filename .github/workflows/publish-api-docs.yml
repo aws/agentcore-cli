@@ -1,0 +1,82 @@
+# =============================================================================
+# publish-api-docs.yml  —  agentcore-cli
+# =============================================================================
+# Auto-generates the CLI command reference as AsciiDoc (.adoc) on every release
+# by scraping `agentcore <cmd> --help` for all commands (grouped by category),
+# and uploads it as a build artifact for the docs team to publish.
+#
+# Pipeline: install released CLI -> scrape --help into doc-model JSON
+#           -> render .adoc -> upload artifact.
+#
+# NOTE: this generates and publishes the docs as an artifact only; landing them
+# in the docs site is a separate step for now and may be automated later.
+# =============================================================================
+
+name: Publish API docs
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  ADOC_PREFIX: cli
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Python (for the renderer)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the released CLI version
+        # Install the EXACT version from the release event, not @latest.
+        # `release: [published]` fires for both GA and preview releases, and
+        # previews publish under the `preview` dist-tag — so @latest would pull
+        # the wrong (previous GA) version and generate docs for it.
+        # On manual workflow_dispatch there is no release tag; fall back to latest.
+        run: |
+          if [ -n "$RELEASE_TAG" ]; then
+            npm install -g "@aws/agentcore@${RELEASE_TAG#v}"
+          else
+            npm install -g @aws/agentcore@latest
+          fi
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+
+      - name: Read CLI version
+        id: ver
+        run: echo "version=$(agentcore --version)" >> "$GITHUB_OUTPUT"
+
+      - name: Extract doc-model JSON (scrape --help for all commands)
+        run: |
+          node scripts/extract-cli-model.mjs \
+            --out doc-model.json \
+            --version "${{ steps.ver.outputs.version }}"
+
+      - name: Render .adoc
+        run: |
+          python scripts/render_adoc.py \
+            --model doc-model.json \
+            --out-dir out/adoc \
+            --prefix "${ADOC_PREFIX}"
+
+      - name: Upload API-docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-docs-adoc
+          path: out/adoc
+          if-no-files-found: error
