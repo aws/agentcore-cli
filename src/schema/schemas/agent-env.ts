@@ -122,6 +122,19 @@ const BuildArgKeySchema = z
     'Build arg names must be valid identifiers (letters, digits, underscores; not starting with a digit)'
   );
 
+/**
+ * Build-arg names reserved by the CodeBuild build environment. On deploy each build arg becomes a
+ * CodeBuild environment-variable override alongside the buildspec's own control vars; a collision
+ * would either be rejected by StartBuild or shadow a control var (wrong image tag / ECR region), so
+ * these are rejected up front so a config that builds locally can't fail only on deploy. `AWS_*` and
+ * `CODEBUILD_*` are reserved by CodeBuild itself.
+ */
+export const RESERVED_BUILD_ARG_KEYS = ['ECR_REGISTRY', 'IMAGE_URI', 'DOCKERFILE_PATH', 'BUILD_ARG_FLAGS'];
+
+export function isReservedBuildArgKey(key: string): boolean {
+  return RESERVED_BUILD_ARG_KEYS.includes(key) || key.startsWith('CODEBUILD_') || key.startsWith('AWS_');
+}
+
 export const EnvVarSchema = z.object({
   name: EnvVarNameSchema,
   value: z.string(),
@@ -470,6 +483,15 @@ export const AgentEnvSpecSchema = z
         message: 'customDockerBuildArgs is only allowed for Container builds',
         path: ['customDockerBuildArgs'],
       });
+    }
+    for (const key of Object.keys(data.customDockerBuildArgs ?? {})) {
+      if (isReservedBuildArgKey(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `customDockerBuildArgs key "${key}" is reserved by the build environment (must not be ${RESERVED_BUILD_ARG_KEYS.join(', ')}, or start with CODEBUILD_ or AWS_)`,
+          path: ['customDockerBuildArgs', key],
+        });
+      }
     }
     const fcs = data.filesystemConfigurations ?? [];
     if (fcs.length > 0) {

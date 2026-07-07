@@ -3,6 +3,7 @@ import type { DevConfig } from '../config';
 import { ContainerDevServer } from '../container-dev-server';
 import type { DevServerCallbacks, DevServerOptions } from '../dev-server';
 import { EventEmitter } from 'events';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockSpawnSync = vi.fn();
@@ -224,6 +225,29 @@ describe('ContainerDevServer', () => {
       expect(buildArgs).toContain('-t');
       const tagIdx = buildArgs.indexOf('-t');
       expect(buildArgs[tagIdx + 1]).toBe('agentcore-dev-testagent');
+    });
+
+    it('forwards customDockerBuildArgs and uses buildContextPath as the context + Dockerfile root', async () => {
+      mockSuccessfulPrepare();
+
+      const monoConfig: DevConfig = {
+        ...defaultConfig,
+        directory: '/project/app/agent-one',
+        buildContextPath: '/project',
+        customDockerBuildArgs: { AGENT_NAME: 'one' },
+      };
+      const server = new ContainerDevServer(monoConfig, defaultOptions);
+      await server.start();
+
+      const buildArgs = mockSpawn.mock.calls[0]![1] as string[];
+      // Build args are forwarded as --build-arg KEY=VALUE.
+      expect(buildArgs).toContain('--build-arg');
+      expect(buildArgs).toContain('AGENT_NAME=one');
+      // The positional build context (last arg) is buildContextPath, not codeLocation.
+      expect(buildArgs[buildArgs.length - 1]).toBe('/project');
+      // The Dockerfile (-f) is resolved against the build context, not codeLocation.
+      const fIdx = buildArgs.indexOf('-f');
+      expect(buildArgs[fIdx + 1]).toBe(join('/project', 'Dockerfile'));
     });
 
     it('streams build output lines at system level in real-time', async () => {

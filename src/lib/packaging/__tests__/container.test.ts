@@ -235,6 +235,10 @@ describe('ContainerPackager', () => {
     const buildArgs = buildCall![1] as string[];
     // Last arg should be the buildContextPath, not codeLocation
     expect(buildArgs[buildArgs.length - 1]).toBe('/resolved/context');
+    // The Dockerfile (-f) must be resolved against the build context, not codeLocation — otherwise the
+    // local build diverges from the deploy build (which resolves it against the uploaded context root).
+    const fIdx = buildArgs.indexOf('-f');
+    expect(buildArgs[fIdx + 1]).toBe('/resolved/context/Dockerfile');
   });
 
   it('passes customDockerBuildArgs as --build-arg flags', async () => {

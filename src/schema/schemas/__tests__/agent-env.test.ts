@@ -642,6 +642,23 @@ describe('AgentEnvSpecSchema - customDockerBuildArgs', () => {
     const result = AgentEnvSpecSchema.safeParse({ ...validContainerAgent, customDockerBuildArgs: {} });
     expect(result.success).toBe(true);
   });
+
+  it('rejects a key that is not a valid identifier', () => {
+    expect(
+      AgentEnvSpecSchema.safeParse({ ...validContainerAgent, customDockerBuildArgs: { 'has-dash': 'v' } }).success
+    ).toBe(false);
+  });
+
+  it.each(['IMAGE_URI', 'ECR_REGISTRY', 'DOCKERFILE_PATH', 'BUILD_ARG_FLAGS', 'AWS_DEFAULT_REGION', 'CODEBUILD_FOO'])(
+    'rejects the build-environment-reserved key %s (would break only on deploy)',
+    key => {
+      const result = AgentEnvSpecSchema.safeParse({ ...validContainerAgent, customDockerBuildArgs: { [key]: 'v' } });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues.some(i => i.message.includes('reserved by the build environment'))).toBe(true);
+      }
+    }
+  );
 });
 
 describe('AgentEnvSpecSchema - lifecycleConfiguration', () => {
