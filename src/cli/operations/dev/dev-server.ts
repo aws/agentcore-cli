@@ -48,6 +48,7 @@ function isInternalFrame(line: string): boolean {
 
 export abstract class DevServer {
   protected child: ChildProcess | null = null;
+  private onProcessExit: (() => void) | null = null;
   private recentStderr: string[] = [];
   private inTraceback = false;
   private tracebackBuffer: string[] = [];
@@ -77,7 +78,36 @@ export abstract class DevServer {
     });
 
     this.attachHandlers();
+    this.registerExitCleanup();
     return this.child;
+  }
+
+  /**
+   * Reap the detached child's process group when this process exits.
+   *
+   * The dev command's SIGINT/SIGTERM handler (which calls kill()) is registered after the
+   * global handler in setupAltScreenCleanup, which runs first and calls process.exit(0) — so
+   * kill() never runs and the child (its own process group since it is spawned detached) is
+   * orphaned, holding the port. The 'exit' event always fires on process.exit(), so use it as
+   * a last-resort reaper. POSIX only: on Windows the child is not detached and dies with the parent.
+   */
+  private registerExitCleanup(): void {
+    const pid = this.child?.pid;
+    if (isWindows || !pid) return;
+    this.onProcessExit = () => {
+      try {
+        process.kill(-pid, 'SIGKILL');
+      } catch {
+        // Group already gone — nothing to reap.
+      }
+    };
+    process.once('exit', this.onProcessExit);
+  }
+
+  private clearExitCleanup(): void {
+    if (!this.onProcessExit) return;
+    process.removeListener('exit', this.onProcessExit);
+    this.onProcessExit = null;
   }
 
   /** Kill the dev server process tree. Sends SIGTERM to the process group, then SIGKILL after 2 seconds. */
@@ -203,6 +233,7 @@ export abstract class DevServer {
     });
 
     this.child?.on('exit', code => {
+      this.clearExitCleanup();
       if (code !== 0 && code !== null && this.recentStderr.length > 0) {
         for (const line of this.recentStderr) {
           onLog('error', line);
