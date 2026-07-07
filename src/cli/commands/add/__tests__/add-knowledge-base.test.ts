@@ -11,8 +11,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
  * commander registration (flag default, --connector-config threading) rather
  * than calling add() directly — that path is unit-tested elsewhere.
  */
-// FMKB is gated behind ENABLE_GATED_FEATURES; pass it on every runCLI for these tests.
-const GATED_ENV = { ENABLE_GATED_FEATURES: '1' };
 
 describe('add knowledge-base command — --data-source-type flag', () => {
   let testDir: string;
@@ -36,8 +34,7 @@ describe('add knowledge-base command — --data-source-type flag', () => {
   it('defaults to S3 when --data-source-type is omitted', async () => {
     const result = await runCLI(
       ['add', 'knowledge-base', '--name', 'kb-default', '--source', 's3://my-bucket/data', '--json'],
-      projectDir,
-      { env: GATED_ENV }
+      projectDir
     );
     expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
     const json = JSON.parse(result.stdout);
@@ -73,8 +70,7 @@ describe('add knowledge-base command — --data-source-type flag', () => {
         cfgPath,
         '--json',
       ],
-      projectDir,
-      { env: GATED_ENV }
+      projectDir
     );
     expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
     const json = JSON.parse(result.stdout);
@@ -96,8 +92,7 @@ describe('add knowledge-base command — --data-source-type flag', () => {
 
     const result = await runCLI(
       ['add', 'knowledge-base', '--name', 'kb-bad', '--connector-config', cfgPath, '--json'],
-      projectDir,
-      { env: GATED_ENV }
+      projectDir
     );
     expect(result.exitCode).toBe(1);
     const json = JSON.parse(result.stdout);

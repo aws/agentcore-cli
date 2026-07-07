@@ -3,7 +3,6 @@ import type { Result } from '../../lib/result';
 import type { AgentCoreProjectSpec, ConnectorFileDataSource, DataSource, KnowledgeBase } from '../../schema';
 import { CONNECTOR_ID, KnowledgeBaseSchema } from '../../schema';
 import { getErrorMessage } from '../errors';
-import { isGatedFeaturesEnabled } from '../feature-flags';
 import {
   type DataSourceTypeFlag,
   flagToWireType,
@@ -461,7 +460,7 @@ export class KnowledgeBasePrimitive extends BasePrimitive<AddKnowledgeBaseOption
 
   registerCommands(addCmd: Command, removeCmd: Command): void {
     addCmd
-      .command(this.kind, { hidden: !isGatedFeaturesEnabled() })
+      .command(this.kind)
       .description('Add a knowledge base (FMKB) to the project, optionally wiring it to a gateway.')
       .option('--name <name>', 'Knowledge base name (default: kb-quick-start-xxxxx)')
       .option('--description <text>', 'Optional description (used for tool discovery)')
@@ -492,10 +491,6 @@ export class KnowledgeBasePrimitive extends BasePrimitive<AddKnowledgeBaseOption
           connectorConfig?: string[];
           json?: boolean;
         }) => {
-          if (!isGatedFeaturesEnabled()) {
-            console.error('Knowledge bases are not yet available.');
-            process.exit(1);
-          }
           if (!findConfigRoot()) {
             console.error('No agentcore project found. Run `agentcore create` first.');
             process.exit(1);
@@ -587,15 +582,11 @@ export class KnowledgeBasePrimitive extends BasePrimitive<AddKnowledgeBaseOption
       );
 
     removeCmd
-      .command(this.kind, { hidden: !isGatedFeaturesEnabled() })
+      .command(this.kind)
       .description('Remove a knowledge base from the project')
       .option('--name <name>', 'Knowledge base name')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(async (cliOptions: { name?: string; json?: boolean }) => {
-        if (!isGatedFeaturesEnabled()) {
-          console.error('Knowledge bases are not yet available.');
-          process.exit(1);
-        }
         if (!findConfigRoot()) {
           console.error('No agentcore project found. Run `agentcore create` first.');
           process.exit(1);

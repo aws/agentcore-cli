@@ -1,4 +1,3 @@
-import { isGatedFeaturesEnabled } from '../../../feature-flags';
 import type { SelectableItem } from '../../components';
 import { SelectScreen } from '../../components';
 
@@ -48,7 +47,7 @@ const ADD_RESOURCES: { id: AddResourceType; title: string; description: string }
 ];
 
 const ADD_RESOURCE_ITEMS: SelectableItem[] = ADD_RESOURCES.map(r => {
-  const gated = r.id === 'knowledge-base' && !isGatedFeaturesEnabled();
+  const gated = false;
   return {
     ...r,
     disabled: gated,

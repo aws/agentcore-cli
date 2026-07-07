@@ -1,4 +1,3 @@
-import { isGatedFeaturesEnabled } from '../../../feature-flags';
 import type { SelectableItem } from '../../components';
 import { SelectScreen } from '../../components';
 import { useMemo } from 'react';
@@ -184,10 +183,7 @@ export function RemoveScreen({
           }
           break;
         case 'knowledge-base':
-          if (!isGatedFeaturesEnabled()) {
-            disabled = true;
-            description = 'Coming soon';
-          } else if (knowledgeBaseCount === 0) {
+          if (knowledgeBaseCount === 0) {
             disabled = true;
             description = 'No knowledge bases to remove';
           }
