@@ -41,12 +41,19 @@ Attach this to every IAM user or role that will run AgentCore CLI commands. The 
   with EFS or S3 filesystem mounts (optional, see [Scoping down by feature](#scoping-down-by-feature))
 - `bedrock-agentcore:Invoke*`, `bedrock-agentcore:Get*`, `bedrock-agentcore:List*` for invoking agents and checking
   status
+- `bedrock-agentcore` create/update/delete actions for runtimes, memories, gateways, gateway targets, evaluators,
+  workload identities, and configuration bundles (see [AgentCore resource management](#agentcore-resource-management))
 - Credential provider and token vault actions for `deploy` when the project uses identity features
 - Payment credential provider and payment session actions for `deploy`, `status`, and `invoke` when the project uses
   payment connectors
 - CloudWatch Logs, X-Ray, and Application Signals actions for `logs`, `traces`, and observability setup
 - Bedrock actions for agent import and AI-assisted code generation (optional, see
   [Scoping down by feature](#scoping-down-by-feature))
+- `cloudformation:*` for the full deploy/diff/destroy stack lifecycle the CLI drives directly
+- `iam:CreateRole`/`DeleteRole`/`PutRolePolicy`/`PassRole` scoped to `role/AgentCore-*` for HTTP gateway role
+  management, plus `iam:PassRole` (scoped to `bedrock-agentcore.amazonaws.com`) for passing execution roles to the
+  service
+- `secretsmanager` and `cognito-idp` actions used by identity and custom-JWT setup flows
 
 To create this policy:
 
@@ -166,17 +173,29 @@ The policy files provided cover every AgentCore feature. If your team only uses 
 corresponding statements to further tighten the policies. This table maps features to the policy statements that can be
 safely removed:
 
-| If your team does not use...    | Remove from user policy                                              | Remove from CFN execution policy                                                                       |
-| ------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Container builds (CodeZip only) | _(no change)_                                                        | `EcrContainerBuilds`, `CodeBuildContainerBuilds`                                                       |
-| MCP Lambda compute              | _(no change)_                                                        | `LambdaMcpAndCustomResources` (keep if using container builds, which need Lambda for custom resources) |
-| Agent import from Bedrock       | `BedrockAgentImport`                                                 | _(no change)_                                                                                          |
-| Filesystem mounts (EFS/S3)      | `FilesystemNetworkValidation`                                        | _(no change)_                                                                                          |
-| AI-assisted code generation     | `BedrockModelInvocation`                                             | _(no change)_                                                                                          |
-| Identity/credential providers   | `IdentityCredentialManagement`, `TokenVaultKmsKeyCreation`           | `SecretsManagerForCredentials`                                                                         |
-| Payment connectors              | `PaymentCredentialManagement`, `PaymentCredentialSecrets`            | _(no change)_                                                                                          |
-| Policy engine                   | `PolicyGeneration`                                                   | Remove `*PolicyEngine*` and `*Policy` actions from `BedrockAgentCoreResources`                         |
-| Online evaluations              | Remove `UpdateOnlineEvaluationConfig` from `AgentCoreResourceStatus` | Remove `*OnlineEvaluationConfig*` actions from `BedrockAgentCoreResources`                             |
+| If your team does not use...    | Remove from user policy                                                 | Remove from CFN execution policy                                                                       |
+| ------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Container builds (CodeZip only) | _(no change)_                                                           | `EcrContainerBuilds`, `CodeBuildContainerBuilds`                                                       |
+| MCP Lambda compute              | _(no change)_                                                           | `LambdaMcpAndCustomResources` (keep if using container builds, which need Lambda for custom resources) |
+| Agent import from Bedrock       | `BedrockAgentImport`                                                    | _(no change)_                                                                                          |
+| Filesystem mounts (EFS/S3)      | `FilesystemNetworkValidation`                                           | _(no change)_                                                                                          |
+| AI-assisted code generation     | `BedrockModelInvocation`                                                | _(no change)_                                                                                          |
+| Identity/credential providers   | `IdentityCredentialManagement`, `TokenVaultKmsKeyCreation`              | `SecretsManagerForCredentials`                                                                         |
+| Payment connectors              | `PaymentCredentialManagement`, `PaymentCredentialSecrets`               | _(no change)_                                                                                          |
+| Policy engine                   | `PolicyGeneration`                                                      | Remove `*PolicyEngine*` and `*Policy` actions from `BedrockAgentCoreResources`                         |
+| Online evaluations              | Remove `UpdateOnlineEvaluationConfig` from `AgentCoreResourceStatus`    | Remove `*OnlineEvaluationConfig*` actions from `BedrockAgentCoreResources`                             |
+| HTTP gateways                   | `HttpGatewayIamRoleManagement`                                          | _(no change)_                                                                                          |
+| Custom JWT / Cognito authorizer | `CustomJwtCognitoSetup`                                                 | _(no change)_                                                                                          |
+| Harnesses                       | `HarnessManagement`, `HarnessPassRole`                                  | _(no change)_                                                                                          |
+| Configuration bundles           | `ConfigBundleManagement`                                                | _(no change)_                                                                                          |
+| End-to-end testing              | `ImportTestIam`, `ImportTestPassRole`, `ImportTestS3`, `SecretsManager` | _(no change)_                                                                                          |
+
+> **Reducing to least privilege.** Beyond the per-feature removals above, the developer policy also grants
+> `AgentCoreResourceManagement` (direct resource create/update/delete) and `CloudFormationFull` (`cloudformation:*`).
+> These exist because the policy doubles as the end-to-end test permission set. For a real developer, most resource
+> creation happens through CloudFormation, so you can move `AgentCoreResourceManagement` onto the
+> [CFN execution role](#cfn-execution-role-permissions) and narrow `cloudformation:*` toward the specific actions listed
+> under [CloudFormation](#cloudformation).
 
 ## Hardening with permission boundaries
 
@@ -480,9 +499,104 @@ Only required when using `agentcore add agent --type import` to import an existi
 
 ### Bedrock model invocation
 
-| Action                | CLI Commands            | Purpose                                       |
-| --------------------- | ----------------------- | --------------------------------------------- |
-| `bedrock:InvokeModel` | `add` (code generation) | Invoke Claude for AI-assisted code generation |
+| Action                                  | CLI Commands            | Purpose                                       |
+| --------------------------------------- | ----------------------- | --------------------------------------------- |
+| `bedrock:InvokeModel`                   | `add` (code generation) | Invoke Claude for AI-assisted code generation |
+| `bedrock:InvokeModelWithResponseStream` | `add` (code generation) | Stream Claude responses during generation     |
+| `bedrock:CountTokens`                   | `add` (code generation) | Count tokens for context-window budgeting     |
+
+### AgentCore resource management
+
+The developer policy grants direct create/update/delete access to AgentCore resources. Most of these resources are
+normally provisioned by CloudFormation through the CFN execution role during `deploy`; they are also granted directly on
+the developer principal so the CLI (and its end-to-end test suite) can manage resources outside of a stack. If you scope
+this policy down for production, consider moving these to the [CFN execution role](#cfn-execution-role-permissions)
+instead.
+
+| Action                                                                                                    | Purpose                                   |
+| --------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `bedrock-agentcore:CreateAgentRuntime`, `UpdateAgentRuntime`, `DeleteAgentRuntime`, `ListAgentRuntimes`   | Manage agent runtimes                     |
+| `bedrock-agentcore:CreateAgentRuntimeEndpoint`                                                            | Create runtime endpoints                  |
+| `bedrock-agentcore:CreateWorkloadIdentity`, `DeleteWorkloadIdentity`                                      | Manage workload identities                |
+| `bedrock-agentcore:CreateMemory`, `GetMemory`, `UpdateMemory`, `DeleteMemory`, `ListMemories`             | Manage memories                           |
+| `bedrock-agentcore:CreateEvaluator`, `DeleteEvaluator`, `ListOnlineEvaluationConfigs`                     | Manage evaluators and online eval configs |
+| `bedrock-agentcore:CreateGateway`, `UpdateGateway`, `DeleteGateway`, `GetGateway`, `ListGateways`         | Manage gateways                           |
+| `bedrock-agentcore:CreateGatewayTarget`, `UpdateGatewayTarget`, `DeleteGatewayTarget`, `GetGatewayTarget` | Manage gateway targets                    |
+| `bedrock-agentcore:SynchronizeGatewayTargets`                                                             | Sync gateway targets                      |
+| `bedrock-agentcore:TagResource`, `ListTagsForResource`                                                    | Tag and read tags on AgentCore resources  |
+
+### Configuration bundle management
+
+| Action                                                                                                                                     | Purpose                      |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
+| `bedrock-agentcore:CreateConfigurationBundle`, `UpdateConfigurationBundle`, `DeleteConfigurationBundle`                                    | Manage configuration bundles |
+| `bedrock-agentcore:GetConfigurationBundle`, `GetConfigurationBundleVersion`, `ListConfigurationBundles`, `ListConfigurationBundleVersions` | Read configuration bundles   |
+
+### Harness management
+
+Used by the CLI's harness workflows (dockerfile/prebuilt-image harnesses and the end-to-end test suite).
+
+| Action                                                                                                              | Purpose                                                       |
+| ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `bedrock-agentcore:CreateHarness`, `GetHarness`, `UpdateHarness`, `DeleteHarness`, `ListHarnesses`, `InvokeHarness` | Manage and invoke harnesses                                   |
+| `iam:PassRole` (`role/*`, scoped to `bedrock-agentcore.amazonaws.com`)                                              | Pass an execution role to the AgentCore service when invoking |
+
+### CloudFormation (full lifecycle)
+
+The developer principal drives the full CloudFormation stack lifecycle directly during `deploy`, `diff`, and
+`remove all`, so the policy grants `cloudformation:*`.
+
+| Action                                  | CLI Commands                | Purpose                                                   |
+| --------------------------------------- | --------------------------- | --------------------------------------------------------- |
+| `cloudformation:*`                      | `deploy`, `diff`, `destroy` | Create, update, describe, and delete deploy stacks        |
+| `ssm:GetParameters`, `ssm:GetParameter` | `deploy`                    | CDK bootstrap version lookup (`/cdk-bootstrap/*/version`) |
+
+### HTTP gateway IAM role management
+
+When deploying an HTTP gateway, the CLI creates and manages the gateway's execution role directly. These IAM actions are
+scoped to roles named `AgentCore-*`.
+
+| Action                                                           | CLI Commands | Purpose                                        |
+| ---------------------------------------------------------------- | ------------ | ---------------------------------------------- |
+| `iam:CreateRole`, `iam:DeleteRole`, `iam:GetRole`, `iam:TagRole` | `deploy`     | Create and manage the gateway execution role   |
+| `iam:PutRolePolicy`, `iam:DeleteRolePolicy`                      | `deploy`     | Attach/remove the gateway role's inline policy |
+| `iam:PassRole` (`role/AgentCore-*`)                              | `deploy`     | Pass the gateway role to the service           |
+
+> **Privilege-escalation note.** Because this statement allows `iam:CreateRole` and `iam:PutRolePolicy` on
+> `role/AgentCore-*` (and `HarnessManagement` allows `iam:PassRole` on `role/*`), a principal with the developer policy
+> can create an IAM role and grant it permissions. In production, prefer letting CloudFormation create these roles via
+> the [CFN execution role](#cfn-execution-role-permissions) — constrained by a
+> [permission boundary](#hardening-with-permission-boundaries) — rather than granting IAM write actions on the
+> developer.
+
+### Custom JWT / Cognito setup
+
+Used when configuring a custom JWT authorizer backed by an Amazon Cognito user pool.
+
+| Action                                                                                               | CLI Commands       | Purpose                                 |
+| ---------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------- |
+| `cognito-idp:CreateUserPool`, `CreateUserPoolDomain`, `CreateResourceServer`, `CreateUserPoolClient` | `create`, `deploy` | Provision the Cognito user pool for JWT |
+| `cognito-idp:DeleteResourceServer`, `DeleteUserPoolDomain`, `DeleteUserPool`                         | `remove`           | Tear down the Cognito user pool         |
+
+### Secrets Manager (broad)
+
+In addition to the payment-scoped [Secrets Manager statement](#payment-credential-management), the policy includes a
+broad `secretsmanager` grant on `Resource: "*"` used by credential-provider setup flows.
+
+| Action                                                                | CLI Commands | Purpose                                    |
+| --------------------------------------------------------------------- | ------------ | ------------------------------------------ |
+| `secretsmanager:GetSecretValue`, `CreateSecret`, `DeleteSecret` (`*`) | `deploy`     | Read/create/delete secrets for credentials |
+
+### End-to-end test statements
+
+The following statements exist because this policy doubles as the permission set for the project's end-to-end test
+suite. They are **not required for normal CLI use** and can be removed when scoping the policy for real developers.
+
+| Sid                  | Action                                                                                           | Purpose                              |
+| -------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------ |
+| `ImportTestIam`      | `iam:GetRole`, `CreateRole`, `AttachRolePolicy`, `PutRolePolicy` (`role/bugbash-agentcore-role`) | Set up the test agent execution role |
+| `ImportTestPassRole` | `iam:PassRole` (`role/bugbash-agentcore-role`, to `bedrock-agentcore.amazonaws.com`)             | Pass the test role to the service    |
+| `ImportTestS3`       | `s3:ListBucket`, `CreateBucket`, `PutObject`                                                     | Stage test import artifacts in S3    |
 
 ## CFN execution role permissions
 
