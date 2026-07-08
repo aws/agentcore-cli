@@ -32,7 +32,7 @@ jobs:
       matrix:
         shard: ['1/5', '2/5', '3/5', '4/5', '5/5']
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/setup-node@v6
@@ -115,7 +115,7 @@ jobs:
     environment: e2e-testing
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || 'main' }}
       - uses: actions/setup-node@v6
