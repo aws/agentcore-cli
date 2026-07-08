@@ -147,6 +147,32 @@ jobs:
           pattern: blob-20.x-*
           merge-multiple: true
           path: .vitest-reports/
+      - name: Normalize blob report paths
+        # Vitest blob reports store absolute test-file paths tied to the runner's
+        # working directory. On GitHub-hosted runners every job shares
+        # /home/runner/work/agentcore-cli/agentcore-cli, so the merge resolves fine.
+        # On CodeBuild-hosted runners each job gets a unique
+        # /codebuild/output/src<N>/... dir, so the merge job can't find the
+        # shard-recorded paths and vitest exits with "No test files found".
+        # Rewrite each shard's recorded repo root to this job's workspace before
+        # merging. The regex is anchored to the CodeBuild src<N> path so it can't
+        # touch test titles or other blob content; it is a no-op on GitHub runners.
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const dir = ".vitest-reports";
+            const cwd = process.cwd();
+            const re = /\/codebuild\/output\/src[0-9]+\/src\/actions-runner\/_work\/agentcore-cli\/agentcore-cli/g;
+            for (const f of fs.readdirSync(dir)) {
+              const p = `${dir}/${f}`;
+              const before = fs.readFileSync(p, "utf8");
+              const after = before.replace(re, () => cwd);
+              if (after !== before) {
+                fs.writeFileSync(p, after);
+                console.log(`normalized paths in ${f}`);
+              }
+            }
+          '
       - name: Merge reports
         run: npx vitest --mergeReports=.vitest-reports/ --project unit --coverage
       - name: Upload coverage artifact
