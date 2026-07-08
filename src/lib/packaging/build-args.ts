@@ -11,3 +11,12 @@ export function getUvBuildArgs(): string[] {
   if (config.uvIndex) args.push('--build-arg', `UV_INDEX=${config.uvIndex}`);
   return args;
 }
+
+/**
+ * Return Docker `--build-arg KEY=VALUE` flags for an agent's `customDockerBuildArgs`.
+ * Returns an empty array when there are none. Shared by the local `package` and `dev` build paths
+ * so the flag encoding stays in one place.
+ */
+export function getCustomBuildArgs(customDockerBuildArgs?: Record<string, string>): string[] {
+  return Object.entries(customDockerBuildArgs ?? {}).flatMap(([key, value]) => ['--build-arg', `${key}=${value}`]);
+}

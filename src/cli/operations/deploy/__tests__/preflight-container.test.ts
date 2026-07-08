@@ -149,6 +149,33 @@ describe('validateContainerAgents', () => {
     expect(calledPath).not.toContain('agents/mono');
   });
 
+  it('warns when buildContextPath is set but the context root has no .dockerignore', () => {
+    // Dockerfile exists, .dockerignore does not.
+    mockedExistsSync.mockImplementation((p: unknown) => !String(p).endsWith('.dockerignore'));
+    mockValidDockerfile();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const spec = makeSpec([
+      { name: 'mono', build: 'Container', codeLocation: dir('agents/mono'), buildContextPath: dir('.') },
+    ]);
+
+    expect(() => validateContainerAgents(spec, CONFIG_ROOT)).not.toThrow();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('no .dockerignore'));
+    warnSpy.mockRestore();
+  });
+
+  it('does not warn about .dockerignore when buildContextPath is unset', () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockValidDockerfile();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const spec = makeSpec([{ name: 'plain', build: 'Container', codeLocation: dir('agents/plain') }]);
+
+    validateContainerAgents(spec, CONFIG_ROOT);
+    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('no .dockerignore'));
+    warnSpy.mockRestore();
+  });
+
   it('warns when Dockerfile uses deprecated bookworm base image', () => {
     mockedExistsSync.mockReturnValue(true);
     mockedReadFileSync.mockReturnValue(

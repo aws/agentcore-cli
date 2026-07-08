@@ -1,7 +1,7 @@
 import type { AgentEnvSpec } from '../../schema';
 import { CONTAINER_RUNTIMES, DOCKERFILE_NAME, ONE_GB, getDockerfilePath } from '../constants';
 import { PackagingError } from '../errors/types';
-import { getUvBuildArgs } from './build-args';
+import { getCustomBuildArgs, getUvBuildArgs } from './build-args';
 import { resolveCodeLocation } from './helpers';
 import type { ArtifactResult, PackageOptions, RuntimePackager } from './types/packaging';
 import { spawnSync } from 'child_process';
@@ -63,10 +63,7 @@ export class ContainerPackager implements RuntimePackager {
 
     // Build locally
     const imageName = `agentcore-package-${agentName}`;
-    const buildArgFlags = Object.entries(spec.customDockerBuildArgs ?? {}).flatMap(([k, v]) => [
-      '--build-arg',
-      `${k}=${v}`,
-    ]);
+    const buildArgFlags = getCustomBuildArgs(spec.customDockerBuildArgs);
     const buildResult = spawnSync(
       runtime,
       ['build', '-t', imageName, '-f', dockerfilePath, ...getUvBuildArgs(), ...buildArgFlags, buildContext],

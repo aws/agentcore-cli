@@ -649,16 +649,60 @@ describe('AgentEnvSpecSchema - customDockerBuildArgs', () => {
     ).toBe(false);
   });
 
-  it.each(['IMAGE_URI', 'ECR_REGISTRY', 'DOCKERFILE_PATH', 'BUILD_ARG_FLAGS', 'AWS_DEFAULT_REGION', 'CODEBUILD_FOO'])(
-    'rejects the build-environment-reserved key %s (would break only on deploy)',
-    key => {
-      const result = AgentEnvSpecSchema.safeParse({ ...validContainerAgent, customDockerBuildArgs: { [key]: 'v' } });
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.issues.some(i => i.message.includes('reserved by the build environment'))).toBe(true);
-      }
+  it.each([
+    'IMAGE_URI',
+    'ECR_REGISTRY',
+    'DOCKERFILE_PATH',
+    'BUILD_ARG_FLAGS',
+    'AWS_DEFAULT_REGION',
+    'CODEBUILD_FOO',
+    'PATH',
+    'HOME',
+    'IFS',
+    'LD_PRELOAD',
+    'LD_LIBRARY_PATH',
+    'DOCKER_HOST',
+    'DOCKER_CONFIG',
+  ])('rejects the build-environment-reserved key %s (would break only on deploy)', key => {
+    const result = AgentEnvSpecSchema.safeParse({ ...validContainerAgent, customDockerBuildArgs: { [key]: 'v' } });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('reserved by the build environment'))).toBe(true);
     }
-  );
+  });
+
+  it.each(['USER', 'LANG', 'SHELL', 'TERM'])('accepts the common non-dangerous build-arg key %s', key => {
+    // Legitimate Dockerfile ARGs (e.g. `ARG USER` -> `useradd $USER`) must not be over-rejected.
+    const result = AgentEnvSpecSchema.safeParse({ ...validContainerAgent, customDockerBuildArgs: { [key]: 'v' } });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a normal value with spaces and symbols', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validContainerAgent,
+      customDockerBuildArgs: { GREETING: 'hello world = ok!' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a value containing a newline or control character', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validContainerAgent,
+      customDockerBuildArgs: { BAD: 'line1\nline2' },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(i => i.message.includes('control characters'))).toBe(true);
+    }
+  });
+
+  it('rejects a value longer than 4096 characters', () => {
+    const result = AgentEnvSpecSchema.safeParse({
+      ...validContainerAgent,
+      customDockerBuildArgs: { BIG: 'x'.repeat(4097) },
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('AgentEnvSpecSchema - lifecycleConfiguration', () => {

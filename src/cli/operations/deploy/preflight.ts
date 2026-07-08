@@ -210,6 +210,16 @@ export function validateContainerAgents(projectSpec: AgentCoreProjectSpec, confi
       } else {
         warnDeprecatedBaseImage(dockerfilePath, agent.name);
       }
+      // buildContextPath widens the docker build context (e.g. the whole repo). Without a
+      // .dockerignore at that root, secrets/junk (.env, .git) get baked into the image and uploaded
+      // to CodeBuild. Both local and deploy honor this .dockerignore, so recommend one when missing.
+      if (agent.buildContextPath && !existsSync(path.join(buildContext, '.dockerignore'))) {
+        console.warn(
+          `Warning: Agent "${agent.name}" sets buildContextPath but has no .dockerignore at ${buildContext}. ` +
+            `The entire build context is sent to Docker/CodeBuild — add a .dockerignore there (e.g. excluding ` +
+            `.env, .env.*, .git/) to keep secrets and junk out of the image.`
+        );
+      }
     }
   }
   if (errors.length > 0) {

@@ -1,5 +1,5 @@
 import { CONTAINER_INTERNAL_PORT, DOCKERFILE_NAME, getDockerfilePath } from '../../../lib';
-import { getUvBuildArgs } from '../../../lib/packaging/build-args';
+import { getCustomBuildArgs, getUvBuildArgs } from '../../../lib/packaging/build-args';
 import { detectContainerRuntime } from '../../external-requirements/detect';
 import { DevServer, type LogLevel, type SpawnConfig } from './dev-server';
 import { waitForServerReady } from './utils';
@@ -79,10 +79,7 @@ export class ContainerDevServer extends DevServer {
 
     // 4. Build the container image, streaming output in real-time
     onLog('system', `Building container image: ${this.imageName}...`);
-    const buildArgFlags = Object.entries(this.config.customDockerBuildArgs ?? {}).flatMap(([k, v]) => [
-      '--build-arg',
-      `${k}=${v}`,
-    ]);
+    const buildArgFlags = getCustomBuildArgs(this.config.customDockerBuildArgs);
     const exitCode = await this.streamBuild(
       ['-t', this.imageName, '-f', dockerfilePath, ...getUvBuildArgs(), ...buildArgFlags, buildContext],
       onLog

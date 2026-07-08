@@ -138,6 +138,14 @@ COPY app/${AGENT_NAME}/ ./app/
 `codeLocation` (e.g. shared libraries at the project root). Without it, Docker only sees the `codeLocation` directory as
 its build context.
 
+> **Keep a `.dockerignore` at the build-context root.** When you set `buildContextPath`, the whole of that directory is
+> the build context — for `buildContextPath: "."` that's your entire project. Add a `.dockerignore` at that root (e.g.
+> excluding `.env`, `.env.*`, `.git/`, `.venv/`, `node_modules/`) to keep secrets and junk out of the image. Both local
+> `agentcore dev` / `agentcore package` and `agentcore deploy` honor the same root `.dockerignore`, so what you exclude
+> locally is exactly what's excluded from the CodeBuild upload. (The generated per-agent `.dockerignore` lives in
+> `codeLocation`, which is no longer the context root once `buildContextPath` is set, so move or recreate it at the
+> root.)
+
 **When to use `customDockerBuildArgs`:** use it to parameterise a shared `Dockerfile` so each agent produces a different
 image (different entry point, bundled code, etc.) without duplicating the file.
 

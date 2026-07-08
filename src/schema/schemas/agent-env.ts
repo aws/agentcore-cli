@@ -124,16 +124,50 @@ const BuildArgKeySchema = z
 
 /**
  * Build-arg names reserved by the CodeBuild build environment. On deploy each build arg becomes a
- * CodeBuild environment-variable override alongside the buildspec's own control vars; a collision
- * would either be rejected by StartBuild or shadow a control var (wrong image tag / ECR region), so
- * these are rejected up front so a config that builds locally can't fail only on deploy. `AWS_*` and
- * `CODEBUILD_*` are reserved by CodeBuild itself.
+ * CodeBuild environment-variable override alongside the buildspec's own control vars, so a colliding
+ * name would break the deploy build — a wrong image tag / ECR region, a rejected StartBuild, or a
+ * clobbered build-container shell. We reject the buildspec control vars, the process-critical shell
+ * vars, and CodeBuild's own `AWS_*` / `CODEBUILD_*` namespaces. This is a best-effort denylist (the
+ * shell has other sensitive vars), but it covers the realistic footguns and keeps a config that
+ * builds locally from failing only on deploy.
  */
-export const RESERVED_BUILD_ARG_KEYS = ['ECR_REGISTRY', 'IMAGE_URI', 'DOCKERFILE_PATH', 'BUILD_ARG_FLAGS'];
+export const RESERVED_BUILD_ARG_KEYS = [
+  // Buildspec control vars (mirrored in @aws/agentcore-cdk's ContainerBuildProject / build handler).
+  'ECR_REGISTRY',
+  'IMAGE_URI',
+  'DOCKERFILE_PATH',
+  'BUILD_ARG_FLAGS',
+  // Overriding these in the build shell would break the buildspec's own commands (command lookup,
+  // word-splitting, dynamic linking) or redirect the docker client off the build daemon. Kept
+  // deliberately narrow to the genuinely-dangerous names so common ARGs (e.g. USER, LANG) stay usable.
+  'PATH',
+  'HOME',
+  'IFS',
+  'LD_PRELOAD',
+  'LD_LIBRARY_PATH',
+  'DOCKER_HOST',
+  'DOCKER_CONFIG',
+  'DOCKER_TLS_VERIFY',
+  'DOCKER_CERT_PATH',
+];
 
 export function isReservedBuildArgKey(key: string): boolean {
   return RESERVED_BUILD_ARG_KEYS.includes(key) || key.startsWith('CODEBUILD_') || key.startsWith('AWS_');
 }
+
+/**
+ * Build-arg value. Bounded and control-char-free because on deploy each value becomes a CodeBuild
+ * `environmentVariablesOverride` PLAINTEXT entry; newlines/control chars or an over-long value can be
+ * rejected by StartBuild, so we reject them at schema time rather than let a local-only-valid config
+ * fail on deploy.
+ */
+const BuildArgValueSchema = z
+  .string()
+  .max(4096, 'Build arg values must be at most 4096 characters')
+  .refine(
+    v => ![...v].some(ch => ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) === 0x7f),
+    'Build arg values must not contain control characters (including newlines)'
+  );
 
 export const EnvVarSchema = z.object({
   name: EnvVarNameSchema,
@@ -377,7 +411,7 @@ export const AgentEnvSpecSchema = z
      * identifiers. Useful for parameterising a shared Dockerfile per agent (e.g. `{ "AGENT_NAME": "myagent" }`).
      * Container builds only.
      */
-    customDockerBuildArgs: z.record(BuildArgKeySchema, z.string()).optional(),
+    customDockerBuildArgs: z.record(BuildArgKeySchema, BuildArgValueSchema).optional(),
     runtimeVersion: RuntimeVersionSchemaFromConstants.optional(),
     /** Environment variables to set on the runtime */
     envVars: z.array(EnvVarSchema).optional(),
