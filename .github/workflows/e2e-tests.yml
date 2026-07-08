@@ -21,6 +21,13 @@ on:
       - 'package-lock.json'
       - 'npm-shrinkwrap.json'
       - 'vitest.config.*'
+      # Build inputs that produce the `agentcore` binary E2E installs globally:
+      # TS compiler config, the esbuild bundler config, and scripts/** (which
+      # includes bundle/copy-assets/generate-schema and the check-old-cli.mjs
+      # postinstall hook — a bug there breaks `npm install -g` in the E2E job).
+      - 'tsconfig*.json'
+      - 'esbuild.config.*'
+      - 'scripts/**'
       - '.github/workflows/e2e*'
 
 concurrency:
