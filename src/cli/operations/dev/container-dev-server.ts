@@ -1,5 +1,6 @@
 import { CONTAINER_INTERNAL_PORT, DOCKERFILE_NAME, getDockerfilePath } from '../../../lib';
 import { getCustomBuildArgs, getUvBuildArgs } from '../../../lib/packaging/build-args';
+import { ensureBuildContextDockerignore } from '../../../lib/packaging/build-context-dockerignore';
 import { detectContainerRuntime } from '../../external-requirements/detect';
 import { DevServer, type LogLevel, type SpawnConfig } from './dev-server';
 import { waitForServerReady } from './utils';
@@ -67,6 +68,17 @@ export class ContainerDevServer extends DevServer {
 
     // 2. Verify Dockerfile exists (resolved relative to the build context, matching deploy)
     const buildContext = this.config.buildContextPath ?? this.config.directory;
+    // When the context is widened via buildContextPath, ensure a .dockerignore keeps secrets/junk out
+    // of the local image — the same file the deploy (CodeBuild) path honors, so both stay consistent.
+    if (this.config.buildContextPath) {
+      const created = ensureBuildContextDockerignore(buildContext);
+      if (created) {
+        onLog(
+          'system',
+          `Created ${created} with default secret exclusions (buildContextPath is set); review and commit it.`
+        );
+      }
+    }
     const dockerfileName = this.config.dockerfile ?? DOCKERFILE_NAME;
     const dockerfilePath = getDockerfilePath(buildContext, this.config.dockerfile);
     if (!existsSync(dockerfilePath)) {

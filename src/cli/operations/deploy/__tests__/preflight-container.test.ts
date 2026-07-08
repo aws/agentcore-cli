@@ -3,6 +3,8 @@ import { validateContainerAgents } from '../preflight.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+const { ensureMock } = vi.hoisted(() => ({ ensureMock: vi.fn() }));
+
 vi.mock('node:fs', () => ({
   existsSync: vi.fn(),
   readFileSync: vi.fn(),
@@ -21,6 +23,7 @@ vi.mock('../../../../lib', () => ({
     const repoRoot = p.dirname(configBaseDir);
     return p.resolve(repoRoot, codeLocation);
   }),
+  ensureBuildContextDockerignore: ensureMock,
   // Stub other exports that the module may pull in
   ConfigIO: vi.fn(),
   requireConfigRoot: vi.fn(),
@@ -149,10 +152,11 @@ describe('validateContainerAgents', () => {
     expect(calledPath).not.toContain('agents/mono');
   });
 
-  it('warns when buildContextPath is set but the context root has no .dockerignore', () => {
-    // Dockerfile exists, .dockerignore does not.
-    mockedExistsSync.mockImplementation((p: unknown) => !String(p).endsWith('.dockerignore'));
+  it('generates a build-context .dockerignore (and logs) when buildContextPath is set and none exists', () => {
+    mockedExistsSync.mockReturnValue(true);
     mockValidDockerfile();
+    // Simulate "created" — return the path so the preflight logs it.
+    ensureMock.mockReturnValue('/project/.dockerignore');
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
     const spec = makeSpec([
@@ -160,20 +164,21 @@ describe('validateContainerAgents', () => {
     ]);
 
     expect(() => validateContainerAgents(spec, CONFIG_ROOT)).not.toThrow();
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('no .dockerignore'));
+    // Ensured against the resolved build context (repo root), not the agent's codeLocation.
+    const ensuredPath = ensureMock.mock.calls[0]?.[0] as string;
+    expect(ensuredPath).not.toContain('agents/mono');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('created'));
     warnSpy.mockRestore();
   });
 
-  it('does not warn about .dockerignore when buildContextPath is unset', () => {
+  it('does not touch .dockerignore when buildContextPath is unset', () => {
     mockedExistsSync.mockReturnValue(true);
     mockValidDockerfile();
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
     const spec = makeSpec([{ name: 'plain', build: 'Container', codeLocation: dir('agents/plain') }]);
 
     validateContainerAgents(spec, CONFIG_ROOT);
-    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('no .dockerignore'));
-    warnSpy.mockRestore();
+    expect(ensureMock).not.toHaveBeenCalled();
   });
 
   it('warns when Dockerfile uses deprecated bookworm base image', () => {

@@ -1,4 +1,11 @@
-import { ConfigIO, DOCKERFILE_NAME, getDockerfilePath, requireConfigRoot, resolveCodeLocation } from '../../../lib';
+import {
+  ConfigIO,
+  DOCKERFILE_NAME,
+  ensureBuildContextDockerignore,
+  getDockerfilePath,
+  requireConfigRoot,
+  resolveCodeLocation,
+} from '../../../lib';
 import { StaleCdkConstructError, ValidationError } from '../../../lib/errors/types';
 import type { AgentCoreProjectSpec, AwsDeploymentTarget } from '../../../schema';
 import { validateAwsCredentials } from '../../aws/account';
@@ -210,15 +217,19 @@ export function validateContainerAgents(projectSpec: AgentCoreProjectSpec, confi
       } else {
         warnDeprecatedBaseImage(dockerfilePath, agent.name);
       }
-      // buildContextPath widens the docker build context (e.g. the whole repo). Without a
-      // .dockerignore at that root, secrets/junk (.env, .git) get baked into the image and uploaded
-      // to CodeBuild. Both local and deploy honor this .dockerignore, so recommend one when missing.
-      if (agent.buildContextPath && !existsSync(path.join(buildContext, '.dockerignore'))) {
-        console.warn(
-          `Warning: Agent "${agent.name}" sets buildContextPath but has no .dockerignore at ${buildContext}. ` +
-            `The entire build context is sent to Docker/CodeBuild — add a .dockerignore there (e.g. excluding ` +
-            `.env, .env.*, .git/) to keep secrets and junk out of the image.`
-        );
+      // buildContextPath widens the docker build context (e.g. the whole repo). Ensure a
+      // .dockerignore exists at that root so secrets/junk (.env, .git, agentcore/) are never baked
+      // into the image or uploaded to CodeBuild. Both local and deploy honor this same file; it is
+      // created only when absent (never overwrites the user's).
+      if (agent.buildContextPath) {
+        const created = ensureBuildContextDockerignore(buildContext);
+        if (created) {
+          console.warn(
+            `Agent "${agent.name}": created ${created} with default secret exclusions because buildContextPath is ` +
+              `set (the entire context is sent to Docker/CodeBuild). Review and commit it; edit to include any ` +
+              `intentionally-bundled files.`
+          );
+        }
       }
     }
   }

@@ -93,3 +93,4 @@ export type {
 } from './types/packaging';
 
 export { resolveCodeLocation } from './helpers';
+export { ensureBuildContextDockerignore } from './build-context-dockerignore';

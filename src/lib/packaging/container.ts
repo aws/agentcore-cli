@@ -2,6 +2,7 @@ import type { AgentEnvSpec } from '../../schema';
 import { CONTAINER_RUNTIMES, DOCKERFILE_NAME, ONE_GB, getDockerfilePath } from '../constants';
 import { PackagingError } from '../errors/types';
 import { getCustomBuildArgs, getUvBuildArgs } from './build-args';
+import { ensureBuildContextDockerignore } from './build-context-dockerignore';
 import { resolveCodeLocation } from './helpers';
 import type { ArtifactResult, PackageOptions, RuntimePackager } from './types/packaging';
 import { spawnSync } from 'child_process';
@@ -38,6 +39,11 @@ export class ContainerPackager implements RuntimePackager {
     const buildContext = spec.buildContextPath
       ? resolveCodeLocation(spec.buildContextPath, configBaseDir)
       : codeLocation;
+    // When the context is widened via buildContextPath, ensure a .dockerignore keeps secrets/junk out
+    // of the local image — the same file the deploy (CodeBuild) path honors, so both stay consistent.
+    if (spec.buildContextPath) {
+      ensureBuildContextDockerignore(buildContext);
+    }
     // Dockerfile is resolved relative to the build context (matches the deploy/CodeBuild path).
     const dockerfilePath = getDockerfilePath(buildContext, spec.dockerfile);
 
