@@ -160,6 +160,12 @@ jobs:
         with:
           ref: ${{ steps.pr.outputs.head_sha }}
           fetch-depth: 0
+          # Safe to opt in here: the `authorize` job already gates on the PR AUTHOR having write/admin
+          # (getCollaboratorPermissionLevel), and this job only READS the code (compute diff, build
+          # prompt, run the review) — it never executes fork code (no npm ci / npm scripts). checkout@v7
+          # otherwise refuses fork-PR checkout in pull_request_target, which would break the review on
+          # an authorized author's fork PR. Reviewing the PR head is the whole point of this job.
+          allow-unsafe-pr-checkout: true
 
       - name: Compute diff
         id: diff
