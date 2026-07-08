@@ -13,7 +13,13 @@ on:
 jobs:
   create-issue:
     concurrency: ci-failure-issue-${{ github.event.workflow_run.name }}
-    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    # Stays on a GitHub-hosted runner on purpose: this workflow is the alarm that
+    # opens an issue when main CI fails, so it must not depend on the CodeBuild
+    # runner it may need to report on. If CodeBuild is unhealthy (webhook drift,
+    # quota exhaustion, broken image), a CodeBuild-hosted alarm couldn't start
+    # either and the failure would be silently swallowed. It's GitHub-API-only
+    # (no AWS calls), so it gains nothing from running inside the AWS network.
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     if: ${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.head_branch == 'main' }}
     permissions:
