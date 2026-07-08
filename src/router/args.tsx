@@ -17,7 +17,11 @@ export function toCommanderArgument(arg: Argument): CommanderArgument {
   return commanderArg;
 }
 
-function validateArgument(argument: Argument, input: unknown | undefined): unknown {
+function validateArgument(
+  argument: Argument,
+  input: unknown | undefined,
+  _command: Command,
+): unknown {
   const result = argument.schema.safeParse(coerce(argument.schema, input));
   if (!result.success) {
     throw new TypeError(
@@ -39,7 +43,7 @@ export function parseArguments(
     // should never be undefined based on loop bound
     const expectedArg = expectedArguments[index]!;
 
-    out[expectedArg.name] = validateArgument(expectedArg, currentArg);
+    out[expectedArg.name] = validateArgument(expectedArg, currentArg, command);
   }
 
   return out;
