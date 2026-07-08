@@ -1,9 +1,10 @@
 name: Canary
 
 on:
-  # Run once an hour
+  # Run every 15 minutes to catch dependency/service breakages (e.g. CDK
+  # schema mismatches) quickly instead of up to an hour later.
   schedule:
-    - cron: '0 * * * *'
+    - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       aws_region:
