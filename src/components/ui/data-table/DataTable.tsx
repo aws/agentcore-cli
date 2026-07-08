@@ -83,10 +83,10 @@ export function DataTable<T extends Record<string, unknown>>({
   // Sort
   const sorted = sortColumn
     ? [...filtered].sort((a, b) => {
-        const av = String(a[sortColumn] ?? "");
-        const bv = String(b[sortColumn] ?? "");
-        return sortDirection === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-      })
+      const av = String(a[sortColumn] ?? "");
+      const bv = String(b[sortColumn] ?? "");
+      return sortDirection === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+    })
     : filtered;
 
   const totalPages = Math.ceil(sorted.length / pageSize);
