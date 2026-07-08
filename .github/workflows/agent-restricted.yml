@@ -64,7 +64,7 @@ jobs:
           fi
           echo "✅ User ${{ github.actor }} is authorized"
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Generate GitHub App Token
         id: app-token

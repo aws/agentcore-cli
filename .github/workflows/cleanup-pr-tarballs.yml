@@ -20,7 +20,7 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Delete PR tarball releases older than 7 days
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
