@@ -50,7 +50,13 @@ jobs:
   e2e:
     needs: authorize
     if: needs.authorize.outputs.is_authorized == 'true'
-    runs-on: ubuntu-latest
+    # Run on our AWS CodeBuild-hosted runner instead of a GitHub-hosted runner.
+    # GitHub-hosted runner IPs rotate through shared pools whose reputation trips
+    # the service WAF (403s before the request reaches service code); dedicated
+    # CodeBuild compute inside AWS avoids that and cuts runner-pickup latency.
+    # Label format: codebuild-<project>-${{ github.run_id }}-${{ github.run_attempt }}
+    # backed by the `agentcore-e2e` project in the CI account (us-east-1).
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     environment: e2e-testing
     timeout-minutes: 30
     env:
