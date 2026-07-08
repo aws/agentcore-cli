@@ -8,7 +8,6 @@ import type { GetHarnessResponse, HarnessSummary } from "@aws-sdk/client-bedrock
 import {
   renderScreen,
   waitForText,
-  waitFor,
   cleanupScreens,
   StreamController,
   TestCoreClient,

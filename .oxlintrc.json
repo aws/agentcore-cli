@@ -5,10 +5,5 @@
     "correctness": "error"
   },
   "ignorePatterns": ["dist/", "node_modules/"],
-  "overrides": [
-    {
-      "files": ["*.test.ts", "*.test.tsx"],
-      "rules": {}
-    }
-  ]
+  "overrides": []
 }

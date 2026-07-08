@@ -114,6 +114,7 @@ export function TreeView<T = unknown>({
           const expanded = expandedIds.has(current.node.id);
           setExpandedIds((prev) => {
             const n = new Set(prev);
+            // eslint-disable-next-line no-unused-expressions
             expanded ? n.delete(current.node.id) : n.add(current.node.id);
             return n;
           });

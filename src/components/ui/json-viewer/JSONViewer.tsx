@@ -75,6 +75,7 @@ export const JSONViewer: React.FC<JSONViewerProps> = ({
   data,
   initialDepth = 1,
   maxHeight,
+  // eslint-disable-next-line no-unused-vars
   showTypes = false,
   rootLabel = "root",
   focus = true,

@@ -19,6 +19,7 @@ export const Header: React.FC<HeaderProps> = ({
   version,
   subtitle,
   style = "box",
+  // eslint-disable-next-line no-unused-vars
   align = "left",
   theme = darkTheme,
 }) => {

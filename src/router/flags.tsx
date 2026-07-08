@@ -1,4 +1,4 @@
-import { type Command, Option } from "commander";
+import { Option } from "commander";
 import type { Context } from "./context";
 import type { Flag, GlobalFlag } from "./handler";
 import { coerce, formatZodError, inspect } from "./schema";
@@ -59,7 +59,7 @@ function attributeName(name: string): string {
 // parsed options) against its schema. On failure it reports via Commander's
 // `command.error`, which prints a message and exits (or, with exitOverride,
 // throws) — so this returns only on success.
-function validateFlag(flag: Flag, opts: Record<string, unknown>, command: Command): unknown {
+function validateFlag(flag: Flag, opts: Record<string, unknown>): unknown {
   const result = flag.schema.safeParse(coerce(flag.schema, opts[attributeName(flag.name)]));
   if (!result.success) {
     throw new TypeError(
@@ -71,14 +71,10 @@ function validateFlag(flag: Flag, opts: Record<string, unknown>, command: Comman
 
 // parseFlags validates a leaf's own flags into a typed-by-name object handed to
 // the handler.
-export function parseFlags(
-  flags: Flag[],
-  opts: Record<string, unknown>,
-  command: Command,
-): Record<string, unknown> {
+export function parseFlags(flags: Flag[], opts: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const flag of flags) {
-    out[flag.name] = validateFlag(flag, opts, command);
+    out[flag.name] = validateFlag(flag, opts);
   }
   return out;
 }
@@ -89,12 +85,11 @@ export function parseFlags(
 export function applyGlobalFlags(
   globalFlags: GlobalFlag[],
   opts: Record<string, unknown>,
-  command: Command,
   ctx: Context,
 ): Context {
   let next = ctx;
   for (const globalFlag of globalFlags) {
-    next = next.withValue(globalFlag, validateFlag(globalFlag, opts, command));
+    next = next.withValue(globalFlag, validateFlag(globalFlag, opts));
   }
   return next;
 }

@@ -57,6 +57,7 @@ function fixturePath(dir: string, command: SdkCommand): string {
 // Handlers/screens never read `$metadata`, so this is behavior-preserving.
 function normalizeResponse(response: unknown): unknown {
   if (response && typeof response === "object" && "$metadata" in response) {
+    // eslint-disable-next-line no-unused-vars
     const { $metadata, ...rest } = response as Record<string, unknown>;
     return rest;
   }

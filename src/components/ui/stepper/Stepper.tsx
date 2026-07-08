@@ -29,7 +29,7 @@ export const Stepper: React.FC<StepperProps> = ({
   errorSteps = [],
   theme = darkTheme,
 }) => {
-  const getIndicator = (step: Step, index: number) => {
+  const getIndicator = (step: Step, _index: number) => {
     if (errorSteps.includes(step.key)) return { char: "✕", color: theme.colors.error };
     if (completedSteps.includes(step.key)) return { char: "✓", color: theme.colors.success };
     if (step.key === currentStep) return { char: "●", color: theme.colors.primary };

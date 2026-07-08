@@ -68,10 +68,10 @@ function attachAction(
 
     // Inherited group/global flags -> context (typed, read via ctx.value(key)).
     let leafCtx = ctx.withValue(CommandKey, command);
-    leafCtx = applyGlobalFlags(globals, merged, command, leafCtx);
+    leafCtx = applyGlobalFlags(globals, merged, leafCtx);
 
     // Own flags -> the statically-typed object passed to handle.
-    const parsedFlags = parseFlags(ownFlags, merged, command);
+    const parsedFlags = parseFlags(ownFlags, merged);
     const parsedArguments = parseArguments(node.arguments(), command);
 
     await wrapped.handle(leafCtx, parsedFlags, parsedArguments);

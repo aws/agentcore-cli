@@ -48,6 +48,7 @@ export function DataTable<T extends Record<string, unknown>>({
   data,
   pageSize = 10,
   searchable = true,
+  // eslint-disable-next-line no-unused-vars
   searchPlaceholder = "Filter...",
   onSelect,
   onEscape,

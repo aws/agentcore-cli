@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { Box, Text, useInput } from "ink";
 import { darkTheme } from "../_core.js";
 import type { InkUITheme } from "../_core.js";

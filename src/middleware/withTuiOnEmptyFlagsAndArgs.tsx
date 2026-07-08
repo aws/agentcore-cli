@@ -4,8 +4,8 @@ import type { AppIO, Core } from "../handlers/types";
 import { type Middleware } from "../router";
 
 // countPassedValues counts how many entries of an object hold a defined value.
-const countPassedValues = (obj: Object) =>
-  Object.entries(obj).reduce((acc, [key, val]) => {
+const countPassedValues = (obj: object) =>
+  Object.entries(obj).reduce((acc, [_key, val]) => {
     if (val !== undefined) {
       acc += 1;
     }
