@@ -10,6 +10,18 @@ on:
         default: 'main'
   pull_request_target:
     branches: [main, feat/**]
+    # Skip E2E on changes that can't affect agent behavior (e.g. docs-only PRs).
+    # Only run when CLI source, e2e/browser tests, packaging, or the e2e
+    # workflows themselves change.
+    paths:
+      - 'src/**'
+      - 'e2e-tests/**'
+      - 'browser-tests/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'npm-shrinkwrap.json'
+      - 'vitest.config.*'
+      - '.github/workflows/e2e*'
 
 concurrency:
   group: e2e-${{ github.event.pull_request.number || github.ref }}
