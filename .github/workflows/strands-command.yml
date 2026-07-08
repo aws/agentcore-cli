@@ -31,7 +31,7 @@ permissions:
 jobs:
   strands-agent:
     if: startsWith(github.event.comment.body, '/strands') || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Check authorization
         uses: actions/github-script@v9

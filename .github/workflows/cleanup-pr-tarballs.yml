@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   cleanup:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
       - name: Generate GitHub App Token

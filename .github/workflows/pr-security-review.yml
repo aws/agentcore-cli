@@ -43,7 +43,7 @@ concurrency:
 
 jobs:
   authorize:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     # On 'labeled' events, only proceed when the label is exactly 'safe-to-review'.
     # Other labels (e.g. size/m) are filtered out so we don't spawn API calls.
     if: |
@@ -91,7 +91,7 @@ jobs:
   review:
     needs: authorize
     if: needs.authorize.outputs.authorized == 'true'
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     timeout-minutes: 30
     env:
       AWS_REGION: us-west-2

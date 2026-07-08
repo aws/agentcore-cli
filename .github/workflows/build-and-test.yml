@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     timeout-minutes: 15
 
     strategy:
@@ -63,7 +63,7 @@ jobs:
           path: '*.tgz'
 
   integ-test:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     timeout-minutes: 15
 
     strategy:
@@ -92,7 +92,7 @@ jobs:
         run: npx vitest run --project integ --shard=${{ matrix.shard }}
 
   unit-test:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     timeout-minutes: 15
 
     strategy:
@@ -131,7 +131,7 @@ jobs:
 
   merge-reports:
     needs: unit-test
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     if: always()
 
     steps:
@@ -157,7 +157,7 @@ jobs:
 
   coverage:
     needs: merge-reports
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     if: github.event_name == 'pull_request'
     permissions:
       contents: read

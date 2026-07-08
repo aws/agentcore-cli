@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   authorize:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     outputs:
       is_authorized: ${{ steps.check.outputs.is_authorized }}
     steps:
@@ -30,7 +30,7 @@ jobs:
   pr-tarball:
     needs: authorize
     if: needs.authorize.outputs.is_authorized == 'true'
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v7
         with:

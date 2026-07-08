@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   validate-pr-title:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     permissions:
       pull-requests: read
     steps:

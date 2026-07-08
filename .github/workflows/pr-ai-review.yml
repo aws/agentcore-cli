@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   authorize:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     # explicitly require the PR to be open to avoid old events triggering a review on closed PRs: https://github.com/aws/agentcore-cli/issues/1463
     if:
       github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request_target' &&
@@ -71,7 +71,7 @@ jobs:
   ai-review:
     needs: authorize
     if: needs.authorize.outputs.authorized == 'true' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Determine PR URL
         id: pr-url

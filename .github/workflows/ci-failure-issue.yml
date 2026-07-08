@@ -13,7 +13,7 @@ on:
 jobs:
   create-issue:
     concurrency: ci-failure-issue-${{ github.event.workflow_run.name }}
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     timeout-minutes: 5
     if: ${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.head_branch == 'main' }}
     permissions:

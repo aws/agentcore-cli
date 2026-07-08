@@ -8,7 +8,7 @@ on:
 
 jobs:
   label-size:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     permissions:
       pull-requests: write
     steps:
