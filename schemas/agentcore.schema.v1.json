@@ -1341,8 +1341,7 @@
                     "lambdaFunctionArn",
                     "httpRuntime",
                     "connector",
-                    "passthrough",
-                    "webSearch"
+                    "passthrough"
                   ]
                 },
                 "toolDefinitions": {
@@ -1714,22 +1713,45 @@
                 },
                 "connectorId": {
                   "type": "string",
-                  "enum": ["bedrock-knowledge-bases", "bedrock-agentic-retrieve"]
+                  "enum": ["bedrock-knowledge-bases", "web-search"]
                 },
-                "knowledgeBaseId": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 48,
-                  "pattern": "^[a-zA-Z0-9_-]+$"
-                },
-                "knowledgeBaseIds": {
-                  "minItems": 1,
+                "configurations": {
                   "type": "array",
                   "items": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 48,
-                    "pattern": "^[a-zA-Z0-9_-]+$"
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "parameterValues": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      },
+                      "parameterOverrides": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "path": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": "string"
+                            },
+                            "visible": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": ["path"],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": ["name"],
+                    "additionalProperties": false
                   }
                 },
                 "passthrough": {
@@ -1765,14 +1787,6 @@
                   },
                   "required": ["endpoint"],
                   "additionalProperties": false
-                },
-                "excludeDomains": {
-                  "minItems": 1,
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "minLength": 1
-                  }
                 }
               },
               "required": ["name", "targetType"],
@@ -2253,8 +2267,7 @@
               "lambdaFunctionArn",
               "httpRuntime",
               "connector",
-              "passthrough",
-              "webSearch"
+              "passthrough"
             ]
           },
           "toolDefinitions": {
@@ -2626,22 +2639,45 @@
           },
           "connectorId": {
             "type": "string",
-            "enum": ["bedrock-knowledge-bases", "bedrock-agentic-retrieve"]
+            "enum": ["bedrock-knowledge-bases", "web-search"]
           },
-          "knowledgeBaseId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 48,
-            "pattern": "^[a-zA-Z0-9_-]+$"
-          },
-          "knowledgeBaseIds": {
-            "minItems": 1,
+          "configurations": {
             "type": "array",
             "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 48,
-              "pattern": "^[a-zA-Z0-9_-]+$"
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "parameterValues": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "parameterOverrides": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "visible": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["path"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["name"],
+              "additionalProperties": false
             }
           },
           "passthrough": {
@@ -2677,14 +2713,6 @@
             },
             "required": ["endpoint"],
             "additionalProperties": false
-          },
-          "excludeDomains": {
-            "minItems": 1,
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            }
           }
         },
         "required": ["name", "targetType"],

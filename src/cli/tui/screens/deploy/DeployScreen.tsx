@@ -59,6 +59,12 @@ export function DeployScreen({
 }: DeployScreenProps) {
   const { stdout } = useStdout();
   const awsConfig = useAwsTargetConfig();
+  // Targets the user picked in the multi-select. Drives both the header and the deploy scope so a
+  // single-target selection no longer deploys to every configured account/region (issue #1267).
+  const selectedTargets = useMemo(
+    () => awsConfig.selectedTargetIndices.map(i => awsConfig.availableTargets[i]).filter(t => t !== undefined),
+    [awsConfig.selectedTargetIndices, awsConfig.availableTargets]
+  );
   const [showInvoke, setShowInvoke] = useState(false);
   const [showResourceGraph, setShowResourceGraph] = useState(false);
   const [showDiff, setShowDiff] = useState(diffMode ?? false);
@@ -98,7 +104,7 @@ export function DeployScreen({
     useEnvLocalCredentials,
     useManualCredentials,
     skipCredentials,
-  } = useDeployFlow({ preSynthesized, isInteractive, diffMode });
+  } = useDeployFlow({ preSynthesized, isInteractive, diffMode, selectedTargets });
   const allSuccess = !hasError && isComplete;
   const skipPreflight = !!preSynthesized;
 
@@ -276,7 +282,10 @@ export function DeployScreen({
     );
   }
 
-  const targetDisplay = context?.awsTargets.map(t => `${t.region}:${t.account}`).join(', ');
+  // Show the target(s) the user actually picked, not the full configured list. Fall back to the
+  // resolved context targets for the plan path (no picker) or when nothing was selected.
+  const displayTargets = selectedTargets.length > 0 ? selectedTargets : (context?.awsTargets ?? []);
+  const targetDisplay = context && displayTargets.map(t => `${t.region}:${t.account}`).join(', ');
 
   // Show deploy status box once CloudFormation has started (after asset publishing)
   const showDeployStatus = !diffMode && (hasStartedCfn || isComplete);

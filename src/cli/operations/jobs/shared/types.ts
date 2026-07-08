@@ -288,6 +288,8 @@ export interface StartInsightsJobOptions {
   name?: string;
   region?: string;
   endpoint?: string;
+  /** KMS key ARN for encrypting insights job results. */
+  kmsKeyArn?: string;
   onProgress?: (status: string, message: string) => void;
 }
 

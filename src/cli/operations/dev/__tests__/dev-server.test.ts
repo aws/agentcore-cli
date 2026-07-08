@@ -1,7 +1,7 @@
 import type { DevConfig } from '../config.js';
 import { DevServer, type DevServerCallbacks, type DevServerOptions, type SpawnConfig } from '../dev-server.js';
 import { EventEmitter } from 'events';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { type MockInstance, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockSpawn = vi.fn();
 vi.mock('child_process', () => ({
@@ -56,6 +56,8 @@ describe('DevServer', () => {
   let options: DevServerOptions;
   let server: TestDevServer;
   let mockChild: ReturnType<typeof createMockChildProcess>;
+  let onceSpy: MockInstance;
+  let removeListenerSpy: MockInstance;
 
   beforeEach(() => {
     onLog = vi.fn<DevServerCallbacks['onLog']>();
@@ -65,11 +67,19 @@ describe('DevServer', () => {
     server = new TestDevServer(config, options);
     mockChild = createMockChildProcess();
     mockSpawn.mockReturnValue(mockChild);
+    onceSpy = vi.spyOn(process, 'once').mockReturnValue(process);
+    removeListenerSpy = vi.spyOn(process, 'removeListener').mockReturnValue(process);
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.clearAllMocks();
   });
+
+  function getRegisteredExitHandler(): (() => void) | undefined {
+    const call = onceSpy.mock.calls.find(([event]) => event === 'exit');
+    return call?.[1] as (() => void) | undefined;
+  }
 
   describe('start()', () => {
     it('calls spawn with correct cmd, args, cwd, env, and stdio when prepare succeeds', async () => {
@@ -170,6 +180,47 @@ describe('DevServer', () => {
       expect(mockChild.kill).toHaveBeenCalledWith('SIGTERM');
 
       vi.useRealTimers();
+    });
+  });
+
+  describe('exit cleanup', () => {
+    it('reaps the detached process group on process exit', async () => {
+      mockChild.pid = 4242;
+      const processKillSpy = vi.spyOn(process, 'kill').mockImplementation(() => true);
+
+      await server.start();
+      const exitHandler = getRegisteredExitHandler();
+      expect(exitHandler).toBeDefined();
+
+      exitHandler!();
+      expect(processKillSpy).toHaveBeenCalledWith(-4242, 'SIGKILL');
+    });
+
+    it('does not register an exit reaper when the child has no pid', async () => {
+      await server.start();
+      expect(getRegisteredExitHandler()).toBeUndefined();
+    });
+
+    it('removes the exit reaper once the child exits on its own', async () => {
+      mockChild.pid = 4242;
+
+      await server.start();
+      const exitHandler = getRegisteredExitHandler();
+      mockChild.emit('exit', 0);
+
+      expect(removeListenerSpy).toHaveBeenCalledWith('exit', exitHandler);
+    });
+
+    it('swallows errors when the process group is already gone', async () => {
+      mockChild.pid = 4242;
+      vi.spyOn(process, 'kill').mockImplementation(() => {
+        throw new Error('kill ESRCH');
+      });
+
+      await server.start();
+      const exitHandler = getRegisteredExitHandler();
+
+      expect(() => exitHandler!()).not.toThrow();
     });
   });
 

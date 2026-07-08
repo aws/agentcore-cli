@@ -1,9 +1,10 @@
 name: Canary
 
 on:
-  # Run once an hour
+  # Run every 15 minutes to catch dependency/service breakages (e.g. CDK
+  # schema mismatches) quickly instead of up to an hour later.
   schedule:
-    - cron: '0 * * * *'
+    - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       aws_region:
@@ -42,7 +43,7 @@ jobs:
           - variant: Prerelease
             build: Preview
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: '20.x'
@@ -61,7 +62,7 @@ jobs:
         id: aws
         run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> "$GITHUB_OUTPUT"
       - name: Get API keys from Secrets Manager
-        uses: aws-actions/aws-secretsmanager-get-secrets@v2
+        uses: aws-actions/aws-secretsmanager-get-secrets@v3
         with:
           secret-ids: |
             E2E,${{ secrets.E2E_SECRET_ARN }}
@@ -98,7 +99,7 @@ jobs:
       - name: Generate GitHub App Token
         if: failure()
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}

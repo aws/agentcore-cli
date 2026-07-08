@@ -164,10 +164,20 @@ function AgentAddedSummary({
   );
 }
 
+/** Summary passed to onExit when a non-interactive add flow completes successfully,
+ *  so the caller can print a confirmation to the terminal after the TUI tears down. */
+export interface AddFlowExitSummary {
+  kind: 'create' | 'byo';
+  agentName: string;
+  projectName: string;
+  projectPath?: string;
+}
+
 interface AddFlowProps {
   /** Whether running in interactive TUI mode (from App.tsx) vs CLI mode */
   isInteractive: boolean;
-  onExit: () => void;
+  /** Called when the flow exits. In non-interactive mode, carries a summary on success. */
+  onExit: (summary?: AddFlowExitSummary) => void;
   /** Called when user selects dev from success screen to run agent locally */
   onDev?: () => void;
   /** Called when user selects deploy from success screen */
@@ -220,12 +230,17 @@ export function AddFlow(props: AddFlowProps) {
   const { agents, refresh: refreshAgents } = useAvailableAgents();
   const [flow, setFlow] = useState<FlowState>(() => getInitialFlowState(props.initialResource));
 
-  // In non-interactive mode, exit after success (but not while loading)
+  // In non-interactive mode, exit after success (but not while loading),
+  // passing a summary so the caller can print a confirmation once the TUI is torn down.
   useEffect(() => {
     if (!props.isInteractive) {
-      const successStates = ['agent-create-success', 'agent-byo-success'];
-      if (successStates.includes(flow.name) && !('loading' in flow && flow.loading)) {
-        props.onExit();
+      if ((flow.name === 'agent-create-success' || flow.name === 'agent-byo-success') && !flow.loading) {
+        props.onExit({
+          kind: flow.name === 'agent-byo-success' ? 'byo' : 'create',
+          agentName: flow.agentName,
+          projectName: flow.projectName,
+          projectPath: flow.name === 'agent-create-success' ? flow.projectPath : undefined,
+        });
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

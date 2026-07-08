@@ -376,6 +376,7 @@ export const registerRun = (program: Command) => {
     .option('--wait', 'Block until the job reaches a terminal state')
     .option('--region <region>', 'AWS region (auto-detected if omitted)')
     .option('--endpoint <name>', 'Runtime endpoint name (e.g. PROMPT_V1)')
+    .option('--kms-key <arn>', 'KMS key ARN for encrypting insights job results')
     .option('--json', 'Output as JSON')
     .action(
       async (cliOptions: {
@@ -391,6 +392,7 @@ export const registerRun = (program: Command) => {
         wait?: boolean;
         region?: string;
         endpoint?: string;
+        kmsKey?: string;
         json?: boolean;
       }) => {
         requireProject();
@@ -424,6 +426,7 @@ export const registerRun = (program: Command) => {
             name: cliOptions.name,
             region: cliOptions.region,
             endpoint: cliOptions.endpoint,
+            kmsKeyArn: cliOptions.kmsKey,
             onProgress: cliOptions.json ? undefined : (_status, message) => console.log(message),
           });
           if (!startResult.success) {

@@ -20,7 +20,7 @@ jobs:
     env:
       TARBALL_BASE: agentcore-cli-prerelease
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: '20.x'
@@ -28,7 +28,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - name: Generate GitHub App Token
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}

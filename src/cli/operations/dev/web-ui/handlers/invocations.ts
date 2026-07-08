@@ -300,15 +300,7 @@ async function handleAguiInvocation(
   }
 
   // Build RunAgentInput — the body format AGUI agents expect
-  const aguiBody = JSON.stringify({
-    threadId: randomUUID(),
-    runId: randomUUID(),
-    messages: [{ id: randomUUID(), role: 'user', content: prompt }],
-    tools: [],
-    context: [],
-    state: {},
-    forwardedProps: {},
-  });
+  const aguiBody = JSON.stringify(buildAguiRunInput(prompt, sessionId));
 
   // Proxy to agent, piping the SSE response through untouched
   return new Promise<void>((resolve, reject) => {

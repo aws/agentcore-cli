@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.23.0] - 2026-07-08
+
+### Fixed
+- fix: update e2e gateway test with new type (#1701) (0cd1b955)
+- fix: fix infinite loop between source type and add another KB TUI screens (#1699) (08a9ae54)
+- fix: update KB and WS connector devEx (#1681) (694eedcd)
+- fix(vpc): correct create-harness VPC validation, dry-run persistence, and TUI review display (follow-up to #1671) (#1682) (45ba2e1e)
+- fix(status): exit non-zero on invalid --type/--state filter (#1650) (bdafe88a)
+
+### Documentation
+- docs(permissions): align PERMISSIONS.md with what iam-policy-user.json actually grants (#1696) (70800189)
+
+### Other Changes
+- chore: ungate connector experience (#1700) (4eba303d)
+
 ## [0.22.0] - 2026-07-02
 
 ### Added
