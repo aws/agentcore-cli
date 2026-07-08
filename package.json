@@ -21,6 +21,7 @@
     "compile:windows-arm64": "bun build --compile --minify --target=bun-windows-arm64 ./src/index.ts --outfile dist/bin/agentcore-windows-arm64",
     "start": "bun run src/index.ts",
     "test": "bun test",
+    "typecheck": "tsc --noEmit",
     "lint": "oxlint --fix",
     "lint:check": "oxlint",
     "format": "prettier --write .",

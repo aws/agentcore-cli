@@ -1,0 +1,33 @@
+# Verifies unit tests pass on all platforms (Linux, Windows, macOS).
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      # TODO: investigate sharding as repo grows:  https://bun.com/blog/release-notes/bun-v1.3.13#bun-test-shard-m-n-for-splitting-tests-across-ci-jobs
+      - run: bun test --coverage --coverage-reporter=lcov
+      # TODO: enable once codecov setup for repo is ready
+      # - uses: codecov/codecov-action@v5
+      #   with:
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #     fail_ci_if_error: false
