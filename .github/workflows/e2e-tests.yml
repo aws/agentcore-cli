@@ -85,6 +85,10 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          # This job runs only after the `authorize` gate confirms the actor is in AUTHORIZED_USERS,
+          # so checking out the PR head (incl. fork PRs) is intentional. checkout@v7 blocks fork
+          # checkout in pull_request_target by default; the authorize gate is our pwn-request guard.
+          allow-unsafe-pr-checkout: true
       - uses: actions/setup-node@v6
         with:
           node-version: '20.x'
