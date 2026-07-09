@@ -9,6 +9,7 @@ const telemetry = createTelemetryHelper();
 
 interface ConfigurationEntry {
   name: string;
+  description?: string;
   parameterValues?: Record<string, unknown>;
   parameterOverrides?: { path: string; description?: string; visible?: boolean }[];
 }
@@ -84,6 +85,7 @@ describe('integration: add and remove web-search via --connector flag', () => {
     expect(target?.connectorId).toBe('web-search');
     expect(target?.configurations).toHaveLength(1);
     expect(target?.configurations?.[0]?.name).toBe('WebSearch');
+    expect(target?.configurations?.[0]?.description).toBe('');
     expect(target?.configurations?.[0]?.parameterValues).toEqual({});
     expect(target?.configurations?.[0]?.parameterOverrides).toEqual([]);
     telemetry.assertMetricEmitted({ command: 'add.gateway-target', exit_reason: 'success' });

@@ -8,6 +8,7 @@
 
 export interface ConfigurationEntry {
   name: string;
+  description: string;
   parameterValues: Record<string, unknown>;
   parameterOverrides: ParameterOverride[];
 }
@@ -35,13 +36,15 @@ function translateWebSearch(input: WebSearchTranslatorInput): ConfigurationEntry
   if (input.excludeDomains && input.excludeDomains.length > 0) {
     parameterValues.domainFilter = { exclude: input.excludeDomains };
   }
-  return [{ name: 'WebSearch', parameterValues, parameterOverrides: [] }];
+  return [{ name: 'WebSearch', description: '', parameterValues, parameterOverrides: [] }];
 }
 
 function translateKnowledgeBases(input: KnowledgeBasesTranslatorInput): ConfigurationEntry[] {
   return [
     {
       name: 'AgenticRetrieveStream',
+      description:
+        'Streaming endpoint for agentic retrieval from knowledge bases. Performs multi-step retrieval with planning and returns results as a stream of events.',
       parameterValues: {
         retrievers: [{ configuration: { knowledgeBase: { knowledgeBaseId: input.knowledgeBaseId } } }],
         agenticRetrieveConfiguration: { foundationModelType: 'MANAGED', rerankingModelType: 'MANAGED' },
@@ -50,6 +53,7 @@ function translateKnowledgeBases(input: KnowledgeBasesTranslatorInput): Configur
     },
     {
       name: 'Retrieve',
+      description: 'Queries a knowledge base and retrieves information from it.',
       parameterValues: { knowledgeBaseId: input.knowledgeBaseId },
       parameterOverrides: [],
     },

@@ -474,6 +474,7 @@ export const AgentCoreGatewayTargetSchema = z
       .array(
         z.object({
           name: z.string(),
+          description: z.string().optional(),
           parameterValues: z.record(z.string(), z.unknown()).optional(),
           parameterOverrides: z
             .array(
