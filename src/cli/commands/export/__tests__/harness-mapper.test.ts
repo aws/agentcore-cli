@@ -859,6 +859,36 @@ describe('model ID propagation to renderConfig', () => {
 });
 
 // ============================================================================
+// model maxTokens propagation
+// ============================================================================
+
+describe('model maxTokens propagation to renderConfig', () => {
+  it('propagates maxTokens for an ordinary Converse Bedrock model', () => {
+    const ctx = baseContext({
+      model: { provider: 'bedrock', modelId: 'anthropic.claude-3', maxTokens: 4096 },
+    });
+    const { renderConfig } = mapHarnessToExportConfig(ctx, 'CodeZip');
+    expect(renderConfig.modelMaxTokens).toBe(4096);
+    expect(renderConfig.bedrockMantle).toBeUndefined();
+  });
+
+  it('leaves modelMaxTokens undefined when the spec has no maxTokens', () => {
+    const ctx = baseContext({ model: { provider: 'bedrock', modelId: 'anthropic.claude-3' } });
+    const { renderConfig } = mapHarnessToExportConfig(ctx, 'CodeZip');
+    expect(renderConfig.modelMaxTokens).toBeUndefined();
+  });
+
+  it('propagates maxTokens for a Bedrock Mantle model', () => {
+    const ctx = baseContext({
+      model: { provider: 'bedrock', modelId: 'openai.gpt-oss-120b', apiFormat: 'chat_completions', maxTokens: 2048 },
+    });
+    const { renderConfig } = mapHarnessToExportConfig(ctx, 'CodeZip');
+    expect(renderConfig.bedrockMantle).toBe(true);
+    expect(renderConfig.modelMaxTokens).toBe(2048);
+  });
+});
+
+// ============================================================================
 // resolveIdentityProvider
 // ============================================================================
 

@@ -168,7 +168,8 @@ export interface AgentRenderConfig {
   modelTemperature?: number;
   /** Model nucleus-sampling top_p (export path, Mantle): merged into the client params when set. */
   modelTopP?: number;
-  /** Model max output tokens (export path, Mantle): mapped to max_output_tokens / max_completion_tokens. */
+  /** Model max output tokens (export path): BedrockModel max_tokens for Converse models;
+   *  max_output_tokens / max_completion_tokens for Mantle models. */
   modelMaxTokens?: number;
 
   /** True when generating from a harness export (suppresses placeholder tools) */

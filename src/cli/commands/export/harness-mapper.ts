@@ -273,6 +273,9 @@ export function mapHarnessToExportConfig(
     hasExecutionLimits,
     isExportHarness: true,
     modelId: spec.model.modelId,
+    // Max output tokens, threaded into load.py for both ordinary Converse Bedrock models
+    // (BedrockModel max_tokens) and Mantle models (max_output_tokens/max_completion_tokens).
+    modelMaxTokens: spec.model.maxTokens,
     // LiteLLM-only model config (apiBase + additionalParams), threaded into load.py. The model
     // schema is a flat object, so apiBase/additionalParams are always typed-present — only the
     // provider check + a truthiness check are needed.
@@ -556,7 +559,6 @@ function buildBedrockMantleRenderConfig(spec: HarnessSpec): Partial<AgentRenderC
     mantleProprietary: isProprietaryOpenAiModel(spec.model.modelId),
     modelTemperature: spec.model.temperature,
     modelTopP: spec.model.topP,
-    modelMaxTokens: spec.model.maxTokens,
   };
 }
 
