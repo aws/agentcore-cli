@@ -45,9 +45,14 @@ export function ExecScreen({ onSelect, onExit }: ExecScreenProps) {
           if (!state?.runtimeArn) continue;
           loaded.push({ name: agent.name, runtimeArn: state.runtimeArn });
         }
+        for (const harness of project.harnesses ?? []) {
+          const state = targetState?.resources?.harnesses?.[harness.name];
+          if (!state?.agentRuntimeArn) continue;
+          loaded.push({ name: harness.name, runtimeArn: state.agentRuntimeArn, description: 'harness' });
+        }
 
         if (loaded.length === 0) {
-          setError('No deployed agents found. Run `agentcore deploy` first.');
+          setError('No deployed agents or harnesses found. Run `agentcore deploy` first.');
           setLoading(false);
           return;
         }

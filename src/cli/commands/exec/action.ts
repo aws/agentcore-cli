@@ -47,13 +47,32 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
 
   const targetState = deployedState.targets[targetName];
   const runtimeKeys = Object.keys(targetState?.resources?.runtimes ?? {});
-  if (runtimeKeys.length === 0) {
-    throw new Error(`No deployed runtimes found in target '${targetName}'.`);
-  }
+  const harnessKeys = Object.keys(targetState?.resources?.harnesses ?? {});
 
   // --runtime <arn> with no --region: ARN provided but region must come from config
   if (options.runtimeArn?.startsWith('arn:')) {
     return { region: options.region ?? targetConfig.region, runtimeArn: options.runtimeArn };
+  }
+
+  // Mutual exclusion: a name-form --runtime and --harness cannot both be set.
+  if (options.runtimeArn && options.harnessName) {
+    throw new Error('Cannot specify both --runtime and --harness.');
+  }
+
+  // --harness <name>: resolve to the harness's underlying runtime ARN
+  if (options.harnessName) {
+    const harnessState = targetState?.resources?.harnesses?.[options.harnessName];
+    if (!harnessState) {
+      throw new Error(
+        `Harness '${options.harnessName}' not found in target '${targetName}'. Available harnesses: ${harnessKeys.join(', ')}`
+      );
+    }
+    if (!harnessState.agentRuntimeArn) {
+      throw new Error(
+        `Harness '${options.harnessName}' has no runtime ARN in deployed state. Re-deploy to populate agentRuntimeArn.`
+      );
+    }
+    return { region: options.region ?? targetConfig.region, runtimeArn: harnessState.agentRuntimeArn };
   }
 
   // --runtime <name>: look up by agent name in deployed state
@@ -67,7 +86,35 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
     return { region: options.region ?? targetConfig.region, runtimeArn: agentState.runtimeArn };
   }
 
-  // No --runtime: error if ambiguous, auto-select if only one agent deployed
+  // No --runtime and no --harness: nothing deployed at all
+  if (runtimeKeys.length === 0 && harnessKeys.length === 0) {
+    throw new Error(`No deployed runtimes or harnesses found in target '${targetName}'.`);
+  }
+
+  // Both runtimes and harnesses exist — ambiguous, require an explicit flag.
+  if (runtimeKeys.length > 0 && harnessKeys.length > 0) {
+    throw new Error(
+      `Target '${targetName}' has both runtimes and harnesses. Specify one with --runtime <name> or --harness <name>.`
+    );
+  }
+
+  // Only harnesses deployed: auto-select single, else require --harness.
+  if (runtimeKeys.length === 0) {
+    if (harnessKeys.length > 1) {
+      throw new Error(
+        `Multiple harnesses deployed in target '${targetName}'. Specify one with --harness <name>: ${harnessKeys.join(', ')}`
+      );
+    }
+    const harnessState = targetState?.resources?.harnesses?.[harnessKeys[0]!];
+    if (!harnessState?.agentRuntimeArn) {
+      throw new Error(
+        `Harness '${harnessKeys[0]}' has no runtime ARN in deployed state. Re-deploy to populate agentRuntimeArn.`
+      );
+    }
+    return { region: options.region ?? targetConfig.region, runtimeArn: harnessState.agentRuntimeArn };
+  }
+
+  // Only runtimes deployed: auto-select single, else require --runtime.
   if (runtimeKeys.length > 1) {
     throw new Error(
       `Multiple agents deployed in target '${targetName}'. Specify one with --runtime <name>: ${runtimeKeys.join(', ')}`
@@ -409,6 +456,7 @@ export async function runInteractiveShell(options: ExecOptions): Promise<void> {
     {
       interactive: true,
       has_runtime: Boolean(options.runtimeArn),
+      has_harness: Boolean(options.harnessName),
       has_shell_id: Boolean(options.shellId),
       has_session_id: Boolean(options.sessionId),
       is_one_shot: false,

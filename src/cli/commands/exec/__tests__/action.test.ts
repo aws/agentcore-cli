@@ -801,6 +801,114 @@ describe('loadExecContext --runtime as ARN or name', () => {
 });
 
 // ---------------------------------------------------------------------------
+// loadExecContext with harnesses (regression for #1724)
+// ---------------------------------------------------------------------------
+
+describe('loadExecContext with harnesses', () => {
+  const HARNESS_ARN = 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-h1';
+
+  const HARNESS_ONLY_CONFIG = {
+    readAWSDeploymentTargets: vi.fn().mockResolvedValue([{ name: 'default', region: 'us-east-1' }]),
+    readDeployedState: vi.fn().mockResolvedValue({
+      targets: {
+        default: {
+          resources: {
+            harnesses: { h1: { agentRuntimeArn: HARNESS_ARN } },
+          },
+        },
+      },
+    }),
+  } as unknown as ConfigIO;
+
+  it('auto-selects the single harness when no flags are given (regression #1724)', async () => {
+    const ctx = await loadExecContext({}, HARNESS_ONLY_CONFIG);
+    expect(ctx.runtimeArn).toBe(HARNESS_ARN);
+    expect(ctx.region).toBe('us-east-1');
+  });
+
+  it('resolves the named harness via --harness', async () => {
+    const ctx = await loadExecContext({ harnessName: 'h1' }, HARNESS_ONLY_CONFIG);
+    expect(ctx.runtimeArn).toBe(HARNESS_ARN);
+    expect(ctx.region).toBe('us-east-1');
+  });
+
+  it('throws listing available harnesses when --harness is not deployed', async () => {
+    await expect(loadExecContext({ harnessName: 'nope' }, HARNESS_ONLY_CONFIG)).rejects.toThrow(/nope.*h1/);
+  });
+
+  it('throws when the harness has no agentRuntimeArn', async () => {
+    const config = {
+      readAWSDeploymentTargets: vi.fn().mockResolvedValue([{ name: 'default', region: 'us-east-1' }]),
+      readDeployedState: vi.fn().mockResolvedValue({
+        targets: { default: { resources: { harnesses: { h1: {} } } } },
+      }),
+    } as unknown as ConfigIO;
+
+    await expect(loadExecContext({ harnessName: 'h1' }, config)).rejects.toThrow(
+      /Re-deploy to populate agentRuntimeArn/
+    );
+  });
+
+  it('throws when no runtimes and multiple harnesses and no flag', async () => {
+    const config = {
+      readAWSDeploymentTargets: vi.fn().mockResolvedValue([{ name: 'default', region: 'us-east-1' }]),
+      readDeployedState: vi.fn().mockResolvedValue({
+        targets: {
+          default: {
+            resources: {
+              harnesses: {
+                h1: { agentRuntimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-h1' },
+                h2: { agentRuntimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-h2' },
+              },
+            },
+          },
+        },
+      }),
+    } as unknown as ConfigIO;
+
+    await expect(loadExecContext({}, config)).rejects.toThrow(/Multiple harnesses/);
+  });
+
+  it('throws when both a runtime and a harness are deployed and no flag', async () => {
+    const config = {
+      readAWSDeploymentTargets: vi.fn().mockResolvedValue([{ name: 'default', region: 'us-east-1' }]),
+      readDeployedState: vi.fn().mockResolvedValue({
+        targets: {
+          default: {
+            resources: {
+              runtimes: { AgentA: { runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/AgentA' } },
+              harnesses: { h1: { agentRuntimeArn: HARNESS_ARN } },
+            },
+          },
+        },
+      }),
+    } as unknown as ConfigIO;
+
+    await expect(loadExecContext({}, config)).rejects.toThrow(/both runtimes and harnesses/);
+  });
+
+  it('throws when both --runtime (name) and --harness are set', async () => {
+    const config = {
+      readAWSDeploymentTargets: vi.fn().mockResolvedValue([{ name: 'default', region: 'us-east-1' }]),
+      readDeployedState: vi.fn().mockResolvedValue({
+        targets: {
+          default: {
+            resources: {
+              runtimes: { AgentA: { runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/AgentA' } },
+              harnesses: { h1: { agentRuntimeArn: HARNESS_ARN } },
+            },
+          },
+        },
+      }),
+    } as unknown as ConfigIO;
+
+    await expect(loadExecContext({ runtimeArn: 'AgentA', harnessName: 'h1' }, config)).rejects.toThrow(
+      /Cannot specify both --runtime and --harness/
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // handleExecOneShot — --json buffering
 // ---------------------------------------------------------------------------
 

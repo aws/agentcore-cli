@@ -32,6 +32,7 @@ export const registerExec = (program: Command) => {
     .argument('[command...]', 'Command to execute (one-shot mode, non-interactive)')
     .option('--it', 'Open an interactive PTY shell session')
     .option('--runtime <name|arn>', 'Target agent name or runtime ARN (skips agent picker)')
+    .option('--harness <name>', 'Target harness name (resolves to its underlying runtime)')
     .option('--session-id <id>', 'Pin to a specific runtime session / VM')
     .option('--shell-id <id>', 'Reconnect to an existing shell')
     .option('--region <region>', 'AWS region')
@@ -45,6 +46,7 @@ export const registerExec = (program: Command) => {
         cliOptions: {
           it?: boolean;
           runtime?: string;
+          harness?: string;
           sessionId?: string;
           shellId?: string;
           region?: string;
@@ -103,6 +105,7 @@ export const registerExec = (program: Command) => {
 
           const options: ExecOptions = {
             runtimeArn: cliOptions.runtime,
+            harnessName: cliOptions.harness,
             sessionId: cliOptions.sessionId,
             shellId: cliOptions.shellId,
             interactive: cliOptions.it,
@@ -128,6 +131,7 @@ export const registerExec = (program: Command) => {
               {
                 interactive: false,
                 has_runtime: Boolean(options.runtimeArn),
+                has_harness: Boolean(options.harnessName),
                 has_shell_id: Boolean(options.shellId),
                 has_session_id: Boolean(options.sessionId),
                 is_one_shot: true,
@@ -190,6 +194,7 @@ export async function runExecLoop(options: ExecOptions = {}): Promise<void> {
         {
           interactive: true,
           has_runtime: Boolean(shellOptions.runtimeArn),
+          has_harness: Boolean(shellOptions.harnessName),
           has_shell_id: Boolean(shellOptions.shellId),
           has_session_id: Boolean(shellOptions.sessionId),
           is_one_shot: false,

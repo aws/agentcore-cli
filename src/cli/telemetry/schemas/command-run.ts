@@ -144,6 +144,7 @@ const InvokeAttrs = safeSchema({
 const ExecAttrs = safeSchema({
   interactive: z.boolean(),
   has_runtime: z.boolean(),
+  has_harness: z.boolean().optional(),
   has_shell_id: z.boolean(),
   has_session_id: z.boolean(),
   is_one_shot: z.boolean(),
