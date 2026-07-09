@@ -121,6 +121,28 @@ describe('ContainerPackager', () => {
     expect(result.artifactPath).toBe('docker://agentcore-package-custom-agent');
   });
 
+  it('lower-cases the image tag for a mixed-case agent name (docker tags must be lowercase)', async () => {
+    mockResolveCodeLocation.mockReturnValue('/resolved/src');
+    mockExistsSync.mockReturnValue(true);
+    mockSpawnSync.mockImplementation((cmd: string, args: string[]) => {
+      if (cmd === 'which' && args[0] === 'docker') return { status: 0 };
+      if (cmd === 'docker' && args[0] === '--version') return { status: 0 };
+      if (cmd === 'docker' && args[0] === 'build') return { status: 0 };
+      if (cmd === 'docker' && args[0] === 'image') return { status: 0, stdout: Buffer.from('1000') };
+      return { status: 1 };
+    });
+
+    const result = await packager.pack({ ...baseSpec, name: 'AgentOne' } as any);
+
+    // Docker rejects uppercase in image tags; the default agent name is PascalCase, so it must be lowered.
+    expect(result.artifactPath).toBe('docker://agentcore-package-agentone');
+    const buildCall = mockSpawnSync.mock.calls.find(
+      (c: unknown[]) => c[0] === 'docker' && (c[1] as string[])[0] === 'build'
+    );
+    const buildArgs = buildCall![1] as string[];
+    expect(buildArgs[buildArgs.indexOf('-t') + 1]).toBe('agentcore-package-agentone');
+  });
+
   it('uses options.artifactDir as configBaseDir', async () => {
     mockResolveCodeLocation.mockReturnValue('/artifact/dir/src');
     mockExistsSync.mockReturnValue(true);

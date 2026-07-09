@@ -67,8 +67,9 @@ export class ContainerPackager implements RuntimePackager {
       });
     }
 
-    // Build locally
-    const imageName = `agentcore-package-${agentName}`;
+    // Build locally. Docker image tags must be lowercase, but agent names allow uppercase
+    // (e.g. the default "AgentOne"), so lower-case the tag — matching the dev server.
+    const imageName = `agentcore-package-${agentName}`.toLowerCase();
     const buildArgFlags = getCustomBuildArgs(spec.customDockerBuildArgs);
     const buildResult = spawnSync(
       runtime,
