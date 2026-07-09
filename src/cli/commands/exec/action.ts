@@ -59,7 +59,10 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
     throw new Error('Cannot specify both --runtime and --harness.');
   }
 
-  // --harness <name>: resolve to the harness's underlying runtime ARN
+  // --harness <name>: resolve to the harness ARN.
+  // exec must target the harness ARN, NOT the underlying agentRuntimeArn: the data plane blocks
+  // ExecuteCommand / shell against a harness-linked runtime ARN, but routes a harness ARN on the
+  // /runtimes/{arn}/... path through the harness exec path (delegates to LoopyDP).
   if (options.harnessName) {
     const harnessState = targetState?.resources?.harnesses?.[options.harnessName];
     if (!harnessState) {
@@ -67,12 +70,7 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
         `Harness '${options.harnessName}' not found in target '${targetName}'. Available harnesses: ${harnessKeys.join(', ')}`
       );
     }
-    if (!harnessState.agentRuntimeArn) {
-      throw new Error(
-        `Harness '${options.harnessName}' has no runtime ARN in deployed state. Re-deploy to populate agentRuntimeArn.`
-      );
-    }
-    return { region: options.region ?? targetConfig.region, runtimeArn: harnessState.agentRuntimeArn };
+    return { region: options.region ?? targetConfig.region, runtimeArn: harnessState.harnessArn };
   }
 
   // --runtime <name>: look up by agent name in deployed state
@@ -105,13 +103,12 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
         `Multiple harnesses deployed in target '${targetName}'. Specify one with --harness <name>: ${harnessKeys.join(', ')}`
       );
     }
+    // Target the harness ARN (see the --harness branch above for why not agentRuntimeArn).
     const harnessState = targetState?.resources?.harnesses?.[harnessKeys[0]!];
-    if (!harnessState?.agentRuntimeArn) {
-      throw new Error(
-        `Harness '${harnessKeys[0]}' has no runtime ARN in deployed state. Re-deploy to populate agentRuntimeArn.`
-      );
+    if (!harnessState?.harnessArn) {
+      throw new Error('Could not determine harness ARN from deployed state.');
     }
-    return { region: options.region ?? targetConfig.region, runtimeArn: harnessState.agentRuntimeArn };
+    return { region: options.region ?? targetConfig.region, runtimeArn: harnessState.harnessArn };
   }
 
   // Only runtimes deployed: auto-select single, else require --runtime.

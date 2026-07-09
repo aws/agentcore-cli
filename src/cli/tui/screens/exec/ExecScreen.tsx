@@ -45,10 +45,12 @@ export function ExecScreen({ onSelect, onExit }: ExecScreenProps) {
           if (!state?.runtimeArn) continue;
           loaded.push({ name: agent.name, runtimeArn: state.runtimeArn });
         }
+        // exec targets the harness ARN, not agentRuntimeArn: the data plane blocks exec against a
+        // harness-linked runtime ARN but routes a harness ARN through the harness exec path.
         for (const harness of project.harnesses ?? []) {
           const state = targetState?.resources?.harnesses?.[harness.name];
-          if (!state?.agentRuntimeArn) continue;
-          loaded.push({ name: harness.name, runtimeArn: state.agentRuntimeArn, description: 'harness' });
+          if (!state?.harnessArn) continue;
+          loaded.push({ name: harness.name, runtimeArn: state.harnessArn, description: 'harness' });
         }
 
         if (loaded.length === 0) {

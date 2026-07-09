@@ -805,7 +805,11 @@ describe('loadExecContext --runtime as ARN or name', () => {
 // ---------------------------------------------------------------------------
 
 describe('loadExecContext with harnesses', () => {
-  const HARNESS_ARN = 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-h1';
+  // exec must resolve a harness to its harness ARN (not the underlying agentRuntimeArn): the data
+  // plane blocks exec against a harness-linked runtime ARN but routes a harness ARN through the
+  // harness exec path. Deployed state carries both; only harnessArn is a valid exec target.
+  const HARNESS_ARN = 'arn:aws:bedrock-agentcore:us-east-1:123:harness/h1-abc123';
+  const HARNESS_RUNTIME_ARN = 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/harness_h1-xyz789';
 
   const HARNESS_ONLY_CONFIG = {
     readAWSDeploymentTargets: vi.fn().mockResolvedValue([{ name: 'default', region: 'us-east-1' }]),
@@ -813,22 +817,25 @@ describe('loadExecContext with harnesses', () => {
       targets: {
         default: {
           resources: {
-            harnesses: { h1: { agentRuntimeArn: HARNESS_ARN } },
+            harnesses: { h1: { harnessArn: HARNESS_ARN, agentRuntimeArn: HARNESS_RUNTIME_ARN } },
           },
         },
       },
     }),
   } as unknown as ConfigIO;
 
-  it('auto-selects the single harness when no flags are given (regression #1724)', async () => {
+  it('auto-selects the single harness (by harness ARN) when no flags are given (regression #1724)', async () => {
     const ctx = await loadExecContext({}, HARNESS_ONLY_CONFIG);
+    // Must be the harness ARN, NOT the agentRuntimeArn — the service rejects the runtime ARN.
     expect(ctx.runtimeArn).toBe(HARNESS_ARN);
+    expect(ctx.runtimeArn).not.toBe(HARNESS_RUNTIME_ARN);
     expect(ctx.region).toBe('us-east-1');
   });
 
-  it('resolves the named harness via --harness', async () => {
+  it('resolves the named harness (by harness ARN) via --harness', async () => {
     const ctx = await loadExecContext({ harnessName: 'h1' }, HARNESS_ONLY_CONFIG);
     expect(ctx.runtimeArn).toBe(HARNESS_ARN);
+    expect(ctx.runtimeArn).not.toBe(HARNESS_RUNTIME_ARN);
     expect(ctx.region).toBe('us-east-1');
   });
 
@@ -836,17 +843,17 @@ describe('loadExecContext with harnesses', () => {
     await expect(loadExecContext({ harnessName: 'nope' }, HARNESS_ONLY_CONFIG)).rejects.toThrow(/nope.*h1/);
   });
 
-  it('throws when the harness has no agentRuntimeArn', async () => {
+  it('throws when the harness has no harness ARN in deployed state', async () => {
     const config = {
       readAWSDeploymentTargets: vi.fn().mockResolvedValue([{ name: 'default', region: 'us-east-1' }]),
       readDeployedState: vi.fn().mockResolvedValue({
-        targets: { default: { resources: { harnesses: { h1: {} } } } },
+        targets: { default: { resources: { harnesses: { h1: { agentRuntimeArn: HARNESS_RUNTIME_ARN } } } } },
       }),
     } as unknown as ConfigIO;
 
-    await expect(loadExecContext({ harnessName: 'h1' }, config)).rejects.toThrow(
-      /Re-deploy to populate agentRuntimeArn/
-    );
+    // Auto-select path surfaces a "Could not determine harness ARN" error rather than silently
+    // falling back to the (unusable) runtime ARN.
+    await expect(loadExecContext({}, config)).rejects.toThrow(/Could not determine harness ARN/);
   });
 
   it('throws when no runtimes and multiple harnesses and no flag', async () => {
@@ -857,8 +864,8 @@ describe('loadExecContext with harnesses', () => {
           default: {
             resources: {
               harnesses: {
-                h1: { agentRuntimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-h1' },
-                h2: { agentRuntimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/rt-h2' },
+                h1: { harnessArn: 'arn:aws:bedrock-agentcore:us-east-1:123:harness/h1-abc' },
+                h2: { harnessArn: 'arn:aws:bedrock-agentcore:us-east-1:123:harness/h2-def' },
               },
             },
           },
@@ -877,7 +884,7 @@ describe('loadExecContext with harnesses', () => {
           default: {
             resources: {
               runtimes: { AgentA: { runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/AgentA' } },
-              harnesses: { h1: { agentRuntimeArn: HARNESS_ARN } },
+              harnesses: { h1: { harnessArn: HARNESS_ARN, agentRuntimeArn: HARNESS_RUNTIME_ARN } },
             },
           },
         },
@@ -895,7 +902,7 @@ describe('loadExecContext with harnesses', () => {
           default: {
             resources: {
               runtimes: { AgentA: { runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/AgentA' } },
-              harnesses: { h1: { agentRuntimeArn: HARNESS_ARN } },
+              harnesses: { h1: { harnessArn: HARNESS_ARN, agentRuntimeArn: HARNESS_RUNTIME_ARN } },
             },
           },
         },
