@@ -67,8 +67,24 @@
           "dockerfile": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 255,
-            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$"
+            "maxLength": 255
+          },
+          "buildContextPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "customDockerBuildArgs": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 4096
+            }
           },
           "runtimeVersion": {
             "anyOf": [
@@ -1723,6 +1739,9 @@
                       "name": {
                         "type": "string"
                       },
+                      "description": {
+                        "type": "string"
+                      },
                       "parameterValues": {
                         "type": "object",
                         "propertyNames": {
@@ -2647,6 +2666,9 @@
               "type": "object",
               "properties": {
                 "name": {
+                  "type": "string"
+                },
+                "description": {
                   "type": "string"
                 },
                 "parameterValues": {
