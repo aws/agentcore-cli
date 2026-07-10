@@ -1,4 +1,4 @@
-# Verifies the Node bundle, bun pm pack, and native binary compilation all succeed.
+# Verifies lint, formatting, types, audit, and build all pass.
 
 on:
   workflow_call:
@@ -19,6 +19,10 @@ jobs:
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
+      - run: bun run lint:check
+      - run: bun run format:check
+      - run: bun run typecheck
+      - run: bun audit
       - run: bun run build
       - run: bun pm pack
       - run: bun run compile

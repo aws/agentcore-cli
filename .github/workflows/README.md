@@ -6,7 +6,7 @@ Workflows are organized into two roles:
 
 ```
 Orchestrators (e.g. ci.yml, release.yml)
-Jobs          (e.g. build.yml, unit-test.yml, lint-and-format.yml, publish-npm.yml)
+Jobs          (e.g. build.yml, unit-test.yml, publish-npm.yml)
 ```
 
 **Orchestrators** respond to events and coordinate work. They define _when_ and
@@ -24,11 +24,8 @@ are always leaves.
 
 ```
 ci.yml
-  ├── lint-and-format.yml
-  ├── typecheck.yml
-  ├── unit-test.yml
-  ├── audit.yml
-  └── build.yml
+  ├── build.yml      (lint, format, typecheck, audit, bundle, compile)
+  └── unit-test.yml  (tests on Linux, Windows, macOS)
 ```
 
 ### Future examples
@@ -47,7 +44,7 @@ is the point — write once, compose freely.
 
 - **Orchestrators** are named for their purpose (e.g. `ci`, `release`).
 - **Jobs** are named as verbs or noun-verb pairs describing the work
-  (e.g. `build`, `unit-test`, `lint-and-format`, `publish-npm`).
+  (e.g. `build`, `unit-test`, `publish-npm`).
 
 ## Key Choices
 

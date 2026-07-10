@@ -12,32 +12,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint-and-format:
-    uses: ./.github/workflows/lint-and-format.yml
-    permissions:
-      contents: read
-    with:
-      ref: ${{ github.event.pull_request.head.sha || github.sha }}
-  typecheck:
-    uses: ./.github/workflows/typecheck.yml
+  build:
+    uses: ./.github/workflows/build.yml
     permissions:
       contents: read
     with:
       ref: ${{ github.event.pull_request.head.sha || github.sha }}
   unit-test:
     uses: ./.github/workflows/unit-test.yml
-    permissions:
-      contents: read
-    with:
-      ref: ${{ github.event.pull_request.head.sha || github.sha }}
-  audit:
-    uses: ./.github/workflows/audit.yml
-    permissions:
-      contents: read
-    with:
-      ref: ${{ github.event.pull_request.head.sha || github.sha }}
-  build:
-    uses: ./.github/workflows/build.yml
     permissions:
       contents: read
     with:
