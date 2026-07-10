@@ -51,6 +51,16 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
     return assertInteractiveHarnessUnsupported(options, { region: options.region, runtimeArn: options.runtimeArn });
   }
 
+  // Same short-circuit for --harness <arn> + region. Validate it's a harness ARN (not a runtime ARN).
+  if (options.harnessName?.startsWith('arn:') && options.region) {
+    if (!isHarnessArn(options.harnessName)) {
+      throw new Error(
+        `--harness expects a harness ARN (…:harness/…), got '${options.harnessName}'. Use --runtime for a runtime ARN.`
+      );
+    }
+    return assertInteractiveHarnessUnsupported(options, { region: options.region, runtimeArn: options.harnessName });
+  }
+
   const awsTargets = await configIO.readAWSDeploymentTargets();
   const deployedState = await configIO.readDeployedState();
 
@@ -83,11 +93,24 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
     });
   }
 
-  // --harness <name>: resolve to the harness ARN.
+  // --harness <name|arn>: resolve to the harness ARN.
   // exec must target the harness ARN, NOT the underlying agentRuntimeArn: the data plane blocks
   // ExecuteCommand / shell against a harness-linked runtime ARN, but routes a harness ARN on the
   // /runtimes/{arn}/... path through the harness exec path (delegates to LoopyDP).
   if (options.harnessName) {
+    // A full ARN is used directly (must be a harness ARN, not a runtime ARN); a name is looked up.
+    if (options.harnessName.startsWith('arn:')) {
+      if (!isHarnessArn(options.harnessName)) {
+        throw new Error(
+          `--harness expects a harness ARN (…:harness/…), got '${options.harnessName}'. Use --runtime for a runtime ARN.`
+        );
+      }
+      return assertInteractiveHarnessUnsupported(options, {
+        region: options.region ?? targetConfig.region,
+        runtimeArn: options.harnessName,
+      });
+    }
+
     const harnessState = targetState?.resources?.harnesses?.[options.harnessName];
     if (!harnessState) {
       throw new Error(

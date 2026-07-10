@@ -843,6 +843,39 @@ describe('loadExecContext with harnesses', () => {
     await expect(loadExecContext({ harnessName: 'nope' }, HARNESS_ONLY_CONFIG)).rejects.toThrow(/nope.*h1/);
   });
 
+  it('uses --harness <arn> directly with --region (no config read)', async () => {
+    // ARN + region short-circuits before any deployed-state lookup, mirroring --runtime <arn>.
+    const cfg = {
+      readAWSDeploymentTargets: vi.fn(),
+      readDeployedState: vi.fn(),
+    } as unknown as ConfigIO;
+
+    const ctx = await loadExecContext({ harnessName: HARNESS_ARN, region: 'us-west-2' }, cfg);
+    expect(ctx.runtimeArn).toBe(HARNESS_ARN);
+    expect(ctx.region).toBe('us-west-2'); // from the flag
+    expect(
+      (cfg as unknown as { readDeployedState: ReturnType<typeof vi.fn> }).readDeployedState
+    ).not.toHaveBeenCalled();
+  });
+
+  it('resolves region from config for --harness <arn> when --region is omitted', async () => {
+    const ctx = await loadExecContext({ harnessName: HARNESS_ARN }, HARNESS_ONLY_CONFIG);
+    expect(ctx.runtimeArn).toBe(HARNESS_ARN);
+    expect(ctx.region).toBe('us-east-1'); // from config target
+  });
+
+  it('rejects a runtime ARN passed to --harness (with --region)', async () => {
+    await expect(loadExecContext({ harnessName: HARNESS_RUNTIME_ARN, region: 'us-east-1' })).rejects.toThrow(
+      /--harness expects a harness ARN/
+    );
+  });
+
+  it('rejects a runtime ARN passed to --harness (no --region)', async () => {
+    await expect(loadExecContext({ harnessName: HARNESS_RUNTIME_ARN }, HARNESS_ONLY_CONFIG)).rejects.toThrow(
+      /--harness expects a harness ARN/
+    );
+  });
+
   it('throws no-target error when the only harness has no harness ARN in deployed state', async () => {
     const config = {
       readAWSDeploymentTargets: vi.fn().mockResolvedValue([{ name: 'default', region: 'us-east-1' }]),
@@ -991,6 +1024,12 @@ describe('loadExecContext interactive-harness guard', () => {
 
   it('throws for --it with a harness ARN via --runtime (no region, config short-circuit)', async () => {
     await expect(loadExecContext({ interactive: true, runtimeArn: HARNESS_ARN }, HARNESS_ONLY_CONFIG)).rejects.toThrow(
+      GUARD_MESSAGE
+    );
+  });
+
+  it('throws for --it with a harness ARN via --harness + --region', async () => {
+    await expect(loadExecContext({ interactive: true, harnessName: HARNESS_ARN, region: 'us-east-1' })).rejects.toThrow(
       GUARD_MESSAGE
     );
   });
