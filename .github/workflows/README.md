@@ -10,15 +10,14 @@ Jobs          (e.g. build.yml, unit-test.yml, publish-npm.yml)
 ```
 
 **Orchestrators** respond to events and coordinate work. They define _when_ and
-_in what order_ things happen, but contain no logic themselves. An orchestrator
+_in what order_ things happen, but contain minimal logic themselves. An orchestrator
 is a composition of jobs.
 
 **Jobs** are self-contained, reusable units of work. They accept inputs (like a
 `ref` to check out), do one thing, and report pass/fail. A job doesn't know or
 care what triggered it.
 
-An orchestrator calls jobs via `workflow_call`. Jobs never call other jobs — they
-are always leaves.
+An orchestrator calls jobs via `workflow_call`.
 
 ### Current example
 
