@@ -111,7 +111,13 @@ jobs:
           CDP_WALLET_SECRET: ${{ env.E2E_CDP_WALLET_SECRET }}
         run: npx vitest run --project e2e --shard=${{ matrix.shard }}
   browser-tests:
-    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    # Pinned to GitHub-hosted ubuntu-latest, unlike the other jobs (#1715 moved
+    # everything to CodeBuild). Playwright's `install --with-deps` shells out to
+    # apt-get to install Chromium's OS libraries; the CodeBuild runner image has
+    # no apt-get and Playwright doesn't recognize the distro, so the step exits
+    # 127 ("apt-get: command not found"). ubuntu-latest is a Playwright-supported
+    # OS where --with-deps works. See #1715.
+    runs-on: ubuntu-latest
     environment: e2e-testing
     timeout-minutes: 30
     steps:
