@@ -297,7 +297,7 @@ export async function startOtelCollector(persistTracesDir: string): Promise<{
   const collectorPort = await collector.start();
 
   const otelEnvVars: Record<string, string> = {
-    OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${collectorPort}`,
+    OTEL_EXPORTER_OTLP_ENDPOINT: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? `http://127.0.0.1:${collectorPort}`,
     OTEL_EXPORTER_OTLP_PROTOCOL: 'http/protobuf',
     OTEL_METRICS_EXPORTER: 'none',
     AGENT_OBSERVABILITY_ENABLED: 'true',
