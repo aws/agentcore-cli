@@ -790,7 +790,7 @@ describe('loadExecContext --runtime as ARN or name', () => {
 
   it('throws when no --runtime and multiple agents are deployed', async () => {
     await expect(loadExecContext({}, TWO_AGENT_CONFIG)).rejects.toThrow(
-      /Multiple agents.*AgentA.*AgentB|Multiple agents.*AgentB.*AgentA/
+      /multiple deploy targets.*AgentA.*AgentB|multiple deploy targets.*AgentB.*AgentA/
     );
   });
 
@@ -843,7 +843,7 @@ describe('loadExecContext with harnesses', () => {
     await expect(loadExecContext({ harnessName: 'nope' }, HARNESS_ONLY_CONFIG)).rejects.toThrow(/nope.*h1/);
   });
 
-  it('throws when the harness has no harness ARN in deployed state', async () => {
+  it('throws no-target error when the only harness has no harness ARN in deployed state', async () => {
     const config = {
       readAWSDeploymentTargets: vi.fn().mockResolvedValue([{ name: 'default', region: 'us-east-1' }]),
       readDeployedState: vi.fn().mockResolvedValue({
@@ -851,9 +851,9 @@ describe('loadExecContext with harnesses', () => {
       }),
     } as unknown as ConfigIO;
 
-    // Auto-select path surfaces a "Could not determine harness ARN" error rather than silently
-    // falling back to the (unusable) runtime ARN.
-    await expect(loadExecContext({}, config)).rejects.toThrow(/Could not determine harness ARN/);
+    // A harness with no harnessArn is not a usable exec target, so it drops out of the candidate
+    // list — leaving zero candidates rather than silently falling back to the (unusable) runtime ARN.
+    await expect(loadExecContext({}, config)).rejects.toThrow(/No deployed runtimes or harnesses/);
   });
 
   it('throws when no runtimes and multiple harnesses and no flag', async () => {
@@ -873,7 +873,8 @@ describe('loadExecContext with harnesses', () => {
       }),
     } as unknown as ConfigIO;
 
-    await expect(loadExecContext({}, config)).rejects.toThrow(/Multiple harnesses/);
+    // Merged ambiguity message lists all candidate names and both flags.
+    await expect(loadExecContext({}, config)).rejects.toThrow(/multiple deploy targets.*h1.*h2/s);
   });
 
   it('throws when both a runtime and a harness are deployed and no flag', async () => {
@@ -891,7 +892,8 @@ describe('loadExecContext with harnesses', () => {
       }),
     } as unknown as ConfigIO;
 
-    await expect(loadExecContext({}, config)).rejects.toThrow(/both runtimes and harnesses/);
+    // Merged ambiguity message lists both the runtime and harness names.
+    await expect(loadExecContext({}, config)).rejects.toThrow(/multiple deploy targets.*AgentA.*h1/s);
   });
 
   it('throws when both --runtime (name) and --harness are set', async () => {
@@ -912,6 +914,33 @@ describe('loadExecContext with harnesses', () => {
     await expect(loadExecContext({ runtimeArn: 'AgentA', harnessName: 'h1' }, config)).rejects.toThrow(
       /Cannot specify both --runtime and --harness/
     );
+  });
+
+  it('throws when --runtime is an ARN + --region and --harness are both set (mutex before ARN short-circuit)', async () => {
+    // The ARN + region short-circuit returns before touching deployed state, so the mutex must be
+    // enforced ahead of it — otherwise --harness is silently ignored. No config read is needed.
+    await expect(
+      loadExecContext({
+        runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r',
+        region: 'us-east-1',
+        harnessName: 'h1',
+      })
+    ).rejects.toThrow(/Cannot specify both --runtime and --harness/);
+  });
+
+  it('throws when --runtime is an ARN (no region) and --harness are both set', async () => {
+    // Even without --region (which would defer to the config-read ARN short-circuit), the mutex
+    // fires first. Config read is stubbed but should never be consulted.
+    const config = {
+      readAWSDeploymentTargets: vi.fn().mockResolvedValue([{ name: 'default', region: 'us-east-1' }]),
+      readDeployedState: vi.fn().mockResolvedValue({
+        targets: { default: { resources: { harnesses: { h1: { harnessArn: HARNESS_ARN } } } } },
+      }),
+    } as unknown as ConfigIO;
+
+    await expect(
+      loadExecContext({ runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r', harnessName: 'h1' }, config)
+    ).rejects.toThrow(/Cannot specify both --runtime and --harness/);
   });
 });
 

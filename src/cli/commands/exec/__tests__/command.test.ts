@@ -3,9 +3,10 @@
 // ---------------------------------------------------------------------------
 import { ANSI } from '../../../constants.js';
 import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
-import { handleExecOneShot, handleShellSession } from '../action.js';
+import { handleExecOneShot, handleShellSession, runInteractiveShell } from '../action.js';
 import { registerExec } from '../command.js';
 import { Command } from '@commander-js/extra-typings';
+import { render } from 'ink';
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -418,6 +419,60 @@ describe('exec telemetry attributes', () => {
     expect(attrs.reconnect_attempts).toBe(3);
     expect(attrs.was_kicked).toBe(true);
     expect(attrs.is_reconnect).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Interactive mode: --harness / --runtime skip the picker
+// ---------------------------------------------------------------------------
+
+describe('exec --it flag-directed target skips the agent picker', () => {
+  let mockExit: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    mockExit = vi.spyOn(process, 'exit').mockImplementation((_code?: string | number | null) => {
+      throw new Error(`process.exit(${_code})`);
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    mockExit.mockRestore();
+    vi.clearAllMocks();
+  });
+
+  it('goes straight to runInteractiveShell (no picker) when --it --harness is passed', async () => {
+    // Ensure a clean success from the underlying shell session (prior tests may have left a
+    // success:false implementation on the shared mock).
+    vi.mocked(handleShellSession).mockResolvedValue({ success: true, exitCode: 0 });
+
+    const program = new Command();
+    program.exitOverride();
+    registerExec(program);
+
+    // The action reaches process.exit() (mocked to throw). Whether that resolves to exit(0) or is
+    // re-caught into exit(1) is immaterial here — the mock-call assertions below prove the path.
+    await expect(program.parseAsync(['exec', '--it', '--harness', 'myharness'], { from: 'user' })).rejects.toThrow();
+
+    // Direct PTY path taken with the harness name forwarded...
+    expect(vi.mocked(runInteractiveShell)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(runInteractiveShell).mock.calls[0]![0]).toMatchObject({ harnessName: 'myharness' });
+    // ...and the ExecScreen picker (rendered via ink) was never mounted.
+    expect(vi.mocked(render)).not.toHaveBeenCalled();
+  });
+
+  it('mounts the ExecScreen picker when --it is passed with neither --runtime nor --harness', async () => {
+    // Control: without a flag-directed target, the picker path must still run. render() never
+    // resolves the picker promise here, so we assert on the synchronous mount rather than exit.
+    const program = new Command();
+    program.exitOverride();
+    registerExec(program);
+
+    void program.parseAsync(['exec', '--it'], { from: 'user' });
+    await Promise.resolve();
+
+    expect(vi.mocked(render)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(runInteractiveShell)).not.toHaveBeenCalled();
   });
 });
 

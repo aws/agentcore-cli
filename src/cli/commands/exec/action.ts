@@ -20,6 +20,12 @@ export interface ExecContext {
  *  --runtime accepts either a full ARN (arn:...) or an agent name from deployed state.
  */
 export async function loadExecContext(options: ExecOptions, configIO: ConfigIO = new ConfigIO()): Promise<ExecContext> {
+  // Mutual exclusion: --runtime and --harness cannot both be set. Checked first so it applies to
+  // every path below, including the ARN short-circuits (where --runtime is a full ARN, not a name).
+  if (options.runtimeArn && options.harnessName) {
+    throw new Error('Cannot specify both --runtime and --harness.');
+  }
+
   // Short-circuit: explicit ARN + region — no need to read deployed state
   if (options.runtimeArn?.startsWith('arn:') && options.region) {
     return { region: options.region, runtimeArn: options.runtimeArn };
@@ -54,11 +60,6 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
     return { region: options.region ?? targetConfig.region, runtimeArn: options.runtimeArn };
   }
 
-  // Mutual exclusion: a name-form --runtime and --harness cannot both be set.
-  if (options.runtimeArn && options.harnessName) {
-    throw new Error('Cannot specify both --runtime and --harness.');
-  }
-
   // --harness <name>: resolve to the harness ARN.
   // exec must target the harness ARN, NOT the underlying agentRuntimeArn: the data plane blocks
   // ExecuteCommand / shell against a harness-linked runtime ARN, but routes a harness ARN on the
@@ -84,49 +85,25 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
     return { region: options.region ?? targetConfig.region, runtimeArn: agentState.runtimeArn };
   }
 
-  // No --runtime and no --harness: nothing deployed at all
-  if (runtimeKeys.length === 0 && harnessKeys.length === 0) {
+  // No flag: exec needs exactly one target. Both buckets collapse to a single candidate list —
+  // exec only ever wants one ARN, so the count is what matters, not the kind. Harnesses resolve to
+  // their harness ARN (not agentRuntimeArn — see the --harness branch above for why).
+  const candidates = [
+    ...Object.values(targetState?.resources?.runtimes ?? {}).map(r => r.runtimeArn),
+    ...Object.values(targetState?.resources?.harnesses ?? {}).map(h => h.harnessArn),
+  ].filter(Boolean);
+
+  if (candidates.length === 0) {
     throw new Error(`No deployed runtimes or harnesses found in target '${targetName}'.`);
   }
-
-  // Both runtimes and harnesses exist — ambiguous, require an explicit flag.
-  if (runtimeKeys.length > 0 && harnessKeys.length > 0) {
+  if (candidates.length > 1) {
     throw new Error(
-      `Target '${targetName}' has both runtimes and harnesses. Specify one with --runtime <name> or --harness <name>.`
+      `Target '${targetName}' has multiple deploy targets. Specify one with --runtime <name> or --harness <name>: ` +
+        [...runtimeKeys, ...harnessKeys].join(', ')
     );
   }
 
-  // Only harnesses deployed: auto-select single, else require --harness.
-  if (runtimeKeys.length === 0) {
-    if (harnessKeys.length > 1) {
-      throw new Error(
-        `Multiple harnesses deployed in target '${targetName}'. Specify one with --harness <name>: ${harnessKeys.join(', ')}`
-      );
-    }
-    // Target the harness ARN (see the --harness branch above for why not agentRuntimeArn).
-    const harnessState = targetState?.resources?.harnesses?.[harnessKeys[0]!];
-    if (!harnessState?.harnessArn) {
-      throw new Error('Could not determine harness ARN from deployed state.');
-    }
-    return { region: options.region ?? targetConfig.region, runtimeArn: harnessState.harnessArn };
-  }
-
-  // Only runtimes deployed: auto-select single, else require --runtime.
-  if (runtimeKeys.length > 1) {
-    throw new Error(
-      `Multiple agents deployed in target '${targetName}'. Specify one with --runtime <name>: ${runtimeKeys.join(', ')}`
-    );
-  }
-
-  const agentState = targetState?.resources?.runtimes?.[runtimeKeys[0]!];
-  if (!agentState?.runtimeArn) {
-    throw new Error('Could not determine runtime ARN from deployed state.');
-  }
-
-  return {
-    region: options.region ?? targetConfig.region,
-    runtimeArn: agentState.runtimeArn,
-  };
+  return { region: options.region ?? targetConfig.region, runtimeArn: candidates[0]! };
 }
 
 // ---------------------------------------------------------------------------

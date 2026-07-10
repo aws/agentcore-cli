@@ -32,7 +32,7 @@ export const registerExec = (program: Command) => {
     .argument('[command...]', 'Command to execute (one-shot mode, non-interactive)')
     .option('--it', 'Open an interactive PTY shell session')
     .option('--runtime <name|arn>', 'Target agent name or runtime ARN (skips agent picker)')
-    .option('--harness <name>', 'Target harness name (resolves to its underlying runtime)')
+    .option('--harness <name>', 'Target harness name (skips agent picker)')
     .option('--session-id <id>', 'Pin to a specific runtime session / VM')
     .option('--shell-id <id>', 'Reconnect to an existing shell')
     .option('--region <region>', 'AWS region')
@@ -153,14 +153,15 @@ export const registerExec = (program: Command) => {
           }
 
           // ── Interactive mode ───────────────────────────────────────────────
-          // With --runtime: skip agent picker, go straight to PTY
-          if (options.runtimeArn) {
+          // With --runtime or --harness: skip agent picker, go straight to PTY.
+          // loadExecContext resolves either flag to a concrete ARN, so the picker is unnecessary.
+          if (options.runtimeArn || options.harnessName) {
             requireTTY();
             await runInteractiveShell(options);
             process.exit(0);
           }
 
-          // Without --runtime: mount ExecScreen to let user pick agent, then PTY, then loop
+          // Without --runtime/--harness: mount ExecScreen to let user pick agent, then PTY, then loop
           requireTTY();
           await runExecLoop(options);
           process.exit(0);
