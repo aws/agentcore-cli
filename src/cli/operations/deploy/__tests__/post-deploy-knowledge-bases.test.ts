@@ -1,5 +1,9 @@
 import * as ingest from '../../ingest';
 import { autoIngestKnowledgeBases, computeSourcesHash } from '../post-deploy-knowledge-bases';
+import { randomUUID } from 'node:crypto';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../ingest');
@@ -40,6 +44,81 @@ describe('computeSourcesHash', () => {
     const kb1 = kbWithSources('a', ['s3://b/x/', 's3://b/y/']);
     const kb2 = kbWithSources('a', ['s3://b/y/', 's3://b/x/']);
     expect(computeSourcesHash(kb1)).not.toBe(computeSourcesHash(kb2));
+  });
+});
+
+describe('computeSourcesHash — connector config file content', () => {
+  let projectRoot: string;
+
+  beforeEach(() => {
+    projectRoot = join(tmpdir(), `agentcore-hash-test-${randomUUID()}`);
+    mkdirSync(join(projectRoot, 'app/myKb'), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(projectRoot, { recursive: true, force: true });
+  });
+
+  const kbWithConnector = (name: string, configFile: string) =>
+    ({
+      type: 'AgentCoreKnowledgeBase',
+      name,
+      dataSources: [{ type: 'CONFLUENCE', connectorConfigFile: configFile }],
+    }) as never;
+
+  it('hashes file content when projectRoot is provided', () => {
+    const configFile = 'app/myKb/confluence.json';
+    writeFileSync(join(projectRoot, configFile), JSON.stringify({ type: 'CONFLUENCE', hostUrl: 'https://a.com' }));
+    const kb = kbWithConnector('myKb', configFile);
+
+    const hash1 = computeSourcesHash(kb, projectRoot);
+
+    writeFileSync(join(projectRoot, configFile), JSON.stringify({ type: 'CONFLUENCE', hostUrl: 'https://b.com' }));
+    const hash2 = computeSourcesHash(kb, projectRoot);
+
+    expect(hash1).not.toBe(hash2);
+  });
+
+  it('produces same hash when file content is unchanged', () => {
+    const configFile = 'app/myKb/confluence.json';
+    writeFileSync(join(projectRoot, configFile), JSON.stringify({ type: 'CONFLUENCE', hostUrl: 'https://a.com' }));
+    const kb = kbWithConnector('myKb', configFile);
+
+    expect(computeSourcesHash(kb, projectRoot)).toBe(computeSourcesHash(kb, projectRoot));
+  });
+
+  it('normalizes JSON whitespace differences', () => {
+    const configFile = 'app/myKb/confluence.json';
+    const kb = kbWithConnector('myKb', configFile);
+
+    writeFileSync(join(projectRoot, configFile), '{"type":"CONFLUENCE","hostUrl":"https://a.com"}');
+    const hash1 = computeSourcesHash(kb, projectRoot);
+
+    writeFileSync(join(projectRoot, configFile), '{\n  "type": "CONFLUENCE",\n  "hostUrl": "https://a.com"\n}');
+    const hash2 = computeSourcesHash(kb, projectRoot);
+
+    expect(hash1).toBe(hash2);
+  });
+
+  it('falls back to path-based hash when file cannot be read', () => {
+    const configFile = 'app/myKb/missing.json';
+    const kb = kbWithConnector('myKb', configFile);
+
+    const hashWithRoot = computeSourcesHash(kb, projectRoot);
+    const hashWithoutRoot = computeSourcesHash(kb);
+
+    expect(hashWithRoot).toBe(hashWithoutRoot);
+  });
+
+  it('falls back to path-based hash when projectRoot is not provided', () => {
+    const configFile = 'app/myKb/confluence.json';
+    writeFileSync(join(projectRoot, configFile), JSON.stringify({ type: 'CONFLUENCE', hostUrl: 'https://a.com' }));
+    const kb = kbWithConnector('myKb', configFile);
+
+    const hashWithRoot = computeSourcesHash(kb, projectRoot);
+    const hashWithoutRoot = computeSourcesHash(kb);
+
+    expect(hashWithRoot).not.toBe(hashWithoutRoot);
   });
 });
 

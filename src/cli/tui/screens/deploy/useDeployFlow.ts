@@ -46,6 +46,7 @@ import {
 } from '../../components';
 import { type MissingCredential, type PreflightContext, useCdkPreflight } from '../../hooks';
 import { StackSelectionStrategy } from '@aws-cdk/toolkit-lib';
+import { resolve } from 'node:path';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type DeployPhase =
@@ -555,6 +556,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
           previousKnowledgeBases,
           targetName: target.name,
           deployedState,
+          projectRoot: resolve(configIO.getConfigRoot(), '..'),
           onProgress: msg => logger.log(msg),
         });
 

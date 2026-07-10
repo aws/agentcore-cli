@@ -59,6 +59,7 @@ import { hydrateKnowledgeBaseDataSources } from '../../operations/knowledge-base
 import { toStackName } from '../import/import-utils';
 import type { DeployResult } from './types';
 import { StackSelectionStrategy } from '@aws-cdk/toolkit-lib';
+import { resolve } from 'node:path';
 
 export interface ValidatedDeployOptions {
   target: string;
@@ -906,6 +907,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         previousKnowledgeBases: existingState?.targets?.[target.name]?.resources?.knowledgeBases,
         targetName: target.name,
         deployedState,
+        projectRoot: resolve(configIO.getConfigRoot(), '..'),
         onProgress: msg => logger.log(msg),
       });
 

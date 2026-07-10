@@ -1,6 +1,8 @@
 import type { DeployedState, KnowledgeBase, KnowledgeBaseDeployedState } from '../../../schema';
 import { runKbIngestionByName } from '../ingest';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 export interface AutoIngestKnowledgeBasesOptions {
   region: string;
@@ -13,6 +15,8 @@ export interface AutoIngestKnowledgeBasesOptions {
   targetName: string;
   /** Full deployed-state (passed through to runKbIngestionByName). */
   deployedState: DeployedState;
+  /** Project root directory for resolving connector config file paths. */
+  projectRoot?: string;
   /**
    * Optional progress callback. When the retry loop sleeps because Bedrock
    * is busy with a sibling job, this is called with a short status line so
@@ -42,14 +46,29 @@ export interface AutoIngestKnowledgeBasesResult {
 }
 
 /**
- * Compute the SHA-256 over the data-source URIs of a KB spec, joined with
- * newlines. The post-deploy hook compares this to the previously-stored
- * sourcesHash to decide whether to re-trigger ingestion.
+ * Compute a SHA-256 over each data source's identity + configuration content.
+ * For S3 data sources, the URI is the full configuration. For connector-file
+ * data sources, the file contents are hashed so that edits to the connector
+ * configuration (filters, host, credentials) trigger re-ingestion even when
+ * the file path stays the same. If the file cannot be read, falls back to
+ * hashing the path to avoid blocking the deploy.
  */
-export function computeSourcesHash(kb: KnowledgeBase): string {
-  return createHash('sha256')
-    .update(kb.dataSources.map(ds => (ds.type === 'S3' ? ds.uri : ds.connectorConfigFile)).join('\n'))
-    .digest('hex');
+export function computeSourcesHash(kb: KnowledgeBase, projectRoot?: string): string {
+  const parts = kb.dataSources.map(ds => {
+    if (ds.type === 'S3') return ds.uri;
+    if (projectRoot) {
+      try {
+        const abs = resolve(projectRoot, ds.connectorConfigFile);
+        const content = readFileSync(abs, 'utf-8');
+        const normalized = JSON.stringify(JSON.parse(content));
+        return `${ds.connectorConfigFile}:${normalized}`;
+      } catch {
+        return ds.connectorConfigFile;
+      }
+    }
+    return ds.connectorConfigFile;
+  });
+  return createHash('sha256').update(parts.join('\n')).digest('hex');
 }
 
 /**
@@ -89,7 +108,7 @@ export async function autoIngestKnowledgeBases(
       continue;
     }
 
-    const newHash = computeSourcesHash(kb);
+    const newHash = computeSourcesHash(kb, opts.projectRoot);
     const previousHash = opts.previousKnowledgeBases?.[kb.name]?.sourcesHash;
 
     if (previousHash && previousHash === newHash) {
