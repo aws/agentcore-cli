@@ -566,6 +566,14 @@ describe('AgentEnvSpecSchema - dockerfile', () => {
       true
     );
   });
+
+  it('rejects "." (names the build-context directory itself → broken `docker build -f .`)', () => {
+    expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: '.' }).success).toBe(false);
+  });
+
+  it('accepts a "./"-prefixed filename (normalizes to the file)', () => {
+    expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: './Dockerfile' }).success).toBe(true);
+  });
 });
 
 describe('AgentEnvSpecSchema - buildContextPath', () => {
@@ -660,6 +668,13 @@ describe('AgentEnvSpecSchema - customDockerBuildArgs', () => {
   it('rejects a key that is not a valid identifier', () => {
     expect(
       AgentEnvSpecSchema.safeParse({ ...validContainerAgent, customDockerBuildArgs: { 'has-dash': 'v' } }).success
+    ).toBe(false);
+  });
+
+  it('rejects a build-arg key over 255 characters (env-var-name length limit via EnvVarNameSchema)', () => {
+    const longKey = 'A' + 'B'.repeat(255); // 256 chars
+    expect(
+      AgentEnvSpecSchema.safeParse({ ...validContainerAgent, customDockerBuildArgs: { [longKey]: 'v' } }).success
     ).toBe(false);
   });
 

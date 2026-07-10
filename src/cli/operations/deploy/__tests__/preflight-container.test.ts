@@ -188,6 +188,19 @@ describe('validateContainerAgents', () => {
     expect(ensureMock).not.toHaveBeenCalled();
   });
 
+  it('does NOT ensure .dockerignore when buildContextPath is set but the Dockerfile is missing (ordering guard)', () => {
+    // Dockerfile missing — ensure must be SKIPPED (runs only after validation), so a failing deploy
+    // leaves no stray .dockerignore and the friendly "Dockerfile not found" error is not masked.
+    mockedExistsSync.mockReturnValue(false);
+
+    const spec = makeSpec([
+      { name: 'mono', build: 'Container', codeLocation: dir('agents/mono'), buildContextPath: dir('.') },
+    ]);
+
+    expect(() => validateContainerAgents(spec, CONFIG_ROOT)).toThrow(/Dockerfile not found/);
+    expect(ensureMock).not.toHaveBeenCalled();
+  });
+
   it('warns when Dockerfile uses deprecated bookworm base image', () => {
     mockedExistsSync.mockReturnValue(true);
     mockedReadFileSync.mockReturnValue(

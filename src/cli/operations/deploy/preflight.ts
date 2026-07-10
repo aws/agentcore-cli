@@ -212,22 +212,23 @@ export function validateContainerAgents(projectSpec: AgentCoreProjectSpec, confi
         errors.push(
           `Agent "${agent.name}": ${agent.dockerfile ?? DOCKERFILE_NAME} not found at ${dockerfilePath}. Container agents require a Dockerfile.`
         );
-      }
-      warnDeprecatedBaseImage(dockerfilePath, agent.name);
+      } else {
+        warnDeprecatedBaseImage(dockerfilePath, agent.name);
 
-      // Dockerfile validated. buildContextPath widens the docker build context (e.g. the whole repo);
-      // ensure a .dockerignore at that root so secrets/junk (.env, .git, agentcore/) are never baked
-      // into the local image. Both local and deploy honor this file; it is created only when absent
-      // (never overwrites the user's) and only AFTER validation — so a failing deploy leaves no stray
-      // file and this never masks the friendly "Dockerfile not found" error above.
-      if (agent.buildContextPath) {
-        const created = ensureBuildContextDockerignore(buildContext);
-        if (created) {
-          console.warn(
-            `Agent "${agent.name}": created ${created} with default secret exclusions because buildContextPath is ` +
-              `set (the entire context is sent to Docker/CodeBuild). Review and commit it; edit to include any ` +
-              `intentionally-bundled files.`
-          );
+        // Dockerfile validated. buildContextPath widens the docker build context (e.g. the whole repo);
+        // ensure a .dockerignore at that root so secrets/junk (.env, .git, agentcore/) are never baked
+        // into the local image. Both local and deploy honor this file; it is created only when absent
+        // (never overwrites the user's) and only AFTER validation — so a failing deploy leaves no stray
+        // file and this never masks the friendly "Dockerfile not found" error above.
+        if (agent.buildContextPath) {
+          const created = ensureBuildContextDockerignore(buildContext);
+          if (created) {
+            console.warn(
+              `Agent "${agent.name}": created ${created} with default secret exclusions because buildContextPath is ` +
+                `set (the entire context is sent to Docker/CodeBuild). Review and commit it; edit to include any ` +
+                `intentionally-bundled files.`
+            );
+          }
         }
       }
     }

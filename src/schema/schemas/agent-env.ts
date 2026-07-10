@@ -101,7 +101,9 @@ const DOCKERFILE_PATH_ALLOWED_CHARS = /^[A-Za-z0-9._/-]+$/;
 
 /**
  * True when `p` is a safe relative Dockerfile path within the build context: allowed chars only, no
- * leading slash (absolute), and no empty ('' from a leading/trailing/double slash) or '..' segments.
+ * leading slash (absolute), no empty ('' from a leading/trailing/double slash) or '..' segments, and
+ * it must name a file — not the build-context directory itself (a value like '.' or './' resolves to
+ * the context dir, producing a broken `docker build -f <dir>`).
  *
  * The single source of truth shared by `DockerfilePathSchema` (config-validation time) and the runtime
  * `getDockerfilePath` guard, so the two can never diverge — e.g. one accepting '.docker/Dockerfile'
@@ -110,7 +112,10 @@ const DOCKERFILE_PATH_ALLOWED_CHARS = /^[A-Za-z0-9._/-]+$/;
 export function isValidDockerfilePath(p: string): boolean {
   if (!DOCKERFILE_PATH_ALLOWED_CHARS.test(p)) return false;
   if (p.startsWith('/')) return false;
-  return !p.split('/').some(segment => segment === '' || segment === '..');
+  const segments = p.split('/');
+  if (segments.some(segment => segment === '' || segment === '..')) return false;
+  // Must resolve to a file inside the context, not the context dir: reject '.', './', '././', etc.
+  return segments.some(segment => segment !== '.');
 }
 
 /**
