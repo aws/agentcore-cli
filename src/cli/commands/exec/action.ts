@@ -16,6 +16,26 @@ export interface ExecContext {
   runtimeArn: string;
 }
 
+/** True when `arn` is a harness ARN (…:harness/…) rather than a runtime ARN (…:runtime/…). */
+function isHarnessArn(arn: string): boolean {
+  return arn.includes(':harness/');
+}
+
+/** Guard interactive (`--it`) exec against harness targets.
+ *  The data plane (InvokeAgentRuntimeCommandShell) explicitly rejects harness-linked runtimes:
+ *  interactive shell is not supported for harnesses yet. One-shot exec IS supported (routes through
+ *  the harness ExecuteCommand path), so fail fast here with actionable guidance instead of letting
+ *  the WebSocket connection surface an opaque service error. */
+function assertInteractiveHarnessUnsupported(options: ExecOptions, ctx: ExecContext): ExecContext {
+  if (options.interactive && isHarnessArn(ctx.runtimeArn)) {
+    throw new Error(
+      'Interactive shell (--it) is not supported for harness deployments yet. ' +
+        'Use one-shot exec instead, e.g. `agentcore exec "<command>"`.'
+    );
+  }
+  return ctx;
+}
+
 /** Resolve region + runtimeArn from options and/or agentcore.json deployed state.
  *  --runtime accepts either a full ARN (arn:...) or an agent name from deployed state.
  */
@@ -28,7 +48,7 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
 
   // Short-circuit: explicit ARN + region — no need to read deployed state
   if (options.runtimeArn?.startsWith('arn:') && options.region) {
-    return { region: options.region, runtimeArn: options.runtimeArn };
+    return assertInteractiveHarnessUnsupported(options, { region: options.region, runtimeArn: options.runtimeArn });
   }
 
   const awsTargets = await configIO.readAWSDeploymentTargets();
@@ -57,7 +77,10 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
 
   // --runtime <arn> with no --region: ARN provided but region must come from config
   if (options.runtimeArn?.startsWith('arn:')) {
-    return { region: options.region ?? targetConfig.region, runtimeArn: options.runtimeArn };
+    return assertInteractiveHarnessUnsupported(options, {
+      region: options.region ?? targetConfig.region,
+      runtimeArn: options.runtimeArn,
+    });
   }
 
   // --harness <name>: resolve to the harness ARN.
@@ -71,7 +94,10 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
         `Harness '${options.harnessName}' not found in target '${targetName}'. Available harnesses: ${harnessKeys.join(', ')}`
       );
     }
-    return { region: options.region ?? targetConfig.region, runtimeArn: harnessState.harnessArn };
+    return assertInteractiveHarnessUnsupported(options, {
+      region: options.region ?? targetConfig.region,
+      runtimeArn: harnessState.harnessArn,
+    });
   }
 
   // --runtime <name>: look up by agent name in deployed state
@@ -82,7 +108,10 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
         `Agent '${options.runtimeArn}' not found in target '${targetName}'. Available agents: ${runtimeKeys.join(', ')}`
       );
     }
-    return { region: options.region ?? targetConfig.region, runtimeArn: agentState.runtimeArn };
+    return assertInteractiveHarnessUnsupported(options, {
+      region: options.region ?? targetConfig.region,
+      runtimeArn: agentState.runtimeArn,
+    });
   }
 
   // No flag: exec needs exactly one target. Both buckets collapse to a single candidate list —
@@ -103,7 +132,10 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
     );
   }
 
-  return { region: options.region ?? targetConfig.region, runtimeArn: candidates[0]! };
+  return assertInteractiveHarnessUnsupported(options, {
+    region: options.region ?? targetConfig.region,
+    runtimeArn: candidates[0]!,
+  });
 }
 
 // ---------------------------------------------------------------------------

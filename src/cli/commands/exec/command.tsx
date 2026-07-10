@@ -186,7 +186,15 @@ export async function runExecLoop(options: ExecOptions = {}): Promise<void> {
     const picked = await pickAgent();
     if (!picked) break; // user pressed Esc
 
-    const shellOptions: ExecOptions = { ...options, runtimeArn: picked.runtimeArn, sessionId: picked.sessionId };
+    // This loop always opens a PTY (handleShellSession), so it is inherently interactive — set the
+    // flag explicitly so loadExecContext's interactive-harness guard fires even when a caller (e.g.
+    // the TUI exit-action path) invoked runExecLoop() without options.interactive set.
+    const shellOptions: ExecOptions = {
+      ...options,
+      interactive: true,
+      runtimeArn: picked.runtimeArn,
+      sessionId: picked.sessionId,
+    };
 
     let sessionError: unknown;
     try {

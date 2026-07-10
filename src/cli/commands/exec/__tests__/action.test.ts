@@ -945,6 +945,68 @@ describe('loadExecContext with harnesses', () => {
 });
 
 // ---------------------------------------------------------------------------
+// loadExecContext — interactive (--it) is not supported for harnesses
+// ---------------------------------------------------------------------------
+
+describe('loadExecContext interactive-harness guard', () => {
+  // The data plane (InvokeAgentRuntimeCommandShell) explicitly rejects harness-linked runtimes:
+  // interactive shell is not supported for harnesses yet. loadExecContext must fail fast with
+  // actionable guidance rather than let the WebSocket connection surface an opaque service error.
+  // One-shot exec (options.interactive falsy) IS supported and must NOT be blocked.
+  const HARNESS_ARN = 'arn:aws:bedrock-agentcore:us-east-1:123:harness/h1-abc123';
+  const RUNTIME_ARN = 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/AgentA';
+  const GUARD_MESSAGE = /Interactive shell \(--it\) is not supported for harness deployments/;
+
+  const HARNESS_ONLY_CONFIG = {
+    readAWSDeploymentTargets: vi.fn().mockResolvedValue([{ name: 'default', region: 'us-east-1' }]),
+    readDeployedState: vi.fn().mockResolvedValue({
+      targets: { default: { resources: { harnesses: { h1: { harnessArn: HARNESS_ARN } } } } },
+    }),
+  } as unknown as ConfigIO;
+
+  const RUNTIME_ONLY_CONFIG = {
+    readAWSDeploymentTargets: vi.fn().mockResolvedValue([{ name: 'default', region: 'us-east-1' }]),
+    readDeployedState: vi.fn().mockResolvedValue({
+      targets: { default: { resources: { runtimes: { AgentA: { runtimeArn: RUNTIME_ARN } } } } },
+    }),
+  } as unknown as ConfigIO;
+
+  it('throws for --it with an auto-selected single harness', async () => {
+    await expect(loadExecContext({ interactive: true }, HARNESS_ONLY_CONFIG)).rejects.toThrow(GUARD_MESSAGE);
+  });
+
+  it('throws for --it with an explicit --harness', async () => {
+    await expect(loadExecContext({ interactive: true, harnessName: 'h1' }, HARNESS_ONLY_CONFIG)).rejects.toThrow(
+      GUARD_MESSAGE
+    );
+  });
+
+  it('throws for --it with a harness ARN passed via --runtime + --region (ARN short-circuit)', async () => {
+    // Covers the case where the user hands a harness ARN directly — the guard is ARN-based, so it
+    // fires even on the no-config short-circuit path.
+    await expect(loadExecContext({ interactive: true, runtimeArn: HARNESS_ARN, region: 'us-east-1' })).rejects.toThrow(
+      GUARD_MESSAGE
+    );
+  });
+
+  it('throws for --it with a harness ARN via --runtime (no region, config short-circuit)', async () => {
+    await expect(loadExecContext({ interactive: true, runtimeArn: HARNESS_ARN }, HARNESS_ONLY_CONFIG)).rejects.toThrow(
+      GUARD_MESSAGE
+    );
+  });
+
+  it('does NOT block one-shot exec against a harness (interactive falsy)', async () => {
+    const ctx = await loadExecContext({}, HARNESS_ONLY_CONFIG);
+    expect(ctx.runtimeArn).toBe(HARNESS_ARN);
+  });
+
+  it('does NOT block --it against a regular runtime', async () => {
+    const ctx = await loadExecContext({ interactive: true }, RUNTIME_ONLY_CONFIG);
+    expect(ctx.runtimeArn).toBe(RUNTIME_ARN);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // handleExecOneShot — --json buffering
 // ---------------------------------------------------------------------------
 
