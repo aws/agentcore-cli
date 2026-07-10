@@ -10,24 +10,31 @@ vi.mock('node:fs', () => ({
   readFileSync: vi.fn(),
 }));
 
-vi.mock('../../../../lib', () => ({
-  DOCKERFILE_NAME: 'Dockerfile',
-  getDockerfilePath: (codeLocation: string, dockerfile?: string) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const p = require('node:path') as typeof import('node:path');
-    return p.join(codeLocation, dockerfile ?? 'Dockerfile');
-  },
-  resolveCodeLocation: vi.fn((codeLocation: string, configBaseDir: string) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const p = require('node:path') as typeof import('node:path');
-    const repoRoot = p.dirname(configBaseDir);
-    return p.resolve(repoRoot, codeLocation);
-  }),
-  ensureBuildContextDockerignore: ensureMock,
-  // Stub other exports that the module may pull in
-  ConfigIO: vi.fn(),
-  requireConfigRoot: vi.fn(),
-}));
+vi.mock('../../../../lib', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const p = require('node:path') as typeof import('node:path');
+  const resolveCodeLocation = (codeLocation: string, configBaseDir: string) =>
+    p.resolve(p.dirname(configBaseDir), codeLocation);
+  const getDockerfilePath = (buildContext: string, dockerfile?: string) =>
+    p.join(buildContext, dockerfile ?? 'Dockerfile');
+  return {
+    DOCKERFILE_NAME: 'Dockerfile',
+    getDockerfilePath,
+    resolveCodeLocation,
+    // Mirror the real shared resolver so existsSync/ensure are called with the same paths.
+    resolveBuildContext: (
+      spec: { codeLocation: string; buildContextPath?: string; dockerfile?: string },
+      baseDir: string
+    ) => {
+      const buildContext = resolveCodeLocation(spec.buildContextPath ?? spec.codeLocation, baseDir);
+      return { buildContext, dockerfilePath: getDockerfilePath(buildContext, spec.dockerfile) };
+    },
+    ensureBuildContextDockerignore: ensureMock,
+    // Stub other exports that the module may pull in
+    ConfigIO: vi.fn(),
+    requireConfigRoot: vi.fn(),
+  };
+});
 
 const mockedExistsSync = vi.mocked(existsSync);
 const mockedReadFileSync = vi.mocked(readFileSync);

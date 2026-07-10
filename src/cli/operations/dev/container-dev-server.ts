@@ -68,8 +68,16 @@ export class ContainerDevServer extends DevServer {
 
     // 2. Verify Dockerfile exists (resolved relative to the build context, matching deploy)
     const buildContext = this.config.buildContextPath ?? this.config.directory;
-    // When the context is widened via buildContextPath, ensure a .dockerignore keeps secrets/junk out
-    // of the local image — the same file the deploy (CodeBuild) path honors, so both stay consistent.
+    const dockerfileName = this.config.dockerfile ?? DOCKERFILE_NAME;
+    const dockerfilePath = getDockerfilePath(buildContext, this.config.dockerfile);
+    if (!existsSync(dockerfilePath)) {
+      onLog('error', `${dockerfileName} not found at ${dockerfilePath}. Container agents require a Dockerfile.`);
+      return false;
+    }
+
+    // Dockerfile validated — when buildContextPath widens the context, ensure a .dockerignore keeps
+    // secrets/junk out of the local image (the same file the deploy path honors). No-op if the dir is
+    // missing or a .dockerignore already exists.
     if (this.config.buildContextPath) {
       const created = ensureBuildContextDockerignore(buildContext);
       if (created) {
@@ -78,12 +86,6 @@ export class ContainerDevServer extends DevServer {
           `Created ${created} with default secret exclusions (buildContextPath is set); review and commit it.`
         );
       }
-    }
-    const dockerfileName = this.config.dockerfile ?? DOCKERFILE_NAME;
-    const dockerfilePath = getDockerfilePath(buildContext, this.config.dockerfile);
-    if (!existsSync(dockerfilePath)) {
-      onLog('error', `${dockerfileName} not found at ${dockerfilePath}. Container agents require a Dockerfile.`);
-      return false;
     }
 
     // 3. Remove any stale container from a previous run (prevents "proxy already running" errors)

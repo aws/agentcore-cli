@@ -1,3 +1,4 @@
+import { isValidDockerfilePath } from '../schema';
 import { join } from 'path';
 
 // Re-export all schema constants from schema
@@ -61,9 +62,10 @@ export const CONTAINER_RUNTIMES: ContainerRuntime[] = ['docker', 'podman', 'finc
  */
 export function getDockerfilePath(buildContext: string, dockerfile?: string): string {
   const name = dockerfile ?? DOCKERFILE_NAME;
-  if (name.startsWith('/') || name.includes('\\') || name.split('/').includes('..')) {
+  if (!isValidDockerfilePath(name)) {
     throw new Error(
-      `Invalid dockerfile path: must be a relative path within the build context (no leading slash, backslash, or ".." traversal)`
+      `Invalid dockerfile path "${name}": must be a relative path within the build context (a filename or ` +
+        `forward-slash subpath; no leading slash, backslash, empty segments, or ".." traversal)`
     );
   }
   return join(buildContext, name);

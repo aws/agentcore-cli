@@ -102,9 +102,9 @@ interface AgentEnvSpec {
   build: BuildType;
   entrypoint: string; // @regex ^[a-zA-Z0-9_][a-zA-Z0-9_/.-]*\.(py|ts|js)(:[a-zA-Z_][a-zA-Z0-9_]*)?$ e.g. "main.py:handler" or "index.ts"
   codeLocation: string; // Directory path
-  dockerfile?: string; // @regex ^[a-zA-Z0-9][a-zA-Z0-9._/-]*$ @max 255 Dockerfile for Container builds, resolved relative to the build context (buildContextPath ?? codeLocation). Filename or relative subpath; no traversal. Default: 'Dockerfile'.
+  dockerfile?: string; // @regex ^[A-Za-z0-9._/-]+$ @max 255 Dockerfile for Container builds, resolved relative to the build context (buildContextPath ?? codeLocation). Filename or relative subpath; no leading slash, trailing/double slash, or '..' traversal. Default: 'Dockerfile'.
   buildContextPath?: string; // Container only. Docker build context directory; replaces codeLocation as the `docker build` context (e.g. a monorepo root shared across agents).
-  customDockerBuildArgs?: Record<string, string>; // Container only. --build-arg flags. Keys @regex ^[A-Za-z_][A-Za-z0-9_]*$ (reserved build-env names rejected); values @max 4096, no control chars.
+  customDockerBuildArgs?: Record<string, string>; // Container only. --build-arg flags. Keys are env-var names @regex ^[A-Za-z_][A-Za-z0-9_]*$ @max 255 (reserved build-env names rejected); values @max 4096, no control chars.
   runtimeVersion?: RuntimeVersion;
   envVars?: EnvVar[];
   networkMode?: NetworkMode; // default 'PUBLIC'

@@ -94,32 +94,39 @@ export const EntrypointSchema = z
 
 const DirectoryPathSchema = z.string().min(1) as unknown as z.ZodType<DirectoryPath>;
 
+// Char-safe set only (no backslash, spaces, or shell metacharacters): on deploy the buildspec
+// interpolates this unquoted as `docker build -f $DOCKERFILE_PATH`. A leading '.' is allowed so
+// conventional paths like '.docker/Dockerfile' pass.
+const DOCKERFILE_PATH_ALLOWED_CHARS = /^[A-Za-z0-9._/-]+$/;
+
+/**
+ * True when `p` is a safe relative Dockerfile path within the build context: allowed chars only, no
+ * leading slash (absolute), and no empty ('' from a leading/trailing/double slash) or '..' segments.
+ *
+ * The single source of truth shared by `DockerfilePathSchema` (config-validation time) and the runtime
+ * `getDockerfilePath` guard, so the two can never diverge — e.g. one accepting '.docker/Dockerfile'
+ * while the other rejects it, or one accepting a trailing-slash directory value like 'docker/'.
+ */
+export function isValidDockerfilePath(p: string): boolean {
+  if (!DOCKERFILE_PATH_ALLOWED_CHARS.test(p)) return false;
+  if (p.startsWith('/')) return false;
+  return !p.split('/').some(segment => segment === '' || segment === '..');
+}
+
 /**
  * Dockerfile location for Container builds, resolved relative to the Docker build context
  * (`buildContextPath` when set, otherwise `codeLocation`). Accepts a filename ('Dockerfile',
- * 'Dockerfile.gpu') or a forward-slash relative subpath ('docker/Dockerfile'). Absolute paths
- * and '..' traversal are rejected so the Dockerfile can never escape the build context.
+ * 'Dockerfile.gpu') or a forward-slash relative subpath ('docker/Dockerfile'). Absolute paths,
+ * trailing/double slashes, and '..' traversal are rejected so the Dockerfile can never escape or
+ * name the build context directory itself.
  */
 const DockerfilePathSchema = z
   .string()
   .min(1)
   .max(255)
-  .regex(
-    /^[a-zA-Z0-9][a-zA-Z0-9._/-]*$/,
-    'Must be a relative path (a filename or forward-slash subpath) with no leading slash or backslash'
-  )
-  .refine(p => !p.split('/').includes('..'), 'Must not contain path traversal ("..")');
-
-/**
- * Build-arg name. Must be a valid identifier because on deploy each arg is forwarded to CodeBuild as
- * an environment variable (values are inherited from the environment, never interpolated onto the
- * shell command line) and consumed by Dockerfile `ARG` directives, which are themselves identifiers.
- */
-const BuildArgKeySchema = z
-  .string()
-  .regex(
-    /^[A-Za-z_][A-Za-z0-9_]*$/,
-    'Build arg names must be valid identifiers (letters, digits, underscores; not starting with a digit)'
+  .refine(
+    isValidDockerfilePath,
+    'Must be a relative path within the build context: a filename or forward-slash subpath using only letters, digits, dot, dash, underscore, and slash; no leading slash, no ".." traversal, and no empty segments (no trailing or double slash)'
   );
 
 /**
@@ -404,14 +411,19 @@ export const AgentEnvSpecSchema = z
      * `codeLocation`) is used as the `docker build` context and as the root the Dockerfile path is
      * resolved against, so a single Dockerfile can be shared across multiple agents in a monorepo
      * (e.g. so it can COPY files that live outside `codeLocation`). Container builds only.
+     *
+     * Like `codeLocation`, this is intentionally not containment-checked: the config author may point
+     * it at any directory (including a parent via `..` for a monorepo root). The unconditional
+     * secret-exclusion baseline on the deploy upload still applies to whatever directory is chosen.
      */
     buildContextPath: DirectoryPathSchema.optional(),
     /**
      * Custom build arguments passed to `docker build` as `--build-arg` flags. Keys must be valid
-     * identifiers. Useful for parameterising a shared Dockerfile per agent (e.g. `{ "AGENT_NAME": "myagent" }`).
-     * Container builds only.
+     * environment-variable names (each arg is forwarded to the build as an env var), reusing
+     * `EnvVarNameSchema`. Useful for parameterising a shared Dockerfile per agent
+     * (e.g. `{ "AGENT_NAME": "myagent" }`). Container builds only.
      */
-    customDockerBuildArgs: z.record(BuildArgKeySchema, BuildArgValueSchema).optional(),
+    customDockerBuildArgs: z.record(EnvVarNameSchema, BuildArgValueSchema).optional(),
     runtimeVersion: RuntimeVersionSchemaFromConstants.optional(),
     /** Environment variables to set on the runtime */
     envVars: z.array(EnvVarSchema).optional(),
@@ -496,27 +508,16 @@ export const AgentEnvSpecSchema = z
         path: ['authorizerConfiguration'],
       });
     }
-    // If adding more Container-specific fields, consider consolidating into a containerConfig object (see networkConfig pattern)
-    if (data.build !== 'Container' && data.dockerfile) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'dockerfile is only allowed for Container builds',
-        path: ['dockerfile'],
-      });
-    }
-    if (data.build !== 'Container' && data.buildContextPath) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'buildContextPath is only allowed for Container builds',
-        path: ['buildContextPath'],
-      });
-    }
-    if (data.build !== 'Container' && data.customDockerBuildArgs) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'customDockerBuildArgs is only allowed for Container builds',
-        path: ['customDockerBuildArgs'],
-      });
+    // Container-only fields. If adding more, extend this list (and consider consolidating into a
+    // containerConfig object — see the networkConfig pattern).
+    for (const field of ['dockerfile', 'buildContextPath', 'customDockerBuildArgs'] as const) {
+      if (data.build !== 'Container' && data[field]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `${field} is only allowed for Container builds`,
+          path: [field],
+        });
+      }
     }
     for (const key of Object.keys(data.customDockerBuildArgs ?? {})) {
       if (isReservedBuildArgKey(key)) {

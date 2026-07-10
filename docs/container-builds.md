@@ -104,7 +104,8 @@ fields:
 Both fields are honored identically by local `agentcore dev` / `agentcore package` and by `agentcore deploy` (which
 builds in CodeBuild). The `dockerfile` field is resolved relative to the build context, so with `buildContextPath: "."`
 the default `Dockerfile` refers to `./Dockerfile` at the project root. `dockerfile` may also be a relative subpath (e.g.
-`docker/Dockerfile`); absolute paths and `..` traversal are rejected.
+`docker/Dockerfile` or `.docker/Dockerfile`); absolute paths, `..` traversal, and directory-shaped values (a trailing
+slash) are rejected.
 
 **Example — two agents, one shared `Dockerfile` at the project root:**
 
@@ -138,13 +139,21 @@ COPY app/${AGENT_NAME}/ ./app/
 `codeLocation` (e.g. shared libraries at the project root). Without it, Docker only sees the `codeLocation` directory as
 its build context.
 
-> **A `.dockerignore` is generated at the build-context root.** When you set `buildContextPath`, the whole of that
-> directory is the build context — for `buildContextPath: "."` that's your entire project. If there's no `.dockerignore`
-> at that root, `agentcore` creates one (excluding `.env`, `.env.*`, `.git/`, `.venv/`, `node_modules/`, `agentcore/`)
-> so secrets and build junk stay out of the image and the CodeBuild upload. It's an ordinary file — commit it, and edit
-> it to include anything you intentionally want in the context (e.g. a non-secret `.env.production`, by removing that
-> line). Both local `agentcore dev` / `agentcore package` and `agentcore deploy` honor the same root `.dockerignore`, so
-> what's excluded locally is exactly what's excluded from the CodeBuild upload.
+> **Secrets and build junk are excluded from the upload — always.** On `agentcore deploy`, the build context uploaded to
+> CodeBuild (whether it's `codeLocation` or a `buildContextPath`) always has a baseline of secret/junk patterns excluded
+> — `.env`, `.env.*`, `.git`, `.venv`, `node_modules`, `__pycache__`, `.pytest_cache`, `.DS_Store` — at every depth
+> (nested `app/agent-one/.env` and `app/agent-one/node_modules` are excluded too, not just the top level). So a stray
+> `.env` is never persisted to the assets bucket or baked into the deployed image, regardless of whether you have a
+> `.dockerignore`. Your own `.dockerignore` at the build-context root is honored on top of this baseline (exclude more,
+> or re-include a baseline path with a `!pattern` line), and the `Dockerfile` itself is always kept even under an
+> allowlist-style (`*`) `.dockerignore`.
+>
+> **A `.dockerignore` is also generated for local builds when you set `buildContextPath`.** The whole of that directory
+> is the build context — for `buildContextPath: "."` that's your entire project — and a local `docker build` honors only
+> a real `.dockerignore`. So if none exists at that root, `agentcore dev` / `agentcore package` creates one (the same
+> baseline above, listed both bare and `**/`-prefixed, plus `agentcore/`) so your local image matches the deploy upload.
+> It's an ordinary file — commit it, and edit it to include anything you intentionally want in the context (e.g. a
+> non-secret `.env.production`, by adding a `!.env.production` line).
 
 **When to use `customDockerBuildArgs`:** use it to parameterise a shared `Dockerfile` so each agent produces a different
 image (different entry point, bundled code, etc.) without duplicating the file.

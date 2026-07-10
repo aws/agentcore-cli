@@ -1,7 +1,8 @@
 import type { AgentEnvSpec } from '../../schema';
-import { CONTAINER_RUNTIMES, DOCKERFILE_NAME, ONE_GB, getDockerfilePath } from '../constants';
+import { CONTAINER_RUNTIMES, DOCKERFILE_NAME, ONE_GB } from '../constants';
 import { PackagingError } from '../errors/types';
 import { getCustomBuildArgs, getUvBuildArgs } from './build-args';
+import { resolveBuildContext } from './build-context';
 import { ensureBuildContextDockerignore } from './build-context-dockerignore';
 import { resolveCodeLocation } from './helpers';
 import type { ArtifactResult, PackageOptions, RuntimePackager } from './types/packaging';
@@ -36,16 +37,8 @@ export class ContainerPackager implements RuntimePackager {
     const agentName = options.agentName ?? spec.name;
     const configBaseDir = options.artifactDir ?? options.projectRoot ?? process.cwd();
     const codeLocation = resolveCodeLocation(spec.codeLocation, configBaseDir);
-    const buildContext = spec.buildContextPath
-      ? resolveCodeLocation(spec.buildContextPath, configBaseDir)
-      : codeLocation;
-    // When the context is widened via buildContextPath, ensure a .dockerignore keeps secrets/junk out
-    // of the local image — the same file the deploy (CodeBuild) path honors, so both stay consistent.
-    if (spec.buildContextPath) {
-      ensureBuildContextDockerignore(buildContext);
-    }
-    // Dockerfile is resolved relative to the build context (matches the deploy/CodeBuild path).
-    const dockerfilePath = getDockerfilePath(buildContext, spec.dockerfile);
+    // Build context + Dockerfile via the shared resolver (identical to the deploy/CodeBuild path).
+    const { buildContext, dockerfilePath } = resolveBuildContext(spec, configBaseDir);
 
     // Preflight: Dockerfile must exist
     if (!existsSync(dockerfilePath)) {
@@ -54,6 +47,13 @@ export class ContainerPackager implements RuntimePackager {
           `${spec.dockerfile ?? DOCKERFILE_NAME} not found at ${dockerfilePath}. Container agents require a Dockerfile.`
         )
       );
+    }
+
+    // Dockerfile validated — when buildContextPath widens the context, ensure a .dockerignore keeps
+    // secrets/junk out of the local image (the same file the deploy path honors). No-op if the dir is
+    // missing or a .dockerignore already exists, so a failing build never leaves a stray file.
+    if (spec.buildContextPath) {
+      ensureBuildContextDockerignore(buildContext);
     }
 
     // Detect container runtime

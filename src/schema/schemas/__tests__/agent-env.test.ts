@@ -552,6 +552,20 @@ describe('AgentEnvSpecSchema - dockerfile', () => {
     );
     expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: '..\\Dockerfile' }).success).toBe(false);
   });
+
+  it('rejects a trailing slash (a directory-shaped value would make `docker build -f docker/` fail)', () => {
+    expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: 'docker/' }).success).toBe(false);
+  });
+
+  it('rejects an empty path segment (double slash)', () => {
+    expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: 'a//Dockerfile' }).success).toBe(false);
+  });
+
+  it('accepts a leading-dot directory (e.g. .docker/Dockerfile)', () => {
+    expect(AgentEnvSpecSchema.safeParse({ ...validContainerAgent, dockerfile: '.docker/Dockerfile' }).success).toBe(
+      true
+    );
+  });
 });
 
 describe('AgentEnvSpecSchema - buildContextPath', () => {
