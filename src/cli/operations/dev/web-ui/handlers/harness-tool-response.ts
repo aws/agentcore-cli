@@ -1,6 +1,6 @@
 import { invokeHarness } from '../../../../aws/agentcore-harness';
 import type { HarnessInvocationOverrides } from '../api-types';
-import { buildInvokeOptions } from './harness-utils';
+import { buildInvokeOptions, readLocalHarnessModel } from './harness-utils';
 import type { RouteContext } from './route-context';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
@@ -61,12 +61,14 @@ export async function handleHarnessToolResponse(
     return;
   }
 
+  const specModel = await readLocalHarnessModel(ctx.options.configRoot, parsed.harnessName);
   const invokeOpts = buildInvokeOptions(
     harness.harnessArn,
     harness.region,
     parsed.sessionId,
     parsed.messages,
-    parsed.harnessOverrides
+    parsed.harnessOverrides,
+    specModel
   );
 
   ctx.setCorsHeaders(res, origin);

@@ -1,7 +1,7 @@
 import { invokeHarness } from '../../../../aws/agentcore-harness';
 import type { InvokeHarnessOptions } from '../../../../aws/agentcore-harness';
 import type { HarnessInvocationOverrides } from '../api-types';
-import { buildInvokeOptions } from './harness-utils';
+import { buildInvokeOptions, readLocalHarnessModel } from './harness-utils';
 import type { RouteContext } from './route-context';
 import { randomUUID } from 'node:crypto';
 import type { ServerResponse } from 'node:http';
@@ -56,12 +56,14 @@ export async function handleHarnessInvocation(
 
   const messages: InvokeHarnessOptions['messages'] = [{ role: 'user', content: [{ text: parsed.prompt }] }];
 
+  const specModel = await readLocalHarnessModel(ctx.options.configRoot, parsed.harnessName);
   const invokeOpts = buildInvokeOptions(
     harness.harnessArn,
     harness.region,
     parsed.sessionId,
     messages,
-    parsed.overrides
+    parsed.overrides,
+    specModel
   );
 
   ctx.setCorsHeaders(res, origin);
