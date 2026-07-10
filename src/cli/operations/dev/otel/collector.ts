@@ -298,11 +298,13 @@ export async function startOtelCollector(persistTracesDir: string): Promise<{
 
   const otelEnvVars: Record<string, string> = {
     OTEL_EXPORTER_OTLP_ENDPOINT: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? `http://127.0.0.1:${collectorPort}`,
-    OTEL_EXPORTER_OTLP_PROTOCOL: 'http/protobuf',
-    OTEL_METRICS_EXPORTER: 'none',
-    AGENT_OBSERVABILITY_ENABLED: 'true',
-    OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: 'true',
-    OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: 'true',
+    OTEL_EXPORTER_OTLP_PROTOCOL: process.env.OTEL_EXPORTER_OTLP_PROTOCOL ?? 'http/protobuf',
+    OTEL_METRICS_EXPORTER: process.env.OTEL_METRICS_EXPORTER ?? 'none',
+    AGENT_OBSERVABILITY_ENABLED: process.env.AGENT_OBSERVABILITY_ENABLED ?? 'true',
+    OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT:
+      process.env.OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT ?? 'true',
+    OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED:
+      process.env.OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED ?? 'true',
   };
 
   return { collector, otelEnvVars };
