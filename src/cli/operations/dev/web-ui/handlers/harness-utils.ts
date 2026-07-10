@@ -13,9 +13,7 @@ const DEFAULT_MAX_ITERATIONS = 75;
  * Map the local harness spec's model onto the invoke API's model-configuration shape, so dev
  * invocations honor agentcore.json model settings (notably maxTokens) without a redeploy. The web
  * UI only sends a model override when the user edits the model panel — without this default the
- * deployed model config silently wins. Each provider gets its own config key with only the fields
- * that provider's config accepts (see BedrockModelConfig / OpenAiModelConfig / GeminiModelConfig /
- * LiteLlmModelConfig). Returns undefined for an unknown provider.
+ * deployed model config silently wins. Returns undefined for an unknown provider.
  */
 function buildModelOverride(specModel: HarnessModel): HarnessModelConfiguration | undefined {
   // Fields common to every provider config.
