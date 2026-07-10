@@ -14,7 +14,10 @@ export function HelpScreen({ ctx }: ScreenProps) {
   const help = c.createHelp();
   const helpText = help.formatHelp(c, help);
 
-  useEffect(exit);
+  // Empty deps ensures exit only runs once on mount, not on every re-render.
+  // https://react.dev/reference/react/useEffect#passing-no-dependency-array-at-all
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(exit, []);
 
   return <Text>{helpText}</Text>;
 }
