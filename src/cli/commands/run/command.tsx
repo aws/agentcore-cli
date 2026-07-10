@@ -2,7 +2,6 @@ import { ConfigIO, ValidationError, findConfigRoot, serializeResult } from '../.
 import type { RecommendationType } from '../../aws/agentcore-recommendation';
 import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
-import { isGatedFeaturesEnabled } from '../../feature-flags';
 import { handleRunEval } from '../../operations/eval';
 import type { RunEvalOptions } from '../../operations/eval';
 import { runKbIngestionByName } from '../../operations/ingest';
@@ -659,20 +658,13 @@ export const registerRun = (program: Command) => {
   // now; future ingestible types could add a --type flag.
   // ──────────────────────────────────────────────────────────────────────
   runCmd
-    .command('ingest', { hidden: !isGatedFeaturesEnabled() })
+    .command('ingest')
     .description('Start a fresh ingestion job for every data source on a deployed knowledge base.')
     .option('--name <name>', 'Knowledge base name (must exist in agentcore.json)')
     .option('--target <target>', 'Deployment target name (defaults to "default")', 'default')
     .option('--data-source <uri>', 'Ingest only the data source with this URI (default: all sources)')
     .option('--json', 'Output as JSON [non-interactive]')
     .action(async (cliOptions: { name?: string; target?: string; dataSource?: string; json?: boolean }) => {
-      // FMKB (knowledge bases) is gated behind ENABLE_GATED_FEATURES; ingestion
-      // operates exclusively on knowledge bases, so it must be gated to match
-      // `add knowledge-base` / `remove knowledge-base`.
-      if (!isGatedFeaturesEnabled()) {
-        console.error('Knowledge bases are not yet available.');
-        process.exit(1);
-      }
       if (!findConfigRoot()) {
         console.error('No agentcore project found. Run `agentcore create` first.');
         process.exit(1);
