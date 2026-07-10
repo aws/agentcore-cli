@@ -3,7 +3,7 @@ import type { AgentCoreProjectSpec } from '../../../schema';
 import { ANSI } from '../../constants';
 import { isDeploySkippable } from '../../operations/deploy/change-detection';
 import { getDevConfig, getDevSupportedAgents, loadDevEnv, loadProjectConfig } from '../../operations/dev';
-import { type OtelCollector, startOtelCollector } from '../../operations/dev/otel';
+import { type OtelCollector, hasExternalOtelEndpoint, startOtelCollector } from '../../operations/dev/otel';
 import {
   type AgentInfo,
   type ListMemoryRecordsHandler,
@@ -142,8 +142,15 @@ export async function launchBrowserDev(): Promise<void> {
   }
 
   const configRoot = findConfigRoot(workingDir);
-  const persistTracesDir = path.join(configRoot ?? workingDir, '.cli', 'traces');
-  const { collector, otelEnvVars } = await startOtelCollector(persistTracesDir);
+  let collector: OtelCollector | undefined;
+  let otelEnvVars: Record<string, string> = {};
+
+  if (!hasExternalOtelEndpoint()) {
+    const persistTracesDir = path.join(configRoot ?? workingDir, '.cli', 'traces');
+    const result = await startOtelCollector(persistTracesDir);
+    collector = result.collector;
+    otelEnvVars = result.otelEnvVars;
+  }
 
   await runBrowserMode({
     workingDir,

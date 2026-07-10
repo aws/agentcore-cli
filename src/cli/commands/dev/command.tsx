@@ -28,7 +28,7 @@ import {
   loadProjectConfig,
   onShutdownSignal,
 } from '../../operations/dev';
-import { OtelCollector, startOtelCollector } from '../../operations/dev/otel';
+import { OtelCollector, hasExternalOtelEndpoint, startOtelCollector } from '../../operations/dev/otel';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { AgentProtocol, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { LayoutProvider } from '../../tui/context';
@@ -358,7 +358,7 @@ export const registerDev = (program: Command) => {
             let otelEnvVars: Record<string, string> = {};
             let collector: OtelCollector | undefined;
 
-            if (opts.traces !== false) {
+            if (opts.traces !== false && !hasExternalOtelEndpoint()) {
               const persistTracesDir = path.join(configRoot ?? workingDir, '.cli', 'traces');
               const otelResult = await startOtelCollector(persistTracesDir);
               collector = otelResult.collector;

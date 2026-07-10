@@ -285,6 +285,11 @@ function readBodyAsBuffer(req: IncomingMessage): Promise<Buffer> {
   });
 }
 
+/** Returns true if the user has already configured an external OTLP endpoint. */
+export function hasExternalOtelEndpoint(): boolean {
+  return !!process.env.OTEL_EXPORTER_OTLP_ENDPOINT || !!process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT;
+}
+
 /**
  * Start an OTEL collector and return it along with the env vars agents need
  * to export traces to it.
