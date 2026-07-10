@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.24.0] - 2026-07-10
+
+### Added
+- feat(issue-1236): enhance docker build with additional build configuration (#1284) (f8ab1ca9)
+- feat(region): add ap-southeast-5/7, eu-south-1/2 to AgentCore regions (#1722) (85427ef3)
+- feat: add description field to connector configuration entries (#1721) (dcfc6de4)
+- feat(run): add --kms-key flag to run insights for KMS parity (#1688) (e61338c3)
+
+### Fixed
+- fix: reset state to re-run release workflows (#1739) (63c3cb1f)
+- fix: auto-trigger ingestion on connector config file content changes (#1732) (a93302b7)
+- fix(exec): support harness deployments (#1724) (#1728) (9bd83275)
+- fix(dev): apply model config for all providers in dev, not just Bedrock (#1729) (d429f024)
+- fix: pass through max tokens for non-mantle Bedrock models (#1719) (b6fc3386)
+- fix(tool): resolve HTTP gateways in `add tool --gateway` (#1658 follow-up) (#1693) (bb9cf2b5)
+- fix: reap orphaned dev-server child on process exit (#1695) (0f115e7e)
+- fix(add): print confirmation after non-interactive add agent (#671) (#1689) (fce4d160)
+- fix: keep AGUI browser thread IDs stable (#1686) (3cee6f14)
+- fix(deploy): scope TUI deploy to the picker-selected targets (#1267) (#1659) (fb778fde)
+
+### Other Changes
+- ci: use GitHub-hosted runners for release workflow (#1738) (06b556fb)
+- chore: bump main to 0.24.0, preview to 1.0.0-preview.21 (#1737) (a0cdb27b)
+- ci: pin browser-tests to ubuntu-latest (fix Playwright deps on CodeBuild) (#1736) (5f7958d5)
+- chore: ungate 'run ingest' command (#1731) (70c77fc0)
+- ci: run all workflows on CodeBuild-hosted runners (#1715) (6c5e43ef)
+- Revert "feat(run): add --kms-key flag to run insights for KMS parity (#1688)" (#1723) (1fefd37e)
+- chore: add e2e and integ tests for web-search connector (#1711) (7f46367e)
+- ci: gate fork-PR E2E/tarball on PR author (fix pwn-request + checkout@v7 fork block) (#1716) (60e68b4d)
+- ci(e2e): run E2E job on CodeBuild-hosted runner (POC) (#1713) (192ff38e)
+- ci: bump the github-actions group across 1 directory with 8 updates (#1710) (31ae0823)
+- ci(e2e): skip E2E tests on docs-only PRs (#1705) (32536fa3)
+- ci(e2e): emit JUnit reports and upload as CI artifact (#1706) (6d226625)
+- ci: add API reference docs generation workflow (#1694) (c1bc3e4f)
+- ci(canary): run canary every 15 minutes instead of hourly (#1707) (65afd9f6)
+- ci(e2e): cancel superseded in-progress E2E runs (#1704) (4786786f)
+
 ## [0.23.0] - 2026-07-08
 
 ### Fixed
