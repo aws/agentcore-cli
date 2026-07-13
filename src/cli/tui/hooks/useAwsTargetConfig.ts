@@ -94,6 +94,12 @@ export function useAwsTargetConfig(): AwsTargetConfigState {
       region: region,
     };
     await configIO.writeAWSDeploymentTargets([target]);
+    // Select the just-saved target, mirroring the single-existing-target path above.
+    // Deploy scopes its stack patterns to the selected targets, so leaving the
+    // selection empty here made a fresh project's first deploy build an empty
+    // PATTERN_MUST_MATCH pattern list and fail with "Stack selection is ambiguous".
+    setAvailableTargets([target]);
+    setSelectedTargetIndices([0]);
   }, []);
 
   // Check if targets already exist on mount
