@@ -1,10 +1,11 @@
 # Orchestrates all CI checks on PRs and pushes to main.
 
 on:
+  # TODO: remove refactor from below once this makes it to main.  
   push:
-    branches: [main]
+    branches: [main, refactor]
   pull_request:
-    branches: [main]
+    branches: [main, refactor]
   workflow_dispatch:
 
 concurrency:
