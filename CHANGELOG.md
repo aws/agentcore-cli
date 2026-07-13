@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.24.1] - 2026-07-13
+
+### Fixed
+- fix(deploy): select the auto-detected target so a fresh project's first deploy isn't scoped to zero stacks (#1753) (eb763432)
+- fix: agentcore dev overwrites otel exporter env var (#1742) (077bc92c)
+
 ## [0.24.0] - 2026-07-10
 
 ### Added
