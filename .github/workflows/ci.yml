@@ -1,7 +1,7 @@
 # Orchestrates all CI checks on PRs and pushes to main.
-
+name: CI
 on:
-  # TODO: remove refactor from below once this makes it to main.  
+  # TODO: remove refactor from below once this makes it to main.
   push:
     branches: [main, refactor]
   pull_request:

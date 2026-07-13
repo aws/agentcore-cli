@@ -1,5 +1,5 @@
 # Verifies lint, formatting, types, audit, and build all pass.
-
+name: build
 on:
   workflow_call:
     inputs:
@@ -8,7 +8,7 @@ on:
         type: string
 
 jobs:
-  build:
+  check:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -20,9 +20,16 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run lint:check
+        if: always()
       - run: bun run format:check
+        if: always()
       - run: bun run typecheck
+        if: always()
       - run: bun audit
+        if: always()
       - run: bun run build
+        if: always()
       - run: bun pm pack
+        if: always()
       - run: bun run compile
+        if: always()

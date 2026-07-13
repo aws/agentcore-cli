@@ -1,5 +1,5 @@
 # Verifies unit tests pass on all platforms (Linux, Windows, macOS).
-
+name: unit-test
 on:
   workflow_call:
     inputs:
