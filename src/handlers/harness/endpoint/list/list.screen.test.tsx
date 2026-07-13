@@ -1,12 +1,6 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import type { HarnessEndpoint } from "@aws-sdk/client-bedrock-agentcore-control";
-import {
-  renderScreen,
-  waitForText,
-  waitFor,
-  cleanupScreens,
-  TestCoreClient,
-} from "../../../../testing";
+import { renderScreen, waitForText, cleanupScreens, TestCoreClient } from "../../../../testing";
 
 afterEach(cleanupScreens);
 
