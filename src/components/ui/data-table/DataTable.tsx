@@ -154,14 +154,14 @@ export function DataTable<T extends Record<string, unknown>>({
     { isActive: focus },
   );
 
-  // Column widths
-  const colWidths = columns.map((col) => {
-    if (col.width) return col.width;
+  // default the width of each column
+  const columnsWithWidths = columns.map((col) => {
+    if (col.width !== undefined) return { ...col, width: col.width };
     const maxData = pageData.reduce((max, row) => {
       const val = col.render ? col.render(row[col.key], row) : String(row[col.key] ?? "");
       return Math.max(max, val.length);
     }, 0);
-    return Math.max(col.header.length + 2, maxData + 2, 6);
+    return { ...col, width: Math.max(col.header.length + 2, maxData + 2, 6) };
   });
 
   const pad = (s: string, w: number, align: "left" | "center" | "right" = "left") => {
@@ -214,12 +214,12 @@ export function DataTable<T extends Record<string, unknown>>({
         {/* Header */}
         <Box flexDirection="row">
           {selectable && <Text color={theme.colors.muted}>{"  "}</Text>}
-          {columns.map((col, i) => {
+          {columnsWithWidths.map((col) => {
             const sortArrow = sortColumn === col.key ? (sortDirection === "asc" ? " ▲" : " ▼") : "";
             return (
-              <Box key={col.key} width={colWidths[i]}>
+              <Box key={col.key} width={col.width}>
                 <Text bold color={theme.colors.primary}>
-                  {pad(col.header + sortArrow, colWidths[i], col.align)}
+                  {pad(col.header + sortArrow, col.width, col.align)}
                 </Text>
               </Box>
             );
@@ -230,7 +230,9 @@ export function DataTable<T extends Record<string, unknown>>({
         <Box flexDirection="row">
           <Text color={theme.colors.border}>
             {showDivider
-              ? "─".repeat(colWidths.reduce((a, b) => a + b, 0) + (selectable ? 2 : 0))
+              ? "─".repeat(
+                  columnsWithWidths.reduce((acc, col) => acc + col.width, 0) + (selectable ? 2 : 0),
+                )
               : " "}
           </Text>
         </Box>
@@ -250,17 +252,17 @@ export function DataTable<T extends Record<string, unknown>>({
                     {isSelected ? "❯ " : "  "}
                   </Text>
                 )}
-                {columns.map((col, ci) => {
+                {columnsWithWidths.map((col) => {
                   const val = col.render
                     ? col.render(row[col.key], row)
                     : String(row[col.key] ?? "");
                   return (
-                    <Box key={col.key} width={colWidths[ci]}>
+                    <Box key={col.key} width={col.width}>
                       <Text
                         color={isSelected ? theme.colors.text : theme.colors.muted}
                         bold={isSelected}
                       >
-                        {pad(val, colWidths[ci], col.align)}
+                        {pad(val, col.width, col.align)}
                       </Text>
                     </Box>
                   );
