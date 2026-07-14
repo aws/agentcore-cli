@@ -8,7 +8,7 @@ describe("reviewed package contract", () => {
     expect(packageJson.engines).toEqual({ node: ">=22.22.1" });
     expect(packageJson.packageManager).toBe("bun@1.3.14");
     expect(packageJson.files).toEqual(["dist", "THIRD_PARTY_NOTICES.md"]);
-    expect(packageJson.dependencies["@inkui-cli/data-table"]).toBeUndefined();
+    expect("@inkui-cli/data-table" in packageJson.dependencies).toBe(false);
     expect(packageJson.dependencies["@aws-sdk/client-bedrock-agentcore-control"]).toBe("3.1079.0");
     expect(packageJson.dependencies["@aws-sdk/client-bedrock-agentcore"]).toBe("3.1079.0");
     expect(packageJson.dependencies["commander"]).toBe("15.0.0");
