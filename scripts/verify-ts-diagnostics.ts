@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, posix } from "node:path";
+import { join, posix, win32 } from "node:path";
 import {
   compareDiagnostics,
   parseDiagnostics,
@@ -18,21 +19,39 @@ type TypeScriptDiagnosticBaseline = Readonly<{
   typescriptVersion: "5.9.3";
   command: readonly ["bunx", "tsc", "--noEmit", "--pretty", "false"];
   diagnostics: readonly TypeScriptDiagnostic[];
+  legacyFileDigests: readonly LegacyFileDigest[];
 }>;
 
-type TypeScriptPathDiscovery =
-  | Readonly<{
-      kind: "succeeded";
-      repositoryPaths: readonly string[];
-      touchedPaths: readonly string[];
-    }>
-  | Readonly<{ kind: "failed" }>;
+type LegacyFileDigest = Readonly<{
+  path: string;
+  sha256: string;
+}>;
+
+type PathPolicyOptions = Readonly<{
+  platform: NodeJS.Platform;
+  repositoryRoot: string;
+}>;
+
+type VerificationResult = Readonly<{
+  exitCode: 0 | 1;
+  stdout: readonly string[];
+  stderr: readonly string[];
+}>;
+
+type VerificationOptions = Readonly<{
+  fixture: unknown;
+  cwd: string;
+  platform: NodeJS.Platform;
+  runCommand(command: readonly string[], cwd: string): Promise<CommandResult>;
+  readFile(path: string): Promise<Uint8Array>;
+}>;
 
 const REQUIRED_TYPESCRIPT_VERSION = "5.9.3";
 const REQUIRED_TYPESCRIPT_COMMAND = ["bunx", "tsc", "--noEmit", "--pretty", "false"] as const;
-const IDENTITY_FEATURE_BASE = "ef2734b9752f3d0c2905de18f8996fab0a55a0c8";
+const REQUIRED_DIAGNOSTIC_COUNT = 29;
+const REQUIRED_COMPILER_EXIT_CODE = 2;
 const UTF8_DECODER_OPTIONS = { fatal: true } as const;
-const TYPESCRIPT_PATH_PATTERN = /\.(?:ts|tsx|mts|cts)$/i;
+const GENERIC_FAILURE = "TypeScript diagnostic verification failed.";
 
 function compareStrings(left: string, right: string): number {
   if (left === right) {
@@ -51,50 +70,41 @@ function compareDiagnosticTuples(left: TypeScriptDiagnostic, right: TypeScriptDi
   );
 }
 
-function isWindowsAbsolutePath(value: string): boolean {
-  return /^[A-Za-z]:\//.test(value);
-}
-
-function normalizeRoot(root: string): string {
-  const normalized = posix.normalize(root.replaceAll("\\", "/"));
-  if (normalized === "/" || /^[A-Za-z]:\/$/.test(normalized)) {
-    return normalized;
-  }
-  return normalized.replace(/\/+$/, "");
-}
-
-function isWithinRoot(absolutePath: string, root: string): boolean {
-  const caseInsensitive = isWindowsAbsolutePath(root);
-  const comparablePath = caseInsensitive ? absolutePath.toLowerCase() : absolutePath;
-  const comparableRoot = caseInsensitive ? root.toLowerCase() : root;
-  const prefix = comparableRoot.endsWith("/") ? comparableRoot : `${comparableRoot}/`;
-  return comparablePath.startsWith(prefix);
-}
-
 function normalizeRepositoryPath(
   value: string,
   invalidPathMessage: string,
-  repositoryRoot = process.cwd(),
+  options: PathPolicyOptions = {
+    platform: process.platform,
+    repositoryRoot: process.cwd(),
+  },
 ): string {
   if (value.includes("\0") || value.includes("\n") || value.includes("\r")) {
     throw new Error(invalidPathMessage);
   }
 
-  const slashPath = value.replaceAll("\\", "/");
-  const root = normalizeRoot(repositoryRoot);
-  const absolute = slashPath.startsWith("/") || isWindowsAbsolutePath(slashPath);
-  let relativePath = slashPath;
-
-  if (absolute) {
-    const normalizedAbsolute = posix.normalize(slashPath);
-    const rootIsWindows = isWindowsAbsolutePath(root);
-    const pathIsWindows = isWindowsAbsolutePath(normalizedAbsolute);
-    if (rootIsWindows !== pathIsWindows || !isWithinRoot(normalizedAbsolute, root)) {
+  if (options.platform === "win32") {
+    const repositoryRoot = win32.normalize(options.repositoryRoot);
+    const candidate = value.replaceAll("/", "\\");
+    const relativePath = win32.isAbsolute(candidate)
+      ? win32.relative(repositoryRoot, win32.normalize(candidate))
+      : candidate;
+    const normalized = win32.normalize(relativePath);
+    if (
+      normalized === "." ||
+      normalized === ".." ||
+      normalized.startsWith(`..${win32.sep}`) ||
+      win32.isAbsolute(normalized) ||
+      /^[A-Za-z]:/.test(normalized)
+    ) {
       throw new Error(invalidPathMessage);
     }
-    relativePath = normalizedAbsolute.slice(root.endsWith("/") ? root.length : root.length + 1);
+    return normalized.replaceAll("\\", "/");
   }
 
+  const slashPath = value.replaceAll("\\", "/");
+  const relativePath = posix.isAbsolute(slashPath)
+    ? posix.relative(posix.normalize(options.repositoryRoot), posix.normalize(slashPath))
+    : slashPath;
   const normalized = posix.normalize(relativePath);
   if (
     normalized === "." ||
@@ -108,38 +118,35 @@ function normalizeRepositoryPath(
   return normalized;
 }
 
-export function collectProtectedTypeScriptPaths(
-  discovery: TypeScriptPathDiscovery,
-): readonly string[] {
-  if (discovery.kind === "failed") {
-    throw new Error("TypeScript path discovery failed.");
-  }
-
-  const protectedPaths = new Set<string>();
-  for (const repositoryPath of discovery.repositoryPaths) {
-    const normalized = normalizeRepositoryPath(repositoryPath, "Repository path is invalid.");
-    if (TYPESCRIPT_PATH_PATTERN.test(normalized) && normalized.toLowerCase().includes("identity")) {
-      protectedPaths.add(normalized);
-    }
-  }
-  for (const touchedPath of discovery.touchedPaths) {
-    const normalized = normalizeRepositoryPath(touchedPath, "Repository path is invalid.");
-    if (TYPESCRIPT_PATH_PATTERN.test(normalized)) {
-      protectedPaths.add(normalized);
-    }
-  }
-  return [...protectedPaths].sort(compareStrings);
+function canonicalRepositoryPath(path: string, platform: NodeJS.Platform): string {
+  return platform === "win32" ? path.toLowerCase() : path;
 }
 
 export function findDiagnosticsInProtectedFiles(
   diagnostics: readonly TypeScriptDiagnostic[],
   protectedPaths: readonly string[],
+  options: PathPolicyOptions = {
+    platform: process.platform,
+    repositoryRoot: process.cwd(),
+  },
 ): readonly TypeScriptDiagnostic[] {
   const normalizedPaths = new Set(
-    protectedPaths.map((path) => normalizeRepositoryPath(path, "Repository path is invalid.")),
+    protectedPaths.map((path) =>
+      canonicalRepositoryPath(
+        normalizeRepositoryPath(path, "Repository path is invalid.", options),
+        options.platform,
+      ),
+    ),
   );
   return [...diagnostics]
-    .filter((diagnostic) => normalizedPaths.has(diagnostic.path))
+    .filter((diagnostic) =>
+      normalizedPaths.has(
+        canonicalRepositoryPath(
+          normalizeRepositoryPath(diagnostic.path, "Repository path is invalid.", options),
+          options.platform,
+        ),
+      ),
+    )
     .sort(compareDiagnosticTuples);
 }
 
@@ -163,14 +170,19 @@ function isNormalizedRepositoryPath(value: string): boolean {
   );
 }
 
-function parseBaseline(value: unknown): TypeScriptDiagnosticBaseline {
+export function parseBaseline(
+  value: unknown,
+  platform: NodeJS.Platform = process.platform,
+): TypeScriptDiagnosticBaseline {
   if (
     !isRecord(value) ||
     value.typescriptVersion !== REQUIRED_TYPESCRIPT_VERSION ||
     !Array.isArray(value.command) ||
     value.command.length !== REQUIRED_TYPESCRIPT_COMMAND.length ||
     !value.command.every((part, index) => part === REQUIRED_TYPESCRIPT_COMMAND[index]) ||
-    !Array.isArray(value.diagnostics)
+    !Array.isArray(value.diagnostics) ||
+    value.diagnostics.length !== REQUIRED_DIAGNOSTIC_COUNT ||
+    !Array.isArray(value.legacyFileDigests)
   ) {
     throw new Error("Invalid TypeScript diagnostic baseline.");
   }
@@ -201,10 +213,39 @@ function parseBaseline(value: unknown): TypeScriptDiagnosticBaseline {
     };
   });
 
+  const legacyFileDigests = value.legacyFileDigests.map((entry): LegacyFileDigest => {
+    if (
+      !isRecord(entry) ||
+      typeof entry.path !== "string" ||
+      !isNormalizedRepositoryPath(entry.path) ||
+      entry.path.toLowerCase().includes("identity") ||
+      typeof entry.sha256 !== "string" ||
+      !/^[a-f0-9]{64}$/.test(entry.sha256)
+    ) {
+      throw new Error("Invalid TypeScript diagnostic baseline.");
+    }
+    return { path: entry.path, sha256: entry.sha256 };
+  });
+
+  const diagnosticPaths = new Set(
+    diagnostics.map((diagnostic) => canonicalRepositoryPath(diagnostic.path, platform)),
+  );
+  const digestPaths = new Set(
+    legacyFileDigests.map((entry) => canonicalRepositoryPath(entry.path, platform)),
+  );
+  if (
+    digestPaths.size !== legacyFileDigests.length ||
+    digestPaths.size !== diagnosticPaths.size ||
+    [...diagnosticPaths].some((path) => !digestPaths.has(path))
+  ) {
+    throw new Error("Invalid TypeScript diagnostic baseline.");
+  }
+
   return {
     typescriptVersion: REQUIRED_TYPESCRIPT_VERSION,
     command: REQUIRED_TYPESCRIPT_COMMAND,
     diagnostics,
+    legacyFileDigests,
   };
 }
 
@@ -238,14 +279,6 @@ async function runCommand(command: readonly string[], cwd: string): Promise<Comm
   }
 }
 
-async function requireSuccessfulCommand(command: readonly string[], cwd: string): Promise<string> {
-  const result = await runCommand(command, cwd);
-  if (result.exitCode !== 0 || result.stderr !== "") {
-    throw new Error("Command failed.");
-  }
-  return result.stdout;
-}
-
 function parseRepositoryRoot(output: string): string {
   if (!output.endsWith("\n")) {
     throw new Error("Git root discovery failed.");
@@ -257,157 +290,127 @@ function parseRepositoryRoot(output: string): string {
   return root;
 }
 
-function parseNullDelimitedPaths(output: string): readonly string[] {
-  if (output === "") {
-    return [];
-  }
-  if (!output.endsWith("\0")) {
-    throw new Error("Git path discovery failed.");
-  }
-  const paths = output.slice(0, -1).split("\0");
-  if (paths.some((path) => path.length === 0)) {
-    throw new Error("Git path discovery failed.");
-  }
-  return paths;
+function failure(message = GENERIC_FAILURE): VerificationResult {
+  return { exitCode: 1, stdout: [], stderr: [message] };
 }
 
-async function discoverProtectedPaths(repositoryRoot: string): Promise<readonly string[]> {
-  await requireSuccessfulCommand(
-    ["git", "merge-base", "--is-ancestor", IDENTITY_FEATURE_BASE, "HEAD"],
-    repositoryRoot,
-  );
-
-  const [repositoryOutput, branchOutput, indexOutput, worktreeOutput, untrackedOutput] =
-    await Promise.all([
-      requireSuccessfulCommand(
-        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-        repositoryRoot,
-      ),
-      requireSuccessfulCommand(
-        [
-          "git",
-          "diff",
-          "--no-ext-diff",
-          "--name-only",
-          "--diff-filter=d",
-          "-z",
-          IDENTITY_FEATURE_BASE,
-          "HEAD",
-        ],
-        repositoryRoot,
-      ),
-      requireSuccessfulCommand(
-        ["git", "diff", "--no-ext-diff", "--cached", "--name-only", "--diff-filter=d", "-z"],
-        repositoryRoot,
-      ),
-      requireSuccessfulCommand(
-        ["git", "diff", "--no-ext-diff", "--name-only", "--diff-filter=d", "-z"],
-        repositoryRoot,
-      ),
-      requireSuccessfulCommand(
-        ["git", "ls-files", "--others", "--exclude-standard", "-z"],
-        repositoryRoot,
-      ),
-    ]);
-
-  return collectProtectedTypeScriptPaths({
-    kind: "succeeded",
-    repositoryPaths: parseNullDelimitedPaths(repositoryOutput),
-    touchedPaths: [
-      ...parseNullDelimitedPaths(branchOutput),
-      ...parseNullDelimitedPaths(indexOutput),
-      ...parseNullDelimitedPaths(worktreeOutput),
-      ...parseNullDelimitedPaths(untrackedOutput),
-    ],
-  });
+function repositoryFilePath(
+  repositoryRoot: string,
+  repositoryPath: string,
+  platform: NodeJS.Platform,
+): string {
+  return platform === "win32"
+    ? win32.join(repositoryRoot, ...repositoryPath.split("/"))
+    : posix.join(repositoryRoot, repositoryPath);
 }
 
-function combineCompilerOutput(result: CommandResult): string {
-  if (result.stdout === "" || result.stderr === "") {
-    return `${result.stdout}${result.stderr}`;
-  }
-  return `${result.stdout}${result.stdout.endsWith("\n") ? "" : "\n"}${result.stderr}`;
-}
-
-function printDiagnostics(diagnostics: readonly TypeScriptDiagnostic[]): void {
-  for (const diagnostic of diagnostics) {
-    console.error(
-      JSON.stringify([
-        diagnostic.path,
-        diagnostic.line,
-        diagnostic.column,
-        diagnostic.code,
-        diagnostic.message,
-      ]),
+async function findChangedLegacyFiles(
+  baseline: TypeScriptDiagnosticBaseline,
+  repositoryRoot: string,
+  platform: NodeJS.Platform,
+  readRepositoryFile: VerificationOptions["readFile"],
+): Promise<readonly string[]> {
+  const changedPaths: string[] = [];
+  for (const entry of baseline.legacyFileDigests) {
+    const bytes = await readRepositoryFile(
+      repositoryFilePath(repositoryRoot, entry.path, platform),
     );
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    if (digest !== entry.sha256) {
+      changedPaths.push(entry.path);
+    }
+  }
+  return changedPaths;
+}
+
+export async function verifyTypeScriptDiagnostics(
+  options: VerificationOptions,
+): Promise<VerificationResult> {
+  try {
+    const baseline = parseBaseline(options.fixture, options.platform);
+    const rootResult = await options.runCommand(
+      ["git", "rev-parse", "--show-toplevel"],
+      options.cwd,
+    );
+    if (rootResult.exitCode !== 0 || rootResult.stderr !== "") {
+      return failure();
+    }
+    const repositoryRoot = parseRepositoryRoot(rootResult.stdout);
+
+    const versionResult = await options.runCommand(["bunx", "tsc", "--version"], repositoryRoot);
+    if (
+      versionResult.exitCode !== 0 ||
+      versionResult.stderr !== "" ||
+      versionResult.stdout !== `Version ${baseline.typescriptVersion}\n`
+    ) {
+      return failure("TypeScript version mismatch.");
+    }
+
+    const changedLegacyPaths = await findChangedLegacyFiles(
+      baseline,
+      repositoryRoot,
+      options.platform,
+      options.readFile,
+    );
+    const compilerResult = await options.runCommand(baseline.command, repositoryRoot);
+    if (compilerResult.exitCode !== REQUIRED_COMPILER_EXIT_CODE || compilerResult.stderr !== "") {
+      return failure();
+    }
+
+    const actualDiagnostics = parseDiagnostics(compilerResult.stdout);
+    const protectedDiagnostics = findDiagnosticsInProtectedFiles(
+      actualDiagnostics,
+      changedLegacyPaths,
+      {
+        platform: options.platform,
+        repositoryRoot,
+      },
+    );
+    if (protectedDiagnostics.length > 0) {
+      return failure("Reviewed legacy TypeScript file changed.");
+    }
+
+    const comparison = compareDiagnostics(baseline.diagnostics, actualDiagnostics);
+    if (comparison.kind === "mismatched") {
+      return failure("TypeScript diagnostic baseline mismatch.");
+    }
+
+    return {
+      exitCode: 0,
+      stdout: [
+        "TypeScript diagnostic baseline matched: 29 diagnostics.",
+        "Reviewed legacy diagnostic files unchanged: 3 files.",
+        "Non-baseline TypeScript files clean: 0 diagnostics.",
+      ],
+      stderr: [],
+    };
+  } catch {
+    return failure();
   }
 }
 
 async function main(): Promise<void> {
-  const baseline = parseBaseline(baselineFixture);
-  const repositoryRoot = parseRepositoryRoot(
-    await requireSuccessfulCommand(["git", "rev-parse", "--show-toplevel"], process.cwd()),
-  );
-  const versionResult = await runCommand(["bunx", "tsc", "--version"], repositoryRoot);
-  if (
-    versionResult.exitCode !== 0 ||
-    versionResult.stderr !== "" ||
-    versionResult.stdout.trim() !== `Version ${baseline.typescriptVersion}`
-  ) {
-    console.error("TypeScript version mismatch.");
-    process.exitCode = 1;
-    return;
+  const result = await verifyTypeScriptDiagnostics({
+    fixture: baselineFixture,
+    cwd: process.cwd(),
+    platform: process.platform,
+    runCommand,
+    readFile,
+  });
+  for (const line of result.stdout) {
+    console.log(line);
   }
-
-  process.chdir(repositoryRoot);
-  const protectedPaths = await discoverProtectedPaths(repositoryRoot);
-  const compilerResult = await runCommand(baseline.command, repositoryRoot);
-  const actualDiagnostics = parseDiagnostics(combineCompilerOutput(compilerResult));
-  const comparison = compareDiagnostics(baseline.diagnostics, actualDiagnostics);
-  const protectedDiagnostics = findDiagnosticsInProtectedFiles(actualDiagnostics, protectedPaths);
-  let failed = false;
-
-  if (comparison.kind === "mismatched") {
-    console.error("TypeScript diagnostic baseline mismatch.");
-    if (comparison.missing.length > 0) {
-      console.error("Missing diagnostics:");
-      printDiagnostics(comparison.missing);
-    }
-    if (comparison.unexpected.length > 0) {
-      console.error("Unexpected diagnostics:");
-      printDiagnostics(comparison.unexpected);
-    }
-    failed = true;
+  for (const line of result.stderr) {
+    console.error(line);
   }
-
-  if (protectedDiagnostics.length > 0) {
-    console.error("Diagnostics in protected TypeScript files:");
-    printDiagnostics(protectedDiagnostics);
-    failed = true;
-  }
-
-  const compilerExitMatchesDiagnostics =
-    (actualDiagnostics.length === 0 && compilerResult.exitCode === 0) ||
-    (actualDiagnostics.length > 0 && compilerResult.exitCode !== 0);
-  if (!compilerExitMatchesDiagnostics) {
-    console.error("TypeScript compiler exit status mismatch.");
-    failed = true;
-  }
-
-  if (failed) {
-    process.exitCode = 1;
-    return;
-  }
-
-  console.log(`TypeScript diagnostic baseline matched: ${actualDiagnostics.length} diagnostics.`);
-  console.log(`Protected TypeScript files clean: ${protectedPaths.length} files, 0 diagnostics.`);
+  process.exitCode = result.exitCode;
 }
 
 if (import.meta.main) {
   try {
     await main();
   } catch {
-    console.error("TypeScript diagnostic verification failed.");
+    console.error(GENERIC_FAILURE);
     process.exitCode = 1;
   }
 }

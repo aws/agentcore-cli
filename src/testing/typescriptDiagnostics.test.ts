@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import {
-  collectProtectedTypeScriptPaths,
-  findDiagnosticsInProtectedFiles,
-} from "../../scripts/verify-ts-diagnostics";
+import * as ts from "typescript";
 import { compareDiagnostics, parseDiagnostics } from "./typescriptDiagnostics";
 import * as typescriptDiagnostics from "./typescriptDiagnostics";
 
@@ -12,6 +9,38 @@ describe("TypeScript diagnostic baseline", () => {
 
   test("exposes only the approved runtime values", () => {
     expect(Object.keys(typescriptDiagnostics).sort()).toEqual([
+      "compareDiagnostics",
+      "parseDiagnostics",
+    ]);
+  });
+
+  test("exposes only the approved declaration surface", () => {
+    const sourcePath = join(process.cwd(), "src", "testing", "typescriptDiagnostics.ts");
+    const program = ts.createProgram([sourcePath], {
+      module: ts.ModuleKind.Preserve,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      noEmit: true,
+      skipLibCheck: true,
+      target: ts.ScriptTarget.ESNext,
+    });
+    const sourceFile = program.getSourceFile(sourcePath);
+    if (sourceFile === undefined) {
+      throw new Error("TypeScript diagnostic module was not loaded.");
+    }
+    const checker = program.getTypeChecker();
+    const moduleSymbol = checker.getSymbolAtLocation(sourceFile);
+    if (moduleSymbol === undefined) {
+      throw new Error("TypeScript diagnostic module symbol was not found.");
+    }
+
+    expect(
+      checker
+        .getExportsOfModule(moduleSymbol)
+        .map((symbol) => symbol.getName())
+        .sort(),
+    ).toEqual([
+      "DiagnosticComparison",
+      "TypeScriptDiagnostic",
       "compareDiagnostics",
       "parseDiagnostics",
     ]);
@@ -136,91 +165,19 @@ describe("TypeScript diagnostic baseline", () => {
     ]);
   });
 
-  test("does not mistake malformed or non-diagnostic output for diagnostics", () => {
-    expect(
-      parseDiagnostics(
-        [
-          "bunx notice",
-          "src/a.ts(two,7): warning TS2532: Not a compiler diagnostic.",
-          "src/a.ts(2,7): info TS2532: Not an error.",
-          "Found no diagnostics.",
-        ].join("\n"),
-      ),
-    ).toEqual([]);
+  test("rejects every unconsumed nonempty compiler output line", () => {
+    expect(() => parseDiagnostics("bunx notice")).toThrow(
+      "Unsupported TypeScript compiler output.",
+    );
+    expect(() => parseDiagnostics(`${line}\nfatal: compiler crashed`)).toThrow(
+      "Unsupported TypeScript compiler output.",
+    );
+    expect(parseDiagnostics("\n")).toEqual([]);
   });
 
   test("fails closed for unsupported compiler diagnostic formats", () => {
     expect(() => parseDiagnostics("error TS5058: The specified path does not exist.")).toThrow(
       "Unsupported TypeScript diagnostic format.",
     );
-  });
-});
-
-describe("protected TypeScript files", () => {
-  test("deterministically includes every Identity and touched TypeScript file", () => {
-    const protectedPaths = collectProtectedTypeScriptPaths({
-      kind: "succeeded",
-      repositoryPaths: [
-        "src/core/identity/provider.ts",
-        "src/components/IdentityView.tsx",
-        "src/unrelated.ts",
-        "src/core/identity/readme.md",
-      ],
-      touchedPaths: [
-        "src/z.ts",
-        "src/a.cts",
-        "src/module.mts",
-        "src/z.ts",
-        "src/not-typescript.js",
-        "src\\windows.tsx",
-      ],
-    });
-
-    expect(protectedPaths).toEqual([
-      "src/a.cts",
-      "src/components/IdentityView.tsx",
-      "src/core/identity/provider.ts",
-      "src/module.mts",
-      "src/windows.tsx",
-      "src/z.ts",
-    ]);
-
-    const diagnostics = parseDiagnostics(
-      [
-        "src/unrelated.ts(1,1): error TS2532: Existing baseline.",
-        "src/z.ts(2,1): error TS2532: Touched.",
-        "src/core/identity/provider.ts(3,1): error TS2532: Identity.",
-      ].join("\n"),
-    );
-
-    expect(findDiagnosticsInProtectedFiles(diagnostics, protectedPaths)).toEqual([
-      {
-        path: "src/core/identity/provider.ts",
-        line: 3,
-        column: 1,
-        code: "TS2532",
-        message: "Identity.",
-      },
-      {
-        path: "src/z.ts",
-        line: 2,
-        column: 1,
-        code: "TS2532",
-        message: "Touched.",
-      },
-    ]);
-  });
-
-  test("fails closed when Git or path discovery is unsafe", () => {
-    expect(() => collectProtectedTypeScriptPaths({ kind: "failed" })).toThrow(
-      "TypeScript path discovery failed.",
-    );
-    expect(() =>
-      collectProtectedTypeScriptPaths({
-        kind: "succeeded",
-        repositoryPaths: [],
-        touchedPaths: ["../outside.ts"],
-      }),
-    ).toThrow("Repository path is invalid.");
   });
 });

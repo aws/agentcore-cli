@@ -156,6 +156,9 @@ export function parseDiagnostics(stderr: string): readonly TypeScriptDiagnostic[
     if (UNSUPPORTED_DIAGNOSTIC_PATTERN.test(outputLine)) {
       throw new Error("Unsupported TypeScript diagnostic format.");
     }
+    if (outputLine !== "") {
+      throw new Error("Unsupported TypeScript compiler output.");
+    }
   }
 
   finishCurrent();

@@ -1,6 +1,20 @@
 {
   "typescriptVersion": "5.9.3",
   "command": ["bunx", "tsc", "--noEmit", "--pretty", "false"],
+  "legacyFileDigests": [
+    {
+      "path": "src/components/ui/data-table/DataTable.tsx",
+      "sha256": "df3eb3532a8ee78b78fbee0356c7e3f6febd9add12bf60e74edcca65141121d3"
+    },
+    {
+      "path": "src/components/ui/markdown/Markdown.tsx",
+      "sha256": "5453b2ad274a3a93849edbce5e3507f088645662d2a4b5687fa593093d6e9770"
+    },
+    {
+      "path": "src/components/ui/tabs/Tabs.tsx",
+      "sha256": "2112b4f26d3650b670a81e1070f4eb093f3075b119862abd6b2750bf10e35dc6"
+    }
+  ],
   "diagnostics": [
     {
       "path": "src/components/ui/data-table/DataTable.tsx",
