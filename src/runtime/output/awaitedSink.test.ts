@@ -1,7 +1,9 @@
 import { EventEmitter } from "node:events";
+import { Writable } from "node:stream";
 import { expect, test } from "bun:test";
 
 import { createStreamSupervisor } from "./streamSupervisor";
+import type { OutputWriteOutcome } from "./types";
 
 type WriteCallback = (error?: Error | null) => void;
 
@@ -70,6 +72,59 @@ class ControlledWritable extends EventEmitter {
   }
 }
 
+type NativeWriteCallback = (error?: Error | null) => void;
+
+function createNativeWritable(): Readonly<{
+  stream: Writable;
+  complete(error?: Error): void;
+}> {
+  let pendingCallback: NativeWriteCallback | undefined;
+  const stream = new Writable({
+    write(_chunk, _encoding, callback) {
+      pendingCallback = callback;
+    },
+  });
+  return {
+    stream,
+    complete: (error) => {
+      if (pendingCallback === undefined) {
+        throw new Error("No pending native write callback.");
+      }
+      const callback = pendingCallback;
+      pendingCallback = undefined;
+      callback(error);
+    },
+  };
+}
+
+function asWriteStream(stream: Writable): NodeJS.WriteStream {
+  return stream as unknown as NodeJS.WriteStream;
+}
+
+function nextImmediate(): Promise<void> {
+  return new Promise((resolve) => {
+    setImmediate(resolve);
+  });
+}
+
+function expectFrozenOutcome(
+  outcome: OutputWriteOutcome,
+  expectedKind: OutputWriteOutcome["kind"],
+): void {
+  let mutationThrew = false;
+  try {
+    (outcome as any).kind = "corrupted";
+  } catch {
+    mutationThrew = true;
+  } finally {
+    if (!Object.isFrozen(outcome)) {
+      (outcome as any).kind = expectedKind;
+    }
+  }
+  expect(mutationThrew).toBe(true);
+  expect(outcome).toEqual({ kind: expectedKind });
+}
+
 async function pending<T>(promise: Promise<T>): Promise<boolean> {
   return (await Promise.race([promise.then(() => false), Promise.resolve(true)])) === true;
 }
@@ -117,17 +172,18 @@ async function exerciseWriteFailure(
   const quiescence = supervisor.quiesce();
   expect(await settledAfterMicrotasks(quiescence)).toBe(true);
   await quiescence;
-  expect(stream.listenerCount("error")).toBe(errorBaseline);
   expect(stream.listenerCount("close")).toBe(closeBaseline);
 
   if (failure === "error" || failure === "close") {
+    expect(stream.listenerCount("error")).toBe(errorBaseline + 1);
     expect(() => {
       stream.completeCallback(new Error(SENTINEL));
       stream.repeatCallback(0);
     }).not.toThrow();
-    await Promise.resolve();
+    await nextImmediate();
     expect(settlements).toBe(1);
   }
+  expect(stream.listenerCount("error")).toBe(errorBaseline);
   return result;
 }
 
@@ -225,14 +281,15 @@ test("contains synchronous error and close events emitted by write", async () =>
     const quiescence = supervisor.quiesce();
     expect(await settledAfterMicrotasks(quiescence)).toBe(true);
     await quiescence;
-    expect(stream.listenerCount("error")).toBe(errorBaseline);
     expect(stream.listenerCount("close")).toBe(closeBaseline);
+    expect(stream.listenerCount("error")).toBe(errorBaseline + 1);
     expect(() => {
       stream.completeCallback(new Error(SENTINEL));
       stream.repeatCallback(0);
     }).not.toThrow();
-    await Promise.resolve();
+    await nextImmediate();
     expect(settlements).toBe(1);
+    expect(stream.listenerCount("error")).toBe(errorBaseline);
   }
 });
 
@@ -451,6 +508,7 @@ test("terminal races and duplicate callbacks settle exactly once without escapin
   stream.repeatCallback(0, new Error("duplicate callback"));
   expect(await quiescence).toBeUndefined();
   expect(settlements).toBe(1);
+  await nextImmediate();
   expect(stream.listenerCount("error")).toBe(0);
   expect(stream.listenerCount("close")).toBe(0);
 });
@@ -507,4 +565,131 @@ test("empty UTF-8 documents use the same callback and backpressure contract", as
 
   supervisor.dispose();
   await supervisor.quiesce();
+});
+
+test("native callback failure after terminal quiescence remains contained", async () => {
+  const native = createNativeWritable();
+  const errorBaseline = native.stream.listenerCount("error");
+  const closeBaseline = native.stream.listenerCount("close");
+  const supervisor = createStreamSupervisor(
+    asWriteStream(native.stream),
+    asWriteStream(native.stream),
+  );
+  let settlements = 0;
+  const write = supervisor.stdout.writeUtf8("document").then((outcome) => {
+    settlements += 1;
+    return outcome;
+  });
+
+  native.stream.emit("close");
+  expect(await write).toEqual({ kind: "outputUnavailable" });
+  supervisor.dispose();
+  await supervisor.quiesce();
+  expect(native.stream.listenerCount("close")).toBe(closeBaseline);
+  expect(native.stream.listenerCount("error")).toBe(errorBaseline + 1);
+
+  await nextImmediate();
+  expect(() => {
+    native.complete(new Error(SENTINEL));
+  }).not.toThrow();
+  await nextImmediate();
+
+  expect(settlements).toBe(1);
+  expect(JSON.stringify(await write)).not.toContain(SENTINEL);
+  expect(native.stream.listenerCount("error")).toBe(errorBaseline);
+  expect(native.stream.listenerCount("close")).toBe(closeBaseline);
+});
+
+test("native callback success after terminal quiescence releases containment", async () => {
+  const native = createNativeWritable();
+  const errorBaseline = native.stream.listenerCount("error");
+  const closeBaseline = native.stream.listenerCount("close");
+  const supervisor = createStreamSupervisor(
+    asWriteStream(native.stream),
+    asWriteStream(native.stream),
+  );
+  const write = supervisor.stdout.writeUtf8("document");
+
+  native.stream.emit("error", new Error(SENTINEL));
+  native.stream.emit("close");
+  native.stream.emit("error", new Error("duplicate terminal"));
+  expect(await write).toEqual({ kind: "outputUnavailable" });
+  supervisor.dispose();
+  await supervisor.quiesce();
+  expect(native.stream.listenerCount("close")).toBe(closeBaseline);
+  expect(native.stream.listenerCount("error")).toBe(errorBaseline + 1);
+
+  await nextImmediate();
+  native.complete();
+  await nextImmediate();
+
+  expect(await write).toEqual({ kind: "outputUnavailable" });
+  expect(native.stream.listenerCount("error")).toBe(errorBaseline);
+  expect(native.stream.listenerCount("close")).toBe(closeBaseline);
+});
+
+test("repeated supervisors share one native late-callback guard", async () => {
+  const native = createNativeWritable();
+  const errorBaseline = native.stream.listenerCount("error");
+  const closeBaseline = native.stream.listenerCount("close");
+  const supervisors = Array.from({ length: 6 }, () =>
+    createStreamSupervisor(asWriteStream(native.stream), asWriteStream(native.stream)),
+  );
+  const writes = supervisors.map((supervisor, index) =>
+    supervisor.stdout.writeUtf8(`document ${index}`),
+  );
+
+  native.stream.emit("close");
+  native.stream.emit("close");
+  expect(await Promise.all(writes)).toEqual(supervisors.map(() => ({ kind: "outputUnavailable" })));
+  for (const supervisor of supervisors) {
+    supervisor.dispose();
+  }
+  await Promise.all(supervisors.map((supervisor) => supervisor.quiesce()));
+
+  expect(native.stream.listenerCount("close")).toBe(closeBaseline);
+  expect(native.stream.listenerCount("error")).toBe(errorBaseline + 1);
+});
+
+test("output outcomes resist mutation across calls, sinks, and supervisors", async () => {
+  const firstStream = new ControlledWritable();
+  const firstSupervisor = createStreamSupervisor(
+    firstStream.asWriteStream(),
+    firstStream.asWriteStream(),
+  );
+  const firstWritten = firstSupervisor.stdout.writeUtf8("first");
+  firstStream.completeCallback();
+  const firstWrittenResult = await firstWritten;
+  expectFrozenOutcome(firstWrittenResult, "written");
+
+  const secondWritten = firstSupervisor.stderr.writeUtf8("second");
+  firstStream.completeCallback();
+  expect(await secondWritten).toEqual({ kind: "written" });
+
+  const controller = new AbortController();
+  controller.abort();
+  const firstUnavailable = await firstSupervisor.stdout.writeUtf8("cancelled", {
+    abortSignal: controller.signal,
+  });
+  expectFrozenOutcome(firstUnavailable, "outputUnavailable");
+  expect(
+    await firstSupervisor.stderr.writeUtf8("cancelled diagnostic", {
+      abortSignal: controller.signal,
+    }),
+  ).toEqual({ kind: "outputUnavailable" });
+
+  const secondStream = new ControlledWritable();
+  const secondSupervisor = createStreamSupervisor(
+    secondStream.asWriteStream(),
+    secondStream.asWriteStream(),
+  );
+  const crossSupervisorWrite = secondSupervisor.stdout.writeUtf8("third");
+  secondStream.completeCallback();
+  expect(await crossSupervisorWrite).toEqual({ kind: "written" });
+
+  expect(firstWrittenResult).toEqual({ kind: "written" });
+  expect(firstUnavailable).toEqual({ kind: "outputUnavailable" });
+  firstSupervisor.dispose();
+  secondSupervisor.dispose();
+  await Promise.all([firstSupervisor.quiesce(), secondSupervisor.quiesce()]);
 });

@@ -1,7 +1,11 @@
 import type { AwaitedOutputSink, OutputWriteOutcome, StreamSupervisor } from "./types";
 
-const WRITTEN: OutputWriteOutcome = { kind: "written" };
-const OUTPUT_UNAVAILABLE: OutputWriteOutcome = { kind: "outputUnavailable" };
+const WRITTEN: OutputWriteOutcome = Object.freeze({ kind: "written" });
+const OUTPUT_UNAVAILABLE: OutputWriteOutcome = Object.freeze({
+  kind: "outputUnavailable",
+});
+
+const lateCallbackGuards = new WeakMap<NodeJS.WriteStream, LateCallbackGuard>();
 
 type Deferred<T> = Readonly<{
   promise: Promise<T>;
@@ -17,6 +21,48 @@ type TrackedWork = Readonly<{
 type StreamOperation = Readonly<{
   fail(): void;
 }>;
+
+class LateCallbackGuard {
+  readonly #stream: NodeJS.WriteStream;
+  readonly #onError: () => void;
+  #pendingCallbacks = 0;
+
+  constructor(stream: NodeJS.WriteStream) {
+    this.#stream = stream;
+    this.#onError = () => {};
+    this.#stream.on("error", this.#onError);
+  }
+
+  retain(): () => void {
+    this.#pendingCallbacks += 1;
+    let released = false;
+    return () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      setImmediate(() => {
+        this.#pendingCallbacks -= 1;
+        if (this.#pendingCallbacks !== 0) {
+          return;
+        }
+        this.#stream.removeListener("error", this.#onError);
+        if (lateCallbackGuards.get(this.#stream) === this) {
+          lateCallbackGuards.delete(this.#stream);
+        }
+      });
+    };
+  }
+}
+
+function retainLateCallbackGuard(stream: NodeJS.WriteStream): () => void {
+  let guard = lateCallbackGuards.get(stream);
+  if (guard === undefined) {
+    guard = new LateCallbackGuard(stream);
+    lateCallbackGuards.set(stream, guard);
+  }
+  return guard.retain();
+}
 
 function deferred<T>(): Deferred<T> {
   let resolvePromise: ((value: T) => void) | undefined;
@@ -137,6 +183,7 @@ class SupervisedStream {
     let terminal = false;
     let released = false;
     let terminalReleaseScheduled = false;
+    let releaseLateCallbackGuard: (() => void) | undefined;
 
     const removeDrainListener = () => {
       this.#stream.removeListener("drain", onDrain);
@@ -158,6 +205,12 @@ class SupervisedStream {
       terminalReleaseScheduled = true;
       queueMicrotask(release);
     };
+    const retainLateCallbackContainment = () => {
+      if (!writeReturned || callbackSeen || releaseLateCallbackGuard !== undefined) {
+        return;
+      }
+      releaseLateCallbackGuard = retainLateCallbackGuard(this.#stream);
+    };
     const succeedIfComplete = () => {
       if (
         terminal ||
@@ -174,6 +227,7 @@ class SupervisedStream {
     const failOperation = () => {
       if (!terminal) {
         terminal = true;
+        retainLateCallbackContainment();
         removeDrainListener();
         settle(OUTPUT_UNAVAILABLE);
       }
@@ -191,6 +245,7 @@ class SupervisedStream {
         return;
       }
       callbackSeen = true;
+      releaseLateCallbackGuard?.();
       if (error !== undefined && error !== null) {
         this.#fail();
         return;
@@ -209,6 +264,9 @@ class SupervisedStream {
       const writeReturn = this.#stream.write(text, "utf8", onCallback);
       writeReturned = true;
       drainRequired = !writeReturn;
+      if (terminal) {
+        retainLateCallbackContainment();
+      }
       if (!drainRequired) {
         removeDrainListener();
       }
