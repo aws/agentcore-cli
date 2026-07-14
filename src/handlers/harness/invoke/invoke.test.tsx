@@ -5,7 +5,7 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { GetHarnessResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import { createRootHandler } from "../../index";
-import { TestCoreClient, testIO } from "../../../testing";
+import { TestCoreClient, testExecutionPolicy, testIO } from "../../../testing";
 
 // Command-flow tests for `harness invoke`, driven through the real root handler
 // exactly as the CLI runs it. Unlike the get/list suites these use a
@@ -42,7 +42,7 @@ async function run(args: string[], configure?: (core: TestCoreClient) => void) {
   configure?.(core);
   const io = testIO();
   const root = createRootHandler(core, io.io);
-  await root.route(["node", "agentcore", ...args, "--region", "us-west-2"]);
+  await root.route(["node", "agentcore", ...args, "--region", "us-west-2"], testExecutionPolicy());
   return { core, stdout: io.stdout() };
 }
 

@@ -4,7 +4,7 @@ import { render, cleanup } from "ink-testing-library";
 import { ValueContext, compile, CommandKey } from "../router";
 import { createRootHandler } from "./index";
 import { HelpScreen } from "./screen";
-import { TestCoreClient, testIO } from "../testing";
+import { TestCoreClient, testExecutionPolicy, testIO } from "../testing";
 
 afterEach(cleanup);
 
@@ -18,6 +18,7 @@ describe("HelpScreen", () => {
     const command = compile(
       createRootHandler(new TestCoreClient(), testIO().io),
       ValueContext.EmptyContext(),
+      testExecutionPolicy(),
     );
     const ctx = ValueContext.EmptyContext().withValue(CommandKey, command);
 

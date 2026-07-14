@@ -2,7 +2,13 @@ import { test, expect, describe } from "bun:test";
 import { join } from "node:path";
 import { CoreClient } from "../../core";
 import { createRootHandler } from "../index";
-import { fixtureFactories, isRecording, matchGolden, testIO } from "../../testing";
+import {
+  fixtureFactories,
+  isRecording,
+  matchGolden,
+  testExecutionPolicy,
+  testIO,
+} from "../../testing";
 
 // End-to-end command-flow tests for the `harness` subtree.
 //
@@ -27,7 +33,7 @@ async function run(args: string[]): Promise<string> {
   const core = new CoreClient(createControlClient, createDataClient, createIamClient);
   const io = testIO();
   const root = createRootHandler(core, io.io);
-  await root.route(["node", "agentcore", ...args, "--region", REGION]);
+  await root.route(["node", "agentcore", ...args, "--region", REGION], testExecutionPolicy());
   return io.stdout();
 }
 

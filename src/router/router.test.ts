@@ -15,6 +15,7 @@ import {
   type Handler,
   type Middleware,
 } from "./index";
+import { testExecutionPolicy } from "../testing/testIO";
 
 // --- helpers ---------------------------------------------------------------
 
@@ -42,6 +43,8 @@ function leaf(name: string, onHandle: () => void): Handler {
   });
 }
 
+const executionPolicy = testExecutionPolicy();
+
 // exitOverrideAll makes every command in the tree throw (instead of calling
 // process.exit) and swallows its output, so validation failures are testable.
 function exitOverrideAll(cmd: Command): Command {
@@ -62,7 +65,7 @@ test("middleware accumulates down the tree and wraps the leaf in ancestor-first 
   const root = new Router("app").use(record(log, "root"));
   root.handler(greet);
 
-  await root.route(["node", "app", "greet", "hi"]);
+  await root.route(["node", "app", "greet", "hi"], executionPolicy);
 
   // root (outermost) runs first, then greet, then the leaf handle.
   expect(log).toEqual(["root", "greet", "handle"]);
@@ -78,7 +81,7 @@ test("middleware applies only to the subtree where it is declared", async () => 
   root.handler(greet);
   root.handler(leaf("top", () => log.push("top-handle"))); // sibling of greet
 
-  await root.route(["node", "app", "top"]);
+  await root.route(["node", "app", "top"], executionPolicy);
 
   expect(log).toEqual(["root", "top-handle"]);
 });
@@ -96,7 +99,7 @@ test("a group's default handler runs when it is invoked without a subcommand", a
   const root = new Router("app");
   root.handler(harness);
 
-  await root.route(["node", "app", "harness"]);
+  await root.route(["node", "app", "harness"], executionPolicy);
 
   expect(ran).toBe(true);
 });
@@ -112,7 +115,7 @@ test("a subcommand still routes past the group's default handler", async () => {
   const root = new Router("app");
   root.handler(harness);
 
-  await root.route(["node", "app", "harness", "get"]);
+  await root.route(["node", "app", "harness", "get"], executionPolicy);
 
   expect(log).toEqual(["get"]); // default did NOT fire
 });
@@ -125,7 +128,7 @@ test("the root's default handler runs when invoked with no subcommand", async ()
   });
   root.handler(leaf("get", () => {}));
 
-  await root.route(["node", "app"]);
+  await root.route(["node", "app"], executionPolicy);
 
   expect(ran).toBe(true);
 });
@@ -141,7 +144,7 @@ test("middleware wraps the default handler ancestor-first", async () => {
   const root = new Router("app").use(record(log, "root"));
   root.handler(harness);
 
-  await root.route(["node", "app", "harness"]);
+  await root.route(["node", "app", "harness"], executionPolicy);
 
   // root (outermost) runs first, then harness, then the default handle.
   expect(log).toEqual(["root", "harness", "default"]);
@@ -159,7 +162,7 @@ test("the default handler reads group-level flags from the context", async () =>
   const root = new Router("app").groupFlags(RegionKey);
   root.handler(harness);
 
-  await root.route(["node", "app", "harness", "--region", "us-west-2"]);
+  await root.route(["node", "app", "harness", "--region", "us-west-2"], executionPolicy);
 
   expect(region).toBe("us-west-2");
 });
@@ -177,7 +180,7 @@ test("a group's default handler reads its OWN group-level flags from the context
   const root = new Router("app");
   root.handler(harness);
 
-  await root.route(["node", "app", "harness", "--level", "debug"]);
+  await root.route(["node", "app", "harness", "--level", "debug"], executionPolicy);
 
   expect(level).toBe("debug");
 });
@@ -199,7 +202,7 @@ test("validates and passes a typed-by-name object to handle", async () => {
   const root = new Router("app");
   root.handler(get);
 
-  await root.route(["node", "app", "get", "--harness-id", "abc"]);
+  await root.route(["node", "app", "get", "--harness-id", "abc"], executionPolicy);
 
   expect(seen).toEqual({ "harness-id": "abc" });
 });
@@ -219,7 +222,7 @@ test("auto-coerces raw string flag values to the schema's type", async () => {
   const root = new Router("app");
   root.handler(add);
 
-  await root.route(["node", "app", "add", "--count", "42", "--verbose"]);
+  await root.route(["node", "app", "add", "--count", "42", "--verbose"], executionPolicy);
 
   expect(seen).toEqual({ count: 42, verbose: true });
 });
@@ -239,7 +242,7 @@ test("boolean flags default to false when omitted", async () => {
   const root = new Router("app");
   root.handler(run);
 
-  await root.route(["node", "app", "run"]);
+  await root.route(["node", "app", "run"], executionPolicy);
 
   expect(seen).toEqual({ verbose: false });
 });
@@ -259,7 +262,7 @@ test("applies a schema default for an omitted flag", async () => {
   const root = new Router("app");
   root.handler(opt);
 
-  await root.route(["node", "app", "opt"]);
+  await root.route(["node", "app", "opt"], executionPolicy);
 
   expect(seen).toEqual({ count: 7 });
 });
@@ -277,7 +280,7 @@ test("reports invalid input via command.error (throws under exitOverride)", asyn
   const root = new Router("app");
   root.handler(get);
 
-  const cmd = exitOverrideAll(compile(root, ValueContext.EmptyContext()));
+  const cmd = exitOverrideAll(compile(root, ValueContext.EmptyContext(), executionPolicy));
 
   await expect(
     cmd.parseAsync(["node", "app", "get", "--harness-id", "toolong"]), // exceeds max(3)
@@ -295,7 +298,7 @@ test("a required (non-optional) flag is mandatory", async () => {
   const root = new Router("app");
   root.handler(get);
 
-  const cmd = exitOverrideAll(compile(root, ValueContext.EmptyContext()));
+  const cmd = exitOverrideAll(compile(root, ValueContext.EmptyContext(), executionPolicy));
 
   // Omitting the mandatory option makes Commander reject before the handler runs.
   await expect(cmd.parseAsync(["node", "app", "get"])).rejects.toThrow();
@@ -324,7 +327,10 @@ test("a group-level flag is validated and exposed to descendants via typed conte
   harness.handler(get);
   root.handler(harness);
 
-  await root.route(["node", "app", "harness", "get", "--id", "x", "--region", "us-west-2"]);
+  await root.route(
+    ["node", "app", "harness", "get", "--id", "x", "--region", "us-west-2"],
+    executionPolicy,
+  );
 
   expect(region).toBe("us-west-2");
   expect(ownFlags).toEqual({ id: "x" }); // inherited flag is NOT in the typed object
@@ -345,7 +351,7 @@ test("a group-level flag falls back to its schema default when omitted", async (
   const root = new Router("app").groupFlags(RegionKey);
   root.handler(get);
 
-  await root.route(["node", "app", "get"]);
+  await root.route(["node", "app", "get"], executionPolicy);
 
   expect(region).toBe("us-east-1");
 });
@@ -364,7 +370,7 @@ test("an invalid group-level flag is reported via command.error", async () => {
   const root = new Router("app").groupFlags(LevelKey);
   root.handler(get);
 
-  const cmd = exitOverrideAll(compile(root, ValueContext.EmptyContext()));
+  const cmd = exitOverrideAll(compile(root, ValueContext.EmptyContext(), executionPolicy));
 
   await expect(cmd.parseAsync(["node", "app", "get", "--level", "nope"])).rejects.toThrow(
     /Invalid value for option '--level'/,
@@ -404,7 +410,7 @@ test("compile rejects a handler with both subcommands and positional arguments",
   const root = new Router("app");
   root.handler(parent);
 
-  expect(() => compile(root, ValueContext.EmptyContext())).toThrow(
+  expect(() => compile(root, ValueContext.EmptyContext(), executionPolicy)).toThrow(
     /contains both subcommands and positional arguments/,
   );
 });
@@ -430,7 +436,7 @@ test("validates, coerces, and passes typed positional arguments to handle", asyn
   const root = new Router("app");
   root.handler(serve);
 
-  await root.route(["node", "app", "serve", "api", "8080", "true"]);
+  await root.route(["node", "app", "serve", "api", "8080", "true"], executionPolicy);
 
   expect(seen).toEqual({ name: "api", port: 8080, verbose: true });
 });
@@ -450,7 +456,7 @@ test("optional arguments resolve to undefined when omitted", async () => {
   const root = new Router("app");
   root.handler(config);
 
-  await root.route(["node", "app", "config"]);
+  await root.route(["node", "app", "config"], executionPolicy);
 
   expect(seen).toEqual({ key: undefined });
 });
@@ -470,7 +476,7 @@ test("arguments with schema defaults use the default when omitted", async () => 
   const root = new Router("app");
   root.handler(deploy);
 
-  await root.route(["node", "app", "deploy"]);
+  await root.route(["node", "app", "deploy"], executionPolicy);
 
   expect(seen).toEqual({ env: "prod" });
 });
@@ -490,7 +496,7 @@ test("variadic argument collects multiple values into an array", async () => {
   const root = new Router("app");
   root.handler(lint);
 
-  await root.route(["node", "app", "lint", "a.ts", "b.ts", "c.ts"]);
+  await root.route(["node", "app", "lint", "a.ts", "b.ts", "c.ts"], executionPolicy);
 
   expect(seen).toEqual({ files: ["a.ts", "b.ts", "c.ts"] });
 });
@@ -506,7 +512,7 @@ test("a required positional argument is mandatory", async () => {
   const root = new Router("app");
   root.handler(get);
 
-  const cmd = exitOverrideAll(compile(root, ValueContext.EmptyContext()));
+  const cmd = exitOverrideAll(compile(root, ValueContext.EmptyContext(), executionPolicy));
 
   await expect(cmd.parseAsync(["node", "app", "get"])).rejects.toThrow();
 });
@@ -524,7 +530,7 @@ test("rejects an argument that fails schema validation", async () => {
   const root = new Router("app");
   root.handler(config);
 
-  const cmd = exitOverrideAll(compile(root, ValueContext.EmptyContext()));
+  const cmd = exitOverrideAll(compile(root, ValueContext.EmptyContext(), executionPolicy));
 
   await expect(cmd.parseAsync(["node", "app", "config", "toolong"])).rejects.toThrow(
     /Invalid value for argument 'key'/,
@@ -545,7 +551,7 @@ test("compile rejects a variadic argument that is not the last positional", () =
   const root = new Router("app");
   root.handler(handler);
 
-  expect(() => compile(root, ValueContext.EmptyContext())).toThrow(
+  expect(() => compile(root, ValueContext.EmptyContext(), executionPolicy)).toThrow(
     /only the last argument can be variadic/,
   );
 });
@@ -573,7 +579,10 @@ test("handler receives both flags and arguments separately", async () => {
   const root = new Router("app");
   root.handler(set);
 
-  await root.route(["node", "app", "set", "--format", "json", "region", "us-west-2"]);
+  await root.route(
+    ["node", "app", "set", "--format", "json", "region", "us-west-2"],
+    executionPolicy,
+  );
 
   expect(seenFlags).toEqual({ format: "json" });
   expect(seenArgs).toEqual({ key: "region", value: "us-west-2" });
@@ -597,7 +606,7 @@ test("handler with overlapping flag and arg names works independently", async ()
   const root = new Router("app");
   root.handler(get);
 
-  await root.route(["node", "app", "get", "--id", "flag-value", "arg-value"]);
+  await root.route(["node", "app", "get", "--id", "flag-value", "arg-value"], executionPolicy);
 
   expect(seenFlags).toEqual({ id: "flag-value" });
   expect(seenArgs).toEqual({ id: "arg-value" });
@@ -610,7 +619,7 @@ test("handler with overlapping flag and arg names works independently", async ()
 // into a caught error).
 async function helpOutput(root: Router, argv: string[]): Promise<string> {
   let out = "";
-  const cmd = compile(root, ValueContext.EmptyContext());
+  const cmd = compile(root, ValueContext.EmptyContext(), executionPolicy);
   const capture = (c: Command): Command => {
     c.exitOverride();
     c.configureOutput({ writeOut: (s) => (out += s), writeErr: () => {} });

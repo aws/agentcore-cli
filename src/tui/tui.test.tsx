@@ -1,7 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import { createRootHandler } from "../handlers";
 import { renderJson } from "./index";
-import { TestCoreClient, testIO } from "../testing";
+import { TestCoreClient, testExecutionPolicy, testIO } from "../testing";
 
 describe("renderJson", () => {
   test("pretty-prints a value as indented JSON to the given writer", () => {
@@ -19,7 +19,7 @@ describe("--json short-circuits the TUI", () => {
   async function runRoot(args: string[]): Promise<string> {
     const io = testIO();
     const root = createRootHandler(new TestCoreClient(), io.io);
-    await root.route(["node", "agentcore", ...args, "--json"]);
+    await root.route(["node", "agentcore", ...args, "--json"], testExecutionPolicy());
     return io.stdout();
   }
 

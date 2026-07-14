@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRootHandler } from "../handlers";
-import { TestCoreClient, testIO } from "../testing";
+import { TestCoreClient, testExecutionPolicy, testIO } from "../testing";
 
 // writeConfigFile writes an AWS shared-config file with the given contents to a
 // fresh temp dir and returns its path, for exercising the config-file region tier.
@@ -24,7 +24,10 @@ function writeConfigFile(contents: string): string {
 async function resolvedRegion(args: string[]): Promise<string> {
   const core = new TestCoreClient();
   const root = createRootHandler(core, testIO().io);
-  await root.route(["node", "agentcore", "harness", "list", "--json", ...args]);
+  await root.route(
+    ["node", "agentcore", "harness", "list", "--json", ...args],
+    testExecutionPolicy(),
+  );
   const call = core.harness.calls.at(-1);
   const options = call?.args[2] as { region: string };
   return options.region;

@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { createRootHandler } from "../index";
-import { TestCoreClient, testIO } from "../../testing";
+import { TestCoreClient, testExecutionPolicy, testIO } from "../../testing";
 
 // End-to-end tests for the `config` command, driven through the real root
 // handler and top-level route(). A TestCoreClient stands in for Core (config
@@ -10,7 +10,7 @@ import { TestCoreClient, testIO } from "../../testing";
 async function run(args: string[]): Promise<string> {
   const io = testIO();
   const root = createRootHandler(new TestCoreClient(), io.io);
-  await root.route(["node", "agentcore", "config", ...args]);
+  await root.route(["node", "agentcore", "config", ...args], testExecutionPolicy());
   return io.stdout();
 }
 

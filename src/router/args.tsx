@@ -24,9 +24,7 @@ function validateArgument(
 ): unknown {
   const result = argument.schema.safeParse(coerce(argument.schema, input));
   if (!result.success) {
-    throw new TypeError(
-      `Invalid value for argument '${argument.name}': ${formatZodError(result.error)}`,
-    );
+    command.error(`Invalid value for argument '${argument.name}': ${formatZodError(result.error)}`);
   }
   return result.data;
 }

@@ -19,3 +19,8 @@ export {
 } from "./handler";
 export { type Middleware, type MiddlewareProvider, isMiddlewareProvider } from "./middleware";
 export { type Context, type ContextKey, ValueContext, contextKey } from "./context";
+export {
+  createCommanderExecutionPolicy,
+  type CommanderExecutionPolicy,
+  type CommanderExitOutcome,
+} from "./executionPolicy";

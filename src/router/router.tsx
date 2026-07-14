@@ -3,6 +3,7 @@ import { type Middleware, type MiddlewareProvider, isMiddlewareProvider } from "
 import { type Context, type ContextKey, ValueContext, contextKey } from "./context";
 import { applyGlobalFlags, formatParameterDetails, parseFlags, toOption } from "./flags";
 import { parseArguments, toCommanderArgument } from "./args";
+import type { CommanderExecutionPolicy } from "./executionPolicy";
 
 import { Command } from "commander";
 
@@ -96,10 +97,12 @@ function globalFlagsOf(node: Handler): GlobalFlag[] {
 export function compile(
   node: Handler,
   ctx: Context,
+  policy: CommanderExecutionPolicy,
   stack: Middleware[] = [],
   inheritedGlobals: GlobalFlag[] = [],
 ): Command {
   const c = new Command(node.name());
+  policy.configure(c);
   c.description(node.description());
 
   const ownFlags = node.flags();
@@ -131,7 +134,7 @@ export function compile(
     // A group's own global flags become inherited flags for everything beneath it.
     const childGlobals = [...inheritedGlobals, ...globalFlagsOf(node)];
     for (const child of children) {
-      c.addCommand(compile(child, ctx, nextStack, childGlobals));
+      c.addCommand(compile(child, ctx, policy, nextStack, childGlobals));
     }
     // A group may also carry a default handler that runs when it is invoked
     // without a subcommand. It executes with this group's own middleware and can
@@ -237,7 +240,11 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
 
   // --- Router execution ---
 
-  async route(argv: string[], ctx: Context = ValueContext.EmptyContext()): Promise<void> {
-    await compile(this, ctx).parseAsync(argv);
+  async route(
+    argv: string[],
+    policy: CommanderExecutionPolicy,
+    ctx: Context = ValueContext.EmptyContext(),
+  ): Promise<void> {
+    await compile(this, ctx, policy).parseAsync(argv);
   }
 }

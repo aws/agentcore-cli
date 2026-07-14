@@ -1,5 +1,10 @@
 import { PassThrough } from "node:stream";
 import type { AppIO } from "../handlers/types";
+import {
+  createCommanderExecutionPolicy,
+  type CommanderExecutionPolicy,
+} from "../router/executionPolicy";
+import type { AwaitedOutputSink, StreamSupervisor } from "../runtime/output/types";
 
 // TestIO bundles an in-memory AppIO with accessors to read back what was written
 // to each stream. Pass `io` to createRootHandler({ io }) to capture a command's
@@ -39,4 +44,17 @@ export function testIO(): TestIO {
     stdout: out.read,
     stderr: err.read,
   };
+}
+
+export function testExecutionPolicy(): CommanderExecutionPolicy {
+  const sink: AwaitedOutputSink = {
+    writeUtf8: async () => ({ kind: "written" }),
+  };
+  const supervisor: StreamSupervisor = {
+    stdout: sink,
+    stderr: sink,
+    quiesce: async () => {},
+    dispose: () => {},
+  };
+  return createCommanderExecutionPolicy(supervisor);
 }
