@@ -136,7 +136,7 @@
     "@typescript-eslint/parser": "^8.50.0",
     "@vitest/coverage-v8": "^4.0.18",
     "@xterm/headless": "^6.0.0",
-    "aws-cdk-lib": "^2.258.0",
+    "aws-cdk-lib": "2.261.0",
     "constructs": "^10.4.4",
     "esbuild": "^0.28.0",
     "eslint": "^9.39.4",

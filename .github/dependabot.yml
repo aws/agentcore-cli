@@ -9,6 +9,9 @@ updates:
         patterns:
           - '@aws-sdk/*'
           - '@smithy/*'
+      # aws-cdk-lib bumps must be synced into the vended template
+      # (src/assets/cdk/package.json): run `node scripts/sync-template-cdk.mjs`
+      # on the PR branch. Enforced by src/assets/__tests__/cdk-schema-compat.test.ts.
       aws-cdk:
         patterns:
           - '@aws-cdk/*'

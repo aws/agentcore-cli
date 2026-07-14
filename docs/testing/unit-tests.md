@@ -105,3 +105,29 @@ Review the changes in `src/assets/__tests__/__snapshots__/` before committing.
 - File structure of `src/assets/`
 - Contents of all template files (CDK, Python frameworks, MCP, static assets)
 - Any file addition or removal
+
+## CDK Schema Compatibility Test
+
+The vended CDK template (`src/assets/cdk/package.json`) exact-pins `aws-cdk-lib`. This pin controls the cloud-assembly
+schema version that user projects _write_ at synth time; the CLI's bundled readers (`@aws-cdk/toolkit-lib`,
+`@aws-cdk/cdk-assets-lib`) can only _read_ schemas up to their own version. Readers accept older schemas but hard-fail
+on newer ones, so an unpinned template broke every fresh project's deploy with `AssemblyVersionMismatch` when upstream
+`aws-cdk-lib` bumped the schema (ticket V2240408418).
+
+`src/assets/__tests__/cdk-schema-compat.test.ts` enforces the coupling:
+
+- The template pin is exact and matches both the root `devDependencies['aws-cdk-lib']` (the lockstep anchor) and the
+  installed copy in `node_modules`.
+- Each bundled reader's max supported schema version is >= the schema version the pinned `aws-cdk-lib` writes.
+
+When a Dependabot PR bumps the `aws-cdk` group (or you bump `aws-cdk-lib` manually), this test fails until you re-sync.
+Fix it with one command on the PR branch:
+
+```bash
+npm ci && node scripts/sync-template-cdk.mjs
+```
+
+The script copies the installed `aws-cdk-lib` version into the root devDependency and the template pin, then regenerates
+asset snapshots. Commit the resulting changes (if the root `package.json` changed, run `npm install` first so
+`npm-shrinkwrap.json` is regenerated too). Note that `@dependabot rebase` recreates the PR branch and drops the sync
+commit — just re-run the script.
