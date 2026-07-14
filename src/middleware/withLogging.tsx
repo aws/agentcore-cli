@@ -23,6 +23,7 @@ export function withLogging(config: WithLoggingConfig): Middleware {
       const commandPath = ctx.require(PathKey);
       const logger = config.logger.child({ commandPath });
       try {
+        // TODO: ensure sensitive fields are redacted from flags/args.
         logger.child({ flags, args }).debug("executing command");
         await h.handle(ctx.withValue<Logger>(LoggerKey, logger), flags, args);
         logger.debug("command executed successfully");
