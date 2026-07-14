@@ -182,6 +182,9 @@ async function exerciseWriteFailure(
     }).not.toThrow();
     await nextImmediate();
     expect(settlements).toBe(1);
+  } else if (failure === "callback") {
+    expect(stream.listenerCount("error")).toBe(errorBaseline + 1);
+    await nextImmediate();
   }
   expect(stream.listenerCount("error")).toBe(errorBaseline);
   return result;
@@ -598,6 +601,66 @@ test("native callback failure after terminal quiescence remains contained", asyn
   expect(JSON.stringify(await write)).not.toContain(SENTINEL);
   expect(native.stream.listenerCount("error")).toBe(errorBaseline);
   expect(native.stream.listenerCount("close")).toBe(closeBaseline);
+});
+
+test("native callback error as the first terminal signal is contained in a subprocess", async () => {
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      "-e",
+      `
+        import { Writable } from "node:stream";
+        import { createStreamSupervisor } from "./src/runtime/output/streamSupervisor.ts";
+
+        const sentinel = "callback failure";
+        let nativeCallback;
+        const stream = new Writable({
+          write(_chunk, _encoding, callback) {
+            nativeCallback = callback;
+          },
+        });
+        const errorBaseline = stream.listenerCount("error");
+        const closeBaseline = stream.listenerCount("close");
+        const supervisor = createStreamSupervisor(stream, stream);
+        let settlements = 0;
+        const write = supervisor.stdout.writeUtf8("document").then((outcome) => {
+          settlements += 1;
+          return outcome;
+        });
+
+        supervisor.dispose();
+        nativeCallback(new Error(sentinel));
+        const outcome = await write;
+        await supervisor.quiesce();
+        await new Promise(setImmediate);
+
+        if (
+          outcome.kind !== "outputUnavailable" ||
+          settlements !== 1 ||
+          stream.listenerCount("error") !== errorBaseline ||
+          stream.listenerCount("close") !== closeBaseline
+        ) {
+          throw new Error("native callback containment invariant failed");
+        }
+        console.log(JSON.stringify({ outcome, settlements }));
+      `,
+    ],
+    {
+      cwd: process.cwd(),
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
+  const [exitCode, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+
+  expect(exitCode).toBe(0);
+  expect(stdout).toBe('{"outcome":{"kind":"outputUnavailable"},"settlements":1}\n');
+  expect(stderr).toBe("");
+  expect(`${stdout}${stderr}`).not.toContain("callback failure");
 });
 
 test("native callback success after terminal quiescence releases containment", async () => {

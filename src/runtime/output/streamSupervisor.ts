@@ -205,11 +205,16 @@ class SupervisedStream {
       terminalReleaseScheduled = true;
       queueMicrotask(release);
     };
+    const retainCallbackContainment = () => {
+      if (releaseLateCallbackGuard === undefined) {
+        releaseLateCallbackGuard = retainLateCallbackGuard(this.#stream);
+      }
+    };
     const retainLateCallbackContainment = () => {
       if (!writeReturned || callbackSeen || releaseLateCallbackGuard !== undefined) {
         return;
       }
-      releaseLateCallbackGuard = retainLateCallbackGuard(this.#stream);
+      retainCallbackContainment();
     };
     const succeedIfComplete = () => {
       if (
@@ -243,6 +248,9 @@ class SupervisedStream {
     const onCallback = (error?: Error | null) => {
       if (callbackSeen) {
         return;
+      }
+      if (error !== undefined && error !== null) {
+        retainCallbackContainment();
       }
       callbackSeen = true;
       releaseLateCallbackGuard?.();
