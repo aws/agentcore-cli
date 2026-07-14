@@ -11,7 +11,7 @@ export const LOG_LEVEL = {
 
 export type LogLevel = (typeof LOG_LEVEL)[keyof typeof LOG_LEVEL];
 
-export type LoggerBindings = Record<string, string | number | boolean | null | undefined>;
+export type LoggerBindings = Record<string, unknown>;
 
 type LogFn = (...messages: string[]) => void;
 
