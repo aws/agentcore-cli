@@ -251,8 +251,14 @@ describe("TypeScript diagnostic verifier", () => {
     };
   }
 
-  function createTrackedFileSystem() {
+  function createTrackedFileSystem(
+    options: Readonly<{
+      targetPath?: string;
+      afterSecondInitialRead?: () => Promise<void>;
+    }> = {},
+  ) {
     let closeCount = 0;
+    let initialReadCount = 0;
     return {
       get closeCount() {
         return closeCount;
@@ -268,6 +274,18 @@ describe("TypeScript diagnostic verifier", () => {
                 return async () => {
                   closeCount += 1;
                   await target.close();
+                };
+              }
+              if (property === "read" && path === options.targetPath) {
+                return async (buffer: Buffer, offset: number, length: number, position: number) => {
+                  const result = await target.read(buffer, offset, length, position);
+                  if (position === 0) {
+                    initialReadCount += 1;
+                    if (initialReadCount === 2) {
+                      await options.afterSecondInitialRead?.();
+                    }
+                  }
+                  return result;
                 };
               }
               const value = Reflect.get(target, property);
@@ -452,6 +470,41 @@ describe("TypeScript diagnostic verifier", () => {
       });
 
       expect(result.exitCode).toBe(1);
+    } finally {
+      await rm(repositoryRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects path replacement during the post-compiler handle hash", async () => {
+    const repositoryRoot = await createTemporaryRepository();
+    try {
+      const targetPath = join(repositoryRoot, reviewedPath(0));
+      const replacementPath = `${targetPath}.replacement`;
+      await writeFile(replacementPath, await readFile(targetPath));
+      const tracker = createTrackedFileSystem({
+        targetPath,
+        afterSecondInitialRead: async () => {
+          await rename(targetPath, `${targetPath}.original`);
+          await rename(replacementPath, targetPath);
+        },
+      });
+      const commands = createCommandRunner(
+        { exitCode: 2, stdout: compilerStdout, stderr: "" },
+        { repositoryRoot },
+      );
+
+      const result = await verifyTypeScriptDiagnostics({
+        fixture: validFixture,
+        cwd: repositoryRoot,
+        platform: process.platform,
+        runCommand: commands.runCommand,
+        fileSystem: tracker.fileSystem,
+      });
+
+      expect({ exitCode: result.exitCode, closeCount: tracker.closeCount }).toEqual({
+        exitCode: 1,
+        closeCount: 3,
+      });
     } finally {
       await rm(repositoryRoot, { recursive: true, force: true });
     }

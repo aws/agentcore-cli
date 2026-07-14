@@ -583,7 +583,7 @@ async function acquireLegacyFileLease(
   }
 }
 
-async function validateLegacyFileLease(
+async function validateLegacyFileIdentity(
   lease: LegacyFileLease,
   resolvedRepositoryRoot: string,
   platform: NodeJS.Platform,
@@ -611,7 +611,18 @@ async function validateLegacyFileLease(
     throw new Error("Reviewed legacy TypeScript file identity changed.");
   }
   requireResolvedPathWithinRepository(resolvedPath, resolvedRepositoryRoot, platform);
-  if ((await hashFileHandle(lease.handle)) !== lease.digest) {
+}
+
+async function validateLegacyFileLease(
+  lease: LegacyFileLease,
+  resolvedRepositoryRoot: string,
+  platform: NodeJS.Platform,
+  fileSystem: BaselineFileSystem,
+): Promise<void> {
+  await validateLegacyFileIdentity(lease, resolvedRepositoryRoot, platform, fileSystem);
+  const digest = await hashFileHandle(lease.handle);
+  await validateLegacyFileIdentity(lease, resolvedRepositoryRoot, platform, fileSystem);
+  if (digest !== lease.digest) {
     throw new Error("Reviewed legacy TypeScript file content changed.");
   }
 }
