@@ -273,29 +273,46 @@ describe("Commander execution policy configuration", () => {
 
 describe("real Commander execution", () => {
   function helpTree(): Router {
-    const nested = new Router("nested", "nested description").handler(
+    const defaultHost = new Router("default-host", "default host description")
+      .default(async () => {})
+      .handler(
+        createHandler({
+          name: "leaf",
+          description: "leaf description",
+          handle: async () => {},
+        }),
+      );
+    const nested = new Router("nested", "nested description")
+      .default(async () => {})
+      .handler(defaultHost);
+    return new Router("app", "root description").default(async () => {}).handler(nested);
+  }
+
+  test.each([
+    [["help"], "Usage: app"],
+    [["help", "nested"], "Usage: app nested"],
+    [["nested", "help", "default-host"], "Usage: app nested default-host"],
+    [["nested", "default-host", "help", "leaf"], "Usage: app nested default-host leaf"],
+  ])("help command succeeds through production-shaped default hosts", async (argv, usage) => {
+    const result = await invoke(helpTree(), argv);
+
+    expect(result.exitCode).toBe(ExitCode.SUCCESS);
+    expect(result.stdout).toContain(usage);
+    expect(result.stderr).toBe("");
+  });
+
+  test("--help succeeds and flushes supervised output", async () => {
+    const tree = new Router("app", "root description").handler(
       createHandler({
         name: "leaf",
         description: "leaf description",
         handle: async () => {},
       }),
     );
-    return new Router("app", "root description").handler(nested);
-  }
-
-  test("help <command> succeeds and flushes supervised output", async () => {
-    const result = await invoke(helpTree(), ["help", "nested"]);
+    const result = await invoke(tree, ["leaf", "--help"]);
 
     expect(result.exitCode).toBe(ExitCode.SUCCESS);
-    expect(result.stdout).toContain("Usage: app nested");
-    expect(result.stderr).toBe("");
-  });
-
-  test("--help succeeds and flushes supervised output", async () => {
-    const result = await invoke(helpTree(), ["nested", "leaf", "--help"]);
-
-    expect(result.exitCode).toBe(ExitCode.SUCCESS);
-    expect(result.stdout).toContain("Usage: app nested leaf");
+    expect(result.stdout).toContain("Usage: app leaf");
     expect(result.stderr).toBe("");
   });
 

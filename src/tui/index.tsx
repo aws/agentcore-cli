@@ -63,7 +63,7 @@ export function renderTui(core: Core, io: AppIO): DefaultHandle {
   return async (ctx) => {
     if (ctx.require(JsonKey)) {
       const c = ctx.require(CommandKey);
-      io.stdout.write(c.helpInformation());
+      c.outputHelp();
       return;
     }
 

@@ -125,6 +125,10 @@ export function compile(
 
   const children = node.children();
   if (children.length > 0) {
+    // Commander disables its implicit help command when a branch has a default
+    // action, so explicitly retain help before attaching children or fallback.
+    c.helpCommand(true);
+
     // attaching both children and subcommands leads to ambiguity.
     if (node.arguments().length > 0) {
       throw new Error(
