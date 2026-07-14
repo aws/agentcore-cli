@@ -163,10 +163,10 @@ The common leaf contracts are:
 | `list-tags` | Exactly one selector                             | None                                     | Emits `{ "tags": { ... } }`                                 |
 
 `--tags` follows the existing Harness spelling and accepts one JSON object. Create and `tag` reject an
-empty object. `tag` preserves keys absent from the request and replaces values for keys present in the
-request. `untag` requires one to 200 unique, non-empty keys. Create supports at most 50 tags, with keys
-of one to 128 characters and values of zero to 256 characters. Update does not accept `--tags`;
-callers use `tag` and `untag`.
+empty object and each accepts at most 50 entries in its request. `tag` preserves keys absent from the
+request and replaces values for keys present in the request. `untag` requires one to 200 unique,
+non-empty keys. Tag keys contain one to 128 characters and values contain zero to 256 characters.
+Update does not accept `--tags`; callers use `tag` and `untag`.
 
 Live probes on July 14, 2026 confirmed Tag, Untag, and List Tags against real OAuth2, API-key,
 payment, and workload Identity ARNs. Generated Tag documentation that lists only older AgentCore
@@ -222,7 +222,8 @@ overrides. The replacement JSON surface remains available for SDK-native configu
 Identity-level `--grant-type`; grant values occur only inside custom OAuth `--on-behalf-of-json`.
 
 Create applicability is exact. `R` means required, `O` means optional, `A` means one complete
-alternative is required, and `F` means rejected for that family:
+discovery alternative is required, `C` means conditionally required as described below, and `F`
+means rejected for that family:
 
 | Curated Create option               | Named except Microsoft | Microsoft | Included per-tenant | Included global | Custom |
 | ----------------------------------- | ---------------------- | --------- | ------------------- | --------------- | ------ |
@@ -233,16 +234,19 @@ alternative is required, and `F` means rejected for that family:
 | `--token-endpoint`                  | F                      | F         | R                   | F               | A      |
 | `--discovery-url`                   | F                      | F         | F                   | F               | A      |
 | `--discovery-json`                  | F                      | F         | F                   | F               | A      |
-| `--client-authentication-method`    | F                      | F         | F                   | F               | R      |
+| `--client-authentication-method`    | F                      | F         | F                   | F               | C      |
 | `--on-behalf-of-json`               | F                      | F         | F                   | F               | O      |
 | `--private-endpoint-json`           | F                      | F         | F                   | F               | O      |
 | `--private-endpoint-overrides-json` | F                      | F         | F                   | F               | O      |
 
 For custom Create, the discovery alternatives are exactly one of `--discovery-url`,
 `--discovery-json`, or the complete three-option issuer/authorization/token tuple. Partial tuples and
-multiple alternatives fail. Raw custom Create may omit `clientAuthenticationMethod` because the
-pinned model permits it; the CLI treats that service-defined default as secret-bearing and requires a
-client secret whenever `clientId` is present.
+multiple alternatives fail. Curated Create requires `--client-authentication-method` unless
+`--discovery-json` supplies
+`authorizationServerMetadata.tokenEndpointAuthMethods`; supplying both is a local conflict. Raw
+custom Create may omit both mechanisms because the pinned model permits it; the CLI treats that
+service-defined default as secret-bearing and requires a client secret whenever `clientId` is
+present.
 
 Curated Update accepts an explicit patch only where the Create table contains `R`, `O`, or `A`.
 Omission preserves the current value. Updating per-tenant endpoints requires the complete
@@ -250,8 +254,24 @@ issuer/authorization/token tuple. Updating custom discovery requires one complet
 alternative. Syntax and cross-option conflicts fail before Get; family-inapplicable options fail after
 the current vendor is read and before secret acquisition. `--replace-config-json` is the alternative
 for every family, must contain the member for the current vendor, and conflicts with every curated
-non-secret and clear option. Raw custom Update requires an explicit `clientAuthenticationMethod` so
-replacement cannot silently preserve or reset the method.
+non-secret and clear option.
+
+Custom OAuth has two mutually exclusive authentication-mechanism surfaces: the preferred
+`clientAuthenticationMethod` and legacy
+`authorizationServerMetadata.tokenEndpointAuthMethods`. Current AWS documentation states that a
+request containing both fails validation. Curated Update preserves the current mechanism when neither
+surface is supplied. Supplying either mechanism explicitly replaces the other: an explicit
+`--client-authentication-method` removes a preserved legacy method list, while an explicit
+`--discovery-json` method list omits the current preferred method. The changed effective discovery and
+mechanism appear in the review model. Raw custom Update requires exactly one of the two mechanisms so
+a complete replacement cannot silently preserve or reset authentication behavior. These conflicts
+are validated on the effective request before any secret acquisition.
+
+If a current legacy method list is preserved while metadata endpoints change, the list is rehydrated
+into the replacement metadata even when the new JSON omitted it. A legacy list cannot be represented
+with a `discoveryUrl`; changing a legacy provider to URL discovery therefore also requires an explicit
+preferred `--client-authentication-method`. If a current provider exposes neither mechanism, curated
+Update likewise requires an explicit preferred method instead of guessing the service default.
 
 API-key provider commands use:
 
@@ -374,29 +394,74 @@ The output aliases are:
 
 ```text
 S = terminal-safe string
+K = injective terminal-safe dynamic map-key string
 D = ISO-8601 date string
 Secret = exact { secretArn: S }
 UnknownV1 = exact { $unknown: SafeMemberName }
+SourceOut = S
+
+AuthorizationServerMetadataOut = exact {
+  issuer: S,
+  authorizationEndpoint: S,
+  tokenEndpoint: S,
+  responseTypes?: S[],
+  tokenEndpointAuthMethods?: S[]
+}
+
+DiscoveryOut =
+  | exact { discoveryUrl: S }
+  | exact { authorizationServerMetadata: AuthorizationServerMetadataOut }
+  | UnknownV1
+
+TokenExchangeGrantOut = exact {
+  actorTokenContent: S,
+  actorTokenScopes?: S[]
+}
+
+OnBehalfOfOut = exact {
+  grantType: S,
+  tokenExchangeGrantTypeConfig?: TokenExchangeGrantOut
+}
+
+SelfManagedLatticeResourceOut =
+  | exact { resourceConfigurationIdentifier: S }
+  | UnknownV1
+
+ManagedVpcResourceOut = exact {
+  vpcIdentifier: S,
+  subnetIds: S[],
+  endpointIpAddressType: S,
+  securityGroupIds?: S[],
+  tags?: Record<K,S>,
+  routingDomain?: S
+}
+
+PrivateEndpointOut =
+  | exact { selfManagedLatticeResource: SelfManagedLatticeResourceOut }
+  | exact { managedVpcResource: ManagedVpcResourceOut }
+  | UnknownV1
+
+PrivateEndpointOverrideOut = exact {
+  domain: S,
+  privateEndpoint: PrivateEndpointOut
+}
 
 OAuthOut =
   | oneOf(the same nine known OAuth member names)
   | UnknownV1
 
 OAuthOut named/included member = exact {
-  oauthDiscovery: Discovery,
+  oauthDiscovery: DiscoveryOut,
   clientId?: S
 }
 
 OAuthOut custom member = exact {
-  oauthDiscovery: Discovery,
+  oauthDiscovery: DiscoveryOut,
   clientId?: S,
-  privateEndpoint?: PrivateEndpoint,
-  privateEndpointOverrides?: PrivateEndpointOverride[],
-  onBehalfOfTokenExchangeConfig?: OnBehalfOf,
-  clientAuthenticationMethod?:
-    | "CLIENT_SECRET_BASIC"
-    | "CLIENT_SECRET_POST"
-    | "AWS_IAM_ID_TOKEN_JWT"
+  privateEndpoint?: PrivateEndpointOut,
+  privateEndpointOverrides?: PrivateEndpointOverrideOut[],
+  onBehalfOfTokenExchangeConfig?: OnBehalfOfOut,
+  clientAuthenticationMethod?: S
 }
 
 PaymentOut =
@@ -405,10 +470,10 @@ PaymentOut =
         apiKeyId: S,
         apiKeySecretArn: Secret,
         apiKeySecretJsonKey?: S,
-        apiKeySecretSource?: Source,
+        apiKeySecretSource?: SourceOut,
         walletSecretArn: Secret,
         walletSecretJsonKey?: S,
-        walletSecretSource?: Source
+        walletSecretSource?: SourceOut
       }
     }
   | exact {
@@ -416,39 +481,44 @@ PaymentOut =
         appId: S,
         appSecretArn: Secret,
         appSecretJsonKey?: S,
-        appSecretSource?: Source,
+        appSecretSource?: SourceOut,
         authorizationPrivateKeyArn: Secret,
         authorizationPrivateKeyJsonKey?: S,
-        authorizationPrivateKeySource?: Source,
+        authorizationPrivateKeySource?: SourceOut,
         authorizationId: S
       }
     }
   | UnknownV1
 ```
 
-Known output `Discovery`, `OnBehalfOf`, `PrivateEndpoint`, and `PrivateEndpointOverride` reuse the
-secret-free shapes from the advanced JSON contract. Input-only secret members are never present.
+Input aliases are never reused as output aliases. Every output enum-like scalar is a terminal-safe
+`S`, every dynamic map key uses injective `K`, and every union node, including nested discovery,
+private-endpoint, and self-managed Lattice unions, admits `UnknownV1`. Input-only secret members are
+never present. This keeps ordinary reads forward-compatible without weakening any write schema. In
+particular, a service-returned `PRIVATE_KEY_JWT` authentication method survives as `S` even though
+the pinned write enum and serializer do not model it; its unknown companion configuration remains
+unallowlisted and omitted.
 
 The exact top-level operation allowlists are:
 
-| Operation                  | V1 fields                                                                                                                                                                                     |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API-key Create             | `apiKeySecretArn:Secret`, `apiKeySecretJsonKey?:S`, `apiKeySecretSource?:Source`, `name:S`, `credentialProviderArn:S`                                                                         |
-| API-key Get / Update       | API-key Create fields plus `createdTime:D`, `lastUpdatedTime:D`                                                                                                                               |
-| API-key List               | `credentialProviders:[{ name:S, credentialProviderArn:S, createdTime:D, lastUpdatedTime:D }]`, `nextToken?:S`                                                                                 |
-| OAuth Create               | `clientSecretArn?:Secret`, `clientSecretJsonKey?:S`, `clientSecretSource?:Source`, `name:S`, `credentialProviderArn:S`, `callbackUrl?:S`, `oauth2ProviderConfigOutput?:OAuthOut`, `status?:S` |
-| OAuth Get                  | OAuth Create fields plus `credentialProviderVendor:S`, required `oauth2ProviderConfigOutput:OAuthOut`, `createdTime:D`, `lastUpdatedTime:D`, `failureReason?:SafeFailureGuidance`             |
-| OAuth Update               | OAuth Get fields except `failureReason`                                                                                                                                                       |
-| OAuth List                 | `credentialProviders:[{ name:S, credentialProviderVendor:S, credentialProviderArn:S, createdTime:D, lastUpdatedTime:D }]`, `nextToken?:S`                                                     |
-| Payment Create             | `name:S`, `credentialProviderVendor:S`, `credentialProviderArn:S`, `providerConfigurationOutput:PaymentOut`                                                                                   |
-| Payment Get                | Payment Create fields plus `createdTime:D`, `lastUpdatedTime:D`, `tags?:Record<S,S>`                                                                                                          |
-| Payment Update             | Payment Create fields plus `createdTime:D`, `lastUpdatedTime:D`; no `tags`                                                                                                                    |
-| Payment List               | `credentialProviders:[{ name:S, credentialProviderVendor:S, credentialProviderArn:S, createdTime:D, lastUpdatedTime:D }]`, `nextToken?:S`                                                     |
-| Workload Create            | `name:S`, `workloadIdentityArn:S`, `allowedResourceOauth2ReturnUrls?:S[]`                                                                                                                     |
-| Workload Get / Update      | Workload Create fields plus `createdTime:D`, `lastUpdatedTime:D`                                                                                                                              |
-| Workload List              | `workloadIdentities:[{ name:S, workloadIdentityArn:S }]`, `nextToken?:S`                                                                                                                      |
-| All four Deletes / Tagging | Delete, Tag, and Untag: `{}`; List Tags: `{ tags: Record<S,S> }`                                                                                                                              |
-| Token Vault Get / Set CMK  | `tokenVaultId:S`, `kmsConfiguration:{ keyType:S, kmsKeyArn?:S }`, `lastModifiedDate:D`                                                                                                        |
+| Operation                  | V1 fields                                                                                                                                                                                        |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| API-key Create             | `apiKeySecretArn:Secret`, `apiKeySecretJsonKey?:S`, `apiKeySecretSource?:SourceOut`, `name:S`, `credentialProviderArn:S`                                                                         |
+| API-key Get / Update       | API-key Create fields plus `createdTime:D`, `lastUpdatedTime:D`                                                                                                                                  |
+| API-key List               | `credentialProviders:[{ name:S, credentialProviderArn:S, createdTime:D, lastUpdatedTime:D }]`, `nextToken?:S`                                                                                    |
+| OAuth Create               | `clientSecretArn?:Secret`, `clientSecretJsonKey?:S`, `clientSecretSource?:SourceOut`, `name:S`, `credentialProviderArn:S`, `callbackUrl?:S`, `oauth2ProviderConfigOutput?:OAuthOut`, `status?:S` |
+| OAuth Get                  | OAuth Create fields plus `credentialProviderVendor:S`, required `oauth2ProviderConfigOutput:OAuthOut`, `createdTime:D`, `lastUpdatedTime:D`, `failureReason?:SafeFailureGuidance`                |
+| OAuth Update               | OAuth Get fields except `failureReason`                                                                                                                                                          |
+| OAuth List                 | `credentialProviders:[{ name:S, credentialProviderVendor:S, credentialProviderArn:S, createdTime:D, lastUpdatedTime:D }]`, `nextToken?:S`                                                        |
+| Payment Create             | `name:S`, `credentialProviderVendor:S`, `credentialProviderArn:S`, `providerConfigurationOutput:PaymentOut`                                                                                      |
+| Payment Get                | Payment Create fields plus `createdTime:D`, `lastUpdatedTime:D`, `tags?:Record<K,S>`                                                                                                             |
+| Payment Update             | Payment Create fields plus `createdTime:D`, `lastUpdatedTime:D`; no `tags`                                                                                                                       |
+| Payment List               | `credentialProviders:[{ name:S, credentialProviderVendor:S, credentialProviderArn:S, createdTime:D, lastUpdatedTime:D }]`, `nextToken?:S`                                                        |
+| Workload Create            | `name:S`, `workloadIdentityArn:S`, `allowedResourceOauth2ReturnUrls?:S[]`                                                                                                                        |
+| Workload Get / Update      | Workload Create fields plus `createdTime:D`, `lastUpdatedTime:D`                                                                                                                                 |
+| Workload List              | `workloadIdentities:[{ name:S, workloadIdentityArn:S }]`, `nextToken?:S`                                                                                                                         |
+| All four Deletes / Tagging | Delete, Tag, and Untag: `{}`; List Tags: `{ tags: Record<K,S> }`                                                                                                                                 |
+| Token Vault Get / Set CMK  | `tokenVaultId:S`, `kmsConfiguration:{ keyType:S, kmsKeyArn?:S }`, `lastModifiedDate:D`                                                                                                           |
 
 `SafeFailureGuidance` is chosen only from OAuth status, never from raw `failureReason` text:
 
@@ -461,8 +531,11 @@ The exact top-level operation allowlists are:
 
 V1 output schemas and the pinned runtime output schemas are fingerprinted together in drift tests.
 A newly modeled field does not silently enter V1; it requires an explicit allowlist and compatibility
-review. Output normalization never relies on SDK `CommandOutput` TypeScript types as a runtime
-security boundary.
+review. Drift tests also inject unknown members at every nested union and a custom provider containing
+`clientAuthenticationMethod: "PRIVATE_KEY_JWT"` plus an SDK-unknown `privateKeyJwtConfig`; the method
+survives as a safe string, the unknown structure does not enter V1, and writes remain fail closed.
+Output normalization never relies on SDK `CommandOutput` TypeScript types as a runtime security
+boundary.
 
 ## Architecture
 
@@ -490,14 +563,17 @@ on SDK request unions.
 file convention. It creates an operation-scoped `IdentityOperationBinding` that:
 
 - Sends typed SDK commands.
-- Invokes the configured credential provider exactly once, copies its documented identity fields and
-  expiration into one private frozen `AwsCredentialIdentity`, and passes that concrete value rather
-  than a refreshable provider to every owned client.
+- Invokes the configured credential provider exactly once and copies only its documented identity
+  fields into a private frozen snapshot. Expiration is validated once and stored as immutable epoch
+  milliseconds, never as a mutable `Date`.
 - Eagerly resolves region, FIPS/dual-stack inputs, configured endpoints, and the resulting complete
   `EndpointV2` values before the first operation call.
 - Constructs a read client with normal retries and a mutation client with `maxAttempts: 1`, both using
-  the exact frozen credential object and pinned AgentCore endpoint. In AWS SDK v3, `maxAttempts`
-  includes the initial request.
+  the pinned AgentCore endpoint and non-refreshing credential-provider closures over the same private
+  snapshot. Each provider invocation returns a new mutable plain credential object and, when present,
+  a new `Date` cloned from the stored epoch. The frozen snapshot itself is never passed to an SDK
+  client because AWS SDK v3 may attach `$source` feature metadata to credential objects. In AWS SDK
+  v3, `maxAttempts` includes the initial request.
 - Exposes page-oriented list operations.
 - Exposes generated-paginator all-results operations for every paginated Identity list.
 - Contains no provider classification, secret prompting, update merging, or UI policy.
@@ -543,16 +619,155 @@ redirected to a configured local or third-party endpoint or split across account
 operation.
 
 `IdentityOperationFactory` is the consumer-owned interface in the Identity handler boundary. The
-production factory and test factory both implement it. A binding exposes the read/mutation pair plus
-its immutable credential metadata and explicit disposal; actions cannot ask it to refresh.
+production factory and test factory both implement it. Normal, live, capture, and stale-reaper
+composition roots construct factories with their different endpoint policies; actions cannot select
+or weaken that policy.
 
-Temporary credentials are fresh exactly when expiration is absent or is a finite instant more than
-`300_000` milliseconds in the future. Exactly five minutes remaining fails closed. The binding checks
-freshness at creation and immediately before every AWS send, including both commit Gets and the final
-mutation. If the snapshot enters the window during a retrying read, the post-read check prevents the
-next send. Failure disposes the `CommitSecretContext` and returns `CredentialRefreshRequired` without
-a later Get or mutation. It never transparently refreshes inside an existing capability because a
-refreshed identity would invalidate the reviewed account and state.
+The port surface is exact:
+
+```ts
+type OperationSpec<Input, Output> = Readonly<{
+  input: Input;
+  output: Output;
+}>;
+
+interface IdentityReadOperations {
+  GetApiKeyCredentialProvider: OperationSpec<
+    GetApiKeyCredentialProviderCommandInput,
+    GetApiKeyCredentialProviderCommandOutput
+  >;
+  ListApiKeyCredentialProviders: OperationSpec<
+    ListApiKeyCredentialProvidersCommandInput,
+    ListApiKeyCredentialProvidersCommandOutput
+  >;
+  GetOauth2CredentialProvider: OperationSpec<
+    GetOauth2CredentialProviderCommandInput,
+    GetOauth2CredentialProviderCommandOutput
+  >;
+  ListOauth2CredentialProviders: OperationSpec<
+    ListOauth2CredentialProvidersCommandInput,
+    ListOauth2CredentialProvidersCommandOutput
+  >;
+  GetPaymentCredentialProvider: OperationSpec<
+    GetPaymentCredentialProviderCommandInput,
+    GetPaymentCredentialProviderCommandOutput
+  >;
+  ListPaymentCredentialProviders: OperationSpec<
+    ListPaymentCredentialProvidersCommandInput,
+    ListPaymentCredentialProvidersCommandOutput
+  >;
+  GetWorkloadIdentity: OperationSpec<
+    GetWorkloadIdentityCommandInput,
+    GetWorkloadIdentityCommandOutput
+  >;
+  ListWorkloadIdentities: OperationSpec<
+    ListWorkloadIdentitiesCommandInput,
+    ListWorkloadIdentitiesCommandOutput
+  >;
+  GetTokenVault: OperationSpec<GetTokenVaultCommandInput, GetTokenVaultCommandOutput>;
+  ListTagsForResource: OperationSpec<
+    ListTagsForResourceCommandInput,
+    ListTagsForResourceCommandOutput
+  >;
+}
+
+interface IdentityMutationOperations {
+  CreateApiKeyCredentialProvider: OperationSpec<
+    CreateApiKeyCredentialProviderCommandInput,
+    CreateApiKeyCredentialProviderCommandOutput
+  >;
+  UpdateApiKeyCredentialProvider: OperationSpec<
+    UpdateApiKeyCredentialProviderCommandInput,
+    UpdateApiKeyCredentialProviderCommandOutput
+  >;
+  DeleteApiKeyCredentialProvider: OperationSpec<
+    DeleteApiKeyCredentialProviderCommandInput,
+    DeleteApiKeyCredentialProviderCommandOutput
+  >;
+  CreateOauth2CredentialProvider: OperationSpec<
+    CreateOauth2CredentialProviderCommandInput,
+    CreateOauth2CredentialProviderCommandOutput
+  >;
+  UpdateOauth2CredentialProvider: OperationSpec<
+    UpdateOauth2CredentialProviderCommandInput,
+    UpdateOauth2CredentialProviderCommandOutput
+  >;
+  DeleteOauth2CredentialProvider: OperationSpec<
+    DeleteOauth2CredentialProviderCommandInput,
+    DeleteOauth2CredentialProviderCommandOutput
+  >;
+  CreatePaymentCredentialProvider: OperationSpec<
+    CreatePaymentCredentialProviderCommandInput,
+    CreatePaymentCredentialProviderCommandOutput
+  >;
+  UpdatePaymentCredentialProvider: OperationSpec<
+    UpdatePaymentCredentialProviderCommandInput,
+    UpdatePaymentCredentialProviderCommandOutput
+  >;
+  DeletePaymentCredentialProvider: OperationSpec<
+    DeletePaymentCredentialProviderCommandInput,
+    DeletePaymentCredentialProviderCommandOutput
+  >;
+  CreateWorkloadIdentity: OperationSpec<
+    CreateWorkloadIdentityCommandInput,
+    CreateWorkloadIdentityCommandOutput
+  >;
+  UpdateWorkloadIdentity: OperationSpec<
+    UpdateWorkloadIdentityCommandInput,
+    UpdateWorkloadIdentityCommandOutput
+  >;
+  DeleteWorkloadIdentity: OperationSpec<
+    DeleteWorkloadIdentityCommandInput,
+    DeleteWorkloadIdentityCommandOutput
+  >;
+  SetTokenVaultCMK: OperationSpec<SetTokenVaultCMKCommandInput, SetTokenVaultCMKCommandOutput>;
+  TagResource: OperationSpec<TagResourceCommandInput, TagResourceCommandOutput>;
+  UntagResource: OperationSpec<UntagResourceCommandInput, UntagResourceCommandOutput>;
+}
+
+type IdentityOperationName = keyof IdentityReadOperations | keyof IdentityMutationOperations;
+
+type IdentityListOperation =
+  | "ListApiKeyCredentialProviders"
+  | "ListOauth2CredentialProviders"
+  | "ListPaymentCredentialProviders"
+  | "ListWorkloadIdentities";
+
+interface IdentityOperationBinding {
+  readonly credentialExpiresAtEpochMs: number | undefined;
+  sendRead<K extends keyof IdentityReadOperations>(
+    operation: K,
+    input: Readonly<IdentityReadOperations[K]["input"]>,
+  ): Promise<IdentityReadOperations[K]["output"]>;
+  pages<K extends IdentityListOperation>(
+    operation: K,
+    input: Readonly<IdentityReadOperations[K]["input"]>,
+  ): AsyncIterable<IdentityReadOperations[K]["output"]>;
+  sendMutation<K extends keyof IdentityMutationOperations>(
+    operation: K,
+    input: Readonly<IdentityMutationOperations[K]["input"]>,
+  ): Promise<IdentityMutationOperations[K]["output"]>;
+  dispose(): void;
+}
+
+interface IdentityOperationFactory {
+  createBinding(): Promise<IdentityOperationBinding>;
+}
+```
+
+`dispose()` is synchronous and idempotent. Port calls may reject with `unknown`; the application
+boundary catches every rejection and maps it to a closed action outcome before presentation code sees
+it. A binding exposes only numeric expiration metadata and explicit disposal. It never exposes the
+credential values or a refresh function.
+
+Temporary credentials are accepted only when an absent expiration or a finite expiration epoch was
+captured. They are fresh exactly when expiration is absent or that epoch is more than `300_000`
+milliseconds in the future. Exactly five minutes remaining fails closed. The binding checks freshness
+at creation and immediately before every AWS send, including both commit Gets and the final mutation.
+If the snapshot enters the window during a retrying read, the post-read check prevents the next send.
+Failure disposes the secret lease and returns `credentialRefreshRequired` without a later Get or
+mutation. It never transparently refreshes inside an existing capability because a refreshed identity
+would invalidate the reviewed account and state.
 
 `SecretSourceReader` is a second consumer-owned interface. Its production adapter reads named
 environment variables, bounded files, and bounded non-TTY stdin. It does not prompt. Commander and
@@ -786,9 +1001,11 @@ OAuth and payment Update requests structurally require their immutable vendor an
 union. The action layer reconstructs those fields after Get. API-key and workload Update requests
 structurally require only `name`.
 
-Required response fields named `apiKeySecretArn`, `clientSecretArn`, and payment `*SecretArn` are
-`Secret` objects shaped `{ secretArn: string }`, not strings. External secret inputs use
-`SecretReference`, which requires `{ secretId, jsonKey }`.
+Response fields named `apiKeySecretArn`, `clientSecretArn`, and payment `*SecretArn`, when present,
+are `Secret` objects shaped `{ secretArn: string }`, not strings. API-key and payment secret ARN
+members are required by their V1 operations. OAuth `clientSecretArn` is deliberately optional because
+valid no-secret IAM-JWT providers omit it despite stale requiredness in the pinned generated output
+type. External secret inputs use `SecretReference`, which requires `{ secretId, jsonKey }`.
 
 | Operation family   | Required request fields                                          | Optional request fields                |
 | ------------------ | ---------------------------------------------------------------- | -------------------------------------- |
@@ -858,6 +1075,13 @@ or undocumented secret value/source/reference combinations. It enforces the docu
 `EXTERNAL => SecretReference` implication and otherwise lets the service validate conditions not
 established by the model or retained probes.
 
+The AWS service guide adds one cross-surface rule not represented by the generated model:
+`authorizationServerMetadata.tokenEndpointAuthMethods` and custom
+`clientAuthenticationMethod` are mutually exclusive in the effective Create or Update request.
+Provider-independent validation applies this rule before secret acquisition. Curated Update first
+reconstructs the preserved current mechanism as described above and then applies the same rule, so a
+legacy provider can be updated without forcing an invalid mixed request.
+
 The service-only maximum of five workload return URLs supplements the pinned model. Per-operation Zod
 schemas also encode the complete private-endpoint, override, VPC, subnet, security-group, ARN, and
 nested OAuth constraints. Runtime schema traversal verifies member names and union structure but does
@@ -911,8 +1135,9 @@ Curated mode exposes stable scalar options and narrowly scoped JSON options. Exa
 - `--tags`
 
 Payment options are slot-specific so independent secret sources cannot be confused.
-Curated custom OAuth Create requires `--client-authentication-method`; raw mode retains the modeled
-ability to omit it.
+Curated custom OAuth Create requires `--client-authentication-method` unless the selected discovery
+metadata supplies the mutually exclusive legacy `tokenEndpointAuthMethods`. Raw Create retains the
+modeled ability to omit both.
 
 ### Raw Mode
 
@@ -930,10 +1155,12 @@ sensitive paths omitted from raw JSON. If raw JSON and a secret input both targe
 command fails with a conflict error. Sensitive values embedded directly in JSON are accepted as
 literal input with the same warning and redaction guarantees as literal secret flags.
 
-Raw custom OAuth Update requires `clientAuthenticationMethod` in the replacement object. When the
-current custom provider has a private endpoint, the effective replacement must also contain a private
-endpoint: an explicitly supplied replacement is used, while omission rehydrates the exact current
-value. The CLI does not treat omission as an unverified private-endpoint clear. An explicit
+Raw custom OAuth Update requires exactly one authentication mechanism in the effective replacement:
+either `clientAuthenticationMethod` or
+`oauthDiscovery.authorizationServerMetadata.tokenEndpointAuthMethods`. When the current custom
+provider has a private endpoint, the effective replacement must also contain a private endpoint: an
+explicitly supplied replacement is used, while omission rehydrates the exact current value. The CLI
+does not treat omission as an unverified private-endpoint clear. An explicit
 `privateEndpointOverrides` array replaces the collection when non-empty; omission preserves the
 current collection. An explicit empty array is rejected when the current collection is non-empty
 because service removal semantics have not been established. It is only a semantic no-op when the
@@ -1065,7 +1292,7 @@ Custom = exact {
 | `includedOauth2ProviderConfig`                                                                    | `Included`  |
 | `customOauth2ProviderConfig`                                                                      | `Custom`    |
 
-`PaymentInput` has exactly one member:
+`PaymentInput` has exactly one of these two members:
 
 ```text
 coinbaseCdpConfiguration: exact {
@@ -1095,9 +1322,10 @@ included global vendors forbid them. Create requires every effective secret slot
 provided through a separate slot option. A direct secret, reference, and explicit source must agree
 and cannot conflict. Update cannot switch storage mode, preserves reconstructable EXTERNAL
 references, and requires MANAGED re-entry. Raw custom Update requires
-`clientAuthenticationMethod`; `PRIVATE_KEY_JWT` is rejected because it is not modeled by the pinned
-SDK. Omitted custom `clientId` and OBO remove them, while the private-endpoint retention rules above
-remain mandatory. Payment replacement always rebuilds the complete current-vendor configuration.
+exactly one preferred or legacy authentication mechanism; both together are rejected.
+`PRIVATE_KEY_JWT` is rejected on writes because it is not modeled by the pinned SDK. Omitted custom
+`clientId` and OBO remove them, while the private-endpoint retention rules above remain mandatory.
+Payment replacement always rebuilds the complete current-vendor configuration.
 
 ## Secret Handling
 
@@ -1147,9 +1375,17 @@ the value, variable name, or file path.
 
 - Reject stdin when it is a TTY. Interactive users use the hidden prompt instead.
 - Read stdin as a bounded stream and stop once the slot's byte cap is exceeded.
-- Accept a file only when its resolved target is a regular file. Symlinks are accepted only when the
-  final target is regular; directories, devices, FIFOs, and sockets are rejected.
-- Verify the opened file descriptor is still a regular file before reading.
+- When a file source is selected, resolve its canonical target without reading its contents and
+  capture a platform file identity plus regular-file mode in an opaque locator. On POSIX this identity
+  is canonical path, device, and inode; on Windows it is the equivalent volume/file ID and
+  non-reparse regular-file state.
+- At acquisition, open the captured canonical target with final-component no-follow behavior, then
+  compare descriptor identity and mode with the captured locator before reading. Symlinks in the
+  originally supplied path are accepted only through their captured canonical regular-file target;
+  replacement of either the link or target cannot redirect the read. Directories, devices, FIFOs,
+  sockets, reparse targets, and changed files are rejected.
+- Read only through the verified descriptor. A platform on which the adapter cannot enforce the
+  no-follow and stable-identity checks rejects file secret sources rather than weakening the contract.
 - Decode as strict UTF-8 and preserve whitespace and newlines.
 - Enforce both the byte cap before decoding and the modeled character constraint after decoding.
 
@@ -1200,18 +1436,33 @@ Secret values:
 
 Every mutation commit receives a `CommitSecretContext` distinct from its `PreparedMutation`. The
 context owns all literal values, managed-value acquisition locators, the `SecretSourceReader`, the
-optional hidden-prompt callback, and any resolved values. It has a synchronous one-use lifecycle:
+optional hidden-prompt callback, and any resolved values. Its public shell and private claim lease
+have a synchronous one-use lifecycle:
 
 ```text
-open -> resolving -> disposed
+open --claim()--> leased --lease.dispose()--> disposed
+  \--context.dispose()----------------------> disposed
 ```
 
-Commit claims it before the first `await`. A second claim fails without reading a source. Every
-success, error, cancellation, credential-expiry outcome, and reprepare outcome disposes the context
-in `finally`. Disposal removes all references the CLI controls; it does not claim JavaScript
-zeroization. A replacement `PreparedMutation` never carries forward acquired or literal values.
-Commander exits and requires a rerun. Ink may retain non-secret form choices, but it must construct a
-new context and reacquire or re-prompt every managed value before committing the replacement plan.
+`claim()` atomically moves all owned state into an opaque `CommitSecretLease` and leaves the context
+shell inert. Only that lease can resolve sources or dispose leased state. `context.dispose()` is
+idempotent and can consume only `open`; it is a no-op after a successful claim, so a rejected duplicate
+commit cannot dispose another in-flight commit's lease. `lease.dispose()` is idempotent and runs in
+the winning commit's `finally`.
+
+The parser or TUI creates the context and initially owns it. A preparation action borrows it without
+claiming or reading secret content. A `prepared` outcome returns the still-open context beside, but
+not inside, the immutable capability. Preparation disposes it before returning `noChange` or any
+failure. After a prepared review, the presentation owns both objects: commit synchronously transfers
+the context into a lease; cancellation, abandoned review, screen unmount, or an error boundary
+disposes the still-open context and the prepared capability. A duplicate commit disposes only its
+supplied context when that context is still open. Every success, error, cancellation,
+credential-expiry, and reprepare path disposes the winning lease.
+
+Disposal removes all references the CLI controls; it does not claim JavaScript zeroization. A
+replacement `PreparedMutation` never carries a context or acquired/literal values. Commander exits
+and requires a rerun. Ink may retain non-secret form choices, but it must construct a new context and
+reacquire or re-prompt every managed value before committing the replacement plan.
 
 JavaScript does not provide reliable memory zeroization for immutable strings or copies made by the
 runtime and SDK. The implementation minimizes lifetime and references, drops bindings immediately
@@ -1220,41 +1471,178 @@ after the send settles, and does not claim cryptographic erasure.
 ## Request Flow
 
 Mutation preparation returns an opaque, single-use `PreparedMutation` capability. Preparation never
-reads env, files, stdin, or hidden prompts and never creates an SDK request containing secret bytes.
+reads environment values, file contents, stdin, or hidden prompts and never creates an SDK request
+containing secret bytes. Capturing regular-file identity for an opaque file locator is metadata
+validation, not secret-content acquisition.
 
-The action result contract is exact:
+The safe error and action result contracts are exact:
 
 ```ts
-type TerminalFailure =
+type IdentityOptionId = keyof typeof IDENTITY_OPTION_CATALOG;
+type IdentitySchemaPath = keyof typeof IDENTITY_SCHEMA_PATH_CATALOG;
+type SecretSlotId = keyof typeof IDENTITY_SECRET_SLOT_CATALOG;
+type IdentityResourceFamily = "apiKey" | "oauth2" | "payment" | "workload" | "tokenVault" | "tags";
+
+type ReviewValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly ReviewValue[]
+  | readonly Readonly<{ key: string; value: ReviewValue }>[];
+
+interface IdentityReviewModel {
+  readonly operation: keyof IdentityMutationOperations;
+  readonly target: Readonly<{
+    family: IdentityResourceFamily;
+    name?: string;
+    arn?: string;
+  }>;
+  readonly changes: readonly Readonly<{
+    path: IdentitySchemaPath;
+    action: "set" | "clear" | "replace" | "preserve";
+    before?: ReviewValue;
+    after?: ReviewValue;
+  }>[];
+  readonly secretRequirements: readonly Readonly<{
+    slot: SecretSlotId;
+    source: "MANAGED" | "EXTERNAL";
+    action: "provide" | "preserve" | "rotate" | "remove";
+  }>[];
+}
+
+type SafeServiceCode =
+  | "AccessDeniedException"
+  | "ConcurrentModificationException"
+  | "ConflictException"
+  | "InternalServerException"
+  | "ResourceNotFoundException"
+  | "ServiceQuotaExceededException"
+  | "ThrottlingException"
+  | "ValidationException";
+
+type SafeIdentityError =
+  | {
+      category: "usage";
+      reason:
+        | "conflictingInput"
+        | "inapplicableInput"
+        | "invalidJson"
+        | "invalidValue"
+        | "missingInput"
+        | "storageModeChangeUnsupported";
+      option?: IdentityOptionId;
+      path?: IdentitySchemaPath;
+      slot?: SecretSlotId;
+    }
+  | {
+      category: "secret";
+      reason:
+        | "alreadyConsumed"
+        | "environmentUnavailable"
+        | "fileChanged"
+        | "fileUnavailable"
+        | "invalidValue"
+        | "promptUnavailable"
+        | "stdinUnavailable";
+      slot: SecretSlotId;
+    }
+  | {
+      category: "service";
+      code: SafeServiceCode | "UnknownServiceError";
+      httpStatus?: number;
+      requestId?: string;
+    }
+  | { category: "internal" };
+
+type QueryFailure =
+  | { kind: "notFound" }
+  | { kind: "sdkCompatibilityRequired" }
+  | { kind: "credentialRefreshRequired" }
+  | { kind: "validationFailed"; error: SafeIdentityError }
+  | { kind: "serviceFailed"; error: SafeIdentityError };
+
+type PrepareFailure =
   | { kind: "notFound" }
   | { kind: "sdkCompatibilityRequired" }
   | { kind: "unsupportedProvider" }
   | { kind: "unsupportedResourceStatus" }
   | { kind: "credentialRefreshRequired" }
-  | { kind: "cancelled" }
   | { kind: "validationFailed"; error: SafeIdentityError }
-  | { kind: "secretResolutionFailed"; error: SafeIdentityError }
   | { kind: "serviceFailed"; error: SafeIdentityError };
 
+type CommitFailure =
+  | PrepareFailure
+  | { kind: "cancelled" }
+  | { kind: "secretResolutionFailed"; error: SafeIdentityError };
+
+type QueryOutcome<T> = { kind: "succeeded"; value: T } | QueryFailure;
+
 type PrepareOutcome<T> =
-  | { kind: "prepared"; mutation: PreparedMutation<T> }
+  | {
+      kind: "prepared";
+      mutation: PreparedMutation<T>;
+      secrets: CommitSecretContext;
+    }
   | { kind: "noChange"; value: T }
-  | TerminalFailure;
+  | PrepareFailure;
 
 type CommitOutcome<T> =
   | { kind: "committed"; value: T }
   | { kind: "noChange"; value: T }
   | { kind: "reprepareRequired"; replacement: PreparedMutation<T> }
   | { kind: "alreadyConsumed" }
-  | TerminalFailure;
+  | CommitFailure;
+
+interface IdentityQueryAction<Input, Output> {
+  execute(input: Readonly<Input>): Promise<QueryOutcome<Output>>;
+}
+
+interface IdentityMutationAction<Input, Output> {
+  prepare(input: Readonly<Input>, secrets: CommitSecretContext): Promise<PrepareOutcome<Output>>;
+}
+
+interface CommitSecretContext {
+  claim(): CommitSecretLease | undefined;
+  dispose(): void;
+}
+
+interface CommitSecretLease {
+  resolve(slot: SecretSlotId): Promise<string>;
+  dispose(): void;
+}
+
+interface PreparedMutation<T> {
+  readonly review: IdentityReviewModel;
+  commit(secrets: CommitSecretContext): Promise<CommitOutcome<T>>;
+  dispose(): void;
+}
 ```
 
-Only `reprepareRequired` carries a capability. `alreadyConsumed` is decided before claiming the
-supplied secret context. All error members carry only closed safe data. PascalCase outcome labels in
-the surrounding prose refer to these exact lower-camel `kind` discriminants.
+There is one `IdentityQueryAction` instance for every Get, List, and List Tags command and one
+`IdentityMutationAction` instance for every Create, Update, Delete, Tag, Untag, and Set CMK command.
+Their concrete input and output types are the command-specific intent and V1 DTO types; no action
+returns an SDK output type. Mutations with no secret slots receive the same one-use context in an
+empty state, keeping one ownership protocol instead of a second capability type. The three
+compile-time catalogs contain only CLI-authored option IDs, schema paths, and secret slot IDs.
+Renderers select static guidance from the discriminants. No arbitrary message, option spelling,
+schema key, environment name, file path, or service body can inhabit `SafeIdentityError`.
+
+Only `reprepareRequired` carries a replacement capability, and only `prepared` carries an open
+context. `alreadyConsumed` is decided before source resolution, then calls `dispose()` on the supplied
+context; because disposal can consume only `open`, it cannot affect the winning commit's lease. All
+error members carry only closed safe data. PascalCase outcome labels in the surrounding prose refer
+to these exact lower-camel `kind` discriminants.
+
+Commit-time `noChange` is defined only for a guarded replacement mutation whose fresh rebase already
+equals the requested effective state and has no remaining opaque secret rotation/removal, including
+the case where another actor applied the non-secret state after review. It returns the normalized
+fresh Get value and sends no mutation. It can be detected before secret acquisition or after the
+second Get; the latter path first disposes the acquired lease.
+
 Once preparation creates a binding, only a `prepared` outcome transfers it to the capability; every
-other preparation outcome destroys it. Commit destroys it for every outcome except successful
-transfer through `reprepareRequired`.
+other preparation outcome destroys the binding and disposes the context. Commit destroys its binding
+lease for every outcome except successful transfer through `reprepareRequired`.
 
 ### Preparation
 
@@ -1286,13 +1674,27 @@ operations and do not inherit an Update readiness gate.
 
 OAuth and payment Updates use a compatibility-guarded Get for preparation and every commit-time
 rebase. Middleware is registered relative `after` `deserializerMiddleware`, which places it on the
-response path before the generated deserializer consumes the body. It buffers successful raw response
-bytes up to an exact 1 MiB limit, parses them, validates their shape recursively against the pinned
-command output schema, restores the same `Uint8Array` for normal SDK deserialization, and passes
-non-success responses through untouched. Closed structures reject additive keys, unions reject
-unknown arms, lists recurse into members, and maps/documents retain arbitrary keys. An oversized or
-malformed successful body or unknown key/arm returns `SdkCompatibilityRequired` using static text;
-the unknown name, value, or body is not logged, rendered, retained, or included in fixtures.
+response path before the generated deserializer consumes the body. It buffers a successful raw
+response only while `bodyBytes <= 1_048_576`; 1,048,576 bytes is accepted and the next byte fails.
+On overflow it immediately destroys a Node-readable body or cancels a Web stream, without draining or
+retaining additional chunks. It parses accepted bytes, validates them with an explicit
+operation-specific `RawWireSchema`, restores the exact bytes as a new `Uint8Array` for normal SDK
+deserialization, and passes non-success responses through untouched.
+
+`RawWireSchema` is a separate hand-reviewed registry for the JSON protocol representation of OAuth
+and payment Get responses. It does not reuse V1 DTO schemas, SDK TypeScript output types, or
+`NormalizedSchema`. Every structure has an exact wire-key allowlist and explicit required/optional
+members; every known union requires exactly one member; lists recurse; maps admit arbitrary keys but
+validate their value wire type; strings, booleans, finite JSON numbers, timestamp numbers, arrays, and
+objects are checked according to their pinned protocol shape; and `null` is rejected where the model
+does not admit it. The registry deliberately treats OAuth `clientSecretArn` as optional for valid
+no-secret IAM-JWT providers, while retaining the generated required members for names, ARNs, vendors,
+provider configuration, dates, and required payment secret references. It performs structural drift
+detection only, not length, pattern, endpoint, or business-rule validation.
+
+An oversized, malformed, truncated, or structurally unknown successful body returns
+`sdkCompatibilityRequired` using static text. The unknown name, value, or body is not logged,
+rendered, retained, or included in fixtures.
 
 This guarded path exists because SDK `3.1079.0` silently drops additive members inside known OAuth
 and payment structures on both deserialize and serialize. Internal service-model mainline already
@@ -1328,37 +1730,54 @@ Token-vault guards use vault ID, canonical KMS configuration, and `lastModifiedD
 All plan data and nested values are frozen. The capability contains no literal, prompt, stdin, env, or
 file secret value. The TUI renders its review model and confirms it. An explicit Commander mutation
 authorizes its capability without an additional review prompt, except `token-vault set-cmk`.
-`PreparedMutation.dispose()` is mandatory when a presentation cancels or abandons review and destroys
-its private client pair.
+
+Capability ownership uses this state machine:
+
+```text
+prepared --commit()--> committing --> consumed
+    \-----dispose()-----------------> disposed
+```
+
+`PreparedMutation.dispose()` is synchronous and idempotent. It can consume only `prepared`, atomically
+detaches and destroys that capability's binding, and then transitions to `disposed`. It is a no-op in
+`committing`, `consumed`, or `disposed`, because commit has already moved binding ownership into a
+commit-local lease. This makes cancellation/unmount safe even when it races a submit.
 
 ### One-Shot Commit
 
-`PreparedMutation.commit()` synchronously and atomically transitions
-`prepared -> committing -> consumed` before its first `await`. Every later call returns
-`alreadyConsumed` without reading secrets or calling AWS, including concurrent calls made while the
-first is pending. A shared commit coordinator owns this transition; Ink submit handlers also use a
-synchronous ref latch so buffered confirmation input cannot enter commit twice.
+`PreparedMutation.commit()` synchronously and atomically claims `prepared`, moves the binding into a
+commit-local ownership lease, claims the supplied `CommitSecretContext`, and transitions the
+capability through `committing` to terminal ownership before its first `await`. If the context cannot
+be claimed, the capability remains consumed, its binding lease is destroyed, and commit returns a
+closed `secretResolutionFailed` outcome. Every later call disposes only its own still-open supplied
+context and returns `alreadyConsumed` without reading secrets or calling AWS, including concurrent
+calls made while the first is pending. Because the winning state transition, binding transfer, and
+secret claim are one synchronous turn, a duplicate call using the same context observes an inert
+claimed shell and cannot disrupt the winner. A shared commit coordinator owns this transition; Ink
+submit handlers also use a synchronous ref latch so buffered confirmation input cannot enter commit
+twice.
 
 For Update, commit:
 
-1. Claims the supplied `CommitSecretContext`.
+1. Claims capability, binding, and secret ownership synchronously as described above.
 2. Verifies that the binding's immutable credential snapshot remains outside the refresh window.
 3. Performs a fresh Get with the binding's read client and compatibility guard where required.
 4. Rechecks provider support and operation-specific status, then rebases the original explicit intent
    on that normalized state.
-5. Recomputes and compares the complete `CommitGuard` before reading any secret source.
+5. Returns commit-time `noChange` if the fresh effective state already equals the requested state;
+   otherwise recomputes and compares the complete `CommitGuard` before reading any secret source.
 6. Resolves env, file, and stdin through the context's `SecretSourceReader` and prompt values through
-   its hidden-prompt callback.
+   its hidden-prompt callback, all through the claimed secret lease.
 7. Rechecks credential expiration without refreshing.
 8. Performs a second Get with the same read client and compatibility guard.
 9. Rechecks provider support and status, then rebases and compares the complete guard again
-   immediately before request construction.
+   immediately before request construction; a newly reached no-op returns the normalized fresh state
+   after disposing acquired values.
 10. Rechecks credential expiration after the retrying read and immediately before any mutation send.
 11. Composes one exact SDK union from the second state at adapter-owned secret paths.
 12. Runs strict Zod request and semantic validation.
 13. Sends one mutation command through the binding's `maxAttempts: 1` mutation client.
-14. Disposes all secret context state in `finally`; destroys the operation binding on terminal
-    outcomes.
+14. Disposes the secret lease in `finally`; destroys the binding lease on terminal outcomes.
 
 Commit outcomes are a closed union. `ReprepareRequired` contains a replacement frozen capability only
 when the current resource is known, its provider and response shape are supported, its status is
@@ -1370,9 +1789,9 @@ resolved and literal values before returning. Ink renders an available replaceme
 a new confirmation plus a newly constructed secret context. Commander returns a typed state-changed
 error and requires the user to rerun the command; it never authorizes a replacement plan on the
 original invocation. When a replacement is returned, ownership of the same immutable operation
-binding transfers atomically from the consumed capability to the replacement; the old capability
-cannot destroy or reuse it. Commander disposes the unaccepted replacement before exiting. Commit
-never loops or auto-approves.
+binding transfers atomically from the commit-local lease to the replacement before it is returned;
+the old capability cannot destroy or reuse it. Commander disposes the unaccepted replacement before
+exiting. Commit never loops or auto-approves.
 
 Create has no current-resource guard but uses one operation binding and one secret context. Delete
 preparation records ARN, family, and creation time, then commit Gets by name with the same binding and
@@ -1445,22 +1864,24 @@ The CLI therefore:
   the explicit no-secret authentication method is itself the removal intent.
 - Resends required private endpoint and per-tenant endpoint fields.
 
-For custom OAuth, the effective client-authentication method drives secret behavior:
+For custom OAuth, the effective authentication mechanism drives secret behavior:
 
-| Effective method       | Create                                                                                    | Update without a new secret                                               | Transition behavior                                                                             |
-| ---------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `CLIENT_SECRET_BASIC`  | Requires client ID and a managed value or external reference                              | Preserves a reconstructable EXTERNAL reference; requires MANAGED re-entry | Transition from IAM-JWT requires a source and value/reference                                   |
-| `CLIENT_SECRET_POST`   | Requires client ID and a managed value or external reference                              | Preserves a reconstructable EXTERNAL reference; requires MANAGED re-entry | Transition from IAM-JWT requires a source and value/reference                                   |
-| `AWS_IAM_ID_TOKEN_JWT` | Does not require a client secret                                                          | Does not request a client secret                                          | Curated transition requires `--clear-client-secret`; raw replacement is explicit removal intent |
-| Omitted custom method  | Raw Create only: requires a managed value or external reference when client ID is present | Rejected for Update because replacement semantics would be ambiguous      | Never accepted as an Update transition                                                          |
+| Effective mechanism                                          | Create                                                                                    | Update without a new secret                                               | Transition behavior                                                                             |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `CLIENT_SECRET_BASIC`                                        | Requires client ID and a managed value or external reference                              | Preserves a reconstructable EXTERNAL reference; requires MANAGED re-entry | Transition from IAM-JWT requires a source and value/reference                                   |
+| `CLIENT_SECRET_POST`                                         | Requires client ID and a managed value or external reference                              | Preserves a reconstructable EXTERNAL reference; requires MANAGED re-entry | Transition from IAM-JWT requires a source and value/reference                                   |
+| Legacy metadata `client_secret_basic` / `client_secret_post` | Requires client ID and a managed value or external reference                              | Preserves a reconstructable EXTERNAL reference; requires MANAGED re-entry | Explicitly replaces, and is replaced by, the preferred method surface                           |
+| `AWS_IAM_ID_TOKEN_JWT`                                       | Does not require a client secret                                                          | Does not request a client secret                                          | Curated transition requires `--clear-client-secret`; raw replacement is explicit removal intent |
+| No explicit mechanism                                        | Raw Create only: requires a managed value or external reference when client ID is present | Rejected for Update because replacement semantics would be ambiguous      | Never accepted as an Update transition                                                          |
 
 Supplying `--clear-client-secret` while the effective method is `CLIENT_SECRET_BASIC` or
 `CLIENT_SECRET_POST` fails validation. A curated change to `AWS_IAM_ID_TOKEN_JWT` without the clear
 also fails, so curated mode never removes a secret as an implicit side effect. Raw custom Update
-always carries an explicit method, and selecting `AWS_IAM_ID_TOKEN_JWT` in the replacement is explicit
-secret-removal intent. Omitted optional `clientId` and `onBehalfOfTokenExchangeConfig` members in raw
-replacement mode are intentional removals. An explicit `privateEndpoint` replaces the current value;
-omission retains an existing endpoint. `privateEndpointOverrides` may be replaced with an explicit
+always carries exactly one preferred or legacy mechanism, and selecting `AWS_IAM_ID_TOKEN_JWT` in the
+replacement is explicit secret-removal intent. Omitted optional `clientId` and
+`onBehalfOfTokenExchangeConfig` members in raw replacement mode are intentional removals. An explicit
+`privateEndpoint` replaces the current value; omission retains an existing endpoint.
+`privateEndpointOverrides` may be replaced with an explicit
 non-empty array, but omission preserves the current overrides. An explicit empty array is allowed
 only when it does not remove current entries; otherwise Update fails before secret acquisition until
 private-endpoint removal semantics are proven.
@@ -1615,18 +2036,18 @@ Local errors:
 Commander parse failures use a closed mapping and never interpolate `CommanderError.message`,
 `nestedError`, option spelling, or rejected input:
 
-| Commander code                                 | Safe output                                                     |
-| ---------------------------------------------- | --------------------------------------------------------------- |
-| `helpDisplayed`, `version` with exit code `0`  | Success; use configured help/version output                     |
-| `missingArgument`                              | `A required argument is missing. Run with --help for usage.`    |
-| `optionMissingArgument`                        | `An option value is missing. Run with --help for usage.`        |
-| `missingMandatoryOptionValue`                  | `A required option is missing. Run with --help for usage.`      |
-| `conflictingOption`                            | `Conflicting options were provided. Run with --help for usage.` |
-| `unknownOption`                                | `An unknown option was provided. Run with --help for usage.`    |
-| `excessArguments`                              | `Too many arguments were provided. Run with --help for usage.`  |
-| `unknownCommand`                               | `An unknown command was provided. Run with --help for usage.`   |
-| `invalidArgument`, `commander.error`           | `An option or argument is invalid. Run with --help for usage.`  |
-| Any unrecognized code or non-Commander failure | Static internal error                                           |
+| Commander code                                                    | Safe output                                                     |
+| ----------------------------------------------------------------- | --------------------------------------------------------------- |
+| `commander.helpDisplayed`, `commander.version` with exit code `0` | Success; use configured help/version output                     |
+| `commander.missingArgument`                                       | `A required argument is missing. Run with --help for usage.`    |
+| `commander.optionMissingArgument`                                 | `An option value is missing. Run with --help for usage.`        |
+| `commander.missingMandatoryOptionValue`                           | `A required option is missing. Run with --help for usage.`      |
+| `commander.conflictingOption`                                     | `Conflicting options were provided. Run with --help for usage.` |
+| `commander.unknownOption`                                         | `An unknown option was provided. Run with --help for usage.`    |
+| `commander.excessArguments`                                       | `Too many arguments were provided. Run with --help for usage.`  |
+| `commander.unknownCommand`                                        | `An unknown command was provided. Run with --help for usage.`   |
+| `commander.invalidArgument`, `commander.error`                    | `An option or argument is invalid. Run with --help for usage.`  |
+| Any unrecognized code or non-Commander failure                    | Static internal error                                           |
 
 Router argument and option validators throw a closed CLI-owned usage-error type rather than
 `TypeError` containing arbitrary parser or input text.
@@ -1675,6 +2096,12 @@ entire terminal sequence. Semantic validation rejects these controls outright in
 and tag keys or values; safe rendering still applies to service-returned legacy data and every other
 dynamic field.
 
+Dynamic map keys use an injective key variant of the encoder. It also encodes every literal backslash
+as `\u{005C}` before encoding unsafe code points, so a key containing an actual control cannot collide
+with a different key containing literal text such as `\u{001B}`. Static DTO property names bypass
+this transform; dynamic records such as tags encode keys before object construction and fail closed
+on any duplicate, even though the injective transform makes a well-formed collision impossible.
+
 `--debug` never relaxes these rules. Any future diagnostic rendering applies schema-sensitive
 redaction and exact resolved-value redaction before serialization, but the default remains to omit
 unknown text entirely.
@@ -1695,16 +2122,59 @@ For every Identity call, the recorder:
 2. Canonicalizes the redacted request with deterministic object-key order and existing date-safe
    scalar rules.
 3. Computes a full lowercase SHA-256 digest over operation name plus canonical request.
-4. Sanitizes the response or modeled error through the same safe output contract.
+4. Encodes the SDK-shaped response or modeled error through the operation's safe fixture codec.
 5. Canonicalizes only registered service timestamp paths through the flow's logical clock.
 6. Serializes the complete fixture bytes in memory and computes their content digest.
 7. Scans those bytes and the staged basename for registered high-entropy sentinels.
-8. Only then exclusively creates the content-addressed staged response blob referenced by the flow
+8. Only then atomically installs the content-addressed staged response blob referenced by the flow
    transaction.
 
 No raw request body or service error message is stored. Error fixtures contain only an allowlisted
 modeled code and fields needed to reproduce the safe classification. Existing non-Identity fixture
 keys remain unchanged.
+
+Fixture payloads are not V1 presentation DTOs. Record/replay intercepts a real client's bound `send`
+method, so replay must return the same safe SDK-level shape that a live `send` would return and allow
+the action normalizer to run normally. The versioned fixture algebra is exact and collision-free:
+
+```text
+FixtureRecordV1 =
+  | exact {
+      version: 1,
+      kind: "success",
+      operation: IdentityOperationName,
+      output: FixtureValue
+    }
+  | exact {
+      version: 1,
+      kind: "modeledError",
+      operation: IdentityOperationName,
+      code: SafeServiceCode,
+      httpStatus?: integer 100..599,
+      requestId?: validated request ID
+    }
+
+FixtureValue =
+  | exact { type: "null" }
+  | exact { type: "boolean", value: boolean }
+  | exact { type: "number", value: finite number }
+  | exact { type: "string", value: registered non-sensitive string }
+  | exact { type: "date", value: canonical ISO-8601 string }
+  | exact { type: "array", value: FixtureValue[] }
+  | exact { type: "object", value: [registered object or map key, FixtureValue][] }
+  | exact { type: "unknownUnion", member: SafeMemberName }
+```
+
+Object entries are sorted by their original modeled key and duplicate keys are rejected. The
+operation registry enumerates the SDK output fields allowed to enter this algebra and omits raw
+`failureReason`, metadata outside the classifier allowlist, and every unregistered field. A captured
+SDK `$unknown: [name, body]` becomes `unknownUnion` after sanitizing only the name; the body is never
+traversed. Replay revives dates as fresh `Date` instances and unknown unions as
+`{ $unknown: [safeName, {}] }`. A modeled-error registry constructs the pinned SDK exception class
+with a static message and only the recorded safe metadata, then throws it. Unknown errors, unknown
+fixture tags, invalid dates, unsupported scalar types, or an operation/error mismatch fail replay
+closed. Capture/replay parity tests pass these revived values through the real client instance and
+the normal action/V1 normalization boundary.
 
 Every golden flow declares a stable, repository-owned flow ID. The ID is part of its fixture namespace
 and collision-manifest path. Redaction intentionally makes calls with different secret values
@@ -1727,6 +2197,19 @@ index is a sorted mapping from stable flow IDs to immutable manifest digests and
 mutable fixture file. PID, host, capture ID, wall time, lock state, and commit SHA never enter
 canonical artifact bytes.
 
+Every immutable fixture object, in capture staging and publication, uses one atomic installation
+helper. The helper serializes and hashes complete bytes in memory, writes them to a cryptographically
+unique same-directory `O_EXCL` temporary file, writes all bytes, `fsync`s and closes the descriptor,
+checks whether the digest path already exists, and atomically renames the temporary file only when it
+is absent. A platform no-replace primitive is used when available. Capture object paths are
+flow-namespaced and same-flow calls are sequential; publication holds the suite lock, so the fallback
+path still has exactly one authorized installer per target. If a digest path exists, including after a
+competing no-replace result, the helper reads it and verifies exact length, full SHA-256, and canonical
+bytes before treating it as installed. An empty, truncated, mismatched, non-regular, or unreadable
+existing object fails closed and is never replaced or used as a cache hit. Temporary files are
+ignored by readers and removed best-effort after failure. No digest path is ever opened for
+incremental writing.
+
 Registered service timestamps are canonicalized from a fixed per-flow epoch with one-millisecond
 ticks after physical-to-logical identity mapping. Calls are traversed in sequence and fields in
 registered schema order; unordered collections are first sorted by logical identity. Each logical
@@ -1746,14 +2229,15 @@ Kernel release on descriptor close or process death eliminates stale-file reclam
 check/remove/recreate races. Network filesystems are unsupported for fixture publication.
 
 While holding the lock, publication rechecks that the current suite-index digest equals the capture's
-base digest. A stale publisher fails instead of merging or overwriting a newer generation. It writes
-and `fsync`s any missing immutable blobs and manifests, writes the canonical next index to an
-exclusive same-directory temporary file, `fsync`s it, and renames it over the suite index. It syncs
-the parent directory where the platform supports directory handles. Old referenced objects are not
-deleted during publication. The portable guarantee is process-crash consistency through atomic
-same-filesystem rename, not power-loss or filesystem-corruption durability. Replay reads one index
-snapshot, verifies every referenced digest, and ignores unreachable objects; a process kill at any
-boundary exposes either the complete old index or the complete new index, never a mixed generation.
+base digest. A stale publisher fails instead of merging or overwriting a newer generation. It
+atomically installs and verifies every missing immutable blob and manifest with the helper above,
+writes the canonical next index to an exclusive same-directory temporary file, `fsync`s it, and
+renames it over the suite index. It syncs the parent directory where the platform supports directory
+handles. Old referenced objects are not deleted during publication. The portable guarantee is
+process-crash consistency through atomic same-filesystem rename, not power-loss or
+filesystem-corruption durability. Replay reads one index snapshot, verifies every referenced length
+and digest before decode, and ignores unreachable objects; a process kill at any boundary exposes
+either the complete old index or the complete new index, never a mixed generation.
 
 Fixture factories construct real AWS SDK clients and intercept the instance's bound `send` method.
 They do not return `{ send }` objects cast as clients. This preserves `instanceof` checks required by
@@ -1797,9 +2281,16 @@ fixture/golden tree after the test run.
 - Union cardinality and vendor matching are enforced.
 - Raw and curated input conflicts are rejected.
 - Create raw configuration and update replacement configuration have distinct semantics.
+- Custom OAuth validates every Create/Update combination of preferred
+  `clientAuthenticationMethod`, legacy metadata `tokenEndpointAuthMethods`, both, and neither.
+  Curated Update tests preservation of a legacy-only provider and explicit migration in both
+  directions before secret acquisition.
 - Every secret acquisition and storage-mode combination is covered.
-- `CommitSecretContext` rejects a second claim and disposes literal, acquired, locator, reader, and
-  prompt references on every terminal outcome.
+- `CommitSecretContext` returns one opaque lease, rejects a second claim, and disposes literal,
+  acquired, locator, reader, and prompt references on preparation failure/no-change, cancellation,
+  abandoned review, unmount, duplicate commit, every terminal commit outcome, and reprepare.
+- Disposing a claimed context shell cannot affect its active lease, and duplicate commits dispose
+  only their own still-open context.
 - Multiple stdin consumers are rejected.
 - All sensitive paths are redacted.
 - Every populated slot with omitted or contradictory current-source metadata normalizes to
@@ -1817,6 +2308,8 @@ fixture/golden tree after the test run.
 - Semantic no-ops and opaque secret rotations are distinguished.
 - Unknown vendors and union members expose only sanitized names on reads and fail on writes.
 - Terminal-safe rendering visibly escapes C0, `DEL`, C1, ANSI/OSC introducers, and bidi controls.
+- Dynamic map-key encoding distinguishes an actual control from a literal `\u{XXXX}` sequence and
+  preserves every distinct tag key.
 - URL and tag validation rejects every terminal or bidi control accepted by JavaScript strings.
 - ARN parsing accepts the live-observed, CLI-owned family templates across representative `aws`,
   `aws-us-gov`, and `aws-cn` partitions; rejects wrong service, family, resource shape, account
@@ -1827,8 +2320,9 @@ fixture/golden tree after the test run.
 
 - TTY stdin, non-regular files, invalid UTF-8, and over-limit byte and character counts are rejected.
 - Bounded stdin stops reading at the configured byte cap.
-- File-descriptor revalidation rejects a target that changes to a non-regular file after path
-  resolution.
+- File acquisition uses final-component no-follow open and rejects regular-to-regular inode/file-ID
+  substitution, symlink retargeting, mode changes, reparse points, and non-regular replacements after
+  locator capture.
 - Environment, file, stdin, prompt, and literal values preserve content and pass through the same
   character validator.
 
@@ -1840,6 +2334,10 @@ fixture/golden tree after the test run.
 - One operation resolves credentials once and pins one AgentCore endpoint. A provider that returns
   account A and then account B is invoked exactly once and proves both Gets and the mutation use A,
   while a subsequent operation may bind B.
+- SDK clients receive non-refreshing providers that return isolated mutable credential clones; a
+  pinned-SDK feature-attribution probe may add `$source` without mutating the private snapshot or a
+  clone used by another client/send. Expiration clones are fresh `Date` objects derived from one
+  immutable finite epoch.
 - Environment or profile endpoint changes during secret acquisition cannot split one operation.
 - Live/capture rejects explicit `--endpoint-url`, bypasses environment/profile endpoint overrides,
   and requires official HTTPS service endpoints.
@@ -1853,12 +2351,19 @@ fixture/golden tree after the test run.
 - Prepared plans are frozen, canonical, and contain no secret bytes.
 - Cancellation and terminal outcomes destroy the operation binding; reprepare transfers it exactly
   once to the replacement capability, and Commander disposes an unaccepted replacement.
+- `PreparedMutation.dispose()` races commit through the same ownership state machine: exactly one
+  path obtains the binding, repeated disposal is inert, and disposal after commit cannot destroy the
+  commit-local or replacement lease.
 - A prepared capability rejects sequential and concurrent second commits before secret I/O or AWS
   calls.
 - Update preparation Gets once; commit Gets before and after secret acquisition.
 - OAuth/payment Update preparation and both commit Gets reject additive raw response fields before
   generated deserialization. Preparation and the first commit Get fail before secret I/O; an
   incompatible second Get disposes acquired values before returning.
+- Raw compatibility bodies of 1,048,575 and 1,048,576 bytes are accepted, 1,048,577 bytes are
+  rejected, and an oversized Node or Web stream is destroyed/cancelled. Valid OAuth responses without
+  `clientSecretArn` pass; missing genuinely required members, wrong scalar wire types, nulls,
+  truncation, and unknown keys/arms fail closed.
 - A changed pre-acquisition guard returns a replacement `PreparedMutation` without reading secrets or
   mutating.
 - A changed post-acquisition guard discards resolved values and returns a replacement capability
@@ -1903,6 +2408,8 @@ fixture/golden tree after the test run.
   nested input containing terminal controls emits only static safe text and never calls
   `process.exit`.
 - Help and version paths write once and return success through the same execution policy.
+- Parser tests assert the exact pinned codes, including `commander.unknownOption`,
+  `commander.helpDisplayed`, and `commander.version`; unprefixed lookalikes take the unknown-code path.
 - A subprocess writing a multi-megabyte normalized JSON document through a slow pipe exits naturally
   with a complete parseable document.
 - Explicit Delete executes without `--yes`.
@@ -1944,12 +2451,14 @@ fixture/golden tree after the test run.
 - Runtime SDK enum values equal catalog keys.
 - Runtime OAuth and payment union member names equal reviewed expectations.
 - Raw-response compatibility tests cover additive fields at every known OAuth/payment structure,
-  unknown union arms, malformed and over-1-MiB success bodies, non-2xx pass-through, stream replay,
-  and the known `privateKeyJwtConfig` model drift.
+  unknown union arms, malformed and boundary-sized success bodies, non-2xx pass-through, stream
+  replay, no-secret OAuth, and the known `privateKeyJwtConfig` model drift.
 - Every Identity operation used by fixtures has an explicit public request schema.
 - SDK-sensitive paths are either automatically redacted or covered by explicit secret slots.
-- Unknown response union members deserialize to `$unknown: [name, body]` and only the sanitized name
-  reaches normalized output.
+- Unknown response union members at top-level and every nested discovery/private-endpoint union
+  deserialize to `$unknown: [name, body]` and only the sanitized name reaches normalized output.
+- A fake-handler custom response containing `PRIVATE_KEY_JWT` and `privateKeyJwtConfig` preserves the
+  authentication-method string in V1, omits the unknown structure, and remains blocked from Update.
 - Compile-time exhaustive records fail on a new enum value.
 
 ### Golden Tests
@@ -1965,6 +2474,11 @@ publication recovery, replay during publication, logical-clock determinism, logi
 mapping, pre-write and whole-tree sentinel rejection, modeled safe errors, runnable and Ink boundary
 errors, unknown member sanitization, and generated paginator execution. Recording the same logical
 suite twice under shuffled worker schedules produces byte-identical committed artifacts.
+
+Fixture-codec tests capture and replay dates, nested `$unknown` tuples with discarded bodies, and each
+allowlisted modeled exception through a real SDK client instance. Atomic-object tests kill before and
+after temp-file `fsync` and rename, retry abandoned installs, exercise no-replace contention, and
+reject a pre-existing empty, truncated, wrong-digest, or non-canonical digest-path object.
 
 ### TypeScript Diagnostics
 
@@ -2016,10 +2530,14 @@ The test matrix includes:
 Each live run:
 
 - Uses a cryptographically random, run-unique `acci-<run-id>-` prefix.
-- Creates a mode-`0600` durable run ledger before the first AWS call. Before each create request, it
-  atomically records and syncs the planned physical name, partition, family, account, region,
-  create-attempt window, random 128-bit candidate ID, and exact ownership tags; after a response, it
-  atomically adds the exact ARN, service `createdTime`, and observed state.
+- Creates a permanent mode-`0600` per-run `.run.lock` file, opens it once, and holds its OS descriptor
+  lock for the runner lifetime. The lock file is never unlinked or atomically replaced.
+- Creates a separate mode-`0600` durable run ledger before the first AWS call. Before each create
+  request, it atomically records and syncs the planned physical name, partition, family, account,
+  region, create-attempt window, random 128-bit candidate ID, and exact ownership tags; after a
+  response, it atomically adds the exact ARN, service `createdTime`, and observed state. Ledger
+  replacement never changes the inode/file ID that carries the active-run lock because they are
+  different files.
 - Adds `agentcore-cli:test-owner`, `agentcore-cli:test-run`,
   `agentcore-cli:test-candidate`, and `agentcore-cli:test-created-at` tags in the original Create call
   for every Identity resource and temporary Secrets Manager secret. No post-create tagging gap is
@@ -2050,19 +2568,29 @@ Each live run:
 
 A separate stale-run reaper handles process and OOM failure. It requires the exact persisted ledger,
 run ID, expected account, region, partition, resource family set, owner tag value, and minimum age.
-The active runner holds an OS descriptor lock on its run ledger; mutation cleanup first acquires that
-lock non-blocking so it cannot reap a current run. Every mandatory ledger, tag, and available service
-time must predate the cutoff, and all normal deletion predicates still apply. It never deletes an
-unledgered, untagged, tag-mismatched, recreated, young, active, or out-of-scope resource. Any failed
-ownership read fails closed. Dry-run output is the default; mutation requires an explicit confirmation
-flag.
+Mutation cleanup opens the permanent per-run `.run.lock` and first acquires its descriptor lock
+non-blocking, so it cannot reap a current run; it never locks the atomically replaced ledger inode.
+Every mandatory ledger, tag, and available service time must predate the cutoff, and all normal
+deletion predicates still apply. It never deletes an unledgered, untagged, tag-mismatched, recreated,
+young, active, or out-of-scope resource. Any failed ownership read fails closed. Dry-run output is the
+default; mutation requires an explicit confirmation flag.
+
+The stale reaper uses the same hardened invocation binding as live execution and capture. It rejects
+`--endpoint-url`, bypasses every environment/profile endpoint override, resolves official HTTPS
+AgentCore, STS, and Secrets Manager endpoints before its account check, resolves credentials exactly
+once, and gives all three services non-refreshing providers over that one snapshot. It checks the
+immutable expiration epoch before every read and mutation send. Entering the five-minute window aborts
+the reaper without refreshing or issuing a later request.
 
 A local ledger survives process failure, not loss of its host or filesystem. CI capture persists the
 mode-`0600` ledger as a restricted cleanup artifact. Without the exact ledger, host-loss cleanup may
 report audit sweep results but must refuse mutation. Reaper tests cover every rejection predicate,
 same-name recreation, unledgered sweep results, partial reruns, and exact-run cleanup. Kill-point
 tests stop after planned-row sync and after service acceptance but before ARN persistence; both paths
-remain recoverable only through the candidate-ID and full ownership conjunction.
+remain recoverable only through the candidate-ID and full ownership conjunction. Reaper binding tests
+also prove endpoint overrides are ignored, one credential snapshot spans STS/AgentCore/Secrets
+Manager, freshness is checked before every send, and the permanent run lock survives ledger
+replacement while excluding active-run cleanup.
 
 Routine automation does not mutate the singleton token-vault CMK. Its request construction,
 confirmation, and error behavior are exhaustively tested with fakes because a live CMK change affects
@@ -2092,12 +2620,12 @@ No framework change is required. Expected direct dependencies are:
   sensitive-path traversal only.
 - Test-only `@aws-sdk/client-sts` for live account verification.
 - Test-only `@aws-sdk/client-secrets-manager` for run-owned EXTERNAL fixtures and cleanup.
-- Direct test-only `fs-native-extensions@1.4.4` for the permanent-file OS descriptor publication
-  lock.
+- Direct test-only `fs-native-extensions@1.4.4` for permanent-file OS descriptor fixture-publication
+  and live-run liveness locks.
 
 Dependency versions remain aligned with the pinned AWS SDK generation. SHA-256 uses the platform
 crypto implementation. Native lock support must pass Bun CI on every compiled Linux, macOS, and
-Windows target before fixture publication is enabled on that target.
+Windows target before fixture publication or live-run cleanup is enabled on that target.
 
 ## Reproducible Review Evidence
 
@@ -2133,13 +2661,21 @@ reflected in a later immutable commit, and that correction must pass independent
   EXTERNAL reference.
 - Payment updates clearly collect every required managed secret again.
 - Unknown future providers render safely on reads and fail safely on writes.
+- Preferred and legacy custom OAuth authentication mechanisms are never sent together; legacy
+  providers remain updateable and explicit migrations are reviewable.
+- Prepared capability, binding, and secret-context ownership is total across commit, duplicate
+  submit, dispose, cancellation, unmount, no-change, failure, and reprepare.
+- One immutable numeric credential snapshot and eagerly resolved endpoints bind every operation;
+  SDK clients receive isolated mutable clones and no operation refreshes midway.
+- File secret acquisition detects symlink and regular-file substitution before reading content.
 - Async Commander and Ink failures expose only `SafeIdentityError` output, and untrusted terminal
   controls cannot affect rendering.
 - Pagination never silently truncates, loops, or emits partial all-results output.
 - Complete tag lifecycle works.
 - No secret reaches output, error artifacts, fixture content, or fixture identity.
 - Golden recordings are deterministic across worker schedules and process-safe, and incomplete
-  captures cannot modify the committed fixture set.
+  captures, truncated objects, or interrupted installation cannot modify or poison the committed
+  fixture set.
 - Unit, router, action, screen, golden, and build checks pass.
 - `bunx tsc --noEmit` matches the exact checked-in pre-implementation diagnostic allowlist and has
   zero diagnostics in every touched file.
