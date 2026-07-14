@@ -3119,6 +3119,10 @@ interface CanonicalRunLedgerBytesV1 {
   readonly [CANONICAL_RUN_LEDGER_BYTES_V1]: never;
 }
 
+type NativeProtectedRootIdentity = Readonly<{
+  protectedRootId: string;
+}>;
+
 interface NativeLinuxStaleCleanupProof {
   readonly platform: "linux";
   readonly bootSessionId: string;
@@ -3157,6 +3161,9 @@ type FixtureIndexSnapshotV1 = Readonly<{
 type FixtureCaptureHandoffV1 = Readonly<{
   captureId: string;
   readyDigest: string;
+  runId: string;
+  runRootId: string;
+  ledgerDigest: string;
   flowCount: number;
   callCount: number;
 }>;
@@ -3248,6 +3255,9 @@ interface AgentCoreNativeAdapter {
   openProtectedRoot(
     path: string,
   ): NativeOutcome<NativeProtectedRootHandle, "unavailable" | "unsafe">;
+  identifyProtectedRoot(
+    root: NativeProtectedRootHandle,
+  ): NativeOutcome<NativeProtectedRootIdentity, "unavailable" | "unsafe" | "unsupported">;
   readRunLedger(
     root: NativeProtectedRootHandle,
   ): NativeOutcome<Uint8Array, "notFound" | "limitExceeded" | "unavailable" | "unsafe">;
@@ -3291,6 +3301,9 @@ interface AgentCoreNativeAdapter {
     publicationAuthority: NativePublicationAuthorityHandle,
     captureId: string,
     readyDigest: string,
+    runRoot: NativeProtectedRootHandle,
+    expectedRunId: string,
+    expectedLedgerDigest: string,
   ): NativeOutcome<
     NativeOpenedSealedCapture,
     "busy" | "invalidCapture" | "unavailable" | "unsafe" | "unsupported"
@@ -3314,6 +3327,10 @@ interface AgentCoreNativeAdapter {
   sealFixtureCaptureRoot(
     capture: NativeOpenCaptureRootHandle,
     fixtureTree: NativeFixtureTreeHandle,
+    runRoot: NativeProtectedRootHandle,
+    runId: string,
+    ledgerBytes: CanonicalRunLedgerBytesV1,
+    ledgerDigest: string,
     readyBytes: Uint8Array,
     readyDigest: string,
   ): NativeCaptureSealOutcome;
@@ -3333,6 +3350,7 @@ interface AgentCoreNativeAdapter {
     publicationAuthority: NativePublicationAuthorityHandle,
     capture: NativeSealedCaptureRootHandle,
     fixtureTree: NativeFixtureTreeHandle,
+    runRoot: NativeProtectedRootHandle,
   ): NativeFixturePublishOutcome;
   closeFixtureTree(handle: NativeFixtureTreeHandle): void;
 }
@@ -3365,8 +3383,17 @@ idempotently, and otherwise installs the protected temporary with file and paren
 A failure known before rename is `notCommitted`; a post-rename uncertainty is `commitUnknown`. After
 `commitUnknown`, the caller rereads and accepts only the exact old or next canonical digest; a missing
 or third state aborts without another AWS mutation.
+For fixture sealing, the loader accepts `runId`, `ledgerBytes`, and `ledgerDigest` only as one
+strict-parser-produced tuple whose purpose is `fixtureCapture` and whose rows are all terminal. Native
+code rereads the fixed ledger through the supplied retained run root, requires byte equality with
+`ledgerBytes`, verifies `ledgerDigest`, derives the protected run-root identity itself, and installs
+that complete recovery binding before `READY`. Caller-provided paths or unvalidated JSON can never
+become a recovery binding.
 Protected-root, mount, and lock-object identities are returned only as fixed lowercase-hex opaque
 digests, never raw host, SID, volume, mount, or path data.
+`identifyProtectedRoot` is available on every supported capture platform and hashes the validated
+platform file identity plus local mount/volume identity. It is a correlation value, not stale-process
+termination evidence; only `identifyStaleCleanupProof` can authorize Linux cleanup.
 The process adapter maps `unavailable`, `unsafe`, `changed`, and `limitExceeded` only to
 `fileUnavailable`, `fileUnsafe`, `fileChanged`, and `invalidValue`, respectively.
 
@@ -3394,6 +3421,21 @@ temporaries are reclaimed only while both the publication-authority lock and the
 tree's co-located lock are held. Each capture has its own permanent `.capture.lock`, so failed-capture
 discard and reap acquire that capture's lock without serializing unrelated active captures. The Linux
 boot/mount proof remains exclusive to stale AWS-resource mutation.
+
+The complete fixture lock discipline is operation-specific and closed:
+
+| Operation                                      | Locks held, in acquisition order                                 |
+| ---------------------------------------------- | ---------------------------------------------------------------- |
+| Capture creation / abandoned-root scan         | Publication authority, then one newly created or scanned capture |
+| Artifact install / seal / explicit discard     | One capture only                                                 |
+| Publication, including stable-temp reclamation | One capture, publication authority, then retained fixture tree   |
+
+Every acquisition after the first is nonblocking. Contention releases all locks already held in
+reverse order and returns `busy`; no path waits while holding an earlier lock. The creation path's
+capture is new and unobservable before authority-protected installation. The abandoned-root scan never
+waits for a busy capture and never carries one capture lock to another child. The publication and scan
+orders therefore intentionally differ but cannot deadlock. Tests cover every pairwise contention edge
+and assert release order and absence of mutation on `busy`.
 
 Every authority-bearing lock, capture root, run ledger, and ledger temporary lives below a retained
 publication-authority or protected-run-root handle. POSIX roots must be exact-effective-user-owned
@@ -3447,13 +3489,16 @@ protected origin record before returning an open handle while holding the captur
 Capture reads the starting suite index only through `readFixtureSuiteIndex` on that retained handle.
 Artifact installation accepts only the open brand. An exact existing digest object is idempotent
 success only after full byte verification; a mismatch is `contentMismatch`. Sealing revalidates the
-same retained tree object, validates canonical `FixtureReadyV1`, installs `READY` last, syncs the
-directory, atomically consumes the open handle, and returns a sealed handle that retains the same lock.
+same retained tree object and the retained protected run root, validates canonical `FixtureReadyV1`
+and the strict canonical run-ledger tuple, installs the protected noncanonical `RUN_BINDING` record,
+installs `READY` last, syncs the directory, atomically consumes the open handle, and returns a sealed
+handle that retains the same lock.
 A closed, sealed, or consumed open handle returns `invalidState` at runtime; the type surface makes
 ordinary cross-state calls unrepresentable. Opening an existing sealed capture requires its canonical
-ID and expected `READY` digest, acquires its lock nonblocking, rejects a digest mismatch or malformed
-handoff as `invalidCapture`, returns `busy` when another process owns it, and returns the validated
-`FixtureCaptureHandoffV1` beside the sealed handle.
+ID, expected `READY` digest, retained protected run root, expected run ID, and expected sealing-time
+ledger digest. It acquires the capture lock nonblocking, rejects any digest, root-identity, run-ID,
+ledger-digest, or metadata mismatch as `invalidCapture`, returns `busy` when another process owns it,
+and returns the validated `FixtureCaptureHandoffV1` beside the sealed handle.
 
 `listSealedFixtureCaptures` is read-only recovery discovery for a retained tree. It examines at most
 `FIXTURE_DISCOVERY_MAX_CHILDREN` exact capture-ID children, attempts each capture lock nonblocking,
@@ -3461,6 +3506,9 @@ returns at most `FIXTURE_DISCOVERY_MAX_HANDOFFS` valid same-provenance, same-tre
 by capture ID, and separately counts busy and invalid captures. Exceeding either cap returns
 `limitExceeded` with no partial list. It never opens an arbitrary path, follows a link, deletes a
 capture, reads AWS state, or treats an invalid root as a valid handoff.
+Every returned handoff includes the protected `runId`, opaque `runRootId`, and sealing-time
+`ledgerDigest`, so discovery output can be joined exactly with `test:identity:inspect`; counts or
+fixture-tree equality alone never select a capture for publication.
 
 `FixtureReadyV1` uses duplicate-aware strict canonical JSON. Object entries are sorted by digest and
 unique. Flow entries are sorted by registered flow ID and unique. `nextIndex.flows` must equal exactly
@@ -3504,12 +3552,22 @@ the same physical host.
 Raw host, SID, mount, and volume values are hashed before entering the record. If any required primitive
 is unavailable or malformed, capture/publication returns `unsupported`.
 
+The separate protected version-1 `RUN_BINDING` record is also excluded from canonical fixture bytes.
+It contains exactly the run ID, opaque protected run-root identity, sealing-time ledger digest, and a
+digest binding those values to the origin record and `READY` digest. It is installed once immediately
+before `READY`, is never rewritten, and is mandatory for every valid sealed capture. A missing,
+duplicate, noncanonical, stale, or mismatched binding makes discovery, opening, and publication reject
+the capture.
+
 `openSealedFixtureCaptureRoot` accepts only observable provenance matching the protected origin record,
 the same authority root, the same retained capture object at its canonical ID path, and a valid sealed
-`READY` whose digest equals the supplied value. Publication additionally requires the currently opened
-fixture tree to be the exact object bound at capture creation; an alias to that object is valid, while a
-byte-identical different object returns `fixtureTreeMismatch`. A copied, reboot-stale, currently moved,
-or cross-authority capture is unpublishable when any observable identity differs. The design does not
+`READY` whose digest equals the supplied value. It also requires the retained run root, expected run
+ID, current canonical ledger bytes, and current ledger digest to equal `RUN_BINDING`; sealing therefore
+cannot be recovered by guessing from two same-base captures. Publication additionally requires the
+currently opened fixture tree to be the exact object bound at capture creation; an alias to that object
+is valid, while a byte-identical different object returns `fixtureTreeMismatch`. A copied,
+reboot-stale, currently moved, cross-run, or cross-authority capture is unpublishable when any
+observable identity differs. The design does not
 guarantee detection when cloned Windows systems reproduce every observable identity component, or when
 a trusted owner moves the same retained directory away and back without changing its identity. No
 authenticated portable provenance is introduced. Publication accepts only the sealed handle opened
@@ -4921,14 +4979,31 @@ member, or sensitive path is unknown.
 
 Every logical capture or replay `Client.send()` owns one private one-use acceptance transaction. A
 fixture initialize middleware creates it once and wraps the SDK `retryMiddleware`; request
-serialization, request-handler dispatch, and deserialize middleware may therefore execute more than
-once without creating another transaction:
+handler dispatch and deserialize middleware execute once per pinned-stack attempt without creating
+another transaction. The pinned stack serializes once before its retry loop; the transaction remains
+correct if a future compatible Smithy stack also repeats serialization:
 
 ```text
 open(optional replay reservation) -> terminalStaged -> finalized
                  \                    \-------------> discarded
-                  \---------------------------------> discarded
+                   \---------------------------------> discarded
 ```
+
+Capture and replay share that logical-call transaction but have different flow consequences.
+Capture discard poisons the unpublished capture flow. Replay owns a separate exact occurrence state:
+
+```text
+available -> reserved(callId) -> consumed
+                              \-> poisoned(callId)
+```
+
+`callId` is an unforgeable object-identity token private to one logical `Client.send()`. Reservation is
+synchronous and may select only the next expected operation/digest/occurrence. Finalization may move
+only that call's reservation to `consumed`. Any transaction discard after reservation atomically moves
+that reservation to `poisoned`; it is never released to `available`. A missing, extra, reordered, or
+foreign call poisons the replay flow before returning its static failure. Once poisoned, every later
+reservation and final flow-verification request fails without synthesizing another fixture response,
+even when later calls would otherwise match the remaining manifest exactly.
 
 Each retry attempt's outer deserialize middleware performs only a detached safe projection. It may
 return immutable candidate evidence correlated to that exact SDK-shaped output or modeled exception,
@@ -4987,8 +5062,9 @@ candidate.
 Capture finalization atomically installs the immutable object and then appends its ordered in-memory
 flow entry; failure of either step poisons the unpublished flow and prevents `READY`. Replay acquires
 exactly one reservation before the first attempt, reuses that same immutable record for every retry
-attempt, and consumes it exactly once only when the terminal staged value is finalized; discard leaves
-it unconsumed. A retryable modeled fixture can therefore be synthesized repeatedly by Smithy while
+attempt, and consumes it exactly once only when the terminal staged value is finalized; logical-call
+discard poisons that exact reservation and the entire replay flow. A retryable modeled fixture can
+therefore be synthesized repeatedly by Smithy while
 advancing its manifest occurrence only once. For `--all`, all page candidates remain one ordered batch
 until every page and the concatenated V1 document pass normalization, cycle detection, and all
 aggregate limits. A discarded candidate poisons its capture flow, and a poisoned flow cannot create
@@ -5130,7 +5206,9 @@ Every golden flow declares a stable, repository-owned flow ID. The ID is part of
 and collision-manifest path. Redaction intentionally makes calls with different secret values
 collide, so each flow manifest assigns a zero-based occurrence for every operation/digest pair and
 records the exact ordered call sequence. Replay consumes every entry exactly once and fails on a
-missing, extra, reordered, or unconsumed call.
+missing, extra, reordered, unconsumed, reserved, or poisoned call. A poisoned flow is terminal failure;
+there is no rollback or retry API at the fixture-flow layer. SDK retries remain inside the one reserved
+logical call and therefore do not poison the flow unless the logical call itself discards.
 
 Flows may run in parallel because their namespaces are disjoint. Calls inside one flow are sequential;
 the harness rejects a second in-flight SDK call for the same flow. A sorted suite index makes flow
@@ -5204,29 +5282,31 @@ Publication is one short `publishFixtureTransaction` inside the native boundary.
 prevalidate the closed capture, exact call consumption, digests, logical mappings, sentinel scans, and
 base-index absent-or-digest state, but that does not authorize mutation and passes no artifact list,
 path list, base state, or next-index bytes. It passes only the retained
-`NativePublicationAuthorityHandle`, `NativeSealedCaptureRootHandle`, and separately retained
-`NativeFixtureTreeHandle`. The transaction rereads and strictly parses canonical `READY` through the
-sealed handle, derives every source component, target component, expected base, byte length, digest,
-and exact next-index bytes internally, then revalidates all three handle identities, observable capture
-provenance, bound fixture-tree identity, component grammar, canonical layout, and fixture-tree security
-before touching a stable path. A copied, currently moved, reboot-stale, cross-authority, or
-no-longer-identical capture returns `invalidCapture`; a different fixture-tree object returns
-`fixtureTreeMismatch`.
+`NativePublicationAuthorityHandle`, `NativeSealedCaptureRootHandle`, separately retained
+`NativeFixtureTreeHandle`, and retained `NativeProtectedRootHandle`. The transaction rereads and
+strictly parses canonical `READY` through the sealed handle, derives every source component, target
+component, expected base, byte length, digest, and exact next-index bytes internally, then revalidates
+all four handle identities, `RUN_BINDING`, observable capture provenance, bound fixture-tree identity,
+component grammar, canonical layout, and fixture-tree security before touching a stable path. A copied,
+currently moved, reboot-stale, cross-run, cross-authority, or no-longer-identical capture returns
+`invalidCapture`; a different fixture-tree object returns `fixtureTreeMismatch`.
 
-Native code attempts two permanent locks nonblocking in one fixed order: first `.publish.lock` relative to the
-capture's publication authority, then `.agentcore-identity-fixture-publish.lock` relative to the
-retained fixture-tree handle. Both use exclusive Linux OFD `fcntl`, macOS `flock`, or Windows
-`LockFileEx` locking and remain held until the transaction has a final outcome. Neither file is ever
-unlinked or replaced. The first lock protects capture provenance and authority-local cleanup; the
-second is the serialization authority for the exact stable tree. This order is universal, including
-discard/reap paths that need both resources, so lock inversion is impossible. Kernel release on
-descriptor close or process death eliminates stale-file reclamation, PID reuse, and
-check/remove/recreate races. Network filesystems, unsupported no-replace/rename primitives, and trees
-writable or deletable by another principal return `unsupported` or `unsafe`. Contention on either lock
-returns `notPublished/busy`; contention on the second releases the first and performs no cleanup or
+The sealed handle already owns `.capture.lock`. Native publication then attempts two permanent locks
+nonblocking: first `.publish.lock` relative to the capture's publication authority, then
+`.agentcore-identity-fixture-publish.lock` relative to the retained fixture-tree handle. Both use
+exclusive Linux OFD `fcntl`, macOS `flock`, or Windows `LockFileEx` locking and remain held until the
+transaction has a final outcome. Neither file is ever unlinked or replaced. The authority lock
+protects capture provenance and authority-local cleanup; the fixture-tree lock is the serialization
+authority for the exact stable tree. The complete cross-operation order and nonblocking release rule
+are defined under the native adapter contract above. Kernel release on descriptor close or process
+death eliminates stale-file reclamation, PID reuse, and check/remove/recreate races. Network
+filesystems, unsupported no-replace/rename primitives, and trees writable or deletable by another
+principal return `unsupported` or `unsafe`. Contention on either later lock returns
+`notPublished/busy`, releases every earlier lock in reverse order, and performs no cleanup or
 stable-tree mutation.
 
-While holding both locks, the native transaction performs the complete descriptor-relative sequence:
+While holding all three locks, the native transaction performs the complete descriptor-relative
+sequence:
 
 1. Revalidate the publication authority, capture, original fixture-tree path, retained tree identity,
    and every known object/manifest/index directory without following links.
@@ -5303,12 +5383,18 @@ bun run test:identity:fixtures:list -- \
 
 bun run test:identity:fixtures:publish -- \
   --fixture-tree <absolute-path> \
-  --capture-id <32-lowercase-hex> \
-  --ready-digest <64-lowercase-hex>
-
-bun run test:identity:fixtures:discard -- \
+  --run-root <existing-absolute-path> \
   --capture-id <32-lowercase-hex> \
   --ready-digest <64-lowercase-hex> \
+  --expected-run-id <32-lowercase-hex> \
+  --expected-ledger-digest <64-lowercase-hex>
+
+bun run test:identity:fixtures:discard -- \
+  --run-root <existing-absolute-path> \
+  --capture-id <32-lowercase-hex> \
+  --ready-digest <64-lowercase-hex> \
+  --expected-run-id <32-lowercase-hex> \
+  --expected-ledger-digest <64-lowercase-hex> \
   --yes
 
 bun run test:identity:fixtures:reap -- \
@@ -5321,19 +5407,27 @@ paths are absolute, NUL-free, at most 4,096 UTF-8 bytes, and pass their retained
 Capture requires a nonexistent run root and the complete account/region/partition/owner/family scope
 plus `--yes`. It rejects endpoint overrides, uses `AWS_PROFILE=deploy`, initializes and locks a
 `RunLedgerV1` with purpose `fixtureCapture` before any AWS Create, and uses the same
-`planned -> createOutcomeUnknown -> observed -> deleteOutcomeUnknown` send gates, ownership tags,
-bounded polls, audit, and stale-reaper protocol as live testing. `createNotSent` remains the only
-terminal row state. Capture and publish read the exact base/index at the fixture tree; publication
-receives no artifact list or next-index bytes from the caller and derives both from sealed `READY`.
+`planned -> createOutcomeUnknown -> observed -> deleteOutcomeUnknown -> deleteAccepted -> deleted`
+send gates, ownership tags, bounded polls, audit, and stale-reaper protocol as live testing.
+`createNotSent` and `deleted` are the only terminal row states. Capture and publish read the exact
+base/index at the fixture tree;
+publication receives no artifact list or next-index bytes from the caller and derives both from sealed
+`READY`.
 
 After every flow, action/presentation assertion, sentinel scan, bounded AWS cleanup snapshot, and final
-audit succeed, capture may seal only when the snapshot is `quiescent`. Quiescent means no owned
-resource is currently visible under the exact bounded poll and complete audit; it is not permanent
-absence proof. The durable run ledger is retained even after a sealed capture so a later reaper can
-delete a delayed or reappearing resource. Capture then emits exactly one document:
+audit succeed, capture may seal only when the snapshot is `quiescent`, the audit is `completed` with
+zero findings, and every ledger row is terminal `createNotSent` or `deleted`. A `planned`,
+`createOutcomeUnknown`, `observed`, `deleteOutcomeUnknown`, or `deleteAccepted` row makes the result
+`notSealed/cleanupIncomplete` even when bounded reads currently see no resource. Quiescence remains a
+bounded current-state fact, while terminality comes only from local no-dispatch proof or the exact
+service-accepted Delete plus absence and final zero-finding-audit transitions. This gate avoids
+claiming a recoverable successful capture after its originating host has lost mutation authority. The
+durable, now-terminal run ledger is retained as the capture's publication binding and audit record.
+Capture then emits exactly one document:
 
 ```ts
 type FixtureCaptureRootCleanupV1 =
+  | { kind: "notCreated" }
   | { kind: "discarded" }
   | {
       kind: "retained";
@@ -5350,6 +5444,7 @@ type FixtureCaptureCommandResultV1 =
       callCount: number;
       durability: "directorySynced" | "processCrashOnly" | "unknownAfterSeal";
       runId: string;
+      runRootId: string;
       ledgerDigest: string;
       cleanupSnapshot: "quiescent";
       audit: RunAuditReportV1;
@@ -5367,8 +5462,14 @@ type FixtureCaptureCommandResultV1 =
       captureId: string | null;
       readyDigest: null;
       runId: string | null;
+      runRootId: string | null;
       ledgerDigest: string | null;
-      cleanupSnapshot: "notRun" | "resourcesPresent" | "indeterminate" | "auditOverflow";
+      cleanupSnapshot:
+        | "notRun"
+        | "quiescent"
+        | "resourcesPresent"
+        | "indeterminate"
+        | "auditOverflow";
       audit: RunAuditReportV1;
       captureRootCleanup: FixtureCaptureRootCleanupV1;
     };
@@ -5388,18 +5489,42 @@ type FixtureListCommandResultV1 =
     };
 ```
 
-The sealed document is the normal handoff to publication. On failure before `READY`, capture closes
-every handle and explicitly discards the open root in `finally`; a failed discard reports its retained
-reason. Every sealed outcome closes its handle but retains the root for publish, explicit discard, or
-audit. If the final sealed-result stdout write fails, capture never emits a partial document, retains
-the sealed root and durable run ledger, and exits `2`; `fixtures:list` recovers the exact capture
-ID/digest for that bound tree, while `test:identity:inspect -- --run-root <known-path>` recovers the
-exact run ID and ledger digest. Discovery and inspection are read-only and never substitute for AWS
-cleanup. A sealed result's audit is necessarily `completed` with zero findings; every other audit
-variant is `notSealed`.
+The result fields are derived by phase. If capture-root creation never returned a handle,
+`captureId`, `readyDigest`, and every run-binding field not yet established are null as applicable, and
+`captureRootCleanup` is `notCreated`. Once a root exists, `captureId` is nonnull. Failure before
+`READY` closes every handle and explicitly discards the open root in `finally`; successful discard is
+`discarded`, and a failed discard is `retained` with its exact closed reason. A seal failure after a
+successful zero-finding audit therefore returns `notSealed`, `cleanupSnapshot: "quiescent"`, the
+completed audit, the established run fields, and the actual discard result. `readyDigest` is null for
+every `notSealed` result because no valid handoff exists.
+
+| Furthest completed capture phase                  | Capture/run fields                                                   | Cleanup/audit fields                                                      |
+| ------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| No canonical run ledger                           | `captureId`, `runId`, `runRootId`, `ledgerDigest` null               | `notCreated`, `notRun`, `audit.notRun`                                    |
+| Canonical run ledger, no capture root             | Run fields nonnull; `captureId` null                                 | `notCreated`, `notRun`, `audit.notRun`                                    |
+| Open capture root, before final audit             | Run fields and `captureId` nonnull; `readyDigest` null               | Exact snapshot/audit reached; root is `discarded` or closed `retained`    |
+| Zero-finding audit, unresolved row or failed seal | Run fields and `captureId` nonnull; `readyDigest` null               | `quiescent`, completed audit; root is `discarded` or closed `retained`    |
+| `READY` installed                                 | Every sealed field nonnull and equal to native handoff/`RUN_BINDING` | `quiescent`, completed zero-finding audit; no `captureRootCleanup` member |
+
+`notSealed.reason` is `auditOverflow` for an overflow audit; `cleanupIncomplete` for
+`resourcesPresent`, `indeterminate`, or any nonterminal row after a quiescent audit; the matching
+`unavailable`, `unsafe`, or `unsupported` for a closed native prerequisite/seal failure; and
+`captureFailed` for poisoned flows, assertion/presentation failure, invalid seal state, or another
+closed capture-internal failure. The first irreversible failure wins; final root-discard failure changes
+only `captureRootCleanup`.
+
+Every sealed outcome closes its handle but retains the root for publish, explicit discard, or audit.
+If the final sealed-result stdout write fails, the stream may already have exposed a prefix, but the
+command never classifies delivery as success, retains the sealed root and durable run ledger, and exits
+`2`. `fixtures:list` recovers the exact capture ID, READY digest, run ID, opaque run-root ID, and ledger
+digest for that bound tree, while `test:identity:inspect -- --run-root <known-path>` recovers the same
+run identity and ledger binding. Discovery and inspection are read-only and never substitute for AWS
+cleanup. A sealed result's audit is necessarily `completed` with zero findings and all rows terminal;
+every other audit or row-state combination is `notSealed`.
 
 Publication independently opens the canonical capture ID under the native-selected authority, verifies
-the supplied `readyDigest` against `READY`, opens the explicit fixture tree, and emits:
+the supplied `readyDigest` against `READY`, opens the explicit fixture tree and protected run root,
+requires the expected run ID and current ledger digest to equal `RUN_BINDING`, and emits:
 
 ```ts
 type FixturePublishCommandResultV1 =
@@ -5408,6 +5533,9 @@ type FixturePublishCommandResultV1 =
       kind: "published";
       captureId: string;
       readyDigest: string;
+      runId: string;
+      runRootId: string;
+      ledgerDigest: string;
       durability: "directorySynced" | "processCrashOnly" | "unknownAfterCommit";
       captureDisposition: "discarded" | "retained";
     }
@@ -5416,6 +5544,9 @@ type FixturePublishCommandResultV1 =
       kind: "notPublished";
       captureId: string;
       readyDigest: string;
+      runId: string;
+      runRootId: string | null;
+      ledgerDigest: string;
       reason:
         | "busy"
         | "invalidCapture"
@@ -5445,12 +5576,17 @@ type FixtureReapCommandResultV1 =
     };
 ```
 
+The `notPublished` run ID and ledger digest are the validated expected command inputs; `runRootId` is
+nonnull only after the supplied protected root opens and native identity derivation succeeds.
+`published` fields come from the verified `RUN_BINDING`, not input echo.
+
 Known `directorySynced` or `processCrashOnly` publication is definitive and automatically discards the
 sealed root. `staleBase` is definitively unpublishable and is also discarded. `unknownAfterCommit`,
 `busy`, `invalidCapture`, `fixtureTreeMismatch`, `unavailable`, `unsafe`, `unsupported`, or any cleanup
 failure retains it for explicit retry/audit. `busy` is handled/retryable and exits `1`; no command
-automatically retries publication. Explicit discard reopens the exact ID/digest, requires `--yes`,
-consumes the sealed handle, and emits the exact discard result above.
+automatically retries publication. Explicit discard reopens the exact ID/digest/run binding through
+the retained protected run root, requires `--yes`, consumes the sealed handle, and emits the exact
+discard result above.
 
 The abandoned-capture reaper runs before capture and publication and is also directly callable. It
 removes only unlocked unsealed captures older than the supplied cutoff and unlocked reboot-stale
@@ -5891,7 +6027,10 @@ errors, unknown member sanitization, and generated paginator execution. Recordin
 suite twice under shuffled worker schedules produces byte-identical committed artifacts.
 
 Acceptance-transaction tests fail V1 and current-state normalization after candidate staging and prove
-capture finalizes no call, creates no `READY`, and replay leaves its reservation unconsumed. Every
+capture finalizes no call and creates no `READY`, while replay atomically changes its exact reservation
+to `poisoned`. Cancellation, projection failure, malformed revival, and safe-normalization failure are
+each followed by an otherwise matching logical call and final verification; both must fail because a
+poisoned occurrence is never released or consumed. Every
 prerequisite phase finalizes complete allowlisted modeled errors after safe mapping but finalizes no
 guard, decode, body, compatibility, reflection, cancellation, expiry, unmodeled, or internal failure.
 All-page batches finalize atomically only after aggregate normalization and limits pass.
@@ -5900,8 +6039,8 @@ Retry tests instrument the pinned middleware stack and prove one initialize tran
 retry attempt. A retryable `500 -> 200` read records only the terminal `200` candidate. Exhausting an
 allowlisted retryable modeled error stages/finalizes one terminal call; replay synthesizes the same
 reserved fixture for every attempt and consumes that reservation exactly once. Retry exhaustion from
-network failure, an unmodeled error, cancellation, or projection failure finalizes no call and leaves a
-replay reservation unconsumed. Intermediate attempt candidates never install objects, append
+network failure, an unmodeled error, cancellation, or projection failure finalizes no call and poisons
+the one replay reservation. Intermediate attempt candidates never install objects, append
 occurrences, poison a flow, or advance replay, and mutation clients still make only their separately
 specified single HTTP attempt.
 
@@ -5922,15 +6061,18 @@ fixtures and correct reverse mapping before each live continuation send, preserv
 equality, and reject a token not issued by the same flow/operation. Pagination boundaries cover
 999/1,000/1,001 pages, 9,999/10,000/10,001 items, and exact/N+1 cumulative wire and final-output bytes
 without rendering or finalizing partial results.
-Capture-command output feeds publication directly. Tests reject a wrong ID, digest, tree, or option;
+Capture-command output feeds publication directly. Tests reject a wrong ID, digest, tree, run root,
+run ID, ledger digest, or option;
 exercise interrupted capture, stale base, `unknownAfterSeal`, `unknownAfterCommit`, and cleanup failure;
 and assert the exact exit/result contracts. Definitive publication and stale base discard the capture,
 unknown/retryable outcomes retain it, explicit discard requires `--yes`, and automatic reap never
 removes a same-boot sealed `READY` root.
 An action assertion or presentation/output failure before seal poisons capture and creates no `READY`.
 A final result write failure after `READY` retains a discoverable sealed capture; `fixtures:list`
-recovers its capture handoff and run inspection recovers the known run root's exact run ID and ledger
-digest without AWS or mutation.
+recovers its capture handoff, including run ID, opaque run-root ID, and sealing ledger digest. Run
+inspection recovers those same three values from the known run root without AWS or mutation. With two
+same-base sealed captures present, only the exact three-field join opens for publication; selecting the
+other capture fails before either publication lock or stable-tree mutation.
 Atomic-object tests kill before and after temp-file `fsync` and rename, retry abandoned installs,
 exercise native no-replace contention and valid existing-object cache hits, assert every unconsumed
 temporary is removed, reject platforms without the required primitive, and reject a pre-existing empty,
@@ -5969,7 +6111,9 @@ installation. Platform tests exercise Linux `renameat2`, macOS `renamex_np`, and
 - Reviewed direct dependencies are exact-pinned, `bun ci` is lockfile-frozen, and
   `@inkui-cli/data-table` is absent. Every source, npm, and standalone distribution preserves the
   required upstream MIT notice for the local derivative in `THIRD_PARTY_NOTICES.md`.
-- `npm pack` contains the production `dist` tree, `THIRD_PARTY_NOTICES.md`, and all six native
+- `package.json.files` explicitly contains both `"dist"` and `"THIRD_PARTY_NOTICES.md"`; reliance on
+  npm's implicit README/LICENSE inclusion is forbidden because npm does not implicitly include the
+  third-party notice. `npm pack` contains the production `dist` tree, `THIRD_PARTY_NOTICES.md`, and all six native
   prebuilds, while excluding test command modules, test sources, fixtures, capture roots, run roots,
   and review artifacts. Test-script metadata may remain in `package.json`. An empty project installs
   and executes the tarball under Node `22.22.1`; all six standalone Bun targets execute their
@@ -6040,7 +6184,7 @@ const RUN_LOCK_BASENAME = ".run.lock";
 const RUN_LEDGER_MAX_BYTES = 1_048_576;
 const RUN_LEDGER_MAX_ROWS = 256;
 const RUN_LEDGER_MAX_DEPTH = 8;
-const RUN_LEDGER_MAX_NODES = 8_192;
+const RUN_LEDGER_MAX_NODES = 16_384;
 const CREATE_SEND_DEADLINE_MS = 300_000;
 const SERVICE_CLOCK_SKEW_MS = 300_000;
 const RUN_POLL_OFFSETS_MS = [
@@ -6090,6 +6234,25 @@ type RunRowStateV1 =
       observedAtEpochMs: number;
       observation: RunObservationV1;
       deleteDispatchRecordedAtEpochMs: number;
+    }>
+  | Readonly<{
+      kind: "deleteAccepted";
+      createDispatchRecordedAtEpochMs: number;
+      observedAtEpochMs: number;
+      observation: RunObservationV1;
+      deleteDispatchRecordedAtEpochMs: number;
+      deleteAcceptedAtEpochMs: number;
+      absenceConfirmedAtEpochMs: number;
+    }>
+  | Readonly<{
+      kind: "deleted";
+      createDispatchRecordedAtEpochMs: number;
+      observedAtEpochMs: number;
+      observation: RunObservationV1;
+      deleteDispatchRecordedAtEpochMs: number;
+      deleteAcceptedAtEpochMs: number;
+      absenceConfirmedAtEpochMs: number;
+      deletionConfirmedAtEpochMs: number;
     }>;
 
 type RunLedgerRowV1 = Readonly<{
@@ -6158,12 +6321,16 @@ and no earlier than its optional dispatch-record timestamp. `observedAtEpochMs` 
 create-dispatch record. `serviceCreatedAtEpochMs` falls inclusively inside the row's
 `createNotBeforeEpochMs..createNotAfterEpochMs` window; it is not ordered against local observation time
 because service and runner clocks may differ within the declared skew. `deleteDispatchRecordedAtEpochMs`
-is no earlier than `observedAtEpochMs`. All additions and comparisons reject overflow.
+is no earlier than `observedAtEpochMs`; `deleteAcceptedAtEpochMs` is no earlier than that dispatch
+record; and `absenceConfirmedAtEpochMs` is no earlier than acceptance. All additions and comparisons
+reject overflow. `deletionConfirmedAtEpochMs` is no earlier than absence confirmation.
 
 `generation` equals the sum of current row-state weights: `planned` is `1`,
 `createOutcomeUnknown` is `2`, `createNotSent` is `3`, `observed` is `3`, and
-`deleteOutcomeUnknown` is `4`. An empty initialized ledger therefore has generation `0`; replacing one
-row state changes generation by exactly the difference between old and new weights.
+`deleteOutcomeUnknown` is `4`, `deleteAccepted` is `5`, and `deleted` is `6`. An empty initialized
+ledger therefore has generation `0`; replacing one row state changes generation by exactly the
+difference between old and new weights, while the audited terminalization batch changes it by the sum
+of those per-row differences.
 
 The four ownership tags are derived rather than stored redundantly:
 
@@ -6189,7 +6356,8 @@ equal their canonical re-encoding byte-for-byte; only that encoder mints
 The JSON root has depth `1`. Every object member value and every array element has its container's depth
 plus one; a member name has the same depth as its value. Each object, array, scalar value, and member
 name counts as one node, including the root and names in empty-valued members. Equality at both caps is
-accepted; depth `9` or node `8,193` is rejected before semantic construction.
+accepted; depth `9` or node `16,385` is rejected before semantic construction. The node cap admits 256
+rows in their largest `deleted` state with all terminal evidence.
 
 The only legal transitions are:
 
@@ -6201,31 +6369,88 @@ planned -> createNotSent
 createOutcomeUnknown -> createNotSent
 createOutcomeUnknown -> observed
 observed -> deleteOutcomeUnknown
+deleteOutcomeUnknown -> deleteAccepted
+one or more deleteAccepted rows -> deleted in one audited terminalization batch
 ```
 
 Scope, purpose, authority, creation facts, row identity, attempt window, dispatch facts, and an existing
-observation never change; V1 never removes a row. `createNotSent` is the only terminal state. The direct
+observation never change; V1 never removes a row. `createNotSent` and `deleted` are the only terminal
+states. The direct
 `planned -> createNotSent` transition is allowed only while the command still owns process-local proof
 that no Create dispatch was authorized. `createOutcomeUnknown -> createNotSent` additionally requires
 the exact in-process request-handler tracker to prove that the handler was never invoked; a restart,
 timeout, response, or missing tracker can never establish it.
 
-Before every Create dispatch, the `createOutcomeUnknown` transition must be atomically installed and
-durably synced. A successful Create response does not supply the creation time required for ownership,
-so it does not advance the row. A fresh family Get or Secrets Manager Describe must read the resource,
-all four ownership tags, full ARN, and service creation time and verify the complete scope, name, tag,
-and attempt-window conjunction before atomically installing `observed`. Before every Delete dispatch,
-the runner/reaper first rereads and verifies the same complete ownership conjunction. An `observed` row
-must then atomically install and durably sync `deleteOutcomeUnknown` immediately before its first Delete
-dispatch; an already-`deleteOutcomeUnknown` row retains that state before every later guarded attempt.
-Secrets use the full observed ARN, `ForceDeleteWithoutRecovery: true`, and no
-`RecoveryWindowInDays`.
+Planning captures both `plannedAtEpochMs + CREATE_SEND_DEADLINE_MS` and the equivalent deadline on one
+process-local monotonic clock. The Create request-handler wrapper, not an outer action, owns dispatch
+authorization. At its exact `handle()` entry it reads both clocks. If either is past its inclusive
+deadline, it atomically installs `planned -> createNotSent` and never invokes the underlying handler.
+Otherwise it atomically installs and durably syncs `createOutcomeUnknown`, then reads both clocks again
+immediately before underlying-handler invocation. Expiry during ledger synchronization installs
+`createOutcomeUnknown -> createNotSent` using the still-local handler-not-invoked proof. A ledger
+failure or expiry invokes no handler. At equality dispatch remains allowed; one millisecond past either
+clock is expired. After the final check, setting the tracker to invoked and calling the underlying handler
+are one synchronous block with no hook, timer, promise, middleware callback, or caller code between
+them. The wall clock catches suspend intervals omitted by a platform monotonic clock; the monotonic
+clock prevents a backward wall-clock adjustment from extending authorization.
+If client construction, serialization, middleware, cancellation, or validation fails before the
+request-handler wrapper is entered, the same tracker proves that the row is still `planned` and permits
+only `planned -> createNotSent`. If the first transition committed but the wrapper never invoked the
+underlying handler, it permits only `createOutcomeUnknown -> createNotSent`. No other layer may mint
+either proof.
 
-`planned`, `createOutcomeUnknown`, `observed`, and `deleteOutcomeUnknown` remain eligible for bounded
-inspection on every later run. A bounded NotFound poll, an empty complete audit, or an exact-success
-Delete response never advances or removes one of those rows: absence is a cleanup snapshot, not durable
-proof that a delayed or reappearing resource can no longer exist. In particular,
-`deleteOutcomeUnknown` remains reaper-eligible forever.
+A successful Create response does not supply the creation time required for ownership, so it does not
+advance the row. A fresh family Get plus `ListTagsForResource` for API-key, OAuth, payment, and
+workload resources, or Secrets Manager Describe with its returned tags, must read the full ARN and
+service creation time and verify the complete scope, name, four-tag, and attempt-window conjunction
+before atomically installing `observed`. Before every Delete dispatch, the runner/reaper first rereads
+and verifies that same complete ownership conjunction. An `observed` row must then atomically install
+and durably sync `deleteOutcomeUnknown` immediately before its first Delete dispatch; an
+already-`deleteOutcomeUnknown` row retains that state before every later guarded attempt. Secrets use
+the full observed ARN, `ForceDeleteWithoutRecovery: true`, and no `RecoveryWindowInDays`.
+
+`deleteOutcomeUnknown -> deleteAccepted` is legal only in the same process that observed the exact
+Delete receipt bound to the action lease, candidate ID, operation, previously observed target ARN/name,
+and persisted dispatch, then completed that row's full scheduled absence poll with no failed read. The
+expected response is the operation registry's exact status and shape, not any 2xx. AgentCore Delete
+operations require `204` with zero-byte normal EOF. Secrets Manager `DeleteSecret` requires `200`,
+normal EOF, and a valid modeled result whose ARN and name equal the observed target; force deletion
+remains asynchronous until polling and audit prove disappearance. OAuth `DELETING` remains pending and
+`DELETE_FAILED` prevents acceptance. A timeout, alternate status, malformed/nonempty AgentCore body,
+abnormal EOF, mismatched Secrets Manager result, restart before receipt correlation, or absence without
+that exact receipt can never produce `deleteAccepted`.
+
+The public
+[`DeleteSecret` API reference](https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_DeleteSecret.html)
+retrieved July 14, 2026 is explicit that
+`ForceDeleteWithoutRecovery` returns HTTP `200`, performs physical deletion asynchronously, and removes
+the opportunity to recover the secret; its response contains `ARN`, `Name`, and `DeletionDate`.
+Therefore response acceptance alone is insufficient, but response-plus-final-absence-plus-audit can be
+the terminal service-contract boundary. The pinned AgentCore operation schemas similarly define exact
+`204` Delete success, while OAuth's modeled lifecycle provides the additional failure-state check.
+
+`deleteAccepted -> deleted` requires a complete final audit performed after the last AWS mutation. The
+audit must have zero findings, every row-specific absence poll must still be clean, and the command
+must reread the exact ledger digest audited before atomically replacing all current `deleteAccepted`
+rows with `deleted` in one CAS/sync. Every row preserves its prior evidence and receives the same
+terminal audit-completion timestamp. After that batch transition, the command rereads one all-terminal
+canonical ledger before fixture sealing.
+Pending Secrets Manager deletion, OAuth failure/pending state, audit cycle/overflow, pagination/read
+failure, any finding, a ledger digest change, or any AWS mutation after audit start prevents
+terminalization. This design treats an exact service-accepted Delete followed by completed absence and
+zero-finding audit as the service contract's irreversible deletion boundary. A service violation that
+recreates the same accepted resource after that boundary is outside the CLI's local cleanup trust
+model and is reported as a terminal-row contract violation, never silently reauthorized.
+
+`planned`, `createOutcomeUnknown`, `observed`, `deleteOutcomeUnknown`, and `deleteAccepted` remain
+eligible for bounded inspection on every later run. A bounded NotFound poll, an empty complete audit,
+or an exact-success Delete response by itself never advances or removes one of those rows: absence is a
+cleanup snapshot, and acceptance without the complete correlated absence poll and final audit remains
+nonterminal. `deleteOutcomeUnknown` remains reaper-eligible until exact acceptance;
+`deleteAccepted` remains audit/finalization-eligible until the global proof commits and authorizes no
+additional Delete. Terminal rows are never deletion candidates. If a later audit observes ownership
+matching a `deleteAccepted` or `deleted` row, it reports a contract-violation finding and refuses
+mutation rather than silently reopening the accepted or terminal state.
 
 Every state/readiness/absence poll captures one monotonic start and uses exactly
 `RUN_POLL_OFFSETS_MS`. Attempt `i` starts no earlier than `start + offset[i]` and after the prior attempt
@@ -6241,11 +6466,29 @@ even if a later request reports NotFound.
 The final audit is one bounded, read-only sweep over every `scope.families` entry in declaration order.
 It starts one monotonic `RUN_AUDIT_DEADLINE_MS` deadline shared by all list pages, follow-up Get/Describe
 calls, and tag reads; each individual read also has the smaller read-attempt timeout. Page and item
-counts are global across families. Equality at the page/item limits is accepted. A nonempty token after
-page 512, item 8,193, a repeated token, deadline expiry, or a 257th finding makes the audit overflow and
-prevents any clean-absence conclusion. Every Secrets Manager list sweep sets
-`IncludePlannedDeletion: true`; a secret pending deletion remains visible and is a finding. Sweeps never
-promote an unledgered resource into a deletion candidate.
+counts are global across families, while continuation-token sets are separate per family and compare
+the exact decoded SDK token. The same token text in two families is valid; a token repeated within one
+family is a cycle.
+
+Before every page request, the audit checks deadline and then the global page counter. If 512 pages
+have already completed, it returns `overflow/pageLimit` without sending another request. Therefore, if
+page 512 terminates one family, the next family's first page is not requested. A page increments
+`pages` only after its List response is successfully received and structurally accepted. Items are then
+visited in service order. Before accepting each item, the audit checks whether 8,192 items have already
+been accepted; an additional item returns `overflow/itemLimit` with `items: 8192`. An accepted item
+increments `items` before its follow-up Get/Describe/tag reads and classification. Discovering a 257th
+finding returns `overflow/findingLimit`, retains exactly the first 256 findings, and includes the
+triggering item in `items`.
+
+After all items on a page are accepted, the audit handles its token in this order: an empty token
+terminates that family; a token already in that family's set returns `overflow/cycle`; a new token is
+inserted; and if `pages === 512`, needing the next page returns `overflow/pageLimit`. Deadline is
+checked before each item, each follow-up read, token handling, and each page request. Expiry returns
+`overflow/deadline`. Thus the first check reached in service traversal order determines the reason,
+and every counter/finding reflects only work accepted before that check. A service/shape failure
+remains `indeterminate`, not overflow. Every Secrets Manager list sweep sets
+`IncludePlannedDeletion: true`; a secret pending deletion remains visible and is a finding. Sweeps
+never promote an unledgered resource into a deletion candidate.
 
 Audit output is closed and bounded:
 
@@ -6272,7 +6515,7 @@ type RunAuditReportV1 =
     }>
   | Readonly<{
       kind: "overflow";
-      reason: "deadline" | "pageLimit" | "itemLimit" | "findingLimit";
+      reason: "deadline" | "pageLimit" | "itemLimit" | "findingLimit" | "cycle";
       pages: number;
       items: number;
       findings: readonly RunAuditFindingV1[];
@@ -6302,19 +6545,22 @@ run prefix or exact owner/run tags. `ledgered` requires the complete valid candi
 conjunction, `unledgered` has a complete valid ownership tuple but no matching row, and
 `ownershipMalformed` covers a missing, malformed, or contradictory reserved ownership field and uses a
 null candidate ID when no valid one is available. Only `ledgered` can ever nominate the corresponding
-row for the separately guarded deletion path. Findings preserve resource-family declaration order,
-then service page order and item order. A completed audit contains at most 256 findings. Discovery of a
-257th finding stops the sweep; the overflow report retains exactly the first 256 in that order and sets
-`findingLimit`. Page/item/deadline overflow and indeterminate reports retain only the findings safely
-established before the stop, still capped and in discovery order. No partial report can produce
-`quiescent`.
+`createOutcomeUnknown`, `observed`, or `deleteOutcomeUnknown` row for the separately guarded deletion
+path; `deleteAccepted` and `deleted` findings are service-contract violations and authorize no
+mutation. Findings preserve resource-family declaration
+order, then service page order and item order. A completed audit contains at most 256 findings.
+Discovery of a 257th finding stops the sweep; the overflow report retains exactly the first 256 in that
+order and sets `findingLimit`. Page/item/cycle/deadline overflow and indeterminate reports retain only
+the findings safely established before the stop, still capped and in discovery order. No partial
+report can produce `quiescent`.
 
 `cleanupSnapshot` is derived, never caller-selected. It is `quiescent` only when every eligible ledger
 row has a clean bounded final absence result and the complete audit has zero findings. A complete audit
 with any finding is `resourcesPresent`; a row mismatch, read failure, or incomplete audit is
 `indeterminate`; any audit cap produces `auditOverflow`; and a skipped cleanup is `notRun`. A
-`fixtureCapture` run may seal only with `quiescent`, while retaining every nonterminal ledger row for
-future inspection and cleanup.
+`fixtureCapture` run may seal only with `quiescent` and no nonterminal ledger row. A quiescent capture
+with any unresolved row is `notSealed/cleanupIncomplete` and retains its ledger for same-authority
+inspection and cleanup.
 
 Every transition calls `replaceRunLedgerAtomically` with expected absence or the exact current digest.
 `expectedDigestMismatch` aborts. An exact next digest is idempotent `alreadyCurrent`. After
@@ -6361,8 +6607,8 @@ automation is exactly `agentcore-cli-identity-live-v1`; fixture capture uses exa
 Inspect accepts only `--run-root`. It performs no AWS, credential, profile, endpoint, lock-reclamation,
 or ledger mutation. Through one retained protected-root handle it reads one atomically installed ledger
 snapshot, applies the full capped canonical parser, hashes those exact bytes, closes the handle, and
-reports the run ID and digest needed after a live/reap stdout failure. Concurrent replacement can make
-the result immediately stale but cannot produce a mixed generation.
+reports the run ID, opaque root ID, and digest needed after a live/reap stdout failure. Concurrent
+replacement can make the result immediately stale but cannot produce a mixed generation.
 
 Command results contain no native/AWS error text:
 
@@ -6423,6 +6669,7 @@ type IdentityRunCommandResultV1 = Readonly<{
     | null;
   purpose: RunPurposeV1 | null;
   runId: string | null;
+  runRootId: string | null;
   ledgerDigest: string | null;
   cutoffEpochMs: number | null;
   cleanupSnapshot: RunCleanupSnapshotV1;
@@ -6444,6 +6691,7 @@ type IdentityRunInspectCommandResultV1 =
       kind: "inspected";
       purpose: RunPurposeV1;
       runId: string;
+      runRootId: string;
       ledgerDigest: string;
       generation: number;
       createdAtEpochMs: number;
@@ -6458,19 +6706,145 @@ type IdentityRunInspectCommandResultV1 =
     }>;
 ```
 
-Each row report describes only work in that command invocation. `ledgerStateBefore` and
-`ledgerStateAfter` expose durable state, `current` exposes the final bounded read, and each send field
-states whether no attempt occurred, the exact process-local tracker proved no handler invocation, the
-handler returned exact success, or invocation made the outcome unknown. An exact-success Create still
-reports `createOutcomeUnknown` until a separate fresh observation is durably installed; an
-exact-success Delete still reports `deleteOutcomeUnknown`.
+`IdentityRunCommandResultV1` is derived by one closed command-phase machine. `live` always has
+`mode: "mutate"`; `reap` has `mode: "mutate"` only with `--yes`, otherwise `dryRun`. Parser and usage
+failure happen before this machine, emit no result document, and exit `2`.
 
-Reports are sorted by candidate ID and bounded by `RUN_LEDGER_MAX_ROWS`. `counts.createSends` and
-`counts.deleteSends` include both handler-invoked outcomes, never `handlerNotInvoked`. Usage/parser
-failure emits no stdout and exits `2`. `active`, `refused`, `partial`, failed live assertions,
-`auditOverflow`, or incomplete cleanup exits `1`. Successful live cleanup and completed dry-run or
-mutation exits `0`. Inspect exits `0` only for `inspected`, `1` for its closed failure, and `2` for
-usage/parser failure.
+The metadata nullability rules are exact:
+
+| Field                           | Derivation                                                                                          |
+| ------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `purpose`, `runId`, `runRootId` | Nonnull together after one protected root and canonical ledger snapshot are validated; null before  |
+| `ledgerDigest`                  | Digest of the latest exactly verified canonical snapshot; null before the first valid snapshot      |
+| `cutoffEpochMs`                 | Nonnull only for `reap` after post-lock scope/account validation and cutoff capture                 |
+| `reports`                       | One entry for each row whose row processor started; no synthetic entries for unexamined rows        |
+| `audit`                         | `notRun` until the final audit starts; thereafter its exact completed/overflow/indeterminate result |
+| `cleanupSnapshot`               | `notRun` until cleanup evidence exists; otherwise the precedence table below                        |
+
+A later ledger-write uncertainty never guesses a next digest. If readback proves the previous bytes,
+`ledgerDigest` remains the previous digest; if it proves the next bytes, it becomes the next digest; a
+missing or third state stops with `ledgerFailure` and reports the last exactly verified digest. The
+opaque `runRootId` is derived by native code from the retained root and is the same value used by
+fixture `RUN_BINDING`.
+
+Pre-lock and authorization results are total:
+
+| Condition                                                      | `outcome` | `stopReason`       | AWS / audit behavior                                             |
+| -------------------------------------------------------------- | --------- | ------------------ | ---------------------------------------------------------------- |
+| Existing `.run.lock` is busy                                   | `active`  | `lockBusy`         | No AWS; `audit: notRun`; all validated rows are unexamined       |
+| Arguments and canonical ledger scope disagree                  | `refused` | `scopeMismatch`    | No AWS; no audit                                                 |
+| Mutating reap lacks supported proof                            | `refused` | `proofUnavailable` | No mutation; run the bounded read-only audit when scope is valid |
+| Supplied root/lock/boot/mount proof differs                    | `refused` | `proofMismatch`    | No mutation; run the bounded read-only audit when scope is valid |
+| Root or ledger cannot produce a first valid canonical snapshot | `refused` | `ledgerFailure`    | No AWS; all metadata fields remain null unless already proven    |
+| Closed internal failure before a valid snapshot                | `refused` | `internalFailure`  | No AWS                                                           |
+
+For a proof refusal, the primary `stopReason` remains the proof reason even if the best-effort audit
+overflows or is indeterminate; the exact audit union still exposes that secondary result. Scope
+mismatch never supplies a remote scope to audit. Dry-run reap does not require mutation proof, but it
+still requires the protected root, lock exclusion, canonical ledger, scope, account, endpoint, and
+credential binding.
+
+After row processing begins, the first applicable reason in this fixed precedence is selected:
+
+1. `ledgerFailure`
+2. `credentialRefreshRequired`
+3. `internalFailure`
+4. `serviceFailure`
+5. `auditOverflow`
+6. `cleanupIncomplete`
+7. `testFailure`
+8. `null`
+
+`auditOverflow` applies to every audit `overflow`, including `cycle`. `cleanupIncomplete` applies to a
+mutating `live` or `reap` result when the cleanup snapshot is not `quiescent` or any nonterminal ledger
+row remains after cleanup. It intentionally outranks `testFailure`, because cleanup state is the
+operator's first recovery action. A complete dry-run with visible resources has `outcome: "completed"`
+and `stopReason: null`; observation is the command's purpose and no cleanup was promised. Any nonnull
+post-authorization reason produces `outcome: "partial"`. Otherwise the outcome is `completed`.
+
+Cleanup snapshots use this precedence:
+
+1. No cleanup or audit started: `notRun`.
+2. Any audit overflow: `auditOverflow`.
+3. Any row read/ownership mismatch, failed required read, contradictory row/audit evidence, or
+   indeterminate audit: `indeterminate`.
+4. A completed audit with one or more findings, or a verified owned row still present:
+   `resourcesPresent`.
+5. Every eligible nonterminal row has a complete final absence poll and the completed audit has zero
+   findings: `quiescent`.
+
+Terminal `createNotSent` and `deleted` rows need no per-row absence read to satisfy step 5, but remain
+covered by the complete audit. A completed zero-finding audit that contradicts a row's `owned` result
+is `indeterminate`, never `quiescent`. Fixture capture adds the stricter all-rows-terminal seal gate
+defined above.
+
+Each row report describes only work in this invocation. Reports are sorted by candidate ID after
+processing and bounded by `RUN_LEDGER_MAX_ROWS`. `ledgerStateBefore` is the first valid snapshot's
+state; `ledgerStateAfter` is the last exactly committed state. `ledgerObservation` equals the
+observation carried by `ledgerStateAfter` for `observed`, `deleteOutcomeUnknown`, `deleteAccepted`, and
+`deleted`, and is null for the other three states. `current` is the final complete row-specific
+observation:
+
+| Starting state         | Permitted processing and final state                                                                              |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `planned`              | Original live process may prove no dispatch and commit `createNotSent`; reap retains it and performs no deletion  |
+| `createOutcomeUnknown` | Fresh owned observation may commit `observed`; mutate may then delete; clean absence retains the uncertain state  |
+| `createNotSent`        | Terminal; no AWS row read or send; `current: notChecked`                                                          |
+| `observed`             | Fresh ownership match is required before Delete; mismatch/indeterminate sends nothing                             |
+| `deleteOutcomeUnknown` | Fresh ownership match may authorize another Delete; clean absence alone retains the uncertain state               |
+| `deleteAccepted`       | Repeat the clean absence poll and final audit without Delete; absence alone cannot make the row terminal          |
+| `deleted`              | Terminal; no AWS row read or send; `current: notChecked`; the global audit detects any service-contract violation |
+
+One report may span several legal durable transitions, but every adjacent committed transition must
+be one of the V1 edges. There is no regression or shortcut. `current: absent` requires the complete
+scheduled absence poll; `owned` requires the full ownership conjunction; `ownershipMismatch` and
+`indeterminate` authorize no later send for that row. `notChecked` is valid only for a terminal row or
+a row stopped before its first remote read.
+
+Send-attempt values obey these equations:
+
+- `notAttempted` means the underlying handler was never authorized and no invocation-specific
+  no-handler transition was needed. Both fields are `notAttempted` in dry-run; reap never sends Create.
+- `handlerNotInvoked` requires the exact process-local tracker. For Create it must end in
+  `createNotSent`; it is never reconstructed after restart.
+- `handlerInvokedExactSuccess` requires exact expected status and normal EOF. Create still needs a
+  separate owned observation. Delete reaches `deleteAccepted` only after its correlated complete
+  absence poll and reaches `deleted` only after the later complete zero-finding audit.
+- `handlerInvokedOutcomeUnknown` means invocation occurred without exact-success proof and leaves the
+  corresponding outcome-unknown state nonterminal.
+
+The count equations are exact:
+
+```text
+examined    = reports.length
+createSends = count(reports.createSendAttempt in
+                    {handlerInvokedExactSuccess, handlerInvokedOutcomeUnknown})
+deleteSends = count(reports.deleteSendAttempt in
+                    {handlerInvokedExactSuccess, handlerInvokedOutcomeUnknown})
+retained    = count(reports where ledgerStateAfter is nonterminal
+                    or current is owned, ownershipMismatch, or indeterminate)
+unexamined  = validFinalLedger ? validFinalLedger.rows.length - examined : 0
+```
+
+All counts are nonnegative and at most `RUN_LEDGER_MAX_ROWS`; `examined + unexamined` equals the final
+valid row count. A refusal after validating a ledger has zero reports, zero sends/retained, and every
+row unexamined. A mid-row stop includes that row with its last proven state/current/send values; later
+rows are unexamined.
+
+Inspect has a separate exact mapping and never opens `.run.lock`:
+
+| Native/parser result                                                       | Inspect result         |
+| -------------------------------------------------------------------------- | ---------------------- |
+| Root opened, ledger bytes canonical, digest/root identity derived          | `inspected`            |
+| Fixed ledger is `notFound` or `limitExceeded`                              | `failed/invalidLedger` |
+| UTF-8, duplicate-key, canonical, schema, generation, or semantic rejection | `failed/invalidLedger` |
+| Root/ledger ownership, ACL, link, reparse, or identity rejection           | `failed/unsafe`        |
+| Required native operation or supported-platform implementation absent      | `failed/unsupported`   |
+| Other closed native read/hash failure                                      | `failed/unavailable`   |
+
+Usage/parser failure emits no stdout and exits `2`. Any `active`, `refused`, or `partial` run result
+exits `1`; `completed` exits `0`, including a completed dry-run with findings. Inspect exits `0` only
+for `inspected`, `1` for its closed failure, and `2` for usage/parser failure.
 
 Each live run:
 
@@ -6483,13 +6857,15 @@ Each live run:
   remains testable but stale cleanup for it is permanently audit-only.
 - Creates a separate mode-`0600` durable run ledger before the first AWS call. Before each create
   request, it atomically appends and syncs the planned physical name, partition, family, account,
-  region, create-attempt window, random 128-bit candidate ID, and exact ownership tags. Immediately
-  before authorizing dispatch it atomically installs and syncs `createOutcomeUnknown`. Only the exact
-  in-process no-handler proof may then install `createNotSent`; every other response or failure leaves
-  outcome unknown until a fresh Get/Describe verifies the exact ARN, service creation time, and tags
-  and atomically installs `observed`. Ledger temporaries are created and verified relative to the
-  protected root before rename. Ledger replacement never changes the inode/file ID that carries the
-  active-run lock because they are different files.
+  region, wall-clock create-attempt window, random 128-bit candidate ID, and exact ownership tags. At
+  the same planning instant it retains the corresponding process-local monotonic deadline. The exact
+  request-handler wrapper checks both deadlines, atomically installs
+  and syncs `createOutcomeUnknown`, rechecks both deadlines, and only then invokes the underlying
+  handler. Only the exact in-process no-handler proof may install `createNotSent`; every other response
+  or failure leaves outcome unknown until a fresh Get/Describe plus required tag read verifies the
+  exact ARN, service creation time, and tags and atomically installs `observed`. Ledger temporaries are
+  created and verified relative to the protected root before rename. Ledger replacement never changes
+  the inode/file ID that carries the active-run lock because they are different files.
 - Adds `agentcore-cli:test-owner`, `agentcore-cli:test-run`,
   `agentcore-cli:test-candidate`, and `agentcore-cli:test-created-at` tags in the original Create call
   for every Identity resource and temporary Secrets Manager secret. No post-create tagging gap is
@@ -6510,8 +6886,10 @@ Each live run:
   it polls until Get returns the expected created or updated state.
 - After Delete, polls Get until `NotFound`. OAuth `DELETING` remains pending and `DELETE_FAILED` fails
   the run; the other three families expose no deletion status and continue polling until absence. It
-  durably installs `deleteOutcomeUnknown` before the Delete dispatch and never terminalizes the row
-  from bounded absence.
+  durably installs `deleteOutcomeUnknown` before the Delete dispatch. Only a correlated exact modeled
+  success with normal EOF followed by the complete clean absence poll atomically installs
+  `deleteAccepted`; only the later complete zero-finding audit installs `deleted`. Bounded absence
+  without that response proof never advances either state.
 - Cleans up in `finally` with the same bounded state polling.
 - Deletes test-owned Secrets Manager secrets with `ForceDeleteWithoutRecovery` and polls until they
   are absent.
@@ -6546,12 +6924,15 @@ After post-lock validation and STS account verification, the reaper captures one
 at or before that cutoff; a found `createOutcomeUnknown` candidate's service time must also fall inside
 its recorded attempt window. All normal deletion predicates still apply. It never deletes an
 unledgered, untagged, tag-mismatched, recreated, young, active, copied-artifact, `planned`,
-`createNotSent`, or out-of-scope resource. Any failed ownership or lock-identity read fails closed.
+`createNotSent`, `deleteAccepted`, `deleted`, or out-of-scope resource. Any failed ownership or
+lock-identity read fails closed.
 Dry-run is the default and performs reads only: it sends no Delete and writes no ledger generation.
-`--yes` permits verified `createOutcomeUnknown -> observed` and `observed ->
-deleteOutcomeUnknown` transitions plus guarded Delete attempts, but cannot bypass any proof, age,
-scope, identity, or ownership predicate. Neither mode writes a transition because a bounded poll or
-audit reports absence.
+`--yes` permits verified `createOutcomeUnknown -> observed`,
+`observed -> deleteOutcomeUnknown -> deleteAccepted`, and `deleteAccepted -> deleted` transitions plus
+guarded Delete attempts, but cannot bypass any proof, age, scope, identity, or ownership predicate.
+Dry-run writes no transition. Mutating reap writes `deleteAccepted` only from its own correlated exact
+Delete success and complete absence poll, and writes `deleted` only after the later complete
+zero-finding audit; an absence poll or audit without that response proof cannot skip either state.
 
 The stale reaper uses the same hardened invocation binding as live execution and capture. It rejects
 `--endpoint-url`, bypasses every environment/profile endpoint override, resolves official HTTPS
@@ -6572,11 +6953,12 @@ reaper's trust model and likewise requires external attestation; the design does
 can distinguish two such kernels. Without the exact ledger and Linux same-session proof, cleanup reports
 audit sweep results but refuses mutation.
 
-Ledger tests reject empty, BOM, invalid UTF-8, 1,048,577-byte, depth `9`, node `8,193`, duplicate-key,
+Ledger tests reject empty, BOM, invalid UTF-8, 1,048,577-byte, depth `9`, node `16,385`, duplicate-key,
 unknown-key, missing-key, empty/duplicate/out-of-order families, unsorted rows, noncanonical numbers,
 malformed states, timestamp-order violations, duplicate rows, bad names/ARNs/proofs,
 purpose/scope-inconsistent data, and every incorrect weighted generation. Boundaries at depth `8`,
-node `8,192`, and all other exact caps pass. Tests exercise every legal transition and illegal edge,
+node `16,384`, a 256-row all-`deleted` ledger, and all other exact caps pass. Tests exercise every legal
+transition and illegal edge,
 expected absence/digest mismatch, idempotent next bytes, and old/next/third/missing readback after
 `commitUnknown`.
 
@@ -6586,11 +6968,17 @@ same-name recreation, unledgered sweep results, partial reruns, dry-run zero mut
 and exact-run Linux same-session local cleanup. A privileged Linux integration job performs a real
 same-boot unmount/remount and proves the unique mount ID changes and mutation remains disabled; kernels
 without the primitive prove audit-only. Kill-point tests stop before and after planned-row rename/sync,
-`createOutcomeUnknown` rename/sync, request-handler invocation, service acceptance, fresh observation,
-`observed` rename/sync, `deleteOutcomeUnknown` rename/sync, Delete send, every NotFound poll, audit, and
-final directory sync. Every surviving ledger is exactly the old or next canonical generation; bounded
-absence never changes it; handler-not-invoked proof can create only `createNotSent`; and both
-pre-observation recovery paths require the candidate ID and full ownership conjunction. Reaper binding
+the first Create deadline check, `createOutcomeUnknown` rename/sync, the second deadline check,
+request-handler invocation, service acceptance, fresh observation, `observed` rename/sync,
+`deleteOutcomeUnknown` rename/sync, Delete send, exact Delete response, every NotFound poll,
+`deleteAccepted` rename/sync, final audit, `deleted` rename/sync, all-terminal ledger reread, `READY`,
+and final directory sync. Deterministic deadline tests expire before the
+first transition, while ledger sync is pending, after sync, at exact equality, and one unit before
+underlying-handler invocation; every expired path proves no handler call and commits `createNotSent`.
+Every surviving ledger is exactly the old or next canonical generation; bounded absence without
+correlated Delete success never changes it; handler-not-invoked proof can create only
+`createNotSent`; and both pre-observation recovery paths require the candidate ID and full ownership
+conjunction. Reaper binding
 tests also replace the ledger between the initial proof check and lock acquisition and require the
 post-lock digest/reread to fail before AWS. They prove the lock remains held through all service reads,
 mutations, polls, audits, and final ledger writes; endpoint overrides are ignored; one credential
@@ -6601,20 +6989,31 @@ Deterministic-clock poll tests assert every offset
 `[0,250,750,1750,3750,7750,15750,31750,61750,91750,121750]`, the per-read 15-second timeout, the
 150-second overall deadline, no overlapping attempt, early verified-present success, final-NotFound
 absence, and indeterminate mapping for any failed read. Final NotFound and an empty audit never mutate a
-nonterminal ledger state.
+nonterminal ledger state without the exact correlated Delete-success evidence.
 
 Audit tests cover page/item limits at `N` and `N + 1`, the shared 300-second deadline, repeated tokens,
 all family-order permutations, 256 and 257 findings, malformed ownership, unledgered resources, and
 partial safe findings on failure. Every Secrets Manager page asserts
 `IncludePlannedDeletion: true`, and a pending-deletion secret prevents quiescence. The complete matrix
+uses independent token sets per family, maps a repeated family-local token to `overflow/cycle`, permits
+the same token text across families, includes the triggering item but not a 257th finding, and proves
+that after a terminal global page 512 no next-family request is sent. Counter and retained-finding
+assertions cover every pre-request, post-page, per-item, per-finding, token, and deadline boundary.
+The complete matrix
 derives only the specified `notRun`, `quiescent`, `resourcesPresent`, `indeterminate`, and
-`auditOverflow` snapshots. Fixture capture seals with nonterminal rows only for a clean quiescent
-snapshot and rejects every other snapshot without invalidating an already sealed `READY`.
+`auditOverflow` snapshots. Fixture capture seals only when every row is terminal and the snapshot is
+clean quiescent; a nonterminal row blocks `READY` even with zero findings. Seal failure after a
+completed zero-finding audit returns `notSealed` with `cleanupSnapshot: quiescent` and the exact
+`notCreated`/`discarded`/`retained` root disposition.
 
-Result-contract tests cover every row-state/current-state/send-attempt combination, bounded counts,
-static failure reasons, and exact `0`/`1`/`2` exits. Inspect tests read active and inactive atomic
-generations without locking or AWS, return the digest of the exact parsed bytes, reject malformed or
-unsafe roots, and recover the run ID/digest after a simulated final stdout failure.
+Result-contract tests instantiate every command/mode/pre-lock row in the derivation tables, every legal
+and illegal row-state/current-state/send-attempt combination, every stop-reason precedence collision,
+all metadata nullability boundaries, the five count equations, report inclusion/order after a mid-row
+stop, dry-run findings, and row-mismatch versus audit precedence. They assert exact `0`/`1`/`2` exits.
+Inspect tests read active and inactive atomic generations without locking or AWS, return the root ID
+and digest of the exact parsed bytes, map native `notFound` and `limitExceeded` to `invalidLedger`,
+exercise every closed native/parser mapping, reject malformed or unsafe roots, and recover the exact
+run ID/root ID/digest after a simulated final stdout failure.
 
 Routine automation does not mutate the singleton token-vault CMK. Its request construction,
 confirmation, and error behavior are exhaustively tested with fakes because a live CMK change affects
@@ -6681,8 +7080,9 @@ The Node-targeted release is built and tested under Node `22.22.1`. CI runs `npm
 tarball, installs that exact tarball into an empty temporary project under Node `22.22.1`, and executes
 its binary/help plus network-free production smoke tests from the installed package. The tarball
 contains `dist`, all six `dist/native/<target>/agentcore_cli_native.node` prebuilds, and
-`THIRD_PARTY_NOTICES.md`; it excludes test modules and data even when `package.json` retains test-script
-metadata. Node `20.20.1` is not a supported CLI runtime and never installs or executes the package
+`THIRD_PARTY_NOTICES.md`; `package.json.files` names the notice explicitly. It excludes test modules and
+data even when `package.json` retains test-script metadata. Node `20.20.1` is not a supported CLI runtime
+and never installs or executes the package
 dependency graph. It appears only in an isolated N-API v8 compatibility job that loads the native
 `.node` binary directly and exercises its closed safe self-test surface.
 
@@ -6850,15 +7250,16 @@ reflected in a later immutable commit, and that correction must pass independent
   bodies are capped at one MiB. Calls remain uncommitted until the real action normalizer accepts them,
   and opaque paginator tokens use reversible per-flow logical aliases. One logical fixture transaction
   wraps every SDK retry: intermediate attempts mutate no fixture state, replay reuses one reservation,
-  and only the terminal accepted attempt can consume it once.
+  only the terminal accepted attempt can consume it once, and logical-call discard irreversibly poisons
+  the reservation and flow.
 - Fixture publication has no JavaScript mutation or check-then-rename fallback. One native transaction
-  owns the namespace-local publication-authority lock, co-located retained-tree lock,
+  owns the per-capture, namespace-local publication-authority, and co-located retained-tree locks,
   descriptor-relative cleanup/install/index commit, existing-object verification, and post-commit
   durability result; copied captures, alternate paths, bind mounts, and separate `/tmp` mount
   namespaces cannot bypass the tree serialization authority. Capture, publish, discard, and reap have
   closed command handoffs and definitive-versus-retryable retention rules. Capture seals only after a
-  bounded quiescent cleanup snapshot, retains its durable nonterminal run ledger, and remains
-  discoverable if final result output fails.
+  bounded quiescent cleanup snapshot and terminal ledger, binds its exact run root/ID/digest outside
+  canonical fixture bytes, and remains unambiguously discoverable if final result output fails.
 - The supported Node runtime is `>=22.22.1`; release uses exact Node `22.22.1`, Bun `1.3.14`,
   TypeScript `5.9.3`, and reviewed direct dependency pins. Packed npm and Bun artifacts execute on
   their declared targets; the npm tarball contains `dist`, all six native prebuilds, and
@@ -6875,11 +7276,14 @@ reflected in a later immutable commit, and that correction must pass independent
   on Linux with the original protected root, boot identity, lock object, and
   `STATX_MNT_ID_UNIQUE` proof; all other platforms are audit-only. Its fixed-cap canonical
   `RunLedgerV1` records purpose and only the legal `planned`, `createOutcomeUnknown`,
-  `createNotSent`, `observed`, and `deleteOutcomeUnknown` transitions; uncertainty is persisted before
-  Create/Delete, bounded absence never terminalizes a row, and deletion-unknown rows remain
-  reaper-eligible. Exact poll/audit deadlines and caps, Secrets Manager planned-deletion sweeps,
-  expected-digest replacement, row/current/send reports, read-only inspection, dry-run behavior, and
-  kill-point recovery are exhaustive.
+  `createNotSent`, `observed`, `deleteOutcomeUnknown`, `deleteAccepted`, and `deleted` transitions;
+  dual deadlines guard the exact Create handler invocation, uncertainty is persisted before
+  Create/Delete, exact acceptance plus absence remains nonterminal, and only the later complete
+  zero-finding audit terminalizes deletion. Deletion-unknown rows remain reaper-eligible. Exact
+  poll/audit deadlines, per-family token-cycle detection, global
+  caps, Secrets Manager planned-deletion sweeps, expected-digest replacement, total
+  row/current/send/result derivation, read-only inspection, dry-run behavior, and kill-point recovery
+  are exhaustive.
 - Design, planning, and implementation receive independent `gpt5.6-sol` architecture, factual,
   security, and implementation-readiness reviews with no unresolved findings and reproducible
   evidence checked into the repository.
