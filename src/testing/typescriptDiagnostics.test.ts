@@ -2,13 +2,20 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import {
   collectProtectedTypeScriptPaths,
-  compareDiagnostics,
   findDiagnosticsInProtectedFiles,
-  parseDiagnostics,
-} from "./typescriptDiagnostics";
+} from "../../scripts/verify-ts-diagnostics";
+import { compareDiagnostics, parseDiagnostics } from "./typescriptDiagnostics";
+import * as typescriptDiagnostics from "./typescriptDiagnostics";
 
 describe("TypeScript diagnostic baseline", () => {
   const line = "src/a.ts(2,7): error TS2532: Object is possibly 'undefined'.";
+
+  test("exposes only the approved runtime values", () => {
+    expect(Object.keys(typescriptDiagnostics).sort()).toEqual([
+      "compareDiagnostics",
+      "parseDiagnostics",
+    ]);
+  });
 
   test("normalizes one compiler diagnostic", () => {
     expect(parseDiagnostics(line)).toEqual([

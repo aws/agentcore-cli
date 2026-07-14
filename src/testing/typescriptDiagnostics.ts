@@ -16,17 +16,8 @@ export type DiagnosticComparison =
       unexpected: readonly TypeScriptDiagnostic[];
     }>;
 
-export type TypeScriptPathDiscovery =
-  | Readonly<{
-      kind: "succeeded";
-      repositoryPaths: readonly string[];
-      touchedPaths: readonly string[];
-    }>
-  | Readonly<{ kind: "failed" }>;
-
 const DIAGNOSTIC_PATTERN = /^(.+)\((\d+),(\d+)\): error (TS\d+): (.*)$/;
 const UNSUPPORTED_DIAGNOSTIC_PATTERN = /(?:^|\s)error TS\d+:/;
-const TYPESCRIPT_PATH_PATTERN = /\.(?:ts|tsx|mts|cts)$/i;
 
 function compareStrings(left: string, right: string): number {
   if (left === right) {
@@ -207,37 +198,4 @@ export function compareDiagnostics(
     return { kind: "matched" };
   }
   return { kind: "mismatched", missing, unexpected };
-}
-
-export function collectProtectedTypeScriptPaths(
-  discovery: TypeScriptPathDiscovery,
-): readonly string[] {
-  if (discovery.kind === "failed") {
-    throw new Error("TypeScript path discovery failed.");
-  }
-
-  const protectedPaths = new Set<string>();
-  for (const repositoryPath of discovery.repositoryPaths) {
-    const normalized = normalizeRepositoryPath(repositoryPath, "Repository path is invalid.");
-    if (TYPESCRIPT_PATH_PATTERN.test(normalized) && normalized.toLowerCase().includes("identity")) {
-      protectedPaths.add(normalized);
-    }
-  }
-  for (const touchedPath of discovery.touchedPaths) {
-    const normalized = normalizeRepositoryPath(touchedPath, "Repository path is invalid.");
-    if (TYPESCRIPT_PATH_PATTERN.test(normalized)) {
-      protectedPaths.add(normalized);
-    }
-  }
-  return [...protectedPaths].sort(compareStrings);
-}
-
-export function findDiagnosticsInProtectedFiles(
-  diagnostics: readonly TypeScriptDiagnostic[],
-  protectedPaths: readonly string[],
-): readonly TypeScriptDiagnostic[] {
-  const normalizedPaths = new Set(
-    protectedPaths.map((path) => normalizeRepositoryPath(path, "Repository path is invalid.")),
-  );
-  return sortDiagnostics(diagnostics.filter((diagnostic) => normalizedPaths.has(diagnostic.path)));
 }

@@ -2,9 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import {
-  collectProtectedTypeScriptPaths,
   compareDiagnostics,
-  findDiagnosticsInProtectedFiles,
   parseDiagnostics,
   type TypeScriptDiagnostic,
 } from "../src/testing/typescriptDiagnostics";
@@ -22,10 +20,128 @@ type TypeScriptDiagnosticBaseline = Readonly<{
   diagnostics: readonly TypeScriptDiagnostic[];
 }>;
 
+type TypeScriptPathDiscovery =
+  | Readonly<{
+      kind: "succeeded";
+      repositoryPaths: readonly string[];
+      touchedPaths: readonly string[];
+    }>
+  | Readonly<{ kind: "failed" }>;
+
 const REQUIRED_TYPESCRIPT_VERSION = "5.9.3";
 const REQUIRED_TYPESCRIPT_COMMAND = ["bunx", "tsc", "--noEmit", "--pretty", "false"] as const;
 const IDENTITY_FEATURE_BASE = "ef2734b9752f3d0c2905de18f8996fab0a55a0c8";
 const UTF8_DECODER_OPTIONS = { fatal: true } as const;
+const TYPESCRIPT_PATH_PATTERN = /\.(?:ts|tsx|mts|cts)$/i;
+
+function compareStrings(left: string, right: string): number {
+  if (left === right) {
+    return 0;
+  }
+  return left < right ? -1 : 1;
+}
+
+function compareDiagnosticTuples(left: TypeScriptDiagnostic, right: TypeScriptDiagnostic): number {
+  return (
+    compareStrings(left.path, right.path) ||
+    left.line - right.line ||
+    left.column - right.column ||
+    compareStrings(left.code, right.code) ||
+    compareStrings(left.message, right.message)
+  );
+}
+
+function isWindowsAbsolutePath(value: string): boolean {
+  return /^[A-Za-z]:\//.test(value);
+}
+
+function normalizeRoot(root: string): string {
+  const normalized = posix.normalize(root.replaceAll("\\", "/"));
+  if (normalized === "/" || /^[A-Za-z]:\/$/.test(normalized)) {
+    return normalized;
+  }
+  return normalized.replace(/\/+$/, "");
+}
+
+function isWithinRoot(absolutePath: string, root: string): boolean {
+  const caseInsensitive = isWindowsAbsolutePath(root);
+  const comparablePath = caseInsensitive ? absolutePath.toLowerCase() : absolutePath;
+  const comparableRoot = caseInsensitive ? root.toLowerCase() : root;
+  const prefix = comparableRoot.endsWith("/") ? comparableRoot : `${comparableRoot}/`;
+  return comparablePath.startsWith(prefix);
+}
+
+function normalizeRepositoryPath(
+  value: string,
+  invalidPathMessage: string,
+  repositoryRoot = process.cwd(),
+): string {
+  if (value.includes("\0") || value.includes("\n") || value.includes("\r")) {
+    throw new Error(invalidPathMessage);
+  }
+
+  const slashPath = value.replaceAll("\\", "/");
+  const root = normalizeRoot(repositoryRoot);
+  const absolute = slashPath.startsWith("/") || isWindowsAbsolutePath(slashPath);
+  let relativePath = slashPath;
+
+  if (absolute) {
+    const normalizedAbsolute = posix.normalize(slashPath);
+    const rootIsWindows = isWindowsAbsolutePath(root);
+    const pathIsWindows = isWindowsAbsolutePath(normalizedAbsolute);
+    if (rootIsWindows !== pathIsWindows || !isWithinRoot(normalizedAbsolute, root)) {
+      throw new Error(invalidPathMessage);
+    }
+    relativePath = normalizedAbsolute.slice(root.endsWith("/") ? root.length : root.length + 1);
+  }
+
+  const normalized = posix.normalize(relativePath);
+  if (
+    normalized === "." ||
+    normalized === ".." ||
+    normalized.startsWith("../") ||
+    normalized.startsWith("/") ||
+    /^[A-Za-z]:/.test(normalized)
+  ) {
+    throw new Error(invalidPathMessage);
+  }
+  return normalized;
+}
+
+export function collectProtectedTypeScriptPaths(
+  discovery: TypeScriptPathDiscovery,
+): readonly string[] {
+  if (discovery.kind === "failed") {
+    throw new Error("TypeScript path discovery failed.");
+  }
+
+  const protectedPaths = new Set<string>();
+  for (const repositoryPath of discovery.repositoryPaths) {
+    const normalized = normalizeRepositoryPath(repositoryPath, "Repository path is invalid.");
+    if (TYPESCRIPT_PATH_PATTERN.test(normalized) && normalized.toLowerCase().includes("identity")) {
+      protectedPaths.add(normalized);
+    }
+  }
+  for (const touchedPath of discovery.touchedPaths) {
+    const normalized = normalizeRepositoryPath(touchedPath, "Repository path is invalid.");
+    if (TYPESCRIPT_PATH_PATTERN.test(normalized)) {
+      protectedPaths.add(normalized);
+    }
+  }
+  return [...protectedPaths].sort(compareStrings);
+}
+
+export function findDiagnosticsInProtectedFiles(
+  diagnostics: readonly TypeScriptDiagnostic[],
+  protectedPaths: readonly string[],
+): readonly TypeScriptDiagnostic[] {
+  const normalizedPaths = new Set(
+    protectedPaths.map((path) => normalizeRepositoryPath(path, "Repository path is invalid.")),
+  );
+  return [...diagnostics]
+    .filter((diagnostic) => normalizedPaths.has(diagnostic.path))
+    .sort(compareDiagnosticTuples);
+}
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -287,9 +403,11 @@ async function main(): Promise<void> {
   console.log(`Protected TypeScript files clean: ${protectedPaths.length} files, 0 diagnostics.`);
 }
 
-try {
-  await main();
-} catch {
-  console.error("TypeScript diagnostic verification failed.");
-  process.exitCode = 1;
+if (import.meta.main) {
+  try {
+    await main();
+  } catch {
+    console.error("TypeScript diagnostic verification failed.");
+    process.exitCode = 1;
+  }
 }
