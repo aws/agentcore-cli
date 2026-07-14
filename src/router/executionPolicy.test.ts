@@ -132,7 +132,21 @@ describe("Commander execution policy classification", () => {
     null,
     undefined,
   ])("classifies a non-Commander thrown value as internal", (error) => {
-    expect(policy.classify(error as CommanderError)).toEqual({ kind: "internal" });
+    expect(policy.classify(error)).toEqual({ kind: "internal" });
+  });
+
+  test("contains a hostile prototype trap while classifying", () => {
+    const hostile = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error("prototype sentinel");
+        },
+      },
+    );
+
+    expect(() => policy.classify(hostile)).not.toThrow();
+    expect(policy.classify(hostile)).toEqual({ kind: "internal" });
   });
 
   test("classifies malformed Commander errors as internal", () => {
@@ -214,6 +228,67 @@ describe("Commander execution policy configuration", () => {
     expect(unavailable).toBe(1);
   });
 
+  test("contains a throwing unavailable notification after a synchronous sink failure", () => {
+    const sink = {
+      writeUtf8: (): Promise<{ kind: "written" }> => {
+        throw new Error("writer sentinel");
+      },
+    };
+    const policy = createCommanderExecutionPolicy(
+      {
+        stdout: sink,
+        stderr: sink,
+        quiesce: async () => {},
+        dispose: () => {},
+      },
+      () => {
+        throw new Error("notification sentinel");
+      },
+    );
+    const command = new Command("app");
+    policy.configure(command);
+
+    expect(() => command.configureOutput().writeOut?.("output")).not.toThrow();
+  });
+
+  test("contains a throwing unavailable notification without an unhandled rejection", async () => {
+    const unhandled: unknown[] = [];
+    const observeUnhandled = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", observeUnhandled);
+    try {
+      const sink = {
+        writeUtf8: async (): Promise<{ kind: "outputUnavailable" }> => ({
+          kind: "outputUnavailable",
+        }),
+      };
+      const policy = createCommanderExecutionPolicy(
+        {
+          stdout: sink,
+          stderr: sink,
+          quiesce: async () => {},
+          dispose: () => {},
+        },
+        () => {
+          throw new Error("notification sentinel");
+        },
+      );
+      const command = new Command("app");
+      policy.configure(command);
+
+      command.configureOutput().writeOut?.("output");
+      await Promise.resolve();
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", observeUnhandled);
+    }
+  });
+
   test("configures every compiled command immediately after construction with one policy", () => {
     const configured: Command[] = [];
     const stdoutWrites: string[] = [];
@@ -249,16 +324,17 @@ describe("Commander execution policy configuration", () => {
 
     expect(configured.map((entry) => entry.name())).toEqual([
       "root",
+      "help",
       "nested",
+      "help",
       "default-host",
+      "help",
       "leaf",
     ]);
-    expect(configured).toEqual([
-      command,
-      command.commands[0]!,
-      command.commands[0]!.commands[0]!,
-      command.commands[0]!.commands[0]!.commands[0]!,
-    ]);
+    expect(configured[0]).toBe(command);
+    expect(configured[2]).toBe(command.commands[0]);
+    expect(configured[4]).toBe(command.commands[0]!.commands[0]);
+    expect(configured[6]).toBe(command.commands[0]!.commands[0]!.commands[0]);
     for (const configuredCommand of configured) {
       const output = configuredCommand.configureOutput();
       output.writeOut?.(`${configuredCommand.name()}:out`);
@@ -266,8 +342,24 @@ describe("Commander execution policy configuration", () => {
       output.outputError?.("raw sentinel", output.writeErr!);
       expect(() => configuredCommand.error("raw sentinel")).toThrow(CommanderError);
     }
-    expect(stdoutWrites).toEqual(["root:out", "nested:out", "default-host:out", "leaf:out"]);
-    expect(stderrWrites).toEqual(["root:err", "nested:err", "default-host:err", "leaf:err"]);
+    expect(stdoutWrites).toEqual([
+      "root:out",
+      "help:out",
+      "nested:out",
+      "help:out",
+      "default-host:out",
+      "help:out",
+      "leaf:out",
+    ]);
+    expect(stderrWrites).toEqual([
+      "root:err",
+      "help:err",
+      "nested:err",
+      "help:err",
+      "default-host:err",
+      "help:err",
+      "leaf:err",
+    ]);
   });
 });
 

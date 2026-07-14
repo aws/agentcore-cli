@@ -1,5 +1,3 @@
-import type { CommanderError } from "commander";
-
 import {
   createCommanderExecutionPolicy,
   type CommanderExecutionPolicy,
@@ -85,7 +83,7 @@ export function runRunnable(
 
 function classify(policy: InvocationExecutionPolicy, error: unknown): CommanderExitOutcome {
   try {
-    return policy.commander.classify(error as CommanderError);
+    return policy.commander.classify(error);
   } catch {
     return { kind: "internal" };
   }
@@ -101,6 +99,32 @@ function guidance(outcome: CommanderExitOutcome): string | undefined {
   return INTERNAL_ERROR;
 }
 
+async function writeStderr(policy: InvocationExecutionPolicy, text: string): Promise<boolean> {
+  try {
+    const outcome = await policy.writeStderr(text);
+    return outcome.kind === "outputUnavailable";
+  } catch {
+    return true;
+  }
+}
+
+async function quiesce(policy: InvocationExecutionPolicy): Promise<boolean> {
+  try {
+    await policy.quiesce();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function outputUnavailable(policy: InvocationExecutionPolicy): boolean {
+  try {
+    return policy.outputUnavailable();
+  } catch {
+    return true;
+  }
+}
+
 export async function runWithExitCode(
   fn: (argv: string[]) => Promise<void>,
   policy: InvocationExecutionPolicy,
@@ -109,38 +133,43 @@ export async function runWithExitCode(
   let exitCode = ExitCode.SUCCESS;
   let diagnosticAttempted = false;
   try {
-    await fn(argv);
-  } catch (error: unknown) {
-    const outcome = classify(policy, error);
-    const message = guidance(outcome);
-    if (message !== undefined) {
-      exitCode = ExitCode.FAILURE;
-      diagnosticAttempted = true;
-      await policy.writeStderr(`${message}\n`);
+    try {
+      await fn(argv);
+    } catch (error: unknown) {
+      const outcome = classify(policy, error);
+      const message = guidance(outcome);
+      if (message !== undefined) {
+        exitCode = ExitCode.FAILURE;
+        diagnosticAttempted = true;
+        if (await writeStderr(policy, `${message}\n`)) {
+          exitCode = ExitCode.FAILURE;
+        }
+      }
     }
-  }
 
-  try {
-    await policy.quiesce();
+    if (!(await quiesce(policy))) {
+      exitCode = ExitCode.FAILURE;
+    }
+
+    if (outputUnavailable(policy)) {
+      exitCode = ExitCode.FAILURE;
+      if (!diagnosticAttempted) {
+        diagnosticAttempted = true;
+        await writeStderr(policy, `${OUTPUT_UNAVAILABLE}\n`);
+        if (!(await quiesce(policy))) {
+          exitCode = ExitCode.FAILURE;
+        }
+      }
+    }
   } catch {
     exitCode = ExitCode.FAILURE;
-  }
-
-  if (policy.outputUnavailable() && !diagnosticAttempted) {
-    exitCode = ExitCode.FAILURE;
-    await policy.writeStderr(`${OUTPUT_UNAVAILABLE}\n`);
+  } finally {
     try {
-      await policy.quiesce();
+      policy.dispose();
     } catch {
       exitCode = ExitCode.FAILURE;
     }
   }
 
-  try {
-    policy.dispose();
-  } catch {
-    exitCode = ExitCode.FAILURE;
-  }
-
-  return policy.outputUnavailable() ? ExitCode.FAILURE : exitCode;
+  return exitCode;
 }

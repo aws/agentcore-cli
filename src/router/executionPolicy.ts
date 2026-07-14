@@ -13,7 +13,7 @@ export type CommanderExitOutcome =
 
 export interface CommanderExecutionPolicy {
   configure(command: Command): void;
-  classify(error: CommanderError): CommanderExitOutcome;
+  classify(error: unknown): CommanderExitOutcome;
 }
 
 const SUCCESS_CODES = new Set(["commander.help", "commander.helpDisplayed", "commander.version"]);
@@ -38,20 +38,25 @@ export function createCommanderExecutionPolicy(
   supervisor: StreamSupervisor,
   onOutputUnavailable: () => void = () => {},
 ): CommanderExecutionPolicy {
+  const notifyOutputUnavailable = (): void => {
+    try {
+      onOutputUnavailable();
+    } catch {}
+  };
   const enqueue = (sink: AwaitedOutputSink, text: string): void => {
     try {
       void sink.writeUtf8(text).then(
         (outcome) => {
           if (isUnavailable(outcome)) {
-            onOutputUnavailable();
+            notifyOutputUnavailable();
           }
         },
         () => {
-          onOutputUnavailable();
+          notifyOutputUnavailable();
         },
       );
     } catch {
-      onOutputUnavailable();
+      notifyOutputUnavailable();
     }
   };
 
@@ -71,10 +76,10 @@ export function createCommanderExecutionPolicy(
       });
     },
     classify(error) {
-      if (!(error instanceof CommanderError)) {
-        return { kind: "internal" };
-      }
       try {
+        if (!(error instanceof CommanderError)) {
+          return { kind: "internal" };
+        }
         const code = error.code;
         const exitCode = error.exitCode;
         if (typeof code !== "string" || !Number.isInteger(exitCode)) {

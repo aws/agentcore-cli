@@ -82,6 +82,20 @@ function globalFlagsOf(node: Handler): GlobalFlag[] {
   return node.flags().filter((f): f is GlobalFlag => "id" in f);
 }
 
+function createConfiguredCommand(name: string, policy: CommanderExecutionPolicy): Command {
+  const command = new Command(name);
+  policy.configure(command);
+  return command;
+}
+
+function createHelpCommand(policy: CommanderExecutionPolicy): Command {
+  const command = createConfiguredCommand("help", policy);
+  command.helpOption(false);
+  command.argument("[command]");
+  command.description("display help for command");
+  return command;
+}
+
 // compile walks the Handler tree into a Commander Command tree.
 //
 // `stack` is the accumulated middleware declared by ancestors. A node's own
@@ -101,8 +115,7 @@ export function compile(
   stack: Middleware[] = [],
   inheritedGlobals: GlobalFlag[] = [],
 ): Command {
-  const c = new Command(node.name());
-  policy.configure(c);
+  const c = createConfiguredCommand(node.name(), policy);
   c.description(node.description());
 
   const ownFlags = node.flags();
@@ -125,9 +138,7 @@ export function compile(
 
   const children = node.children();
   if (children.length > 0) {
-    // Commander disables its implicit help command when a branch has a default
-    // action, so explicitly retain help before attaching children or fallback.
-    c.helpCommand(true);
+    c.addHelpCommand(createHelpCommand(policy));
 
     // attaching both children and subcommands leads to ambiguity.
     if (node.arguments().length > 0) {

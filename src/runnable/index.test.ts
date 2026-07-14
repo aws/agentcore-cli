@@ -7,6 +7,7 @@ import {
   ExitCode,
   runRunnable,
   runWithExitCode,
+  type InvocationExecutionPolicy,
   type Runnable,
 } from "./index.tsx";
 
@@ -62,6 +63,28 @@ function createOutputHarness(
     supervisor,
     policy: createInvocationExecutionPolicy(supervisor),
     disposed: () => disposed,
+  };
+}
+
+function createInjectedPolicy(
+  overrides: Partial<InvocationExecutionPolicy> = {},
+): Readonly<{ policy: InvocationExecutionPolicy; disposeCalls(): number }> {
+  let disposeCalls = 0;
+  const commandPolicy = createInvocationExecutionPolicy(createOutputHarness().supervisor).commander;
+  const policy: InvocationExecutionPolicy = {
+    commander: commandPolicy,
+    writeStderr: async () => ({ kind: "written" }),
+    outputUnavailable: () => false,
+    quiesce: async () => {},
+    dispose: () => {
+      disposeCalls += 1;
+    },
+    ...overrides,
+  };
+
+  return {
+    policy,
+    disposeCalls: () => disposeCalls,
   };
 }
 
@@ -264,4 +287,83 @@ test("completion waits for high-water quiescence before disposing", async () => 
   releaseQuiescence.resolve();
   expect(await running).toBe(ExitCode.SUCCESS);
   expect(disposed).toBe(true);
+});
+
+describe("injected execution policy failures", () => {
+  test.each([
+    [
+      "synchronous throw",
+      () => {
+        throw new Error("write sentinel");
+      },
+    ],
+    ["rejection", async () => Promise.reject(new Error("write sentinel"))],
+  ])("contains writeStderr %s and disposes exactly once", async (_name, writeStderr) => {
+    const injected = createInjectedPolicy({
+      writeStderr: writeStderr as InvocationExecutionPolicy["writeStderr"],
+    });
+
+    const result = await runWithExitCode(
+      async () => {
+        throw new Error("run sentinel");
+      },
+      injected.policy,
+      [],
+    );
+
+    expect(result).toBe(ExitCode.FAILURE);
+    expect(injected.disposeCalls()).toBe(1);
+  });
+
+  test("contains outputUnavailable throws and fallback write failures", async () => {
+    let writeCalls = 0;
+    let quiesceCalls = 0;
+    const injected = createInjectedPolicy({
+      writeStderr: () => {
+        writeCalls += 1;
+        throw new Error("fallback sentinel");
+      },
+      outputUnavailable: () => {
+        throw new Error("availability sentinel");
+      },
+      quiesce: async () => {
+        quiesceCalls += 1;
+      },
+    });
+
+    const result = await runWithExitCode(async () => {}, injected.policy, []);
+
+    expect(result).toBe(ExitCode.FAILURE);
+    expect(writeCalls).toBe(1);
+    expect(quiesceCalls).toBe(2);
+    expect(injected.disposeCalls()).toBe(1);
+  });
+
+  test("contains quiesce failure and still disposes exactly once", async () => {
+    const injected = createInjectedPolicy({
+      quiesce: async () => {
+        throw new Error("quiesce sentinel");
+      },
+    });
+
+    const result = await runWithExitCode(async () => {}, injected.policy, []);
+
+    expect(result).toBe(ExitCode.FAILURE);
+    expect(injected.disposeCalls()).toBe(1);
+  });
+
+  test("contains dispose failure after attempting it exactly once", async () => {
+    let disposeCalls = 0;
+    const injected = createInjectedPolicy({
+      dispose: () => {
+        disposeCalls += 1;
+        throw new Error("dispose sentinel");
+      },
+    });
+
+    const result = await runWithExitCode(async () => {}, injected.policy, []);
+
+    expect(result).toBe(ExitCode.FAILURE);
+    expect(disposeCalls).toBe(1);
+  });
 });
