@@ -3,9 +3,14 @@ import { PassThrough, Writable } from "node:stream";
 import { Command, CommanderError } from "commander";
 import z from "zod";
 
-import type { StreamSupervisor } from "../runtime/output/types";
+import type { OutputWriteOutcome, StreamSupervisor } from "../runtime/output/types";
 import { createStreamSupervisor } from "../runtime/output/streamSupervisor";
-import { createInvocationExecutionPolicy, ExitCode, runWithExitCode } from "../runnable";
+import {
+  createInvocationExecutionPolicy,
+  ExitCode,
+  runWithExitCode,
+  type InvocationExecutionPolicy,
+} from "../runnable";
 import { ValueContext } from "./context";
 import { createCommanderExecutionPolicy, type CommanderExecutionPolicy } from "./executionPolicy";
 import { argument, createHandler, flag } from "./handler";
@@ -284,6 +289,106 @@ describe("Commander execution policy configuration", () => {
       });
 
       expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", observeUnhandled);
+    }
+  });
+
+  test("hostile output outcome latches unavailable before quiescence and exits failure", async () => {
+    const unhandled: unknown[] = [];
+    const observeUnhandled = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", observeUnhandled);
+    try {
+      const hostileOutcome = new Proxy<OutputWriteOutcome>(
+        { kind: "written" },
+        {
+          get(target, property, receiver) {
+            if (property === "kind") {
+              throw new Error("outcome sentinel");
+            }
+            return Reflect.get(target, property, receiver);
+          },
+        },
+      );
+      const stderrWrites: string[] = [];
+      let invocation: InvocationExecutionPolicy;
+      const availabilityAtQuiesce: boolean[] = [];
+      const supervisor: StreamSupervisor = {
+        stdout: {
+          writeUtf8: async () => hostileOutcome,
+        },
+        stderr: {
+          writeUtf8: async (text) => {
+            stderrWrites.push(text);
+            return { kind: "written" };
+          },
+        },
+        quiesce: async () => {
+          availabilityAtQuiesce.push(invocation.outputUnavailable());
+        },
+        dispose: () => {},
+      };
+      invocation = createInvocationExecutionPolicy(supervisor);
+      const command = new Command("app");
+      invocation.commander.configure(command);
+
+      const exitCode = await runWithExitCode(
+        async () => {
+          command.configureOutput().writeOut?.("output");
+        },
+        invocation,
+        [],
+      );
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+
+      expect(exitCode).toBe(ExitCode.FAILURE);
+      expect(availabilityAtQuiesce).toEqual([true, true]);
+      expect(stderrWrites).toEqual(["Command output could not be written.\n"]);
+      expect(unhandled).toEqual([]);
+      expect(stderrWrites.join("")).not.toContain("outcome sentinel");
+    } finally {
+      process.off("unhandledRejection", observeUnhandled);
+    }
+  });
+
+  test("contains a runtime async unavailable notification rejection", async () => {
+    const unhandled: unknown[] = [];
+    const observeUnhandled = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", observeUnhandled);
+    try {
+      const sink = {
+        writeUtf8: async (): Promise<{ kind: "outputUnavailable" }> => ({
+          kind: "outputUnavailable",
+        }),
+      };
+      const rejectingNotification = (async () => {
+        throw new Error("async notification sentinel");
+      }) as unknown as () => undefined;
+      const policy = createCommanderExecutionPolicy(
+        {
+          stdout: sink,
+          stderr: sink,
+          quiesce: async () => {},
+          dispose: () => {},
+        },
+        rejectingNotification,
+      );
+      const command = new Command("app");
+      policy.configure(command);
+
+      command.configureOutput().writeOut?.("output");
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+
+      expect(unhandled).toEqual([]);
+      expect(JSON.stringify(unhandled)).not.toContain("async notification sentinel");
     } finally {
       process.off("unhandledRejection", observeUnhandled);
     }

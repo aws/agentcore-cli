@@ -36,20 +36,35 @@ function isUnavailable(outcome: OutputWriteOutcome): boolean {
 
 export function createCommanderExecutionPolicy(
   supervisor: StreamSupervisor,
-  onOutputUnavailable: () => void = () => {},
+  onOutputUnavailable: () => undefined = () => undefined,
 ): CommanderExecutionPolicy {
   const notifyOutputUnavailable = (): void => {
+    let notification: unknown;
     try {
-      onOutputUnavailable();
+      notification = onOutputUnavailable();
+    } catch {
+      return;
+    }
+    try {
+      void Promise.resolve(notification).catch(() => {});
     } catch {}
+  };
+  const handleOutcome = (outcome: OutputWriteOutcome): void => {
+    try {
+      if (!isUnavailable(outcome)) {
+        return;
+      }
+    } catch {
+      notifyOutputUnavailable();
+      return;
+    }
+    notifyOutputUnavailable();
   };
   const enqueue = (sink: AwaitedOutputSink, text: string): void => {
     try {
       void sink.writeUtf8(text).then(
         (outcome) => {
-          if (isUnavailable(outcome)) {
-            notifyOutputUnavailable();
-          }
+          handleOutcome(outcome);
         },
         () => {
           notifyOutputUnavailable();

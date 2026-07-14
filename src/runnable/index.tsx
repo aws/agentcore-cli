@@ -42,8 +42,9 @@ export function createInvocationExecutionPolicy(
   supervisor: StreamSupervisor,
 ): InvocationExecutionPolicy {
   let unavailable = false;
-  const markUnavailable = () => {
+  const markUnavailable = (): undefined => {
     unavailable = true;
+    return undefined;
   };
   const writeStderr = async (text: string): Promise<OutputWriteOutcome> => {
     try {
