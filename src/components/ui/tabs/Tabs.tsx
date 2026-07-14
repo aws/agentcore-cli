@@ -40,21 +40,24 @@ export const Tabs: React.FC<TabsProps> = ({
       const currentIndex = tabs.findIndex((t) => t.key === effectiveActiveKey);
       if (key.leftArrow || input === "h") {
         for (let i = currentIndex - 1; i >= 0; i--) {
-          if (!tabs[i].disabled) {
-            onChange(tabs[i].key);
+          const tab = tabs[i];
+          if (tab && !tab.disabled) {
+            onChange(tab.key);
             break;
           }
         }
       } else if (key.rightArrow || input === "l") {
         for (let i = currentIndex + 1; i < tabs.length; i++) {
-          if (!tabs[i].disabled) {
-            onChange(tabs[i].key);
+          const tab = tabs[i];
+          if (tab && !tab.disabled) {
+            onChange(tab.key);
             break;
           }
         }
       } else if (input >= "1" && input <= "9") {
         const idx = parseInt(input, 10) - 1;
-        if (idx < tabs.length && !tabs[idx].disabled) onChange(tabs[idx].key);
+        const tab = tabs[idx];
+        if (idx < tabs.length && tab && !tab.disabled) onChange(tab.key);
       }
     },
     { isActive: focus },
