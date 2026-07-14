@@ -144,15 +144,17 @@ export const Markdown: React.FC<MarkdownProps> = ({ content, theme = darkTheme }
   let i = 0;
 
   while (i < lines.length) {
-    const line = lines[i];
+    // Note: assertion is safe based on bound above.
+    const line = lines[i]!;
 
     // Fenced code block
     if (line.startsWith("```")) {
       const lang = line.slice(3).trim();
       const codeLines: string[] = [];
       i++;
-      while (i < lines.length && !lines[i].startsWith("```")) {
-        codeLines.push(lines[i]);
+      // Note: assertions on lines[i] are safe based on first term in the while condition.
+      while (i < lines.length && !lines[i]!.startsWith("```")) {
+        codeLines.push(lines[i]!);
         i++;
       }
       elements.push(
@@ -253,10 +255,11 @@ export const Markdown: React.FC<MarkdownProps> = ({ content, theme = darkTheme }
     // Ordered list
     const olMatch = line.match(/^(\d+)\.\s(.*)/);
     if (olMatch) {
+      // note: if the regex matched, there must be number at olMatch[1], so assertion is safe.
       elements.push(
         <Box key={i} flexDirection="row">
-          <Text color={theme.colors.primary}>{`  ${olMatch[1]}. `}</Text>
-          <Text>{renderInline(parseInline(olMatch[2]), theme)}</Text>
+          <Text color={theme.colors.primary}>{`  ${olMatch[1]!}. `}</Text>
+          <Text>{renderInline(parseInline(olMatch[2] ?? ""), theme)}</Text>
         </Box>,
       );
       i++;
