@@ -1,0 +1,62 @@
+name: Assign PR Reviewer (round-robin)
+
+# Auto-assigns one reviewer to each new PR, so every PR has a named, accountable
+# reviewer instead of sitting in a shared queue. The reviewer pool is the repo's
+# existing AUTHORIZED_USERS list (the same vetted maintainer roster that gates the
+# tarball / e2e / agent workflows), so there is no separate list to maintain.
+#
+# Uses pull_request_target (same rationale as pr-size.yml): a fork PR's default
+# token is read-only and cannot request reviewers, so we need the base-repo token.
+# Safe because this workflow ONLY reads PR metadata and assigns a reviewer — it
+# never checks out or executes untrusted PR code.
+on:
+  pull_request_target:
+    types: [opened, ready_for_review]
+    branches: [main, feat/**]
+
+jobs:
+  assign-reviewer:
+    # Skip drafts — assign when a PR is actually ready for review.
+    if: github.event.pull_request.draft == false
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Assign a round-robin reviewer from AUTHORIZED_USERS
+        uses: actions/github-script@v9
+        env:
+          AUTHORIZED_USERS: ${{ secrets.AUTHORIZED_USERS }}
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const { owner, repo } = context.repo;
+            const author = pr.user.login;
+
+            // Don't re-assign if a reviewer was already requested (e.g. manual, or a re-run).
+            if ((pr.requested_reviewers?.length ?? 0) > 0 || (pr.requested_teams?.length ?? 0) > 0) {
+              console.log('Reviewer(s) already requested; leaving as-is.');
+              return;
+            }
+
+            // Pool = the repo's existing comma-separated maintainer roster, sorted for a
+            // stable round-robin order, with the PR author removed (can't review own PR).
+            const pool = (process.env.AUTHORIZED_USERS || '')
+              .split(',').map(s => s.trim()).filter(Boolean)
+              .filter(login => login !== author)
+              .sort();
+            if (pool.length === 0) {
+              console.log('No eligible reviewers in AUTHORIZED_USERS (empty, or author-only).');
+              return;
+            }
+
+            // Stateless round-robin: PR number modulo pool size. Deterministic, no state
+            // file to keep in sync, and spreads load evenly as PR numbers increase.
+            const reviewer = pool[pr.number % pool.length];
+            console.log(`Requesting review from ${reviewer} (pool of ${pool.length}, author ${author}).`);
+
+            await github.rest.pulls.requestReviewers({
+              owner,
+              repo,
+              pull_number: pr.number,
+              reviewers: [reviewer],
+            });
