@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { constants, type BigIntStats } from "node:fs";
+import { lstat, mkdtemp, open, readFile, realpath, rm, type FileHandle } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, posix, win32 } from "node:path";
 import {
@@ -43,15 +44,66 @@ type VerificationOptions = Readonly<{
   cwd: string;
   platform: NodeJS.Platform;
   runCommand(command: readonly string[], cwd: string): Promise<CommandResult>;
-  readFile(path: string): Promise<Uint8Array>;
+  fileSystem?: BaselineFileSystem;
+}>;
+
+type BaselineFileSystem = Readonly<{
+  lstat(path: string): Promise<BigIntStats>;
+  realpath(path: string): Promise<string>;
+  open(path: string, flags: number): Promise<FileHandle>;
+}>;
+
+type FileIdentity = Readonly<{
+  dev: bigint;
+  ino: bigint;
+  mode: bigint;
+  nlink: bigint;
+  size: bigint;
+  mtimeNs: bigint;
+  ctimeNs: bigint;
+}>;
+
+type DirectorySnapshot = Readonly<{
+  path: string;
+  resolvedPath: string;
+  identity: FileIdentity;
+}>;
+
+type LegacyFileLease = Readonly<{
+  entry: LegacyFileDigest;
+  path: string;
+  resolvedPath: string;
+  identity: FileIdentity;
+  digest: string;
+  handle: FileHandle;
+  parentDirectories: readonly DirectorySnapshot[];
 }>;
 
 const REQUIRED_TYPESCRIPT_VERSION = "5.9.3";
 const REQUIRED_TYPESCRIPT_COMMAND = ["bunx", "tsc", "--noEmit", "--pretty", "false"] as const;
 const REQUIRED_DIAGNOSTIC_COUNT = 29;
 const REQUIRED_COMPILER_EXIT_CODE = 2;
+const REVIEWED_LEGACY_FILE_DIGESTS = [
+  {
+    path: "src/components/ui/data-table/DataTable.tsx",
+    sha256: "df3eb3532a8ee78b78fbee0356c7e3f6febd9add12bf60e74edcca65141121d3",
+  },
+  {
+    path: "src/components/ui/markdown/Markdown.tsx",
+    sha256: "5453b2ad274a3a93849edbce5e3507f088645662d2a4b5687fa593093d6e9770",
+  },
+  {
+    path: "src/components/ui/tabs/Tabs.tsx",
+    sha256: "2112b4f26d3650b670a81e1070f4eb093f3075b119862abd6b2750bf10e35dc6",
+  },
+] as const satisfies readonly LegacyFileDigest[];
 const UTF8_DECODER_OPTIONS = { fatal: true } as const;
 const GENERIC_FAILURE = "TypeScript diagnostic verification failed.";
+const DEFAULT_BASELINE_FILE_SYSTEM: BaselineFileSystem = {
+  lstat: (path) => lstat(path, { bigint: true }),
+  realpath,
+  open,
+};
 
 function compareStrings(left: string, right: string): number {
   if (left === right) {
@@ -227,6 +279,27 @@ export function parseBaseline(
     return { path: entry.path, sha256: entry.sha256 };
   });
 
+  if (
+    diagnostics.some(
+      (diagnostic, index) =>
+        index > 0 &&
+        compareDiagnosticTuples(diagnostics[index - 1] as TypeScriptDiagnostic, diagnostic) > 0,
+    ) ||
+    legacyFileDigests.some(
+      (entry, index) =>
+        index > 0 &&
+        compareStrings((legacyFileDigests[index - 1] as LegacyFileDigest).path, entry.path) > 0,
+    ) ||
+    legacyFileDigests.length !== REVIEWED_LEGACY_FILE_DIGESTS.length ||
+    legacyFileDigests.some(
+      (entry, index) =>
+        entry.path !== REVIEWED_LEGACY_FILE_DIGESTS[index]?.path ||
+        entry.sha256 !== REVIEWED_LEGACY_FILE_DIGESTS[index]?.sha256,
+    )
+  ) {
+    throw new Error("Invalid TypeScript diagnostic baseline.");
+  }
+
   const diagnosticPaths = new Set(
     diagnostics.map((diagnostic) => canonicalRepositoryPath(diagnostic.path, platform)),
   );
@@ -304,89 +377,334 @@ function repositoryFilePath(
     : posix.join(repositoryRoot, repositoryPath);
 }
 
-async function findChangedLegacyFiles(
-  baseline: TypeScriptDiagnosticBaseline,
-  repositoryRoot: string,
+function fileIdentity(stats: BigIntStats): FileIdentity {
+  return {
+    dev: stats.dev,
+    ino: stats.ino,
+    mode: stats.mode,
+    nlink: stats.nlink,
+    size: stats.size,
+    mtimeNs: stats.mtimeNs,
+    ctimeNs: stats.ctimeNs,
+  };
+}
+
+function identitiesMatch(left: FileIdentity, right: FileIdentity): boolean {
+  return (
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.mode === right.mode &&
+    left.nlink === right.nlink &&
+    left.size === right.size &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs
+  );
+}
+
+function canonicalAbsolutePath(path: string, platform: NodeJS.Platform): string {
+  return platform === "win32" ? win32.normalize(path).toLowerCase() : posix.normalize(path);
+}
+
+function requireResolvedPathWithinRepository(
+  resolvedPath: string,
+  resolvedRepositoryRoot: string,
   platform: NodeJS.Platform,
-  readRepositoryFile: VerificationOptions["readFile"],
-): Promise<readonly string[]> {
-  const changedPaths: string[] = [];
-  for (const entry of baseline.legacyFileDigests) {
-    const bytes = await readRepositoryFile(
-      repositoryFilePath(repositoryRoot, entry.path, platform),
-    );
-    const digest = createHash("sha256").update(bytes).digest("hex");
-    if (digest !== entry.sha256) {
-      changedPaths.push(entry.path);
+): void {
+  const pathApi = platform === "win32" ? win32 : posix;
+  const relativePath = pathApi.relative(resolvedRepositoryRoot, resolvedPath);
+  if (
+    relativePath === "" ||
+    relativePath === ".." ||
+    relativePath.startsWith(`..${pathApi.sep}`) ||
+    pathApi.isAbsolute(relativePath)
+  ) {
+    throw new Error("Reviewed legacy TypeScript path is unsafe.");
+  }
+}
+
+async function hashFileHandle(handle: FileHandle): Promise<string> {
+  const hash = createHash("sha256");
+  const buffer = Buffer.allocUnsafe(64 * 1024);
+  let position = 0;
+  while (true) {
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+    if (bytesRead === 0) {
+      return hash.digest("hex");
+    }
+    hash.update(buffer.subarray(0, bytesRead));
+    position += bytesRead;
+  }
+}
+
+async function captureParentDirectories(
+  entry: LegacyFileDigest,
+  repositoryRoot: string,
+  resolvedRepositoryRoot: string,
+  platform: NodeJS.Platform,
+  fileSystem: BaselineFileSystem,
+): Promise<readonly DirectorySnapshot[]> {
+  const pathApi = platform === "win32" ? win32 : posix;
+  const paths = [repositoryRoot];
+  let currentPath = repositoryRoot;
+  for (const component of entry.path.split("/").slice(0, -1)) {
+    currentPath = pathApi.join(currentPath, component);
+    paths.push(currentPath);
+  }
+
+  const snapshots: DirectorySnapshot[] = [];
+  for (const [index, path] of paths.entries()) {
+    const statsBefore = await fileSystem.lstat(path);
+    const resolvedPath = await fileSystem.realpath(path);
+    const statsAfter = await fileSystem.lstat(path);
+    if (
+      !statsBefore.isDirectory() ||
+      !statsAfter.isDirectory() ||
+      !identitiesMatch(fileIdentity(statsBefore), fileIdentity(statsAfter))
+    ) {
+      throw new Error("Reviewed legacy TypeScript parent path is unsafe.");
+    }
+    if (index === 0) {
+      if (
+        canonicalAbsolutePath(resolvedPath, platform) !==
+        canonicalAbsolutePath(resolvedRepositoryRoot, platform)
+      ) {
+        throw new Error("Repository root changed during verification.");
+      }
+    } else {
+      requireResolvedPathWithinRepository(resolvedPath, resolvedRepositoryRoot, platform);
+    }
+    snapshots.push({
+      path,
+      resolvedPath,
+      identity: fileIdentity(statsAfter),
+    });
+  }
+  return snapshots;
+}
+
+async function validateParentDirectories(
+  snapshots: readonly DirectorySnapshot[],
+  resolvedRepositoryRoot: string,
+  platform: NodeJS.Platform,
+  fileSystem: BaselineFileSystem,
+): Promise<void> {
+  for (const [index, snapshot] of snapshots.entries()) {
+    const stats = await fileSystem.lstat(snapshot.path);
+    const resolvedPath = await fileSystem.realpath(snapshot.path);
+    if (
+      !stats.isDirectory() ||
+      !identitiesMatch(snapshot.identity, fileIdentity(stats)) ||
+      canonicalAbsolutePath(snapshot.resolvedPath, platform) !==
+        canonicalAbsolutePath(resolvedPath, platform)
+    ) {
+      throw new Error("Reviewed legacy TypeScript parent path changed.");
+    }
+    if (index === 0) {
+      if (
+        canonicalAbsolutePath(resolvedPath, platform) !==
+        canonicalAbsolutePath(resolvedRepositoryRoot, platform)
+      ) {
+        throw new Error("Repository root changed during verification.");
+      }
+    } else {
+      requireResolvedPathWithinRepository(resolvedPath, resolvedRepositoryRoot, platform);
     }
   }
-  return changedPaths;
+}
+
+async function acquireLegacyFileLease(
+  entry: LegacyFileDigest,
+  repositoryRoot: string,
+  resolvedRepositoryRoot: string,
+  platform: NodeJS.Platform,
+  fileSystem: BaselineFileSystem,
+): Promise<LegacyFileLease> {
+  const path = repositoryFilePath(repositoryRoot, entry.path, platform);
+  const parentDirectories = await captureParentDirectories(
+    entry,
+    repositoryRoot,
+    resolvedRepositoryRoot,
+    platform,
+    fileSystem,
+  );
+  const pathStatsBefore = await fileSystem.lstat(path);
+  if (!pathStatsBefore.isFile()) {
+    throw new Error("Reviewed legacy TypeScript path is not a regular file.");
+  }
+  const resolvedPathBefore = await fileSystem.realpath(path);
+  requireResolvedPathWithinRepository(resolvedPathBefore, resolvedRepositoryRoot, platform);
+
+  const handle = await fileSystem.open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const [handleStatsBefore, pathStatsAfter, resolvedPathAfter] = await Promise.all([
+      handle.stat({ bigint: true }),
+      fileSystem.lstat(path),
+      fileSystem.realpath(path),
+    ]);
+    if (
+      !handleStatsBefore.isFile() ||
+      !pathStatsAfter.isFile() ||
+      !identitiesMatch(fileIdentity(pathStatsBefore), fileIdentity(handleStatsBefore)) ||
+      !identitiesMatch(fileIdentity(handleStatsBefore), fileIdentity(pathStatsAfter)) ||
+      canonicalAbsolutePath(resolvedPathBefore, platform) !==
+        canonicalAbsolutePath(resolvedPathAfter, platform)
+    ) {
+      throw new Error("Reviewed legacy TypeScript file changed during acquisition.");
+    }
+    requireResolvedPathWithinRepository(resolvedPathAfter, resolvedRepositoryRoot, platform);
+
+    const identity = fileIdentity(handleStatsBefore);
+    const digest = await hashFileHandle(handle);
+    const [handleStatsAfterHash, pathStatsAfterHash] = await Promise.all([
+      handle.stat({ bigint: true }),
+      fileSystem.lstat(path),
+    ]);
+    if (
+      !handleStatsAfterHash.isFile() ||
+      !pathStatsAfterHash.isFile() ||
+      !identitiesMatch(identity, fileIdentity(handleStatsAfterHash)) ||
+      !identitiesMatch(identity, fileIdentity(pathStatsAfterHash))
+    ) {
+      throw new Error("Reviewed legacy TypeScript file changed while hashing.");
+    }
+
+    return {
+      entry,
+      path,
+      resolvedPath: resolvedPathAfter,
+      identity,
+      digest,
+      handle,
+      parentDirectories,
+    };
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
+}
+
+async function validateLegacyFileLease(
+  lease: LegacyFileLease,
+  resolvedRepositoryRoot: string,
+  platform: NodeJS.Platform,
+  fileSystem: BaselineFileSystem,
+): Promise<void> {
+  await validateParentDirectories(
+    lease.parentDirectories,
+    resolvedRepositoryRoot,
+    platform,
+    fileSystem,
+  );
+  const [handleStats, pathStats, resolvedPath] = await Promise.all([
+    lease.handle.stat({ bigint: true }),
+    fileSystem.lstat(lease.path),
+    fileSystem.realpath(lease.path),
+  ]);
+  if (
+    !handleStats.isFile() ||
+    !pathStats.isFile() ||
+    !identitiesMatch(lease.identity, fileIdentity(handleStats)) ||
+    !identitiesMatch(lease.identity, fileIdentity(pathStats)) ||
+    canonicalAbsolutePath(lease.resolvedPath, platform) !==
+      canonicalAbsolutePath(resolvedPath, platform)
+  ) {
+    throw new Error("Reviewed legacy TypeScript file identity changed.");
+  }
+  requireResolvedPathWithinRepository(resolvedPath, resolvedRepositoryRoot, platform);
+  if ((await hashFileHandle(lease.handle)) !== lease.digest) {
+    throw new Error("Reviewed legacy TypeScript file content changed.");
+  }
+}
+
+async function executeTypeScriptDiagnosticVerification(
+  options: VerificationOptions,
+  fileSystem: BaselineFileSystem,
+  leases: LegacyFileLease[],
+): Promise<VerificationResult> {
+  const baseline = parseBaseline(options.fixture, options.platform);
+  const rootResult = await options.runCommand(["git", "rev-parse", "--show-toplevel"], options.cwd);
+  if (rootResult.exitCode !== 0 || rootResult.stderr !== "") {
+    return failure();
+  }
+  const repositoryRoot = parseRepositoryRoot(rootResult.stdout);
+
+  const versionResult = await options.runCommand(["bunx", "tsc", "--version"], repositoryRoot);
+  if (
+    versionResult.exitCode !== 0 ||
+    versionResult.stderr !== "" ||
+    versionResult.stdout !== `Version ${baseline.typescriptVersion}\n`
+  ) {
+    return failure("TypeScript version mismatch.");
+  }
+
+  const resolvedRepositoryRoot = await fileSystem.realpath(repositoryRoot);
+  for (const entry of baseline.legacyFileDigests) {
+    leases.push(
+      await acquireLegacyFileLease(
+        entry,
+        repositoryRoot,
+        resolvedRepositoryRoot,
+        options.platform,
+        fileSystem,
+      ),
+    );
+  }
+  const changedLegacyPaths = leases
+    .filter((lease) => lease.digest !== lease.entry.sha256)
+    .map((lease) => lease.entry.path);
+
+  const compilerResult = await options.runCommand(baseline.command, repositoryRoot);
+  await Promise.all(
+    leases.map((lease) =>
+      validateLegacyFileLease(lease, resolvedRepositoryRoot, options.platform, fileSystem),
+    ),
+  );
+  if (compilerResult.exitCode !== REQUIRED_COMPILER_EXIT_CODE || compilerResult.stderr !== "") {
+    return failure();
+  }
+
+  const actualDiagnostics = parseDiagnostics(compilerResult.stdout);
+  const protectedDiagnostics = findDiagnosticsInProtectedFiles(
+    actualDiagnostics,
+    changedLegacyPaths,
+    {
+      platform: options.platform,
+      repositoryRoot,
+    },
+  );
+  if (protectedDiagnostics.length > 0) {
+    return failure("Reviewed legacy TypeScript file changed.");
+  }
+
+  const comparison = compareDiagnostics(baseline.diagnostics, actualDiagnostics);
+  if (comparison.kind === "mismatched") {
+    return failure("TypeScript diagnostic baseline mismatch.");
+  }
+
+  return {
+    exitCode: 0,
+    stdout: [
+      `TypeScript diagnostic baseline matched: ${baseline.diagnostics.length} diagnostics.`,
+      `Reviewed legacy diagnostic files unchanged: ${baseline.legacyFileDigests.length} files.`,
+      "Non-baseline TypeScript files clean: 0 diagnostics.",
+    ],
+    stderr: [],
+  };
 }
 
 export async function verifyTypeScriptDiagnostics(
   options: VerificationOptions,
 ): Promise<VerificationResult> {
+  const fileSystem = options.fileSystem ?? DEFAULT_BASELINE_FILE_SYSTEM;
+  const leases: LegacyFileLease[] = [];
+  let result: VerificationResult;
   try {
-    const baseline = parseBaseline(options.fixture, options.platform);
-    const rootResult = await options.runCommand(
-      ["git", "rev-parse", "--show-toplevel"],
-      options.cwd,
-    );
-    if (rootResult.exitCode !== 0 || rootResult.stderr !== "") {
-      return failure();
-    }
-    const repositoryRoot = parseRepositoryRoot(rootResult.stdout);
-
-    const versionResult = await options.runCommand(["bunx", "tsc", "--version"], repositoryRoot);
-    if (
-      versionResult.exitCode !== 0 ||
-      versionResult.stderr !== "" ||
-      versionResult.stdout !== `Version ${baseline.typescriptVersion}\n`
-    ) {
-      return failure("TypeScript version mismatch.");
-    }
-
-    const changedLegacyPaths = await findChangedLegacyFiles(
-      baseline,
-      repositoryRoot,
-      options.platform,
-      options.readFile,
-    );
-    const compilerResult = await options.runCommand(baseline.command, repositoryRoot);
-    if (compilerResult.exitCode !== REQUIRED_COMPILER_EXIT_CODE || compilerResult.stderr !== "") {
-      return failure();
-    }
-
-    const actualDiagnostics = parseDiagnostics(compilerResult.stdout);
-    const protectedDiagnostics = findDiagnosticsInProtectedFiles(
-      actualDiagnostics,
-      changedLegacyPaths,
-      {
-        platform: options.platform,
-        repositoryRoot,
-      },
-    );
-    if (protectedDiagnostics.length > 0) {
-      return failure("Reviewed legacy TypeScript file changed.");
-    }
-
-    const comparison = compareDiagnostics(baseline.diagnostics, actualDiagnostics);
-    if (comparison.kind === "mismatched") {
-      return failure("TypeScript diagnostic baseline mismatch.");
-    }
-
-    return {
-      exitCode: 0,
-      stdout: [
-        "TypeScript diagnostic baseline matched: 29 diagnostics.",
-        "Reviewed legacy diagnostic files unchanged: 3 files.",
-        "Non-baseline TypeScript files clean: 0 diagnostics.",
-      ],
-      stderr: [],
-    };
+    result = await executeTypeScriptDiagnosticVerification(options, fileSystem, leases);
   } catch {
-    return failure();
+    result = failure();
   }
+  const closeResults = await Promise.allSettled(leases.map((lease) => lease.handle.close()));
+  return closeResults.some((closeResult) => closeResult.status === "rejected") ? failure() : result;
 }
 
 async function main(): Promise<void> {
@@ -395,7 +713,6 @@ async function main(): Promise<void> {
     cwd: process.cwd(),
     platform: process.platform,
     runCommand,
-    readFile,
   });
   for (const line of result.stdout) {
     console.log(line);
