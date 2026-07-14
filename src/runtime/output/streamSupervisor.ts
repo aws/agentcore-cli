@@ -177,9 +177,7 @@ class SupervisedStream {
         removeDrainListener();
         settle(OUTPUT_UNAVAILABLE);
       }
-      if (callbackSeen) {
-        releaseAfterTerminalTurn();
-      }
+      releaseAfterTerminalTurn();
     };
     const operation: StreamOperation = {
       fail: failOperation,

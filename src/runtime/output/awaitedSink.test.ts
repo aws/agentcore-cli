@@ -74,6 +74,16 @@ async function pending<T>(promise: Promise<T>): Promise<boolean> {
   return (await Promise.race([promise.then(() => false), Promise.resolve(true)])) === true;
 }
 
+async function settledAfterMicrotasks<T>(promise: Promise<T>): Promise<boolean> {
+  let settled = false;
+  void promise.then(() => {
+    settled = true;
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+  return settled;
+}
+
 async function exerciseWriteFailure(
   failure: "throw" | "callback" | "error" | "close",
 ): Promise<unknown> {
@@ -85,8 +95,14 @@ async function exerciseWriteFailure(
           }
         : undefined,
   });
+  const errorBaseline = stream.listenerCount("error");
+  const closeBaseline = stream.listenerCount("close");
   const supervisor = createStreamSupervisor(stream.asWriteStream(), stream.asWriteStream());
-  const write = supervisor.stdout.writeUtf8("document");
+  let settlements = 0;
+  const write = supervisor.stdout.writeUtf8("document").then((result) => {
+    settlements += 1;
+    return result;
+  });
 
   if (failure === "callback") {
     stream.completeCallback(new Error(SENTINEL));
@@ -97,11 +113,21 @@ async function exerciseWriteFailure(
   }
 
   const result = await write;
-  if ((failure === "error" || failure === "close") && stream.calls.length > 0) {
-    stream.completeCallback();
-  }
   supervisor.dispose();
-  await supervisor.quiesce();
+  const quiescence = supervisor.quiesce();
+  expect(await settledAfterMicrotasks(quiescence)).toBe(true);
+  await quiescence;
+  expect(stream.listenerCount("error")).toBe(errorBaseline);
+  expect(stream.listenerCount("close")).toBe(closeBaseline);
+
+  if (failure === "error" || failure === "close") {
+    expect(() => {
+      stream.completeCallback(new Error(SENTINEL));
+      stream.repeatCallback(0);
+    }).not.toThrow();
+    await Promise.resolve();
+    expect(settlements).toBe(1);
+  }
   return result;
 }
 
@@ -184,14 +210,29 @@ test("contains synchronous error and close events emitted by write", async () =>
         }
       },
     });
+    const errorBaseline = stream.listenerCount("error");
+    const closeBaseline = stream.listenerCount("close");
     const supervisor = createStreamSupervisor(stream.asWriteStream(), stream.asWriteStream());
+    let settlements = 0;
 
-    const result = await supervisor.stdout.writeUtf8("document");
+    const result = await supervisor.stdout.writeUtf8("document").then((outcome) => {
+      settlements += 1;
+      return outcome;
+    });
 
     expect(result).toEqual({ kind: "outputUnavailable" });
-    stream.completeCallback();
     supervisor.dispose();
-    await supervisor.quiesce();
+    const quiescence = supervisor.quiesce();
+    expect(await settledAfterMicrotasks(quiescence)).toBe(true);
+    await quiescence;
+    expect(stream.listenerCount("error")).toBe(errorBaseline);
+    expect(stream.listenerCount("close")).toBe(closeBaseline);
+    expect(() => {
+      stream.completeCallback(new Error(SENTINEL));
+      stream.repeatCallback(0);
+    }).not.toThrow();
+    await Promise.resolve();
+    expect(settlements).toBe(1);
   }
 });
 
