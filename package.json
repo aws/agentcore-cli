@@ -8,8 +8,13 @@
   },
   "main": "./dist/index.js",
   "files": [
-    "dist"
+    "dist",
+    "THIRD_PARTY_NOTICES.md"
   ],
+  "engines": {
+    "node": ">=22.22.1"
+  },
+  "packageManager": "bun@1.3.14",
   "scripts": {
     "build": "bun build ./src/index.ts --target node --outdir ./dist --minify",
     "compile": "bun run compile:darwin-x64 && bun run compile:darwin-arm64 && bun run compile:linux-x64 && bun run compile:linux-arm64 && bun run compile:windows-x64 && bun run compile:windows-arm64",
@@ -21,6 +26,8 @@
     "compile:windows-arm64": "bun build --compile --minify --target=bun-windows-arm64 ./src/index.ts --outfile dist/bin/agentcore-windows-arm64",
     "start": "bun run src/index.ts",
     "test": "bun test",
+    "test:package": "bun test src/testing/packageContract.test.ts",
+    "verify:tsc": "bun scripts/verify-ts-diagnostics.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepublishOnly": "bun run build",
@@ -30,29 +37,33 @@
     "*.{ts,tsx,json,md}": "prettier --write"
   },
   "devDependencies": {
-    "@types/bun": "latest",
+    "@aws-sdk/client-secrets-manager": "3.1079.0",
+    "@aws-sdk/client-sts": "3.1079.0",
+    "@types/bun": "1.3.14",
+    "@types/node": "22.20.1",
     "@types/react": "^19.2.17",
     "husky": "^9.1.7",
     "ink-testing-library": "^4.0.0",
     "lint-staged": "^17.0.8",
-    "prettier": "^3.8.4"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
+    "node-addon-api": "8.9.0",
+    "node-gyp": "12.4.0",
+    "prettier": "^3.8.4",
+    "typescript": "5.9.3"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-agentcore": "^3.1079.0",
-    "@aws-sdk/client-bedrock-agentcore-control": "^3.1079.0",
+    "@aws-sdk/client-bedrock-agentcore": "3.1079.0",
+    "@aws-sdk/client-bedrock-agentcore-control": "3.1079.0",
     "@aws-sdk/client-iam": "^3.1080.0",
-    "@inkui-cli/data-table": "^0.2.0",
-    "@tanstack/react-query": "^5.101.2",
-    "commander": "^15.0.0",
-    "ink": "^7.1.0",
+    "@smithy/core": "3.29.1",
+    "@tanstack/react-query": "5.101.2",
+    "commander": "15.0.0",
+    "ink": "7.1.0",
     "ink-scroll-view": "^0.3.7",
+    "jsonc-parser": "3.3.1",
     "lodash": "^4.18.1",
-    "react": "^19.2.7",
+    "react": "19.2.7",
     "react-devtools-core": "^7.0.1",
     "react-router": "^8.1.0",
-    "zod": "^4.4.3"
+    "zod": "4.4.3"
   }
 }
