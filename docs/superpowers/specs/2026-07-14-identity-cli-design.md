@@ -183,7 +183,11 @@ the service's unmodeled omission behavior:
 | Workload identity |               1 to 20 |               10 |
 
 `--all` conflicts with `--next-token`. `--max-results` remains the service page size when `--all` is
-set.
+set. `--next-token` accepts only the exact versioned continuation token emitted by a preceding Identity
+List response. The parser decodes that token before action invocation; a wrong version, malformed or
+noncanonical payload, empty decoded token, or over-limit payload is a closed invalid-value error and
+sends no AWS request. Raw SDK continuation tokens are never accepted as Commander input or rendered
+directly.
 
 ### Resource Options
 
@@ -371,7 +375,7 @@ before settlement, or callback failure returns a closed `outputUnavailable` resu
 effective only before the sink calls `write()`. Once the stream accepts a chunk, the supervisor owns
 that callback and any required `drain`; later cancellation aborts the surrounding action but cannot
 settle the write early. The supervisor retains its listeners until every accepted write has reached
-callback-plus-drain success or terminal error/close, then crosses a quiescence barrier before routing
+callback-plus-drain success or terminal error/close, then issues a quiescence receipt before routing
 finishes. The sink does not retry or split a JSON document. Static stderr writes use a serialized
 awaited text sink under the same supervisor and are best-effort when reporting an output failure.
 
@@ -402,17 +406,21 @@ Every accepted callback is settled exactly once. While open, callback success an
 their Node ordering. On the first terminal failure, the facade becomes observably unwritable, forwards
 no later bytes, settles the active and queued callbacks with one CLI-owned synthetic error, and invokes
 the presentation controller exactly once. A post-failure `write("", callback)` is still accepted as a
-barrier and invokes its callback asynchronously, so Ink 7.1's already-running unmount cannot hang after
+settlement write and invokes its callback asynchronously, so Ink 7.1's already-running unmount cannot hang after
 capturing an earlier writable state. The supervisor consumes facade errors; raw stream errors never
 reach Ink or application state. It keeps underlying and facade listeners until Ink's `waitUntilExit()`,
-the active action, all accepted write callbacks, and the supervisor quiescence barrier settle.
+the active action, all accepted write callbacks, and the supervisor quiescence receipt settle.
 
-The controller synchronously latches output unavailable, aborts the exact active presentation action,
-and requests unmount exactly once. It records the currently correlated mutation execution, if one
-exists, and classifies guidance only after that same action settles; it never searches for an
-uncorrelated `latest` scope. No presenter receives or mutates certainty state. No new frame is forwarded
-after failure. Ordinary frames, final frames, synchronized-output markers, alternate-screen teardown,
-and Ink's empty-write frame/exit barriers all use this same state machine.
+Before invoking an authorized mutation, the root controller registers that exact `PreparedMutation` and
+receives one opaque `MutationPresentationActionLease`. The lease is the presentation's only commit
+entrypoint and links any later activation and settlement to that attempt before the first asynchronous
+step. A duplicate or invalid registration returns a closed failure and invokes no commit. The controller
+synchronously latches output unavailable, aborts the exact registered action lease, and requests
+unmount exactly once. It classifies guidance only after that same lease either reports no activation or
+its exact execution settles; it never searches for a current or `latest` lane scope. No presenter
+receives or mutates certainty state. No new frame is forwarded after failure. Ordinary frames, final
+frames, synchronized-output markers, alternate-screen teardown, and Ink's empty-write frame/exit
+settlements all use this same state machine.
 
 Successful JSON is completely serialized before the single awaited stdout write. The process entry
 point assigns `process.exitCode` only after routing, awaited writes, and Ink teardown settle; it never
@@ -423,13 +431,13 @@ execution scope and presentation lease for each authorized commit, plus a read-o
 with exact monotonic states
 `none -> outcomeUnknown -> committed`. Its writer is private to action and transport closures.
 
-The per-mutation lifecycle is explicit and does not use whole-application exit as its normal barrier:
+The per-mutation lifecycle is explicit and does not use whole-application exit as its normal receipt:
 
 ```text
 idle --activate(workflow, capability)--> active(executionId)
 active --settle(action outcome)--------> settled(executionId)
 settled --begin exact presentation----> presenting(executionId)
-presenting --matching barrier---------> idle
+presenting --matching receipt---------> idle
 idle/active/settled/presenting --busy-> same state; no new execution
 ```
 
@@ -446,28 +454,35 @@ normal completion. An alternate 2xx never establishes commit certainty.
 
 `settle()` is synchronous, nonthrowing, and idempotent. Its first call changes `active` to `settled` and
 returns one opaque execution-correlated `SettledMutationExecution`; later calls return that same token
-and do not repeat work. Presentation begins with that exact token before Commander serialization or
-before installing the corresponding Ink outcome/review state. The lane rejects a foreign, stale,
-already-presenting, or same-workflow/different-execution token without changing either execution. Only
-a supervisor-minted barrier carrying the same private execution identity can retire the presentation;
-a mismatched or duplicate barrier is ignored.
+and do not repeat work. Presentation begins with that exact token through `beginCommander` or
+`beginInk` before serialization or before installing the corresponding Ink outcome/review state. The
+lane rejects a foreign, stale, already-presenting, or same-workflow/different-execution token without
+changing either execution. A supervisor/facade-minted receipt carries the exact presenting object
+identity; `finish(receipt)` retires only its matching first receipt, and a stale, duplicate,
+foreign-supervisor, or wrong-presentation receipt is ignored.
 
-For Commander, the matching barrier is complete JSON serialization followed by the one accepted stdout
-write's callback and any required drain, or the correlated unavailable-output terminal state. The scope
-retires before the handler returns. For normal Ink operation, the root-owned presentation controller
-installs the correlated state, awaits pinned Ink's `waitUntilRenderFlush()`, closes that finite frame
-epoch, captures the typed stream facade's accepted-write high-water mark, and awaits every callback and
-required drain through that mark. That matching `inkFrame` barrier retires the mutation and re-enables
-mutation input while the same Ink root remains mounted. Later animation or navigation writes belong to
-another frame epoch. `waitUntilExit()` is reserved for invocation teardown and the
-output-failure/unmount fallback; it is not a normal per-mutation retirement condition.
+For Commander, `CommanderMutationOutputPort` accepts the presenting token before serialization and
+returns a receipt only after complete JSON serialization, the one accepted write's callback, and any
+required drain, or returns the same presentation's typed unavailable receipt when serialization or
+delivery cannot complete. The scope retires before the handler returns. For normal Ink operation,
+`openFrame` creates an execution-bound epoch before state installation. The installed state includes a
+root-owned commit marker that can mint `InkFrameCommitEvidence` only for that exact React generation.
+`flushFrame` requires the matching commit evidence, awaits pinned Ink's `waitUntilRenderFlush()`,
+atomically closes the finite epoch, captures the typed stream facade's accepted-write high-water mark,
+and awaits every callback and required drain through that mark. Only then can it mint
+`inkFrame/flushed`; later animation or navigation writes belong to another epoch and cannot delay
+retirement. An Ink unmount, exit, or output failure cannot mint frame evidence. It uses
+`waitUntilExitFallback` and can mint only `inkExit/unavailable` after the exact action, unmount,
+`waitUntilExit()`, all accepted callbacks, and supervisor quiescence settle. `waitUntilExit()` is not a
+normal per-mutation retirement condition.
 
 A `reprepareRequired`, cancellation, no-change, or pre-mutation failure settles and retires its scope
 after its correlated review or terminal frame flushes and before Ink accepts another mutation. A second
-confirmation activates a new scope while `waitUntilExit()` remains pending; certainty from the prior
-attempt cannot leak into that sequential TUI operation. Commander likewise retires before returning.
-`PreparedMutation.commit()` accepts only normal call options, never a caller-provided latch, execution
-scope, presentation token, or barrier.
+confirmation registers a new action lease and activates a new scope while `waitUntilExit()` remains
+pending; certainty from the prior attempt cannot leak into that sequential TUI operation. Commander
+likewise retires before returning. `MutationPresentationActionLease.commit()` accepts only the matching
+secret context and normal call options, never a caller-provided latch, execution scope, presentation
+token, epoch, evidence, or receipt.
 
 Any later JSON serialization, stdout write/drain, Ink frame, render, or presentation-state failure asks
 the supervisor to classify the exactly correlated execution. If failure occurs while its action is
@@ -538,8 +553,9 @@ when their DTO structures are equal.
 The contract is flat and preserves SDK field names; there is no `data` wrapper. Every operation omits
 `$metadata`, undefined optional members, and unallowlisted fields recursively. A missing V1-required
 member fails normalization with a static compatibility error rather than emitting a partial document.
-Dates become ISO-8601 strings. Empty arrays and maps are preserved. Every dynamic string crosses the
-terminal-safe encoder.
+Dates become ISO-8601 strings. Empty arrays and maps are preserved. Every ordinary dynamic string
+crosses the terminal-safe encoder. A nonempty List `nextToken` instead crosses the separate reversible
+production continuation-token codec, whose output is already terminal-safe ASCII.
 `--all` concatenates the normal collection and omits `nextToken`. A semantic no-op Update projects the
 fresh current state through that workflow's Update normalizer, not its Get normalizer; OAuth no-op
 output therefore omits Get-only `failureReason`, and payment no-op output omits Get-only `tags`.
@@ -561,7 +577,7 @@ Substring matching uses the complete original managed value against all of these
 representations:
 
 - Decoded raw and emitted strings, dynamic map keys, unknown-union member names, validated request IDs,
-  and both physical and logical page tokens.
+  physical and logical page tokens, and the encoded production continuation token.
 - A raw JSON number's validated source lexeme and its canonical finite-number spelling; canonical
   `-0` is `0`.
 - `true`, `false`, and `null` for response-derived boolean and null scalars.
@@ -593,6 +609,7 @@ The output aliases are:
 S = injective terminal-safe dynamic string
 K = S installed as a prototype-safe dynamic map key
 D = ISO-8601 date string
+C = EncodedIdentityContinuationTokenV1
 Secret = exact { secretArn: S }
 UnknownV1 = exact { $unknown: SafeMemberName }
 SourceOut = S
@@ -702,20 +719,31 @@ The exact top-level operation allowlists are:
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | API-key Create             | `apiKeySecretArn:Secret`, `apiKeySecretJsonKey?:S`, `apiKeySecretSource?:SourceOut`, `name:S`, `credentialProviderArn:S`                                                                         |
 | API-key Get / Update       | API-key Create fields plus `createdTime:D`, `lastUpdatedTime:D`                                                                                                                                  |
-| API-key List               | `credentialProviders:[{ name:S, credentialProviderArn:S, createdTime:D, lastUpdatedTime:D }]`, `nextToken?:S`                                                                                    |
+| API-key List               | `credentialProviders:[{ name:S, credentialProviderArn:S, createdTime:D, lastUpdatedTime:D }]`, `nextToken?:C`                                                                                    |
 | OAuth Create               | `clientSecretArn?:Secret`, `clientSecretJsonKey?:S`, `clientSecretSource?:SourceOut`, `name:S`, `credentialProviderArn:S`, `callbackUrl?:S`, `oauth2ProviderConfigOutput?:OAuthOut`, `status?:S` |
 | OAuth Get                  | OAuth Create fields plus `credentialProviderVendor:S`, required `oauth2ProviderConfigOutput:OAuthOut`, `createdTime:D`, `lastUpdatedTime:D`, `failureReason?:SafeFailureGuidance`                |
 | OAuth Update               | OAuth Get fields except `failureReason`                                                                                                                                                          |
-| OAuth List                 | `credentialProviders:[{ name:S, credentialProviderVendor:S, credentialProviderArn:S, createdTime:D, lastUpdatedTime:D }]`, `nextToken?:S`                                                        |
+| OAuth List                 | `credentialProviders:[{ name:S, credentialProviderVendor:S, credentialProviderArn:S, createdTime:D, lastUpdatedTime:D }]`, `nextToken?:C`                                                        |
 | Payment Create             | `name:S`, `credentialProviderVendor:S`, `credentialProviderArn:S`, `providerConfigurationOutput:PaymentOut`                                                                                      |
 | Payment Get                | Payment Create fields plus `createdTime:D`, `lastUpdatedTime:D`, `tags?:Record<K,S>`                                                                                                             |
 | Payment Update             | Payment Create fields plus `createdTime:D`, `lastUpdatedTime:D`; no `tags`                                                                                                                       |
-| Payment List               | `credentialProviders:[{ name:S, credentialProviderVendor:S, credentialProviderArn:S, createdTime:D, lastUpdatedTime:D }]`, `nextToken?:S`                                                        |
+| Payment List               | `credentialProviders:[{ name:S, credentialProviderVendor:S, credentialProviderArn:S, createdTime:D, lastUpdatedTime:D }]`, `nextToken?:C`                                                        |
 | Workload Create            | `name:S`, `workloadIdentityArn:S`, `allowedResourceOauth2ReturnUrls?:S[]`                                                                                                                        |
 | Workload Get / Update      | Workload Create fields plus `createdTime:D`, `lastUpdatedTime:D`                                                                                                                                 |
-| Workload List              | `workloadIdentities:[{ name:S, workloadIdentityArn:S }]`, `nextToken?:S`                                                                                                                         |
+| Workload List              | `workloadIdentities:[{ name:S, workloadIdentityArn:S }]`, `nextToken?:C`                                                                                                                         |
 | All four Deletes / Tagging | Delete, Tag, and Untag: `{}`; List Tags: `{ tags: Record<K,S> }`                                                                                                                                 |
 | Token Vault Get / Set CMK  | `tokenVaultId:S`, `kmsConfiguration:{ keyType:S, kmsKeyArn?:S }`, `lastModifiedDate:D`                                                                                                           |
+
+`C` is `identity-token-v1.` followed by unpadded canonical Base64URL of the raw SDK token's
+big-endian UTF-16 code units. Encoding UTF-16 code units rather than UTF-8 preserves every JavaScript
+string exactly, including unpaired surrogates. Empty SDK tokens remain terminal and are omitted.
+Decoding rejects a wrong version, padding, a non-Base64URL character, odd decoded byte length, an empty
+decoded value, more than `MAX_IDENTITY_CONTINUATION_TOKEN_CODE_UNITS`, more than
+`MAX_ENCODED_IDENTITY_CONTINUATION_TOKEN_BYTES`, or any text whose re-encoding is not byte-identical.
+The output normalizer can emit only a branded encoded token and `ListIntent` can contain only the
+branded decoded token. Therefore copying one Commander page's `nextToken` unchanged into the next
+command recovers the exact original SDK string without treating terminal rendering escapes as wire
+bytes.
 
 `SafeFailureGuidance` is chosen only from OAuth status, never from raw `failureReason` text:
 
@@ -957,6 +985,29 @@ type IdentityCallOptions = Readonly<{
   abortSignal?: AbortSignal;
 }>;
 
+declare const IDENTITY_CONTINUATION_TOKEN: unique symbol;
+declare const ENCODED_IDENTITY_CONTINUATION_TOKEN: unique symbol;
+
+const MAX_IDENTITY_CONTINUATION_TOKEN_CODE_UNITS = 1_048_576 as const;
+const MAX_ENCODED_IDENTITY_CONTINUATION_TOKEN_BYTES = 2_796_221 as const;
+
+type IdentityContinuationToken = string & {
+  readonly [IDENTITY_CONTINUATION_TOKEN]: never;
+};
+
+type EncodedIdentityContinuationTokenV1 = `identity-token-v1.${string}` & {
+  readonly [ENCODED_IDENTITY_CONTINUATION_TOKEN]: never;
+};
+
+type ContinuationTokenDecodeOutcome =
+  | { kind: "decoded"; token: IdentityContinuationToken }
+  | { kind: "validationFailed"; error: UsageIdentityError };
+
+interface ProductionContinuationTokenCodec {
+  encode(token: IdentityContinuationToken): EncodedIdentityContinuationTokenV1;
+  decode(text: string): ContinuationTokenDecodeOutcome;
+}
+
 type IdentityResourceFamily = "apiKey" | "oauth2" | "payment" | "workload" | "tokenVault";
 type IdentitySelectorMode = "none" | "createName" | "name" | "resourceArn" | "tokenVaultId";
 type IdentityBindingFacet =
@@ -967,32 +1018,184 @@ type IdentityBindingFacet =
   | "currentStateMutation"
   | "compatibilityGuardedUpdate";
 type IdentityWorkflowPolicy = "query" | "direct" | "continuityGuarded" | "replacement";
+type IdentityCrudFamily = Exclude<IdentityResourceFamily, "tokenVault">;
+type IdentityCrudVerb = "create" | "get" | "list" | "update" | "delete";
+type IdentityTagVerb = "tag" | "untag" | "listTags";
+type IdentityTagSelector = "name" | "resourceArn";
 
-type IdentityWorkflowDefinition<
-  Family extends IdentityResourceFamily,
-  Selector extends IdentitySelectorMode,
-  Primary extends IdentityOperationName,
-  AuxiliaryGet extends keyof IdentityReadOperations | null,
-  Facet extends IdentityBindingFacet,
-  Policy extends IdentityWorkflowPolicy,
-  Intent,
-  Dto,
-> = Readonly<{
+type IdentityWorkflowName =
+  | `${IdentityCrudFamily}.${IdentityCrudVerb}`
+  | `${IdentityCrudFamily}.${IdentityTagVerb}.${IdentityTagSelector}`
+  | "tokenVault.get"
+  | "tokenVault.setCmk";
+
+type IdentityCrudOperations = {
+  apiKey: {
+    create: "CreateApiKeyCredentialProvider";
+    get: "GetApiKeyCredentialProvider";
+    list: "ListApiKeyCredentialProviders";
+    update: "UpdateApiKeyCredentialProvider";
+    delete: "DeleteApiKeyCredentialProvider";
+    updateFacet: "currentStateMutation";
+  };
+  oauth2: {
+    create: "CreateOauth2CredentialProvider";
+    get: "GetOauth2CredentialProvider";
+    list: "ListOauth2CredentialProviders";
+    update: "UpdateOauth2CredentialProvider";
+    delete: "DeleteOauth2CredentialProvider";
+    updateFacet: "compatibilityGuardedUpdate";
+  };
+  payment: {
+    create: "CreatePaymentCredentialProvider";
+    get: "GetPaymentCredentialProvider";
+    list: "ListPaymentCredentialProviders";
+    update: "UpdatePaymentCredentialProvider";
+    delete: "DeletePaymentCredentialProvider";
+    updateFacet: "compatibilityGuardedUpdate";
+  };
+  workload: {
+    create: "CreateWorkloadIdentity";
+    get: "GetWorkloadIdentity";
+    list: "ListWorkloadIdentities";
+    update: "UpdateWorkloadIdentity";
+    delete: "DeleteWorkloadIdentity";
+    updateFacet: "currentStateMutation";
+  };
+};
+
+type WorkflowMetadata<Family, Selector, Primary, AuxiliaryGet, Facet, Policy> = Readonly<{
   family: Family;
   selector: Selector;
   primaryOperation: Primary;
   auxiliaryGet: AuxiliaryGet;
   facet: Facet;
   policy: Policy;
-  intent: Intent;
-  dto: Dto;
 }>;
 
-interface IdentityWorkflowDefinitions {
-  // The exact 46 entries are specified under Input Model.
+type IdentityWorkflowCompatibility<K extends IdentityWorkflowName> =
+  K extends `${infer F extends IdentityCrudFamily}.create`
+    ? WorkflowMetadata<
+        F,
+        "createName",
+        IdentityCrudOperations[F]["create"],
+        null,
+        "directMutation",
+        "direct"
+      >
+    : K extends `${infer F extends IdentityCrudFamily}.get`
+      ? WorkflowMetadata<F, "name", IdentityCrudOperations[F]["get"], null, "read", "query">
+      : K extends `${infer F extends IdentityCrudFamily}.list`
+        ? WorkflowMetadata<F, "none", IdentityCrudOperations[F]["list"], null, "list", "query">
+        : K extends `${infer F extends IdentityCrudFamily}.update`
+          ? WorkflowMetadata<
+              F,
+              "name",
+              IdentityCrudOperations[F]["update"],
+              IdentityCrudOperations[F]["get"],
+              IdentityCrudOperations[F]["updateFacet"],
+              "replacement"
+            >
+          : K extends `${infer F extends IdentityCrudFamily}.delete`
+            ? WorkflowMetadata<
+                F,
+                "name",
+                IdentityCrudOperations[F]["delete"],
+                IdentityCrudOperations[F]["get"],
+                "currentStateMutation",
+                "continuityGuarded"
+              >
+            : K extends `${infer F extends IdentityCrudFamily}.tag.name`
+              ? WorkflowMetadata<
+                  F,
+                  "name",
+                  "TagResource",
+                  IdentityCrudOperations[F]["get"],
+                  "currentStateMutation",
+                  "continuityGuarded"
+                >
+              : K extends `${infer F extends IdentityCrudFamily}.tag.resourceArn`
+                ? WorkflowMetadata<
+                    F,
+                    "resourceArn",
+                    "TagResource",
+                    null,
+                    "directMutation",
+                    "direct"
+                  >
+                : K extends `${infer F extends IdentityCrudFamily}.untag.name`
+                  ? WorkflowMetadata<
+                      F,
+                      "name",
+                      "UntagResource",
+                      IdentityCrudOperations[F]["get"],
+                      "currentStateMutation",
+                      "continuityGuarded"
+                    >
+                  : K extends `${infer F extends IdentityCrudFamily}.untag.resourceArn`
+                    ? WorkflowMetadata<
+                        F,
+                        "resourceArn",
+                        "UntagResource",
+                        null,
+                        "directMutation",
+                        "direct"
+                      >
+                    : K extends `${infer F extends IdentityCrudFamily}.listTags.name`
+                      ? WorkflowMetadata<
+                          F,
+                          "name",
+                          "ListTagsForResource",
+                          IdentityCrudOperations[F]["get"],
+                          "resolvedRead",
+                          "query"
+                        >
+                      : K extends `${infer F extends IdentityCrudFamily}.listTags.resourceArn`
+                        ? WorkflowMetadata<
+                            F,
+                            "resourceArn",
+                            "ListTagsForResource",
+                            null,
+                            "read",
+                            "query"
+                          >
+                        : K extends "tokenVault.get"
+                          ? WorkflowMetadata<
+                              "tokenVault",
+                              "tokenVaultId",
+                              "GetTokenVault",
+                              null,
+                              "read",
+                              "query"
+                            >
+                          : K extends "tokenVault.setCmk"
+                            ? WorkflowMetadata<
+                                "tokenVault",
+                                "tokenVaultId",
+                                "SetTokenVaultCMK",
+                                "GetTokenVault",
+                                "currentStateMutation",
+                                "replacement"
+                              >
+                            : never;
+
+type IdentityWorkflowPayload<Intent, Dto> = Readonly<{ intent: Intent; dto: Dto }>;
+
+interface IdentityWorkflowPayloads {
+  // The exact 46 intent/DTO entries are specified under Input Model.
 }
 
-type IdentityWorkflowName = keyof IdentityWorkflowDefinitions;
+type IdentityWorkflowDefinition<K extends IdentityWorkflowName> = Readonly<
+  IdentityWorkflowCompatibility<K> & IdentityWorkflowPayloads[K]
+>;
+
+type IdentityWorkflowDefinitions = {
+  readonly [K in IdentityWorkflowName]: IdentityWorkflowDefinition<K>;
+};
+
+type IdentityWorkflowCompatibilityMap = {
+  readonly [K in IdentityWorkflowName]: IdentityWorkflowCompatibility<K>;
+};
 
 declare const IDENTITY_WORKFLOW_ID: unique symbol;
 declare const IDENTITY_WORKFLOW_OWNER: unique symbol;
@@ -1101,7 +1304,11 @@ declare const MUTATION_PLAN_TOKEN: unique symbol;
 declare const ACTIVE_MUTATION_EXECUTION: unique symbol;
 declare const SETTLED_MUTATION_EXECUTION: unique symbol;
 declare const PRESENTING_MUTATION_EXECUTION: unique symbol;
-declare const MUTATION_PRESENTATION_BARRIER: unique symbol;
+declare const MUTATION_PRESENTATION_RECEIPT: unique symbol;
+declare const MUTATION_PRESENTATION_ACTION_LEASE: unique symbol;
+declare const INK_FRAME_EPOCH: unique symbol;
+declare const INK_FRAME_COMMIT_EVIDENCE: unique symbol;
+declare const INK_FRAME_HIGH_WATER: unique symbol;
 
 interface MutationCertaintyView<W extends MutationWorkflowId> extends WorkflowBranded<W> {
   readonly state: MutationCertainty;
@@ -1126,18 +1333,69 @@ interface SettledMutationExecution<W extends MutationWorkflowId> extends Workflo
   readonly [SETTLED_MUTATION_EXECUTION]: never;
 }
 
-interface PresentingMutationExecution<W extends MutationWorkflowId> extends WorkflowBranded<W> {
-  readonly [PRESENTING_MUTATION_EXECUTION]: never;
+type MutationPresentationKind = "commander" | "ink";
+
+interface PresentingMutationExecution<
+  W extends MutationWorkflowId,
+  K extends MutationPresentationKind,
+> extends WorkflowBranded<W> {
+  readonly kind: K;
+  readonly [PRESENTING_MUTATION_EXECUTION]: (kind: K) => K;
 }
 
-type MutationPresentationMode = "commander" | "inkFrame" | "inkExit";
-type MutationPresentationDelivery = "flushed" | "unavailable";
-
-interface MutationPresentationBarrier<W extends MutationWorkflowId> extends WorkflowBranded<W> {
-  readonly [MUTATION_PRESENTATION_BARRIER]: never;
-  readonly mode: MutationPresentationMode;
-  readonly delivery: MutationPresentationDelivery;
+interface MutationPresentationReceiptBase<
+  W extends MutationWorkflowId,
+  K extends MutationPresentationKind,
+> extends WorkflowBranded<W> {
+  readonly presentation: PresentingMutationExecution<W, K>;
+  readonly [MUTATION_PRESENTATION_RECEIPT]: (
+    presentation: PresentingMutationExecution<W, K>,
+  ) => PresentingMutationExecution<W, K>;
 }
+
+interface CommanderPresentationReceipt<
+  W extends MutationWorkflowId,
+> extends MutationPresentationReceiptBase<W, "commander"> {
+  readonly kind: "commander";
+  readonly delivery: "flushed" | "unavailable";
+}
+
+interface InkFrameEpoch<W extends MutationWorkflowId> extends WorkflowBranded<W> {
+  readonly presentation: PresentingMutationExecution<W, "ink">;
+  readonly afterAcceptedWrite: number;
+  readonly [INK_FRAME_EPOCH]: never;
+}
+
+interface InkFrameCommitEvidence<W extends MutationWorkflowId> extends WorkflowBranded<W> {
+  readonly epoch: InkFrameEpoch<W>;
+  readonly [INK_FRAME_COMMIT_EVIDENCE]: never;
+}
+
+interface InkFrameHighWaterEvidence<W extends MutationWorkflowId> extends WorkflowBranded<W> {
+  readonly epoch: InkFrameEpoch<W>;
+  readonly throughAcceptedWrite: number;
+  readonly [INK_FRAME_HIGH_WATER]: never;
+}
+
+interface InkFramePresentationReceipt<
+  W extends MutationWorkflowId,
+> extends MutationPresentationReceiptBase<W, "ink"> {
+  readonly kind: "inkFrame";
+  readonly delivery: "flushed";
+  readonly highWater: InkFrameHighWaterEvidence<W>;
+}
+
+interface InkExitPresentationReceipt<
+  W extends MutationWorkflowId,
+> extends MutationPresentationReceiptBase<W, "ink"> {
+  readonly kind: "inkExit";
+  readonly delivery: "unavailable";
+}
+
+type MutationPresentationReceipt<W extends MutationWorkflowId> =
+  | CommanderPresentationReceipt<W>
+  | InkFramePresentationReceipt<W>
+  | InkExitPresentationReceipt<W>;
 
 type MutationActivationOutcome<W extends MutationWorkflowId> =
   | { kind: "activated"; execution: ActiveMutationExecution<W> }
@@ -1155,8 +1413,11 @@ type MutationPresentationFailure =
   | { kind: "mutationOutcomeUnknown" }
   | { kind: "committedOutputUnavailable" };
 
-type MutationPresentationBeginOutcome<W extends MutationWorkflowId> =
-  | { kind: "begun"; presentation: PresentingMutationExecution<W> }
+type MutationPresentationBeginOutcome<
+  W extends MutationWorkflowId,
+  K extends MutationPresentationKind,
+> =
+  | { kind: "begun"; presentation: PresentingMutationExecution<W, K> }
   | { kind: "invalid"; failure: MutationPresentationFailure };
 
 type MutationPresentationFinishOutcome =
@@ -1165,14 +1426,62 @@ type MutationPresentationFinishOutcome =
   | { kind: "ignored" };
 
 interface MutationPresentationSupervisorPort {
-  begin<W extends MutationWorkflowId>(
+  beginCommander<W extends MutationWorkflowId>(
     execution: SettledMutationExecution<W>,
-    mode: MutationPresentationMode,
-  ): MutationPresentationBeginOutcome<W>;
+  ): MutationPresentationBeginOutcome<W, "commander">;
+  beginInk<W extends MutationWorkflowId>(
+    execution: SettledMutationExecution<W>,
+  ): MutationPresentationBeginOutcome<W, "ink">;
   finish<W extends MutationWorkflowId>(
-    presentation: PresentingMutationExecution<W>,
-    barrier: MutationPresentationBarrier<W>,
+    receipt: MutationPresentationReceipt<W>,
   ): MutationPresentationFinishOutcome;
+}
+
+interface MutationPresentationActionLease<W extends MutationWorkflowId> extends WorkflowBranded<W> {
+  readonly [MUTATION_PRESENTATION_ACTION_LEASE]: never;
+  commit(secrets: CommitSecretContext, options?: IdentityCallOptions): Promise<CommitAttempt<W>>;
+  dispose(): void;
+}
+
+type MutationPresentationActionRegistration<W extends MutationWorkflowId> =
+  | { kind: "registered"; lease: MutationPresentationActionLease<W> }
+  | { kind: "invalid"; failure: MutationPresentationFailure };
+
+interface MutationPresentationActionControllerPort {
+  register<W extends MutationWorkflowId>(
+    mutation: PreparedMutation<W>,
+  ): MutationPresentationActionRegistration<W>;
+}
+
+interface CommanderMutationOutputPort {
+  write<W extends MutationWorkflowId>(
+    presentation: PresentingMutationExecution<W, "commander">,
+    channel: "stdout" | "stderr",
+    text: string,
+    options?: IdentityCallOptions,
+  ): Promise<CommanderPresentationReceipt<W>>;
+  unavailable<W extends MutationWorkflowId>(
+    presentation: PresentingMutationExecution<W, "commander">,
+  ): CommanderPresentationReceipt<W> & { readonly delivery: "unavailable" };
+}
+
+type InkFrameFlushOutcome<W extends MutationWorkflowId> =
+  | { kind: "flushed"; receipt: InkFramePresentationReceipt<W> }
+  | { kind: "outputUnavailable" };
+
+interface InkMutationOutputPort {
+  openFrame<W extends MutationWorkflowId>(
+    presentation: PresentingMutationExecution<W, "ink">,
+  ): InkFrameEpoch<W>;
+  flushFrame<W extends MutationWorkflowId>(
+    epoch: InkFrameEpoch<W>,
+    committed: Promise<InkFrameCommitEvidence<W>>,
+    waitUntilRenderFlush: () => Promise<void>,
+  ): Promise<InkFrameFlushOutcome<W>>;
+  waitUntilExitFallback<W extends MutationWorkflowId>(
+    presentation: PresentingMutationExecution<W, "ink">,
+    waitUntilExit: () => Promise<unknown>,
+  ): Promise<InkExitPresentationReceipt<W>>;
 }
 
 type ReadTransportFailure =
@@ -1192,8 +1501,15 @@ type PaginationFailureReason =
   | "wireByteLimit"
   | "outputByteLimit";
 
+declare const READ_PAGE_EVIDENCE: unique symbol;
+
+interface ReadPageEvidence {
+  readonly acceptedWireBytes: number;
+  readonly [READ_PAGE_EVIDENCE]: never;
+}
+
 type ReadPageOutcome<Output> =
-  | { kind: "page"; output: Output }
+  | { kind: "page"; output: Output; evidence: ReadPageEvidence }
   | { kind: "done" }
   | { kind: "paginationFailed"; reason: PaginationFailureReason }
   | ReadTransportFailure;
@@ -1318,9 +1634,11 @@ type BindingFor<W extends IdentityWorkflowId> =
             ? IdentityCurrentStateMutationBinding<
                 Extract<W, WorkflowForFacet<"currentStateMutation">>
               >
-            : IdentityCompatibilityGuardedUpdateBinding<
-                Extract<W, WorkflowForFacet<"compatibilityGuardedUpdate">>
-              >;
+            : WorkflowFacetOf<W> extends "compatibilityGuardedUpdate"
+              ? IdentityCompatibilityGuardedUpdateBinding<
+                  Extract<W, WorkflowForFacet<"compatibilityGuardedUpdate">>
+                >
+              : never;
 
 interface IdentityBindingFactory<W extends IdentityWorkflowId> extends WorkflowBranded<W> {
   create(options?: IdentityCallOptions): Promise<BindingCreationOutcome<W>>;
@@ -1419,15 +1737,18 @@ broad binding is exported or injected.
 The execution supervisor creates `MutationExecutionScope<W>` and exposes its view read-only. The
 symbol-owning coordinator provides private mark functions only to the prepared action closure and the
 binding facade; neither the raw adapter nor presentation code can construct a scope or obtain a writer.
-The same coordinator alone constructs settled/presenting tokens and barriers. `begin()` and `finish()`
-are synchronous, nonthrowing, and invoke no caller code. `begin()` consumes exactly one valid settled
-token for the requested mode; an invalid token returns the certainty-derived closed failure without
-changing another execution. `finish()` retires only a matching first barrier whose mode and private
-execution identity equal the presenting token; every stale, duplicate, or foreign barrier returns
-`ignored`. A matching `flushed` barrier returns `retired`; a matching `unavailable` barrier returns
-`retiredWithFailure` with guidance derived from that execution's final certainty. Output and Ink
-adapters receive private barrier constructors for observed write/flush completion only; application and
-presentation components cannot mint one.
+The same coordinator alone constructs settled/presenting tokens, action leases, epochs, evidence, and
+receipts. Registration, `beginCommander`, `beginInk`, and `finish` are synchronous, nonthrowing, and
+invoke no caller code. Registration happens before the root invokes the lease's commit and binds all
+later failure handling to that exact attempt. Each begin consumes exactly one valid settled token for
+its presentation kind; an invalid token returns the certainty-derived closed failure without changing
+another execution. `finish()` retires only a matching first receipt whose private presentation,
+execution, supervisor, and facade identities agree; every stale, duplicate, foreign, or cross-kind
+receipt returns `ignored`. A Commander or Ink-frame flushed receipt returns `retired`; an unavailable
+Commander or Ink-exit receipt returns `retiredWithFailure` with guidance derived from that execution's
+final certainty. Output and Ink adapters receive private receipt constructors only for observed
+serialization, write, generation-commit, frame-flush, high-water, or exit completion. Application and
+presentation components cannot mint any receipt or evidence.
 The action marks `outcomeUnknown` synchronously before calling `mutate()`. From that point, any
 synchronous rejection, handler rejection, incomplete response, unsupported body, overflow,
 cancellation, non-success status, or alternate 2xx is `mutationOutcomeUnknown`. Validation, freshness,
@@ -1583,6 +1904,8 @@ Commander, Ink, React, AWS client implementations, or filesystem/process impleme
 - Resolve secret values only after the first rebase remains commit-guard equivalent.
 - Construct and validate the exact SDK request.
 - Send at most one mutation command per prepared capability.
+- Own bounded list-all traversal and opaque picker sessions, including raw wire-byte evidence and every
+  cumulative limit.
 - Return a renderable result or a structured local error.
 
 There is no generic workflow engine. OAuth and payment share catalog machinery because their unions
@@ -1593,7 +1916,10 @@ functions.
 
 Commander handlers parse flags into typed intents and invoke actions. Ink screens collect the same
 intents and invoke the same actions. Neither layer constructs SDK unions or implements update merge
-logic.
+logic. The root presentation controller registers each exact prepared mutation before invoking its
+action lease and owns all execution-bound Commander/Ink receipts. Ink picker components receive frozen
+normalized pages only; continuation tokens, cursor state, raw byte evidence, and traversal counters do
+not cross the action port.
 
 Identity owns its TUI route registry in `src/handlers/identity/routes.tsx`. The root Ink router mounts
 that registry instead of duplicating each Identity route inline. A parity test compares the registry
@@ -1801,7 +2127,9 @@ type. External secret inputs use `SecretReference`, which requires `{ secretId, 
 | `SetTokenVaultCMK` | `kmsConfiguration`                                               | `tokenVaultId`                         |
 
 All four Delete operations return an empty response. Tag and Untag also return an empty response.
-List responses require their collection and optionally return `nextToken`. Workload list items contain
+SDK List responses require their collection and optionally return an opaque raw `nextToken`. That raw
+value remains internal and becomes `EncodedIdentityContinuationTokenV1` only at the V1 output boundary;
+Commander input decodes it before SDK dispatch. Workload list items contain
 only name and ARN; callers Get a selected item before an edit or detail view.
 
 ### Modeled Constraints
@@ -1934,10 +2262,19 @@ type ReplacePatch<Path extends IdentitySchemaPath, Value> = Readonly<{
   value: DeepReadonly<Value>;
 }>;
 
-type SecretDirective<Slot extends SecretSlotId = SecretSlotId> =
+type SecretProvisionDirective<Slot extends SecretSlotId = SecretSlotId> =
   | Readonly<{ kind: "provideManaged"; slot: Slot }>
-  | Readonly<{ kind: "useExternal"; slot: Slot; reference: SecretReference }>
-  | Readonly<{ kind: "remove"; slot: Slot }>;
+  | Readonly<{ kind: "useExternal"; slot: Slot; reference: SecretReference }>;
+
+type CuratedUpdateChanges<Patch, Slot extends SecretSlotId> =
+  | Readonly<{
+      patches: NonEmptyReadonlyArray<Patch>;
+      secrets: readonly SecretProvisionDirective<Slot>[];
+    }>
+  | Readonly<{
+      patches: readonly [];
+      secrets: NonEmptyReadonlyArray<SecretProvisionDirective<Slot>>;
+    }>;
 
 type OauthCuratedPatch =
   | SetPatch<"oauth.clientId", string>
@@ -1967,7 +2304,7 @@ type CreateOauth2Intent =
       name: string;
       vendor: CredentialProviderVendorType;
       configuration: CuratedOauth2CreateConfiguration;
-      secrets: readonly SecretDirective<"client-secret">[];
+      secrets: readonly SecretProvisionDirective<"client-secret">[];
       tags?: IdentityTags;
     }>
   | Readonly<{
@@ -1975,33 +2312,29 @@ type CreateOauth2Intent =
       name: string;
       vendor: CredentialProviderVendorType;
       configuration: SanitizedOAuthInput;
-      secrets: readonly SecretDirective<"client-secret">[];
+      secrets: readonly SecretProvisionDirective<"client-secret">[];
       tags?: IdentityTags;
     }>;
 
 type UpdateOauth2Intent =
-  | Readonly<{
-      mode: "curated";
-      name: string;
-      patches: NonEmptyReadonlyArray<OauthCuratedPatch>;
-      secrets: readonly SecretDirective<"client-secret">[];
-    }>
+  | (Readonly<{ mode: "curated"; name: string }> &
+      CuratedUpdateChanges<OauthCuratedPatch, "client-secret">)
   | Readonly<{
       mode: "rawReplacement";
       name: string;
       replacement: SanitizedOAuthInput;
-      secrets: readonly SecretDirective<"client-secret">[];
+      secrets: readonly SecretProvisionDirective<"client-secret">[];
     }>;
 
 type CreateApiKeyIntent = Readonly<{
   name: string;
-  secret: SecretDirective<"api-key">;
+  secret: SecretProvisionDirective<"api-key">;
   tags?: IdentityTags;
 }>;
 
 type UpdateApiKeyIntent = Readonly<{
   name: string;
-  secret: Exclude<SecretDirective<"api-key">, { kind: "remove" }>;
+  secret: SecretProvisionDirective<"api-key">;
 }>;
 
 type CreatePaymentIntent =
@@ -2010,7 +2343,7 @@ type CreatePaymentIntent =
       name: string;
       vendor: PaymentCredentialProviderVendorType;
       configuration: CuratedPaymentCreateConfiguration;
-      secrets: readonly SecretDirective<PaymentSecretSlotId>[];
+      secrets: readonly SecretProvisionDirective<PaymentSecretSlotId>[];
       tags?: IdentityTags;
     }>
   | Readonly<{
@@ -2018,22 +2351,18 @@ type CreatePaymentIntent =
       name: string;
       vendor: PaymentCredentialProviderVendorType;
       configuration: SanitizedPaymentInput;
-      secrets: readonly SecretDirective<PaymentSecretSlotId>[];
+      secrets: readonly SecretProvisionDirective<PaymentSecretSlotId>[];
       tags?: IdentityTags;
     }>;
 
 type UpdatePaymentIntent =
-  | Readonly<{
-      mode: "curated";
-      name: string;
-      patches: NonEmptyReadonlyArray<PaymentCuratedPatch>;
-      secrets: readonly SecretDirective<PaymentSecretSlotId>[];
-    }>
+  | (Readonly<{ mode: "curated"; name: string }> &
+      CuratedUpdateChanges<PaymentCuratedPatch, PaymentSecretSlotId>)
   | Readonly<{
       mode: "rawReplacement";
       name: string;
       replacement: SanitizedPaymentInput;
-      secrets: readonly SecretDirective<PaymentSecretSlotId>[];
+      secrets: readonly SecretProvisionDirective<PaymentSecretSlotId>[];
     }>;
 
 type CreateWorkloadIdentityIntent = Readonly<{
@@ -2068,7 +2397,7 @@ type DeleteByNameIntent<Family extends Exclude<IdentityResourceFamily, "tokenVau
 
 type ListIntent<Family extends Exclude<IdentityResourceFamily, "tokenVault">> = Readonly<{
   family: Family;
-  nextToken?: string;
+  nextToken?: IdentityContinuationToken;
   maxResults: number;
   all: boolean;
 }>;
@@ -2123,9 +2452,14 @@ catalogs and the Create applicability table; they do not contain SDK request wra
 Every Commander option and TUI field maps through a per-workflow `as const satisfies` option catalog
 to exactly one member of its patch union. Missing and extra option mappings fail compilation.
 `--replace-config-json` selects the raw-replacement intent and conflicts with every curated patch.
-Duplicate paths, conflicting set/clear operations, and an empty patch collection fail before Get.
-Workload Update accepts only one explicit non-empty replacement or clear patch; the merge algorithm's
-internal notion of an omitted field is not an inhabitable command intent.
+Duplicate paths and conflicting set/clear operations fail before Get. OAuth and payment curated Update
+require at least one non-secret patch or one explicit secret provision/rotation directive; the
+`CuratedUpdateChanges` union makes both-empty input uninhabitable. A secret-only plan has an empty
+non-secret `changes` list, at least one `secretRequirements` entry with action `rotate`, and can never
+return `noChange`. Input `remove` directives do not exist: OAuth secret removal derives only from the
+explicit `--clear-client-secret` patch or a validated raw replacement whose authentication method has
+no client secret. Workload Update accepts only one explicit non-empty replacement or clear patch; the
+merge algorithm's internal notion of an omitted field is not an inhabitable command intent.
 
 Intent types contain explicit non-secret patch operations, desired AgentCore storage modes, external
 references, and nominal `SecretValueMarker` leaves at raw-JSON paths that originally held a managed
@@ -2139,472 +2473,151 @@ Normalized V1 Output; `EmptyIdentityV1Dto` is exact `{}` and `ListTagsV1Dto` is 
 `{ tags: Record<K, S> }`.
 
 ```ts
-interface IdentityWorkflowDefinitions {
-  readonly "apiKey.create": IdentityWorkflowDefinition<
-    "apiKey",
-    "createName",
-    "CreateApiKeyCredentialProvider",
-    null,
-    "directMutation",
-    "direct",
-    CreateApiKeyIntent,
-    ApiKeyCreateV1Dto
-  >;
-  readonly "apiKey.get": IdentityWorkflowDefinition<
-    "apiKey",
-    "name",
-    "GetApiKeyCredentialProvider",
-    null,
-    "read",
-    "query",
-    GetByNameIntent<"apiKey">,
-    ApiKeyGetV1Dto
-  >;
-  readonly "apiKey.list": IdentityWorkflowDefinition<
-    "apiKey",
-    "none",
-    "ListApiKeyCredentialProviders",
-    null,
-    "list",
-    "query",
-    ListIntent<"apiKey">,
-    ApiKeyListV1Dto
-  >;
-  readonly "apiKey.update": IdentityWorkflowDefinition<
-    "apiKey",
-    "name",
-    "UpdateApiKeyCredentialProvider",
-    "GetApiKeyCredentialProvider",
-    "currentStateMutation",
-    "replacement",
-    UpdateApiKeyIntent,
-    ApiKeyUpdateV1Dto
-  >;
-  readonly "apiKey.delete": IdentityWorkflowDefinition<
-    "apiKey",
-    "name",
-    "DeleteApiKeyCredentialProvider",
-    "GetApiKeyCredentialProvider",
-    "currentStateMutation",
-    "continuityGuarded",
+interface IdentityWorkflowPayloads {
+  readonly "apiKey.create": IdentityWorkflowPayload<CreateApiKeyIntent, ApiKeyCreateV1Dto>;
+  readonly "apiKey.get": IdentityWorkflowPayload<GetByNameIntent<"apiKey">, ApiKeyGetV1Dto>;
+  readonly "apiKey.list": IdentityWorkflowPayload<ListIntent<"apiKey">, ApiKeyListV1Dto>;
+  readonly "apiKey.update": IdentityWorkflowPayload<UpdateApiKeyIntent, ApiKeyUpdateV1Dto>;
+  readonly "apiKey.delete": IdentityWorkflowPayload<
     DeleteByNameIntent<"apiKey">,
     EmptyIdentityV1Dto
   >;
 
-  readonly "oauth2.create": IdentityWorkflowDefinition<
-    "oauth2",
-    "createName",
-    "CreateOauth2CredentialProvider",
-    null,
-    "directMutation",
-    "direct",
-    CreateOauth2Intent,
-    Oauth2CreateV1Dto
-  >;
-  readonly "oauth2.get": IdentityWorkflowDefinition<
-    "oauth2",
-    "name",
-    "GetOauth2CredentialProvider",
-    null,
-    "read",
-    "query",
-    GetByNameIntent<"oauth2">,
-    Oauth2GetV1Dto
-  >;
-  readonly "oauth2.list": IdentityWorkflowDefinition<
-    "oauth2",
-    "none",
-    "ListOauth2CredentialProviders",
-    null,
-    "list",
-    "query",
-    ListIntent<"oauth2">,
-    Oauth2ListV1Dto
-  >;
-  readonly "oauth2.update": IdentityWorkflowDefinition<
-    "oauth2",
-    "name",
-    "UpdateOauth2CredentialProvider",
-    "GetOauth2CredentialProvider",
-    "compatibilityGuardedUpdate",
-    "replacement",
-    UpdateOauth2Intent,
-    Oauth2UpdateV1Dto
-  >;
-  readonly "oauth2.delete": IdentityWorkflowDefinition<
-    "oauth2",
-    "name",
-    "DeleteOauth2CredentialProvider",
-    "GetOauth2CredentialProvider",
-    "currentStateMutation",
-    "continuityGuarded",
+  readonly "oauth2.create": IdentityWorkflowPayload<CreateOauth2Intent, Oauth2CreateV1Dto>;
+  readonly "oauth2.get": IdentityWorkflowPayload<GetByNameIntent<"oauth2">, Oauth2GetV1Dto>;
+  readonly "oauth2.list": IdentityWorkflowPayload<ListIntent<"oauth2">, Oauth2ListV1Dto>;
+  readonly "oauth2.update": IdentityWorkflowPayload<UpdateOauth2Intent, Oauth2UpdateV1Dto>;
+  readonly "oauth2.delete": IdentityWorkflowPayload<
     DeleteByNameIntent<"oauth2">,
     EmptyIdentityV1Dto
   >;
 
-  readonly "payment.create": IdentityWorkflowDefinition<
-    "payment",
-    "createName",
-    "CreatePaymentCredentialProvider",
-    null,
-    "directMutation",
-    "direct",
-    CreatePaymentIntent,
-    PaymentCreateV1Dto
-  >;
-  readonly "payment.get": IdentityWorkflowDefinition<
-    "payment",
-    "name",
-    "GetPaymentCredentialProvider",
-    null,
-    "read",
-    "query",
-    GetByNameIntent<"payment">,
-    PaymentGetV1Dto
-  >;
-  readonly "payment.list": IdentityWorkflowDefinition<
-    "payment",
-    "none",
-    "ListPaymentCredentialProviders",
-    null,
-    "list",
-    "query",
-    ListIntent<"payment">,
-    PaymentListV1Dto
-  >;
-  readonly "payment.update": IdentityWorkflowDefinition<
-    "payment",
-    "name",
-    "UpdatePaymentCredentialProvider",
-    "GetPaymentCredentialProvider",
-    "compatibilityGuardedUpdate",
-    "replacement",
-    UpdatePaymentIntent,
-    PaymentUpdateV1Dto
-  >;
-  readonly "payment.delete": IdentityWorkflowDefinition<
-    "payment",
-    "name",
-    "DeletePaymentCredentialProvider",
-    "GetPaymentCredentialProvider",
-    "currentStateMutation",
-    "continuityGuarded",
+  readonly "payment.create": IdentityWorkflowPayload<CreatePaymentIntent, PaymentCreateV1Dto>;
+  readonly "payment.get": IdentityWorkflowPayload<GetByNameIntent<"payment">, PaymentGetV1Dto>;
+  readonly "payment.list": IdentityWorkflowPayload<ListIntent<"payment">, PaymentListV1Dto>;
+  readonly "payment.update": IdentityWorkflowPayload<UpdatePaymentIntent, PaymentUpdateV1Dto>;
+  readonly "payment.delete": IdentityWorkflowPayload<
     DeleteByNameIntent<"payment">,
     EmptyIdentityV1Dto
   >;
 
-  readonly "workload.create": IdentityWorkflowDefinition<
-    "workload",
-    "createName",
-    "CreateWorkloadIdentity",
-    null,
-    "directMutation",
-    "direct",
+  readonly "workload.create": IdentityWorkflowPayload<
     CreateWorkloadIdentityIntent,
     WorkloadCreateV1Dto
   >;
-  readonly "workload.get": IdentityWorkflowDefinition<
-    "workload",
-    "name",
-    "GetWorkloadIdentity",
-    null,
-    "read",
-    "query",
-    GetByNameIntent<"workload">,
-    WorkloadGetV1Dto
-  >;
-  readonly "workload.list": IdentityWorkflowDefinition<
-    "workload",
-    "none",
-    "ListWorkloadIdentities",
-    null,
-    "list",
-    "query",
-    ListIntent<"workload">,
-    WorkloadListV1Dto
-  >;
-  readonly "workload.update": IdentityWorkflowDefinition<
-    "workload",
-    "name",
-    "UpdateWorkloadIdentity",
-    "GetWorkloadIdentity",
-    "currentStateMutation",
-    "replacement",
+  readonly "workload.get": IdentityWorkflowPayload<GetByNameIntent<"workload">, WorkloadGetV1Dto>;
+  readonly "workload.list": IdentityWorkflowPayload<ListIntent<"workload">, WorkloadListV1Dto>;
+  readonly "workload.update": IdentityWorkflowPayload<
     UpdateWorkloadIdentityIntent,
     WorkloadUpdateV1Dto
   >;
-  readonly "workload.delete": IdentityWorkflowDefinition<
-    "workload",
-    "name",
-    "DeleteWorkloadIdentity",
-    "GetWorkloadIdentity",
-    "currentStateMutation",
-    "continuityGuarded",
+  readonly "workload.delete": IdentityWorkflowPayload<
     DeleteByNameIntent<"workload">,
     EmptyIdentityV1Dto
   >;
 
-  readonly "tokenVault.get": IdentityWorkflowDefinition<
-    "tokenVault",
-    "tokenVaultId",
-    "GetTokenVault",
-    null,
-    "read",
-    "query",
-    GetTokenVaultIntent,
-    TokenVaultGetV1Dto
-  >;
-  readonly "tokenVault.setCmk": IdentityWorkflowDefinition<
-    "tokenVault",
-    "tokenVaultId",
-    "SetTokenVaultCMK",
-    "GetTokenVault",
-    "currentStateMutation",
-    "replacement",
+  readonly "tokenVault.get": IdentityWorkflowPayload<GetTokenVaultIntent, TokenVaultGetV1Dto>;
+  readonly "tokenVault.setCmk": IdentityWorkflowPayload<
     SetTokenVaultCmkIntent,
     TokenVaultSetCmkV1Dto
   >;
 
-  readonly "apiKey.tag.name": IdentityWorkflowDefinition<
-    "apiKey",
-    "name",
-    "TagResource",
-    "GetApiKeyCredentialProvider",
-    "currentStateMutation",
-    "continuityGuarded",
+  readonly "apiKey.tag.name": IdentityWorkflowPayload<
     TagByNameIntent<"apiKey">,
     EmptyIdentityV1Dto
   >;
-  readonly "apiKey.tag.resourceArn": IdentityWorkflowDefinition<
-    "apiKey",
-    "resourceArn",
-    "TagResource",
-    null,
-    "directMutation",
-    "direct",
+  readonly "apiKey.tag.resourceArn": IdentityWorkflowPayload<
     TagByResourceArnIntent<"apiKey">,
     EmptyIdentityV1Dto
   >;
-  readonly "apiKey.untag.name": IdentityWorkflowDefinition<
-    "apiKey",
-    "name",
-    "UntagResource",
-    "GetApiKeyCredentialProvider",
-    "currentStateMutation",
-    "continuityGuarded",
+  readonly "apiKey.untag.name": IdentityWorkflowPayload<
     UntagByNameIntent<"apiKey">,
     EmptyIdentityV1Dto
   >;
-  readonly "apiKey.untag.resourceArn": IdentityWorkflowDefinition<
-    "apiKey",
-    "resourceArn",
-    "UntagResource",
-    null,
-    "directMutation",
-    "direct",
+  readonly "apiKey.untag.resourceArn": IdentityWorkflowPayload<
     UntagByResourceArnIntent<"apiKey">,
     EmptyIdentityV1Dto
   >;
-  readonly "apiKey.listTags.name": IdentityWorkflowDefinition<
-    "apiKey",
-    "name",
-    "ListTagsForResource",
-    "GetApiKeyCredentialProvider",
-    "resolvedRead",
-    "query",
+  readonly "apiKey.listTags.name": IdentityWorkflowPayload<
     ListTagsByNameIntent<"apiKey">,
     ListTagsV1Dto
   >;
-  readonly "apiKey.listTags.resourceArn": IdentityWorkflowDefinition<
-    "apiKey",
-    "resourceArn",
-    "ListTagsForResource",
-    null,
-    "read",
-    "query",
+  readonly "apiKey.listTags.resourceArn": IdentityWorkflowPayload<
     ListTagsByResourceArnIntent<"apiKey">,
     ListTagsV1Dto
   >;
 
-  readonly "oauth2.tag.name": IdentityWorkflowDefinition<
-    "oauth2",
-    "name",
-    "TagResource",
-    "GetOauth2CredentialProvider",
-    "currentStateMutation",
-    "continuityGuarded",
+  readonly "oauth2.tag.name": IdentityWorkflowPayload<
     TagByNameIntent<"oauth2">,
     EmptyIdentityV1Dto
   >;
-  readonly "oauth2.tag.resourceArn": IdentityWorkflowDefinition<
-    "oauth2",
-    "resourceArn",
-    "TagResource",
-    null,
-    "directMutation",
-    "direct",
+  readonly "oauth2.tag.resourceArn": IdentityWorkflowPayload<
     TagByResourceArnIntent<"oauth2">,
     EmptyIdentityV1Dto
   >;
-  readonly "oauth2.untag.name": IdentityWorkflowDefinition<
-    "oauth2",
-    "name",
-    "UntagResource",
-    "GetOauth2CredentialProvider",
-    "currentStateMutation",
-    "continuityGuarded",
+  readonly "oauth2.untag.name": IdentityWorkflowPayload<
     UntagByNameIntent<"oauth2">,
     EmptyIdentityV1Dto
   >;
-  readonly "oauth2.untag.resourceArn": IdentityWorkflowDefinition<
-    "oauth2",
-    "resourceArn",
-    "UntagResource",
-    null,
-    "directMutation",
-    "direct",
+  readonly "oauth2.untag.resourceArn": IdentityWorkflowPayload<
     UntagByResourceArnIntent<"oauth2">,
     EmptyIdentityV1Dto
   >;
-  readonly "oauth2.listTags.name": IdentityWorkflowDefinition<
-    "oauth2",
-    "name",
-    "ListTagsForResource",
-    "GetOauth2CredentialProvider",
-    "resolvedRead",
-    "query",
+  readonly "oauth2.listTags.name": IdentityWorkflowPayload<
     ListTagsByNameIntent<"oauth2">,
     ListTagsV1Dto
   >;
-  readonly "oauth2.listTags.resourceArn": IdentityWorkflowDefinition<
-    "oauth2",
-    "resourceArn",
-    "ListTagsForResource",
-    null,
-    "read",
-    "query",
+  readonly "oauth2.listTags.resourceArn": IdentityWorkflowPayload<
     ListTagsByResourceArnIntent<"oauth2">,
     ListTagsV1Dto
   >;
 
-  readonly "payment.tag.name": IdentityWorkflowDefinition<
-    "payment",
-    "name",
-    "TagResource",
-    "GetPaymentCredentialProvider",
-    "currentStateMutation",
-    "continuityGuarded",
+  readonly "payment.tag.name": IdentityWorkflowPayload<
     TagByNameIntent<"payment">,
     EmptyIdentityV1Dto
   >;
-  readonly "payment.tag.resourceArn": IdentityWorkflowDefinition<
-    "payment",
-    "resourceArn",
-    "TagResource",
-    null,
-    "directMutation",
-    "direct",
+  readonly "payment.tag.resourceArn": IdentityWorkflowPayload<
     TagByResourceArnIntent<"payment">,
     EmptyIdentityV1Dto
   >;
-  readonly "payment.untag.name": IdentityWorkflowDefinition<
-    "payment",
-    "name",
-    "UntagResource",
-    "GetPaymentCredentialProvider",
-    "currentStateMutation",
-    "continuityGuarded",
+  readonly "payment.untag.name": IdentityWorkflowPayload<
     UntagByNameIntent<"payment">,
     EmptyIdentityV1Dto
   >;
-  readonly "payment.untag.resourceArn": IdentityWorkflowDefinition<
-    "payment",
-    "resourceArn",
-    "UntagResource",
-    null,
-    "directMutation",
-    "direct",
+  readonly "payment.untag.resourceArn": IdentityWorkflowPayload<
     UntagByResourceArnIntent<"payment">,
     EmptyIdentityV1Dto
   >;
-  readonly "payment.listTags.name": IdentityWorkflowDefinition<
-    "payment",
-    "name",
-    "ListTagsForResource",
-    "GetPaymentCredentialProvider",
-    "resolvedRead",
-    "query",
+  readonly "payment.listTags.name": IdentityWorkflowPayload<
     ListTagsByNameIntent<"payment">,
     ListTagsV1Dto
   >;
-  readonly "payment.listTags.resourceArn": IdentityWorkflowDefinition<
-    "payment",
-    "resourceArn",
-    "ListTagsForResource",
-    null,
-    "read",
-    "query",
+  readonly "payment.listTags.resourceArn": IdentityWorkflowPayload<
     ListTagsByResourceArnIntent<"payment">,
     ListTagsV1Dto
   >;
 
-  readonly "workload.tag.name": IdentityWorkflowDefinition<
-    "workload",
-    "name",
-    "TagResource",
-    "GetWorkloadIdentity",
-    "currentStateMutation",
-    "continuityGuarded",
+  readonly "workload.tag.name": IdentityWorkflowPayload<
     TagByNameIntent<"workload">,
     EmptyIdentityV1Dto
   >;
-  readonly "workload.tag.resourceArn": IdentityWorkflowDefinition<
-    "workload",
-    "resourceArn",
-    "TagResource",
-    null,
-    "directMutation",
-    "direct",
+  readonly "workload.tag.resourceArn": IdentityWorkflowPayload<
     TagByResourceArnIntent<"workload">,
     EmptyIdentityV1Dto
   >;
-  readonly "workload.untag.name": IdentityWorkflowDefinition<
-    "workload",
-    "name",
-    "UntagResource",
-    "GetWorkloadIdentity",
-    "currentStateMutation",
-    "continuityGuarded",
+  readonly "workload.untag.name": IdentityWorkflowPayload<
     UntagByNameIntent<"workload">,
     EmptyIdentityV1Dto
   >;
-  readonly "workload.untag.resourceArn": IdentityWorkflowDefinition<
-    "workload",
-    "resourceArn",
-    "UntagResource",
-    null,
-    "directMutation",
-    "direct",
+  readonly "workload.untag.resourceArn": IdentityWorkflowPayload<
     UntagByResourceArnIntent<"workload">,
     EmptyIdentityV1Dto
   >;
-  readonly "workload.listTags.name": IdentityWorkflowDefinition<
-    "workload",
-    "name",
-    "ListTagsForResource",
-    "GetWorkloadIdentity",
-    "resolvedRead",
-    "query",
+  readonly "workload.listTags.name": IdentityWorkflowPayload<
     ListTagsByNameIntent<"workload">,
     ListTagsV1Dto
   >;
-  readonly "workload.listTags.resourceArn": IdentityWorkflowDefinition<
-    "workload",
-    "resourceArn",
-    "ListTagsForResource",
-    null,
-    "read",
-    "query",
+  readonly "workload.listTags.resourceArn": IdentityWorkflowPayload<
     ListTagsByResourceArnIntent<"workload">,
     ListTagsV1Dto
   >;
@@ -2619,10 +2632,13 @@ type IdentityWorkflowDtoMap = Readonly<{
 }>;
 ```
 
-This catalog has exactly 46 properties. The symbol-owning constructor materializes one frozen
-`IdentityWorkflowId<K>` for each property and checks that the runtime family, selector, operation,
-auxiliary Get, facet, and policy values satisfy the same definition. The catalog is the only source of
-those facts for ports, actions, capabilities, handlers, routes, review models, and DTO normalization.
+This payload catalog has exactly 46 properties and contains only intent and DTO types. Family, selector,
+primary operation, auxiliary Get, facet, and policy derive from `IdentityWorkflowCompatibility<K>` and
+cannot be selected independently. The private runtime metadata catalog has the same 46 keys and uses
+`as const satisfies IdentityWorkflowCompatibilityMap`; a missing, extra, or semantically incompatible
+row fails compilation. The symbol-owning constructor materializes one frozen `IdentityWorkflowId<K>`
+for each key. These key-derived facts are the only source used by ports, actions, capabilities,
+handlers, routes, review models, and DTO normalization.
 
 ### Curated Mode
 
@@ -3111,17 +3127,53 @@ interface NativeLinuxStaleCleanupProof {
   readonly lockObjectId: string;
 }
 
-type NativeFixturePublishRequest = Readonly<{
-  readyDigest: string;
-  expectedBaseIndex: { kind: "absent" } | { kind: "sha256"; digest: string };
-  artifacts: readonly Readonly<{
-    sourceComponents: readonly string[];
-    target: "object" | "manifest";
-    digest: string;
-    byteLength: number;
-  }>[];
-  nextIndexBytes: Uint8Array;
+type FixtureIndexStateV1 = { kind: "absent" } | { kind: "sha256"; digest: string };
+
+type FixtureSuiteIndexV1 = Readonly<{
+  schema: "amazon.agentcore-cli.identity.fixture-suite-index";
+  version: 1;
+  flows: readonly Readonly<{ flowId: string; manifestDigest: string }>[];
 }>;
+
+type FixtureReadyV1 = Readonly<{
+  schema: "amazon.agentcore-cli.identity.fixture-ready";
+  version: 1;
+  expectedBaseIndex: FixtureIndexStateV1;
+  objects: readonly Readonly<{ digest: string; byteLength: number }>[];
+  flows: readonly Readonly<{
+    flowId: string;
+    manifestDigest: string;
+    manifestByteLength: number;
+    callCount: number;
+  }>[];
+  nextIndex: FixtureSuiteIndexV1;
+}>;
+
+type FixtureIndexSnapshotV1 = Readonly<{
+  state: FixtureIndexStateV1;
+  index: FixtureSuiteIndexV1 | null;
+}>;
+
+type FixtureCaptureHandoffV1 = Readonly<{
+  captureId: string;
+  readyDigest: string;
+  flowCount: number;
+  callCount: number;
+}>;
+
+type NativeOpenedSealedCapture = Readonly<{
+  capture: NativeSealedCaptureRootHandle;
+  handoff: FixtureCaptureHandoffV1;
+}>;
+
+type FixtureCaptureDiscoveryV1 = Readonly<{
+  captures: readonly FixtureCaptureHandoffV1[];
+  busyCaptureCount: number;
+  invalidCaptureCount: number;
+}>;
+
+const FIXTURE_DISCOVERY_MAX_CHILDREN = 1_024 as const;
+const FIXTURE_DISCOVERY_MAX_HANDOFFS = 256 as const;
 
 type NativeCaptureCreation = Readonly<{
   captureId: string;
@@ -3145,7 +3197,14 @@ type NativeCaptureSealOutcome =
 type NativeFixturePublishOutcome =
   | {
       kind: "notPublished";
-      reason: "invalidCapture" | "staleBase" | "unavailable" | "unsafe" | "unsupported";
+      reason:
+        | "busy"
+        | "invalidCapture"
+        | "fixtureTreeMismatch"
+        | "staleBase"
+        | "unavailable"
+        | "unsafe"
+        | "unsupported";
     }
   | {
       kind: "published";
@@ -3215,16 +3274,33 @@ interface AgentCoreNativeAdapter {
     "unavailable" | "unsafe" | "unsupported"
   >;
   closePublicationAuthority(handle: NativePublicationAuthorityHandle): void;
+  openFixtureTree(
+    path: string,
+  ): NativeOutcome<NativeFixtureTreeHandle, "unavailable" | "unsafe" | "unsupported">;
+  readFixtureSuiteIndex(
+    fixtureTree: NativeFixtureTreeHandle,
+  ): NativeOutcome<
+    FixtureIndexSnapshotV1,
+    "invalidIndex" | "limitExceeded" | "unavailable" | "unsafe" | "unsupported"
+  >;
   createFixtureCaptureRoot(
     publicationAuthority: NativePublicationAuthorityHandle,
+    fixtureTree: NativeFixtureTreeHandle,
   ): NativeOutcome<NativeCaptureCreation, "unavailable" | "unsafe" | "unsupported">;
   openSealedFixtureCaptureRoot(
     publicationAuthority: NativePublicationAuthorityHandle,
     captureId: string,
     readyDigest: string,
   ): NativeOutcome<
-    NativeSealedCaptureRootHandle,
-    "busy" | "invalidCapture" | "unavailable" | "unsafe"
+    NativeOpenedSealedCapture,
+    "busy" | "invalidCapture" | "unavailable" | "unsafe" | "unsupported"
+  >;
+  listSealedFixtureCaptures(
+    publicationAuthority: NativePublicationAuthorityHandle,
+    fixtureTree: NativeFixtureTreeHandle,
+  ): NativeOutcome<
+    FixtureCaptureDiscoveryV1,
+    "limitExceeded" | "unavailable" | "unsafe" | "unsupported"
   >;
   installCaptureArtifact(
     capture: NativeOpenCaptureRootHandle,
@@ -3237,6 +3313,7 @@ interface AgentCoreNativeAdapter {
   >;
   sealFixtureCaptureRoot(
     capture: NativeOpenCaptureRootHandle,
+    fixtureTree: NativeFixtureTreeHandle,
     readyBytes: Uint8Array,
     readyDigest: string,
   ): NativeCaptureSealOutcome;
@@ -3252,14 +3329,10 @@ interface AgentCoreNativeAdapter {
   ): NativeOutcome<number, "unavailable" | "unsafe" | "unsupported">;
   closeOpenFixtureCaptureRoot(handle: NativeOpenCaptureRootHandle): void;
   closeSealedFixtureCaptureRoot(handle: NativeSealedCaptureRootHandle): void;
-  openFixtureTree(
-    path: string,
-  ): NativeOutcome<NativeFixtureTreeHandle, "unavailable" | "unsafe" | "unsupported">;
   publishFixtureTransaction(
     publicationAuthority: NativePublicationAuthorityHandle,
     capture: NativeSealedCaptureRootHandle,
     fixtureTree: NativeFixtureTreeHandle,
-    request: NativeFixturePublishRequest,
   ): NativeFixturePublishOutcome;
   closeFixtureTree(handle: NativeFixtureTreeHandle): void;
 }
@@ -3368,15 +3441,33 @@ that share the tree contend on the same lock. The file is excluded from source c
 fixture bytes, indexes, sentinel scans, source archives, and release packages.
 
 Each capture is exclusively created as `captures/<32-lowercase-hex-id>` below the retained authority
-handle with `0700`/the protected DACL and a permanent protected `.capture.lock`. Creation returns only
-an open handle while holding that capture lock exclusively. Artifact installation accepts only the
-open brand. An exact existing digest object is idempotent success only after full byte verification; a
-mismatch is `contentMismatch`. Sealing installs `READY` last, syncs the directory, atomically consumes
-the open handle, and returns a sealed handle that retains the same lock. A closed, sealed, or consumed
-open handle returns `invalidState` at runtime; the type surface makes ordinary cross-state calls
-unrepresentable. Opening an existing sealed capture requires its canonical ID and expected `READY`
-digest, acquires its lock nonblocking, rejects a digest mismatch as `invalidCapture`, and returns `busy`
-when another process owns it.
+handle with `0700`/the protected DACL and a permanent protected `.capture.lock`. Creation requires the
+already-open retained fixture-tree handle and records that exact tree object's native identity in the
+protected origin record before returning an open handle while holding the capture lock exclusively.
+Capture reads the starting suite index only through `readFixtureSuiteIndex` on that retained handle.
+Artifact installation accepts only the open brand. An exact existing digest object is idempotent
+success only after full byte verification; a mismatch is `contentMismatch`. Sealing revalidates the
+same retained tree object, validates canonical `FixtureReadyV1`, installs `READY` last, syncs the
+directory, atomically consumes the open handle, and returns a sealed handle that retains the same lock.
+A closed, sealed, or consumed open handle returns `invalidState` at runtime; the type surface makes
+ordinary cross-state calls unrepresentable. Opening an existing sealed capture requires its canonical
+ID and expected `READY` digest, acquires its lock nonblocking, rejects a digest mismatch or malformed
+handoff as `invalidCapture`, returns `busy` when another process owns it, and returns the validated
+`FixtureCaptureHandoffV1` beside the sealed handle.
+
+`listSealedFixtureCaptures` is read-only recovery discovery for a retained tree. It examines at most
+`FIXTURE_DISCOVERY_MAX_CHILDREN` exact capture-ID children, attempts each capture lock nonblocking,
+returns at most `FIXTURE_DISCOVERY_MAX_HANDOFFS` valid same-provenance, same-tree sealed handoffs sorted
+by capture ID, and separately counts busy and invalid captures. Exceeding either cap returns
+`limitExceeded` with no partial list. It never opens an arbitrary path, follows a link, deletes a
+capture, reads AWS state, or treats an invalid root as a valid handoff.
+
+`FixtureReadyV1` uses duplicate-aware strict canonical JSON. Object entries are sorted by digest and
+unique. Flow entries are sorted by registered flow ID and unique. `nextIndex.flows` must equal exactly
+the ordered flow-ID/manifest-digest projection of `flows`; every length and digest must match a fully
+verified capture object. `readyDigest` is the SHA-256 of the complete canonical bytes. Capture target
+identity and host provenance remain in the protected origin record, not `READY`, so two equivalent
+logical recordings retain byte-identical canonical handoffs.
 
 `READY` installation is the seal commit point. A valid open-handle call that fails before it returns
 `notSealed` and leaves the open handle authoritative. A closed, sealed, or consumed handle instead
@@ -3389,7 +3480,8 @@ and never retries sealing through the consumed open handle.
 
 A protected version-1 origin record, created by native code and excluded from canonical fixture bytes,
 contains the capture ID, random generation nonce, creation epoch, authority-root identity,
-capture-directory file identity, boot-session identity, and local mount/volume identity as
+capture-directory file identity, bound fixture-tree identity, boot-session identity, and local
+mount/volume identity as
 length-delimited typed fields. Linux uses `/proc/sys/kernel/random/boot_id`,
 `STATX_MNT_ID_UNIQUE`, and device/inode identities. macOS uses `gethostuuid`,
 `kern.bootsessionuuid`, `ATTR_VOL_UUID`, and file IDs on APFS. Native code accepts
@@ -3406,15 +3498,20 @@ resolves
 `BootIdentifier` GUID. It combines those values with the volume GUID and `FILE_ID_INFO` on NTFS/ReFS.
 The private Windows information class is version-sensitive: symbol absence, status failure, size drift,
 malformed GUIDs, or an unavailable machine identity returns `unsupported` without a weaker fallback.
+Canonical `MachineGuid` is a CLI support predicate and continuity input, not a Windows guarantee that
+the value is unique, immutable, or unclonable. Equality of the complete Windows tuple is not proof of
+the same physical host.
 Raw host, SID, mount, and volume values are hashed before entering the record. If any required primitive
 is unavailable or malformed, capture/publication returns `unsupported`.
 
-`openSealedFixtureCaptureRoot` accepts only the current host and boot, the same authority root, the
-same retained capture object at its canonical ID path, a valid origin record, and a valid sealed
-`READY` whose digest equals the supplied value. A copied object has a different capture identity;
-reboot-stale, currently moved,
-cross-authority, or cross-host captures are unpublishable. The design does not claim to detect a
-trusted owner moving the same retained directory away and back without changing its identity. No
+`openSealedFixtureCaptureRoot` accepts only observable provenance matching the protected origin record,
+the same authority root, the same retained capture object at its canonical ID path, and a valid sealed
+`READY` whose digest equals the supplied value. Publication additionally requires the currently opened
+fixture tree to be the exact object bound at capture creation; an alias to that object is valid, while a
+byte-identical different object returns `fixtureTreeMismatch`. A copied, reboot-stale, currently moved,
+or cross-authority capture is unpublishable when any observable identity differs. The design does not
+guarantee detection when cloned Windows systems reproduce every observable identity component, or when
+a trusted owner moves the same retained directory away and back without changing its identity. No
 authenticated portable provenance is introduced. Publication accepts only the sealed handle opened
 from a capture ID under the authority root, never an arbitrary staging path.
 
@@ -3800,6 +3897,22 @@ type SafeIdentityError =
   | ServiceIdentityError
   | InternalIdentityError;
 
+type IdentityDiagnostic =
+  | { kind: "safeError"; error: SafeIdentityError }
+  | { kind: "notFound" }
+  | { kind: "cancelled" }
+  | { kind: "paginationFailed"; reason: PaginationFailureReason }
+  | { kind: "sdkCompatibilityRequired" }
+  | { kind: "credentialRefreshRequired" }
+  | { kind: "unsupportedProvider" }
+  | { kind: "unsupportedResourceStatus" }
+  | { kind: "unknownCurrentSource"; slot: SecretSlotId }
+  | { kind: "reprepareRequired" }
+  | { kind: "mutationOutcomeUnknown" }
+  | { kind: "committedOutputUnavailable" }
+  | { kind: "outputUnavailable" }
+  | { kind: "internalFailed" };
+
 type QueryFailure =
   | { kind: "notFound" }
   | { kind: "cancelled" }
@@ -3908,6 +4021,39 @@ interface IdentityQueryAction<W extends QueryWorkflowId> extends WorkflowBranded
   ): Promise<QueryOutcome<W>>;
 }
 
+type IdentityListWorkflowId = WorkflowForFacet<"list">;
+
+type IdentityPickerIntent<W extends IdentityListWorkflowId> = W extends IdentityListWorkflowId
+  ? Omit<WorkflowIntentOf<W>, "nextToken" | "all">
+  : never;
+
+interface IdentityPickerItemMap {
+  readonly "apiKey.list": ApiKeyListV1Dto["credentialProviders"][number];
+  readonly "oauth2.list": Oauth2ListV1Dto["credentialProviders"][number];
+  readonly "payment.list": PaymentListV1Dto["credentialProviders"][number];
+  readonly "workload.list": WorkloadListV1Dto["workloadIdentities"][number];
+}
+
+interface IdentityPickerPage<W extends IdentityListWorkflowId> extends WorkflowBranded<W> {
+  readonly items: readonly DeepReadonly<IdentityPickerItemMap[W["key"]]>[];
+  readonly hasNextPage: boolean;
+}
+
+type IdentityPickerPageOutcome<W extends IdentityListWorkflowId> =
+  | { kind: "page"; page: IdentityPickerPage<W> }
+  | { kind: "done" }
+  | { kind: "busy" }
+  | QueryFailure;
+
+interface IdentityPickerSession<W extends IdentityListWorkflowId> extends WorkflowBranded<W> {
+  next(options?: IdentityCallOptions): Promise<IdentityPickerPageOutcome<W>>;
+  dispose(): void;
+}
+
+interface IdentityListQueryAction<W extends IdentityListWorkflowId> extends IdentityQueryAction<W> {
+  openPicker(input: Readonly<IdentityPickerIntent<W>>): IdentityPickerSession<W>;
+}
+
 interface IdentityMutationAction<W extends MutationWorkflowId> extends WorkflowBranded<W> {
   prepare(
     input: Readonly<WorkflowIntentOf<W>>,
@@ -3916,9 +4062,14 @@ interface IdentityMutationAction<W extends MutationWorkflowId> extends WorkflowB
   ): Promise<PrepareOutcome<W>>;
 }
 
+declare const PREPARED_MUTATION_COMMIT: unique symbol;
+
 interface PreparedMutation<W extends MutationWorkflowId> extends WorkflowBranded<W> {
   readonly review: IdentityReviewModel<W>;
-  commit(secrets: CommitSecretContext, options?: IdentityCallOptions): Promise<CommitAttempt<W>>;
+  [PREPARED_MUTATION_COMMIT](
+    secrets: CommitSecretContext,
+    options?: IdentityCallOptions,
+  ): Promise<CommitAttempt<W>>;
   dispose(): void;
 }
 
@@ -3930,12 +4081,16 @@ interface ReplacementPreparation<W extends RepreparableWorkflowId> extends Workf
 
 declare const IDENTITY_HANDLER_WORKFLOWS: unique symbol;
 
+type IdentityLeafCompletion =
+  | { kind: "succeeded" }
+  | { kind: "failed"; diagnostic: IdentityDiagnostic };
+
 interface IdentityCommandHandler<
   Workflows extends readonly [IdentityWorkflowId, ...IdentityWorkflowId[]],
 > {
   readonly workflows: Workflows;
   readonly [IDENTITY_HANDLER_WORKFLOWS]: (workflows: Workflows) => Workflows;
-  invoke(options?: IdentityCallOptions): Promise<void>;
+  invoke(options?: IdentityCallOptions): Promise<IdentityLeafCompletion>;
 }
 ```
 
@@ -3954,8 +4109,10 @@ ID tuples, so its parity test understands that these leaves own two workflows. I
 handler wrapper is checked before the repository's broad router `Handler` type erases authoring detail.
 
 The prepared capability closes over the `MutationExecutionSupervisorPort` injected into its action and
-its private `MutationPlanToken`. `commit()` calls the port only after nonmutating pair/state verification
-and before capability/context claim. `activated` returns an action-owned
+its private `MutationPlanToken`. Its symbol-keyed activation hook is callable only by the exact
+root-created `MutationPresentationActionLease`; presentation code cannot invoke it directly. The
+lease's `commit()` calls the port only after nonmutating pair/state verification and before
+capability/context claim. `activated` returns an action-owned
 `ActiveMutationExecution`; `busy` returns the distinct payload-free `CommitAttempt` branch, performs no
 ownership transition, secret I/O, AWS call, state update, or output write, and leaves the pair retryable
 after the earlier execution retires. A settled attempt carries its opaque execution token beside the
@@ -4014,6 +4171,15 @@ value after cancellation or pagination failure.
 Before entering that binding-owning `try/finally`, the action exhaustively maps
 `BindingCreationOutcome`: `created` transfers exactly one binding into the guard; the other three
 variants return their matching closed query or preparation failure and own no binding.
+
+A list action additionally exposes `openPicker()`, which synchronously creates an opaque
+`IdentityPickerSession` without invoking SDK or caller code. The first `next()` creates the binding and
+cursor; the session then owns them, the visited decoded-token set, accepted-body evidence, cumulative
+page/item/wire/output counters, token-free aggregate serializer state, and normalized page cache until
+terminal outcome or disposal. Ink receives no transport cursor, `ReadPageEvidence`, raw or encoded
+continuation token, counter, or binding. A concurrent `next()` returns `busy` without advancing state.
+Back navigation reads already delivered frozen pages and performs no SDK call or counter change.
+Disposal, cancellation, and every terminal result close the cursor and binding exactly once.
 
 ### Preparation
 
@@ -4146,7 +4312,7 @@ authorizes its capability without an additional review prompt, except `token-vau
 Capability ownership uses this state machine:
 
 ```text
-prepared --commit()--> committing --> consumed
+prepared --action lease commit()--> committing --> consumed
     \-----dispose()-----------------> disposed
 
 replacement awaiting-context --bindContext()--> binding --> consumed + prepared pair
@@ -4171,7 +4337,8 @@ returned prepared pair.
 
 ### One-Shot Commit
 
-`PreparedMutation.commit()` first synchronously verifies the supplied context's private token and
+The root registers a `MutationPresentationActionLease` before commit. Its `commit()` first synchronously
+verifies the supplied context's private token and
 requirement fingerprint without changing either object. A mismatch returns
 `secretContextFailed/mismatch`; even an already-consumed or disposed old capability does not dispose a
 foreign context. With a matching context, a capability not in `prepared` returns `alreadyConsumed` and
@@ -4190,7 +4357,7 @@ commit-local ownership lease, claims the context, and transitions the capability
 to terminal ownership. The post-activation claim consists only of no-throw state transitions already
 validated in that turn. Commit calls `settle()` in `finally` for every activated execution, including
 every pre-mutation failure, and returns its token in the `settled` attempt. The root controller then owns
-the already-defined correlated begin/barrier/retire protocol around Commander output or one Ink frame;
+the already-defined correlated begin/receipt/retire protocol around Commander output or one Ink frame;
 none of those transitions is exposed through the action-facing activation port.
 
 Every later call with the original matching context returns `alreadyConsumed` without reading secrets
@@ -4430,9 +4597,10 @@ does not imply consent.
 
 The transport exposes distinct operations:
 
-- `listPage`: one service page plus `nextToken`, used by TUI pickers and paged CLI output.
+- `listPage`: one service page plus an encoded `nextToken`, used by paged Commander output.
 - `listAll`: generated paginator consumption, used by Commander `--all`, cleanup, and completeness
   checks.
+- `openPicker`: an action-owned session over one binding/cursor, used only by TUI pickers.
 
 `--all` is mutually exclusive with `--next-token`. `--max-results` remains the service page size, not
 an aggregate result limit. All-results JSON uses the normal response envelope with one concatenated
@@ -4440,10 +4608,11 @@ item array and no `nextToken`. No list method silently changes from page semanti
 semantics. Tests cover both.
 
 `listAll` uses the generated paginator for the selected operation and buffers pages before rendering.
-The adapter tracks every non-empty token and rejects a repeated token, including same-token and
-multi-token cycles, before returning any result. It does not rely only on the generated
-`stopOnSameToken` option because that option does not detect a cycle such as A, B, A. TUI pickers track
-their visited token chain and stop with the same closed `paginationFailed/cycle` outcome.
+The adapter and picker session compare decoded internal tokens, track every non-empty token, and reject
+a repeated token, including same-token and multi-token cycles, before returning the violating result.
+They do not rely only on the generated `stopOnSameToken` option because that option does not detect a
+cycle such as A, B, A. Encoding happens only at the Commander V1 boundary; decoding happens before
+request construction.
 
 Aggregate traversal is bounded by:
 
@@ -4459,9 +4628,13 @@ on page 1,000 returns `paginationFailed/pageLimit` without requesting page 1,001
 the operation registry's collection member. Wire bytes sum the accepted raw response-body lengths.
 Output bytes are the exact UTF-8 bytes produced by the normal one-chunk V1 JSON serializer after
 concatenation. The first excess returns the matching `pageLimit`, `itemLimit`, `wireByteLimit`, or
-`outputByteLimit` reason, emits no partial value, and discards the all-page fixture batch. TUI picker
-sessions apply the same page, item, and cumulative wire-byte limits, bounding both their token set and
-retained choices.
+`outputByteLimit` reason, emits no partial all-results value, and discards the all-page fixture batch.
+Picker sessions apply all four limits. Their output-byte counter is the exact UTF-8 serialization of
+the cumulative token-free list DTO through the same V1 serializer; the service token is never retained
+in presentation state. Checks run in deterministic order: cycle, page, item, wire bytes, output bytes.
+Equality is accepted. A page that crosses any limit is never delivered, the session becomes terminal,
+and capture poisons the flow; earlier valid frozen pages may remain visible for navigation but cannot be
+submitted as a complete result.
 
 Pinned Smithy paginators mutate the input object while advancing `nextToken` and page size. The
 adapter therefore creates one shallow mutable clone of the already-validated list input and passes
@@ -4469,6 +4642,18 @@ only that clone to the generated paginator. Caller-owned and frozen inputs remai
 query action passes its `AbortSignal` as the paginator's additional call option, consumes the entire
 paginator inside its binding-owning `try/finally`, and returns `cancelled` or `paginationFailed`
 without a partial result.
+
+Production and fixture token transforms have one fixed order:
+
+```text
+normal response: raw SDK token -> production encode -> Commander V1 JSON
+normal request: Commander token -> production decode -> SDK input
+capture response: physical SDK token -> fixture logical token -> production encode
+capture request: production decode -> logical fixture identity -> physical SDK token
+```
+
+Cycle detection compares the decoded internal token. The complete-value matcher inspects physical and
+logical raw values before production encoding and the encoded representation before output.
 
 Generated paginators require a real `BedrockAgentCoreControlClient` instance. Production, fake, and
 fixture wiring preserve that instance requirement as described in Secret-Safe Record and Replay.
@@ -4516,6 +4701,11 @@ The TUI includes:
 - A `ReprepareRequired` state that displays the changed plan and requires a new confirmation.
 - Loading, empty, error, cancellation, and success states.
 
+Paged pickers consume only `IdentityPickerSession` pages. They cache frozen normalized pages for back
+navigation and never store, display, decode, or resubmit a service or Commander continuation token.
+Resizing can change layout but does not mutate the session's fixed service page size or reset any
+traversal counter; starting a differently sized traversal disposes the old session and opens a new one.
+
 The TUI does not expose a visual editor for every recursive SDK structure. Advanced nested OAuth and
 payment configuration remains available through CLI JSON options. This matches Harness: common
 workflows are ergonomic without reducing command completeness.
@@ -4558,6 +4748,54 @@ Commander parse failures use a closed mapping and never interpolate `CommanderEr
 Router argument and option validators throw a closed CLI-owned usage-error type rather than
 `TypeError` containing arbitrary parser or input text.
 
+Identity formatter tables are exhaustive and static:
+
+| Usage reason                   | Guidance                                                                          |
+| ------------------------------ | --------------------------------------------------------------------------------- |
+| `conflictingInput`             | `Conflicting Identity options were provided. Run with --help for usage.`          |
+| `inapplicableInput`            | `An option is not valid for the selected Identity provider or operation.`         |
+| `invalidJson`                  | `An Identity JSON option is invalid. Review the documented schema and try again.` |
+| `invalidValue`                 | `An Identity option value is invalid. Run with --help for accepted values.`       |
+| `missingInput`                 | `A required Identity option is missing. Run with --help for usage.`               |
+| `storageModeChangeUnsupported` | `Changing this secret storage mode is not supported for the existing resource.`   |
+| `missingSecrets`               | `One or more required secret values were not provided.`                           |
+
+| Secret reason            | Guidance                                                              |
+| ------------------------ | --------------------------------------------------------------------- |
+| `environmentUnavailable` | `A required secret environment value is unavailable.`                 |
+| `fileChanged`            | `A secret file changed before it could be read. Rerun the command.`   |
+| `fileUnavailable`        | `A required secret file is unavailable.`                              |
+| `fileUnsafe`             | `A required secret file did not pass local safety checks.`            |
+| `invalidValue`           | `A supplied secret value does not satisfy the provider requirements.` |
+| `promptUnavailable`      | `A required hidden secret prompt is unavailable in this invocation.`  |
+| `stdinUnavailable`       | `A required secret value could not be read from standard input.`      |
+
+| Pagination reason | Guidance                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------ |
+| `cycle`           | `The service returned a repeated pagination token. No partial result was emitted.`         |
+| `pageLimit`       | `The Identity pagination page limit was exceeded. No partial result was emitted.`          |
+| `itemLimit`       | `The Identity pagination item limit was exceeded. No partial result was emitted.`          |
+| `wireByteLimit`   | `The Identity pagination response-byte limit was exceeded. No partial result was emitted.` |
+| `outputByteLimit` | `The Identity pagination output-byte limit was exceeded. No partial result was emitted.`   |
+
+| Service code                                                      | Guidance                                                                     |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `AccessDeniedException`, `UnauthorizedException`                  | `AWS denied the Identity operation. Review credentials and permissions.`     |
+| `ConcurrentModificationException`                                 | `The Identity resource changed concurrently. Read it again before retrying.` |
+| `ConflictException`                                               | `The Identity operation conflicts with the resource's current state.`        |
+| `DecryptionFailure`, `EncryptionFailure`                          | `AWS could not process the configured secret encryption.`                    |
+| `InternalServerException`                                         | `The Identity service could not complete the operation. Try again.`          |
+| `ResourceLimitExceededException`, `ServiceQuotaExceededException` | `An AWS resource or service quota prevented the Identity operation.`         |
+| `ResourceNotFoundException`                                       | Normalized to the `notFound` diagnostic below.                               |
+| `ThrottlingException`                                             | `The Identity service throttled the operation. Try again.`                   |
+| `ValidationException`                                             | `AWS rejected the Identity request. Review the supplied configuration.`      |
+| `UnknownServiceError`                                             | `The Identity service could not complete the operation.`                     |
+
+Usage diagnostics may append only the CLI-owned display label for their optional `IdentityOptionId` or
+`IdentitySchemaPath`; secret diagnostics may append only the catalog label for their `SecretSlotId`.
+They never append raw values. Service diagnostics append validated metadata in exactly this order when
+present: `code`, `httpStatus`, `requestId`. No other exception field participates.
+
 Service errors:
 
 - Include an allowlisted modeled error code.
@@ -4576,6 +4814,34 @@ unknown exception's `message`, `stack`, `cause`, object inspection, or raw body.
 serialized completely and passed to the one-chunk awaited stdout sink. The process entry point uses
 `process.exitCode`, not `process.exit`, and does not complete routing until callback, backpressure,
 `drain`, close, and error state have settled as defined under Output And Invocation.
+
+Every Commander Identity leaf returns one closed `IdentityLeafCompletion`; the router monotonically
+records failure and cannot later reset it to success. Normal leaves use only the repository's existing
+exit codes `0` and `1`:
+
+| Leaf outcome                                                                            | Exit and rendering                                                                                                |
+| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `succeeded`, `committed`, or `noChange` with a flushed document                         | `0`; exactly one JSON document                                                                                    |
+| `validationFailed`, `secretResolutionFailed`, or `serviceFailed`                        | `1`; the matching closed formatter entry on stderr                                                                |
+| `notFound`                                                                              | `1`; `The requested Identity resource was not found.`                                                             |
+| `cancelled`                                                                             | `1`; `The operation was cancelled.`                                                                               |
+| `paginationFailed`                                                                      | `1`; the matching pagination guidance                                                                             |
+| `sdkCompatibilityRequired`                                                              | `1`; `The installed AgentCore CLI and AWS service model are incompatible. Upgrade the CLI and rerun the command.` |
+| `credentialRefreshRequired`                                                             | `1`; `AWS credentials must be refreshed. Refresh them and rerun the command.`                                     |
+| `unsupportedProvider`                                                                   | `1`; `This provider can be read but is not supported for this write operation.`                                   |
+| `unsupportedResourceStatus`                                                             | `1`; `The resource is not in a writable state. Read it before trying again.`                                      |
+| `unknownCurrentSource`                                                                  | `1`; `The current secret source cannot be determined safely for <catalog slot>.`                                  |
+| `reprepareRequired`                                                                     | `1`; `The resource changed after review. Rerun the command against the latest state.`                             |
+| `mutationOutcomeUnknown`                                                                | `1`; `The mutation may have applied. Perform a fresh Get before another mutation.`                                |
+| `committedOutputUnavailable`                                                            | `1`; `The mutation committed, but its output is unavailable. Perform a fresh Get before another mutation.`        |
+| Generic output failure                                                                  | `1`; `Command output could not be written.`                                                                       |
+| `busy`, `alreadyConsumed`, secret-context mismatch/unavailability, or unknown rejection | `1`; the static internal error                                                                                    |
+
+A failed leaf emits no success document. If stderr is also unavailable, the diagnostic may be
+undeliverable but the exit remains `1`. Commander parser failures use the closed table above and exit
+`1`; help and version remain `0`. TUI cancellation/navigation is nonfatal to the process, action errors
+remain renderable states, and `reprepareRequired` remains an interactive continuation. Only a fatal Ink
+boundary or output-supervisor failure fixes the eventual process exit to `1`.
 
 React error boundaries do not catch asynchronous callback or query failures. Every Identity query,
 mutation, event handler, submit callback, and hidden-prompt continuation catches `unknown` at the
@@ -4653,20 +4919,40 @@ An Identity fixture schema registry maps each supported operation name to its pu
 schema. Recording fails closed before filesystem access when the operation, schema member, union
 member, or sensitive path is unknown.
 
-Every capture or replay SDK call owns a private one-use acceptance transaction:
+Every logical capture or replay `Client.send()` owns one private one-use acceptance transaction. A
+fixture initialize middleware creates it once and wraps the SDK `retryMiddleware`; request
+serialization, request-handler dispatch, and deserialize middleware may therefore execute more than
+once without creating another transaction:
 
 ```text
-open -> staged -> finalized
-  \----------------> discarded
+open(optional replay reservation) -> terminalStaged -> finalized
+                 \                    \-------------> discarded
+                  \---------------------------------> discarded
 ```
 
-`staged` is memory-only. It assigns no occurrence, installs no artifact, appends no flow entry, and
-consumes no replay entry. The binding/recorder closure privately associates the reconstructed SDK output
-with its receipt; the exact workflow normalizer and safe error mapper receive the matching acceptance
-callback through their constructor closure. No receipt, callback, or fixture state enters an intent,
-public action port/result, plan, review, DTO, fixture, or presentation type. Production injects the same
-coordinator shape with no-op staging/finalization, keeping workflow logic identical. The workflow
-wrapper disposes the coordinator in `finally`; every receipt not explicitly finalized is discarded.
+Each retry attempt's outer deserialize middleware performs only a detached safe projection. It may
+return immutable candidate evidence correlated to that exact SDK-shaped output or modeled exception,
+but it never reserves or consumes a replay entry, changes the logical transaction, installs an object,
+or appends a flow entry. The retry middleware alone selects the terminal returned output or rejection.
+Only the wrapping initialize middleware may move the corresponding terminal candidate from `open` to
+`terminalStaged`; every superseded attempt candidate becomes unreachable without changing fixture
+state. A terminal transport failure, unmodeled error, projection failure, or call cancellation moves
+directly from `open` to `discarded`.
+
+Correlation uses one call-local private `WeakMap<object, DetachedFixtureCandidate>` keyed by the exact
+reconstructed output or allowlisted modeled-exception object returned or thrown into retry middleware.
+Writing or deleting that ephemeral correlation entry is not a fixture-state transition. The initialize
+wrapper looks up only the exact terminal object, deletes the map, and either stages that one detached
+candidate or discards the call. A primitive/foreign rejection cannot be a key and has no candidate.
+
+`terminalStaged` is memory-only. It assigns no occurrence, installs no artifact, appends no flow entry,
+and consumes no replay entry. The binding/recorder closure privately associates the reconstructed
+terminal SDK output with its receipt; the exact workflow normalizer and safe error mapper receive the
+matching acceptance callback through their constructor closure. No receipt, callback, retry-attempt
+evidence, or fixture state enters an intent, public action port/result, plan, review, DTO, fixture, or
+presentation type. Production injects the same logical-call coordinator shape with no-op
+staging/finalization, keeping workflow logic identical. The workflow wrapper disposes the coordinator
+in `finally`; every transaction not explicitly finalized is discarded.
 
 For every Identity call, staging:
 
@@ -4682,7 +4968,8 @@ For every Identity call, staging:
 7. Reconstructs and rechecks the equivalent sanitized SDK-shaped value.
 8. Serializes the complete candidate bytes in memory, computes their content digest, and scans those
    bytes and the candidate basename for registered high-entropy sentinels.
-9. Retains the candidate and its replay reservation only in the private transaction.
+9. Retains the detached terminal candidate only in the private transaction. A replay reservation
+   remains owned separately by that same logical transaction.
 
 No raw request body or service error message is stored. Error fixtures contain only an allowlisted
 modeled code and fields needed to reproduce the safe classification. Existing non-Identity fixture
@@ -4698,9 +4985,11 @@ deserialization/map-revival failures, reflection failures, and normalization fai
 candidate.
 
 Capture finalization atomically installs the immutable object and then appends its ordered in-memory
-flow entry; failure of either step poisons the unpublished flow and prevents `READY`. Replay
-finalization consumes the reserved manifest entry; discard leaves it unconsumed. For `--all`, all page
-candidates remain one ordered batch
+flow entry; failure of either step poisons the unpublished flow and prevents `READY`. Replay acquires
+exactly one reservation before the first attempt, reuses that same immutable record for every retry
+attempt, and consumes it exactly once only when the terminal staged value is finalized; discard leaves
+it unconsumed. A retryable modeled fixture can therefore be synthesized repeatedly by Smithy while
+advancing its manifest occurrence only once. For `--all`, all page candidates remain one ordered batch
 until every page and the concatenated V1 document pass normalization, cycle detection, and all
 aggregate limits. A discarded candidate poisons its capture flow, and a poisoned flow cannot create
 `READY` even if another candidate was already installed inside that unique, unpublished capture root.
@@ -4714,7 +5003,8 @@ aggregate limits. A discarded candidate poisons its capture flow, and a poisoned
 | Exact mutation success followed by response normalization failure         | Discard; `committedOutputUnavailable`                             |
 | Guard, status, body, decode, reflection, pagination-cap, or cycle failure | Discard; no fixture                                               |
 | Capture finalization failure after exact mutation success                 | No `READY`; `committedOutputUnavailable`                          |
-| Presentation/output failure after finalization                            | Capture command fails and creates no `READY`                      |
+| Flow assertion or presentation/output failure before suite seal           | Capture is poisoned and creates no `READY`                        |
+| Capture-result output failure after suite seal                            | Existing `READY` remains valid, retained, and discoverable        |
 
 Fixture payloads are not V1 presentation DTOs. Capture and replay use real AWS SDK clients with three
 ordered layers:
@@ -4725,21 +5015,24 @@ ordered layers:
 2. The normal inner compatibility/status middleware sees those original bytes first. Guarded
    OAuth/payment Gets reject additive or malformed successful wire data before generated
    deserialization. Mutation classification sees the exact status and normal-EOF evidence.
-3. An outer post-deserialization recorder observes only a normal SDK-shaped output or an allowlisted
-   modeled exception after all inner checks. It projects registered safe fields into the fixture
-   algebra, rejects complete managed-value reflection through the private matcher, reconstructs the
-   equivalent sanitized SDK-shaped value, rechecks that reconstructed value, stages the candidate, and
-   returns or throws only that reconstructed value to the action. The exact action normalizer or safe
-   error mapper then finalizes the private receipt. Request IDs, arbitrary messages, raw unknown-union
-   bodies, reflected secrets, and unregistered fields therefore cannot make capture output differ from
-   replay. Unknown exceptions and every guard, status, body, deserialization, sanitization, reflection,
-   normalization, or staging failure finalize no fixture call.
+3. An outer per-attempt post-deserialization projector observes only a normal SDK-shaped output or an
+   allowlisted modeled exception after all inner checks. It projects registered safe fields into the
+   fixture algebra, rejects complete managed-value reflection through the private matcher, reconstructs
+   the equivalent sanitized SDK-shaped value, rechecks that reconstructed value, and returns or throws
+   only that reconstructed value plus private detached candidate evidence. It mutates no fixture
+   transaction. After retry middleware selects that attempt as terminal, the logical-call initialize
+   wrapper stages its evidence. The exact action normalizer or safe error mapper then finalizes the
+   private receipt. Request IDs, arbitrary messages, raw unknown-union bodies, reflected secrets, and
+   unregistered fields therefore cannot make capture output differ from replay. Unknown exceptions and
+   every guard, status, body, deserialization, sanitization, reflection, normalization, or staging
+   failure finalize no fixture call.
 
 Replay invokes the same client, middleware ordering, dispatch tracker, deserializer, action normalizer,
-and outer fixture verifier, but its request handler synthesizes the registered safe wire response
-without network access. The synthesized bytes must also fit `MAX_IDENTITY_RESPONSE_BYTES` and traverse
-the body normalizer and, for a secret-bearing replayed mutation, the same private complete-value matcher;
-replay does not inject an already-deserialized output. The versioned fixture
+and outer fixture verifier, but its request handler synthesizes the logical call's one reserved safe
+wire response without network access on every retry attempt. The synthesized bytes must also fit
+`MAX_IDENTITY_RESPONSE_BYTES` and traverse the body normalizer and, for a secret-bearing replayed
+mutation, the same private complete-value matcher; replay does not inject an already-deserialized
+output. The versioned fixture
 algebra records the transport evidence required by the production classifier and is exact and
 collision-free:
 
@@ -4845,12 +5138,13 @@ discovery independent of worker scheduling. Repeated recordings with the same lo
 produce byte-identical manifests and fixture content.
 
 Each capture exclusively creates a cryptographically unique staging root and records the committed
-suite-index state it started from as exactly `{ kind: "absent" }` or
+suite-index state it read from the bound retained tree as exactly `{ kind: "absent" }` or
 `{ kind: "sha256", digest }`. Capture acquires neither publication lock and never writes a stable
 repository path. Every response blob and closed flow manifest is immutable and
 content-addressed by the full SHA-256 of its canonical bytes. A manifest references only durable
-blobs. Capture writes one canonical `READY` manifest last with the exact flow set, object digests,
-schema version, and starting suite-index state; a root without `READY` is unpublishable. The suite
+blobs. Capture writes one canonical `FixtureReadyV1` last with the exact flow set, object digests,
+byte lengths, canonical next index, schema version, and starting suite-index state; a root without
+`READY` is unpublishable. The suite
 index is a sorted mapping from stable flow IDs to immutable manifest digests and is the only stable
 mutable fixture file. PID, host, capture ID, wall time, lock state, and commit SHA never enter
 canonical artifact bytes.
@@ -4908,15 +5202,18 @@ or configured volatile response path fails capture instead of introducing nondet
 
 Publication is one short `publishFixtureTransaction` inside the native boundary. JavaScript may
 prevalidate the closed capture, exact call consumption, digests, logical mappings, sentinel scans, and
-base-index absent-or-digest state, but that does not authorize mutation. It passes the retained
-`NativePublicationAuthorityHandle`, `NativeSealedCaptureRootHandle`, separately retained
-`NativeFixtureTreeHandle`, and immutable request to native code. The transaction revalidates all three
-handle identities, same-host/current-boot capture provenance, `READY`, component grammar, request
-digests, canonical layout, and fixture-tree security before touching a stable path. A copied, currently
-moved, reboot-stale, cross-authority, alternate-host, or no-longer-identical capture returns
-`invalidCapture`.
+base-index absent-or-digest state, but that does not authorize mutation and passes no artifact list,
+path list, base state, or next-index bytes. It passes only the retained
+`NativePublicationAuthorityHandle`, `NativeSealedCaptureRootHandle`, and separately retained
+`NativeFixtureTreeHandle`. The transaction rereads and strictly parses canonical `READY` through the
+sealed handle, derives every source component, target component, expected base, byte length, digest,
+and exact next-index bytes internally, then revalidates all three handle identities, observable capture
+provenance, bound fixture-tree identity, component grammar, canonical layout, and fixture-tree security
+before touching a stable path. A copied, currently moved, reboot-stale, cross-authority, or
+no-longer-identical capture returns `invalidCapture`; a different fixture-tree object returns
+`fixtureTreeMismatch`.
 
-Native code acquires two permanent locks in one fixed order: first `.publish.lock` relative to the
+Native code attempts two permanent locks nonblocking in one fixed order: first `.publish.lock` relative to the
 capture's publication authority, then `.agentcore-identity-fixture-publish.lock` relative to the
 retained fixture-tree handle. Both use exclusive Linux OFD `fcntl`, macOS `flock`, or Windows
 `LockFileEx` locking and remain held until the transaction has a final outcome. Neither file is ever
@@ -4925,7 +5222,9 @@ second is the serialization authority for the exact stable tree. This order is u
 discard/reap paths that need both resources, so lock inversion is impossible. Kernel release on
 descriptor close or process death eliminates stale-file reclamation, PID reuse, and
 check/remove/recreate races. Network filesystems, unsupported no-replace/rename primitives, and trees
-writable or deletable by another principal return `unsupported` or `unsafe`.
+writable or deletable by another principal return `unsupported` or `unsafe`. Contention on either lock
+returns `notPublished/busy`; contention on the second releases the first and performs no cleanup or
+stable-tree mutation.
 
 While holding both locks, the native transaction performs the complete descriptor-relative sequence:
 
@@ -4936,7 +5235,7 @@ While holding both locks, the native transaction performs the complete descripto
    `.agentcore-publish-index-tmp-<32-lowercase-hex>`. Never recurse through a temporary, follow it, or
    remove an unrecognized lookalike; fail before commit if an owned temporary cannot be removed.
 3. Read and verify one current suite-index state. If its exact canonical bytes already equal
-   `nextIndexBytes`, verify every referenced object/manifest and treat the request as an idempotent
+   the `FixtureReadyV1.nextIndex` bytes, verify every referenced object/manifest and treat the request as an idempotent
    already-published commit before continuing to durability sync. Otherwise require the current state
    to equal the capture's recorded absent-or-digest base state. Any third state is `staleBase`; it is
    never merged or overwritten.
@@ -4958,7 +5257,8 @@ authoritative. After that commit point, no path may return `notPublished`: compl
 returns `published/directorySynced`; a platform with atomic process-crash behavior but no reliable
 directory sync returns `published/processCrashOnly`; and any post-commit failure that prevents the
 transaction from proving which durability step completed returns `published/unknownAfterCommit`.
-An idempotent retry that finds exact `nextIndexBytes` is already committed, never `staleBase`; it
+An idempotent retry that finds the exact canonical `FixtureReadyV1.nextIndex` bytes is already
+committed, never `staleBase`; it
 performs the remaining verification/sync and returns the strongest `published` durability it can now
 prove. Callers never retry automatically after `processCrashOnly` or `unknownAfterCommit`. Old
 referenced objects are not deleted during publication. Replay reads one index snapshot, verifies every
@@ -4983,11 +5283,22 @@ sanitization. Replay never creates physical resource values or page tokens.
 
 ### Fixture Command Handoff
 
-Routine live integration execution, golden capture, fixture publication, explicit discard, and
-authority cleanup are separate test-only commands excluded from shipped artifacts:
+Routine live integration execution, golden capture, fixture recovery discovery, fixture publication,
+explicit discard, and authority cleanup are separate test-only modules excluded from shipped
+artifacts. Their `package.json` script metadata may remain in the npm package:
 
 ```text
 AWS_PROFILE=deploy bun run test:identity:fixtures:capture -- \
+  --fixture-tree <absolute-path> \
+  --run-root <new-absolute-path> \
+  --expected-account <12-digits> \
+  --expected-region <region> \
+  --expected-partition <partition> \
+  --expected-owner agentcore-cli-identity-fixture-capture-v1 \
+  --expected-family <family>... \
+  --yes
+
+bun run test:identity:fixtures:list -- \
   --fixture-tree <absolute-path>
 
 bun run test:identity:fixtures:publish -- \
@@ -5005,16 +5316,30 @@ bun run test:identity:fixtures:reap -- \
 ```
 
 These commands accept no positionals, authority-root/staging-path override, endpoint option, capture
-flow subset, or unlisted flag. Scalar options occur exactly once. Fixture-tree paths are absolute,
-NUL-free, at most 4,096 UTF-8 bytes, and pass the retained-tree validation already defined. Capture and
-publish read the exact base/index at that tree; publication receives no artifact list or next-index
-bytes from the caller and derives both from the sealed `READY`. Capture rejects endpoint overrides,
-uses `AWS_PROFILE=deploy`, and performs the existing exact account/region checks before live work.
+flow subset, profile option, or unlisted flag. Scalar options occur exactly once. Fixture-tree and run
+paths are absolute, NUL-free, at most 4,096 UTF-8 bytes, and pass their retained-handle validation.
+Capture requires a nonexistent run root and the complete account/region/partition/owner/family scope
+plus `--yes`. It rejects endpoint overrides, uses `AWS_PROFILE=deploy`, initializes and locks a
+`RunLedgerV1` with purpose `fixtureCapture` before any AWS Create, and uses the same
+`planned -> createOutcomeUnknown -> observed -> deleteOutcomeUnknown` send gates, ownership tags,
+bounded polls, audit, and stale-reaper protocol as live testing. `createNotSent` remains the only
+terminal row state. Capture and publish read the exact base/index at the fixture tree; publication
+receives no artifact list or next-index bytes from the caller and derives both from sealed `READY`.
 
-After every flow, action/presentation assertion, sentinel scan, and AWS cleanup succeeds, capture seals
-the unique root and emits exactly one document:
+After every flow, action/presentation assertion, sentinel scan, bounded AWS cleanup snapshot, and final
+audit succeed, capture may seal only when the snapshot is `quiescent`. Quiescent means no owned
+resource is currently visible under the exact bounded poll and complete audit; it is not permanent
+absence proof. The durable run ledger is retained even after a sealed capture so a later reaper can
+delete a delayed or reappearing resource. Capture then emits exactly one document:
 
 ```ts
+type FixtureCaptureRootCleanupV1 =
+  | { kind: "discarded" }
+  | {
+      kind: "retained";
+      reason: "busy" | "unavailable" | "unsafe" | "unsupported" | "internalFailure";
+    };
+
 type FixtureCaptureCommandResultV1 =
   | {
       version: 1;
@@ -5024,20 +5349,54 @@ type FixtureCaptureCommandResultV1 =
       flowCount: number;
       callCount: number;
       durability: "directorySynced" | "processCrashOnly" | "unknownAfterSeal";
+      runId: string;
+      ledgerDigest: string;
+      cleanupSnapshot: "quiescent";
+      audit: RunAuditReportV1;
     }
   | {
       version: 1;
       kind: "notSealed";
-      reason: "captureFailed" | "cleanupFailed" | "unavailable" | "unsafe" | "unsupported";
+      reason:
+        | "captureFailed"
+        | "cleanupIncomplete"
+        | "auditOverflow"
+        | "unavailable"
+        | "unsafe"
+        | "unsupported";
       captureId: string | null;
       readyDigest: null;
-      captureDisposition: "discarded" | "retained";
+      runId: string | null;
+      ledgerDigest: string | null;
+      cleanupSnapshot: "notRun" | "resourcesPresent" | "indeterminate" | "auditOverflow";
+      audit: RunAuditReportV1;
+      captureRootCleanup: FixtureCaptureRootCleanupV1;
+    };
+
+type FixtureListCommandResultV1 =
+  | {
+      version: 1;
+      kind: "completed";
+      captures: readonly FixtureCaptureHandoffV1[];
+      busyCaptureCount: number;
+      invalidCaptureCount: number;
+    }
+  | {
+      version: 1;
+      kind: "failed";
+      reason: "limitExceeded" | "unavailable" | "unsafe" | "unsupported";
     };
 ```
 
-The sealed document is the sole handoff to publication. On failure before `READY`, capture closes every
-handle and explicitly discards the open root in `finally`; a failed discard reports `retained`. Every
-sealed outcome closes its handle but retains the root for publish, explicit discard, or audit.
+The sealed document is the normal handoff to publication. On failure before `READY`, capture closes
+every handle and explicitly discards the open root in `finally`; a failed discard reports its retained
+reason. Every sealed outcome closes its handle but retains the root for publish, explicit discard, or
+audit. If the final sealed-result stdout write fails, capture never emits a partial document, retains
+the sealed root and durable run ledger, and exits `2`; `fixtures:list` recovers the exact capture
+ID/digest for that bound tree, while `test:identity:inspect -- --run-root <known-path>` recovers the
+exact run ID and ledger digest. Discovery and inspection are read-only and never substitute for AWS
+cleanup. A sealed result's audit is necessarily `completed` with zero findings; every other audit
+variant is `notSealed`.
 
 Publication independently opens the canonical capture ID under the native-selected authority, verifies
 the supplied `readyDigest` against `READY`, opens the explicit fixture tree, and emits:
@@ -5047,13 +5406,24 @@ type FixturePublishCommandResultV1 =
   | {
       version: 1;
       kind: "published";
+      captureId: string;
+      readyDigest: string;
       durability: "directorySynced" | "processCrashOnly" | "unknownAfterCommit";
       captureDisposition: "discarded" | "retained";
     }
   | {
       version: 1;
       kind: "notPublished";
-      reason: "invalidCapture" | "staleBase" | "unavailable" | "unsafe" | "unsupported";
+      captureId: string;
+      readyDigest: string;
+      reason:
+        | "busy"
+        | "invalidCapture"
+        | "fixtureTreeMismatch"
+        | "staleBase"
+        | "unavailable"
+        | "unsafe"
+        | "unsupported";
       captureDisposition: "discarded" | "retained";
     };
 
@@ -5077,9 +5447,10 @@ type FixtureReapCommandResultV1 =
 
 Known `directorySynced` or `processCrashOnly` publication is definitive and automatically discards the
 sealed root. `staleBase` is definitively unpublishable and is also discarded. `unknownAfterCommit`,
-`invalidCapture`, `unavailable`, `unsafe`, `unsupported`, or any cleanup failure retains it for explicit
-retry/audit. No command automatically retries publication. Explicit discard reopens the exact
-ID/digest, requires `--yes`, consumes the sealed handle, and emits the exact discard result above.
+`busy`, `invalidCapture`, `fixtureTreeMismatch`, `unavailable`, `unsafe`, `unsupported`, or any cleanup
+failure retains it for explicit retry/audit. `busy` is handled/retryable and exits `1`; no command
+automatically retries publication. Explicit discard reopens the exact ID/digest, requires `--yes`,
+consumes the sealed handle, and emits the exact discard result above.
 
 The abandoned-capture reaper runs before capture and publication and is also directly callable. It
 removes only unlocked unsealed captures older than the supplied cutoff and unlocked reboot-stale
@@ -5092,8 +5463,9 @@ fixture-tree handles in `finally`. Complete success exits
 
 Live integration results are never fixtures. A golden capture writes only its unique staging tree, and
 the single-writer publication command is the only operation allowed to change the committed fixture
-index. Failed, poisoned, incomplete, or presentation-failed captures cannot create `READY` or update
-committed fixtures.
+index. Failed, poisoned, incomplete, pre-seal presentation-failed, resources-present, indeterminate, or
+audit-overflow captures cannot create `READY` or update committed fixtures. A post-seal output failure
+does not invalidate already sealed canonical artifacts and is recoverable through discovery.
 
 Tests use high-entropy sentinel values and recursively scan:
 
@@ -5120,6 +5492,10 @@ fixture/golden tree after the test run.
 - Union cardinality and vendor matching are enforced.
 - Raw and curated input conflicts are rejected.
 - Create raw configuration and update replacement configuration have distinct semantics.
+- OAuth and payment curated Update accept a secret-only rotation with an empty non-secret change list,
+  reject a request with neither kind of change, and never classify a secret-only plan as `noChange`.
+  Tests cover managed reprovision, same-mode external reference rotation, all four payment slots, and
+  the additional unchanged managed slots that replacement Update requires to be supplied again.
 - Custom OAuth validates every Create/Update combination of preferred
   `clientAuthenticationMethod`, legacy metadata `tokenEndpointAuthMethods`, both, and neither.
   Curated Update tests preservation of a legacy-only provider and explicit migration in both
@@ -5268,6 +5644,11 @@ fixture/golden tree after the test run.
   adapter-owned mutable clone. Frozen caller input traverses multiple pages and remains byte-for-byte
   unchanged.
 - Same-token and cyclic pagination return `paginationFailed` before results render.
+- Production continuation-token codec vectors round-trip every UTF-16 code-unit boundary, paired and
+  unpaired surrogates, NUL, controls, and the exact maximum through canonical unpadded Base64URL.
+  They reject empty payloads, wrong versions, padding, noncanonical aliases, odd byte lengths, invalid
+  alphabet, decoded NUL-free and NUL-containing over-cap values alike, and encoded byte cap `N + 1`.
+  Re-encoding every accepted token is byte-identical.
 - Every query binding is disposed exactly once after one-page success, all-page success, normalization
   failure, service failure, token cycle, and cancellation. The same `AbortSignal` reaches direct reads
   and paginator sends, and no partial all-results value escapes.
@@ -5285,11 +5666,11 @@ fixture/golden tree after the test run.
 - Prepared plans are frozen, canonical, and contain no secret bytes.
 - Cancellation and terminal outcomes destroy the operation binding; reprepare transfers it exactly
   once to the replacement capability, and Commander disposes an unaccepted replacement.
-- `PreparedMutation.dispose()` races commit through the same ownership state machine: exactly one
-  path obtains the binding, repeated disposal is inert, and disposal after commit cannot destroy the
-  commit-local or replacement lease.
-- A prepared capability rejects sequential and concurrent second commits before secret I/O or AWS
-  calls.
+- `PreparedMutation.dispose()` races the registered action lease's commit through the same ownership
+  state machine: exactly one path obtains the binding, repeated disposal is inert, and disposal after
+  commit cannot destroy the commit-local or replacement lease.
+- A prepared capability reached through its registered action lease rejects sequential and concurrent
+  second commits before secret I/O or AWS calls. No presenter has a direct capability commit method.
 - While one distinct capability remains active, a matching commit on another prepared pair receives
   the distinct supervisor `busy` attempt, leaves both objects unchanged, and performs no secret I/O,
   AWS call, state update, or output write. After the first execution has settled, its correlated Ink
@@ -5297,7 +5678,7 @@ fixture/golden tree after the test run.
   high-water mark have quiesced, and the scope has retired, an explicit resubmit of the same second pair
   activates and commits normally. Scope certainty never crosses between the two.
 - The lane remains busy after action settlement and until the exact Commander or Ink presentation
-  barrier retires it. Begin/finish tests reject foreign, stale, duplicate, wrong-mode, and
+  receipt retires it. Begin/finish tests reject foreign, stale, duplicate, cross-kind, and
   same-workflow/different-execution tokens without changing either scope. A certainty matrix over
   `none`, `outcomeUnknown`, and `committed` proves a busy or stale attempt never inherits the active
   execution's guidance.
@@ -5306,17 +5687,20 @@ fixture/golden tree after the test run.
   `sdkCompatibilityRequired` through Update preparation and both commit
   `readCompatibilityGuardedCurrent` calls. No other operation facet has that method.
 - Assertion-free compile fixtures construct production and fake adapters only through the
-  consumer-owned facet constructors. Compile-time negative tests reject every cross-facet assignment
-  and every primary or auxiliary cross-operation factory/binding assignment, including
-  guarded/current-state bindings to direct mutation, structurally equal command inputs/outputs, and
-  foreign secret locators.
+  consumer-owned facet constructors. For all 46 workflow keys, positive fixtures derive family,
+  selector, primary operation, auxiliary Get, facet, policy, intent, and DTO from that key. Negative
+  fixtures independently substitute every one of those eight dimensions and reject each assignment,
+  including cross-facet bindings, primary or auxiliary cross-operation factories, guarded/current-state
+  bindings to direct mutation, structurally equal command inputs/outputs, and foreign secret locators.
+  Missing, extra, or independently generic runtime-metadata rows fail compilation.
 - OAuth/payment Update preparation and both commit Gets reject additive raw response fields before
   generated deserialization. Preparation and the first commit Get fail before secret I/O; an
   incompatible second Get disposes acquired values before returning.
 - Capture-handler ordering tests prove it restores original bounded bytes unchanged, the raw
   compatibility schema observes those originals before generated deserialization, and only the outer
-  post-deserialization middleware can stage a fixture candidate. An additive guarded response finalizes
-  no call and sends no mutation.
+  per-attempt post-deserialization projector can produce detached candidate evidence; only its wrapping
+  logical-call initialize middleware can stage the retry-selected terminal candidate. An additive
+  guarded response finalizes no call and sends no mutation.
 - Successful and non-success compatibility bodies of 1,048,575 and 1,048,576 bytes are accepted;
   1,048,577 bytes destroys/cancels the Node or Web stream before Smithy collection. Valid OAuth
   responses without `clientSecretArn` pass; missing genuinely required members, wrong scalar wire
@@ -5428,7 +5812,11 @@ fixture/golden tree after the test run.
 - Payment update asks again for all managed secret slots.
 - External references are preserved without requesting their values.
 - Workload return URL controls support add, remove, replace, and clear.
-- Pickers navigate service page tokens.
+- Pickers consume only action-owned `IdentityPickerSession` pages. The first `next()` lazily creates one
+  binding/cursor; concurrent `next()` returns `busy`; forward navigation advances once; back navigation
+  uses frozen cached pages without AWS; and cancellation, disposal, every cap, token cycle, service
+  failure, and terminal page close the binding exactly once. Components never receive, render, decode,
+  or resubmit raw, logical, or production continuation tokens.
 - Review screens contain no secrets.
 - Hidden prompts occur after review and the first fresh rebase; a second fresh rebase occurs after
   prompting and before request construction.
@@ -5455,15 +5843,16 @@ fixture/golden tree after the test run.
   `mutationOutcomeUnknown`, and after a committed result select unknown-outcome,
   unknown-outcome, and committed-output-unavailable guidance respectively and never permit a second
   submit.
-- Output failure while an exact action is active aborts it, waits for that same action's settlement,
+- Output failure while an exact registered action lease is active aborts it, waits for that same
+  action's settlement,
   then classifies its final monotonic certainty. Navigation or unmount cannot orphan a settled token;
-  the root-owned controller either completes its frame barrier or completes the correlated
+  the root-owned controller either completes its frame receipt or completes the correlated
   `inkExit/unavailable` fallback before listener teardown.
 - The typed Ink facade is exercised with every write overload, backpressure, callback failure,
   `error`, and `close` during ordinary frames, final frames, synchronized-output markers,
-  alternate-screen teardown, and empty-write frame/exit barriers. Each accepted callback settles once.
-  Two sequential mutations retire on separate `waitUntilRenderFlush()` barriers while
-  `waitUntilExit()` remains pending; stale and foreign barriers cannot retire either scope. On root
+  alternate-screen teardown, and empty-write frame/exit settlements. Each accepted callback settles once.
+  Two sequential mutations retire on separate execution-bound `inkFrame/flushed` receipts while
+  `waitUntilExit()` remains pending; stale and foreign receipts cannot retire either scope. On root
   shutdown, `waitUntilExit()` and the exact active action settle, dimensions/TTY/resize remain
   functional while open, and invocation-supervisor listeners detach only after quiescence.
 - Frame-epoch tests cover throttled writes, synchronized markers, callbacks and drains through the
@@ -5507,6 +5896,15 @@ prerequisite phase finalizes complete allowlisted modeled errors after safe mapp
 guard, decode, body, compatibility, reflection, cancellation, expiry, unmodeled, or internal failure.
 All-page batches finalize atomically only after aggregate normalization and limits pass.
 
+Retry tests instrument the pinned middleware stack and prove one initialize transaction wraps every
+retry attempt. A retryable `500 -> 200` read records only the terminal `200` candidate. Exhausting an
+allowlisted retryable modeled error stages/finalizes one terminal call; replay synthesizes the same
+reserved fixture for every attempt and consumes that reservation exactly once. Retry exhaustion from
+network failure, an unmodeled error, cancellation, or projection failure finalizes no call and leaves a
+replay reservation unconsumed. Intermediate attempt candidates never install objects, append
+occurrences, poison a flow, or advance replay, and mutation clients still make only their separately
+specified single HTTP attempt.
+
 Fixture-codec tests capture and replay dates, nested `$unknown` tuples with discarded bodies, and each
 allowlisted modeled exception through a real SDK client instance and concrete request handler. They
 omit request IDs, preserve a fixed OAuth failure-reason presence marker, require recorded
@@ -5529,6 +5927,10 @@ exercise interrupted capture, stale base, `unknownAfterSeal`, `unknownAfterCommi
 and assert the exact exit/result contracts. Definitive publication and stale base discard the capture,
 unknown/retryable outcomes retain it, explicit discard requires `--yes`, and automatic reap never
 removes a same-boot sealed `READY` root.
+An action assertion or presentation/output failure before seal poisons capture and creates no `READY`.
+A final result write failure after `READY` retains a discoverable sealed capture; `fixtures:list`
+recovers its capture handoff and run inspection recovers the known run root's exact run ID and ledger
+digest without AWS or mutation.
 Atomic-object tests kill before and after temp-file `fsync` and rename, retry abandoned installs,
 exercise native no-replace contention and valid existing-object cache hits, assert every unconsumed
 temporary is removed, reject platforms without the required primitive, and reject a pre-existing empty,
@@ -5566,9 +5968,12 @@ installation. Platform tests exercise Linux `renameat2`, macOS `renamex_np`, and
   `>=22.22.1`.
 - Reviewed direct dependencies are exact-pinned, `bun ci` is lockfile-frozen, and
   `@inkui-cli/data-table` is absent. Every source, npm, and standalone distribution preserves the
-  required upstream MIT notice for the local derivative.
-- `npm pack` contains all six native prebuilds. An empty project installs and executes the tarball under
-  Node `22.22.1`; all six standalone Bun targets execute their corresponding smoke suite.
+  required upstream MIT notice for the local derivative in `THIRD_PARTY_NOTICES.md`.
+- `npm pack` contains the production `dist` tree, `THIRD_PARTY_NOTICES.md`, and all six native
+  prebuilds, while excluding test command modules, test sources, fixtures, capture roots, run roots,
+  and review artifacts. Test-script metadata may remain in `package.json`. An empty project installs
+  and executes the tarball under Node `22.22.1`; all six standalone Bun targets execute their
+  corresponding smoke suite.
 - Node `20.20.1` loads only the N-API v8 addon directly. A guard test proves no CLI package import or
   dependency installation occurs in that compatibility job.
 - Release-policy unit vectors reject wrong repository, tag ref, source or signer digest, workflow path,
@@ -5638,6 +6043,15 @@ const RUN_LEDGER_MAX_DEPTH = 8;
 const RUN_LEDGER_MAX_NODES = 8_192;
 const CREATE_SEND_DEADLINE_MS = 300_000;
 const SERVICE_CLOCK_SKEW_MS = 300_000;
+const RUN_POLL_OFFSETS_MS = [
+  0, 250, 750, 1_750, 3_750, 7_750, 15_750, 31_750, 61_750, 91_750, 121_750,
+] as const;
+const RUN_POLL_DEADLINE_MS = 150_000;
+const RUN_READ_ATTEMPT_TIMEOUT_MS = 15_000;
+const RUN_AUDIT_DEADLINE_MS = 300_000;
+const RUN_AUDIT_MAX_PAGES = 512;
+const RUN_AUDIT_MAX_ITEMS = 8_192;
+const RUN_AUDIT_MAX_FINDINGS = 256;
 
 type LiveResourceKindV1 =
   | "api-key-provider"
@@ -5646,6 +6060,8 @@ type LiveResourceKindV1 =
   | "workload-identity"
   | "secrets-manager-secret";
 
+type RunPurposeV1 = "live" | "fixtureCapture";
+
 type RunObservationV1 = Readonly<{
   arn: string;
   serviceCreatedAtEpochMs: number;
@@ -5653,11 +6069,27 @@ type RunObservationV1 = Readonly<{
 
 type RunRowStateV1 =
   | Readonly<{ kind: "planned" }>
-  | Readonly<{ kind: "observed"; observation: RunObservationV1 }>
   | Readonly<{
-      kind: "deleted";
-      observation: RunObservationV1 | null;
-      deletedAtEpochMs: number;
+      kind: "createOutcomeUnknown";
+      createDispatchRecordedAtEpochMs: number;
+    }>
+  | Readonly<{
+      kind: "createNotSent";
+      createDispatchRecordedAtEpochMs: number | null;
+      createNotSentAtEpochMs: number;
+    }>
+  | Readonly<{
+      kind: "observed";
+      createDispatchRecordedAtEpochMs: number;
+      observedAtEpochMs: number;
+      observation: RunObservationV1;
+    }>
+  | Readonly<{
+      kind: "deleteOutcomeUnknown";
+      createDispatchRecordedAtEpochMs: number;
+      observedAtEpochMs: number;
+      observation: RunObservationV1;
+      deleteDispatchRecordedAtEpochMs: number;
     }>;
 
 type RunLedgerRowV1 = Readonly<{
@@ -5684,6 +6116,7 @@ type RunLedgerV1 = Readonly<{
   schema: "amazon.agentcore-cli.identity.run-ledger";
   version: 1;
   generation: number;
+  purpose: RunPurposeV1;
   runId: string;
   ownerTagValue: string;
   createdAtEpochMs: number;
@@ -5711,13 +6144,26 @@ pass the existing structured family parser and exactly match ledger partition, r
 and physical name. A secret ARN must match those same scope fields, its physical name, and the service's
 six-character Secrets Manager ARN suffix.
 
-Families are sorted in the `LiveResourceKindV1` declaration order; rows are sorted by `candidateId`.
-Candidate IDs, physical names, and non-null observed ARNs are globally unique. Every row kind belongs to
-`scope.families`. The attempt bounds are exact:
+`scope.families` is nonempty, contains no duplicate, and follows the `LiveResourceKindV1` declaration
+order; rows are sorted by `candidateId`. Candidate IDs, physical names, and every observed ARN are
+globally unique. Every row kind belongs to `scope.families`. The attempt bounds are exact:
 `createNotBeforeEpochMs = plannedAtEpochMs - SERVICE_CLOCK_SKEW_MS` and
 `createNotAfterEpochMs = plannedAtEpochMs + CREATE_SEND_DEADLINE_MS +
-SERVICE_CLOCK_SKEW_MS`, with underflow/overflow rejected. `generation` equals the sum of row lifecycle
-weights: planned `1`, observed `2`, deleted without observation `2`, and deleted with observation `3`.
+SERVICE_CLOCK_SKEW_MS`, with underflow/overflow rejected.
+
+Timestamp order is part of canonical validation. Ledger `createdAtEpochMs` is no later than every
+`plannedAtEpochMs`. A non-null `createDispatchRecordedAtEpochMs` is at least `plannedAtEpochMs` and at
+most `plannedAtEpochMs + CREATE_SEND_DEADLINE_MS`. `createNotSentAtEpochMs` is no earlier than planning
+and no earlier than its optional dispatch-record timestamp. `observedAtEpochMs` is no earlier than the
+create-dispatch record. `serviceCreatedAtEpochMs` falls inclusively inside the row's
+`createNotBeforeEpochMs..createNotAfterEpochMs` window; it is not ordered against local observation time
+because service and runner clocks may differ within the declared skew. `deleteDispatchRecordedAtEpochMs`
+is no earlier than `observedAtEpochMs`. All additions and comparisons reject overflow.
+
+`generation` equals the sum of current row-state weights: `planned` is `1`,
+`createOutcomeUnknown` is `2`, `createNotSent` is `3`, `observed` is `3`, and
+`deleteOutcomeUnknown` is `4`. An empty initialized ledger therefore has generation `0`; replacing one
+row state changes generation by exactly the difference between old and new weights.
 
 The four ownership tags are derived rather than stored redundantly:
 
@@ -5740,25 +6186,135 @@ key order, ASCII JSON escapes, no insignificant whitespace, and canonical intege
 equal their canonical re-encoding byte-for-byte; only that encoder mints
 `CanonicalRunLedgerBytesV1`.
 
+The JSON root has depth `1`. Every object member value and every array element has its container's depth
+plus one; a member name has the same depth as its value. Each object, array, scalar value, and member
+name counts as one node, including the root and names in empty-valued members. Equality at both caps is
+accepted; depth `9` or node `8,193` is rejected before semantic construction.
+
 The only legal transitions are:
 
 ```text
 absent -> initialized empty ledger
 ledger -> ledger plus one planned row
-planned -> observed
-planned -> deleted(null observation), after authoritative no-send or NotFound evidence
-observed -> deleted(retained observation), after authoritative NotFound before or after Delete polling
+planned -> createOutcomeUnknown
+planned -> createNotSent
+createOutcomeUnknown -> createNotSent
+createOutcomeUnknown -> observed
+observed -> deleteOutcomeUnknown
 ```
 
-Scope, authority, creation facts, row identity, attempt window, and an existing observation never
-change; deleted rows are terminal and V1 never removes a row. Before every Create, the planned row must
-be durably committed. A found planned resource is durably advanced to observed before Delete. Before
-every Delete, the runner/reaper rereads the resource and ownership tags and verifies exact name, ARN,
-family, account, region, partition, service creation time, and all four derived tags. Secrets use the
-full observed ARN, `ForceDeleteWithoutRecovery: true`, and no `RecoveryWindowInDays`.
-Here, authoritative NotFound means the normal bounded absence poll completed and the final paginated
-family or Secrets Manager audit sweep also found no matching physical name; one transient Get failure
-or first NotFound is not enough to make a row terminal.
+Scope, purpose, authority, creation facts, row identity, attempt window, dispatch facts, and an existing
+observation never change; V1 never removes a row. `createNotSent` is the only terminal state. The direct
+`planned -> createNotSent` transition is allowed only while the command still owns process-local proof
+that no Create dispatch was authorized. `createOutcomeUnknown -> createNotSent` additionally requires
+the exact in-process request-handler tracker to prove that the handler was never invoked; a restart,
+timeout, response, or missing tracker can never establish it.
+
+Before every Create dispatch, the `createOutcomeUnknown` transition must be atomically installed and
+durably synced. A successful Create response does not supply the creation time required for ownership,
+so it does not advance the row. A fresh family Get or Secrets Manager Describe must read the resource,
+all four ownership tags, full ARN, and service creation time and verify the complete scope, name, tag,
+and attempt-window conjunction before atomically installing `observed`. Before every Delete dispatch,
+the runner/reaper first rereads and verifies the same complete ownership conjunction. An `observed` row
+must then atomically install and durably sync `deleteOutcomeUnknown` immediately before its first Delete
+dispatch; an already-`deleteOutcomeUnknown` row retains that state before every later guarded attempt.
+Secrets use the full observed ARN, `ForceDeleteWithoutRecovery: true`, and no
+`RecoveryWindowInDays`.
+
+`planned`, `createOutcomeUnknown`, `observed`, and `deleteOutcomeUnknown` remain eligible for bounded
+inspection on every later run. A bounded NotFound poll, an empty complete audit, or an exact-success
+Delete response never advances or removes one of those rows: absence is a cleanup snapshot, not durable
+proof that a delayed or reappearing resource can no longer exist. In particular,
+`deleteOutcomeUnknown` remains reaper-eligible forever.
+
+Every state/readiness/absence poll captures one monotonic start and uses exactly
+`RUN_POLL_OFFSETS_MS`. Attempt `i` starts no earlier than `start + offset[i]` and after the prior attempt
+has settled. Each read receives a separate `RUN_READ_ATTEMPT_TIMEOUT_MS` abort and may not start at or
+after the overall deadline. The entire poll aborts at `start + RUN_POLL_DEADLINE_MS`; timers never extend
+either deadline. A verified desired present/readiness state may finish early. An absence result requires
+the last scheduled attempt to return the modeled NotFound response, no read attempt to end in an
+unclassified failure, and the later complete audit to agree. Earlier present states are expected during
+Delete convergence and do not invalidate that final absence result. A timeout, credential-freshness
+failure, malformed result, pagination failure, or other read failure makes the poll `indeterminate`,
+even if a later request reports NotFound.
+
+The final audit is one bounded, read-only sweep over every `scope.families` entry in declaration order.
+It starts one monotonic `RUN_AUDIT_DEADLINE_MS` deadline shared by all list pages, follow-up Get/Describe
+calls, and tag reads; each individual read also has the smaller read-attempt timeout. Page and item
+counts are global across families. Equality at the page/item limits is accepted. A nonempty token after
+page 512, item 8,193, a repeated token, deadline expiry, or a 257th finding makes the audit overflow and
+prevents any clean-absence conclusion. Every Secrets Manager list sweep sets
+`IncludePlannedDeletion: true`; a secret pending deletion remains visible and is a finding. Sweeps never
+promote an unledgered resource into a deletion candidate.
+
+Audit output is closed and bounded:
+
+```ts
+type RunRowStateKindV1 = RunRowStateV1["kind"];
+
+type RunAuditFindingV1 = Readonly<{
+  resourceKind: LiveResourceKindV1;
+  physicalName: string;
+  arn: string;
+  candidateId: string | null;
+  relation: "ledgered" | "unledgered" | "ownershipMalformed";
+  ledgerState: RunRowStateKindV1 | null;
+  visibility: "visible" | "pendingDeletion";
+}>;
+
+type RunAuditReportV1 =
+  | Readonly<{ kind: "notRun" }>
+  | Readonly<{
+      kind: "completed";
+      pages: number;
+      items: number;
+      findings: readonly RunAuditFindingV1[];
+    }>
+  | Readonly<{
+      kind: "overflow";
+      reason: "deadline" | "pageLimit" | "itemLimit" | "findingLimit";
+      pages: number;
+      items: number;
+      findings: readonly RunAuditFindingV1[];
+    }>
+  | Readonly<{
+      kind: "indeterminate";
+      reason:
+        | "credentialRefreshRequired"
+        | "paginationFailure"
+        | "serviceFailure"
+        | "internalFailure";
+      pages: number;
+      items: number;
+      findings: readonly RunAuditFindingV1[];
+    }>;
+
+type RunCleanupSnapshotV1 =
+  | "notRun"
+  | "quiescent"
+  | "resourcesPresent"
+  | "indeterminate"
+  | "auditOverflow";
+```
+
+A finding is evidence, not deletion authorization. The audit emits one for any resource with the exact
+run prefix or exact owner/run tags. `ledgered` requires the complete valid candidate/tag/name/ARN
+conjunction, `unledgered` has a complete valid ownership tuple but no matching row, and
+`ownershipMalformed` covers a missing, malformed, or contradictory reserved ownership field and uses a
+null candidate ID when no valid one is available. Only `ledgered` can ever nominate the corresponding
+row for the separately guarded deletion path. Findings preserve resource-family declaration order,
+then service page order and item order. A completed audit contains at most 256 findings. Discovery of a
+257th finding stops the sweep; the overflow report retains exactly the first 256 in that order and sets
+`findingLimit`. Page/item/deadline overflow and indeterminate reports retain only the findings safely
+established before the stop, still capped and in discovery order. No partial report can produce
+`quiescent`.
+
+`cleanupSnapshot` is derived, never caller-selected. It is `quiescent` only when every eligible ledger
+row has a clean bounded final absence result and the complete audit has zero findings. A complete audit
+with any finding is `resourcesPresent`; a row mismatch, read failure, or incomplete audit is
+`indeterminate`; any audit cap produces `auditOverflow`; and a skipped cleanup is `notRun`. A
+`fixtureCapture` run may seal only with `quiescent`, while retaining every nonterminal ledger row for
+future inspection and cleanup.
 
 Every transition calls `replaceRunLedgerAtomically` with expected absence or the exact current digest.
 `expectedDigestMismatch` aborts. An exact next digest is idempotent `alreadyCurrent`. After
@@ -5787,34 +6343,64 @@ AWS_PROFILE=deploy bun run test:identity:reap -- \
   --expected-family <family>... \
   --minimum-age-seconds <1800..31536000> \
   [--yes]
+
+bun run test:identity:inspect -- \
+  --run-root <existing-absolute-path>
 ```
 
-These test-only scripts are excluded from shipped artifacts. They accept no positional, endpoint,
-ledger-path, prefix, force, all-resources, or profile option. Unknown flags, duplicate scalar flags,
-duplicate/out-of-order families, missing values, noncanonical numbers, relative/NUL/over-4,096-byte
+These test-only command modules are excluded from shipped artifacts, although their `package.json`
+script metadata may remain in the npm tarball. They accept no positional, endpoint, ledger-path, prefix,
+force, all-resources, or profile option. Unknown flags, duplicate scalar flags, duplicate or
+out-of-declaration-order families, missing values, noncanonical numbers, relative/NUL/over-4,096-byte
 paths, and any environment/argument/ledger scope mismatch fail before AWS. Live requires a nonexistent
-root and `--yes`; it generates and reports the run ID. Reap requires an existing root and defaults to
-dry-run. The configured owner for repository automation is exactly
-`agentcore-cli-identity-live-v1`.
+root and `--yes`, initializes purpose `live`, and generates and reports the run ID. Reap requires an
+existing root of either purpose and defaults to dry-run. The configured owner for repository live
+automation is exactly `agentcore-cli-identity-live-v1`; fixture capture uses exactly
+`agentcore-cli-identity-fixture-capture-v1`.
+
+Inspect accepts only `--run-root`. It performs no AWS, credential, profile, endpoint, lock-reclamation,
+or ledger mutation. Through one retained protected-root handle it reads one atomically installed ledger
+snapshot, applies the full capped canonical parser, hashes those exact bytes, closes the handle, and
+reports the run ID and digest needed after a live/reap stdout failure. Concurrent replacement can make
+the result immediately stale but cannot produce a mixed generation.
 
 Command results contain no native/AWS error text:
 
 ```ts
-type RunRowDispositionV1 =
-  | "created"
-  | "deleted"
-  | "wouldDelete"
-  | "absent"
-  | "alreadyTerminal"
-  | "retained"
-  | "unexamined";
+type RunCurrentResourceReportV1 =
+  | Readonly<{ kind: "notChecked" }>
+  | Readonly<{ kind: "absent" }>
+  | Readonly<{
+      kind: "owned";
+      observation: RunObservationV1;
+      visibility: "visible" | "pendingDeletion";
+    }>
+  | Readonly<{
+      kind: "ownershipMismatch";
+      reason: "name" | "arn" | "scope" | "ownershipTags" | "creationTime" | "shape";
+      arn: string | null;
+    }>
+  | Readonly<{
+      kind: "indeterminate";
+      reason: "credentialRefreshRequired" | "serviceFailure" | "internalFailure";
+    }>;
+
+type RunSendAttemptReportV1 =
+  | "notAttempted"
+  | "handlerNotInvoked"
+  | "handlerInvokedExactSuccess"
+  | "handlerInvokedOutcomeUnknown";
 
 type RunRowReportV1 = Readonly<{
   candidateId: string;
   resourceKind: LiveResourceKindV1;
   physicalName: string;
-  arn: string | null;
-  disposition: RunRowDispositionV1;
+  ledgerStateBefore: RunRowStateKindV1;
+  ledgerStateAfter: RunRowStateKindV1;
+  ledgerObservation: RunObservationV1 | null;
+  current: RunCurrentResourceReportV1;
+  createSendAttempt: RunSendAttemptReportV1;
+  deleteSendAttempt: RunSendAttemptReportV1;
 }>;
 
 type IdentityRunCommandResultV1 = Readonly<{
@@ -5831,25 +6417,60 @@ type IdentityRunCommandResultV1 = Readonly<{
     | "serviceFailure"
     | "ledgerFailure"
     | "testFailure"
+    | "auditOverflow"
     | "internalFailure"
     | "cleanupIncomplete"
     | null;
+  purpose: RunPurposeV1 | null;
   runId: string | null;
   ledgerDigest: string | null;
   cutoffEpochMs: number | null;
+  cleanupSnapshot: RunCleanupSnapshotV1;
+  audit: RunAuditReportV1;
   reports: readonly RunRowReportV1[];
   counts: Readonly<{
     examined: number;
-    mutated: number;
+    createSends: number;
+    deleteSends: number;
     retained: number;
     unexamined: number;
   }>;
 }>;
+
+type IdentityRunInspectCommandResultV1 =
+  | Readonly<{
+      version: 1;
+      command: "inspect";
+      kind: "inspected";
+      purpose: RunPurposeV1;
+      runId: string;
+      ledgerDigest: string;
+      generation: number;
+      createdAtEpochMs: number;
+      scope: RunLedgerV1["scope"];
+      rowCount: number;
+    }>
+  | Readonly<{
+      version: 1;
+      command: "inspect";
+      kind: "failed";
+      reason: "invalidLedger" | "unavailable" | "unsafe" | "unsupported";
+    }>;
 ```
 
-Reports are sorted by candidate ID and bounded by `RUN_LEDGER_MAX_ROWS`. Usage/parser failure emits no
-stdout and exits `2`. `active`, `refused`, `partial`, failed live assertions, or incomplete cleanup
-exits `1`. Successful live cleanup and completed dry-run or mutation exits `0`.
+Each row report describes only work in that command invocation. `ledgerStateBefore` and
+`ledgerStateAfter` expose durable state, `current` exposes the final bounded read, and each send field
+states whether no attempt occurred, the exact process-local tracker proved no handler invocation, the
+handler returned exact success, or invocation made the outcome unknown. An exact-success Create still
+reports `createOutcomeUnknown` until a separate fresh observation is durably installed; an
+exact-success Delete still reports `deleteOutcomeUnknown`.
+
+Reports are sorted by candidate ID and bounded by `RUN_LEDGER_MAX_ROWS`. `counts.createSends` and
+`counts.deleteSends` include both handler-invoked outcomes, never `handlerNotInvoked`. Usage/parser
+failure emits no stdout and exits `2`. `active`, `refused`, `partial`, failed live assertions,
+`auditOverflow`, or incomplete cleanup exits `1`. Successful live cleanup and completed dry-run or
+mutation exits `0`. Inspect exits `0` only for `inspected`, `1` for its closed failure, and `2` for
+usage/parser failure.
 
 Each live run:
 
@@ -5861,12 +6482,14 @@ Each live run:
   `STATX_MNT_ID_UNIQUE` values. If that proof is unavailable or the platform is macOS/Windows, the run
   remains testable but stale cleanup for it is permanently audit-only.
 - Creates a separate mode-`0600` durable run ledger before the first AWS call. Before each create
-  request, it atomically records and syncs the planned physical name, partition, family, account,
-  region, create-attempt window, random 128-bit candidate ID, and exact ownership tags; after a
-  response, it atomically adds the exact ARN, service `createdTime`, and observed state. Ledger
-  temporaries are created and verified relative to the protected root before rename. Ledger
-  replacement never changes the inode/file ID that carries the active-run lock because they are
-  different files.
+  request, it atomically appends and syncs the planned physical name, partition, family, account,
+  region, create-attempt window, random 128-bit candidate ID, and exact ownership tags. Immediately
+  before authorizing dispatch it atomically installs and syncs `createOutcomeUnknown`. Only the exact
+  in-process no-handler proof may then install `createNotSent`; every other response or failure leaves
+  outcome unknown until a fresh Get/Describe verifies the exact ARN, service creation time, and tags
+  and atomically installs `observed`. Ledger temporaries are created and verified relative to the
+  protected root before rename. Ledger replacement never changes the inode/file ID that carries the
+  active-run lock because they are different files.
 - Adds `agentcore-cli:test-owner`, `agentcore-cli:test-run`,
   `agentcore-cli:test-candidate`, and `agentcore-cli:test-created-at` tags in the original Create call
   for every Identity resource and temporary Secrets Manager secret. No post-create tagging gap is
@@ -5875,10 +6498,11 @@ Each live run:
   deletion it verifies the caller account/region/partition and allowlisted family, re-reads the
   current resource and tags, and requires the exact recorded physical name and prefix, parsed ARN
   account/region/type, owner tag, run-ID tag, candidate-ID tag, and creation tag. If the Create
-  response was persisted, the ARN and service `createdTime` must equal the ledger exactly. If the
-  process died after Create but before observation, the fresh service time must fall inside the
-  pre-recorded bounded attempt window. A missing or malformed row, failed Get or tag read, recreated
-  name, mismatch, or unverifiable predicate retains and reports the resource.
+  observation was persisted, the ARN and service `createdTime` must equal the ledger exactly. For a
+  `createOutcomeUnknown` row found before observation, the fresh service time must fall inside the
+  pre-recorded bounded attempt window before the row can become `observed`. A `planned` or
+  `createNotSent` row never authorizes deletion. A missing or malformed row, failed Get or tag read,
+  recreated name, mismatch, or unverifiable predicate retains and reports the resource.
 - Refuses broad cleanup by the shared `acci-` prefix.
 - For OAuth, polls each successful Create and Update with bounded exponential backoff until `READY`
   and fails immediately on `CREATE_FAILED` or `UPDATE_FAILED`, using only safe normalized failure
@@ -5886,14 +6510,17 @@ Each live run:
   it polls until Get returns the expected created or updated state.
 - After Delete, polls Get until `NotFound`. OAuth `DELETING` remains pending and `DELETE_FAILED` fails
   the run; the other three families expose no deletion status and continue polling until absence. It
-  durably advances the exact row to terminal `deleted` only after authoritative absence.
+  durably installs `deleteOutcomeUnknown` before the Delete dispatch and never terminalizes the row
+  from bounded absence.
 - Cleans up in `finally` with the same bounded state polling.
 - Deletes test-owned Secrets Manager secrets with `ForceDeleteWithoutRecovery` and polls until they
   are absent.
 - Performs final paginated sweeps across all four Identity resource families and Secrets Manager.
-  Sweeps are audit-only: they report unledgered resources but never promote them to deletion
-  candidates.
-- Fails with the exact remaining names and ARNs if current-run resources or temporary secrets remain.
+  Secrets Manager always sets `IncludePlannedDeletion: true`. Sweeps use the shared global deadline and
+  caps, are audit-only, report ledgered, unledgered, and malformed-ownership findings, and never promote
+  them to deletion candidates.
+- Emits the bounded exact remaining names and ARNs when current-run resources or temporary secrets
+  remain; any overflow or incomplete sweep is explicitly non-quiescent.
 - Scans captured output for sentinel secrets.
 
 A separate stale-run reaper handles process and OOM failure. It requires the exact persisted ledger,
@@ -5916,12 +6543,15 @@ audit-only.
 After post-lock validation and STS account verification, the reaper captures one cutoff as
 `nowEpochMs - minimumAgeSeconds * 1_000`. Ledger creation, each candidate's
 `createNotAfterEpochMs`, its creation-tag timestamp, and every available service creation time must be
-at or before that cutoff; a found planned candidate's service time must also fall inside its recorded
-attempt window. All normal deletion predicates still apply. It never deletes an unledgered, untagged,
-tag-mismatched, recreated, young, active, copied-artifact, or out-of-scope resource. Any failed
-ownership or lock-identity read fails closed. Dry-run is the default and performs reads only: it sends
-no Delete and writes no ledger generation. `--yes` permits verified Delete and absent-state transitions
-but cannot bypass any proof, age, scope, identity, or ownership predicate.
+at or before that cutoff; a found `createOutcomeUnknown` candidate's service time must also fall inside
+its recorded attempt window. All normal deletion predicates still apply. It never deletes an
+unledgered, untagged, tag-mismatched, recreated, young, active, copied-artifact, `planned`,
+`createNotSent`, or out-of-scope resource. Any failed ownership or lock-identity read fails closed.
+Dry-run is the default and performs reads only: it sends no Delete and writes no ledger generation.
+`--yes` permits verified `createOutcomeUnknown -> observed` and `observed ->
+deleteOutcomeUnknown` transitions plus guarded Delete attempts, but cannot bypass any proof, age,
+scope, identity, or ownership predicate. Neither mode writes a transition because a bounded poll or
+audit reports absence.
 
 The stale reaper uses the same hardened invocation binding as live execution and capture. It rejects
 `--endpoint-url`, bypasses every environment/profile endpoint override, resolves official HTTPS
@@ -5942,27 +6572,49 @@ reaper's trust model and likewise requires external attestation; the design does
 can distinguish two such kernels. Without the exact ledger and Linux same-session proof, cleanup reports
 audit sweep results but refuses mutation.
 
-Ledger tests reject empty, BOM, invalid UTF-8, 1,048,577-byte, over-depth, over-node, duplicate-key,
-unknown-key, missing-key, unsorted, noncanonical, malformed-state, duplicate-row, bad-name/ARN/proof,
-scope-inconsistent, and generation-inconsistent documents. They exercise every legal transition and
-illegal edge, expected absence/digest mismatch, idempotent next bytes, and old/next/third/missing
-readback after `commitUnknown`.
+Ledger tests reject empty, BOM, invalid UTF-8, 1,048,577-byte, depth `9`, node `8,193`, duplicate-key,
+unknown-key, missing-key, empty/duplicate/out-of-order families, unsorted rows, noncanonical numbers,
+malformed states, timestamp-order violations, duplicate rows, bad names/ARNs/proofs,
+purpose/scope-inconsistent data, and every incorrect weighted generation. Boundaries at depth `8`,
+node `8,192`, and all other exact caps pass. Tests exercise every legal transition and illegal edge,
+expected absence/digest mismatch, idempotent next bytes, and old/next/third/missing readback after
+`commitUnknown`.
 
 Reaper tests cover every rejection predicate, protected-root substitution, copied lock/ledger artifacts,
 network filesystems, boot-session mismatch, unique-mount mismatch, macOS/Windows audit-only behavior,
 same-name recreation, unledgered sweep results, partial reruns, dry-run zero mutation/write behavior,
 and exact-run Linux same-session local cleanup. A privileged Linux integration job performs a real
 same-boot unmount/remount and proves the unique mount ID changes and mutation remains disabled; kernels
-without the primitive prove audit-only. Kill-point tests stop before and after planned-row rename and
-directory sync, Create send, service acceptance, observed-row persistence, Delete send, NotFound
-polling, deleted-row rename, and final directory sync. Every surviving ledger is exactly the old or
-next canonical generation, and both pre-observation recovery paths require the candidate ID and full
-ownership conjunction. Reaper binding tests also replace the ledger between the initial proof check and
-lock acquisition and require the post-lock digest/reread to fail before AWS. They prove the lock remains
-held through all service reads, mutations, polls, and the final ledger write; endpoint overrides are
-ignored; one credential snapshot spans STS/AgentCore/Secrets Manager; freshness is checked before every
-send; and the permanent original run lock survives ledger replacement while excluding active-run
-cleanup.
+without the primitive prove audit-only. Kill-point tests stop before and after planned-row rename/sync,
+`createOutcomeUnknown` rename/sync, request-handler invocation, service acceptance, fresh observation,
+`observed` rename/sync, `deleteOutcomeUnknown` rename/sync, Delete send, every NotFound poll, audit, and
+final directory sync. Every surviving ledger is exactly the old or next canonical generation; bounded
+absence never changes it; handler-not-invoked proof can create only `createNotSent`; and both
+pre-observation recovery paths require the candidate ID and full ownership conjunction. Reaper binding
+tests also replace the ledger between the initial proof check and lock acquisition and require the
+post-lock digest/reread to fail before AWS. They prove the lock remains held through all service reads,
+mutations, polls, audits, and final ledger writes; endpoint overrides are ignored; one credential
+snapshot spans STS/AgentCore/Secrets Manager; freshness is checked before every send; and the permanent
+original run lock survives ledger replacement while excluding active-run cleanup.
+
+Deterministic-clock poll tests assert every offset
+`[0,250,750,1750,3750,7750,15750,31750,61750,91750,121750]`, the per-read 15-second timeout, the
+150-second overall deadline, no overlapping attempt, early verified-present success, final-NotFound
+absence, and indeterminate mapping for any failed read. Final NotFound and an empty audit never mutate a
+nonterminal ledger state.
+
+Audit tests cover page/item limits at `N` and `N + 1`, the shared 300-second deadline, repeated tokens,
+all family-order permutations, 256 and 257 findings, malformed ownership, unledgered resources, and
+partial safe findings on failure. Every Secrets Manager page asserts
+`IncludePlannedDeletion: true`, and a pending-deletion secret prevents quiescence. The complete matrix
+derives only the specified `notRun`, `quiescent`, `resourcesPresent`, `indeterminate`, and
+`auditOverflow` snapshots. Fixture capture seals with nonterminal rows only for a clean quiescent
+snapshot and rejects every other snapshot without invalidating an already sealed `READY`.
+
+Result-contract tests cover every row-state/current-state/send-attempt combination, bounded counts,
+static failure reasons, and exact `0`/`1`/`2` exits. Inspect tests read active and inactive atomic
+generations without locking or AWS, return the digest of the exact parsed bytes, reject malformed or
+unsafe roots, and recover the run ID/digest after a simulated final stdout failure.
 
 Routine automation does not mutate the singleton token-vault CMK. Its request construction,
 confirmation, and error behavior are exhaustively tested with fakes because a live CMK change affects
@@ -6013,9 +6665,9 @@ verification. SHA-256 uses the platform crypto implementation. Implementation al
 current imports resolve to the local
 `src/components/ui/data-table` implementation. Its history and source comparison establish that it is
 a modified derivative of the package's `DataTable.tsx`. The upstream
-`Copyright (c) 2024 Kamlesh Yadav` MIT notice is therefore retained in a checked-in third-party notice,
-the npm tarball, source distributions, and every standalone release bundle rather than erased with the
-dependency.
+`Copyright (c) 2024 Kamlesh Yadav` MIT notice is therefore retained in checked-in
+`THIRD_PARTY_NOTICES.md`, the npm tarball, source distributions, and every standalone release bundle
+rather than erased with the dependency.
 
 Implementation adds `.node-version` containing exactly `22.22.1` and `.bun-version` containing exactly
 `1.3.14`, declares `"engines": { "node": ">=22.22.1" }` and
@@ -6027,10 +6679,12 @@ dependency installation uses `bun ci` against the committed `bun.lock`.
 
 The Node-targeted release is built and tested under Node `22.22.1`. CI runs `npm pack`, inspects the
 tarball, installs that exact tarball into an empty temporary project under Node `22.22.1`, and executes
-its binary/help plus network-free fixture smoke tests from the installed package. Node `20.20.1` is not
-a supported CLI runtime and never installs or executes the package dependency graph. It appears only in
-an isolated N-API v8 compatibility job that loads the native `.node` binary directly and exercises its
-closed safe self-test surface.
+its binary/help plus network-free production smoke tests from the installed package. The tarball
+contains `dist`, all six `dist/native/<target>/agentcore_cli_native.node` prebuilds, and
+`THIRD_PARTY_NOTICES.md`; it excludes test modules and data even when `package.json` retains test-script
+metadata. Node `20.20.1` is not a supported CLI runtime and never installs or executes the package
+dependency graph. It appears only in an isolated N-API v8 compatibility job that loads the native
+`.node` binary directly and exercises its closed safe self-test surface.
 
 The native addon has common N-API ownership/error glue plus separate Linux, macOS, and Windows source
 files. Release CI builds and tests exactly six prebuilds from the same commit:
@@ -6136,6 +6790,8 @@ reflected in a later immutable commit, and that correction must pass independent
   markerized sanitized aliases and cannot structurally contain a sensitive string.
 - Curated omitted updates preserve every readable field required by the replacement-style service
   APIs; raw replacement omissions follow the explicit custom OAuth rules.
+- Curated OAuth/payment Updates accept secret-only provision/rotation directives, require no invented
+  non-secret change, and can never erase or classify that opaque change as `noChange`.
 - Any guarded state change prevents mutation. A pre-acquisition change triggers review before secret
   resolution; a later change discards acquired values and triggers review again.
 - OAuth updates clearly collect a required MANAGED client secret again and preserve a reconstructable
@@ -6150,7 +6806,7 @@ reflected in a later immutable commit, and that correction must pass independent
   exactly once. A private token and requirement fingerprint bind each context to exactly one plan.
   Supervisor `busy` is a distinct attempt, leaves a verified pair unchanged and explicitly retryable
   without secret I/O, AWS, state, or output work, and never borrows another scope's certainty. Normal
-  Ink retirement uses an execution-correlated frame-flush/write-quiescence barrier rather than
+  Ink retirement uses an execution-correlated frame-commit/flush/write-quiescence receipt rather than
   whole-root exit.
 - One immutable numeric credential snapshot and eagerly resolved endpoints bind every operation;
   SDK clients receive isolated mutable clones and no operation refreshes midway.
@@ -6166,12 +6822,17 @@ reflected in a later immutable commit, and that correction must pass independent
   rendering.
 - Operation-specific type facets make tolerant reads, ordinary guarded mutations, compatibility-
   guarded OAuth/payment Updates, and direct mutations mutually unavailable at incorrect call sites.
+- All workflow family, selector, primary/auxiliary operation, facet, policy, intent, and DTO metadata
+  derive from the closed workflow key and are independently compile-tested against substitution.
 - Every read facet is total and enforces exact operation status/body completion before Smithy's broad
   2xx handling; production, capture, and replay share one closed outcome matrix.
 - Query bindings are abortable and always disposed; pagination clones caller input and never silently
   truncates, loops, mutates caller state, emits partial all-results output, or exposes a rejecting read
   port. Page, item, cumulative wire-byte, and final-output-byte caps return one closed reason before
-  rendering.
+  rendering. TUI pickers receive only frozen pages through bounded action-owned sessions and never
+  receive a continuation token or transport cursor.
+- Production continuation tokens use the canonical reversible `identity-token-v1` Base64URL codec and
+  round-trip every bounded JavaScript UTF-16 string without conflating terminal escaping with wire data.
 - Mutation outcomes distinguish failures before mutation authorization, every indeterminate failure
   after authorization including non-2xx, alternate-2xx, and incomplete responses,
   committed-but-unavailable output, and valid exact-status committed output. Adapter and presentation
@@ -6187,16 +6848,22 @@ reflected in a later immutable commit, and that correction must pass independent
   temporaries are swept by the next native publisher holding both permanent locks. Raw guarded bytes
   are validated before capture recording, fixture statuses are exact per operation, and capture/replay
   bodies are capped at one MiB. Calls remain uncommitted until the real action normalizer accepts them,
-  and opaque paginator tokens use reversible per-flow logical aliases.
+  and opaque paginator tokens use reversible per-flow logical aliases. One logical fixture transaction
+  wraps every SDK retry: intermediate attempts mutate no fixture state, replay reuses one reservation,
+  and only the terminal accepted attempt can consume it once.
 - Fixture publication has no JavaScript mutation or check-then-rename fallback. One native transaction
   owns the namespace-local publication-authority lock, co-located retained-tree lock,
   descriptor-relative cleanup/install/index commit, existing-object verification, and post-commit
   durability result; copied captures, alternate paths, bind mounts, and separate `/tmp` mount
   namespaces cannot bypass the tree serialization authority. Capture, publish, discard, and reap have
-  closed command handoffs and definitive-versus-retryable retention rules.
+  closed command handoffs and definitive-versus-retryable retention rules. Capture seals only after a
+  bounded quiescent cleanup snapshot, retains its durable nonterminal run ledger, and remains
+  discoverable if final result output fails.
 - The supported Node runtime is `>=22.22.1`; release uses exact Node `22.22.1`, Bun `1.3.14`,
   TypeScript `5.9.3`, and reviewed direct dependency pins. Packed npm and Bun artifacts execute on
-  their declared targets; Node 20 is limited to an isolated N-API v8 load check.
+  their declared targets; the npm tarball contains `dist`, all six native prebuilds, and
+  `THIRD_PARTY_NOTICES.md` while excluding test modules; Node 20 is limited to an isolated N-API v8
+  load check.
 - Every release artifact has exactly one accepted GitHub-hosted SLSA provenance attestation for
   `aws/agentcore-cli`, the exact release workflow/source commit and tag ref, GitHub's OIDC issuer, the
   artifact digest, and a verified timestamp under the pinned GitHub-only trusted root.
@@ -6207,7 +6874,11 @@ reflected in a later immutable commit, and that correction must pass independent
   leaves no current-run resources or Secrets Manager secrets. The exact-run stale reaper mutates only
   on Linux with the original protected root, boot identity, lock object, and
   `STATX_MNT_ID_UNIQUE` proof; all other platforms are audit-only. Its fixed-cap canonical
-  `RunLedgerV1`, legal transitions, expected-digest replacement, command schema, dry-run behavior, and
+  `RunLedgerV1` records purpose and only the legal `planned`, `createOutcomeUnknown`,
+  `createNotSent`, `observed`, and `deleteOutcomeUnknown` transitions; uncertainty is persisted before
+  Create/Delete, bounded absence never terminalizes a row, and deletion-unknown rows remain
+  reaper-eligible. Exact poll/audit deadlines and caps, Secrets Manager planned-deletion sweeps,
+  expected-digest replacement, row/current/send reports, read-only inspection, dry-run behavior, and
   kill-point recovery are exhaustive.
 - Design, planning, and implementation receive independent `gpt5.6-sol` architecture, factual,
   security, and implementation-readiness reviews with no unresolved findings and reproducible
