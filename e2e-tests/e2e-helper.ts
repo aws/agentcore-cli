@@ -7,6 +7,7 @@ import {
   spawnAndCollect,
 } from '../src/test-utils/index.js';
 import { deleteCredentialProvider } from './utils/credential-provider-cleanup.js';
+import { dumpFailureContext } from './utils/failure-context.js';
 import { getLogger } from './utils/logger.js';
 import { BedrockAgentCoreControlClient, GetAgentRuntimeCommand } from '@aws-sdk/client-bedrock-agentcore-control';
 import { execSync } from 'node:child_process';
@@ -153,8 +154,12 @@ export function createE2ESuite(cfg: E2EConfig) {
             const result = await runAgentCoreCLI(['deploy', '--yes', '--json'], projectPath);
 
             if (result.exitCode !== 0) {
-              console.log('Deploy stdout:', result.stdout);
-              console.log('Deploy stderr:', result.stderr);
+              await dumpFailureContext({
+                label: 'deploy',
+                result,
+                cwd: projectPath,
+                stackName: `AgentCore-${agentName}-default`,
+              });
             }
 
             expect(result.exitCode, `Deploy failed (stderr: ${result.stderr}, stdout: ${result.stdout})`).toBe(0);
@@ -183,8 +188,7 @@ export function createE2ESuite(cfg: E2EConfig) {
             );
 
             if (result.exitCode !== 0) {
-              console.log('Invoke stdout:', result.stdout);
-              console.log('Invoke stderr:', result.stderr);
+              await dumpFailureContext({ label: 'invoke', result, cwd: projectPath });
             }
 
             expect(result.exitCode, `Invoke failed: ${result.stderr}`).toBe(0);

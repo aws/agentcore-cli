@@ -1,3 +1,5 @@
+import { BaseError } from './errors/types.js';
+
 // eslint-disable-next-line @typescript-eslint/consistent-type-definitions -- discriminated union member; interface would allow declaration merging which breaks type narrowing
 type FailureResult<E extends Error> = { success: false; error: E };
 
@@ -22,13 +24,25 @@ export type Result<T extends Record<string, unknown> = {}, E extends Error = Err
  * Converts a Result object to a JSON-serializable form.
  * Error objects have non-enumerable properties, so JSON.stringify produces `{}`.
  * This replaces the `error` field with the error message string.
+ *
+ * When the error is one of our typed {@link BaseError}s, also emits `errorName`
+ * (the error class, e.g. "ThrottlingError") and `errorSource`
+ * ("user" | "client" | "service" | "unknown"). This lets programmatic consumers
+ * — e.g. E2E failure debugging — classify a failure from the CLI's own taxonomy
+ * instead of re-parsing the message string. Purely additive: the `error` message
+ * field is unchanged, so existing consumers keep working.
  */
 export function serializeResult<T extends Record<string, unknown>>(
   result: ({ success: true } & T) | ({ success: false; error: Error } & Record<string, unknown>)
 ): Record<string, unknown> {
   if (!result.success) {
     const { error, ...rest } = result;
-    return { ...rest, error: error.message };
+    const serialized: Record<string, unknown> = { ...rest, error: error.message };
+    if (error instanceof BaseError) {
+      serialized.errorName = error.name;
+      serialized.errorSource = error.errorSource;
+    }
+    return serialized;
   }
   return result;
 }
