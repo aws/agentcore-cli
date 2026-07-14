@@ -429,14 +429,18 @@ settled --present(output / Ink teardown)---> presenting
 presenting --quiescence--> retire ----------> inactive
 ```
 
-`activate` fails closed if an earlier scope has not retired. Immediately before invoking the binding's
-`mutate()` method, the action synchronously marks its active scope `outcomeUnknown`; no output or
-synchronous adapter failure can occur in that interval while the view still says `none`. Transport may
-advance that same scope to `committed` only after the operation's exact modeled success status and a
-bounded body with normal completion. An alternate 2xx never establishes commit certainty. `settle` and
-`present` are one-shot first-wins barriers. `retire` waits for the action, Ink `waitUntilExit()`, every
-accepted stream callback and drain, and supervisor quiescence, then makes the scope's private tokens
-inert.
+`activate` has the closed synchronous result `activated | busy`; it never throws or invokes caller code.
+Commit verifies that the supplied capability/context pair matches and is presently claimable, then
+activates before changing either ownership state. `busy` maps to the dedicated static
+`internalFailed` commit outcome, leaves both objects unchanged and retryable, and performs no secret I/O
+or AWS call. Once activation succeeds, the coordinator claims the still-matching pair in the same
+synchronous turn. Immediately before invoking the binding's `mutate()` method, the action marks its
+active scope `outcomeUnknown`; no output or synchronous adapter failure can occur in that interval while
+the view still says `none`. Transport may advance that same scope to `committed` only after the
+operation's exact modeled success status and a bounded body with normal completion. An alternate 2xx
+never establishes commit certainty. `settle` and `present` are one-shot first-wins barriers. `retire`
+waits for the action, Ink `waitUntilExit()`, every accepted stream callback and drain, and supervisor
+quiescence, then makes the scope's private tokens inert.
 
 A `reprepareRequired`, cancellation, no-change, or pre-mutation failure settles and retires its scope
 before Ink displays another review or accepts another operation. A second confirmation activates a new
@@ -498,6 +502,21 @@ fresh current state through that workflow's Update normalizer, not its Get norma
 output therefore omits Get-only `failureReason`, and payment no-op output omits Get-only `tags`.
 Delete, Tag, and Untag normalize to `{}`; List Tags always normalizes an absent map to
 `{ "tags": {} }`.
+
+For a mutation that resolves managed values, the claimed secret lease privately retains one opaque
+complete-value matcher until response normalization, fixture encoding, and presentation classification
+finish. The matcher is not part of an action port, intent, plan, review, DTO, fixture, or public result.
+Immediately before a secret-bearing mutation dispatch, the operation-specific binding derives the
+equivalent fixture-side matcher from the exact schema-registered sensitive leaves already present in
+its private SDK input. This derivation and matcher remain inside the binding/recorder closure; no public
+port accepts or returns a matcher.
+Before terminal encoding or fixture serialization, the response pipeline recursively checks every
+output-bound dynamic string and dynamic map key, including nested arrays, unknown-member names, safe
+error metadata, and the SDK-shaped value reconstructed by capture. If any contains a complete resolved
+managed value, normalization fails without rendering or recording any part of that response. A
+mutation with exact-status normal-EOF commit evidence returns `committedOutputUnavailable`; every other
+post-authorization mutation response retains `mutationOutcomeUnknown`. The matcher and all resolved
+values are released with the winning secret lease.
 
 Unknown output union members use exactly:
 
@@ -663,19 +682,22 @@ Identity uses one-way dependencies and consumer-owned ports:
 Presentation (Commander / Ink)
 |-- application actions --> pure Identity domain
 |            |
-|            `--> operation-specific IdentityBindingFactory ports
+|            |--> operation-specific IdentityBindingFactory ports
+|            `--> MutationExecutionSupervisorPort
 `-- CommitSecretContextFactory port --> SecretSourceReader port
 
 SDK adapter ---------------- supplies implementations to narrow factory constructors
 secret-context adapter ------ implements CommitSecretContextFactory
 process/filesystem adapter -- implements SecretSourceReader and awaited output
+invocation supervisor ------- implements MutationExecutionSupervisorPort and output certainty
 first-party native addon ---- supplies typed OS file, protected-root, lock, and Linux proof primitives
 composition root ------------ injects adapters into actions and presentations
 ```
 
 The domain does not depend on transport. Actions depend on the pure domain,
 one operation-specific `IdentityBindingFactory`, and the opaque secret-context capability and
-module-private coordinator.
+module-private coordinator. Mutating actions also depend on the consumer-owned
+`MutationExecutionSupervisorPort`.
 Commander and Ink depend on actions and `CommitSecretContextFactory`; the context factory depends on
 `SecretSourceReader`. Adapters depend inward on these consumer-owned interfaces. Neither presentation
 depends on SDK request unions. The first-party native addon is private to process/filesystem adapters;
@@ -687,6 +709,8 @@ no domain, action, or presentation type exposes a native handle.
 file convention. It creates operation-scoped bindings behind narrow consumer-owned facets that:
 
 - Send typed SDK commands.
+- Install the common exact-operation status/body classifier on every read and mutation before Smithy's
+  permissive success handling.
 - Expose compatibility-guarded current-state reads only on OAuth and payment Update bindings. Ordinary
   query and mutation facets have neither that method nor its private brand, while guarded Update
   facets have no tolerant current-state method.
@@ -1010,14 +1034,58 @@ const IDENTITY_EXPECTED_SUCCESS_STATUS = {
 type MutationCertainty = "none" | "outcomeUnknown" | "committed";
 
 declare const MUTATION_EXECUTION_SCOPE: unique symbol;
+declare const MUTATION_PLAN_TOKEN: unique symbol;
+declare const ACTIVE_MUTATION_EXECUTION: unique symbol;
 
 interface MutationCertaintyView<W extends MutationWorkflowId> extends WorkflowBranded<W> {
   readonly state: MutationCertainty;
 }
 
+interface MutationPlanToken<W extends MutationWorkflowId> extends WorkflowBranded<W> {
+  readonly [MUTATION_PLAN_TOKEN]: never;
+}
+
 interface MutationExecutionScope<W extends MutationWorkflowId> extends WorkflowBranded<W> {
   readonly [MUTATION_EXECUTION_SCOPE]: never;
   readonly certainty: MutationCertaintyView<W>;
+}
+
+interface ActiveMutationExecution<W extends MutationWorkflowId> extends WorkflowBranded<W> {
+  readonly [ACTIVE_MUTATION_EXECUTION]: never;
+  readonly scope: MutationExecutionScope<W>;
+  settle(): void;
+}
+
+type MutationActivationOutcome<W extends MutationWorkflowId> =
+  | { kind: "activated"; execution: ActiveMutationExecution<W> }
+  | { kind: "busy" };
+
+interface MutationExecutionSupervisorPort {
+  activate<W extends MutationWorkflowId>(
+    workflow: W,
+    capability: MutationPlanToken<W>,
+  ): MutationActivationOutcome<W>;
+}
+
+type ReadTransportFailure =
+  | { kind: "notFound" }
+  | { kind: "cancelled" }
+  | { kind: "sdkCompatibilityRequired" }
+  | { kind: "credentialRefreshRequired" }
+  | { kind: "serviceFailed"; error: ServiceIdentityError }
+  | { kind: "internalFailed"; error: InternalIdentityError };
+
+type ReadTransportOutcome<Output> = { kind: "succeeded"; output: Output } | ReadTransportFailure;
+
+type ReadPageOutcome<Output> =
+  | { kind: "page"; output: Output }
+  | { kind: "done" }
+  | { kind: "paginationFailed" }
+  | ReadTransportFailure;
+
+interface IdentityReadPageCursor<Output> {
+  next(): Promise<ReadPageOutcome<Output>>;
+  dispose(): void;
 }
 
 type MutationTransportOutcome<Output> =
@@ -1044,7 +1112,7 @@ interface IdentityReadBinding<
   read(
     input: Readonly<OperationInput<PrimaryOperationOf<W>>>,
     options?: IdentityCallOptions,
-  ): Promise<OperationOutput<PrimaryOperationOf<W>>>;
+  ): Promise<ReadTransportOutcome<OperationOutput<PrimaryOperationOf<W>>>>;
 }
 
 interface IdentityListBinding<
@@ -1054,11 +1122,11 @@ interface IdentityListBinding<
   page(
     input: Readonly<OperationInput<PrimaryOperationOf<W>>>,
     options?: IdentityCallOptions,
-  ): Promise<OperationOutput<PrimaryOperationOf<W>>>;
+  ): Promise<ReadTransportOutcome<OperationOutput<PrimaryOperationOf<W>>>>;
   pages(
     input: Readonly<OperationInput<PrimaryOperationOf<W>>>,
     options?: IdentityCallOptions,
-  ): AsyncIterable<OperationOutput<PrimaryOperationOf<W>>>;
+  ): IdentityReadPageCursor<OperationOutput<PrimaryOperationOf<W>>>;
 }
 
 interface IdentityResolvedReadBinding<
@@ -1068,11 +1136,13 @@ interface IdentityResolvedReadBinding<
   resolve(
     input: Readonly<OperationInput<Extract<AuxiliaryGetOf<W>, keyof IdentityReadOperations>>>,
     options?: IdentityCallOptions,
-  ): Promise<OperationOutput<Extract<AuxiliaryGetOf<W>, keyof IdentityReadOperations>>>;
+  ): Promise<
+    ReadTransportOutcome<OperationOutput<Extract<AuxiliaryGetOf<W>, keyof IdentityReadOperations>>>
+  >;
   read(
     input: Readonly<OperationInput<PrimaryOperationOf<W>>>,
     options?: IdentityCallOptions,
-  ): Promise<OperationOutput<PrimaryOperationOf<W>>>;
+  ): Promise<ReadTransportOutcome<OperationOutput<PrimaryOperationOf<W>>>>;
 }
 
 interface IdentityDirectMutationBinding<
@@ -1093,7 +1163,9 @@ interface IdentityCurrentStateMutationBinding<
   readCurrent(
     input: Readonly<OperationInput<Extract<AuxiliaryGetOf<W>, keyof IdentityReadOperations>>>,
     options?: IdentityCallOptions,
-  ): Promise<OperationOutput<Extract<AuxiliaryGetOf<W>, keyof IdentityReadOperations>>>;
+  ): Promise<
+    ReadTransportOutcome<OperationOutput<Extract<AuxiliaryGetOf<W>, keyof IdentityReadOperations>>>
+  >;
   mutate(
     input: Readonly<OperationInput<PrimaryOperationOf<W>>>,
     scope: MutationExecutionScope<W>,
@@ -1108,7 +1180,9 @@ interface IdentityCompatibilityGuardedUpdateBinding<
   readCompatibilityGuardedCurrent(
     input: Readonly<OperationInput<Extract<AuxiliaryGetOf<W>, keyof IdentityReadOperations>>>,
     options?: IdentityCallOptions,
-  ): Promise<OperationOutput<Extract<AuxiliaryGetOf<W>, keyof IdentityReadOperations>>>;
+  ): Promise<
+    ReadTransportOutcome<OperationOutput<Extract<AuxiliaryGetOf<W>, keyof IdentityReadOperations>>>
+  >;
   mutate(
     input: Readonly<OperationInput<PrimaryOperationOf<W>>>,
     scope: MutationExecutionScope<W>,
@@ -1183,13 +1257,18 @@ adapter-private file locator values into `SecretFileLocator` shells. Context bra
 beside their private coordinator. No required private brand crosses a module boundary without such a
 construction path.
 
-`dispose()` is synchronous and idempotent. Read port calls may reject with `unknown`; the application
-boundary catches every rejection and maps it to a closed action outcome before presentation code sees
-it. Mutation adapters catch every synchronous and asynchronous failure around the SDK call and return
-one `MutationTransportOutcome`; an action-level catch remains as a conservative backstop. A binding
-exposes only numeric expiration metadata, its exact methods, and explicit disposal. It never exposes
-credential values, a refresh function, an SDK operation selector, or the private broad transport
-implementation.
+`dispose()` is synchronous and idempotent. Every direct read call and every page-cursor `next()` is
+total: the adapter catches synchronous and asynchronous SDK, middleware, stream, paginator, and
+classification failures and returns one closed read outcome. A cursor emits zero or more `page`
+outcomes followed by exactly one `done` or failure outcome; after that, `next()` repeats `done` and
+performs no work. `pages()` constructs that cursor synchronously without invoking SDK or caller code;
+all fallible work occurs behind total `next()`. The action owns and disposes the cursor in `try/finally`.
+Cursor disposal is synchronous, nonthrowing, and idempotent; a later `next()` returns `done`.
+Mutation adapters likewise catch every failure around the SDK call and return one
+`MutationTransportOutcome`; an action-level catch remains as a conservative static-`internalFailed`
+backstop. A binding exposes only numeric expiration metadata, its exact methods, and explicit disposal.
+It never exposes credential values, a refresh function, an SDK operation selector, or the private broad
+transport implementation.
 
 Each action constructor receives one `IdentityBindingFactory<W>` for its exact workflow. Ordinary Get
 and direct-ARN List Tags use `IdentityReadBinding`; paginated List uses `IdentityListBinding`;
@@ -1212,6 +1291,14 @@ synchronous rejection, handler rejection, incomplete response, unsupported body,
 cancellation, non-success status, or alternate 2xx is `mutationOutcomeUnknown`. Validation, freshness,
 and guarded reads that fail before this mark retain `none`.
 
+Every Identity operation installs one common deserialize-step classifier middleware relative `after`
+Smithy's `deserializerMiddleware`. Under the pinned resolver ordering, it receives the raw
+`HttpResponse` first on the response path, enforces the operation's exact status and bounded completion,
+then restores a fresh copied body for generated deserialization. An ordering contract test fails if a
+Smithy upgrade changes that position. Compatibility-guarded OAuth/payment reads add their strict
+`RawWireSchema` check inside this same common layer; ordinary reads remain additive-field tolerant after
+the exact status/body gate.
+
 One response-body normalizer protects every Identity response path, including ordinary reads,
 mutations, compatibility guards, capture, and replay. It accepts only absent body, string,
 `ArrayBuffer`, any `ArrayBufferView` including `Uint8Array`, `DataView`, typed arrays and Node `Buffer`,
@@ -1227,6 +1314,29 @@ Every path accepts at most `MAX_IDENTITY_RESPONSE_BYTES`; 1,048,576 bytes is acc
 additional byte fails without retaining the overflow chunk. On acceptance the normalizer restores a
 fresh copied `Uint8Array`, including zero bytes, before Smithy sees the body. This prevents Smithy's
 unbounded collector from receiving an unclassified form and prevents later backing-store mutation.
+
+The ordinary-read classifier enforces the operation registry before Smithy's permissive `< 300`
+success rule can decide the result:
+
+| Transport observation                                                                                                                                                       | Read outcome                                                                                        |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Exact expected `200`, bounded normal EOF, valid operation shape, successful map revival and SDK deserialization                                                             | `succeeded`                                                                                         |
+| Informational status or alternate 2xx                                                                                                                                       | `sdkCompatibilityRequired`; no deserialization result or fixture                                    |
+| Exact `200` with unsupported, incomplete, over-cap, malformed, structurally incomplete, or unrevivable body, or failed SDK deserialization/safe projection/V1 normalization | `sdkCompatibilityRequired`; destroy/cancel the body where applicable; no fixture                    |
+| Complete bounded `300..599` modeled not-found response                                                                                                                      | `notFound`                                                                                          |
+| Other complete bounded `300..599` response                                                                                                                                  | `serviceFailed` with only allowlisted service code, status, and validated request ID                |
+| Incomplete, unsupported, malformed, or over-cap `300..599` response                                                                                                         | `serviceFailed/UnknownServiceError` with at most validated status/request-ID metadata; no body text |
+| Retry-exhausted network/transport failure with no complete response                                                                                                         | `serviceFailed/UnknownServiceError` with no arbitrary transport text                                |
+| Caller cancellation before a successful normal EOF                                                                                                                          | `cancelled`                                                                                         |
+| Credentials entering the five-minute window before a send                                                                                                                   | `credentialRefreshRequired`                                                                         |
+| Unknown adapter rejection, impossible status metadata, or classifier invariant failure                                                                                      | `internalFailed` with the static internal error                                                     |
+
+This matrix applies unchanged to ordinary Get, one-page List, every paginator step, name resolution,
+current-state reads, and compatibility-guarded reads. The latter additionally maps an exact-`200`
+additive wire shape to `sdkCompatibilityRequired`. Production, capture, and replay therefore accept the
+same operation/status/body pairs. A failed prerequisite read occurs before mutation authorization,
+disposes any values already acquired for a second rebase, leaves certainty `none`, and never appends a
+fixture call.
 
 Identity does not rely on Zod or the pinned AWS JSON map codec to preserve dynamic key sets. Zod 4.4.3
 deliberately drops `__proto__`, while the SDK's map serializer/deserializer writes into ordinary `{}` and
@@ -1553,26 +1663,29 @@ only name and ARN; callers Get a selected item before an edit or detail view.
 The implementation encodes these constraints in explicit Zod/domain schemas and pins semantic tests
 to the generated documentation, TypeScript declarations, and retained live evidence:
 
-| Shape                          | Constraint                                                                                   |
-| ------------------------------ | -------------------------------------------------------------------------------------------- | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Credential provider name       | 1 to 128 characters; `^[a-zA-Z0-9\-_]+$`                                                     |
-| Workload identity name         | 3 to 255 characters; `^[A-Za-z0-9_.-]+$`                                                     |
-| Token-vault ID                 | 1 to 64 characters; `^[a-zA-Z0-9\-_]+$`                                                      |
-| API key                        | Sensitive; at most 65,536 characters                                                         |
-| Named/included OAuth client ID | 1 to 256 characters                                                                          |
-| Custom OAuth client ID         | At most 256 characters                                                                       |
-| OAuth client secret            | Sensitive; at most 2,048 characters                                                          |
-| Microsoft tenant ID            | 1 to 2,048 characters                                                                        |
-| Discovery URL                  | Must end in `/.well-known/openid-configuration` or `/.well-known/oauth-authorization-server` |
-| Workload return URL            | 1 to 2,048 characters; `^\w+:(\/?\/?)[^\s]+$`                                                |
-| External secret ID             | 1 to 2,048 characters                                                                        |
-| External secret JSON key       | 1 to 128 characters                                                                          |
-| Payment non-secret IDs         | 1 to 512 characters; `^[a-zA-Z0-9\-_]+$`                                                     |
-| Payment secrets                | Sensitive; at most 2,048 characters; base pattern `^[a-zA-Z0-9+/=\-_\s]*$`                   |
-| Authorization private key      | Payment secret pattern with the modeled optional `wallet-auth:` prefix                       |
-| Private endpoint overrides     | At most five                                                                                 |
-| KMS key ARN                    | 1 to 2,048; exact modeled pattern `arn:aws(                                                  | -cn | -us-gov):kms:[a-zA-Z0-9-]\*:[0-9]{12}:key/[a-zA-Z0-9-]{36}`; the model itself permits an empty region slot, arbitrary 36-character IDs, and `mrk-` IDs |
-| Tags                           | At most 50 entries; key 1 to 128; value 0 to 256; characters `[a-zA-Z0-9\s._:/=+@-]`         |
+| Shape                          | Constraint                                                                                                                               |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Credential provider name       | 1 to 128 characters; `^[a-zA-Z0-9\-_]+$`                                                                                                 |
+| Workload identity name         | 3 to 255 characters; `^[A-Za-z0-9_.-]+$`                                                                                                 |
+| Token-vault ID                 | 1 to 64 characters; `^[a-zA-Z0-9\-_]+$`                                                                                                  |
+| API key                        | Sensitive; at most 65,536 characters                                                                                                     |
+| Named/included OAuth client ID | 1 to 256 characters                                                                                                                      |
+| Custom OAuth client ID         | At most 256 characters                                                                                                                   |
+| OAuth client secret            | Sensitive; at most 2,048 characters                                                                                                      |
+| Microsoft tenant ID            | 1 to 2,048 characters                                                                                                                    |
+| Discovery URL                  | Must end in `/.well-known/openid-configuration` or `/.well-known/oauth-authorization-server`                                             |
+| Workload return URL            | 1 to 2,048 characters; `^\w+:(\/?\/?)[^\s]+$`                                                                                            |
+| External secret ID             | 1 to 2,048 characters                                                                                                                    |
+| External secret JSON key       | 1 to 128 characters                                                                                                                      |
+| Payment non-secret IDs         | 1 to 512 characters; `^[a-zA-Z0-9\-_]+$`                                                                                                 |
+| Payment secrets                | Sensitive; at most 2,048 characters; base pattern `^[a-zA-Z0-9+/=\-_\s]*$`                                                               |
+| Authorization private key      | Payment secret pattern with the modeled optional `wallet-auth:` prefix                                                                   |
+| Private endpoint overrides     | At most five                                                                                                                             |
+| KMS key ARN                    | 1 to 2,048; exact modeled pattern shown below; the model itself permits an empty region slot, arbitrary 36-character IDs, and `mrk-` IDs |
+| Tags                           | At most 50 entries; key 1 to 128; value 0 to 256; characters `[a-zA-Z0-9\s._:/=+@-]`                                                     |
+
+The exact generated KMS pattern is
+`^arn:aws(|-cn|-us-gov):kms:[a-zA-Z0-9-]*:[0-9]{12}:key/[a-zA-Z0-9-]{36}$`.
 
 Nested advanced JSON uses these additional exact constraints:
 
@@ -1635,6 +1748,29 @@ type IdentityStringMap = readonly IdentityStringMapEntry[];
 type IdentityTags = IdentityStringMap;
 type SecretReference = Readonly<{ secretId: string; jsonKey: string }>;
 
+declare const SECRET_VALUE_MARKER: unique symbol;
+declare const EXTRACTED_SECRET_SELECTIONS: unique symbol;
+
+interface SecretValueMarker<Slot extends SecretSlotId> {
+  readonly kind: "secretValue";
+  readonly slot: Slot;
+  readonly [SECRET_VALUE_MARKER]: never;
+}
+
+interface ExtractedSecretSelections {
+  readonly [EXTRACTED_SECRET_SELECTIONS]: never;
+  dispose(): void;
+}
+
+type SanitizedJsonExtraction<Configuration> =
+  | Readonly<{
+      kind: "extracted";
+      configuration: DeepReadonly<Configuration>;
+      selections: ExtractedSecretSelections;
+    }>
+  | Readonly<{ kind: "validationFailed"; error: UsageIdentityError }>
+  | Readonly<{ kind: "internalFailed"; error: InternalIdentityError }>;
+
 type SetPatch<Path extends IdentitySchemaPath, Value> = Readonly<{
   kind: "set";
   path: Path;
@@ -1692,7 +1828,7 @@ type CreateOauth2Intent =
       mode: "raw";
       name: string;
       vendor: CredentialProviderVendorType;
-      configuration: OAuthInput;
+      configuration: SanitizedOAuthInput;
       secrets: readonly SecretDirective<"client-secret">[];
       tags?: IdentityTags;
     }>;
@@ -1707,7 +1843,7 @@ type UpdateOauth2Intent =
   | Readonly<{
       mode: "rawReplacement";
       name: string;
-      replacement: OAuthInput;
+      replacement: SanitizedOAuthInput;
       secrets: readonly SecretDirective<"client-secret">[];
     }>;
 
@@ -1735,7 +1871,7 @@ type CreatePaymentIntent =
       mode: "raw";
       name: string;
       vendor: PaymentCredentialProviderVendorType;
-      configuration: PaymentInput;
+      configuration: SanitizedPaymentInput;
       secrets: readonly SecretDirective<PaymentSecretSlotId>[];
       tags?: IdentityTags;
     }>;
@@ -1750,7 +1886,7 @@ type UpdatePaymentIntent =
   | Readonly<{
       mode: "rawReplacement";
       name: string;
-      replacement: PaymentInput;
+      replacement: SanitizedPaymentInput;
       secrets: readonly SecretDirective<PaymentSecretSlotId>[];
     }>;
 
@@ -1831,8 +1967,9 @@ type ListTagsByResourceArnIntent<Family extends Exclude<IdentityResourceFamily, 
   }>;
 ```
 
-`ClientAuthenticationMethod`, `Discovery`, `OnBehalfOf`, `PrivateEndpoint`, `OAuthInput`, and
-`PaymentInput` are the exact aliases below. `CuratedOauth2CreateConfiguration` and
+`ClientAuthenticationMethod`, `Discovery`, `OnBehalfOf`, `PrivateEndpoint`, the parser-boundary
+`OAuthJsonInput` and `PaymentJsonInput`, and the action-boundary `SanitizedOAuthInput` and
+`SanitizedPaymentInput` are the exact aliases below. `CuratedOauth2CreateConfiguration` and
 `CuratedPaymentCreateConfiguration` are closed discriminated unions over the exhaustive provider
 catalogs and the Create applicability table; they do not contain SDK request wrappers. The
 `IdentitySchemaPath` catalog includes every literal path used by these unions.
@@ -1844,10 +1981,12 @@ Duplicate paths, conflicting set/clear operations, and an empty patch collection
 Workload Update accepts only one explicit non-empty replacement or clear patch; the merge algorithm's
 internal notion of an omitted field is not an inhabitable command intent.
 
-Intent types contain explicit non-secret patch operations, desired AgentCore storage modes, and
-external references. Managed-value acquisition is carried separately by a one-use
-`CommitSecretContext`; actual values, environment names, file paths, stdin markers, and prompt
-callbacks remain outside the intent and every prepared plan.
+Intent types contain explicit non-secret patch operations, desired AgentCore storage modes, external
+references, and nominal `SecretValueMarker` leaves at raw-JSON paths that originally held a managed
+value. A string is not assignable to any sensitive member of an action intent. Managed-value acquisition
+is carried separately by a one-use `CommitSecretContext`; actual values, environment names, file paths,
+stdin markers, extracted-selection bundles, and prompt callbacks remain outside the intent and every
+prepared plan.
 
 The workflow type catalog is exact. DTO aliases below refer to the operation-specific allowlists in
 Normalized V1 Output; `EmptyIdentityV1Dto` is exact `{}` and `ListTagsV1Dto` is exact
@@ -2411,14 +2550,20 @@ All JSON options use `jsonc-parser@3.3.1` in strict JSON mode with comments and 
 disabled. Its visitor builds a null-prototype structured tree, reports every property occurrence before
 materialization, and rejects duplicate keys at every object depth. Modeled maps are converted directly
 to frozen ordered entry lists; they never pass through `z.record` or an ordinary object. The parser
-immediately extracts sensitive values into creator-owned source selections and replaces their paths
-with source markers before planning, review, hashing, or error handling. It does not retain the
-original JSON text in a plan. Extraction and
+accepts sensitive strings only in the parser-boundary `OAuthJsonInput` or `PaymentJsonInput`, immediately
+extracts them into an opaque creator-owned `ExtractedSecretSelections` bundle, and constructs the
+corresponding `SanitizedOAuthInput` or `SanitizedPaymentInput` with nominal `SecretValueMarker` leaves.
+`SanitizedJsonExtraction` is the only successful extraction result; no partially sanitized structure
+escapes. The marker constructor and selection-bundle contents are module-private. The parser does not
+retain the original JSON text or any sensitive string in an action intent or plan. Extraction adds the
+corresponding `provideManaged` directive for each marker; a separate source targeting that same slot is
+a closed conflict rather than an override. Extraction and
 `CommitSecretContextFactory.create()` run under one creator-owned `try/finally`: until `prepare()`
 returns a current, installed `prepared` pair, every partial selection, locator, context, and late
 capability remains the creator's responsibility. Any later JSON-key, union, vendor, context-build,
 prepare, cancellation, or unexpected-rejection path disposes the context and clears the extracted
-references.
+references. Successful context construction atomically consumes the extracted bundle; failed
+construction disposes it. It cannot be inspected, copied, reused, or passed to an action.
 
 The implementation performs adapter-owned composition at known secret paths; it does not implement a
 generic deep-merge engine.
@@ -2440,9 +2585,10 @@ The flag value is the provider configuration union itself, not a whole SDK reque
 | Payment Create | `--config-json`         | `providerConfigurationInput`                     |
 | Payment Update | `--replace-config-json` | `providerConfigurationInput` with current vendor |
 
-The V1 aliases below are exact recursive objects. Unknown keys are rejected at every structure;
-unions require exactly one known member; input `$unknown` is rejected; arrays validate each member;
-only modeled maps admit arbitrary keys.
+The V1 parser-boundary aliases below are exact recursive objects. Unknown keys are rejected at every
+structure; unions require exactly one known member; input `$unknown` is rejected; arrays validate each
+member; only modeled maps admit arbitrary keys. These aliases are untrusted user-input schemas and are
+never action-intent types.
 
 ```text
 Source = "MANAGED" | "EXTERNAL"
@@ -2533,7 +2679,7 @@ Custom = exact {
 }
 ```
 
-`OAuthInput` has exactly one of these nine members:
+`OAuthJsonInput` has exactly one of these nine members:
 
 | Union member                                                                                      | Leaf        |
 | ------------------------------------------------------------------------------------------------- | ----------- |
@@ -2543,7 +2689,7 @@ Custom = exact {
 | `includedOauth2ProviderConfig`                                                                    | `Included`  |
 | `customOauth2ProviderConfig`                                                                      | `Custom`    |
 
-`PaymentInput` has exactly one of these two members:
+`PaymentJsonInput` has exactly one of these two members:
 
 ```text
 coinbaseCdpConfiguration: exact {
@@ -2567,6 +2713,23 @@ stripePrivyConfiguration: exact {
   authorizationId: string
 }
 ```
+
+The sanitized action aliases have the identical exact union members and recursive non-secret members,
+with only these substitutions:
+
+| Parser-boundary sensitive path                     | Action-intent member type                        |
+| -------------------------------------------------- | ------------------------------------------------ |
+| Every OAuth member's `clientSecret`                | `SecretValueMarker<"client-secret">`             |
+| `coinbaseCdpConfiguration.apiKeySecret`            | `SecretValueMarker<"api-key-secret">`            |
+| `coinbaseCdpConfiguration.walletSecret`            | `SecretValueMarker<"wallet-secret">`             |
+| `stripePrivyConfiguration.appSecret`               | `SecretValueMarker<"app-secret">`                |
+| `stripePrivyConfiguration.authorizationPrivateKey` | `SecretValueMarker<"authorization-private-key">` |
+
+Those substitutions define `SanitizedOAuthInput` and `SanitizedPaymentInput`; every other field,
+requiredness rule, exact-object boundary, and union rule is the same as its parser-boundary counterpart.
+The sensitive-path registry is an exhaustive `satisfies` record over these five path families. Adding,
+removing, or renaming a sensitive SDK member fails compilation until both the user schema and markerized
+action schema are reviewed.
 
 The vendor/member mapping is exact. Included per-tenant vendors require all three endpoint members;
 included global vendors forbid them. Create requires every effective secret slot, whether embedded or
@@ -2694,7 +2857,9 @@ type HiddenSecretPrompt = (
 type SecretContextBuildOutcome =
   | { kind: "created"; context: CommitSecretContext }
   | { kind: "cancelled" }
-  | { kind: "failed"; error: SafeIdentityError };
+  | { kind: "validationFailed"; error: UsageIdentityError }
+  | { kind: "secretFailed"; error: SecretIdentityError }
+  | { kind: "internalFailed"; error: InternalIdentityError };
 
 interface CommitSecretContextFactory {
   create(
@@ -2702,6 +2867,7 @@ interface CommitSecretContextFactory {
       slot: SecretSlotId;
       source: SecretSourceSelection;
     }>[],
+    extracted: ExtractedSecretSelections | undefined,
     prompt?: HiddenSecretPrompt,
     options?: IdentityCallOptions,
   ): Promise<SecretContextBuildOutcome>;
@@ -2726,10 +2892,13 @@ The secret-context coordinator constructs `CommitSecretContext` shells beside
 `COMMIT_SECRET_CONTEXT`. Both paths compile without assertions or exported brand values. Presentation
 code can pass or dispose a context but cannot inspect a source, reserve preparation, resolve a value,
 or claim a commit lease. `SecretReadOutcome` carries no path, variable name, raw value, or arbitrary
-error. The context maps normal failed reads to the selected slot and closed `SafeIdentityError`, maps
-`internalProtocol` to the slotless static internal error, and maps unknown adapter rejections to the
-same static internal error at the action boundary. `disposeFile` and context disposal are synchronous,
-nonthrowing, and idempotent.
+error. `create()` synchronously adopts an optional `ExtractedSecretSelections` bundle before its first
+`await`, merges it with explicit slot sources under the same duplicate/conflict rules, and consumes or
+disposes the bundle on every outcome. It catches every construction rejection and returns the closed
+`SecretContextBuildOutcome`; it never rejects. The context maps normal failed reads to the selected slot and
+closed `SecretIdentityError`, maps `internalProtocol` to the slotless static internal error, and maps
+unknown adapter rejections to the same `internalFailed` outcome. `disposeFile`, extracted-bundle
+disposal, and context disposal are synchronous, nonthrowing, and idempotent.
 
 The process adapter uses one private typed N-API boundary. These declarations do not enter the domain
 or action ports:
@@ -2971,9 +3140,10 @@ ordinary cleanup, dry-run audit, and descriptor-lock support. No confirmation fl
 platform gate.
 
 Fixture temporary reclamation does not use `NativeLinuxStaleCleanupProof`. Stable publication
-temporaries are reclaimed under the one global publication lock. Each capture has its own permanent
-`.capture.lock`, so failed-capture discard and reap acquire that capture's lock without serializing
-unrelated active captures. The Linux boot/mount proof remains exclusive to stale AWS-resource mutation.
+temporaries are reclaimed only while both the publication-authority lock and the retained fixture
+tree's co-located lock are held. Each capture has its own permanent `.capture.lock`, so failed-capture
+discard and reap acquire that capture's lock without serializing unrelated active captures. The Linux
+boot/mount proof remains exclusive to stale AWS-resource mutation.
 
 Every authority-bearing lock, capture root, run ledger, and ledger temporary lives below a retained
 publication-authority or protected-run-root handle. POSIX roots must be exact-effective-user-owned
@@ -2988,27 +3158,37 @@ the same protected DACL before they become visible. Windows data-write/delete ex
 restrictive sharing; protection from `WRITE_DAC` and `WRITE_OWNER` comes from the verified DACL and
 ownership contract, not sharing flags.
 
-Fixture capture and publication use exactly one native-selected host-local authority root per effective
-UID or SID. `openOrCreatePublicationAuthority()` accepts no path or environment override. Linux uses
-the fixed `/tmp/amazon-agentcore-cli-identity-fixtures-<uid>` child and requires `/tmp` itself to be a
-local root-owned sticky directory; macOS uses `_CS_DARWIN_USER_TEMP_DIR` plus the fixed
+Within one OS filesystem namespace, fixture capture and publication use exactly one native-selected
+host-local authority root per effective UID or SID. `openOrCreatePublicationAuthority()` accepts no
+path or environment override. Linux uses the fixed
+`/tmp/amazon-agentcore-cli-identity-fixtures-<uid>` child and requires that namespace's `/tmp` itself to
+be a local root-owned sticky directory; macOS uses `_CS_DARWIN_USER_TEMP_DIR` plus the fixed
 `com.amazon.agentcore-cli/identity-fixtures` suffix; Windows uses the current token's
 `FOLDERID_LocalAppData` plus fixed `Amazon\AgentCore CLI\identity-fixtures` components and requires a
 local NTFS/ReFS volume. If the platform-selected parent is absent, redirected, nonlocal, or unsafe, the
-operation returns `unsupported` or `unsafe`; there is no second location.
+operation returns `unsupported` or `unsafe`; there is no second location. Separate Linux mount
+namespaces may legitimately resolve the fixed `/tmp` path to different authority roots, so this lock
+alone is not the final serialization authority for a shared retained fixture tree.
 
 The operation atomically creates or fully reopens and validates the one root and returns its separately
 branded handle. The root contains one fixed permanent mode-`0600`/protected-DACL `.publish.lock` plus
-`captures/`. The lock name and authority path are never keyed by fixture path or identity: every
-publication by that user serializes on this one object, so alternate lexical paths and bind-mount
-aliases cannot create independent cleanup authorities. The lock is never unlinked or replaced.
+`captures/`. The lock name and authority path are never keyed by fixture path or identity. It
+serializes capture-authority cleanup and publication staging within that filesystem namespace and is
+never unlinked or replaced.
 
 The repository fixture tree has a separately branded retained `NativeFixtureTreeHandle` and must be
 owner-controlled with no group, world, inherited, or foreign-principal write/delete authority. Every
 publication revalidates both the original path and retained tree identity before cleanup or rename. A
 writable parent, changed identity, nontrivial write ACL, unsafe DACL, bind-mount substitution, or
 reparse point fails closed. JavaScript has no stable-tree mutation primitive other than
-`publishFixtureTransaction`.
+`publishFixtureTransaction`. Native publication opens or atomically creates one fixed
+`.agentcore-identity-fixture-publish.lock` directly below that retained handle. Creation is
+descriptor-relative, exclusive/no-replace, no-follow, and protected as mode `0600` with a trivial ACL or
+the exact protected DACL before use. An existing file is opened descriptor-relative and fully
+revalidated. The lock is never unlinked, renamed, or replaced. Because it is co-resident with the
+retained tree inode, alternate lexical paths, bind-mount aliases, and separate `/tmp` mount namespaces
+that share the tree contend on the same lock. The file is excluded from source control, canonical
+fixture bytes, indexes, sentinel scans, source archives, and release packages.
 
 Each capture is exclusively created as `captures/<32-lowercase-hex-id>` below the retained authority
 handle with `0700`/the protected DACL and a permanent protected `.capture.lock`. Creation returns only
@@ -3168,6 +3348,13 @@ Secret values:
 - Are never included in review models.
 - Are never emitted to stdout or stderr.
 - Are value-redacted from any optional diagnostic rendering.
+
+After resolution, the commit lease constructs a private complete-value matcher over every managed value,
+including values originating in raw JSON. It checks response-bound values without exposing enumeration,
+lookup, serialization, or diagnostic methods and remains reachable only by the commit-local response,
+fixture, and normalization closures. Matching uses the complete original value as a substring; it does
+not rely on terminal escaping, hashing, entropy, field names, or service behavior. The matcher is
+disposed with the lease and is never transferred into a replacement capability.
 
 Every mutation commit receives a `CommitSecretContext` distinct from its `PreparedMutation`. The
 context state owns all literal values, managed-value acquisition locators, the `SecretSourceReader`,
@@ -3373,7 +3560,7 @@ type SecretContextError<Reason extends SecretContextErrorReason = SecretContextE
     reason: Reason;
   }>;
 
-type SafeIdentityError =
+type UsageIdentityError =
   | {
       category: "usage";
       reason:
@@ -3390,27 +3577,36 @@ type SafeIdentityError =
       category: "usage";
       reason: "missingSecrets";
       slots: readonly [SecretSlotId, ...SecretSlotId[]];
-    }
-  | {
-      category: "secret";
-      reason:
-        | "environmentUnavailable"
-        | "fileChanged"
-        | "fileUnavailable"
-        | "fileUnsafe"
-        | "invalidValue"
-        | "promptUnavailable"
-        | "stdinUnavailable";
-      slot: SecretSlotId;
-    }
+    };
+
+type SecretIdentityError = {
+  category: "secret";
+  reason:
+    | "environmentUnavailable"
+    | "fileChanged"
+    | "fileUnavailable"
+    | "fileUnsafe"
+    | "invalidValue"
+    | "promptUnavailable"
+    | "stdinUnavailable";
+  slot: SecretSlotId;
+};
+
+type ServiceIdentityError = {
+  category: "service";
+  code: SafeServiceCode | "UnknownServiceError";
+  httpStatus?: number;
+  requestId?: string;
+};
+
+type InternalIdentityError = { category: "internal" };
+
+type SafeIdentityError =
+  | UsageIdentityError
+  | SecretIdentityError
   | SecretContextError
-  | {
-      category: "service";
-      code: SafeServiceCode | "UnknownServiceError";
-      httpStatus?: number;
-      requestId?: string;
-    }
-  | { category: "internal" };
+  | ServiceIdentityError
+  | InternalIdentityError;
 
 type QueryFailure =
   | { kind: "notFound" }
@@ -3418,8 +3614,9 @@ type QueryFailure =
   | { kind: "paginationFailed" }
   | { kind: "sdkCompatibilityRequired" }
   | { kind: "credentialRefreshRequired" }
-  | { kind: "validationFailed"; error: SafeIdentityError }
-  | { kind: "serviceFailed"; error: SafeIdentityError };
+  | { kind: "validationFailed"; error: UsageIdentityError }
+  | { kind: "serviceFailed"; error: ServiceIdentityError }
+  | { kind: "internalFailed"; error: InternalIdentityError };
 
 type PrepareSecretContextFailure = {
   kind: "secretContextFailed";
@@ -3434,14 +3631,15 @@ type PrepareFailure =
   | { kind: "unsupportedResourceStatus" }
   | { kind: "unknownCurrentSource"; slot: SecretSlotId }
   | { kind: "credentialRefreshRequired" }
-  | { kind: "validationFailed"; error: SafeIdentityError }
-  | { kind: "serviceFailed"; error: SafeIdentityError }
+  | { kind: "validationFailed"; error: UsageIdentityError }
+  | { kind: "serviceFailed"; error: ServiceIdentityError }
+  | { kind: "internalFailed"; error: InternalIdentityError }
   | PrepareSecretContextFailure;
 
 type CommitFailure =
   | PrepareFailure
   | { kind: "secretContextFailed"; error: SecretContextError<"mismatch"> }
-  | { kind: "secretResolutionFailed"; error: SafeIdentityError };
+  | { kind: "secretResolutionFailed"; error: SecretIdentityError };
 
 type QueryOutcome<W extends QueryWorkflowId> =
   | { kind: "succeeded"; value: SafeIdentityDocument<W> }
@@ -3487,7 +3685,8 @@ type BindReplacementOutcome<W extends RepreparableWorkflowId> =
     }
   | { kind: "alreadyConsumed" }
   | { kind: "secretContextFailed"; error: SecretContextError<"unavailable"> }
-  | { kind: "validationFailed"; error: SafeIdentityError };
+  | { kind: "validationFailed"; error: UsageIdentityError }
+  | { kind: "internalFailed"; error: InternalIdentityError };
 
 interface IdentityQueryAction<W extends QueryWorkflowId> extends WorkflowBranded<W> {
   execute(
@@ -3541,12 +3740,17 @@ a selector union or runtime-optional policy. The route registry maps command lea
 ID tuples, so its parity test understands that these leaves own two workflows. Identity's branded
 handler wrapper is checked before the repository's broad router `Handler` type erases authoring detail.
 
-The prepared capability closes over the supervisor port injected into its action. `commit()` activates
-and owns the nominal execution scope internally; callers pass only secret context and cancellation.
-The action and transport receive private writer closures for that scope, while the output supervisor
-sees only its read-only view. No presenter or caller can supply, replace, or mutate certainty.
-Renderers select static guidance from the discriminants. No arbitrary message, option spelling,
-schema key, environment name, file path, or service body can inhabit `SafeIdentityError`.
+The prepared capability closes over the `MutationExecutionSupervisorPort` injected into its action and
+its private `MutationPlanToken`. `commit()` calls the port only after nonmutating pair/state verification
+and before capability/context claim. `activated` returns an action-owned
+`ActiveMutationExecution`; `busy` returns `internalFailed`, performs no ownership transition, secret I/O,
+or AWS call, and leaves the pair retryable after the earlier execution retires. Callers pass only secret
+context and cancellation. The action and transport receive private writer closures for the activated
+scope, while the output supervisor sees only its read-only view. No presenter or caller can supply,
+replace, or mutate certainty. Renderers select static guidance from the discriminants. Validation,
+service, secret, and internal outcome payloads use disjoint category-specific types; no arbitrary
+message, option spelling, schema key, environment name, file path, or service body can inhabit
+`SafeIdentityError`.
 
 The operation-policy mapping is exact:
 
@@ -3586,10 +3790,12 @@ capability, while replacement disposal destroys it. Pairing mismatch and `alread
 lease and leave the supplied context unchanged.
 
 Each query action creates and owns one binding inside `try/finally`. It passes the caller's
-`AbortSignal` to every read and paginator send, catches cancellation as `cancelled`, fully buffers and
-normalizes all requested pages inside the action, and disposes the binding exactly once after success,
-validation failure, pagination failure, cancellation, or an unexpected rejection. No
-`AsyncIterable`, client, or binding escapes the action. The action returns no partial all-results
+`AbortSignal` to every read and paginator send, consumes only closed `ReadTransportOutcome` and
+`ReadPageOutcome` values, fully buffers and normalizes all requested pages inside the action, and
+disposes the cursor and binding exactly once after success, validation failure, pagination failure,
+cancellation, service failure, compatibility failure, or internal failure. A final action-level
+`catch unknown` maps only an adapter contract violation to static `internalFailed`; it never renders the
+rejection. No cursor, client, or binding escapes the action. The action returns no partial all-results
 value after cancellation or pagination failure.
 
 ### Preparation
@@ -3633,11 +3839,8 @@ checks and does not impose a persisted-status allowlist. Tag and Untag are exist
 operations and do not inherit an Update readiness gate.
 
 OAuth and payment Updates use a compatibility-guarded Get for preparation and every commit-time
-rebase through `readCompatibilityGuardedCurrent`; no other call path has that method. An inner
-deserialize-step middleware is registered relative `after` `deserializerMiddleware`. Under Smithy's
-resolver ordering this places it inside the generated deserializer on the request path and gives it the
-raw `HttpResponse` first on the response path. An ordering contract test fails if a Smithy upgrade
-changes that fact.
+rebase through `readCompatibilityGuardedCurrent`; no other call path has that method. Those operations
+select the strict `RawWireSchema` branch of the common inner classifier middleware described above.
 
 The inner middleware applies the common body normalizer to every guarded success or error while
 `bodyBytes <= MAX_IDENTITY_RESPONSE_BYTES`; 1,048,576 bytes is accepted and the next byte fails. On
@@ -3753,11 +3956,22 @@ returned prepared pair.
 requirement fingerprint without changing either object. A mismatch returns
 `secretContextFailed/mismatch`; even an already-consumed or disposed old capability does not dispose a
 foreign context. With a matching context, a capability not in `prepared` returns `alreadyConsumed` and
-also leaves that context unchanged. Otherwise the shared coordinator atomically claims `prepared`,
-moves the binding into a commit-local ownership lease, claims the context, and transitions the
-capability through `committing` to terminal ownership before its first `await`. If that matching
-context is unavailable, the capability remains consumed, its binding lease is destroyed, and commit
-returns `secretContextFailed/unavailable`.
+also leaves that context unchanged. A matching but unavailable context is detected before activation;
+the coordinator consumes the unusable capability, destroys its binding, and returns
+`secretContextFailed/unavailable`.
+
+For a matching, prepared, presently claimable pair, commit calls
+`MutationExecutionSupervisorPort.activate(workflow, planToken)` before changing either ownership state.
+`busy` returns `internalFailed`; the capability remains `prepared`, the context remains open-bound, and
+the caller may retry only after the previous execution retires. `activated` gives commit one
+`ActiveMutationExecution`. In the same synchronous turn, with no caller code or `await` between
+activation and claim, the shared coordinator atomically claims `prepared`, moves the binding into a
+commit-local ownership lease, claims the context, and transitions the capability through `committing`
+to terminal ownership. The post-activation claim consists only of no-throw state transitions already
+validated in that turn. Commit calls `settle()` exactly once for every activated execution, including
+every pre-mutation failure. The invocation supervisor then owns the already-defined `present` and
+quiescent `retire` transitions around Commander output or Ink teardown; neither transition is exposed
+through the action-facing port.
 
 Every later call with the original matching context returns `alreadyConsumed` without reading secrets
 or calling AWS, including concurrent calls made while the first is pending and calls made after
@@ -3769,7 +3983,8 @@ ref latch so buffered confirmation input cannot enter commit twice.
 
 For Update, commit:
 
-1. Claims capability, binding, and secret ownership synchronously as described above.
+1. Verifies the matching pair, activates the supervisor, and claims capability, binding, and secret
+   ownership synchronously as described above.
 2. Verifies that the binding's immutable credential snapshot remains outside the refresh window.
 3. Performs a fresh Get with the binding's read client and compatibility guard where required.
 4. Rechecks provider support and operation-specific status, then rebases the original explicit intent
@@ -3876,9 +4091,9 @@ Private-endpoint removal semantics have not been established, so an existing pri
 retained and a non-empty override collection cannot be replaced by an empty array.
 
 If explicit non-secret intent produces the same effective state and no secret input is present, the
-action returns `NoChange` and makes no Update call. Commander emits the safe normalized Get response
-as its one JSON document. The TUI reports that there are no changes. A secret input never takes this
-path because equality is unknowable.
+action returns `NoChange` and makes no Update call. Commander emits the safe Update-normalized current
+state as its one JSON document. The TUI reports that there are no changes. A secret input never takes
+this path because equality is unknowable.
 
 ### OAuth
 
@@ -4204,10 +4419,12 @@ For every Identity call, the recorder:
    scalar rules.
 3. Computes a full lowercase SHA-256 digest over operation name plus canonical request.
 4. Encodes the SDK-shaped response or modeled error through the operation's safe fixture codec.
-5. Canonicalizes only registered service timestamp paths through the flow's logical clock.
-6. Serializes the complete fixture bytes in memory and computes their content digest.
-7. Scans those bytes and the staged basename for registered high-entropy sentinels.
-8. Only then atomically installs the content-addressed staged response blob referenced by the flow
+5. Applies the commit lease's opaque complete-value matcher, when present, to every dynamic string and
+   map key admitted by that codec.
+6. Canonicalizes only registered service timestamp paths through the flow's logical clock.
+7. Serializes the complete fixture bytes in memory and computes their content digest.
+8. Scans those bytes and the staged basename for registered high-entropy sentinels.
+9. Only then atomically installs the content-addressed staged response blob referenced by the flow
    transaction.
 
 No raw request body or service error message is stored. Error fixtures contain only an allowlisted
@@ -4225,16 +4442,18 @@ ordered layers:
    deserialization. Mutation classification sees the exact status and normal-EOF evidence.
 3. An outer post-deserialization recorder observes only a normal SDK-shaped output or an allowlisted
    modeled exception after all inner checks. It projects registered safe fields into the fixture
-   algebra, reconstructs the equivalent sanitized SDK-shaped value, records the fixture call, and
-   returns or throws only that reconstructed value to the action. Request IDs, arbitrary messages, raw
-   unknown-union bodies, and unregistered fields therefore cannot make capture output differ from
-   replay. Unknown exceptions and every guard, status, body, deserialization, sanitization, or staging
-   failure produce no fixture call record.
+   algebra, rejects complete managed-value reflection through the private matcher, reconstructs the
+   equivalent sanitized SDK-shaped value, rechecks that reconstructed value, records the fixture call,
+   and returns or throws only that reconstructed value to the action. Request IDs, arbitrary messages,
+   raw unknown-union bodies, reflected secrets, and unregistered fields therefore cannot make capture
+   output differ from replay. Unknown exceptions and every guard, status, body, deserialization,
+   sanitization, reflection, or staging failure produce no fixture call record.
 
 Replay invokes the same client, middleware ordering, dispatch tracker, deserializer, action normalizer,
 and outer fixture verifier, but its request handler synthesizes the registered safe wire response
 without network access. The synthesized bytes must also fit `MAX_IDENTITY_RESPONSE_BYTES` and traverse
-the body normalizer; replay does not inject an already-deserialized output. The versioned fixture
+the body normalizer and, for a secret-bearing replayed mutation, the same private complete-value matcher;
+replay does not inject an already-deserialized output. The versioned fixture
 algebra records the transport evidence required by the production classifier and is exact and
 collision-free:
 
@@ -4280,6 +4499,8 @@ FixtureValue =
 Object entries are sorted by their original modeled key and duplicate keys are rejected. The
 operation registry enumerates the SDK output fields allowed to enter this algebra and omits raw
 `failureReason`, request IDs, metadata outside the classifier allowlist, and every unregistered field.
+For a secret-bearing call, every admitted dynamic string and object/map key must also pass the
+commit-local complete-value matcher before terminal encoding or serialization.
 The success status is constrained by operation, not merely by HTTP class: every read is `200`, Creates
 are `201`, Updates and Set CMK are `200`, and Deletes/Tag/Untag are `204`. Capture refuses an alternate
 2xx, and replay rejects a fixture whose operation/status pair does not equal
@@ -4323,8 +4544,8 @@ produce byte-identical manifests and fixture content.
 
 Each capture exclusively creates a cryptographically unique staging root and records the committed
 suite-index state it started from as exactly `{ kind: "absent" }` or
-`{ kind: "sha256", digest }`. Capture never acquires the global publication lock and never writes a
-stable repository path. Every response blob and closed flow manifest is immutable and
+`{ kind: "sha256", digest }`. Capture acquires neither publication lock and never writes a stable
+repository path. Every response blob and closed flow manifest is immutable and
 content-addressed by the full SHA-256 of its canonical bytes. A manifest references only durable
 blobs. Capture writes one canonical `READY` manifest last with the exact flow set, object digests,
 schema version, and starting suite-index state; a root without `READY` is unpublishable. The suite
@@ -4335,17 +4556,23 @@ canonical artifact bytes.
 The stable fixture-tree layout is closed:
 
 ```text
+.agentcore-identity-fixture-publish.lock
 identity/v1/objects/sha256/<first-2-hex>/<64-lowercase-hex-digest>
 identity/v1/manifests/sha256/<first-2-hex>/<64-lowercase-hex-digest>
 identity/v1/suite-index.json
 ```
 
+The first line is protected native coordination state, not canonical fixture data, and is ignored by
+Git and every package/source-archive manifest. It is the only additional stable-tree entry admitted
+outside the versioned fixture namespace.
+
 Capture roots mirror `objects/` and `manifests/` and add only protected native metadata,
 `.capture.lock`, and `READY`. `CanonicalFixtureJsonV1` is UTF-8 without BOM or trailing newline,
 contains no duplicate key, uses no insignificant whitespace, preserves array order, sorts object
 members by encoded key bytes, normalizes `-0` to `0`, permits only finite JSON numbers, and uses one
-reviewed JSON string-escape algorithm. The native transaction accepts only these paths and verifies
-canonical bytes with the same versioned codec before installation.
+reviewed JSON string-escape algorithm. The native transaction admits only this closed layout and
+verifies every versioned artifact/index byte sequence with the same canonical codec before
+installation; the lock is validated as protected coordination state instead.
 
 Every immutable fixture object is installed inside the first-party native boundary; JavaScript has no
 create, rename, unlink, or check-then-install fallback. `installCaptureArtifact` creates a
@@ -4387,17 +4614,18 @@ digests, canonical layout, and fixture-tree security before touching a stable pa
 moved, reboot-stale, cross-authority, alternate-host, or no-longer-identical capture returns
 `invalidCapture`.
 
-Native code opens the one fixed `.publish.lock` relative to the per-user publication authority and
-holds an exclusive Linux OFD `fcntl`, macOS `flock`, or Windows `LockFileEx` lock until the transaction
-has a final outcome. The permanent file is never unlinked or replaced. The authority root and lock are
-not derived from the fixture path, so alternate lexical paths, symlinks rejected during tree opening,
-and bind-mount aliases cannot create an independent publisher or cleanup authority. Kernel release on
+Native code acquires two permanent locks in one fixed order: first `.publish.lock` relative to the
+capture's publication authority, then `.agentcore-identity-fixture-publish.lock` relative to the
+retained fixture-tree handle. Both use exclusive Linux OFD `fcntl`, macOS `flock`, or Windows
+`LockFileEx` locking and remain held until the transaction has a final outcome. Neither file is ever
+unlinked or replaced. The first lock protects capture provenance and authority-local cleanup; the
+second is the serialization authority for the exact stable tree. This order is universal, including
+discard/reap paths that need both resources, so lock inversion is impossible. Kernel release on
 descriptor close or process death eliminates stale-file reclamation, PID reuse, and
 check/remove/recreate races. Network filesystems, unsupported no-replace/rename primitives, and trees
 writable or deletable by another principal return `unsupported` or `unsafe`.
 
-While holding that global lock, the native transaction performs the complete descriptor-relative
-sequence:
+While holding both locks, the native transaction performs the complete descriptor-relative sequence:
 
 1. Revalidate the publication authority, capture, original fixture-tree path, retained tree identity,
    and every known object/manifest/index directory without following links.
@@ -4421,7 +4649,7 @@ sequence:
    close. This rename-over is the publication commit point.
 6. Sync every touched object/manifest directory and the suite-index parent where the platform provides
    a reliable directory-sync primitive, revalidate the committed index, clean any still-owned
-   temporary, and release the lock.
+   temporary, and release the fixture-tree lock followed by the publication-authority lock.
 
 Before the index rename-over, any failure returns `notPublished` and the old index remains
 authoritative. After that commit point, no path may return `notPublished`: complete directory sync
@@ -4515,6 +4743,13 @@ fixture/golden tree after the test run.
   accepted source flags from the static slot catalog.
 - Raw extraction and context construction fail after each possible step without retaining prior
   literals or locators; unexpected `prepare()` rejection remains covered by creator `try/finally`.
+- Compile-time negative fixtures reject a string at every OAuth and payment sensitive path in
+  `SanitizedOAuthInput` and `SanitizedPaymentInput`. Runtime vectors cover every corresponding
+  parser-boundary path, prove one nominal marker and one context-owned selection are produced, and prove
+  no sensitive string survives in the action intent, frozen plan, review, guard hash, or error.
+- Extraction failure before and after every sensitive leaf disposes the opaque selection bundle; context
+  creation consumes it exactly once and rejects duplicate/conflicting explicit sources without exposing
+  bundle contents.
 - Multiple stdin consumers are rejected.
 - All sensitive paths are redacted.
 - Every populated slot with omitted or contradictory current-source metadata returns the exact
@@ -4582,8 +4817,13 @@ fixture/golden tree after the test run.
   alternate-data-stream syntax, trailing Windows dots/spaces, reserved DOS names, malformed capture
   IDs, and reserved temporary aliases in both the JavaScript wrapper and native layer.
 - Publication-authority tests prove repeated processes for one UID/SID open the same OS-selected root
-  and lock without accepting a caller path or environment redirect; unsafe, nonlocal, or unavailable
-  platform parents return a closed failure.
+  and lock within one filesystem namespace without accepting a caller path or environment redirect;
+  unsafe, nonlocal, or unavailable platform parents return a closed failure. Retained-tree tests prove
+  alternate paths and bind mounts open the same protected co-located lock.
+- Retained-tree lock tests race first creation, require exclusive no-follow/no-replace behavior, retain
+  one file identity across later transactions, and reject a symlink, reparse point, directory,
+  non-regular file, wrong owner, wrong mode, nontrivial ACL, or unsafe DACL. No successful path unlinks,
+  renames, or replaces the lock.
 - Environment, file, stdin, prompt, and literal values preserve content and pass through the same
   character validator.
 
@@ -4618,6 +4858,12 @@ fixture/golden tree after the test run.
 - Every query binding is disposed exactly once after one-page success, all-page success, normalization
   failure, service failure, token cycle, and cancellation. The same `AbortSignal` reaches direct reads
   and paginator sends, and no partial all-results value escapes.
+- Ordinary query, resolved-read, current-state, guarded-read, and page-cursor matrices cover
+  informational statuses, every alternate 2xx, exact `200` with absent, malformed, incomplete,
+  unsupported, over-cap, or map-unrevivable bodies, bounded and unbounded modeled/unmodeled errors,
+  cancellation, credential expiry, paginator rejection, and internal classifier rejection. Every call
+  returns its exact closed outcome without throwing; capture and replay classify the same vectors and
+  record only exact-status normal-EOF successes or allowlisted complete modeled errors.
 - Prepared plans are frozen, canonical, and contain no secret bytes.
 - Cancellation and terminal outcomes destroy the operation binding; reprepare transfers it exactly
   once to the replacement capability, and Commander disposes an unaccepted replacement.
@@ -4626,6 +4872,10 @@ fixture/golden tree after the test run.
   commit-local or replacement lease.
 - A prepared capability rejects sequential and concurrent second commits before secret I/O or AWS
   calls.
+- While one distinct capability remains active, a matching commit on another prepared pair receives
+  supervisor `busy` as `internalFailed`, leaves both objects unchanged, and performs no secret I/O or AWS
+  call. After the first execution has settled, presented, crossed output/Ink quiescence, and retired, the
+  same second pair activates and commits normally. Scope certainty never crosses between the two.
 - Update preparation Gets once; commit Gets before and after secret acquisition.
 - The same additive OAuth/payment raw response succeeds through tolerant ordinary Get and returns
   `sdkCompatibilityRequired` through Update preparation and both commit
@@ -4670,6 +4920,12 @@ fixture/golden tree after the test run.
   valid exact-status output. They assert `mutationOutcomeUnknown` for every post-authorization failure
   that lacks exact-status normal completion, `committedOutputUnavailable` for unusable established
   commits, and no automatic retry.
+- Fake service responses reflect each resolved managed value in turn through an allowlisted top-level
+  scalar, nested scalar, array member, dynamic map key, unknown-member name, and modeled-error safe
+  metadata. Complete and substring-containing reflections fail before terminal encoding, append no
+  fixture call, and release the matcher; exact-status normal-EOF mutations return
+  `committedOutputUnavailable`, while all other post-authorization responses retain
+  `mutationOutcomeUnknown`.
 - Fault injection before dispatch, after dispatch, after status receipt, during body EOF tracking, and
   during classification proves `mutate()` is total. Any escaped rejection after action invocation
   leaves certainty at least `outcomeUnknown`; only validation, guard, context, credential, or
@@ -4727,6 +4983,8 @@ fixture/golden tree after the test run.
 - Commander exits on `ReprepareRequired` and never authorizes its replacement capability.
 - A runnable-level sentinel-bearing unknown rejection emits only the static internal error to stderr
   and emits nothing to stdout.
+- A reflected managed value in an otherwise allowlisted committed response emits no success JSON or
+  secret bytes, returns committed-output-unavailable guidance, and records no golden call.
 
 ### Ink Screen Tests
 
@@ -4759,6 +5017,8 @@ fixture/golden tree after the test run.
   values; components never render a raw `Error`.
 - Ink error-boundary and async-callback tests use sentinel-bearing messages and assert that no frame,
   stdout, stderr, stack, cause, golden, or fixture contains the sentinel.
+- Ink receives no result model or frame containing a reflected managed value; it renders only static
+  committed-output-unavailable guidance after exact-status commit evidence and cannot resubmit.
 - Render/state failures while a mutation is dispatched, after Ink observes
   `mutationOutcomeUnknown`, and after a committed result select unknown-outcome,
   unknown-outcome, and committed-output-unavailable guidance respectively and never permit a second
@@ -4807,23 +5067,32 @@ dispatch/status/normal-EOF evidence, and produce identical capture/replay transp
 normalization. Every success fixture must carry the operation's exact expected status and synthesize at
 most 1,048,576 response bytes; an alternate-2xx operation/status pair, oversized synthesis, nonempty
 `204`, or malformed success wire shape is rejected. Complete 4xx and 5xx mutation fixtures both replay
-as `mutationOutcomeUnknown`; exact-status fixtures replay as committed.
+as `mutationOutcomeUnknown`; exact-status fixtures replay as committed. Matcher tests place complete
+resolved values and containing strings in every fixture scalar, array, object value, and dynamic key;
+capture appends no call and replay rejects a malicious prebuilt fixture before returning an SDK-shaped
+value.
 Atomic-object tests kill before and after temp-file `fsync` and rename, retry abandoned installs,
 exercise native no-replace contention and valid existing-object cache hits, assert every unconsumed
 temporary is removed, reject platforms without the required primitive, and reject a pre-existing empty,
 truncated, wrong-digest, or non-canonical digest-path object. Publication tests kill with object,
 manifest, and suite-index temporaries present; the next native transaction removes only exact reserved
-stable-directory names while holding the one per-user `.publish.lock` and then exposes a complete old
-or new index. Lookalike names and symlinks outside the exact grammar are never traversed or deleted.
-Alternate lexical fixture paths and bind-mount aliases contend on that same lock. Copied, currently
-moved, cross-host, reboot-stale, and cross-authority captures are rejected. Open/sealed handle compile tests
-and runtime stale-handle tests reject cross-state install/seal/publish calls. Per-capture locks exclude
-same-capture publish/discard/reap without serializing independent captures; explicit discard and aged
-unsealed/reboot-stale reap remove no same-boot sealed `READY` root. Linux, macOS, and Windows provenance
-fixtures exercise the exact boot and mount/volume APIs and unsupported paths. Faults before index rename
-return `notPublished`; faults after rename can return only one of the three `published` durability
-states. A retry whose old base is stale but whose exact next index is already committed verifies/syncs
-that generation and returns `published`, never `staleBase`.
+stable-directory names while holding both the authority `.publish.lock` and retained-tree
+`.agentcore-identity-fixture-publish.lock`, then exposes a complete old or new index. Lookalike names and
+symlinks outside the exact grammar are never traversed or deleted. Alternate lexical fixture paths and
+bind-mount aliases contend on the co-located tree lock. A Linux integration test runs two same-UID
+publishers with private `/tmp` mount namespaces and one shared retained fixture-tree inode. Starting
+from one base and proposing divergent indexes, exactly one returns `published`, the other returns
+`{ kind: "notPublished", reason: "staleBase" }`, and the final index and all references equal the winner
+without lost updates.
+Copied, currently moved, cross-host, reboot-stale, and cross-authority captures are rejected.
+Open/sealed handle compile tests and runtime stale-handle tests reject cross-state
+install/seal/publish calls. Per-capture locks exclude same-capture publish/discard/reap without
+serializing independent captures; explicit discard and aged unsealed/reboot-stale reap remove no
+same-boot sealed `READY` root. Linux, macOS, and Windows provenance fixtures exercise the exact boot and
+mount/volume APIs and unsupported paths. Faults before index rename return `notPublished`; faults after
+rename can return only one of the three `published` durability states. A retry whose old base is stale
+but whose exact next index is already committed verifies/syncs that generation and returns `published`,
+never `staleBase`.
 Authority-root and fixture-tree ownership/ACL changes before lock, cleanup, temporary creation, and
 rename each fail closed; ledger and index replacement temporaries are verified protected before
 installation. Platform tests exercise Linux `renameat2`, macOS `renamex_np`, and handle-based Windows
@@ -5011,7 +5280,10 @@ The CLI does not hide current service behavior, but it also does not wait for th
 
 ## Dependencies
 
-No application-framework change is required. Expected direct dependencies are:
+No application-framework change is required. The current `bun.lock` resolves the reviewed versions,
+but the pre-implementation `package.json` still contains caret ranges and
+`@inkui-cli/data-table`. Implementation updates that manifest so the required post-implementation
+dependencies are:
 
 - Existing `@aws-sdk/client-bedrock-agentcore-control` and
   `@aws-sdk/client-bedrock-agentcore`, both exact-pinned at `3.1079.0`.
@@ -5030,10 +5302,11 @@ No application-framework change is required. Expected direct dependencies are:
   with their source digests and Unicode data-files license; runtime ships the reviewed generated
   interval table, not a Unicode parsing dependency.
 
-Reviewed Identity, AWS/Smithy, native-build, and release-tool dependencies use exact manifest versions,
-not `latest`, caret, or tilde ranges, and remain locked in `bun.lock`. SHA-256 uses the platform crypto
-implementation. The unused `@inkui-cli/data-table@0.2.0` dependency is removed: it declares Ink 6 while
-the application uses Ink 7.1.0, and all current imports resolve to the local
+Implementation exact-pins reviewed Identity, AWS/Smithy, native-build, and release-tool dependencies in
+`package.json`, without `latest`, caret, or tilde ranges, and refreshes `bun.lock` under frozen
+verification. SHA-256 uses the platform crypto implementation. Implementation also removes the unused
+`@inkui-cli/data-table@0.2.0` dependency: it declares Ink 6 while the application uses Ink 7.1.0, and all
+current imports resolve to the local
 `src/components/ui/data-table` implementation. Its history and source comparison establish that it is
 a modified derivative of the package's `DataTable.tsx`. The upstream
 `Copyright (c) 2024 Kamlesh Yadav` MIT notice is therefore retained in a checked-in third-party notice,
@@ -5155,6 +5428,8 @@ reflected in a later immutable commit, and that correction must pass independent
 - All 25 pinned OAuth vendors are supported.
 - OAuth family and payment adapter contracts are exhaustive.
 - Advanced SDK-native JSON is available without a generic deep merge.
+- Parser-boundary raw JSON may accept warned literal secrets, but every action intent uses the
+  markerized sanitized aliases and cannot structurally contain a sensitive string.
 - Curated omitted updates preserve every readable field required by the replacement-style service
   APIs; raw replacement omissions follow the explicit custom OAuth rules.
 - Any guarded state change prevents mutation. A pre-acquisition change triggers review before secret
@@ -5169,6 +5444,7 @@ reflected in a later immutable commit, and that correction must pass independent
   submit, cross-plan pairing, dispose, cancellation, late unmount completion, no-change, failure, and
   reprepare. An unbound replacement can synchronously bind a fresh context and transfer its binding
   exactly once. A private token and requirement fingerprint bind each context to exactly one plan.
+  Supervisor `busy` leaves a verified pair unchanged and retryable without secret I/O or AWS.
 - One immutable numeric credential snapshot and eagerly resolved endpoints bind every operation;
   SDK clients receive isolated mutable clones and no operation refreshes midway.
 - File secret acquisition uses the shipped typed native adapter, retains and reads a trusted no-follow
@@ -5180,25 +5456,30 @@ reflected in a later immutable commit, and that correction must pass independent
   rendering.
 - Operation-specific type facets make tolerant reads, ordinary guarded mutations, compatibility-
   guarded OAuth/payment Updates, and direct mutations mutually unavailable at incorrect call sites.
+- Every read facet is total and enforces exact operation status/body completion before Smithy's broad
+  2xx handling; production, capture, and replay share one closed outcome matrix.
 - Query bindings are abortable and always disposed; pagination clones caller input and never silently
-  truncates, loops, mutates caller state, or emits partial all-results output.
+  truncates, loops, mutates caller state, emits partial all-results output, or exposes a rejecting read
+  port.
 - Mutation outcomes distinguish failures before mutation authorization, every indeterminate failure
   after authorization including non-2xx, alternate-2xx, and incomplete responses,
   committed-but-unavailable output, and valid exact-status committed output. Adapter and presentation
   failures preserve the monotonic unknown/committed certainty.
 - Complete tag lifecycle works.
-- No secret reaches output, error artifacts, fixture content, or fixture identity.
+- No secret reaches output, error artifacts, fixture content, or fixture identity, including when a
+  service reflects a complete resolved managed value through an otherwise allowlisted response field.
 - Golden recordings are deterministic across worker schedules and process-safe, and incomplete
   captures, truncated objects, or interrupted installation cannot modify or poison the committed
   fixture set. Request IDs are omitted, safe failure-reason presence is preserved, and no
   unconsumed temporary survives a completed installation attempt; abandoned stable publication
-  temporaries are swept by the next globally locked native publisher. Raw guarded bytes are validated
-  before capture recording, fixture statuses are exact per operation, and capture/replay bodies are
-  capped at one MiB.
+  temporaries are swept by the next native publisher holding both permanent locks. Raw guarded bytes
+  are validated before capture recording, fixture statuses are exact per operation, and capture/replay
+  bodies are capped at one MiB.
 - Fixture publication has no JavaScript mutation or check-then-rename fallback. One native transaction
-  owns the per-user lock, descriptor-relative cleanup/install/index commit, existing-object
-  verification, and post-commit durability result; copied captures and alternate path authorities
-  cannot bypass it.
+  owns the namespace-local publication-authority lock, co-located retained-tree lock,
+  descriptor-relative cleanup/install/index commit, existing-object verification, and post-commit
+  durability result; copied captures, alternate paths, bind mounts, and separate `/tmp` mount
+  namespaces cannot bypass the tree serialization authority.
 - The supported Node runtime is `>=22.22.1`; release uses exact Node `22.22.1`, Bun `1.3.14`,
   TypeScript `5.9.3`, and reviewed direct dependency pins. Packed npm and Bun artifacts execute on
   their declared targets; Node 20 is limited to an isolated N-API v8 load check.
