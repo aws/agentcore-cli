@@ -1,9 +1,9 @@
 name: Assign PR Reviewer (round-robin)
 
-# Auto-assigns one reviewer to each new PR, so every PR has a named, accountable
-# reviewer instead of sitting in a shared queue. The reviewer pool is the repo's
-# existing AUTHORIZED_USERS list (the same vetted maintainer roster that gates the
-# tarball / e2e / agent workflows), so there is no separate list to maintain.
+# Auto-assigns one reviewer to each new external PR, so community contributions
+# have a named, accountable reviewer instead of sitting in a shared queue. PRs
+# authored by someone in AUTHORIZED_USERS are left unassigned. That same list is
+# the reviewer pool, so there is no separate roster to maintain.
 #
 # Uses pull_request_target (same rationale as pr-size.yml): a fork PR's default
 # token is read-only and cannot request reviewers, so we need the base-repo token.
@@ -31,21 +31,26 @@ jobs:
             const pr = context.payload.pull_request;
             const { owner, repo } = context.repo;
             const author = pr.user.login;
+            const pool = (process.env.AUTHORIZED_USERS || '')
+              .split(',')
+              .map(login => login.trim())
+              .filter(Boolean)
+              .sort();
+
+            if (pool.length === 0) {
+              console.log('No reviewers configured in AUTHORIZED_USERS.');
+              return;
+            }
+
+            // Only external contributions need automatic reviewer assignment.
+            if (pool.some(login => login.toLowerCase() === author.toLowerCase())) {
+              console.log(`${author} is in AUTHORIZED_USERS; leaving the PR unassigned.`);
+              return;
+            }
 
             // Don't re-assign if a reviewer was already requested (e.g. manual, or a re-run).
             if ((pr.requested_reviewers?.length ?? 0) > 0 || (pr.requested_teams?.length ?? 0) > 0) {
               console.log('Reviewer(s) already requested; leaving as-is.');
-              return;
-            }
-
-            // Pool = the repo's existing comma-separated maintainer roster, sorted for a
-            // stable round-robin order, with the PR author removed (can't review own PR).
-            const pool = (process.env.AUTHORIZED_USERS || '')
-              .split(',').map(s => s.trim()).filter(Boolean)
-              .filter(login => login !== author)
-              .sort();
-            if (pool.length === 0) {
-              console.log('No eligible reviewers in AUTHORIZED_USERS (empty, or author-only).');
               return;
             }
 
