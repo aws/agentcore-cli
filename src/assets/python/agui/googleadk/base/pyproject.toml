@@ -15,8 +15,7 @@ dependencies = [
     "fastapi >= 0.115.12",
     "google-adk >= 1.16.0, < 2.0.0",
     "google-genai >= 1.0.0, < 2.0.0",
-    "opentelemetry-distro",
-    "opentelemetry-exporter-otlp",
+    "aws-opentelemetry-distro >= 0.17.0",
     "uvicorn >= 0.34.3",
 ]
 
