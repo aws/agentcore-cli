@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "AgentCore Code-Based Evaluator (Autoevals)"
 requires-python = ">=3.10"
 dependencies = [
-    "bedrock-agentcore[autoevals]>=1.6.0",
+    "bedrock-agentcore[autoevals]",
     "autoevals>=0.0.80",
 ]
 

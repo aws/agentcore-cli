@@ -73,3 +73,6 @@ ProtocolTesting/
 browser-tests/.browser-test-env
 browser-tests/test-results/
 browser-tests/playwright-report/
+
+# E2E test output
+test-e2e-output/

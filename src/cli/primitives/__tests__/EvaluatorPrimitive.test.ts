@@ -4,6 +4,7 @@ import {
   THIRD_PARTY_EVALUATOR_LIBRARIES,
   jsonToKwargs,
   jsonToPythonValue,
+  parseParamFlags,
 } from '../EvaluatorPrimitive.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -496,7 +497,9 @@ describe('THIRD_PARTY_EVALUATOR_LIBRARIES registry', () => {
 
   it('deepeval has warnings for expected_output metrics', () => {
     const config = THIRD_PARTY_EVALUATOR_LIBRARIES.deepeval;
-    const expectedWarning = config.warnings.find(w => w.metrics.has('ContextualPrecisionMetric'));
+    const expectedWarning = config.warnings.find(
+      w => w.metrics.has('ContextualPrecisionMetric') && w.message.includes('expected_output')
+    );
     expect(expectedWarning).toBeDefined();
     expect(expectedWarning!.message).toContain('expected_output');
   });
@@ -607,5 +610,43 @@ describe('jsonToKwargs', () => {
 
   it('returns empty string for empty object', () => {
     expect(jsonToKwargs('{}')).toBe('');
+  });
+});
+
+describe('parseParamFlags', () => {
+  it('parses number value', () => {
+    expect(parseParamFlags(['threshold=0.7'])).toBe('threshold=0.7');
+  });
+
+  it('parses string value (JSON-quoted)', () => {
+    expect(parseParamFlags(['model="gpt-4"'])).toBe('model="gpt-4"');
+  });
+
+  it('parses boolean value', () => {
+    expect(parseParamFlags(['verbose=true'])).toBe('verbose=True');
+  });
+
+  it('parses array value', () => {
+    expect(parseParamFlags(['items=[1,2,3]'])).toBe('items=[1, 2, 3]');
+  });
+
+  it('treats unquoted non-JSON string as string', () => {
+    expect(parseParamFlags(['name=hello world'])).toBe('name="hello world"');
+  });
+
+  it('parses multiple params', () => {
+    expect(parseParamFlags(['threshold=0.7', 'verbose=true'])).toBe('threshold=0.7, verbose=True');
+  });
+
+  it('throws on missing equals sign', () => {
+    expect(() => parseParamFlags(['noequalssign'])).toThrow('not in key=value format');
+  });
+
+  it('handles value containing equals sign', () => {
+    expect(parseParamFlags(['formula=a=b'])).toBe('formula="a=b"');
+  });
+
+  it('parses null value', () => {
+    expect(parseParamFlags(['callback=null'])).toBe('callback=None');
   });
 });
