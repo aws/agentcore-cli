@@ -1,3 +1,4 @@
+import type { DependencySyncResult } from '../../../lib/dependency-management';
 import type { Result } from '../../../lib/result';
 
 export interface DeployOptions {
@@ -17,6 +18,7 @@ export type DeployResult = Result<{
   nextSteps?: string[];
   notes?: string[];
   postDeployWarnings?: string[];
+  dependencySync?: DependencySyncResult;
 }> & { logPath?: string };
 
 export type PreflightResult = Result<{

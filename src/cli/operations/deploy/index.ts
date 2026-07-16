@@ -68,6 +68,9 @@ export { ensureDefaultDeploymentTarget } from './ensure-target';
 // Pre-synth backfill of vpcId for pre-existing Container+VPC configs written before vpcId was added
 export { backfillContainerVpcIds, type BackfillVpcIdResult } from './backfill-vpc-id';
 
+// Managed dependency pinning (#1540) — shared by CLI deploy + TUI preflight
+export { ensureManagedDependencies, type DependencySyncResult } from './dependency-sync';
+
 // Managed-memory heads-up (shared by the CLI command + TUI deploy flow + add harness)
 export {
   MANAGED_MEMORY_DEPLOY_NOTICE,

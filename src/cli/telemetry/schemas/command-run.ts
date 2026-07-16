@@ -119,6 +119,11 @@ const DeployAttrs = safeSchema({
   policy_engine_count: Count,
   policy_count: Count,
   deploy_mode: DeployModeSchema,
+  dep_sync_changed_count: Count.optional(),
+  dep_sync_migrated: z.boolean().optional(),
+  dep_sync_opted_out: z.boolean().optional(),
+  dep_sync_skew_warning: z.boolean().optional(),
+  dep_sync_reinstalled: z.boolean().optional(),
 });
 
 const DevAttrs = safeSchema({

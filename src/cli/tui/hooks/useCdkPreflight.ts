@@ -1,4 +1,5 @@
 import { ConfigIO, SecureCredentials, toError } from '../../../lib';
+import type { DependencySyncResult } from '../../../lib/dependency-management';
 import { AwsCredentialsError, UserCancellationError } from '../../../lib/errors/types';
 import type { DeployedState } from '../../../schema';
 import { applyTargetRegionToEnv } from '../../aws';
@@ -14,6 +15,7 @@ import {
   checkBootstrapNeeded,
   checkDependencyVersions,
   checkStackDeployability,
+  ensureManagedDependencies,
   formatError,
   getAllCredentials,
   hasIdentityApiProviders,
@@ -162,6 +164,8 @@ export interface PreflightResult {
   missingCredentials: MissingCredential[];
   /** KMS key ARN used for identity token vault encryption */
   identityKmsKeyArn?: string;
+  /** Managed dependency sync outcome (#1540) — notice/warnings for display, attrs for telemetry */
+  dependencySync: DependencySyncResult | null;
   /** Credential ARNs (API key + OAuth) from pre-deploy setup */
   allCredentials: Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>;
   startPreflight: () => Promise<void>;
@@ -184,13 +188,15 @@ export interface PreflightResult {
 // Step indices for base preflight steps (always present)
 const STEP_VALIDATE = 0;
 const STEP_DEPS = 1;
-const STEP_BUILD = 2;
-// Note: Identity steps are inserted at index 3+ when needed, shifting synth and stack status down.
+const STEP_SYNC_DEPS = 2;
+const STEP_BUILD = 3;
+// Note: Identity steps are inserted at index 4+ when needed, shifting synth and stack status down.
 // Use findStepIndex() to locate synth and stack status dynamically.
 
 const BASE_PREFLIGHT_STEPS: Step[] = [
   { label: 'Validate project', status: 'pending' },
   { label: 'Check dependencies', status: 'pending' },
+  { label: 'Sync CDK dependencies', status: 'pending' },
   { label: 'Build CDK project', status: 'pending' },
   { label: 'Synthesize CloudFormation', status: 'pending' },
   { label: 'Check stack status', status: 'pending' },
@@ -226,6 +232,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>
   >({});
   const [teardownConfirmed, setTeardownConfirmed] = useState(false);
+  const [dependencySync, setDependencySync] = useState<DependencySyncResult | null>(null);
   const lastErrorRef = useRef<Error | undefined>(undefined);
 
   // Guard against concurrent runs (React StrictMode, re-renders, etc.)
@@ -481,6 +488,30 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           const errorMsg = formatError(err);
           logger.endStep('error', errorMsg);
           updateStep(STEP_DEPS, { status: 'error', error: logger.getFailureMessage('Check dependencies') });
+          failPreflight(err);
+          return;
+        }
+
+        // Step: Sync managed dependencies (#1540) — pin agentcore/cdk/package.json to the versions
+        // this CLI was tested with, migrating pre-pinning (caret) projects. Runs before the build so
+        // the compile sees the reinstalled tree.
+        updateStep(STEP_SYNC_DEPS, { status: 'running' });
+        logger.startStep('Sync CDK dependencies');
+        try {
+          const syncResult = await ensureManagedDependencies(preflightContext.cdkProject);
+          for (const warning of syncResult.warnings) {
+            logger.log(warning, 'warn');
+          }
+          if (syncResult.notice) {
+            logger.log(syncResult.notice);
+          }
+          setDependencySync(syncResult);
+          logger.endStep('success');
+          updateStep(STEP_SYNC_DEPS, { status: 'success' });
+        } catch (err) {
+          const errorMsg = formatError(err);
+          logger.endStep('error', errorMsg);
+          updateStep(STEP_SYNC_DEPS, { status: 'error', error: getErrorMessage(err) });
           failPreflight(err);
           return;
         }
@@ -1047,6 +1078,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     lastError: lastErrorRef.current,
     missingCredentials,
     identityKmsKeyArn,
+    dependencySync,
     allCredentials,
     startPreflight,
     confirmTeardown,

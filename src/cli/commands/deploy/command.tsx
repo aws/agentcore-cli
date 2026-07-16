@@ -42,10 +42,19 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
     .then(spec => computeDeployAttrs(spec, mode))
     .catch(() => ({ ...DEFAULT_DEPLOY_ATTRS, mode }) as const);
 
-  const { deployResult } = await withCommandRunTelemetry('deploy', attrs, async () => {
+  const { deployResult } = await withCommandRunTelemetry('deploy', attrs, async recorder => {
     const result = await executeDeploy(options).catch(
       (e): DeployResult => ({ success: false, error: e instanceof Error ? e : new Error(getErrorMessage(e)) })
     );
+    if (result.success && result.dependencySync) {
+      recorder.set({
+        dep_sync_changed_count: result.dependencySync.changes.length + result.dependencySync.restored.length,
+        dep_sync_migrated: result.dependencySync.migrated,
+        dep_sync_opted_out: result.dependencySync.optedOut,
+        dep_sync_skew_warning: result.dependencySync.skewWarning,
+        dep_sync_reinstalled: result.dependencySync.reinstalled,
+      });
+    }
     if (!result.success) {
       return { success: false as const, error: result.error, deployResult: result };
     }

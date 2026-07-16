@@ -33,6 +33,7 @@ import {
   checkBootstrapNeeded,
   checkStackDeployability,
   ensureDefaultDeploymentTarget,
+  ensureManagedDependencies,
   getAllCredentials,
   hasIdentityApiProviders,
   hasIdentityOAuthProviders,
@@ -260,6 +261,20 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       await validateAwsCredentials();
       endStep('success');
     }
+
+    // Sync managed dependencies (#1540): pin agentcore/cdk/package.json to the versions this
+    // CLI was tested with, migrating pre-pinning (caret) projects. Must run before the build so
+    // the compile sees the reinstalled tree. Throws CliVersionTooOldError on newer-than-CLI skew.
+    startStep('Sync CDK dependencies');
+    const depSync = await ensureManagedDependencies(context.cdkProject);
+    for (const warning of depSync.warnings) {
+      logger.log(warning, 'warn');
+    }
+    if (depSync.notice) {
+      logger.log(depSync.notice);
+      options.onNotice?.(depSync.notice);
+    }
+    endStep('success');
 
     // Build CDK project
     startStep('Build CDK project');
@@ -498,6 +513,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         targetName: target.name,
         stackName,
         logPath: logger.getRelativeLogPath(),
+        dependencySync: depSync,
       };
     }
 
@@ -516,6 +532,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         targetName: target.name,
         stackName,
         logPath: logger.getRelativeLogPath(),
+        dependencySync: depSync,
       };
     }
 
@@ -593,6 +610,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         targetName: target.name,
         stackName,
         logPath: logger.getRelativeLogPath(),
+        dependencySync: depSync,
       };
     }
 
@@ -985,6 +1003,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       nextSteps,
       notes,
       postDeployWarnings: allWarnings.length > 0 ? allWarnings : undefined,
+      dependencySync: depSync,
     };
   } catch (err: unknown) {
     logger.log(getErrorMessage(err), 'error');

@@ -1,4 +1,5 @@
 import { ConfigIO } from '../../../../lib';
+import type { DependencySyncResult } from '../../../../lib/dependency-management';
 import type { AwsDeploymentTarget } from '../../../../schema';
 import type { CdkToolkitWrapper, DeployMessage, SwitchableIoHost } from '../../../cdk/toolkit-lib';
 import {
@@ -115,6 +116,8 @@ interface DeployFlowState {
   deployNotes: string[];
   /** Managed-memory heads-up, shown while the CFN apply runs (null when not applicable) */
   managedMemoryNotice: string | null;
+  /** Managed dependency sync summary from preflight (#1540), null when nothing changed */
+  dependencySyncNotice: string | null;
   /** Warnings from post-deploy steps (config bundles, AB tests) */
   postDeployWarnings: string[];
   /** True if any post-deploy sub-resource operation had errors */
@@ -138,6 +141,19 @@ interface DeployFlowState {
   useManualCredentials: (credentials: Record<string, string>) => void;
   /** Called when user chooses to skip credential setup */
   skipCredentials: () => void;
+}
+
+/** Overlay dep_sync_* telemetry attrs from the preflight dependency sync (#1540), if it ran. */
+function withDepSyncAttrs<T extends object>(attrs: T, sync: DependencySyncResult | null): T {
+  if (!sync) return attrs;
+  return {
+    ...attrs,
+    dep_sync_changed_count: sync.changes.length + sync.restored.length,
+    dep_sync_migrated: sync.migrated,
+    dep_sync_opted_out: sync.optedOut,
+    dep_sync_skew_warning: sync.skewWarning,
+    dep_sync_reinstalled: sync.reinstalled,
+  };
 }
 
 export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState {
@@ -741,7 +757,10 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     // Preflight failed — emit telemetry and bail
     if (preflight.phase === 'error') {
       const error = preflight.lastError ?? new Error('Preflight failed');
-      const attrs = context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS };
+      const attrs = withDepSyncAttrs(
+        context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS },
+        preflight.dependencySync
+      );
       withCommandRunTelemetry('deploy', attrs, () => ({ success: false as const, error })).catch(() => {
         /* telemetry is best-effort */
       });
@@ -751,7 +770,10 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     if (deployStep.status !== 'pending') return;
     if (!cdkToolkitWrapper) return;
 
-    const attrs = context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS };
+    const attrs = withDepSyncAttrs(
+      context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS },
+      preflight.dependencySync
+    );
 
     const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
       // Run diff before deploy to capture pre-deploy differences.
@@ -1022,9 +1044,12 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     // Preflight failed — emit telemetry and bail
     if (preflight.phase === 'error') {
       const error = preflight.lastError ?? new Error('Preflight failed');
-      const attrs = context
-        ? computeDeployAttrs(context.projectSpec, 'diff')
-        : { ...DEFAULT_DEPLOY_ATTRS, deploy_mode: 'diff' as const };
+      const attrs = withDepSyncAttrs(
+        context
+          ? computeDeployAttrs(context.projectSpec, 'diff')
+          : { ...DEFAULT_DEPLOY_ATTRS, deploy_mode: 'diff' as const },
+        preflight.dependencySync
+      );
       withCommandRunTelemetry('deploy', attrs, () => ({ success: false as const, error })).catch(() => {
         /* telemetry is best-effort */
       });
@@ -1034,9 +1059,12 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     if (diffStep.status !== 'pending') return;
     if (!cdkToolkitWrapper) return;
 
-    const attrs = context
-      ? computeDeployAttrs(context.projectSpec, 'diff')
-      : { ...DEFAULT_DEPLOY_ATTRS, deploy_mode: 'diff' as const };
+    const attrs = withDepSyncAttrs(
+      context
+        ? computeDeployAttrs(context.projectSpec, 'diff')
+        : { ...DEFAULT_DEPLOY_ATTRS, deploy_mode: 'diff' as const },
+      preflight.dependencySync
+    );
 
     const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
       setDiffStep(prev => ({ ...prev, status: 'running' }));
@@ -1233,6 +1261,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     numStacksWithChanges,
     deployNotes,
     managedMemoryNotice,
+    dependencySyncNotice: preflight.dependencySync?.notice ?? null,
     postDeployWarnings,
     postDeployHasError,
     isDiffLoading,
