@@ -7,7 +7,7 @@ from bedrock_agentcore.evaluation.custom_code_based_evaluators import (
 )
 from bedrock_agentcore.evaluation.custom_code_based_evaluators.third_party.autoevals import AutoevalsAdapter
 
-adapter = AutoevalsAdapter(metric={{ EvaluatorClass }}({{{ EvaluatorParams }}}))
+adapter = AutoevalsAdapter(metric={{ EvaluatorClass }}(), {{{ EvaluatorParams }}})
 
 
 @custom_code_based_evaluator()
