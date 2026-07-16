@@ -37,25 +37,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Set up Python (for the renderer)
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-
-      - name: Install the released CLI version
-        # Install the EXACT version from the release event, not @latest.
-        # `release: [published]` fires for both GA and preview releases, and
-        # previews publish under the `preview` dist-tag — so @latest would pull
-        # the wrong (previous GA) version and generate docs for it.
-        # On manual workflow_dispatch there is no release tag; fall back to latest.
-        run: |
-          if [ -n "$RELEASE_TAG" ]; then
-            npm install -g "@aws/agentcore@${RELEASE_TAG#v}"
-          else
-            npm install -g @aws/agentcore@latest
-          fi
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+      - name: Install the latest CLI version
+        run: npm install -g @aws/agentcore@latest
 
       - name: Read CLI version
         id: ver
@@ -69,7 +52,7 @@ jobs:
 
       - name: Render .adoc
         run: |
-          python scripts/render_adoc.py \
+          python3 scripts/render_adoc.py \
             --model doc-model.json \
             --out-dir out/adoc \
             --prefix "${ADOC_PREFIX}"
