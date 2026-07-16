@@ -9,14 +9,22 @@ on:
 
 jobs:
   test:
-    name: Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Test (${{ matrix.name }})
+    runs-on: ${{ fromJSON(matrix.runner) }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - name: Linux
+            runner: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}"]'
+          - name: Windows
+            runner: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "image:windows-1.0"]'
+          # CodeBuild does not support macOS.
+          # https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner-questions.html#action-runner-platform
+          - name: macOS
+            runner: '["macos-latest"]'
     steps:
       - uses: actions/checkout@v7
         with:
