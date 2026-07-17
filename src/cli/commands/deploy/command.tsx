@@ -62,6 +62,15 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
     if (options.json) {
       console.log(JSON.stringify(serializeResult(deployResult)));
     } else {
+      // Dependency sync outcome (#1540) still matters on a failed deploy: the notice explains
+      // the package.json rewrite that DID happen, and a downgraded-skew warning may explain the
+      // failure itself. printDeployResult only runs on success, so print them here.
+      if (deployResult.dependencySync?.notice) {
+        console.error(`${deployResult.dependencySync.notice}\n`);
+      }
+      for (const warning of deployResult.dependencySync?.warnings ?? []) {
+        console.error(`⚠ ${warning}`);
+      }
       console.error(deployResult.error.message);
       if (deployResult.logPath) {
         console.error(`Log: ${deployResult.logPath}`);

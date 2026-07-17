@@ -36,6 +36,20 @@ const SKIPPED_SYNC_RESULT: DependencySyncResult = {
 };
 
 /**
+ * Warning-only result for a DependencySyncError caught on a teardown deploy. Teardown must
+ * never be blocked by pinning: skew is already downgraded via `treatSkewAsWarning`, and this
+ * extends the same invariant to write/install failures (broken npm env, registry outage) —
+ * the failure is surfaced through the normal warnings channel and the teardown proceeds. If
+ * node_modules is genuinely unusable, the build step fails on its own.
+ */
+export function teardownSyncFailureResult(err: Error): DependencySyncResult {
+  return {
+    ...SKIPPED_SYNC_RESULT,
+    warnings: [`Dependency sync failed (continuing with teardown): ${err.message}`],
+  };
+}
+
+/**
  * Deploy-preflight entry point for managed dependency pinning (#1540): resolves the
  * CLI's vended CDK package.json (source of truth), the global opt-out, and the
  * distro-aware CLI install command, then runs the sync against the project's

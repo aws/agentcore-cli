@@ -21,7 +21,7 @@ export type {
   SyncManagedDependenciesOptions,
 } from './types';
 
-async function readManifest(path: string, what: string): Promise<PackageManifest> {
+async function readManifest(path: string, what: string): Promise<{ manifest: PackageManifest; raw: string }> {
   let raw: string;
   try {
     raw = await readFile(path, 'utf-8');
@@ -29,7 +29,7 @@ async function readManifest(path: string, what: string): Promise<PackageManifest
     throw new DependencySyncError(`Could not read ${what} at ${path}: ${String(err)}`, { cause: err });
   }
   try {
-    return JSON.parse(raw) as PackageManifest;
+    return { manifest: JSON.parse(raw) as PackageManifest, raw };
   } catch (err) {
     throw new DependencySyncError(`Could not parse ${what} at ${path}: ${String(err)}`, { cause: err });
   }
@@ -46,10 +46,11 @@ async function readManifest(path: string, what: string): Promise<PackageManifest
  * project declares a managed dependency newer than this CLI expects, the project was
  * updated by a newer CLI (or the user bumped it manually) and this throws
  * CliVersionTooOldError (downgraded to a warning when `disabled` or
- * `treatSkewAsWarning`). When anything changed — or node_modules is missing, e.g. a
- * previous install failed midway — `npm install` reconciles the edited package.json
- * against the existing lockfile incrementally; node_modules and the lockfile are
- * never deleted, so user-added deps keep their resolved versions.
+ * `treatSkewAsWarning`). When anything changed — or node_modules is missing —
+ * `npm install` reconciles the edited package.json against the existing lockfile
+ * incrementally; node_modules and the lockfile are never deleted, so user-added deps
+ * keep their resolved versions. If the install fails, the pre-rewrite package.json is
+ * restored so a retry recomputes the same plan and re-attempts the install.
  *
  * `mode: 'check'` computes the same plan/warnings/notice without writing or
  * installing, for preview flows that must not mutate the working tree.
@@ -69,8 +70,13 @@ export async function syncManagedDependencies(options: SyncManagedDependenciesOp
   const checkOnly = mode === 'check';
   const projectPackageJsonPath = join(projectDir, 'package.json');
 
-  const vended = await readManifest(vendedPackageJsonPath, 'the vended CDK package.json');
-  const project = await readManifest(projectPackageJsonPath, "the project's CDK package.json");
+  const { manifest: vended } = await readManifest(vendedPackageJsonPath, 'the vended CDK package.json');
+  // Keep the raw pre-rewrite text: it's restored verbatim if npm install fails, so a
+  // retry recomputes the same plan instead of seeing an already-matching manifest.
+  const { manifest: project, raw: projectRaw } = await readManifest(
+    projectPackageJsonPath,
+    "the project's CDK package.json"
+  );
 
   const plan = computeSyncPlan(vended, project);
 
@@ -130,10 +136,10 @@ export async function syncManagedDependencies(options: SyncManagedDependenciesOp
     }
   }
 
-  // Install when the manifest changed OR node_modules is missing (a previous failed install —
-  // package.json already matched on retry — self-heals here). npm >=7 reconciles the edited
-  // package.json against the existing lockfile incrementally, so we never delete node_modules
-  // or the lockfile: user-added deps keep their resolved versions and installs stay warm.
+  // Install when the manifest changed OR node_modules is missing (e.g. the user deleted it, or
+  // `create --no-install` never populated it). npm >=7 reconciles the edited package.json
+  // against the existing lockfile incrementally, so we never delete node_modules or the
+  // lockfile: user-added deps keep their resolved versions and installs stay warm.
   const needsInstall = hasPlannedChanges || !existsSync(join(projectDir, 'node_modules'));
   if (!needsInstall) {
     return result;
@@ -141,6 +147,14 @@ export async function syncManagedDependencies(options: SyncManagedDependenciesOp
 
   const install = await runSubprocessCapture('npm', ['install'], { cwd: projectDir });
   if (install.code !== 0) {
+    // Restore the pre-rewrite package.json before failing. Without this, the retry would see a
+    // manifest that already matches the pins and an existing node_modules (a failed install
+    // doesn't remove it), skip the install, and deploy against the stale installed tree — the
+    // exact skew this sync exists to prevent. Restoring makes the retry recompute the same plan
+    // and re-attempt the install. Best-effort: a restore failure must not mask the install error.
+    if (hasPlannedChanges) {
+      await writeFile(projectPackageJsonPath, projectRaw, 'utf-8').catch(() => undefined);
+    }
     throw new DependencySyncError(
       `npm install failed after updating managed dependencies (exit ${String(install.code)}): ${install.stderr}`
     );

@@ -212,13 +212,30 @@ describe('syncManagedDependencies', () => {
     expect(readProject().dependencies['@aws/agentcore-cdk']).toBe('file:bundled-agentcore-cdk.tgz');
   });
 
-  it('wraps npm install failure in DependencySyncError and leaves the rewritten manifest for retry', async () => {
+  it('wraps npm install failure in DependencySyncError and restores the original manifest', async () => {
     mockRunSubprocessCapture.mockResolvedValue({ stdout: '', stderr: 'E404', code: 1, signal: null });
+    const original = { dependencies: { ...VENDED.dependencies, 'aws-cdk-lib': '~2.250.0' }, devDependencies: {} };
+    writeProject(original);
+    await expect(run()).rejects.toThrow(DependencySyncError);
+    // The rewrite is rolled back on install failure. Otherwise a retry would see a manifest that
+    // already matches the pins plus a still-present node_modules, skip the install, and deploy
+    // against the stale installed tree — the exact skew this sync exists to prevent.
+    expect(readProject()).toEqual(original);
+  });
+
+  it('recomputes the same plan and re-attempts the install on retry after an install failure', async () => {
+    mockRunSubprocessCapture.mockResolvedValueOnce({ stdout: '', stderr: 'E404', code: 1, signal: null });
     writeProject({ dependencies: { ...VENDED.dependencies, 'aws-cdk-lib': '~2.250.0' }, devDependencies: {} });
     await expect(run()).rejects.toThrow(DependencySyncError);
-    // package.json was already rewritten; the retry sees a matching manifest but recovers
-    // via the missing-node_modules install path (exercised in the self-healing test above).
+
+    // Second run: the restored manifest yields the same plan, and this time npm succeeds.
+    const result = await run();
+    expect(result.changes).toEqual([
+      { name: 'aws-cdk-lib', section: 'dependencies', from: '~2.250.0', to: '~2.261.0' },
+    ]);
+    expect(result.reinstalled).toBe(true);
     expect(readProject().dependencies['aws-cdk-lib']).toBe('~2.261.0');
+    expect(mockRunSubprocessCapture).toHaveBeenCalledTimes(2);
   });
 
   it('wraps unreadable project package.json in DependencySyncError', async () => {

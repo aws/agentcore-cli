@@ -1,4 +1,11 @@
-import { ConfigIO, ResourceNotFoundError, SecureCredentials, ValidationError, toError } from '../../../lib';
+import {
+  ConfigIO,
+  DependencySyncError,
+  ResourceNotFoundError,
+  SecureCredentials,
+  ValidationError,
+  toError,
+} from '../../../lib';
 import type { DependencySyncResult } from '../../../lib/dependency-management';
 import type { Result } from '../../../lib/result';
 import type { AgentCoreMcpSpec, DeployedState } from '../../../schema';
@@ -45,6 +52,7 @@ import {
   setupOAuth2Providers,
   setupTransactionSearch,
   synthesizeCdk,
+  teardownSyncFailureResult,
   validateProject,
 } from '../../operations/deploy';
 import { computeProjectDeployHash } from '../../operations/deploy/change-detection';
@@ -171,8 +179,9 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
   const logger = new ExecLogger({ command: 'deploy' });
   const { onProgress } = options;
   let currentStepName = '';
-  // Hoisted above the try so the catch's failure result still carries the sync outcome —
-  // dep_sync_* telemetry must be recorded even when a later step fails.
+  // Hoisted above the try so every failure result — the catch AND the explicit failure
+  // returns after the sync step — still carries the sync outcome: dep_sync_* telemetry and
+  // the user-facing rewrite notice must survive a deploy that fails after the sync ran.
   let depSync: DependencySyncResult | undefined;
 
   const startStep = (name: string) => {
@@ -271,14 +280,25 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // CLI was tested with, migrating pre-pinning (caret) projects. Must run before the build so
     // the compile sees the reinstalled tree. Throws CliVersionTooOldError on newer-than-CLI skew.
     // Preview modes (--dry-run / --diff) run check-only — they must never mutate the working
-    // tree — and teardown deploys downgrade skew to a warning so it can't block destroying a
-    // cost-incurring stack.
+    // tree — and teardown deploys downgrade every sync failure to a warning: skew via
+    // treatSkewAsWarning, and write/install failures (DependencySyncError, e.g. a broken npm
+    // env or a registry outage) via the catch below. Nothing about pinning may block
+    // destroying a cost-incurring stack — if node_modules is genuinely unusable, the build
+    // step fails on its own.
     const isPreview = !!options.plan || !!options.diff;
     startStep(SYNC_CDK_DEPENDENCIES_STEP);
-    depSync = await ensureManagedDependencies(context.cdkProject, {
-      checkOnly: isPreview,
-      treatSkewAsWarning: context.isTeardownDeploy,
-    });
+    try {
+      depSync = await ensureManagedDependencies(context.cdkProject, {
+        checkOnly: isPreview,
+        treatSkewAsWarning: context.isTeardownDeploy,
+      });
+    } catch (syncErr) {
+      if (!(context.isTeardownDeploy && syncErr instanceof DependencySyncError)) {
+        throw syncErr;
+      }
+      // The warning-only result flows through the normal depSync.warnings channel below.
+      depSync = teardownSyncFailureResult(syncErr);
+    }
     for (const warning of depSync.warnings) {
       logger.log(warning, 'warn');
     }
@@ -301,7 +321,12 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const envFileAssertionResult = assertEnvFileExists(context.projectSpec, configIO.getConfigRoot());
     if (!envFileAssertionResult.success) {
       logger.finalize(false);
-      return { success: false, error: envFileAssertionResult.error, logPath: logger.getRelativeLogPath() };
+      return {
+        success: false,
+        error: envFileAssertionResult.error,
+        logPath: logger.getRelativeLogPath(),
+        dependencySync: depSync,
+      };
     }
 
     // Read runtime credentials from process.env (enables non-interactive deploy with -y)
@@ -342,6 +367,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
           success: false,
           error: errorResult?.error ?? new Error('unknown error occurred when setting up api key providers'),
           logPath: logger.getRelativeLogPath(),
+          dependencySync: depSync,
         };
       }
       identityKmsKeyArn = identityResult.kmsKeyArn;
@@ -379,6 +405,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
           success: false,
           error: errorResult?.error ?? new Error(`an unexpected error ocurred when setting up oauth providers`),
           logPath: logger.getRelativeLogPath(),
+          dependencySync: depSync,
         };
       }
 
@@ -416,6 +443,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
           success: false,
           error: paymentPreDeployResult.errors[0] ?? new Error('payment deploy preflight steps failed'),
           logPath: logger.getRelativeLogPath(),
+          dependencySync: depSync,
         };
       }
 
@@ -474,6 +502,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         success: false,
         error: stackSelection.error,
         logPath: logger.getRelativeLogPath(),
+        dependencySync: depSync,
       };
     }
     const stackName = stackSelection.stackName;
@@ -493,6 +522,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
           success: false,
           error: new ValidationError('AWS environment needs bootstrapping. Run with --yes to auto-bootstrap.'),
           logPath: logger.getRelativeLogPath(),
+          dependencySync: depSync,
         };
       }
     }
@@ -509,6 +539,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         success: false,
         error: new Error(deployabilityCheck.message ?? 'Stack is not in a deployable state'),
         logPath: logger.getRelativeLogPath(),
+        dependencySync: depSync,
       };
     }
     endStep('success');
@@ -610,6 +641,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
           success: false,
           error: teardown.error,
           logPath: logger.getRelativeLogPath(),
+          dependencySync: depSync,
         };
       }
       endStep('success');

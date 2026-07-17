@@ -1,6 +1,6 @@
 import { ConfigIO, SecureCredentials, toError } from '../../../lib';
 import type { DependencySyncResult } from '../../../lib/dependency-management';
-import { AwsCredentialsError, UserCancellationError } from '../../../lib/errors/types';
+import { AwsCredentialsError, DependencySyncError, UserCancellationError } from '../../../lib/errors/types';
 import type { DeployedState } from '../../../schema';
 import { applyTargetRegionToEnv } from '../../aws';
 import { validateAwsCredentials } from '../../aws/account';
@@ -24,6 +24,7 @@ import {
   setupApiKeyProviders,
   setupOAuth2Providers,
   synthesizeCdk,
+  teardownSyncFailureResult,
   validateProject,
 } from '../../operations/deploy';
 import {
@@ -502,8 +503,9 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         // Step: Sync managed dependencies (#1540) — pin agentcore/cdk/package.json to the versions
         // this CLI was tested with, migrating pre-pinning (caret) projects. Runs before the build so
         // the compile sees the reinstalled tree. Diff mode runs check-only (never mutates the
-        // working tree), and teardown deploys downgrade skew to a warning so it can't block
-        // destroying a cost-incurring stack.
+        // working tree), and teardown deploys downgrade every sync failure to a warning: skew via
+        // treatSkewAsWarning, write/install failures (DependencySyncError) via the catch below.
+        // Nothing about pinning may block destroying a cost-incurring stack.
         updateStep(STEP_SYNC_DEPS, { status: 'running' });
         logger.startStep(SYNC_CDK_DEPENDENCIES_STEP);
         try {
@@ -521,11 +523,22 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           logger.endStep('success');
           updateStep(STEP_SYNC_DEPS, { status: 'success' });
         } catch (err) {
-          const errorMsg = formatError(err);
-          logger.endStep('error', errorMsg);
-          updateStep(STEP_SYNC_DEPS, { status: 'error', error: getErrorMessage(err) });
-          failPreflight(err);
-          return;
+          if (preflightContext.isTeardownDeploy && err instanceof DependencySyncError) {
+            // Surface through the same warning channels as a downgraded skew: the deploy-flow
+            // screens render dependencySync.warnings, and the step shows the warning inline.
+            const downgraded = teardownSyncFailureResult(err);
+            const warning = downgraded.warnings[0]!;
+            logger.log(warning, 'warn');
+            setDependencySync(downgraded);
+            logger.endStep('success');
+            updateStep(STEP_SYNC_DEPS, { status: 'warn', warn: warning });
+          } else {
+            const errorMsg = formatError(err);
+            logger.endStep('error', errorMsg);
+            updateStep(STEP_SYNC_DEPS, { status: 'error', error: getErrorMessage(err) });
+            failPreflight(err);
+            return;
+          }
         }
 
         // Step: Build CDK project
