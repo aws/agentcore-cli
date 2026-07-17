@@ -2,10 +2,6 @@ import { test, expect, describe } from "bun:test";
 import { createRootHandler } from "../index";
 import { createSilentLogger, TestCoreClient, testIO } from "../../testing";
 
-// End-to-end tests for the `project` command, driven through the real root
-// handler and top-level route(). A TestCoreClient stands in for Core (the
-// scaffold doesn't touch it, but createRootHandler requires one).
-
 async function run(args: string[]): Promise<void> {
   const io = testIO();
   const root = createRootHandler(new TestCoreClient(), {
