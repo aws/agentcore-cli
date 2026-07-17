@@ -2,6 +2,7 @@ import { Router } from "../router";
 import { createHarnessHandler } from "./harness/index.tsx";
 import { DebugKey, EndpointKey, JsonKey, RegionKey } from "./keys.tsx";
 import { createConfigHandler } from "./config/";
+import { createProjectHandler } from "./project/index.ts";
 import { renderTui } from "../tui";
 import { withRegion, withJsonRenderer, withLogging } from "../middleware";
 import type { AppIO, Core } from "./types.tsx";
@@ -33,6 +34,7 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   // Install sub handlers
   root.handler(createHarnessHandler(core, io));
   root.handler(createConfigHandler(io));
+  root.handler(createProjectHandler());
 
   // Invoking with no subcommand launches the interactive TUI.
   root.default(renderTui(core, io));
