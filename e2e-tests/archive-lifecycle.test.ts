@@ -129,6 +129,7 @@ describe.sequential('e2e: archive command lifecycle', () => {
             'Builtin.Faithfulness',
             '--lookback-days',
             '1',
+            '--wait',
             '--json',
           ]);
           expect(result.exitCode, `batch-evaluation failed (stdout: ${result.stdout}, stderr: ${result.stderr})`).toBe(
