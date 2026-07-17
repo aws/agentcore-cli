@@ -19,7 +19,7 @@ import {
   parsePolicyOutputs,
   parseRuntimeEndpointOutputs,
 } from '../../../cloudformation';
-import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs } from '../../../commands/deploy/utils.js';
+import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs, toDepSyncAttrs } from '../../../commands/deploy/utils.js';
 import { toStackName } from '../../../commands/import/import-utils';
 import { getErrorMessage, isChangesetInProgressError, isExpiredTokenError } from '../../../errors';
 import { ExecLogger } from '../../../logging';
@@ -118,6 +118,8 @@ interface DeployFlowState {
   managedMemoryNotice: string | null;
   /** Managed dependency sync summary from preflight (#1540), null when nothing changed */
   dependencySyncNotice: string | null;
+  /** Managed dependency sync warnings (downgraded skew, skipped specifiers) from preflight (#1540) */
+  dependencySyncWarnings: string[];
   /** Warnings from post-deploy steps (config bundles, AB tests) */
   postDeployWarnings: string[];
   /** True if any post-deploy sub-resource operation had errors */
@@ -146,14 +148,7 @@ interface DeployFlowState {
 /** Overlay dep_sync_* telemetry attrs from the preflight dependency sync (#1540), if it ran. */
 function withDepSyncAttrs<T extends object>(attrs: T, sync: DependencySyncResult | null): T {
   if (!sync) return attrs;
-  return {
-    ...attrs,
-    dep_sync_changed_count: sync.changes.length + sync.restored.length,
-    dep_sync_migrated: sync.migrated,
-    dep_sync_opted_out: sync.optedOut,
-    dep_sync_skew_warning: sync.skewWarning,
-    dep_sync_reinstalled: sync.reinstalled,
-  };
+  return { ...attrs, ...toDepSyncAttrs(sync) };
 }
 
 export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState {
@@ -163,8 +158,10 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
   // Create logger once for the entire deploy flow
   const [logger] = useState(() => new ExecLogger({ command: 'deploy' }));
 
-  // Always call the hook (React rules), but we won't use it when preSynthesized is provided
-  const preflight = useCdkPreflight({ logger, isInteractive });
+  // Always call the hook (React rules), but we won't use it when preSynthesized is provided.
+  // Diff mode is a preview: the managed-dependency sync runs check-only so the working tree
+  // is never mutated by `agentcore deploy --diff`.
+  const preflight = useCdkPreflight({ logger, isInteractive, dependencySyncCheckOnly: diffMode });
 
   // Use pre-synthesized values when provided, otherwise use preflight values
   const cdkToolkitWrapper = preSynthesized?.cdkToolkitWrapper ?? preflight.cdkToolkitWrapper;
@@ -1262,6 +1259,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     deployNotes,
     managedMemoryNotice,
     dependencySyncNotice: preflight.dependencySync?.notice ?? null,
+    dependencySyncWarnings: preflight.dependencySync?.warnings ?? [],
     postDeployWarnings,
     postDeployHasError,
     isDiffLoading,

@@ -264,6 +264,8 @@ export function DevScreen(props: DevScreenProps) {
     error: deployError,
     logPath: deployLogPath,
     managedMemoryNotice,
+    dependencySyncNotice,
+    dependencySyncWarnings,
   } = useDevDeploy({ skip: props.skipDeploy, ready: mode === 'deploying' });
 
   const hasTransitionedFromDeployRef = useRef(false);
@@ -546,6 +548,22 @@ export function DevScreen(props: DevScreenProps) {
           {managedMemoryNotice && !deployComplete && (
             <Box marginTop={1}>
               <Text dimColor>Note: {managedMemoryNotice}</Text>
+            </Box>
+          )}
+          {/* Managed dependency sync summary (#1540): its own block — the multi-line notice
+              doesn't fit the single "Note:" line above. */}
+          {dependencySyncNotice && (
+            <Box marginTop={1} flexDirection="column">
+              <Text dimColor>{dependencySyncNotice}</Text>
+            </Box>
+          )}
+          {dependencySyncWarnings.length > 0 && (
+            <Box marginTop={1} flexDirection="column">
+              {dependencySyncWarnings.map((warning, i) => (
+                <Text key={i} color="yellow">
+                  ⚠ {warning}
+                </Text>
+              ))}
             </Box>
           )}
           {hasStartedCfn && (

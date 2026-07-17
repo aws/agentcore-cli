@@ -2,23 +2,65 @@ import { syncManagedDependencies } from '../../../lib/dependency-management';
 import type { DependencySyncResult } from '../../../lib/dependency-management';
 import { readGlobalConfigSync } from '../../../lib/schemas/io/global-config';
 import type { LocalCdkProject } from '../../cdk/local-cdk-project';
+import { getDistroConfig } from '../../constants';
 import { getTemplatePath } from '../../templates/templateRoot';
+
+/** Step label for the managed-dependency sync, shared by the CLI and TUI deploy flows. */
+export const SYNC_CDK_DEPENDENCIES_STEP = 'Sync CDK dependencies';
+
+export interface EnsureManagedDependenciesOptions {
+  /**
+   * Check-only run for preview modes (--dry-run / --diff): computes the plan, warnings, and a
+   * future-tense notice without writing package.json or running npm install.
+   */
+  checkOnly?: boolean;
+  /**
+   * Teardown deploys: newer-than-CLI skew becomes a warning instead of CliVersionTooOldError,
+   * so skew never blocks destroying a cost-incurring stack.
+   */
+  treatSkewAsWarning?: boolean;
+}
+
+/** No-op result for when the sync is skipped entirely (AGENTCORE_SKIP_INSTALL). */
+const SKIPPED_SYNC_RESULT: DependencySyncResult = {
+  optedOut: false,
+  checkOnly: true,
+  migrated: false,
+  reinstalled: false,
+  skewWarning: false,
+  changes: [],
+  restored: [],
+  skipped: [],
+  warnings: [],
+  notice: null,
+};
 
 /**
  * Deploy-preflight entry point for managed dependency pinning (#1540): resolves the
- * CLI's vended CDK package.json (source of truth) and the global opt-out, then runs
- * the sync against the project's agentcore/cdk directory. A future `agentcore build`
- * command should call this same function.
+ * CLI's vended CDK package.json (source of truth), the global opt-out, and the
+ * distro-aware CLI install command, then runs the sync against the project's
+ * agentcore/cdk directory. A future `agentcore build` command should call this same
+ * function. Skipped entirely when AGENTCORE_SKIP_INSTALL is set (same escape hatch
+ * as create --no-install and the language setup steps).
  *
- * Throws CliVersionTooOldError when the project was updated by a newer CLI, and
- * DependencySyncError on rewrite/reinstall failure.
+ * Throws CliVersionTooOldError when the project was updated by a newer CLI (unless
+ * `treatSkewAsWarning` or opted out), and DependencySyncError on rewrite/install failure.
  */
-export async function ensureManagedDependencies(cdkProject: LocalCdkProject): Promise<DependencySyncResult> {
+export async function ensureManagedDependencies(
+  cdkProject: LocalCdkProject,
+  options: EnsureManagedDependenciesOptions = {}
+): Promise<DependencySyncResult> {
+  if (process.env.AGENTCORE_SKIP_INSTALL) {
+    return SKIPPED_SYNC_RESULT;
+  }
   const disabled = readGlobalConfigSync().disableDependencyManagement === true;
   return syncManagedDependencies({
     vendedPackageJsonPath: getTemplatePath('cdk', 'package.json'),
     projectDir: cdkProject.projectDir,
     disabled,
+    mode: options.checkOnly ? 'check' : 'apply',
+    treatSkewAsWarning: options.treatSkewAsWarning,
+    installCommand: getDistroConfig().installCommand,
   });
 }
 

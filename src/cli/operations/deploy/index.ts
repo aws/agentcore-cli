@@ -69,7 +69,12 @@ export { ensureDefaultDeploymentTarget } from './ensure-target';
 export { backfillContainerVpcIds, type BackfillVpcIdResult } from './backfill-vpc-id';
 
 // Managed dependency pinning (#1540) — shared by CLI deploy + TUI preflight
-export { ensureManagedDependencies, type DependencySyncResult } from './dependency-sync';
+export {
+  ensureManagedDependencies,
+  SYNC_CDK_DEPENDENCIES_STEP,
+  type DependencySyncResult,
+  type EnsureManagedDependenciesOptions,
+} from './dependency-sync';
 
 // Managed-memory heads-up (shared by the CLI command + TUI deploy flow + add harness)
 export {

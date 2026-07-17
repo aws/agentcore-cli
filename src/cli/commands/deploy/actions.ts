@@ -1,4 +1,5 @@
 import { ConfigIO, ResourceNotFoundError, SecureCredentials, ValidationError, toError } from '../../../lib';
+import type { DependencySyncResult } from '../../../lib/dependency-management';
 import type { Result } from '../../../lib/result';
 import type { AgentCoreMcpSpec, DeployedState } from '../../../schema';
 import { applyTargetRegionToEnv } from '../../aws';
@@ -26,6 +27,7 @@ import { getErrorMessage } from '../../errors';
 import { ExecLogger } from '../../logging';
 import {
   MANAGED_MEMORY_DEPLOY_NOTICE,
+  SYNC_CDK_DEPENDENCIES_STEP,
   assertEnvFileExists,
   backfillContainerVpcIds,
   bootstrapEnvironment,
@@ -169,6 +171,9 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
   const logger = new ExecLogger({ command: 'deploy' });
   const { onProgress } = options;
   let currentStepName = '';
+  // Hoisted above the try so the catch's failure result still carries the sync outcome —
+  // dep_sync_* telemetry must be recorded even when a later step fails.
+  let depSync: DependencySyncResult | undefined;
 
   const startStep = (name: string) => {
     currentStepName = name;
@@ -265,8 +270,15 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // Sync managed dependencies (#1540): pin agentcore/cdk/package.json to the versions this
     // CLI was tested with, migrating pre-pinning (caret) projects. Must run before the build so
     // the compile sees the reinstalled tree. Throws CliVersionTooOldError on newer-than-CLI skew.
-    startStep('Sync CDK dependencies');
-    const depSync = await ensureManagedDependencies(context.cdkProject);
+    // Preview modes (--dry-run / --diff) run check-only — they must never mutate the working
+    // tree — and teardown deploys downgrade skew to a warning so it can't block destroying a
+    // cost-incurring stack.
+    const isPreview = !!options.plan || !!options.diff;
+    startStep(SYNC_CDK_DEPENDENCIES_STEP);
+    depSync = await ensureManagedDependencies(context.cdkProject, {
+      checkOnly: isPreview,
+      treatSkewAsWarning: context.isTeardownDeploy,
+    });
     for (const warning of depSync.warnings) {
       logger.log(warning, 'warn');
     }
@@ -435,7 +447,6 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // process — which re-reads agentcore.json / harness.json — has the value it needs. Fresh creates
     // already carry a vpcId, so this is a no-op for them. In preview modes (--dry-run / --diff) the
     // write is reverted after synth via backfill.restore() so a preview leaves the working tree clean.
-    const isPreview = !!options.plan || !!options.diff;
     const backfill = await backfillContainerVpcIds(configIO, context.projectSpec, target.region, !isPreview);
     // In preview mode, revert the on-disk backfill in `finally` so every exit path (including a synth
     // throw or an early return) leaves the working tree clean. restore() is a no-op on a real deploy.
@@ -990,9 +1001,9 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     logger.finalize(true);
 
-    // Surface orphan-harness warnings (collected pre-deploy) to the terminal alongside any
-    // post-deploy warnings — logger.log only writes to the log file.
-    const allWarnings = [...orphanWarnings, ...postDeployWarnings];
+    // Surface orphan-harness and dependency-sync warnings (collected pre-deploy) to the terminal
+    // alongside any post-deploy warnings — logger.log only writes to the log file.
+    const allWarnings = [...orphanWarnings, ...depSync.warnings, ...postDeployWarnings];
 
     return {
       success: true,
@@ -1008,7 +1019,9 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
   } catch (err: unknown) {
     logger.log(getErrorMessage(err), 'error');
     logger.finalize(false);
-    return { success: false, error: toError(err), logPath: logger.getRelativeLogPath() };
+    // Carry the dep-sync outcome on the failure result too, so dep_sync_* telemetry
+    // is recorded even when a later step throws.
+    return { success: false, error: toError(err), logPath: logger.getRelativeLogPath(), dependencySync: depSync };
   } finally {
     // Each cleanup step must run regardless of whether an earlier one fails — a throw from
     // dispose() (common after a synth/bootstrap failure on a creds-less preview) must not skip the

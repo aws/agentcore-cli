@@ -1,9 +1,16 @@
 import { CliVersionTooOldError, DependencySyncError } from '../errors/types';
 import { runSubprocessCapture } from '../utils/subprocess';
-import { CLI_UPGRADE_ERROR_MESSAGE, formatSkewWarning, formatSkippedWarning, formatSyncNotice } from './messages';
+import {
+  DEFAULT_CLI_INSTALL_COMMAND,
+  formatCliUpgradeError,
+  formatSkewWarning,
+  formatSkippedWarning,
+  formatSyncNotice,
+} from './messages';
 import { computeSyncPlan } from './policy';
 import type { DependencySyncResult, PackageManifest, SyncManagedDependenciesOptions } from './types';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export type {
@@ -37,15 +44,29 @@ async function readManifest(path: string, what: string): Promise<PackageManifest
  * float, exact for the L3 constructs); everything else in the user's file is untouched.
  * Projects that predate pinning (caret ranges) are migrated automatically. If the
  * project declares a managed dependency newer than this CLI expects, the project was
- * updated by a newer CLI and this throws CliVersionTooOldError (downgraded to a
- * warning in the result when `disabled`). When anything changed, node_modules and the
- * lockfile are deleted and dependencies reinstalled so the installed tree matches.
+ * updated by a newer CLI (or the user bumped it manually) and this throws
+ * CliVersionTooOldError (downgraded to a warning when `disabled` or
+ * `treatSkewAsWarning`). When anything changed — or node_modules is missing, e.g. a
+ * previous install failed midway — `npm install` reconciles the edited package.json
+ * against the existing lockfile incrementally; node_modules and the lockfile are
+ * never deleted, so user-added deps keep their resolved versions.
+ *
+ * `mode: 'check'` computes the same plan/warnings/notice without writing or
+ * installing, for preview flows that must not mutate the working tree.
  *
  * All user-facing wording is returned on the result (`notice`, `warnings`) — callers
  * only display it. Throws CliVersionTooOldError | DependencySyncError; never exits.
  */
 export async function syncManagedDependencies(options: SyncManagedDependenciesOptions): Promise<DependencySyncResult> {
-  const { vendedPackageJsonPath, projectDir, disabled = false } = options;
+  const {
+    vendedPackageJsonPath,
+    projectDir,
+    disabled = false,
+    mode = 'apply',
+    treatSkewAsWarning = false,
+    installCommand = DEFAULT_CLI_INSTALL_COMMAND,
+  } = options;
+  const checkOnly = mode === 'check';
   const projectPackageJsonPath = join(projectDir, 'package.json');
 
   const vended = await readManifest(vendedPackageJsonPath, 'the vended CDK package.json');
@@ -55,6 +76,7 @@ export async function syncManagedDependencies(options: SyncManagedDependenciesOp
 
   const result: DependencySyncResult = {
     optedOut: disabled,
+    checkOnly,
     migrated: plan.migratedFromCaret,
     reinstalled: false,
     skewWarning: false,
@@ -66,32 +88,55 @@ export async function syncManagedDependencies(options: SyncManagedDependenciesOp
   };
 
   if (plan.skew.length > 0) {
-    if (!disabled) {
-      throw new CliVersionTooOldError(CLI_UPGRADE_ERROR_MESSAGE);
+    if (!disabled && !treatSkewAsWarning && !checkOnly) {
+      throw new CliVersionTooOldError(formatCliUpgradeError(plan.skew, installCommand));
     }
     result.skewWarning = true;
-    result.warnings.push(formatSkewWarning(plan.skew));
+    result.warnings.push(formatSkewWarning(plan.skew, installCommand));
   }
 
-  if (disabled || (plan.changes.length === 0 && plan.restored.length === 0)) {
+  if (disabled) {
     return result;
   }
 
-  // Mutate the parsed manifest in place so user key order and unknown fields survive.
-  for (const change of plan.changes) {
-    project[change.section]![change.name] = change.to;
-  }
-  for (const restoredDep of plan.restored) {
-    const section = (project[restoredDep.section] ??= {});
-    section[restoredDep.name] = restoredDep.to;
+  const hasPlannedChanges = plan.changes.length > 0 || plan.restored.length > 0;
+
+  if (checkOnly) {
+    // Report what WOULD change without touching the working tree (future-tense wording).
+    result.notice = formatSyncNotice({
+      migrated: result.migrated,
+      changes: result.changes,
+      restored: result.restored,
+      reinstalled: false,
+      applied: false,
+    });
+    return result;
   }
 
-  try {
-    await writeFile(projectPackageJsonPath, JSON.stringify(project, null, 2) + '\n', 'utf-8');
-    await rm(join(projectDir, 'node_modules'), { recursive: true, force: true });
-    await rm(join(projectDir, 'package-lock.json'), { force: true });
-  } catch (err) {
-    throw new DependencySyncError(`Failed to update the CDK project's dependencies: ${String(err)}`, { cause: err });
+  if (hasPlannedChanges) {
+    // Mutate the parsed manifest in place so user key order and unknown fields survive.
+    for (const change of plan.changes) {
+      project[change.section]![change.name] = change.to;
+    }
+    for (const restoredDep of plan.restored) {
+      const section = (project[restoredDep.section] ??= {});
+      section[restoredDep.name] = restoredDep.to;
+    }
+
+    try {
+      await writeFile(projectPackageJsonPath, JSON.stringify(project, null, 2) + '\n', 'utf-8');
+    } catch (err) {
+      throw new DependencySyncError(`Failed to update the CDK project's dependencies: ${String(err)}`, { cause: err });
+    }
+  }
+
+  // Install when the manifest changed OR node_modules is missing (a previous failed install —
+  // package.json already matched on retry — self-heals here). npm >=7 reconciles the edited
+  // package.json against the existing lockfile incrementally, so we never delete node_modules
+  // or the lockfile: user-added deps keep their resolved versions and installs stay warm.
+  const needsInstall = hasPlannedChanges || !existsSync(join(projectDir, 'node_modules'));
+  if (!needsInstall) {
+    return result;
   }
 
   const install = await runSubprocessCapture('npm', ['install'], { cwd: projectDir });
@@ -107,6 +152,7 @@ export async function syncManagedDependencies(options: SyncManagedDependenciesOp
     changes: result.changes,
     restored: result.restored,
     reinstalled: result.reinstalled,
+    applied: true,
   });
   return result;
 }

@@ -6,7 +6,7 @@ import { renderTUI } from '../../tui';
 import { requireProject, requireTTY } from '../../tui/guards';
 import { handleDeploy } from './actions';
 import type { DeployOptions, DeployResult } from './types';
-import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs } from './utils';
+import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs, toDepSyncAttrs } from './utils';
 import { validateDeployOptions } from './validate';
 import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';
@@ -46,14 +46,10 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
     const result = await executeDeploy(options).catch(
       (e): DeployResult => ({ success: false, error: e instanceof Error ? e : new Error(getErrorMessage(e)) })
     );
-    if (result.success && result.dependencySync) {
-      recorder.set({
-        dep_sync_changed_count: result.dependencySync.changes.length + result.dependencySync.restored.length,
-        dep_sync_migrated: result.dependencySync.migrated,
-        dep_sync_opted_out: result.dependencySync.optedOut,
-        dep_sync_skew_warning: result.dependencySync.skewWarning,
-        dep_sync_reinstalled: result.dependencySync.reinstalled,
-      });
+    // Record dep_sync attrs whenever the sync ran — including on failed deploys, where the
+    // failure result still carries the outcome (see handleDeploy's catch).
+    if (result.dependencySync) {
+      recorder.set(toDepSyncAttrs(result.dependencySync));
     }
     if (!result.success) {
       return { success: false as const, error: result.error, deployResult: result };

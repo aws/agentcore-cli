@@ -18,8 +18,11 @@ export type DeployResult = Result<{
   nextSteps?: string[];
   notes?: string[];
   postDeployWarnings?: string[];
+}> & {
+  logPath?: string;
+  /** Sync outcome rides on BOTH branches so dep_sync_* telemetry survives a failed deploy. */
   dependencySync?: DependencySyncResult;
-}> & { logPath?: string };
+};
 
 export type PreflightResult = Result<{
   stackNames?: string[];

@@ -84,6 +84,7 @@ export function DeployScreen({
     deployNotes,
     managedMemoryNotice,
     dependencySyncNotice,
+    dependencySyncWarnings,
     postDeployWarnings,
     postDeployHasError,
     isDiffLoading,
@@ -349,6 +350,17 @@ export function DeployScreen({
           {dependencySyncNotice && (
             <Box marginTop={1} flexDirection="column">
               <Text dimColor>{dependencySyncNotice}</Text>
+            </Box>
+          )}
+
+          {/* Managed dependency sync warnings (#1540): downgraded skew, skipped specifiers. */}
+          {dependencySyncWarnings.length > 0 && (
+            <Box marginTop={1} flexDirection="column">
+              {dependencySyncWarnings.map((warning, i) => (
+                <Text key={i} color="yellow">
+                  ⚠ {warning}
+                </Text>
+              ))}
             </Box>
           )}
 
