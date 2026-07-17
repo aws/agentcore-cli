@@ -72,7 +72,7 @@ export function formatError(err: unknown): string {
  * Also validates AWS credentials are configured before proceeding.
  * Returns the project context needed for subsequent steps.
  */
-export async function validateProject(): Promise<PreflightContext> {
+export async function validateProject(selectedTarget?: AwsDeploymentTarget): Promise<PreflightContext> {
   // Find the agentcore config directory, walking up from cwd if needed
   const configRoot = requireConfigRoot();
   // Project root is the parent of the agentcore directory
@@ -152,7 +152,7 @@ export async function validateProject(): Promise<PreflightContext> {
   // Validate AWS credentials before proceeding with build/synth.
   // Skip for teardown deploys — callers validate after teardown confirmation.
   if (!isTeardownDeploy) {
-    await validateAwsCredentials();
+    await validateAwsCredentials(selectedTarget ?? awsTargets[0]);
   }
 
   return { projectSpec, awsTargets, cdkProject, isTeardownDeploy, isFirstDeploy: !hasExistingStack };

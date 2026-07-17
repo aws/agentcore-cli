@@ -1,4 +1,5 @@
-import { AwsCredentialsError } from '../../lib/errors/types.js';
+import { AwsCredentialsError, ValidationError } from '../../lib/errors/types.js';
+import type { AwsDeploymentTarget } from '../../schema';
 import { getAwsLoginGuidance } from '../external-requirements/checks';
 import { GetCallerIdentityCommand, STSClient } from '@aws-sdk/client-sts';
 import { fromEnv, fromNodeProviderChain } from '@aws-sdk/credential-providers';
@@ -61,9 +62,10 @@ export async function detectAccount(): Promise<string | null> {
 
 /**
  * Validate that AWS credentials are configured and working.
+ * When a target is provided, also verify that the credentials belong to its account.
  * Throws AwsCredentialsError with a helpful message if not.
  */
-export async function validateAwsCredentials(): Promise<void> {
+export async function validateAwsCredentials(target?: Pick<AwsDeploymentTarget, 'name' | 'account'>): Promise<void> {
   const account = await detectAccount();
   if (!account) {
     const guidance = await getAwsLoginGuidance();
@@ -73,6 +75,12 @@ export async function validateAwsCredentials(): Promise<void> {
         'To fix this:\n' +
         `  1. ${guidance}\n` +
         '  2. Or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables'
+    );
+  }
+
+  if (target?.account && account !== target.account) {
+    throw new ValidationError(
+      `Your AWS credentials are for account ${account}, but the target "${target.name}" is configured for account ${target.account}.\nEnsure your credentials match the deployment target.`
     );
   }
 }

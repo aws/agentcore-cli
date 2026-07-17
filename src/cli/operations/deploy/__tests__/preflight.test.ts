@@ -179,6 +179,43 @@ describe('validateProject', () => {
     expect(result.isTeardownDeploy).toBe(false);
   });
 
+  it('validates credentials against the selected deployment target', async () => {
+    const selectedTarget = { name: 'prod', account: '222222222222', region: 'us-east-1' } as const;
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'test-project',
+      runtimes: [{ name: 'test-agent' }],
+      agentCoreGateways: [],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([
+      { name: 'default', account: '111111111111', region: 'us-west-2' },
+      selectedTarget,
+    ]);
+    mockValidateAwsCredentials.mockResolvedValue(undefined);
+
+    await validateProject(selectedTarget);
+
+    expect(mockValidateAwsCredentials).toHaveBeenCalledWith(selectedTarget);
+  });
+
+  it('validates credentials against the first target when none is selected', async () => {
+    const firstTarget = { name: 'default', account: '111111111111', region: 'us-west-2' } as const;
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'test-project',
+      runtimes: [{ name: 'test-agent' }],
+      agentCoreGateways: [],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([firstTarget]);
+    mockValidateAwsCredentials.mockResolvedValue(undefined);
+
+    await validateProject();
+
+    expect(mockValidateAwsCredentials).toHaveBeenCalledWith(firstTarget);
+  });
+
   it('accepts gateway target name within 48 chars when prefixed with project name', async () => {
     mockRequireConfigRoot.mockReturnValue('/project/agentcore');
     mockValidate.mockReturnValue(undefined);

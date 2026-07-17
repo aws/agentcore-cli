@@ -441,7 +441,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         // Validate AWS credentials (deferred for teardown deploys until after confirmation)
         if (preflightContext.isTeardownDeploy) {
           try {
-            await validateAwsCredentials();
+            await validateAwsCredentials(preflightContext.awsTargets[0]);
           } catch (err) {
             const errorMsg = formatError(err);
             logger.endStep('error', errorMsg);

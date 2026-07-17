@@ -1,4 +1,4 @@
-import { AwsCredentialsError } from '../../../lib/errors/types.js';
+import { AwsCredentialsError, ValidationError } from '../../../lib/errors/types.js';
 import { detectAccount, getCredentialProvider, validateAwsCredentials } from '../account.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -114,6 +114,22 @@ describe('validateAwsCredentials', () => {
     mockSend.mockResolvedValue({ Account: '123456789012' });
 
     await expect(validateAwsCredentials()).resolves.toBeUndefined();
+  });
+
+  it('does not throw when credentials match the deployment target', async () => {
+    mockSend.mockResolvedValue({ Account: '123456789012' });
+
+    await expect(validateAwsCredentials({ name: 'prod', account: '123456789012' })).resolves.toBeUndefined();
+  });
+
+  it('throws a clear error when credentials do not match the deployment target', async () => {
+    mockSend.mockResolvedValue({ Account: '111111111111' });
+
+    const validation = validateAwsCredentials({ name: 'prod', account: '222222222222' });
+    await expect(validation).rejects.toBeInstanceOf(ValidationError);
+    await expect(validation).rejects.toThrow(
+      'Your AWS credentials are for account 111111111111, but the target "prod" is configured for account 222222222222.'
+    );
   });
 
   it('throws AwsCredentialsError when detectAccount returns null', async () => {
