@@ -25,12 +25,18 @@ describe('checkBootstrapStatus', () => {
 
   it('returns isBootstrapped true for CREATE_COMPLETE', async () => {
     mockSend.mockResolvedValue({
-      Stacks: [{ StackStatus: 'CREATE_COMPLETE' }],
+      Stacks: [
+        {
+          StackStatus: 'CREATE_COMPLETE',
+          Outputs: [{ OutputKey: 'BootstrapVersion', OutputValue: '30' }],
+        },
+      ],
     });
 
     const result = await checkBootstrapStatus('us-east-1');
     expect(result.isBootstrapped).toBe(true);
     expect(result.stackStatus).toBe('CREATE_COMPLETE');
+    expect(result.bootstrapVersion).toBe(30);
   });
 
   it('returns isBootstrapped true for UPDATE_COMPLETE', async () => {
@@ -75,6 +81,22 @@ describe('checkBootstrapStatus', () => {
 
     const result = await checkBootstrapStatus('us-east-1');
     expect(result.isBootstrapped).toBe(false);
+  });
+
+  it('returns no bootstrap version when the output is invalid', async () => {
+    mockSend.mockResolvedValue({
+      Stacks: [
+        {
+          StackStatus: 'CREATE_COMPLETE',
+          Outputs: [{ OutputKey: 'BootstrapVersion', OutputValue: 'invalid' }],
+        },
+      ],
+    });
+
+    const result = await checkBootstrapStatus('us-east-1');
+
+    expect(result.isBootstrapped).toBe(true);
+    expect(result.bootstrapVersion).toBeUndefined();
   });
 
   it('returns isBootstrapped false when stack not found (ValidationError)', async () => {

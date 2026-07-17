@@ -37,6 +37,8 @@ export interface BootstrapCheckResult {
   target: AwsDeploymentTarget | null;
 }
 
+export const MINIMUM_CDK_BOOTSTRAP_VERSION = 30;
+
 export interface StackStatusCheckResult {
   /** Whether all stacks are in a deployable state */
   canDeploy: boolean;
@@ -409,7 +411,7 @@ export async function checkBootstrapNeeded(awsTargets: AwsDeploymentTarget[]): P
 
   try {
     const bootstrapStatus = await checkBootstrapStatus(target.region);
-    if (!bootstrapStatus.isBootstrapped) {
+    if (!bootstrapStatus.isBootstrapped || (bootstrapStatus.bootstrapVersion ?? 0) < MINIMUM_CDK_BOOTSTRAP_VERSION) {
       return { needsBootstrap: true, target };
     }
   } catch {

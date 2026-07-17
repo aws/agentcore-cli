@@ -6,6 +6,7 @@ export const CDK_TOOLKIT_STACK_NAME = 'CDKToolkit';
 export interface BootstrapStatus {
   isBootstrapped: boolean;
   stackStatus?: string;
+  bootstrapVersion?: number;
 }
 
 /**
@@ -25,10 +26,14 @@ export async function checkBootstrapStatus(region: string): Promise<BootstrapSta
     const status = stack.StackStatus;
     const isUsable =
       status === 'CREATE_COMPLETE' || status === 'UPDATE_COMPLETE' || status === 'UPDATE_ROLLBACK_COMPLETE';
+    const versionOutput = stack.Outputs?.find(output => output.OutputKey === 'BootstrapVersion')?.OutputValue;
+    const bootstrapVersion = versionOutput ? Number.parseInt(versionOutput, 10) : undefined;
 
     return {
       isBootstrapped: isUsable,
       stackStatus: status,
+      bootstrapVersion:
+        bootstrapVersion !== undefined && !Number.isNaN(bootstrapVersion) ? bootstrapVersion : undefined,
     };
   } catch (err: unknown) {
     // Stack doesn't exist - not bootstrapped

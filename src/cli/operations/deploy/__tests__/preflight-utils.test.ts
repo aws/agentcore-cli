@@ -105,13 +105,33 @@ describe('checkBootstrapNeeded', () => {
   });
 
   it('returns not needed when already bootstrapped', async () => {
-    mockCheckBootstrapStatus.mockResolvedValue({ isBootstrapped: true });
+    mockCheckBootstrapStatus.mockResolvedValue({ isBootstrapped: true, bootstrapVersion: 30 });
     const target = { name: 'dev', region: 'us-east-1', account: '123456789012' } as any;
 
     const result = await checkBootstrapNeeded([target]);
 
     expect(result.needsBootstrap).toBe(false);
     expect(result.target).toBeNull();
+  });
+
+  it('returns needed when the bootstrap version is outdated', async () => {
+    mockCheckBootstrapStatus.mockResolvedValue({ isBootstrapped: true, bootstrapVersion: 18 });
+    const target = { name: 'dev', region: 'us-east-1', account: '123456789012' } as any;
+
+    const result = await checkBootstrapNeeded([target]);
+
+    expect(result.needsBootstrap).toBe(true);
+    expect(result.target).toBe(target);
+  });
+
+  it('returns needed when a legacy bootstrap stack has no version output', async () => {
+    mockCheckBootstrapStatus.mockResolvedValue({ isBootstrapped: true });
+    const target = { name: 'dev', region: 'us-east-1', account: '123456789012' } as any;
+
+    const result = await checkBootstrapNeeded([target]);
+
+    expect(result.needsBootstrap).toBe(true);
+    expect(result.target).toBe(target);
   });
 
   it('returns not needed when check throws', async () => {
