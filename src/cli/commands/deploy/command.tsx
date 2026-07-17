@@ -151,6 +151,15 @@ function printDeployResult(result: DeployResult & { success: true }, options: De
     return;
   }
 
+  // Managed dependency sync warnings (#1540): downgraded skew, skipped specifiers. Informational
+  // only — they must reach the terminal but must NOT flip the exit code to 2 (the bundled-tarball
+  // override in e2e/dev builds is always "left unmanaged", and exit 2 would fail every deploy).
+  if (result.dependencySync?.warnings && result.dependencySync.warnings.length > 0) {
+    for (const warning of result.dependencySync.warnings) {
+      console.warn(`⚠ ${warning}`);
+    }
+  }
+
   if (options.diff) {
     console.log(`\n✓ Diff complete for '${result.targetName}' (stack: ${result.stackName})`);
   } else if (options.plan) {

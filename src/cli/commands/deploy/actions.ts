@@ -1001,9 +1001,13 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     logger.finalize(true);
 
-    // Surface orphan-harness and dependency-sync warnings (collected pre-deploy) to the terminal
-    // alongside any post-deploy warnings — logger.log only writes to the log file.
-    const allWarnings = [...orphanWarnings, ...depSync.warnings, ...postDeployWarnings];
+    // Surface orphan-harness warnings (collected pre-deploy) to the terminal alongside any
+    // post-deploy warnings — logger.log only writes to the log file. Dependency-sync warnings
+    // are deliberately NOT merged here: postDeployWarnings signals partial failure (exit 2),
+    // while dep-sync warnings are informational (e.g. the bundled-tarball override is always
+    // "left unmanaged"). They reach the terminal via result.dependencySync.warnings, which the
+    // CLI (printDeployResult), dev path (runCliDeploy), and TUI each render.
+    const allWarnings = [...orphanWarnings, ...postDeployWarnings];
 
     return {
       success: true,
