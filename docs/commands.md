@@ -925,6 +925,7 @@ View and download agent traces.
 agentcore traces list
 agentcore traces list --runtime MyAgent --limit 50
 agentcore traces list --since 1h --until now
+agentcore traces list --runtime MyAgent --json
 ```
 
 | Flag               | Description                                                                 |
@@ -933,12 +934,14 @@ agentcore traces list --since 1h --until now
 | `--limit <n>`      | Maximum number of traces to display (default: 20)                           |
 | `--since <time>`   | Start time (defaults to 12h ago; e.g. `5m`, `1h`, `2d`, ISO 8601, epoch ms) |
 | `--until <time>`   | End time (defaults to now; e.g. `now`, `1h`, ISO 8601, epoch ms)            |
+| `--json`           | Output as JSON                                                              |
 
 #### traces get
 
 ```bash
 agentcore traces get <traceId>
 agentcore traces get abc123 --runtime MyAgent --output ./trace.json
+agentcore traces get abc123 --runtime MyAgent --json
 ```
 
 | Flag               | Description                      |
@@ -948,6 +951,7 @@ agentcore traces get abc123 --runtime MyAgent --output ./trace.json
 | `--output <path>`  | Output file path                 |
 | `--since <time>`   | Start time (defaults to 12h ago) |
 | `--until <time>`   | End time (defaults to now)       |
+| `--json`           | Output as JSON                   |
 
 ---
 

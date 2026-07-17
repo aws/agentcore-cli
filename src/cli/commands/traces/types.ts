@@ -3,6 +3,7 @@ export interface TracesListOptions {
   limit?: string;
   since?: string;
   until?: string;
+  json?: boolean;
 }
 
 export interface TracesGetOptions {
@@ -10,4 +11,5 @@ export interface TracesGetOptions {
   output?: string;
   since?: string;
   until?: string;
+  json?: boolean;
 }
