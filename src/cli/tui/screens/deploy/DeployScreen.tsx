@@ -346,14 +346,14 @@ export function DeployScreen({
         <>
           <StepProgress steps={displaySteps} />
 
-          {/* Managed dependency sync summary (#1540): what preflight changed in agentcore/cdk/package.json. */}
+          {/* Managed dependency sync summary: what preflight changed in agentcore/cdk/package.json. */}
           {dependencySyncNotice && (
             <Box marginTop={1} flexDirection="column">
               <Text dimColor>{dependencySyncNotice}</Text>
             </Box>
           )}
 
-          {/* Managed dependency sync warnings (#1540): downgraded skew, skipped specifiers. */}
+          {/* Managed dependency sync warnings: downgraded skew, skipped specifiers. */}
           {dependencySyncWarnings.length > 0 && (
             <Box marginTop={1} flexDirection="column">
               {dependencySyncWarnings.map((warning, i) => (

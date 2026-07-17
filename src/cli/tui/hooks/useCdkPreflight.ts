@@ -172,7 +172,7 @@ export interface PreflightResult {
   missingCredentials: MissingCredential[];
   /** KMS key ARN used for identity token vault encryption */
   identityKmsKeyArn?: string;
-  /** Managed dependency sync outcome (#1540) — notice/warnings for display, attrs for telemetry */
+  /** Result of the managed dependency sync — notice/warnings for display, attrs for telemetry */
   dependencySync: DependencySyncResult | null;
   /** Credential ARNs (API key + OAuth) from pre-deploy setup */
   allCredentials: Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>;
@@ -500,7 +500,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           return;
         }
 
-        // Step: Sync managed dependencies (#1540) — pin agentcore/cdk/package.json to the versions
+        // Step: Sync managed dependencies — pin agentcore/cdk/package.json to the versions
         // this CLI was tested with, migrating pre-pinning (caret) projects. Runs before the build so
         // the compile sees the reinstalled tree. Diff mode runs check-only (never mutates the
         // working tree), and teardown deploys downgrade every sync failure to a warning: skew via

@@ -1,4 +1,4 @@
-import type { SkewFinding } from './policy';
+import type { SkewFinding } from './plan';
 import type { DependencyChange, RestoredDependency, SkippedDependency } from './types';
 
 /**
@@ -58,18 +58,18 @@ function formatChangeTable(changes: DependencyChange[], restored: RestoredDepend
 }
 
 export function formatSyncNotice(options: {
-  migrated: boolean;
+  migratedFromCaret: boolean;
   changes: DependencyChange[];
   restored: RestoredDependency[];
   reinstalled: boolean;
   /** False in check mode — nothing was written, so speak in the future tense. */
   applied: boolean;
 }): string | null {
-  const { migrated, changes, restored, reinstalled, applied } = options;
+  const { migratedFromCaret, changes, restored, reinstalled, applied } = options;
   if (changes.length === 0 && restored.length === 0) return null;
 
   const lines: string[] = [];
-  if (migrated) {
+  if (migratedFromCaret) {
     lines.push(applied ? MIGRATION_PREAMBLE : MIGRATION_PREAMBLE_PENDING);
   } else {
     lines.push(
@@ -89,7 +89,7 @@ export function formatSyncNotice(options: {
       ? 'Dependencies you added yourself were not changed.'
       : 'Dependencies you added yourself will not be changed.'
   );
-  if (migrated) {
+  if (migratedFromCaret) {
     lines.push(OPT_OUT_HINT);
   }
   return lines.join('\n');

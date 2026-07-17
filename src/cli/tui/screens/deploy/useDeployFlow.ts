@@ -19,7 +19,7 @@ import {
   parsePolicyOutputs,
   parseRuntimeEndpointOutputs,
 } from '../../../cloudformation';
-import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs, toDepSyncAttrs } from '../../../commands/deploy/utils.js';
+import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs } from '../../../commands/deploy/utils.js';
 import { toStackName } from '../../../commands/import/import-utils';
 import { getErrorMessage, isChangesetInProgressError, isExpiredTokenError } from '../../../errors';
 import { ExecLogger } from '../../../logging';
@@ -29,6 +29,7 @@ import {
   hasManagedMemoryHarness,
   performStackTeardown,
   setupTransactionSearch,
+  toDepSyncAttrs,
 } from '../../../operations/deploy';
 import { computeProjectDeployHash } from '../../../operations/deploy/change-detection';
 import { getGatewayTargetStatuses } from '../../../operations/deploy/gateway-status';
@@ -116,9 +117,9 @@ interface DeployFlowState {
   deployNotes: string[];
   /** Managed-memory heads-up, shown while the CFN apply runs (null when not applicable) */
   managedMemoryNotice: string | null;
-  /** Managed dependency sync summary from preflight (#1540), null when nothing changed */
+  /** Managed dependency sync summary from preflight, null when nothing changed */
   dependencySyncNotice: string | null;
-  /** Managed dependency sync warnings (downgraded skew, skipped specifiers) from preflight (#1540) */
+  /** Managed dependency sync warnings (downgraded skew, skipped specifiers) from preflight */
   dependencySyncWarnings: string[];
   /** Warnings from post-deploy steps (config bundles, AB tests) */
   postDeployWarnings: string[];
@@ -145,7 +146,7 @@ interface DeployFlowState {
   skipCredentials: () => void;
 }
 
-/** Overlay dep_sync_* telemetry attrs from the preflight dependency sync (#1540), if it ran. */
+/** Overlay dep_sync_* telemetry attrs from the preflight dependency sync, if it ran. */
 function withDepSyncAttrs<T extends object>(attrs: T, sync: DependencySyncResult | null): T {
   if (!sync) return attrs;
   return { ...attrs, ...toDepSyncAttrs(sync) };

@@ -276,7 +276,7 @@ export function DevScreen(props: DevScreenProps) {
       if (onLaunchBrowser) {
         onLaunchBrowser({ harnessName: selectedHarness });
         // onLaunchBrowser exits the alt screen and unmounts synchronously, so anything rendered
-        // in 'deploying' mode is gone. Print the one-shot dep-sync outcome (#1540) — e.g. the
+        // in 'deploying' mode is gone. Print the one-shot dep-sync notice and warnings — e.g. the
         // "we rewrote your package.json" migration explanation — to the normal buffer instead.
         if (dependencySyncNotice) {
           console.log(`\n${dependencySyncNotice}\n`);
@@ -528,7 +528,7 @@ export function DevScreen(props: DevScreenProps) {
     return null;
   }
 
-  // Managed dependency sync outcome (#1540): its own block — the multi-line notice doesn't fit
+  // Dependency sync notice and warnings get their own block — the multi-line notice doesn't fit
   // the single "Note:" line in the deploying view. Rendered during the deploy AND in the
   // post-deploy modes (harness / select-agent): the deploy completes and the mode transitions in
   // the same render batch, so a block gated on mode === 'deploying' would be visible for at most

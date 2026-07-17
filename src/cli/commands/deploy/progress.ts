@@ -68,12 +68,12 @@ export async function runCliDeploy(): Promise<void> {
     });
     cleanup();
 
-    // Surface the managed-dependency sync outcome (#1540) — handleDeploy only writes it to the
-    // deploy log; this dev path passes no onNotice, so print it here.
-    if (result.dependencySync?.notice) {
-      console.log(`\n${result.dependencySync.notice}\n`);
+    // Print the dependency sync notice and warnings — handleDeploy only writes them to the
+    // deploy log, and this dev path passes no onNotice.
+    if (result.dependencySyncResult?.notice) {
+      console.log(`\n${result.dependencySyncResult.notice}\n`);
     }
-    for (const warning of result.dependencySync?.warnings ?? []) {
+    for (const warning of result.dependencySyncResult?.warnings ?? []) {
       console.warn(`${ANSI.yellow}⚠ ${warning}${ANSI.reset}`);
     }
 

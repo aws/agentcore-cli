@@ -20,9 +20,9 @@ export interface UseDevDeployResult {
   logPath: string | undefined;
   /** Managed-memory heads-up surfaced by handleDeploy (null when not applicable) */
   managedMemoryNotice: string | null;
-  /** Managed dependency sync summary (#1540) from the deploy result (null when nothing changed) */
+  /** Managed dependency sync summary from the deploy result (null when nothing changed) */
   dependencySyncNotice: string | null;
-  /** Managed dependency sync warnings (#1540) from the deploy result */
+  /** Managed dependency sync warnings from the deploy result */
   dependencySyncWarnings: string[];
 }
 
@@ -106,9 +106,9 @@ export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): 
           setLogPath(result.logPath);
         }
 
-        if (result.dependencySync) {
-          setDependencySyncNotice(result.dependencySync.notice);
-          setDependencySyncWarnings(result.dependencySync.warnings);
+        if (result.dependencySyncResult) {
+          setDependencySyncNotice(result.dependencySyncResult.notice);
+          setDependencySyncWarnings(result.dependencySyncResult.warnings);
         }
 
         if (!result.success) {

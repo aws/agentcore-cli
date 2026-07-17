@@ -21,19 +21,27 @@ export interface EnsureManagedDependenciesOptions {
   treatSkewAsWarning?: boolean;
 }
 
+/**
+ * A DependencySyncResult in which no dependency operation took effect: nothing was
+ * written, installed, or warned about. Base shape for the no-op states below.
+ */
+function noOpSyncResult(warnings: string[] = []): DependencySyncResult {
+  return {
+    optedOut: false,
+    checkOnly: true,
+    migratedFromCaret: false,
+    reinstalled: false,
+    skewWarning: false,
+    changes: [],
+    restored: [],
+    skipped: [],
+    warnings,
+    notice: null,
+  };
+}
+
 /** No-op result for when the sync is skipped entirely (AGENTCORE_SKIP_INSTALL). */
-const SKIPPED_SYNC_RESULT: DependencySyncResult = {
-  optedOut: false,
-  checkOnly: true,
-  migrated: false,
-  reinstalled: false,
-  skewWarning: false,
-  changes: [],
-  restored: [],
-  skipped: [],
-  warnings: [],
-  notice: null,
-};
+const NO_OP_SYNC_RESULT: DependencySyncResult = noOpSyncResult();
 
 /**
  * Warning-only result for a DependencySyncError caught on a teardown deploy. Teardown must
@@ -43,14 +51,11 @@ const SKIPPED_SYNC_RESULT: DependencySyncResult = {
  * node_modules is genuinely unusable, the build step fails on its own.
  */
 export function teardownSyncFailureResult(err: Error): DependencySyncResult {
-  return {
-    ...SKIPPED_SYNC_RESULT,
-    warnings: [`Dependency sync failed (continuing with teardown): ${err.message}`],
-  };
+  return noOpSyncResult([`Dependency sync failed (continuing with teardown): ${err.message}`]);
 }
 
 /**
- * Deploy-preflight entry point for managed dependency pinning (#1540): resolves the
+ * Deploy-preflight entry point for managed dependency pinning: resolves the
  * CLI's vended CDK package.json (source of truth), the global opt-out, and the
  * distro-aware CLI install command, then runs the sync against the project's
  * agentcore/cdk directory. A future `agentcore build` command should call this same
@@ -60,12 +65,26 @@ export function teardownSyncFailureResult(err: Error): DependencySyncResult {
  * Throws CliVersionTooOldError when the project was updated by a newer CLI (unless
  * `treatSkewAsWarning` or opted out), and DependencySyncError on rewrite/install failure.
  */
+/**
+ * Map a dependency sync result to its dep_sync_* telemetry attrs.
+ * Single source for both the CLI command (command.tsx) and the TUI flow (useDeployFlow).
+ */
+export function toDepSyncAttrs(sync: DependencySyncResult) {
+  return {
+    dep_sync_changed_count: sync.changes.length + sync.restored.length,
+    dep_sync_migrated: sync.migratedFromCaret,
+    dep_sync_opted_out: sync.optedOut,
+    dep_sync_skew_warning: sync.skewWarning,
+    dep_sync_reinstalled: sync.reinstalled,
+  };
+}
+
 export async function ensureManagedDependencies(
   cdkProject: LocalCdkProject,
   options: EnsureManagedDependenciesOptions = {}
 ): Promise<DependencySyncResult> {
   if (process.env.AGENTCORE_SKIP_INSTALL) {
-    return SKIPPED_SYNC_RESULT;
+    return NO_OP_SYNC_RESULT;
   }
   const disabled = readGlobalConfigSync().disableDependencyManagement === true;
   return syncManagedDependencies({

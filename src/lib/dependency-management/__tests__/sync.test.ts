@@ -1,6 +1,6 @@
 import { CliVersionTooOldError, DependencySyncError } from '../../errors/types';
-import { syncManagedDependencies } from '../index';
-import type { SyncManagedDependenciesOptions } from '../index';
+import { syncManagedDependencies } from '../sync';
+import type { SyncManagedDependenciesOptions } from '../types';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
@@ -69,7 +69,7 @@ describe('syncManagedDependencies', () => {
 
     const result = await run();
 
-    expect(result.migrated).toBe(true);
+    expect(result.migratedFromCaret).toBe(true);
     expect(result.reinstalled).toBe(true);
     expect(result.changes).toHaveLength(2);
     expect(result.notice).toContain('created before the AgentCore CLI managed dependency versions');

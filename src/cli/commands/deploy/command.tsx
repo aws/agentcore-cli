@@ -1,12 +1,13 @@
 import { ConfigIO, serializeResult } from '../../../lib';
 import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
+import { toDepSyncAttrs } from '../../operations/deploy';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { renderTUI } from '../../tui';
 import { requireProject, requireTTY } from '../../tui/guards';
 import { handleDeploy } from './actions';
 import type { DeployOptions, DeployResult } from './types';
-import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs, toDepSyncAttrs } from './utils';
+import { DEFAULT_DEPLOY_ATTRS, computeDeployAttrs } from './utils';
 import { validateDeployOptions } from './validate';
 import type { Command } from '@commander-js/extra-typings';
 import { Text, render } from 'ink';
@@ -48,8 +49,8 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
     );
     // Record dep_sync attrs whenever the sync ran — including on failed deploys, where the
     // failure result still carries the outcome (see handleDeploy's catch).
-    if (result.dependencySync) {
-      recorder.set(toDepSyncAttrs(result.dependencySync));
+    if (result.dependencySyncResult) {
+      recorder.set(toDepSyncAttrs(result.dependencySyncResult));
     }
     if (!result.success) {
       return { success: false as const, error: result.error, deployResult: result };
@@ -62,11 +63,11 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
     if (options.json) {
       console.log(JSON.stringify(serializeResult(deployResult)));
     } else {
-      // Dependency sync warnings (#1540) still matter on a failed deploy: a downgraded-skew
+      // Dependency sync warnings still matter on a failed deploy: a downgraded-skew
       // warning may explain the failure itself, and printDeployResult only runs on success.
       // (The sync notice is NOT re-printed here — onNotice already printed it live during the
       // sync step for every non-JSON run.)
-      for (const warning of deployResult.dependencySync?.warnings ?? []) {
+      for (const warning of deployResult.dependencySyncResult?.warnings ?? []) {
         console.error(`⚠ ${warning}`);
       }
       console.error(deployResult.error.message);
@@ -158,11 +159,11 @@ function printDeployResult(result: DeployResult & { success: true }, options: De
     return;
   }
 
-  // Managed dependency sync warnings (#1540): downgraded skew, skipped specifiers. Informational
+  // Dependency sync warnings: downgraded skew, skipped specifiers. Informational
   // only — they must reach the terminal but must NOT flip the exit code to 2 (the bundled-tarball
   // override in e2e/dev builds is always "left unmanaged", and exit 2 would fail every deploy).
-  if (result.dependencySync?.warnings && result.dependencySync.warnings.length > 0) {
-    for (const warning of result.dependencySync.warnings) {
+  if (result.dependencySyncResult?.warnings && result.dependencySyncResult.warnings.length > 0) {
+    for (const warning of result.dependencySyncResult.warnings) {
       console.warn(`⚠ ${warning}`);
     }
   }

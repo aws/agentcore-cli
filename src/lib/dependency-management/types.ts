@@ -32,7 +32,7 @@ export interface DependencySyncResult {
   /** True when this was a check-only run (`mode: 'check'`) — plan computed, nothing written or installed. */
   checkOnly: boolean;
   /** True when the project predated pinning (caret ranges on managed deps were rewritten). */
-  migrated: boolean;
+  migratedFromCaret: boolean;
   /** True when `npm install` was run to reconcile the installed tree (manifest changed, or node_modules was missing). */
   reinstalled: boolean;
   /** True when a newer-than-CLI managed dep was found but downgraded to a warning (opted out or skew-as-warning). */

@@ -1,4 +1,4 @@
-import { computeSyncPlan } from '../policy';
+import { computeSyncPlan } from '../plan';
 import type { PackageManifest } from '../types';
 import { describe, expect, it } from 'vitest';
 

@@ -182,7 +182,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
   // Hoisted above the try so every failure result — the catch AND the explicit failure
   // returns after the sync step — still carries the sync outcome: dep_sync_* telemetry and
   // the user-facing rewrite notice must survive a deploy that fails after the sync ran.
-  let depSync: DependencySyncResult | undefined;
+  let dependencySyncResult: DependencySyncResult | undefined;
 
   const startStep = (name: string) => {
     currentStepName = name;
@@ -276,7 +276,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       endStep('success');
     }
 
-    // Sync managed dependencies (#1540): pin agentcore/cdk/package.json to the versions this
+    // Sync managed dependencies: pin agentcore/cdk/package.json to the versions this
     // CLI was tested with, migrating pre-pinning (caret) projects. Must run before the build so
     // the compile sees the reinstalled tree. Throws CliVersionTooOldError on newer-than-CLI skew.
     // Preview modes (--dry-run / --diff) run check-only — they must never mutate the working
@@ -288,7 +288,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const isPreview = !!options.plan || !!options.diff;
     startStep(SYNC_CDK_DEPENDENCIES_STEP);
     try {
-      depSync = await ensureManagedDependencies(context.cdkProject, {
+      dependencySyncResult = await ensureManagedDependencies(context.cdkProject, {
         checkOnly: isPreview,
         treatSkewAsWarning: context.isTeardownDeploy,
       });
@@ -296,15 +296,15 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       if (!(context.isTeardownDeploy && syncErr instanceof DependencySyncError)) {
         throw syncErr;
       }
-      // The warning-only result flows through the normal depSync.warnings channel below.
-      depSync = teardownSyncFailureResult(syncErr);
+      // The warning-only result flows through the normal dependencySyncResult.warnings channel below.
+      dependencySyncResult = teardownSyncFailureResult(syncErr);
     }
-    for (const warning of depSync.warnings) {
+    for (const warning of dependencySyncResult.warnings) {
       logger.log(warning, 'warn');
     }
-    if (depSync.notice) {
-      logger.log(depSync.notice);
-      options.onNotice?.(depSync.notice);
+    if (dependencySyncResult.notice) {
+      logger.log(dependencySyncResult.notice);
+      options.onNotice?.(dependencySyncResult.notice);
     }
     endStep('success');
 
@@ -325,7 +325,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         success: false,
         error: envFileAssertionResult.error,
         logPath: logger.getRelativeLogPath(),
-        dependencySync: depSync,
+        dependencySyncResult,
       };
     }
 
@@ -367,7 +367,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
           success: false,
           error: errorResult?.error ?? new Error('unknown error occurred when setting up api key providers'),
           logPath: logger.getRelativeLogPath(),
-          dependencySync: depSync,
+          dependencySyncResult,
         };
       }
       identityKmsKeyArn = identityResult.kmsKeyArn;
@@ -405,7 +405,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
           success: false,
           error: errorResult?.error ?? new Error(`an unexpected error ocurred when setting up oauth providers`),
           logPath: logger.getRelativeLogPath(),
-          dependencySync: depSync,
+          dependencySyncResult,
         };
       }
 
@@ -443,7 +443,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
           success: false,
           error: paymentPreDeployResult.errors[0] ?? new Error('payment deploy preflight steps failed'),
           logPath: logger.getRelativeLogPath(),
-          dependencySync: depSync,
+          dependencySyncResult,
         };
       }
 
@@ -502,7 +502,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         success: false,
         error: stackSelection.error,
         logPath: logger.getRelativeLogPath(),
-        dependencySync: depSync,
+        dependencySyncResult,
       };
     }
     const stackName = stackSelection.stackName;
@@ -522,7 +522,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
           success: false,
           error: new ValidationError('AWS environment needs bootstrapping. Run with --yes to auto-bootstrap.'),
           logPath: logger.getRelativeLogPath(),
-          dependencySync: depSync,
+          dependencySyncResult,
         };
       }
     }
@@ -539,7 +539,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         success: false,
         error: new Error(deployabilityCheck.message ?? 'Stack is not in a deployable state'),
         logPath: logger.getRelativeLogPath(),
-        dependencySync: depSync,
+        dependencySyncResult,
       };
     }
     endStep('success');
@@ -555,7 +555,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         targetName: target.name,
         stackName,
         logPath: logger.getRelativeLogPath(),
-        dependencySync: depSync,
+        dependencySyncResult,
       };
     }
 
@@ -574,7 +574,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         targetName: target.name,
         stackName,
         logPath: logger.getRelativeLogPath(),
-        dependencySync: depSync,
+        dependencySyncResult,
       };
     }
 
@@ -641,7 +641,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
           success: false,
           error: teardown.error,
           logPath: logger.getRelativeLogPath(),
-          dependencySync: depSync,
+          dependencySyncResult,
         };
       }
       endStep('success');
@@ -653,7 +653,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         targetName: target.name,
         stackName,
         logPath: logger.getRelativeLogPath(),
-        dependencySync: depSync,
+        dependencySyncResult,
       };
     }
 
@@ -1037,7 +1037,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // post-deploy warnings — logger.log only writes to the log file. Dependency-sync warnings
     // are deliberately NOT merged here: postDeployWarnings signals partial failure (exit 2),
     // while dep-sync warnings are informational (e.g. the bundled-tarball override is always
-    // "left unmanaged"). They reach the terminal via result.dependencySync.warnings, which the
+    // "left unmanaged"). They reach the terminal via result.dependencySyncResult.warnings, which the
     // CLI (printDeployResult), dev path (runCliDeploy), and TUI each render.
     const allWarnings = [...orphanWarnings, ...postDeployWarnings];
 
@@ -1050,14 +1050,14 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       nextSteps,
       notes,
       postDeployWarnings: allWarnings.length > 0 ? allWarnings : undefined,
-      dependencySync: depSync,
+      dependencySyncResult,
     };
   } catch (err: unknown) {
     logger.log(getErrorMessage(err), 'error');
     logger.finalize(false);
     // Carry the dep-sync outcome on the failure result too, so dep_sync_* telemetry
     // is recorded even when a later step throws.
-    return { success: false, error: toError(err), logPath: logger.getRelativeLogPath(), dependencySync: depSync };
+    return { success: false, error: toError(err), logPath: logger.getRelativeLogPath(), dependencySyncResult };
   } finally {
     // Each cleanup step must run regardless of whether an earlier one fails — a throw from
     // dispose() (common after a synth/bootstrap failure on a creds-less preview) must not skip the

@@ -149,7 +149,7 @@ describe('useDevDeploy', () => {
   it('reads the dependency sync notice and warnings from the deploy result', async () => {
     mockHandleDeploy.mockResolvedValue({
       success: true,
-      dependencySync: {
+      dependencySyncResult: {
         notice: 'dep-sync-notice',
         warnings: ['lodash (file:x) uses a non-semver specifier and was left unmanaged.'],
       },

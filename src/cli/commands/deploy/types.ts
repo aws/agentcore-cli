@@ -21,7 +21,7 @@ export type DeployResult = Result<{
 }> & {
   logPath?: string;
   /** Sync outcome rides on BOTH branches so dep_sync_* telemetry survives a failed deploy. */
-  dependencySync?: DependencySyncResult;
+  dependencySyncResult?: DependencySyncResult;
 };
 
 export type PreflightResult = Result<{
