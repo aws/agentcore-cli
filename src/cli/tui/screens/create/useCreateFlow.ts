@@ -75,6 +75,7 @@ interface CreateFlowState {
   confirmProjectName: () => void;
   // Create type selection
   handleCreateTypeSelection: (choice: 'harness' | 'agent' | 'skip') => void;
+  goBackToProjectName: () => void;
   // Add agent config (set when AddAgentScreen completes)
   addAgentConfig: AddAgentConfig | null;
   handleAddAgentComplete: (config: AddAgentConfig) => void;
@@ -178,6 +179,10 @@ export function useCreateFlow(cwd: string): CreateFlowState {
 
   const confirmProjectName = useCallback(() => {
     setPhase('create-type-prompt');
+  }, []);
+
+  const goBackToProjectName = useCallback(() => {
+    setPhase('input');
   }, []);
 
   const updateStep = (index: number, update: Partial<Step>) => {
@@ -741,6 +746,7 @@ export function useCreateFlow(cwd: string): CreateFlowState {
     confirmProjectName,
     // Create type selection
     handleCreateTypeSelection,
+    goBackToProjectName,
     // Add agent
     addAgentConfig,
     handleAddAgentComplete,
