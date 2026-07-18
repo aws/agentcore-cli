@@ -1,4 +1,4 @@
-import { compareVersions, formatVersion, parseSpecifier, parseVersion } from '../semver';
+import { compareVersions, parseSpecifier, parseVersion } from '../semver';
 import { describe, expect, it } from 'vitest';
 
 describe('parseVersion', () => {
@@ -12,6 +12,12 @@ describe('parseVersion', () => {
 
   it('ignores build metadata', () => {
     expect(parseVersion('1.2.3+build.5')).toEqual({ major: 1, minor: 2, patch: 3, prerelease: [] });
+  });
+
+  it('accepts a single leading v, like npm', () => {
+    expect(parseVersion('v1.2.3')).toEqual({ major: 1, minor: 2, patch: 3, prerelease: [] });
+    expect(parseVersion('V10.7.0')).toEqual({ major: 10, minor: 7, patch: 0, prerelease: [] });
+    expect(parseVersion('vv1.2.3')).toBeNull();
   });
 
   it('rejects non-versions', () => {
@@ -56,6 +62,20 @@ describe('parseSpecifier', () => {
     expect(parseSpecifier('=1.2.3').kind).toBe('exact');
   });
 
+  it('accepts v-prefixed versions, bare and ranged, like npm', () => {
+    expect(parseSpecifier('v1.2.3')).toEqual({
+      kind: 'exact',
+      version: { major: 1, minor: 2, patch: 3, prerelease: [] },
+      raw: 'v1.2.3',
+    });
+    expect(parseSpecifier('~v1.2.3')).toEqual({
+      kind: 'tilde',
+      version: { major: 1, minor: 2, patch: 3, prerelease: [] },
+      raw: '~v1.2.3',
+    });
+    expect(parseSpecifier('^v10.7.0').kind).toBe('caret');
+  });
+
   it('marks non-semver specifiers unsupported', () => {
     for (const raw of [
       'file:bundled-agentcore-cdk.tgz',
@@ -69,12 +89,5 @@ describe('parseSpecifier', () => {
     ]) {
       expect(parseSpecifier(raw)).toEqual({ kind: 'unsupported', raw });
     }
-  });
-});
-
-describe('formatVersion', () => {
-  it('round-trips release and prerelease versions', () => {
-    expect(formatVersion(parseVersion('2.261.0')!)).toBe('2.261.0');
-    expect(formatVersion(parseVersion('0.1.0-alpha.45')!)).toBe('0.1.0-alpha.45');
   });
 });

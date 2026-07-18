@@ -17,6 +17,7 @@ import {
   checkDependencyVersions,
   checkStackDeployability,
   ensureManagedDependencies,
+  failedSyncResult,
   formatError,
   getAllCredentials,
   hasIdentityApiProviders,
@@ -173,7 +174,7 @@ export interface PreflightResult {
   /** KMS key ARN used for identity token vault encryption */
   identityKmsKeyArn?: string;
   /** Result of the managed dependency sync — notice/warnings for display, attrs for telemetry */
-  dependencySync: DependencySyncResult | null;
+  dependencySyncResult: DependencySyncResult | null;
   /** Credential ARNs (API key + OAuth) from pre-deploy setup */
   allCredentials: Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>;
   startPreflight: () => Promise<void>;
@@ -240,7 +241,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     Record<string, { credentialProviderArn: string; clientSecretArn?: string; callbackUrl?: string }>
   >({});
   const [teardownConfirmed, setTeardownConfirmed] = useState(false);
-  const [dependencySync, setDependencySync] = useState<DependencySyncResult | null>(null);
+  const [dependencySyncResult, setDependencySyncResult] = useState<DependencySyncResult | null>(null);
   const lastErrorRef = useRef<Error | undefined>(undefined);
 
   // Guard against concurrent runs (React StrictMode, re-renders, etc.)
@@ -297,6 +298,9 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     setBootstrapContext(null);
     setHasTokenExpiredError(false); // Reset token expired state when retrying
     setHasCredentialsError(false); // Reset credentials error state when retrying
+    // Reset the previous run's dep-sync result so a retry doesn't render stale
+    // notices/warnings or attach stale dep_sync_* attrs to the new run's telemetry.
+    setDependencySyncResult(null);
     setPhase('running');
   }, [disposeWrapper, restoreRegionEnv]);
 
@@ -519,23 +523,26 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           if (syncResult.notice) {
             logger.log(syncResult.notice);
           }
-          setDependencySync(syncResult);
+          setDependencySyncResult(syncResult);
           logger.endStep('success');
           updateStep(STEP_SYNC_DEPS, { status: 'success' });
         } catch (err) {
           if (preflightContext.isTeardownDeploy && err instanceof DependencySyncError) {
             // Surface through the same warning channels as a downgraded skew: the deploy-flow
-            // screens render dependencySync.warnings, and the step shows the warning inline.
+            // screens render dependencySyncResult.warnings, and the step shows the warning inline.
             const downgraded = teardownSyncFailureResult(err);
             const warning = downgraded.warnings[0]!;
             logger.log(warning, 'warn');
-            setDependencySync(downgraded);
+            setDependencySyncResult(downgraded);
             logger.endStep('success');
             updateStep(STEP_SYNC_DEPS, { status: 'warn', warn: warning });
           } else {
             const errorMsg = formatError(err);
             logger.endStep('error', errorMsg);
             updateStep(STEP_SYNC_DEPS, { status: 'error', error: getErrorMessage(err) });
+            // The sync itself is the failure: attach a minimal 'failed' result so
+            // useDeployFlow's failure telemetry still carries dep_sync_* attrs.
+            setDependencySyncResult(failedSyncResult());
             failPreflight(err);
             return;
           }
@@ -1112,7 +1119,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     lastError: lastErrorRef.current,
     missingCredentials,
     identityKmsKeyArn,
-    dependencySync,
+    dependencySyncResult,
     allCredentials,
     startPreflight,
     confirmTeardown,

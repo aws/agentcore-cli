@@ -24,7 +24,10 @@ export type ParsedSpecifier =
 const VERSION_RE = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-.]+)?$/;
 
 export function parseVersion(version: string): ParsedVersion | null {
-  const match = VERSION_RE.exec(version.trim());
+  // npm accepts a single leading 'v' on version strings (v1.2.3, ~v1.2.3); stripping it
+  // here covers both bare versions and the version part of a range specifier.
+  const normalized = version.trim().replace(/^[vV]/, '');
+  const match = VERSION_RE.exec(normalized);
   if (!match) return null;
   const prerelease = match[4] ? match[4].split('.').map(id => (/^\d+$/.test(id) ? Number(id) : id)) : [];
   return {
@@ -88,9 +91,4 @@ export function parseSpecifier(raw: string): ParsedSpecifier {
   const version = parseVersion(versionPart);
   if (!version) return { kind: 'unsupported', raw };
   return { kind, version, raw };
-}
-
-export function formatVersion(v: ParsedVersion): string {
-  const base = `${v.major}.${v.minor}.${v.patch}`;
-  return v.prerelease.length > 0 ? `${base}-${v.prerelease.join('.')}` : base;
 }

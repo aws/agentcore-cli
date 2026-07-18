@@ -139,19 +139,19 @@ ${separator}
   /**
    * Mark the end of the current step
    */
-  endStep(status: 'success' | 'error', error?: string): void {
+  endStep(status: 'success' | 'error' | 'warn', error?: string): void {
     if (!this.currentStep) {
       return;
     }
 
     const duration = Date.now() - this.currentStep.startTime;
-    const statusText = status === 'success' ? 'SUCCESS' : 'FAILED';
+    const statusText = status === 'success' ? 'SUCCESS' : status === 'warn' ? 'WARNING' : 'FAILED';
 
     if (status === 'error') {
       this.lastFailedStep = this.currentStep.name;
-      if (error) {
-        this.appendLine(`[${this.formatTime()}] Error: ${error}`);
-      }
+    }
+    if ((status === 'error' || status === 'warn') && error) {
+      this.appendLine(`[${this.formatTime()}] ${status === 'error' ? 'Error' : 'Warning'}: ${error}`);
     }
 
     this.appendLine(`[${this.formatTime()}] Status: ${statusText}`);

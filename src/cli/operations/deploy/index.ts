@@ -71,10 +71,10 @@ export { backfillContainerVpcIds, type BackfillVpcIdResult } from './backfill-vp
 // Managed dependency pinning — shared by CLI deploy + TUI preflight
 export {
   ensureManagedDependencies,
+  failedSyncResult,
   teardownSyncFailureResult,
   toDepSyncAttrs,
   SYNC_CDK_DEPENDENCIES_STEP,
-  type DependencySyncResult,
   type EnsureManagedDependenciesOptions,
 } from './dependency-sync';
 

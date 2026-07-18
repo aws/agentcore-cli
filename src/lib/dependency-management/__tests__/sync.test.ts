@@ -54,6 +54,7 @@ describe('syncManagedDependencies', () => {
   it('is a no-op when the project already matches (no write, no reinstall, no notice)', async () => {
     writeProject({ dependencies: { ...VENDED.dependencies }, devDependencies: { ...VENDED.devDependencies } });
     const result = await run();
+    expect(result.outcome).toBe('synced');
     expect(result.changes).toEqual([]);
     expect(result.reinstalled).toBe(false);
     expect(result.notice).toBeNull();
@@ -143,6 +144,7 @@ describe('syncManagedDependencies', () => {
     };
     writeProject(manifest);
     const result = await run({ disabled: true });
+    expect(result.outcome).toBe('opted-out');
     expect(result.optedOut).toBe(true);
     expect(result.skewWarning).toBe(true);
     expect(result.warnings.some(w => w.includes('newer than this CLI was tested with'))).toBe(true);
@@ -171,6 +173,7 @@ describe('syncManagedDependencies', () => {
     };
     writeProject(manifest);
     const result = await run({ mode: 'check' });
+    expect(result.outcome).toBe('check-only');
     expect(result.checkOnly).toBe(true);
     expect(result.changes).toHaveLength(2);
     expect(result.reinstalled).toBe(false);

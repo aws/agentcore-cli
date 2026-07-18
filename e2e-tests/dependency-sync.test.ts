@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 /**
- * E2E tests for the managed-dependency sync deploy preflight (#1540 / PR #1777).
+ * E2E tests for the managed-dependency sync deploy preflight.
  *
  * The unit tests in src/lib/dependency-management/__tests__/ cover the sync logic with the npm
  * subprocess mocked. These tests exercise the wiring through the real CLI binary — option
@@ -36,6 +36,7 @@ const USER_DEP_SPEC = '^4.17.21';
 
 /** Shape of the dependency-sync outcome inside the `deploy --json` envelope (DependencySyncResult). */
 interface DepSyncJson {
+  outcome: 'synced' | 'check-only' | 'opted-out' | 'skipped' | 'failure-suppressed';
   optedOut: boolean;
   checkOnly: boolean;
   migratedFromCaret: boolean;
@@ -361,12 +362,19 @@ describe.sequential('e2e: dependency sync — newer-than-CLI skew fails fast wit
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test 4 — the global opt-out downgrades skew to a warning
-// Cheap: same shape as test 2. Uses an isolated AGENTCORE_CONFIG_DIR so the
-// `agentcore config` write can't leak into the machine's real global config.
+// Test 4 — the global opt-out config reaches the sync through the real CLI
+// Cheap: same shape as test 2 (--dry-run, never deploys). Uses an isolated
+// AGENTCORE_CONFIG_DIR so the `agentcore config` write can't leak into the
+// machine's real global config. NOTE: because this is a --dry-run, check mode
+// alone would already downgrade skew to a warning — the opt-out-specific signal
+// here is `outcome: 'opted-out'` / `optedOut: true` in the JSON envelope. The
+// behavioral downgrade (opt-out turning a would-be CliVersionTooOldError into a
+// warning on a REAL deploy) is covered by the unit test "downgrades skew to a
+// warning and touches nothing when disabled" in
+// src/lib/dependency-management/__tests__/sync.test.ts.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe.sequential('e2e: dependency sync — opt-out downgrades skew to a warning', () => {
+describe.sequential('e2e: dependency sync — global opt-out config is plumbed through to the sync', () => {
   let testDir: string;
   let projectPath: string;
   let configDir: string;
@@ -405,7 +413,7 @@ describe.sequential('e2e: dependency sync — opt-out downgrades skew to a warni
   }, 30000);
 
   it.skipIf(!canRun)(
-    'deploy proceeds with a skew warning and leaves package.json unchanged',
+    'sync reports opted-out, surfaces skew as a warning, and leaves package.json unchanged',
     async () => {
       expect(projectPath, 'Project should have been created').toBeTruthy();
 
@@ -419,8 +427,13 @@ describe.sequential('e2e: dependency sync — opt-out downgrades skew to a warni
 
       const sync = json.dependencySyncResult;
       expect(sync, 'Deploy result should carry dependencySyncResult').toBeDefined();
+      // The opt-out-specific signal: the config write reached the sync through the real CLI.
+      // (This is a --dry-run, so check mode would surface skew as a warning even without the
+      // opt-out — outcome/optedOut is what proves the opt-out plumbing.)
+      expect(sync!.outcome, 'Opt-out should win over check mode in the outcome').toBe('opted-out');
       expect(sync!.optedOut, 'Global opt-out should be reflected in the sync result').toBe(true);
-      expect(sync!.skewWarning, 'Skew should be downgraded to a warning when opted out').toBe(true);
+      // In this mode skew is surfaced as a warning, not an error.
+      expect(sync!.skewWarning, 'Skew should be surfaced as a warning in this mode').toBe(true);
       const warnings = sync!.warnings.join('\n');
       expect(warnings).toContain(MANAGED_DEP);
       expect(warnings).toContain('newer than this CLI was tested with');

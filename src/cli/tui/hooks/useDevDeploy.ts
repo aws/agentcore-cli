@@ -40,7 +40,7 @@ export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): 
   const [dependencySyncWarnings, setDependencySyncWarnings] = useState<string[]>([]);
   const hasStarted = useRef(false);
 
-  const onProgress = useCallback((stepName: string, status: 'start' | 'success' | 'error') => {
+  const onProgress = useCallback((stepName: string, status: 'start' | 'success' | 'error' | 'warn') => {
     setSteps(prev => {
       if (status === 'start') {
         return [...prev, { label: stepName, status: 'running' }];

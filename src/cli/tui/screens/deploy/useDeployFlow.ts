@@ -757,7 +757,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       const error = preflight.lastError ?? new Error('Preflight failed');
       const attrs = withDepSyncAttrs(
         context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS },
-        preflight.dependencySync
+        preflight.dependencySyncResult
       );
       withCommandRunTelemetry('deploy', attrs, () => ({ success: false as const, error })).catch(() => {
         /* telemetry is best-effort */
@@ -770,7 +770,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
 
     const attrs = withDepSyncAttrs(
       context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS },
-      preflight.dependencySync
+      preflight.dependencySyncResult
     );
 
     const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
@@ -1046,7 +1046,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
         context
           ? computeDeployAttrs(context.projectSpec, 'diff')
           : { ...DEFAULT_DEPLOY_ATTRS, deploy_mode: 'diff' as const },
-        preflight.dependencySync
+        preflight.dependencySyncResult
       );
       withCommandRunTelemetry('deploy', attrs, () => ({ success: false as const, error })).catch(() => {
         /* telemetry is best-effort */
@@ -1061,7 +1061,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       context
         ? computeDeployAttrs(context.projectSpec, 'diff')
         : { ...DEFAULT_DEPLOY_ATTRS, deploy_mode: 'diff' as const },
-      preflight.dependencySync
+      preflight.dependencySyncResult
     );
 
     const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
@@ -1259,8 +1259,8 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     numStacksWithChanges,
     deployNotes,
     managedMemoryNotice,
-    dependencySyncNotice: preflight.dependencySync?.notice ?? null,
-    dependencySyncWarnings: preflight.dependencySync?.warnings ?? [],
+    dependencySyncNotice: preflight.dependencySyncResult?.notice ?? null,
+    dependencySyncWarnings: preflight.dependencySyncResult?.warnings ?? [],
     postDeployWarnings,
     postDeployHasError,
     isDiffLoading,

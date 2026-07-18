@@ -75,7 +75,10 @@ export async function syncManagedDependencies(options: SyncManagedDependenciesOp
 
   const plan = computeSyncPlan(vended, project);
 
+  // `disabled` wins over check mode: an opted-out sync never writes regardless of mode.
+  const outcome = disabled ? 'opted-out' : checkOnly ? 'check-only' : 'synced';
   const result: DependencySyncResult = {
+    outcome,
     optedOut: disabled,
     checkOnly,
     migratedFromCaret: plan.migratedFromCaret,

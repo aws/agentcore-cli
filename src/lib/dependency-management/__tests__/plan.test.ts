@@ -102,6 +102,13 @@ describe('computeSyncPlan', () => {
     ]);
   });
 
+  it('syncs v-prefixed specifiers instead of skipping them as non-semver', () => {
+    const plan = computeSyncPlan(VENDED, project({ dependencies: { ...VENDED.dependencies, constructs: 'v10.7.0' } }));
+    expect(plan.skipped).toEqual([]);
+    expect(plan.skew).toEqual([]);
+    expect(plan.changes).toEqual([{ name: 'constructs', section: 'dependencies', from: 'v10.7.0', to: '~10.7.0' }]);
+  });
+
   it('never touches user-added dependencies', () => {
     const plan = computeSyncPlan(
       VENDED,

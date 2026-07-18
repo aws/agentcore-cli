@@ -43,6 +43,7 @@ import {
   checkStackDeployability,
   ensureDefaultDeploymentTarget,
   ensureManagedDependencies,
+  failedSyncResult,
   getAllCredentials,
   hasIdentityApiProviders,
   hasIdentityOAuthProviders,
@@ -78,7 +79,7 @@ export interface ValidatedDeployOptions {
   verbose?: boolean;
   plan?: boolean;
   diff?: boolean;
-  onProgress?: (step: string, status: 'start' | 'success' | 'error') => void;
+  onProgress?: (step: string, status: 'start' | 'success' | 'error' | 'warn') => void;
   onResourceEvent?: (message: string) => void;
   onDeployMessage?: (message: DeployMessage) => void;
   /** Emit a one-shot, user-facing notice to the terminal mid-deploy (e.g. the managed-memory heads-up
@@ -190,7 +191,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     onProgress?.(name, 'start');
   };
 
-  const endStep = (status: 'success' | 'error', message?: string) => {
+  const endStep = (status: 'success' | 'error' | 'warn', message?: string) => {
     logger.endStep(status, message);
     onProgress?.(currentStepName, status);
   };
@@ -294,6 +295,9 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       });
     } catch (syncErr) {
       if (!(context.isTeardownDeploy && syncErr instanceof DependencySyncError)) {
+        // The sync itself is the failure: attach a minimal 'failed' result before rethrowing
+        // so the outer catch's failure result still carries dep_sync_* telemetry.
+        dependencySyncResult = failedSyncResult();
         throw syncErr;
       }
       // The warning-only result flows through the normal dependencySyncResult.warnings channel below.
@@ -306,7 +310,13 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       logger.log(dependencySyncResult.notice);
       options.onNotice?.(dependencySyncResult.notice);
     }
-    endStep('success');
+    // A suppressed teardown sync failure ends the step as a warning, not a bare success
+    // checkmark — mirroring the TUI preflight, which marks the step 'warn'.
+    if (dependencySyncResult.outcome === 'failure-suppressed') {
+      endStep('warn', dependencySyncResult.warnings[0]);
+    } else {
+      endStep('success');
+    }
 
     // Build CDK project
     startStep('Build CDK project');

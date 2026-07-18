@@ -1,5 +1,5 @@
 import { syncManagedDependencies } from '../../../lib/dependency-management';
-import type { DependencySyncResult } from '../../../lib/dependency-management';
+import type { DependencySyncOutcome, DependencySyncResult } from '../../../lib/dependency-management';
 import { readGlobalConfigSync } from '../../../lib/schemas/io/global-config';
 import type { LocalCdkProject } from '../../cdk/local-cdk-project';
 import { getDistroConfig } from '../../constants';
@@ -23,12 +23,14 @@ export interface EnsureManagedDependenciesOptions {
 
 /**
  * A DependencySyncResult in which no dependency operation took effect: nothing was
- * written, installed, or warned about. Base shape for the no-op states below.
+ * written or installed. `outcome` says why the sync was a no-op. Base shape for the
+ * no-op states below.
  */
-function noOpSyncResult(warnings: string[] = []): DependencySyncResult {
+function noOpSyncResult(outcome: DependencySyncOutcome, warnings: string[] = []): DependencySyncResult {
   return {
+    outcome,
     optedOut: false,
-    checkOnly: true,
+    checkOnly: false,
     migratedFromCaret: false,
     reinstalled: false,
     skewWarning: false,
@@ -40,8 +42,15 @@ function noOpSyncResult(warnings: string[] = []): DependencySyncResult {
   };
 }
 
-/** No-op result for when the sync is skipped entirely (AGENTCORE_SKIP_INSTALL). */
-const NO_OP_SYNC_RESULT: DependencySyncResult = noOpSyncResult();
+/**
+ * Minimal result attached to the failure path when the sync itself throws
+ * (CliVersionTooOldError, or DependencySyncError on a non-teardown deploy): nothing
+ * took effect, and dep_sync_* telemetry records that the sync was the failure.
+ * No warning line is added — the thrown error already carries the message.
+ */
+export function failedSyncResult(): DependencySyncResult {
+  return noOpSyncResult('failed');
+}
 
 /**
  * Warning-only result for a DependencySyncError caught on a teardown deploy. Teardown must
@@ -51,7 +60,22 @@ const NO_OP_SYNC_RESULT: DependencySyncResult = noOpSyncResult();
  * node_modules is genuinely unusable, the build step fails on its own.
  */
 export function teardownSyncFailureResult(err: Error): DependencySyncResult {
-  return noOpSyncResult([`Dependency sync failed (continuing with teardown): ${err.message}`]);
+  return noOpSyncResult('failure-suppressed', [`Dependency sync failed (continuing with teardown): ${err.message}`]);
+}
+
+/**
+ * Map a dependency sync result to its dep_sync_* telemetry attrs.
+ * Single source for both the CLI command (command.tsx) and the TUI flow (useDeployFlow).
+ */
+export function toDepSyncAttrs(sync: DependencySyncResult) {
+  return {
+    dep_sync_outcome: sync.outcome,
+    dep_sync_changed_count: sync.changes.length + sync.restored.length,
+    dep_sync_migrated: sync.migratedFromCaret,
+    dep_sync_opted_out: sync.optedOut,
+    dep_sync_skew_warning: sync.skewWarning,
+    dep_sync_reinstalled: sync.reinstalled,
+  };
 }
 
 /**
@@ -65,26 +89,12 @@ export function teardownSyncFailureResult(err: Error): DependencySyncResult {
  * Throws CliVersionTooOldError when the project was updated by a newer CLI (unless
  * `treatSkewAsWarning` or opted out), and DependencySyncError on rewrite/install failure.
  */
-/**
- * Map a dependency sync result to its dep_sync_* telemetry attrs.
- * Single source for both the CLI command (command.tsx) and the TUI flow (useDeployFlow).
- */
-export function toDepSyncAttrs(sync: DependencySyncResult) {
-  return {
-    dep_sync_changed_count: sync.changes.length + sync.restored.length,
-    dep_sync_migrated: sync.migratedFromCaret,
-    dep_sync_opted_out: sync.optedOut,
-    dep_sync_skew_warning: sync.skewWarning,
-    dep_sync_reinstalled: sync.reinstalled,
-  };
-}
-
 export async function ensureManagedDependencies(
   cdkProject: LocalCdkProject,
   options: EnsureManagedDependenciesOptions = {}
 ): Promise<DependencySyncResult> {
   if (process.env.AGENTCORE_SKIP_INSTALL) {
-    return NO_OP_SYNC_RESULT;
+    return noOpSyncResult('skipped');
   }
   const disabled = readGlobalConfigSync().disableDependencyManagement === true;
   return syncManagedDependencies({
@@ -96,5 +106,3 @@ export async function ensureManagedDependencies(
     installCommand: getDistroConfig().installCommand,
   });
 }
-
-export type { DependencySyncResult };

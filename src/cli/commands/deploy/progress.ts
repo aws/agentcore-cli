@@ -8,7 +8,7 @@ import { handleDeploy } from './actions';
 export const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 export interface SpinnerProgress {
-  onProgress: (step: string, status: 'start' | 'success' | 'error') => void;
+  onProgress: (step: string, status: 'start' | 'success' | 'error' | 'warn') => void;
   cleanup: () => void;
 }
 
@@ -23,7 +23,7 @@ export function createSpinnerProgress(): SpinnerProgress {
     }
   };
 
-  const onProgress = (step: string, status: 'start' | 'success' | 'error') => {
+  const onProgress = (step: string, status: 'start' | 'success' | 'error' | 'warn') => {
     clearSpinner();
 
     if (status === 'start') {
@@ -35,6 +35,8 @@ export function createSpinnerProgress(): SpinnerProgress {
       }, 80);
     } else if (status === 'success') {
       console.log(`✓ ${step}`);
+    } else if (status === 'warn') {
+      console.log(`${ANSI.yellow}⚠ ${step}${ANSI.reset}`);
     } else {
       console.log(`✗ ${step}`);
     }

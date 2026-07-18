@@ -26,7 +26,23 @@ export interface SkippedDependency {
   reason: string;
 }
 
+/**
+ * How the sync concluded:
+ * - 'synced': the sync ran in apply mode (rewrites/installs happened as needed).
+ * - 'check-only': `mode: 'check'` — plan computed, nothing written or installed.
+ * - 'opted-out': dependency management disabled via global config — nothing written.
+ * - 'skipped': the CLI layer skipped the sync entirely (AGENTCORE_SKIP_INSTALL).
+ * - 'failure-suppressed': the sync threw on a teardown deploy and the failure was
+ *   downgraded to a warning so the teardown could proceed.
+ * - 'failed': the sync threw and the deploy failed with it (CliVersionTooOldError, or
+ *   DependencySyncError on a non-teardown deploy). Attached by the CLI layer's failure
+ *   path purely so dep_sync_* telemetry records that the sync itself was the failure.
+ */
+export type DependencySyncOutcome = 'synced' | 'check-only' | 'opted-out' | 'skipped' | 'failure-suppressed' | 'failed';
+
 export interface DependencySyncResult {
+  /** How the sync concluded. Discriminant for the boolean flags below. */
+  outcome: DependencySyncOutcome;
   /** True when dependency management is disabled via global config — nothing was written. */
   optedOut: boolean;
   /** True when this was a check-only run (`mode: 'check'`) — plan computed, nothing written or installed. */

@@ -1,5 +1,5 @@
 import { ConfigIO, serializeResult } from '../../../lib';
-import { COMMAND_DESCRIPTIONS } from '../../constants';
+import { ANSI, COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { toDepSyncAttrs } from '../../operations/deploy';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
@@ -91,7 +91,7 @@ async function executeDeploy(options: DeployOptions): Promise<DeployResult> {
 
   // Progress callback for --progress mode
   const onProgress = options.progress
-    ? (step: string, status: 'start' | 'success' | 'error') => {
+    ? (step: string, status: 'start' | 'success' | 'error' | 'warn') => {
         if (spinner) {
           clearInterval(spinner);
           process.stdout.write('\r\x1b[K'); // Clear line
@@ -106,6 +106,8 @@ async function executeDeploy(options: DeployOptions): Promise<DeployResult> {
           }, 80);
         } else if (status === 'success') {
           console.log(`✓ ${step}`);
+        } else if (status === 'warn') {
+          console.log(`${ANSI.yellow}⚠ ${step}${ANSI.reset}`);
         } else {
           console.log(`✗ ${step}`);
         }
