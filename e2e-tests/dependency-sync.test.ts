@@ -36,7 +36,7 @@ const USER_DEP_SPEC = '^4.17.21';
 
 /** Shape of the dependency-sync outcome inside the `deploy --json` envelope (DependencySyncResult). */
 interface DepSyncJson {
-  outcome: 'synced' | 'check-only' | 'opted-out' | 'skipped' | 'failure-suppressed';
+  outcome: 'synced' | 'check-only' | 'opted-out' | 'skipped' | 'failure-suppressed' | 'failed';
   optedOut: boolean;
   checkOnly: boolean;
   migratedFromCaret: boolean;
@@ -352,6 +352,8 @@ describe.sequential('e2e: dependency sync — newer-than-CLI skew fails fast wit
       expect(json.error).toContain('requires a newer version of the AgentCore CLI');
       expect(json.error).toContain(MANAGED_DEP);
       expect(json.errorName).toBe('CliVersionTooOldError');
+      // The failure envelope still carries the sync outcome (dep_sync_* telemetry rides on it).
+      expect(json.dependencySyncResult?.outcome).toBe('failed');
 
       // Skew is detected before anything is written — the manifest must be untouched.
       const { raw } = await readCdkManifest(projectPath);

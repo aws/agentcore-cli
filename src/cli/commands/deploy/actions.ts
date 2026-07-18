@@ -311,9 +311,10 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       options.onNotice?.(dependencySyncResult.notice);
     }
     // A suppressed teardown sync failure ends the step as a warning, not a bare success
-    // checkmark — mirroring the TUI preflight, which marks the step 'warn'.
+    // checkmark — mirroring the TUI preflight, which marks the step 'warn'. No message:
+    // the warnings loop above already wrote the warning line to the log.
     if (dependencySyncResult.outcome === 'failure-suppressed') {
-      endStep('warn', dependencySyncResult.warnings[0]);
+      endStep('warn');
     } else {
       endStep('success');
     }

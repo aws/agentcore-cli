@@ -534,7 +534,8 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
             const warning = downgraded.warnings[0]!;
             logger.log(warning, 'warn');
             setDependencySyncResult(downgraded);
-            logger.endStep('success');
+            // No message: the logger.log above already wrote the warning line.
+            logger.endStep('warn');
             updateStep(STEP_SYNC_DEPS, { status: 'warn', warn: warning });
           } else {
             const errorMsg = formatError(err);

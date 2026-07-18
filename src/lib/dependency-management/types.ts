@@ -41,7 +41,10 @@ export interface SkippedDependency {
 export type DependencySyncOutcome = 'synced' | 'check-only' | 'opted-out' | 'skipped' | 'failure-suppressed' | 'failed';
 
 export interface DependencySyncResult {
-  /** How the sync concluded. Discriminant for the boolean flags below. */
+  /**
+   * Primary classification of the sync run. The booleans below preserve overlapping detail
+   * (e.g. an opted-out run in check mode also has `checkOnly: true`).
+   */
   outcome: DependencySyncOutcome;
   /** True when dependency management is disabled via global config — nothing was written. */
   optedOut: boolean;

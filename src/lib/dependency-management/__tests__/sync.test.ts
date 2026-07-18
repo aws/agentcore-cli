@@ -183,6 +183,22 @@ describe('syncManagedDependencies', () => {
     expect(mockRunSubprocessCapture).not.toHaveBeenCalled();
   });
 
+  it('disabled wins over check mode in the outcome (opted-out, with checkOnly preserved)', async () => {
+    const manifest = {
+      dependencies: { '@aws/agentcore-cdk': '^0.1.0-alpha.19', 'aws-cdk-lib': '~2.261.0' },
+      devDependencies: { typescript: '~5.9.3' },
+    };
+    writeProject(manifest);
+    const result = await run({ disabled: true, mode: 'check' });
+    expect(result.outcome).toBe('opted-out');
+    expect(result.optedOut).toBe(true);
+    // The overlapping detail survives: the run was also check-only.
+    expect(result.checkOnly).toBe(true);
+    expect(result.notice).toBeNull();
+    expect(readProject()).toEqual(manifest);
+    expect(mockRunSubprocessCapture).not.toHaveBeenCalled();
+  });
+
   it('check mode reports skew as a warning instead of throwing', async () => {
     const manifest = { dependencies: { ...VENDED.dependencies, 'aws-cdk-lib': '~2.300.0' }, devDependencies: {} };
     writeProject(manifest);

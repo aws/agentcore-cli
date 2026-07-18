@@ -137,9 +137,10 @@ ${separator}
   }
 
   /**
-   * Mark the end of the current step
+   * Mark the end of the current step.
+   * @param message Optional error or warning detail logged with the step outcome.
    */
-  endStep(status: 'success' | 'error' | 'warn', error?: string): void {
+  endStep(status: 'success' | 'error' | 'warn', message?: string): void {
     if (!this.currentStep) {
       return;
     }
@@ -150,8 +151,8 @@ ${separator}
     if (status === 'error') {
       this.lastFailedStep = this.currentStep.name;
     }
-    if ((status === 'error' || status === 'warn') && error) {
-      this.appendLine(`[${this.formatTime()}] ${status === 'error' ? 'Error' : 'Warning'}: ${error}`);
+    if ((status === 'error' || status === 'warn') && message) {
+      this.appendLine(`[${this.formatTime()}] ${status === 'error' ? 'Error' : 'Warning'}: ${message}`);
     }
 
     this.appendLine(`[${this.formatTime()}] Status: ${statusText}`);
