@@ -105,3 +105,18 @@ Review the changes in `src/assets/__tests__/__snapshots__/` before committing.
 - File structure of `src/assets/`
 - Contents of all template files (CDK, Python frameworks, MCP, static assets)
 - Any file addition or removal
+
+## CDK Schema Compatibility Test
+
+`src/assets/__tests__/cdk-schema-compat.test.ts` keeps the vended template's exact `aws-cdk-lib` pin in lockstep with
+the CLI's bundled cloud-assembly readers (`@aws-cdk/toolkit-lib`, `@aws-cdk/cdk-assets-lib`) — an unpinned or drifted
+template breaks fresh projects' deploys with `AssemblyVersionMismatch`. See the test file's header for details.
+
+If it fails after an `aws-cdk-lib` bump (e.g. a Dependabot `aws-cdk` group PR), re-sync with:
+
+```bash
+npm ci && node scripts/sync-template-cdk.mjs
+```
+
+then commit the changes (run `npm install` first if the root `package.json` changed, so `npm-shrinkwrap.json` is
+regenerated). `@dependabot rebase` drops the sync commit — just re-run the script.
