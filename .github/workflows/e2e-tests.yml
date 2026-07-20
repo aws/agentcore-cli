@@ -35,7 +35,6 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  id-token: write # OIDC — lets GitHub assume an AWS IAM role via short-lived token (no stored keys)
   contents: read
 
 jobs:
@@ -72,6 +71,9 @@ jobs:
   e2e:
     needs: authorize
     if: needs.authorize.outputs.is_authorized == 'true'
+    permissions:
+      id-token: write # OIDC - lets this job assume the E2E AWS role.
+      contents: read
     # Run on our AWS CodeBuild-hosted runner instead of a GitHub-hosted runner.
     # GitHub-hosted runner IPs rotate through shared pools whose reputation trips
     # the service WAF (403s before the request reaches service code); dedicated
@@ -117,23 +119,52 @@ jobs:
             E2E,${{ secrets.E2E_SECRET_ARN }}
           parse-json-secrets: true
 
-      - name: Generate GitHub App Token
+      - name: Resolve private CDK repository
+        id: cdk-repo
+        env:
+          CDK_REPO: ${{ secrets.CDK_REPO_NAME }}
+        run: |
+          owner="${CDK_REPO%%/*}"
+          repository="${CDK_REPO#*/}"
+          if [[ -z "$owner" || -z "$repository" || "$repository" == */* || "$owner/$repository" != "$CDK_REPO" ]]; then
+            echo "::error::CDK_REPO_NAME must use the owner/repository format"
+            exit 1
+          fi
+          echo "owner=$owner" >> "$GITHUB_OUTPUT"
+          echo "repository=$repository" >> "$GITHUB_OUTPUT"
+      - name: Generate repository-scoped GitHub App token
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: aws
+          owner: ${{ steps.cdk-repo.outputs.owner }}
+          repositories: ${{ steps.cdk-repo.outputs.repository }}
+          permission-contents: read
+          skip-token-revoke: true
       # Clone CDK repo for bundle script (requires App token for private repo access)
       - name: Clone CDK repo
         run: |
           CDK_BRANCH="${INPUT_CDK_BRANCH:-main}"
           echo "Cloning CDK from branch: $CDK_BRANCH"
           git clone --depth 1 --branch "$CDK_BRANCH" "https://x-access-token:${CDK_REPO_TOKEN}@github.com/${CDK_REPO}.git" /tmp/cdk-repo
+          git -C /tmp/cdk-repo remote remove origin
         env:
           INPUT_CDK_BRANCH: ${{ inputs.cdk_branch }}
           CDK_REPO_TOKEN: ${{ steps.app-token.outputs.token }}
           CDK_REPO: ${{ secrets.CDK_REPO_NAME }}
+      - name: Revoke GitHub App token
+        if: always() && steps.app-token.outputs.token != ''
+        env:
+          CDK_REPO_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_API_URL: ${{ github.api_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --request DELETE \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${CDK_REPO_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/installation/token"
 
       - run: npm ci
 
