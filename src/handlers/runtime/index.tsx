@@ -8,7 +8,6 @@ import { createRuntimeVersionHandler } from "./version";
 
 export function createRuntimeHandler(core: Core, io: AppIO): Router {
   return new Router("runtime", "inspect AgentCore Runtimes")
-    .hideFromTui()
     .default(createHelpDefault(io))
     .handler(createGetRuntimeHandler(core))
     .handler(createListRuntimesHandler(core))

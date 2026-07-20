@@ -14,12 +14,6 @@ export const PathKey: ContextKey<string> = contextKey<string>("path");
 
 export const LoggerKey = contextKey<Logger>("logger");
 
-const commandsHiddenFromTui = new WeakSet<Command>();
-
-export function isCommandVisibleInTui(command: Command): boolean {
-  return !commandsHiddenFromTui.has(command);
-}
-
 // DefaultHandle runs when a group is selected without a subcommand (e.g.
 // `agentcore` or `agentcore harness`). It reads group-level/global flags from the
 // context; own flags/arguments are not supported, so it receives empty objects.
@@ -110,7 +104,6 @@ export function compile(
 ): Command {
   const c = new Command(node.name());
   c.description(node.description());
-  if (node.hiddenFromTui) commandsHiddenFromTui.add(c);
 
   const ownFlags = node.flags();
   declareFlags(c, ownFlags);
@@ -160,7 +153,6 @@ export function compile(
 }
 
 export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvider {
-  hiddenFromTui = false;
   private mws: Middleware[] = [];
   private handlers: Handler[] = [];
   private globalFlags: GlobalFlag[] = [];
@@ -180,11 +172,6 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
 
   handler(handler: Handler): this {
     this.handlers.push(handler);
-    return this;
-  }
-
-  hideFromTui(): this {
-    this.hiddenFromTui = true;
     return this;
   }
 

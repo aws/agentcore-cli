@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Box, Text, useApp, useInput, useStdin } from "ink";
 import type { Command } from "commander";
 import { useNavigate } from "react-router";
-import { CommandKey, isCommandVisibleInTui } from "../router";
+import { CommandKey } from "../router";
 import { Layout } from "./Layout";
 import { Divider } from "./ui/divider";
 import { TextInput } from "./ui/text-input";
@@ -59,7 +59,7 @@ export function RouterScreen({ ctx, path }: RouterScreenProps) {
   const options: Option[] = useMemo(
     () =>
       command.commands
-        .filter(isCommandVisibleInTui)
+        .filter((command) => command.name() !== "runtime")
         .map((c) => ({ name: c.name(), description: c.description() })),
     [command],
   );
