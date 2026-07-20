@@ -226,8 +226,10 @@ describe("runtime control reads", () => {
 
   test.each([
     [["runtime", "get"], /--id/],
+    [["runtime", "version", "get"], /--id/],
     [["runtime", "version", "get", "--id", "runtime-1"], /--version/],
     [["runtime", "version", "list"], /--id/],
+    [["runtime", "endpoint", "get"], /--id/],
     [["runtime", "endpoint", "get", "--id", "runtime-1"], /--qualifier/],
     [["runtime", "endpoint", "list"], /--id/],
   ] as const)("rejects a missing required selector for `%s`", async (args, message) => {
