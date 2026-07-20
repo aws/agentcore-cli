@@ -27,7 +27,8 @@ responses. `agentcore` wraps all of that behind one ergonomic tool.
 
 ## Command surface
 
-Harness leaves run headless with flags or open the matching TUI screen when invoked bare. Runtime inspection and config commands are headless only; invoking a Runtime command group without a leaf prints help.
+Every leaf command runs headless with flags, or opens the matching TUI screen
+when invoked bare.
 
 ```
 agentcore                          # interactive TUI
