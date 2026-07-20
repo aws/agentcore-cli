@@ -1,8 +1,10 @@
 import type { CoreHarnessClient } from "./harness/types.tsx";
+import type { CoreRuntimeClient } from "./runtime/types.tsx";
 import type { Context } from "../router";
 
 export interface Core {
   harness: CoreHarnessClient;
+  runtime: CoreRuntimeClient;
 }
 
 // AppIO is the set of standard streams the app reads from and writes to. It is

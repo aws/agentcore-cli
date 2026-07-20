@@ -1,0 +1,19 @@
+{
+  "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/runtime-1234567890",
+  "agentRuntimeName": "fixture-runtime",
+  "agentRuntimeId": "runtime-1234567890",
+  "agentRuntimeVersion": "3",
+  "createdAt": "2026-07-20T10:00:00.000Z",
+  "lastUpdatedAt": "2026-07-20T11:00:00.000Z",
+  "roleArn": "arn:aws:iam::123456789012:role/fixture-runtime-role",
+  "networkConfiguration": {
+    "networkMode": "PUBLIC"
+  },
+  "status": "READY",
+  "lifecycleConfiguration": {
+    "idleRuntimeSessionTimeout": 900,
+    "maxLifetime": 28800
+  },
+  "failureReason": "none",
+  "description": "Runtime fixture with complete read fields"
+}

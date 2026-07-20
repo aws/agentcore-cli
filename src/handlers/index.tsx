@@ -1,5 +1,6 @@
 import { Router } from "../router";
 import { createHarnessHandler } from "./harness/index.tsx";
+import { createRuntimeHandler } from "./runtime/index.tsx";
 import { DebugKey, EndpointKey, JsonKey, RegionKey } from "./keys.tsx";
 import { createConfigHandler } from "./config/";
 import { createProjectHandler } from "./project/index.ts";
@@ -33,6 +34,7 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
 
   // Install sub handlers
   root.handler(createHarnessHandler(core, io));
+  root.handler(createRuntimeHandler(core, io));
   root.handler(createConfigHandler(io));
   root.handler(createProjectHandler());
 

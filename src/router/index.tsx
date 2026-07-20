@@ -7,6 +7,7 @@ export {
   type DefaultHandle,
   type DefaultHandlerProvider,
   isDefaultHandlerProvider,
+  isCommandVisibleInTui,
 } from "./router";
 export {
   type Handler,

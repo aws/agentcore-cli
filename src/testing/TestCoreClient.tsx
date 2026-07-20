@@ -8,6 +8,11 @@ import type {
   DeleteHarnessResponse,
   GetHarnessResponse,
   GetHarnessEndpointResponse,
+  GetAgentRuntimeEndpointResponse,
+  GetAgentRuntimeResponse,
+  ListAgentRuntimeEndpointsResponse,
+  ListAgentRuntimesResponse,
+  ListAgentRuntimeVersionsResponse,
   ListHarnessesResponse,
   ListHarnessEndpointsResponse,
   ListHarnessVersionsResponse,
@@ -26,6 +31,7 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { Core } from "../handlers/types";
 import type { CoreHarnessClient, CreateHarnessInput } from "../handlers/harness/types";
+import type { CoreRuntimeClient } from "../handlers/runtime/types";
 import type { CoreOptions } from "../core/types";
 
 // TestCoreClient is a hand-controllable `Core` for tests. It implements the same
@@ -64,6 +70,15 @@ const DEFAULT_UPDATE_ENDPOINT_RESPONSE: UpdateHarnessEndpointResponse =
   {} as UpdateHarnessEndpointResponse;
 const DEFAULT_DELETE_ENDPOINT_RESPONSE: DeleteHarnessEndpointResponse =
   {} as DeleteHarnessEndpointResponse;
+const DEFAULT_GET_RUNTIME_RESPONSE = {} as GetAgentRuntimeResponse;
+const DEFAULT_GET_RUNTIME_ENDPOINT_RESPONSE = {} as GetAgentRuntimeEndpointResponse;
+const DEFAULT_LIST_RUNTIMES_RESPONSE: ListAgentRuntimesResponse = { agentRuntimes: [] };
+const DEFAULT_LIST_RUNTIME_VERSIONS_RESPONSE: ListAgentRuntimeVersionsResponse = {
+  agentRuntimes: [],
+};
+const DEFAULT_LIST_RUNTIME_ENDPOINTS_RESPONSE: ListAgentRuntimeEndpointsResponse = {
+  runtimeEndpoints: [],
+};
 
 // abortError mirrors the error the SDK's abort handling rejects with.
 function abortError(): Error {
@@ -404,7 +419,134 @@ export class TestHarnessClient implements CoreHarnessClient {
   }
 }
 
+export class TestRuntimeClient implements CoreRuntimeClient {
+  readonly calls: RecordedCall[] = [];
+  private getResponse: GetAgentRuntimeResponse = DEFAULT_GET_RUNTIME_RESPONSE;
+  private getVersionResponse: GetAgentRuntimeResponse = DEFAULT_GET_RUNTIME_RESPONSE;
+  private getEndpointResponse: GetAgentRuntimeEndpointResponse =
+    DEFAULT_GET_RUNTIME_ENDPOINT_RESPONSE;
+  private listResponses = new Map<string | undefined, ListAgentRuntimesResponse>();
+  private listVersionsResponses = new Map<string | undefined, ListAgentRuntimeVersionsResponse>();
+  private listEndpointsResponses = new Map<string | undefined, ListAgentRuntimeEndpointsResponse>();
+  private error?: Error;
+
+  setGetResponse(response: GetAgentRuntimeResponse): this {
+    this.getResponse = response;
+    return this;
+  }
+
+  setGetVersionResponse(response: GetAgentRuntimeResponse): this {
+    this.getVersionResponse = response;
+    return this;
+  }
+
+  setGetEndpointResponse(response: GetAgentRuntimeEndpointResponse): this {
+    this.getEndpointResponse = response;
+    return this;
+  }
+
+  setListResponse(response: ListAgentRuntimesResponse, forNextToken?: string): this {
+    this.listResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setListVersionsResponse(response: ListAgentRuntimeVersionsResponse, forNextToken?: string): this {
+    this.listVersionsResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setListEndpointsResponse(
+    response: ListAgentRuntimeEndpointsResponse,
+    forNextToken?: string,
+  ): this {
+    this.listEndpointsResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setError(error: Error | undefined): this {
+    this.error = error;
+    return this;
+  }
+
+  async getRuntime(id: string, options: CoreOptions): Promise<GetAgentRuntimeResponse> {
+    this.calls.push({ method: "getRuntime", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.getResponse;
+  }
+
+  async getRuntimeVersion(
+    id: string,
+    version: string,
+    options: CoreOptions,
+  ): Promise<GetAgentRuntimeResponse> {
+    this.calls.push({ method: "getRuntimeVersion", args: [id, version, options] });
+    if (this.error) throw this.error;
+    return this.getVersionResponse;
+  }
+
+  async getRuntimeEndpoint(
+    id: string,
+    qualifier: string,
+    options: CoreOptions,
+  ): Promise<GetAgentRuntimeEndpointResponse> {
+    this.calls.push({ method: "getRuntimeEndpoint", args: [id, qualifier, options] });
+    if (this.error) throw this.error;
+    return this.getEndpointResponse;
+  }
+
+  async listRuntimes(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListAgentRuntimesResponse> {
+    this.calls.push({ method: "listRuntimes", args: [nextToken, maxResults, options] });
+    if (this.error) throw this.error;
+    return (
+      this.listResponses.get(nextToken) ??
+      this.listResponses.get(undefined) ??
+      DEFAULT_LIST_RUNTIMES_RESPONSE
+    );
+  }
+
+  async listRuntimeVersions(
+    id: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListAgentRuntimeVersionsResponse> {
+    this.calls.push({
+      method: "listRuntimeVersions",
+      args: [id, nextToken, maxResults, options],
+    });
+    if (this.error) throw this.error;
+    return (
+      this.listVersionsResponses.get(nextToken) ??
+      this.listVersionsResponses.get(undefined) ??
+      DEFAULT_LIST_RUNTIME_VERSIONS_RESPONSE
+    );
+  }
+
+  async listRuntimeEndpoints(
+    id: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListAgentRuntimeEndpointsResponse> {
+    this.calls.push({
+      method: "listRuntimeEndpoints",
+      args: [id, nextToken, maxResults, options],
+    });
+    if (this.error) throw this.error;
+    return (
+      this.listEndpointsResponses.get(nextToken) ??
+      this.listEndpointsResponses.get(undefined) ??
+      DEFAULT_LIST_RUNTIME_ENDPOINTS_RESPONSE
+    );
+  }
+}
+
 // TestCoreClient implements the Core contract with fully controllable sub-clients.
 export class TestCoreClient implements Core {
   readonly harness = new TestHarnessClient();
+  readonly runtime = new TestRuntimeClient();
 }

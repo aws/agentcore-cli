@@ -77,6 +77,7 @@ type HandleFn<
 > = (ctx: Context, flags: FlagsOf<F>, args: ArgumentsOf<A>) => Promise<void>;
 
 export interface Handler {
+  hiddenFromTui?: boolean;
   name(): string;
   description(): string;
   flags(): Flag[];

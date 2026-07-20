@@ -9,6 +9,11 @@ describe("createRootHandler", () => {
       logger: createSilentLogger(),
     });
     expect(root.name()).toBe("agentcore");
-    expect(root.children().map((c) => c.name())).toEqual(["harness", "config", "project"]);
+    expect(root.children().map((c) => c.name())).toEqual([
+      "harness",
+      "runtime",
+      "config",
+      "project",
+    ]);
   });
 });

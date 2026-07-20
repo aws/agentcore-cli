@@ -1,0 +1,16 @@
+{
+  "agentRuntimes": [
+    {
+      "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/runtime-1234567890",
+      "agentRuntimeId": "runtime-1234567890",
+      "agentRuntimeVersion": "3",
+      "agentRuntimeName": "fixture-runtime",
+      "description": "Runtime fixture",
+      "lastUpdatedAt": {
+        "$date": "2026-07-20T11:00:00.000Z"
+      },
+      "status": "READY"
+    }
+  ],
+  "nextToken": "runtime-response-token"
+}

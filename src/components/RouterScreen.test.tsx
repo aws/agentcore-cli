@@ -15,6 +15,7 @@ describe("menu rendering", () => {
     const frame = r.lastFrame()!;
     expect(frame).toContain("harness");
     expect(frame).toContain("manage agentcore harnesses");
+    expect(frame).not.toContain("runtime");
     expect(frame).toContain("config");
     expect(frame).toContain("read/write global config values");
     r.unmount();
