@@ -15,9 +15,10 @@ import {
   TestCoreClient,
   testIO,
   tick,
+  waitFor,
   waitForText,
 } from "../testing";
-import { JsonRendererKey } from "../tui";
+import { JsonRendererKey, renderTuiAt } from "../tui";
 
 afterEach(cleanupScreens);
 
@@ -127,6 +128,29 @@ function expectEndpointPropagation(core: TestCoreClient, methods: readonly strin
       });
     }
   }
+}
+
+interface TtyInput extends NodeJS.ReadStream {
+  write(chunk: string): boolean;
+}
+
+function ttyTestIO(): { streams: ReturnType<typeof testIO>; stdin: TtyInput } {
+  const streams = testIO({ isTTY: true });
+  const stdin = streams.io.stdin as TtyInput;
+  stdin.setRawMode = function () {
+    return this;
+  };
+  stdin.ref = function () {
+    return this;
+  };
+  stdin.unref = function () {
+    return this;
+  };
+  Object.defineProperties(streams.io.stdout, {
+    columns: { configurable: true, value: 100 },
+    rows: { configurable: true, value: 40 },
+  });
+  return { streams, stdin };
 }
 
 // RouterScreen is the interactive command menu. These tests mount it through the
@@ -360,6 +384,65 @@ describe("navigation", () => {
       expect(core.runtime.calls).toHaveLength(callsAtRoot);
 
       expectEndpointPropagation(core, ["listRuntimes", "getRuntime", listMethod, getMethod]);
+    },
+  );
+});
+
+describe("Runtime TUI exit", () => {
+  test.each([
+    [
+      "Runtime list",
+      "/agentcore/runtime/list",
+      "listRuntimes",
+      0,
+      (core: TestCoreClient) =>
+        core.runtime.setListResponse({
+          agentRuntimes: [runtime()],
+          nextToken: "page-2",
+        }),
+    ],
+    [
+      "version list",
+      "/agentcore/runtime/version/list/runtime-123",
+      "listRuntimeVersions",
+      1,
+      (core: TestCoreClient) =>
+        core.runtime.setListVersionsResponse({
+          agentRuntimes: [runtime()],
+          nextToken: "page-2",
+        }),
+    ],
+    [
+      "endpoint list",
+      "/agentcore/runtime/endpoint/list/runtime-123",
+      "listRuntimeEndpoints",
+      1,
+      (core: TestCoreClient) =>
+        core.runtime.setListEndpointsResponse({
+          runtimeEndpoints: [endpoint()],
+          nextToken: "page-2",
+        }),
+    ],
+  ] as const)(
+    "Ctrl+C exits the production %s and ignores paging input after exit",
+    async (_label, path, method, tokenIndex, configure) => {
+      const core = new TestCoreClient();
+      configure(core);
+      const { streams, stdin } = ttyTestIO();
+      const renderPromise = renderTuiAt(path, runtimeContext(core), core, streams.io);
+      const methodCalls = () => core.runtime.calls.filter((call) => call.method === method);
+
+      await waitFor(() => methodCalls().length > 0 && streams.stdout().includes("page 1 · more →"));
+      await tick();
+      const callsBeforeExit = methodCalls().length;
+
+      stdin.write(String.fromCharCode(3));
+      await expect(renderPromise).resolves.toBeUndefined();
+
+      stdin.write("l");
+      await tick(50);
+      expect(methodCalls()).toHaveLength(callsBeforeExit);
+      expect(methodCalls().some((call) => call.args[tokenIndex] === "page-2")).toBe(false);
     },
   );
 });

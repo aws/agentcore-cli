@@ -310,21 +310,6 @@ describe("runtime picker", () => {
     expect(r.lastFrame()).toContain("page 1 · more →");
   });
 
-  test("Ctrl+C exits without another Runtime list request", async () => {
-    const core = coreWithRuntimes([runtime()]);
-    const r = renderScreen("/agentcore/runtime/list", { core });
-
-    await waitForText(r.lastFrame, "checkout");
-    const callsBeforeExit = core.runtime.calls.filter(
-      (call) => call.method === "listRuntimes",
-    ).length;
-    await r.write(String.fromCharCode(3));
-
-    expect(core.runtime.calls.filter((call) => call.method === "listRuntimes")).toHaveLength(
-      callsBeforeExit,
-    );
-  });
-
   test("retains rows and ignores page keys while either page direction is loading", async () => {
     const core = new TestCoreClient();
     core.runtime.setListResponse({

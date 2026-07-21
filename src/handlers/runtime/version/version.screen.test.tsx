@@ -262,24 +262,6 @@ describe("Runtime version flow", () => {
     expect(r.lastFrame()).toContain("3");
   });
 
-  test("Ctrl+C exits without another Runtime version list request", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setListVersionsResponse({
-      agentRuntimes: [runtime()],
-    });
-    const r = renderScreen("/agentcore/runtime/version/list/runtime-123", { core });
-
-    await waitForText(r.lastFrame, "2026-07-20T12:34:56.000Z");
-    const callsBeforeExit = core.runtime.calls.filter(
-      (call) => call.method === "listRuntimeVersions",
-    ).length;
-    await r.write(String.fromCharCode(3));
-
-    expect(core.runtime.calls.filter((call) => call.method === "listRuntimeVersions")).toHaveLength(
-      callsBeforeExit,
-    );
-  });
-
   test("retains rows and ignores page keys during a page transition", async () => {
     const core = new TestCoreClient();
     core.runtime.setListVersionsResponse({
@@ -313,6 +295,27 @@ describe("Runtime version flow", () => {
 
     nextPage.resolve();
     await waitForText(r.lastFrame, "10");
+  });
+
+  test("filters only the loaded page without paging on h or l", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setListVersionsResponse({
+      agentRuntimes: [runtime({ agentRuntimeVersion: "12" })],
+      nextToken: "page-2",
+    });
+    const r = renderScreen("/agentcore/runtime/version/list/runtime-123", { core });
+
+    await waitForText(r.lastFrame, "page 1 · more →");
+    await r.write("/");
+    await r.write("l");
+    await r.write("h");
+    await waitForText(r.lastFrame, "/ Filter this page: lh");
+    expect(r.lastFrame()).toContain("No matches on this page");
+    expect(
+      core.runtime.calls.some(
+        (call) => call.method === "listRuntimeVersions" && call.args[1] === "page-2",
+      ),
+    ).toBe(false);
   });
 
   test("names the selected Runtime in empty and error states", async () => {
