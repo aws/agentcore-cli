@@ -1,19 +1,22 @@
 /**
- * Minimal semver parsing and comparison for managed-dependency syncing.
+ * Semver parsing and comparison for managed-dependency syncing.
  *
- * Deliberately self-contained (no imports): this module must compare prerelease
- * versions correctly (0.1.0-alpha.19 < 0.1.0-alpha.20 < 0.1.0), which the
- * dependency-check parser in src/cli/external-requirements/versions.ts does not —
- * it drops prerelease tags, which here would make an alpha downgrade look like a no-op.
+ * Hybrid by design: version parsing and comparison are delegated to node-semver
+ * (the `semver` package), which implements full semver precedence including
+ * prerelease ordering (0.1.0-alpha.19 < 0.1.0-alpha.20 < 0.1.0) — the
+ * dependency-check parser in src/cli/external-requirements/versions.ts does not,
+ * as it drops prerelease tags, which here would make an alpha downgrade look
+ * like a no-op. The specifier classifier stays hand-rolled because the sync
+ * policy needs to know whether a declared range was written as tilde, caret, or
+ * an exact pin, and node-semver's Range API erases that distinction (it expands
+ * `~`/`^` into plain comparators). So: node-semver for parse/compare, plus our
+ * own thin prefix classifier.
  */
+import { compare, parse } from 'semver';
+import type { SemVer } from 'semver';
 
-export interface ParsedVersion {
-  major: number;
-  minor: number;
-  patch: number;
-  /** Dot-separated prerelease identifiers, e.g. ['alpha', 19]. Empty for release versions. */
-  prerelease: (string | number)[];
-}
+/** A parsed version: node-semver's SemVer (major / minor / patch / prerelease). */
+export type ParsedVersion = SemVer;
 
 export type SpecifierKind = 'exact' | 'tilde' | 'caret';
 
@@ -21,21 +24,11 @@ export type ParsedSpecifier =
   | { kind: SpecifierKind; version: ParsedVersion; raw: string }
   | { kind: 'unsupported'; raw: string };
 
-const VERSION_RE = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-.]+)?$/;
-
 export function parseVersion(version: string): ParsedVersion | null {
-  // npm accepts a single leading 'v' on version strings (v1.2.3, ~v1.2.3); stripping it
-  // here covers both bare versions and the version part of a range specifier.
-  const normalized = version.trim().replace(/^[vV]/, '');
-  const match = VERSION_RE.exec(normalized);
-  if (!match) return null;
-  const prerelease = match[4] ? match[4].split('.').map(id => (/^\d+$/.test(id) ? Number(id) : id)) : [];
-  return {
-    major: Number(match[1]),
-    minor: Number(match[2]),
-    patch: Number(match[3]),
-    prerelease,
-  };
+  // npm accepts a single leading 'v' or 'V' on version strings (v1.2.3, ~v1.2.3);
+  // node-semver only recognizes the lowercase form, so normalize before parsing.
+  const normalized = version.trim().replace(/^V/, 'v');
+  return parse(normalized, { loose: false });
 }
 
 /**
@@ -44,34 +37,14 @@ export function parseVersion(version: string): ParsedVersion | null {
  * and a prerelease version ranks below its release (1.0.0-alpha < 1.0.0).
  */
 export function compareVersions(a: ParsedVersion, b: ParsedVersion): number {
-  if (a.major !== b.major) return a.major - b.major;
-  if (a.minor !== b.minor) return a.minor - b.minor;
-  if (a.patch !== b.patch) return a.patch - b.patch;
-
-  if (a.prerelease.length === 0 && b.prerelease.length === 0) return 0;
-  if (a.prerelease.length === 0) return 1;
-  if (b.prerelease.length === 0) return -1;
-
-  const len = Math.max(a.prerelease.length, b.prerelease.length);
-  for (let i = 0; i < len; i++) {
-    const idA = a.prerelease[i];
-    const idB = b.prerelease[i];
-    // A larger identifier set has higher precedence (1.0.0-alpha < 1.0.0-alpha.1)
-    if (idA === undefined) return -1;
-    if (idB === undefined) return 1;
-    if (idA === idB) continue;
-    if (typeof idA === 'number' && typeof idB === 'number') return idA - idB;
-    if (typeof idA === 'number') return -1; // numeric identifiers rank below alphanumeric
-    if (typeof idB === 'number') return 1;
-    return idA < idB ? -1 : 1;
-  }
-  return 0;
+  return compare(a, b);
 }
 
 /**
  * Parse an npm dependency specifier into exact / tilde / caret + base version.
  * Anything else (file:, git:, workspace:, URLs, wildcards, compound ranges, tags)
- * is 'unsupported' — the sync skips those rather than guessing.
+ * is 'unsupported' — the sync skips those rather than guessing. Strict parsing
+ * (no loose/coerce) keeps `1.x`, `*`, `latest`, and `>=1.2.3` unsupported.
  */
 export function parseSpecifier(raw: string): ParsedSpecifier {
   const trimmed = raw.trim();
