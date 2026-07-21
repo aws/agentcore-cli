@@ -172,7 +172,7 @@ describe("runtime picker", () => {
     const frame = r.lastFrame()!;
     expect(frame).toContain("name");
     expect(frame).toContain("id");
-    expect(frame).toContain("latest");
+    expect(frame).toContain("latestVersion");
     expect(frame).toContain("status");
     expect(frame).toContain("lastUpdatedAt");
     expect(frame).toContain("runtime-visible-id");
@@ -562,7 +562,7 @@ describe("runtime picker", () => {
     await waitForText(r.lastFrame, "visible-name");
     const frame = r.lastFrame()!;
     expect(frame).toContain("name");
-    expect(frame).toContain("latest");
+    expect(frame).toContain("latestVersion");
     expect(frame).toContain("visible-name");
     expect(frame).toContain("88");
     expect(frame).not.toContain("hidden-runtime-id");

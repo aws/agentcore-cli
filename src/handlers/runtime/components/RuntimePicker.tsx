@@ -69,7 +69,7 @@ export function RuntimePicker({
   const showId = columns >= 130;
   const showUpdatedAt = columns >= 90;
   const showStatus = columns >= 70;
-  const versionWidth = 8;
+  const versionWidth = 15;
   const statusWidth = showStatus ? 16 : 0;
   const updatedAtWidth = showUpdatedAt ? 30 : 0;
   const idWidth = showId ? Math.max(30, Math.floor(columns * 0.36)) : 0;
@@ -114,7 +114,7 @@ export function RuntimePicker({
             columns={[
               { key: "runtimeName", header: "name", width: nameWidth },
               ...(showId ? [{ key: "runtimeId" as const, header: "id", width: idWidth }] : []),
-              { key: "runtimeVersion", header: "latest", width: versionWidth },
+              { key: "runtimeVersion", header: "latestVersion", width: versionWidth },
               ...(showStatus
                 ? [{ key: "status" as const, header: "status", width: statusWidth }]
                 : []),
