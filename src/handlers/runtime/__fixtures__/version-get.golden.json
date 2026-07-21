@@ -1,11 +1,11 @@
 {
-  "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/runtime-1234567890",
-  "agentRuntimeName": "fixture-runtime",
-  "agentRuntimeId": "runtime-1234567890",
-  "agentRuntimeVersion": "2",
-  "createdAt": "2026-07-19T10:00:00.000Z",
-  "lastUpdatedAt": "2026-07-19T11:00:00.000Z",
-  "roleArn": "arn:aws:iam::123456789012:role/fixture-runtime-role",
+  "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:runtime/harness_tf_acc_test_3496516139353111995-U17dI2Favb",
+  "agentRuntimeName": "harness_tf_acc_test_3496516139353111995",
+  "agentRuntimeId": "harness_tf_acc_test_3496516139353111995-U17dI2Favb",
+  "agentRuntimeVersion": "1",
+  "createdAt": "2026-07-13T14:25:16.254Z",
+  "lastUpdatedAt": "2026-07-13T14:25:16.254Z",
+  "roleArn": "arn:aws:iam::603141041947:role/tf_acc_test_3496516139353111995",
   "networkConfiguration": {
     "networkMode": "PUBLIC"
   },
@@ -14,6 +14,21 @@
     "idleRuntimeSessionTimeout": 900,
     "maxLifetime": 28800
   },
-  "failureReason": "none",
-  "description": "Runtime version fixture"
+  "workloadIdentityDetails": {
+    "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:workload-identity-directory/default/workload-identity/harness_tf_acc_test_3496516139353111995-U17dI2Favb"
+  },
+  "agentRuntimeArtifact": {
+    "containerConfiguration": {
+      "containerUri": "public.ecr.aws/y5s8y8h8/harness-us-west-2:latest"
+    }
+  },
+  "environmentVariables": {
+    "AWS_REGION": "us-west-2",
+    "AWS_STAGE": "prod",
+    "AWS_TRUNCATION_MESSAGES_COUNT": "150",
+    "AWS_TRUNCATION_STRATEGY": "sliding_window"
+  },
+  "metadataConfiguration": {
+    "requireMMDSV2": true
+  }
 }

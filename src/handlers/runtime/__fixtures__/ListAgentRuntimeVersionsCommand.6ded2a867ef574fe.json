@@ -1,0 +1,15 @@
+{
+  "agentRuntimes": [
+    {
+      "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:runtime/starter_toolkit_agent-58HnLF6qC3",
+      "agentRuntimeId": "starter_toolkit_agent-58HnLF6qC3",
+      "agentRuntimeVersion": "23",
+      "agentRuntimeName": "starter_toolkit_agent",
+      "lastUpdatedAt": {
+        "$date": "2025-11-13T21:32:22.811Z"
+      },
+      "status": "READY"
+    }
+  ],
+  "nextToken": "AQICAHiNyEvxZzpFuVHtBl-B3jfZBBM36tDjm8_cCisOa4ihlgHoaJWXnfLZwGVWyCmkDbL_AAABwTCCAb0GCSqGSIb3DQEHBqCCAa4wggGqAgEAMIIBowYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAwFrlOsuELeUvC8HgMCARCAggF03UK8XVRLtbORtRrObsy0fiWBOck5Vf-vMnEvGjmCz69owlQ_cIrf15p55ZK44o6Ot2CFdPxEpXpe7JbJ9usnlpmod0yTYd3ns2dhQ9G_2HTKLE_DqTml5yVE51AoYU2WTLJS3qv82zDQuvJ7t1kWufz0UgcQOmxYOUNdQW5sJjt_0FZ_SHiW9CzvmRokuzVpIa0mvVdUx5Uikkxr6dHhyZrQAevbTp8OhxzrnZQ0c8WGiGvNVcVb8Xp5f7pwiayttKKPz2X9zuo56Kse1VJxkwSFy8bS_O0kBveHnCrCHk1XdU3t6tCLCeTl-o4BaA8D_ezEvE2NtTb_coeh5SO7z3NAt8HQQ2R_Q41OyFM19vkR6ERMORln_9GPgoXF2cMiLNtPkGvuREN7lCCgo_bE0HW2xOXCIFPvSksC58W5ZuyWKhtpaYsiKOEqV2FP-80BCCwQnnYkroEX0cIpkUYAB7O0uz3fW5f2cVR0S0Sbhq2pEfwQ"
+}

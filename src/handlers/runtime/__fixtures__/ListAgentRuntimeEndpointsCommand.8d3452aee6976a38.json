@@ -1,0 +1,20 @@
+{
+  "runtimeEndpoints": [
+    {
+      "name": "runtimeReadOnlyFixture",
+      "agentRuntimeEndpointArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:runtime/weather_agent-Q1UyBZG08k/runtime-endpoint/runtimeReadOnlyFixture",
+      "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:runtime/weather_agent-Q1UyBZG08k",
+      "status": "READY",
+      "id": "runtimeReadOnlyFixture",
+      "createdAt": {
+        "$date": "2026-07-21T15:00:01.129Z"
+      },
+      "lastUpdatedAt": {
+        "$date": "2026-07-21T15:00:02.416Z"
+      },
+      "liveVersion": "1",
+      "description": "Temporary endpoint for AgentCore CLI fixture recording"
+    }
+  ],
+  "nextToken": "AQICAHiNyEvxZzpFuVHtBl-B3jfZBBM36tDjm8_cCisOa4ihlgHkUvajaEgC29SdLXBr6kObAAAB0jCCAc4GCSqGSIb3DQEHBqCCAb8wggG7AgEAMIIBtAYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAxiyF1yu2ACZlKdetQCARCAggGFV_DrOdGINWMFBPWFUM2wqjahKX0OyB1ucuaPvCi6u5EO7argVmTfmeKdXYUW5rVSD4tfS6SUdTQm5sPQ5uezVOCisLqOsc6Q4Pg4G1oXWwHzpxkdPl-Uuqi6wPdtH13e3TH_NOE9xyJznoS0e3MvzYomqBCMo_Oh8xn95QVQPBEYZeq6T95vTvR6YYAUDcrKwjscds7wLMrWIlqVAzHItSp7tpUy736l04hsSEup6neOhcB8a1rSCZjWne5BXsGlfD3fo0QuInzSsE2Atms7s4P0n0PUN91Oryb1immzdgkJZs_BrnvpWIRj4cdd5-PE6OIgLwU6jbtbygAonTSXyXKGlEpyalXuzZquwOsHbj7jr-Tt3h9GOeLXu49DkrEWlxBJkwldIsARoRpG_DoMgMLVnyOpnGAbG-yWHIBiuLD2G3L3FNVuik1tQSPLH9n3NDrC-04tzsT_ZFxokqkHr7k1of07C2eDYyrFLE6Z2Wd0OSRsKQhzzW7ZAWgzMotX32UqdHs="
+}

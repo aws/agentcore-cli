@@ -3,8 +3,12 @@
   "agentRuntimeName": "harness_tf_acc_test_3496516139353111995",
   "agentRuntimeId": "harness_tf_acc_test_3496516139353111995-U17dI2Favb",
   "agentRuntimeVersion": "1",
-  "createdAt": "2026-07-13T14:25:15.368Z",
-  "lastUpdatedAt": "2026-07-13T14:25:16.254Z",
+  "createdAt": {
+    "$date": "2026-07-13T14:25:15.368Z"
+  },
+  "lastUpdatedAt": {
+    "$date": "2026-07-13T14:25:16.254Z"
+  },
   "roleArn": "arn:aws:iam::603141041947:role/tf_acc_test_3496516139353111995",
   "networkConfiguration": {
     "networkMode": "PUBLIC"

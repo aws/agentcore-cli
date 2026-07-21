@@ -2,8 +2,12 @@
   "agentRuntimeEndpointArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:runtime/harness_tf_acc_test_3496516139353111995-U17dI2Favb/runtime-endpoint/DEFAULT",
   "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:runtime/harness_tf_acc_test_3496516139353111995-U17dI2Favb",
   "status": "READY",
-  "createdAt": "2026-07-13T14:25:15.567Z",
-  "lastUpdatedAt": "2026-07-13T14:26:17.219Z",
+  "createdAt": {
+    "$date": "2026-07-13T14:25:15.567Z"
+  },
+  "lastUpdatedAt": {
+    "$date": "2026-07-13T14:26:17.219Z"
+  },
   "name": "DEFAULT",
   "id": "DEFAULT",
   "liveVersion": "1"

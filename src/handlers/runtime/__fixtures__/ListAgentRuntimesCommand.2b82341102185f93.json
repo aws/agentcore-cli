@@ -1,0 +1,16 @@
+{
+  "agentRuntimes": [
+    {
+      "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:runtime/vpcmode_MyAgent-NcNoov97xz",
+      "agentRuntimeId": "vpcmode_MyAgent-NcNoov97xz",
+      "agentRuntimeVersion": "1",
+      "agentRuntimeName": "vpcmode_MyAgent",
+      "description": "AgentCore Runtime: vpcmode_MyAgent",
+      "lastUpdatedAt": {
+        "$date": "2026-03-17T23:03:06.454Z"
+      },
+      "status": "READY"
+    }
+  ],
+  "nextToken": "AQICAHiNyEvxZzpFuVHtBl-B3jfZBBM36tDjm8_cCisOa4ihlgF408-wNGE0Plwlr6W1V44dAAABhDCCAYAGCSqGSIb3DQEHBqCCAXEwggFtAgEAMIIBZgYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAwDPS8d_7JzrPCOhjcCARCAggE3Ap-H9wjwFR3Mc0IcwJbLVo69JXfDuy8B-OwXtCYs_QGOk-qtSr82L9b768DRVJFbB2avcJ1x1hwahC1W6FP3De3fbju9HdQ4kEuzbxWLW3VYrwD8m0yFGvMd51icHqKtbRXZOTiqM7T6xtCoYZ7lLIfoMFZWy9NSQKM2kFWTbe0ggKe0w_7LyA-6YurDdVQArAyOtPdL_5RZFHNmL_cOZsF1Kmv1bIadgBSCVttCOd5idhnTPLRjLFPbQwEuFAV0l0YMO1ViMqxMRixna6KhOoLITcPBaCtmOFLbzfSJiTjZUaVieUfikrPgssojb03uCsnlFVPYi4doJcoybwgPc-0YEomHurWr74T5b3aKanDSsgzEd_P_WHTkAVJ4RacEVPjoAL7kor9aFdTIW1c1PRCRYZyaNcE="
+}

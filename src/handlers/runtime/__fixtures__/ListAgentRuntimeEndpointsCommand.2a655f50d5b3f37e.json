@@ -1,0 +1,18 @@
+{
+  "runtimeEndpoints": [
+    {
+      "name": "DEFAULT",
+      "agentRuntimeEndpointArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:runtime/weather_agent-Q1UyBZG08k/runtime-endpoint/DEFAULT",
+      "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:runtime/weather_agent-Q1UyBZG08k",
+      "status": "READY",
+      "id": "DEFAULT",
+      "createdAt": {
+        "$date": "2025-11-10T19:08:45.667Z"
+      },
+      "lastUpdatedAt": {
+        "$date": "2025-11-10T19:08:53.465Z"
+      },
+      "liveVersion": "1"
+    }
+  ]
+}
