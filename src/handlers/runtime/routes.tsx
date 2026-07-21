@@ -6,6 +6,8 @@ import { RuntimeEndpointScreen } from "./endpoint/screen";
 import { RuntimeGetJsonScreen, RuntimeGetScreen } from "./get/screen";
 import { RuntimeListScreen } from "./list/screen";
 import { RuntimeScreen } from "./screen";
+import { RuntimeGetVersionScreen } from "./version/get/screen";
+import { RuntimeListVersionsScreen } from "./version/list/screen";
 import { RuntimeVersionScreen } from "./version/screen";
 
 export function runtimeRoutes(ctx: Context, core: Core): ReactNode {
@@ -28,6 +30,22 @@ export function runtimeRoutes(ctx: Context, core: Core): ReactNode {
       <Route
         path="agentcore/runtime/version"
         element={<RuntimeVersionScreen ctx={ctx} core={core} />}
+      />
+      <Route
+        path="agentcore/runtime/version/get"
+        element={<Navigate to="/agentcore/runtime/version/list" replace />}
+      />
+      <Route
+        path="agentcore/runtime/version/get/:runtimeId/:version"
+        element={<RuntimeGetVersionScreen ctx={ctx} core={core} />}
+      />
+      <Route
+        path="agentcore/runtime/version/list"
+        element={<RuntimeListVersionsScreen ctx={ctx} core={core} />}
+      />
+      <Route
+        path="agentcore/runtime/version/list/:runtimeId"
+        element={<RuntimeListVersionsScreen ctx={ctx} core={core} />}
       />
       <Route
         path="agentcore/runtime/endpoint"

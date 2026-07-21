@@ -524,14 +524,20 @@ describe("runtime hub", () => {
       const runtimeId = "runtime/blue one";
       const core = new TestCoreClient();
       core.runtime.setGetResponse(getRuntimeResponse({ agentRuntimeId: runtimeId }));
+      if (action === "versions") {
+        core.runtime.setListVersionsResponse({
+          agentRuntimes: [runtime({ agentRuntimeId: runtimeId, agentRuntimeVersion: "7" })],
+        });
+      }
       const r = renderScreen(`/agentcore/runtime/get/${encodeURIComponent(runtimeId)}`, {
         core,
-        additionalRoutes: (
-          <Route
-            path={`agentcore/runtime/${routeGroup}/list/:runtimeId`}
-            element={<RuntimeActionTarget action={action} />}
-          />
-        ),
+        additionalRoutes:
+          action === "endpoints" ? (
+            <Route
+              path={`agentcore/runtime/${routeGroup}/list/:runtimeId`}
+              element={<RuntimeActionTarget action={action} />}
+            />
+          ) : undefined,
       });
 
       await waitForText(r.lastFrame, "show the full JSON definition");
@@ -540,7 +546,12 @@ describe("runtime hub", () => {
       }
       await r.press("return");
 
-      await waitForText(r.lastFrame, `${action} target: ${runtimeId}`);
+      await waitForText(
+        r.lastFrame,
+        action === "versions"
+          ? `agentcore → runtime → version → list → ${runtimeId}`
+          : `${action} target: ${runtimeId}`,
+      );
     },
   );
 
