@@ -72,14 +72,16 @@ describe("runtime command hierarchy", () => {
 });
 
 describe("runtime control reads", () => {
-  test("gets a service-valid long Runtime ID through the real Core", async () => {
+  test("gets a Runtime ID exceeding the 48-character Runtime name limit", async () => {
+    expect(FIXTURE_RUNTIME_ID.length).toBeGreaterThan(48);
+
     const stdout = await run(["runtime", "get", "--id", FIXTURE_RUNTIME_ID]);
 
     matchGolden(FIXTURES, "get.golden.json", stdout);
     expect(JSON.parse(stdout).agentRuntimeId).toBe(FIXTURE_RUNTIME_ID);
   });
 
-  test("lists two Runtime pages with Harness pagination names", async () => {
+  test("paginates Runtime list with --max-results and --next-token", async () => {
     const firstPage = await run(["runtime", "list", "--max-results", "1"]);
     matchGolden(FIXTURES, "list-page-1.golden.json", firstPage);
 
@@ -99,7 +101,7 @@ describe("runtime control reads", () => {
     expect(JSON.parse(secondPage).agentRuntimes).toHaveLength(1);
   });
 
-  test("gets a Runtime version for a service-valid long Runtime ID", async () => {
+  test("gets a Runtime version using an ID exceeding the 48-character Runtime name limit", async () => {
     const stdout = await run([
       "runtime",
       "version",
@@ -147,7 +149,7 @@ describe("runtime control reads", () => {
     expect(JSON.parse(secondPage).agentRuntimes).toHaveLength(1);
   });
 
-  test("maps the endpoint qualifier for a service-valid long Runtime ID", async () => {
+  test("maps the endpoint qualifier using an ID exceeding the 48-character Runtime name limit", async () => {
     const stdout = await run([
       "runtime",
       "endpoint",
@@ -219,7 +221,7 @@ describe("runtime control reads", () => {
       "runtimeEndpoints",
     ],
   ] as const)(
-    "accepts a service-valid long Runtime ID for `%s`",
+    "accepts a Runtime ID exceeding the 48-character name limit for `%s`",
     async (args, golden, collection) => {
       const stdout = await run([...args]);
 
