@@ -57,10 +57,7 @@ export function RouterScreen({ ctx, path }: RouterScreenProps) {
 
   const command = resolveCommand(ctx.require(CommandKey), path);
   const options: Option[] = useMemo(
-    () =>
-      command.commands
-        .filter((command) => command.name() !== "runtime")
-        .map((c) => ({ name: c.name(), description: c.description() })),
+    () => command.commands.map((c) => ({ name: c.name(), description: c.description() })),
     [command],
   );
 
