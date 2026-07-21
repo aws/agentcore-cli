@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { MemoryRouter, Navigate, Route, Routes } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Core } from "../handlers/types.tsx";
@@ -35,15 +35,11 @@ export interface RootProps {
   // leaves it unset (a stable one is created per mount); tests inject one — e.g.
   // with retries disabled — to keep behavior deterministic and fast.
   queryClient?: QueryClient;
-
-  // Tests can add route targets for flows whose destination screens belong to
-  // a later implementation slice.
-  additionalRoutes?: ReactNode;
 }
 
 // Root is the top of the Ink React tree, rendered by the `agentcore` default
 // handler when the CLI is invoked without a subcommand.
-export function Root({ path, ctx, core, queryClient, additionalRoutes }: RootProps) {
+export function Root({ path, ctx, core, queryClient }: RootProps) {
   // Create the QueryClient once per mount; a lazy initializer keeps it stable
   // across re-renders (a fresh client would drop the cache and refetch). An
   // injected client (tests) takes precedence.
@@ -195,7 +191,6 @@ export function Root({ path, ctx, core, queryClient, additionalRoutes }: RootPro
             element={<HarnessListVersionsScreen ctx={ctx} core={core} />}
           />
           {runtimeRoutes(ctx, core)}
-          {additionalRoutes}
           <Route path="*" element={<HelpScreen ctx={ctx} core={core} />} />
         </Routes>
       </MemoryRouter>

@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { Navigate, Route } from "react-router";
 import type { Context } from "../../router";
 import type { Core } from "../types";
+import { RuntimeGetEndpointScreen } from "./endpoint/get/screen";
+import { RuntimeListEndpointsScreen } from "./endpoint/list/screen";
 import { RuntimeEndpointScreen } from "./endpoint/screen";
 import { RuntimeGetJsonScreen, RuntimeGetScreen } from "./get/screen";
 import { RuntimeListScreen } from "./list/screen";
@@ -50,6 +52,22 @@ export function runtimeRoutes(ctx: Context, core: Core): ReactNode {
       <Route
         path="agentcore/runtime/endpoint"
         element={<RuntimeEndpointScreen ctx={ctx} core={core} />}
+      />
+      <Route
+        path="agentcore/runtime/endpoint/get"
+        element={<Navigate to="/agentcore/runtime/endpoint/list" replace />}
+      />
+      <Route
+        path="agentcore/runtime/endpoint/get/:runtimeId/:qualifier"
+        element={<RuntimeGetEndpointScreen ctx={ctx} core={core} />}
+      />
+      <Route
+        path="agentcore/runtime/endpoint/list"
+        element={<RuntimeListEndpointsScreen ctx={ctx} core={core} />}
+      />
+      <Route
+        path="agentcore/runtime/endpoint/list/:runtimeId"
+        element={<RuntimeListEndpointsScreen ctx={ctx} core={core} />}
       />
     </>
   );

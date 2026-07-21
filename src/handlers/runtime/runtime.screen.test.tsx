@@ -5,8 +5,6 @@ import type {
   ListAgentRuntimesResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { QueryClient } from "@tanstack/react-query";
-import { Text } from "ink";
-import { Route, useParams } from "react-router";
 import {
   cleanupScreens,
   renderScreen,
@@ -91,15 +89,6 @@ function deferred<T>(): {
 async function waitForRuntimeMenu(lastFrame: () => string | undefined): Promise<void> {
   await waitFor(() =>
     (lastFrame() ?? "").includes("agentcore → runtime → inspect AgentCore Runtimes"),
-  );
-}
-
-function RuntimeActionTarget({ action }: { action: string }) {
-  const { runtimeId } = useParams();
-  return (
-    <Text>
-      {action} target: {runtimeId}
-    </Text>
   );
 }
 
@@ -516,11 +505,11 @@ describe("runtime hub", () => {
   });
 
   test.each([
-    ["versions", 1, "version"],
-    ["endpoints", 2, "endpoint"],
+    ["versions", 1],
+    ["endpoints", 2],
   ] as const)(
     "selecting %s opens its encoded Runtime-scoped route",
-    async (action, downPresses, routeGroup) => {
+    async (action, downPresses) => {
       const runtimeId = "runtime/blue one";
       const core = new TestCoreClient();
       core.runtime.setGetResponse(getRuntimeResponse({ agentRuntimeId: runtimeId }));
@@ -528,16 +517,24 @@ describe("runtime hub", () => {
         core.runtime.setListVersionsResponse({
           agentRuntimes: [runtime({ agentRuntimeId: runtimeId, agentRuntimeVersion: "7" })],
         });
+      } else {
+        core.runtime.setListEndpointsResponse({
+          runtimeEndpoints: [
+            {
+              name: "prod",
+              id: "prod",
+              liveVersion: "7",
+              agentRuntimeEndpointArn: "arn:endpoint",
+              agentRuntimeArn: "arn:runtime",
+              status: "READY",
+              createdAt: new Date("2026-07-19T01:02:03.000Z"),
+              lastUpdatedAt: new Date("2026-07-20T12:34:56.000Z"),
+            },
+          ],
+        });
       }
       const r = renderScreen(`/agentcore/runtime/get/${encodeURIComponent(runtimeId)}`, {
         core,
-        additionalRoutes:
-          action === "endpoints" ? (
-            <Route
-              path={`agentcore/runtime/${routeGroup}/list/:runtimeId`}
-              element={<RuntimeActionTarget action={action} />}
-            />
-          ) : undefined,
       });
 
       await waitForText(r.lastFrame, "show the full JSON definition");
@@ -550,7 +547,7 @@ describe("runtime hub", () => {
         r.lastFrame,
         action === "versions"
           ? `agentcore → runtime → version → list → ${runtimeId}`
-          : `${action} target: ${runtimeId}`,
+          : `agentcore → runtime → endpoint → list → ${runtimeId}`,
       );
     },
   );
