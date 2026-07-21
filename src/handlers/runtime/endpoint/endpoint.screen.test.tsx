@@ -152,22 +152,20 @@ describe("Runtime endpoint flow", () => {
         (call) => call.method === "listRuntimeEndpoints" && call.args[2] === 32,
       ),
     );
-    expect(
-      core.runtime.calls.find(
-        (call) => call.method === "listRuntimeEndpoints" && call.args[2] === 32,
-      ),
-    ).toEqual({
-      method: "listRuntimeEndpoints",
-      args: [
-        "runtime-123",
-        undefined,
-        32,
-        {
-          region: "us-east-1",
-          endpointUrl: undefined,
-        },
-      ],
-    });
+    expect(core.runtime.calls.filter((call) => call.method === "listRuntimeEndpoints")).toEqual([
+      {
+        method: "listRuntimeEndpoints",
+        args: [
+          "runtime-123",
+          undefined,
+          32,
+          {
+            region: "us-east-1",
+            endpointUrl: undefined,
+          },
+        ],
+      },
+    ]);
   });
 
   test("renders qualifier, live version, status, and update time without invented columns", async () => {
@@ -287,6 +285,11 @@ describe("Runtime endpoint flow", () => {
     });
     await waitForText(r.lastFrame, "page-one");
     expect(r.lastFrame()).toContain("page 1 · more →");
+    const callsAfterResize = core.runtime.calls
+      .filter((call) => call.method === "listRuntimeEndpoints")
+      .slice(callsBeforeResize);
+    expect(callsAfterResize.length).toBeGreaterThan(0);
+    expect(callsAfterResize.every((call) => call.args[1] === undefined)).toBe(true);
   });
 
   test("retains rows and ignores page keys during a page transition", async () => {

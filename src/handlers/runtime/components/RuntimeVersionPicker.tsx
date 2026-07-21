@@ -106,6 +106,7 @@ export function RuntimeVersionPicker({
             showFooter={false}
             showDivider={true}
             pageSize={paging.pageSize}
+            selectionResetKey={`${paging.pageSize}:${paging.pageIndex}`}
             columns={[
               { key: "version", header: "version", width: versionWidth },
               ...(showStatus

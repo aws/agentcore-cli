@@ -88,13 +88,26 @@ describe("harness list screen", () => {
     r.unmount();
   });
 
-  test("calls listHarnesses with the region from context", async () => {
+  test("makes one initial list request at the 100x40 page size with context options", async () => {
     const core = coreWith([harness()]);
     const r = renderScreen("/agentcore/harness/list", { core });
 
-    await waitFor(() => core.harness.calls.length > 0);
-    const call = core.harness.calls.find((c) => c.method === "listHarnesses")!;
-    expect((call.args[2] as { region: string }).region).toBe("us-east-1");
+    await waitFor(() =>
+      core.harness.calls.some((call) => call.method === "listHarnesses" && call.args[1] === 32),
+    );
+    expect(core.harness.calls.filter((call) => call.method === "listHarnesses")).toEqual([
+      {
+        method: "listHarnesses",
+        args: [
+          undefined,
+          32,
+          {
+            region: "us-east-1",
+            endpointUrl: undefined,
+          },
+        ],
+      },
+    ]);
     r.unmount();
   });
 

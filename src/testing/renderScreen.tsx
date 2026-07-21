@@ -119,9 +119,9 @@ export function renderScreen(path: string, options: RenderScreenOptions = {}): R
   const ctx = options.ctx ?? baseContext(core);
   const queryClient = options.queryClient ?? testQueryClient();
 
-  const instance = render(<Root path={path} ctx={ctx} core={core} queryClient={queryClient} />);
-
+  const instance = render(<></>);
   setWindowSize(instance.stdout, 100, 40);
+  instance.rerender(<Root path={path} ctx={ctx} core={core} queryClient={queryClient} />);
 
   return {
     core,

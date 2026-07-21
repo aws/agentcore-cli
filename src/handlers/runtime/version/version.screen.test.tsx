@@ -122,22 +122,20 @@ describe("Runtime version flow", () => {
         (call) => call.method === "listRuntimeVersions" && call.args[2] === 32,
       ),
     );
-    expect(
-      core.runtime.calls.find(
-        (call) => call.method === "listRuntimeVersions" && call.args[2] === 32,
-      ),
-    ).toEqual({
-      method: "listRuntimeVersions",
-      args: [
-        "runtime-123",
-        undefined,
-        32,
-        {
-          region: "us-east-1",
-          endpointUrl: undefined,
-        },
-      ],
-    });
+    expect(core.runtime.calls.filter((call) => call.method === "listRuntimeVersions")).toEqual([
+      {
+        method: "listRuntimeVersions",
+        args: [
+          "runtime-123",
+          undefined,
+          32,
+          {
+            region: "us-east-1",
+            endpointUrl: undefined,
+          },
+        ],
+      },
+    ]);
   });
 
   test("renders numeric versions newest first with only version status and update time", async () => {
@@ -260,6 +258,11 @@ describe("Runtime version flow", () => {
     });
     await waitForText(r.lastFrame, "page 1 · more →");
     expect(r.lastFrame()).toContain("3");
+    const callsAfterResize = core.runtime.calls
+      .filter((call) => call.method === "listRuntimeVersions")
+      .slice(callsBeforeResize);
+    expect(callsAfterResize.length).toBeGreaterThan(0);
+    expect(callsAfterResize.every((call) => call.args[1] === undefined)).toBe(true);
   });
 
   test("retains rows and ignores page keys during a page transition", async () => {

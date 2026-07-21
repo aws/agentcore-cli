@@ -186,17 +186,19 @@ describe("runtime picker", () => {
     renderScreen("/agentcore/runtime/list", { core });
 
     await waitFor(() => core.runtime.calls.some((call) => call.args[1] === 32));
-    expect(core.runtime.calls.find((call) => call.args[1] === 32)).toEqual({
-      method: "listRuntimes",
-      args: [
-        undefined,
-        32,
-        {
-          region: "us-east-1",
-          endpointUrl: undefined,
-        },
-      ],
-    });
+    expect(core.runtime.calls.filter((call) => call.method === "listRuntimes")).toEqual([
+      {
+        method: "listRuntimes",
+        args: [
+          undefined,
+          32,
+          {
+            region: "us-east-1",
+            endpointUrl: undefined,
+          },
+        ],
+      },
+    ]);
   });
 
   test("shows loading and lets Esc return to the Runtime menu", async () => {
@@ -308,6 +310,65 @@ describe("runtime picker", () => {
     });
     await waitForText(r.lastFrame, "page-one");
     expect(r.lastFrame()).toContain("page 1 · more →");
+    const callsAfterResize = core.runtime.calls
+      .filter((call) => call.method === "listRuntimes")
+      .slice(callsBeforeResize);
+    expect(callsAfterResize.length).toBeGreaterThan(0);
+    expect(callsAfterResize.every((call) => call.args[0] === undefined)).toBe(true);
+  });
+
+  test("resizing from page two resets selection to the first row on page one", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setListResponse({
+      agentRuntimes: [
+        runtime({ agentRuntimeId: "page-one-first", agentRuntimeName: "page-one-first" }),
+        runtime({ agentRuntimeId: "page-one-second", agentRuntimeName: "page-one-second" }),
+      ],
+      nextToken: "page-2",
+    });
+    core.runtime.setListResponse(
+      {
+        agentRuntimes: [
+          runtime({ agentRuntimeId: "page-two-first", agentRuntimeName: "page-two-first" }),
+          runtime({ agentRuntimeId: "page-two-second", agentRuntimeName: "page-two-second" }),
+        ],
+      },
+      "page-2",
+    );
+    core.runtime.setGetResponse(
+      getRuntimeResponse({
+        agentRuntimeId: "page-one-first",
+        agentRuntimeName: "page-one-first",
+      }),
+    );
+    const r = renderScreen("/agentcore/runtime/list", { core });
+
+    await waitForText(r.lastFrame, "page 1 · more →");
+    await r.write("l");
+    await waitForText(r.lastFrame, "page-two-second");
+    await r.press("down");
+    await waitForText(r.lastFrame, "❯ page-two-second");
+
+    await r.resize(100, 20);
+    await waitForText(r.lastFrame, "page-one-first");
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "agentcore → runtime → get → page-one-first");
+    await waitFor(() =>
+      core.runtime.calls.some(
+        (call) => call.method === "getRuntime" && call.args[0] === "page-one-first",
+      ),
+    );
+    expect(
+      core.runtime.calls.some(
+        (call) => call.method === "getRuntime" && call.args[0] === "page-one-first",
+      ),
+    ).toBe(true);
+    expect(
+      core.runtime.calls.some(
+        (call) => call.method === "getRuntime" && call.args[0] === "page-one-second",
+      ),
+    ).toBe(false);
   });
 
   test("retains rows and ignores page keys while either page direction is loading", async () => {

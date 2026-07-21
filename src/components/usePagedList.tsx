@@ -20,6 +20,20 @@ export interface PagedList {
   prev: () => void;
 }
 
+interface PaginationState {
+  pageSize: number;
+  pageIndex: number;
+  tokens: (string | undefined)[];
+}
+
+function initialPagination(pageSize: number): PaginationState {
+  return {
+    pageSize,
+    pageIndex: 0,
+    tokens: [undefined],
+  };
+}
+
 // usePagedList holds the server-side pagination state shared by the picker
 // tables: a terminal-height-derived page size and the trail of nextTokens
 // leading to the current page, so ←/h can walk back through cached pages.
@@ -27,26 +41,39 @@ export function usePagedList(): PagedList {
   const { rows } = useWindowSize();
   const pageSize = Math.max(3, rows - CHROME_ROWS);
 
-  const [pageIndex, setPageIndex] = useState(0);
-  // tokens[i] is the nextToken that fetched page i; page 0 has none.
-  const [tokens, setTokens] = useState<(string | undefined)[]>([undefined]);
+  const [state, setState] = useState<PaginationState>(() => initialPagination(pageSize));
+  const pageSizeChanged = state.pageSize !== pageSize;
+  const pageIndex = pageSizeChanged ? 0 : state.pageIndex;
+  const token = pageSizeChanged ? undefined : state.tokens[state.pageIndex];
 
   // A resize changes maxResults, which invalidates the token trail (tokens
   // encode positions relative to the old page size) — restart from page 1.
   useEffect(() => {
-    setPageIndex(0);
-    setTokens([undefined]);
+    setState((current) => (current.pageSize === pageSize ? current : initialPagination(pageSize)));
   }, [pageSize]);
 
   return {
     pageSize,
     pageIndex,
-    token: tokens[pageIndex],
+    token,
     next: (nextToken) => {
       if (!nextToken) return;
-      setTokens((trail) => [...trail.slice(0, pageIndex + 1), nextToken]);
-      setPageIndex((i) => i + 1);
+      setState((current) => {
+        const active = current.pageSize === pageSize ? current : initialPagination(pageSize);
+        return {
+          pageSize,
+          pageIndex: active.pageIndex + 1,
+          tokens: [...active.tokens.slice(0, active.pageIndex + 1), nextToken],
+        };
+      });
     },
-    prev: () => setPageIndex((i) => Math.max(0, i - 1)),
+    prev: () =>
+      setState((current) => {
+        const active = current.pageSize === pageSize ? current : initialPagination(pageSize);
+        return {
+          ...active,
+          pageIndex: Math.max(0, active.pageIndex - 1),
+        };
+      }),
   };
 }

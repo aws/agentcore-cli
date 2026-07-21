@@ -107,6 +107,7 @@ export function RuntimeEndpointPicker({
             showFooter={false}
             showDivider={true}
             pageSize={paging.pageSize}
+            selectionResetKey={`${paging.pageSize}:${paging.pageIndex}`}
             columns={[
               {
                 key: "qualifier",

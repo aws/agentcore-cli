@@ -110,6 +110,7 @@ export function RuntimePicker({
             showFooter={false}
             showDivider={true}
             pageSize={paging.pageSize}
+            selectionResetKey={`${paging.pageSize}:${paging.pageIndex}`}
             columns={[
               { key: "runtimeName", header: "name", width: nameWidth },
               ...(showId ? [{ key: "runtimeId" as const, header: "id", width: idWidth }] : []),

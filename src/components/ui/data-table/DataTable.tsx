@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { darkTheme } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
@@ -40,6 +40,7 @@ export interface DataTableProps<T> {
   showFooter?: boolean;
   emptyMessage?: string;
   focus?: boolean;
+  selectionResetKey?: string | number;
   theme?: InkUITheme;
 }
 
@@ -63,6 +64,7 @@ export function DataTable<T extends Record<string, unknown>>({
   showFooter = true,
   emptyMessage = "No data",
   focus = true,
+  selectionResetKey,
   theme = darkTheme,
 }: DataTableProps<T>): React.ReactElement {
   const [selectedRow, setSelectedRow] = useState(0);
@@ -71,6 +73,11 @@ export function DataTable<T extends Record<string, unknown>>({
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState(false);
+
+  useEffect(() => {
+    setSelectedRow(0);
+    setCurrentPage(0);
+  }, [selectionResetKey]);
 
   // Filter
   const filtered = data.filter((row) => {
