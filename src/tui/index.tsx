@@ -41,6 +41,10 @@ export async function renderTuiAt(
   core: Core,
   io: AppIO,
 ): Promise<void> {
+  if (!io.stdin.isTTY || !io.stdout.isTTY) {
+    throw new TypeError("interactive mode requires a TTY on stdin and stdout");
+  }
+
   // alternateScreen switches the terminal to its alternate buffer so the TUI
   // takes over the screen and the prior scrollback is restored on exit (like Vim).
   const { waitUntilExit } = render(<Root path={path} ctx={ctx} core={core} />, {

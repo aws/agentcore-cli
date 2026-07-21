@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { CoreClient } from "../../core";
-import { createSilentLogger, fixtureFactories, matchGolden, testIO } from "../../testing";
+import {
+  createSilentLogger,
+  fixtureFactories,
+  matchGolden,
+  TestCoreClient,
+  testIO,
+} from "../../testing";
 import { createRootHandler } from "../index";
 
 const REGION = "us-west-2";
@@ -33,6 +39,21 @@ async function run(args: string[]): Promise<string> {
 
   await root.route(["node", "agentcore", ...args, "--region", REGION]);
   return io.stdout();
+}
+
+function testRuntimeCommand(isTTY = false) {
+  const core = new TestCoreClient();
+  const io = testIO({ isTTY });
+  const root = createRootHandler(core, {
+    io: io.io,
+    logger: createSilentLogger(),
+  });
+
+  return {
+    core,
+    io,
+    route: (args: string[]) => root.route(["node", "agentcore", ...args, "--region", REGION]),
+  };
 }
 
 describe("runtime command hierarchy", () => {
@@ -74,6 +95,71 @@ describe("runtime command hierarchy", () => {
       expect(stdout).toContain("Commands:");
     },
   );
+});
+
+describe("runtime interactive mode", () => {
+  test("rejects --interactive on non-TTY streams before calling Runtime Core", async () => {
+    const { core, route } = testRuntimeCommand();
+
+    await expect(route(["runtime", "list", "--interactive"])).rejects.toThrow(
+      "interactive mode requires a TTY on stdin and stdout",
+    );
+    expect(core.runtime.calls).toEqual([]);
+  });
+
+  test("rejects --interactive with --json before rendering or calling Runtime Core", async () => {
+    const { core, route } = testRuntimeCommand(true);
+
+    await expect(route(["runtime", "list", "--interactive", "--json"])).rejects.toThrow(
+      /interactive.*json/i,
+    );
+    expect(core.runtime.calls).toEqual([]);
+  });
+
+  test.each([
+    ["runtime", ["runtime", "--interactive"]],
+    ["runtime version", ["runtime", "version", "--interactive"]],
+    ["runtime endpoint", ["runtime", "endpoint", "--interactive"]],
+  ] as const)("keeps explicit interactive mode on the %s menu", async (_label, args) => {
+    const { core, route } = testRuntimeCommand();
+
+    await expect(route([...args])).rejects.toThrow(
+      "interactive mode requires a TTY on stdin and stdout",
+    );
+    expect(core.runtime.calls).toEqual([]);
+  });
+
+  test.each([
+    ["version", ["runtime", "version", "get", "--version", "1", "--interactive"], /version.*id/i],
+    [
+      "qualifier",
+      ["runtime", "endpoint", "get", "--qualifier", "prod", "--interactive"],
+      /qualifier.*id/i,
+    ],
+  ] as const)(
+    "rejects a %s without an ID before rendering or calling Runtime Core",
+    async (_label, args, message) => {
+      const { core, route } = testRuntimeCommand();
+
+      await expect(route([...args])).rejects.toThrow(message);
+      expect(core.runtime.calls).toEqual([]);
+    },
+  );
+
+  test("keeps runtime list without own flags headless", async () => {
+    const { core, io, route } = testRuntimeCommand();
+    core.runtime.setListResponse({ agentRuntimes: [], nextToken: "page-2" });
+
+    await route(["runtime", "list"]);
+
+    expect(JSON.parse(io.stdout())).toEqual({ agentRuntimes: [], nextToken: "page-2" });
+    expect(core.runtime.calls).toEqual([
+      {
+        method: "listRuntimes",
+        args: [undefined, undefined, { region: REGION, endpointUrl: undefined }],
+      },
+    ]);
+  });
 });
 
 describe("runtime read-only commands", () => {

@@ -40,3 +40,34 @@ describe("--json short-circuits the TUI", () => {
     expect(out).toContain("get");
   });
 });
+
+describe("TUI stream boundary", () => {
+  test("test IO defaults every stream to non-TTY and supports explicit TTY streams", () => {
+    const nonTty = testIO();
+    const tty = testIO({ isTTY: true });
+
+    for (const stream of [nonTty.io.stdin, nonTty.io.stdout, nonTty.io.stderr]) {
+      expect(stream.isTTY).toBe(false);
+      expect(Object.getOwnPropertyDescriptor(stream, "isTTY")?.configurable).toBe(true);
+    }
+    for (const stream of [tty.io.stdin, tty.io.stdout, tty.io.stderr]) {
+      expect(stream.isTTY).toBe(true);
+      expect(Object.getOwnPropertyDescriptor(stream, "isTTY")?.configurable).toBe(true);
+    }
+  });
+
+  test.each([
+    ["bare root", []],
+    ["Harness", ["harness"]],
+  ] as const)("rejects non-TTY streams at the shared boundary for %s", async (_label, args) => {
+    const io = testIO();
+    const root = createRootHandler(new TestCoreClient(), {
+      io: io.io,
+      logger: createSilentLogger(),
+    });
+
+    await expect(root.route(["node", "agentcore", ...args])).rejects.toThrow(
+      "interactive mode requires a TTY on stdin and stdout",
+    );
+  });
+});

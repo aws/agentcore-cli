@@ -14,6 +14,10 @@ export interface TestIO {
   stderr(): string;
 }
 
+export interface TestIOOptions {
+  isTTY?: boolean;
+}
+
 // collect wraps a PassThrough, accumulating everything written to it as a string.
 function collect(): { stream: NodeJS.WriteStream; read: () => string } {
   const stream = new PassThrough();
@@ -29,10 +33,14 @@ function collect(): { stream: NodeJS.WriteStream; read: () => string } {
 
 // testIO builds a fresh in-memory TestIO for a single test. stdin is an idle
 // PassThrough (no input) so screens that read input simply see nothing.
-export function testIO(): TestIO {
+export function testIO({ isTTY = false }: TestIOOptions = {}): TestIO {
   const out = collect();
   const err = collect();
   const stdin = new PassThrough() as unknown as NodeJS.ReadStream;
+
+  for (const stream of [stdin, out.stream, err.stream]) {
+    Object.defineProperty(stream, "isTTY", { configurable: true, value: isTTY });
+  }
 
   return {
     io: { stdin, stdout: out.stream, stderr: err.stream },
