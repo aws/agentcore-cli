@@ -48,6 +48,7 @@ export function DataTable<T extends Record<string, unknown>>({
   data,
   pageSize = 10,
   searchable = true,
+  searchPlaceholder = "Filter this page",
   onSelect,
   onEscape,
   onPrevPage,
@@ -135,8 +136,11 @@ export function DataTable<T extends Record<string, unknown>>({
             onNextPage();
           }
         } else setCurrentPage((p) => Math.min(totalPages - 1, p + 1));
-      } else if (input === "/") setSearchMode(true);
-      else if (input === "s") {
+      } else if (input === "/") {
+        setSelectedRow(0);
+        setCurrentPage(0);
+        setSearchMode(true);
+      } else if (input === "s") {
         const col = columns.find((c) => c.sortable);
         if (col) {
           if (sortColumn === col.key) setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
@@ -190,12 +194,14 @@ export function DataTable<T extends Record<string, unknown>>({
           <Text color={theme.colors.muted}>
             {searchMode ? (
               <Text>
-                <Text color={theme.colors.primary}>/ Filter: </Text>
+                <Text color={theme.colors.primary}>/ {searchPlaceholder}: </Text>
                 <Text color={theme.colors.text}>{searchQuery}</Text>
                 <Text color={theme.colors.primary}>█</Text>
               </Text>
             ) : searchQuery ? (
-              <Text color={theme.colors.muted}>/ Filter: {searchQuery}</Text>
+              <Text color={theme.colors.muted}>
+                / {searchPlaceholder}: {searchQuery}
+              </Text>
             ) : null}
           </Text>
         </Box>
@@ -240,7 +246,9 @@ export function DataTable<T extends Record<string, unknown>>({
         {/* Rows */}
         {pageData.length === 0 ? (
           <Box paddingX={1}>
-            <Text color={theme.colors.muted}>{emptyMessage}</Text>
+            <Text color={theme.colors.muted}>
+              {searchQuery ? "No matches on this page" : emptyMessage}
+            </Text>
           </Box>
         ) : (
           pageData.map((row, i) => {

@@ -56,6 +56,9 @@ export interface RenderScreenOptions {
   core?: TestCoreClient;
   // ctx overrides the base context (rarely needed).
   ctx?: Context;
+  // queryClient overrides the deterministic default when a test needs to
+  // exercise cache behavior.
+  queryClient?: QueryClient;
 }
 
 export interface RenderScreenResult {
@@ -114,7 +117,7 @@ export function cleanupScreens(): void {
 export function renderScreen(path: string, options: RenderScreenOptions = {}): RenderScreenResult {
   const core = options.core ?? new TestCoreClient();
   const ctx = options.ctx ?? baseContext(core);
-  const queryClient = testQueryClient();
+  const queryClient = options.queryClient ?? testQueryClient();
 
   const instance = render(<Root path={path} ctx={ctx} core={core} queryClient={queryClient} />);
 

@@ -170,11 +170,34 @@ describe("harness list screen", () => {
     await waitForText(r.lastFrame, "alpha_one");
     await r.write("/");
     await r.write("l");
-    await waitForText(r.lastFrame, "/ Filter: l");
+    await waitForText(r.lastFrame, "/ Filter this page: l");
     expect(core.harness.calls.some((c) => c.method === "listHarnesses" && c.args[0] === "t2")).toBe(
       false,
     );
     r.unmount();
+  });
+
+  test("filtering resets selection to the first matching row", async () => {
+    const alpha = harness({ harnessName: "alpha", harnessId: "alpha-1" });
+    const core = coreWith([alpha, harness({ harnessName: "beta", harnessId: "beta-2" })]);
+    core.harness.setGetResponse(getResponse(alpha));
+    const r = renderScreen("/agentcore/harness/list", { core });
+
+    await waitForText(r.lastFrame, "beta");
+    await r.press("down");
+    await r.write("/");
+    for (const character of "alpha") await r.write(character);
+    await waitForText(r.lastFrame, "/ Filter this page: alpha");
+    await r.press("return");
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "agentcore → harness → get → alpha-1");
+    await waitFor(() =>
+      core.harness.calls.some((call) => call.method === "getHarness" && call.args[0] === "alpha-1"),
+    );
+    expect(
+      core.harness.calls.some((call) => call.method === "getHarness" && call.args[0] === "alpha-1"),
+    ).toBe(true);
   });
 
   test("esc returns to the harness menu", async () => {
