@@ -255,6 +255,58 @@ describe("Runtime endpoint flow", () => {
     expect(core.runtime.calls.at(-1)?.args[1]).toBeUndefined();
   });
 
+  test("resizing resets to page one with the terminal-derived page size", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setListEndpointsResponse({
+      runtimeEndpoints: [endpoint({ name: "page-one" })],
+      nextToken: "page-2",
+    });
+    core.runtime.setListEndpointsResponse(
+      {
+        runtimeEndpoints: [endpoint({ name: "page-two" })],
+      },
+      "page-2",
+    );
+    const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", { core });
+
+    await waitForText(r.lastFrame, "page 1 · more →");
+    await r.write("l");
+    await waitForText(r.lastFrame, "page-two");
+    const callsBeforeResize = core.runtime.calls.filter(
+      (call) => call.method === "listRuntimeEndpoints",
+    ).length;
+
+    await r.resize(100, 20);
+    await waitFor(() => {
+      const calls = core.runtime.calls.filter((call) => call.method === "listRuntimeEndpoints");
+      return (
+        calls.length > callsBeforeResize &&
+        calls.at(-1)?.args[1] === undefined &&
+        calls.at(-1)?.args[2] === 12
+      );
+    });
+    await waitForText(r.lastFrame, "page-one");
+    expect(r.lastFrame()).toContain("page 1 · more →");
+  });
+
+  test("Ctrl+C exits without another Runtime endpoint list request", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setListEndpointsResponse({
+      runtimeEndpoints: [endpoint()],
+    });
+    const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", { core });
+
+    await waitForText(r.lastFrame, "prod");
+    const callsBeforeExit = core.runtime.calls.filter(
+      (call) => call.method === "listRuntimeEndpoints",
+    ).length;
+    await r.write(String.fromCharCode(3));
+
+    expect(
+      core.runtime.calls.filter((call) => call.method === "listRuntimeEndpoints"),
+    ).toHaveLength(callsBeforeExit);
+  });
+
   test("retains rows and ignores page keys during a page transition", async () => {
     const core = new TestCoreClient();
     core.runtime.setListEndpointsResponse({

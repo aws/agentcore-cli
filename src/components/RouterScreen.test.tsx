@@ -1,7 +1,133 @@
 import { test, expect, describe, afterEach } from "bun:test";
-import { renderScreen, waitForText, cleanupScreens, tick } from "../testing";
+import type {
+  AgentRuntime,
+  AgentRuntimeEndpoint,
+  GetAgentRuntimeEndpointResponse,
+  GetAgentRuntimeResponse,
+} from "@aws-sdk/client-bedrock-agentcore-control";
+import { createRootHandler } from "../handlers";
+import { DebugKey, EndpointKey, JsonKey, RegionKey } from "../handlers/keys";
+import { CommandKey, compile, type Context, ValueContext } from "../router";
+import {
+  cleanupScreens,
+  createSilentLogger,
+  renderScreen,
+  TestCoreClient,
+  testIO,
+  tick,
+  waitForText,
+} from "../testing";
+import { JsonRendererKey } from "../tui";
 
 afterEach(cleanupScreens);
+
+const runtimeEndpointUrl = "https://runtime.test";
+
+function runtime(overrides: Partial<AgentRuntime> = {}): AgentRuntime {
+  return {
+    agentRuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/runtime-123",
+    agentRuntimeId: "runtime-123",
+    agentRuntimeVersion: "7",
+    agentRuntimeName: "checkout",
+    description: "Checkout Runtime",
+    lastUpdatedAt: new Date("2026-07-20T12:34:56.000Z"),
+    status: "READY",
+    ...overrides,
+  };
+}
+
+function getRuntimeResponse(
+  overrides: Partial<GetAgentRuntimeResponse> = {},
+): GetAgentRuntimeResponse {
+  return {
+    agentRuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/runtime-123",
+    agentRuntimeName: "checkout",
+    agentRuntimeId: "runtime-123",
+    agentRuntimeVersion: "7",
+    createdAt: new Date("2026-07-19T01:02:03.000Z"),
+    lastUpdatedAt: new Date("2026-07-20T12:34:56.000Z"),
+    roleArn: "arn:aws:iam::123456789012:role/runtime-role",
+    networkConfiguration: { networkMode: "PUBLIC" },
+    status: "READY",
+    lifecycleConfiguration: {
+      idleRuntimeSessionTimeout: 900,
+      maxLifetime: 28_800,
+    },
+    ...overrides,
+  };
+}
+
+function endpoint(overrides: Partial<AgentRuntimeEndpoint> = {}): AgentRuntimeEndpoint {
+  return {
+    name: "prod",
+    liveVersion: "7",
+    agentRuntimeEndpointArn:
+      "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/runtime-123/endpoint/prod",
+    agentRuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/runtime-123",
+    status: "READY",
+    id: "prod",
+    createdAt: new Date("2026-07-19T01:02:03.000Z"),
+    lastUpdatedAt: new Date("2026-07-20T12:34:56.000Z"),
+    ...overrides,
+  };
+}
+
+function getEndpointResponse(
+  overrides: Partial<GetAgentRuntimeEndpointResponse> = {},
+): GetAgentRuntimeEndpointResponse {
+  return {
+    liveVersion: "7",
+    targetVersion: "8",
+    agentRuntimeEndpointArn:
+      "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/runtime-123/endpoint/prod",
+    agentRuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/runtime-123",
+    status: "READY",
+    createdAt: new Date("2026-07-19T01:02:03.000Z"),
+    lastUpdatedAt: new Date("2026-07-20T12:34:56.000Z"),
+    name: "prod",
+    id: "prod",
+    ...overrides,
+  };
+}
+
+function runtimeCore(): TestCoreClient {
+  const core = new TestCoreClient();
+  core.runtime.setListResponse({ agentRuntimes: [runtime()] });
+  core.runtime.setGetResponse(getRuntimeResponse());
+  core.runtime.setListVersionsResponse({ agentRuntimes: [runtime()] });
+  core.runtime.setGetVersionResponse(getRuntimeResponse());
+  core.runtime.setListEndpointsResponse({ runtimeEndpoints: [endpoint()] });
+  core.runtime.setGetEndpointResponse(getEndpointResponse());
+  return core;
+}
+
+function runtimeContext(core: TestCoreClient): Context {
+  const rootCommand = compile(
+    createRootHandler(core, { io: testIO().io, logger: createSilentLogger() }),
+    ValueContext.EmptyContext(),
+  );
+
+  return ValueContext.EmptyContext()
+    .withValue(CommandKey, rootCommand)
+    .withValue(RegionKey, "us-east-1")
+    .withValue(EndpointKey, runtimeEndpointUrl)
+    .withValue(JsonKey, false)
+    .withValue(DebugKey, false)
+    .withValue(JsonRendererKey, { renderJson: () => {} });
+}
+
+function expectEndpointPropagation(core: TestCoreClient, methods: readonly string[]): void {
+  for (const method of methods) {
+    const calls = core.runtime.calls.filter((call) => call.method === method);
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      expect(call.args.at(-1)).toEqual({
+        region: "us-east-1",
+        endpointUrl: runtimeEndpointUrl,
+      });
+    }
+  }
+}
 
 // RouterScreen is the interactive command menu. These tests mount it through the
 // real Root at a command path and drive it with key presses, asserting on the
@@ -148,4 +274,92 @@ describe("navigation", () => {
     await tick(20);
     r.unmount();
   });
+
+  test.each([
+    [
+      "versions",
+      1,
+      "agentcore → runtime → version → list → runtime-123",
+      "2026-07-20T12:34:56.000Z",
+      "agentcore → runtime → version → get → runtime-123 → 7",
+      '"agentRuntimeVersion"',
+      "listRuntimeVersions",
+      "getRuntimeVersion",
+    ],
+    [
+      "endpoints",
+      2,
+      "agentcore → runtime → endpoint → list → runtime-123",
+      "prod",
+      "agentcore → runtime → endpoint → get → runtime-123 → prod",
+      '"agentRuntimeEndpointArn"',
+      "listRuntimeEndpoints",
+      "getRuntimeEndpoint",
+    ],
+  ] as const)(
+    "navigates from Root through Runtime %s and escapes each explicit boundary",
+    async (
+      _destination,
+      hubDownPresses,
+      scopedListBreadcrumb,
+      scopedListValue,
+      jsonBreadcrumb,
+      jsonField,
+      listMethod,
+      getMethod,
+    ) => {
+      const core = runtimeCore();
+      const r = renderScreen("/agentcore", {
+        core,
+        ctx: runtimeContext(core),
+      });
+
+      await waitForText(r.lastFrame, "❯ harness");
+      await r.press("down");
+      await r.press("return");
+      await waitForText(r.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
+
+      await r.press("down");
+      await r.press("return");
+      await waitForText(r.lastFrame, "agentcore → runtime → list");
+      await waitForText(r.lastFrame, "checkout");
+
+      await r.press("return");
+      await waitForText(r.lastFrame, "agentcore → runtime → get → runtime-123");
+      await waitForText(r.lastFrame, "show the full JSON definition");
+
+      for (let index = 0; index < hubDownPresses; index += 1) {
+        await r.press("down");
+      }
+      await r.press("return");
+      await waitForText(r.lastFrame, scopedListBreadcrumb);
+      await waitForText(r.lastFrame, scopedListValue);
+
+      await r.press("return");
+      await waitForText(r.lastFrame, jsonBreadcrumb);
+      await waitForText(r.lastFrame, jsonField);
+
+      await r.press("escape");
+      await waitForText(r.lastFrame, scopedListBreadcrumb);
+      await waitForText(r.lastFrame, scopedListValue);
+      await r.press("escape");
+      await waitForText(r.lastFrame, "agentcore → runtime → get → runtime-123");
+      await waitForText(r.lastFrame, "show the full JSON definition");
+      await r.press("escape");
+      await waitForText(r.lastFrame, "agentcore → runtime → list");
+      await waitForText(r.lastFrame, "checkout");
+      await r.press("escape");
+      await waitForText(r.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
+      await r.press("escape");
+      await waitForText(r.lastFrame, "the platform for production AI agents");
+      expect(r.lastFrame()).toContain("❯ harness");
+
+      const callsAtRoot = core.runtime.calls.length;
+      await r.press("escape");
+      expect(r.lastFrame()).toContain("❯ harness");
+      expect(core.runtime.calls).toHaveLength(callsAtRoot);
+
+      expectEndpointPropagation(core, ["listRuntimes", "getRuntime", listMethod, getMethod]);
+    },
+  );
 });

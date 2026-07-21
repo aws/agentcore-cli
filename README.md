@@ -9,9 +9,9 @@ It gives you two ways to work, from the same binary:
 - **A scriptable CLI** — every operation is a flag-driven subcommand that emits
   JSON (`--json`), so it can be used by codeing agents and can drop cleanly into
   scripts, CI, and automation.
-- **An interactive TUI** — run a command with no arguments and it opens a
-  full-screen terminal app for browsing resources, filling in wizards, and
-  chatting with a live agent.
+- **An interactive TUI** — bare branch commands open menus, Harness commands
+  retain their interactive flows, and Runtime leaves opt in with
+  `--interactive`.
 
 ```bash
 agentcore                      # launch the interactive TUI
@@ -27,8 +27,9 @@ responses. `agentcore` wraps all of that behind one ergonomic tool.
 
 ## Command surface
 
-Every leaf command runs headless with flags, or opens the matching TUI screen
-when invoked bare.
+Commands run headless by default. Harness leaves retain their existing bare
+interactive behavior; Runtime leaves remain headless unless `--interactive` is
+set.
 
 ```
 agentcore                          # interactive TUI
@@ -115,6 +116,17 @@ agentcore identity api-key-credential-provider get --name my-provider
 agentcore identity api-key-credential-provider list --max-results 10
 agentcore identity api-key-credential-provider update --name my-provider --api-key <new-key>
 agentcore identity api-key-credential-provider delete --name my-provider
+```
+
+Runtime interactive entry points require a TTY on stdin and stdout.
+`--interactive --json` is invalid.
+
+```bash
+agentcore runtime
+agentcore runtime list --interactive
+agentcore runtime get --interactive --id <runtimeId>
+agentcore runtime version list --interactive --id <runtimeId>
+agentcore runtime endpoint list --interactive --id <runtimeId>
 ```
 
 ---

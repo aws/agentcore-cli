@@ -228,6 +228,58 @@ describe("Runtime version flow", () => {
     expect(core.runtime.calls.at(-1)?.args[1]).toBeUndefined();
   });
 
+  test("resizing resets to page one with the terminal-derived page size", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setListVersionsResponse({
+      agentRuntimes: [runtime({ agentRuntimeVersion: "3" })],
+      nextToken: "page-2",
+    });
+    core.runtime.setListVersionsResponse(
+      {
+        agentRuntimes: [runtime({ agentRuntimeVersion: "2" })],
+      },
+      "page-2",
+    );
+    const r = renderScreen("/agentcore/runtime/version/list/runtime-123", { core });
+
+    await waitForText(r.lastFrame, "page 1 · more →");
+    await r.write("l");
+    await waitForText(r.lastFrame, "page 2");
+    const callsBeforeResize = core.runtime.calls.filter(
+      (call) => call.method === "listRuntimeVersions",
+    ).length;
+
+    await r.resize(100, 20);
+    await waitFor(() => {
+      const calls = core.runtime.calls.filter((call) => call.method === "listRuntimeVersions");
+      return (
+        calls.length > callsBeforeResize &&
+        calls.at(-1)?.args[1] === undefined &&
+        calls.at(-1)?.args[2] === 12
+      );
+    });
+    await waitForText(r.lastFrame, "page 1 · more →");
+    expect(r.lastFrame()).toContain("3");
+  });
+
+  test("Ctrl+C exits without another Runtime version list request", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setListVersionsResponse({
+      agentRuntimes: [runtime()],
+    });
+    const r = renderScreen("/agentcore/runtime/version/list/runtime-123", { core });
+
+    await waitForText(r.lastFrame, "2026-07-20T12:34:56.000Z");
+    const callsBeforeExit = core.runtime.calls.filter(
+      (call) => call.method === "listRuntimeVersions",
+    ).length;
+    await r.write(String.fromCharCode(3));
+
+    expect(core.runtime.calls.filter((call) => call.method === "listRuntimeVersions")).toHaveLength(
+      callsBeforeExit,
+    );
+  });
+
   test("retains rows and ignores page keys during a page transition", async () => {
     const core = new TestCoreClient();
     core.runtime.setListVersionsResponse({

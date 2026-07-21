@@ -276,6 +276,55 @@ describe("runtime picker", () => {
     expect(core.runtime.calls.at(-1)?.args[0]).toBeUndefined();
   });
 
+  test("resizing resets to page one with the terminal-derived page size", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setListResponse({
+      agentRuntimes: [runtime({ agentRuntimeName: "page-one" })],
+      nextToken: "page-2",
+    });
+    core.runtime.setListResponse(
+      {
+        agentRuntimes: [runtime({ agentRuntimeName: "page-two" })],
+      },
+      "page-2",
+    );
+    const r = renderScreen("/agentcore/runtime/list", { core });
+
+    await waitForText(r.lastFrame, "page 1 · more →");
+    await r.write("l");
+    await waitForText(r.lastFrame, "page-two");
+    const callsBeforeResize = core.runtime.calls.filter(
+      (call) => call.method === "listRuntimes",
+    ).length;
+
+    await r.resize(100, 20);
+    await waitFor(() => {
+      const calls = core.runtime.calls.filter((call) => call.method === "listRuntimes");
+      return (
+        calls.length > callsBeforeResize &&
+        calls.at(-1)?.args[0] === undefined &&
+        calls.at(-1)?.args[1] === 12
+      );
+    });
+    await waitForText(r.lastFrame, "page-one");
+    expect(r.lastFrame()).toContain("page 1 · more →");
+  });
+
+  test("Ctrl+C exits without another Runtime list request", async () => {
+    const core = coreWithRuntimes([runtime()]);
+    const r = renderScreen("/agentcore/runtime/list", { core });
+
+    await waitForText(r.lastFrame, "checkout");
+    const callsBeforeExit = core.runtime.calls.filter(
+      (call) => call.method === "listRuntimes",
+    ).length;
+    await r.write(String.fromCharCode(3));
+
+    expect(core.runtime.calls.filter((call) => call.method === "listRuntimes")).toHaveLength(
+      callsBeforeExit,
+    );
+  });
+
   test("retains rows and ignores page keys while either page direction is loading", async () => {
     const core = new TestCoreClient();
     core.runtime.setListResponse({
