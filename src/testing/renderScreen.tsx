@@ -142,7 +142,10 @@ export function renderScreen(path: string, options: RenderScreenOptions = {}): R
     },
     resize: async (columns, rows = 40) => {
       setWindowSize(instance.stdout, columns, rows);
-      await tick();
+      await waitFor(() => {
+        const lines = (instance.lastFrame() ?? "").split("\n");
+        return lines.length === rows && Math.max(...lines.map((line) => line.length)) === columns;
+      });
     },
     rerender: () =>
       instance.rerender(<Root path={path} ctx={ctx} core={core} queryClient={queryClient} />),
