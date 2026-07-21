@@ -1,4 +1,4 @@
-import { compareVersions, parseSpecifier, parseVersion } from '../semver';
+import { parseSpecifier, parseVersion } from '../semver';
 import { describe, expect, it } from 'vitest';
 
 describe('parseVersion', () => {
@@ -30,33 +30,6 @@ describe('parseVersion', () => {
     expect(parseVersion('1.x')).toBeNull();
     expect(parseVersion('*')).toBeNull();
     expect(parseVersion('>=1.2.3')).toBeNull();
-  });
-});
-
-describe('compareVersions', () => {
-  const v = (s: string) => parseVersion(s)!;
-
-  it('orders by major, minor, patch', () => {
-    expect(compareVersions(v('1.0.0'), v('2.0.0'))).toBeLessThan(0);
-    expect(compareVersions(v('2.1.0'), v('2.0.9'))).toBeGreaterThan(0);
-    expect(compareVersions(v('2.0.1'), v('2.0.1'))).toBe(0);
-  });
-
-  it('orders prerelease identifiers numerically (alpha.19 < alpha.20)', () => {
-    expect(compareVersions(v('0.1.0-alpha.19'), v('0.1.0-alpha.20'))).toBeLessThan(0);
-    expect(compareVersions(v('0.1.0-alpha.20'), v('0.1.0-alpha.19'))).toBeGreaterThan(0);
-  });
-
-  it('ranks prerelease below its release (0.1.0-alpha.45 < 0.1.0)', () => {
-    expect(compareVersions(v('0.1.0-alpha.45'), v('0.1.0'))).toBeLessThan(0);
-  });
-
-  it('ranks numeric prerelease identifiers below alphanumeric', () => {
-    expect(compareVersions(v('1.0.0-1'), v('1.0.0-alpha'))).toBeLessThan(0);
-  });
-
-  it('ranks a shorter prerelease set below a longer one', () => {
-    expect(compareVersions(v('1.0.0-alpha'), v('1.0.0-alpha.1'))).toBeLessThan(0);
   });
 });
 

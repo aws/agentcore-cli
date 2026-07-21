@@ -1,4 +1,4 @@
-import { compareVersions, parseSpecifier } from './semver';
+import { parseSpecifier } from './semver';
 import type { ParsedSpecifier } from './semver';
 import type {
   DependencyChange,
@@ -7,6 +7,7 @@ import type {
   RestoredDependency,
   SkippedDependency,
 } from './types';
+import { compare } from 'semver';
 
 /**
  * Pure policy computation for managed-dependency syncing. No I/O.
@@ -53,7 +54,7 @@ function isSkewed(declared: ParsedSpecifier, expected: ParsedSpecifier): boolean
   if (declared.kind === 'unsupported' || expected.kind === 'unsupported') return false;
   const d = declared.version;
   const e = expected.version;
-  if (expected.kind === 'exact') return compareVersions(d, e) > 0;
+  if (expected.kind === 'exact') return compare(d, e) > 0;
   if (d.major !== e.major) return d.major > e.major;
   return d.minor > e.minor;
 }

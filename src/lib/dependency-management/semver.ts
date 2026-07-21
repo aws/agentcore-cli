@@ -1,18 +1,17 @@
 /**
  * Semver parsing and comparison for managed-dependency syncing.
  *
- * Hybrid by design: version parsing and comparison are delegated to node-semver
- * (the `semver` package), which implements full semver precedence including
- * prerelease ordering (0.1.0-alpha.19 < 0.1.0-alpha.20 < 0.1.0) — the
- * dependency-check parser in src/cli/external-requirements/versions.ts does not,
- * as it drops prerelease tags, which here would make an alpha downgrade look
- * like a no-op. The specifier classifier stays hand-rolled because the sync
- * policy needs to know whether a declared range was written as tilde, caret, or
- * an exact pin, and node-semver's Range API erases that distinction (it expands
- * `~`/`^` into plain comparators). So: node-semver for parse/compare, plus our
- * own thin prefix classifier.
+ * Version parsing and comparison are delegated to node-semver (the `semver`
+ * package), which implements full semver precedence including prerelease
+ * ordering (0.1.0-alpha.19 < 0.1.0-alpha.20 < 0.1.0) — the dependency-check
+ * parser in src/cli/external-requirements/versions.ts does not, as it drops
+ * prerelease tags, which here would make an alpha downgrade look like a no-op.
+ * The specifier classifier stays hand-rolled because the sync policy needs to
+ * know whether a declared range was written as tilde, caret, or an exact pin,
+ * and node-semver's Range API erases that distinction (it expands `~`/`^` into
+ * plain comparators).
  */
-import { compare, parse } from 'semver';
+import { parse } from 'semver';
 import type { SemVer } from 'semver';
 
 /** A parsed version: node-semver's SemVer (major / minor / patch / prerelease). */
@@ -29,15 +28,6 @@ export function parseVersion(version: string): ParsedVersion | null {
   // node-semver only recognizes the lowercase form, so normalize before parsing.
   const normalized = version.trim().replace(/^V/, 'v');
   return parse(normalized, { loose: false });
-}
-
-/**
- * Compare two versions per the semver spec, including prerelease precedence:
- * numeric identifiers compare numerically and rank below alphanumeric ones,
- * and a prerelease version ranks below its release (1.0.0-alpha < 1.0.0).
- */
-export function compareVersions(a: ParsedVersion, b: ParsedVersion): number {
-  return compare(a, b);
 }
 
 /**
