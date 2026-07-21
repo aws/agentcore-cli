@@ -31,7 +31,7 @@ async function run(args: string[]): Promise<string> {
 }
 
 describe("runtime command hierarchy", () => {
-  test("registers only the approved control-plane branches", () => {
+  test("registers the Runtime read-only command hierarchy", () => {
     const root = createRootHandler(createFixtureCore(), {
       io: testIO().io,
       logger: createSilentLogger(),
@@ -61,7 +61,7 @@ describe("runtime command hierarchy", () => {
   });
 
   test.each(["runtime", "runtime version", "runtime endpoint"])(
-    "prints AppIO-backed help for bare `%s` without an SDK call",
+    "prints help for bare `%s` without an SDK call",
     async (command) => {
       const stdout = await run(command.split(" "));
 
@@ -71,8 +71,8 @@ describe("runtime command hierarchy", () => {
   );
 });
 
-describe("runtime control reads", () => {
-  test("gets a Runtime ID exceeding the 48-character Runtime name limit", async () => {
+describe("runtime read-only commands", () => {
+  test("gets a Runtime whose ID exceeds the 48-character Runtime name limit", async () => {
     expect(FIXTURE_RUNTIME_ID.length).toBeGreaterThan(48);
 
     const stdout = await run(["runtime", "get", "--id", FIXTURE_RUNTIME_ID]);
@@ -118,7 +118,7 @@ describe("runtime control reads", () => {
     expect(parsed.agentRuntimeVersion).toBe("1");
   });
 
-  test("lists two Runtime version pages", async () => {
+  test("paginates Runtime version list with --max-results and --next-token", async () => {
     const firstPage = await run([
       "runtime",
       "version",
@@ -166,7 +166,7 @@ describe("runtime control reads", () => {
     expect(parsed.name).toBe("DEFAULT");
   });
 
-  test("lists two Runtime endpoint pages", async () => {
+  test("paginates Runtime endpoint list with --max-results and --next-token", async () => {
     const firstPage = await run([
       "runtime",
       "endpoint",
@@ -198,31 +198,41 @@ describe("runtime control reads", () => {
   });
 
   test.each([
-    [["runtime", "get"], /--id/],
-    [["runtime", "version", "get"], /--id/],
-    [["runtime", "version", "get", "--id", FIXTURE_RUNTIME_ID], /--version/],
-    [["runtime", "version", "list"], /--id/],
-    [["runtime", "endpoint", "get"], /--id/],
-    [["runtime", "endpoint", "get", "--id", FIXTURE_RUNTIME_ID], /--qualifier/],
-    [["runtime", "endpoint", "list"], /--id/],
-  ] as const)("rejects a missing required selector for `%s`", async (args, message) => {
+    ["runtime get", ["runtime", "get"], /--id/],
+    ["runtime version get", ["runtime", "version", "get"], /--id/],
+    [
+      "runtime version get --id <runtime-id>",
+      ["runtime", "version", "get", "--id", FIXTURE_RUNTIME_ID],
+      /--version/,
+    ],
+    ["runtime version list", ["runtime", "version", "list"], /--id/],
+    ["runtime endpoint get", ["runtime", "endpoint", "get"], /--id/],
+    [
+      "runtime endpoint get --id <runtime-id>",
+      ["runtime", "endpoint", "get", "--id", FIXTURE_RUNTIME_ID],
+      /--qualifier/,
+    ],
+    ["runtime endpoint list", ["runtime", "endpoint", "list"], /--id/],
+  ] as const)("rejects a missing required selector for `%s`", async (_label, args, message) => {
     expect(run([...args])).rejects.toThrow(message);
   });
 
   test.each([
     [
+      "runtime version list",
       ["runtime", "version", "list", "--id", FIXTURE_RUNTIME_ID],
-      "long-version-list.golden.json",
+      "version-list-id-over-48.golden.json",
       "agentRuntimes",
     ],
     [
+      "runtime endpoint list",
       ["runtime", "endpoint", "list", "--id", FIXTURE_RUNTIME_ID],
-      "long-endpoint-list.golden.json",
+      "endpoint-list-id-over-48.golden.json",
       "runtimeEndpoints",
     ],
   ] as const)(
-    "accepts a Runtime ID exceeding the 48-character name limit for `%s`",
-    async (args, golden, collection) => {
+    "accepts a Runtime ID exceeding the 48-character Runtime name limit for `%s`",
+    async (_label, args, golden, collection) => {
       const stdout = await run([...args]);
 
       matchGolden(FIXTURES, golden, stdout);
@@ -230,7 +240,7 @@ describe("runtime control reads", () => {
     },
   );
 
-  test("propagates a recorded Runtime service error", async () => {
+  test("propagates ResourceNotFoundException from Runtime get", async () => {
     await expect(run(["runtime", "get", "--id", MISSING_RUNTIME_ID])).rejects.toMatchObject({
       name: "ResourceNotFoundException",
     });

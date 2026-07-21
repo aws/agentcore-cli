@@ -9,8 +9,8 @@ export const createListRuntimesHandler = (core: Core) =>
     name: "list",
     description: "list AgentCore Runtimes",
     flags: [
-      flag("next-token", "next token to use on paginated", z.string().optional()),
-      flag("max-results", "max number of items to return", z.number().optional()),
+      flag("next-token", "pagination token returned by a previous request", z.string().optional()),
+      flag("max-results", "maximum number of items to return", z.number().optional()),
     ],
     handle: async (ctx, flags) => {
       ctx

@@ -10,8 +10,8 @@ export const createListRuntimeEndpointsHandler = (core: Core) =>
     description: "list a Runtime's endpoints",
     flags: [
       flag("id", "the ID of the Runtime", z.string().optional()),
-      flag("next-token", "next token to use on paginated", z.string().optional()),
-      flag("max-results", "max number of items to return", z.number().optional()),
+      flag("next-token", "pagination token returned by a previous request", z.string().optional()),
+      flag("max-results", "maximum number of items to return", z.number().optional()),
     ],
     handle: async (ctx, flags) => {
       if (!flags.id) {
