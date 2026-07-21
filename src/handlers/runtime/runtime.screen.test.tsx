@@ -181,6 +181,55 @@ describe("runtime picker", () => {
     expect(frame).toContain("2026-07-19T01:02:03.000Z");
   });
 
+  test("keeps a full Runtime list and its footer coherent at 50x20", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setListResponse({
+      agentRuntimes: Array.from({ length: 12 }, (_, index) =>
+        runtime({
+          agentRuntimeId: `narrow-row-${index + 1}`,
+          agentRuntimeName: `narrow-row-${index + 1}`,
+        }),
+      ),
+      nextToken: "page-2",
+    });
+    const r = renderScreen("/agentcore/runtime/list", { core });
+
+    await waitForText(r.lastFrame, "narrow-row-12");
+    for (const hint of [
+      "[↑↓/jk] navigate",
+      "[←→/hl] page",
+      "[/] filter",
+      "[enter] select",
+      "[esc] back",
+      "[ctl+c] quit",
+    ]) {
+      expect(r.lastFrame()).toContain(hint);
+    }
+    await r.resize(50, 20);
+    await waitForText(r.lastFrame, "page 1 · more →");
+    const frame = r.lastFrame()!;
+    const lines = frame.split("\n");
+    const pageLine = lines.find((line) => line.includes("page 1 · more →"));
+    const footerLine = lines.find((line) => line.includes("[↑↓/jk] navigate"));
+
+    expect(frameSize(frame)).toEqual({ columns: 50, rows: 20 });
+    expect(frame).toContain("agentcore → runtime → list");
+    expect(pageLine?.trim()).toBe("page 1 · more →");
+    expect(pageLine).not.toContain("narrow-row");
+    expect(footerLine).toContain("[enter] select");
+    expect(footerLine).toContain("[esc] back");
+    expect(frame).not.toContain("[←→/hl] page");
+    expect(frame).not.toContain("[/] filter");
+    expect(frame).not.toContain("[ctl+c] quit");
+    expect(footerLine!.indexOf("[↑↓/jk] navigate")).toBeLessThan(
+      footerLine!.indexOf("[enter] select"),
+    );
+    expect(footerLine!.indexOf("[enter] select")).toBeLessThan(footerLine!.indexOf("[esc] back"));
+    expect(
+      lines.filter((line) => line.includes("[") && line.includes("]")).map((line) => line.trim()),
+    ).toEqual([footerLine!.trim()]);
+  });
+
   test("calls listRuntimes with terminal page size and exact Core options", async () => {
     const core = coreWithRuntimes([runtime()]);
     renderScreen("/agentcore/runtime/list", { core });
