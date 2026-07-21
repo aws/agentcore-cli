@@ -14,7 +14,6 @@ export function RuntimeListVersionsScreen(props: ScreenProps) {
         breadcrumb={["agentcore", "runtime", "version", "list"]}
         description="choose a Runtime to list versions for"
         onSelect={(id) => navigate(`/agentcore/runtime/version/list/${encodeURIComponent(id)}`)}
-        onEscape={() => navigate("/agentcore/runtime/version")}
       />
     );
   }
@@ -29,7 +28,6 @@ export function RuntimeListVersionsScreen(props: ScreenProps) {
           `/agentcore/runtime/version/get/${encodeURIComponent(runtimeId)}/${encodeURIComponent(version)}`,
         )
       }
-      onEscape={() => navigate(`/agentcore/runtime/get/${encodeURIComponent(runtimeId)}`)}
     />
   );
 }

@@ -14,7 +14,6 @@ export function RuntimeListEndpointsScreen(props: ScreenProps) {
         breadcrumb={["agentcore", "runtime", "endpoint", "list"]}
         description="choose a Runtime to list endpoints for"
         onSelect={(id) => navigate(`/agentcore/runtime/endpoint/list/${encodeURIComponent(id)}`)}
-        onEscape={() => navigate("/agentcore/runtime/endpoint")}
       />
     );
   }
@@ -29,7 +28,6 @@ export function RuntimeListEndpointsScreen(props: ScreenProps) {
           `/agentcore/runtime/endpoint/get/${encodeURIComponent(runtimeId)}/${encodeURIComponent(qualifier)}`,
         )
       }
-      onEscape={() => navigate(`/agentcore/runtime/get/${encodeURIComponent(runtimeId)}`)}
     />
   );
 }

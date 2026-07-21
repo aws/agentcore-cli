@@ -386,6 +386,61 @@ describe("navigation", () => {
       expectEndpointPropagation(core, ["listRuntimes", "getRuntime", listMethod, getMethod]);
     },
   );
+
+  test.each([
+    [
+      "versions",
+      "version",
+      "2026-07-20T12:34:56.000Z",
+      "agentcore → runtime → version → get → runtime-123 → 7",
+      '"agentRuntimeVersion"',
+    ],
+    [
+      "endpoints",
+      "endpoint",
+      "prod",
+      "agentcore → runtime → endpoint → get → runtime-123 → prod",
+      '"agentRuntimeEndpointArn"',
+    ],
+  ] as const)(
+    "reverses the direct Runtime %s get flow through its actual history",
+    async (_destination, resource, scopedListValue, jsonBreadcrumb, jsonField) => {
+      const core = runtimeCore();
+      const r = renderScreen(`/agentcore/runtime/${resource}`, {
+        core,
+        ctx: runtimeContext(core),
+      });
+
+      await waitForText(r.lastFrame, `agentcore → runtime → ${resource}`);
+      await r.press("return");
+      await waitForText(r.lastFrame, "checkout");
+
+      await r.press("return");
+      await waitForText(r.lastFrame, `agentcore → runtime → ${resource} → list → runtime-123`);
+      await waitForText(r.lastFrame, scopedListValue);
+
+      await r.press("return");
+      await waitForText(r.lastFrame, jsonBreadcrumb);
+      await waitForText(r.lastFrame, jsonField);
+
+      await r.press("escape");
+      await waitForText(r.lastFrame, `agentcore → runtime → ${resource} → list → runtime-123`);
+
+      await tick(50);
+      await r.press("escape");
+      await tick(100);
+      const parentFrame = r.lastFrame() ?? "";
+      expect(parentFrame).toContain(`agentcore → runtime → ${resource} → list`);
+      expect(parentFrame).not.toContain(`agentcore → runtime → ${resource} → list → runtime-123`);
+      expect(parentFrame).toContain("checkout");
+
+      await r.press("escape");
+      await waitForText(
+        r.lastFrame,
+        `agentcore → runtime → ${resource} → inspect AgentCore Runtime ${resource}s`,
+      );
+    },
+  );
 });
 
 describe("Runtime TUI exit", () => {

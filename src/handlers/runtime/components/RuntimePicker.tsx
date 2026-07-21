@@ -1,6 +1,7 @@
 import type { AgentRuntime } from "@aws-sdk/client-bedrock-agentcore-control";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Text, useInput, useWindowSize } from "ink";
+import { useNavigate } from "react-router";
 import { DataTable } from "../../../components/ui/data-table";
 import { darkTheme } from "../../../components/ui/_core.js";
 import { Spinner } from "../../../components/ui/spinner";
@@ -32,7 +33,6 @@ export interface RuntimePickerProps extends ScreenProps {
   breadcrumb: string[];
   description?: string;
   onSelect: (runtimeId: string) => void;
-  onEscape: () => void;
 }
 
 export function RuntimePicker({
@@ -41,11 +41,12 @@ export function RuntimePicker({
   breadcrumb,
   description,
   onSelect,
-  onEscape,
 }: RuntimePickerProps) {
   const opts = coreOptsFromCtx(ctx);
   const { columns } = useWindowSize();
+  const navigate = useNavigate();
   const paging = usePagedList();
+  const goBack = () => navigate("/" + breadcrumb.slice(0, -1).join("/"));
   const list = useQuery({
     queryKey: ["runtimes", opts.region, paging.pageSize, paging.token],
     queryFn: () => core.runtime.listRuntimes(paging.token, paging.pageSize, opts),
@@ -55,7 +56,7 @@ export function RuntimePicker({
   useInput(
     (input, key) => {
       if (key.escape) {
-        onEscape();
+        goBack();
         return;
       }
       if (input === "r" && list.isError) void list.refetch();
@@ -133,7 +134,7 @@ export function RuntimePicker({
             onSelect={(row) => {
               if (row.runtimeId) onSelect(row.runtimeId);
             }}
-            onEscape={onEscape}
+            onEscape={goBack}
             onPrevPage={!pageTransition && paging.pageIndex > 0 ? paging.prev : undefined}
             onNextPage={!pageTransition && nextToken ? () => paging.next(nextToken) : undefined}
           />

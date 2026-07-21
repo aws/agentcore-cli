@@ -10,7 +10,6 @@ export function RuntimeListScreen(props: ScreenProps) {
       {...props}
       breadcrumb={["agentcore", "runtime", "list"]}
       onSelect={(runtimeId) => navigate(`/agentcore/runtime/get/${encodeURIComponent(runtimeId)}`)}
-      onEscape={() => navigate("/agentcore/runtime")}
     />
   );
 }

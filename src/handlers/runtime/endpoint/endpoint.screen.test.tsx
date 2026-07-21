@@ -3,7 +3,6 @@ import type {
   AgentRuntime,
   AgentRuntimeEndpoint,
   GetAgentRuntimeEndpointResponse,
-  GetAgentRuntimeResponse,
   ListAgentRuntimeEndpointsResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
@@ -65,24 +64,6 @@ function getEndpointResponse(
   };
 }
 
-function getRuntimeResponse(): GetAgentRuntimeResponse {
-  return {
-    agentRuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/runtime-123",
-    agentRuntimeName: "checkout",
-    agentRuntimeId: "runtime-123",
-    agentRuntimeVersion: "3",
-    createdAt: new Date("2026-07-19T01:02:03.000Z"),
-    lastUpdatedAt: new Date("2026-07-20T12:34:56.000Z"),
-    roleArn: "arn:aws:iam::123456789012:role/runtime-role",
-    networkConfiguration: { networkMode: "PUBLIC" },
-    status: "READY",
-    lifecycleConfiguration: {
-      idleRuntimeSessionTimeout: 900,
-      maxLifetime: 28_800,
-    },
-  };
-}
-
 function deferred<T>(): {
   promise: Promise<T>;
   resolve: (value: T) => void;
@@ -94,10 +75,14 @@ function deferred<T>(): {
   return { promise, resolve };
 }
 
-async function waitForRuntimeHub(lastFrame: () => string | undefined): Promise<void> {
+async function waitForRuntimePicker(lastFrame: () => string | undefined): Promise<void> {
   await waitFor(() => {
     const frame = lastFrame() ?? "";
-    return frame.includes("agentcore → runtime → get → runtime-123") && !frame.includes("→ json");
+    return (
+      frame.includes("agentcore → runtime → endpoint → list") &&
+      !frame.includes("agentcore → runtime → endpoint → list → runtime-123") &&
+      frame.includes("checkout")
+    );
   });
 }
 
@@ -366,33 +351,46 @@ describe("Runtime endpoint flow", () => {
     retry.unmount();
 
     const loadingCore = new TestCoreClient();
+    loadingCore.runtime.setListResponse({
+      agentRuntimes: [runtime()],
+    });
     const pending = deferred<ListAgentRuntimeEndpointsResponse>();
     loadingCore.runtime.listRuntimeEndpoints = async () => pending.promise;
-    loadingCore.runtime.setGetResponse(getRuntimeResponse());
-    const loading = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", {
+    const loading = renderScreen("/agentcore/runtime/endpoint/list", {
       core: loadingCore,
     });
+    await waitForText(loading.lastFrame, "checkout");
+    await loading.press("return");
     await waitForText(loading.lastFrame, "Loading endpoints for Runtime runtime-123…");
     await loading.press("escape");
-    await waitForRuntimeHub(loading.lastFrame);
+    await waitForRuntimePicker(loading.lastFrame);
     loading.unmount();
 
     const errorCore = new TestCoreClient();
-    errorCore.runtime.setError(new Error("failed"));
-    const error = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", { core: errorCore });
+    errorCore.runtime.setListResponse({
+      agentRuntimes: [runtime()],
+    });
+    errorCore.runtime.listRuntimeEndpoints = async () => {
+      throw new Error("failed");
+    };
+    const error = renderScreen("/agentcore/runtime/endpoint/list", { core: errorCore });
+    await waitForText(error.lastFrame, "checkout");
+    await error.press("return");
     await waitForText(error.lastFrame, "failed");
-    errorCore.runtime.setError(undefined);
-    errorCore.runtime.setGetResponse(getRuntimeResponse());
     await error.press("escape");
-    await waitForRuntimeHub(error.lastFrame);
+    await waitForRuntimePicker(error.lastFrame);
     error.unmount();
 
     const emptyCore = new TestCoreClient();
-    emptyCore.runtime.setGetResponse(getRuntimeResponse());
-    const empty = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", { core: emptyCore });
+    emptyCore.runtime.setListResponse({
+      agentRuntimes: [runtime()],
+    });
+    const empty = renderScreen("/agentcore/runtime/endpoint/list", { core: emptyCore });
+    await waitForText(empty.lastFrame, "checkout");
+    await empty.press("return");
     await waitForText(empty.lastFrame, "This Runtime has no endpoints.");
     await empty.press("escape");
-    await waitForRuntimeHub(empty.lastFrame);
+    await waitForRuntimePicker(empty.lastFrame);
   });
 
   test("selecting an encoded qualifier opens complete endpoint JSON with exact selectors", async () => {
@@ -421,7 +419,7 @@ describe("Runtime endpoint flow", () => {
     );
   });
 
-  test("uses explicit Esc destinations for parent picker, scoped list, and JSON", async () => {
+  test("uses a structural parent for the Runtime picker and history below it", async () => {
     const parentCore = new TestCoreClient();
     parentCore.runtime.setListResponse({
       agentRuntimes: [runtime()],
@@ -438,27 +436,26 @@ describe("Runtime endpoint flow", () => {
     parent.unmount();
 
     const listCore = new TestCoreClient();
+    listCore.runtime.setListResponse({
+      agentRuntimes: [runtime()],
+    });
     listCore.runtime.setListEndpointsResponse({
       runtimeEndpoints: [endpoint()],
     });
-    listCore.runtime.setGetResponse(getRuntimeResponse());
-    const list = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", { core: listCore });
+    listCore.runtime.setGetEndpointResponse(getEndpointResponse());
+    const list = renderScreen("/agentcore/runtime/endpoint/list", { core: listCore });
+    await waitForText(list.lastFrame, "checkout");
+    await list.press("return");
     await waitForText(list.lastFrame, "prod");
     await list.press("escape");
-    await waitForRuntimeHub(list.lastFrame);
-    list.unmount();
+    await waitForRuntimePicker(list.lastFrame);
 
-    const jsonCore = new TestCoreClient();
-    jsonCore.runtime.setGetEndpointResponse(getEndpointResponse());
-    jsonCore.runtime.setListEndpointsResponse({
-      runtimeEndpoints: [endpoint()],
-    });
-    const json = renderScreen("/agentcore/runtime/endpoint/get/runtime-123/prod", {
-      core: jsonCore,
-    });
-    await waitForText(json.lastFrame, '"agentRuntimeEndpointArn"');
-    await json.press("escape");
-    await waitForText(json.lastFrame, "agentcore → runtime → endpoint → list → runtime-123");
+    await list.press("return");
+    await waitForText(list.lastFrame, "prod");
+    await list.press("return");
+    await waitForText(list.lastFrame, '"agentRuntimeEndpointArn"');
+    await list.press("escape");
+    await waitForText(list.lastFrame, "agentcore → runtime → endpoint → list → runtime-123");
   });
 
   test("bare endpoint get redirects to parent selection", async () => {

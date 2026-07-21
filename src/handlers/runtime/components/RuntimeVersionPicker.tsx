@@ -1,6 +1,7 @@
 import type { AgentRuntime } from "@aws-sdk/client-bedrock-agentcore-control";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Text, useInput, useWindowSize } from "ink";
+import { useNavigate } from "react-router";
 import { DataTable } from "../../../components/ui/data-table";
 import { darkTheme } from "../../../components/ui/_core.js";
 import { Spinner } from "../../../components/ui/spinner";
@@ -28,7 +29,6 @@ export interface RuntimeVersionPickerProps extends ScreenProps {
   breadcrumb: string[];
   description?: string;
   onSelect: (version: string) => void;
-  onEscape: () => void;
 }
 
 export function RuntimeVersionPicker({
@@ -38,11 +38,12 @@ export function RuntimeVersionPicker({
   breadcrumb,
   description,
   onSelect,
-  onEscape,
 }: RuntimeVersionPickerProps) {
   const opts = coreOptsFromCtx(ctx);
   const { columns } = useWindowSize();
+  const navigate = useNavigate();
   const paging = usePagedList();
+  const goBack = () => navigate(-1);
   const list = useQuery({
     queryKey: ["runtime-versions", opts.region, runtimeId, paging.pageSize, paging.token],
     queryFn: () => core.runtime.listRuntimeVersions(runtimeId, paging.token, paging.pageSize, opts),
@@ -52,7 +53,7 @@ export function RuntimeVersionPicker({
   useInput(
     (input, key) => {
       if (key.escape) {
-        onEscape();
+        goBack();
         return;
       }
       if (input === "r" && list.isError) void list.refetch();
@@ -127,7 +128,7 @@ export function RuntimeVersionPicker({
             onSelect={(row) => {
               if (row.version) onSelect(row.version);
             }}
-            onEscape={onEscape}
+            onEscape={goBack}
             onPrevPage={!pageTransition && paging.pageIndex > 0 ? paging.prev : undefined}
             onNextPage={!pageTransition && nextToken ? () => paging.next(nextToken) : undefined}
           />

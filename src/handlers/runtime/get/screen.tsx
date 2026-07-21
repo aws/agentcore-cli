@@ -42,7 +42,7 @@ export function RuntimeGetScreen({ ctx, core }: ScreenProps) {
 
   useInput((input, key) => {
     if (key.escape) {
-      navigate("/agentcore/runtime/list");
+      navigate(-1);
       return;
     }
     if (input === "r" && detail.isError) {
@@ -123,7 +123,6 @@ export function RuntimeGetScreen({ ctx, core }: ScreenProps) {
 
 export function RuntimeGetJsonScreen({ ctx, core }: ScreenProps) {
   const opts = coreOptsFromCtx(ctx);
-  const navigate = useNavigate();
   const { runtimeId } = useParams();
   const detail = useQuery({
     queryKey: ["runtime", opts.region, runtimeId],
@@ -138,7 +137,6 @@ export function RuntimeGetJsonScreen({ ctx, core }: ScreenProps) {
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data}
       loadingLabel="Loading Runtime…"
-      onEscape={() => navigate(`/agentcore/runtime/get/${encodeURIComponent(runtimeId!)}`)}
       onRetry={() => void detail.refetch()}
     />
   );

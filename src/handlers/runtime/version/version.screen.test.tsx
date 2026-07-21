@@ -8,6 +8,7 @@ import {
   cleanupScreens,
   renderScreen,
   TestCoreClient,
+  tick,
   waitFor,
   waitForText,
 } from "../../../testing";
@@ -61,13 +62,14 @@ function deferred<T>(): {
   return { promise, resolve };
 }
 
-async function waitForRuntimeHub(
-  lastFrame: () => string | undefined,
-  runtimeId = "runtime-123",
-): Promise<void> {
+async function waitForRuntimePicker(lastFrame: () => string | undefined): Promise<void> {
   await waitFor(() => {
     const frame = lastFrame() ?? "";
-    return frame.includes(`agentcore → runtime → get → ${runtimeId}`) && !frame.includes("→ json");
+    return (
+      frame.includes("agentcore → runtime → version → list") &&
+      !frame.includes("agentcore → runtime → version → list → runtime-123") &&
+      frame.includes("checkout")
+    );
   });
 }
 
@@ -352,33 +354,46 @@ describe("Runtime version flow", () => {
 
   test("Esc remains active in loading, error, and empty states", async () => {
     const loadingCore = new TestCoreClient();
+    loadingCore.runtime.setListResponse({
+      agentRuntimes: [runtime()],
+    });
     const pending = deferred<ListAgentRuntimeVersionsResponse>();
     loadingCore.runtime.listRuntimeVersions = async () => pending.promise;
-    loadingCore.runtime.setGetResponse(getVersionResponse());
-    const loading = renderScreen("/agentcore/runtime/version/list/runtime-123", {
+    const loading = renderScreen("/agentcore/runtime/version/list", {
       core: loadingCore,
     });
+    await waitForText(loading.lastFrame, "checkout");
+    await loading.press("return");
     await waitForText(loading.lastFrame, "Loading versions for Runtime runtime-123…");
     await loading.press("escape");
-    await waitForRuntimeHub(loading.lastFrame);
+    await waitForRuntimePicker(loading.lastFrame);
     loading.unmount();
 
     const errorCore = new TestCoreClient();
-    errorCore.runtime.setError(new Error("failed"));
-    const error = renderScreen("/agentcore/runtime/version/list/runtime-123", { core: errorCore });
+    errorCore.runtime.setListResponse({
+      agentRuntimes: [runtime()],
+    });
+    errorCore.runtime.listRuntimeVersions = async () => {
+      throw new Error("failed");
+    };
+    const error = renderScreen("/agentcore/runtime/version/list", { core: errorCore });
+    await waitForText(error.lastFrame, "checkout");
+    await error.press("return");
     await waitForText(error.lastFrame, "Error loading versions");
-    errorCore.runtime.setError(undefined);
-    errorCore.runtime.setGetResponse(getVersionResponse());
     await error.press("escape");
-    await waitForRuntimeHub(error.lastFrame);
+    await waitForRuntimePicker(error.lastFrame);
     error.unmount();
 
     const emptyCore = new TestCoreClient();
-    emptyCore.runtime.setGetResponse(getVersionResponse());
-    const empty = renderScreen("/agentcore/runtime/version/list/runtime-123", { core: emptyCore });
+    emptyCore.runtime.setListResponse({
+      agentRuntimes: [runtime()],
+    });
+    const empty = renderScreen("/agentcore/runtime/version/list", { core: emptyCore });
+    await waitForText(empty.lastFrame, "checkout");
+    await empty.press("return");
     await waitForText(empty.lastFrame, "No versions found");
     await empty.press("escape");
-    await waitForRuntimeHub(empty.lastFrame);
+    await waitForRuntimePicker(empty.lastFrame);
   });
 
   test("selecting a version opens complete JSON with exact selectors", async () => {
@@ -403,7 +418,7 @@ describe("Runtime version flow", () => {
     );
   });
 
-  test("uses explicit Esc destinations for parent picker, scoped list, and JSON", async () => {
+  test("uses a structural parent for the Runtime picker and history below it", async () => {
     const parentCore = new TestCoreClient();
     parentCore.runtime.setListResponse({
       agentRuntimes: [runtime()],
@@ -420,25 +435,30 @@ describe("Runtime version flow", () => {
     parent.unmount();
 
     const listCore = new TestCoreClient();
+    listCore.runtime.setListResponse({
+      agentRuntimes: [runtime()],
+    });
     listCore.runtime.setListVersionsResponse({
       agentRuntimes: [runtime()],
     });
-    listCore.runtime.setGetResponse(getVersionResponse());
-    const list = renderScreen("/agentcore/runtime/version/list/runtime-123", { core: listCore });
+    listCore.runtime.setGetVersionResponse(getVersionResponse());
+    const list = renderScreen("/agentcore/runtime/version/list", { core: listCore });
+    await waitForText(list.lastFrame, "checkout");
+    await list.press("return");
+    await waitForText(list.lastFrame, "agentcore → runtime → version → list → runtime-123");
     await waitForText(list.lastFrame, "3");
+    await tick(50);
     await list.press("escape");
-    await waitForRuntimeHub(list.lastFrame);
-    list.unmount();
+    await waitForRuntimePicker(list.lastFrame);
 
-    const jsonCore = new TestCoreClient();
-    jsonCore.runtime.setGetVersionResponse(getVersionResponse());
-    jsonCore.runtime.setListVersionsResponse({
-      agentRuntimes: [runtime()],
-    });
-    const json = renderScreen("/agentcore/runtime/version/get/runtime-123/3", { core: jsonCore });
-    await waitForText(json.lastFrame, '"agentRuntimeVersion"');
-    await json.press("escape");
-    await waitForText(json.lastFrame, "agentcore → runtime → version → list → runtime-123");
+    await list.press("return");
+    await waitForText(list.lastFrame, "agentcore → runtime → version → list → runtime-123");
+    await waitForText(list.lastFrame, "3");
+    await tick(50);
+    await list.press("return");
+    await waitForText(list.lastFrame, '"agentRuntimeVersion"');
+    await list.press("escape");
+    await waitForText(list.lastFrame, "agentcore → runtime → version → list → runtime-123");
   });
 
   test("bare version get redirects to parent selection", async () => {

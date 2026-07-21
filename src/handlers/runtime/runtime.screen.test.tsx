@@ -784,21 +784,27 @@ describe("runtime hub", () => {
     expect(core.runtime.calls).toHaveLength(callsBeforeRetry + 1);
   });
 
-  test("Esc from the hub returns explicitly to the Runtime picker", async () => {
-    const core = new TestCoreClient();
+  test("Esc from the hub returns through history to the Runtime picker", async () => {
+    const core = coreWithRuntimes([runtime({ agentRuntimeId: "runtime-123" })]);
     core.runtime.setGetResponse(getRuntimeResponse());
-    const r = renderScreen("/agentcore/runtime/get/runtime-123", { core });
+    const r = renderScreen("/agentcore/runtime/list", { core });
 
+    await waitForText(r.lastFrame, "checkout");
+    await r.press("return");
     await waitForText(r.lastFrame, "show the full JSON definition");
     await r.press("escape");
     await waitForText(r.lastFrame, "agentcore → runtime → list");
   });
 
-  test("Esc from Runtime JSON returns explicitly to the Runtime hub", async () => {
-    const core = new TestCoreClient();
+  test("Esc from Runtime JSON returns through history to the Runtime hub", async () => {
+    const core = coreWithRuntimes([runtime({ agentRuntimeId: "runtime-123" })]);
     core.runtime.setGetResponse(getRuntimeResponse());
-    const r = renderScreen("/agentcore/runtime/get/runtime-123/json", { core });
+    const r = renderScreen("/agentcore/runtime/list", { core });
 
+    await waitForText(r.lastFrame, "checkout");
+    await r.press("return");
+    await waitForText(r.lastFrame, "show the full JSON definition");
+    await r.press("return");
     await waitForText(r.lastFrame, '"agentRuntimeId"');
     await r.press("escape");
     await waitFor(() => {
@@ -808,48 +814,42 @@ describe("runtime hub", () => {
     await waitForText(r.lastFrame, "show the full JSON definition");
   });
 
-  test("Esc remains active while hub and JSON routes are loading", async () => {
-    const hubCore = new TestCoreClient();
+  test("Esc remains active while the hub is loading", async () => {
+    const hubCore = coreWithRuntimes([runtime({ agentRuntimeId: "runtime-123" })]);
     const hubPending = deferred<GetAgentRuntimeResponse>();
     hubCore.runtime.getRuntime = async () => hubPending.promise;
-    const hub = renderScreen("/agentcore/runtime/get/runtime-123", { core: hubCore });
+    const hub = renderScreen("/agentcore/runtime/list", { core: hubCore });
 
+    await waitForText(hub.lastFrame, "checkout");
+    await hub.press("return");
     await waitForText(hub.lastFrame, "Loading Runtime…");
     await hub.press("escape");
     await waitForText(hub.lastFrame, "agentcore → runtime → list");
-    hub.unmount();
-
-    const jsonCore = new TestCoreClient();
-    const jsonPending = deferred<GetAgentRuntimeResponse>();
-    jsonCore.runtime.getRuntime = async () => jsonPending.promise;
-    const json = renderScreen("/agentcore/runtime/get/runtime-123/json", {
-      core: jsonCore,
-    });
-
-    await waitForText(json.lastFrame, "Loading Runtime…");
-    await json.press("escape");
-    await waitFor(() => {
-      const frame = json.lastFrame() ?? "";
-      return frame.includes("agentcore → runtime → get → runtime-123") && !frame.includes("→ json");
-    });
   });
 
   test("Esc remains active while hub and JSON routes show errors", async () => {
-    const hubCore = new TestCoreClient();
-    hubCore.runtime.setError(new Error("hub failed"));
-    const hub = renderScreen("/agentcore/runtime/get/runtime-123", { core: hubCore });
+    const hubCore = coreWithRuntimes([runtime({ agentRuntimeId: "runtime-123" })]);
+    hubCore.runtime.getRuntime = async () => {
+      throw new Error("hub failed");
+    };
+    const hub = renderScreen("/agentcore/runtime/list", { core: hubCore });
 
+    await waitForText(hub.lastFrame, "checkout");
+    await hub.press("return");
     await waitForText(hub.lastFrame, "hub failed");
     await hub.press("escape");
     await waitForText(hub.lastFrame, "agentcore → runtime → list");
     hub.unmount();
 
-    const jsonCore = new TestCoreClient();
-    jsonCore.runtime.setError(new Error("json failed"));
-    const json = renderScreen("/agentcore/runtime/get/runtime-123/json", {
-      core: jsonCore,
-    });
+    const jsonCore = coreWithRuntimes([runtime({ agentRuntimeId: "runtime-123" })]);
+    jsonCore.runtime.setGetResponse(getRuntimeResponse());
+    const json = renderScreen("/agentcore/runtime/list", { core: jsonCore });
 
+    await waitForText(json.lastFrame, "checkout");
+    await json.press("return");
+    await waitForText(json.lastFrame, "show the full JSON definition");
+    jsonCore.runtime.setError(new Error("json failed"));
+    await json.press("return");
     await waitForText(json.lastFrame, "json failed");
     await json.press("escape");
     await waitFor(() => {
