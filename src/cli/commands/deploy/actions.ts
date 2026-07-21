@@ -196,6 +196,23 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     onProgress?.(currentStepName, status);
   };
 
+  /**
+   * Build the failure result every failed deploy must return: finalize the log, then attach
+   * `logPath` and the CURRENT `dependencySyncResult` (read from closure at call time — dep_sync_*
+   * telemetry must survive deploy failures). Centralizing the ritual makes it impossible for a
+   * failure site to forget one of these fields. Per-step `endStep('error', ...)` calls and any
+   * extra logging stay at the call sites, where the messages differ.
+   */
+  const fail = (error: Error): Extract<DeployResult, { success: false }> => {
+    logger.finalize(false);
+    return {
+      success: false,
+      error,
+      logPath: logger.getRelativeLogPath(),
+      dependencySyncResult,
+    };
+  };
+
   try {
     const configIO = new ConfigIO();
 
@@ -210,12 +227,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const target = targets.find(t => t.name === options.target);
     if (!target) {
       endStep('error', `Target "${options.target}" not found`);
-      logger.finalize(false);
-      return {
-        success: false,
-        error: new ResourceNotFoundError(`Target "${options.target}" not found in aws-targets.json`),
-        logPath: logger.getRelativeLogPath(),
-      };
+      return fail(new ResourceNotFoundError(`Target "${options.target}" not found in aws-targets.json`));
     }
     // Make the resolved target region authoritative for downstream SDK / CDK
     // calls that don't receive an explicit region option.
@@ -260,14 +272,11 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     // Teardown confirmation: if this is a teardown deploy, require --yes
     if (context.isTeardownDeploy && !options.autoConfirm) {
-      logger.finalize(false);
-      return {
-        success: false,
-        error: new ValidationError(
+      return fail(
+        new ValidationError(
           'This will delete all deployed resources and the CloudFormation stack. Run with --yes to confirm teardown.'
-        ),
-        logPath: logger.getRelativeLogPath(),
-      };
+        )
+      );
     }
 
     // Validate AWS credentials (deferred for teardown deploys until after confirmation)
@@ -331,13 +340,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // Lists every required env var upfront so the user can populate the file in one shot.
     const envFileAssertionResult = assertEnvFileExists(context.projectSpec, configIO.getConfigRoot());
     if (!envFileAssertionResult.success) {
-      logger.finalize(false);
-      return {
-        success: false,
-        error: envFileAssertionResult.error,
-        logPath: logger.getRelativeLogPath(),
-        dependencySyncResult,
-      };
+      return fail(envFileAssertionResult.error);
     }
 
     // Read runtime credentials from process.env (enables non-interactive deploy with -y)
@@ -372,14 +375,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         const errorResult = identityResult.results.find(r => r.status === 'error' && r.error);
         const errorMsg = errorResult?.error?.message ?? 'Identity setup failed';
         endStep('error', errorMsg);
-        logger.finalize(false);
-
-        return {
-          success: false,
-          error: errorResult?.error ?? new Error('unknown error occurred when setting up api key providers'),
-          logPath: logger.getRelativeLogPath(),
-          dependencySyncResult,
-        };
+        return fail(errorResult?.error ?? new Error('unknown error occurred when setting up api key providers'));
       }
       identityKmsKeyArn = identityResult.kmsKeyArn;
 
@@ -410,14 +406,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         logger.log(`OAuth setup error: ${errorResult?.error ?? 'unknown'}`, 'error');
         const errorMsg = 'OAuth credential setup failed. Check the log for details.';
         endStep('error', errorMsg);
-        logger.finalize(false);
-
-        return {
-          success: false,
-          error: errorResult?.error ?? new Error(`an unexpected error ocurred when setting up oauth providers`),
-          logPath: logger.getRelativeLogPath(),
-          dependencySyncResult,
-        };
+        return fail(errorResult?.error ?? new Error(`an unexpected error ocurred when setting up oauth providers`));
       }
 
       // Collect OAuth credential ARNs for deployed state
@@ -449,13 +438,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         const errorMsgs = paymentPreDeployResult.errors.map(e => e.message).join('; ');
         endStep('error', errorMsgs);
         logger.log(`Payment credential setup errors: ${errorMsgs}`, 'error');
-        logger.finalize(false);
-        return {
-          success: false,
-          error: paymentPreDeployResult.errors[0] ?? new Error('payment deploy preflight steps failed'),
-          logPath: logger.getRelativeLogPath(),
-          dependencySyncResult,
-        };
+        return fail(paymentPreDeployResult.errors[0] ?? new Error('payment deploy preflight steps failed'));
       }
 
       // Merge payment credential provider ARNs into deployedCredentials (same as identity credentials)
@@ -508,13 +491,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const stackSelection = selectTargetStack(synthResult.stackNames, context.projectSpec.name, target.name);
     if (!stackSelection.success) {
       endStep('error', stackSelection.error.message);
-      logger.finalize(false);
-      return {
-        success: false,
-        error: stackSelection.error,
-        logPath: logger.getRelativeLogPath(),
-        dependencySyncResult,
-      };
+      return fail(stackSelection.error);
     }
     const stackName = stackSelection.stackName;
     endStep('success');
@@ -528,13 +505,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         await bootstrapEnvironment(toolkitWrapper, target);
       } else {
         endStep('error', 'Bootstrap required');
-        logger.finalize(false);
-        return {
-          success: false,
-          error: new ValidationError('AWS environment needs bootstrapping. Run with --yes to auto-bootstrap.'),
-          logPath: logger.getRelativeLogPath(),
-          dependencySyncResult,
-        };
+        return fail(new ValidationError('AWS environment needs bootstrapping. Run with --yes to auto-bootstrap.'));
       }
     }
     endStep('success');
@@ -545,13 +516,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const deployabilityCheck = await checkStackDeployability(target.region, [stackName]);
     if (!deployabilityCheck.canDeploy) {
       endStep('error', deployabilityCheck.message);
-      logger.finalize(false);
-      return {
-        success: false,
-        error: new Error(deployabilityCheck.message ?? 'Stack is not in a deployable state'),
-        logPath: logger.getRelativeLogPath(),
-        dependencySyncResult,
-      };
+      return fail(new Error(deployabilityCheck.message ?? 'Stack is not in a deployable state'));
     }
     endStep('success');
 
@@ -645,15 +610,8 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       startStep('Tear down stack');
       const teardown = await performStackTeardown(target.name);
       if (!teardown.success) {
-        const teardownError = teardown.error.message;
-        endStep('error', teardownError);
-        logger.finalize(false);
-        return {
-          success: false,
-          error: teardown.error,
-          logPath: logger.getRelativeLogPath(),
-          dependencySyncResult,
-        };
+        endStep('error', teardown.error.message);
+        return fail(teardown.error);
       }
       endStep('success');
 
@@ -1065,10 +1023,9 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     };
   } catch (err: unknown) {
     logger.log(getErrorMessage(err), 'error');
-    logger.finalize(false);
-    // Carry the dep-sync outcome on the failure result too, so dep_sync_* telemetry
+    // fail() carries the dep-sync outcome on the failure result too, so dep_sync_* telemetry
     // is recorded even when a later step throws.
-    return { success: false, error: toError(err), logPath: logger.getRelativeLogPath(), dependencySyncResult };
+    return fail(toError(err));
   } finally {
     // Each cleanup step must run regardless of whether an earlier one fails — a throw from
     // dispose() (common after a synth/bootstrap failure on a creds-less preview) must not skip the
