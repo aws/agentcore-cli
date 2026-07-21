@@ -59,6 +59,8 @@ export interface RenderScreenOptions {
   // queryClient overrides the deterministic default when a test needs to
   // exercise cache behavior.
   queryClient?: QueryClient;
+  // additionalRoutes adds test-only destinations before Root's wildcard.
+  additionalRoutes?: React.ReactNode;
 }
 
 export interface RenderScreenResult {
@@ -119,7 +121,15 @@ export function renderScreen(path: string, options: RenderScreenOptions = {}): R
   const ctx = options.ctx ?? baseContext(core);
   const queryClient = options.queryClient ?? testQueryClient();
 
-  const instance = render(<Root path={path} ctx={ctx} core={core} queryClient={queryClient} />);
+  const instance = render(
+    <Root
+      path={path}
+      ctx={ctx}
+      core={core}
+      queryClient={queryClient}
+      additionalRoutes={options.additionalRoutes}
+    />,
+  );
 
   setWindowSize(instance.stdout, 100, 40);
 
@@ -148,7 +158,15 @@ export function renderScreen(path: string, options: RenderScreenOptions = {}): R
       });
     },
     rerender: () =>
-      instance.rerender(<Root path={path} ctx={ctx} core={core} queryClient={queryClient} />),
+      instance.rerender(
+        <Root
+          path={path}
+          ctx={ctx}
+          core={core}
+          queryClient={queryClient}
+          additionalRoutes={options.additionalRoutes}
+        />,
+      ),
     unmount: instance.unmount,
   };
 }
