@@ -6,7 +6,9 @@
       "agentRuntimeVersion": "1",
       "agentRuntimeName": "agentcore_cli_runtime_read_only_fixture",
       "description": "Stable shared resource for AgentCore CLI Runtime read-only fixture recording",
-      "lastUpdatedAt": "2026-07-21T15:24:53.572Z",
+      "lastUpdatedAt": {
+        "$date": "2026-07-21T15:24:53.572Z"
+      },
       "status": "READY"
     }
   ]

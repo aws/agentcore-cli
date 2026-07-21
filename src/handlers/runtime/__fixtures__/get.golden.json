@@ -1,11 +1,11 @@
 {
-  "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:runtime/harness_tf_acc_test_3496516139353111995-U17dI2Favb",
-  "agentRuntimeName": "harness_tf_acc_test_3496516139353111995",
-  "agentRuntimeId": "harness_tf_acc_test_3496516139353111995-U17dI2Favb",
-  "agentRuntimeVersion": "1",
-  "createdAt": "2026-07-13T14:25:15.368Z",
-  "lastUpdatedAt": "2026-07-13T14:25:16.254Z",
-  "roleArn": "arn:aws:iam::603141041947:role/tf_acc_test_3496516139353111995",
+  "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/agentcore_cli_runtime_read_only_fixture-wZ7V4Q6vhx",
+  "agentRuntimeName": "agentcore_cli_runtime_read_only_fixture",
+  "agentRuntimeId": "agentcore_cli_runtime_read_only_fixture-wZ7V4Q6vhx",
+  "agentRuntimeVersion": "2",
+  "createdAt": "2026-07-21T15:24:52.318Z",
+  "lastUpdatedAt": "2026-07-21T15:25:21.499Z",
+  "roleArn": "arn:aws:iam::685197708687:role/tf_acc_test_1997929140646926281",
   "networkConfiguration": {
     "networkMode": "PUBLIC"
   },
@@ -14,19 +14,14 @@
     "idleRuntimeSessionTimeout": 900,
     "maxLifetime": 28800
   },
+  "description": "Stable shared resource for AgentCore CLI Runtime read-only fixture recording",
   "workloadIdentityDetails": {
-    "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:workload-identity-directory/default/workload-identity/harness_tf_acc_test_3496516139353111995-U17dI2Favb"
+    "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:workload-identity-directory/default/workload-identity/agentcore_cli_runtime_read_only_fixture-wZ7V4Q6vhx"
   },
   "agentRuntimeArtifact": {
     "containerConfiguration": {
       "containerUri": "public.ecr.aws/y5s8y8h8/harness-us-west-2:latest"
     }
-  },
-  "environmentVariables": {
-    "AWS_REGION": "us-west-2",
-    "AWS_STAGE": "prod",
-    "AWS_TRUNCATION_MESSAGES_COUNT": "150",
-    "AWS_TRUNCATION_STRATEGY": "sliding_window"
   },
   "metadataConfiguration": {
     "requireMMDSV2": true

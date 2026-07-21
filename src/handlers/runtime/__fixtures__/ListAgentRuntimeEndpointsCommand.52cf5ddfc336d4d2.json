@@ -6,8 +6,12 @@
       "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/agentcore_cli_runtime_read_only_fixture-wZ7V4Q6vhx",
       "status": "READY",
       "id": "runtimeReadOnlyFixture",
-      "createdAt": "2026-07-21T15:25:40.102Z",
-      "lastUpdatedAt": "2026-07-21T15:25:40.952Z",
+      "createdAt": {
+        "$date": "2026-07-21T15:25:40.102Z"
+      },
+      "lastUpdatedAt": {
+        "$date": "2026-07-21T15:25:40.952Z"
+      },
       "liveVersion": "2",
       "description": "Stable shared endpoint for AgentCore CLI Runtime read-only fixture recording"
     }

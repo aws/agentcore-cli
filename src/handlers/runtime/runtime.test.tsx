@@ -7,13 +7,11 @@ import { createRootHandler } from "../index";
 const REGION = "us-west-2";
 const FIXTURES = join(import.meta.dir, "__fixtures__");
 
-// To re-record, update these IDs to real us-west-2 resources: LONG_RUNTIME_ID
-// needs version 1 and DEFAULT, the version target needs at least two versions,
-// the endpoint target needs at least two endpoints, and the account needs at
-// least two Runtimes. Page-two requests always use the token returned by page one.
-const LONG_RUNTIME_ID = "harness_tf_acc_test_3496516139353111995-U17dI2Favb";
-const PAGINATED_VERSION_RUNTIME_ID = "starter_toolkit_agent-58HnLF6qC3";
-const PAGINATED_ENDPOINT_RUNTIME_ID = "weather_agent-Q1UyBZG08k";
+// The shared E2E fixture Runtime has versions 1 and 2 plus DEFAULT and
+// runtimeReadOnlyFixture endpoints. The account has multiple Runtimes for
+// Runtime pagination. Page-two requests use the token returned by page one.
+// Record with AWS_PROFILE=e2e-test RECORD=1 bun test src/handlers/runtime/runtime.test.tsx.
+const FIXTURE_RUNTIME_ID = "agentcore_cli_runtime_read_only_fixture-wZ7V4Q6vhx";
 const MISSING_RUNTIME_ID = "missing_runtime-0000000000";
 
 function createFixtureCore(): CoreClient {
@@ -75,10 +73,10 @@ describe("runtime command hierarchy", () => {
 
 describe("runtime control reads", () => {
   test("gets a service-valid long Runtime ID through the real Core", async () => {
-    const stdout = await run(["runtime", "get", "--id", LONG_RUNTIME_ID]);
+    const stdout = await run(["runtime", "get", "--id", FIXTURE_RUNTIME_ID]);
 
     matchGolden(FIXTURES, "get.golden.json", stdout);
-    expect(JSON.parse(stdout).agentRuntimeId).toBe(LONG_RUNTIME_ID);
+    expect(JSON.parse(stdout).agentRuntimeId).toBe(FIXTURE_RUNTIME_ID);
   });
 
   test("lists two Runtime pages with Harness pagination names", async () => {
@@ -107,14 +105,14 @@ describe("runtime control reads", () => {
       "version",
       "get",
       "--id",
-      LONG_RUNTIME_ID,
+      FIXTURE_RUNTIME_ID,
       "--version",
       "1",
     ]);
 
     matchGolden(FIXTURES, "version-get.golden.json", stdout);
     const parsed = JSON.parse(stdout);
-    expect(parsed.agentRuntimeId).toBe(LONG_RUNTIME_ID);
+    expect(parsed.agentRuntimeId).toBe(FIXTURE_RUNTIME_ID);
     expect(parsed.agentRuntimeVersion).toBe("1");
   });
 
@@ -124,7 +122,7 @@ describe("runtime control reads", () => {
       "version",
       "list",
       "--id",
-      PAGINATED_VERSION_RUNTIME_ID,
+      FIXTURE_RUNTIME_ID,
       "--max-results",
       "1",
     ]);
@@ -139,7 +137,7 @@ describe("runtime control reads", () => {
       "version",
       "list",
       "--id",
-      PAGINATED_VERSION_RUNTIME_ID,
+      FIXTURE_RUNTIME_ID,
       "--max-results",
       "1",
       "--next-token",
@@ -155,14 +153,14 @@ describe("runtime control reads", () => {
       "endpoint",
       "get",
       "--id",
-      LONG_RUNTIME_ID,
+      FIXTURE_RUNTIME_ID,
       "--qualifier",
       "DEFAULT",
     ]);
 
     matchGolden(FIXTURES, "endpoint-get.golden.json", stdout);
     const parsed = JSON.parse(stdout);
-    expect(parsed.agentRuntimeArn).toContain(LONG_RUNTIME_ID);
+    expect(parsed.agentRuntimeArn).toContain(FIXTURE_RUNTIME_ID);
     expect(parsed.name).toBe("DEFAULT");
   });
 
@@ -172,7 +170,7 @@ describe("runtime control reads", () => {
       "endpoint",
       "list",
       "--id",
-      PAGINATED_ENDPOINT_RUNTIME_ID,
+      FIXTURE_RUNTIME_ID,
       "--max-results",
       "1",
     ]);
@@ -187,7 +185,7 @@ describe("runtime control reads", () => {
       "endpoint",
       "list",
       "--id",
-      PAGINATED_ENDPOINT_RUNTIME_ID,
+      FIXTURE_RUNTIME_ID,
       "--max-results",
       "1",
       "--next-token",
@@ -200,10 +198,10 @@ describe("runtime control reads", () => {
   test.each([
     [["runtime", "get"], /--id/],
     [["runtime", "version", "get"], /--id/],
-    [["runtime", "version", "get", "--id", LONG_RUNTIME_ID], /--version/],
+    [["runtime", "version", "get", "--id", FIXTURE_RUNTIME_ID], /--version/],
     [["runtime", "version", "list"], /--id/],
     [["runtime", "endpoint", "get"], /--id/],
-    [["runtime", "endpoint", "get", "--id", LONG_RUNTIME_ID], /--qualifier/],
+    [["runtime", "endpoint", "get", "--id", FIXTURE_RUNTIME_ID], /--qualifier/],
     [["runtime", "endpoint", "list"], /--id/],
   ] as const)("rejects a missing required selector for `%s`", async (args, message) => {
     expect(run([...args])).rejects.toThrow(message);
@@ -211,12 +209,12 @@ describe("runtime control reads", () => {
 
   test.each([
     [
-      ["runtime", "version", "list", "--id", LONG_RUNTIME_ID],
+      ["runtime", "version", "list", "--id", FIXTURE_RUNTIME_ID],
       "long-version-list.golden.json",
       "agentRuntimes",
     ],
     [
-      ["runtime", "endpoint", "list", "--id", LONG_RUNTIME_ID],
+      ["runtime", "endpoint", "list", "--id", FIXTURE_RUNTIME_ID],
       "long-endpoint-list.golden.json",
       "runtimeEndpoints",
     ],

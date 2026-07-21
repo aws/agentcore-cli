@@ -2,8 +2,12 @@
   "agentRuntimeEndpointArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/agentcore_cli_runtime_read_only_fixture-wZ7V4Q6vhx/runtime-endpoint/DEFAULT",
   "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/agentcore_cli_runtime_read_only_fixture-wZ7V4Q6vhx",
   "status": "READY",
-  "createdAt": "2026-07-21T15:24:52.560Z",
-  "lastUpdatedAt": "2026-07-21T15:25:21.499Z",
+  "createdAt": {
+    "$date": "2026-07-21T15:24:52.560Z"
+  },
+  "lastUpdatedAt": {
+    "$date": "2026-07-21T15:25:21.499Z"
+  },
   "name": "DEFAULT",
   "id": "DEFAULT",
   "liveVersion": "2"

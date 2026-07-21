@@ -5,7 +5,9 @@
       "agentRuntimeId": "harness_tf_acc_test_1997929140646926281-Z7D2FxDMk2",
       "agentRuntimeVersion": "1",
       "agentRuntimeName": "harness_tf_acc_test_1997929140646926281",
-      "lastUpdatedAt": "2026-05-01T18:19:03.512Z",
+      "lastUpdatedAt": {
+        "$date": "2026-05-01T18:19:03.512Z"
+      },
       "status": "READY"
     }
   ],

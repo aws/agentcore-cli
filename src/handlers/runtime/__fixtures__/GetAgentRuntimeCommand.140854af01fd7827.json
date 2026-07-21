@@ -2,9 +2,13 @@
   "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/agentcore_cli_runtime_read_only_fixture-wZ7V4Q6vhx",
   "agentRuntimeName": "agentcore_cli_runtime_read_only_fixture",
   "agentRuntimeId": "agentcore_cli_runtime_read_only_fixture-wZ7V4Q6vhx",
-  "agentRuntimeVersion": "1",
-  "createdAt": "2026-07-21T15:24:53.572Z",
-  "lastUpdatedAt": "2026-07-21T15:24:53.572Z",
+  "agentRuntimeVersion": "2",
+  "createdAt": {
+    "$date": "2026-07-21T15:24:52.318Z"
+  },
+  "lastUpdatedAt": {
+    "$date": "2026-07-21T15:25:21.499Z"
+  },
   "roleArn": "arn:aws:iam::685197708687:role/tf_acc_test_1997929140646926281",
   "networkConfiguration": {
     "networkMode": "PUBLIC"
