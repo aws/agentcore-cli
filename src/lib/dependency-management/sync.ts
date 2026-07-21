@@ -120,7 +120,7 @@ export async function syncManagedDependencies(options: SyncManagedDependenciesOp
   if (hasPlannedChanges) {
     // Mutate the parsed manifest in place so user key order and unknown fields survive.
     for (const change of plan.changes) {
-      project[change.section]![change.name] = change.to;
+      (project[change.section] ??= {})[change.name] = change.to;
     }
     for (const restoredDep of plan.restored) {
       const section = (project[restoredDep.section] ??= {});
