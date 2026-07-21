@@ -66,9 +66,9 @@ describe("runtime command hierarchy", () => {
   });
 
   test.each(["runtime", "runtime version", "runtime endpoint"])(
-    "prints help for bare `%s` without an SDK call",
+    "prints help for `%s --json` without an SDK call",
     async (command) => {
-      const stdout = await run(command.split(" "));
+      const stdout = await run([...command.split(" "), "--json"]);
 
       expect(stdout).toContain(`Usage: agentcore ${command}`);
       expect(stdout).toContain("Commands:");

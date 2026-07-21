@@ -1,0 +1,6 @@
+import { RouterScreen } from "../../components/RouterScreen";
+import type { ScreenProps } from "../types";
+
+export function RuntimeScreen(props: ScreenProps) {
+  return <RouterScreen {...props} path={["agentcore", "runtime"]} />;
+}
