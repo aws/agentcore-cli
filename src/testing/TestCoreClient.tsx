@@ -436,51 +436,130 @@ export class TestHarnessClient implements CoreHarnessClient {
   }
 }
 
-class TestRuntimeClient implements CoreRuntimeClient {
-  async getRuntime(_id: string, _options: CoreOptions): Promise<GetAgentRuntimeResponse> {
-    return DEFAULT_GET_RUNTIME_RESPONSE;
+export class TestRuntimeClient implements CoreRuntimeClient {
+  readonly calls: RecordedCall[] = [];
+
+  private getResponse: GetAgentRuntimeResponse = DEFAULT_GET_RUNTIME_RESPONSE;
+  private getVersionResponse: GetAgentRuntimeResponse = DEFAULT_GET_RUNTIME_RESPONSE;
+  private getEndpointResponse: GetAgentRuntimeEndpointResponse =
+    DEFAULT_GET_RUNTIME_ENDPOINT_RESPONSE;
+  private listResponses = new Map<string | undefined, ListAgentRuntimesResponse>();
+  private listVersionResponses = new Map<string | undefined, ListAgentRuntimeVersionsResponse>();
+  private listEndpointResponses = new Map<string | undefined, ListAgentRuntimeEndpointsResponse>();
+  private error?: Error;
+
+  setGetResponse(response: GetAgentRuntimeResponse): this {
+    this.getResponse = response;
+    return this;
+  }
+
+  setGetVersionResponse(response: GetAgentRuntimeResponse): this {
+    this.getVersionResponse = response;
+    return this;
+  }
+
+  setGetEndpointResponse(response: GetAgentRuntimeEndpointResponse): this {
+    this.getEndpointResponse = response;
+    return this;
+  }
+
+  setListResponse(response: ListAgentRuntimesResponse, forNextToken?: string): this {
+    this.listResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setListVersionsResponse(response: ListAgentRuntimeVersionsResponse, forNextToken?: string): this {
+    this.listVersionResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setListEndpointsResponse(
+    response: ListAgentRuntimeEndpointsResponse,
+    forNextToken?: string,
+  ): this {
+    this.listEndpointResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setError(error: Error | undefined): this {
+    this.error = error;
+    return this;
+  }
+
+  async getRuntime(id: string, options: CoreOptions): Promise<GetAgentRuntimeResponse> {
+    this.calls.push({ method: "getRuntime", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.getResponse;
   }
 
   async getRuntimeVersion(
-    _id: string,
-    _version: string,
-    _options: CoreOptions,
+    id: string,
+    version: string,
+    options: CoreOptions,
   ): Promise<GetAgentRuntimeResponse> {
-    return DEFAULT_GET_RUNTIME_RESPONSE;
+    this.calls.push({ method: "getRuntimeVersion", args: [id, version, options] });
+    if (this.error) throw this.error;
+    return this.getVersionResponse;
   }
 
   async getRuntimeEndpoint(
-    _id: string,
-    _qualifier: string,
-    _options: CoreOptions,
+    id: string,
+    qualifier: string,
+    options: CoreOptions,
   ): Promise<GetAgentRuntimeEndpointResponse> {
-    return DEFAULT_GET_RUNTIME_ENDPOINT_RESPONSE;
+    this.calls.push({ method: "getRuntimeEndpoint", args: [id, qualifier, options] });
+    if (this.error) throw this.error;
+    return this.getEndpointResponse;
   }
 
   async listRuntimes(
-    _nextToken: string | undefined,
-    _maxResults: number | undefined,
-    _options: CoreOptions,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
   ): Promise<ListAgentRuntimesResponse> {
-    return DEFAULT_LIST_RUNTIMES_RESPONSE;
+    this.calls.push({ method: "listRuntimes", args: [nextToken, maxResults, options] });
+    if (this.error) throw this.error;
+    return (
+      this.listResponses.get(nextToken) ??
+      this.listResponses.get(undefined) ??
+      DEFAULT_LIST_RUNTIMES_RESPONSE
+    );
   }
 
   async listRuntimeVersions(
-    _id: string,
-    _nextToken: string | undefined,
-    _maxResults: number | undefined,
-    _options: CoreOptions,
+    id: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
   ): Promise<ListAgentRuntimeVersionsResponse> {
-    return DEFAULT_LIST_RUNTIME_VERSIONS_RESPONSE;
+    this.calls.push({
+      method: "listRuntimeVersions",
+      args: [id, nextToken, maxResults, options],
+    });
+    if (this.error) throw this.error;
+    return (
+      this.listVersionResponses.get(nextToken) ??
+      this.listVersionResponses.get(undefined) ??
+      DEFAULT_LIST_RUNTIME_VERSIONS_RESPONSE
+    );
   }
 
   async listRuntimeEndpoints(
-    _id: string,
-    _nextToken: string | undefined,
-    _maxResults: number | undefined,
-    _options: CoreOptions,
+    id: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
   ): Promise<ListAgentRuntimeEndpointsResponse> {
-    return DEFAULT_LIST_RUNTIME_ENDPOINTS_RESPONSE;
+    this.calls.push({
+      method: "listRuntimeEndpoints",
+      args: [id, nextToken, maxResults, options],
+    });
+    if (this.error) throw this.error;
+    return (
+      this.listEndpointResponses.get(nextToken) ??
+      this.listEndpointResponses.get(undefined) ??
+      DEFAULT_LIST_RUNTIME_ENDPOINTS_RESPONSE
+    );
   }
 }
 type TestCoreClientOptions = {

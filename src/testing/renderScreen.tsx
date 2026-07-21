@@ -72,8 +72,23 @@ export interface RenderScreenResult {
   // press sends a named key (e.g. "return", "escape", "down"), then yields a tick
   // for the same reason as `write`.
   press: (key: keyof typeof keys) => Promise<void>;
+  resize: (columns: number, rows?: number) => Promise<void>;
   rerender: () => void;
   unmount: () => void;
+}
+
+interface ResizableStdout {
+  readonly columns: number;
+  readonly rows?: number;
+  emit(event: "resize"): boolean;
+}
+
+function setWindowSize(stdout: ResizableStdout, columns: number, rows: number): void {
+  Object.defineProperties(stdout, {
+    columns: { configurable: true, value: columns },
+    rows: { configurable: true, value: rows },
+  });
+  stdout.emit("resize");
 }
 
 // keys maps friendly names to the escape sequences Ink decodes into key events.
@@ -103,12 +118,7 @@ export function renderScreen(path: string, options: RenderScreenOptions = {}): R
 
   const instance = render(<Root path={path} ctx={ctx} core={core} queryClient={queryClient} />);
 
-  // ink-testing-library's fake stdout reports columns=100 but no rows, so Ink
-  // falls back to the host terminal's height — making tests clip (and fail)
-  // differently per environment. Pin a fixed, realistically sized window and
-  // announce it; useWindowSize listens for "resize" and re-renders.
-  Object.defineProperty(instance.stdout, "rows", { value: 40 });
-  instance.stdout.emit("resize");
+  setWindowSize(instance.stdout, 100, 40);
 
   return {
     core,
@@ -125,6 +135,10 @@ export function renderScreen(path: string, options: RenderScreenOptions = {}): R
     press: async (key) => {
       await tick();
       instance.stdin.write(keys[key]);
+      await tick();
+    },
+    resize: async (columns, rows = 40) => {
+      setWindowSize(instance.stdout, columns, rows);
       await tick();
     },
     rerender: () =>
