@@ -1,7 +1,7 @@
 import { useNavigate, useParams } from "react-router";
 import type { ScreenProps } from "../../../types";
-import { RuntimeEndpointPicker } from "../../components/RuntimeEndpointPicker";
-import { RuntimePicker } from "../../components/RuntimePicker";
+import { RuntimeEndpointPicker } from "../../../../components/RuntimeEndpointPicker";
+import { RuntimePicker } from "../../../../components/RuntimePicker";
 
 export function RuntimeListEndpointsScreen(props: ScreenProps) {
   const navigate = useNavigate();

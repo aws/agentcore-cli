@@ -1,7 +1,7 @@
 import { useNavigate, useParams } from "react-router";
 import type { ScreenProps } from "../../../types";
-import { RuntimePicker } from "../../components/RuntimePicker";
-import { RuntimeVersionPicker } from "../../components/RuntimeVersionPicker";
+import { RuntimePicker } from "../../../../components/RuntimePicker";
+import { RuntimeVersionPicker } from "../../../../components/RuntimeVersionPicker";
 
 export function RuntimeListVersionsScreen(props: ScreenProps) {
   const navigate = useNavigate();

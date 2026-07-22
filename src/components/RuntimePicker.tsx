@@ -1,8 +1,8 @@
 import type { AgentRuntime } from "@aws-sdk/client-bedrock-agentcore-control";
 import { useNavigate } from "react-router";
-import { TokenPagedTablePicker } from "../../../components/TokenPagedTablePicker";
-import type { ScreenProps } from "../../types";
-import { coreOptsFromCtx } from "../../utils";
+import type { ScreenProps } from "../handlers/types";
+import { coreOptsFromCtx } from "../handlers/utils";
+import { TokenPagedTablePicker } from "./TokenPagedTablePicker";
 
 interface RuntimeRow extends Record<string, unknown> {
   runtimeId: string;
