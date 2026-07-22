@@ -440,6 +440,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               if (evalType !== 'code-based') {
                 if (cliOptions.lambdaArn) fail('--lambda-arn requires --type code-based');
                 if (cliOptions.timeout) fail('--timeout requires --type code-based');
+                if (threePLibrary) fail('--3p-library requires --type code-based');
               }
               if (evalType === 'code-based' && !threePLibrary) {
                 if (cliOptions.model) fail('--model cannot be used with --type code-based');
