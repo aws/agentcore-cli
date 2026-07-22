@@ -58,8 +58,7 @@ export async function assertLogsMatch(
 ): Promise<void> {
   let lastResults: ReturnType<typeof evaluateQueries> = [];
 
-  // pino-roll writes via async worker threads, so logs may not be flushed to
-  // disk immediately. Poll until all query conditions are satisfied.
+  // Poll until all query conditions are satisfied.
   try {
     await waitFor(async () => {
       const content = await readLogFile(dir);

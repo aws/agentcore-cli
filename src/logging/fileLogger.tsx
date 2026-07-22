@@ -1,4 +1,5 @@
-import pino from "pino";
+import winston from "winston";
+import DailyRotateFile from "winston-daily-rotate-file";
 import { type AsyncLogger, type LoggerBindings, type LogLevel } from "./types";
 
 export interface FileLoggerConfig {
@@ -9,20 +10,28 @@ export interface FileLoggerConfig {
   logLevel: LogLevel;
 }
 
-function wrapPinoLogger(pinoLogger: pino.Logger): AsyncLogger {
+function wrapWinstonLogger(
+  winstonLogger: winston.Logger,
+  transport: DailyRotateFile,
+  bindings: LoggerBindings,
+): AsyncLogger {
   const log =
-    (level: pino.Level) =>
+    (level: string) =>
     (...args: string[]) =>
-      pinoLogger[level](args.join(" "));
+      winstonLogger.log(level, args.join(" "), bindings);
+
   return {
     debug: log("debug"),
     info: log("info"),
     warn: log("warn"),
     error: log("error"),
-    child: (bindings) => wrapPinoLogger(pinoLogger.child(bindings)),
-    // we convert pino's flush method that accepts a callback into a promise to make it easier to work with.
-    // Note: we also treat flush as best-effort and swallow errors
-    flush: () => new Promise<void>((resolve) => pinoLogger.flush(() => resolve())),
+    child: (childBindings) =>
+      wrapWinstonLogger(winstonLogger, transport, { ...bindings, ...childBindings }),
+    flush: () =>
+      new Promise<void>((resolve) => {
+        transport.on("finish", resolve);
+        if (transport.close) transport.close();
+      }),
   };
 }
 
@@ -30,33 +39,32 @@ function wrapPinoLogger(pinoLogger: pino.Logger): AsyncLogger {
  * Creates a logger that writes structured JSON to a rotating file.
  *
  * @param config - Logger configuration (file path, rotation limits, level).
- * @returns A {@link AsyncLogger} that writes to a rotating file via pino.
+ * @returns A {@link AsyncLogger} that writes to a rotating file via winston.
  */
 export function createFileLogger(config: FileLoggerConfig): AsyncLogger {
   const maxSizeInMB = config.maxSizeInMB ?? 10;
   const maxFileCount = config.maxFileCount ?? 5;
   const bindings = config.bindings ?? {};
-  return wrapPinoLogger(
-    pino({
-      level: config.logLevel,
-      base: undefined, // omit pid and hostname
-      formatters: {
-        level(label) {
-          return { level: label };
-        },
-      },
-      transport: {
-        target: "pino-roll",
-        options: {
-          extension: ".log",
-          dateFormat: "yyyy-MM-dd'T'HH-mm-ss",
-          // Rotate when file reaches {maxSizeInMB} MB, and start deleting once we have {maxFileCount} files
-          size: `${maxSizeInMB}m`,
-          limit: { count: maxFileCount },
-          file: config.filePath,
-          mkdir: true,
-        },
-      },
-    }),
-  ).child(bindings);
+
+  const transport = new DailyRotateFile({
+    filename: `${config.filePath}-%DATE%`,
+    extension: ".log",
+    datePattern: "YYYY-MM-DD",
+    maxSize: `${maxSizeInMB}m`,
+    maxFiles: maxFileCount,
+    createSymlink: false,
+  });
+
+  const jsonFormat = winston.format.printf((info) => {
+    const { level, message, ...rest } = info;
+    return JSON.stringify({ level, msg: message, time: Date.now(), ...rest });
+  });
+
+  const logger = winston.createLogger({
+    level: config.logLevel,
+    format: jsonFormat,
+    transports: [transport],
+  });
+
+  return wrapWinstonLogger(logger, transport, bindings);
 }

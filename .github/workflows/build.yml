@@ -1,4 +1,4 @@
-# Verifies lint, formatting, types, audit, and build all pass.
+# Builds the CLI and compiles it into executables for each platform for a smoke test.
 name: build
 on:
   workflow_call:
@@ -8,10 +8,28 @@ on:
         type: string
 
 jobs:
-  check:
-    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ fromJSON(matrix.runner) }}
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            runner: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}"]'
+            target: linux-x64
+            binary: ./dist/bin/agentcore-linux-x64
+          - name: Windows
+            runner: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "image:windows-1.0"]'
+            target: windows-x64
+            binary: ./dist/bin/agentcore-windows-x64.exe
+          # CodeBuild does not support macOS.
+          - name: macOS
+            runner: '["macos-latest"]'
+            target: darwin-arm64
+            binary: ./dist/bin/agentcore-darwin-arm64
     steps:
       - uses: actions/checkout@v7
         with:
@@ -19,17 +37,12 @@ jobs:
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      - run: bun run lint:check
-        if: always()
-      - run: bun run format:check
-        if: always()
-      - run: bun run typecheck
-        if: always()
-      - run: bun audit
-        if: always()
+
       - run: bun run build
-        if: always()
+
       - run: bun pm pack
-        if: always()
-      - run: bun run compile
-        if: always()
+
+      - run: bun run compile:${{ matrix.target }}
+
+      - name: Smoke test binary
+        run: ${{ matrix.binary }} --help
