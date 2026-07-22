@@ -291,6 +291,11 @@ describe("token-paged table picker contract", () => {
     await waitForText(r.lastFrame, "beta");
     await r.press("down");
     await r.write("/");
+    await r.write("missing");
+    await waitForText(r.lastFrame, "/ Filter this page: missing");
+    expect(r.lastFrame()).toContain("No matches on this page");
+    await r.press("escape");
+    await r.write("/");
     await r.write("alpha");
     await waitForText(r.lastFrame, "/ Filter this page: alpha");
     expect(

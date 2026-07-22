@@ -18,6 +18,7 @@ export interface DataTableProps<T> {
   pageSize?: number;
   searchable?: boolean;
   searchPlaceholder?: string;
+  noMatchesMessage?: string;
   onSelect?: (row: T, index: number) => void;
   /** Called when Escape is pressed while not in search mode (e.g. to go back). */
   onEscape?: () => void;
@@ -49,7 +50,8 @@ export function DataTable<T extends Record<string, unknown>>({
   data,
   pageSize = 10,
   searchable = true,
-  searchPlaceholder = "Filter this page",
+  searchPlaceholder = "Filter",
+  noMatchesMessage = "No matches",
   onSelect,
   onEscape,
   onPrevPage,
@@ -255,9 +257,7 @@ export function DataTable<T extends Record<string, unknown>>({
         {/* Rows */}
         {pageData.length === 0 ? (
           <Box paddingX={1}>
-            <Text color={theme.colors.muted}>
-              {searchQuery ? "No matches on this page" : emptyMessage}
-            </Text>
+            <Text color={theme.colors.muted}>{searchQuery ? noMatchesMessage : emptyMessage}</Text>
           </Box>
         ) : (
           pageData.map((row, i) => {
