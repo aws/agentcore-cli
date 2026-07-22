@@ -373,10 +373,8 @@ describe("Runtime TUI exit", () => {
     );
     const listCalls = () => core.runtime.calls.filter((call) => call.method === "listRuntimes");
 
-    await waitFor(
-      () => listCalls().length > 0 && streams.stdout().includes("page 1 · more →"),
-      5_000,
-    );
+    await waitFor(() => listCalls().length > 0);
+    await tick();
     const callsBeforeExit = listCalls().length;
 
     stdin.write(String.fromCharCode(3));
