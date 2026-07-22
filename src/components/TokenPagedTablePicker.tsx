@@ -105,7 +105,7 @@ export function TokenPagedTablePicker<TItem, TRow extends Record<string, unknown
             showFooter={false}
             showDivider={true}
             pageSize={paging.pageSize}
-            selectionResetKey={`${paging.pageSize}:${paging.pageIndex}`}
+            selectionResetKey={paging.pageSize}
             searchPlaceholder="Filter this page"
             noMatchesMessage="No matches on this page"
             focus={!pageTransition}
