@@ -1,7 +1,7 @@
 import { useNavigate, useParams } from "react-router";
 import type { ScreenProps } from "../../../types";
 import { HarnessPicker } from "../../../../components/HarnessPicker";
-import { EndpointPicker } from "../../../../components/EndpointPicker";
+import { HarnessEndpointPicker } from "../../../../components/HarnessEndpointPicker";
 
 // HarnessListEndpointsScreen lists a harness's endpoints. Without a `:harnessId`
 // route value it renders a harness picker first; with one it lists that
@@ -22,7 +22,7 @@ export function HarnessListEndpointsScreen(props: ScreenProps) {
   }
 
   return (
-    <EndpointPicker
+    <HarnessEndpointPicker
       {...props}
       harnessId={harnessId}
       breadcrumb={["agentcore", "harness", "endpoint", "list", harnessId]}

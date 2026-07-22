@@ -6,7 +6,7 @@ import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import type { ScreenProps } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 import { HarnessPicker } from "../../../components/HarnessPicker";
-import { EndpointPicker } from "../../../components/EndpointPicker";
+import { HarnessEndpointPicker } from "../../../components/HarnessEndpointPicker";
 import { Layout } from "../../../components/Layout";
 import { Divider } from "../../../components/ui/divider";
 import { Markdown } from "../../../components/ui/markdown";
@@ -301,7 +301,7 @@ export function HarnessChat({
   // qualifier; esc closes the overlay with the qualifier unchanged.
   if (pickingEndpoint) {
     return (
-      <EndpointPicker
+      <HarnessEndpointPicker
         ctx={ctx}
         core={core}
         harnessId={harnessId}

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router";
 import type { ScreenProps } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 import { HarnessPicker } from "../../../../components/HarnessPicker";
-import { EndpointPicker } from "../../../../components/EndpointPicker";
+import { HarnessEndpointPicker } from "../../../../components/HarnessEndpointPicker";
 import { ConfirmAction } from "../../../../components/ConfirmAction";
 import { useFinishFlow } from "../../../../components/useFinishFlow";
 
@@ -26,7 +26,7 @@ export function HarnessDeleteEndpointScreen(props: ScreenProps) {
   }
   if (!endpointName) {
     return (
-      <EndpointPicker
+      <HarnessEndpointPicker
         {...props}
         harnessId={harnessId}
         breadcrumb={["agentcore", "harness", "endpoint", "delete", harnessId]}

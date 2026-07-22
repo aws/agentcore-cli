@@ -1,7 +1,7 @@
 import { useNavigate, useParams } from "react-router";
 import type { ScreenProps } from "../../../types";
 import { HarnessPicker } from "../../../../components/HarnessPicker";
-import { VersionPicker } from "../../../../components/VersionPicker";
+import { HarnessVersionPicker } from "../../../../components/HarnessVersionPicker";
 
 // HarnessListVersionsScreen lists a harness's versions. Without a `:harnessId`
 // route value it renders a harness picker first; with one it lists that
@@ -22,7 +22,7 @@ export function HarnessListVersionsScreen(props: ScreenProps) {
   }
 
   return (
-    <VersionPicker
+    <HarnessVersionPicker
       {...props}
       harnessId={harnessId}
       breadcrumb={["agentcore", "harness", "version", "list", harnessId]}

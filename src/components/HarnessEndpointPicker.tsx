@@ -23,7 +23,7 @@ function toRow(e: HarnessEndpoint): EndpointRow {
   };
 }
 
-export interface EndpointPickerProps extends ScreenProps {
+export interface HarnessEndpointPickerProps extends ScreenProps {
   // harnessId scopes the listing to one harness's endpoints.
   harnessId: string;
   // breadcrumb labels the screen the picker is serving.
@@ -38,10 +38,10 @@ export interface EndpointPickerProps extends ScreenProps {
   onEscape?: () => void;
 }
 
-// EndpointPicker fetches a harness's endpoints and renders them as a navigable
+// HarnessEndpointPicker fetches a harness's endpoints and renders them as a navigable
 // table — the endpoint counterpart of HarnessPicker, shared by every "pick an
 // endpoint" screen (list, update, delete). Esc pops back.
-export function EndpointPicker({
+export function HarnessEndpointPicker({
   ctx,
   core,
   harnessId,
@@ -49,7 +49,7 @@ export function EndpointPicker({
   description,
   onSelect,
   onEscape,
-}: EndpointPickerProps) {
+}: HarnessEndpointPickerProps) {
   const opts = coreOptsFromCtx(ctx);
   const navigate = useNavigate();
   const goBack = onEscape ?? (() => navigate(-1));

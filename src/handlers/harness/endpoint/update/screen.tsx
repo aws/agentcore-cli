@@ -4,7 +4,7 @@ import { useNavigate, useParams } from "react-router";
 import type { ScreenProps } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 import { HarnessPicker } from "../../../../components/HarnessPicker";
-import { EndpointPicker } from "../../../../components/EndpointPicker";
+import { HarnessEndpointPicker } from "../../../../components/HarnessEndpointPicker";
 import { EndpointWizard } from "../../../../components/EndpointWizard";
 import { Layout } from "../../../../components/Layout";
 import { Spinner } from "../../../../components/ui/spinner";
@@ -29,7 +29,7 @@ export function HarnessUpdateEndpointScreen(props: ScreenProps) {
   }
   if (!endpointName) {
     return (
-      <EndpointPicker
+      <HarnessEndpointPicker
         {...props}
         harnessId={harnessId}
         breadcrumb={["agentcore", "harness", "endpoint", "update", harnessId]}

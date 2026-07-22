@@ -21,7 +21,7 @@ function toRow(v: HarnessVersionSummary): VersionRow {
   };
 }
 
-export interface VersionPickerProps extends ScreenProps {
+export interface HarnessVersionPickerProps extends ScreenProps {
   // harnessId scopes the listing to one harness's versions.
   harnessId: string;
   // breadcrumb labels the screen the picker is serving.
@@ -32,16 +32,16 @@ export interface VersionPickerProps extends ScreenProps {
   onSelect: (version: string) => void;
 }
 
-// VersionPicker fetches a harness's versions and renders them as a navigable
+// HarnessVersionPicker fetches a harness's versions and renders them as a navigable
 // table, newest first. Esc pops back.
-export function VersionPicker({
+export function HarnessVersionPicker({
   ctx,
   core,
   harnessId,
   breadcrumb,
   description,
   onSelect,
-}: VersionPickerProps) {
+}: HarnessVersionPickerProps) {
   const opts = coreOptsFromCtx(ctx);
   const navigate = useNavigate();
   const goBack = () => navigate(-1);
