@@ -116,7 +116,9 @@ export function DataTable<T extends Record<string, unknown>>({
           setSearchQuery((q) => q.slice(0, -1));
           return;
         }
-        if (input && input.length === 1 && !key.ctrl) setSearchQuery((q) => q + input);
+        if (input && !key.ctrl && !key.meta && !/\p{Cc}/u.test(input)) {
+          setSearchQuery((q) => q + input);
+        }
         return;
       }
 

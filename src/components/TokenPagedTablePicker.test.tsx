@@ -280,7 +280,7 @@ describe("token-paged table picker contract", () => {
     ).toBe(false);
   });
 
-  test("filter input does not page and resets selection to its first match", async () => {
+  test("pasted filter input does not page and resets selection to its first match", async () => {
     const alpha = harness({ harnessName: "alpha", harnessId: "alpha-1" });
     const beta = harness({ harnessName: "beta", harnessId: "beta-2" });
     const core = coreWith([alpha, beta]);
@@ -291,7 +291,7 @@ describe("token-paged table picker contract", () => {
     await waitForText(r.lastFrame, "beta");
     await r.press("down");
     await r.write("/");
-    for (const character of "alpha") await r.write(character);
+    await r.write("alpha");
     await waitForText(r.lastFrame, "/ Filter this page: alpha");
     expect(
       core.harness.calls.some((call) => call.method === "listHarnesses" && call.args[0] === "t2"),
