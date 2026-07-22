@@ -7,7 +7,6 @@ import { atomicWrite } from "../fs";
 import type { AssetFile, AssetName, AssetVariables, EmbeddedFile } from "./types";
 
 // Bundled builds place `assets/` beside the module; source layout has it one up.
-// Directory-injected so it's testable without a real install layout.
 export function resolveSourceRoot(
   moduleDirectory = dirname(fileURLToPath(import.meta.url)),
 ): string {
