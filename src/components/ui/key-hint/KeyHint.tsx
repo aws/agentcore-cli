@@ -1,6 +1,5 @@
 import React from "react";
 import { Text, Box, useWindowSize } from "ink";
-import stringWidth from "string-width";
 import { darkTheme } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 
@@ -27,7 +26,7 @@ function priority({ key, label }: KeyHintItem): number {
 }
 
 function itemWidth({ key, label }: KeyHintItem): number {
-  return stringWidth(`[${key}] ${label}`);
+  return `[${key}] ${label}`.length;
 }
 
 function fitKeys(keys: KeyHintItem[], columns: number): KeyHintItem[] {
