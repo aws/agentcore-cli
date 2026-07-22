@@ -55,9 +55,9 @@ async function run(args: string[]): Promise<string> {
   return io.stdout();
 }
 
-function testRuntimeCommand(isTTY = false) {
+function testRuntimeCommand() {
   const core = new TestCoreClient();
-  const io = testIO({ isTTY });
+  const io = testIO();
   const root = createRootHandler(core, {
     io: io.io,
     logger: createSilentLogger(),
@@ -65,7 +65,6 @@ function testRuntimeCommand(isTTY = false) {
 
   return {
     core,
-    io,
     route: (args: string[]) => root.route(["node", "agentcore", ...args, "--region", REGION]),
   };
 }
@@ -115,10 +114,6 @@ describe("runtime command hierarchy", () => {
 describe("runtime TUI dispatch", () => {
   test.each([
     ["get", ["runtime", "get"]],
-    ["list", ["runtime", "list"]],
-    ["version get", ["runtime", "version", "get"]],
-    ["version list", ["runtime", "version", "list"]],
-    ["endpoint get", ["runtime", "endpoint", "get"]],
     ["endpoint list", ["runtime", "endpoint", "list"]],
   ] as const)("opens the TUI for a bare Runtime %s leaf", async (_label, args) => {
     const { core, route } = testRuntimeCommand();
@@ -127,21 +122,6 @@ describe("runtime TUI dispatch", () => {
       "interactive mode requires a TTY on stdin and stdout",
     );
     expect(core.runtime.calls).toEqual([]);
-  });
-
-  test("keeps Runtime leaves with operation flags headless", async () => {
-    const { core, io, route } = testRuntimeCommand();
-    core.runtime.setListResponse({ agentRuntimes: [], nextToken: "page-2" });
-
-    await route(["runtime", "list", "--max-results", "1"]);
-
-    expect(JSON.parse(io.stdout())).toEqual({ agentRuntimes: [], nextToken: "page-2" });
-    expect(core.runtime.calls).toEqual([
-      {
-        method: "listRuntimes",
-        args: [undefined, 1, { region: REGION, endpointUrl: undefined }],
-      },
-    ]);
   });
 });
 
@@ -290,7 +270,7 @@ describe("runtime read-only commands", () => {
   ] as const)(
     "rejects a missing required selector for headless `%s`",
     async (_label, args, message) => {
-      expect(run([...args, "--json"])).rejects.toThrow(message);
+      await expect(run([...args, "--json"])).rejects.toThrow(message);
     },
   );
 

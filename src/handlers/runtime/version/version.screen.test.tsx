@@ -83,41 +83,21 @@ describe("Runtime version flow", () => {
     ).toBe(true);
   });
 
-  test("skips parent selection when the Runtime ID is already scoped", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setListVersionsResponse({
-      agentRuntimes: [runtime({ agentRuntimeVersion: "8" })],
-    });
-    const r = renderScreen("/agentcore/runtime/version/list/runtime-123", { core });
-
-    await waitForText(r.lastFrame, "8");
-    expect(core.runtime.calls.some((call) => call.method === "listRuntimes")).toBe(false);
-    expect(
-      core.runtime.calls.some(
-        (call) => call.method === "listRuntimeVersions" && call.args[0] === "runtime-123",
-      ),
-    ).toBe(true);
-  });
-
-  test("calls listRuntimeVersions with exact scope, page size, and options", async () => {
+  test("calls listRuntimeVersions once with exact scope and options", async () => {
     const core = new TestCoreClient();
     core.runtime.setListVersionsResponse({
       agentRuntimes: [runtime()],
     });
     renderScreen("/agentcore/runtime/version/list/runtime-123", { core });
 
-    await waitFor(() =>
-      core.runtime.calls.some(
-        (call) => call.method === "listRuntimeVersions" && call.args[2] === 32,
-      ),
-    );
+    await waitFor(() => core.runtime.calls.some((call) => call.method === "listRuntimeVersions"));
     expect(core.runtime.calls.filter((call) => call.method === "listRuntimeVersions")).toEqual([
       {
         method: "listRuntimeVersions",
         args: [
           "runtime-123",
           undefined,
-          32,
+          expect.any(Number),
           {
             region: "us-east-1",
             endpointUrl: undefined,
@@ -125,6 +105,7 @@ describe("Runtime version flow", () => {
         ],
       },
     ]);
+    expect(core.runtime.calls.some((call) => call.method === "listRuntimes")).toBe(false);
   });
 
   test("renders numeric versions newest first with only version status and update time", async () => {

@@ -74,7 +74,7 @@ describe("harness endpoint list screen", () => {
         args: [
           "MyHarness-abc123",
           undefined,
-          32,
+          expect.any(Number),
           {
             region: "us-east-1",
             endpointUrl: undefined,

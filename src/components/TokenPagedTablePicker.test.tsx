@@ -125,27 +125,52 @@ describe("token-paged table picker contract", () => {
 
   test("pages forward and backward using token history", async () => {
     const core = new TestCoreClient();
+    const first = harness({ harnessName: "page-one-first", harnessId: "page-one-first" });
     core.harness.setListResponse({
-      harnesses: [harness({ harnessName: "page-one" })],
+      harnesses: [first, harness({ harnessName: "page-one-second", harnessId: "page-one-second" })],
       nextToken: "t2",
     });
-    core.harness.setListResponse({ harnesses: [harness({ harnessName: "page-two" })] }, "t2");
+    core.harness.setListResponse(
+      {
+        harnesses: [
+          harness({ harnessName: "page-two-first", harnessId: "page-two-first" }),
+          harness({ harnessName: "page-two-second", harnessId: "page-two-second" }),
+        ],
+      },
+      "t2",
+    );
+    core.harness.setGetResponse(getResponse(first));
     const r = renderScreen("/agentcore/harness/list", { core });
 
     await waitForText(r.lastFrame, "page 1 · more →");
     expect(r.lastFrame()).toContain("[←→/hl] page");
+    expect(core.harness.calls.filter((call) => call.method === "listHarnesses")).toEqual([
+      {
+        method: "listHarnesses",
+        args: [undefined, 32, { region: "us-east-1", endpointUrl: undefined }],
+      },
+    ]);
+    await r.press("down");
+    await waitForText(r.lastFrame, "❯ page-one-second");
     await r.write("l");
-    await waitForText(r.lastFrame, "page-two");
+    await waitForText(r.lastFrame, "❯ page-two-first");
     expect(core.harness.calls.at(-1)).toEqual({
       method: "listHarnesses",
       args: ["t2", 32, { region: "us-east-1", endpointUrl: undefined }],
     });
 
+    await r.press("down");
+    await waitForText(r.lastFrame, "❯ page-two-second");
     await r.write("h");
-    await waitForText(r.lastFrame, "page-one");
+    await waitForText(r.lastFrame, "❯ page-one-first");
     expect(r.lastFrame()).toContain("page 1");
-    await r.press("escape");
-    await waitForText(r.lastFrame, "manage agentcore harnesses");
+    await r.press("return");
+    await waitForText(r.lastFrame, "agentcore → harness → get → page-one-first");
+    expect(
+      core.harness.calls.some(
+        (call) => call.method === "getHarness" && call.args[0] === "page-one-second",
+      ),
+    ).toBe(false);
   });
 
   test("keeps pagination status and key hints coherent at 50x20", async () => {

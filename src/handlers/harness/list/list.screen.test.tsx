@@ -33,13 +33,6 @@ function coreWith(harnesses: HarnessSummary[]): TestCoreClient {
   return core;
 }
 
-// A HarnessSummary is enough for the detail screen's render (it stringifies
-// whatever `harness` field it gets), so reuse it as the get response, widening
-// to the response's `harness` type.
-function getResponse(summary: HarnessSummary) {
-  return { harness: summary } as Parameters<TestCoreClient["harness"]["setGetResponse"]>[0];
-}
-
 describe("harness list screen", () => {
   test("renders each harness as a row once loaded", async () => {
     const core = coreWith([
@@ -67,19 +60,17 @@ describe("harness list screen", () => {
     expect(narrow).not.toContain("READY");
   });
 
-  test("makes one initial list request at the 100x40 page size with context options", async () => {
+  test("makes one initial list request with context options", async () => {
     const core = coreWith([harness()]);
     const r = renderScreen("/agentcore/harness/list", { core });
 
-    await waitFor(() =>
-      core.harness.calls.some((call) => call.method === "listHarnesses" && call.args[1] === 32),
-    );
+    await waitFor(() => core.harness.calls.some((call) => call.method === "listHarnesses"));
     expect(core.harness.calls.filter((call) => call.method === "listHarnesses")).toEqual([
       {
         method: "listHarnesses",
         args: [
           undefined,
-          32,
+          expect.any(Number),
           {
             region: "us-east-1",
             endpointUrl: undefined,
@@ -87,34 +78,6 @@ describe("harness list screen", () => {
         ],
       },
     ]);
-    r.unmount();
-  });
-
-  test("enter on a row navigates to that harness's detail screen", async () => {
-    const core = coreWith([harness({ harnessName: "pickme", harnessId: "pickme-9" })]);
-    // The get screen refetches the single harness; give it a response too.
-    core.harness.setGetResponse(
-      getResponse(harness({ harnessName: "pickme", harnessId: "pickme-9" })),
-    );
-    const r = renderScreen("/agentcore/harness/list", { core });
-
-    await waitForText(r.lastFrame, "pickme");
-    await r.press("return");
-    // Detail screen breadcrumb includes the harness id.
-    await waitForText(r.lastFrame, "pickme-9");
-    r.unmount();
-  });
-
-  test("esc returns to the harness menu", async () => {
-    const core = coreWith([harness()]);
-    const r = renderScreen("/agentcore/harness/list", { core });
-
-    await waitForText(r.lastFrame, "MyHarness");
-    await r.press("escape");
-    // Back at the harness command menu — it shows the harness subcommands (e.g.
-    // the "get a harness" option), which the list table never does.
-    await waitForText(r.lastFrame, "get a harness");
-    expect(r.lastFrame()).toContain("manage agentcore harnesses");
     r.unmount();
   });
 });

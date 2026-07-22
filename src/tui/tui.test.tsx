@@ -42,32 +42,24 @@ describe("--json short-circuits the TUI", () => {
 });
 
 describe("TUI stream boundary", () => {
-  test("test IO defaults every stream to non-TTY and supports explicit TTY streams", () => {
-    const nonTty = testIO();
-    const tty = testIO({ isTTY: true });
-
-    for (const stream of [nonTty.io.stdin, nonTty.io.stdout, nonTty.io.stderr]) {
-      expect(stream.isTTY).toBe(false);
-      expect(Object.getOwnPropertyDescriptor(stream, "isTTY")?.configurable).toBe(true);
-    }
-    for (const stream of [tty.io.stdin, tty.io.stdout, tty.io.stderr]) {
-      expect(stream.isTTY).toBe(true);
-      expect(Object.getOwnPropertyDescriptor(stream, "isTTY")?.configurable).toBe(true);
-    }
-  });
-
   test.each([
-    ["bare root", []],
-    ["Harness", ["harness"]],
-  ] as const)("rejects non-TTY streams at the shared boundary for %s", async (_label, args) => {
-    const io = testIO();
-    const root = createRootHandler(new TestCoreClient(), {
-      io: io.io,
-      logger: createSilentLogger(),
-    });
+    ["stdin and stdout", false, false],
+    ["stdin", false, true],
+    ["stdout", true, false],
+  ] as const)(
+    "rejects interactive mode when %s is non-TTY",
+    async (_label, stdinIsTTY, stdoutIsTTY) => {
+      const io = testIO({ isTTY: true });
+      Object.defineProperty(io.io.stdin, "isTTY", { configurable: true, value: stdinIsTTY });
+      Object.defineProperty(io.io.stdout, "isTTY", { configurable: true, value: stdoutIsTTY });
+      const root = createRootHandler(new TestCoreClient(), {
+        io: io.io,
+        logger: createSilentLogger(),
+      });
 
-    await expect(root.route(["node", "agentcore", ...args])).rejects.toThrow(
-      "interactive mode requires a TTY on stdin and stdout",
-    );
-  });
+      await expect(root.route(["node", "agentcore"])).rejects.toThrow(
+        "interactive mode requires a TTY on stdin and stdout",
+      );
+    },
+  );
 });

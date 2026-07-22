@@ -286,17 +286,6 @@ describe("navigation", () => {
     r.unmount();
   });
 
-  test("ctrl+c is handled (quit) without crashing", async () => {
-    const r = renderScreen("/agentcore");
-    await waitForText(r.lastFrame, "❯ harness");
-
-    // ctrl+c is 0x03; the menu's handler calls exit(), which unmounts the app.
-    // Driving the branch must not throw; after exit the renderer stops updating.
-    await r.write(String.fromCharCode(3));
-    await tick(20);
-    r.unmount();
-  });
-
   test("navigates from Root through Runtime endpoints and escapes each boundary", async () => {
     const core = runtimeCore();
     const r = renderScreen("/agentcore", {

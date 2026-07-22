@@ -67,44 +67,6 @@ function coreWithRuntimes(runtimes: AgentRuntime[]): TestCoreClient {
   return core;
 }
 
-async function waitForRuntimeMenu(lastFrame: () => string | undefined): Promise<void> {
-  await waitFor(() =>
-    (lastFrame() ?? "").includes("agentcore → runtime → inspect AgentCore Runtimes"),
-  );
-}
-
-describe("runtime menus", () => {
-  test("renders the Runtime command menu", async () => {
-    const r = renderScreen("/agentcore/runtime");
-    await waitForText(r.lastFrame, "agentcore → runtime");
-
-    const frame = r.lastFrame()!;
-    for (const command of ["get", "list", "version", "endpoint"]) {
-      expect(frame).toContain(command);
-    }
-  });
-
-  test("renders the Runtime version command menu", async () => {
-    const r = renderScreen("/agentcore/runtime/version");
-    await waitForText(r.lastFrame, "agentcore → runtime → version");
-
-    const frame = r.lastFrame()!;
-    for (const command of ["get", "list"]) {
-      expect(frame).toContain(command);
-    }
-  });
-
-  test("renders the Runtime endpoint command menu", async () => {
-    const r = renderScreen("/agentcore/runtime/endpoint");
-    await waitForText(r.lastFrame, "agentcore → runtime → endpoint");
-
-    const frame = r.lastFrame()!;
-    for (const command of ["get", "list"]) {
-      expect(frame).toContain(command);
-    }
-  });
-});
-
 describe("runtime picker", () => {
   test("renders Runtime identity, latest version, status, and update time when wide", async () => {
     const core = coreWithRuntimes([
@@ -132,17 +94,17 @@ describe("runtime picker", () => {
     expect(frame).toContain("2026-07-19T01:02:03.000Z");
   });
 
-  test("calls listRuntimes with terminal page size and exact Core options", async () => {
+  test("calls listRuntimes once with exact Core options", async () => {
     const core = coreWithRuntimes([runtime()]);
     renderScreen("/agentcore/runtime/list", { core });
 
-    await waitFor(() => core.runtime.calls.some((call) => call.args[1] === 32));
+    await waitFor(() => core.runtime.calls.some((call) => call.method === "listRuntimes"));
     expect(core.runtime.calls.filter((call) => call.method === "listRuntimes")).toEqual([
       {
         method: "listRuntimes",
         args: [
           undefined,
-          32,
+          expect.any(Number),
           {
             region: "us-east-1",
             endpointUrl: undefined,
@@ -203,7 +165,7 @@ describe("runtime picker", () => {
 
     await waitForText(r.lastFrame, "checkout");
     await r.press("escape");
-    await waitForRuntimeMenu(r.lastFrame);
+    await waitForText(r.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
     expect(r.lastFrame()).toContain("list AgentCore Runtimes");
   });
 

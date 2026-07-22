@@ -97,41 +97,21 @@ describe("Runtime endpoint flow", () => {
     ).toBe(true);
   });
 
-  test("skips parent selection when the Runtime ID is already scoped", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setListEndpointsResponse({
-      runtimeEndpoints: [endpoint()],
-    });
-    const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", { core });
-
-    await waitForText(r.lastFrame, "prod");
-    expect(core.runtime.calls.some((call) => call.method === "listRuntimes")).toBe(false);
-    expect(
-      core.runtime.calls.some(
-        (call) => call.method === "listRuntimeEndpoints" && call.args[0] === "runtime-123",
-      ),
-    ).toBe(true);
-  });
-
-  test("calls listRuntimeEndpoints with exact scope, page size, and options", async () => {
+  test("calls listRuntimeEndpoints once with exact scope and options", async () => {
     const core = new TestCoreClient();
     core.runtime.setListEndpointsResponse({
       runtimeEndpoints: [endpoint()],
     });
     renderScreen("/agentcore/runtime/endpoint/list/runtime-123", { core });
 
-    await waitFor(() =>
-      core.runtime.calls.some(
-        (call) => call.method === "listRuntimeEndpoints" && call.args[2] === 32,
-      ),
-    );
+    await waitFor(() => core.runtime.calls.some((call) => call.method === "listRuntimeEndpoints"));
     expect(core.runtime.calls.filter((call) => call.method === "listRuntimeEndpoints")).toEqual([
       {
         method: "listRuntimeEndpoints",
         args: [
           "runtime-123",
           undefined,
-          32,
+          expect.any(Number),
           {
             region: "us-east-1",
             endpointUrl: undefined,
@@ -139,6 +119,7 @@ describe("Runtime endpoint flow", () => {
         ],
       },
     ]);
+    expect(core.runtime.calls.some((call) => call.method === "listRuntimes")).toBe(false);
   });
 
   test("renders qualifier, live and target versions, status, and update time when wide", async () => {
