@@ -42,8 +42,8 @@ function wrapWinstonLogger(
  * @returns A {@link AsyncLogger} that writes to a rotating file via winston.
  */
 export function createFileLogger(config: FileLoggerConfig): AsyncLogger {
-  const maxSizeInMB = config.maxSizeInMB ?? 10;
-  const maxFileCount = config.maxFileCount ?? 5;
+  const maxSizeInMB = config.maxSizeInMB ?? 5;
+  const maxFileCount = config.maxFileCount ?? 10;
   const bindings = config.bindings ?? {};
 
   const transport = new DailyRotateFile({
