@@ -420,12 +420,13 @@ export interface A2AAgentSkill {
   tags?: string[];
 }
 
-/** A2A agent card returned by /.well-known/agent.json */
+/** A2A agent card returned by /.well-known/agent-card.json */
 export interface A2AAgentCard {
   name?: string;
   description?: string;
   version?: string;
   url?: string;
+  supportedInterfaces?: { protocolBinding?: string; protocolVersion?: string; url?: string }[];
   skills?: A2AAgentSkill[];
   capabilities?: { streaming?: boolean };
   defaultInputModes?: string[];

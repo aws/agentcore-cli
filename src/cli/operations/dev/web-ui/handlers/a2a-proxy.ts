@@ -27,10 +27,16 @@ export async function handleA2AAgentCard(
   }
 
   try {
-    const cardRes = await fetch(`http://localhost:${running.port}/.well-known/agent.json`, {
+    let cardRes = await fetch(`http://localhost:${running.port}/.well-known/agent-card.json`, {
       method: 'GET',
       headers: { Accept: 'application/json' },
     });
+    if (cardRes.status === 404) {
+      cardRes = await fetch(`http://localhost:${running.port}/.well-known/agent.json`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+    }
 
     if (!cardRes.ok) {
       res.writeHead(502, { 'Content-Type': 'application/json' });

@@ -10,6 +10,7 @@ export interface A2AAgentCard {
   description?: string;
   version?: string;
   url?: string;
+  supportedInterfaces?: { protocolBinding?: string; protocolVersion?: string; url?: string }[];
   skills?: { id?: string; name?: string; description?: string; tags?: string[] }[];
   capabilities?: { streaming?: boolean };
   defaultInputModes?: string[];
@@ -17,7 +18,7 @@ export interface A2AAgentCard {
 }
 
 /**
- * Fetch the A2A agent card from /.well-known/agent.json.
+ * Fetch the A2A agent card, falling back to the v0.3 endpoint.
  * Returns null if not available (retries on connection errors).
  */
 export async function fetchA2AAgentCard(port: number, logger?: SSELogger): Promise<A2AAgentCard | null> {
@@ -26,19 +27,23 @@ export async function fetchA2AAgentCard(port: number, logger?: SSELogger): Promi
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const res = await fetch(`http://localhost:${port}/.well-known/agent.json`, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-      });
+      for (const path of ['/.well-known/agent-card.json', '/.well-known/agent.json']) {
+        const res = await fetch(`http://localhost:${port}${path}`, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        });
 
-      if (!res.ok) {
-        logger?.log?.('warn', `Agent card not available (${res.status})`);
-        return null;
+        if (!res.ok) {
+          if (res.status === 404 && path === '/.well-known/agent-card.json') continue;
+          logger?.log?.('warn', `Agent card not available (${res.status})`);
+          return null;
+        }
+
+        const card = (await res.json()) as A2AAgentCard;
+        logger?.log?.('system', `A2A agent card: ${card.name ?? 'unnamed'}`);
+        return card;
       }
-
-      const card = (await res.json()) as A2AAgentCard;
-      logger?.log?.('system', `A2A agent card: ${card.name ?? 'unnamed'}`);
-      return card;
+      return null;
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       if (isConnectionError(error) && attempt < maxRetries - 1) {

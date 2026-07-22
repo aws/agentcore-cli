@@ -1311,7 +1311,7 @@ from google.adk.agents import Agent
 from google.adk.a2a.executor.a2a_agent_executor import A2aAgentExecutor
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
-from a2a.types import AgentCapabilities, AgentCard, AgentSkill
+from a2a.types import AgentCapabilities, AgentCard, AgentInterface, AgentSkill
 from bedrock_agentcore.runtime import serve_a2a
 from model.load import load_model
 
@@ -1405,7 +1405,6 @@ runner = Runner(
 card = AgentCard(
     name=agent.name,
     description=agent.description,
-    url="http://localhost:9000/",
     version="0.1.0",
     capabilities=AgentCapabilities(streaming=True),
     skills=[
@@ -1418,6 +1417,13 @@ card = AgentCard(
     ],
     default_input_modes=["text"],
     default_output_modes=["text"],
+    supported_interfaces=[
+        AgentInterface(
+            protocol_binding="JSONRPC",
+            protocol_version="1.0",
+            url="http://localhost:9000/",
+        )
+    ],
 )
 
 if __name__ == "__main__":
@@ -1487,11 +1493,11 @@ description = "AgentCore A2A Agent using Google ADK"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "a2a-sdk >= 0.2.0, < 1.0.0",
+    "a2a-sdk[http-server] >= 1.0.1, < 2.0.0",
     "aws-opentelemetry-distro",
-    "bedrock-agentcore[a2a] >= 1.0.3",
-    "google-adk >= 1.0.0, < 2.0.0",
-    "google-genai >= 1.0.0, < 2.0.0",
+    "bedrock-agentcore[a2a] >= 1.19.0",
+    "google-adk[a2a] >= 2.5.0, < 3.0.0",
+    "google-genai >= 2.9.0, < 3.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -1577,11 +1583,11 @@ import os
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 from opentelemetry.instrumentation.langchain import LangchainInstrumentor
+from a2a.helpers import new_task_from_user_message
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
-from a2a.types import AgentCapabilities, AgentCard, AgentSkill, Part, TextPart
-from a2a.utils import new_task
+from a2a.types import AgentCapabilities, AgentCard, AgentInterface, AgentSkill, Part
 from bedrock_agentcore.runtime import serve_a2a
 from model.load import load_model
 
@@ -1673,7 +1679,7 @@ class LangGraphA2AExecutor(AgentExecutor):
         self.graph = graph
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
-        task = context.current_task or new_task(context.message)
+        task = context.current_task or new_task_from_user_message(context.message)
         if not context.current_task:
             await event_queue.enqueue_event(task)
         updater = TaskUpdater(event_queue, task.id, task.context_id)
@@ -1682,7 +1688,7 @@ class LangGraphA2AExecutor(AgentExecutor):
         result = await self.graph.ainvoke({"messages": [("user", user_text)]})
         response = result["messages"][-1].content
 
-        await updater.add_artifact([Part(root=TextPart(text=response))])
+        await updater.add_artifact([Part(text=response)])
         await updater.complete()
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
@@ -1692,7 +1698,6 @@ class LangGraphA2AExecutor(AgentExecutor):
 card = AgentCard(
     name="{{ name }}",
     description="A LangGraph agent on Bedrock AgentCore",
-    url="http://localhost:9000/",
     version="0.1.0",
     capabilities=AgentCapabilities(streaming=True),
     skills=[
@@ -1705,6 +1710,13 @@ card = AgentCard(
     ],
     default_input_modes=["text"],
     default_output_modes=["text"],
+    supported_interfaces=[
+        AgentInterface(
+            protocol_binding="JSONRPC",
+            protocol_version="1.0",
+            url="http://localhost:9000/",
+        )
+    ],
 )
 
 if __name__ == "__main__":
@@ -1856,7 +1868,7 @@ description = "AgentCore A2A Agent using LangChain + LangGraph"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "a2a-sdk >= 0.2.0, < 1.0.0",
+    "a2a-sdk[http-server] >= 1.0.1, < 2.0.0",
     {{#if (eq modelProvider "Anthropic")}}"langchain-anthropic >= 0.3.0",
     {{/if}}{{#if (eq modelProvider "Bedrock")}}"langchain-aws >= 0.2.0",
     {{/if}}{{#if (eq modelProvider "Gemini")}}"langchain-google-genai >= 2.0.0",
@@ -1864,7 +1876,7 @@ dependencies = [
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"langchain-openai >= 0.2.0",
     {{/if}}"aws-opentelemetry-distro",
     "opentelemetry-instrumentation-langchain >= 0.59.0",
-    "bedrock-agentcore[a2a] >= 1.8.0",
+    "bedrock-agentcore[a2a] >= 1.19.0",
     "botocore[crt] >= 1.35.0",
     "langgraph >= 0.2.0",
 ]
@@ -1947,7 +1959,11 @@ Thumbs.db
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/strands/base/main.py should match snapshot 1`] = `
 "from strands import Agent, tool
-from strands.multiagent.a2a.executor import StrandsA2AExecutor
+from a2a.helpers import new_task_from_user_message
+from a2a.server.agent_execution import AgentExecutor, RequestContext
+from a2a.server.events import EventQueue
+from a2a.server.tasks import TaskUpdater
+from a2a.types import AgentCapabilities, AgentCard, AgentInterface, AgentSkill, Part
 from bedrock_agentcore.runtime import serve_a2a
 from model.load import load_model
 {{#if hasMemory}}
@@ -2057,8 +2073,53 @@ agent = Agent(
 )
 {{/if}}
 
+
+class StrandsAgentExecutor(AgentExecutor):
+    """Wraps a Strands Agent as an a2a-sdk v1 AgentExecutor."""
+
+    def __init__(self, agent):
+        self.agent = agent
+
+    async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
+        task = context.current_task or new_task_from_user_message(context.message)
+        if not context.current_task:
+            await event_queue.enqueue_event(task)
+        updater = TaskUpdater(event_queue, task.id, task.context_id)
+
+        result = await self.agent.invoke_async(context.get_user_input())
+        await updater.add_artifact([Part(text=str(result))])
+        await updater.complete()
+
+    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
+        pass
+
+
+card = AgentCard(
+    name="{{ name }}",
+    description="A Strands agent on Bedrock AgentCore",
+    version="0.1.0",
+    capabilities=AgentCapabilities(streaming=True),
+    skills=[
+        AgentSkill(
+            id="tools",
+            name="tools",
+            description="Use tools to help answer questions",
+            tags=["tools"],
+        )
+    ],
+    default_input_modes=["text"],
+    default_output_modes=["text"],
+    supported_interfaces=[
+        AgentInterface(
+            protocol_binding="JSONRPC",
+            protocol_version="1.0",
+            url="http://localhost:9000/",
+        )
+    ],
+)
+
 if __name__ == "__main__":
-    serve_a2a(StrandsA2AExecutor(agent))
+    serve_a2a(StrandsAgentExecutor(agent), card)
 "
 `;
 
@@ -2207,9 +2268,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     {{#if (eq modelProvider "Anthropic")}}"anthropic >= 0.30.0",
-    {{/if}}"a2a-sdk[all] >= 0.2.0, < 1.0.0",
+    {{/if}}"a2a-sdk[http-server] >= 1.0.1, < 2.0.0",
     "aws-opentelemetry-distro",
-    "bedrock-agentcore[a2a] >= 1.9.1",
+    "bedrock-agentcore[a2a] >= 1.19.0",
     "botocore[crt] >= 1.35.0",
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",

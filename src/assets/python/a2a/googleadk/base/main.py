@@ -5,7 +5,7 @@ from google.adk.agents import Agent
 from google.adk.a2a.executor.a2a_agent_executor import A2aAgentExecutor
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
-from a2a.types import AgentCapabilities, AgentCard, AgentSkill
+from a2a.types import AgentCapabilities, AgentCard, AgentInterface, AgentSkill
 from bedrock_agentcore.runtime import serve_a2a
 from model.load import load_model
 
@@ -99,7 +99,6 @@ runner = Runner(
 card = AgentCard(
     name=agent.name,
     description=agent.description,
-    url="http://localhost:9000/",
     version="0.1.0",
     capabilities=AgentCapabilities(streaming=True),
     skills=[
@@ -112,6 +111,13 @@ card = AgentCard(
     ],
     default_input_modes=["text"],
     default_output_modes=["text"],
+    supported_interfaces=[
+        AgentInterface(
+            protocol_binding="JSONRPC",
+            protocol_version="1.0",
+            url="http://localhost:9000/",
+        )
+    ],
 )
 
 if __name__ == "__main__":

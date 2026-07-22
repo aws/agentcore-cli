@@ -1,5 +1,5 @@
 import { DevServerError } from '../../../../lib/errors/types';
-import { invokeA2AStreaming } from '../invoke-a2a';
+import { fetchA2AAgentCard, invokeA2AStreaming } from '../invoke-a2a';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockFetch = vi.fn();
@@ -208,5 +208,37 @@ describe('invokeA2AStreaming', () => {
 
     // Should yield the stringified result as fallback
     expect(chunks.length).toBeGreaterThan(0);
+  });
+});
+
+describe('fetchA2AAgentCard', () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  it('uses the v1 agent card endpoint', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ name: 'v1-agent' }),
+    });
+
+    const card = await fetchA2AAgentCard(9000);
+
+    expect(card?.name).toBe('v1-agent');
+    expect(mockFetch.mock.calls[0]![0]).toBe('http://localhost:9000/.well-known/agent-card.json');
+  });
+
+  it('falls back to the v0.3 agent card endpoint', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 404 }).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ name: 'legacy-agent' }),
+    });
+
+    const card = await fetchA2AAgentCard(9000);
+
+    expect(card?.name).toBe('legacy-agent');
+    expect(mockFetch.mock.calls[1]![0]).toBe('http://localhost:9000/.well-known/agent.json');
   });
 });
