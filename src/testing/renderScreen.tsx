@@ -97,7 +97,7 @@ function setWindowSize(stdout: ResizableStdout, columns: number, rows: number): 
 // keys maps friendly names to the escape sequences Ink decodes into key events.
 export const keys = {
   return: "\r",
-  escape: "",
+  escape: "\u001B[27u",
   up: "[A",
   down: "[B",
   left: "[D",

@@ -7,7 +7,6 @@ import {
   cleanupScreens,
   renderScreen,
   TestCoreClient,
-  tick,
   waitFor,
   waitForText,
 } from "../../../testing";
@@ -276,14 +275,14 @@ describe("Runtime version flow", () => {
     await list.press("return");
     await waitForText(list.lastFrame, "agentcore → runtime → version → list → runtime-123");
     await waitForText(list.lastFrame, "3");
-    await tick(50);
     await list.press("escape");
     await waitForRuntimePicker(list.lastFrame);
+    await waitForText(list.lastFrame, "[enter] select");
 
     await list.press("return");
     await waitForText(list.lastFrame, "agentcore → runtime → version → list → runtime-123");
     await waitForText(list.lastFrame, "3");
-    await tick(50);
+    await waitForText(list.lastFrame, "[enter] select");
     await list.press("return");
     await waitForText(list.lastFrame, '"agentRuntimeVersion"');
     await list.press("escape");

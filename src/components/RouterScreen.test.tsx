@@ -336,13 +336,10 @@ describe("navigation", () => {
         !frame.includes("agentcore → runtime → endpoint → get")
       );
     });
-    await tick(50);
     await r.press("escape");
     await waitForText(r.lastFrame, "agentcore → runtime → get → runtime-123");
-    await tick(50);
     await r.press("escape");
     await waitForText(r.lastFrame, "agentcore → runtime → list");
-    await tick(50);
     await r.press("escape");
     await waitForText(r.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
     await r.press("escape");
@@ -381,7 +378,7 @@ describe("Runtime TUI exit", () => {
     await expect(renderPromise).resolves.toBeUndefined();
 
     stdin.write("l");
-    await tick(50);
+    await tick();
     expect(listCalls()).toHaveLength(callsBeforeExit);
     expect(listCalls().some((call) => call.args[0] === "page-2")).toBe(false);
   });
