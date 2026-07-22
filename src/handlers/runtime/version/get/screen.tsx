@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
-import { withoutSdkMetadata } from "../../components/withoutSdkMetadata";
+import { withoutSdkMetadata } from "../../withoutSdkMetadata";
 import type { ScreenProps } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 

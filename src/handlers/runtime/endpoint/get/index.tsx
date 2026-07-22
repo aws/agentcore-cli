@@ -3,6 +3,7 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
+import { withoutSdkMetadata } from "../../withoutSdkMetadata";
 
 export const createGetRuntimeEndpointHandler = (core: Core) =>
   createHandler({
@@ -23,7 +24,9 @@ export const createGetRuntimeEndpointHandler = (core: Core) =>
       ctx
         .require(JsonRendererKey)
         .renderJson(
-          await core.runtime.getRuntimeEndpoint(flags.id, flags.qualifier, coreOptsFromCtx(ctx)),
+          withoutSdkMetadata(
+            await core.runtime.getRuntimeEndpoint(flags.id, flags.qualifier, coreOptsFromCtx(ctx)),
+          ),
         );
     },
   });

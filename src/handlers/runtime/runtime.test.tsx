@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
+import type { BedrockAgentCoreControlClient } from "@aws-sdk/client-bedrock-agentcore-control";
 import { CoreClient } from "../../core";
+import type { CreateControlClient } from "../../core/types";
 import {
   createSilentLogger,
   fixtureFactories,
@@ -22,8 +24,20 @@ const MISSING_RUNTIME_ID = "missing_runtime-0000000000";
 
 function createFixtureCore(): CoreClient {
   const { createControlClient, createDataClient, createIamClient } = fixtureFactories(FIXTURES);
+  const createControlClientWithMetadata: CreateControlClient = (config) => {
+    const client = createControlClient(config);
+    const send = client.send.bind(client) as (command: unknown) => Promise<Record<string, unknown>>;
+
+    return {
+      send: async (command: unknown) => ({
+        ...(await send(command)),
+        $metadata: { requestId: "fixture-request-id" },
+      }),
+    } as unknown as BedrockAgentCoreControlClient;
+  };
+
   return new CoreClient({
-    createControlClient,
+    createControlClient: createControlClientWithMetadata,
     createDataClient,
     createIamClient,
     logger: createSilentLogger(),
