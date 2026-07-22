@@ -55,7 +55,7 @@ process.exit(
         .error();
       throw e;
     } finally {
-      await rootLogger.flush();
+      await rootLogger.end();
     }
   }),
 );

@@ -27,5 +27,6 @@ export interface Logger {
 /** An extension of {@link Logger} that writes logs asynchronously and requires output to be flushed */
 export interface AsyncLogger extends Logger {
   child: (bindings: LoggerBindings) => AsyncLogger;
-  flush: () => Promise<void>;
+  /** Flushes the pending logs and closes the underlying logging streams **/
+  end: () => Promise<void>;
 }

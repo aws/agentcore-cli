@@ -27,9 +27,10 @@ function wrapWinstonLogger(
     error: log("error"),
     child: (childBindings) =>
       wrapWinstonLogger(winstonLogger, transport, { ...bindings, ...childBindings }),
-    flush: () =>
+    end: () =>
       new Promise<void>((resolve) => {
         transport.on("finish", resolve);
+        // note: we prefer close over end since close calls end on the stream internally: https://github.com/winstonjs/winston-daily-rotate-file/blob/a1a4668cfea77476cd6a4a11f038c2aac9d10741/daily-rotate-file.js#L201-L207
         if (transport.close) transport.close();
       }),
   };

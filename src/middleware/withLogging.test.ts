@@ -21,7 +21,7 @@ describe("withLogging", () => {
   });
 
   afterEach(async () => {
-    await logger.flush();
+    await logger.end();
     await rm(tempDir, { recursive: true, force: true });
   });
 
