@@ -50,7 +50,6 @@ process.exit(
       await rootHandler.route(argv);
     } catch (e) {
       const error = e instanceof Error ? e : new Error(String(e));
-      io.stderr.write(`${error.name}: ${error.message}\n`);
       rootLogger
         .child({ errorName: error.name, errorMessage: error.message, stack: error.stack ?? "" })
         .error();

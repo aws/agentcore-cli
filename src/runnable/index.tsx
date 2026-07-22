@@ -27,7 +27,9 @@ export async function runWithExitCode(
   try {
     await fn(argv);
     return ExitCode.SUCCESS;
-  } catch {
+  } catch (e) {
+    const error = e instanceof Error ? e : new Error(String(e));
+    console.error(`${error.name}: ${error.message}`);
     return ExitCode.FAILURE;
   }
 }
