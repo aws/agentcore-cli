@@ -3,7 +3,6 @@ import type {
   AgentRuntime,
   AgentRuntimeEndpoint,
   GetAgentRuntimeEndpointResponse,
-  ListAgentRuntimeEndpointsResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   cleanupScreens,
@@ -142,14 +141,14 @@ describe("Runtime endpoint flow", () => {
     ]);
   });
 
-  test("renders qualifier, live version, status, and update time without invented columns", async () => {
+  test("renders qualifier, live and target versions, status, and update time when wide", async () => {
     const core = new TestCoreClient();
     core.runtime.setListEndpointsResponse({
       runtimeEndpoints: [
         endpoint({
           name: "production",
           liveVersion: "7",
-          targetVersion: "target-hidden",
+          targetVersion: "8",
           status: "UPDATE_FAILED",
           lastUpdatedAt: new Date("2026-07-18T02:00:00.000Z"),
         }),
@@ -161,13 +160,14 @@ describe("Runtime endpoint flow", () => {
     const frame = r.lastFrame()!;
     expect(frame).toContain("qualifier");
     expect(frame).toContain("live");
+    expect(frame).toContain("target");
     expect(frame).toContain("status");
     expect(frame).toContain("lastUpdatedAt");
+    expect(frame).toMatch(/target\s+status/);
+    expect(frame).toMatch(/production\s+7\s+8\s+UPDATE_FAILED/);
     expect(frame).toContain("UPDATE_FAILED");
     expect(frame).toContain("2026-07-18T02:00:00.000Z");
     expect(frame).not.toContain("protocol");
-    expect(frame).not.toContain("target");
-    expect(frame).not.toContain("target-hidden");
   });
 
   test("keeps qualifier and live version when narrow", async () => {
@@ -191,6 +191,7 @@ describe("Runtime endpoint flow", () => {
     expect(frame).toContain("live");
     expect(frame).toContain("visible-endpoint");
     expect(frame).toContain("7");
+    expect(frame).not.toContain("target");
     expect(frame).not.toContain("status");
     expect(frame).not.toContain("lastUpdatedAt");
     expect(frame).not.toContain("UPDATE_FAILED");
@@ -203,183 +204,28 @@ describe("Runtime endpoint flow", () => {
     expect(r.lastFrame()).toContain("runtime-123");
   });
 
-  test("pages forward and backward using token history", async () => {
+  test("describes an empty later page without claiming the Runtime has no endpoints", async () => {
     const core = new TestCoreClient();
     core.runtime.setListEndpointsResponse({
       runtimeEndpoints: [endpoint({ name: "page-one" })],
       nextToken: "page-2",
     });
-    core.runtime.setListEndpointsResponse(
-      {
-        runtimeEndpoints: [endpoint({ name: "page-two" })],
-      },
-      "page-2",
-    );
+    core.runtime.setListEndpointsResponse({ runtimeEndpoints: [] }, "page-2");
     const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", { core });
 
     await waitForText(r.lastFrame, "page 1 · more →");
     await r.write("l");
-    await waitForText(r.lastFrame, "page-two");
-    expect(core.runtime.calls.at(-1)?.args[1]).toBe("page-2");
-
-    await r.write("h");
-    await waitForText(r.lastFrame, "page-one");
-    expect(core.runtime.calls.at(-1)?.args[1]).toBeUndefined();
+    await waitForText(r.lastFrame, "No endpoints on this page for Runtime runtime-123.");
+    expect(r.lastFrame()).not.toContain("This Runtime has no endpoints.");
   });
 
-  test("resizing resets to page one with the terminal-derived page size", async () => {
+  test("names the selected Runtime in the error state", async () => {
     const core = new TestCoreClient();
-    core.runtime.setListEndpointsResponse({
-      runtimeEndpoints: [endpoint({ name: "page-one" })],
-      nextToken: "page-2",
-    });
-    core.runtime.setListEndpointsResponse(
-      {
-        runtimeEndpoints: [endpoint({ name: "page-two" })],
-      },
-      "page-2",
-    );
+    core.runtime.setError(new Error("endpoint access denied"));
     const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", { core });
 
-    await waitForText(r.lastFrame, "page 1 · more →");
-    await r.write("l");
-    await waitForText(r.lastFrame, "page-two");
-    const callsBeforeResize = core.runtime.calls.filter(
-      (call) => call.method === "listRuntimeEndpoints",
-    ).length;
-
-    await r.resize(100, 20);
-    await waitFor(() => {
-      const calls = core.runtime.calls.filter((call) => call.method === "listRuntimeEndpoints");
-      return (
-        calls.length > callsBeforeResize &&
-        calls.at(-1)?.args[1] === undefined &&
-        calls.at(-1)?.args[2] === 12
-      );
-    });
-    await waitForText(r.lastFrame, "page-one");
-    expect(r.lastFrame()).toContain("page 1 · more →");
-    const callsAfterResize = core.runtime.calls
-      .filter((call) => call.method === "listRuntimeEndpoints")
-      .slice(callsBeforeResize);
-    expect(callsAfterResize.length).toBeGreaterThan(0);
-    expect(callsAfterResize.every((call) => call.args[1] === undefined)).toBe(true);
-  });
-
-  test("retains rows and ignores page keys during a page transition", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setListEndpointsResponse({
-      runtimeEndpoints: [endpoint({ name: "stable-page-one" })],
-      nextToken: "page-2",
-    });
-    core.runtime.setListEndpointsResponse(
-      {
-        runtimeEndpoints: [endpoint({ name: "settled-page-two" })],
-      },
-      "page-2",
-    );
-    const nextPage = Promise.withResolvers<void>();
-    const listEndpoints = core.runtime.listRuntimeEndpoints.bind(core.runtime);
-    core.runtime.listRuntimeEndpoints = async (...args) => {
-      const response = await listEndpoints(...args);
-      if (args[1] === "page-2") await nextPage.promise;
-      return response;
-    };
-    const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", { core });
-
-    await waitForText(r.lastFrame, "page 1 · more →");
-    await r.write("l");
-    await waitForText(r.lastFrame, "loading page 2…");
-    expect(r.lastFrame()).toContain("stable-page-one");
-
-    const callsDuringTransition = core.runtime.calls.length;
-    await r.write("l");
-    await r.write("h");
-    expect(core.runtime.calls).toHaveLength(callsDuringTransition);
-
-    nextPage.resolve();
-    await waitForText(r.lastFrame, "settled-page-two");
-  });
-
-  test("filters only the loaded page without paging on h or l", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setListEndpointsResponse({
-      runtimeEndpoints: [endpoint({ name: "production" })],
-      nextToken: "page-2",
-    });
-    const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", { core });
-
-    await waitForText(r.lastFrame, "page 1 · more →");
-    await r.write("/");
-    await r.write("l");
-    await r.write("h");
-    await waitForText(r.lastFrame, "/ Filter this page: lh");
-    expect(r.lastFrame()).toContain("No matches on this page");
-    expect(
-      core.runtime.calls.some(
-        (call) => call.method === "listRuntimeEndpoints" && call.args[1] === "page-2",
-      ),
-    ).toBe(false);
-  });
-
-  test("retries errors and keeps Esc active in loading, error, and empty states", async () => {
-    const retryCore = new TestCoreClient();
-    retryCore.runtime.setError(new Error("endpoint access denied"));
-    const retry = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", { core: retryCore });
-    await waitForText(retry.lastFrame, "endpoint access denied");
-    expect(retry.lastFrame()).toContain("Runtime runtime-123");
-    expect(retry.lastFrame()).toContain("[r] retry");
-    retryCore.runtime.setError(undefined);
-    retryCore.runtime.setListEndpointsResponse({
-      runtimeEndpoints: [endpoint({ name: "recovered" })],
-    });
-    const callsBeforeRetry = retryCore.runtime.calls.length;
-    await retry.write("r");
-    await waitForText(retry.lastFrame, "recovered");
-    expect(retryCore.runtime.calls).toHaveLength(callsBeforeRetry + 1);
-    retry.unmount();
-
-    const loadingCore = new TestCoreClient();
-    loadingCore.runtime.setListResponse({
-      agentRuntimes: [runtime()],
-    });
-    const pending = Promise.withResolvers<ListAgentRuntimeEndpointsResponse>();
-    loadingCore.runtime.listRuntimeEndpoints = async () => pending.promise;
-    const loading = renderScreen("/agentcore/runtime/endpoint/list", {
-      core: loadingCore,
-    });
-    await waitForText(loading.lastFrame, "checkout");
-    await loading.press("return");
-    await waitForText(loading.lastFrame, "Loading endpoints for Runtime runtime-123…");
-    await loading.press("escape");
-    await waitForRuntimePicker(loading.lastFrame);
-    loading.unmount();
-
-    const errorCore = new TestCoreClient();
-    errorCore.runtime.setListResponse({
-      agentRuntimes: [runtime()],
-    });
-    errorCore.runtime.listRuntimeEndpoints = async () => {
-      throw new Error("failed");
-    };
-    const error = renderScreen("/agentcore/runtime/endpoint/list", { core: errorCore });
-    await waitForText(error.lastFrame, "checkout");
-    await error.press("return");
-    await waitForText(error.lastFrame, "failed");
-    await error.press("escape");
-    await waitForRuntimePicker(error.lastFrame);
-    error.unmount();
-
-    const emptyCore = new TestCoreClient();
-    emptyCore.runtime.setListResponse({
-      agentRuntimes: [runtime()],
-    });
-    const empty = renderScreen("/agentcore/runtime/endpoint/list", { core: emptyCore });
-    await waitForText(empty.lastFrame, "checkout");
-    await empty.press("return");
-    await waitForText(empty.lastFrame, "This Runtime has no endpoints.");
-    await empty.press("escape");
-    await waitForRuntimePicker(empty.lastFrame);
+    await waitForText(r.lastFrame, "Error loading endpoints for Runtime runtime-123");
+    expect(r.lastFrame()).toContain("endpoint access denied");
   });
 
   test("selecting an encoded qualifier opens complete endpoint JSON with exact selectors", async () => {

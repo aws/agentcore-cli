@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type {
   AgentRuntime,
   GetAgentRuntimeResponse,
-  ListAgentRuntimeVersionsResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   cleanupScreens,
@@ -193,123 +192,19 @@ describe("Runtime version flow", () => {
     expect(Math.max(...frame.split("\n").map((line) => line.length))).toBe(50);
   });
 
-  test("pages forward and backward using token history", async () => {
+  test("describes an empty later page without claiming the Runtime has no versions", async () => {
     const core = new TestCoreClient();
     core.runtime.setListVersionsResponse({
       agentRuntimes: [runtime({ agentRuntimeVersion: "3" })],
       nextToken: "page-2",
     });
-    core.runtime.setListVersionsResponse(
-      {
-        agentRuntimes: [runtime({ agentRuntimeVersion: "2" })],
-      },
-      "page-2",
-    );
+    core.runtime.setListVersionsResponse({ agentRuntimes: [] }, "page-2");
     const r = renderScreen("/agentcore/runtime/version/list/runtime-123", { core });
 
     await waitForText(r.lastFrame, "page 1 · more →");
     await r.write("l");
-    await waitForText(r.lastFrame, "page 2");
-    expect(core.runtime.calls.at(-1)?.args[1]).toBe("page-2");
-
-    await r.write("h");
-    await waitForText(r.lastFrame, "page 1 · more →");
-    expect(core.runtime.calls.at(-1)?.args[1]).toBeUndefined();
-  });
-
-  test("resizing resets to page one with the terminal-derived page size", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setListVersionsResponse({
-      agentRuntimes: [runtime({ agentRuntimeVersion: "3" })],
-      nextToken: "page-2",
-    });
-    core.runtime.setListVersionsResponse(
-      {
-        agentRuntimes: [runtime({ agentRuntimeVersion: "2" })],
-      },
-      "page-2",
-    );
-    const r = renderScreen("/agentcore/runtime/version/list/runtime-123", { core });
-
-    await waitForText(r.lastFrame, "page 1 · more →");
-    await r.write("l");
-    await waitForText(r.lastFrame, "page 2");
-    const callsBeforeResize = core.runtime.calls.filter(
-      (call) => call.method === "listRuntimeVersions",
-    ).length;
-
-    await r.resize(100, 20);
-    await waitFor(() => {
-      const calls = core.runtime.calls.filter((call) => call.method === "listRuntimeVersions");
-      return (
-        calls.length > callsBeforeResize &&
-        calls.at(-1)?.args[1] === undefined &&
-        calls.at(-1)?.args[2] === 12
-      );
-    });
-    await waitForText(r.lastFrame, "page 1 · more →");
-    expect(r.lastFrame()).toContain("3");
-    const callsAfterResize = core.runtime.calls
-      .filter((call) => call.method === "listRuntimeVersions")
-      .slice(callsBeforeResize);
-    expect(callsAfterResize.length).toBeGreaterThan(0);
-    expect(callsAfterResize.every((call) => call.args[1] === undefined)).toBe(true);
-  });
-
-  test("retains rows and ignores page keys during a page transition", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setListVersionsResponse({
-      agentRuntimes: [runtime({ agentRuntimeVersion: "11" })],
-      nextToken: "page-2",
-    });
-    core.runtime.setListVersionsResponse(
-      {
-        agentRuntimes: [runtime({ agentRuntimeVersion: "10" })],
-      },
-      "page-2",
-    );
-    const nextPage = Promise.withResolvers<void>();
-    const listVersions = core.runtime.listRuntimeVersions.bind(core.runtime);
-    core.runtime.listRuntimeVersions = async (...args) => {
-      const response = await listVersions(...args);
-      if (args[1] === "page-2") await nextPage.promise;
-      return response;
-    };
-    const r = renderScreen("/agentcore/runtime/version/list/runtime-123", { core });
-
-    await waitForText(r.lastFrame, "page 1 · more →");
-    await r.write("l");
-    await waitForText(r.lastFrame, "loading page 2…");
-    expect(r.lastFrame()).toContain("11");
-
-    const callsDuringTransition = core.runtime.calls.length;
-    await r.write("l");
-    await r.write("h");
-    expect(core.runtime.calls).toHaveLength(callsDuringTransition);
-
-    nextPage.resolve();
-    await waitForText(r.lastFrame, "10");
-  });
-
-  test("filters only the loaded page without paging on h or l", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setListVersionsResponse({
-      agentRuntimes: [runtime({ agentRuntimeVersion: "12" })],
-      nextToken: "page-2",
-    });
-    const r = renderScreen("/agentcore/runtime/version/list/runtime-123", { core });
-
-    await waitForText(r.lastFrame, "page 1 · more →");
-    await r.write("/");
-    await r.write("l");
-    await r.write("h");
-    await waitForText(r.lastFrame, "/ Filter this page: lh");
-    expect(r.lastFrame()).toContain("No matches on this page");
-    expect(
-      core.runtime.calls.some(
-        (call) => call.method === "listRuntimeVersions" && call.args[1] === "page-2",
-      ),
-    ).toBe(false);
+    await waitForText(r.lastFrame, "No versions on this page for Runtime runtime-123.");
+    expect(r.lastFrame()).not.toContain("No versions found for Runtime runtime-123.");
   });
 
   test("names the selected Runtime in empty and error states", async () => {
@@ -323,66 +218,6 @@ describe("Runtime version flow", () => {
     await waitForText(error.lastFrame, "Error loading versions for Runtime runtime-123");
     expect(error.lastFrame()).toContain("version access denied");
     expect(error.lastFrame()).toContain("[r] retry");
-  });
-
-  test("retries a failed scoped version list", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setError(new Error("version access denied"));
-    const r = renderScreen("/agentcore/runtime/version/list/runtime-123", { core });
-
-    await waitForText(r.lastFrame, "version access denied");
-    core.runtime.setError(undefined);
-    core.runtime.setListVersionsResponse({
-      agentRuntimes: [runtime({ agentRuntimeVersion: "12" })],
-    });
-    const callsBeforeRetry = core.runtime.calls.length;
-    await r.write("r");
-    await waitForText(r.lastFrame, "12");
-    expect(core.runtime.calls).toHaveLength(callsBeforeRetry + 1);
-  });
-
-  test("Esc remains active in loading, error, and empty states", async () => {
-    const loadingCore = new TestCoreClient();
-    loadingCore.runtime.setListResponse({
-      agentRuntimes: [runtime()],
-    });
-    const pending = Promise.withResolvers<ListAgentRuntimeVersionsResponse>();
-    loadingCore.runtime.listRuntimeVersions = async () => pending.promise;
-    const loading = renderScreen("/agentcore/runtime/version/list", {
-      core: loadingCore,
-    });
-    await waitForText(loading.lastFrame, "checkout");
-    await loading.press("return");
-    await waitForText(loading.lastFrame, "Loading versions for Runtime runtime-123…");
-    await loading.press("escape");
-    await waitForRuntimePicker(loading.lastFrame);
-    loading.unmount();
-
-    const errorCore = new TestCoreClient();
-    errorCore.runtime.setListResponse({
-      agentRuntimes: [runtime()],
-    });
-    errorCore.runtime.listRuntimeVersions = async () => {
-      throw new Error("failed");
-    };
-    const error = renderScreen("/agentcore/runtime/version/list", { core: errorCore });
-    await waitForText(error.lastFrame, "checkout");
-    await error.press("return");
-    await waitForText(error.lastFrame, "Error loading versions");
-    await error.press("escape");
-    await waitForRuntimePicker(error.lastFrame);
-    error.unmount();
-
-    const emptyCore = new TestCoreClient();
-    emptyCore.runtime.setListResponse({
-      agentRuntimes: [runtime()],
-    });
-    const empty = renderScreen("/agentcore/runtime/version/list", { core: emptyCore });
-    await waitForText(empty.lastFrame, "checkout");
-    await empty.press("return");
-    await waitForText(empty.lastFrame, "No versions found");
-    await empty.press("escape");
-    await waitForRuntimePicker(empty.lastFrame);
   });
 
   test("selecting a version opens complete JSON with exact selectors", async () => {

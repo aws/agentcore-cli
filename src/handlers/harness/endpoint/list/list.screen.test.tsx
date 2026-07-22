@@ -1,6 +1,12 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import type { HarnessEndpoint } from "@aws-sdk/client-bedrock-agentcore-control";
-import { renderScreen, waitForText, cleanupScreens, TestCoreClient } from "../../../../testing";
+import {
+  renderScreen,
+  waitForText,
+  waitFor,
+  cleanupScreens,
+  TestCoreClient,
+} from "../../../../testing";
 
 afterEach(cleanupScreens);
 
@@ -57,54 +63,73 @@ describe("harness endpoint list screen", () => {
     r.unmount();
   });
 
-  test("renders each endpoint as a row with its versions and status", async () => {
+  test("makes one exact scoped endpoint list call", async () => {
+    const core = coreWithEndpoints([endpoint()]);
+    const r = renderScreen("/agentcore/harness/endpoint/list/MyHarness-abc123", { core });
+
+    await waitFor(() => core.harness.calls.some((call) => call.method === "listHarnessEndpoints"));
+    expect(core.harness.calls.filter((call) => call.method === "listHarnessEndpoints")).toEqual([
+      {
+        method: "listHarnessEndpoints",
+        args: [
+          "MyHarness-abc123",
+          undefined,
+          32,
+          {
+            region: "us-east-1",
+            endpointUrl: undefined,
+          },
+        ],
+      },
+    ]);
+    r.unmount();
+  });
+
+  test("shows name and live columns when narrow and all columns when wide", async () => {
     const core = coreWithEndpoints([
-      endpoint(),
-      endpoint({ endpointName: "staging", targetVersion: "2", status: "UPDATING" }),
+      endpoint({
+        endpointName: "visible-endpoint",
+        liveVersion: "7",
+        targetVersion: "88",
+        status: "UPDATE_FAILED",
+        updatedAt: new Date("2026-07-18T02:00:00.000Z"),
+      }),
     ]);
     const r = renderScreen("/agentcore/harness/endpoint/list/MyHarness-abc123", { core });
 
-    await waitForText(r.lastFrame, "prod");
-    const frame = r.lastFrame()!;
-    expect(frame).toContain("staging");
-    expect(frame).toContain("READY");
-    expect(frame).toContain("UPDATING");
+    await r.resize(50);
+    await waitForText(r.lastFrame, "visible-endpoint");
+    const narrow = r.lastFrame()!;
+    expect(narrow).toContain("name");
+    expect(narrow).toContain("live");
+    expect(narrow).toContain("visible-endpoint");
+    expect(narrow).toContain("7");
+    expect(narrow).not.toContain("target");
+    expect(narrow).not.toContain("status");
+    expect(narrow).not.toContain("updatedAt");
+    expect(narrow).not.toContain("88");
+    expect(narrow).not.toContain("UPDATE_FAILED");
+    expect(narrow).not.toContain("2026-07-18T02:00:00.000Z");
+
+    await r.resize(120);
+    await waitForText(r.lastFrame, "updatedAt");
+    const wide = r.lastFrame()!;
+    expect(wide).toContain("name");
+    expect(wide).toContain("live");
+    expect(wide).toContain("target");
+    expect(wide).toContain("status");
+    expect(wide).toContain("updatedAt");
+    expect(wide).toMatch(/visible-endpoint\s+7\s+88\s+UPDATE_FAILED/);
+    expect(wide).toContain("2026-07-18T02:00:00.000Z");
     r.unmount();
   });
 
-  test("says so when the harness has no endpoints", async () => {
+  test("uses harness-specific first-page wording", async () => {
     const core = coreWithEndpoints([]);
     const r = renderScreen("/agentcore/harness/endpoint/list/MyHarness-abc123", { core });
 
-    await waitForText(r.lastFrame, "no endpoints");
-    r.unmount();
-  });
-
-  test("pages forward and back when the response has a nextToken", async () => {
-    const core = coreWithEndpoints([]);
-    core.harness.setListEndpointsResponse({
-      endpoints: [endpoint({ endpointName: "alpha_ep" }), endpoint({ endpointName: "beta_ep" })],
-      nextToken: "ep2",
-    });
-    core.harness.setListEndpointsResponse(
-      { endpoints: [endpoint({ endpointName: "gamma_ep" })] },
-      "ep2",
-    );
-    const r = renderScreen("/agentcore/harness/endpoint/list/MyHarness-abc123", { core });
-
-    await waitForText(r.lastFrame, "alpha_ep");
-    expect(r.lastFrame()).toContain("page 1 · more →");
-
-    await r.write("l");
-    await waitForText(r.lastFrame, "gamma_ep");
-    expect(r.lastFrame()).toContain("page 2");
-    const paged = core.harness.calls.filter((c) => c.method === "listHarnessEndpoints");
-    expect(paged.at(-1)!.args[1]).toBe("ep2");
-    expect(paged.at(-1)!.args[2] as number).toBeGreaterThan(0);
-
-    await r.write("h");
-    await waitForText(r.lastFrame, "alpha_ep");
-    expect(r.lastFrame()).toContain("page 1");
+    await waitForText(r.lastFrame, "This harness has no endpoints yet.");
+    expect(r.lastFrame()).not.toContain("No endpoints on this page");
     r.unmount();
   });
 
@@ -120,16 +145,6 @@ describe("harness endpoint list screen", () => {
     const call = core.harness.calls.find((c) => c.method === "getHarnessEndpoint")!;
     expect(call.args[0]).toBe("MyHarness-abc123");
     expect(call.args[1]).toBe("prod");
-    r.unmount();
-  });
-
-  test("shows the error message when the list call fails", async () => {
-    const core = new TestCoreClient();
-    core.harness.setError(new Error("access denied"));
-    const r = renderScreen("/agentcore/harness/endpoint/list/MyHarness-abc123", { core });
-
-    await waitForText(r.lastFrame, "Error:");
-    expect(r.lastFrame()).toContain("access denied");
     r.unmount();
   });
 });

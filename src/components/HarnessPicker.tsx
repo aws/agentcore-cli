@@ -1,14 +1,8 @@
-import { Text, useWindowSize } from "ink";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import type { HarnessSummary } from "@aws-sdk/client-bedrock-agentcore-control";
-import { DataTable } from "./ui/data-table";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
-import { usePagedList } from "./usePagedList";
-import { Spinner } from "./ui/spinner";
-import { Layout } from "./Layout";
-import { darkTheme } from "./ui/_core.js";
+import { TokenPagedTablePicker } from "./TokenPagedTablePicker";
 
 // HarnessRow is the flat, display-ready shape the table renders. It also satisfies
 // DataTable's `T extends Record<string, unknown>` constraint, which the SDK's
@@ -56,69 +50,48 @@ export function HarnessPicker({
   onSelect,
 }: HarnessPickerProps) {
   const opts = coreOptsFromCtx(ctx);
-  const { columns } = useWindowSize();
   const navigate = useNavigate();
-  const paging = usePagedList();
-
-  const list = useQuery({
-    queryKey: ["harnesses", opts.region, paging.pageSize, paging.token],
-    queryFn: () => core.harness.listHarnesses(paging.token, paging.pageSize, opts),
-    placeholderData: keepPreviousData,
-  });
-
-  const nextToken = list.data?.nextToken;
-  // Pagination surfaces only once a response reports more pages (nextToken).
-  const paginated = paging.pageIndex > 0 || nextToken !== undefined;
+  const goBack = () => navigate("/" + breadcrumb.slice(0, -1).join("/"));
 
   return (
-    <Layout
+    <TokenPagedTablePicker
       breadcrumb={breadcrumb}
       description={description}
-      keyHints={[
-        { key: "↑↓/kj", label: "navigate" },
-        ...(paginated ? [{ key: "←→/hl", label: "page" }] : []),
-        { key: "/", label: "filter" },
-        { key: "enter", label: "select" },
-        { key: "esc", label: "back" },
-        { key: "ctl+c", label: "quit" },
-      ]}
-    >
-      {list.isPending ? (
-        <Spinner label="Loading harnesses…" />
-      ) : list.isError ? (
-        <Text color="red">Error: {(list.error as Error).message}</Text>
-      ) : (
-        <>
-          <DataTable
-            borderStyle="none"
-            borderTop={false}
-            borderBottom={false}
-            borderRight={false}
-            showFooter={false}
-            showDivider={true}
-            pageSize={paging.pageSize}
-            columns={[
-              { key: "harnessName", header: "name", width: columns - 62 },
-              { key: "updatedAt", header: "updatedAt", width: 30 },
-              { key: "harnessVersion", header: "version", width: 10 },
-              { key: "status", header: "status", width: 20 },
-            ]}
-            data={(list.data.harnesses ?? []).map(toRow)}
-            onSelect={(row) => {
-              if (row.harnessId) onSelect(row.harnessId);
-            }}
-            onEscape={() => navigate("/" + breadcrumb.slice(0, -1).join("/"))}
-            onPrevPage={paging.pageIndex > 0 ? paging.prev : undefined}
-            onNextPage={nextToken ? () => paging.next(nextToken) : undefined}
-          />
-          {paginated && (
-            <Text color={darkTheme.colors.muted} dimColor>
-              page {paging.pageIndex + 1}
-              {nextToken ? " · more →" : ""}
-            </Text>
-          )}
-        </>
-      )}
-    </Layout>
+      queryKey={["harnesses", opts.region]}
+      loadPage={async (token, pageSize) => {
+        const response = await core.harness.listHarnesses(token, pageSize, opts);
+        return {
+          items: response.harnesses ?? [],
+          nextToken: response.nextToken,
+        };
+      }}
+      toRow={toRow}
+      columns={(terminalColumns) => {
+        const versionWidth = 10;
+        const showStatus = terminalColumns >= 70;
+        const showUpdatedAt = terminalColumns >= 90;
+        const statusWidth = showStatus ? 20 : 0;
+        const updatedAtWidth = showUpdatedAt ? 30 : 0;
+        const nameWidth = Math.max(
+          12,
+          terminalColumns - 2 - versionWidth - statusWidth - updatedAtWidth,
+        );
+        return [
+          { key: "harnessName", header: "name", width: nameWidth },
+          { key: "harnessVersion", header: "version", width: versionWidth },
+          ...(showStatus ? [{ key: "status" as const, header: "status", width: statusWidth }] : []),
+          ...(showUpdatedAt
+            ? [{ key: "updatedAt" as const, header: "updatedAt", width: updatedAtWidth }]
+            : []),
+        ];
+      }}
+      getValue={(row) => row.harnessId}
+      onSelect={onSelect}
+      onBack={goBack}
+      loadingMessage="Loading harnesses…"
+      errorMessage={(error) => `Error: ${error.message}`}
+      emptyMessage="No harnesses found."
+      emptyPageMessage="No harnesses on this page."
+    />
   );
 }

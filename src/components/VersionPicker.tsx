@@ -1,14 +1,8 @@
-import { Text, useWindowSize } from "ink";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import type { HarnessVersionSummary } from "@aws-sdk/client-bedrock-agentcore-control";
-import { DataTable } from "./ui/data-table";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
-import { usePagedList } from "./usePagedList";
-import { Spinner } from "./ui/spinner";
-import { Layout } from "./Layout";
-import { darkTheme } from "./ui/_core.js";
+import { TokenPagedTablePicker } from "./TokenPagedTablePicker";
 
 // VersionRow is the flat, display-ready shape the table renders.
 interface VersionRow extends Record<string, unknown> {
@@ -49,74 +43,46 @@ export function VersionPicker({
   onSelect,
 }: VersionPickerProps) {
   const opts = coreOptsFromCtx(ctx);
-  const { columns } = useWindowSize();
   const navigate = useNavigate();
-  const paging = usePagedList();
-
-  const list = useQuery({
-    queryKey: ["harness-versions", opts.region, harnessId, paging.pageSize, paging.token],
-    queryFn: () => core.harness.listHarnessVersions(harnessId, paging.token, paging.pageSize, opts),
-    placeholderData: keepPreviousData,
-  });
-
-  const nextToken = list.data?.nextToken;
-  // Pagination surfaces only once a response reports more pages (nextToken).
-  const paginated = paging.pageIndex > 0 || nextToken !== undefined;
-
-  // Newest first within the page: versions are numeric strings incremented by
-  // UpdateHarness (the service already pages newest-first).
-  const rows = (list.data?.harnessVersions ?? [])
-    .map(toRow)
-    .sort((a, b) => Number(b.harnessVersion) - Number(a.harnessVersion));
+  const goBack = () => navigate(-1);
 
   return (
-    <Layout
+    <TokenPagedTablePicker
       breadcrumb={breadcrumb}
       description={description}
-      keyHints={[
-        { key: "↑↓/kj", label: "navigate" },
-        ...(paginated ? [{ key: "←→/hl", label: "page" }] : []),
-        { key: "/", label: "filter" },
-        { key: "enter", label: "select" },
-        { key: "esc", label: "back" },
-        { key: "ctl+c", label: "quit" },
-      ]}
-    >
-      {list.isPending ? (
-        <Spinner label="Loading versions…" />
-      ) : list.isError ? (
-        <Text color="red">Error: {(list.error as Error).message}</Text>
-      ) : (
-        <>
-          <DataTable
-            borderStyle="none"
-            borderTop={false}
-            borderBottom={false}
-            borderRight={false}
-            showFooter={false}
-            showDivider={true}
-            pageSize={paging.pageSize}
-            columns={[
-              { key: "harnessVersion", header: "version", width: columns - 52 },
-              { key: "status", header: "status", width: 20 },
-              { key: "createdAt", header: "createdAt", width: 30 },
-            ]}
-            data={rows}
-            onSelect={(row) => {
-              if (row.harnessVersion) onSelect(row.harnessVersion);
-            }}
-            onEscape={() => navigate(-1)}
-            onPrevPage={paging.pageIndex > 0 ? paging.prev : undefined}
-            onNextPage={nextToken ? () => paging.next(nextToken) : undefined}
-          />
-          {paginated && (
-            <Text color={darkTheme.colors.muted} dimColor>
-              page {paging.pageIndex + 1}
-              {nextToken ? " · more →" : ""}
-            </Text>
-          )}
-        </>
-      )}
-    </Layout>
+      queryKey={["harness-versions", opts.region, harnessId]}
+      loadPage={async (token, pageSize) => {
+        const response = await core.harness.listHarnessVersions(harnessId, token, pageSize, opts);
+        return {
+          items: response.harnessVersions ?? [],
+          nextToken: response.nextToken,
+        };
+      }}
+      toRow={toRow}
+      columns={(terminalColumns) => {
+        const showStatus = terminalColumns >= 60;
+        const showCreatedAt = terminalColumns >= 90;
+        const statusWidth = showStatus ? 20 : 0;
+        const createdAtWidth = showCreatedAt ? 30 : 0;
+        const versionWidth = Math.max(8, terminalColumns - 2 - statusWidth - createdAtWidth);
+        return [
+          { key: "harnessVersion", header: "version", width: versionWidth },
+          ...(showStatus ? [{ key: "status" as const, header: "status", width: statusWidth }] : []),
+          ...(showCreatedAt
+            ? [{ key: "createdAt" as const, header: "createdAt", width: createdAtWidth }]
+            : []),
+        ];
+      }}
+      sortRows={(rows) =>
+        [...rows].sort((left, right) => Number(right.harnessVersion) - Number(left.harnessVersion))
+      }
+      getValue={(row) => row.harnessVersion}
+      onSelect={onSelect}
+      onBack={goBack}
+      loadingMessage="Loading versions…"
+      errorMessage={(error) => `Error: ${error.message}`}
+      emptyMessage="No versions found."
+      emptyPageMessage={`No versions on this page for harness ${harnessId}.`}
+    />
   );
 }

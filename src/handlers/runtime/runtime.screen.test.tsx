@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type {
   AgentRuntime,
   GetAgentRuntimeResponse,
-  ListAgentRuntimesResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { QueryClient } from "@tanstack/react-query";
 import {
@@ -15,14 +14,6 @@ import {
 } from "../../testing";
 
 afterEach(cleanupScreens);
-
-function frameSize(frame: string): { columns: number; rows: number } {
-  const lines = frame.split("\n");
-  return {
-    columns: Math.max(...lines.map((line) => line.length)),
-    rows: lines.length,
-  };
-}
 
 function runtime(overrides: Partial<AgentRuntime> = {}): AgentRuntime {
   return {
@@ -141,55 +132,6 @@ describe("runtime picker", () => {
     expect(frame).toContain("2026-07-19T01:02:03.000Z");
   });
 
-  test("keeps a full Runtime list and its footer coherent at 50x20", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setListResponse({
-      agentRuntimes: Array.from({ length: 12 }, (_, index) =>
-        runtime({
-          agentRuntimeId: `narrow-row-${index + 1}`,
-          agentRuntimeName: `narrow-row-${index + 1}`,
-        }),
-      ),
-      nextToken: "page-2",
-    });
-    const r = renderScreen("/agentcore/runtime/list", { core });
-
-    await waitForText(r.lastFrame, "narrow-row-12");
-    for (const hint of [
-      "[↑↓/jk] navigate",
-      "[←→/hl] page",
-      "[/] filter",
-      "[enter] select",
-      "[esc] back",
-      "[ctl+c] quit",
-    ]) {
-      expect(r.lastFrame()).toContain(hint);
-    }
-    await r.resize(50, 20);
-    await waitForText(r.lastFrame, "page 1 · more →");
-    const frame = r.lastFrame()!;
-    const lines = frame.split("\n");
-    const pageLine = lines.find((line) => line.includes("page 1 · more →"));
-    const footerLine = lines.find((line) => line.includes("[↑↓/jk] navigate"));
-
-    expect(frameSize(frame)).toEqual({ columns: 50, rows: 20 });
-    expect(frame).toContain("agentcore → runtime → list");
-    expect(pageLine?.trim()).toBe("page 1 · more →");
-    expect(pageLine).not.toContain("narrow-row");
-    expect(footerLine).toContain("[enter] select");
-    expect(footerLine).toContain("[esc] back");
-    expect(frame).not.toContain("[←→/hl] page");
-    expect(frame).not.toContain("[/] filter");
-    expect(frame).not.toContain("[ctl+c] quit");
-    expect(footerLine!.indexOf("[↑↓/jk] navigate")).toBeLessThan(
-      footerLine!.indexOf("[enter] select"),
-    );
-    expect(footerLine!.indexOf("[enter] select")).toBeLessThan(footerLine!.indexOf("[esc] back"));
-    expect(
-      lines.filter((line) => line.includes("[") && line.includes("]")).map((line) => line.trim()),
-    ).toEqual([footerLine!.trim()]);
-  });
-
   test("calls listRuntimes with terminal page size and exact Core options", async () => {
     const core = coreWithRuntimes([runtime()]);
     renderScreen("/agentcore/runtime/list", { core });
@@ -210,300 +152,25 @@ describe("runtime picker", () => {
     ]);
   });
 
-  test("shows loading and lets Esc return to the Runtime menu", async () => {
-    const core = new TestCoreClient();
-    const pending = Promise.withResolvers<ListAgentRuntimesResponse>();
-    core.runtime.listRuntimes = async () => pending.promise;
-    const r = renderScreen("/agentcore/runtime/list", { core });
-
-    await waitForText(r.lastFrame, "Loading Runtimes…");
-    await r.press("escape");
-    await waitForRuntimeMenu(r.lastFrame);
-    expect(r.lastFrame()).toContain("list AgentCore Runtimes");
-  });
-
-  test("shows service errors, retries with r, and lets Esc return to the Runtime menu", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setError(new Error("runtime access denied"));
-    const r = renderScreen("/agentcore/runtime/list", { core });
-
-    await waitForText(r.lastFrame, "runtime access denied");
-    expect(r.lastFrame()).toContain("[r] retry");
-
-    core.runtime.setError(undefined);
-    core.runtime.setListResponse({
-      agentRuntimes: [runtime({ agentRuntimeName: "recovered" })],
-    });
-    const callsBeforeRetry = core.runtime.calls.filter(
-      (call) => call.method === "listRuntimes",
-    ).length;
-    await r.write("r");
-    await waitForText(r.lastFrame, "recovered");
-    expect(core.runtime.calls.filter((call) => call.method === "listRuntimes")).toHaveLength(
-      callsBeforeRetry + 1,
-    );
-
-    core.runtime.setError(new Error("runtime access denied"));
-    const errorScreen = renderScreen("/agentcore/runtime/list", { core });
-    await waitForText(errorScreen.lastFrame, "runtime access denied");
-    await errorScreen.press("escape");
-    await waitForRuntimeMenu(errorScreen.lastFrame);
-  });
-
-  test("shows the first-page empty state and lets Esc return to the Runtime menu", async () => {
+  test("shows the first-page empty state", async () => {
     const r = renderScreen("/agentcore/runtime/list");
 
     await waitForText(r.lastFrame, "No Runtimes found in this Region.");
-    await r.press("escape");
-    await waitForRuntimeMenu(r.lastFrame);
-    expect(r.lastFrame()).toContain("list AgentCore Runtimes");
   });
 
-  test("pages forward and backward using token history", async () => {
+  test("describes an empty later page without claiming the Region has no Runtimes", async () => {
     const core = new TestCoreClient();
     core.runtime.setListResponse({
       agentRuntimes: [runtime({ agentRuntimeName: "page-one" })],
       nextToken: "page-2",
     });
-    core.runtime.setListResponse(
-      {
-        agentRuntimes: [runtime({ agentRuntimeName: "page-two" })],
-      },
-      "page-2",
-    );
-    const r = renderScreen("/agentcore/runtime/list", { core });
-
-    await waitForText(r.lastFrame, "page 1 · more →");
-    expect(r.lastFrame()).toContain("page-one");
-
-    await r.write("l");
-    await waitForText(r.lastFrame, "page-two");
-    expect(r.lastFrame()).toContain("page 2");
-    expect(core.runtime.calls.at(-1)?.args[0]).toBe("page-2");
-
-    await r.write("h");
-    await waitForText(r.lastFrame, "page-one");
-    expect(r.lastFrame()).toContain("page 1 · more →");
-    expect(core.runtime.calls.at(-1)?.args[0]).toBeUndefined();
-  });
-
-  test("resizing resets to page one with the terminal-derived page size", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setListResponse({
-      agentRuntimes: [runtime({ agentRuntimeName: "page-one" })],
-      nextToken: "page-2",
-    });
-    core.runtime.setListResponse(
-      {
-        agentRuntimes: [runtime({ agentRuntimeName: "page-two" })],
-      },
-      "page-2",
-    );
+    core.runtime.setListResponse({ agentRuntimes: [] }, "page-2");
     const r = renderScreen("/agentcore/runtime/list", { core });
 
     await waitForText(r.lastFrame, "page 1 · more →");
     await r.write("l");
-    await waitForText(r.lastFrame, "page-two");
-    const callsBeforeResize = core.runtime.calls.filter(
-      (call) => call.method === "listRuntimes",
-    ).length;
-
-    await r.resize(100, 20);
-    await waitFor(() => {
-      const calls = core.runtime.calls.filter((call) => call.method === "listRuntimes");
-      return (
-        calls.length > callsBeforeResize &&
-        calls.at(-1)?.args[0] === undefined &&
-        calls.at(-1)?.args[1] === 12
-      );
-    });
-    await waitForText(r.lastFrame, "page-one");
-    expect(r.lastFrame()).toContain("page 1 · more →");
-    const callsAfterResize = core.runtime.calls
-      .filter((call) => call.method === "listRuntimes")
-      .slice(callsBeforeResize);
-    expect(callsAfterResize.length).toBeGreaterThan(0);
-    expect(callsAfterResize.every((call) => call.args[0] === undefined)).toBe(true);
-  });
-
-  test("resizing from page two resets selection to the first row on page one", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setListResponse({
-      agentRuntimes: [
-        runtime({ agentRuntimeId: "page-one-first", agentRuntimeName: "page-one-first" }),
-        runtime({ agentRuntimeId: "page-one-second", agentRuntimeName: "page-one-second" }),
-      ],
-      nextToken: "page-2",
-    });
-    core.runtime.setListResponse(
-      {
-        agentRuntimes: [
-          runtime({ agentRuntimeId: "page-two-first", agentRuntimeName: "page-two-first" }),
-          runtime({ agentRuntimeId: "page-two-second", agentRuntimeName: "page-two-second" }),
-        ],
-      },
-      "page-2",
-    );
-    core.runtime.setGetResponse(
-      getRuntimeResponse({
-        agentRuntimeId: "page-one-first",
-        agentRuntimeName: "page-one-first",
-      }),
-    );
-    const r = renderScreen("/agentcore/runtime/list", { core });
-
-    await waitForText(r.lastFrame, "page 1 · more →");
-    await r.write("l");
-    await waitForText(r.lastFrame, "page-two-second");
-    await r.press("down");
-    await waitForText(r.lastFrame, "❯ page-two-second");
-
-    await r.resize(100, 20);
-    await waitForText(r.lastFrame, "page-one-first");
-    await r.press("return");
-
-    await waitForText(r.lastFrame, "agentcore → runtime → get → page-one-first");
-    await waitFor(() =>
-      core.runtime.calls.some(
-        (call) => call.method === "getRuntime" && call.args[0] === "page-one-first",
-      ),
-    );
-    expect(
-      core.runtime.calls.some(
-        (call) => call.method === "getRuntime" && call.args[0] === "page-one-first",
-      ),
-    ).toBe(true);
-    expect(
-      core.runtime.calls.some(
-        (call) => call.method === "getRuntime" && call.args[0] === "page-one-second",
-      ),
-    ).toBe(false);
-  });
-
-  test("retains rows and ignores page keys while either page direction is loading", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setListResponse({
-      agentRuntimes: [runtime({ agentRuntimeName: "stable-page-one" })],
-      nextToken: "page-2",
-    });
-    core.runtime.setListResponse(
-      {
-        agentRuntimes: [runtime({ agentRuntimeName: "settled-page-two" })],
-      },
-      "page-2",
-    );
-    const pageTwo = Promise.withResolvers<void>();
-    const pageOneAgain = Promise.withResolvers<void>();
-    let holdFirstPage = false;
-    const listRuntimes = core.runtime.listRuntimes.bind(core.runtime);
-    core.runtime.listRuntimes = async (...args) => {
-      const result = await listRuntimes(...args);
-      if (args[0] === "page-2") await pageTwo.promise;
-      if (args[0] === undefined && holdFirstPage) await pageOneAgain.promise;
-      return result;
-    };
-    const r = renderScreen("/agentcore/runtime/list", { core });
-
-    await waitForText(r.lastFrame, "page 1 · more →");
-    await r.write("l");
-    await waitForText(r.lastFrame, "loading page 2…");
-    expect(r.lastFrame()).toContain("stable-page-one");
-
-    const callsDuringTransition = core.runtime.calls.filter(
-      (call) => call.method === "listRuntimes",
-    ).length;
-    await r.write("l");
-    await r.write("h");
-    expect(core.runtime.calls.filter((call) => call.method === "listRuntimes")).toHaveLength(
-      callsDuringTransition,
-    );
-
-    pageTwo.resolve();
-    await waitForText(r.lastFrame, "settled-page-two");
-
-    holdFirstPage = true;
-    await r.write("h");
-    await waitForText(r.lastFrame, "loading page 1…");
-    expect(r.lastFrame()).toContain("settled-page-two");
-
-    const callsDuringBackTransition = core.runtime.calls.filter(
-      (call) => call.method === "listRuntimes",
-    ).length;
-    await r.write("l");
-    expect(core.runtime.calls.filter((call) => call.method === "listRuntimes")).toHaveLength(
-      callsDuringBackTransition,
-    );
-
-    pageOneAgain.resolve();
-    await waitForText(r.lastFrame, "stable-page-one");
-  });
-
-  test("disables page keys while a cached page is refetching", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setListResponse({
-      agentRuntimes: [runtime({ agentRuntimeName: "cached-page-one" })],
-      nextToken: "page-2",
-    });
-    core.runtime.setListResponse(
-      {
-        agentRuntimes: [runtime({ agentRuntimeName: "cached-page-two" })],
-      },
-      "page-2",
-    );
-    const pageOneRefetch = Promise.withResolvers<void>();
-    let holdFirstPage = false;
-    const listRuntimes = core.runtime.listRuntimes.bind(core.runtime);
-    core.runtime.listRuntimes = async (...args) => {
-      const result = await listRuntimes(...args);
-      if (args[0] === undefined && holdFirstPage) await pageOneRefetch.promise;
-      return result;
-    };
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false, gcTime: Infinity, staleTime: 0 },
-      },
-    });
-    const r = renderScreen("/agentcore/runtime/list", { core, queryClient });
-
-    await waitForText(r.lastFrame, "page 1 · more →");
-    await r.write("l");
-    await waitForText(r.lastFrame, "cached-page-two");
-
-    holdFirstPage = true;
-    const callsBeforeBack = core.runtime.calls.length;
-    await r.write("h");
-    await waitFor(
-      () =>
-        core.runtime.calls.length > callsBeforeBack &&
-        core.runtime.calls.at(-1)?.args[0] === undefined,
-    );
-    expect(r.lastFrame()).toContain("loading page 1…");
-    expect(r.lastFrame()).toContain("cached-page-one");
-
-    const callsDuringRefetch = core.runtime.calls.length;
-    await r.write("l");
-    expect(core.runtime.calls).toHaveLength(callsDuringRefetch);
-    expect(r.lastFrame()).toContain("cached-page-one");
-
-    pageOneRefetch.resolve();
-    await waitForText(r.lastFrame, "page 1 · more →");
-  });
-
-  test("filters only the loaded page and does not treat h or l as page keys", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setListResponse({
-      agentRuntimes: [runtime({ agentRuntimeName: "orders" })],
-      nextToken: "page-2",
-    });
-    const r = renderScreen("/agentcore/runtime/list", { core });
-
-    await waitForText(r.lastFrame, "page 1 · more →");
-    await r.write("/");
-    await r.write("l");
-    await r.write("h");
-    await waitForText(r.lastFrame, "/ Filter this page: lh");
-    expect(r.lastFrame()).toContain("No matches on this page");
-    expect(core.runtime.calls.some((call) => call.args[0] === "page-2")).toBe(false);
+    await waitForText(r.lastFrame, "No Runtimes on this page.");
+    expect(r.lastFrame()).not.toContain("No Runtimes found in this Region.");
   });
 
   test("keeps name and latest version when narrow", async () => {

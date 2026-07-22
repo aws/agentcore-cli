@@ -1,14 +1,8 @@
-import { Text, useWindowSize } from "ink";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import type { HarnessEndpoint } from "@aws-sdk/client-bedrock-agentcore-control";
-import { DataTable } from "./ui/data-table";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
-import { usePagedList } from "./usePagedList";
-import { Spinner } from "./ui/spinner";
-import { Layout } from "./Layout";
-import { darkTheme } from "./ui/_core.js";
+import { TokenPagedTablePicker } from "./TokenPagedTablePicker";
 
 // EndpointRow is the flat, display-ready shape the table renders.
 interface EndpointRow extends Record<string, unknown> {
@@ -57,73 +51,53 @@ export function EndpointPicker({
   onEscape,
 }: EndpointPickerProps) {
   const opts = coreOptsFromCtx(ctx);
-  const { columns } = useWindowSize();
   const navigate = useNavigate();
-  const paging = usePagedList();
-
-  const list = useQuery({
-    queryKey: ["harness-endpoints", opts.region, harnessId, paging.pageSize, paging.token],
-    queryFn: () =>
-      core.harness.listHarnessEndpoints(harnessId, paging.token, paging.pageSize, opts),
-    placeholderData: keepPreviousData,
-  });
-
-  const nextToken = list.data?.nextToken;
-  // Pagination surfaces only once a response reports more pages (nextToken).
-  const paginated = paging.pageIndex > 0 || nextToken !== undefined;
+  const goBack = onEscape ?? (() => navigate(-1));
 
   return (
-    <Layout
+    <TokenPagedTablePicker
       breadcrumb={breadcrumb}
       description={description}
-      keyHints={[
-        { key: "↑↓/jk", label: "navigate" },
-        ...(paginated ? [{ key: "←→/hl", label: "page" }] : []),
-        { key: "/", label: "filter" },
-        { key: "enter", label: "select" },
-        { key: "esc", label: "back" },
-        { key: "ctl+c", label: "quit" },
-      ]}
-    >
-      {list.isPending ? (
-        <Spinner label="Loading endpoints…" />
-      ) : list.isError ? (
-        <Text color="red">Error: {(list.error as Error).message}</Text>
-      ) : !paginated && (list.data.endpoints ?? []).length === 0 ? (
-        <Text>This harness has no endpoints yet.</Text>
-      ) : (
-        <>
-          <DataTable
-            borderStyle="none"
-            borderTop={false}
-            borderBottom={false}
-            borderRight={false}
-            showFooter={false}
-            showDivider={true}
-            pageSize={paging.pageSize}
-            columns={[
-              { key: "endpointName", header: "name", width: columns - 68 },
-              { key: "liveVersion", header: "live", width: 8 },
-              { key: "targetVersion", header: "target", width: 8 },
-              { key: "status", header: "status", width: 20 },
-              { key: "updatedAt", header: "updatedAt", width: 30 },
-            ]}
-            data={(list.data.endpoints ?? []).map(toRow)}
-            onSelect={(row) => {
-              if (row.endpointName) onSelect(row.endpointName);
-            }}
-            onEscape={onEscape ?? (() => navigate(-1))}
-            onPrevPage={paging.pageIndex > 0 ? paging.prev : undefined}
-            onNextPage={nextToken ? () => paging.next(nextToken) : undefined}
-          />
-          {paginated && (
-            <Text color={darkTheme.colors.muted} dimColor>
-              page {paging.pageIndex + 1}
-              {nextToken ? " · more →" : ""}
-            </Text>
-          )}
-        </>
-      )}
-    </Layout>
+      queryKey={["harness-endpoints", opts.region, harnessId]}
+      loadPage={async (token, pageSize) => {
+        const response = await core.harness.listHarnessEndpoints(harnessId, token, pageSize, opts);
+        return {
+          items: response.endpoints ?? [],
+          nextToken: response.nextToken,
+        };
+      }}
+      toRow={toRow}
+      columns={(terminalColumns) => {
+        const liveWidth = 8;
+        const showTarget = terminalColumns >= 60;
+        const showStatus = terminalColumns >= 70;
+        const showUpdatedAt = terminalColumns >= 90;
+        const targetWidth = showTarget ? 8 : 0;
+        const statusWidth = showStatus ? 20 : 0;
+        const updatedAtWidth = showUpdatedAt ? 30 : 0;
+        const nameWidth = Math.max(
+          12,
+          terminalColumns - 2 - liveWidth - targetWidth - statusWidth - updatedAtWidth,
+        );
+        return [
+          { key: "endpointName", header: "name", width: nameWidth },
+          { key: "liveVersion", header: "live", width: liveWidth },
+          ...(showTarget
+            ? [{ key: "targetVersion" as const, header: "target", width: targetWidth }]
+            : []),
+          ...(showStatus ? [{ key: "status" as const, header: "status", width: statusWidth }] : []),
+          ...(showUpdatedAt
+            ? [{ key: "updatedAt" as const, header: "updatedAt", width: updatedAtWidth }]
+            : []),
+        ];
+      }}
+      getValue={(row) => row.endpointName}
+      onSelect={onSelect}
+      onBack={goBack}
+      loadingMessage="Loading endpoints…"
+      errorMessage={(error) => `Error: ${error.message}`}
+      emptyMessage="This harness has no endpoints yet."
+      emptyPageMessage={`No endpoints on this page for harness ${harnessId}.`}
+    />
   );
 }

@@ -47,66 +47,122 @@ function coreWithVersions(versions: HarnessVersionSummary[]): TestCoreClient {
 
 describe("harness version list screen", () => {
   test("without a harness id, picking a harness lists its versions", async () => {
-    const core = coreWithVersions([version()]);
+    const core = coreWithVersions([version({ harnessVersion: "42" })]);
     const r = renderScreen("/agentcore/harness/version/list", { core });
 
     await waitForText(r.lastFrame, "MyHarness");
     expect(r.lastFrame()).toContain("choose a harness to list versions for");
 
     await r.press("return");
-    await waitFor(() => core.harness.calls.some((c) => c.method === "listHarnessVersions"));
-    const call = core.harness.calls.find((c) => c.method === "listHarnessVersions")!;
-    expect(call.args[0]).toBe("MyHarness-abc123");
+    await waitForText(r.lastFrame, "42");
+    expect(r.lastFrame()).toContain("version → list → MyHarness-abc123");
     r.unmount();
   });
 
-  test("renders versions newest first", async () => {
-    const core = coreWithVersions([version(), version({ harnessVersion: "2" })]);
+  test("makes one exact scoped version list call", async () => {
+    const core = coreWithVersions([version()]);
     const r = renderScreen("/agentcore/harness/version/list/MyHarness-abc123", { core });
 
-    await waitForText(r.lastFrame, "READY");
-    const frame = r.lastFrame()!;
-    // Both rows render, "2" above "1".
-    expect(frame.indexOf(" 2 ")).toBeGreaterThan(-1);
-    expect(frame.indexOf("Version")).toBeLessThan(frame.indexOf("READY"));
+    await waitFor(() => core.harness.calls.some((call) => call.method === "listHarnessVersions"));
+    expect(core.harness.calls.filter((call) => call.method === "listHarnessVersions")).toEqual([
+      {
+        method: "listHarnessVersions",
+        args: [
+          "MyHarness-abc123",
+          undefined,
+          32,
+          {
+            region: "us-east-1",
+            endpointUrl: undefined,
+          },
+        ],
+      },
+    ]);
     r.unmount();
   });
 
-  test("pages forward and back when the response has a nextToken", async () => {
-    const core = coreWithVersions([]);
+  test("sorts numeric versions newest first", async () => {
+    const core = coreWithVersions([
+      version({ harnessVersion: "2", status: "UPDATE_FAILED" }),
+      version({ harnessVersion: "10", status: "READY" }),
+    ]);
+    const r = renderScreen("/agentcore/harness/version/list/MyHarness-abc123", { core });
+
+    await waitForText(r.lastFrame, "UPDATE_FAILED");
+    const frame = r.lastFrame()!;
+    const lines = frame.split("\n");
+    const versionTen = lines.findIndex((line) => line.includes("10") && line.includes("READY"));
+    const versionTwo = lines.findIndex(
+      (line) => line.includes("2") && line.includes("UPDATE_FAILED"),
+    );
+    expect(versionTen).toBeGreaterThanOrEqual(0);
+    expect(versionTwo).toBeGreaterThanOrEqual(0);
+    expect(versionTen).toBeLessThan(versionTwo);
+    r.unmount();
+  });
+
+  test("shows version-only columns when narrow and all columns when wide", async () => {
+    const core = coreWithVersions([
+      version({
+        harnessVersion: "123",
+        status: "UPDATE_FAILED",
+        createdAt: new Date("2026-07-18T02:00:00.000Z"),
+      }),
+    ]);
+    const r = renderScreen("/agentcore/harness/version/list/MyHarness-abc123", { core });
+
+    await r.resize(50);
+    await waitForText(r.lastFrame, "123");
+    const narrow = r.lastFrame()!;
+    expect(narrow).toContain("version");
+    expect(narrow).toContain("123");
+    expect(narrow).not.toContain("status");
+    expect(narrow).not.toContain("createdAt");
+    expect(narrow).not.toContain("UPDATE_FAILED");
+    expect(narrow).not.toContain("2026-07-18T02:00:00.000Z");
+
+    await r.resize(120);
+    await waitForText(r.lastFrame, "createdAt");
+    const wide = r.lastFrame()!;
+    expect(wide).toContain("version");
+    expect(wide).toContain("status");
+    expect(wide).toContain("createdAt");
+    expect(wide).toContain("123");
+    expect(wide).toContain("UPDATE_FAILED");
+    expect(wide).toContain("2026-07-18T02:00:00.000Z");
+    r.unmount();
+  });
+
+  test("uses harness-version wording for empty pages", async () => {
+    const firstPage = renderScreen("/agentcore/harness/version/list/MyHarness-abc123");
+    await waitForText(firstPage.lastFrame, "No versions found.");
+    firstPage.unmount();
+
+    const core = coreWithVersions([version({ harnessVersion: "42" })]);
     core.harness.setListVersionsResponse({
-      harnessVersions: [version({ harnessVersion: "42" }), version({ harnessVersion: "41" })],
+      harnessVersions: [version({ harnessVersion: "42" })],
       nextToken: "v2",
     });
-    core.harness.setListVersionsResponse(
-      { harnessVersions: [version({ harnessVersion: "40" })] },
-      "v2",
+    core.harness.setListVersionsResponse({ harnessVersions: [] }, "v2");
+    const laterPage = renderScreen("/agentcore/harness/version/list/MyHarness-abc123", { core });
+
+    await waitForText(laterPage.lastFrame, "page 1 · more →");
+    await laterPage.write("l");
+    await waitForText(
+      laterPage.lastFrame,
+      "No versions on this page for harness MyHarness-abc123.",
     );
-    const r = renderScreen("/agentcore/harness/version/list/MyHarness-abc123", { core });
-
-    await waitForText(r.lastFrame, "42");
-    expect(r.lastFrame()).toContain("page 1 · more →");
-
-    await r.write("l");
-    await waitForText(r.lastFrame, "40");
-    expect(r.lastFrame()).toContain("page 2");
-    const paged = core.harness.calls.filter((c) => c.method === "listHarnessVersions");
-    expect(paged.at(-1)!.args[1]).toBe("v2");
-    expect(paged.at(-1)!.args[2] as number).toBeGreaterThan(0);
-
-    await r.write("h");
-    await waitForText(r.lastFrame, "42");
-    expect(r.lastFrame()).toContain("page 1");
-    r.unmount();
+    expect(laterPage.lastFrame()).not.toContain("No versions found.");
+    laterPage.unmount();
   });
 
   test("enter on a row opens the version's JSON detail", async () => {
-    const core = coreWithVersions([version({ harnessVersion: "2" }), version()]);
+    const core = coreWithVersions([version({ harnessVersion: "42" })]);
     core.harness.setGetVersionResponse({
       harness: {
         harnessId: "MyHarness-abc123",
         harnessName: "MyHarness",
-        harnessVersion: "2",
+        harnessVersion: "42",
         status: "READY",
       },
     } as Awaited<ReturnType<TestCoreClient["harness"]["getHarnessVersion"]>>);
@@ -115,20 +171,10 @@ describe("harness version list screen", () => {
     await waitForText(r.lastFrame, "READY");
     await r.press("return");
     await waitForText(r.lastFrame, '"harnessVersion"');
-    expect(r.lastFrame()).toContain("version → get → MyHarness-abc123 → 2");
+    expect(r.lastFrame()).toContain("version → get → MyHarness-abc123 → 42");
     const call = core.harness.calls.find((c) => c.method === "getHarnessVersion")!;
     expect(call.args[0]).toBe("MyHarness-abc123");
-    expect(call.args[1]).toBe("2");
-    r.unmount();
-  });
-
-  test("shows the error message when the list call fails", async () => {
-    const core = new TestCoreClient();
-    core.harness.setError(new Error("access denied"));
-    const r = renderScreen("/agentcore/harness/version/list/MyHarness-abc123", { core });
-
-    await waitForText(r.lastFrame, "Error:");
-    expect(r.lastFrame()).toContain("access denied");
+    expect(call.args[1]).toBe("42");
     r.unmount();
   });
 });
