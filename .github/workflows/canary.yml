@@ -3,6 +3,9 @@ name: Canary
 on:
   # Run every 15 minutes to catch dependency/service breakages (e.g. CDK
   # schema mismatches) quickly instead of up to an hour later.
+  # NOTE: a CloudWatch alarm in the canary's AWS account expects a heartbeat
+  # metric at this cadence (see the "Emit canary heartbeat" step) — if you
+  # change this schedule, update the alarm period to match.
   schedule:
     - cron: '*/15 * * * *'
   workflow_dispatch:
@@ -95,6 +98,15 @@ jobs:
           GEMINI_API_KEY: ${{ env.E2E_GEMINI_API_KEY }}
         # Smoke test for now, only runs strands-bedrock.test.ts
         run: npx vitest run --project e2e e2e-tests/strands-bedrock.test.ts --retry 3
+
+      - name: Emit canary heartbeat
+        # Every run emits AgentCoreCLI/Canary :: Success = 1|0, watched by a
+        # CloudWatch alarm in the canary's AWS account. The alarm treats
+        # MISSING data as breaching, so this step must run on success AND
+        # failure — and if it stops running entirely, that absence is itself
+        # what fires the alarm.
+        if: always()
+        run: .github/scripts/emit-canary-heartbeat.sh "${{ job.status }}"
 
       - name: Generate GitHub App Token
         if: failure()
