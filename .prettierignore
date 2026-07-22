@@ -10,3 +10,6 @@ bun.lock
 # rewrites the recorded content (e.g. collapsing arrays) and breaks the exact
 # comparison the golden tests rely on. Refresh them with RECORD=1 instead.
 __fixtures__
+
+*.snap
+src/assets

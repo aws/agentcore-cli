@@ -4,6 +4,6 @@
   "categories": {
     "correctness": "error"
   },
-  "ignorePatterns": ["dist/", "node_modules/"],
+  "ignorePatterns": ["dist/", "node_modules/", "src/assets/"],
   "overrides": []
 }

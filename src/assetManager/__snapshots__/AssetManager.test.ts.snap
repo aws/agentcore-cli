@@ -1,0 +1,17 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`AssetManager cdk renders the expected output tree 1`] = `
+[
+  ".gitignore",
+  ".npmignore",
+  ".prettierrc",
+  "README.md",
+  "bin/cdk.ts",
+  "cdk.json",
+  "jest.config.js",
+  "lib/cdk-stack.ts",
+  "package.json",
+  "test/cdk.test.ts",
+  "tsconfig.json",
+]
+`;
