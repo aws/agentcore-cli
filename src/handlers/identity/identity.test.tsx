@@ -1,0 +1,211 @@
+import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
+import { CoreClient } from "../../core";
+import { createSilentLogger, fixtureFactories, matchGolden, testIO } from "../../testing";
+import { createRootHandler } from "../index";
+
+const REGION = "us-west-2";
+const FIXTURES = join(import.meta.dir, "__fixtures__");
+
+// Record with AWS_PROFILE=YOUR_PROFILE RECORD=1 bun test src/handlers/identity/identity.test.tsx
+// The test account must have two providers pre-created for pagination tests.
+// The RECORD run creates them (create tests run first), tests pagination, then
+// deletes them (delete tests run last).
+const FIXTURE_PROVIDER_NAME = "agentcore-cli-identity-fixture";
+const FIXTURE_PROVIDER_NAME_2 = "agentcore-cli-identity-fixture-2";
+const MISSING_PROVIDER_NAME = "missing-provider-000";
+
+function createFixtureCore(): CoreClient {
+  const { createControlClient, createDataClient, createIamClient } = fixtureFactories(FIXTURES);
+  return new CoreClient(createControlClient, createDataClient, createIamClient);
+}
+
+async function run(args: string[]): Promise<string> {
+  const io = testIO();
+  const root = createRootHandler(createFixtureCore(), {
+    io: io.io,
+    logger: createSilentLogger(),
+  });
+
+  await root.route(["node", "agentcore", ...args, "--region", REGION]);
+  return io.stdout();
+}
+
+describe("identity command hierarchy", () => {
+  test("registers the identity command hierarchy", () => {
+    const root = createRootHandler(createFixtureCore(), {
+      io: testIO().io,
+      logger: createSilentLogger(),
+    });
+    const identity = root.children().find((child) => child.name() === "identity");
+
+    expect(identity?.children().map((child) => child.name())).toEqual([
+      "api-key-credential-provider",
+    ]);
+    expect(
+      identity
+        ?.children()
+        .find((child) => child.name() === "api-key-credential-provider")
+        ?.children()
+        .map((child) => child.name()),
+    ).toEqual(["create", "get", "list", "update", "delete"]);
+  });
+
+  test.each(["identity", "identity api-key-credential-provider"])(
+    "prints help for bare `%s` without an SDK call",
+    async (command) => {
+      const stdout = await run(command.split(" "));
+
+      expect(stdout).toContain(`Usage: agentcore ${command}`);
+      expect(stdout).toContain("Commands:");
+    },
+  );
+});
+
+describe("api-key-credential-provider CRUDL", () => {
+  test("creates an API key credential provider", async () => {
+    const stdout = await run([
+      "identity",
+      "api-key-credential-provider",
+      "create",
+      "--name",
+      FIXTURE_PROVIDER_NAME,
+      "--api-key",
+      "test-api-key-value",
+    ]);
+
+    matchGolden(FIXTURES, "create.golden.json", stdout);
+  });
+
+  test("creates a second API key credential provider for pagination", async () => {
+    const stdout = await run([
+      "identity",
+      "api-key-credential-provider",
+      "create",
+      "--name",
+      FIXTURE_PROVIDER_NAME_2,
+      "--api-key",
+      "test-api-key-value-2",
+    ]);
+
+    matchGolden(FIXTURES, "create-2.golden.json", stdout);
+  });
+
+  test("gets an API key credential provider", async () => {
+    const stdout = await run([
+      "identity",
+      "api-key-credential-provider",
+      "get",
+      "--name",
+      FIXTURE_PROVIDER_NAME,
+    ]);
+
+    matchGolden(FIXTURES, "get.golden.json", stdout);
+    expect(JSON.parse(stdout).name).toBe(FIXTURE_PROVIDER_NAME);
+  });
+
+  test("lists API key credential providers", async () => {
+    const stdout = await run(["identity", "api-key-credential-provider", "list"]);
+
+    matchGolden(FIXTURES, "list.golden.json", stdout);
+    expect(JSON.parse(stdout).credentialProviders).toBeArray();
+  });
+
+  test("paginates API key credential provider list with --max-results and --next-token", async () => {
+    const firstPage = await run([
+      "identity",
+      "api-key-credential-provider",
+      "list",
+      "--max-results",
+      "1",
+    ]);
+    matchGolden(FIXTURES, "list-page-1.golden.json", firstPage);
+
+    const first = JSON.parse(firstPage);
+    expect(first.credentialProviders).toHaveLength(1);
+    expect(first.nextToken).toBeString();
+
+    const secondPage = await run([
+      "identity",
+      "api-key-credential-provider",
+      "list",
+      "--max-results",
+      "1",
+      "--next-token",
+      first.nextToken,
+    ]);
+    matchGolden(FIXTURES, "list-page-2.golden.json", secondPage);
+    expect(JSON.parse(secondPage).credentialProviders).toHaveLength(1);
+  });
+
+  test("updates an API key credential provider", async () => {
+    const stdout = await run([
+      "identity",
+      "api-key-credential-provider",
+      "update",
+      "--name",
+      FIXTURE_PROVIDER_NAME,
+      "--api-key",
+      "updated-api-key-value",
+    ]);
+
+    matchGolden(FIXTURES, "update.golden.json", stdout);
+    expect(JSON.parse(stdout).name).toBe(FIXTURE_PROVIDER_NAME);
+  });
+
+  test("deletes the first API key credential provider", async () => {
+    const stdout = await run([
+      "identity",
+      "api-key-credential-provider",
+      "delete",
+      "--name",
+      FIXTURE_PROVIDER_NAME,
+    ]);
+
+    matchGolden(FIXTURES, "delete.golden.json", stdout);
+  });
+
+  test("deletes the second API key credential provider", async () => {
+    const stdout = await run([
+      "identity",
+      "api-key-credential-provider",
+      "delete",
+      "--name",
+      FIXTURE_PROVIDER_NAME_2,
+    ]);
+
+    matchGolden(FIXTURES, "delete-2.golden.json", stdout);
+  });
+
+  test.each([
+    [
+      "create --name only",
+      ["identity", "api-key-credential-provider", "create", "--name", "x"],
+      /--api-key/,
+    ],
+    [
+      "create --api-key only",
+      ["identity", "api-key-credential-provider", "create", "--api-key", "x"],
+      /--name/,
+    ],
+    ["create bare", ["identity", "api-key-credential-provider", "create"], /--name/],
+    ["get bare", ["identity", "api-key-credential-provider", "get"], /--name/],
+    ["update bare", ["identity", "api-key-credential-provider", "update"], /--name/],
+    [
+      "update --name only",
+      ["identity", "api-key-credential-provider", "update", "--name", "x"],
+      /--api-key/,
+    ],
+    ["delete bare", ["identity", "api-key-credential-provider", "delete"], /--name/],
+  ] as const)("rejects missing required flags for `%s`", async (_label, args, message) => {
+    expect(run([...args])).rejects.toThrow(message);
+  });
+
+  test("propagates ResourceNotFoundException from get", async () => {
+    await expect(
+      run(["identity", "api-key-credential-provider", "get", "--name", MISSING_PROVIDER_NAME]),
+    ).rejects.toMatchObject({
+      name: "ResourceNotFoundException",
+    });
+  });
+});

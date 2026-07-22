@@ -2,6 +2,7 @@ import { BedrockAgentCoreControlClient } from "@aws-sdk/client-bedrock-agentcore
 import { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import { IAMClient } from "@aws-sdk/client-iam";
 import { HarnessClient } from "./harness";
+import { IdentityClient } from "./identity";
 import { RuntimeClient } from "./runtime";
 import type {
   AwsClients,
@@ -45,6 +46,7 @@ export class CoreClient implements AwsClients {
 
   // Feature-scoped sub-clients. Access as e.g. `coreClient.harness.getHarness(...)`.
   readonly harness: HarnessClient = new HarnessClient(this);
+  readonly identity: IdentityClient = new IdentityClient(this);
   readonly runtime: RuntimeClient = new RuntimeClient(this);
 
   readonly projectManager: ProjectManager;

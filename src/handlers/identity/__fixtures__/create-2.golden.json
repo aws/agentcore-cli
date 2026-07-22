@@ -1,0 +1,8 @@
+{
+  "apiKeySecretArn": {
+    "secretArn": "arn:aws:secretsmanager:us-west-2:314146320088:secret:bedrock-agentcore-identity!default/apikey/agentcore-cli-identity-fixture-2-7fd24230-KEL3mK"
+  },
+  "name": "agentcore-cli-identity-fixture-2",
+  "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:314146320088:token-vault/default/apikeycredentialprovider/agentcore-cli-identity-fixture-2",
+  "apiKeySecretSource": "MANAGED"
+}

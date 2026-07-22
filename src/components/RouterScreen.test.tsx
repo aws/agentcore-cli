@@ -88,6 +88,9 @@ describe("navigation", () => {
     await waitForText(r.lastFrame, "❯ harness");
 
     await r.press("down");
+    await waitForText(r.lastFrame, "❯ identity");
+
+    await r.press("down");
     await waitForText(r.lastFrame, "❯ runtime");
     r.unmount();
   });

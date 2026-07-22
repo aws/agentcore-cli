@@ -2,7 +2,7 @@ import { Router } from "../../router";
 import type { AppIO, Core } from "../types";
 import { createRuntimeEndpointHandler } from "./endpoint";
 import { createGetRuntimeHandler } from "./get";
-import { createHelpDefault } from "./help";
+import { createHelpDefault } from "../help";
 import { createListRuntimesHandler } from "./list";
 import { createRuntimeVersionHandler } from "./version";
 

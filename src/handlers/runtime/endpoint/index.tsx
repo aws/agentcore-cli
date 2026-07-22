@@ -1,6 +1,6 @@
 import { Router } from "../../../router";
 import type { AppIO, Core } from "../../types";
-import { createHelpDefault } from "../help";
+import { createHelpDefault } from "../../help";
 import { createGetRuntimeEndpointHandler } from "./get";
 import { createListRuntimeEndpointsHandler } from "./list";
 

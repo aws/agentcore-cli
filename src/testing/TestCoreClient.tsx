@@ -1,21 +1,26 @@
 import type {
+  CreateApiKeyCredentialProviderResponse,
   CreateHarnessEndpointRequest,
   CreateHarnessEndpointResponse,
   CreateHarnessResponse,
+  DeleteApiKeyCredentialProviderResponse,
   DeleteHarnessEndpointRequest,
   DeleteHarnessEndpointResponse,
   DeleteHarnessRequest,
   DeleteHarnessResponse,
+  GetApiKeyCredentialProviderResponse,
   GetHarnessResponse,
   GetHarnessEndpointResponse,
   GetAgentRuntimeEndpointResponse,
   GetAgentRuntimeResponse,
+  ListApiKeyCredentialProvidersResponse,
   ListAgentRuntimeEndpointsResponse,
   ListAgentRuntimesResponse,
   ListAgentRuntimeVersionsResponse,
   ListHarnessesResponse,
   ListHarnessEndpointsResponse,
   ListHarnessVersionsResponse,
+  UpdateApiKeyCredentialProviderResponse,
   UpdateHarnessEndpointRequest,
   UpdateHarnessEndpointResponse,
   UpdateHarnessRequest,
@@ -31,6 +36,7 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { Core } from "../handlers/types";
 import type { CoreHarnessClient, CreateHarnessInput } from "../handlers/harness/types";
+import type { CoreIdentityClient } from "../handlers/identity/types";
 import type { CoreRuntimeClient } from "../handlers/runtime/types";
 import type { CoreOptions } from "../core/types";
 import type { ProjectManager } from "../handlers/project/types";
@@ -74,6 +80,13 @@ const DEFAULT_UPDATE_ENDPOINT_RESPONSE: UpdateHarnessEndpointResponse =
   {} as UpdateHarnessEndpointResponse;
 const DEFAULT_DELETE_ENDPOINT_RESPONSE: DeleteHarnessEndpointResponse =
   {} as DeleteHarnessEndpointResponse;
+const DEFAULT_CREATE_API_KEY_RESPONSE = {} as CreateApiKeyCredentialProviderResponse;
+const DEFAULT_GET_API_KEY_RESPONSE = {} as GetApiKeyCredentialProviderResponse;
+const DEFAULT_LIST_API_KEYS_RESPONSE: ListApiKeyCredentialProvidersResponse = {
+  credentialProviders: [],
+};
+const DEFAULT_UPDATE_API_KEY_RESPONSE = {} as UpdateApiKeyCredentialProviderResponse;
+const DEFAULT_DELETE_API_KEY_RESPONSE = {} as DeleteApiKeyCredentialProviderResponse;
 const DEFAULT_GET_RUNTIME_RESPONSE = {} as GetAgentRuntimeResponse;
 const DEFAULT_GET_RUNTIME_ENDPOINT_RESPONSE = {} as GetAgentRuntimeEndpointResponse;
 const DEFAULT_LIST_RUNTIMES_RESPONSE: ListAgentRuntimesResponse = { agentRuntimes: [] };
@@ -474,9 +487,50 @@ type TestCoreClientOptions = {
   logger?: Logger;
 };
 
+class TestIdentityClient implements CoreIdentityClient {
+  async createApiKeyCredentialProvider(
+    _name: string,
+    _apiKey: string,
+    _options: CoreOptions,
+  ): Promise<CreateApiKeyCredentialProviderResponse> {
+    return DEFAULT_CREATE_API_KEY_RESPONSE;
+  }
+
+  async getApiKeyCredentialProvider(
+    _name: string,
+    _options: CoreOptions,
+  ): Promise<GetApiKeyCredentialProviderResponse> {
+    return DEFAULT_GET_API_KEY_RESPONSE;
+  }
+
+  async listApiKeyCredentialProviders(
+    _nextToken: string | undefined,
+    _maxResults: number | undefined,
+    _options: CoreOptions,
+  ): Promise<ListApiKeyCredentialProvidersResponse> {
+    return DEFAULT_LIST_API_KEYS_RESPONSE;
+  }
+
+  async updateApiKeyCredentialProvider(
+    _name: string,
+    _apiKey: string,
+    _options: CoreOptions,
+  ): Promise<UpdateApiKeyCredentialProviderResponse> {
+    return DEFAULT_UPDATE_API_KEY_RESPONSE;
+  }
+
+  async deleteApiKeyCredentialProvider(
+    _name: string,
+    _options: CoreOptions,
+  ): Promise<DeleteApiKeyCredentialProviderResponse> {
+    return DEFAULT_DELETE_API_KEY_RESPONSE;
+  }
+}
+
 // TestCoreClient implements the Core contract with fully controllable sub-clients.
 export class TestCoreClient implements Core {
   readonly harness = new TestHarnessClient();
+  readonly identity = new TestIdentityClient();
   readonly runtime = new TestRuntimeClient();
   readonly projectManager: ProjectManager;
 
