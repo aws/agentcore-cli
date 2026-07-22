@@ -19,7 +19,15 @@ import { HarnessDeleteEndpointScreen } from "../handlers/harness/endpoint/delete
 import { HarnessVersionScreen } from "../handlers/harness/version/screen.tsx";
 import { HarnessGetVersionScreen } from "../handlers/harness/version/get/screen.tsx";
 import { HarnessListVersionsScreen } from "../handlers/harness/version/list/screen.tsx";
-import { runtimeRoutes } from "../handlers/runtime/routes.tsx";
+import { RuntimeScreen } from "../handlers/runtime/screen.tsx";
+import { RuntimeGetJsonScreen, RuntimeGetScreen } from "../handlers/runtime/get/screen.tsx";
+import { RuntimeListScreen } from "../handlers/runtime/list/screen.tsx";
+import { RuntimeEndpointScreen } from "../handlers/runtime/endpoint/screen.tsx";
+import { RuntimeGetEndpointScreen } from "../handlers/runtime/endpoint/get/screen.tsx";
+import { RuntimeListEndpointsScreen } from "../handlers/runtime/endpoint/list/screen.tsx";
+import { RuntimeVersionScreen } from "../handlers/runtime/version/screen.tsx";
+import { RuntimeGetVersionScreen } from "../handlers/runtime/version/get/screen.tsx";
+import { RuntimeListVersionsScreen } from "../handlers/runtime/version/list/screen.tsx";
 import { RootScreen, HelpScreen } from "../handlers/screen.tsx";
 import type { Context } from "../router";
 
@@ -190,7 +198,63 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
             path="agentcore/harness/version/list/:harnessId"
             element={<HarnessListVersionsScreen ctx={ctx} core={core} />}
           />
-          {runtimeRoutes(ctx, core)}
+          <Route path="agentcore/runtime" element={<RuntimeScreen ctx={ctx} core={core} />} />
+          <Route
+            path="agentcore/runtime/get"
+            element={<Navigate to="/agentcore/runtime/list" replace />}
+          />
+          <Route
+            path="agentcore/runtime/list"
+            element={<RuntimeListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/get/:runtimeId"
+            element={<RuntimeGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/get/:runtimeId/json"
+            element={<RuntimeGetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/version"
+            element={<RuntimeVersionScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/version/get"
+            element={<Navigate to="/agentcore/runtime/version/list" replace />}
+          />
+          <Route
+            path="agentcore/runtime/version/get/:runtimeId/:version"
+            element={<RuntimeGetVersionScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/version/list"
+            element={<RuntimeListVersionsScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/version/list/:runtimeId"
+            element={<RuntimeListVersionsScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/endpoint"
+            element={<RuntimeEndpointScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/endpoint/get"
+            element={<Navigate to="/agentcore/runtime/endpoint/list" replace />}
+          />
+          <Route
+            path="agentcore/runtime/endpoint/get/:runtimeId/:qualifier"
+            element={<RuntimeGetEndpointScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/endpoint/list"
+            element={<RuntimeListEndpointsScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/endpoint/list/:runtimeId"
+            element={<RuntimeListEndpointsScreen ctx={ctx} core={core} />}
+          />
           <Route path="*" element={<HelpScreen ctx={ctx} core={core} />} />
         </Routes>
       </MemoryRouter>
