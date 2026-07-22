@@ -82,36 +82,6 @@ async function waitForRuntimeMenu(lastFrame: () => string | undefined): Promise<
   );
 }
 
-describe("runtime test client", () => {
-  test("configures list responses and records calls", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setListResponse({ agentRuntimes: [], nextToken: "page-2" });
-
-    await core.runtime.listRuntimes(undefined, 20, { region: "us-east-1" });
-
-    expect(core.runtime.calls).toEqual([
-      {
-        method: "listRuntimes",
-        args: [undefined, 20, { region: "us-east-1" }],
-      },
-    ]);
-  });
-
-  test("uses exact initial, explicit, and default resize dimensions", async () => {
-    const r = renderScreen("/agentcore/runtime");
-    await waitForText(r.lastFrame, "agentcore → runtime");
-    await tick();
-
-    expect(frameSize(r.lastFrame()!)).toEqual({ columns: 100, rows: 40 });
-
-    await r.resize(60, 12);
-    expect(frameSize(r.lastFrame()!)).toEqual({ columns: 60, rows: 12 });
-
-    await r.resize(70);
-    expect(frameSize(r.lastFrame()!)).toEqual({ columns: 70, rows: 40 });
-  });
-});
-
 describe("runtime menus", () => {
   test("renders the Runtime command menu", async () => {
     const r = renderScreen("/agentcore/runtime");

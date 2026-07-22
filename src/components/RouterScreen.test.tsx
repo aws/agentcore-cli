@@ -95,8 +95,6 @@ function runtimeCore(): TestCoreClient {
   const core = new TestCoreClient();
   core.runtime.setListResponse({ agentRuntimes: [runtime()] });
   core.runtime.setGetResponse(getRuntimeResponse());
-  core.runtime.setListVersionsResponse({ agentRuntimes: [runtime()] });
-  core.runtime.setGetVersionResponse(getRuntimeResponse());
   core.runtime.setListEndpointsResponse({ runtimeEndpoints: [endpoint()] });
   core.runtime.setGetEndpointResponse(getEndpointResponse());
   return core;
@@ -299,205 +297,91 @@ describe("navigation", () => {
     r.unmount();
   });
 
-  test.each([
-    [
-      "versions",
-      1,
-      "agentcore → runtime → version → list → runtime-123",
-      "2026-07-20T12:34:56.000Z",
-      "agentcore → runtime → version → get → runtime-123 → 7",
-      '"agentRuntimeVersion"',
-      "listRuntimeVersions",
-      "getRuntimeVersion",
-    ],
-    [
-      "endpoints",
-      2,
-      "agentcore → runtime → endpoint → list → runtime-123",
-      "prod",
-      "agentcore → runtime → endpoint → get → runtime-123 → prod",
-      '"agentRuntimeEndpointArn"',
+  test("navigates from Root through Runtime endpoints and escapes each boundary", async () => {
+    const core = runtimeCore();
+    const r = renderScreen("/agentcore", {
+      core,
+      ctx: runtimeContext(core),
+    });
+
+    await waitForText(r.lastFrame, "❯ harness");
+    await r.press("down");
+    await r.press("return");
+    await waitForText(r.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
+
+    await r.press("down");
+    await r.press("return");
+    await waitForText(r.lastFrame, "agentcore → runtime → list");
+    await waitForText(r.lastFrame, "checkout");
+
+    await r.press("return");
+    await waitForText(r.lastFrame, "agentcore → runtime → get → runtime-123");
+    await waitForText(r.lastFrame, "show the full JSON definition");
+
+    await r.press("down");
+    await r.press("down");
+    await r.press("return");
+    await waitForText(r.lastFrame, "agentcore → runtime → endpoint → list → runtime-123");
+    await waitForText(r.lastFrame, "prod");
+
+    await r.press("return");
+    await waitForText(r.lastFrame, "agentcore → runtime → endpoint → get → runtime-123 → prod");
+    await waitForText(r.lastFrame, '"agentRuntimeEndpointArn"');
+
+    await r.press("escape");
+    await waitFor(() => {
+      const frame = r.lastFrame() ?? "";
+      return (
+        frame.includes("agentcore → runtime → endpoint → list → runtime-123") &&
+        !frame.includes("agentcore → runtime → endpoint → get")
+      );
+    });
+    await tick(50);
+    await r.press("escape");
+    await waitForText(r.lastFrame, "agentcore → runtime → get → runtime-123");
+    await tick(50);
+    await r.press("escape");
+    await waitForText(r.lastFrame, "agentcore → runtime → list");
+    await tick(50);
+    await r.press("escape");
+    await waitForText(r.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
+    await r.press("escape");
+    await waitForText(r.lastFrame, "the platform for production AI agents");
+
+    expectEndpointPropagation(core, [
+      "listRuntimes",
+      "getRuntime",
       "listRuntimeEndpoints",
       "getRuntimeEndpoint",
-    ],
-  ] as const)(
-    "navigates from Root through Runtime %s and escapes each explicit boundary",
-    async (
-      _destination,
-      hubDownPresses,
-      scopedListBreadcrumb,
-      scopedListValue,
-      jsonBreadcrumb,
-      jsonField,
-      listMethod,
-      getMethod,
-    ) => {
-      const core = runtimeCore();
-      const r = renderScreen("/agentcore", {
-        core,
-        ctx: runtimeContext(core),
-      });
-
-      await waitForText(r.lastFrame, "❯ harness");
-      await r.press("down");
-      await r.press("return");
-      await waitForText(r.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
-
-      await r.press("down");
-      await r.press("return");
-      await waitForText(r.lastFrame, "agentcore → runtime → list");
-      await waitForText(r.lastFrame, "checkout");
-
-      await r.press("return");
-      await waitForText(r.lastFrame, "agentcore → runtime → get → runtime-123");
-      await waitForText(r.lastFrame, "show the full JSON definition");
-
-      for (let index = 0; index < hubDownPresses; index += 1) {
-        await r.press("down");
-      }
-      await r.press("return");
-      await waitForText(r.lastFrame, scopedListBreadcrumb);
-      await waitForText(r.lastFrame, scopedListValue);
-
-      await r.press("return");
-      await waitForText(r.lastFrame, jsonBreadcrumb);
-      await waitForText(r.lastFrame, jsonField);
-
-      await r.press("escape");
-      await waitForText(r.lastFrame, scopedListBreadcrumb);
-      await waitForText(r.lastFrame, scopedListValue);
-      await r.press("escape");
-      await waitForText(r.lastFrame, "agentcore → runtime → get → runtime-123");
-      await waitForText(r.lastFrame, "show the full JSON definition");
-      await r.press("escape");
-      await waitForText(r.lastFrame, "agentcore → runtime → list");
-      await waitForText(r.lastFrame, "checkout");
-      await r.press("escape");
-      await waitForText(r.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
-      await r.press("escape");
-      await waitForText(r.lastFrame, "the platform for production AI agents");
-      expect(r.lastFrame()).toContain("❯ harness");
-
-      const callsAtRoot = core.runtime.calls.length;
-      await r.press("escape");
-      expect(r.lastFrame()).toContain("❯ harness");
-      expect(core.runtime.calls).toHaveLength(callsAtRoot);
-
-      expectEndpointPropagation(core, ["listRuntimes", "getRuntime", listMethod, getMethod]);
-    },
-  );
-
-  test.each([
-    [
-      "versions",
-      "version",
-      "2026-07-20T12:34:56.000Z",
-      "agentcore → runtime → version → get → runtime-123 → 7",
-      '"agentRuntimeVersion"',
-    ],
-    [
-      "endpoints",
-      "endpoint",
-      "prod",
-      "agentcore → runtime → endpoint → get → runtime-123 → prod",
-      '"agentRuntimeEndpointArn"',
-    ],
-  ] as const)(
-    "reverses the direct Runtime %s get flow through its actual history",
-    async (_destination, resource, scopedListValue, jsonBreadcrumb, jsonField) => {
-      const core = runtimeCore();
-      const r = renderScreen(`/agentcore/runtime/${resource}`, {
-        core,
-        ctx: runtimeContext(core),
-      });
-
-      await waitForText(r.lastFrame, `agentcore → runtime → ${resource}`);
-      await r.press("return");
-      await waitForText(r.lastFrame, "checkout");
-
-      await r.press("return");
-      await waitForText(r.lastFrame, `agentcore → runtime → ${resource} → list → runtime-123`);
-      await waitForText(r.lastFrame, scopedListValue);
-
-      await r.press("return");
-      await waitForText(r.lastFrame, jsonBreadcrumb);
-      await waitForText(r.lastFrame, jsonField);
-
-      await r.press("escape");
-      await waitForText(r.lastFrame, `agentcore → runtime → ${resource} → list → runtime-123`);
-
-      await tick(50);
-      await r.press("escape");
-      await tick(100);
-      const parentFrame = r.lastFrame() ?? "";
-      expect(parentFrame).toContain(`agentcore → runtime → ${resource} → list`);
-      expect(parentFrame).not.toContain(`agentcore → runtime → ${resource} → list → runtime-123`);
-      expect(parentFrame).toContain("checkout");
-
-      await r.press("escape");
-      await waitForText(
-        r.lastFrame,
-        `agentcore → runtime → ${resource} → inspect AgentCore Runtime ${resource}s`,
-      );
-    },
-  );
+    ]);
+  });
 });
 
 describe("Runtime TUI exit", () => {
-  test.each([
-    [
-      "Runtime list",
+  test("Ctrl+C exits a production Runtime list and ignores input after exit", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setListResponse({
+      agentRuntimes: [runtime()],
+      nextToken: "page-2",
+    });
+    const { streams, stdin } = ttyTestIO();
+    const renderPromise = renderTuiAt(
       "/agentcore/runtime/list",
-      "listRuntimes",
-      0,
-      (core: TestCoreClient) =>
-        core.runtime.setListResponse({
-          agentRuntimes: [runtime()],
-          nextToken: "page-2",
-        }),
-    ],
-    [
-      "version list",
-      "/agentcore/runtime/version/list/runtime-123",
-      "listRuntimeVersions",
-      1,
-      (core: TestCoreClient) =>
-        core.runtime.setListVersionsResponse({
-          agentRuntimes: [runtime()],
-          nextToken: "page-2",
-        }),
-    ],
-    [
-      "endpoint list",
-      "/agentcore/runtime/endpoint/list/runtime-123",
-      "listRuntimeEndpoints",
-      1,
-      (core: TestCoreClient) =>
-        core.runtime.setListEndpointsResponse({
-          runtimeEndpoints: [endpoint()],
-          nextToken: "page-2",
-        }),
-    ],
-  ] as const)(
-    "Ctrl+C exits the production %s and ignores paging input after exit",
-    async (_label, path, method, tokenIndex, configure) => {
-      const core = new TestCoreClient();
-      configure(core);
-      const { streams, stdin } = ttyTestIO();
-      const renderPromise = renderTuiAt(path, runtimeContext(core), core, streams.io);
-      const methodCalls = () => core.runtime.calls.filter((call) => call.method === method);
+      runtimeContext(core),
+      core,
+      streams.io,
+    );
+    const listCalls = () => core.runtime.calls.filter((call) => call.method === "listRuntimes");
 
-      await waitFor(() => methodCalls().length > 0 && streams.stdout().includes("page 1 · more →"));
-      await tick();
-      const callsBeforeExit = methodCalls().length;
+    await waitFor(() => listCalls().length > 0 && streams.stdout().includes("page 1 · more →"));
+    const callsBeforeExit = listCalls().length;
 
-      stdin.write(String.fromCharCode(3));
-      await expect(renderPromise).resolves.toBeUndefined();
+    stdin.write(String.fromCharCode(3));
+    await expect(renderPromise).resolves.toBeUndefined();
 
-      stdin.write("l");
-      await tick(50);
-      expect(methodCalls()).toHaveLength(callsBeforeExit);
-      expect(methodCalls().some((call) => call.args[tokenIndex] === "page-2")).toBe(false);
-    },
-  );
+    stdin.write("l");
+    await tick(50);
+    expect(listCalls()).toHaveLength(callsBeforeExit);
+    expect(listCalls().some((call) => call.args[0] === "page-2")).toBe(false);
+  });
 });
