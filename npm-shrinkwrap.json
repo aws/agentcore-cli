@@ -6898,6 +6898,22 @@
         }
       }
     },
+    "node_modules/ajv/node_modules/fast-uri": {
+      "version": "3.1.4",
+      "resolved": "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.4.tgz",
+      "integrity": "sha512-8JnbkQ4juDyvYs4mgFGQqg4yCYtFDtUtmp2QIQq11ZZe5CFQ5wcqm1rqDgAh/QdMySuBnPzMUiJUNZG5N/AiQw==",
+      "funding": [
+        {
+          "type": "github",
+          "url": "https://github.com/sponsors/fastify"
+        },
+        {
+          "type": "opencollective",
+          "url": "https://opencollective.com/fastify"
+        }
+      ],
+      "license": "BSD-3-Clause"
+    },
     "node_modules/ansi-escapes": {
       "version": "7.3.0",
       "resolved": "https://registry.npmjs.org/ansi-escapes/-/ansi-escapes-7.3.0.tgz",
@@ -9655,22 +9671,6 @@
       "resolved": "https://registry.npmjs.org/fast-levenshtein/-/fast-levenshtein-2.0.6.tgz",
       "integrity": "sha512-DCXu6Ifhqcks7TZKY3Hxp3y6qphY5SJZmrWMDrKcERSOXWQdMhU9Ig/PYrzyw/ul9jOIyh0N4M0tbC5hodg8dw==",
       "license": "MIT"
-    },
-    "node_modules/fast-uri": {
-      "version": "3.1.2",
-      "resolved": "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.2.tgz",
-      "integrity": "sha512-rVjf7ArG3LTk+FS6Yw81V1DLuZl1bRbNrev6Tmd/9RaroeeRRJhAt7jg/6YFxbvAQXUCavSoZhPPj6oOx+5KjQ==",
-      "funding": [
-        {
-          "type": "github",
-          "url": "https://github.com/sponsors/fastify"
-        },
-        {
-          "type": "opencollective",
-          "url": "https://opencollective.com/fastify"
-        }
-      ],
-      "license": "BSD-3-Clause"
     },
     "node_modules/fast-xml-builder": {
       "version": "1.3.0",
