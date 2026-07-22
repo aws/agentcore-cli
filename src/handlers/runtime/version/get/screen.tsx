@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
+import { withoutSdkMetadata } from "../../components/withoutSdkMetadata";
 import type { ScreenProps } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 
@@ -18,7 +19,7 @@ export function RuntimeGetVersionScreen({ ctx, core }: ScreenProps) {
       breadcrumb={["agentcore", "runtime", "version", "get", runtimeId ?? "", version ?? ""]}
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
-      data={detail.data}
+      data={withoutSdkMetadata(detail.data)}
       loadingLabel={`Loading version ${version ?? ""} for Runtime ${runtimeId ?? ""}…`}
       onRetry={() => void detail.refetch()}
     />

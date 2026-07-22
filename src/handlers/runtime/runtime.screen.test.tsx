@@ -50,6 +50,7 @@ function getRuntimeResponse(
     roleArn: "arn:aws:iam::123456789012:role/runtime-role",
     networkConfiguration: { networkMode: "PUBLIC" },
     status: "READY",
+    protocolConfiguration: { serverProtocol: "HTTP" },
     lifecycleConfiguration: {
       idleRuntimeSessionTimeout: 900,
       maxLifetime: 28_800,
@@ -588,7 +589,9 @@ describe("runtime hub", () => {
     expect(r.lastFrame()).toContain("runtime-123");
     expect(r.lastFrame()).toContain("READY");
     expect(r.lastFrame()).toMatch(/version\s+7/);
+    expect(r.lastFrame()).toMatch(/protocol\s+HTTP/);
     expect(r.lastFrame()).toMatch(/network\s+PUBLIC/);
+    expect(r.lastFrame()).not.toContain("failureReason");
     await waitFor(() => core.runtime.calls.some((call) => call.method === "getRuntime"));
     expect(core.runtime.calls.find((call) => call.method === "getRuntime")).toEqual({
       method: "getRuntime",
@@ -600,6 +603,28 @@ describe("runtime hub", () => {
         },
       ],
     });
+  });
+
+  test("shows the Runtime failure reason only when the service provides one", async () => {
+    const healthyCore = new TestCoreClient();
+    healthyCore.runtime.setGetResponse(getRuntimeResponse());
+    const healthy = renderScreen("/agentcore/runtime/get/runtime-123", { core: healthyCore });
+
+    await waitForText(healthy.lastFrame, "show the full JSON definition");
+    expect(healthy.lastFrame()).not.toContain("failureReason");
+    healthy.unmount();
+
+    const failedCore = new TestCoreClient();
+    failedCore.runtime.setGetResponse(
+      getRuntimeResponse({
+        status: "CREATE_FAILED",
+        failureReason: "Image could not be pulled",
+      }),
+    );
+    const failed = renderScreen("/agentcore/runtime/get/runtime-123", { core: failedCore });
+
+    await waitForText(failed.lastFrame, "Image could not be pulled");
+    expect(failed.lastFrame()).toMatch(/failureReason\s+Image could not be pulled/);
   });
 
   test("renders exactly the read-only detail, versions, and endpoints actions", async () => {
@@ -687,13 +712,14 @@ describe("runtime hub", () => {
 
   test("opens complete Runtime JSON from the detail action and scrolls", async () => {
     const core = new TestCoreClient();
-    core.runtime.setGetResponse(
-      getRuntimeResponse({
+    core.runtime.setGetResponse({
+      $metadata: { requestId: "runtime-request-metadata" },
+      ...getRuntimeResponse({
         environmentVariables: Object.fromEntries(
           Array.from({ length: 30 }, (_, index) => [`VARIABLE_${index}`, `value-${index}`]),
         ),
       }),
-    );
+    } as GetAgentRuntimeResponse);
     const r = renderScreen("/agentcore/runtime/get/runtime-123", { core });
 
     await waitForText(r.lastFrame, "show the full JSON definition");
@@ -703,6 +729,8 @@ describe("runtime hub", () => {
     expect(frame).toContain('"agentRuntimeId"');
     expect(frame).toContain('"networkConfiguration"');
     expect(frame).toContain('"lifecycleConfiguration"');
+    expect(frame).not.toContain("$metadata");
+    expect(frame).not.toContain("runtime-request-metadata");
     expect(frame).not.toContain('"VARIABLE_29"');
     for (let index = 0; index < 20; index += 1) await r.press("down");
     for (let index = 0; index < 20; index += 1) await r.write("j");

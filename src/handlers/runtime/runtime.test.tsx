@@ -64,6 +64,7 @@ describe("runtime command hierarchy", () => {
     });
     const runtime = root.children().find((child) => child.name() === "runtime");
 
+    expect(runtime?.flags().map((flag) => flag.name)).not.toContain("interactive");
     expect(runtime?.children().map((child) => child.name())).toEqual([
       "get",
       "list",
@@ -97,30 +98,15 @@ describe("runtime command hierarchy", () => {
   );
 });
 
-describe("runtime interactive mode", () => {
-  test("rejects --interactive on non-TTY streams before calling Runtime Core", async () => {
-    const { core, route } = testRuntimeCommand();
-
-    await expect(route(["runtime", "list", "--interactive"])).rejects.toThrow(
-      "interactive mode requires a TTY on stdin and stdout",
-    );
-    expect(core.runtime.calls).toEqual([]);
-  });
-
-  test("rejects --interactive with --json before rendering or calling Runtime Core", async () => {
-    const { core, route } = testRuntimeCommand(true);
-
-    await expect(route(["runtime", "list", "--interactive", "--json"])).rejects.toThrow(
-      /interactive.*json/i,
-    );
-    expect(core.runtime.calls).toEqual([]);
-  });
-
+describe("runtime TUI dispatch", () => {
   test.each([
-    ["runtime", ["runtime", "--interactive"]],
-    ["runtime version", ["runtime", "version", "--interactive"]],
-    ["runtime endpoint", ["runtime", "endpoint", "--interactive"]],
-  ] as const)("keeps explicit interactive mode on the %s menu", async (_label, args) => {
+    ["get", ["runtime", "get"]],
+    ["list", ["runtime", "list"]],
+    ["version get", ["runtime", "version", "get"]],
+    ["version list", ["runtime", "version", "list"]],
+    ["endpoint get", ["runtime", "endpoint", "get"]],
+    ["endpoint list", ["runtime", "endpoint", "list"]],
+  ] as const)("opens the TUI for a bare Runtime %s leaf", async (_label, args) => {
     const { core, route } = testRuntimeCommand();
 
     await expect(route([...args])).rejects.toThrow(
@@ -129,34 +115,17 @@ describe("runtime interactive mode", () => {
     expect(core.runtime.calls).toEqual([]);
   });
 
-  test.each([
-    ["version", ["runtime", "version", "get", "--version", "1", "--interactive"], /version.*id/i],
-    [
-      "qualifier",
-      ["runtime", "endpoint", "get", "--qualifier", "prod", "--interactive"],
-      /qualifier.*id/i,
-    ],
-  ] as const)(
-    "rejects a %s without an ID before rendering or calling Runtime Core",
-    async (_label, args, message) => {
-      const { core, route } = testRuntimeCommand();
-
-      await expect(route([...args])).rejects.toThrow(message);
-      expect(core.runtime.calls).toEqual([]);
-    },
-  );
-
-  test("keeps runtime list without own flags headless", async () => {
+  test("keeps Runtime leaves with operation flags headless", async () => {
     const { core, io, route } = testRuntimeCommand();
     core.runtime.setListResponse({ agentRuntimes: [], nextToken: "page-2" });
 
-    await route(["runtime", "list"]);
+    await route(["runtime", "list", "--max-results", "1"]);
 
     expect(JSON.parse(io.stdout())).toEqual({ agentRuntimes: [], nextToken: "page-2" });
     expect(core.runtime.calls).toEqual([
       {
         method: "listRuntimes",
-        args: [undefined, undefined, { region: REGION, endpointUrl: undefined }],
+        args: [undefined, 1, { region: REGION, endpointUrl: undefined }],
       },
     ]);
   });
@@ -304,9 +273,12 @@ describe("runtime read-only commands", () => {
       /--qualifier/,
     ],
     ["runtime endpoint list", ["runtime", "endpoint", "list"], /--id/],
-  ] as const)("rejects a missing required selector for `%s`", async (_label, args, message) => {
-    expect(run([...args])).rejects.toThrow(message);
-  });
+  ] as const)(
+    "rejects a missing required selector for headless `%s`",
+    async (_label, args, message) => {
+      expect(run([...args, "--json"])).rejects.toThrow(message);
+    },
+  );
 
   test.each([
     [

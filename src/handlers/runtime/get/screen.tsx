@@ -10,6 +10,7 @@ import { Divider } from "../../../components/ui/divider/Divider.js";
 import { Spinner } from "../../../components/ui/spinner";
 import type { ScreenProps } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
+import { withoutSdkMetadata } from "../components/withoutSdkMetadata";
 
 const ACTIONS = [
   {
@@ -89,7 +90,9 @@ export function RuntimeGetScreen({ ctx, core }: ScreenProps) {
               items={{
                 id: detail.data.agentRuntimeId ?? "",
                 status: detail.data.status ?? "",
+                ...(detail.data.failureReason ? { failureReason: detail.data.failureReason } : {}),
                 version: detail.data.agentRuntimeVersion ?? "",
+                protocol: detail.data.protocolConfiguration?.serverProtocol ?? "-",
                 network: detail.data.networkConfiguration?.networkMode ?? "-",
                 arn: detail.data.agentRuntimeArn ?? "",
               }}
@@ -135,7 +138,7 @@ export function RuntimeGetJsonScreen({ ctx, core }: ScreenProps) {
       breadcrumb={["agentcore", "runtime", "get", runtimeId ?? "", "json"]}
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
-      data={detail.data}
+      data={withoutSdkMetadata(detail.data)}
       loadingLabel="Loading Runtime…"
       onRetry={() => void detail.refetch()}
     />

@@ -390,13 +390,18 @@ describe("Runtime version flow", () => {
     core.runtime.setListVersionsResponse({
       agentRuntimes: [runtime({ agentRuntimeVersion: "9" })],
     });
-    core.runtime.setGetVersionResponse(getVersionResponse({ agentRuntimeVersion: "9" }));
+    core.runtime.setGetVersionResponse({
+      $metadata: { requestId: "version-request-metadata" },
+      ...getVersionResponse({ agentRuntimeVersion: "9" }),
+    } as GetAgentRuntimeResponse);
     const r = renderScreen("/agentcore/runtime/version/list/runtime-123", { core });
 
     await waitForText(r.lastFrame, "9");
     await r.press("return");
     await waitForText(r.lastFrame, "agentcore → runtime → version → get → runtime-123 → 9");
     await waitForText(r.lastFrame, '"networkConfiguration"');
+    expect(r.lastFrame()).not.toContain("$metadata");
+    expect(r.lastFrame()).not.toContain("version-request-metadata");
     await waitFor(() =>
       core.runtime.calls.some(
         (call) =>
