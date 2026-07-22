@@ -37,6 +37,7 @@ import type { ProjectManager } from "../handlers/project/types";
 import type { Logger } from "../logging";
 import { createSilentLogger } from "./logging";
 import { FsProjectManager } from "../core/project";
+import { AssetManager } from "../assetManager";
 
 // TestCoreClient is a hand-controllable `Core` for tests. It implements the same
 // interface the real CoreClient satisfies, so it drops straight into
@@ -481,6 +482,9 @@ export class TestCoreClient implements Core {
   readonly projectManager: ProjectManager;
 
   constructor(options?: TestCoreClientOptions) {
-    this.projectManager = new FsProjectManager({ logger: options?.logger ?? createSilentLogger() });
+    this.projectManager = new FsProjectManager({
+      logger: options?.logger ?? createSilentLogger(),
+      assetManager: new AssetManager(),
+    });
   }
 }

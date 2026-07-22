@@ -3,10 +3,14 @@ import { Router, createHandler } from "../router";
 import { createSilentLogger } from "../testing";
 import { withProject } from "./withProject";
 import { FsProjectManager } from "../core/project";
+import { AssetManager } from "../assetManager";
 
 describe("withProject", () => {
   test("throws not implemented", async () => {
-    const projectManager = new FsProjectManager({ logger: createSilentLogger() });
+    const projectManager = new FsProjectManager({
+      logger: createSilentLogger(),
+      assetManager: new AssetManager(),
+    });
 
     const app = new Router("app", "test");
     app.use(withProject({ projectManager, cwd: "/some/path" }));
