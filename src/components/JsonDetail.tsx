@@ -16,7 +16,6 @@ export interface JsonDetailProps {
   data: unknown;
   // loadingLabel names what's loading (e.g. "Loading endpoint…").
   loadingLabel: string;
-  onEscape?: () => void;
   onRetry?: () => void;
 }
 
@@ -30,7 +29,6 @@ export function JsonDetail({
   error,
   data,
   loadingLabel,
-  onEscape,
   onRetry,
 }: JsonDetailProps) {
   const navigate = useNavigate();
@@ -38,8 +36,7 @@ export function JsonDetail({
 
   useInput((input, key) => {
     if (key.escape) {
-      if (onEscape) onEscape();
-      else navigate(-1);
+      navigate(-1);
       return;
     }
     if (input === "r" && error && onRetry) {

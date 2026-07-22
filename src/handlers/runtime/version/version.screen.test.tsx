@@ -51,17 +51,6 @@ function getVersionResponse(
   };
 }
 
-function deferred<T>(): {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-} {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((release) => {
-    resolve = release;
-  });
-  return { promise, resolve };
-}
-
 async function waitForRuntimePicker(lastFrame: () => string | undefined): Promise<void> {
   await waitFor(() => {
     const frame = lastFrame() ?? "";
@@ -279,7 +268,7 @@ describe("Runtime version flow", () => {
       },
       "page-2",
     );
-    const nextPage = deferred<void>();
+    const nextPage = Promise.withResolvers<void>();
     const listVersions = core.runtime.listRuntimeVersions.bind(core.runtime);
     core.runtime.listRuntimeVersions = async (...args) => {
       const response = await listVersions(...args);
@@ -357,7 +346,7 @@ describe("Runtime version flow", () => {
     loadingCore.runtime.setListResponse({
       agentRuntimes: [runtime()],
     });
-    const pending = deferred<ListAgentRuntimeVersionsResponse>();
+    const pending = Promise.withResolvers<ListAgentRuntimeVersionsResponse>();
     loadingCore.runtime.listRuntimeVersions = async () => pending.promise;
     const loading = renderScreen("/agentcore/runtime/version/list", {
       core: loadingCore,

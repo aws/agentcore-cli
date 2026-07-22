@@ -75,17 +75,6 @@ function coreWithRuntimes(runtimes: AgentRuntime[]): TestCoreClient {
   return core;
 }
 
-function deferred<T>(): {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-} {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((release) => {
-    resolve = release;
-  });
-  return { promise, resolve };
-}
-
 async function waitForRuntimeMenu(lastFrame: () => string | undefined): Promise<void> {
   await waitFor(() =>
     (lastFrame() ?? "").includes("agentcore → runtime → inspect AgentCore Runtimes"),
@@ -252,7 +241,7 @@ describe("runtime picker", () => {
 
   test("shows loading and lets Esc return to the Runtime menu", async () => {
     const core = new TestCoreClient();
-    const pending = deferred<ListAgentRuntimesResponse>();
+    const pending = Promise.withResolvers<ListAgentRuntimesResponse>();
     core.runtime.listRuntimes = async () => pending.promise;
     const r = renderScreen("/agentcore/runtime/list", { core });
 
@@ -432,8 +421,8 @@ describe("runtime picker", () => {
       },
       "page-2",
     );
-    const pageTwo = deferred<void>();
-    const pageOneAgain = deferred<void>();
+    const pageTwo = Promise.withResolvers<void>();
+    const pageOneAgain = Promise.withResolvers<void>();
     let holdFirstPage = false;
     const listRuntimes = core.runtime.listRuntimes.bind(core.runtime);
     core.runtime.listRuntimes = async (...args) => {
@@ -490,7 +479,7 @@ describe("runtime picker", () => {
       },
       "page-2",
     );
-    const pageOneRefetch = deferred<void>();
+    const pageOneRefetch = Promise.withResolvers<void>();
     let holdFirstPage = false;
     const listRuntimes = core.runtime.listRuntimes.bind(core.runtime);
     core.runtime.listRuntimes = async (...args) => {
@@ -816,7 +805,7 @@ describe("runtime hub", () => {
 
   test("Esc remains active while the hub is loading", async () => {
     const hubCore = coreWithRuntimes([runtime({ agentRuntimeId: "runtime-123" })]);
-    const hubPending = deferred<GetAgentRuntimeResponse>();
+    const hubPending = Promise.withResolvers<GetAgentRuntimeResponse>();
     hubCore.runtime.getRuntime = async () => hubPending.promise;
     const hub = renderScreen("/agentcore/runtime/list", { core: hubCore });
 

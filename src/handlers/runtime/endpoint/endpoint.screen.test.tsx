@@ -64,17 +64,6 @@ function getEndpointResponse(
   };
 }
 
-function deferred<T>(): {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-} {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((release) => {
-    resolve = release;
-  });
-  return { promise, resolve };
-}
-
 async function waitForRuntimePicker(lastFrame: () => string | undefined): Promise<void> {
   await waitFor(() => {
     const frame = lastFrame() ?? "";
@@ -289,7 +278,7 @@ describe("Runtime endpoint flow", () => {
       },
       "page-2",
     );
-    const nextPage = deferred<void>();
+    const nextPage = Promise.withResolvers<void>();
     const listEndpoints = core.runtime.listRuntimeEndpoints.bind(core.runtime);
     core.runtime.listRuntimeEndpoints = async (...args) => {
       const response = await listEndpoints(...args);
@@ -354,7 +343,7 @@ describe("Runtime endpoint flow", () => {
     loadingCore.runtime.setListResponse({
       agentRuntimes: [runtime()],
     });
-    const pending = deferred<ListAgentRuntimeEndpointsResponse>();
+    const pending = Promise.withResolvers<ListAgentRuntimeEndpointsResponse>();
     loadingCore.runtime.listRuntimeEndpoints = async () => pending.promise;
     const loading = renderScreen("/agentcore/runtime/endpoint/list", {
       core: loadingCore,
