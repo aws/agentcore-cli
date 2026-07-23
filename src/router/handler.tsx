@@ -14,6 +14,8 @@ export interface Flag<N extends string = string, T = unknown> {
   // Its first line is the type annotation shown next to the flag name; the
   // remaining lines are the body — prose, JSON syntax, examples.
   help?: string;
+  // sensitive flags are redacted from debug logs by the withLogging middleware.
+  sensitive?: boolean;
 }
 
 // GlobalFlag is a group-level flag that is *also* a typed ContextKey: declared on
@@ -32,9 +34,9 @@ export function flag<N extends string, T>(
   name: N,
   description: string,
   schema: z.ZodType<T>,
-  help?: string,
+  options?: { help?: string; sensitive?: boolean },
 ): Flag<N, T> {
-  return { name, description, schema, help };
+  return { name, description, schema, help: options?.help, sensitive: options?.sensitive };
 }
 
 // globalFlag constructs a GlobalFlag. The returned value doubles as the typed

@@ -632,12 +632,9 @@ test("flags with long-form help render a Parameter details section", async () =>
     description: "",
     flags: [
       flag("name", "the name", z.string().optional()),
-      flag(
-        "model",
-        "model config (JSON)",
-        z.string().optional(),
-        `(JSON: tagged union object)\nThe model configuration.\n\nExample:\n  --model '{"a":1}'`,
-      ),
+      flag("model", "model config (JSON)", z.string().optional(), {
+        help: `(JSON: tagged union object)\nThe model configuration.\n\nExample:\n  --model '{"a":1}'`,
+      }),
     ],
     handle: async () => {},
   });

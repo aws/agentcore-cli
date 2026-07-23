@@ -1,9 +1,26 @@
 import type { Logger } from "../logging";
-import type { Middleware } from "../router";
+import type { Flag, Middleware } from "../router";
 import { LoggerKey, PathKey } from "../router";
 
 interface WithLoggingConfig {
   logger: Logger;
+}
+
+const REDACTED = "[REDACTED]";
+
+// replace the values of sensitive flags with a placeholder
+function redactSensitiveFlags(
+  flags: Record<string, unknown>,
+  flagDefs: Flag[],
+): Record<string, unknown> {
+  const sensitiveNames = new Set(flagDefs.filter((f) => f.sensitive).map((f) => f.name));
+  if (sensitiveNames.size === 0) return flags;
+
+  const redacted: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(flags)) {
+    redacted[key] = sensitiveNames.has(key) && value !== undefined ? REDACTED : value;
+  }
+  return redacted;
 }
 
 /**
@@ -23,8 +40,8 @@ export function withLogging(config: WithLoggingConfig): Middleware {
       const commandPath = ctx.require(PathKey);
       const logger = config.logger.child({ commandPath });
       try {
-        // TODO: ensure sensitive fields are redacted from flags/args.
-        logger.child({ flags, args }).debug("executing command");
+        const safeFlags = redactSensitiveFlags(flags, h.flags());
+        logger.child({ flags: safeFlags, args }).debug("executing command");
         await h.handle(ctx.withValue<Logger>(LoggerKey, logger), flags, args);
         logger.debug("command executed successfully");
       } catch (err) {

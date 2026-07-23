@@ -1,5 +1,6 @@
 import { test, describe, beforeEach, afterEach } from "bun:test";
-import { Router, createHandler } from "../router";
+import z from "zod";
+import { Router, createHandler, flag } from "../router";
 import { withLogging } from "./withLogging";
 import { createFileLogger } from "../logging/fileLogger";
 import { LOG_LEVEL, type AsyncLogger } from "../logging/types";
@@ -23,6 +24,42 @@ describe("withLogging", () => {
   afterEach(async () => {
     await logger.end();
     await rm(tempDir, { recursive: true, force: true });
+  });
+
+  test("redacts sensitive flags and preserves all non-sensitive flags", async () => {
+    const app = new Router("myapp", "test app");
+    app.use(withLogging({ logger }));
+    app.handler(
+      createHandler({
+        name: "login",
+        description: "login with credentials",
+        flags: [
+          flag("name", "the provider name", z.string().optional()),
+          flag("api-key", "the secret key", z.string().optional(), { sensitive: true }),
+        ],
+        handle: async () => {},
+      }),
+    );
+
+    await app.route([
+      "node",
+      "myapp",
+      "login",
+      "--name",
+      "my-provider",
+      "--api-key",
+      "super-secret",
+    ]);
+
+    await assertLogsMatch(tempDir, [
+      {
+        filter: (log: any) =>
+          log.msg === "executing command" &&
+          log.flags?.name === "my-provider" &&
+          log.flags?.["api-key"] === "[REDACTED]",
+        expectedCount: 1,
+      },
+    ]);
   });
 
   test("logs success and error with correct command path bindings", async () => {
