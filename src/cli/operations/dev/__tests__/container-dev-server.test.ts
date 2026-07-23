@@ -343,6 +343,33 @@ describe('ContainerDevServer', () => {
       expect(spawnArgs).toContain(`9000:${CONTAINER_INTERNAL_PORT}`);
     });
 
+    it('maps a unique A2A host port to the A2A container port', async () => {
+      mockSuccessfulPrepare();
+      const config = { ...defaultConfig, protocol: 'A2A' as const };
+      const options = { ...defaultOptions, port: 9001 };
+
+      const server = new ContainerDevServer(config, options);
+      await server.start();
+
+      const spawnArgs = getSpawnArgs();
+      expect(spawnArgs).toContain('9001:9000');
+      expect(spawnArgs).toContain('PORT=9000');
+      expect(spawnArgs).toContain('AGENTCORE_RUNTIME_URL=http://localhost:9001/');
+    });
+
+    it('maps an MCP host port to the MCP container port', async () => {
+      mockSuccessfulPrepare();
+      const config = { ...defaultConfig, protocol: 'MCP' as const };
+      const options = { ...defaultOptions, port: 8000 };
+
+      const server = new ContainerDevServer(config, options);
+      await server.start();
+
+      const spawnArgs = getSpawnArgs();
+      expect(spawnArgs).toContain('8000:8000');
+      expect(spawnArgs).toContain('PORT=8000');
+    });
+
     it('includes user-provided environment variables', async () => {
       mockSuccessfulPrepare();
 

@@ -145,6 +145,9 @@ export class CodeZipDevServer extends DevServer {
     if (protocol === 'MCP') {
       env.FASTMCP_PORT = String(port);
     }
+    if (protocol === 'A2A') {
+      env.AGENTCORE_RUNTIME_URL = `http://localhost:${port}/`;
+    }
 
     if (!isPython) {
       // TS entrypoint is already a file path like "main.ts" — pass it straight to tsx.

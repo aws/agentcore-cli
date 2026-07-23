@@ -1,5 +1,5 @@
 import type { AgentCoreProjectSpec, DirectoryPath, FilePath } from '../../../../schema';
-import { getAgentPort, getDevConfig, getDevSupportedAgents } from '../config';
+import { getAgentPort, getDevConfig, getDevPort, getDevSupportedAgents } from '../config';
 import { describe, expect, it } from 'vitest';
 
 // Helper to cast strings to branded path types for testing
@@ -668,6 +668,57 @@ describe('getAgentPort', () => {
     };
 
     expect(getAgentPort(project, 'NonExistent', 9000)).toBe(9000);
+  });
+});
+
+describe('getDevPort', () => {
+  const project: AgentCoreProjectSpec = {
+    name: 'TestProject',
+    version: 1,
+    managedBy: 'CDK' as const,
+    runtimes: [
+      {
+        name: 'AgentA',
+        build: 'CodeZip',
+        runtimeVersion: 'PYTHON_3_12',
+        entrypoint: filePath('main.py'),
+        codeLocation: dirPath('./agents/a'),
+        protocol: 'A2A',
+      },
+      {
+        name: 'AgentB',
+        build: 'CodeZip',
+        runtimeVersion: 'PYTHON_3_12',
+        entrypoint: filePath('main.py'),
+        codeLocation: dirPath('./agents/b'),
+        protocol: 'A2A',
+      },
+    ],
+    memories: [],
+    knowledgeBases: [],
+    credentials: [],
+    evaluators: [],
+    onlineEvalConfigs: [],
+    agentCoreGateways: [],
+    policyEngines: [],
+    configBundles: [],
+    abTests: [],
+    harnesses: [],
+    datasets: [],
+    payments: [],
+  };
+
+  it('offsets the A2A default port by runtime index', () => {
+    expect(getDevPort(project, 'AgentA', 'A2A', 8080)).toBe(9000);
+    expect(getDevPort(project, 'AgentB', 'A2A', 8080)).toBe(9001);
+  });
+
+  it('honors an explicit port for A2A', () => {
+    expect(getDevPort(project, 'AgentB', 'A2A', 8788, true)).toBe(8788);
+  });
+
+  it('keeps MCP on its fixed framework port', () => {
+    expect(getDevPort(project, 'AgentB', 'MCP', 8788, true)).toBe(8000);
   });
 });
 

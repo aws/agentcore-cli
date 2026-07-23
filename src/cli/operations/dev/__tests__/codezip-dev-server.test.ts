@@ -38,6 +38,7 @@ const defaultOptions: DevServerOptions = { port: 8080, envVars: { MY_KEY: 'secre
 
 describe('CodeZipDevServer spawn config', () => {
   beforeEach(() => {
+    mockSpawn.mockClear();
     mockSpawn.mockReturnValue(createMockChildProcess());
   });
 
@@ -106,7 +107,7 @@ describe('CodeZipDevServer spawn config', () => {
     );
   });
 
-  it('non-HTTP: passes env vars including PORT and LOCAL_DEV', async () => {
+  it('A2A: passes the selected port and agent-card URL in the environment', async () => {
     const config: DevConfig = {
       agentName: 'A2aAgent',
       module: 'main.py',
@@ -123,6 +124,7 @@ describe('CodeZipDevServer spawn config', () => {
     const spawnCall = mockSpawn.mock.calls[0]!;
     const env = spawnCall[2].env;
     expect(env.PORT).toBe('8080');
+    expect(env.AGENTCORE_RUNTIME_URL).toBe('http://localhost:8080/');
     expect(env.LOCAL_DEV).toBe('1');
     expect(env.MY_KEY).toBe('secret');
   });

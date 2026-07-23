@@ -13,17 +13,15 @@ describe('resolveAgentTargetPort', () => {
     expect(resolveAgentTargetPort({ ...base, protocol: 'HTTP', agentName: 'missing', agentIndex: -1 })).toBe(7778);
   });
 
-  it('uses framework-fixed ports for A2A and MCP regardless of -p', () => {
+  it('offsets A2A by runtime index and keeps MCP fixed', () => {
     expect(
       resolveAgentTargetPort({
         ...base,
         protocol: 'A2A',
         agentName: 'A',
         agentIndex: 3,
-        agentBasePort: 8788,
-        selectedAgent: 'A',
       })
-    ).toBe(9000);
+    ).toBe(9003);
     expect(
       resolveAgentTargetPort({
         ...base,
@@ -36,11 +34,11 @@ describe('resolveAgentTargetPort', () => {
     ).toBe(8000);
   });
 
-  it('honors an explicit -p literally for the selected runtime (no offset)', () => {
+  it.each(['HTTP', 'A2A'])('honors an explicit -p literally for a selected %s runtime', protocol => {
     expect(
       resolveAgentTargetPort({
         ...base,
-        protocol: 'HTTP',
+        protocol,
         agentName: 'AgentB',
         agentIndex: 1,
         agentBasePort: 8788,

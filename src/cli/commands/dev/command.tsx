@@ -16,8 +16,8 @@ import {
   callMcpTool,
   createDevServer,
   findAvailablePort,
-  getAgentPort,
   getDevConfig,
+  getDevPort,
   getDevSupportedAgents,
   getEndpointUrl,
   invokeAgent,
@@ -265,7 +265,6 @@ export const registerDev = (program: Command) => {
               let invokePort = port;
               let targetAgent = invokeProject?.runtimes[0];
               if (opts.runtime && invokeProject) {
-                invokePort = getAgentPort(invokeProject, opts.runtime, port, portExplicit);
                 targetAgent = invokeProject.runtimes.find(a => a.name === opts.runtime);
               } else if (invokeProject && invokeProject.runtimes.length > 1 && !opts.runtime) {
                 const names = invokeProject.runtimes.map(a => a.name).join(', ');
@@ -275,12 +274,12 @@ export const registerDev = (program: Command) => {
               }
 
               const protocol = targetAgent?.protocol ?? 'HTTP';
+              if (targetAgent && invokeProject) {
+                invokePort = getDevPort(invokeProject, targetAgent.name, protocol, port, portExplicit);
+              }
               recorder.set({
                 agent_protocol: standardize(AgentProtocol, protocol.toLowerCase()),
               });
-
-              if (protocol === 'A2A') invokePort = 9000;
-              else if (protocol === 'MCP') invokePort = 8000;
 
               if (protocol === 'MCP') {
                 await handleMcpInvoke(invokePort, invokePrompt, opts.tool, opts.input, headers);
@@ -405,31 +404,23 @@ export const registerDev = (program: Command) => {
                 agent_protocol: standardize(AgentProtocol, config.protocol.toLowerCase()),
               });
 
-              const isA2A = config.protocol === 'A2A';
               const isMcp = config.protocol === 'MCP';
-              const isHttp = !isA2A && !isMcp;
-              const fixedPort = isA2A
-                ? 9000
-                : isMcp
-                  ? 8000
-                  : getAgentPort(project, config.agentName, port, portExplicit);
-              if (isHttp && !portExplicit && fixedPort !== port) {
+              const targetPort = getDevPort(project, config.agentName, config.protocol, port, portExplicit);
+              if (!isMcp && !portExplicit && targetPort !== port) {
                 const idx = project.runtimes.findIndex(a => a.name === config.agentName);
                 console.log(
-                  `Runtime "${config.agentName}" is at index ${idx}; using port ${fixedPort} (pass --port ${fixedPort} to override).`
+                  `Runtime "${config.agentName}" is at index ${idx}; using port ${targetPort} (pass --port ${targetPort} to override).`
                 );
               }
-              const actualPort = await findAvailablePort(fixedPort);
-              if ((isA2A || isMcp) && actualPort !== fixedPort) {
-                throw new ValidationError(
-                  `Port ${fixedPort} is in use. ${config.protocol} agents require port ${fixedPort}.`
-                );
+              const actualPort = await findAvailablePort(targetPort);
+              if (isMcp && actualPort !== targetPort) {
+                throw new ValidationError(`Port ${targetPort} is in use. MCP agents require port ${targetPort}.`);
               }
               // An explicit -p must be honored literally; if it's taken, fail fast instead of
               // silently rebinding to a different port (the silent-shift behavior #1079 removes).
-              if (isHttp && portExplicit && actualPort !== fixedPort) {
+              if (!isMcp && portExplicit && actualPort !== targetPort) {
                 throw new ValidationError(
-                  `Port ${fixedPort} is in use. Free it or pass a different --port (no port is chosen automatically when --port is set explicitly).`
+                  `Port ${targetPort} is in use. Free it or pass a different --port (no port is chosen automatically when --port is set explicitly).`
                 );
               }
 
@@ -440,8 +431,8 @@ export const registerDev = (program: Command) => {
 
               const logger = new ExecLogger({ command: 'dev' });
 
-              if (actualPort !== fixedPort) {
-                console.log(`Port ${fixedPort} in use, using ${actualPort}`);
+              if (actualPort !== targetPort) {
+                console.log(`Port ${targetPort} in use, using ${actualPort}`);
               }
 
               console.log(`Starting dev server...`);

@@ -2,6 +2,7 @@ import { CONTAINER_INTERNAL_PORT, DOCKERFILE_NAME, getDockerfilePath } from '../
 import { getCustomBuildArgs, getUvBuildArgs } from '../../../lib/packaging/build-args';
 import { ensureBuildContextDockerignore } from '../../../lib/packaging/build-context-dockerignore';
 import { detectContainerRuntime } from '../../external-requirements/detect';
+import { A2A_DEFAULT_PORT, MCP_DEFAULT_PORT } from './constants';
 import { DevServer, type LogLevel, type SpawnConfig } from './dev-server';
 import { waitForServerReady } from './utils';
 import { type ChildProcess, spawn, spawnSync } from 'child_process';
@@ -177,6 +178,12 @@ export class ContainerDevServer extends DevServer {
 
   protected getSpawnConfig(): SpawnConfig {
     const { port, envVars = {} } = this.options;
+    const internalPort =
+      this.config.protocol === 'A2A'
+        ? A2A_DEFAULT_PORT
+        : this.config.protocol === 'MCP'
+          ? MCP_DEFAULT_PORT
+          : CONTAINER_INTERNAL_PORT;
 
     // Forward AWS credentials from host environment into the container.
     // When explicit credentials are present, omit AWS_PROFILE so SDK credential
@@ -242,7 +249,8 @@ export class ContainerDevServer extends DevServer {
       ...awsConfigEnv,
       ...containerEnvVars,
       LOCAL_DEV: '1',
-      PORT: String(CONTAINER_INTERNAL_PORT),
+      PORT: String(internalPort),
+      ...(this.config.protocol === 'A2A' ? { AGENTCORE_RUNTIME_URL: `http://localhost:${port}/` } : {}),
     }).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
 
     return {
@@ -254,7 +262,7 @@ export class ContainerDevServer extends DevServer {
         this.containerName,
         ...awsMountArgs,
         '-p',
-        `${port}:${CONTAINER_INTERNAL_PORT}`,
+        `${port}:${internalPort}`,
         ...envArgs,
         this.imageName,
       ],

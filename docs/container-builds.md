@@ -59,6 +59,9 @@ For TypeScript agents, the generated `Dockerfile` uses `public.ecr.aws/docker/li
 - **Entrypoint**: `npx tsx main.ts` — no compile step, so dev and container runtime share the same entry shape
 - **Ports**: Exposes 8080 / 8000 / 9000 to match the HTTP / MCP / A2A contract
 
+During `agentcore dev`, each container receives a unique host port. Multiple A2A agents therefore map ports such as
+`9000:9000` and `9001:9000` without conflicting on the host.
+
 Example `agentcore.json` for a TypeScript container agent:
 
 ```json

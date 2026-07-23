@@ -9,7 +9,14 @@ export {
   type DevServerOptions,
 } from './server';
 
-export { getDevConfig, getDevSupportedAgents, getAgentPort, loadProjectConfig, type DevConfig } from './config';
+export {
+  getDevConfig,
+  getDevSupportedAgents,
+  getAgentPort,
+  getDevPort,
+  loadProjectConfig,
+  type DevConfig,
+} from './config';
 
 export { invokeAgent, invokeAgentStreaming, invokeForProtocol } from './invoke';
 

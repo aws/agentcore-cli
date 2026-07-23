@@ -13,8 +13,8 @@ import {
   createDevServer,
   fetchA2AAgentCard,
   findAvailablePort,
-  getAgentPort,
   getDevConfig,
+  getDevPort,
   getEndpointUrl,
   invokeA2AStreaming,
   invokeAgentStreaming,
@@ -153,13 +153,8 @@ export function useDevServer(options: {
       });
       setLogFilePath(loggerRef.current.getRelativeLogPath());
 
-      // A2A servers always use port 9000, MCP servers use port 8000 (framework defaults, not configurable via env)
-      const isA2A = config.protocol === 'A2A';
       const isMcp = config.protocol === 'MCP';
-      // HTTP: honor an explicit -p literally; otherwise offset by the runtime index
-      // so parallel runtimes bind distinct ports (consistent with the --logs path).
-      const httpPort = getAgentPort(project, config.agentName, targetPort, options.portExplicit);
-      const fixedPort = isA2A ? 9000 : isMcp ? 8000 : httpPort;
+      const targetAgentPort = getDevPort(project, config.agentName, config.protocol, targetPort, options.portExplicit);
 
       // On restart, reuse the same port. On initial start, find an available port.
       // If restart times out waiting for port, fall back to finding a new one.
@@ -173,29 +168,29 @@ export function useDevServer(options: {
       }
 
       let port: number;
-      if (isA2A || isMcp) {
-        // A2A/MCP must use their fixed ports; check availability but don't auto-assign another
-        const available = await findAvailablePort(fixedPort);
-        if (available !== fixedPort) {
-          addLog('error', `Port ${fixedPort} is in use. ${config.protocol} agents require port ${fixedPort}.`);
+      if (isMcp) {
+        // FastMCP currently ignores port environment variables, so it must use its framework default.
+        const available = await findAvailablePort(targetAgentPort);
+        if (available !== targetAgentPort) {
+          addLog('error', `Port ${targetAgentPort} is in use. MCP agents require port ${targetAgentPort}.`);
           setStatus('error');
           return;
         }
-        port = fixedPort;
+        port = targetAgentPort;
       } else {
-        port = isRestart && portFree ? actualPortRef.current : await findAvailablePort(fixedPort);
-        if (!isRestart && port !== fixedPort) {
+        port = isRestart && portFree ? actualPortRef.current : await findAvailablePort(targetAgentPort);
+        if (!isRestart && port !== targetAgentPort) {
           // An explicit -p must be honored literally; if it's taken, surface an error
           // instead of silently rebinding (the silent-shift behavior #1079 removes).
           if (options.portExplicit) {
             addLog(
               'error',
-              `Port ${fixedPort} is in use. Free it or pass a different --port (no port is chosen automatically when --port is set explicitly).`
+              `Port ${targetAgentPort} is in use. Free it or pass a different --port (no port is chosen automatically when --port is set explicitly).`
             );
             setStatus('error');
             return;
           }
-          addLog('warn', `Port ${fixedPort} in use, using ${port}`);
+          addLog('warn', `Port ${targetAgentPort} in use, using ${port}`);
         }
       }
       actualPortRef.current = port;

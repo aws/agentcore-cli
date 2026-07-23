@@ -823,19 +823,19 @@ agentcore dev list-tools
 agentcore dev call-tool --tool myTool --input '{"arg": "value"}'
 ```
 
-| Flag / Argument        | Description                                                           |
-| ---------------------- | --------------------------------------------------------------------- |
-| `[prompt]`             | Send a prompt to a running dev server                                 |
-| `-p, --port <port>`    | Port (default: 8080; MCP uses 8000, A2A uses 9000)                    |
-| `-r, --runtime <name>` | Runtime to run or invoke (required if multiple runtimes)              |
-| `-s, --stream`         | Stream response when invoking                                         |
-| `-l, --logs`           | Non-interactive stdout logging                                        |
-| `--tool <name>`        | MCP tool name (with `call-tool` prompt)                               |
-| `--input <json>`       | MCP tool arguments as JSON (with `--tool`)                            |
-| `-H, --header <h>`     | Custom header (`"Name: Value"`, repeatable)                           |
-| `--exec`               | Execute a shell command in the running dev container (Container only) |
-| `-b, --no-browser`     | Use terminal TUI instead of web-based chat UI                         |
-| `--no-traces`          | Disable local OTEL trace collection                                   |
+| Flag / Argument        | Description                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| `[prompt]`             | Send a prompt to a running dev server                                                     |
+| `-p, --port <port>`    | Port (default: 8080; MCP uses 8000; A2A starts at 9000 and offsets for multiple runtimes) |
+| `-r, --runtime <name>` | Runtime to run or invoke (required if multiple runtimes)                                  |
+| `-s, --stream`         | Stream response when invoking                                                             |
+| `-l, --logs`           | Non-interactive stdout logging                                                            |
+| `--tool <name>`        | MCP tool name (with `call-tool` prompt)                                                   |
+| `--input <json>`       | MCP tool arguments as JSON (with `--tool`)                                                |
+| `-H, --header <h>`     | Custom header (`"Name: Value"`, repeatable)                                               |
+| `--exec`               | Execute a shell command in the running dev container (Container only)                     |
+| `-b, --no-browser`     | Use terminal TUI instead of web-based chat UI                                             |
+| `--no-traces`          | Disable local OTEL trace collection                                                       |
 
 ### invoke
 
