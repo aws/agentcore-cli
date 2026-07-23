@@ -4,7 +4,7 @@ import { render, cleanup } from "ink-testing-library";
 import { ValueContext, compile, CommandKey } from "../router";
 import { createRootHandler } from "./index";
 import { HelpScreen } from "./screen";
-import { createSilentLogger, TestCoreClient, testIO } from "../testing";
+import { createSilentLogger, TestCoreClient, TestGlobalConfigAccessor, testIO } from "../testing";
 
 afterEach(cleanup);
 
@@ -16,7 +16,11 @@ afterEach(cleanup);
 describe("HelpScreen", () => {
   test("renders the command's help text", () => {
     const command = compile(
-      createRootHandler(new TestCoreClient(), { io: testIO().io, logger: createSilentLogger() }),
+      createRootHandler(new TestCoreClient(), {
+        io: testIO().io,
+        logger: createSilentLogger(),
+        globalConfigAccessor: new TestGlobalConfigAccessor(),
+      }),
       ValueContext.EmptyContext(),
     );
     const ctx = ValueContext.EmptyContext().withValue(CommandKey, command);

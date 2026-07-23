@@ -1,7 +1,14 @@
 import { test, expect, describe } from "bun:test";
 import { createRootHandler } from "../handlers";
 import { renderJson } from "./index";
-import { createSilentLogger, TestCoreClient, testIO, tick, waitFor } from "../testing";
+import {
+  createSilentLogger,
+  TestCoreClient,
+  TestGlobalConfigAccessor,
+  testIO,
+  tick,
+  waitFor,
+} from "../testing";
 
 interface TtyInput extends NodeJS.ReadStream {
   write(chunk: string): boolean;
@@ -44,6 +51,7 @@ describe("--json short-circuits the TUI", () => {
     const root = createRootHandler(new TestCoreClient(), {
       io: io.io,
       logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
     });
     await root.route(["node", "agentcore", ...args, "--json"]);
     return io.stdout();
@@ -78,6 +86,7 @@ describe("TUI stream boundary", () => {
       const root = createRootHandler(new TestCoreClient(), {
         io: io.io,
         logger: createSilentLogger(),
+        globalConfigAccessor: new TestGlobalConfigAccessor(),
       });
 
       await expect(root.route(["node", "agentcore"])).rejects.toThrow(
@@ -106,6 +115,7 @@ describe("TUI stream boundary", () => {
     const root = createRootHandler(core, {
       io: streams.io,
       logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
     });
     const routePromise = root.route(["node", "agentcore", "runtime", "list"]);
     const listCalls = () => core.runtime.calls.filter((call) => call.method === "listRuntimes");

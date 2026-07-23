@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRootHandler } from "../handlers";
-import { TestCoreClient, testIO } from "../testing";
+import { TestCoreClient, TestGlobalConfigAccessor, testIO } from "../testing";
 import { createSilentLogger } from "../testing/";
 
 // writeConfigFile writes an AWS shared-config file with the given contents to a
@@ -24,7 +24,11 @@ function writeConfigFile(contents: string): string {
 // opening the TUI) and returns the region the handler passed to Core.
 async function resolvedRegion(args: string[]): Promise<string> {
   const core = new TestCoreClient();
-  const root = createRootHandler(core, { io: testIO().io, logger: createSilentLogger() });
+  const root = createRootHandler(core, {
+    io: testIO().io,
+    logger: createSilentLogger(),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
+  });
   await root.route(["node", "agentcore", "harness", "list", "--json", ...args]);
   const call = core.harness.calls.at(-1);
   const options = call?.args[2] as { region: string };

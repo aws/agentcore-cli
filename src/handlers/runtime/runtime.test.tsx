@@ -9,6 +9,7 @@ import {
   testIO,
 } from "../../testing";
 import { createRootHandler } from "../index";
+import { TestGlobalConfigAccessor } from "../../testing/globalConfig";
 
 const REGION = "us-west-2";
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -36,6 +37,7 @@ async function run(args: string[]): Promise<string> {
   const root = createRootHandler(createFixtureCore(), {
     io: io.io,
     logger: createSilentLogger(),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
 
   await root.route(["node", "agentcore", ...args, "--region", REGION]);
@@ -48,6 +50,7 @@ function testRuntimeCommand() {
   const root = createRootHandler(core, {
     io: io.io,
     logger: createSilentLogger(),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
 
   return {
@@ -61,6 +64,7 @@ describe("runtime command hierarchy", () => {
     const root = createRootHandler(createFixtureCore(), {
       io: testIO().io,
       logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
     });
     const runtime = root.children().find((child) => child.name() === "runtime");
 

@@ -6,13 +6,15 @@ import { DebugKey, EndpointKey, JsonKey, RegionKey } from "./keys.tsx";
 import { createConfigHandler } from "./config/";
 import { createProjectHandler } from "./project/index.ts";
 import { renderTui } from "../tui";
-import { withRegion, withJsonRenderer, withLogging } from "../middleware";
+import { withRegion, withJsonRenderer, withLogging, withGlobalConfigAccessor } from "../middleware";
 import type { AppIO, Core } from "./types.tsx";
 import type { Logger } from "../logging";
+import type { GlobalConfigAccessor } from "../globalConfig";
 
 export interface RootHandlerConfig {
   io: AppIO;
   logger: Logger;
+  globalConfigAccessor: GlobalConfigAccessor;
 }
 
 export function createRootHandler(core: Core, config: RootHandlerConfig): Router {
@@ -33,11 +35,14 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   // Inject a logger into each handler.
   root.use(withLogging({ logger }));
 
+  // Pin the global config accessor on the context for any handler that needs it.
+  root.use(withGlobalConfigAccessor(config.globalConfigAccessor));
+
   // Install sub handlers
   root.handler(createHarnessHandler(core, io));
   root.handler(createIdentityHandler(core, io));
   root.handler(createRuntimeHandler(core, io));
-  root.handler(createConfigHandler(io));
+  root.handler(createConfigHandler());
   root.handler(createProjectHandler({ projectManager: core.projectManager }));
 
   // Invoking with no subcommand launches the interactive TUI.

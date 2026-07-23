@@ -1,4 +1,3 @@
-import React from "react";
 import { render, cleanup } from "ink-testing-library";
 import { QueryClient } from "@tanstack/react-query";
 import { ValueContext, compile, CommandKey, type Context } from "../router";
@@ -10,6 +9,7 @@ import { TestCoreClient } from "./TestCoreClient";
 import { testIO } from "./testIO";
 import { tick, waitFor } from "./timing";
 import { createSilentLogger } from "./logging";
+import { TestGlobalConfigAccessor } from "./globalConfig";
 
 // TUI test harness.
 //
@@ -29,7 +29,11 @@ import { createSilentLogger } from "./logging";
 // keeps the command menus faithful to the production command structure.
 function baseContext(core: TestCoreClient, endpointUrl?: string): Context {
   const rootCommand = compile(
-    createRootHandler(core, { io: testIO().io, logger: createSilentLogger() }),
+    createRootHandler(core, {
+      io: testIO().io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    }),
     ValueContext.EmptyContext(),
   );
 

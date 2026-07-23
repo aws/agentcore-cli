@@ -6,6 +6,7 @@ import { parseArguments, toCommanderArgument } from "./args";
 
 import { Command } from "commander";
 import type { Logger } from "../logging";
+import type { GlobalConfigAccessor } from "../globalConfig";
 import type { Project } from "../handlers/project/types";
 
 // CommandKey exposes the Commander Command for the executing leaf via context.
@@ -15,6 +16,8 @@ export const PathKey: ContextKey<string> = contextKey<string>("path");
 
 export const LoggerKey = contextKey<Logger>("logger");
 
+export const GlobalConfigAccessorKey: ContextKey<GlobalConfigAccessor> =
+  contextKey<GlobalConfigAccessor>("globalConfigAccessor");
 export const ProjectKey = contextKey<Project>("project");
 
 // DefaultHandle runs when a group is selected without a subcommand (e.g.

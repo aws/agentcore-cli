@@ -12,6 +12,7 @@ import { createControlClient, createDataClient, createIamClient } from "./core/f
 import { createRootHandler } from "./handlers";
 import { createFileLogger, LOG_LEVEL } from "./logging";
 import { runWithExitCode } from "./runnable";
+import { DefaultGlobalConfigAccessor, FsReadWriteJson } from "./globalConfig";
 
 process.exit(
   await runWithExitCode(async (argv: string[]) => {
@@ -21,7 +22,6 @@ process.exit(
 
     const rootLogger = createFileLogger({
       filePath: join(homedir(), ".agentcore", "logs", "output"),
-      // TODO: allow overriding via global settings
       logLevel: LOG_LEVEL.DEBUG,
       bindings: { cliSessionId },
     });
@@ -33,7 +33,16 @@ process.exit(
     };
 
     try {
-      // Wrap the SDK clients in the CoreClient the handlers consume. Passing
+      const globalConfigAccessor = new DefaultGlobalConfigAccessor({
+        logger: rootLogger.child({ module: "globalConfigAccessor" }),
+        filePath: join(homedir(), ".agentcore", "config.json"),
+        json: new FsReadWriteJson({
+          logger: rootLogger.child({ module: "jsonDataSource" }),
+        }),
+      });
+
+      rootLogger.info(`running CLI`);
+
       // factories (rather than instances) lets CoreClient build one client per
       // region on demand.
       const coreClient = new CoreClient({
@@ -49,6 +58,7 @@ process.exit(
       const rootHandler = createRootHandler(coreClient, {
         io,
         logger: rootLogger,
+        globalConfigAccessor,
       });
 
       // Handle the request

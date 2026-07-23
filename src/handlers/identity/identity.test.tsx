@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { CoreClient } from "../../core";
-import { createSilentLogger, fixtureFactories, matchGolden, testIO } from "../../testing";
+import {
+  createSilentLogger,
+  fixtureFactories,
+  matchGolden,
+  TestGlobalConfigAccessor,
+  testIO,
+} from "../../testing";
 import { createRootHandler } from "../index";
 
 const REGION = "us-west-2";
@@ -29,6 +35,7 @@ async function run(args: string[]): Promise<string> {
   const root = createRootHandler(createFixtureCore(), {
     io: io.io,
     logger: createSilentLogger(),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
 
   await root.route(["node", "agentcore", ...args, "--region", REGION]);
@@ -40,6 +47,7 @@ describe("identity command hierarchy", () => {
     const root = createRootHandler(createFixtureCore(), {
       io: testIO().io,
       logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
     });
     const identity = root.children().find((child) => child.name() === "identity");
 

@@ -6,6 +6,7 @@ import type {
 import type { GetHarnessResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import { createRootHandler } from "../../index";
 import { createSilentLogger, TestCoreClient, testIO } from "../../../testing";
+import { TestGlobalConfigAccessor } from "../../../testing/";
 
 // Command-flow tests for `harness exec`, driven through the real root handler.
 // Like the invoke suite, these use a TestCoreClient because the command
@@ -31,7 +32,11 @@ async function run(args: string[], configure?: (core: TestCoreClient) => void) {
   core.harness.setExecEvents(...EXEC_EVENTS);
   configure?.(core);
   const io = testIO();
-  const root = createRootHandler(core, { io: io.io, logger: createSilentLogger() });
+  const root = createRootHandler(core, {
+    io: io.io,
+    logger: createSilentLogger(),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
+  });
   await root.route(["node", "agentcore", ...args, "--region", "us-west-2"]);
   return { core, stdout: io.stdout() };
 }

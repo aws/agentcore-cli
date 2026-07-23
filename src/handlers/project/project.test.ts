@@ -1,11 +1,17 @@
 import { test, expect, describe } from "bun:test";
 import { createRootHandler } from "../index";
-import { createSilentLogger, TestCoreClient, testIO } from "../../testing";
+import {
+  createSilentLogger,
+  TestCoreClient,
+  TestGlobalConfigAccessor,
+  testIO,
+} from "../../testing";
 
 async function run(args: string[]): Promise<void> {
   const io = testIO();
   const root = createRootHandler(new TestCoreClient(), {
     io: io.io,
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
     logger: createSilentLogger(),
   });
   await root.route(["node", "agentcore", "project", ...args]);

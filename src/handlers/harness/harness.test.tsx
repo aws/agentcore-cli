@@ -7,6 +7,7 @@ import {
   fixtureFactories,
   isRecording,
   matchGolden,
+  TestGlobalConfigAccessor,
   testIO,
 } from "../../testing";
 
@@ -37,7 +38,11 @@ async function run(args: string[]): Promise<string> {
     logger: createSilentLogger(),
   });
   const io = testIO();
-  const root = createRootHandler(core, { io: io.io, logger: createSilentLogger() });
+  const root = createRootHandler(core, {
+    io: io.io,
+    logger: createSilentLogger(),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
+  });
   await root.route(["node", "agentcore", ...args, "--region", REGION]);
   return io.stdout();
 }

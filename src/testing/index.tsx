@@ -18,3 +18,4 @@ export {
   type RenderScreenResult,
 } from "./renderScreen";
 export { createSilentLogger, assertLogsMatch, type LogQuery } from "./logging";
+export { TestGlobalConfigAccessor } from "./globalConfig";
