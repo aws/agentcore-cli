@@ -3,7 +3,6 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
-import { withoutSdkMetadata } from "../../withoutSdkMetadata";
 
 export const createGetRuntimeVersionHandler = (core: Core) =>
   createHandler({
@@ -24,9 +23,7 @@ export const createGetRuntimeVersionHandler = (core: Core) =>
       ctx
         .require(JsonRendererKey)
         .renderJson(
-          withoutSdkMetadata(
-            await core.runtime.getRuntimeVersion(flags.id, flags.version, coreOptsFromCtx(ctx)),
-          ),
+          await core.runtime.getRuntimeVersion(flags.id, flags.version, coreOptsFromCtx(ctx)),
         );
     },
   });

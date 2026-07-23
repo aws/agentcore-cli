@@ -193,10 +193,7 @@ describe("Runtime endpoint flow", () => {
     core.runtime.setListEndpointsResponse({
       runtimeEndpoints: [endpoint({ name: qualifier, id: qualifier })],
     });
-    core.runtime.setGetEndpointResponse({
-      $metadata: { requestId: "endpoint-request-metadata" },
-      ...getEndpointResponse({ name: qualifier, id: qualifier }),
-    } as GetAgentRuntimeEndpointResponse);
+    core.runtime.setGetEndpointResponse(getEndpointResponse({ name: qualifier, id: qualifier }));
     const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", {
       core,
       endpointUrl: runtimeEndpointUrl,
@@ -209,8 +206,6 @@ describe("Runtime endpoint flow", () => {
       `agentcore → runtime → endpoint → get → runtime-123 → ${qualifier}`,
     );
     await waitForText(r.lastFrame, '"targetVersion"');
-    expect(r.lastFrame()).not.toContain("$metadata");
-    expect(r.lastFrame()).not.toContain("endpoint-request-metadata");
     await waitFor(() => core.runtime.calls.some((call) => call.method === "getRuntimeEndpoint"));
     expect(core.runtime.calls.find((call) => call.method === "getRuntimeEndpoint")).toEqual({
       method: "getRuntimeEndpoint",

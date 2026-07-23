@@ -3,7 +3,6 @@ import { createHandler, flag } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
 import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
-import { withoutSdkMetadata } from "../withoutSdkMetadata";
 
 export const createListRuntimesHandler = (core: Core) =>
   createHandler({
@@ -17,12 +16,10 @@ export const createListRuntimesHandler = (core: Core) =>
       ctx
         .require(JsonRendererKey)
         .renderJson(
-          withoutSdkMetadata(
-            await core.runtime.listRuntimes(
-              flags["next-token"],
-              flags["max-results"],
-              coreOptsFromCtx(ctx),
-            ),
+          await core.runtime.listRuntimes(
+            flags["next-token"],
+            flags["max-results"],
+            coreOptsFromCtx(ctx),
           ),
         );
     },

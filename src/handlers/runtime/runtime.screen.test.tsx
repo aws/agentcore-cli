@@ -291,14 +291,13 @@ describe("runtime hub", () => {
 
   test("opens complete Runtime JSON from the detail action and scrolls", async () => {
     const core = new TestCoreClient();
-    core.runtime.setGetResponse({
-      $metadata: { requestId: "runtime-request-metadata" },
-      ...getRuntimeResponse({
+    core.runtime.setGetResponse(
+      getRuntimeResponse({
         environmentVariables: Object.fromEntries(
           Array.from({ length: 30 }, (_, index) => [`VARIABLE_${index}`, `value-${index}`]),
         ),
       }),
-    } as GetAgentRuntimeResponse);
+    );
     const r = renderScreen("/agentcore/runtime/get/runtime-123", { core });
 
     await waitForText(r.lastFrame, "show the full JSON definition");
@@ -308,8 +307,6 @@ describe("runtime hub", () => {
     expect(frame).toContain('"agentRuntimeId"');
     expect(frame).toContain('"networkConfiguration"');
     expect(frame).toContain('"lifecycleConfiguration"');
-    expect(frame).not.toContain("$metadata");
-    expect(frame).not.toContain("runtime-request-metadata");
     expect(frame).not.toContain('"VARIABLE_29"');
     for (let index = 0; index < 20; index += 1) await r.press("down");
     for (let index = 0; index < 20; index += 1) await r.write("j");

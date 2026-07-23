@@ -10,7 +10,6 @@ import { Divider } from "../../../components/ui/divider/Divider.js";
 import { Spinner } from "../../../components/ui/spinner";
 import type { ScreenProps } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
-import { withoutSdkMetadata } from "../withoutSdkMetadata";
 
 const ACTIONS = [
   {
@@ -138,7 +137,7 @@ export function RuntimeGetJsonScreen({ ctx, core }: ScreenProps) {
       breadcrumb={["agentcore", "runtime", "get", runtimeId ?? "", "json"]}
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
-      data={withoutSdkMetadata(detail.data)}
+      data={detail.data}
       loadingLabel="Loading Runtime…"
       onRetry={() => void detail.refetch()}
     />
