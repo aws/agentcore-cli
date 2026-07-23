@@ -264,6 +264,8 @@ export function DevScreen(props: DevScreenProps) {
     error: deployError,
     logPath: deployLogPath,
     managedMemoryNotice,
+    dependencySyncNotice,
+    dependencySyncWarnings,
   } = useDevDeploy({ skip: props.skipDeploy, ready: mode === 'deploying' });
 
   const hasTransitionedFromDeployRef = useRef(false);
@@ -273,6 +275,15 @@ export function DevScreen(props: DevScreenProps) {
     queueMicrotask(() => {
       if (onLaunchBrowser) {
         onLaunchBrowser({ harnessName: selectedHarness });
+        // onLaunchBrowser exits the alt screen and unmounts synchronously, so anything rendered
+        // in 'deploying' mode is gone. Print the one-shot dep-sync notice and warnings — e.g. the
+        // "we rewrote your package.json" migration explanation — to the normal buffer instead.
+        if (dependencySyncNotice) {
+          console.log(`\n${dependencySyncNotice}\n`);
+        }
+        for (const warning of dependencySyncWarnings) {
+          console.warn(`⚠ ${warning}`);
+        }
       } else if (selectedHarness) {
         setMode('harness');
       } else {
@@ -517,6 +528,24 @@ export function DevScreen(props: DevScreenProps) {
     return null;
   }
 
+  // Dependency sync notice and warnings get their own block — the multi-line notice doesn't fit
+  // the single "Note:" line in the deploying view. Rendered during the deploy AND in the
+  // post-deploy modes (harness / select-agent): the deploy completes and the mode transitions in
+  // the same render batch, so a block gated on mode === 'deploying' would be visible for at most
+  // one frame. The dev TUI runs in the alt screen, so persisting it in the UI is the only way
+  // the one-time "we rewrote your package.json" explanation is actually readable.
+  const dependencySyncSummary =
+    dependencySyncNotice || dependencySyncWarnings.length > 0 ? (
+      <Box flexDirection="column">
+        {dependencySyncNotice && <Text dimColor>{dependencySyncNotice}</Text>}
+        {dependencySyncWarnings.map((warning, i) => (
+          <Text key={i} color="yellow">
+            ⚠ {warning}
+          </Text>
+        ))}
+      </Box>
+    ) : null;
+
   // Show error screen if no agents are defined
   if (noAgentsError) {
     return (
@@ -548,6 +577,7 @@ export function DevScreen(props: DevScreenProps) {
               <Text dimColor>Note: {managedMemoryNotice}</Text>
             </Box>
           )}
+          {dependencySyncSummary && <Box marginTop={1}>{dependencySyncSummary}</Box>}
           {hasStartedCfn && (
             <Box marginTop={1}>
               <DeployStatus messages={deployMessages} isComplete={deployComplete} hasError={!!deployError} />
@@ -564,9 +594,19 @@ export function DevScreen(props: DevScreenProps) {
     );
   }
 
-  // If harness mode, render the InvokeScreen with the pre-selected harness
+  // If harness mode, render the InvokeScreen with the pre-selected harness. The dep-sync
+  // summary stays visible above it — this mode is entered right after the deploy completes.
   if (mode === 'harness') {
-    return <InvokeScreen isInteractive={true} onExit={handleExit} title="Dev" initialHarnessName={selectedHarness} />;
+    return (
+      <Box flexDirection="column">
+        {dependencySyncSummary && (
+          <Box paddingX={1} marginTop={1}>
+            {dependencySyncSummary}
+          </Box>
+        )}
+        <InvokeScreen isInteractive={true} onExit={handleExit} title="Dev" initialHarnessName={selectedHarness} />
+      </Box>
+    );
   }
 
   const statusColor = { starting: 'yellow', running: 'green', error: 'red', stopped: 'gray' }[status];
@@ -616,6 +656,8 @@ export function DevScreen(props: DevScreenProps) {
 
     return (
       <Screen title="Dev Server" onExit={handleExit} helpText={helpText}>
+        {/* Post-deploy chooser: keep the dep-sync summary visible (see dependencySyncSummary). */}
+        {dependencySyncSummary && <Box marginBottom={1}>{dependencySyncSummary}</Box>}
         <Panel title={availableHarnesses.length > 0 ? 'Select Target' : 'Select Agent'} fullWidth>
           <SelectList items={allItems} selectedIndex={selectedAgentIndex} />
         </Panel>

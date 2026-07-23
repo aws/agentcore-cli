@@ -35,6 +35,8 @@ export const AuthType = z.enum(['sigv4', 'bearer_token']);
 export const AuthorizerType = z.enum(['aws_iam', 'custom_jwt', 'none']);
 export const BuildType = z.enum(['codezip', 'container']);
 export const CredentialType = z.enum(['api-key', 'oauth']);
+// Mirrors DependencySyncOutcome in src/lib/dependency-management/types.ts.
+export const DepSyncOutcome = z.enum(['synced', 'check-only', 'opted-out', 'skipped', 'failure-suppressed', 'failed']);
 export const SkillSourceType = z.enum(['path', 's3', 'git', 'aws_skills']);
 export const EvaluatorType = z.enum(['llm-as-a-judge', 'code-based']);
 export const ExitReason = z.enum(['success', 'failure']);
@@ -110,8 +112,10 @@ export const ErrorName = z.enum([
   'ConfigReadError',
   'ConfigValidationError',
   'ConfigWriteError',
+  'CliVersionTooOldError',
   'ConflictError',
   'DependencyCheckError',
+  'DependencySyncError',
   'DevServerConnectionError',
   'DevServerError',
   'GitInitError',

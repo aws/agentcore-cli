@@ -1,4 +1,5 @@
 import { ConfigIO } from '../../../../lib';
+import type { DependencySyncResult } from '../../../../lib/dependency-management';
 import type { AwsDeploymentTarget } from '../../../../schema';
 import type { CdkToolkitWrapper, DeployMessage, SwitchableIoHost } from '../../../cdk/toolkit-lib';
 import {
@@ -28,6 +29,7 @@ import {
   hasManagedMemoryHarness,
   performStackTeardown,
   setupTransactionSearch,
+  toDepSyncAttrs,
 } from '../../../operations/deploy';
 import { computeProjectDeployHash } from '../../../operations/deploy/change-detection';
 import { getGatewayTargetStatuses } from '../../../operations/deploy/gateway-status';
@@ -115,6 +117,10 @@ interface DeployFlowState {
   deployNotes: string[];
   /** Managed-memory heads-up, shown while the CFN apply runs (null when not applicable) */
   managedMemoryNotice: string | null;
+  /** Managed dependency sync summary from preflight, null when nothing changed */
+  dependencySyncNotice: string | null;
+  /** Managed dependency sync warnings (downgraded skew, skipped specifiers) from preflight */
+  dependencySyncWarnings: string[];
   /** Warnings from post-deploy steps (config bundles, AB tests) */
   postDeployWarnings: string[];
   /** True if any post-deploy sub-resource operation had errors */
@@ -140,6 +146,12 @@ interface DeployFlowState {
   skipCredentials: () => void;
 }
 
+/** Overlay dep_sync_* telemetry attrs from the preflight dependency sync, if it ran. */
+function withDepSyncAttrs<T extends object>(attrs: T, sync: DependencySyncResult | null): T {
+  if (!sync) return attrs;
+  return { ...attrs, ...toDepSyncAttrs(sync) };
+}
+
 export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState {
   const { preSynthesized, isInteractive = false, diffMode = false, selectedTargets } = options;
   const skipPreflight = !!preSynthesized;
@@ -147,8 +159,15 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
   // Create logger once for the entire deploy flow
   const [logger] = useState(() => new ExecLogger({ command: 'deploy' }));
 
-  // Always call the hook (React rules), but we won't use it when preSynthesized is provided
-  const preflight = useCdkPreflight({ logger, isInteractive, selectedTarget: selectedTargets?.[0] });
+  // Always call the hook (React rules), but we won't use it when preSynthesized is provided.
+  // Diff mode is a preview: the managed-dependency sync runs check-only so the working tree
+  // is never mutated by `agentcore deploy --diff`.
+  const preflight = useCdkPreflight({
+    logger,
+    isInteractive,
+    selectedTarget: selectedTargets?.[0],
+    dependencySyncCheckOnly: diffMode,
+  });
 
   // Use pre-synthesized values when provided, otherwise use preflight values
   const cdkToolkitWrapper = preSynthesized?.cdkToolkitWrapper ?? preflight.cdkToolkitWrapper;
@@ -741,7 +760,10 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     // Preflight failed — emit telemetry and bail
     if (preflight.phase === 'error') {
       const error = preflight.lastError ?? new Error('Preflight failed');
-      const attrs = context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS };
+      const attrs = withDepSyncAttrs(
+        context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS },
+        preflight.dependencySyncResult
+      );
       withCommandRunTelemetry('deploy', attrs, () => ({ success: false as const, error })).catch(() => {
         /* telemetry is best-effort */
       });
@@ -751,7 +773,10 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     if (deployStep.status !== 'pending') return;
     if (!cdkToolkitWrapper) return;
 
-    const attrs = context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS };
+    const attrs = withDepSyncAttrs(
+      context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS },
+      preflight.dependencySyncResult
+    );
 
     const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
       // Run diff before deploy to capture pre-deploy differences.
@@ -1022,9 +1047,12 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     // Preflight failed — emit telemetry and bail
     if (preflight.phase === 'error') {
       const error = preflight.lastError ?? new Error('Preflight failed');
-      const attrs = context
-        ? computeDeployAttrs(context.projectSpec, 'diff')
-        : { ...DEFAULT_DEPLOY_ATTRS, deploy_mode: 'diff' as const };
+      const attrs = withDepSyncAttrs(
+        context
+          ? computeDeployAttrs(context.projectSpec, 'diff')
+          : { ...DEFAULT_DEPLOY_ATTRS, deploy_mode: 'diff' as const },
+        preflight.dependencySyncResult
+      );
       withCommandRunTelemetry('deploy', attrs, () => ({ success: false as const, error })).catch(() => {
         /* telemetry is best-effort */
       });
@@ -1034,9 +1062,12 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     if (diffStep.status !== 'pending') return;
     if (!cdkToolkitWrapper) return;
 
-    const attrs = context
-      ? computeDeployAttrs(context.projectSpec, 'diff')
-      : { ...DEFAULT_DEPLOY_ATTRS, deploy_mode: 'diff' as const };
+    const attrs = withDepSyncAttrs(
+      context
+        ? computeDeployAttrs(context.projectSpec, 'diff')
+        : { ...DEFAULT_DEPLOY_ATTRS, deploy_mode: 'diff' as const },
+      preflight.dependencySyncResult
+    );
 
     const run = async (): Promise<{ success: true } | { success: false; error: Error }> => {
       setDiffStep(prev => ({ ...prev, status: 'running' }));
@@ -1233,6 +1264,8 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     numStacksWithChanges,
     deployNotes,
     managedMemoryNotice,
+    dependencySyncNotice: preflight.dependencySyncResult?.notice ?? null,
+    dependencySyncWarnings: preflight.dependencySyncResult?.warnings ?? [],
     postDeployWarnings,
     postDeployHasError,
     isDiffLoading,

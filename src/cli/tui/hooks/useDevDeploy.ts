@@ -2,7 +2,7 @@ import { ConfigIO } from '../../../lib';
 import type { DeployMessage } from '../../cdk/toolkit-lib';
 import { handleDeploy } from '../../commands/deploy/actions';
 import { getErrorMessage } from '../../errors';
-import { ensureDefaultDeploymentTarget } from '../../operations/deploy';
+import { MANAGED_MEMORY_DEPLOY_NOTICE, ensureDefaultDeploymentTarget } from '../../operations/deploy';
 import { canSkipDeploy } from '../../operations/deploy/change-detection';
 import type { Step } from '../components/StepProgress';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -20,6 +20,10 @@ export interface UseDevDeployResult {
   logPath: string | undefined;
   /** Managed-memory heads-up surfaced by handleDeploy (null when not applicable) */
   managedMemoryNotice: string | null;
+  /** Managed dependency sync summary from the deploy result (null when nothing changed) */
+  dependencySyncNotice: string | null;
+  /** Managed dependency sync warnings from the deploy result */
+  dependencySyncWarnings: string[];
 }
 
 export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): UseDevDeployResult {
@@ -29,9 +33,14 @@ export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): 
   const [error, setError] = useState<string | undefined>();
   const [logPath, setLogPath] = useState<string | undefined>();
   const [managedMemoryNotice, setManagedMemoryNotice] = useState<string | null>(null);
+  // Dep-sync gets its own slot: it's a multi-line summary read from the deploy RESULT, not the
+  // generic onNotice stream — multiplexing it through onNotice would let the managed-memory
+  // heads-up clobber it in the single "Note:" line.
+  const [dependencySyncNotice, setDependencySyncNotice] = useState<string | null>(null);
+  const [dependencySyncWarnings, setDependencySyncWarnings] = useState<string[]>([]);
   const hasStarted = useRef(false);
 
-  const onProgress = useCallback((stepName: string, status: 'start' | 'success' | 'error') => {
+  const onProgress = useCallback((stepName: string, status: 'start' | 'success' | 'error' | 'warn') => {
     setSteps(prev => {
       if (status === 'start') {
         return [...prev, { label: stepName, status: 'running' }];
@@ -44,8 +53,13 @@ export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): 
     setDeployMessages(prev => [...prev, msg]);
   }, []);
 
+  // onNotice is a generic stream (handleDeploy also emits the dep-sync notice through it);
+  // only the managed-memory heads-up belongs in the single "Note:" line — the dep-sync
+  // summary is read from the deploy result instead, so the two can't clobber each other.
   const onNotice = useCallback((message: string) => {
-    setManagedMemoryNotice(message);
+    if (message === MANAGED_MEMORY_DEPLOY_NOTICE) {
+      setManagedMemoryNotice(message);
+    }
   }, []);
 
   useEffect(() => {
@@ -92,6 +106,11 @@ export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): 
           setLogPath(result.logPath);
         }
 
+        if (result.dependencySyncResult) {
+          setDependencySyncNotice(result.dependencySyncResult.notice);
+          setDependencySyncWarnings(result.dependencySyncResult.warnings);
+        }
+
         if (!result.success) {
           setError(getErrorMessage(result.error));
         }
@@ -108,5 +127,14 @@ export function useDevDeploy({ skip, ready = true }: UseDevDeployOptions = {}): 
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- skip is boolean, not nullable; || is the correct operator here
   const isComplete = skip || deployDone;
 
-  return { steps, deployMessages, isComplete, error, logPath, managedMemoryNotice };
+  return {
+    steps,
+    deployMessages,
+    isComplete,
+    error,
+    logPath,
+    managedMemoryNotice,
+    dependencySyncNotice,
+    dependencySyncWarnings,
+  };
 }

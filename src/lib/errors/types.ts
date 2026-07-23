@@ -140,6 +140,27 @@ export class StaleCdkConstructError extends BaseError {
 }
 
 /**
+ * Error thrown during deploy preflight when the project's agentcore/cdk/package.json
+ * declares a managed dependency newer (minor/major, or prerelease-aware for exact pins)
+ * than this CLI release expects — i.e. the project was updated by a newer CLI.
+ */
+export class CliVersionTooOldError extends BaseError {
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'user', ...options });
+  }
+}
+
+/**
+ * Error thrown when the managed-dependency sync fails to rewrite package.json or
+ * reinstall the CDK project's dependencies (fs error, npm install failure).
+ */
+export class DependencySyncError extends BaseError {
+  constructor(message: string, options?: BaseErrorOptions) {
+    super(message, { defaultSource: 'client', ...options });
+  }
+}
+
+/**
  * Error thrown when AWS credentials are not configured or invalid.
  * Supports both a short message (for interactive mode) and detailed message (for CLI mode).
  */

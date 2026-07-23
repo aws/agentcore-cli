@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 20.x
           cache: 'npm'
@@ -36,7 +36,7 @@ jobs:
     runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20.x
       - uses: actions/cache/restore@v6
@@ -50,7 +50,7 @@ jobs:
     runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20.x
       - uses: actions/cache/restore@v6
@@ -64,7 +64,7 @@ jobs:
     runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20.x
       - uses: actions/cache/restore@v6
@@ -78,7 +78,7 @@ jobs:
     runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20.x
       - uses: actions/cache/restore@v6
@@ -92,7 +92,7 @@ jobs:
     runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20.x
       - uses: actions/cache/restore@v6

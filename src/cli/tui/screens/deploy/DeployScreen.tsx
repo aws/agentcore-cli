@@ -83,6 +83,8 @@ export function DeployScreen({
     numStacksWithChanges,
     deployNotes,
     managedMemoryNotice,
+    dependencySyncNotice,
+    dependencySyncWarnings,
     postDeployWarnings,
     postDeployHasError,
     isDiffLoading,
@@ -343,6 +345,24 @@ export function DeployScreen({
       ) : (
         <>
           <StepProgress steps={displaySteps} />
+
+          {/* Managed dependency sync summary: what preflight changed in agentcore/cdk/package.json. */}
+          {dependencySyncNotice && (
+            <Box marginTop={1} flexDirection="column">
+              <Text dimColor>{dependencySyncNotice}</Text>
+            </Box>
+          )}
+
+          {/* Managed dependency sync warnings: downgraded skew, skipped specifiers. */}
+          {dependencySyncWarnings.length > 0 && (
+            <Box marginTop={1} flexDirection="column">
+              {dependencySyncWarnings.map((warning, i) => (
+                <Text key={i} color="yellow">
+                  ⚠ {warning}
+                </Text>
+              ))}
+            </Box>
+          )}
 
           {/* Managed-memory heads-up: shown while the slow CFN apply runs (not gated on success).
               Styled as a plain dim "Note:" to match the transaction-search note convention below. */}

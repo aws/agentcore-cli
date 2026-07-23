@@ -636,18 +636,18 @@ exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/package.json should m
     "format:check": "prettier --check ."
   },
   "devDependencies": {
-    "@types/jest": "^29.5.14",
-    "@types/node": "^24.10.1",
-    "jest": "^29.7.0",
-    "ts-jest": "^29.2.5",
-    "aws-cdk": "2.1126.0",
-    "prettier": "^3.4.2",
+    "@types/jest": "~29.5.14",
+    "@types/node": "~24.13.3",
+    "jest": "~29.7.0",
+    "ts-jest": "~29.4.11",
+    "aws-cdk": "~2.1126.0",
+    "prettier": "~3.9.5",
     "typescript": "~5.9.3"
   },
   "dependencies": {
-    "@aws/agentcore-cdk": "^0.1.0-alpha.19",
-    "aws-cdk-lib": "^2.248.0",
-    "constructs": "^10.0.0"
+    "@aws/agentcore-cdk": "0.1.0-alpha.45",
+    "aws-cdk-lib": "~2.261.0",
+    "constructs": "~10.7.0"
   }
 }
 "
@@ -1492,6 +1492,8 @@ dependencies = [
     "bedrock-agentcore[a2a] >= 1.0.3",
     "google-adk >= 1.0.0, < 2.0.0",
     "google-genai >= 1.0.0, < 2.0.0",
+    # 1.13.0 was yanked for broken imports.
+    "opentelemetry-resourcedetector-gcp >= 1.9.0a0, < 2.0.0, != 1.13.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -2518,6 +2520,8 @@ dependencies = [
     "fastapi >= 0.115.12",
     "google-adk >= 1.16.0, < 2.0.0",
     "google-genai >= 1.0.0, < 2.0.0",
+    # 1.13.0 was yanked for broken imports.
+    "opentelemetry-resourcedetector-gcp >= 1.9.0a0, < 2.0.0, != 1.13.0",
     "aws-opentelemetry-distro >= 0.17.0",
     "uvicorn >= 0.34.3",
 ]
@@ -3324,7 +3328,8 @@ file defines a Starlette ASGI app with the AutoGen framework running within.
 
 If installation was successful, a virtual environment is already created with dependencies installed.
 
-Run \`source .venv/bin/activate\` before developing.
+Activate the environment with \`source .venv/bin/activate\` on macOS/Linux, \`.venv\\Scripts\\activate.bat\` in Windows
+Command Prompt, or \`.\\.venv\\Scripts\\activate.ps1\` in Windows PowerShell.
 
 \`agentcore dev\` will start a local server on 0.0.0.0:8080.
 
@@ -3779,7 +3784,8 @@ file defines a Starlette ASGI app with the Google ADK framework running within.
 
 If installation was successful, a virtual environment is already created with dependencies installed.
 
-Run \`source .venv/bin/activate\` before developing.
+Activate the environment with \`source .venv/bin/activate\` on macOS/Linux, \`.venv\\Scripts\\activate.bat\` in Windows
+Command Prompt, or \`.\\.venv\\Scripts\\activate.ps1\` in Windows PowerShell.
 
 \`agentcore dev\` will start a local server on 0.0.0.0:8080.
 
@@ -4198,6 +4204,8 @@ dependencies = [
     "aws-opentelemetry-distro >= 0.17.0",
     "google-adk >= 1.35.0, < 2.0.0",
     "google-genai >= 1.0.0, < 2.0.0",
+    # 1.13.0 was yanked for broken imports.
+    "opentelemetry-resourcedetector-gcp >= 1.9.0a0, < 2.0.0, != 1.13.0",
     "bedrock-agentcore >= 1.0.3",
     "botocore[crt] >= 1.35.0",
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
@@ -4236,7 +4244,8 @@ file defines a Starlette ASGI app with the LangChain/LangGraph framework running
 
 If installation was successful, a virtual environment is already created with dependencies installed.
 
-Run \`source .venv/bin/activate\` before developing.
+Activate the environment with \`source .venv/bin/activate\` on macOS/Linux, \`.venv\\Scripts\\activate.bat\` in Windows
+Command Prompt, or \`.\\.venv\\Scripts\\activate.ps1\` in Windows PowerShell.
 
 \`agentcore dev\` will start a local server on 0.0.0.0:8080.
 
@@ -4813,7 +4822,8 @@ file defines a Starlette ASGI app with the OpenAI Agents SDK framework running w
 
 If installation was successful, a virtual environment is already created with dependencies installed.
 
-Run \`source .venv/bin/activate\` before developing.
+Activate the environment with \`source .venv/bin/activate\` on macOS/Linux, \`.venv\\Scripts\\activate.bat\` in Windows
+Command Prompt, or \`.\\.venv\\Scripts\\activate.ps1\` in Windows PowerShell.
 
 \`agentcore dev\` will start a local server on 0.0.0.0:8080.
 
@@ -5257,7 +5267,8 @@ file defines a Starlette ASGI app with the chosen Agent framework SDK running wi
 
 If installation was successful, a virtual environment is already created with dependencies installed.
 
-Run \`source .venv/bin/activate\` before developing.
+Activate the environment with \`source .venv/bin/activate\` on macOS/Linux, \`.venv\\Scripts\\activate.bat\` in Windows
+Command Prompt, or \`.\\.venv\\Scripts\\activate.ps1\` in Windows PowerShell.
 
 \`agentcore dev\` will start a local server on 0.0.0.0:8080.
 

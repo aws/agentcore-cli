@@ -21,7 +21,7 @@ jobs:
       TARBALL_BASE: agentcore-cli-prerelease
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '20.x'
           cache: 'npm'

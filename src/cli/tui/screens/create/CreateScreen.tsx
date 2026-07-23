@@ -287,7 +287,7 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
     onSelect: item => {
       flow.handleCreateTypeSelection(item.id as 'harness' | 'agent' | 'skip');
     },
-    onExit: handleExit,
+    onExit: flow.goBackToProjectName,
     isActive: flow.phase === 'create-type-prompt',
   });
 
@@ -342,7 +342,13 @@ export function CreateScreen({ cwd, isInteractive, onExit, onNavigate }: CreateS
             : undefined;
 
   return (
-    <Screen title="AgentCore Create" onExit={handleExit} headerContent={headerContent} helpText={helpText}>
+    <Screen
+      title="AgentCore Create"
+      onExit={handleExit}
+      headerContent={headerContent}
+      helpText={helpText}
+      exitEnabled={phase !== 'create-type-prompt'}
+    >
       {phase === 'existing-project-error' && (
         <Box marginBottom={1} flexDirection="column">
           <Text color="red">A project already exists at this location.</Text>

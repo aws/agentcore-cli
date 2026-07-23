@@ -3,14 +3,19 @@ import { Text } from 'ink';
 import { render } from 'ink-testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockHandleDeploy, mockReadProjectSpec, mockEnsureDefaultDeploymentTarget, mockCanSkipDeploy } = vi.hoisted(
-  () => ({
-    mockHandleDeploy: vi.fn(),
-    mockReadProjectSpec: vi.fn(),
-    mockEnsureDefaultDeploymentTarget: vi.fn(),
-    mockCanSkipDeploy: vi.fn(),
-  })
-);
+const {
+  mockHandleDeploy,
+  mockReadProjectSpec,
+  mockEnsureDefaultDeploymentTarget,
+  mockCanSkipDeploy,
+  TEST_MANAGED_MEMORY_NOTICE,
+} = vi.hoisted(() => ({
+  mockHandleDeploy: vi.fn(),
+  mockReadProjectSpec: vi.fn(),
+  mockEnsureDefaultDeploymentTarget: vi.fn(),
+  mockCanSkipDeploy: vi.fn(),
+  TEST_MANAGED_MEMORY_NOTICE: 'Managed memory: this harness provisions a dedicated AgentCore Memory resource',
+}));
 
 vi.mock('../../../commands/deploy/actions.js', () => ({
   handleDeploy: (...args: unknown[]) => mockHandleDeploy(...args),
@@ -29,6 +34,7 @@ vi.mock('../../../../lib', async importActual => ({
 
 vi.mock('../../../operations/deploy', () => ({
   ensureDefaultDeploymentTarget: (...args: unknown[]) => mockEnsureDefaultDeploymentTarget(...args),
+  MANAGED_MEMORY_DEPLOY_NOTICE: TEST_MANAGED_MEMORY_NOTICE,
 }));
 
 vi.mock('../../../operations/deploy/change-detection', () => ({
@@ -36,11 +42,14 @@ vi.mock('../../../operations/deploy/change-detection', () => ({
 }));
 
 function Harness({ skip }: { skip?: boolean }) {
-  const { steps, isComplete, error, managedMemoryNotice } = useDevDeploy({ skip });
+  const { steps, isComplete, error, managedMemoryNotice, dependencySyncNotice, dependencySyncWarnings } = useDevDeploy({
+    skip,
+  });
   return (
     <Text>
       steps:{steps.length} isComplete:{String(isComplete)} error:{error ?? 'null'} notice:
-      {managedMemoryNotice ?? 'null'}
+      {managedMemoryNotice ?? 'null'} depSyncNotice:{dependencySyncNotice ?? 'null'} depSyncWarnings:
+      {dependencySyncWarnings.length}
     </Text>
   );
 }
@@ -111,7 +120,7 @@ describe('useDevDeploy', () => {
 
   it('surfaces the managed-memory heads-up from the onNotice callback', async () => {
     mockHandleDeploy.mockImplementation((opts: { onNotice?: (message: string) => void }) => {
-      opts.onNotice?.('Managed memory: this harness automatically provisions a dedicated AgentCore Memory resource');
+      opts.onNotice?.(TEST_MANAGED_MEMORY_NOTICE);
       return Promise.resolve({ success: true });
     });
 
@@ -119,6 +128,38 @@ describe('useDevDeploy', () => {
 
     await vi.waitFor(() => {
       expect(lastFrame()).toContain('notice:Managed memory:');
+      expect(lastFrame()).toContain('isComplete:true');
+    });
+  });
+
+  it('does not let other onNotice messages clobber the managed-memory slot', async () => {
+    mockHandleDeploy.mockImplementation((opts: { onNotice?: (message: string) => void }) => {
+      opts.onNotice?.('Updated managed dependencies in agentcore/cdk/package.json:');
+      return Promise.resolve({ success: true });
+    });
+
+    const { lastFrame } = render(<Harness />);
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('isComplete:true');
+    });
+    expect(lastFrame()).toContain('notice:null');
+  });
+
+  it('reads the dependency sync notice and warnings from the deploy result', async () => {
+    mockHandleDeploy.mockResolvedValue({
+      success: true,
+      dependencySyncResult: {
+        notice: 'dep-sync-notice',
+        warnings: ['lodash (file:x) uses a non-semver specifier and was left unmanaged.'],
+      },
+    });
+
+    const { lastFrame } = render(<Harness />);
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain('depSyncNotice:dep-sync-notice');
+      expect(lastFrame()).toContain('depSyncWarnings:1');
       expect(lastFrame()).toContain('isComplete:true');
     });
   });

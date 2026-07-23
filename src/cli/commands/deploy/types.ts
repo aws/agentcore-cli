@@ -1,3 +1,4 @@
+import type { DependencySyncResult } from '../../../lib/dependency-management';
 import type { Result } from '../../../lib/result';
 
 export interface DeployOptions {
@@ -17,7 +18,11 @@ export type DeployResult = Result<{
   nextSteps?: string[];
   notes?: string[];
   postDeployWarnings?: string[];
-}> & { logPath?: string };
+}> & {
+  logPath?: string;
+  /** Sync outcome rides on BOTH branches so dep_sync_* telemetry survives a failed deploy. */
+  dependencySyncResult?: DependencySyncResult;
+};
 
 export type PreflightResult = Result<{
   stackNames?: string[];

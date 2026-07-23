@@ -17,6 +17,7 @@ const GlobalConfigSchemaStrict = z
     installationId: z.string().uuid().optional(),
     uvDefaultIndex: z.string().optional(),
     uvIndex: z.string().optional(),
+    disableDependencyManagement: z.boolean().optional(),
     disableTransactionSearch: z.boolean().optional(),
     transactionSearchIndexPercentage: z.number().int().min(0).max(100).optional(),
     telemetry: z
