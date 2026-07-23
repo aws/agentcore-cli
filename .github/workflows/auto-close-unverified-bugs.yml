@@ -2,7 +2,7 @@ name: Auto Close Unverified Bugs
 
 on:
   schedule:
-    - cron: "0 14 * * 1-5"
+    - cron: '0 14 * * 1-5'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -24,7 +24,7 @@ jobs:
         uses: actions/github-script@v9
         env:
           LABEL_NAME: autoclose in 7 days
-          DAYS_TO_WAIT: "7"
+          DAYS_TO_WAIT: '7'
           MANUAL_DRY_RUN: ${{ inputs.dry_run || false }}
         with:
           script: |

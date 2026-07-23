@@ -1,12 +1,10 @@
 # Agent Learnings
 
-This directory contains durable, repository-specific constraints learned from
-completed agent runs. It is an evidence log, not a scratchpad or a replacement
-for `AGENTS.md`.
+This directory contains durable, repository-specific constraints learned from completed agent runs. It is an evidence
+log, not a scratchpad or a replacement for `AGENTS.md`.
 
-Agents should consult relevant entries before changing or reviewing the
-affected area. Rules that apply broadly and remain stable should be promoted
-to `AGENTS.md` through a normal pull request.
+Agents should consult relevant entries before changing or reviewing the affected area. Rules that apply broadly and
+remain stable should be promoted to `AGENTS.md` through a normal pull request.
 
 ## Admission Criteria
 
@@ -18,8 +16,7 @@ A learning must:
 - Avoid credentials, customer data, internal-only links, and copied user data.
 - Be submitted and reviewed through the normal pull request process.
 
-Do not record style preferences, speculative advice, or conclusions based only
-on an agent's own output.
+Do not record style preferences, speculative advice, or conclusions based only on an agent's own output.
 
 ## Format
 
