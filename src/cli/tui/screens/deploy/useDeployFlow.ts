@@ -148,7 +148,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
   const [logger] = useState(() => new ExecLogger({ command: 'deploy' }));
 
   // Always call the hook (React rules), but we won't use it when preSynthesized is provided
-  const preflight = useCdkPreflight({ logger, isInteractive });
+  const preflight = useCdkPreflight({ logger, isInteractive, selectedTarget: selectedTargets?.[0] });
 
   // Use pre-synthesized values when provided, otherwise use preflight values
   const cdkToolkitWrapper = preSynthesized?.cdkToolkitWrapper ?? preflight.cdkToolkitWrapper;
