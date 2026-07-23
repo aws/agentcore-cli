@@ -158,7 +158,7 @@ describe("llm-as-a-judge create", () => {
     expect(request.evaluatorConfig.llmAsAJudge.instructions).toBe("Instructions from stdin.");
   });
 
-  test("accepts a custom rating scale via --rating-scale-json", async () => {
+  test("accepts a custom rating scale as inline JSON on --rating-scale", async () => {
     const core = new TestCoreClient();
     const scale = JSON.stringify({ numerical: [{ value: 1, label: "L", definition: "d" }] });
     await run(core, [
@@ -174,11 +174,41 @@ describe("llm-as-a-judge create", () => {
       "m",
       "--instructions",
       "i",
-      "--rating-scale-json",
+      "--rating-scale",
       scale,
     ]);
     const [request] = core.eval.calls[0]!.args as [any];
     expect(request.evaluatorConfig.llmAsAJudge.ratingScale).toEqual(JSON.parse(scale));
+  });
+
+  test("reads a custom rating scale from a file:// path on --rating-scale", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "eval-test-"));
+    const file = join(dir, "scale.json");
+    const scale = { categorical: [{ label: "P", definition: "pass" }] };
+    writeFileSync(file, JSON.stringify(scale));
+    try {
+      const core = new TestCoreClient();
+      await run(core, [
+        "eval",
+        "evaluator",
+        "llm-as-a-judge",
+        "create",
+        "--name",
+        "x",
+        "--level",
+        "SESSION",
+        "--model",
+        "m",
+        "--instructions",
+        "i",
+        "--rating-scale",
+        `file://${file}`,
+      ]);
+      const [request] = core.eval.calls[0]!.args as [any];
+      expect(request.evaluatorConfig.llmAsAJudge.ratingScale).toEqual(scale);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test.each([
@@ -214,7 +244,7 @@ describe("llm-as-a-judge create", () => {
     );
   });
 
-  test("rejects both --rating-scale and --rating-scale-json", async () => {
+  test("rejects malformed custom rating scale JSON", async () => {
     const core = new TestCoreClient();
     expect(
       run(core, [
@@ -231,11 +261,9 @@ describe("llm-as-a-judge create", () => {
         "--instructions",
         "i",
         "--rating-scale",
-        "pass-fail",
-        "--rating-scale-json",
-        "{}",
+        "{not json",
       ]),
-    ).rejects.toThrow(/only one of/);
+    ).rejects.toThrow(/Invalid JSON for option '--rating-scale'/);
   });
 });
 

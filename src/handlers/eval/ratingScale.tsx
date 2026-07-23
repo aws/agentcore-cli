@@ -1,8 +1,9 @@
 import type { RatingScale } from "@aws-sdk/client-bedrock-agentcore-control";
 
 // Rating-scale presets. `--rating-scale <preset>` expands to a full RatingScale
-// union for the common cases; `--rating-scale-json` accepts a raw RatingScale for
-// anything the presets don't cover (mirrors what the API supports directly).
+// union for the common cases; the same flag also accepts a raw RatingScale (JSON,
+// inline / file:// / stdin) for anything the presets don't cover, mirroring what
+// the API supports directly.
 export const RATING_SCALE_PRESET_IDS = [
   "1-5-quality",
   "1-3-simple",
@@ -47,4 +48,10 @@ const PRESETS: Record<RatingScalePresetId, RatingScale> = {
 // ratingScaleFromPreset returns the RatingScale for a preset id.
 export function ratingScaleFromPreset(id: RatingScalePresetId): RatingScale {
   return PRESETS[id];
+}
+
+// isRatingScalePreset reports whether a raw --rating-scale value names a preset.
+// Anything else is treated as a source-aware JSON value (inline / file:// / -).
+export function isRatingScalePreset(value: string): value is RatingScalePresetId {
+  return (RATING_SCALE_PRESET_IDS as readonly string[]).includes(value);
 }

@@ -4,41 +4,35 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { AppIO, Core } from "../../../types";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../utils";
-import { RATING_SCALE_PRESET_IDS, ratingScaleFromPreset } from "../../ratingScale";
+import {
+  RATING_SCALE_PRESET_IDS,
+  isRatingScalePreset,
+  ratingScaleFromPreset,
+} from "../../ratingScale";
 import { SourceResolver } from "../../source";
 
 const LEVELS = ["SESSION", "TRACE", "TOOL_CALL"] as const;
 
-// resolveRatingScale turns the mutually-exclusive --rating-scale / --rating-scale-json
-// flags into a RatingScale, or undefined when neither is given. `source` resolves
-// the JSON form's inline / file:// / stdin value before parsing.
+// resolveRatingScale turns the single --rating-scale value into a RatingScale, or
+// undefined when the flag is omitted. A value matching a known preset id expands
+// to that preset; anything else is a source-aware JSON RatingScale (inline,
+// file://<path>, or - for stdin). A file literally named after a preset is still
+// reachable via file://.
 async function resolveRatingScale(
-  preset: string | undefined,
-  json: string | undefined,
+  value: string | undefined,
   source: SourceResolver,
 ): Promise<RatingScale | undefined> {
-  if (preset !== undefined && json !== undefined) {
-    throw new TypeError("pass only one of '--rating-scale' or '--rating-scale-json'");
-  }
-  if (preset !== undefined) {
-    return ratingScaleFromPreset(preset as (typeof RATING_SCALE_PRESET_IDS)[number]);
-  }
-  const raw = await source.resolve("rating-scale-json", json);
-  return parseJsonFlag<RatingScale>("rating-scale-json", raw);
+  if (value === undefined) return undefined;
+  if (isRatingScalePreset(value)) return ratingScaleFromPreset(value);
+  const raw = await source.resolve("rating-scale", value);
+  return parseJsonFlag<RatingScale>("rating-scale", raw);
 }
 
-const ratingScaleFlags = [
-  flag(
-    "rating-scale",
-    `rating scale preset (${RATING_SCALE_PRESET_IDS.join(" | ")})`,
-    z.enum(RATING_SCALE_PRESET_IDS).optional(),
-  ),
-  flag(
-    "rating-scale-json",
-    "custom rating scale (JSON RatingScale; inline, file://<path>, or - for stdin)",
-    z.string().optional(),
-  ),
-] as const;
+const ratingScaleFlag = flag(
+  "rating-scale",
+  `rating scale: a preset (${RATING_SCALE_PRESET_IDS.join(" | ")}) or a custom RatingScale (JSON inline, file://<path>, or - for stdin)`,
+  z.string().optional(),
+);
 
 const instructionsFlag = flag(
   "instructions",
@@ -55,7 +49,7 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
       flag("level", `evaluation level (${LEVELS.join(" | ")})`, z.enum(LEVELS).optional()),
       flag("model", "the Bedrock model id used to judge", z.string().optional()),
       instructionsFlag,
-      ...ratingScaleFlags,
+      ratingScaleFlag,
       flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),
       flag(
         "tags",
@@ -74,13 +68,9 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
       if (!instructions) {
         throw new TypeError("required option '--instructions <instructions>' not specified");
       }
-      const ratingScale = await resolveRatingScale(
-        flags["rating-scale"],
-        flags["rating-scale-json"],
-        source,
-      );
+      const ratingScale = await resolveRatingScale(flags["rating-scale"], source);
       if (!ratingScale) {
-        throw new TypeError("one of '--rating-scale' or '--rating-scale-json' is required");
+        throw new TypeError("required option '--rating-scale <rating-scale>' not specified");
       }
       const tags = parseJsonFlag<Record<string, string>>(
         "tags",
@@ -116,7 +106,7 @@ export const createLlmAsAJudgeUpdateHandler = (core: Core, io: AppIO) =>
       flag("id", "the ID of the evaluator to update", z.string().optional()),
       instructionsFlag,
       flag("model", "the Bedrock model id used to judge", z.string().optional()),
-      ...ratingScaleFlags,
+      ratingScaleFlag,
       flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),
       flag("client-token", "idempotency token", z.string().optional()),
     ],
@@ -125,11 +115,7 @@ export const createLlmAsAJudgeUpdateHandler = (core: Core, io: AppIO) =>
 
       const source = new SourceResolver(io);
       const instructions = await source.resolve("instructions", flags["instructions"]);
-      const ratingScale = await resolveRatingScale(
-        flags["rating-scale"],
-        flags["rating-scale-json"],
-        source,
-      );
+      const ratingScale = await resolveRatingScale(flags["rating-scale"], source);
 
       const response = await core.eval.updateLlmAsAJudgeEvaluator(
         flags["id"],
