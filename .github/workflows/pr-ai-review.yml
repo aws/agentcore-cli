@@ -134,16 +134,14 @@ jobs:
           role-to-assume: ${{ secrets.HARNESS_AWS_ROLE_ARN }}
           aws-region: us-east-1
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v7
+      - name: Set up Python 3.12 with uv
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.12'
-
-      - name: Install uv and dependencies
-        uses: astral-sh/setup-uv@v7
+          activate-environment: true
 
       - name: Install boto3
-        run: uv pip install --system boto3
+        run: uv pip install boto3
 
       - name: Run AI review
         env:
