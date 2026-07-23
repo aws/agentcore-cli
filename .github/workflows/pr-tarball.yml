@@ -43,7 +43,7 @@ jobs:
           # Needed because authorized maintainers routinely open PRs from their own forks, and
           # checkout@v7 otherwise refuses fork-PR checkout in pull_request_target.
           allow-unsafe-pr-checkout: true
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '20.x'
           cache: 'npm'

@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.24.2] - 2026-07-23
+
+### Added
+- feat: manage vended CDK project dependencies with minor-version pinning (#1777) (2a159d64)
+- feat(traces): add JSON output (#1782) (e73218e0)
+
+### Fixed
+- fix: exclude broken GCP resource detector release (#1815) (01997b21)
+- fix(security): pin fast-uri to ^3.1.4 to resolve high-severity advisory (#1805) (d8f0e5cc)
+- fix(tui): return to project name from create picker (#1780) (82ba471a)
+- fix(deploy): upgrade outdated CDK bootstrap stacks (#1781) (5ab970b9)
+- fix(templates): enable Google ADK observability (#1773) (af78d8b5)
+- fix(ci): repair API docs publishing workflow (#1778) (182c220d)
+
+### Documentation
+- docs(templates): document Windows venv activation (#1786) (4bcbec52)
+
+### Other Changes
+- ci: bump the github-actions group across 1 directory with 3 updates (#1807) (67073aa5)
+- test(e2e): structured failure debugging that leads with the exact error (#1757) (257d1545)
+
 ## [0.24.1] - 2026-07-13
 
 ### Fixed

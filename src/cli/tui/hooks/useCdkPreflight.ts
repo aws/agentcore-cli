@@ -1,7 +1,7 @@
 import { ConfigIO, SecureCredentials, toError } from '../../../lib';
 import type { DependencySyncResult } from '../../../lib/dependency-management';
 import { AwsCredentialsError, DependencySyncError, UserCancellationError } from '../../../lib/errors/types';
-import type { DeployedState } from '../../../schema';
+import type { AwsDeploymentTarget, DeployedState } from '../../../schema';
 import { applyTargetRegionToEnv } from '../../aws';
 import { validateAwsCredentials } from '../../aws/account';
 import { type CdkToolkitWrapper, type SwitchableIoHost, createSwitchableIoHost } from '../../cdk/toolkit-lib';
@@ -40,7 +40,7 @@ const LABEL_PAYMENTS = 'Creating payment infrastructure';
 
 interface RunPaymentSetupOptions {
   projectSpec: PreflightContext['projectSpec'];
-  awsTargets: PreflightContext['awsTargets'];
+  target: NonNullable<PreflightContext['awsTargets'][0]>;
   runtimeCredentials?: SecureCredentials;
   logger: ExecLogger;
   setSteps: React.Dispatch<React.SetStateAction<Step[]>>;
@@ -57,7 +57,7 @@ interface RunPaymentSetupOptions {
 async function runPaymentPreDeploy(opts: RunPaymentSetupOptions): Promise<boolean> {
   const {
     projectSpec,
-    awsTargets,
+    target,
     runtimeCredentials,
     logger,
     setSteps,
@@ -75,7 +75,6 @@ async function runPaymentPreDeploy(opts: RunPaymentSetupOptions): Promise<boolea
   });
   logger.startStep('Setting up payment credentials...');
 
-  const target = awsTargets[0]!;
   const paymentConfigIO = new ConfigIO();
 
   const paymentResult = await setupPaymentCredentialProviders({
@@ -147,6 +146,8 @@ export interface PreflightOptions {
   isInteractive?: boolean;
   /** Skip identity provider check (for plan command which only synthesizes) */
   skipIdentityCheck?: boolean;
+  /** Target selected by the TUI. Falls back to the first configured target when omitted. */
+  selectedTarget?: AwsDeploymentTarget;
   /**
    * Preview mode (diff): the managed-dependency sync runs check-only, computing the plan and a
    * future-tense notice without writing package.json or running npm install. Previews must never
@@ -220,7 +221,13 @@ const IDENTITY_STEP: Step = { label: LABEL_API_KEY, status: 'pending' };
 const BOOTSTRAP_STEP: Step = { label: 'Bootstrap AWS environment', status: 'pending' };
 
 export function useCdkPreflight(options: PreflightOptions): PreflightResult {
-  const { logger, isInteractive = false, skipIdentityCheck = false, dependencySyncCheckOnly = false } = options;
+  const {
+    logger,
+    isInteractive = false,
+    skipIdentityCheck = false,
+    selectedTarget,
+    dependencySyncCheckOnly = false,
+  } = options;
 
   // Create switchable ioHost - starts silent, can be flipped to verbose for deploy
   const switchableIoHost = useMemo(() => createSwitchableIoHost(), []);
@@ -416,17 +423,18 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         updateStep(STEP_VALIDATE, { status: 'running' });
         logger.startStep('Validate project');
         let preflightContext: PreflightContext;
+        let target: AwsDeploymentTarget | undefined;
         try {
-          preflightContext = await validateProject();
+          preflightContext = await validateProject(selectedTarget);
+          target = selectedTarget ?? preflightContext.awsTargets[0];
           setContext(preflightContext);
           // Make aws-targets.json region authoritative for downstream SDK / CDK
           // toolkit-lib clients that bypass explicit region options. Restored on
           // unmount, teardown rejection, or subsequent preflight start.
           // See https://github.com/aws/agentcore-cli/issues/924.
-          const firstTarget = preflightContext.awsTargets[0];
-          if (firstTarget) {
+          if (target) {
             restoreRegionEnv();
-            restoreRegionEnvRef.current = applyTargetRegionToEnv(firstTarget.region);
+            restoreRegionEnvRef.current = applyTargetRegionToEnv(target.region);
           }
           logger.endStep('success');
           updateStep(STEP_VALIDATE, { status: 'success' });
@@ -460,7 +468,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         // Validate AWS credentials (deferred for teardown deploys until after confirmation)
         if (preflightContext.isTeardownDeploy) {
           try {
-            await validateAwsCredentials();
+            await validateAwsCredentials(target);
           } catch (err) {
             const errorMsg = formatError(err);
             logger.endStep('error', errorMsg);
@@ -584,7 +592,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         // Set up payment resources (no-identity-providers path)
         const paymentOk = await runPaymentPreDeploy({
           projectSpec: preflightContext.projectSpec,
-          awsTargets: preflightContext.awsTargets,
+          target: target!,
           logger,
           setSteps,
           updateStepByLabel,
@@ -625,7 +633,6 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         }
 
         // Step: Check stack status (ensure stacks are not in UPDATE_IN_PROGRESS etc.)
-        const target = preflightContext.awsTargets[0];
         if (target && synthStackNames.length > 0) {
           updateStepByLabel(LABEL_STACK_STATUS, { status: 'running' });
           logger.startStep('Check stack status');
@@ -705,6 +712,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     dependencySyncCheckOnly,
     teardownConfirmed,
     restoreRegionEnv,
+    selectedTarget,
   ]);
 
   // Handle identity-setup phase (after user provides credentials)
@@ -722,7 +730,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         // Set up payment resources even when identity is skipped
         const paymentOkSkip = await runPaymentPreDeploy({
           projectSpec: context.projectSpec,
-          awsTargets: context.awsTargets,
+          target: (selectedTarget ?? context.awsTargets[0])!,
           runtimeCredentials: runtimeCredentials ?? undefined,
           logger,
           setSteps,
@@ -760,7 +768,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         }
 
         // Check stack status
-        const target = context.awsTargets[0];
+        const target = selectedTarget ?? context.awsTargets[0];
         if (target && synthStackNames.length > 0) {
           updateStepByLabel(LABEL_STACK_STATUS, { status: 'running' });
           logger.startStep('Check stack status');
@@ -824,7 +832,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         logger.startStep('Set up API key providers');
       }
 
-      const target = context.awsTargets[0];
+      const target = selectedTarget ?? context.awsTargets[0];
       if (!target) {
         const errorMsg = 'No AWS target configured';
         if (hasApiKeys) {
@@ -953,7 +961,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         if (Object.keys(deployedCredentials).length > 0) {
           setAllCredentials(deployedCredentials);
           const configIO = new ConfigIO();
-          const target = context.awsTargets[0];
+          const target = selectedTarget ?? context.awsTargets[0];
           const existingState = await configIO.readDeployedState().catch(() => ({ targets: {} }) as DeployedState);
           const targetState = existingState.targets?.[target!.name] ?? { resources: {} };
           targetState.resources ??= {};
@@ -968,7 +976,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         // Set up payment resources (before CDK synth so ARNs are in deployed state)
         const paymentOkIdentity = await runPaymentPreDeploy({
           projectSpec: context.projectSpec,
-          awsTargets: context.awsTargets,
+          target: (selectedTarget ?? context.awsTargets[0])!,
           runtimeCredentials: runtimeCredentials ?? undefined,
           logger,
           setSteps,
@@ -1071,7 +1079,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     };
 
     void runIdentitySetup();
-  }, [phase, context, skipIdentitySetup, runtimeCredentials, logger, switchableIoHost.ioHost]);
+  }, [phase, context, skipIdentitySetup, runtimeCredentials, logger, switchableIoHost.ioHost, selectedTarget]);
 
   // Handle bootstrapping phase
   useEffect(() => {

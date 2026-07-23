@@ -15,6 +15,8 @@ dependencies = [
     "fastapi >= 0.115.12",
     "google-adk >= 1.16.0, < 2.0.0",
     "google-genai >= 1.0.0, < 2.0.0",
+    # 1.13.0 was yanked for broken imports.
+    "opentelemetry-resourcedetector-gcp >= 1.9.0a0, < 2.0.0, != 1.13.0",
     "aws-opentelemetry-distro >= 0.17.0",
     "uvicorn >= 0.34.3",
 ]

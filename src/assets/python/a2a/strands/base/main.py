@@ -1,9 +1,5 @@
 from strands import Agent, tool
-from a2a.helpers import new_task_from_user_message
-from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.events import EventQueue
-from a2a.server.tasks import TaskUpdater
-from a2a.types import AgentCapabilities, AgentCard, AgentInterface, AgentSkill, Part
+from strands.multiagent.a2a.executor import StrandsA2AExecutor
 from bedrock_agentcore.runtime import serve_a2a
 from model.load import load_model
 {{#if hasMemory}}
@@ -113,50 +109,5 @@ agent = Agent(
 )
 {{/if}}
 
-
-class StrandsAgentExecutor(AgentExecutor):
-    """Wraps a Strands Agent as an a2a-sdk v1 AgentExecutor."""
-
-    def __init__(self, agent):
-        self.agent = agent
-
-    async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
-        task = context.current_task or new_task_from_user_message(context.message)
-        if not context.current_task:
-            await event_queue.enqueue_event(task)
-        updater = TaskUpdater(event_queue, task.id, task.context_id)
-
-        result = await self.agent.invoke_async(context.get_user_input())
-        await updater.add_artifact([Part(text=str(result))])
-        await updater.complete()
-
-    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
-        pass
-
-
-card = AgentCard(
-    name="{{ name }}",
-    description="A Strands agent on Bedrock AgentCore",
-    version="0.1.0",
-    capabilities=AgentCapabilities(streaming=True),
-    skills=[
-        AgentSkill(
-            id="tools",
-            name="tools",
-            description="Use tools to help answer questions",
-            tags=["tools"],
-        )
-    ],
-    default_input_modes=["text"],
-    default_output_modes=["text"],
-    supported_interfaces=[
-        AgentInterface(
-            protocol_binding="JSONRPC",
-            protocol_version="1.0",
-            url="http://localhost:9000/",
-        )
-    ],
-)
-
 if __name__ == "__main__":
-    serve_a2a(StrandsAgentExecutor(agent), card)
+    serve_a2a(StrandsA2AExecutor(agent))

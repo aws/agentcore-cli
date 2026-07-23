@@ -43,7 +43,6 @@ export async function fetchA2AAgentCard(port: number, logger?: SSELogger): Promi
         logger?.log?.('system', `A2A agent card: ${card.name ?? 'unnamed'}`);
         return card;
       }
-      return null;
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       if (isConnectionError(error) && attempt < maxRetries - 1) {

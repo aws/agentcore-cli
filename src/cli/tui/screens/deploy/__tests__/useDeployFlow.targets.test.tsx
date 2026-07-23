@@ -37,8 +37,9 @@ const fakeIoHost = {
 
 // Hoisted so the vi.mock factory below (hoisted above module init) can reference it, while the
 // test bodies keep a handle to assert the persist path polls the SELECTED target's stack/region.
-const { getStackOutputsSpy } = vi.hoisted(() => ({
+const { getStackOutputsSpy, useCdkPreflightSpy } = vi.hoisted(() => ({
   getStackOutputsSpy: vi.fn().mockRejectedValue(new Error('test: skip persist')),
+  useCdkPreflightSpy: vi.fn(),
 }));
 
 // preflightState is mutated per-test before render so the same mock can vary phase/context.
@@ -48,7 +49,10 @@ vi.mock('../../../hooks', async () => {
   const actual = await vi.importActual<any>('../../../hooks');
   return {
     ...actual,
-    useCdkPreflight: () => preflightState,
+    useCdkPreflight: (options: unknown) => {
+      useCdkPreflightSpy(options);
+      return preflightState;
+    },
   };
 });
 
@@ -144,6 +148,7 @@ describe('useDeployFlow target scoping (issue #1267)', () => {
     fakeIoHost.setVerbose.mockClear();
     getStackOutputsSpy.mockClear();
     getStackOutputsSpy.mockRejectedValue(new Error('test: skip persist'));
+    useCdkPreflightSpy.mockClear();
   });
   afterEach(() => {
     vi.clearAllTimers();
@@ -167,6 +172,20 @@ describe('useDeployFlow target scoping (issue #1267)', () => {
 
     // Regression: selecting B must never produce a pattern for A.
     expect(arg.stacks.patterns).not.toContain(toStackName(PROJECT_NAME, TARGET_A.name));
+  });
+
+  it('passes the first selected target to preflight validation', async () => {
+    preflightState = makePreflight({ awsTargets: [TARGET_A, TARGET_B] });
+
+    const { unmount } = render(<Harness selectedTargets={[TARGET_B]} />);
+    await flush();
+    unmount();
+
+    expect(useCdkPreflightSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selectedTarget: TARGET_B,
+      })
+    );
   });
 
   it('selecting target A produces only A’s stack (no cross-leak to B)', async () => {

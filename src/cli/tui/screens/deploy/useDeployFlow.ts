@@ -162,7 +162,12 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
   // Always call the hook (React rules), but we won't use it when preSynthesized is provided.
   // Diff mode is a preview: the managed-dependency sync runs check-only so the working tree
   // is never mutated by `agentcore deploy --diff`.
-  const preflight = useCdkPreflight({ logger, isInteractive, dependencySyncCheckOnly: diffMode });
+  const preflight = useCdkPreflight({
+    logger,
+    isInteractive,
+    selectedTarget: selectedTargets?.[0],
+    dependencySyncCheckOnly: diffMode,
+  });
 
   // Use pre-synthesized values when provided, otherwise use preflight values
   const cdkToolkitWrapper = preSynthesized?.cdkToolkitWrapper ?? preflight.cdkToolkitWrapper;

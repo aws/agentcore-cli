@@ -1495,9 +1495,11 @@ requires-python = ">=3.10"
 dependencies = [
     "a2a-sdk[http-server] >= 1.0.1, < 2.0.0",
     "aws-opentelemetry-distro",
-    "bedrock-agentcore[a2a] >= 1.19.0",
+    "bedrock-agentcore[a2a-v1] >= 1.19.0",
     "google-adk[a2a] >= 2.5.0, < 3.0.0",
     "google-genai >= 2.9.0, < 3.0.0",
+    # 1.13.0 was yanked for broken imports.
+    "opentelemetry-resourcedetector-gcp >= 1.9.0a0, < 2.0.0, != 1.13.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -1876,7 +1878,7 @@ dependencies = [
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"langchain-openai >= 0.2.0",
     {{/if}}"aws-opentelemetry-distro",
     "opentelemetry-instrumentation-langchain >= 0.59.0",
-    "bedrock-agentcore[a2a] >= 1.19.0",
+    "bedrock-agentcore[a2a-v1] >= 1.19.0",
     "botocore[crt] >= 1.35.0",
     "langgraph >= 0.2.0",
 ]
@@ -1959,11 +1961,7 @@ Thumbs.db
 
 exports[`Assets Directory Snapshots > Python framework assets > python/python/a2a/strands/base/main.py should match snapshot 1`] = `
 "from strands import Agent, tool
-from a2a.helpers import new_task_from_user_message
-from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.events import EventQueue
-from a2a.server.tasks import TaskUpdater
-from a2a.types import AgentCapabilities, AgentCard, AgentInterface, AgentSkill, Part
+from strands.multiagent.a2a.executor import StrandsA2AExecutor
 from bedrock_agentcore.runtime import serve_a2a
 from model.load import load_model
 {{#if hasMemory}}
@@ -2073,53 +2071,8 @@ agent = Agent(
 )
 {{/if}}
 
-
-class StrandsAgentExecutor(AgentExecutor):
-    """Wraps a Strands Agent as an a2a-sdk v1 AgentExecutor."""
-
-    def __init__(self, agent):
-        self.agent = agent
-
-    async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
-        task = context.current_task or new_task_from_user_message(context.message)
-        if not context.current_task:
-            await event_queue.enqueue_event(task)
-        updater = TaskUpdater(event_queue, task.id, task.context_id)
-
-        result = await self.agent.invoke_async(context.get_user_input())
-        await updater.add_artifact([Part(text=str(result))])
-        await updater.complete()
-
-    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
-        pass
-
-
-card = AgentCard(
-    name="{{ name }}",
-    description="A Strands agent on Bedrock AgentCore",
-    version="0.1.0",
-    capabilities=AgentCapabilities(streaming=True),
-    skills=[
-        AgentSkill(
-            id="tools",
-            name="tools",
-            description="Use tools to help answer questions",
-            tags=["tools"],
-        )
-    ],
-    default_input_modes=["text"],
-    default_output_modes=["text"],
-    supported_interfaces=[
-        AgentInterface(
-            protocol_binding="JSONRPC",
-            protocol_version="1.0",
-            url="http://localhost:9000/",
-        )
-    ],
-)
-
 if __name__ == "__main__":
-    serve_a2a(StrandsAgentExecutor(agent), card)
+    serve_a2a(StrandsA2AExecutor(agent))
 "
 `;
 
@@ -2268,9 +2221,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     {{#if (eq modelProvider "Anthropic")}}"anthropic >= 0.30.0",
-    {{/if}}"a2a-sdk[http-server] >= 1.0.1, < 2.0.0",
+    {{/if}}"a2a-sdk[all] >= 0.3.0, < 0.4.0",
     "aws-opentelemetry-distro",
-    "bedrock-agentcore[a2a] >= 1.19.0",
+    "bedrock-agentcore[a2a] >= 1.9.1",
     "botocore[crt] >= 1.35.0",
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",
@@ -2579,6 +2532,8 @@ dependencies = [
     "fastapi >= 0.115.12",
     "google-adk >= 1.16.0, < 2.0.0",
     "google-genai >= 1.0.0, < 2.0.0",
+    # 1.13.0 was yanked for broken imports.
+    "opentelemetry-resourcedetector-gcp >= 1.9.0a0, < 2.0.0, != 1.13.0",
     "aws-opentelemetry-distro >= 0.17.0",
     "uvicorn >= 0.34.3",
 ]
@@ -4261,6 +4216,8 @@ dependencies = [
     "aws-opentelemetry-distro >= 0.17.0",
     "google-adk >= 1.35.0, < 2.0.0",
     "google-genai >= 1.0.0, < 2.0.0",
+    # 1.13.0 was yanked for broken imports.
+    "opentelemetry-resourcedetector-gcp >= 1.9.0a0, < 2.0.0, != 1.13.0",
     "bedrock-agentcore >= 1.0.3",
     "botocore[crt] >= 1.35.0",
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",

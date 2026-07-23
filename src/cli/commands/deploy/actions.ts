@@ -246,7 +246,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
 
     // Preflight: validate project
     startStep('Validate project');
-    const context = await validateProject();
+    const context = await validateProject(target);
     endStep('success');
 
     // Warn about imperative-build orphan harnesses (preview→GA transition). These aren't
@@ -282,7 +282,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // Validate AWS credentials (deferred for teardown deploys until after confirmation)
     if (context.isTeardownDeploy) {
       startStep('Validate AWS credentials');
-      await validateAwsCredentials();
+      await validateAwsCredentials(target);
       endStep('success');
     }
 
