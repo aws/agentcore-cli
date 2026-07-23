@@ -1,10 +1,10 @@
 {
   "apiKeySecretArn": {
-    "secretArn": "arn:aws:secretsmanager:us-west-2:685197708687:secret:bedrock-agentcore-identity!default/apikey/agentcore-cli-identity-fixture-34b3f8a9-cHh41n"
+    "secretArn": "arn:aws:secretsmanager:us-west-2:685197708687:secret:bedrock-agentcore-identity!default/apikey/agentcore-cli-identity-fixture-ceac1e1d-2BRhkE"
   },
   "name": "agentcore-cli-identity-fixture",
   "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:token-vault/default/apikeycredentialprovider/agentcore-cli-identity-fixture",
-  "createdTime": "2026-07-23T16:31:54.009Z",
-  "lastUpdatedTime": "2026-07-23T16:31:54.009Z",
+  "createdTime": "2026-07-23T19:31:48.713Z",
+  "lastUpdatedTime": "2026-07-23T19:31:48.713Z",
   "apiKeySecretSource": "MANAGED"
 }

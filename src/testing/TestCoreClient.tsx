@@ -36,7 +36,11 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { Core } from "../handlers/types";
 import type { CoreHarnessClient, CreateHarnessInput } from "../handlers/harness/types";
-import type { CoreIdentityClient } from "../handlers/identity/types";
+import type {
+  CoreIdentityClient,
+  CreateApiKeyCredentialProviderInput,
+  UpdateApiKeyCredentialProviderInput,
+} from "../handlers/identity/types";
 import type { CoreRuntimeClient } from "../handlers/runtime/types";
 import type { CoreOptions } from "../core/types";
 import type { ProjectManager } from "../handlers/project/types";
@@ -568,8 +572,7 @@ type TestCoreClientOptions = {
 
 class TestIdentityClient implements CoreIdentityClient {
   async createApiKeyCredentialProvider(
-    _name: string,
-    _apiKey: string,
+    _input: CreateApiKeyCredentialProviderInput,
     _options: CoreOptions,
   ): Promise<CreateApiKeyCredentialProviderResponse> {
     return DEFAULT_CREATE_API_KEY_RESPONSE;
@@ -591,8 +594,7 @@ class TestIdentityClient implements CoreIdentityClient {
   }
 
   async updateApiKeyCredentialProvider(
-    _name: string,
-    _apiKey: string,
+    _input: UpdateApiKeyCredentialProviderInput,
     _options: CoreOptions,
   ): Promise<UpdateApiKeyCredentialProviderResponse> {
     return DEFAULT_UPDATE_API_KEY_RESPONSE;

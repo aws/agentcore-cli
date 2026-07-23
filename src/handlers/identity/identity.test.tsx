@@ -193,7 +193,7 @@ describe("api-key-credential-provider CRUDL", () => {
     [
       "create --name only",
       ["identity", "api-key-credential-provider", "create", "--name", "x"],
-      /--api-key/,
+      /--api-key.*--api-key-secret-arn/,
     ],
     [
       "create --api-key only",
@@ -206,10 +206,71 @@ describe("api-key-credential-provider CRUDL", () => {
     [
       "update --name only",
       ["identity", "api-key-credential-provider", "update", "--name", "x"],
-      /--api-key/,
+      /--api-key.*--api-key-secret-arn/,
     ],
     ["delete bare", ["identity", "api-key-credential-provider", "delete"], /--name/],
   ] as const)("rejects missing required flags for `%s`", async (_label, args, message) => {
+    expect(run([...args])).rejects.toThrow(message);
+  });
+
+  test.each([
+    [
+      "create: --api-key with --api-key-secret-arn",
+      [
+        "identity",
+        "api-key-credential-provider",
+        "create",
+        "--name",
+        "x",
+        "--api-key",
+        "k",
+        "--api-key-secret-arn",
+        "arn:aws:secretsmanager:us-west-2:123:secret:s",
+      ],
+      /mutually exclusive/,
+    ],
+    [
+      "create: --api-key-secret-arn without --api-key-secret-json-key",
+      [
+        "identity",
+        "api-key-credential-provider",
+        "create",
+        "--name",
+        "x",
+        "--api-key-secret-arn",
+        "arn:aws:secretsmanager:us-west-2:123:secret:s",
+      ],
+      /must be specified together/,
+    ],
+    [
+      "update: --api-key with --api-key-secret-arn",
+      [
+        "identity",
+        "api-key-credential-provider",
+        "update",
+        "--name",
+        "x",
+        "--api-key",
+        "k",
+        "--api-key-secret-arn",
+        "arn:aws:secretsmanager:us-west-2:123:secret:s",
+      ],
+      /mutually exclusive/,
+    ],
+    [
+      "update: --api-key-secret-json-key without --api-key-secret-arn",
+      [
+        "identity",
+        "api-key-credential-provider",
+        "update",
+        "--name",
+        "x",
+        "--api-key-secret-json-key",
+        "key",
+      ],
+      /--api-key.*--api-key-secret-arn/,
+    ],
+  ] as const)("rejects mutually exclusive flags for `%s`", async (_label, args, message) => {
     expect(run([...args])).rejects.toThrow(message);
   });
 
