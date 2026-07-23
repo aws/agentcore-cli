@@ -59,20 +59,11 @@ export function HarnessVersionPicker({
         };
       }}
       toRow={toRow}
-      columns={(terminalColumns) => {
-        const showStatus = terminalColumns >= 60;
-        const showCreatedAt = terminalColumns >= 90;
-        const statusWidth = showStatus ? 20 : 0;
-        const createdAtWidth = showCreatedAt ? 30 : 0;
-        const versionWidth = Math.max(8, terminalColumns - 2 - statusWidth - createdAtWidth);
-        return [
-          { key: "harnessVersion", header: "version", width: versionWidth },
-          ...(showStatus ? [{ key: "status" as const, header: "status", width: statusWidth }] : []),
-          ...(showCreatedAt
-            ? [{ key: "createdAt" as const, header: "createdAt", width: createdAtWidth }]
-            : []),
-        ];
-      }}
+      columns={[
+        { key: "harnessVersion", header: "version" },
+        { key: "status", header: "status" },
+        { key: "createdAt", header: "createdAt" },
+      ]}
       sortRows={(rows) =>
         [...rows].sort((left, right) => Number(right.harnessVersion) - Number(left.harnessVersion))
       }

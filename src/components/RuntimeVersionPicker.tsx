@@ -50,26 +50,11 @@ export function RuntimeVersionPicker({
         };
       }}
       toRow={toRow}
-      columns={(terminalColumns) => {
-        const showUpdatedAt = terminalColumns >= 90;
-        const showStatus = terminalColumns >= 60;
-        const statusWidth = showStatus ? 20 : 0;
-        const updatedAtWidth = showUpdatedAt ? 30 : 0;
-        const versionWidth = Math.max(8, terminalColumns - 2 - statusWidth - updatedAtWidth);
-        return [
-          { key: "version", header: "version", width: versionWidth },
-          ...(showStatus ? [{ key: "status" as const, header: "status", width: statusWidth }] : []),
-          ...(showUpdatedAt
-            ? [
-                {
-                  key: "lastUpdatedAt" as const,
-                  header: "lastUpdatedAt",
-                  width: updatedAtWidth,
-                },
-              ]
-            : []),
-        ];
-      }}
+      columns={[
+        { key: "version", header: "version" },
+        { key: "status", header: "status" },
+        { key: "lastUpdatedAt", header: "lastUpdatedAt" },
+      ]}
       sortRows={(rows) =>
         [...rows].sort((left, right) => Number(right.version) - Number(left.version))
       }

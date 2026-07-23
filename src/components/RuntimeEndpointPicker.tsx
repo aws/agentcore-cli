@@ -54,40 +54,13 @@ export function RuntimeEndpointPicker({
         };
       }}
       toRow={toRow}
-      columns={(terminalColumns) => {
-        const showUpdatedAt = terminalColumns >= 90;
-        const showStatus = terminalColumns >= 70;
-        const showTarget = terminalColumns >= 60;
-        const liveWidth = 8;
-        const targetWidth = showTarget ? 8 : 0;
-        const statusWidth = showStatus ? 20 : 0;
-        const updatedAtWidth = showUpdatedAt ? 30 : 0;
-        const qualifierWidth = Math.max(
-          12,
-          terminalColumns - 2 - liveWidth - targetWidth - statusWidth - updatedAtWidth,
-        );
-        return [
-          {
-            key: "qualifier",
-            header: "qualifier",
-            width: qualifierWidth,
-          },
-          { key: "liveVersion", header: "live", width: liveWidth },
-          ...(showTarget
-            ? [{ key: "targetVersion" as const, header: "target", width: targetWidth }]
-            : []),
-          ...(showStatus ? [{ key: "status" as const, header: "status", width: statusWidth }] : []),
-          ...(showUpdatedAt
-            ? [
-                {
-                  key: "lastUpdatedAt" as const,
-                  header: "lastUpdatedAt",
-                  width: updatedAtWidth,
-                },
-              ]
-            : []),
-        ];
-      }}
+      columns={[
+        { key: "qualifier", header: "qualifier" },
+        { key: "liveVersion", header: "live" },
+        { key: "targetVersion", header: "target" },
+        { key: "status", header: "status" },
+        { key: "lastUpdatedAt", header: "lastUpdatedAt" },
+      ]}
       getValue={(row) => row.qualifier}
       onSelect={onSelect}
       onBack={goBack}

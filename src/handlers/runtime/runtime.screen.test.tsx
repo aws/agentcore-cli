@@ -15,6 +15,8 @@ import {
 
 afterEach(cleanupScreens);
 
+const runtimeEndpointUrl = "https://runtime.test";
+
 function runtime(overrides: Partial<AgentRuntime> = {}): AgentRuntime {
   return {
     agentRuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/runtime-1",
@@ -68,7 +70,7 @@ function coreWithRuntimes(runtimes: AgentRuntime[]): TestCoreClient {
 }
 
 describe("runtime picker", () => {
-  test("renders Runtime identity, latest version, status, and update time when wide", async () => {
+  test("renders Runtime identity, latest version, status, and update time", async () => {
     const core = coreWithRuntimes([
       runtime({
         agentRuntimeId: "runtime-visible-id",
@@ -80,7 +82,6 @@ describe("runtime picker", () => {
     ]);
     const r = renderScreen("/agentcore/runtime/list", { core });
 
-    await r.resize(140);
     await waitForText(r.lastFrame, "orders");
     const frame = r.lastFrame()!;
     expect(frame).toContain("name");
@@ -96,7 +97,7 @@ describe("runtime picker", () => {
 
   test("calls listRuntimes once with exact Core options", async () => {
     const core = coreWithRuntimes([runtime()]);
-    renderScreen("/agentcore/runtime/list", { core });
+    renderScreen("/agentcore/runtime/list", { core, endpointUrl: runtimeEndpointUrl });
 
     await waitFor(() => core.runtime.calls.some((call) => call.method === "listRuntimes"));
     expect(core.runtime.calls.filter((call) => call.method === "listRuntimes")).toEqual([
@@ -107,7 +108,7 @@ describe("runtime picker", () => {
           expect.any(Number),
           {
             region: "us-east-1",
-            endpointUrl: undefined,
+            endpointUrl: runtimeEndpointUrl,
           },
         ],
       },
@@ -135,30 +136,6 @@ describe("runtime picker", () => {
     expect(r.lastFrame()).not.toContain("No Runtimes found in this Region.");
   });
 
-  test("keeps name and latest version when narrow", async () => {
-    const core = coreWithRuntimes([
-      runtime({
-        agentRuntimeId: "hidden-runtime-id",
-        agentRuntimeName: "visible-name",
-        agentRuntimeVersion: "88",
-        status: "CREATE_FAILED",
-        lastUpdatedAt: new Date("2026-07-18T09:08:07.000Z"),
-      }),
-    ]);
-    const r = renderScreen("/agentcore/runtime/list", { core });
-
-    await r.resize(60);
-    await waitForText(r.lastFrame, "visible-name");
-    const frame = r.lastFrame()!;
-    expect(frame).toContain("name");
-    expect(frame).toContain("latestVersion");
-    expect(frame).toContain("visible-name");
-    expect(frame).toContain("88");
-    expect(frame).not.toContain("hidden-runtime-id");
-    expect(frame).not.toContain("CREATE_FAILED");
-    expect(frame).not.toContain("2026-07-18T09:08:07.000Z");
-  });
-
   test("Esc returns to the Runtime menu from a successful direct entry", async () => {
     const core = coreWithRuntimes([runtime()]);
     const r = renderScreen("/agentcore/runtime/list", { core });
@@ -182,7 +159,10 @@ describe("runtime hub", () => {
   test("fetches the route ID with exact Core options and renders its summary", async () => {
     const core = new TestCoreClient();
     core.runtime.setGetResponse(getRuntimeResponse());
-    const r = renderScreen("/agentcore/runtime/get/runtime-123", { core });
+    const r = renderScreen("/agentcore/runtime/get/runtime-123", {
+      core,
+      endpointUrl: runtimeEndpointUrl,
+    });
 
     await waitForText(r.lastFrame, "arn:aws:bedrock-agentcore:us-east-1");
     expect(r.lastFrame()).toContain("runtime-123");
@@ -198,7 +178,7 @@ describe("runtime hub", () => {
         "runtime-123",
         {
           region: "us-east-1",
-          endpointUrl: undefined,
+          endpointUrl: runtimeEndpointUrl,
         },
       ],
     });

@@ -66,25 +66,12 @@ export function HarnessPicker({
         };
       }}
       toRow={toRow}
-      columns={(terminalColumns) => {
-        const versionWidth = 10;
-        const showStatus = terminalColumns >= 70;
-        const showUpdatedAt = terminalColumns >= 90;
-        const statusWidth = showStatus ? 20 : 0;
-        const updatedAtWidth = showUpdatedAt ? 30 : 0;
-        const nameWidth = Math.max(
-          12,
-          terminalColumns - 2 - versionWidth - statusWidth - updatedAtWidth,
-        );
-        return [
-          { key: "harnessName", header: "name", width: nameWidth },
-          { key: "harnessVersion", header: "version", width: versionWidth },
-          ...(showStatus ? [{ key: "status" as const, header: "status", width: statusWidth }] : []),
-          ...(showUpdatedAt
-            ? [{ key: "updatedAt" as const, header: "updatedAt", width: updatedAtWidth }]
-            : []),
-        ];
-      }}
+      columns={[
+        { key: "harnessName", header: "name" },
+        { key: "harnessVersion", header: "version" },
+        { key: "status", header: "status" },
+        { key: "updatedAt", header: "updatedAt" },
+      ]}
       getValue={(row) => row.harnessId}
       onSelect={onSelect}
       onBack={goBack}

@@ -85,7 +85,7 @@ describe("harness endpoint list screen", () => {
     r.unmount();
   });
 
-  test("shows name and live columns when narrow and all columns when wide", async () => {
+  test("renders endpoint columns and values", async () => {
     const core = coreWithEndpoints([
       endpoint({
         endpointName: "visible-endpoint",
@@ -97,30 +97,15 @@ describe("harness endpoint list screen", () => {
     ]);
     const r = renderScreen("/agentcore/harness/endpoint/list/MyHarness-abc123", { core });
 
-    await r.resize(50);
     await waitForText(r.lastFrame, "visible-endpoint");
-    const narrow = r.lastFrame()!;
-    expect(narrow).toContain("name");
-    expect(narrow).toContain("live");
-    expect(narrow).toContain("visible-endpoint");
-    expect(narrow).toContain("7");
-    expect(narrow).not.toContain("target");
-    expect(narrow).not.toContain("status");
-    expect(narrow).not.toContain("updatedAt");
-    expect(narrow).not.toContain("88");
-    expect(narrow).not.toContain("UPDATE_FAILED");
-    expect(narrow).not.toContain("2026-07-18T02:00:00.000Z");
-
-    await r.resize(120);
-    await waitForText(r.lastFrame, "updatedAt");
-    const wide = r.lastFrame()!;
-    expect(wide).toContain("name");
-    expect(wide).toContain("live");
-    expect(wide).toContain("target");
-    expect(wide).toContain("status");
-    expect(wide).toContain("updatedAt");
-    expect(wide).toMatch(/visible-endpoint\s+7\s+88\s+UPDATE_FAILED/);
-    expect(wide).toContain("2026-07-18T02:00:00.000Z");
+    const frame = r.lastFrame()!;
+    expect(frame).toContain("name");
+    expect(frame).toContain("live");
+    expect(frame).toContain("target");
+    expect(frame).toContain("status");
+    expect(frame).toContain("updatedAt");
+    expect(frame).toMatch(/visible-endpoint\s+7\s+88\s+UPDATE_FAILED/);
+    expect(frame).toContain("2026-07-18T02:00:00.000Z");
     r.unmount();
   });
 

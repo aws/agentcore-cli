@@ -14,6 +14,8 @@ import {
 
 afterEach(cleanupScreens);
 
+const runtimeEndpointUrl = "https://runtime.test";
+
 function runtime(overrides: Partial<AgentRuntime> = {}): AgentRuntime {
   return {
     agentRuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/runtime-123",
@@ -102,7 +104,10 @@ describe("Runtime endpoint flow", () => {
     core.runtime.setListEndpointsResponse({
       runtimeEndpoints: [endpoint()],
     });
-    renderScreen("/agentcore/runtime/endpoint/list/runtime-123", { core });
+    renderScreen("/agentcore/runtime/endpoint/list/runtime-123", {
+      core,
+      endpointUrl: runtimeEndpointUrl,
+    });
 
     await waitFor(() => core.runtime.calls.some((call) => call.method === "listRuntimeEndpoints"));
     expect(core.runtime.calls.filter((call) => call.method === "listRuntimeEndpoints")).toEqual([
@@ -114,7 +119,7 @@ describe("Runtime endpoint flow", () => {
           expect.any(Number),
           {
             region: "us-east-1",
-            endpointUrl: undefined,
+            endpointUrl: runtimeEndpointUrl,
           },
         ],
       },
@@ -122,7 +127,7 @@ describe("Runtime endpoint flow", () => {
     expect(core.runtime.calls.some((call) => call.method === "listRuntimes")).toBe(false);
   });
 
-  test("renders qualifier, live and target versions, status, and update time when wide", async () => {
+  test("renders qualifier, live and target versions, status, and update time", async () => {
     const core = new TestCoreClient();
     core.runtime.setListEndpointsResponse({
       runtimeEndpoints: [
@@ -149,33 +154,6 @@ describe("Runtime endpoint flow", () => {
     expect(frame).toContain("UPDATE_FAILED");
     expect(frame).toContain("2026-07-18T02:00:00.000Z");
     expect(frame).not.toContain("protocol");
-  });
-
-  test("keeps qualifier and live version when narrow", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setListEndpointsResponse({
-      runtimeEndpoints: [
-        endpoint({
-          name: "visible-endpoint",
-          liveVersion: "7",
-          status: "UPDATE_FAILED",
-          lastUpdatedAt: new Date("2026-07-18T02:00:00.000Z"),
-        }),
-      ],
-    });
-    const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", { core });
-
-    await r.resize(50);
-    await waitForText(r.lastFrame, "visible-endpoint");
-    const frame = r.lastFrame()!;
-    expect(frame).toContain("qualifier");
-    expect(frame).toContain("live");
-    expect(frame).toContain("visible-endpoint");
-    expect(frame).toContain("7");
-    expect(frame).not.toContain("target");
-    expect(frame).not.toContain("status");
-    expect(frame).not.toContain("lastUpdatedAt");
-    expect(frame).not.toContain("UPDATE_FAILED");
   });
 
   test("shows the Runtime-scoped empty state", async () => {
@@ -219,7 +197,10 @@ describe("Runtime endpoint flow", () => {
       $metadata: { requestId: "endpoint-request-metadata" },
       ...getEndpointResponse({ name: qualifier, id: qualifier }),
     } as GetAgentRuntimeEndpointResponse);
-    const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", { core });
+    const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", {
+      core,
+      endpointUrl: runtimeEndpointUrl,
+    });
 
     await waitForText(r.lastFrame, qualifier);
     await r.press("return");
@@ -230,14 +211,18 @@ describe("Runtime endpoint flow", () => {
     await waitForText(r.lastFrame, '"targetVersion"');
     expect(r.lastFrame()).not.toContain("$metadata");
     expect(r.lastFrame()).not.toContain("endpoint-request-metadata");
-    await waitFor(() =>
-      core.runtime.calls.some(
-        (call) =>
-          call.method === "getRuntimeEndpoint" &&
-          call.args[0] === "runtime-123" &&
-          call.args[1] === qualifier,
-      ),
-    );
+    await waitFor(() => core.runtime.calls.some((call) => call.method === "getRuntimeEndpoint"));
+    expect(core.runtime.calls.find((call) => call.method === "getRuntimeEndpoint")).toEqual({
+      method: "getRuntimeEndpoint",
+      args: [
+        "runtime-123",
+        qualifier,
+        {
+          region: "us-east-1",
+          endpointUrl: runtimeEndpointUrl,
+        },
+      ],
+    });
   });
 
   test("uses a structural parent for the Runtime picker and history below it", async () => {

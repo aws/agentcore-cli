@@ -2,7 +2,7 @@ import React from "react";
 import { render, cleanup } from "ink-testing-library";
 import { QueryClient } from "@tanstack/react-query";
 import { ValueContext, compile, CommandKey, type Context } from "../router";
-import { RegionKey, JsonKey, DebugKey } from "../handlers/keys";
+import { RegionKey, JsonKey, DebugKey, EndpointKey } from "../handlers/keys";
 import { JsonRendererKey } from "../tui";
 import { createRootHandler } from "../handlers";
 import { Root } from "../components/Root";
@@ -27,7 +27,7 @@ import { createSilentLogger } from "./logging";
 // RouterScreen walks it to resolve each menu's subcommands), the global flags
 // (region/json/debug), and a no-op JsonRenderer. Compiling the real handler tree
 // keeps the command menus faithful to the production command structure.
-function baseContext(core: TestCoreClient): Context {
+function baseContext(core: TestCoreClient, endpointUrl?: string): Context {
   const rootCommand = compile(
     createRootHandler(core, { io: testIO().io, logger: createSilentLogger() }),
     ValueContext.EmptyContext(),
@@ -36,6 +36,7 @@ function baseContext(core: TestCoreClient): Context {
   return ValueContext.EmptyContext()
     .withValue(CommandKey, rootCommand)
     .withValue(RegionKey, "us-east-1")
+    .withValue(EndpointKey, endpointUrl)
     .withValue(JsonKey, false)
     .withValue(DebugKey, false)
     .withValue(JsonRendererKey, { renderJson: () => {} });
@@ -59,6 +60,7 @@ export interface RenderScreenOptions {
   // queryClient overrides the deterministic default when a test needs to
   // exercise cache behavior.
   queryClient?: QueryClient;
+  endpointUrl?: string;
 }
 
 export interface RenderScreenResult {
@@ -116,7 +118,7 @@ export function cleanupScreens(): void {
 // and returns handles to read frames and send input.
 export function renderScreen(path: string, options: RenderScreenOptions = {}): RenderScreenResult {
   const core = options.core ?? new TestCoreClient();
-  const ctx = options.ctx ?? baseContext(core);
+  const ctx = options.ctx ?? baseContext(core, options.endpointUrl);
   const queryClient = options.queryClient ?? testQueryClient();
 
   const instance = render(<></>);

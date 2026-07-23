@@ -101,7 +101,7 @@ describe("harness version list screen", () => {
     r.unmount();
   });
 
-  test("shows version-only columns when narrow and all columns when wide", async () => {
+  test("renders version columns and values", async () => {
     const core = coreWithVersions([
       version({
         harnessVersion: "123",
@@ -111,25 +111,14 @@ describe("harness version list screen", () => {
     ]);
     const r = renderScreen("/agentcore/harness/version/list/MyHarness-abc123", { core });
 
-    await r.resize(50);
-    await waitForText(r.lastFrame, "123");
-    const narrow = r.lastFrame()!;
-    expect(narrow).toContain("version");
-    expect(narrow).toContain("123");
-    expect(narrow).not.toContain("status");
-    expect(narrow).not.toContain("createdAt");
-    expect(narrow).not.toContain("UPDATE_FAILED");
-    expect(narrow).not.toContain("2026-07-18T02:00:00.000Z");
-
-    await r.resize(120);
-    await waitForText(r.lastFrame, "createdAt");
-    const wide = r.lastFrame()!;
-    expect(wide).toContain("version");
-    expect(wide).toContain("status");
-    expect(wide).toContain("createdAt");
-    expect(wide).toContain("123");
-    expect(wide).toContain("UPDATE_FAILED");
-    expect(wide).toContain("2026-07-18T02:00:00.000Z");
+    await waitForText(r.lastFrame, "UPDATE_FAILED");
+    const frame = r.lastFrame()!;
+    expect(frame).toContain("version");
+    expect(frame).toContain("status");
+    expect(frame).toContain("createdAt");
+    expect(frame).toContain("123");
+    expect(frame).toContain("UPDATE_FAILED");
+    expect(frame).toContain("2026-07-18T02:00:00.000Z");
     r.unmount();
   });
 

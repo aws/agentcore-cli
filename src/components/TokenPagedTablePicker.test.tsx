@@ -31,14 +31,6 @@ function getResponse(summary: HarnessSummary) {
   return { harness: summary } as Parameters<TestCoreClient["harness"]["setGetResponse"]>[0];
 }
 
-function frameSize(frame: string): { columns: number; rows: number } {
-  const lines = frame.split("\n");
-  return {
-    columns: Math.max(...lines.map((line) => line.length)),
-    rows: lines.length,
-  };
-}
-
 describe("token-paged table picker contract", () => {
   test("retries a failed query", async () => {
     const core = new TestCoreClient();
@@ -173,44 +165,6 @@ describe("token-paged table picker contract", () => {
     ).toBe(false);
   });
 
-  test("keeps pagination status and key hints coherent at 50x20", async () => {
-    const core = new TestCoreClient();
-    core.harness.setListResponse({
-      harnesses: Array.from({ length: 12 }, (_, index) =>
-        harness({
-          harnessId: `narrow-row-${index + 1}`,
-          harnessName: `narrow-row-${index + 1}`,
-        }),
-      ),
-      nextToken: "t2",
-    });
-    const r = renderScreen("/agentcore/harness/list", { core });
-
-    await waitForText(r.lastFrame, "narrow-row-12");
-    await r.resize(50, 20);
-    await waitForText(r.lastFrame, "page 1 · more →");
-    const frame = r.lastFrame()!;
-    const lines = frame.split("\n");
-    const pageLine = lines.find((line) => line.includes("page 1 · more →"));
-    const footerLine = lines.find((line) => line.includes("[↑↓/jk] navigate"));
-
-    expect(frameSize(frame)).toEqual({ columns: 50, rows: 20 });
-    expect(pageLine?.trim()).toBe("page 1 · more →");
-    expect(pageLine).not.toContain("narrow-row");
-    expect(footerLine).toContain("[enter] select");
-    expect(footerLine).toContain("[esc] back");
-    expect(frame).not.toContain("[←→/hl] page");
-    expect(frame).not.toContain("[/] filter");
-    expect(frame).not.toContain("[ctl+c] quit");
-    expect(footerLine!.indexOf("[↑↓/jk] navigate")).toBeLessThan(
-      footerLine!.indexOf("[enter] select"),
-    );
-    expect(footerLine!.indexOf("[enter] select")).toBeLessThan(footerLine!.indexOf("[esc] back"));
-    expect(
-      lines.filter((line) => line.includes("[") && line.includes("]")).map((line) => line.trim()),
-    ).toEqual([footerLine!.trim()]);
-  });
-
   test("retains rows and disables selection and paging during a transition", async () => {
     const core = new TestCoreClient();
     core.harness.setListResponse({
@@ -317,12 +271,11 @@ describe("token-paged table picker contract", () => {
     await r.press("down");
     await r.write("/");
     await r.write("missing");
-    await waitForText(r.lastFrame, "/ Filter this page: missing");
-    expect(r.lastFrame()).toContain("No matches on this page");
+    await waitForText(r.lastFrame, "/ Filter: missing");
     await r.press("escape");
     await r.write("/");
     await r.write("alpha");
-    await waitForText(r.lastFrame, "/ Filter this page: alpha");
+    await waitForText(r.lastFrame, "/ Filter: alpha");
     expect(
       core.harness.calls.some((call) => call.method === "listHarnesses" && call.args[0] === "t2"),
     ).toBe(false);

@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Text, useInput, useWindowSize } from "ink";
+import { Text, useInput } from "ink";
 import { Layout } from "./Layout";
 import { usePagedList } from "./usePagedList";
 import { darkTheme } from "./ui/_core.js";
@@ -17,7 +17,7 @@ export interface TokenPagedTablePickerProps<TItem, TRow extends Record<string, u
   queryKey: readonly unknown[];
   loadPage: (token: string | undefined, pageSize: number) => Promise<TokenPage<TItem>>;
   toRow: (item: TItem) => TRow;
-  columns: (terminalColumns: number) => DataTableColumn<TRow>[];
+  columns: DataTableColumn<TRow>[];
   sortRows?: (rows: TRow[]) => TRow[];
   getValue: (row: TRow) => string | undefined;
   onSelect: (value: string) => void;
@@ -44,7 +44,6 @@ export function TokenPagedTablePicker<TItem, TRow extends Record<string, unknown
   emptyMessage,
   emptyPageMessage,
 }: TokenPagedTablePickerProps<TItem, TRow>) {
-  const { columns: terminalColumns } = useWindowSize();
   const paging = usePagedList();
   const list = useQuery({
     queryKey: [...queryKey, paging.pageSize, paging.token],
@@ -106,10 +105,8 @@ export function TokenPagedTablePicker<TItem, TRow extends Record<string, unknown
             showDivider={true}
             pageSize={paging.pageSize}
             selectionResetKey={paging.pageSize}
-            searchPlaceholder="Filter this page"
-            noMatchesMessage="No matches on this page"
             focus={!pageTransition}
-            columns={columns(terminalColumns)}
+            columns={columns}
             data={rows}
             emptyMessage={paginated ? emptyPageMessage : emptyMessage}
             onSelect={(row) => {

@@ -53,34 +53,13 @@ export function RuntimePicker({
         };
       }}
       toRow={toRow}
-      columns={(terminalColumns) => {
-        const showId = terminalColumns >= 130;
-        const showUpdatedAt = terminalColumns >= 90;
-        const showStatus = terminalColumns >= 70;
-        const versionWidth = 15;
-        const statusWidth = showStatus ? 16 : 0;
-        const updatedAtWidth = showUpdatedAt ? 30 : 0;
-        const idWidth = showId ? Math.max(30, Math.floor(terminalColumns * 0.36)) : 0;
-        const nameWidth = Math.max(
-          12,
-          terminalColumns - 2 - versionWidth - statusWidth - updatedAtWidth - idWidth,
-        );
-        return [
-          { key: "runtimeName", header: "name", width: nameWidth },
-          ...(showId ? [{ key: "runtimeId" as const, header: "id", width: idWidth }] : []),
-          { key: "runtimeVersion", header: "latestVersion", width: versionWidth },
-          ...(showStatus ? [{ key: "status" as const, header: "status", width: statusWidth }] : []),
-          ...(showUpdatedAt
-            ? [
-                {
-                  key: "lastUpdatedAt" as const,
-                  header: "lastUpdatedAt",
-                  width: updatedAtWidth,
-                },
-              ]
-            : []),
-        ];
-      }}
+      columns={[
+        { key: "runtimeName", header: "name" },
+        { key: "runtimeId", header: "id" },
+        { key: "runtimeVersion", header: "latestVersion" },
+        { key: "status", header: "status" },
+        { key: "lastUpdatedAt", header: "lastUpdatedAt" },
+      ]}
       getValue={(row) => row.runtimeId}
       onSelect={onSelect}
       onBack={goBack}

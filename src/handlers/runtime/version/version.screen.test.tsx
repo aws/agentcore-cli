@@ -13,6 +13,8 @@ import {
 
 afterEach(cleanupScreens);
 
+const runtimeEndpointUrl = "https://runtime.test";
+
 function runtime(overrides: Partial<AgentRuntime> = {}): AgentRuntime {
   return {
     agentRuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/runtime-123",
@@ -88,7 +90,10 @@ describe("Runtime version flow", () => {
     core.runtime.setListVersionsResponse({
       agentRuntimes: [runtime()],
     });
-    renderScreen("/agentcore/runtime/version/list/runtime-123", { core });
+    renderScreen("/agentcore/runtime/version/list/runtime-123", {
+      core,
+      endpointUrl: runtimeEndpointUrl,
+    });
 
     await waitFor(() => core.runtime.calls.some((call) => call.method === "listRuntimeVersions"));
     expect(core.runtime.calls.filter((call) => call.method === "listRuntimeVersions")).toEqual([
@@ -100,7 +105,7 @@ describe("Runtime version flow", () => {
           expect.any(Number),
           {
             region: "us-east-1",
-            endpointUrl: undefined,
+            endpointUrl: runtimeEndpointUrl,
           },
         ],
       },
@@ -147,31 +152,6 @@ describe("Runtime version flow", () => {
     expect(frame).not.toContain("hidden-name");
   });
 
-  test("keeps version visible without wrapping lower-priority columns when narrow", async () => {
-    const core = new TestCoreClient();
-    core.runtime.setListVersionsResponse({
-      agentRuntimes: [
-        runtime({
-          agentRuntimeVersion: "123",
-          status: "UPDATE_FAILED",
-          lastUpdatedAt: new Date("2026-07-18T02:00:00.000Z"),
-        }),
-      ],
-    });
-    const r = renderScreen("/agentcore/runtime/version/list/runtime-123", { core });
-
-    await r.resize(50);
-    await waitForText(r.lastFrame, "123");
-    const frame = r.lastFrame()!;
-    expect(frame).toContain("version");
-    expect(frame).toContain("123");
-    expect(frame).not.toContain("status");
-    expect(frame).not.toContain("lastUpdatedAt");
-    expect(frame).not.toContain("UPDATE_FAILED");
-    expect(frame).not.toContain("2026-07-18T02:00:00.000Z");
-    expect(Math.max(...frame.split("\n").map((line) => line.length))).toBe(50);
-  });
-
   test("describes an empty later page without claiming the Runtime has no versions", async () => {
     const core = new TestCoreClient();
     core.runtime.setListVersionsResponse({
@@ -209,7 +189,10 @@ describe("Runtime version flow", () => {
       $metadata: { requestId: "version-request-metadata" },
       ...getVersionResponse({ agentRuntimeVersion: "9" }),
     } as GetAgentRuntimeResponse);
-    const r = renderScreen("/agentcore/runtime/version/list/runtime-123", { core });
+    const r = renderScreen("/agentcore/runtime/version/list/runtime-123", {
+      core,
+      endpointUrl: runtimeEndpointUrl,
+    });
 
     await waitForText(r.lastFrame, "9");
     await r.press("return");
@@ -217,14 +200,18 @@ describe("Runtime version flow", () => {
     await waitForText(r.lastFrame, '"networkConfiguration"');
     expect(r.lastFrame()).not.toContain("$metadata");
     expect(r.lastFrame()).not.toContain("version-request-metadata");
-    await waitFor(() =>
-      core.runtime.calls.some(
-        (call) =>
-          call.method === "getRuntimeVersion" &&
-          call.args[0] === "runtime-123" &&
-          call.args[1] === "9",
-      ),
-    );
+    await waitFor(() => core.runtime.calls.some((call) => call.method === "getRuntimeVersion"));
+    expect(core.runtime.calls.find((call) => call.method === "getRuntimeVersion")).toEqual({
+      method: "getRuntimeVersion",
+      args: [
+        "runtime-123",
+        "9",
+        {
+          region: "us-east-1",
+          endpointUrl: runtimeEndpointUrl,
+        },
+      ],
+    });
   });
 
   test("uses a structural parent for the Runtime picker and history below it", async () => {

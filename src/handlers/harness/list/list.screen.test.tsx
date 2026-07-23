@@ -34,7 +34,7 @@ function coreWith(harnesses: HarnessSummary[]): TestCoreClient {
 }
 
 describe("harness list screen", () => {
-  test("renders each harness as a row once loaded", async () => {
+  test("renders each harness with its columns", async () => {
     const core = coreWith([
       harness({ harnessName: "alpha", harnessId: "alpha-1" }),
       harness({ harnessName: "beta", harnessId: "beta-2" }),
@@ -49,15 +49,6 @@ describe("harness list screen", () => {
     expect(frame).toContain("version");
     expect(frame).toContain("status");
     expect(frame).toContain("updatedAt");
-
-    await r.resize(50, 20);
-    await waitForText(r.lastFrame, "alpha");
-    const narrow = r.lastFrame()!;
-    expect(narrow).toContain("name");
-    expect(narrow).toContain("version");
-    expect(narrow).not.toContain("status");
-    expect(narrow).not.toContain("updatedAt");
-    expect(narrow).not.toContain("READY");
   });
 
   test("makes one initial list request with context options", async () => {
