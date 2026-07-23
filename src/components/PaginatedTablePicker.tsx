@@ -11,7 +11,7 @@ export interface TokenPage<TItem> {
   nextToken?: string;
 }
 
-export interface TokenPagedTablePickerProps<TItem, TRow extends Record<string, unknown>> {
+export interface PaginatedTablePickerProps<TItem, TRow extends Record<string, unknown>> {
   breadcrumb: string[];
   description?: string;
   queryKey: readonly unknown[];
@@ -28,7 +28,7 @@ export interface TokenPagedTablePickerProps<TItem, TRow extends Record<string, u
   emptyPageMessage: string;
 }
 
-export function TokenPagedTablePicker<TItem, TRow extends Record<string, unknown>>({
+export function PaginatedTablePicker<TItem, TRow extends Record<string, unknown>>({
   breadcrumb,
   description,
   queryKey,
@@ -43,7 +43,7 @@ export function TokenPagedTablePicker<TItem, TRow extends Record<string, unknown
   errorMessage,
   emptyMessage,
   emptyPageMessage,
-}: TokenPagedTablePickerProps<TItem, TRow>) {
+}: PaginatedTablePickerProps<TItem, TRow>) {
   const paging = usePagedList();
   const list = useQuery({
     queryKey: [...queryKey, paging.pageSize, paging.token],

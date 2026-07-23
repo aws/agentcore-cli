@@ -2,7 +2,7 @@ import { useNavigate } from "react-router";
 import type { HarnessVersionSummary } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
-import { TokenPagedTablePicker } from "./TokenPagedTablePicker";
+import { PaginatedTablePicker } from "./PaginatedTablePicker";
 
 // VersionRow is the flat, display-ready shape the table renders.
 interface VersionRow extends Record<string, unknown> {
@@ -50,7 +50,7 @@ export function HarnessVersionPicker({
   const goBack = () => navigate(-1);
 
   return (
-    <TokenPagedTablePicker
+    <PaginatedTablePicker
       breadcrumb={breadcrumb}
       description={description}
       queryKey={["harness-versions", opts.region, harnessId]}

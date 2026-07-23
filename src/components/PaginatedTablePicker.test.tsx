@@ -31,7 +31,7 @@ function getResponse(summary: HarnessSummary) {
   return { harness: summary } as Parameters<TestCoreClient["harness"]["setGetResponse"]>[0];
 }
 
-describe("token-paged table picker contract", () => {
+describe("paginated table picker contract", () => {
   test("retries a failed query", async () => {
     const core = new TestCoreClient();
     core.harness.setError(new Error("access denied"));

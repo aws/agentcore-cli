@@ -2,7 +2,7 @@ import { useNavigate } from "react-router";
 import type { HarnessSummary } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
-import { TokenPagedTablePicker } from "./TokenPagedTablePicker";
+import { PaginatedTablePicker } from "./PaginatedTablePicker";
 
 // HarnessRow is the flat, display-ready shape the table renders. It also satisfies
 // DataTable's `T extends Record<string, unknown>` constraint, which the SDK's
@@ -56,7 +56,7 @@ export function HarnessPicker({
   const goBack = () => navigate("/" + breadcrumb.slice(0, -1).join("/"));
 
   return (
-    <TokenPagedTablePicker
+    <PaginatedTablePicker
       breadcrumb={breadcrumb}
       description={description}
       queryKey={["harnesses", opts.region]}

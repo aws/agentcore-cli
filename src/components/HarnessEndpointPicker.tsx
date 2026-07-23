@@ -2,7 +2,7 @@ import { useNavigate } from "react-router";
 import type { HarnessEndpoint } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
-import { TokenPagedTablePicker } from "./TokenPagedTablePicker";
+import { PaginatedTablePicker } from "./PaginatedTablePicker";
 
 // EndpointRow is the flat, display-ready shape the table renders.
 interface EndpointRow extends Record<string, unknown> {
@@ -58,7 +58,7 @@ export function HarnessEndpointPicker({
   const goBack = onEscape ?? (() => navigate(-1));
 
   return (
-    <TokenPagedTablePicker
+    <PaginatedTablePicker
       breadcrumb={breadcrumb}
       description={description}
       queryKey={["harness-endpoints", opts.region, harnessId]}

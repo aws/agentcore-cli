@@ -2,7 +2,7 @@ import type { AgentRuntime } from "@aws-sdk/client-bedrock-agentcore-control";
 import { useNavigate } from "react-router";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
-import { TokenPagedTablePicker } from "./TokenPagedTablePicker";
+import { PaginatedTablePicker } from "./PaginatedTablePicker";
 
 interface RuntimeVersionRow extends Record<string, unknown> {
   version: string;
@@ -38,7 +38,7 @@ export function RuntimeVersionPicker({
   const goBack = () => navigate(-1);
 
   return (
-    <TokenPagedTablePicker
+    <PaginatedTablePicker
       breadcrumb={breadcrumb}
       description={description}
       queryKey={["runtime-versions", opts.region, runtimeId]}
