@@ -8,6 +8,18 @@ on:
       cdk_branch:
         description: 'CDK repo branch to build from (default: main)'
         default: 'main'
+      pr_number:
+        description: 'PR number to test (optional; checks out the PR head)'
+        required: false
+        type: string
+      test_selector:
+        description: 'Test file or exact test at a line (for example: e2e-tests/import-gateway.test.ts:120)'
+        required: false
+        type: string
+      test_name_pattern:
+        description: 'Optional Vitest test name pattern (requires test_selector)'
+        required: false
+        type: string
   pull_request_target:
     branches: [main, feat/**]
     # Skip E2E on changes that can't affect agent behavior (e.g. docs-only PRs).
@@ -31,7 +43,7 @@ on:
       - '.github/workflows/e2e*'
 
 concurrency:
-  group: e2e-${{ github.event.pull_request.number || github.ref }}
+  group: e2e-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -44,25 +56,43 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request_target'
     outputs:
       is_authorized: ${{ steps.check.outputs.is_authorized }}
+      base_sha: ${{ steps.check.outputs.base_sha }}
+      checkout_ref: ${{ steps.check.outputs.checkout_ref }}
     steps:
       - name: Check authorization
         id: check
         env:
           EVENT_NAME: ${{ github.event_name }}
           AUTHORIZED_USERS: ${{ secrets.AUTHORIZED_USERS }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           # Gate on the PR AUTHOR (whose code this is), NOT github.actor (who triggered the run).
           # On pull_request_target a trusted actor (e.g. a maintainer pushing to a fork PR) triggering
           # a run must NOT cause an untrusted author's fork code to execute with our AWS role/secrets.
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ inputs.pr_number }}
         run: |
+          set -euo pipefail
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            CHECKOUT_REF="$GITHUB_SHA"
+            if [[ -n "$PR_NUMBER" ]]; then
+              if [[ ! "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+                echo "::error::pr_number must be a positive integer"
+                exit 1
+              fi
+              CHECKOUT_REF="refs/pull/${PR_NUMBER}/head"
+            fi
             echo "✅ Manual workflow dispatch — authorized"
             echo "is_authorized=true" >> "$GITHUB_OUTPUT"
+            echo "base_sha=HEAD~1" >> "$GITHUB_OUTPUT"
+            echo "checkout_ref=$CHECKOUT_REF" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if [[ ",$AUTHORIZED_USERS," == *",${PR_AUTHOR},"* ]]; then
             echo "✅ PR author ${PR_AUTHOR} is authorized"
             echo "is_authorized=true" >> "$GITHUB_OUTPUT"
+            echo "base_sha=$PR_BASE_SHA" >> "$GITHUB_OUTPUT"
+            echo "checkout_ref=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
           else
             echo "⏭️ PR author ${PR_AUTHOR} is not in AUTHORIZED_USERS — skipping E2E tests."
             echo "ℹ️ External contributors: a maintainer can run the E2E tests via workflow_dispatch after reviewing the code."
@@ -86,12 +116,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ needs.authorize.outputs.checkout_ref }}
           fetch-depth: 0
-          # Safe because the `authorize` job above gates on the PR AUTHOR being in AUTHORIZED_USERS:
-          # external authors skip at the gate, so only trusted authors' code is ever checked out here.
-          # Needed because authorized maintainers routinely open PRs from their own forks, and
-          # checkout@v7 otherwise refuses fork-PR checkout in pull_request_target.
+          # Automatic runs are author-gated. Manual dispatch is restricted to repository
+          # collaborators and is the reviewed path for testing external PR code.
           allow-unsafe-pr-checkout: true
       - uses: actions/setup-node@v7
         with:
@@ -148,39 +176,77 @@ jobs:
       - name: Install CLI globally
         run: npm install -g "$TARBALL"
 
-      - name: Detect changed e2e test files
-        id: changed
+      - name: Resolve E2E test selection
+        id: selection
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || 'HEAD~1' }}
+          BASE_SHA: ${{ needs.authorize.outputs.base_sha }}
+          TEST_NAME_PATTERN: ${{ inputs.test_name_pattern }}
+          TEST_SELECTOR: ${{ inputs.test_selector }}
         run: |
-          # If any helper file changed, run all e2e tests
-          HELPERS_CHANGED=$(git diff --name-only "$BASE_SHA"..HEAD -- 'e2e-tests/*.ts' \
-            | grep -v '\.test\.ts$' | head -1)
-          if [ -n "$HELPERS_CHANGED" ]; then
-            GA_EXTRA=$(find e2e-tests -name '*.test.ts' \
-              | grep -v '^e2e-tests/strands-bedrock\.test\.ts$' \
-              | grep -v '^e2e-tests/payment-strands-bedrock\.test\.ts$' \
-              | grep -v '^e2e-tests/harness-' \
-              | tr '\n' ' ')
-            HARNESS_EXTRA=$(find e2e-tests -name 'harness-*.test.ts' \
-              | grep -v '^e2e-tests/harness-bedrock\.test\.ts$' \
-              | tr '\n' ' ')
-          else
-            GA_EXTRA=$(git diff --name-only "$BASE_SHA"..HEAD -- 'e2e-tests/*.test.ts' \
-              | grep -v '^e2e-tests/strands-bedrock\.test\.ts$' \
-              | grep -v '^e2e-tests/payment-strands-bedrock\.test\.ts$' \
-              | grep -v '^e2e-tests/harness-' \
-              | tr '\n' ' ')
-            HARNESS_EXTRA=$(git diff --name-only "$BASE_SHA"..HEAD -- 'e2e-tests/harness-*.test.ts' \
-              | grep -v '^e2e-tests/harness-bedrock\.test\.ts$' \
-              | tr '\n' ' ')
+          set -euo pipefail
+
+          if [[ -n "$TEST_NAME_PATTERN" && -z "$TEST_SELECTOR" ]]; then
+            echo "::error::test_name_pattern requires test_selector"
+            exit 1
           fi
-          echo "ga_extra=$GA_EXTRA" >> "$GITHUB_OUTPUT"
-          echo "harness_extra=$HARNESS_EXTRA" >> "$GITHUB_OUTPUT"
-          echo "GA extra tests: ${GA_EXTRA:-none}"
-          echo "Harness extra tests: ${HARNESS_EXTRA:-none}"
+
+          if [[ -n "$TEST_SELECTOR" ]]; then
+            if [[ ! "$TEST_SELECTOR" =~ ^e2e-tests/([A-Za-z0-9_-]+/)*[A-Za-z0-9._-]+\.test\.ts(:[1-9][0-9]*)?$ ]]; then
+              echo "::error::test_selector must be an e2e-tests/**/*.test.ts path, optionally followed by :line"
+              exit 1
+            fi
+
+            TEST_FILE="${TEST_SELECTOR%%:*}"
+            if ! git ls-files --error-unmatch "$TEST_FILE" > /dev/null || [[ ! -f "$TEST_FILE" ]]; then
+              echo "::error::test_selector does not reference a tracked test file: $TEST_FILE"
+              exit 1
+            fi
+
+            if [[ "$(basename "$TEST_FILE")" == harness-* ]]; then
+              GA_TESTS=""
+              HARNESS_TESTS="$TEST_SELECTOR"
+            else
+              GA_TESTS="$TEST_SELECTOR"
+              HARNESS_TESTS=""
+            fi
+          else
+            # If any helper file changed, run all e2e tests.
+            HELPERS_CHANGED=$(git diff --name-only "$BASE_SHA"..HEAD -- 'e2e-tests/*.ts' \
+              | grep -v '\.test\.ts$' | head -1 || true)
+            if [[ -n "$HELPERS_CHANGED" ]]; then
+              GA_EXTRA=$(find e2e-tests -name '*.test.ts' \
+                | grep -v '^e2e-tests/strands-bedrock\.test\.ts$' \
+                | grep -v '^e2e-tests/payment-strands-bedrock\.test\.ts$' \
+                | grep -v '^e2e-tests/harness-' \
+                | tr '\n' ' ' || true)
+              HARNESS_EXTRA=$(find e2e-tests -name 'harness-*.test.ts' \
+                | grep -v '^e2e-tests/harness-bedrock\.test\.ts$' \
+                | tr '\n' ' ' || true)
+            else
+              GA_EXTRA=$(git diff --name-only "$BASE_SHA"..HEAD -- 'e2e-tests/*.test.ts' \
+                | grep -v '^e2e-tests/strands-bedrock\.test\.ts$' \
+                | grep -v '^e2e-tests/payment-strands-bedrock\.test\.ts$' \
+                | grep -v '^e2e-tests/harness-' \
+                | tr '\n' ' ' || true)
+              HARNESS_EXTRA=$(git diff --name-only "$BASE_SHA"..HEAD -- 'e2e-tests/harness-*.test.ts' \
+                | grep -v '^e2e-tests/harness-bedrock\.test\.ts$' \
+                | tr '\n' ' ' || true)
+            fi
+            GA_TESTS="e2e-tests/strands-bedrock.test.ts e2e-tests/payment-strands-bedrock.test.ts $GA_EXTRA"
+            HARNESS_TESTS="e2e-tests/harness-bedrock.test.ts $HARNESS_EXTRA"
+          fi
+
+          [[ -n "$GA_TESTS" ]] && RUN_GA=true || RUN_GA=false
+          [[ -n "$HARNESS_TESTS" ]] && RUN_HARNESS=true || RUN_HARNESS=false
+          echo "ga_tests=$GA_TESTS" >> "$GITHUB_OUTPUT"
+          echo "harness_tests=$HARNESS_TESTS" >> "$GITHUB_OUTPUT"
+          echo "run_ga=$RUN_GA" >> "$GITHUB_OUTPUT"
+          echo "run_harness=$RUN_HARNESS" >> "$GITHUB_OUTPUT"
+          echo "GA tests: ${GA_TESTS:-none}"
+          echo "Harness tests: ${HARNESS_TESTS:-none}"
 
       - name: Run E2E tests (GA)
+        if: steps.selection.outputs.run_ga == 'true'
         env:
           AWS_ACCOUNT_ID: ${{ steps.aws.outputs.account_id }}
           AWS_REGION: ${{ inputs.aws_region || 'us-east-1' }}
@@ -198,16 +264,24 @@ jobs:
           CDP_API_KEY_ID: ${{ env.E2E_CDP_API_KEY_ID }}
           CDP_API_KEY_SECRET: ${{ env.E2E_CDP_API_KEY_SECRET }}
           CDP_WALLET_SECRET: ${{ env.E2E_CDP_WALLET_SECRET }}
-          GA_EXTRA: ${{ steps.changed.outputs.ga_extra }}
-        # GA_EXTRA is a space-separated test-file list; left unquoted intentionally so it word-splits into vitest args.
-        # --reporter=verbose keeps the console log; --reporter=junit adds a machine-readable
-        # report surfaced in the GH Actions test-summary tab and uploaded as an artifact below.
-        run:
-          npx vitest run --project e2e --reporter=verbose --reporter=junit
-          --outputFile.junit=test-results/e2e-ga.junit.xml e2e-tests/strands-bedrock.test.ts
-          e2e-tests/payment-strands-bedrock.test.ts $GA_EXTRA
+          GA_TESTS: ${{ steps.selection.outputs.ga_tests }}
+          TEST_NAME_PATTERN: ${{ inputs.test_name_pattern }}
+        run: |
+          set -euo pipefail
+          read -r -a TEST_FILES <<< "$GA_TESTS"
+          ARGS=(npx vitest run --project e2e --reporter=verbose --reporter=junit \
+            --outputFile.junit=test-results/e2e-ga.junit.xml)
+          if [[ -n "$TEST_NAME_PATTERN" ]]; then
+            ARGS+=(--testNamePattern "$TEST_NAME_PATTERN")
+          fi
+          ARGS+=("${TEST_FILES[@]}")
+          printf 'Running:'
+          printf ' %q' "${ARGS[@]}"
+          printf '\n'
+          "${ARGS[@]}"
 
       - name: Run E2E tests (harness)
+        if: steps.selection.outputs.run_harness == 'true'
         env:
           AWS_ACCOUNT_ID: ${{ steps.aws.outputs.account_id }}
           AWS_REGION: ${{ inputs.aws_region || 'us-east-1' }}
@@ -218,12 +292,21 @@ jobs:
           E2E_S3_ACCESS_POINT_ARN: ${{ env.E2E_S3_ACCESS_POINT_ARN }}
           E2E_FILESYSTEM_SUBNET_ID: ${{ env.E2E_FILESYSTEM_SUBNET_ID }}
           E2E_FILESYSTEM_SECURITY_GROUP_ID: ${{ env.E2E_FILESYSTEM_SECURITY_GROUP_ID }}
-          HARNESS_EXTRA: ${{ steps.changed.outputs.harness_extra }}
-        # HARNESS_EXTRA is a space-separated test-file list; left unquoted intentionally so it word-splits into vitest args.
-        # Separate --outputFile from the GA step so the two vitest runs don't clobber each other's report.
-        run:
-          npx vitest run --project e2e --reporter=verbose --reporter=junit
-          --outputFile.junit=test-results/e2e-harness.junit.xml e2e-tests/harness-bedrock.test.ts $HARNESS_EXTRA
+          HARNESS_TESTS: ${{ steps.selection.outputs.harness_tests }}
+          TEST_NAME_PATTERN: ${{ inputs.test_name_pattern }}
+        run: |
+          set -euo pipefail
+          read -r -a TEST_FILES <<< "$HARNESS_TESTS"
+          ARGS=(npx vitest run --project e2e --reporter=verbose --reporter=junit \
+            --outputFile.junit=test-results/e2e-harness.junit.xml)
+          if [[ -n "$TEST_NAME_PATTERN" ]]; then
+            ARGS+=(--testNamePattern "$TEST_NAME_PATTERN")
+          fi
+          ARGS+=("${TEST_FILES[@]}")
+          printf 'Running:'
+          printf ' %q' "${ARGS[@]}"
+          printf '\n'
+          "${ARGS[@]}"
 
       - name: Upload E2E test report
         if: always()
