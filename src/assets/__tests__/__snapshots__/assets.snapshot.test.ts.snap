@@ -1492,8 +1492,8 @@ dependencies = [
     "bedrock-agentcore[a2a] >= 1.0.3",
     "google-adk >= 1.0.0, < 2.0.0",
     "google-genai >= 1.0.0, < 2.0.0",
-    # 1.13.0 was yanked for broken imports; pin the latest usable wheel explicitly.
-    "opentelemetry-resourcedetector-gcp == 1.12.0a0",
+    # 1.13.0 was yanked for broken imports.
+    "opentelemetry-resourcedetector-gcp >= 1.9.0a0, < 2.0.0, != 1.13.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -2520,8 +2520,8 @@ dependencies = [
     "fastapi >= 0.115.12",
     "google-adk >= 1.16.0, < 2.0.0",
     "google-genai >= 1.0.0, < 2.0.0",
-    # 1.13.0 was yanked for broken imports; pin the latest usable wheel explicitly.
-    "opentelemetry-resourcedetector-gcp == 1.12.0a0",
+    # 1.13.0 was yanked for broken imports.
+    "opentelemetry-resourcedetector-gcp >= 1.9.0a0, < 2.0.0, != 1.13.0",
     "aws-opentelemetry-distro >= 0.17.0",
     "uvicorn >= 0.34.3",
 ]
@@ -4204,8 +4204,8 @@ dependencies = [
     "aws-opentelemetry-distro >= 0.17.0",
     "google-adk >= 1.35.0, < 2.0.0",
     "google-genai >= 1.0.0, < 2.0.0",
-    # 1.13.0 was yanked for broken imports; pin the latest usable wheel explicitly.
-    "opentelemetry-resourcedetector-gcp == 1.12.0a0",
+    # 1.13.0 was yanked for broken imports.
+    "opentelemetry-resourcedetector-gcp >= 1.9.0a0, < 2.0.0, != 1.13.0",
     "bedrock-agentcore >= 1.0.3",
     "botocore[crt] >= 1.35.0",
     {{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws >= 1.1.0",
