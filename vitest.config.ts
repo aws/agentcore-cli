@@ -1,3 +1,4 @@
+import { containsSensitiveTestOutput, sensitiveEnvironmentValues } from './src/test-utils/test-output-redaction';
 import * as fs from 'fs';
 import * as path from 'path';
 import { defineConfig } from 'vitest/config';
@@ -24,6 +25,8 @@ const textLoaderPlugin = {
     }
   },
 };
+
+const testSecretValues = sensitiveEnvironmentValues();
 
 export default defineConfig({
   resolve: {
@@ -82,6 +85,9 @@ export default defineConfig({
     hookTimeout: 120000,
     globals: false,
     reporters: ['verbose'],
+    onConsoleLog(log) {
+      return !containsSensitiveTestOutput(log, testSecretValues);
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'json', 'json-summary', 'html', 'lcov'],

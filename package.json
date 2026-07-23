@@ -68,6 +68,8 @@
     "test:integ": "npm run build && vitest run --project integ",
     "test:unit": "vitest run --project unit --coverage",
     "test:e2e": "vitest run --project e2e",
+    "test-artifacts:sanitize": "tsx scripts/sanitize-test-artifacts.ts --redact",
+    "test-artifacts:check": "tsx scripts/sanitize-test-artifacts.ts --check",
     "test:update-snapshots": "vitest run --project unit --update",
     "test:tui": "npm run build:harness && vitest run --project tui",
     "test:browser": "npx playwright test --config browser-tests/playwright.config.ts",

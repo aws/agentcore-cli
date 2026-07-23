@@ -231,10 +231,10 @@ jobs:
           CDP_WALLET_SECRET: ${{ env.E2E_CDP_WALLET_SECRET }}
           GA_EXTRA: ${{ steps.changed.outputs.ga_extra }}
         # GA_EXTRA is a space-separated test-file list; left unquoted intentionally so it word-splits into vitest args.
-        # --reporter=verbose keeps the console log; --reporter=junit adds a machine-readable
-        # report surfaced in the GH Actions test-summary tab and uploaded as an artifact below.
+        # --reporter=verbose keeps the sanitized console log; the custom JUnit reporter adds a
+        # machine-readable report without copying console streams into the public artifact.
         run:
-          npx vitest run --project e2e --reporter=verbose --reporter=junit
+          npx vitest run --project e2e --reporter=verbose --reporter=./scripts/safe-junit-reporter.ts
           --outputFile.junit=test-results/e2e-ga.junit.xml e2e-tests/strands-bedrock.test.ts
           e2e-tests/payment-strands-bedrock.test.ts $GA_EXTRA
 
@@ -253,11 +253,21 @@ jobs:
         # HARNESS_EXTRA is a space-separated test-file list; left unquoted intentionally so it word-splits into vitest args.
         # Separate --outputFile from the GA step so the two vitest runs don't clobber each other's report.
         run:
-          npx vitest run --project e2e --reporter=verbose --reporter=junit
+          npx vitest run --project e2e --reporter=verbose --reporter=./scripts/safe-junit-reporter.ts
           --outputFile.junit=test-results/e2e-harness.junit.xml e2e-tests/harness-bedrock.test.ts $HARNESS_EXTRA
 
-      - name: Upload E2E test report
+      - name: Sanitize E2E test reports
+        id: sanitize-reports
         if: always()
+        run: npm run test-artifacts:sanitize -- test-results/
+
+      - name: Verify E2E test reports contain no secrets
+        id: scan-reports
+        if: always()
+        run: npm run test-artifacts:check -- test-results/
+
+      - name: Upload E2E test report
+        if: always() && steps.sanitize-reports.outcome == 'success' && steps.scan-reports.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
           name: e2e-test-report
