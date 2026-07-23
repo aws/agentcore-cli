@@ -49,6 +49,13 @@ agentcore                          # interactive TUI
 │       ├── list
 │       ├── update
 │       └── delete
+├── identity                       # manage AgentCore Identity resources
+│   └── api-key-credential-provider
+│       ├── create                 # create an API key credential provider
+│       ├── get                    # get an API key credential provider
+│       ├── list                   # list API key credential providers
+│       ├── update                 # update an API key credential provider
+│       └── delete                 # delete an API key credential provider
 ├── runtime                        # inspect deployed AgentCore Runtimes
 │   ├── get                        # fetch a Runtime by id
 │   ├── list                       # list Runtimes (server-side paginated)
@@ -101,6 +108,13 @@ agentcore runtime version get --id <runtimeId> --version <version>
 agentcore runtime version list --id <runtimeId> --max-results 20
 agentcore runtime endpoint get --id <runtimeId> --qualifier DEFAULT
 agentcore runtime endpoint list --id <runtimeId> --max-results 20
+
+# Manage API key credential providers
+agentcore identity api-key-credential-provider create --name my-provider --api-key <key>
+agentcore identity api-key-credential-provider get --name my-provider
+agentcore identity api-key-credential-provider list --max-results 10
+agentcore identity api-key-credential-provider update --name my-provider --api-key <new-key>
+agentcore identity api-key-credential-provider delete --name my-provider
 ```
 
 ---

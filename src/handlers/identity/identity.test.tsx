@@ -7,10 +7,9 @@ import { createRootHandler } from "../index";
 const REGION = "us-west-2";
 const FIXTURES = join(import.meta.dir, "__fixtures__");
 
-// Record with AWS_PROFILE=YOUR_PROFILE RECORD=1 bun test src/handlers/identity/identity.test.tsx
-// The test account must have two providers pre-created for pagination tests.
-// The RECORD run creates them (create tests run first), tests pagination, then
-// deletes them (delete tests run last).
+// Record with RECORD=1 bun test src/handlers/identity/identity.test.tsx
+// Neither fixture provider should exist before recording. The RECORD run creates
+// both providers, exercises pagination (requires >=2), then deletes them.
 const FIXTURE_PROVIDER_NAME = "agentcore-cli-identity-fixture";
 const FIXTURE_PROVIDER_NAME_2 = "agentcore-cli-identity-fixture-2";
 const MISSING_PROVIDER_NAME = "missing-provider-000";
