@@ -32,8 +32,11 @@ export interface HarnessVersionPickerProps extends ScreenProps {
   onSelect: (version: string) => void;
 }
 
-// HarnessVersionPicker fetches a harness's versions and renders them as a navigable
-// table, newest first. Esc pops back.
+/**
+ * Fetches a harness's versions and renders them as a navigable table, newest first.
+ *
+ * Esc pops back.
+ */
 export function HarnessVersionPicker({
   ctx,
   core,

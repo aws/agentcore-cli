@@ -38,9 +38,12 @@ export interface HarnessEndpointPickerProps extends ScreenProps {
   onEscape?: () => void;
 }
 
-// HarnessEndpointPicker fetches a harness's endpoints and renders them as a navigable
-// table — the endpoint counterpart of HarnessPicker, shared by every "pick an
-// endpoint" screen (list, update, delete). Esc pops back.
+/**
+ * Fetches a harness's endpoints and renders them as a navigable table.
+ *
+ * This is the endpoint counterpart of HarnessPicker, shared by every "pick an
+ * endpoint" screen (list, update, delete). Esc pops back.
+ */
 export function HarnessEndpointPicker({
   ctx,
   core,

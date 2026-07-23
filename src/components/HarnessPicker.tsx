@@ -37,11 +37,13 @@ export interface HarnessPickerProps extends ScreenProps {
   onSelect: (harnessId: string) => void;
 }
 
-// HarnessPicker fetches the caller's harnesses and renders them as a navigable
-// table. It is the shared body of every "pick a harness" screen (list, invoke);
-// hosts differ only in breadcrumb, subtitle, and what selection does. Esc
-// returns to the parent menu, derived from the breadcrumb (e.g. the endpoint
-// menu for [..., "endpoint", "list"]).
+/**
+ * Fetches the caller's harnesses and renders them as a navigable table.
+ *
+ * This is the shared body of every "pick a harness" screen (list, invoke);
+ * hosts differ only in breadcrumb, subtitle, and what selection does. Esc
+ * returns to the parent menu derived from the breadcrumb.
+ */
 export function HarnessPicker({
   ctx,
   core,
