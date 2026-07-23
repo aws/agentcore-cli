@@ -320,7 +320,7 @@ describe("list filtering", () => {
   ] as unknown as EvaluatorSummary[];
 
   test.each([
-    ["Builtin", ["b1"]],
+    ["builtin", ["b1"]],
     ["code-based", ["c1"]],
     ["llm-as-a-judge", ["l1"]],
   ] as const)("filters the returned page by --type %s", async (type, expectedIds) => {

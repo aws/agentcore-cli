@@ -5,13 +5,13 @@ import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 
-const TYPE_FILTERS = ["Builtin", "code-based", "llm-as-a-judge"] as const;
+const TYPE_FILTERS = ["builtin", "code-based", "llm-as-a-judge"] as const;
 
 // The AgentCore ListEvaluators API only paginates (nextToken/maxResults); it does
 // not filter by type. `--type` is therefore applied client-side to the returned
 // page, so combining it with --max-results can under-fill a page.
 const TYPE_TO_SDK: Record<(typeof TYPE_FILTERS)[number], string> = {
-  Builtin: EvaluatorType.BUILTIN,
+  builtin: EvaluatorType.BUILTIN,
   "code-based": EvaluatorType.CODE,
   "llm-as-a-judge": EvaluatorType.CUSTOM,
 };
