@@ -1,3 +1,4 @@
+import type { CoreEvalClient } from "./eval/types.tsx";
 import type { CoreHarnessClient } from "./harness/types.tsx";
 import type { CoreIdentityClient } from "./identity/types.tsx";
 import type { CoreRuntimeClient } from "./runtime/types.tsx";
@@ -8,6 +9,7 @@ export interface Core {
   harness: CoreHarnessClient;
   identity: CoreIdentityClient;
   runtime: CoreRuntimeClient;
+  eval: CoreEvalClient;
   projectManager: ProjectManager;
 }
 
