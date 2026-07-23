@@ -1,54 +1,22 @@
 name: CI Failure Issue
 
 on:
+  push:
+    branches:
+      - feat/caller-workflows
   workflow_run:
-    # These names must match the `name:` field in each workflow file exactly
     workflows:
-      - 'Build and Test'
-      - 'Quality and Safety Checks'
-      - 'E2E Tests (Full Suite)'
-      - 'CodeQL'
+      - Build and Test
+      - Quality and Safety Checks
+      - E2E Tests (Full Suite)
+      - CodeQL
     types: [completed]
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
-  create-issue:
-    concurrency: ci-failure-issue-${{ github.event.workflow_run.name }}
-    # Stays on a GitHub-hosted runner on purpose: this workflow is the alarm that
-    # opens an issue when main CI fails, so it must not depend on the CodeBuild
-    # runner it may need to report on. If CodeBuild is unhealthy (webhook drift,
-    # quota exhaustion, broken image), a CodeBuild-hosted alarm couldn't start
-    # either and the failure would be silently swallowed. It's GitHub-API-only
-    # (no AWS calls), so it gains nothing from running inside the AWS network.
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    if: ${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.head_branch == 'main' }}
-    permissions:
-      issues: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '20.x'
-
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-
-      - name: Create CI failure issue
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
-          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          RUN_URL: ${{ github.event.workflow_run.html_url }}
-        run: |
-          npx -y tsx .github/scripts/create-failure-issue.ts \
-            --title-prefix "CI Failure" \
-            --name "$WORKFLOW_NAME" \
-            --branch "$HEAD_BRANCH" \
-            --commit "$HEAD_SHA" \
-            --run-url "$RUN_URL" \
-            --labels "high-severity,ci"
+  call:
+    uses: aws/agentcore-devx-devtools/.github/workflows/test-ci-failure-issue.yml@458c0a684af0f9e3a013ec05cd23851def4f9cab
+    secrets: inherit
