@@ -46,13 +46,33 @@ def main():
 
     client = get_control_client()
 
+    # A gateway can only be deleted after its targets, and a target delete needs
+    # the parent gateway's id. Resolve the gateway id up front and order deletes:
+    # targets first, then other resources, then the gateway last.
+    gateway_id = next(
+        (v.get("id") for k, v in resources.items() if k == "gateway"), None
+    )
+
+    def delete_order(item):
+        key = item[0]
+        if "gateway-target" in key:
+            return 0
+        if key == "gateway":
+            return 2
+        return 1
+
     failed = []
-    for key, val in resources.items():
+    for key, val in sorted(resources.items(), key=delete_order):
         rid = val.get("id")
         if not rid:
             continue
         try:
-            if "runtime" in key:
+            if "gateway-target" in key:
+                # Targets must be deleted before the gateway they belong to.
+                client.delete_gateway_target(gatewayIdentifier=gateway_id, targetId=rid)
+            elif key == "gateway":
+                client.delete_gateway(gatewayIdentifier=rid)
+            elif "runtime" in key:
                 client.delete_agent_runtime(agentRuntimeId=rid)
             elif "memory" in key:
                 client.delete_memory(memoryId=rid)
