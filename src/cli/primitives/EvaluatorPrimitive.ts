@@ -89,7 +89,7 @@ export type ThirdPartyLibrary = keyof typeof THIRD_PARTY_EVALUATOR_LIBRARIES;
 const SUPPORTED_LIBRARIES: ThirdPartyLibrary[] = Object.keys(THIRD_PARTY_EVALUATOR_LIBRARIES) as ThirdPartyLibrary[];
 
 function isSupportedLibrary(value: string): value is ThirdPartyLibrary {
-  return value in THIRD_PARTY_EVALUATOR_LIBRARIES;
+  return Object.prototype.hasOwnProperty.call(THIRD_PARTY_EVALUATOR_LIBRARIES, value);
 }
 
 export const MODEL_PROVIDERS = ['openai', 'bedrock'] as const;
