@@ -14,6 +14,7 @@ export {
   getDevSupportedAgents,
   getAgentPort,
   getDevPort,
+  requiresExactDevPort,
   loadProjectConfig,
   type DevConfig,
 } from './config';

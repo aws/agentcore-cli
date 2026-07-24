@@ -71,6 +71,14 @@ export function getDevSupportedAgents(project: AgentCoreProjectSpec | null): Age
 }
 
 /**
+ * A2A invocation derives the port from project configuration, while FastMCP
+ * ignores port overrides. Neither protocol can safely move to a fallback port.
+ */
+export function requiresExactDevPort(protocol: ProtocolMode): boolean {
+  return protocol === 'A2A' || protocol === 'MCP';
+}
+
+/**
  * Resolve the port for a specific agent.
  *
  * - When the user supplied `-p`/`--port` explicitly (`explicit === true`), the

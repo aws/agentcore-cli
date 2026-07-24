@@ -34,6 +34,17 @@ describe('resolveAgentTargetPort', () => {
     ).toBe(8000);
   });
 
+  it('uses the original project index for an A2A runtime after unsupported runtimes are filtered out', () => {
+    expect(
+      resolveAgentTargetPort({
+        ...base,
+        protocol: 'A2A',
+        agentName: 'supported-a2a',
+        agentIndex: 1,
+      })
+    ).toBe(9001);
+  });
+
   it.each(['HTTP', 'A2A'])('honors an explicit -p literally for a selected %s runtime', protocol => {
     expect(
       resolveAgentTargetPort({

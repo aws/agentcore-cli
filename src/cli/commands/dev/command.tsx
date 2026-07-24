@@ -27,6 +27,7 @@ import {
   loadDevEnv,
   loadProjectConfig,
   onShutdownSignal,
+  requiresExactDevPort,
 } from '../../operations/dev';
 import { OtelCollector, startOtelCollector } from '../../operations/dev/otel';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
@@ -404,21 +405,23 @@ export const registerDev = (program: Command) => {
                 agent_protocol: standardize(AgentProtocol, config.protocol.toLowerCase()),
               });
 
-              const isMcp = config.protocol === 'MCP';
+              const requiresExactPort = requiresExactDevPort(config.protocol);
               const targetPort = getDevPort(project, config.agentName, config.protocol, port, portExplicit);
-              if (!isMcp && !portExplicit && targetPort !== port) {
+              if (config.protocol !== 'MCP' && !portExplicit && targetPort !== port) {
                 const idx = project.runtimes.findIndex(a => a.name === config.agentName);
                 console.log(
                   `Runtime "${config.agentName}" is at index ${idx}; using port ${targetPort} (pass --port ${targetPort} to override).`
                 );
               }
               const actualPort = await findAvailablePort(targetPort);
-              if (isMcp && actualPort !== targetPort) {
-                throw new ValidationError(`Port ${targetPort} is in use. MCP agents require port ${targetPort}.`);
+              if (requiresExactPort && actualPort !== targetPort) {
+                throw new ValidationError(
+                  `Port ${targetPort} is in use. ${config.protocol} agents require port ${targetPort}.`
+                );
               }
               // An explicit -p must be honored literally; if it's taken, fail fast instead of
               // silently rebinding to a different port (the silent-shift behavior #1079 removes).
-              if (!isMcp && portExplicit && actualPort !== targetPort) {
+              if (!requiresExactPort && portExplicit && actualPort !== targetPort) {
                 throw new ValidationError(
                   `Port ${targetPort} is in use. Free it or pass a different --port (no port is chosen automatically when --port is set explicitly).`
                 );

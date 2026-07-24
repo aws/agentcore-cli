@@ -1,3 +1,4 @@
+import { requiresExactDevPort } from '../../config';
 import { A2A_DEFAULT_PORT, MCP_DEFAULT_PORT } from '../../constants';
 import { type DevServerCallbacks, createDevServer, findAvailablePort } from '../../server';
 import { waitForServerReady } from '../../utils';
@@ -119,14 +120,11 @@ async function doStartAgent(
     return { success: false, name: agentName, port: 0, error: `Agent "${agentName}" not found or not supported` };
   }
 
-  const agentIndex = ctx.options.agents.findIndex(a => a.name === agentName);
+  const filteredAgentIndex = ctx.options.agents.findIndex(a => a.name === agentName);
+  const agentIndex = ctx.options.agents[filteredAgentIndex]?.runtimeIndex ?? filteredAgentIndex;
   const { onLog } = ctx.options;
 
-  // FastMCP binds to a fixed port that ignores the port environment variable.
-  // TS HTTP agents read PORT env var so we can assign any available port.
-  // For Python HTTP agents, uvicorn takes --port as a CLI arg so we can assign any port.
   const isA2A = config.protocol === 'A2A';
-  const isMCP = config.protocol === 'MCP';
   const isTsHttp = !config.isPython && config.protocol === 'HTTP';
   const targetPort = resolveAgentTargetPort({
     protocol: config.protocol,
@@ -140,12 +138,15 @@ async function doStartAgent(
   // fail fast instead of silently rebinding (the silent-shift behavior #1079 removes).
   const portIsExplicit = ctx.options.agentBasePort !== undefined && agentName === ctx.options.selectedAgent;
   const agentPort = await findAvailablePort(targetPort);
-  if (isMCP && agentPort !== targetPort) {
+  if (requiresExactDevPort(config.protocol) && agentPort !== targetPort) {
     return {
       success: false,
       name: agentName,
       port: 0,
-      error: `Port ${targetPort} is in use. MCP agents require port ${targetPort} (FastMCP default).`,
+      error:
+        config.protocol === 'MCP'
+          ? `Port ${targetPort} is in use. MCP agents require port ${targetPort} (FastMCP default).`
+          : `Port ${targetPort} is in use. A2A agents require port ${targetPort}.`,
     };
   }
   if (portIsExplicit && agentPort !== targetPort) {

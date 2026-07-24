@@ -115,6 +115,21 @@ export interface BrowserModeOptions {
   collector?: OtelCollector;
 }
 
+export function getBrowserAgentInfo(project: AgentCoreProjectSpec | null): AgentInfo[] {
+  if (!project) return [];
+
+  return getDevSupportedAgents(project).map(agent => ({
+    name: agent.name,
+    buildType: agent.build,
+    protocol: agent.protocol ?? 'HTTP',
+    runtimeIndex: project.runtimes.findIndex(runtime => runtime.name === agent.name),
+  }));
+}
+
+export function getBrowserSelectedAgent(agentName: string | undefined, agents: AgentInfo[]): string | undefined {
+  return agentName ?? (agents.length === 1 ? agents[0]?.name : undefined);
+}
+
 /**
  * Standalone entry point for launching browser dev mode from the TUI.
  * Handles all setup (project loading, OTEL collector, etc.) internally.
@@ -184,11 +199,7 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
 
   const mergedEnvVars = { ...envVars, ...otelEnvVars };
 
-  const agentInfoList: AgentInfo[] = supportedAgents.map(a => ({
-    name: a.name,
-    buildType: a.build,
-    protocol: a.protocol ?? 'HTTP',
-  }));
+  const agentInfoList = getBrowserAgentInfo(project);
 
   // Resolve deployed resources (memories, agents) so memory browsing and
   // CloudWatch traces work in dev mode alongside local traces.
@@ -237,7 +248,7 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
       mode: 'dev',
       agents: agentInfoList,
       harnesses: harnessInfoList,
-      selectedAgent: agentName,
+      selectedAgent: getBrowserSelectedAgent(agentName, agentInfoList),
       selectedHarness: harnessName,
       agentBasePort: portExplicit ? port : undefined,
       envVars: mergedEnvVars,
@@ -253,11 +264,7 @@ export async function runBrowserMode(opts: BrowserModeOptions): Promise<void> {
       reloadAgents: configRoot
         ? async () => {
             const freshProject = await loadProjectConfig(workingDir);
-            return getDevSupportedAgents(freshProject).map(a => ({
-              name: a.name,
-              buildType: a.build,
-              protocol: a.protocol ?? 'HTTP',
-            }));
+            return getBrowserAgentInfo(freshProject);
           }
         : undefined,
       onListTraces: collector

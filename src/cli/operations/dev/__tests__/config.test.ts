@@ -1,5 +1,5 @@
 import type { AgentCoreProjectSpec, DirectoryPath, FilePath } from '../../../../schema';
-import { getAgentPort, getDevConfig, getDevPort, getDevSupportedAgents } from '../config';
+import { getAgentPort, getDevConfig, getDevPort, getDevSupportedAgents, requiresExactDevPort } from '../config';
 import { describe, expect, it } from 'vitest';
 
 // Helper to cast strings to branded path types for testing
@@ -719,6 +719,12 @@ describe('getDevPort', () => {
 
   it('keeps MCP on its fixed framework port', () => {
     expect(getDevPort(project, 'AgentB', 'MCP', 8788, true)).toBe(8000);
+  });
+
+  it('requires A2A and MCP to bind their computed ports', () => {
+    expect(requiresExactDevPort('A2A')).toBe(true);
+    expect(requiresExactDevPort('MCP')).toBe(true);
+    expect(requiresExactDevPort('HTTP')).toBe(false);
   });
 });
 

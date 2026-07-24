@@ -30,6 +30,8 @@ export interface StatusAgent {
   name: string;
   buildType: string;
   protocol: string;
+  /** Position in the full project runtimes list, before unsupported runtimes are filtered out. */
+  runtimeIndex?: number;
 }
 
 /** Running agent entry in the status response */

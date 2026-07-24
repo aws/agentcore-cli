@@ -22,6 +22,7 @@ import {
   listMcpTools,
   loadDevEnv,
   loadProjectConfig,
+  requiresExactDevPort,
   waitForPort,
 } from '../../operations/dev';
 import { formatMcpToolList } from '../../operations/dev/utils';
@@ -153,7 +154,6 @@ export function useDevServer(options: {
       });
       setLogFilePath(loggerRef.current.getRelativeLogPath());
 
-      const isMcp = config.protocol === 'MCP';
       const targetAgentPort = getDevPort(project, config.agentName, config.protocol, targetPort, options.portExplicit);
 
       // On restart, reuse the same port. On initial start, find an available port.
@@ -168,11 +168,13 @@ export function useDevServer(options: {
       }
 
       let port: number;
-      if (isMcp) {
-        // FastMCP currently ignores port environment variables, so it must use its framework default.
+      if (requiresExactDevPort(config.protocol)) {
         const available = await findAvailablePort(targetAgentPort);
         if (available !== targetAgentPort) {
-          addLog('error', `Port ${targetAgentPort} is in use. MCP agents require port ${targetAgentPort}.`);
+          addLog(
+            'error',
+            `Port ${targetAgentPort} is in use. ${config.protocol} agents require port ${targetAgentPort}.`
+          );
           setStatus('error');
           return;
         }
