@@ -1,9 +1,6 @@
 name: Restricted Agent
 
 on:
-  push:
-    branches:
-      - feat/caller-workflows
   workflow_dispatch:
     inputs:
       prompt:
@@ -47,11 +44,13 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
+  pull-requests: write
+  issues: write
 
 jobs:
   call:
-    uses: aws/agentcore-devx-devtools/.github/workflows/test-agent-restricted.yml@458c0a684af0f9e3a013ec05cd23851def4f9cab
+    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-agent-restricted.yml@458c0a684af0f9e3a013ec05cd23851def4f9cab
     with:
       runner: codebuild
       prompt: ${{ inputs.prompt || 'What are my active pull requests?' }}

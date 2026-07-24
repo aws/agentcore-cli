@@ -1,9 +1,6 @@
 name: CI Failure Issue
 
 on:
-  push:
-    branches:
-      - feat/caller-workflows
   workflow_run:
     workflows:
       - Build and Test
@@ -18,5 +15,5 @@ permissions:
 
 jobs:
   call:
-    uses: aws/agentcore-devx-devtools/.github/workflows/test-ci-failure-issue.yml@458c0a684af0f9e3a013ec05cd23851def4f9cab
+    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-ci-failure-issue.yml@458c0a684af0f9e3a013ec05cd23851def4f9cab
     secrets: inherit

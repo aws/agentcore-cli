@@ -1,9 +1,6 @@
 name: Strands Command Handler
 
 on:
-  push:
-    branches:
-      - feat/caller-workflows
   issue_comment:
     types: [created]
   pull_request_review_comment:
@@ -33,7 +30,7 @@ permissions:
 
 jobs:
   call:
-    uses: aws/agentcore-devx-devtools/.github/workflows/test-strands-command.yml@458c0a684af0f9e3a013ec05cd23851def4f9cab
+    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-strands-command.yml@458c0a684af0f9e3a013ec05cd23851def4f9cab
     with:
       runner: codebuild
       issue_id: ${{ inputs.issue_id || format('{0}', github.event.issue.number || github.event.pull_request.number) }}
