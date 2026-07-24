@@ -110,6 +110,8 @@ export interface ThirdPartyLibraryOptions {
   metricParams?: string;
   /** LLM judge provider; defaults to the library's built-in default (OpenAI). */
   modelProvider?: ModelProvider;
+  /** Bedrock model ID (required when modelProvider is 'bedrock'). */
+  model?: string;
 }
 
 export interface AddEvaluatorOptions {
@@ -215,6 +217,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               EvaluatorParams: options.thirdParty.metricParams ?? '',
               // Omitted for the default (openai) so Handlebars treats it as falsy.
               ...(options.thirdParty.modelProvider === 'bedrock' && { ModelProviderBedrock: true }),
+              ...(options.thirdParty.model && { Model: options.thirdParty.model }),
             },
             targetDir
           );
@@ -343,7 +346,12 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
       .option('--name <name>', 'Evaluator name')
       .option('--level <level>', 'Evaluation level: SESSION, TRACE, TOOL_CALL')
       .option('--type <type>', 'Evaluator type: llm-as-a-judge (default) or code-based')
-      .option('--model <model>', '[LLM] Bedrock model ID for LLM-as-a-Judge')
+      .option(
+        '--model <model>',
+        'Bedrock model ID: [LLM] judge model for LLM-as-a-Judge, or [3P library] judge model with ' +
+          '--model-provider bedrock (plain model ID or inference profile, e.g. ' +
+          'us.anthropic.claude-sonnet-4-20250514-v1:0 — no bedrock/ prefix)'
+      )
       .option(
         '--instructions <text>',
         '[LLM] Evaluation prompt instructions (must include level-appropriate placeholders, e.g. {context})'
@@ -419,7 +427,9 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               const threePLibrary = threePLibraryRaw as ThirdPartyLibrary | undefined;
               if (threePLibrary) {
                 if (!cliOptions.metric) fail('--metric is required when using --3p-library');
-                if (cliOptions.model) fail('--model cannot be used with --3p-library');
+                if (cliOptions.model && cliOptions.modelProvider !== 'bedrock') {
+                  fail('--model cannot be used with --3p-library (unless --model-provider bedrock)');
+                }
                 if (cliOptions.instructions) fail('--instructions cannot be used with --3p-library');
                 if (cliOptions.ratingScale) fail('--rating-scale cannot be used with --3p-library');
                 if (cliOptions.lambdaArn) fail('--lambda-arn cannot be used with --3p-library');
@@ -443,6 +453,12 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               if (cliOptions.modelProvider && !isSupportedModelProvider(cliOptions.modelProvider)) {
                 fail(
                   `Invalid --model-provider "${cliOptions.modelProvider}". Supported: ${MODEL_PROVIDERS.join(', ')}`
+                );
+              }
+              if (cliOptions.modelProvider === 'bedrock' && !cliOptions.model) {
+                fail(
+                  '--model is required when using --model-provider bedrock. Pass a Bedrock model ID or ' +
+                    'inference profile (e.g. us.anthropic.claude-sonnet-4-20250514-v1:0) — no bedrock/ prefix'
                 );
               }
               if (cliOptions.memory && !threePLibrary) {
@@ -507,6 +523,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                   metricClass: cliOptions.metric!,
                   metricParams: kwargs,
                   modelProvider: (cliOptions.modelProvider as ModelProvider | undefined) ?? 'openai',
+                  model: cliOptions.model,
                 };
               } else if (cliOptions.config) {
                 configJson = JSON.parse(readFileSync(cliOptions.config, 'utf-8')) as EvaluatorConfig;

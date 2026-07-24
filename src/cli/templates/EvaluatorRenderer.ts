@@ -17,6 +17,8 @@ export interface ThirdPartyEvaluatorTemplateData {
   EvaluatorParams: string;
   /** True when the LLM judge runs on Bedrock instead of the library's default (OpenAI). */
   ModelProviderBedrock?: boolean;
+  /** Bedrock model ID (required when ModelProviderBedrock is true). */
+  Model?: string;
 }
 
 export async function renderThirdPartyEvaluatorTemplate(

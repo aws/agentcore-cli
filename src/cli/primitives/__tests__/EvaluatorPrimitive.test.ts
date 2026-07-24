@@ -465,6 +465,87 @@ describe('EvaluatorPrimitive', () => {
       );
     });
 
+    it('passes Model to the template when model is provided with bedrock provider', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      await primitive.add({
+        name: 'auto_eval',
+        level: 'SESSION',
+        config: autoevalsEvalConfig,
+        thirdParty: {
+          library: 'autoevals',
+          metricClass: 'Factuality',
+          metricParams: 'threshold=0.5',
+          modelProvider: 'bedrock',
+          model: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+        },
+      });
+
+      expect(mockRenderThirdParty).toHaveBeenCalledWith(
+        'autoevals-lambda',
+        {
+          Name: 'auto_eval',
+          EvaluatorClass: 'Factuality',
+          EvaluatorParams: 'threshold=0.5',
+          ModelProviderBedrock: true,
+          Model: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+        },
+        expect.stringContaining('app/auto_eval')
+      );
+    });
+
+    it('passes Model to the deepeval template when model is provided with bedrock provider', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      await primitive.add({
+        name: 'deep_eval',
+        level: 'SESSION',
+        config: deepEvalConfig,
+        thirdParty: {
+          library: 'deepeval',
+          metricClass: 'AnswerRelevancyMetric',
+          metricParams: 'threshold=0.7',
+          modelProvider: 'bedrock',
+          model: 'anthropic.claude-3-haiku-20240307-v1:0',
+        },
+      });
+
+      expect(mockRenderThirdParty).toHaveBeenCalledWith(
+        'deepeval-lambda',
+        {
+          Name: 'deep_eval',
+          EvaluatorClass: 'AnswerRelevancyMetric',
+          EvaluatorParams: 'threshold=0.7',
+          ModelProviderBedrock: true,
+          Model: 'anthropic.claude-3-haiku-20240307-v1:0',
+        },
+        expect.stringContaining('app/deep_eval')
+      );
+    });
+
+    it('omits Model from the render context when not provided', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      await primitive.add({
+        name: 'auto_eval',
+        level: 'SESSION',
+        config: autoevalsEvalConfig,
+        thirdParty: {
+          library: 'autoevals',
+          metricClass: 'Factuality',
+          metricParams: '',
+          modelProvider: 'openai',
+        },
+      });
+
+      const renderData = mockRenderThirdParty.mock.calls[0]![1] as Record<string, unknown>;
+      expect(renderData).not.toHaveProperty('Model');
+      expect(renderData).not.toHaveProperty('ModelProviderBedrock');
+    });
+
     it('omits ModelProviderBedrock when modelProvider is openai', async () => {
       mockReadProjectSpec.mockResolvedValue(makeProject());
       mockWriteProjectSpec.mockResolvedValue(undefined);

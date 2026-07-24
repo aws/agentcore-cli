@@ -17,10 +17,7 @@ from bedrock_agentcore.evaluation.custom_code_based_evaluators import (
 from bedrock_agentcore.evaluation.custom_code_based_evaluators.third_party.deepeval import DeepEvalAdapter
 
 {{#if ModelProviderBedrock}}
-MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
-REGION = os.environ.get("AWS_REGION", "us-west-2")
-
-model = AmazonBedrockModel(model=MODEL_ID, region=REGION)
+model = AmazonBedrockModel(model="{{ Model }}", region=os.environ.get("AWS_REGION", "us-west-2"))
 adapter = DeepEvalAdapter(metric={{ EvaluatorClass }}(model=model, {{{ EvaluatorParams }}}))
 {{else}}
 adapter = DeepEvalAdapter(metric={{ EvaluatorClass }}({{{ EvaluatorParams }}}))

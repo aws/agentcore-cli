@@ -14,13 +14,9 @@ from bedrock_agentcore.evaluation.custom_code_based_evaluators import (
 )
 from bedrock_agentcore.evaluation.custom_code_based_evaluators.third_party.autoevals import AutoEvalsAdapter
 
-# Autoevals grades via an OpenAI-compatible client. LiteLLMClient routes to Bedrock;
-# litellm auto-routes Anthropic Claude models through the Converse API. Cross-region
-# inference profiles (us.*/eu.*/apac.*) are required for on-demand invocation.
-JUDGE_MODEL = os.environ.get("BEDROCK_MODEL_ID", "bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0")
-init(client=LiteLLMClient(), default_model=JUDGE_MODEL)
+init(client=LiteLLMClient(), default_model="{{ Model }}")
 
-adapter = AutoEvalsAdapter(metric={{ EvaluatorClass }}(client=LiteLLMClient(), model=JUDGE_MODEL), {{{ EvaluatorParams }}})
+adapter = AutoEvalsAdapter(metric={{ EvaluatorClass }}(client=LiteLLMClient(), model="{{ Model }}"), {{{ EvaluatorParams }}})
 {{else}}
 from autoevals import {{ EvaluatorClass }}
 
