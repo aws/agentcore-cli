@@ -4,6 +4,7 @@ import { JsonRendererKey } from "../../../../tui";
 import type { AppIO, Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 import { readSourceText } from "../../../source";
+import { parseSecretReference } from "../parser";
 
 export const createUpdateApiKeyCredentialProviderHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -14,10 +15,9 @@ export const createUpdateApiKeyCredentialProviderHandler = (core: Core, io: AppI
       flag("api-key", "the new API key value (inline, file://path, or -)", z.string().optional(), {
         sensitive: true,
       }),
-      flag("api-key-secret-arn", "existing Secrets Manager secret ARN", z.string().optional()),
       flag(
-        "api-key-secret-json-key",
-        "JSON key containing the API key in the secret",
+        "api-key-secret-reference",
+        'external secret reference JSON: {"secretId":"<arn>","jsonKey":"<key>"}',
         z.string().optional(),
       ),
     ],
@@ -27,32 +27,32 @@ export const createUpdateApiKeyCredentialProviderHandler = (core: Core, io: AppI
       }
 
       const hasApiKey = flags["api-key"] !== undefined;
-      const hasSecretArn = flags["api-key-secret-arn"] !== undefined;
-      const hasSecretJsonKey = flags["api-key-secret-json-key"] !== undefined;
+      const hasSecretRef = flags["api-key-secret-reference"] !== undefined;
 
-      if (hasApiKey && (hasSecretArn || hasSecretJsonKey)) {
+      if (hasApiKey && hasSecretRef) {
+        throw new TypeError("--api-key and --api-key-secret-reference are mutually exclusive");
+      }
+      if (!hasApiKey && !hasSecretRef) {
+        throw new TypeError("either --api-key or --api-key-secret-reference is required");
+      }
+
+      const opts = coreOptsFromCtx(ctx);
+      const existing = await core.identity.getApiKeyCredentialProvider(flags.name, opts);
+      const existingSource = existing.apiKeySecretSource;
+
+      if (hasApiKey && existingSource === "EXTERNAL") {
         throw new TypeError(
-          "--api-key and --api-key-secret-arn/--api-key-secret-json-key are mutually exclusive",
+          "this provider uses an external secret; use --api-key-secret-reference to update it",
         );
       }
-      if (!hasApiKey && !hasSecretArn) {
-        throw new TypeError(
-          "either --api-key or --api-key-secret-arn and --api-key-secret-json-key are required",
-        );
-      }
-      if (hasSecretArn !== hasSecretJsonKey) {
-        throw new TypeError(
-          "--api-key-secret-arn and --api-key-secret-json-key must be specified together",
-        );
+      if (hasSecretRef && existingSource === "MANAGED") {
+        throw new TypeError("this provider uses a managed secret; use --api-key to update it");
       }
 
       const apiKey = hasApiKey ? await readSourceText(flags["api-key"]!, io.stdin) : undefined;
-
-      const apiKeySecretConfig = hasSecretArn
-        ? { secretId: flags["api-key-secret-arn"]!, jsonKey: flags["api-key-secret-json-key"]! }
+      const apiKeySecretConfig = hasSecretRef
+        ? parseSecretReference(flags["api-key-secret-reference"]!)
         : undefined;
-
-      const apiKeySecretSource = hasApiKey ? "MANAGED" : "EXTERNAL";
 
       ctx.require(JsonRendererKey).renderJson(
         await core.identity.updateApiKeyCredentialProvider(
@@ -60,9 +60,9 @@ export const createUpdateApiKeyCredentialProviderHandler = (core: Core, io: AppI
             name: flags.name,
             apiKey,
             apiKeySecretConfig,
-            apiKeySecretSource: apiKeySecretSource as any,
+            apiKeySecretSource: existingSource,
           },
-          coreOptsFromCtx(ctx),
+          opts,
         ),
       );
     },

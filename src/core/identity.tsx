@@ -25,15 +25,9 @@ export class IdentityClient implements CoreIdentityClient {
     input: CreateApiKeyCredentialProviderInput,
     options: CoreOptions,
   ): Promise<CreateApiKeyCredentialProviderResponse> {
-    return this.clients.control(toClientConfig(options)).send(
-      new CreateApiKeyCredentialProviderCommand({
-        name: input.name,
-        apiKey: input.apiKey,
-        apiKeySecretConfig: input.apiKeySecretConfig,
-        apiKeySecretSource: input.apiKeySecretSource,
-        tags: input.tags,
-      }),
-    );
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new CreateApiKeyCredentialProviderCommand(input));
   }
 
   async getApiKeyCredentialProvider(
@@ -59,14 +53,9 @@ export class IdentityClient implements CoreIdentityClient {
     input: UpdateApiKeyCredentialProviderInput,
     options: CoreOptions,
   ): Promise<UpdateApiKeyCredentialProviderResponse> {
-    return this.clients.control(toClientConfig(options)).send(
-      new UpdateApiKeyCredentialProviderCommand({
-        name: input.name,
-        apiKey: input.apiKey,
-        apiKeySecretConfig: input.apiKeySecretConfig,
-        apiKeySecretSource: input.apiKeySecretSource,
-      }),
-    );
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new UpdateApiKeyCredentialProviderCommand(input));
   }
 
   async deleteApiKeyCredentialProvider(
