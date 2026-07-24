@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, readdir, rm } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { AssetManager, resolveSourceRoot } from "./AssetManager";
+import { AssetManager, resolveSourceRoot } from "./manager";
 
 const tempDirectories: string[] = [];
 
