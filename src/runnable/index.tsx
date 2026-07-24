@@ -1,8 +1,4 @@
-// ExitCode provides names for default Unix exit codes.
-export enum ExitCode {
-  SUCCESS = 0,
-  FAILURE = 1,
-}
+import { classify } from "../errors";
 
 // Runnable can be implemented by any application's main entrypoint.
 export interface Runnable {
@@ -13,7 +9,7 @@ export interface Runnable {
 export function runRunnable(
   createRunnable: () => Runnable,
   argv: string[] = process.argv,
-): Promise<ExitCode> {
+): Promise<number> {
   return runWithExitCode(async () => {
     await createRunnable().run(argv);
   });
@@ -23,13 +19,14 @@ export function runRunnable(
 export async function runWithExitCode(
   fn: (argv: string[]) => Promise<void>,
   argv: string[] = process.argv,
-): Promise<ExitCode> {
+): Promise<number> {
   try {
     await fn(argv);
-    return ExitCode.SUCCESS;
+    return 0;
   } catch (e) {
-    const error = e instanceof Error ? e : new Error(String(e));
+    const error = classify(e);
     console.error(`${error.name}: ${error.message}`);
-    return ExitCode.FAILURE;
+
+    return error.exitCode;
   }
 }
