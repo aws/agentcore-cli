@@ -1,7 +1,7 @@
 import z from "zod";
 import { createHandler, argument, GlobalConfigAccessorKey } from "../../router";
 import { JsonRendererKey } from "../../tui";
-import { getDefaultGlobalConfig, type GlobalConfig } from "../../globalConfig";
+import { DEFAULT_GLOBAL_CONFIG, type GlobalConfig } from "../../globalConfig";
 
 /*
  * read/write global configuration values. ex. telemetry settings, endpoint overrides, etc.
@@ -18,7 +18,7 @@ export const createConfigHandler = () =>
       argument(
         "key",
         "config key in JSON path notation (e.g. telemetry.enabled)",
-        z.enum(getKeys(getDefaultGlobalConfig())).optional(),
+        z.enum(getKeys(DEFAULT_GLOBAL_CONFIG)).optional(),
       ),
       argument("value", "value to set for the key", z.string().optional()),
     ],
@@ -40,7 +40,7 @@ export const createConfigHandler = () =>
         return;
       }
       const coercedValue = coerceValue(
-        getAtPath(getDefaultGlobalConfig(), args.key),
+        getAtPath(DEFAULT_GLOBAL_CONFIG, args.key),
         args.value,
         args.key,
       );

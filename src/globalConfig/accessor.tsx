@@ -8,7 +8,7 @@ import {
 import type { Logger } from "../logging";
 import z from "zod";
 import { globalConfigFileSchema } from "./types";
-import { getDefaultGlobalConfig, resolveConfig } from "./config";
+import { DEFAULT_GLOBAL_CONFIG, resolveConfig } from "./config";
 
 type DefaultGlobalConfigAccessorConfig = {
   logger: Logger;
@@ -46,7 +46,7 @@ export class DefaultGlobalConfigAccessor implements GlobalConfigAccessor {
 
     // if no installationId is present, generate one and merge it into the file data
     if (!configFileData.installationId) {
-      configFileData.installationId = getDefaultGlobalConfig().installationId;
+      configFileData.installationId = DEFAULT_GLOBAL_CONFIG.installationId;
       this.logger.info(`no installationId found, persisting one`);
 
       try {

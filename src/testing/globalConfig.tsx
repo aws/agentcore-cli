@@ -1,5 +1,5 @@
 import {
-  getDefaultGlobalConfig,
+  DEFAULT_GLOBAL_CONFIG,
   type GlobalConfig,
   type GlobalConfigAccessor,
 } from "../globalConfig";
@@ -15,7 +15,7 @@ export class TestGlobalConfigAccessor implements GlobalConfigAccessor {
   private configData: GlobalConfig;
 
   constructor(options?: TestGlobalConfigAccessorOptions) {
-    this.configData = options?.initialConfigData ?? getDefaultGlobalConfig();
+    this.configData = options?.initialConfigData ?? DEFAULT_GLOBAL_CONFIG;
   }
 
   public async get(): Promise<GlobalConfig> {
