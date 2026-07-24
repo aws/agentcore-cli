@@ -60,16 +60,43 @@ def normalize_style(text):
     if not text:
         return ""
     text = re.sub(r"\be\.g\.(?:,)?", "for example,", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"\bAWS Bedrock(?: AgentCore)? Code\s*Interpreter\b",
+        "AgentCore Code Interpreter",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"\bAWS Bedrock AgentCore\b", "Amazon Bedrock AgentCore", text)
+    text = re.sub(r"\bAWS Bedrock\b", "Amazon Bedrock", text)
+    text = re.sub(r"\bAgentCore Memory\b", "AgentCore memory", text)
+    text = re.sub(r"\bAgentCore Runtime\b", "AgentCore runtime", text)
     text = text.replace(
         "This feature is in preview and may change in future releases.",
         "This feature is in preview and might change in future releases.",
     )
+    text = text.replace("validation will ensure", "validation ensures")
     return re.sub(r"\bAWS\b", "{aws}", text)
 
 
 def normalize_param_description(text):
     """Normalize recurring parameter-description style issues."""
     text = normalize_style(text).strip()
+    exact_substitutions = {
+        "bedrock, open_ai, or gemini": (
+            "The model provider. Valid values: `bedrock`, `open_ai`, or `gemini`."
+        ),
+        "Override LiteLLM API base URL (harness only, lite_llm) [non-interactive]": (
+            "The LiteLLM API base URL override for harness invocations. "
+            "Available only with `lite_llm` in non-interactive mode."
+        ),
+        "Override LiteLLM additional params as a JSON object (harness only, lite_llm) "
+        "[non-interactive]": (
+            "The additional LiteLLM parameters, as a JSON object, for harness invocations. "
+            "Available only with `lite_llm` in non-interactive mode."
+        ),
+    }
+    if text in exact_substitutions:
+        return exact_substitutions[text]
     substitutions = (
         (r"^Optional\b", "An optional"),
         (r"^(?:\{aws\}|AWS)\s+region\b", "The {aws} Region"),

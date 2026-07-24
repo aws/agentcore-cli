@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseHelp } from "./extract-cli-model.mjs";
+import { normalizeParameterDescription, parseHelp } from "./extract-cli-model.mjs";
 
 test("parseHelp preserves wrapped argument and option descriptions", () => {
   const parsed = parseHelp(`Usage: agentcore invoke [options] [prompt]
@@ -29,4 +29,18 @@ Output
     "Read the prompt from a file (for long or structured payloads that exceed shell limits)",
   );
   assert.equal(parsed.options[1].description, "Output as JSON");
+});
+
+test("normalizeParameterDescription expands model provider and LiteLLM fragments", () => {
+  assert.equal(
+    normalizeParameterDescription("bedrock, open_ai, or gemini"),
+    "The model provider. Valid values: `bedrock`, `open_ai`, or `gemini`.",
+  );
+  assert.equal(
+    normalizeParameterDescription(
+      "Override LiteLLM API base URL (harness only, lite_llm) [non-interactive]",
+    ),
+    "The LiteLLM API base URL override for harness invocations. " +
+      "Available only with `lite_llm` in non-interactive mode.",
+  );
 });

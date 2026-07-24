@@ -85,6 +85,27 @@ function help(args) {
   }
 }
 
+const PARAMETER_DESCRIPTION_OVERRIDES = new Map([
+  [
+    'bedrock, open_ai, or gemini',
+    'The model provider. Valid values: `bedrock`, `open_ai`, or `gemini`.',
+  ],
+  [
+    'Override LiteLLM API base URL (harness only, lite_llm) [non-interactive]',
+    'The LiteLLM API base URL override for harness invocations. ' +
+      'Available only with `lite_llm` in non-interactive mode.',
+  ],
+  [
+    'Override LiteLLM additional params as a JSON object (harness only, lite_llm) [non-interactive]',
+    'The additional LiteLLM parameters, as a JSON object, for harness invocations. ' +
+      'Available only with `lite_llm` in non-interactive mode.',
+  ],
+]);
+
+export function normalizeParameterDescription(description) {
+  return PARAMETER_DESCRIPTION_OVERRIDES.get(description) || description;
+}
+
 // Parse a Commander.js help blob into { summary, signature, params, options }.
 export function parseHelp(text) {
   const lines = text.split('\n');
@@ -168,7 +189,12 @@ function entryForCommand(name) {
     // reuse params for both positional args and flags, flagged by required.
     // The renderer already wraps param names in backticks, so don't add our
     // own (that produced double-backticks). Drop the ubiquitous help flag.
-    params: [...parsed.args, ...parsed.options.filter(o => !/^-h,?\s|--help\b/.test(o.name))],
+    params: [...parsed.args, ...parsed.options.filter(o => !/^-h,?\s|--help\b/.test(o.name))].map(
+      param => ({
+        ...param,
+        description: normalizeParameterDescription(param.description),
+      })
+    ),
     returns: null,
     raises: [],
     examples: [],
