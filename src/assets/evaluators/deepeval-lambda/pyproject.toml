@@ -10,6 +10,9 @@ requires-python = ">=3.10"
 dependencies = [
     "bedrock-agentcore[deepeval]",
     "deepeval>=2.0.0",
+{{#if ModelProviderBedrock}}
+    "aiobotocore>=2.13.0",
+{{/if}}
 ]
 
 [tool.hatch.build.targets.wheel]

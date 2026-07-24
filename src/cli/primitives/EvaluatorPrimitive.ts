@@ -92,6 +92,14 @@ function isSupportedLibrary(value: string): value is ThirdPartyLibrary {
   return value in THIRD_PARTY_EVALUATOR_LIBRARIES;
 }
 
+export const MODEL_PROVIDERS = ['openai', 'bedrock'] as const;
+
+export type ModelProvider = (typeof MODEL_PROVIDERS)[number];
+
+function isSupportedModelProvider(value: string): value is ModelProvider {
+  return (MODEL_PROVIDERS as readonly string[]).includes(value);
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -100,6 +108,8 @@ export interface ThirdPartyLibraryOptions {
   library: ThirdPartyLibrary;
   metricClass: string;
   metricParams?: string;
+  /** LLM judge provider; defaults to the library's built-in default (OpenAI). */
+  modelProvider?: ModelProvider;
 }
 
 export interface AddEvaluatorOptions {
@@ -203,6 +213,8 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               Name: options.name,
               EvaluatorClass: options.thirdParty.metricClass,
               EvaluatorParams: options.thirdParty.metricParams ?? '',
+              // Omitted for the default (openai) so Handlebars treats it as falsy.
+              ...(options.thirdParty.modelProvider === 'bedrock' && { ModelProviderBedrock: true }),
             },
             targetDir
           );
@@ -348,6 +360,10 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
         [] as string[]
       )
       .option('--parameters-file <path>', '[3P library] JSON file of metric constructor kwargs')
+      .option(
+        '--model-provider <provider>',
+        `[3P library] LLM judge provider: ${MODEL_PROVIDERS.join(', ')} (default: openai)`
+      )
       .option('--memory <mb>', '[3P library] Lambda memory size in MB, 128-10240')
       .option(
         '--config <path>',
@@ -369,6 +385,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
           metric?: string;
           param: string[];
           parametersFile?: string;
+          modelProvider?: string;
           memory?: string;
           config?: string;
           kmsKeyArn?: string;
@@ -419,6 +436,14 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               }
               if (cliOptions.param.length > 0 && cliOptions.parametersFile) {
                 fail('--param and --parameters-file cannot be used together');
+              }
+              if (cliOptions.modelProvider && !threePLibrary) {
+                fail('--model-provider requires --3p-library');
+              }
+              if (cliOptions.modelProvider && !isSupportedModelProvider(cliOptions.modelProvider)) {
+                fail(
+                  `Invalid --model-provider "${cliOptions.modelProvider}". Supported: ${MODEL_PROVIDERS.join(', ')}`
+                );
               }
               if (cliOptions.memory && !threePLibrary) {
                 fail('--memory requires --3p-library');
@@ -481,6 +506,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                   library: threePLibrary,
                   metricClass: cliOptions.metric!,
                   metricParams: kwargs,
+                  modelProvider: (cliOptions.modelProvider as ModelProvider | undefined) ?? 'openai',
                 };
               } else if (cliOptions.config) {
                 configJson = JSON.parse(readFileSync(cliOptions.config, 'utf-8')) as EvaluatorConfig;

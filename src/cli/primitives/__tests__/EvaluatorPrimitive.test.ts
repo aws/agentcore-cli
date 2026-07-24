@@ -1,6 +1,7 @@
 import type { EvaluatorConfig } from '../../../schema';
 import {
   EvaluatorPrimitive,
+  MODEL_PROVIDERS,
   THIRD_PARTY_EVALUATOR_LIBRARIES,
   jsonToKwargs,
   jsonToPythonValue,
@@ -441,6 +442,74 @@ describe('EvaluatorPrimitive', () => {
       );
     });
 
+    it('passes ModelProviderBedrock to the template when modelProvider is bedrock', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      await primitive.add({
+        name: 'auto_eval',
+        level: 'SESSION',
+        config: autoevalsEvalConfig,
+        thirdParty: {
+          library: 'autoevals',
+          metricClass: 'Factuality',
+          metricParams: '',
+          modelProvider: 'bedrock',
+        },
+      });
+
+      expect(mockRenderThirdParty).toHaveBeenCalledWith(
+        'autoevals-lambda',
+        { Name: 'auto_eval', EvaluatorClass: 'Factuality', EvaluatorParams: '', ModelProviderBedrock: true },
+        expect.stringContaining('app/auto_eval')
+      );
+    });
+
+    it('omits ModelProviderBedrock when modelProvider is openai', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      await primitive.add({
+        name: 'deep_eval',
+        level: 'SESSION',
+        config: deepEvalConfig,
+        thirdParty: {
+          library: 'deepeval',
+          metricClass: 'AnswerRelevancyMetric',
+          metricParams: 'threshold=0.7',
+          modelProvider: 'openai',
+        },
+      });
+
+      expect(mockRenderThirdParty).toHaveBeenCalledWith(
+        'deepeval-lambda',
+        { Name: 'deep_eval', EvaluatorClass: 'AnswerRelevancyMetric', EvaluatorParams: 'threshold=0.7' },
+        expect.stringContaining('app/deep_eval')
+      );
+    });
+
+    it('omits ModelProviderBedrock when modelProvider is not set (backwards compatible)', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      await primitive.add({
+        name: 'auto_eval',
+        level: 'SESSION',
+        config: autoevalsEvalConfig,
+        thirdParty: {
+          library: 'autoevals',
+          metricClass: 'Factuality',
+          metricParams: '',
+        },
+      });
+
+      expect(mockRenderThirdParty).toHaveBeenCalledWith(
+        'autoevals-lambda',
+        { Name: 'auto_eval', EvaluatorClass: 'Factuality', EvaluatorParams: '' },
+        expect.stringContaining('app/auto_eval')
+      );
+    });
+
     it('calls renderCodeBasedEvaluatorTemplate when thirdParty is not set', async () => {
       mockReadProjectSpec.mockResolvedValue(makeProject());
       mockWriteProjectSpec.mockResolvedValue(undefined);
@@ -522,6 +591,12 @@ describe('THIRD_PARTY_EVALUATOR_LIBRARIES registry', () => {
   it('does not contain unsupported libraries', () => {
     expect((THIRD_PARTY_EVALUATOR_LIBRARIES as Record<string, unknown>).ragas).toBeUndefined();
     expect((THIRD_PARTY_EVALUATOR_LIBRARIES as Record<string, unknown>).langsmith).toBeUndefined();
+  });
+});
+
+describe('MODEL_PROVIDERS', () => {
+  it('supports openai and bedrock only', () => {
+    expect(MODEL_PROVIDERS).toEqual(['openai', 'bedrock']);
   });
 });
 
