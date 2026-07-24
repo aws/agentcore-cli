@@ -62,7 +62,7 @@ describe.sequential('e2e: third-party evaluator lifecycle (DeepEval + Autoevals)
   const run = (args: string[]) => runAgentCoreCLI(args, projectPath);
 
   it.skipIf(!canRun)(
-    'adds a DeepEval 3P evaluator with --3p-library and --param',
+    'adds a DeepEval 3P evaluator with --3p-library, --model-provider bedrock, and --param',
     async () => {
       const result = await run([
         'add',
@@ -75,6 +75,10 @@ describe.sequential('e2e: third-party evaluator lifecycle (DeepEval + Autoevals)
         'deepeval',
         '--metric',
         'AnswerRelevancyMetric',
+        '--model-provider',
+        'bedrock',
+        '--model',
+        'us.anthropic.claude-sonnet-4-20250514-v1:0',
         '--param',
         'threshold=0.5',
         '--json',
@@ -89,7 +93,7 @@ describe.sequential('e2e: third-party evaluator lifecycle (DeepEval + Autoevals)
   );
 
   it.skipIf(!canRun)(
-    'adds an Autoevals 3P evaluator with --3p-library',
+    'adds an Autoevals 3P evaluator with --3p-library and --model-provider bedrock',
     async () => {
       const result = await run([
         'add',
@@ -102,6 +106,10 @@ describe.sequential('e2e: third-party evaluator lifecycle (DeepEval + Autoevals)
         'autoevals',
         '--metric',
         'ExactMatch',
+        '--model-provider',
+        'bedrock',
+        '--model',
+        'us.anthropic.claude-sonnet-4-20250514-v1:0',
         '--json',
       ]);
       expect(result.exitCode, `Add Autoevals evaluator failed: ${result.stdout}`).toBe(0);
