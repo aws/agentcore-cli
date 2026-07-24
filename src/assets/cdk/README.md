@@ -20,6 +20,9 @@ This CDK project is managed by the AgentCore CLI. It deploys your agent infrastr
 
 You typically don't need to interact with this directory directly. The AgentCore CLI handles synthesis and deployment:
 
+<!-- TODO: revisit these commands once the project CLI surface is final —
+     they may need a project prefix (e.g. --project / cwd) to disambiguate. -->
+
 ```bash
 agentcore deploy    # synthesizes and deploys via CDK
 agentcore status    # checks deployment status
