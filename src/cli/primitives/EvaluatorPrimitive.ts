@@ -147,9 +147,17 @@ export function jsonToPythonValue(value: unknown): string {
 }
 
 export function jsonToKwargs(json: string): string {
-  const obj = JSON.parse(json) as Record<string, unknown>;
-  return Object.entries(obj)
-    .map(([key, value]) => `${key}=${jsonToPythonValue(value)}`)
+  const obj = JSON.parse(json);
+  if (obj == null || typeof obj !== 'object' || Array.isArray(obj)) {
+    throw new Error('Expected a JSON object of keyword arguments');
+  }
+  return Object.entries(obj as Record<string, unknown>)
+    .map(([key, value]) => {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+        throw new Error(`Invalid Python kwarg name "${key}"`);
+      }
+      return `${key}=${jsonToPythonValue(value)}`;
+    })
     .join(', ');
 }
 
@@ -160,8 +168,11 @@ export function parseParamFlags(params: string[]): string {
       if (eqIndex === -1) {
         throw new Error(`"${param}" is not in key=value format`);
       }
-      const key = param.slice(0, eqIndex);
-      const rawValue = param.slice(eqIndex + 1);
+      const key = param.slice(0, eqIndex).trim();
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+        throw new Error(`Invalid Python kwarg name "${key}" in --param`);
+      }
+      const rawValue = param.slice(eqIndex + 1).trim();
       let value: unknown;
       try {
         value = JSON.parse(rawValue);
@@ -463,6 +474,12 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               }
               if (cliOptions.memory && !threePLibrary) {
                 fail('--memory requires --3p-library');
+              }
+              if (cliOptions.timeout) {
+                const timeoutVal = parseInt(cliOptions.timeout, 10);
+                if (isNaN(timeoutVal) || timeoutVal < 1 || timeoutVal > 300) {
+                  fail('--timeout must be an integer between 1 and 300');
+                }
               }
               if (cliOptions.memory) {
                 const memVal = parseInt(cliOptions.memory, 10);

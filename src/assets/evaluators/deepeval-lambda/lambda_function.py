@@ -18,7 +18,7 @@ from bedrock_agentcore.evaluation.custom_code_based_evaluators.third_party.deepe
 
 {{#if ModelProviderBedrock}}
 model = AmazonBedrockModel(model="{{ Model }}", region=os.environ.get("AWS_REGION", "us-west-2"))
-adapter = DeepEvalAdapter(metric={{ EvaluatorClass }}(model=model, {{{ EvaluatorParams }}}))
+adapter = DeepEvalAdapter(metric={{ EvaluatorClass }}(model=model{{#if EvaluatorParams}}, {{{ EvaluatorParams }}}{{/if}}))
 {{else}}
 adapter = DeepEvalAdapter(metric={{ EvaluatorClass }}({{{ EvaluatorParams }}}))
 {{/if}}

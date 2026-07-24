@@ -14,9 +14,10 @@ from bedrock_agentcore.evaluation.custom_code_based_evaluators import (
 )
 from bedrock_agentcore.evaluation.custom_code_based_evaluators.third_party.autoevals import AutoEvalsAdapter
 
-init(client=LiteLLMClient(), default_model="{{ Model }}")
+client = LiteLLMClient()
+init(client=client, default_model="{{ Model }}")
 
-adapter = AutoEvalsAdapter(metric={{ EvaluatorClass }}(client=LiteLLMClient(), model="{{ Model }}"), {{{ EvaluatorParams }}})
+adapter = AutoEvalsAdapter(metric={{ EvaluatorClass }}(client=client, model="{{ Model }}"), {{{ EvaluatorParams }}})
 {{else}}
 from autoevals import {{ EvaluatorClass }}
 
