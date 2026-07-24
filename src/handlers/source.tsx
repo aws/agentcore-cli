@@ -19,20 +19,19 @@ export async function readSource(
     try {
       return await readFile(path, { signal });
     } catch (error) {
-      if ((error as Error)?.name === "AbortError") throw error;
+      if (error instanceof Error && error.name === "AbortError") throw error;
       throw new TypeError(`unable to read source file: ${path}`);
     }
   }
 
-  if (source === "-") {
-    if (!stdin) {
-      throw new TypeError("stdin is not available for this source");
-    }
-    const stream = signal ? addAbortSignal(signal, stdin) : stdin;
-    return buffer(stream);
+  if (source !== "-") {
+    return new TextEncoder().encode(source);
+  }
+  if (!stdin) {
+    throw new TypeError("stdin is not available for this source");
   }
 
-  return new TextEncoder().encode(source);
+  return buffer(signal ? addAbortSignal(signal, stdin) : stdin);
 }
 
 // readSourceText resolves a source-aware flag value to a string.
@@ -42,5 +41,9 @@ export async function readSourceText(
   signal?: AbortSignal,
 ): Promise<string> {
   const bytes = await readSource(source, stdin, signal);
-  return new TextDecoder().decode(bytes);
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new TypeError("source must contain valid UTF-8");
+  }
 }

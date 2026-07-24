@@ -28,3 +28,38 @@ export function parseJsonFlag<T>(name: string, raw: string | undefined): T | und
     );
   }
 }
+
+// parseTags parses a tags flag that accepts two mutually exclusive forms:
+//   - Repeated key=value shorthand: ["env=prod", "team=foo"]
+//   - A single JSON object: ['{"env":"prod","team":"foo"}']
+// The two forms cannot be mixed. Returns undefined when the input is empty.
+export function parseTags(values: string[] | undefined): Record<string, string> | undefined {
+  if (!values || values.length === 0) return undefined;
+
+  const first = values[0];
+  if (values.length === 1 && first?.trimStart().startsWith("{")) {
+    const parsed = parseJsonFlag<Record<string, unknown>>("tags", first);
+    if (parsed === undefined) return undefined;
+    if (Array.isArray(parsed)) {
+      throw new TypeError("--tags JSON must be an object of string key-value pairs");
+    }
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value !== "string") {
+        throw new TypeError(`--tags value for key '${key}' must be a string, got ${typeof value}`);
+      }
+    }
+    return parsed as Record<string, string>;
+  }
+
+  const result: Record<string, string> = {};
+  for (const entry of values) {
+    const eqIndex = entry.indexOf("=");
+    if (eqIndex < 1) {
+      throw new TypeError(
+        `Invalid tag '${entry}': expected key=value format or a single JSON object`,
+      );
+    }
+    result[entry.slice(0, eqIndex)] = entry.slice(eqIndex + 1);
+  }
+  return result;
+}

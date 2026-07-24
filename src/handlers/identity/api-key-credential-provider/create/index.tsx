@@ -2,9 +2,8 @@ import z from "zod";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { AppIO, Core } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { coreOptsFromCtx, parseTags } from "../../../utils";
 import { readSourceText } from "../../../source";
-import { parseJsonFlag } from "../../../utils";
 
 export const createCreateApiKeyCredentialProviderHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -21,7 +20,7 @@ export const createCreateApiKeyCredentialProviderHandler = (core: Core, io: AppI
         "JSON key containing the API key in the secret",
         z.string().optional(),
       ),
-      flag("tags", "tags as key=value (repeatable) or JSON object", z.string().optional()),
+      flag("tags", "tags as key=value (repeatable) or JSON object", z.array(z.string()).optional()),
     ],
     handle: async (ctx, flags) => {
       if (!flags.name) {
@@ -56,7 +55,7 @@ export const createCreateApiKeyCredentialProviderHandler = (core: Core, io: AppI
 
       const apiKeySecretSource = hasApiKey ? "MANAGED" : "EXTERNAL";
 
-      const tags = parseJsonFlag<Record<string, string>>("tags", flags.tags);
+      const tags = parseTags(flags.tags);
 
       ctx.require(JsonRendererKey).renderJson(
         await core.identity.createApiKeyCredentialProvider(
