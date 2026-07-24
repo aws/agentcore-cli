@@ -42,7 +42,10 @@ export class AssetManager {
     const resolvedDestination = resolve(destination);
     for (const file of assetFiles) {
       const outputPath = this.resolveOutputPath(resolvedDestination, file.relativePath);
-      const rendered = this.handlebars.compile(await file.text(), { noEscape: true })(variables);
+      const rendered = this.handlebars.compile(await file.text(), {
+        noEscape: true,
+        strict: true,
+      })(variables);
 
       await mkdir(dirname(outputPath), { recursive: true });
       await atomicWrite(outputPath, rendered);
@@ -81,7 +84,7 @@ export class AssetManager {
         relativePath: file.name.slice(prefix.length),
         text: () => file.text(),
       }))
-      .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+      .sort((a, b) => (a.relativePath < b.relativePath ? -1 : 1));
   }
 
   private resolveOutputPath(resolvedDestination: string, relativePath: string): string {
@@ -102,7 +105,7 @@ export class AssetManager {
 
   private resolveTemplateName(relativePath: string): string {
     const filename = basename(relativePath);
-    const ignore = filename.match(/^(docker|git|npm)ignore\.template$/);
+    const ignore = filename.match(/^(git|npm)ignore\.template$/);
     return join(dirname(relativePath), ignore ? `.${ignore[1]}ignore` : filename);
   }
 }
