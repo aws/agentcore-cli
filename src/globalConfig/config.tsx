@@ -1,4 +1,4 @@
-import type { GlobalConfig, GlobalConfigFileData } from "./types";
+import type { DeepPartial, GlobalConfig } from "./types";
 
 /**
  * Default values for the global config. Includes a unique installationId for each process.
@@ -13,15 +13,18 @@ export const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
 };
 
 /**
- * Applies the given overrides from given {@link GlobalConfigFileData} to {@link DEFAULT_GLOBAL_CONFIG} and returns the merged result
+ * Applies the given overrides from a partial config on top of the provided defaults and returns the merged result.
  */
-export function resolveConfig(globalConfigFile: GlobalConfigFileData): GlobalConfig {
+export function applyOverrides(
+  defaults: GlobalConfig,
+  overrides: DeepPartial<GlobalConfig>,
+): GlobalConfig {
   return {
     telemetry: {
-      enabled: globalConfigFile.telemetry?.enabled ?? DEFAULT_GLOBAL_CONFIG.telemetry.enabled,
-      audit: globalConfigFile.telemetry?.audit ?? DEFAULT_GLOBAL_CONFIG.telemetry.audit,
-      endpoint: globalConfigFile.telemetry?.endpoint ?? DEFAULT_GLOBAL_CONFIG.telemetry.endpoint,
+      enabled: overrides.telemetry?.enabled ?? defaults.telemetry.enabled,
+      audit: overrides.telemetry?.audit ?? defaults.telemetry.audit,
+      endpoint: overrides.telemetry?.endpoint ?? defaults.telemetry.endpoint,
     },
-    installationId: globalConfigFile.installationId ?? DEFAULT_GLOBAL_CONFIG.installationId,
+    installationId: overrides.installationId ?? defaults.installationId,
   };
 }

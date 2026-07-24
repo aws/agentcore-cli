@@ -8,7 +8,7 @@ import {
 import type { Logger } from "../logging";
 import z from "zod";
 import { globalConfigFileSchema } from "./types";
-import { DEFAULT_GLOBAL_CONFIG, resolveConfig } from "./config";
+import { DEFAULT_GLOBAL_CONFIG, applyOverrides } from "./config";
 
 type DefaultGlobalConfigAccessorConfig = {
   logger: Logger;
@@ -60,14 +60,14 @@ export class DefaultGlobalConfigAccessor implements GlobalConfigAccessor {
       }
     }
 
-    this.cachedConfig = resolveConfig(configFileData);
+    this.cachedConfig = applyOverrides(DEFAULT_GLOBAL_CONFIG, configFileData);
     return this.cachedConfig;
   }
 
   public async set(newConfig: GlobalConfig): Promise<GlobalConfig> {
     this.logger.child({ newConfig, method: "set" }).debug("writing global config");
 
-    const configDiff = diff(newConfig, resolveConfig({}));
+    const configDiff = diff(newConfig, DEFAULT_GLOBAL_CONFIG);
     await this.writeToConfigFile(configDiff);
     this.cachedConfig = newConfig;
     return this.cachedConfig;
