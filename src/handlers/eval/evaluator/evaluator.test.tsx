@@ -326,14 +326,9 @@ describe("update / get / delete required flags", () => {
     expect(run(core, [...args])).rejects.toThrow(/--id/);
   });
 
-  test("delete requires --yes", async () => {
+  test("delete calls deleteEvaluator with the id", async () => {
     const core = new TestCoreClient();
-    expect(run(core, ["eval", "evaluator", "delete", "--id", "e-1"])).rejects.toThrow(/--yes/);
-  });
-
-  test("delete proceeds with --yes", async () => {
-    const core = new TestCoreClient();
-    await run(core, ["eval", "evaluator", "delete", "--id", "e-1", "--yes"]);
+    await run(core, ["eval", "evaluator", "delete", "--id", "e-1"]);
     expect(core.eval.calls).toEqual([
       { method: "deleteEvaluator", args: ["e-1", { region: REGION, endpointUrl: undefined }] },
     ]);

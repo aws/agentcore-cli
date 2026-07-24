@@ -1,89 +1,12 @@
-import z from "zod";
-import { createHandler, flag } from "../../../../router";
-import { JsonRendererKey } from "../../../../tui";
+import { Router } from "../../../../router";
 import type { AppIO, Core } from "../../../types";
-import { coreOptsFromCtx, parseJsonFlag } from "../../../utils";
-import { SourceResolver } from "../../source";
+import { createHelpDefault } from "../../../help";
+import { createCodeBasedCreateHandler } from "./create";
+import { createCodeBasedUpdateHandler } from "./update";
 
-const LEVELS = ["SESSION", "TRACE", "TOOL_CALL"] as const;
-
-export const createCodeBasedCreateHandler = (core: Core, io: AppIO) =>
-  createHandler({
-    name: "create",
-    description: "create a code-based (Lambda-backed) evaluator",
-    flags: [
-      flag("name", "the name of the evaluator", z.string().optional()),
-      flag("level", `evaluation level (${LEVELS.join(" | ")})`, z.enum(LEVELS).optional()),
-      flag("lambda-arn", "ARN of the Lambda function that scores a session", z.string().optional()),
-      // No default; the service applies its own timeout (60s) when omitted.
-      flag("timeout", "Lambda timeout in seconds (1-300)", z.number().optional()),
-      flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),
-      flag(
-        "tags",
-        "tags to apply (JSON object of key/value strings; inline, file://<path>, or - for stdin)",
-        z.string().optional(),
-      ),
-      flag("client-token", "idempotency token", z.string().optional()),
-    ],
-    handle: async (ctx, flags) => {
-      if (!flags["name"]) throw new TypeError("required option '--name <name>' not specified");
-      if (!flags["level"]) throw new TypeError("required option '--level <level>' not specified");
-      if (!flags["lambda-arn"]) {
-        throw new TypeError("required option '--lambda-arn <lambda-arn>' not specified");
-      }
-
-      const source = new SourceResolver(io);
-      const tags = parseJsonFlag<Record<string, string>>(
-        "tags",
-        await source.resolve("tags", flags["tags"]),
-      );
-
-      const response = await core.eval.createEvaluator(
-        {
-          evaluatorName: flags["name"],
-          level: flags["level"],
-          evaluatorConfig: {
-            codeBased: {
-              lambdaConfig: {
-                lambdaArn: flags["lambda-arn"],
-                lambdaTimeoutInSeconds: flags["timeout"],
-              },
-            },
-          },
-          kmsKeyArn: flags["kms-key-arn"],
-          tags,
-          clientToken: flags["client-token"],
-        },
-        coreOptsFromCtx(ctx),
-      );
-      ctx.require(JsonRendererKey).renderJson(response);
-    },
-  });
-
-export const createCodeBasedUpdateHandler = (core: Core) =>
-  createHandler({
-    name: "update",
-    description: "update a code-based (Lambda-backed) evaluator",
-    flags: [
-      flag("id", "the ID of the evaluator to update", z.string().optional()),
-      flag("lambda-arn", "ARN of the Lambda function that scores a session", z.string().optional()),
-      flag("timeout", "Lambda timeout in seconds (1-300)", z.number().optional()),
-      flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),
-      flag("client-token", "idempotency token", z.string().optional()),
-    ],
-    handle: async (ctx, flags) => {
-      if (!flags["id"]) throw new TypeError("required option '--id <id>' not specified");
-
-      const response = await core.eval.updateCodeBasedEvaluator(
-        flags["id"],
-        {
-          lambdaArn: flags["lambda-arn"],
-          timeout: flags["timeout"],
-          kmsKeyArn: flags["kms-key-arn"],
-          clientToken: flags["client-token"],
-        },
-        coreOptsFromCtx(ctx),
-      );
-      ctx.require(JsonRendererKey).renderJson(response);
-    },
-  });
+export function createCodeBasedHandler(core: Core, io: AppIO): Router {
+  return new Router("code-based", "manage code-based (Lambda-backed) evaluators")
+    .default(createHelpDefault(io))
+    .handler(createCodeBasedCreateHandler(core, io))
+    .handler(createCodeBasedUpdateHandler(core));
+}
