@@ -74,6 +74,19 @@ describe("AssetManager", () => {
     );
   });
 
+  test("throws on a template referencing an undefined variable", async () => {
+    const root = await makeTempDirectory();
+    const source = join(root, "assets", "cdk");
+    const destination = join(root, "output");
+
+    await mkdir(source, { recursive: true });
+    await Bun.write(join(source, "README.md"), "Hello {{projectName}}");
+
+    await expect(
+      new AssetManager([], join(root, "assets")).render("cdk", destination),
+    ).rejects.toThrow(/projectName/);
+  });
+
   test("rejects an embedded path that escapes the destination", async () => {
     const root = await makeTempDirectory();
     const destination = join(root, "output");
