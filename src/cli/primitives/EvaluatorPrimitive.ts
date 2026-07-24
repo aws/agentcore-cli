@@ -381,7 +381,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
       .option('--parameters-file <path>', '[3P library] JSON file of metric constructor kwargs')
       .option(
         '--model-provider <provider>',
-        `[3P library] LLM judge provider: ${MODEL_PROVIDERS.join(', ')} (default: openai)`
+        `[3P library] LLM judge provider: ${MODEL_PROVIDERS.join(', ')} (default: bedrock)`
       )
       .option('--memory <mb>', '[3P library] Lambda memory size in MB, 128-10240')
       .option(
@@ -466,9 +466,10 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                   `Invalid --model-provider "${cliOptions.modelProvider}". Supported: ${MODEL_PROVIDERS.join(', ')}`
                 );
               }
-              if (cliOptions.modelProvider === 'bedrock' && !cliOptions.model) {
+              const resolvedModelProvider = (cliOptions.modelProvider as ModelProvider | undefined) ?? 'bedrock';
+              if (resolvedModelProvider === 'bedrock' && !cliOptions.model && threePLibrary) {
                 fail(
-                  '--model is required when using --model-provider bedrock. Pass a Bedrock model ID or ' +
+                  '--model is required when using --model-provider bedrock (the default). Pass a Bedrock model ID or ' +
                     'inference profile (e.g. us.anthropic.claude-sonnet-4-20250514-v1:0) — no bedrock/ prefix'
                 );
               }
@@ -539,7 +540,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                   library: threePLibrary,
                   metricClass: cliOptions.metric!,
                   metricParams: kwargs,
-                  modelProvider: (cliOptions.modelProvider as ModelProvider | undefined) ?? 'openai',
+                  modelProvider: (cliOptions.modelProvider as ModelProvider | undefined) ?? 'bedrock',
                   model: cliOptions.model,
                 };
               } else if (cliOptions.config) {
@@ -631,6 +632,12 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                   const warnings = getWarningsForMetric(libraryConfig, thirdParty.metricClass);
                   for (const warning of warnings) {
                     console.warn(`\n  ${warning}`);
+                  }
+                  if (thirdParty.modelProvider === 'openai') {
+                    console.warn(
+                      '\n  ⚠️  OpenAI model provider selected. You must set OPENAI_API_KEY as a Lambda ' +
+                        'environment variable for the evaluator to call the LLM judge.'
+                    );
                   }
                 }
               }
