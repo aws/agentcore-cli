@@ -25,7 +25,7 @@ export async function runWithExitCode(
     return 0;
   } catch (e) {
     const error = e instanceof Error ? e : new Error(String(e));
-    console.error(`${error.name}: ${error.message}`);
+    console.error(`Error: ${error.message}`);
 
     return error instanceof AgentCoreCLIError ? error.exitCode : 1;
   }
