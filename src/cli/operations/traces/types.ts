@@ -58,6 +58,58 @@ export interface TraceEntry {
   spanCount?: string;
 }
 
+/** Aggregated latency/token metrics computed from one trace's spans. */
+export interface TraceMetrics {
+  traceId: string;
+  spanCount: number;
+  endToEndMs: number;
+  /** 'invocation-span' when derived from the POST /invocations server span; 'span-envelope' is the labeled fallback. */
+  timingSource: 'invocation-span' | 'span-envelope';
+  llmMs: number;
+  llmCalls: number;
+  toolMs: number;
+  toolCalls: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+}
+
+export interface MetricDelta {
+  baseline?: number;
+  candidate?: number;
+  delta?: number;
+  /** Percentage change relative to baseline; null when the baseline is zero or absent. */
+  deltaPercent?: number | null;
+}
+
+export type TraceComparisonMetricKey =
+  | 'endToEndMs'
+  | 'llmMs'
+  | 'toolMs'
+  | 'llmCalls'
+  | 'toolCalls'
+  | 'inputTokens'
+  | 'outputTokens'
+  | 'totalTokens';
+
+export type TraceComparisonDeltas = Record<TraceComparisonMetricKey, MetricDelta>;
+
+export interface CompareTracesOptions {
+  region: string;
+  runtimeId: string;
+  baselineTraceId: string;
+  candidateTraceId: string;
+  startTime?: number;
+  endTime?: number;
+}
+
+export type CompareTracesResult = Result<{
+  baseline: TraceMetrics;
+  candidate: TraceMetrics;
+  deltas: TraceComparisonDeltas;
+  warnings: string[];
+}>;
+
 export interface ListTracesOptions {
   region: string;
   runtimeId: string;
