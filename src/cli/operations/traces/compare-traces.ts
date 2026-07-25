@@ -16,7 +16,7 @@ const TOOL_OPERATIONS = new Set(['execute_tool']);
 // Fallbacks for spans that predate the operation attribute (framework/provider span names).
 const LLM_NAME_PATTERN = /^chat\b|^invoke_model\b|^text_completion\b|^generate_content\b|InvokeModel|^Model invoke$/i;
 const TOOL_NAME_PATTERN = /^execute_tool\b|^Tool: /i;
-const INVOCATION_NAME_PATTERN = /\/invocations/;
+const INVOCATION_PATH = '/invocations';
 // Relative total-token difference above which the traces are flagged as possibly incomparable.
 const TOKEN_COMPARABILITY_THRESHOLD = 0.2;
 
@@ -50,7 +50,7 @@ function spanDurationMs(span: CloudWatchSpanRecord): number | undefined {
 
 function isInvocationSpan(span: CloudWatchSpanRecord): boolean {
   const name = span.name ?? '';
-  if (!INVOCATION_NAME_PATTERN.test(name)) return false;
+  if (!name.includes(INVOCATION_PATH)) return false;
   // CloudWatch parent/child data can be incomplete, so match kind when present
   // and fall back to the conventional server-span name otherwise.
   if (span.kind) return span.kind.toUpperCase().includes('SERVER');
