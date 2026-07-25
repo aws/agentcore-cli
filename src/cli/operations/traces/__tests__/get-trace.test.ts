@@ -1,4 +1,4 @@
-import { fetchSpans, fetchTraceRecords, getTrace } from '../get-trace';
+import { fetchSpans, fetchTraceRecords, getTrace, querySpanRecords } from '../get-trace';
 import type { FetchTraceRecordsOptions } from '../types';
 import assert from 'node:assert';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -176,6 +176,63 @@ describe('fetchTraceRecords', () => {
     assert(!result.success);
     expect(result.error.message).toContain('Log group');
     expect(result.error.message).toContain('not found');
+  });
+});
+
+describe('querySpanRecords', () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it('queries a single log group and maps resource/endpoint attributes', async () => {
+    const startedQueries: { logGroupName: string; queryString: string }[] = [];
+    mockSend.mockImplementation((cmd: { input: Record<string, string> }) => {
+      if (cmd.input.queryString) {
+        startedQueries.push({ logGroupName: cmd.input.logGroupName!, queryString: cmd.input.queryString });
+        return Promise.resolve({ queryId: 'q-1' });
+      }
+      return Promise.resolve({
+        status: 'Complete',
+        results: [
+          [
+            { field: 'traceId', value: 'abc123def456' },
+            { field: 'spanId', value: 'span-1' },
+            { field: 'name', value: 'POST /invocations' },
+            { field: 'kind', value: 'SERVER' },
+            { field: 'cloudResourceId', value: 'arn:aws:bedrock-agentcore:us-west-2:123:runtime/runtime-123/x' },
+            { field: 'endpointName', value: 'test' },
+          ],
+        ],
+      });
+    });
+
+    const result = await querySpanRecords({
+      region: 'us-west-2',
+      logGroupName: '/aws/bedrock-agentcore/runtimes/runtime-123-test',
+      traceId: 'abc123def456',
+    });
+
+    assert(result.success);
+    expect(result.spans).toHaveLength(1);
+    expect(result.spans[0]).toMatchObject({
+      spanId: 'span-1',
+      cloudResourceId: 'arn:aws:bedrock-agentcore:us-west-2:123:runtime/runtime-123/x',
+      endpointName: 'test',
+    });
+    expect(startedQueries).toHaveLength(1);
+    expect(startedQueries[0]!.logGroupName).toBe('/aws/bedrock-agentcore/runtimes/runtime-123-test');
+    expect(startedQueries[0]!.queryString).toContain('resource.attributes.cloud.resource_id as cloudResourceId');
+    expect(startedQueries[0]!.queryString).toContain('attributes.aws.endpoint.name as endpointName');
+  });
+
+  it('returns error for invalid trace ID format', async () => {
+    const result = await querySpanRecords({
+      region: 'us-west-2',
+      logGroupName: 'aws/spans',
+      traceId: 'not$valid',
+    });
+
+    assert(!result.success);
+    expect(result.error.message).toContain('Invalid trace ID format');
+    expect(mockSend).not.toHaveBeenCalled();
   });
 });
 

@@ -1,6 +1,9 @@
 import { ResourceNotFoundError, ValidationError } from '../../../lib';
 import type { Result } from '../../../lib/result';
-import { fetchSpans } from './get-trace';
+import { runtimeLogGroup } from '../../aws/cloudwatch';
+import { DEFAULT_ENDPOINT_NAME } from '../../constants';
+import { SPANS_LOG_GROUP } from './constants';
+import { querySpanRecords } from './get-trace';
 import type {
   CloudWatchSpanRecord,
   CompareTracesOptions,
@@ -17,8 +20,16 @@ const TOOL_OPERATIONS = new Set(['execute_tool']);
 const LLM_NAME_PATTERN = /^chat\b|^invoke_model\b|^text_completion\b|^generate_content\b|InvokeModel|^Model invoke$/i;
 const TOOL_NAME_PATTERN = /^execute_tool\b|^Tool: /i;
 const INVOCATION_PATH = '/invocations';
-// Relative total-token difference above which the traces are flagged as possibly incomparable.
+// Relative per-field token difference above which the traces are flagged as possibly incomparable.
 const TOKEN_COMPARABILITY_THRESHOLD = 0.2;
+// Extracts the runtime resource ID from resource.attributes.cloud.resource_id (".../runtime/<id>/...").
+const RUNTIME_RESOURCE_ID_PATTERN = /runtime\/([^/]+)/;
+
+const TOKEN_FIELDS = [
+  ['inputTokens', 'Input token'],
+  ['outputTokens', 'Output token'],
+  ['totalTokens', 'Total token'],
+] as const;
 
 type SpanCategory = 'llm' | 'tool' | 'other';
 
@@ -91,21 +102,24 @@ function sumDefined(
   return total;
 }
 
-function hasTokenUsage(span: CloudWatchSpanRecord): boolean {
-  return span.inputTokens !== undefined || span.outputTokens !== undefined || span.totalTokens !== undefined;
-}
-
 /**
  * Computes latency and token metrics for a single trace.
  *
  * Nested spans of the same category are de-duplicated via parent links: a
  * framework LLM span and its nested provider client span (e.g. a Strands chat
- * span wrapping a Bedrock InvokeModel span) count as one model call. Token
- * usage is likewise summed only from the outermost token-bearing spans.
+ * span wrapping a Bedrock InvokeModel span) count as one model call. Each token
+ * field is likewise summed only from the outermost span reporting that field,
+ * so complementary parent/child fields (total on one, input/output on the
+ * other) are all preserved.
+ *
+ * When `appSpansAvailable` is false, only end-to-end timing is computed and
+ * LLM/tool/token metrics stay undefined — absent application spans mean the
+ * data is unavailable, not zero.
  */
 export function aggregateSpans(
   traceId: string,
-  spans: CloudWatchSpanRecord[]
+  spans: CloudWatchSpanRecord[],
+  appSpansAvailable = true
 ): Result<{ metrics: TraceMetrics; warnings: string[] }> {
   const warnings: string[] = [];
   const byId = new Map(spans.map(span => [span.spanId, span]));
@@ -135,6 +149,17 @@ export function aggregateSpans(
     return { success: false, error: new ValidationError(`Trace ${traceId} has no spans with timing data`) };
   }
 
+  if (!appSpansAvailable) {
+    warnings.push(
+      `Trace ${traceId}: application spans unavailable (only service spans found); LLM, tool, and token metrics were not computed`
+    );
+    return {
+      success: true,
+      metrics: { traceId, spanCount: spans.length, endToEndMs, timingSource },
+      warnings,
+    };
+  }
+
   const topLevelOfCategory = (category: SpanCategory): CloudWatchSpanRecord[] =>
     spans.filter(
       span =>
@@ -143,9 +168,17 @@ export function aggregateSpans(
 
   const llmSpans = topLevelOfCategory('llm');
   const toolSpans = topLevelOfCategory('tool');
-  const tokenSpans = spans.filter(
-    span => hasTokenUsage(span) && !hasAncestorMatching(span, byId, hasTokenUsage)
-  );
+
+  // De-duplicate each token field independently: a span's field counts only if
+  // no ancestor reports that same field, so a parent carrying totalTokens does
+  // not suppress a child carrying the input/output split.
+  const sumTokenField = (field: 'inputTokens' | 'outputTokens' | 'totalTokens'): number | undefined =>
+    sumDefined(
+      spans.filter(
+        span => span[field] !== undefined && !hasAncestorMatching(span, byId, ancestor => ancestor[field] !== undefined)
+      ),
+      span => span[field]
+    );
 
   return {
     success: true,
@@ -158,9 +191,9 @@ export function aggregateSpans(
       llmCalls: llmSpans.length,
       toolMs: sumDefined(toolSpans, spanDurationMs) ?? 0,
       toolCalls: toolSpans.length,
-      inputTokens: sumDefined(tokenSpans, span => span.inputTokens),
-      outputTokens: sumDefined(tokenSpans, span => span.outputTokens),
-      totalTokens: sumDefined(tokenSpans, span => span.totalTokens),
+      inputTokens: sumTokenField('inputTokens'),
+      outputTokens: sumTokenField('outputTokens'),
+      totalTokens: sumTokenField('totalTokens'),
     },
     warnings,
   };
@@ -198,26 +231,98 @@ export function buildTraceComparison(
   };
 
   const warnings: string[] = [];
-  if (baseline.llmCalls !== candidate.llmCalls) {
+  if (baseline.llmCalls !== undefined && candidate.llmCalls !== undefined && baseline.llmCalls !== candidate.llmCalls) {
     warnings.push(
       `LLM call counts differ (baseline ${baseline.llmCalls}, candidate ${candidate.llmCalls}); traces may not be directly comparable`
     );
   }
-  if (baseline.toolCalls !== candidate.toolCalls) {
+  if (
+    baseline.toolCalls !== undefined &&
+    candidate.toolCalls !== undefined &&
+    baseline.toolCalls !== candidate.toolCalls
+  ) {
     warnings.push(
       `Tool call counts differ (baseline ${baseline.toolCalls}, candidate ${candidate.toolCalls}); traces may not be directly comparable`
     );
   }
-  if (baseline.totalTokens !== undefined && candidate.totalTokens !== undefined && baseline.totalTokens > 0) {
-    const relativeDiff = Math.abs(candidate.totalTokens - baseline.totalTokens) / baseline.totalTokens;
-    if (relativeDiff > TOKEN_COMPARABILITY_THRESHOLD) {
+  for (const [field, label] of TOKEN_FIELDS) {
+    const baselineTokens = baseline[field];
+    const candidateTokens = candidate[field];
+    if (baselineTokens === undefined || candidateTokens === undefined) continue;
+    if (baselineTokens > 0) {
+      const relativeDiff = Math.abs(candidateTokens - baselineTokens) / baselineTokens;
+      if (relativeDiff > TOKEN_COMPARABILITY_THRESHOLD) {
+        warnings.push(
+          `${label} usage differs by ${Math.round(relativeDiff * 100)}% (baseline ${baselineTokens}, candidate ${candidateTokens}); traces may not be directly comparable`
+        );
+      }
+    } else if (candidateTokens > 0) {
       warnings.push(
-        `Total token usage differs by ${Math.round(relativeDiff * 100)}% (baseline ${baseline.totalTokens}, candidate ${candidate.totalTokens}); traces may not be directly comparable`
+        `${label} usage differs (baseline ${baselineTokens}, candidate ${candidateTokens}); traces may not be directly comparable`
       );
     }
   }
 
   return { deltas, warnings };
+}
+
+/**
+ * Fetches all span records for one trace: service-side spans from the shared
+ * `aws/spans` log group, then application spans from the endpoint-specific
+ * runtime log group. The endpoint is detected per trace from the service
+ * span's `aws.endpoint.name` attribute (baseline and candidate may use
+ * different endpoints), and ownership is validated against the runtime's
+ * resource ID so a trace from another runtime is rejected rather than
+ * silently producing empty metrics.
+ */
+async function fetchComparisonSpans(
+  region: string,
+  runtimeId: string,
+  traceId: string,
+  startTime?: number,
+  endTime?: number
+): Promise<Result<{ spans: CloudWatchSpanRecord[]; appSpansAvailable: boolean }>> {
+  const queryOpts = { region, traceId, startTime, endTime };
+
+  const serviceResult = await querySpanRecords({ ...queryOpts, logGroupName: SPANS_LOG_GROUP });
+  let serviceSpans: CloudWatchSpanRecord[] = [];
+  if (serviceResult.success) {
+    serviceSpans = serviceResult.spans;
+  } else if (!(serviceResult.error instanceof ResourceNotFoundError)) {
+    return serviceResult;
+  }
+
+  const ownerRuntimeIds = serviceSpans
+    .map(span => (span.cloudResourceId ? RUNTIME_RESOURCE_ID_PATTERN.exec(span.cloudResourceId)?.[1] : undefined))
+    .filter((id): id is string => id !== undefined);
+  if (ownerRuntimeIds.length > 0 && !ownerRuntimeIds.includes(runtimeId)) {
+    return {
+      success: false,
+      error: new ValidationError(`Trace ${traceId} belongs to a different runtime (expected ${runtimeId})`),
+    };
+  }
+
+  const endpointName = serviceSpans.find(span => span.endpointName)?.endpointName ?? DEFAULT_ENDPOINT_NAME;
+
+  const appResult = await querySpanRecords({ ...queryOpts, logGroupName: runtimeLogGroup(runtimeId, endpointName) });
+  let appSpans: CloudWatchSpanRecord[] = [];
+  if (appResult.success) {
+    appSpans = appResult.spans;
+  } else if (!(appResult.error instanceof ResourceNotFoundError)) {
+    return appResult;
+  }
+
+  const merged = new Map<string, CloudWatchSpanRecord>();
+  for (const span of [...serviceSpans, ...appSpans]) {
+    if (!merged.has(span.spanId)) merged.set(span.spanId, span);
+  }
+
+  // Application spans may arrive via the runtime log group or (with transaction
+  // search) directly in aws/spans; either way, anything beyond the service-side
+  // invocation span counts as application data.
+  const appSpansAvailable = appSpans.length > 0 || serviceSpans.some(span => !isInvocationSpan(span));
+
+  return { success: true, spans: [...merged.values()], appSpansAvailable };
 }
 
 /**
@@ -228,8 +333,8 @@ export async function compareTraces(options: CompareTracesOptions): Promise<Comp
   const { region, runtimeId, baselineTraceId, candidateTraceId, startTime, endTime } = options;
 
   const [baselineFetch, candidateFetch] = await Promise.all([
-    fetchSpans(region, runtimeId, baselineTraceId, startTime, endTime),
-    fetchSpans(region, runtimeId, candidateTraceId, startTime, endTime),
+    fetchComparisonSpans(region, runtimeId, baselineTraceId, startTime, endTime),
+    fetchComparisonSpans(region, runtimeId, candidateTraceId, startTime, endTime),
   ]);
 
   if (!baselineFetch.success) return baselineFetch;
@@ -249,9 +354,9 @@ export async function compareTraces(options: CompareTracesOptions): Promise<Comp
     }
   }
 
-  const baselineAgg = aggregateSpans(baselineTraceId, baselineFetch.spans);
+  const baselineAgg = aggregateSpans(baselineTraceId, baselineFetch.spans, baselineFetch.appSpansAvailable);
   if (!baselineAgg.success) return baselineAgg;
-  const candidateAgg = aggregateSpans(candidateTraceId, candidateFetch.spans);
+  const candidateAgg = aggregateSpans(candidateTraceId, candidateFetch.spans, candidateFetch.appSpansAvailable);
   if (!candidateAgg.success) return candidateAgg;
 
   const comparison = buildTraceComparison(baselineAgg.metrics, candidateAgg.metrics);

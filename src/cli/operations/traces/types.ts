@@ -23,6 +23,16 @@ export interface CloudWatchSpanRecord {
   httpStatusCode?: number;
   sessionId?: string;
   genAiOperation?: string;
+  cloudResourceId?: string;
+  endpointName?: string;
+}
+
+export interface QuerySpanRecordsOptions {
+  region: string;
+  logGroupName: string;
+  traceId: string;
+  startTime?: number;
+  endTime?: number;
 }
 
 export interface FetchTraceRecordsOptions {
@@ -65,10 +75,11 @@ export interface TraceMetrics {
   endToEndMs: number;
   /** 'invocation-span' when derived from the POST /invocations server span; 'span-envelope' is the labeled fallback. */
   timingSource: 'invocation-span' | 'span-envelope';
-  llmMs: number;
-  llmCalls: number;
-  toolMs: number;
-  toolCalls: number;
+  /** LLM/tool/token fields are undefined (not zero) when application spans are unavailable for the trace. */
+  llmMs?: number;
+  llmCalls?: number;
+  toolMs?: number;
+  toolCalls?: number;
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;

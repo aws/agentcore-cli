@@ -1,14 +1,15 @@
+import { ResourceNotFoundError } from '../../../../lib';
 import { aggregateSpans, buildTraceComparison, compareTraces } from '../compare-traces';
-import type { CloudWatchSpanRecord, TraceMetrics } from '../types';
+import type { CloudWatchSpanRecord, QuerySpanRecordsOptions, TraceMetrics } from '../types';
 import assert from 'node:assert';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { mockFetchSpans } = vi.hoisted(() => ({
-  mockFetchSpans: vi.fn(),
+const { mockQuerySpanRecords } = vi.hoisted(() => ({
+  mockQuerySpanRecords: vi.fn(),
 }));
 
 vi.mock('../get-trace', () => ({
-  fetchSpans: (...args: unknown[]) => mockFetchSpans(...args),
+  querySpanRecords: (options: unknown) => mockQuerySpanRecords(options),
 }));
 
 // Base timestamp: divisible by 256 so nano values stay exactly representable as doubles.
@@ -264,6 +265,65 @@ describe('aggregateSpans', () => {
     expect(result.metrics.totalTokens).toBeUndefined();
   });
 
+  it('de-duplicates each token field independently across nested spans', () => {
+    const spans = [
+      span({
+        spanId: 'root',
+        name: 'POST /invocations',
+        kind: 'SERVER',
+        startTimeUnixNano: nano(0),
+        endTimeUnixNano: nano(6000),
+      }),
+      // Parent reports only the total; the nested provider span carries the split.
+      span({
+        spanId: 'llm1',
+        parentSpanId: 'root',
+        genAiOperation: 'chat',
+        name: 'chat claude-3',
+        durationNano: String(2_000_000_000),
+        totalTokens: 3164,
+      }),
+      span({
+        spanId: 'bedrock1',
+        parentSpanId: 'llm1',
+        name: 'Bedrock Runtime.InvokeModel',
+        durationNano: String(1_900_000_000),
+        inputTokens: 2849,
+        outputTokens: 315,
+      }),
+    ];
+
+    const result = aggregateSpans('trace-a', spans);
+
+    assert(result.success);
+    expect(result.metrics.inputTokens).toBe(2849);
+    expect(result.metrics.outputTokens).toBe(315);
+    expect(result.metrics.totalTokens).toBe(3164);
+  });
+
+  it('marks LLM, tool, and token metrics unavailable when application spans are missing', () => {
+    const spans = [
+      span({
+        spanId: 'root',
+        name: 'POST /invocations',
+        kind: 'SERVER',
+        startTimeUnixNano: nano(0),
+        endTimeUnixNano: nano(6000),
+      }),
+    ];
+
+    const result = aggregateSpans('trace-a', spans, false);
+
+    assert(result.success);
+    expect(result.metrics.endToEndMs).toBe(6000);
+    expect(result.metrics.llmCalls).toBeUndefined();
+    expect(result.metrics.llmMs).toBeUndefined();
+    expect(result.metrics.toolCalls).toBeUndefined();
+    expect(result.metrics.toolMs).toBeUndefined();
+    expect(result.metrics.totalTokens).toBeUndefined();
+    expect(result.warnings).toEqual([expect.stringContaining('application spans unavailable')]);
+  });
+
   it('counts tool spans and de-duplicates nested tool spans', () => {
     const spans = [
       span({
@@ -391,6 +451,33 @@ describe('buildTraceComparison', () => {
 
     expect(warnings).toEqual([]);
   });
+
+  it('warns on input/output token differences beyond the threshold', () => {
+    const baseline = metrics({ inputTokens: 1000, outputTokens: 100 });
+    const candidate = metrics({ traceId: 'trace-b', inputTokens: 1500, outputTokens: 105 });
+
+    const { warnings } = buildTraceComparison(baseline, candidate);
+
+    expect(warnings).toEqual([expect.stringContaining('Input token usage differs')]);
+  });
+
+  it('warns on a zero-to-nonzero token change', () => {
+    const baseline = metrics({ totalTokens: 0 });
+    const candidate = metrics({ traceId: 'trace-b', totalTokens: 500 });
+
+    const { warnings } = buildTraceComparison(baseline, candidate);
+
+    expect(warnings).toEqual([expect.stringContaining('Total token usage differs')]);
+  });
+
+  it('skips count warnings when metrics are unavailable on one side', () => {
+    const baseline = metrics({ llmCalls: undefined, llmMs: undefined, toolCalls: undefined, toolMs: undefined });
+    const candidate = metrics({ traceId: 'trace-b', llmCalls: 2, toolCalls: 1 });
+
+    const { warnings } = buildTraceComparison(baseline, candidate);
+
+    expect(warnings).toEqual([]);
+  });
 });
 
 describe('compareTraces', () => {
@@ -403,39 +490,193 @@ describe('compareTraces', () => {
     candidateTraceId: 'trace-b',
   };
 
-  function invocationTrace(traceId: string, endMs: number): CloudWatchSpanRecord[] {
-    return [
-      {
-        traceId,
-        spanId: 'root',
-        name: 'POST /invocations',
-        kind: 'SERVER',
-        startTimeUnixNano: nano(0),
-        endTimeUnixNano: nano(endMs),
-      },
-    ];
+  const RESOURCE_ID = 'arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/runtime-123/runtime-endpoint/DEFAULT';
+  const SPANS_LOG_GROUP = 'aws/spans';
+  const DEFAULT_LOG_GROUP = '/aws/bedrock-agentcore/runtimes/runtime-123-DEFAULT';
+  const TEST_LOG_GROUP = '/aws/bedrock-agentcore/runtimes/runtime-123-test';
+
+  function serviceSpan(traceId: string, endMs: number, overrides: Partial<CloudWatchSpanRecord> = {}) {
+    return {
+      traceId,
+      spanId: 'root',
+      name: 'POST /invocations',
+      kind: 'SERVER',
+      startTimeUnixNano: nano(0),
+      endTimeUnixNano: nano(endMs),
+      cloudResourceId: RESOURCE_ID,
+      ...overrides,
+    };
+  }
+
+  function chatSpan(traceId: string, overrides: Partial<CloudWatchSpanRecord> = {}) {
+    return {
+      traceId,
+      spanId: 'llm1',
+      parentSpanId: 'root',
+      name: 'chat claude-3',
+      genAiOperation: 'chat',
+      durationNano: String(2_000_000_000),
+      ...overrides,
+    };
+  }
+
+  /** Configures mockQuerySpanRecords per (traceId, logGroupName); unspecified queries return no spans. */
+  function primeSpanQueries(spansByTraceAndGroup: Record<string, Record<string, CloudWatchSpanRecord[]>>) {
+    mockQuerySpanRecords.mockImplementation((queryOptions: QuerySpanRecordsOptions) =>
+      Promise.resolve({
+        success: true,
+        spans: spansByTraceAndGroup[queryOptions.traceId]?.[queryOptions.logGroupName] ?? [],
+      })
+    );
   }
 
   it('compares two traces and returns metrics, deltas, and warnings', async () => {
-    mockFetchSpans
-      .mockResolvedValueOnce({ success: true, spans: invocationTrace('trace-a', 6600) })
-      .mockResolvedValueOnce({ success: true, spans: invocationTrace('trace-b', 5120) });
+    primeSpanQueries({
+      'trace-a': {
+        [SPANS_LOG_GROUP]: [serviceSpan('trace-a', 6600)],
+        [DEFAULT_LOG_GROUP]: [chatSpan('trace-a')],
+      },
+      'trace-b': {
+        [SPANS_LOG_GROUP]: [serviceSpan('trace-b', 5120)],
+        [DEFAULT_LOG_GROUP]: [chatSpan('trace-b')],
+      },
+    });
 
     const result = await compareTraces(options);
 
     assert(result.success);
     expect(result.baseline.endToEndMs).toBe(6600);
     expect(result.candidate.endToEndMs).toBe(5120);
+    expect(result.baseline.llmCalls).toBe(1);
     expect(result.deltas.endToEndMs.delta).toBe(-1480);
     expect(result.warnings).toEqual([]);
-    expect(mockFetchSpans).toHaveBeenCalledWith('us-west-2', 'runtime-123', 'trace-a', undefined, undefined);
-    expect(mockFetchSpans).toHaveBeenCalledWith('us-west-2', 'runtime-123', 'trace-b', undefined, undefined);
+    expect(mockQuerySpanRecords).toHaveBeenCalledWith({
+      region: 'us-west-2',
+      logGroupName: SPANS_LOG_GROUP,
+      traceId: 'trace-a',
+      startTime: undefined,
+      endTime: undefined,
+    });
+    expect(mockQuerySpanRecords).toHaveBeenCalledWith({
+      region: 'us-west-2',
+      logGroupName: DEFAULT_LOG_GROUP,
+      traceId: 'trace-b',
+      startTime: undefined,
+      endTime: undefined,
+    });
+  });
+
+  it('fetches application spans from the endpoint-specific log group per trace', async () => {
+    primeSpanQueries({
+      'trace-a': {
+        [SPANS_LOG_GROUP]: [serviceSpan('trace-a', 6600, { endpointName: 'test' })],
+        [TEST_LOG_GROUP]: [chatSpan('trace-a')],
+      },
+      'trace-b': {
+        [SPANS_LOG_GROUP]: [serviceSpan('trace-b', 5120)],
+        [DEFAULT_LOG_GROUP]: [chatSpan('trace-b')],
+      },
+    });
+
+    const result = await compareTraces(options);
+
+    assert(result.success);
+    expect(result.baseline.llmCalls).toBe(1);
+    expect(result.candidate.llmCalls).toBe(1);
+    expect(result.warnings).toEqual([]);
+    expect(mockQuerySpanRecords).toHaveBeenCalledWith(expect.objectContaining({ logGroupName: TEST_LOG_GROUP }));
+  });
+
+  it('rejects a trace that belongs to a different runtime', async () => {
+    primeSpanQueries({
+      'trace-a': {
+        [SPANS_LOG_GROUP]: [
+          serviceSpan('trace-a', 6600, {
+            cloudResourceId: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/other-runtime/x',
+          }),
+        ],
+      },
+      'trace-b': {
+        [SPANS_LOG_GROUP]: [serviceSpan('trace-b', 5120)],
+        [DEFAULT_LOG_GROUP]: [chatSpan('trace-b')],
+      },
+    });
+
+    const result = await compareTraces(options);
+
+    assert(!result.success);
+    expect(result.error.message).toContain('belongs to a different runtime');
+    expect(result.error.message).toContain('trace-a');
+  });
+
+  it('reports metrics as unavailable instead of zero when application spans are missing', async () => {
+    primeSpanQueries({
+      'trace-a': {
+        [SPANS_LOG_GROUP]: [serviceSpan('trace-a', 6600)],
+      },
+      'trace-b': {
+        [SPANS_LOG_GROUP]: [serviceSpan('trace-b', 5120)],
+        [DEFAULT_LOG_GROUP]: [chatSpan('trace-b')],
+      },
+    });
+
+    const result = await compareTraces(options);
+
+    assert(result.success);
+    expect(result.baseline.llmCalls).toBeUndefined();
+    expect(result.baseline.toolCalls).toBeUndefined();
+    expect(result.deltas.llmMs.delta).toBeUndefined();
+    expect(result.warnings).toEqual([expect.stringContaining('application spans unavailable')]);
+  });
+
+  it('treats a missing endpoint log group as unavailable application spans', async () => {
+    mockQuerySpanRecords.mockImplementation((queryOptions: QuerySpanRecordsOptions) => {
+      if (queryOptions.logGroupName === SPANS_LOG_GROUP) {
+        return Promise.resolve({
+          success: true,
+          spans: [serviceSpan(queryOptions.traceId, queryOptions.traceId === 'trace-a' ? 6600 : 5120)],
+        });
+      }
+      return Promise.resolve({ success: false, error: new ResourceNotFoundError('Log group not found') });
+    });
+
+    const result = await compareTraces(options);
+
+    assert(result.success);
+    expect(result.baseline.llmCalls).toBeUndefined();
+    expect(result.candidate.llmCalls).toBeUndefined();
+    expect(result.warnings).toEqual([
+      expect.stringContaining('trace-a'),
+      expect.stringContaining('trace-b'),
+    ]);
+  });
+
+  it('de-duplicates spans that appear in both log groups', async () => {
+    primeSpanQueries({
+      'trace-a': {
+        [SPANS_LOG_GROUP]: [serviceSpan('trace-a', 6600), chatSpan('trace-a')],
+        [DEFAULT_LOG_GROUP]: [chatSpan('trace-a')],
+      },
+      'trace-b': {
+        [SPANS_LOG_GROUP]: [serviceSpan('trace-b', 5120)],
+        [DEFAULT_LOG_GROUP]: [chatSpan('trace-b')],
+      },
+    });
+
+    const result = await compareTraces(options);
+
+    assert(result.success);
+    expect(result.baseline.spanCount).toBe(2);
+    expect(result.baseline.llmCalls).toBe(1);
   });
 
   it('fails clearly when the baseline trace has no spans', async () => {
-    mockFetchSpans
-      .mockResolvedValueOnce({ success: true, spans: [] })
-      .mockResolvedValueOnce({ success: true, spans: invocationTrace('trace-b', 5120) });
+    primeSpanQueries({
+      'trace-b': {
+        [SPANS_LOG_GROUP]: [serviceSpan('trace-b', 5120)],
+        [DEFAULT_LOG_GROUP]: [chatSpan('trace-b')],
+      },
+    });
 
     const result = await compareTraces(options);
 
@@ -444,9 +685,12 @@ describe('compareTraces', () => {
   });
 
   it('fails clearly when the candidate trace has no spans', async () => {
-    mockFetchSpans
-      .mockResolvedValueOnce({ success: true, spans: invocationTrace('trace-a', 6600) })
-      .mockResolvedValueOnce({ success: true, spans: [] });
+    primeSpanQueries({
+      'trace-a': {
+        [SPANS_LOG_GROUP]: [serviceSpan('trace-a', 6600)],
+        [DEFAULT_LOG_GROUP]: [chatSpan('trace-a')],
+      },
+    });
 
     const result = await compareTraces(options);
 
@@ -455,9 +699,12 @@ describe('compareTraces', () => {
   });
 
   it('propagates fetch failures', async () => {
-    mockFetchSpans
-      .mockResolvedValueOnce({ success: false, error: new Error('Query failed') })
-      .mockResolvedValueOnce({ success: true, spans: invocationTrace('trace-b', 5120) });
+    mockQuerySpanRecords.mockImplementation((queryOptions: QuerySpanRecordsOptions) => {
+      if (queryOptions.traceId === 'trace-a' && queryOptions.logGroupName === SPANS_LOG_GROUP) {
+        return Promise.resolve({ success: false, error: new Error('Query failed') });
+      }
+      return Promise.resolve({ success: true, spans: [serviceSpan('trace-b', 5120)] });
+    });
 
     const result = await compareTraces(options);
 
@@ -465,36 +712,93 @@ describe('compareTraces', () => {
     expect(result.error.message).toBe('Query failed');
   });
 
+  it('produces the documented JSON contract shape', async () => {
+    function toolSpan(traceId: string, durationNano: string) {
+      return {
+        traceId,
+        spanId: 'tool1',
+        parentSpanId: 'root',
+        name: 'execute_tool weather',
+        genAiOperation: 'execute_tool',
+        durationNano,
+      };
+    }
+    primeSpanQueries({
+      'trace-a': {
+        [SPANS_LOG_GROUP]: [serviceSpan('trace-a', 6600)],
+        [DEFAULT_LOG_GROUP]: [
+          chatSpan('trace-a', { inputTokens: 2849, outputTokens: 315, totalTokens: 3164 }),
+          toolSpan('trace-a', String(2_850_000_000)),
+        ],
+      },
+      'trace-b': {
+        [SPANS_LOG_GROUP]: [serviceSpan('trace-b', 5120)],
+        [DEFAULT_LOG_GROUP]: [
+          chatSpan('trace-b', {
+            durationNano: String(1_710_000_000),
+            inputTokens: 2500,
+            outputTokens: 300,
+            totalTokens: 2800,
+          }),
+          toolSpan('trace-b', String(1_000_000_000)),
+        ],
+      },
+    });
+
+    const result = await compareTraces(options);
+
+    expect(JSON.parse(JSON.stringify(result))).toEqual({
+      success: true,
+      baseline: {
+        traceId: 'trace-a',
+        spanCount: 3,
+        endToEndMs: 6600,
+        timingSource: 'invocation-span',
+        llmMs: 2000,
+        llmCalls: 1,
+        toolMs: 2850,
+        toolCalls: 1,
+        inputTokens: 2849,
+        outputTokens: 315,
+        totalTokens: 3164,
+      },
+      candidate: {
+        traceId: 'trace-b',
+        spanCount: 3,
+        endToEndMs: 5120,
+        timingSource: 'invocation-span',
+        llmMs: 1710,
+        llmCalls: 1,
+        toolMs: 1000,
+        toolCalls: 1,
+        inputTokens: 2500,
+        outputTokens: 300,
+        totalTokens: 2800,
+      },
+      deltas: {
+        endToEndMs: { baseline: 6600, candidate: 5120, delta: -1480, deltaPercent: expect.closeTo(-22.4, 1) as number },
+        llmMs: { baseline: 2000, candidate: 1710, delta: -290, deltaPercent: expect.closeTo(-14.5, 1) as number },
+        toolMs: { baseline: 2850, candidate: 1000, delta: -1850, deltaPercent: expect.closeTo(-64.9, 1) as number },
+        llmCalls: { baseline: 1, candidate: 1, delta: 0, deltaPercent: 0 },
+        toolCalls: { baseline: 1, candidate: 1, delta: 0, deltaPercent: 0 },
+        inputTokens: { baseline: 2849, candidate: 2500, delta: -349, deltaPercent: expect.closeTo(-12.2, 1) as number },
+        outputTokens: { baseline: 315, candidate: 300, delta: -15, deltaPercent: expect.closeTo(-4.8, 1) as number },
+        totalTokens: { baseline: 3164, candidate: 2800, delta: -364, deltaPercent: expect.closeTo(-11.5, 1) as number },
+      },
+      warnings: [],
+    });
+  });
+
   it('surfaces per-trace fallback-timing warnings', async () => {
-    mockFetchSpans
-      .mockResolvedValueOnce({
-        success: true,
-        spans: [
-          {
-            traceId: 'trace-a',
-            spanId: 'llm1',
-            name: 'chat claude-3',
-            genAiOperation: 'chat',
-            startTimeUnixNano: nano(0),
-            endTimeUnixNano: nano(1000),
-          },
-        ],
-      })
-      .mockResolvedValueOnce({
-        success: true,
-        spans: [
-          ...invocationTrace('trace-b', 1000),
-          {
-            traceId: 'trace-b',
-            spanId: 'llm1',
-            parentSpanId: 'root',
-            name: 'chat claude-3',
-            genAiOperation: 'chat',
-            startTimeUnixNano: nano(0),
-            endTimeUnixNano: nano(900),
-          },
-        ],
-      });
+    primeSpanQueries({
+      'trace-a': {
+        [DEFAULT_LOG_GROUP]: [chatSpan('trace-a', { startTimeUnixNano: nano(0), endTimeUnixNano: nano(1000) })],
+      },
+      'trace-b': {
+        [SPANS_LOG_GROUP]: [serviceSpan('trace-b', 1000)],
+        [DEFAULT_LOG_GROUP]: [chatSpan('trace-b')],
+      },
+    });
 
     const result = await compareTraces(options);
 
