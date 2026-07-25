@@ -9,7 +9,8 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: PR number to review (workflow_dispatch will NOT post inline comments - use only for prompt smoke tests)
+        description:
+          PR number to review (workflow_dispatch will NOT post inline comments - use only for prompt smoke tests)
         required: true
         type: string
 
