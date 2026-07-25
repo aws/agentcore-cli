@@ -16,7 +16,7 @@ import path from 'node:path';
 const SPANS_LOG_GROUP = 'aws/spans';
 const TRACE_ID_PATTERN = /^[a-fA-F0-9-]+$/;
 
-async function fetchSpans(
+export async function fetchSpans(
   region: string,
   runtimeId: string,
   traceId: string,
@@ -38,7 +38,8 @@ async function fetchSpans(
   attributes.gen_ai.usage.output_tokens as outputTokens,
   attributes.gen_ai.usage.total_tokens as totalTokens,
   attributes.http.status_code as httpStatusCode,
-  attributes.session.id as sessionId
+  attributes.session.id as sessionId,
+  attributes.gen_ai.operation.name as genAiOperation
 | filter ispresent(traceId) and ispresent(resource.attributes.service.name)
 | filter resource.attributes.aws.service.type = "gen_ai_agent"
 | filter ispresent(kind)
@@ -80,6 +81,7 @@ async function fetchSpans(
       totalTokens: row.totalTokens ? Number(row.totalTokens) : undefined,
       httpStatusCode: row.httpStatusCode ? Number(row.httpStatusCode) : undefined,
       sessionId: row.sessionId ?? undefined,
+      genAiOperation: row.genAiOperation ?? undefined,
     }));
 
   return { success: true, spans };

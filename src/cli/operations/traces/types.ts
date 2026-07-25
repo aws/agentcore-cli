@@ -22,6 +22,7 @@ export interface CloudWatchSpanRecord {
   totalTokens?: number;
   httpStatusCode?: number;
   sessionId?: string;
+  genAiOperation?: string;
 }
 
 export interface FetchTraceRecordsOptions {

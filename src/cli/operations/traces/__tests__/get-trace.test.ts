@@ -1,4 +1,4 @@
-import { fetchTraceRecords, getTrace } from '../get-trace';
+import { fetchSpans, fetchTraceRecords, getTrace } from '../get-trace';
 import type { FetchTraceRecordsOptions } from '../types';
 import assert from 'node:assert';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -176,6 +176,61 @@ describe('fetchTraceRecords', () => {
     assert(!result.success);
     expect(result.error.message).toContain('Log group');
     expect(result.error.message).toContain('not found');
+  });
+});
+
+describe('fetchSpans', () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it('maps span rows including the gen_ai operation name', async () => {
+    const startedQueries: { logGroupName: string; queryString: string }[] = [];
+    mockSend.mockImplementation((cmd: { input: Record<string, string> }) => {
+      if (cmd.input.queryString) {
+        startedQueries.push({ logGroupName: cmd.input.logGroupName!, queryString: cmd.input.queryString });
+        return Promise.resolve({ queryId: cmd.input.logGroupName === 'aws/spans' ? 'q-spans' : 'q-runtime' });
+      }
+      if (cmd.input.queryId === 'q-spans') {
+        return Promise.resolve({
+          status: 'Complete',
+          results: [
+            [
+              { field: 'traceId', value: 'abc123def456' },
+              { field: 'spanId', value: 'span-1' },
+              { field: 'name', value: 'chat claude' },
+              { field: 'kind', value: 'CLIENT' },
+              { field: 'startTimeUnixNano', value: '1700000000000000000' },
+              { field: 'endTimeUnixNano', value: '1700000001000000000' },
+              { field: 'inputTokens', value: '120' },
+              { field: 'genAiOperation', value: 'chat' },
+            ],
+          ],
+        });
+      }
+      return Promise.resolve({ status: 'Complete', results: [] });
+    });
+
+    const result = await fetchSpans('us-west-2', 'runtime-123', 'abc123def456', 1000000, 2000000);
+
+    assert(result.success);
+    expect(result.spans).toHaveLength(1);
+    expect(result.spans[0]).toMatchObject({
+      traceId: 'abc123def456',
+      spanId: 'span-1',
+      name: 'chat claude',
+      kind: 'CLIENT',
+      inputTokens: 120,
+      genAiOperation: 'chat',
+    });
+    const spansQuery = startedQueries.find(q => q.logGroupName === 'aws/spans');
+    expect(spansQuery?.queryString).toContain('attributes.gen_ai.operation.name as genAiOperation');
+  });
+
+  it('returns error for invalid trace ID format', async () => {
+    const result = await fetchSpans('us-west-2', 'runtime-123', 'not$valid');
+
+    assert(!result.success);
+    expect(result.error.message).toContain('Invalid trace ID format');
+    expect(mockSend).not.toHaveBeenCalled();
   });
 });
 
