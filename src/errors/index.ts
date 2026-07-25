@@ -29,6 +29,17 @@ export class AgentCoreCLIError extends Error {
     this.meta = options?.meta ?? {};
     this.exitCode = options?.exitCode ?? 1;
   }
+  /** Convert the error into an object with its attributes enumerated as keys **/
+  json(): Record<string, unknown> {
+    return {
+      name: this.name,
+      message: this.message,
+      stack: this.stack,
+      exitCode: this.exitCode,
+      meta: this.meta,
+      source: this.source,
+    };
+  }
 }
 
 /** Error raised for invalid user input. */
@@ -40,15 +51,12 @@ export class InputValidationError extends AgentCoreCLIError {
 
 /** Converts any thrown value into an {@link AgentCoreCLIError}, preserving known CLI errors. */
 export function classify(error: unknown): AgentCoreCLIError {
-  if (error instanceof AgentCoreCLIError) {
-    return error;
-  }
+  if (error instanceof AgentCoreCLIError) return error;
 
   if (ServiceException.isInstance(error)) {
-    const statusCode = error.$metadata.httpStatusCode;
-
+    const httpStatusCode = error.$metadata.httpStatusCode;
     const source =
-      statusCode !== undefined && statusCode >= 400 && statusCode < 500
+      httpStatusCode !== undefined && httpStatusCode >= 400 && httpStatusCode < 500
         ? ERROR_SOURCE.USER
         : ERROR_SOURCE.SERVICE;
 

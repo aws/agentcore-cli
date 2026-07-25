@@ -1,4 +1,4 @@
-import { classify } from "../errors";
+import { AgentCoreCLIError } from "../errors";
 
 // Runnable can be implemented by any application's main entrypoint.
 export interface Runnable {
@@ -24,9 +24,9 @@ export async function runWithExitCode(
     await fn(argv);
     return 0;
   } catch (e) {
-    const error = classify(e);
+    const error = e instanceof Error ? e : new Error(String(e));
     console.error(`${error.name}: ${error.message}`);
 
-    return error.exitCode;
+    return error instanceof AgentCoreCLIError ? error.exitCode : 1;
   }
 }

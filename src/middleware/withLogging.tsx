@@ -25,7 +25,7 @@ function redactSensitiveFlags(
 
 /**
  * Middleware that creates a child logger bound to the current command path
- * and logs execution start, success, and failure.
+ * and logs execution start and success.
  *
  * @param config - Contains the root {@link Logger} to derive children from.
  */

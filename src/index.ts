@@ -13,6 +13,7 @@ import { createRootHandler } from "./handlers";
 import { createFileLogger, LOG_LEVEL } from "./logging";
 import { runWithExitCode } from "./runnable";
 import { DefaultGlobalConfigAccessor, FsReadWriteJson } from "./globalConfig";
+import { classify } from "./errors";
 
 process.exit(
   await runWithExitCode(async (argv: string[]) => {
@@ -54,7 +55,7 @@ process.exit(
 
       // Pass it to the root handler, along with the process's standard streams as
       // the app's io. CoreClient exposes feature sub-clients (e.g. `.harness`), so
-      // it satisfies the Core contract directly.
+      // it satisfies the Core contract directly.u
       const rootHandler = createRootHandler(coreClient, {
         io,
         logger: rootLogger,
@@ -64,11 +65,9 @@ process.exit(
       // Handle the request
       await rootHandler.route(argv);
     } catch (e) {
-      const error = e instanceof Error ? e : new Error(String(e));
-      rootLogger
-        .child({ errorName: error.name, errorMessage: error.message, stack: error.stack ?? "" })
-        .error();
-      throw e;
+      const error = classify(e);
+      rootLogger.child({ error: error.json() }).error();
+      throw error;
     } finally {
       await rootLogger.end();
     }
