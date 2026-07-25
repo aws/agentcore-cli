@@ -953,6 +953,31 @@ agentcore traces get abc123 --runtime MyAgent --json
 | `--until <time>`   | End time (defaults to now)       |
 | `--json`           | Output as JSON                   |
 
+#### traces compare
+
+Compare latency and token metrics of two traces from the same runtime.
+
+```bash
+agentcore traces compare <baselineTraceId> <candidateTraceId>
+agentcore traces compare abc123 def456 --runtime MyAgent
+agentcore traces compare abc123 def456 --since 2h --json
+```
+
+| Flag                 | Description                                                                 |
+| -------------------- | --------------------------------------------------------------------------- |
+| `<baselineTraceId>`  | Baseline trace ID (required)                                                |
+| `<candidateTraceId>` | Candidate trace ID (required)                                               |
+| `--runtime <name>`   | Select specific runtime                                                     |
+| `--since <time>`     | Start time (defaults to 12h ago; e.g. `5m`, `1h`, `2d`, ISO 8601, epoch ms) |
+| `--until <time>`     | End time (defaults to now; e.g. `now`, `1h`, ISO 8601, epoch ms)            |
+| `--json`             | Output as JSON                                                              |
+
+Reports end-to-end, LLM, and tool latency, LLM/tool call counts, and token usage for each trace, with absolute and
+percentage deltas. Nested provider spans (e.g. a framework LLM span wrapping a Bedrock client span) are counted once.
+End-to-end latency comes from the `POST /invocations` server span; when that span is missing, the earliest/latest span
+times are used instead and a warning is shown. Comparability warnings flag differing LLM/tool call counts or token
+usage. `--json` returns the same data as structured output suitable for CI benchmarking.
+
 ---
 
 ## Evaluations
