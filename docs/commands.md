@@ -974,9 +974,61 @@ agentcore traces compare abc123 def456 --since 2h --json
 
 Reports end-to-end, LLM, and tool latency, LLM/tool call counts, and token usage for each trace, with absolute and
 percentage deltas. Nested provider spans (e.g. a framework LLM span wrapping a Bedrock client span) are counted once.
-End-to-end latency comes from the `POST /invocations` server span; when that span is missing, the earliest/latest span
-times are used instead and a warning is shown. Comparability warnings flag differing LLM/tool call counts or token
-usage. `--json` returns the same data as structured output suitable for CI benchmarking.
+
+Behavior details:
+
+- Both traces must belong to the selected runtime — a trace from a different runtime in the same account is rejected.
+- Application spans are fetched from the endpoint-specific runtime log group, detected per trace from the runtime
+  span's `aws.endpoint.name` attribute. Baseline and candidate may come from different endpoints (e.g. `DEFAULT` vs a
+  named test endpoint).
+- End-to-end latency comes from the `POST /invocations` server span; when that span is missing, the earliest/latest
+  span times are used instead and a warning is shown.
+- When only service-side spans are found for a trace, LLM/tool/token metrics are reported as unavailable (omitted from
+  JSON, shown as `-` in the table) with a warning — never as zero.
+- Comparability warnings flag differing LLM/tool call counts, and input/output/total token usage that differs by more
+  than 20% relative to the baseline (or changes from zero). The CLI cannot prove the two invocations ran equivalent
+  workloads.
+
+`--json` returns stable structured output suitable for CI benchmarking:
+
+```json
+{
+  "success": true,
+  "agentName": "MyAgent",
+  "targetName": "default",
+  "consoleUrl": "https://...",
+  "baseline": {
+    "traceId": "abc123",
+    "spanCount": 12,
+    "endToEndMs": 6600,
+    "timingSource": "invocation-span",
+    "llmMs": 3620,
+    "llmCalls": 2,
+    "toolMs": 2850,
+    "toolCalls": 1,
+    "inputTokens": 2849,
+    "outputTokens": 315,
+    "totalTokens": 3164
+  },
+  "candidate": { "traceId": "def456", "...": "same shape as baseline" },
+  "deltas": {
+    "endToEndMs": { "baseline": 6600, "candidate": 5120, "delta": -1480, "deltaPercent": -22.4 },
+    "llmMs": { "...": "same shape" },
+    "toolMs": { "...": "same shape" },
+    "llmCalls": { "...": "same shape" },
+    "toolCalls": { "...": "same shape" },
+    "inputTokens": { "...": "same shape" },
+    "outputTokens": { "...": "same shape" },
+    "totalTokens": { "...": "same shape" }
+  },
+  "warnings": []
+}
+```
+
+Field notes: `timingSource` is `invocation-span` or `span-envelope` (labeled fallback). `deltaPercent` is `null` when
+the baseline value is zero. Unavailable metrics are omitted from `baseline`/`candidate`, and the corresponding delta
+entries carry only the sides that exist. On failure the output is `{ "success": false, "error": "<message>" }` with
+`errorName`/`errorSource` for typed errors.
 
 ---
 
