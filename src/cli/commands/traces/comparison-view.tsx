@@ -86,6 +86,17 @@ export function TraceComparisonView({ baseline, candidate, deltas, warnings, con
           </Box>
         </Box>
       ))}
+      {(baseline.models ?? candidate.models) && (
+        <>
+          <Text> </Text>
+          <Text>
+            Baseline model(s): <Text color="magenta">{baseline.models?.join(', ') ?? '-'}</Text>
+          </Text>
+          <Text>
+            Candidate model(s): <Text color="magenta">{candidate.models?.join(', ') ?? '-'}</Text>
+          </Text>
+        </>
+      )}
       {warnings.length > 0 && <Text> </Text>}
       {warnings.map(warning => (
         <Text key={warning} color="yellow">

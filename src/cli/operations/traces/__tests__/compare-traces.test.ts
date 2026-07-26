@@ -356,6 +356,83 @@ describe('aggregateSpans', () => {
     expect(result.metrics.toolMs).toBe(2578.3);
   });
 
+  it('collects the distinct set of LLM models used in the trace', () => {
+    const spans = [
+      span({
+        spanId: 'root',
+        name: 'POST /invocations',
+        kind: 'SERVER',
+        startTimeUnixNano: nano(0),
+        endTimeUnixNano: nano(6000),
+      }),
+      span({
+        spanId: 'llm1',
+        parentSpanId: 'root',
+        genAiOperation: 'chat',
+        name: 'chat',
+        durationNano: String(1_000_000_000),
+        responseModel: 'claude-3-5-sonnet-20241022-v2:0',
+      }),
+      span({
+        spanId: 'llm2',
+        parentSpanId: 'root',
+        genAiOperation: 'chat',
+        name: 'chat',
+        durationNano: String(1_000_000_000),
+        requestModel: 'claude-3-5-sonnet-20241022-v2:0',
+      }),
+    ];
+
+    const result = aggregateSpans('trace-a', spans);
+
+    assert(result.success);
+    expect(result.metrics.models).toEqual(['claude-3-5-sonnet-20241022-v2:0']);
+  });
+
+  it('captures a model reported only on a nested provider span, preferring response model', () => {
+    const spans = [
+      span({
+        spanId: 'root',
+        name: 'POST /invocations',
+        kind: 'SERVER',
+        startTimeUnixNano: nano(0),
+        endTimeUnixNano: nano(6000),
+      }),
+      span({ spanId: 'llm1', parentSpanId: 'root', genAiOperation: 'chat', name: 'chat', durationNano: String(1e9) }),
+      span({
+        spanId: 'bedrock1',
+        parentSpanId: 'llm1',
+        name: 'Bedrock Runtime.InvokeModel',
+        durationNano: String(9e8),
+        requestModel: 'anthropic.claude-3-haiku',
+        responseModel: 'anthropic.claude-3-haiku-20240307-v1:0',
+      }),
+    ];
+
+    const result = aggregateSpans('trace-a', spans);
+
+    assert(result.success);
+    expect(result.metrics.models).toEqual(['anthropic.claude-3-haiku-20240307-v1:0']);
+  });
+
+  it('leaves models undefined when no span reports a model', () => {
+    const spans = [
+      span({
+        spanId: 'root',
+        name: 'POST /invocations',
+        kind: 'SERVER',
+        startTimeUnixNano: nano(0),
+        endTimeUnixNano: nano(6000),
+      }),
+      span({ spanId: 'llm1', parentSpanId: 'root', genAiOperation: 'chat', name: 'chat', durationNano: String(1e9) }),
+    ];
+
+    const result = aggregateSpans('trace-a', spans);
+
+    assert(result.success);
+    expect(result.metrics.models).toBeUndefined();
+  });
+
   it('classifies LangGraph traceloop tool spans', () => {
     const spans = [
       span({
@@ -565,6 +642,24 @@ describe('buildTraceComparison', () => {
     const { warnings } = buildTraceComparison(baseline, candidate);
 
     expect(warnings).toEqual([expect.stringContaining('token usage differs')]);
+  });
+
+  it('warns when the traces used different models', () => {
+    const baseline = metrics({ models: ['claude-3-5-sonnet-20241022-v2:0'] });
+    const candidate = metrics({ traceId: 'trace-b', models: ['claude-3-7-sonnet-20250219-v1:0'] });
+
+    const { warnings } = buildTraceComparison(baseline, candidate);
+
+    expect(warnings).toEqual([expect.stringContaining('Models differ')]);
+  });
+
+  it('does not warn when the traces used the same models', () => {
+    const baseline = metrics({ models: ['claude-3-5-sonnet-20241022-v2:0'] });
+    const candidate = metrics({ traceId: 'trace-b', models: ['claude-3-5-sonnet-20241022-v2:0'] });
+
+    const { warnings } = buildTraceComparison(baseline, candidate);
+
+    expect(warnings).toEqual([]);
   });
 
   it('does not warn on matching characteristics', () => {

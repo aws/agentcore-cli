@@ -28,6 +28,8 @@ export interface CloudWatchSpanRecord {
   agentId?: string;
   traceloopSpanKind?: string;
   openinferenceSpanKind?: string;
+  requestModel?: string;
+  responseModel?: string;
 }
 
 export interface QuerySpanRecordsOptions {
@@ -86,6 +88,8 @@ export interface TraceMetrics {
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
+  /** Distinct LLM models observed in the trace (from gen_ai.response/request.model); undefined when none reported. */
+  models?: string[];
 }
 
 export interface MetricDelta {

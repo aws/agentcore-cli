@@ -202,6 +202,8 @@ describe('querySpanRecords', () => {
             { field: 'agentId', value: 'runtime-123' },
             { field: 'traceloopSpanKind', value: 'tool' },
             { field: 'openinferenceSpanKind', value: 'TOOL' },
+            { field: 'requestModel', value: 'claude-3-5-sonnet' },
+            { field: 'responseModel', value: 'claude-3-5-sonnet-20241022-v2:0' },
           ],
         ],
       });
@@ -222,6 +224,8 @@ describe('querySpanRecords', () => {
       agentId: 'runtime-123',
       traceloopSpanKind: 'tool',
       openinferenceSpanKind: 'TOOL',
+      requestModel: 'claude-3-5-sonnet',
+      responseModel: 'claude-3-5-sonnet-20241022-v2:0',
     });
     expect(startedQueries).toHaveLength(1);
     expect(startedQueries[0]!.logGroupName).toBe('/aws/bedrock-agentcore/runtimes/runtime-123-test');
@@ -230,6 +234,8 @@ describe('querySpanRecords', () => {
     expect(startedQueries[0]!.queryString).toContain('attributes.aws.agent.id as agentId');
     expect(startedQueries[0]!.queryString).toContain('attributes.traceloop.span.kind as traceloopSpanKind');
     expect(startedQueries[0]!.queryString).toContain('attributes.openinference.span.kind as openinferenceSpanKind');
+    expect(startedQueries[0]!.queryString).toContain('attributes.gen_ai.request.model as requestModel');
+    expect(startedQueries[0]!.queryString).toContain('attributes.gen_ai.response.model as responseModel');
   });
 
   it('returns error for invalid trace ID format', async () => {

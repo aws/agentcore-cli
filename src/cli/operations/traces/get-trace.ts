@@ -44,7 +44,9 @@ export async function querySpanRecords(
   attributes.aws.endpoint.name as endpointName,
   attributes.aws.agent.id as agentId,
   attributes.traceloop.span.kind as traceloopSpanKind,
-  attributes.openinference.span.kind as openinferenceSpanKind
+  attributes.openinference.span.kind as openinferenceSpanKind,
+  attributes.gen_ai.request.model as requestModel,
+  attributes.gen_ai.response.model as responseModel
 | filter ispresent(traceId) and ispresent(resource.attributes.service.name)
 | filter resource.attributes.aws.service.type = "gen_ai_agent"
 | filter ispresent(kind)
@@ -80,6 +82,8 @@ export async function querySpanRecords(
       agentId: row.agentId ?? undefined,
       traceloopSpanKind: row.traceloopSpanKind ?? undefined,
       openinferenceSpanKind: row.openinferenceSpanKind ?? undefined,
+      requestModel: row.requestModel ?? undefined,
+      responseModel: row.responseModel ?? undefined,
     }));
 
   return { success: true, spans };

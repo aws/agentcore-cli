@@ -188,6 +188,16 @@ export function aggregateSpans(
   const llmSpans = topLevelOfCategory('llm');
   const toolSpans = topLevelOfCategory('tool');
 
+  // Collect the distinct LLM models seen anywhere in the trace. The model
+  // attribute may sit on the framework span or its nested provider span, so
+  // scan every span; prefer the response model (what actually served) over the
+  // requested model.
+  const models = [
+    ...new Set(
+      spans.map(span => span.responseModel ?? span.requestModel).filter((model): model is string => model !== undefined)
+    ),
+  ].sort();
+
   // De-duplicate each token field independently: a span's field counts only if
   // no ancestor reports that same field, so a parent carrying totalTokens does
   // not suppress a child carrying the input/output split.
@@ -213,6 +223,7 @@ export function aggregateSpans(
       inputTokens: sumTokenField('inputTokens'),
       outputTokens: sumTokenField('outputTokens'),
       totalTokens: sumTokenField('totalTokens'),
+      models: models.length > 0 ? models : undefined,
     },
     warnings,
   };
@@ -250,6 +261,11 @@ export function buildTraceComparison(
   };
 
   const warnings: string[] = [];
+  if (baseline.models && candidate.models && baseline.models.join(',') !== candidate.models.join(',')) {
+    warnings.push(
+      `Models differ (baseline ${baseline.models.join(', ')}, candidate ${candidate.models.join(', ')}); traces may not be directly comparable`
+    );
+  }
   if (baseline.llmCalls !== undefined && candidate.llmCalls !== undefined && baseline.llmCalls !== candidate.llmCalls) {
     warnings.push(
       `LLM call counts differ (baseline ${baseline.llmCalls}, candidate ${candidate.llmCalls}); traces may not be directly comparable`

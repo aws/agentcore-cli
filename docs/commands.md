@@ -990,9 +990,11 @@ Behavior details:
   span times are used instead and a warning is shown.
 - When only service-side spans are found for a trace, LLM/tool/token metrics are reported as unavailable (omitted from
   JSON, shown as `-` in the table) with a warning — never as zero.
-- Comparability warnings flag differing LLM/tool call counts, and input/output/total token usage that differs by more
-  than 20% relative to the baseline (or changes from zero). The CLI cannot prove the two invocations ran equivalent
-  workloads.
+- The distinct LLM models used in each trace are reported (from `gen_ai.response.model`, falling back to
+  `gen_ai.request.model`).
+- Comparability warnings flag differing models, differing LLM/tool call counts, and input/output/total token usage that
+  differs by more than 20% relative to the baseline (or changes from zero). The CLI cannot prove the two invocations ran
+  equivalent workloads.
 
 `--json` returns stable structured output suitable for CI benchmarking:
 
@@ -1013,7 +1015,8 @@ Behavior details:
     "toolCalls": 1,
     "inputTokens": 2849,
     "outputTokens": 315,
-    "totalTokens": 3164
+    "totalTokens": 3164,
+    "models": ["claude-3-5-sonnet-20241022-v2:0"]
   },
   "candidate": { "traceId": "def456", "...": "same shape as baseline" },
   "deltas": {
@@ -1032,9 +1035,9 @@ Behavior details:
 
 Field notes: latency fields (`endToEndMs`, `llmMs`, `toolMs`, and each delta's `delta`) and all `deltaPercent` values
 are rounded to one decimal place, so runs diff cleanly in CI; token and call-count fields are integers.
-`timingSource` is `invocation-span` or `span-envelope` (labeled fallback). `deltaPercent` is `null` when the baseline
-value is zero. Unavailable metrics are omitted from `baseline`/`candidate`, and the corresponding delta entries carry
-only the sides that exist. On failure the output is `{ "success": false, "error": "<message>" }` with
+`timingSource` is `invocation-span` or `span-envelope` (labeled fallback). `models` is the sorted list of distinct LLM
+models used, omitted when none are reported. `deltaPercent` is `null` when the baseline value is zero. Unavailable
+metrics are omitted from `baseline`/`candidate`, and the corresponding delta entries carry only the sides that exist. On failure the output is `{ "success": false, "error": "<message>" }` with
 `errorName`/`errorSource` for typed errors.
 
 ---
