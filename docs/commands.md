@@ -977,9 +977,14 @@ percentage deltas. Nested provider spans (e.g. a framework LLM span wrapping a B
 
 Behavior details:
 
-- Both traces must belong to the selected runtime — a trace from a different runtime in the same account is rejected.
-- Application spans are fetched from the endpoint-specific runtime log group, detected per trace from the runtime
-  span's `aws.endpoint.name` attribute. Baseline and candidate may come from different endpoints (e.g. `DEFAULT` vs a
+- LLM and tool spans are recognized via OTel GenAI attributes (`gen_ai.operation.name`), Traceloop/OpenLLMetry
+  (`traceloop.span.kind`, used by LangGraph), OpenInference (`openinference.span.kind`), and span-name fallbacks
+  (`chat …`, `execute_tool …`, `….tool`).
+- Both traces must belong to the selected runtime — spans are matched via `aws.agent.id` / `cloud.resource_id`, other
+  runtimes' spans in a distributed trace are excluded, and a trace whose identified spans all belong to a different
+  runtime is rejected.
+- Application spans are fetched from the endpoint-specific runtime log group, detected per trace from this runtime's
+  span `aws.endpoint.name` attribute. Baseline and candidate may come from different endpoints (e.g. `DEFAULT` vs a
   named test endpoint).
 - End-to-end latency comes from the `POST /invocations` server span; when that span is missing, the earliest/latest
   span times are used instead and a warning is shown.

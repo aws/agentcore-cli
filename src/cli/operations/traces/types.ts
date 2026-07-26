@@ -25,6 +25,9 @@ export interface CloudWatchSpanRecord {
   genAiOperation?: string;
   cloudResourceId?: string;
   endpointName?: string;
+  agentId?: string;
+  traceloopSpanKind?: string;
+  openinferenceSpanKind?: string;
 }
 
 export interface QuerySpanRecordsOptions {

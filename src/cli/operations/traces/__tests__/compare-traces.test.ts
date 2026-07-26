@@ -324,6 +324,88 @@ describe('aggregateSpans', () => {
     expect(result.warnings).toEqual([expect.stringContaining('application spans unavailable')]);
   });
 
+  it('classifies LangGraph traceloop tool spans', () => {
+    const spans = [
+      span({
+        spanId: 'root',
+        name: 'POST /invocations',
+        kind: 'SERVER',
+        startTimeUnixNano: nano(0),
+        endTimeUnixNano: nano(6000),
+      }),
+      span({
+        spanId: 'tool1',
+        parentSpanId: 'root',
+        name: 'get_word_frequency.tool',
+        traceloopSpanKind: 'tool',
+        durationNano: String(1_500_000_000),
+      }),
+    ];
+
+    const result = aggregateSpans('trace-a', spans);
+
+    assert(result.success);
+    expect(result.metrics.toolCalls).toBe(1);
+    expect(result.metrics.toolMs).toBe(1500);
+  });
+
+  it('classifies OpenInference LLM and tool spans', () => {
+    const spans = [
+      span({
+        spanId: 'root',
+        name: 'POST /invocations',
+        kind: 'SERVER',
+        startTimeUnixNano: nano(0),
+        endTimeUnixNano: nano(6000),
+      }),
+      span({
+        spanId: 'llm1',
+        parentSpanId: 'root',
+        name: 'ChatBedrock',
+        openinferenceSpanKind: 'LLM',
+        durationNano: String(2_000_000_000),
+      }),
+      span({
+        spanId: 'tool1',
+        parentSpanId: 'root',
+        name: 'get_weather',
+        openinferenceSpanKind: 'TOOL',
+        durationNano: String(1_000_000_000),
+      }),
+    ];
+
+    const result = aggregateSpans('trace-a', spans);
+
+    assert(result.success);
+    expect(result.metrics.llmCalls).toBe(1);
+    expect(result.metrics.llmMs).toBe(2000);
+    expect(result.metrics.toolCalls).toBe(1);
+    expect(result.metrics.toolMs).toBe(1000);
+  });
+
+  it('classifies tool spans by .tool name suffix when kind attributes are absent', () => {
+    const spans = [
+      span({
+        spanId: 'root',
+        name: 'POST /invocations',
+        kind: 'SERVER',
+        startTimeUnixNano: nano(0),
+        endTimeUnixNano: nano(6000),
+      }),
+      span({
+        spanId: 'tool1',
+        parentSpanId: 'root',
+        name: 'get_word_frequency.tool',
+        durationNano: String(1_500_000_000),
+      }),
+    ];
+
+    const result = aggregateSpans('trace-a', spans);
+
+    assert(result.success);
+    expect(result.metrics.toolCalls).toBe(1);
+  });
+
   it('counts tool spans and de-duplicates nested tool spans', () => {
     const spans = [
       span({
@@ -585,6 +667,94 @@ describe('compareTraces', () => {
     expect(result.candidate.llmCalls).toBe(1);
     expect(result.warnings).toEqual([]);
     expect(mockQuerySpanRecords).toHaveBeenCalledWith(expect.objectContaining({ logGroupName: TEST_LOG_GROUP }));
+  });
+
+  it('scopes ownership, endpoint, and metrics to spans matching the runtime id', async () => {
+    primeSpanQueries({
+      'trace-a': {
+        [SPANS_LOG_GROUP]: [
+          // A distributed trace: another runtime's invocation span appears first
+          // with a different endpoint — it must not drive endpoint selection or timing.
+          serviceSpan('trace-a', 9000, {
+            spanId: 'root-other',
+            cloudResourceId: undefined,
+            agentId: 'other-runtime',
+            endpointName: 'DEFAULT',
+          }),
+          serviceSpan('trace-a', 6600, {
+            cloudResourceId: undefined,
+            agentId: 'runtime-123',
+            endpointName: 'test',
+          }),
+        ],
+        [TEST_LOG_GROUP]: [chatSpan('trace-a')],
+      },
+      'trace-b': {
+        [SPANS_LOG_GROUP]: [serviceSpan('trace-b', 5120)],
+        [DEFAULT_LOG_GROUP]: [chatSpan('trace-b')],
+      },
+    });
+
+    const result = await compareTraces(options);
+
+    assert(result.success);
+    expect(result.baseline.endToEndMs).toBe(6600);
+    expect(result.baseline.spanCount).toBe(2);
+    expect(mockQuerySpanRecords).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId: 'trace-a', logGroupName: TEST_LOG_GROUP })
+    );
+  });
+
+  it('rejects a trace whose agent ids all belong to other runtimes', async () => {
+    primeSpanQueries({
+      'trace-a': {
+        [SPANS_LOG_GROUP]: [
+          serviceSpan('trace-a', 6600, { cloudResourceId: undefined, agentId: 'other-runtime' }),
+        ],
+      },
+      'trace-b': {
+        [SPANS_LOG_GROUP]: [serviceSpan('trace-b', 5120)],
+        [DEFAULT_LOG_GROUP]: [chatSpan('trace-b')],
+      },
+    });
+
+    const result = await compareTraces(options);
+
+    assert(!result.success);
+    expect(result.error.message).toContain('belongs to a different runtime');
+  });
+
+  it('merges duplicate span records preferring defined runtime log fields', async () => {
+    primeSpanQueries({
+      'trace-a': {
+        // Shared log group has a partial record: no tokens, no parent link.
+        [SPANS_LOG_GROUP]: [
+          serviceSpan('trace-a', 6600),
+          chatSpan('trace-a', {
+            durationNano: undefined,
+            genAiOperation: undefined,
+            parentSpanId: undefined,
+          }),
+        ],
+        // Runtime log group has the richer record for the same span ID.
+        [DEFAULT_LOG_GROUP]: [
+          chatSpan('trace-a', { inputTokens: 2849, outputTokens: 315, totalTokens: 3164 }),
+        ],
+      },
+      'trace-b': {
+        [SPANS_LOG_GROUP]: [serviceSpan('trace-b', 5120)],
+        [DEFAULT_LOG_GROUP]: [chatSpan('trace-b', { inputTokens: 2500, outputTokens: 300, totalTokens: 2800 })],
+      },
+    });
+
+    const result = await compareTraces(options);
+
+    assert(result.success);
+    expect(result.baseline.spanCount).toBe(2);
+    expect(result.baseline.llmCalls).toBe(1);
+    expect(result.baseline.llmMs).toBe(2000);
+    expect(result.baseline.totalTokens).toBe(3164);
+    expect(result.baseline.inputTokens).toBe(2849);
   });
 
   it('rejects a trace that belongs to a different runtime', async () => {

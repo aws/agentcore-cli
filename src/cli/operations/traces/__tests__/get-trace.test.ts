@@ -199,6 +199,9 @@ describe('querySpanRecords', () => {
             { field: 'kind', value: 'SERVER' },
             { field: 'cloudResourceId', value: 'arn:aws:bedrock-agentcore:us-west-2:123:runtime/runtime-123/x' },
             { field: 'endpointName', value: 'test' },
+            { field: 'agentId', value: 'runtime-123' },
+            { field: 'traceloopSpanKind', value: 'tool' },
+            { field: 'openinferenceSpanKind', value: 'TOOL' },
           ],
         ],
       });
@@ -216,11 +219,17 @@ describe('querySpanRecords', () => {
       spanId: 'span-1',
       cloudResourceId: 'arn:aws:bedrock-agentcore:us-west-2:123:runtime/runtime-123/x',
       endpointName: 'test',
+      agentId: 'runtime-123',
+      traceloopSpanKind: 'tool',
+      openinferenceSpanKind: 'TOOL',
     });
     expect(startedQueries).toHaveLength(1);
     expect(startedQueries[0]!.logGroupName).toBe('/aws/bedrock-agentcore/runtimes/runtime-123-test');
     expect(startedQueries[0]!.queryString).toContain('resource.attributes.cloud.resource_id as cloudResourceId');
     expect(startedQueries[0]!.queryString).toContain('attributes.aws.endpoint.name as endpointName');
+    expect(startedQueries[0]!.queryString).toContain('attributes.aws.agent.id as agentId');
+    expect(startedQueries[0]!.queryString).toContain('attributes.traceloop.span.kind as traceloopSpanKind');
+    expect(startedQueries[0]!.queryString).toContain('attributes.openinference.span.kind as openinferenceSpanKind');
   });
 
   it('returns error for invalid trace ID format', async () => {

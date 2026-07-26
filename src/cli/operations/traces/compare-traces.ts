@@ -16,9 +16,12 @@ import type {
 // OTel GenAI semantic-convention operation names (attributes.gen_ai.operation.name).
 const LLM_OPERATIONS = new Set(['chat', 'text_completion', 'generate_content', 'embeddings', 'invoke_model']);
 const TOOL_OPERATIONS = new Set(['execute_tool']);
+// Framework span-kind attributes: Traceloop/OpenLLMetry (LangGraph et al.) and OpenInference.
+const OPENINFERENCE_LLM_KINDS = new Set(['llm', 'embedding']);
 // Fallbacks for spans that predate the operation attribute (framework/provider span names).
+// The `.tool` suffix matches Traceloop-instrumented tool spans (e.g. "get_word_frequency.tool").
 const LLM_NAME_PATTERN = /^chat\b|^invoke_model\b|^text_completion\b|^generate_content\b|InvokeModel|^Model invoke$/i;
-const TOOL_NAME_PATTERN = /^execute_tool\b|^Tool: /i;
+const TOOL_NAME_PATTERN = /^execute_tool\b|^Tool: |\.tool$/i;
 const INVOCATION_PATH = '/invocations';
 // Relative per-field token difference above which the traces are flagged as possibly incomparable.
 const TOKEN_COMPARABILITY_THRESHOLD = 0.2;
@@ -37,6 +40,10 @@ function categorize(span: CloudWatchSpanRecord): SpanCategory {
   const operation = span.genAiOperation?.toLowerCase();
   if (operation && LLM_OPERATIONS.has(operation)) return 'llm';
   if (operation && TOOL_OPERATIONS.has(operation)) return 'tool';
+  if (span.traceloopSpanKind?.toLowerCase() === 'tool') return 'tool';
+  const openinferenceKind = span.openinferenceSpanKind?.toLowerCase();
+  if (openinferenceKind && OPENINFERENCE_LLM_KINDS.has(openinferenceKind)) return 'llm';
+  if (openinferenceKind === 'tool') return 'tool';
   const name = span.name ?? '';
   if (LLM_NAME_PATTERN.test(name)) return 'llm';
   if (TOOL_NAME_PATTERN.test(name)) return 'tool';
@@ -266,14 +273,35 @@ export function buildTraceComparison(
   return { deltas, warnings };
 }
 
+/** Runtime identity of a span, from `aws.agent.id` or parsed from `cloud.resource_id`. */
+function spanRuntimeId(span: CloudWatchSpanRecord): string | undefined {
+  if (span.agentId) return span.agentId;
+  if (span.cloudResourceId) return RUNTIME_RESOURCE_ID_PATTERN.exec(span.cloudResourceId)?.[1];
+  return undefined;
+}
+
+/** Merges two records for the same span ID; `primary`'s defined fields win. */
+function mergeSpanRecords(primary: CloudWatchSpanRecord, fallback: CloudWatchSpanRecord): CloudWatchSpanRecord {
+  const merged: Record<string, unknown> = { ...fallback };
+  for (const [key, value] of Object.entries(primary)) {
+    if (value !== undefined) merged[key] = value;
+  }
+  return merged as unknown as CloudWatchSpanRecord;
+}
+
 /**
  * Fetches all span records for one trace: service-side spans from the shared
  * `aws/spans` log group, then application spans from the endpoint-specific
- * runtime log group. The endpoint is detected per trace from the service
- * span's `aws.endpoint.name` attribute (baseline and candidate may use
- * different endpoints), and ownership is validated against the runtime's
- * resource ID so a trace from another runtime is rejected rather than
- * silently producing empty metrics.
+ * runtime log group.
+ *
+ * A distributed trace may span multiple runtimes, so everything is scoped to
+ * the selected runtime: spans identified (via `aws.agent.id` or
+ * `cloud.resource_id`) as belonging to other runtimes are excluded from
+ * metrics, the endpoint is derived only from this runtime's spans (baseline
+ * and candidate may use different endpoints), and a trace whose identified
+ * spans all belong to other runtimes is rejected rather than silently
+ * producing empty metrics. Duplicate records for the same span ID are merged
+ * field by field, preferring defined runtime-log values.
  */
 async function fetchComparisonSpans(
   region: string,
@@ -292,17 +320,23 @@ async function fetchComparisonSpans(
     return serviceResult;
   }
 
-  const ownerRuntimeIds = serviceSpans
-    .map(span => (span.cloudResourceId ? RUNTIME_RESOURCE_ID_PATTERN.exec(span.cloudResourceId)?.[1] : undefined))
-    .filter((id): id is string => id !== undefined);
-  if (ownerRuntimeIds.length > 0 && !ownerRuntimeIds.includes(runtimeId)) {
+  const identified = serviceSpans.filter(span => spanRuntimeId(span) !== undefined);
+  const matched = identified.filter(span => spanRuntimeId(span) === runtimeId);
+  if (identified.length > 0 && matched.length === 0) {
     return {
       success: false,
       error: new ValidationError(`Trace ${traceId} belongs to a different runtime (expected ${runtimeId})`),
     };
   }
 
-  const endpointName = serviceSpans.find(span => span.endpointName)?.endpointName ?? DEFAULT_ENDPOINT_NAME;
+  // Keep this runtime's spans plus spans with no runtime identity; drop other runtimes' spans.
+  const scopedServiceSpans = serviceSpans.filter(span => {
+    const owner = spanRuntimeId(span);
+    return owner === undefined || owner === runtimeId;
+  });
+
+  const endpointSource = matched.length > 0 ? matched : scopedServiceSpans;
+  const endpointName = endpointSource.find(span => span.endpointName)?.endpointName ?? DEFAULT_ENDPOINT_NAME;
 
   const appResult = await querySpanRecords({ ...queryOpts, logGroupName: runtimeLogGroup(runtimeId, endpointName) });
   let appSpans: CloudWatchSpanRecord[] = [];
@@ -313,14 +347,18 @@ async function fetchComparisonSpans(
   }
 
   const merged = new Map<string, CloudWatchSpanRecord>();
-  for (const span of [...serviceSpans, ...appSpans]) {
-    if (!merged.has(span.spanId)) merged.set(span.spanId, span);
+  for (const span of scopedServiceSpans) {
+    merged.set(span.spanId, span);
+  }
+  for (const span of appSpans) {
+    const existing = merged.get(span.spanId);
+    merged.set(span.spanId, existing ? mergeSpanRecords(span, existing) : span);
   }
 
   // Application spans may arrive via the runtime log group or (with transaction
   // search) directly in aws/spans; either way, anything beyond the service-side
   // invocation span counts as application data.
-  const appSpansAvailable = appSpans.length > 0 || serviceSpans.some(span => !isInvocationSpan(span));
+  const appSpansAvailable = appSpans.length > 0 || scopedServiceSpans.some(span => !isInvocationSpan(span));
 
   return { success: true, spans: [...merged.values()], appSpansAvailable };
 }
