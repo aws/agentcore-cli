@@ -324,6 +324,38 @@ describe('aggregateSpans', () => {
     expect(result.warnings).toEqual([expect.stringContaining('application spans unavailable')]);
   });
 
+  it('rounds latency metrics to one decimal place', () => {
+    const spans = [
+      span({
+        spanId: 'root',
+        name: 'POST /invocations',
+        kind: 'SERVER',
+        durationNano: String(6_334_894_566),
+      }),
+      span({
+        spanId: 'llm1',
+        parentSpanId: 'root',
+        genAiOperation: 'chat',
+        name: 'chat claude-3',
+        durationNano: String(3_671_294_691),
+      }),
+      span({
+        spanId: 'tool1',
+        parentSpanId: 'root',
+        genAiOperation: 'execute_tool',
+        name: 'execute_tool weather',
+        durationNano: String(2_578_348_746),
+      }),
+    ];
+
+    const result = aggregateSpans('trace-a', spans);
+
+    assert(result.success);
+    expect(result.metrics.endToEndMs).toBe(6334.9);
+    expect(result.metrics.llmMs).toBe(3671.3);
+    expect(result.metrics.toolMs).toBe(2578.3);
+  });
+
   it('classifies LangGraph traceloop tool spans', () => {
     const spans = [
       span({
@@ -477,6 +509,16 @@ describe('buildTraceComparison', () => {
     });
     expect(deltas.llmMs.delta).toBe(-580);
     expect(deltas.toolMs.delta).toBe(-1140);
+  });
+
+  it('rounds delta and percentage to one decimal place', () => {
+    const baseline = metrics({ endToEndMs: 6334.9 });
+    const candidate = metrics({ traceId: 'trace-b', endToEndMs: 5701.9 });
+
+    const { deltas } = buildTraceComparison(baseline, candidate);
+
+    expect(deltas.endToEndMs.delta).toBe(-633);
+    expect(deltas.endToEndMs.deltaPercent).toBe(-10);
   });
 
   it('returns null percentage for a zero baseline', () => {

@@ -1030,9 +1030,11 @@ Behavior details:
 }
 ```
 
-Field notes: `timingSource` is `invocation-span` or `span-envelope` (labeled fallback). `deltaPercent` is `null` when
-the baseline value is zero. Unavailable metrics are omitted from `baseline`/`candidate`, and the corresponding delta
-entries carry only the sides that exist. On failure the output is `{ "success": false, "error": "<message>" }` with
+Field notes: latency fields (`endToEndMs`, `llmMs`, `toolMs`, and each delta's `delta`) and all `deltaPercent` values
+are rounded to one decimal place, so runs diff cleanly in CI; token and call-count fields are integers.
+`timingSource` is `invocation-span` or `span-envelope` (labeled fallback). `deltaPercent` is `null` when the baseline
+value is zero. Unavailable metrics are omitted from `baseline`/`candidate`, and the corresponding delta entries carry
+only the sides that exist. On failure the output is `{ "success": false, "error": "<message>" }` with
 `errorName`/`errorSource` for typed errors.
 
 ---

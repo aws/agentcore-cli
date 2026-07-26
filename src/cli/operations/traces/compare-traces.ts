@@ -50,6 +50,17 @@ function categorize(span: CloudWatchSpanRecord): SpanCategory {
   return 'other';
 }
 
+/**
+ * Rounds to one decimal place. Applied to latency (ms) and percentage fields at
+ * the output boundary so the JSON contract stays stable — sub-millisecond
+ * precision from nanosecond conversion is measurement noise, and rounding
+ * removes float-arithmetic artifacts (e.g. 2847.0795900000003) that would make
+ * two otherwise-equal runs diff in CI.
+ */
+function roundTo1(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
 function nanoToMs(value?: string): number | undefined {
   if (!value) return undefined;
   const ns = Number(value);
@@ -155,6 +166,7 @@ export function aggregateSpans(
   if (endToEndMs === undefined) {
     return { success: false, error: new ValidationError(`Trace ${traceId} has no spans with timing data`) };
   }
+  endToEndMs = roundTo1(endToEndMs);
 
   if (!appSpansAvailable) {
     warnings.push(
@@ -194,9 +206,9 @@ export function aggregateSpans(
       spanCount: spans.length,
       endToEndMs,
       timingSource,
-      llmMs: sumDefined(llmSpans, spanDurationMs) ?? 0,
+      llmMs: roundTo1(sumDefined(llmSpans, spanDurationMs) ?? 0),
       llmCalls: llmSpans.length,
-      toolMs: sumDefined(toolSpans, spanDurationMs) ?? 0,
+      toolMs: roundTo1(sumDefined(toolSpans, spanDurationMs) ?? 0),
       toolCalls: toolSpans.length,
       inputTokens: sumTokenField('inputTokens'),
       outputTokens: sumTokenField('outputTokens'),
@@ -211,8 +223,8 @@ function metricDelta(baseline?: number, candidate?: number): MetricDelta {
   if (baseline !== undefined) entry.baseline = baseline;
   if (candidate !== undefined) entry.candidate = candidate;
   if (baseline !== undefined && candidate !== undefined) {
-    entry.delta = candidate - baseline;
-    entry.deltaPercent = baseline > 0 ? ((candidate - baseline) / baseline) * 100 : null;
+    entry.delta = roundTo1(candidate - baseline);
+    entry.deltaPercent = baseline > 0 ? roundTo1(((candidate - baseline) / baseline) * 100) : null;
   }
   return entry;
 }
