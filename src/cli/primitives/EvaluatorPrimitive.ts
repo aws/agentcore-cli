@@ -438,8 +438,8 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               const threePLibrary = threePLibraryRaw as ThirdPartyLibrary | undefined;
               if (threePLibrary) {
                 if (!cliOptions.metric) fail('--metric is required when using --3p-library');
-                if (cliOptions.model && cliOptions.modelProvider !== 'bedrock') {
-                  fail('--model cannot be used with --3p-library (unless --model-provider bedrock)');
+                if (cliOptions.model && cliOptions.modelProvider === 'openai') {
+                  fail('--model cannot be used with --3p-library when --model-provider is openai');
                 }
                 if (cliOptions.instructions) fail('--instructions cannot be used with --3p-library');
                 if (cliOptions.ratingScale) fail('--rating-scale cannot be used with --3p-library');
