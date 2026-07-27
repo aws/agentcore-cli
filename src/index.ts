@@ -14,11 +14,12 @@ import { FsReadWriteJson } from "./io";
 import { createFileLogger, LOG_LEVEL } from "./logging";
 import { runWithExitCode } from "./runnable";
 import { DefaultGlobalConfigAccessor } from "./globalConfig";
+import { DefaultTelemetryClient, TelemetryAttributesRecorder } from "./telemetry";
 
 process.exit(
   await runWithExitCode(async (argv: string[]) => {
+    const startTime = Date.now();
     // generate a unique identifier corresponding to this process of this CLI. (ex. one command invoke, one TUI session)
-    // TODO: wire this id into telemetry as well
     const cliSessionId = crypto.randomUUID();
 
     const rootLogger = createFileLogger({
@@ -33,15 +34,25 @@ process.exit(
       stderr: process.stderr,
     };
 
-    try {
-      const globalConfigAccessor = new DefaultGlobalConfigAccessor({
-        logger: rootLogger.child({ module: "globalConfigAccessor" }),
-        filePath: join(homedir(), ".agentcore", "config.json"),
-        json: new FsReadWriteJson({
-          logger: rootLogger.child({ module: "jsonDataSource" }),
-        }),
-      });
+    const globalConfigAccessor = new DefaultGlobalConfigAccessor({
+      logger: rootLogger.child({ module: "globalConfigAccessor" }),
+      filePath: join(homedir(), ".agentcore", "config.json"),
+      json: new FsReadWriteJson({
+        logger: rootLogger.child({ module: "jsonDataSource" }),
+      }),
+    });
 
+    const telemetryClient = new DefaultTelemetryClient({
+      logger: rootLogger.child({ module: "telemetry" }),
+      sessionId: cliSessionId,
+      globalConfigAccessor,
+    });
+
+    const commandRunTelemetryRecorder = new TelemetryAttributesRecorder("cli.command_run", {
+      exit_reason: "success",
+    });
+
+    try {
       rootLogger.info(`running CLI`);
 
       // factories (rather than instances) lets CoreClient build one client per
@@ -69,8 +80,16 @@ process.exit(
       rootLogger
         .child({ errorName: error.name, errorMessage: error.message, stack: error.stack ?? "" })
         .error();
+      // TODO: add error details to telemetry recorder;
+      commandRunTelemetryRecorder.record({ exit_reason: "failure" });
       throw e;
     } finally {
+      await telemetryClient.emit(
+        "cli.command_run",
+        Date.now() - startTime,
+        commandRunTelemetryRecorder.getAttributes(),
+      );
+      await telemetryClient.shutdown();
       await rootLogger.end();
     }
   }),
