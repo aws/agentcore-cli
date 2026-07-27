@@ -1,9 +1,10 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
-import type { AppIO, Core } from "../../../types";
+import type { Core } from "../../../types";
+import type { AppIO } from "../../../../io";
 import { coreOptsFromCtx, parseTags } from "../../../utils";
-import { readSourceText } from "../../../source";
+import { SourceResolver } from "../../../../io";
 import { parseSecretReference } from "../parser";
 
 export const createCreateApiKeyCredentialProviderHandler = (core: Core, io: AppIO) =>
@@ -37,7 +38,8 @@ export const createCreateApiKeyCredentialProviderHandler = (core: Core, io: AppI
         throw new TypeError("either --api-key or --api-key-secret-reference is required");
       }
 
-      const apiKey = hasApiKey ? await readSourceText(flags["api-key"]!, io.stdin) : undefined;
+      const resolver = new SourceResolver({ stdin: io.stdin });
+      const apiKey = await resolver.resolveText("api-key", flags["api-key"]);
       const apiKeySecretConfig = hasSecretRef
         ? parseSecretReference(flags["api-key-secret-reference"]!)
         : undefined;
