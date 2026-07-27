@@ -47,8 +47,13 @@ import type {
   CreateApiKeyCredentialProviderInput,
   UpdateApiKeyCredentialProviderInput,
 } from "../handlers/identity/types";
-import type { CoreRuntimeClient } from "../handlers/runtime/types";
+import type {
+  CoreRuntimeClient,
+  RuntimeInvokeRequest,
+  RuntimeInvokeResponse,
+} from "../handlers/runtime/types";
 import type { CodeBasedUpdate, CoreEvalClient, LlmAsAJudgeUpdate } from "../handlers/eval/types";
+import { abortable } from "../core/abortable";
 import type { CoreOptions } from "../core/types";
 import type { ProjectManager } from "../handlers/project/types";
 import type { Logger } from "../logging";
@@ -113,41 +118,16 @@ const DEFAULT_GET_EVALUATOR_RESPONSE = {} as GetEvaluatorResponse;
 const DEFAULT_LIST_EVALUATORS_RESPONSE: ListEvaluatorsResponse = { evaluators: [] };
 const DEFAULT_DELETE_EVALUATOR_RESPONSE = {} as DeleteEvaluatorResponse;
 
-// abortError mirrors the error the SDK's abort handling rejects with.
-function abortError(): Error {
-  const error = new Error("The operation was aborted");
-  error.name = "AbortError";
-  return error;
-}
-
-// abortable wraps a stream so iteration rejects with an AbortError as soon as
-// `signal` aborts, mirroring how the SDK cuts an event stream off mid-read.
-// Each next() races against the abortion; the pre-attached catch swallows the
-// rejection when nothing is racing (e.g. abort after the stream already ended)
-// so tests don't fail on unhandled-rejection noise.
-async function* abortable<T>(source: AsyncIterable<T>, signal?: AbortSignal): AsyncGenerator<T> {
-  if (!signal) {
-    yield* source;
-    return;
-  }
-  const aborted = new Promise<never>((_, reject) => {
-    if (signal.aborted) reject(abortError());
-    else signal.addEventListener("abort", () => reject(abortError()), { once: true });
-  });
-  aborted.catch(() => {});
-
-  const iterator = source[Symbol.asyncIterator]();
-  for (;;) {
-    const result = await Promise.race([iterator.next(), aborted]);
-    if (result.done) return;
-    yield result.value;
-  }
-}
-
 // events wraps canned events as a one-shot AsyncIterable.
 async function* events<T>(items: T[]): AsyncGenerator<T> {
   for (const item of items) yield item;
 }
+
+const DEFAULT_RUNTIME_INVOKE_RESPONSE: RuntimeInvokeResponse = {
+  statusCode: 200,
+  contentType: "application/json",
+  body: events([]),
+};
 
 // TestHarnessClient is the harness sub-client of TestCoreClient.
 export class TestHarnessClient implements CoreHarnessClient {
@@ -429,7 +409,7 @@ export class TestHarnessClient implements CoreHarnessClient {
     this.calls.push({ method: "invokeHarness", args: [request, options, abortSignal] });
     if (this.error) throw this.error;
     const stream = this.invokeStreams.shift() ?? events(this.invokeEvents);
-    return { stream: abortable(stream, abortSignal) };
+    return { stream: abortSignal ? abortable(stream, abortSignal) : stream };
   }
 
   async invokeAgentRuntimeCommand(
@@ -447,7 +427,7 @@ export class TestHarnessClient implements CoreHarnessClient {
       contentType: "application/json",
       statusCode: 200,
       runtimeSessionId: request.runtimeSessionId,
-      stream: abortable(stream, abortSignal),
+      stream: abortSignal ? abortable(stream, abortSignal) : stream,
     };
   }
 }
@@ -462,6 +442,8 @@ export class TestRuntimeClient implements CoreRuntimeClient {
   private listResponses = new Map<string | undefined, ListAgentRuntimesResponse>();
   private listVersionResponses = new Map<string | undefined, ListAgentRuntimeVersionsResponse>();
   private listEndpointResponses = new Map<string | undefined, ListAgentRuntimeEndpointsResponse>();
+  private invokeResponse: RuntimeInvokeResponse = DEFAULT_RUNTIME_INVOKE_RESPONSE;
+  private invokeBodies: AsyncIterable<Uint8Array>[] = [];
   private error?: Error;
 
   setGetResponse(response: GetAgentRuntimeResponse): this {
@@ -497,15 +479,42 @@ export class TestRuntimeClient implements CoreRuntimeClient {
     return this;
   }
 
+  setInvokeResponse(response: RuntimeInvokeResponse): this {
+    this.invokeResponse = response;
+    return this;
+  }
+
+  queueInvokeBody(body: AsyncIterable<Uint8Array>): this {
+    this.invokeBodies.push(body);
+    return this;
+  }
+
   setError(error: Error | undefined): this {
     this.error = error;
     return this;
   }
 
-  async getRuntime(id: string, options: CoreOptions): Promise<GetAgentRuntimeResponse> {
-    this.calls.push({ method: "getRuntime", args: [id, options] });
+  async getRuntime(
+    id: string,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<GetAgentRuntimeResponse> {
+    this.calls.push({ method: "getRuntime", args: [id, options, ...(signal ? [signal] : [])] });
     if (this.error) throw this.error;
     return this.getResponse;
+  }
+
+  async invokeRuntime(
+    request: RuntimeInvokeRequest,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<RuntimeInvokeResponse> {
+    this.calls.push({ method: "invokeRuntime", args: [request, options, signal] });
+    if (this.error) throw this.error;
+    return {
+      ...this.invokeResponse,
+      body: this.invokeBodies.shift() ?? this.invokeResponse.body,
+    };
   }
 
   async getRuntimeVersion(

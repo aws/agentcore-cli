@@ -25,6 +25,9 @@ export interface ClientConfig {
 export type CreateControlClient = (config: ClientConfig) => BedrockAgentCoreControlClient;
 export type CreateDataClient = (config: ClientConfig) => BedrockAgentCoreClient;
 export type CreateIamClient = (config: ClientConfig) => IAMClient;
+export type CoreFetch = (
+  ...args: Parameters<typeof globalThis.fetch>
+) => ReturnType<typeof globalThis.fetch>;
 
 // AwsClients hands out configured SDK clients. CoreClient implements it and its
 // sub-clients (HarnessClient, etc.) consume it, so they all share the same

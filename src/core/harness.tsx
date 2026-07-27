@@ -37,6 +37,7 @@ import {
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { CoreHarnessClient, CreateHarnessInput } from "../handlers/harness/types";
 import type { AwsClients, CoreOptions } from "./types";
+import { abortable } from "./abortable";
 import { ensureDefaultExecutionRole } from "./executionRole";
 import { toClientConfig } from "./utils";
 
@@ -225,38 +226,5 @@ async function retryWhileRoleUnassumable<T>(
       if (!retryable || attempt >= attempts) throw error;
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
-  }
-}
-
-// abortError mirrors the error the SDK rejects with on a pre-stream abort, so
-// consumers see one shape either way.
-function abortError(): Error {
-  const error = new Error("The operation was aborted");
-  error.name = "AbortError";
-  return error;
-}
-
-// abortable relays `source`, rejecting the pending read as soon as `signal`
-// aborts. The pre-attached catch swallows the rejection when no read is in
-// flight (e.g. abort after the stream ended) to avoid unhandled-rejection
-// noise.
-async function* abortable<T>(source: AsyncIterable<T>, signal: AbortSignal): AsyncGenerator<T> {
-  const aborted = new Promise<never>((_, reject) => {
-    if (signal.aborted) reject(abortError());
-    else signal.addEventListener("abort", () => reject(abortError()), { once: true });
-  });
-  aborted.catch(() => {});
-
-  const iterator = source[Symbol.asyncIterator]();
-  try {
-    for (;;) {
-      const result = await Promise.race([iterator.next(), aborted]);
-      if (result.done) return;
-      yield result.value;
-    }
-  } finally {
-    // Close the SDK stream on early exit to release the connection. Fire and
-    // forget: its settlement may itself wait on the wedged stream.
-    void iterator.return?.()?.catch(() => {});
   }
 }
