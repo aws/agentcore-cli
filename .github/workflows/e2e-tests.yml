@@ -41,14 +41,32 @@ jobs:
   authorize:
     runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request_target'
+    permissions:
+      id-token: write
+      contents: read
     outputs:
       is_authorized: ${{ steps.check.outputs.is_authorized }}
     steps:
+      # Manual workflow_dispatch is always authorized and never consults the
+      # allowlist, so only fetch AUTHORIZED_USERS / run the gate for PR events.
+      - name: Fetch secrets from Secrets Manager
+        if: github.event_name == 'pull_request_target'
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          repo: AUTHORIZED_USERS
       - name: Check authorization
+        id: authz
+        if: github.event_name == 'pull_request_target'
+        uses: aws/agentcore-devx-devtools/.github/actions/check-authorized-user@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          subject: ${{ github.event.pull_request.user.login }}
+          authorized-users: ${{ env.AUTHORIZED_USERS }}
+      - name: Determine authorization
         id: check
         env:
           EVENT_NAME: ${{ github.event_name }}
-          AUTHORIZED_USERS: ${{ secrets.AUTHORIZED_USERS }}
+          IS_AUTHORIZED: ${{ steps.authz.outputs.is-authorized }}
           # Gate on the PR AUTHOR (whose code this is), NOT github.actor (who triggered the run).
           # On pull_request_target a trusted actor (e.g. a maintainer pushing to a fork PR) triggering
           # a run must NOT cause an untrusted author's fork code to execute with our AWS role/secrets.
@@ -59,7 +77,7 @@ jobs:
             echo "is_authorized=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [[ ",$AUTHORIZED_USERS," == *",${PR_AUTHOR},"* ]]; then
+          if [[ "$IS_AUTHORIZED" == "true" ]]; then
             echo "✅ PR author ${PR_AUTHOR} is authorized"
             echo "is_authorized=true" >> "$GITHUB_OUTPUT"
           else
@@ -104,25 +122,26 @@ jobs:
           git config --global user.email "ci@amazon.com"
           git config --global user.name "CI"
       - uses: astral-sh/setup-uv@v7
+      - name: Fetch secrets from Secrets Manager
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          shared: CDK_REPO_NAME
+          repo: E2E_AWS_ROLE_ARN, E2E_ANTHROPIC_API_KEY, E2E_OPENAI_API_KEY, E2E_GEMINI_API_KEY, E2E_EFS_ACCESS_POINT_ARN, E2E_S3_ACCESS_POINT_ARN, E2E_FILESYSTEM_SUBNET_ID, E2E_FILESYSTEM_SECURITY_GROUP_ID, E2E_CDP_API_KEY_ID, E2E_CDP_API_KEY_SECRET, E2E_CDP_WALLET_SECRET
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ secrets.E2E_AWS_ROLE_ARN }}
+          role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
           aws-region: ${{ inputs.aws_region || 'us-east-1' }}
+          unset-current-credentials: true
       - name: Get AWS Account ID
         id: aws
         run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> "$GITHUB_OUTPUT"
-      - name: Get API keys from Secrets Manager
-        uses: aws-actions/aws-secretsmanager-get-secrets@v3
-        with:
-          secret-ids: |
-            E2E,${{ secrets.E2E_SECRET_ARN }}
-          parse-json-secrets: true
 
       - name: Resolve private CDK repository
         id: cdk-repo
         env:
-          CDK_REPO: ${{ secrets.CDK_REPO_NAME }}
+          CDK_REPO: ${{ env.CDK_REPO_NAME }}
         run: |
           owner="${CDK_REPO%%/*}"
           repository="${CDK_REPO#*/}"
@@ -152,7 +171,7 @@ jobs:
         env:
           INPUT_CDK_BRANCH: ${{ inputs.cdk_branch }}
           CDK_REPO_TOKEN: ${{ steps.app-token.outputs.token }}
-          CDK_REPO: ${{ secrets.CDK_REPO_NAME }}
+          CDK_REPO: ${{ env.CDK_REPO_NAME }}
       - name: Revoke GitHub App token
         if: always() && steps.app-token.outputs.token != ''
         env:

@@ -10,19 +10,33 @@ permissions:
 jobs:
   authorize:
     runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    permissions:
+      id-token: write
+      contents: read
     outputs:
       is_authorized: ${{ steps.check.outputs.is_authorized }}
     steps:
+      - name: Fetch secrets from Secrets Manager
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          repo: AUTHORIZED_USERS
       - name: Check authorization
+        id: authz
+        uses: aws/agentcore-devx-devtools/.github/actions/check-authorized-user@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          subject: ${{ github.event.pull_request.user.login }}
+          authorized-users: ${{ env.AUTHORIZED_USERS }}
+      - name: Determine authorization
         id: check
         env:
-          AUTHORIZED_USERS: ${{ secrets.AUTHORIZED_USERS }}
+          IS_AUTHORIZED: ${{ steps.authz.outputs.is-authorized }}
           # Gate on the PR AUTHOR (whose code this npm build runs), NOT github.actor (who triggered the
           # run). Otherwise a trusted actor pushing to a fork PR would run untrusted fork npm scripts
           # with the contents:write GITHUB_TOKEN + App token in this job.
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
-          if [[ ",$AUTHORIZED_USERS," == *",${PR_AUTHOR},"* ]]; then
+          if [[ "$IS_AUTHORIZED" == "true" ]]; then
             echo "✅ PR author ${PR_AUTHOR} is authorized"
             echo "is_authorized=true" >> "$GITHUB_OUTPUT"
           else

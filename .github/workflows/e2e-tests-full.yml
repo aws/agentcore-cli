@@ -46,27 +46,28 @@ jobs:
           git config --global user.email "ci@amazon.com"
           git config --global user.name "CI"
       - uses: astral-sh/setup-uv@v7
+      - name: Fetch secrets from Secrets Manager
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          shared: CDK_REPO_NAME
+          repo: E2E_AWS_ROLE_ARN, E2E_ANTHROPIC_API_KEY, E2E_OPENAI_API_KEY, E2E_GEMINI_API_KEY, E2E_EFS_ACCESS_POINT_ARN, E2E_S3_ACCESS_POINT_ARN, E2E_FILESYSTEM_SUBNET_ID, E2E_FILESYSTEM_SECURITY_GROUP_ID, E2E_CDP_API_KEY_ID, E2E_CDP_API_KEY_SECRET, E2E_CDP_WALLET_SECRET
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ secrets.E2E_AWS_ROLE_ARN }}
+          role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
           aws-region: ${{ inputs.aws_region || 'us-east-1' }}
+          unset-current-credentials: true
       - name: Get AWS Account ID
         id: aws
         run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> "$GITHUB_OUTPUT"
-      - name: Get API keys from Secrets Manager
-        uses: aws-actions/aws-secretsmanager-get-secrets@v3
-        with:
-          secret-ids: |
-            E2E,${{ secrets.E2E_SECRET_ARN }}
-          parse-json-secrets: true
       - run: npm ci
       - name: Build CLI
         run: npm run build
       - name: Resolve private CDK repository
         id: cdk-repo
         env:
-          CDK_REPO: ${{ secrets.CDK_REPO_NAME }}
+          CDK_REPO: ${{ env.CDK_REPO_NAME }}
         run: |
           owner="${CDK_REPO%%/*}"
           repository="${CDK_REPO#*/}"
@@ -105,7 +106,7 @@ jobs:
           git -C /tmp/cdk-repo remote remove origin
         env:
           CDK_REPO_TOKEN: ${{ steps.app-token.outputs.token }}
-          CDK_REPO: ${{ secrets.CDK_REPO_NAME }}
+          CDK_REPO: ${{ env.CDK_REPO_NAME }}
       - name: Revoke GitHub App token
         if: always() && steps.app-token.outputs.token != ''
         env:
@@ -169,11 +170,17 @@ jobs:
           git config --global user.email "ci@amazon.com"
           git config --global user.name "CI"
       - uses: astral-sh/setup-uv@v7
+      - name: Fetch secrets from Secrets Manager
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          repo: E2E_AWS_ROLE_ARN
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ secrets.E2E_AWS_ROLE_ARN }}
+          role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
           aws-region: ${{ inputs.aws_region || 'us-east-1' }}
+          unset-current-credentials: true
       - name: Get AWS Account ID
         id: aws
         run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> "$GITHUB_OUTPUT"

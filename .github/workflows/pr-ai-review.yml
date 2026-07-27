@@ -25,43 +25,24 @@ jobs:
     outputs:
       authorized: ${{ steps.auth.outputs.authorized }}
     steps:
+      # Team membership (agentcore-cli-devs) is checked first, then falls back to
+      # repo write access — same two-tier logic as before, now via the shared
+      # composite. With the default GITHUB_TOKEN the team check falls through to
+      # the collaborator-permission check, matching the previous behavior.
       - name: Check authorization
+        id: authz
+        if: github.event_name == 'pull_request_target'
+        uses: aws/agentcore-devx-devtools/.github/actions/check-collaborator@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          subject: ${{ github.event.pull_request.user.login }}
+          required-permission: write
+          team-slug: agentcore-cli-devs
+      - name: Map authorization result
         id: auth
         if: github.event_name == 'pull_request_target'
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const user = context.payload.pull_request.user.login;
-            try {
-              // Try team membership first (works for org repos)
-              await github.rest.teams.getMembershipForUserInOrg({
-                org: context.repo.owner,
-                team_slug: 'agentcore-cli-devs',
-                username: user,
-              });
-              console.log(`${user} is a member of agentcore-cli-devs`);
-              core.setOutput('authorized', 'true');
-            } catch (teamError) {
-              // Fall back to collaborator write access (works for personal repos)
-              try {
-                const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  username: user,
-                });
-                const hasWriteAccess = ['write', 'admin'].includes(data.permission);
-                if (hasWriteAccess) {
-                  console.log(`${user} has write access (${data.permission})`);
-                  core.setOutput('authorized', 'true');
-                } else {
-                  console.log(`${user} does not have write access (${data.permission}) — skipping review`);
-                  core.setOutput('authorized', 'false');
-                }
-              } catch (collabError) {
-                console.log(`${user} authorization check failed (${collabError.status}) — skipping review`);
-                core.setOutput('authorized', 'false');
-              }
-            }
+        env:
+          IS_AUTHORIZED: ${{ steps.authz.outputs.is-authorized }}
+        run: echo "authorized=$IS_AUTHORIZED" >> "$GITHUB_OUTPUT"
 
       - name: Auto-authorize workflow_dispatch
         id: dispatch-auth
@@ -128,11 +109,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Fetch secrets from Secrets Manager
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          repo: HARNESS_AWS_ROLE_ARN, HARNESS_ARN
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ secrets.HARNESS_AWS_ROLE_ARN }}
+          role-to-assume: ${{ env.HARNESS_AWS_ROLE_ARN }}
           aws-region: us-east-1
+          unset-current-credentials: true
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v7
@@ -148,7 +136,7 @@ jobs:
       - name: Run AI review
         env:
           PR_URL: ${{ steps.pr-url.outputs.url }}
-          HARNESS_ARN: ${{ secrets.HARNESS_ARN }}
+          HARNESS_ARN: ${{ env.HARNESS_ARN }}
         run: python .github/harness/harness_review.py
 
       - name: Remove agentcore-harness-reviewing label
