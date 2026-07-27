@@ -1,3 +1,4 @@
+import { ServiceException } from "@smithy/core/client";
 import { ERROR_SOURCE, type ErrorSource } from "./types";
 
 export interface AgentCoreCLIErrorOptions extends ErrorOptions {
@@ -18,7 +19,7 @@ export class AgentCoreCLIError extends Error {
   constructor(message?: string, options?: AgentCoreCLIErrorOptions) {
     super(message, options);
     this.name = new.target.name;
-    this.source = options?.source ?? ERROR_SOURCE.UNKNOWN;
+    this.source = options?.source ?? ERROR_SOURCE.INTERNAL;
     this.meta = options?.meta ?? {};
     this.exitCode = options?.exitCode ?? 1;
   }
@@ -32,6 +33,28 @@ export class AgentCoreCLIError extends Error {
       meta: this.meta,
       source: this.source,
     };
+  }
+
+  static fromError(error: unknown): AgentCoreCLIError {
+    if (error instanceof AgentCoreCLIError) return error;
+
+    if (ServiceException.isInstance(error)) {
+      const httpStatusCode = error.$metadata.httpStatusCode;
+      const source =
+        httpStatusCode !== undefined && httpStatusCode >= 400 && httpStatusCode < 500
+          ? ERROR_SOURCE.USER
+          : ERROR_SOURCE.SERVICE;
+
+      return new AgentCoreCLIError(error.message, {
+        cause: error,
+        source,
+        meta: { ...error.$metadata },
+      });
+    }
+
+    if (error instanceof Error) return new AgentCoreCLIError(error.message, { cause: error });
+
+    return new AgentCoreCLIError(String(error), { cause: error });
   }
 }
 

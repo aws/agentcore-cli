@@ -3,7 +3,6 @@ export const ERROR_SOURCE = {
   INTERNAL: "internal",
   USER: "user",
   SERVICE: "service",
-  UNKNOWN: "unknown",
 } as const;
 
 /** Describes the source of the error, whether it was the user, internal to the CLI, a service, or unknown. */
