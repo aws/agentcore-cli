@@ -3,6 +3,8 @@ name: Restricted Agent
 # RESTRICTED ACCESS VERSION
 # Only specific users can trigger this workflow manually
 
+# dummy change
+
 on:
   workflow_dispatch:
     inputs:
