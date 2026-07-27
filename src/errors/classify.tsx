@@ -1,5 +1,6 @@
 import { ServiceException } from "@smithy/core/client";
-import { AgentCoreCLIError, ERROR_SOURCE } from "./types";
+import { ERROR_SOURCE } from "./types";
+import { AgentCoreCLIError } from "./errors";
 
 /** Converts any thrown value into an {@link AgentCoreCLIError}, preserving known CLI errors. */
 export function classify(error: unknown): AgentCoreCLIError {

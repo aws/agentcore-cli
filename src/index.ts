@@ -55,7 +55,7 @@ process.exit(
 
       // Pass it to the root handler, along with the process's standard streams as
       // the app's io. CoreClient exposes feature sub-clients (e.g. `.harness`), so
-      // it satisfies the Core contract directly.u
+      // it satisfies the Core contract directly.
       const rootHandler = createRootHandler(coreClient, {
         io,
         logger: rootLogger,

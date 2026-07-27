@@ -5,7 +5,8 @@ import {
   InternalServerException,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { classify } from "./classify";
-import { AgentCoreCLIError, InputValidationError, type ErrorSource } from "./types";
+import { type ErrorSource } from "./types";
+import { AgentCoreCLIError, InputValidationError } from "./errors";
 
 describe("classify", () => {
   test("preserves existing AgentCoreCLIError instances", () => {
