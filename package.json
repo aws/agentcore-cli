@@ -64,6 +64,7 @@
     "prepare": "husky",
     "test": "vitest run --project unit",
     "test:all": "vitest run",
+    "test:docs": "node --test scripts/*.test.mjs && python3 -m unittest scripts/test_render_adoc.py",
     "test:watch": "vitest --project unit",
     "test:integ": "npm run build && vitest run --project integ",
     "test:unit": "vitest run --project unit --coverage",

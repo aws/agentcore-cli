@@ -86,10 +86,7 @@ function help(args) {
 }
 
 const PARAMETER_DESCRIPTION_OVERRIDES = new Map([
-  [
-    'bedrock, open_ai, or gemini',
-    'The model provider. Valid values: `bedrock`, `open_ai`, or `gemini`.',
-  ],
+  ['bedrock, open_ai, or gemini', 'The model provider. Valid values: `bedrock`, `open_ai`, or `gemini`.'],
   [
     'Override LiteLLM API base URL (harness only, lite_llm) [non-interactive]',
     'The LiteLLM API base URL override for harness invocations. ' +
@@ -189,12 +186,10 @@ function entryForCommand(name) {
     // reuse params for both positional args and flags, flagged by required.
     // The renderer already wraps param names in backticks, so don't add our
     // own (that produced double-backticks). Drop the ubiquitous help flag.
-    params: [...parsed.args, ...parsed.options.filter(o => !/^-h,?\s|--help\b/.test(o.name))].map(
-      param => ({
-        ...param,
-        description: normalizeParameterDescription(param.description),
-      })
-    ),
+    params: [...parsed.args, ...parsed.options.filter(o => !/^-h,?\s|--help\b/.test(o.name))].map(param => ({
+      ...param,
+      description: normalizeParameterDescription(param.description),
+    })),
     returns: null,
     raises: [],
     examples: [],
