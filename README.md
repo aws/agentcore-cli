@@ -58,6 +58,7 @@ agentcore                          # interactive TUI
 ├── runtime                        # inspect deployed AgentCore Runtimes
 │   ├── get                        # fetch a Runtime by id
 │   ├── list                       # list Runtimes (server-side paginated)
+│   ├── invoke                     # invoke a Runtime
 │   ├── version
 │   │   ├── get                    # get a specific Runtime version
 │   │   └── list                   # list a Runtime's versions
@@ -153,6 +154,78 @@ Source-aware values: any field flag documented as such accepts the value inline,
 `file://<path>` to read it from a file, or `-` to read it from stdin (the AWS CLI
 `file://` convention). A command reads stdin from at most one flag. For example,
 `--instructions file://order-quality.txt` or `--instructions -`.
+
+### Invoke a Runtime
+
+Runtime invocation accepts inline, file, or stdin payload bytes:
+
+```bash
+# Inline
+agentcore runtime invoke \
+  --id <runtimeId> \
+  --payload '{"action":"status"}' \
+  --content-type application/json \
+  --accept text/event-stream
+
+# File
+agentcore runtime invoke --id <runtimeId> --payload file://request.json
+
+# stdin
+cat request.json | agentcore runtime invoke --id <runtimeId> --payload -
+```
+
+CUSTOM_JWT Runtimes require `--bearer-token`. The token accepts the same inline,
+`file://`, or stdin sources as the payload; payload and token cannot both read
+stdin.
+
+```bash
+agentcore runtime invoke \
+  --id <runtimeId> \
+  --payload file://request.json \
+  --bearer-token file://$HOME/.config/agentcore/runtime-token
+```
+
+For MCP Runtimes, initialize first, then pass the returned Runtime and MCP
+session IDs to later methods. MCP requests accept both JSON and SSE responses.
+
+```bash
+agentcore runtime invoke \
+  --id <runtimeId> \
+  --payload '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"agentcore-cli","version":"1"}}}' \
+  --accept 'application/json, text/event-stream' \
+  --mcp-protocol-version 2025-03-26 \
+  --mcp-method initialize
+
+agentcore runtime invoke \
+  --id <runtimeId> \
+  --payload '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+  --accept 'application/json, text/event-stream' \
+  --session-id <returnedRuntimeSessionId> \
+  --mcp-session-id <returnedMcpSessionId> \
+  --mcp-protocol-version 2025-03-26 \
+  --mcp-method tools/list
+```
+
+Raw mode streams exact response bytes to stdout and writes response metadata to
+stderr. Use `--output-file` for binary responses. `--json` instead buffers one
+response and emits a metadata envelope without interpreting the customer body.
+
+```bash
+agentcore runtime invoke \
+  --id <runtimeId> \
+  --payload file://request.bin \
+  --content-type application/octet-stream \
+  --accept application/octet-stream \
+  --output-file response.bin
+
+agentcore runtime invoke --id <runtimeId> --payload '{"action":"status"}' --json
+# {"statusCode":200,"contentType":"application/json","bodyEncoding":"utf8","body":"{\"ok\":true}","complete":true}
+```
+
+Runtime Invoke accepts Runtime IDs from the current account only. It does not
+accept ARNs, `--version`, `--interactive`, cross-account targets, or custom
+request paths. All requests use the Runtime `/invocations` route, including MCP
+Runtimes.
 
 Bare Runtime branches and leaves require a TTY on stdin and stdout. Supplying
 operation flags runs the command headlessly, and `--json` always suppresses TUI
