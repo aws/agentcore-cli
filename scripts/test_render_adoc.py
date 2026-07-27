@@ -24,6 +24,14 @@ class NormalizeParamDescriptionTest(unittest.TestCase):
             normalize_style("Client for the AgentCore Code Interpreter sandbox service."),
             "Client for the Amazon Bedrock AgentCore Code Interpreter sandbox service.",
         )
+        self.assertEqual(
+            normalize_style("Retrieves an API key from AgentCore Identity."),
+            "Retrieves an API key from Amazon Bedrock AgentCore Identity.",
+        )
+        self.assertEqual(
+            normalize_style("Provides credentials, allowing applications to connect."),
+            "Provides credentials so applications can connect.",
+        )
 
 
 if __name__ == "__main__":
