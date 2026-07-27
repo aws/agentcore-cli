@@ -1,0 +1,156 @@
+import { validateHeaderName, validateHeaderValue } from "node:http";
+import z from "zod";
+import type { GetAgentRuntimeResponse } from "@aws-sdk/client-bedrock-agentcore-control";
+import { SourceResolutionError, SourceResolver } from "../../../io";
+import type { RuntimeInvokeRequest } from "../types";
+
+export const runtimeIdSchema = z
+  .string()
+  .refine((value) => !value.startsWith("arn:"), "must be a Runtime ID, not an ARN");
+
+type RuntimeInvokeInput = Omit<RuntimeInvokeRequest, "accountId" | "qualifier" | "contentType"> &
+  Partial<Pick<RuntimeInvokeRequest, "qualifier" | "contentType">>;
+
+const CUSTOM_HEADER_PREFIX = "x-amzn-bedrock-agentcore-runtime-custom-";
+const RESERVED_HEADERS = new Set([
+  "authorization",
+  "accept",
+  "content-length",
+  "content-type",
+  "host",
+  "mcp-method",
+  "mcp-name",
+  "mcp-protocol-version",
+  "mcp-session-id",
+  "x-amzn-bedrock-agentcore-runtime-session-id",
+  "x-amzn-bedrock-agentcore-runtime-user-id",
+  "x-amzn-trace-id",
+  "traceparent",
+  "tracestate",
+  "baggage",
+]);
+
+export class UsageError extends TypeError {
+  readonly exitCode = 2;
+}
+
+export async function resolveRuntimeInvokeSources(
+  sources: { payload: string; bearerToken?: string },
+  stdin?: NodeJS.ReadStream,
+  signal?: AbortSignal,
+): Promise<{ payload: Uint8Array; bearerToken?: string }> {
+  if (sources.payload === "-" && sources.bearerToken === "-") {
+    throw new UsageError("Payload and bearer token cannot both read from stdin");
+  }
+
+  const resolver = new SourceResolver({ stdin, signal });
+  try {
+    const payload = await resolver.resolveBytes("payload", sources.payload);
+    const bearerToken = await resolver.resolveText("bearer-token", sources.bearerToken);
+    return {
+      payload: payload!,
+      ...(bearerToken !== undefined && { bearerToken }),
+    };
+  } catch (error) {
+    if (error instanceof SourceResolutionError) {
+      throw new UsageError(error.message, { cause: error });
+    }
+    throw error;
+  }
+}
+
+export function parseRuntimeInvokeHeaders(values: string[] = []): [string, string][] {
+  const seen = new Set<string>();
+
+  return values.map((header) => {
+    const separator = header.indexOf(":");
+    if (separator < 1) throw new UsageError("Header must use 'Name: value' format");
+    const name = header.slice(0, separator).trim();
+    const value = header.slice(separator + 1).trim();
+    try {
+      validateHeaderName(name);
+    } catch {
+      throw new UsageError(
+        `Invalid HTTP header name: ${name} (must use valid HTTP token characters)`,
+      );
+    }
+    try {
+      validateHeaderValue(name, value);
+    } catch {
+      throw new UsageError(
+        `Invalid header value for ${name}: contains a character not allowed in HTTP headers`,
+      );
+    }
+    const lower = name.toLowerCase();
+    if (seen.has(lower)) throw new UsageError(`Duplicate header: ${name}`);
+    seen.add(lower);
+    if (RESERVED_HEADERS.has(lower))
+      throw new UsageError(`Application header is reserved: ${name}`);
+    return [name, value];
+  });
+}
+
+function validateAllowedHeaders(
+  detail: GetAgentRuntimeResponse,
+  headers: [string, string][],
+): void {
+  const allowlist =
+    detail.requestHeaderConfiguration &&
+    "requestHeaderAllowlist" in detail.requestHeaderConfiguration
+      ? (detail.requestHeaderConfiguration.requestHeaderAllowlist ?? []).map((name) =>
+          name.toLowerCase(),
+        )
+      : [];
+  for (const [name] of headers) {
+    const lower = name.toLowerCase();
+    if (!lower.startsWith(CUSTOM_HEADER_PREFIX) && !allowlist.includes(lower)) {
+      throw new UsageError(`Application header is not allowed: ${name}`);
+    }
+  }
+}
+
+export function normalizeRuntimeInvokeRequest(
+  detail: GetAgentRuntimeResponse,
+  input: RuntimeInvokeInput,
+): RuntimeInvokeRequest {
+  const accountId = detail.agentRuntimeArn?.match(
+    /^arn:[^:]+:bedrock-agentcore:[^:]*:(\d{12}):runtime\//,
+  )?.[1];
+  if (!accountId) {
+    throw new UsageError("Runtime returned an invalid ARN");
+  }
+
+  const authorizer = detail.authorizerConfiguration;
+  const customJwt = authorizer !== undefined && "customJWTAuthorizer" in authorizer;
+  if (authorizer && !customJwt) throw new UsageError("Runtime uses an unsupported authorizer");
+  const { runtimeId, qualifier, payload, contentType, applicationHeaders = [], ...modeled } = input;
+  if (customJwt && !modeled.bearerToken) {
+    throw new UsageError("CUSTOM_JWT Runtime requires --bearer-token");
+  }
+  if (!customJwt && modeled.bearerToken !== undefined) {
+    throw new UsageError("IAM Runtime does not accept --bearer-token");
+  }
+
+  const mcp = detail.protocolConfiguration?.serverProtocol === "MCP";
+  const mcpValues = [
+    modeled.mcpSessionId,
+    modeled.mcpProtocolVersion,
+    modeled.mcpMethod,
+    modeled.mcpName,
+  ];
+  if (!mcp && mcpValues.some((value) => value !== undefined)) {
+    throw new UsageError("MCP options are only valid for MCP Runtimes");
+  }
+  validateAllowedHeaders(detail, applicationHeaders);
+
+  return {
+    runtimeId,
+    accountId,
+    qualifier: qualifier ?? "DEFAULT",
+    payload,
+    contentType: contentType || "application/json",
+    ...modeled,
+    accept: modeled.accept ?? (mcp ? "application/json, text/event-stream" : undefined),
+    ...(applicationHeaders.length > 0 && { applicationHeaders }),
+  };
+}

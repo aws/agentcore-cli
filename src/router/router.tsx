@@ -108,7 +108,7 @@ export function compile(
   stack: Middleware[] = [],
   inheritedGlobals: GlobalFlag[] = [],
 ): Command {
-  const c = new Command(node.name());
+  const c = new Command(node.name()).exitOverride();
   c.description(node.description());
 
   const ownFlags = node.flags();

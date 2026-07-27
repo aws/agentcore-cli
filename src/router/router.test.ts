@@ -265,7 +265,7 @@ test("applies a schema default for an omitted flag", async () => {
   expect(seen).toEqual({ count: 7 });
 });
 
-test("reports invalid input via command.error (throws under exitOverride)", async () => {
+test("marks invalid flag schema input as usage", async () => {
   const get = createHandler({
     name: "get",
     description: "",
@@ -512,7 +512,7 @@ test("a required positional argument is mandatory", async () => {
   await expect(cmd.parseAsync(["node", "app", "get"])).rejects.toThrow();
 });
 
-test("rejects an argument that fails schema validation", async () => {
+test("marks invalid argument schema input as usage", async () => {
   const config = createHandler({
     name: "config",
     description: "",
@@ -527,9 +527,13 @@ test("rejects an argument that fails schema validation", async () => {
 
   const cmd = exitOverrideAll(compile(root, ValueContext.EmptyContext()));
 
-  await expect(cmd.parseAsync(["node", "app", "config", "toolong"])).rejects.toThrow(
-    /Invalid value for argument 'key'/,
-  );
+  const error = await cmd
+    .parseAsync(["node", "app", "config", "toolong"])
+    .catch((caught) => caught);
+
+  expect(error).toBeInstanceOf(TypeError);
+  expect(error.message).toContain("Invalid value for argument 'key'");
+  expect(error.exitCode).toBe(2);
 });
 
 test("compile rejects a variadic argument that is not the last positional", () => {

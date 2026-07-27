@@ -5,6 +5,7 @@ import type { AppIO } from "../../io";
 import type { Core } from "../types";
 import { createRuntimeEndpointHandler } from "./endpoint";
 import { createGetRuntimeHandler } from "./get";
+import { createInvokeRuntimeHandler } from "./invoke";
 import { createListRuntimesHandler } from "./list";
 import { createRuntimeVersionHandler } from "./version";
 
@@ -14,6 +15,7 @@ export function createRuntimeHandler(core: Core, io: AppIO): Router {
     .default(renderTui(core, io))
     .handler(createGetRuntimeHandler(core))
     .handler(createListRuntimesHandler(core))
+    .handler(createInvokeRuntimeHandler(core, io))
     .handler(createRuntimeVersionHandler(core, io))
     .handler(createRuntimeEndpointHandler(core, io));
 }
