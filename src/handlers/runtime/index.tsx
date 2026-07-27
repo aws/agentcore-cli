@@ -1,7 +1,8 @@
 import { withTuiOnEmptyFlagsAndArgs } from "../../middleware";
 import { Router } from "../../router";
 import { renderTui } from "../../tui";
-import type { AppIO, Core } from "../types";
+import type { AppIO } from "../../io";
+import type { Core } from "../types";
 import { createRuntimeEndpointHandler } from "./endpoint";
 import { createGetRuntimeHandler } from "./get";
 import { createListRuntimesHandler } from "./list";

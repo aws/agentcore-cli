@@ -3,8 +3,8 @@ import {
   type GlobalConfig,
   type GlobalConfigAccessor,
   type GlobalConfigFileData,
-  type ReadWriteJson,
 } from "./types";
+import type { ReadWriteJson } from "../io";
 import type { Logger } from "../logging";
 import z from "zod";
 import { globalConfigFileSchema } from "./types";

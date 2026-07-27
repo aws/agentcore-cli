@@ -7,7 +7,8 @@ import { createConfigHandler } from "./config/";
 import { createProjectHandler } from "./project/index.ts";
 import { renderTui } from "../tui";
 import { withRegion, withJsonRenderer, withLogging, withGlobalConfigAccessor } from "../middleware";
-import type { AppIO, Core } from "./types.tsx";
+import type { AppIO } from "../io";
+import type { Core } from "./types.tsx";
 import type { Logger } from "../logging";
 import type { GlobalConfigAccessor } from "../globalConfig";
 

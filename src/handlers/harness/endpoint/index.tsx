@@ -1,6 +1,7 @@
 import { renderTui } from "../../../tui";
 import { Router } from "../../../router";
-import type { AppIO, Core } from "../../types";
+import type { AppIO } from "../../../io";
+import type { Core } from "../../types";
 import { createCreateEndpointHandler } from "./create";
 import { createGetEndpointHandler } from "./get";
 import { createListEndpointsHandler } from "./list";

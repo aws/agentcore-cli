@@ -8,7 +8,8 @@ import {
   contextKey,
   type ContextKey,
 } from "../router";
-import type { AppIO, Core } from "../handlers/types";
+import type { AppIO } from "../io";
+import type { Core } from "../handlers/types";
 import { JsonKey } from "../handlers/keys";
 
 // renderJson pretty-prints a value as indented JSON. It is the output

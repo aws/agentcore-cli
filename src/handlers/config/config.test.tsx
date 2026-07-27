@@ -4,7 +4,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createRootHandler } from "../index";
 import { createSilentLogger, TestCoreClient, testIO } from "../../testing";
-import { DefaultGlobalConfigAccessor, FsReadWriteJson } from "../../globalConfig";
+import { DefaultGlobalConfigAccessor } from "../../globalConfig";
+import { FsReadWriteJson } from "../../io";
 
 describe("config", () => {
   let tempDir: string;

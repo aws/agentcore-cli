@@ -1,5 +1,6 @@
 import { Router } from "../../../router";
-import type { AppIO, Core } from "../../types";
+import type { AppIO } from "../../../io";
+import type { Core } from "../../types";
 import { createHelpDefault } from "../../help";
 import { createCreateApiKeyCredentialProviderHandler } from "./create";
 import { createDeleteApiKeyCredentialProviderHandler } from "./delete";

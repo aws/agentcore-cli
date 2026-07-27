@@ -35,10 +35,3 @@ export interface GlobalConfigAccessor {
   /** Validates and persists a new config. Throws on invalid shape. */
   set(newConfig: GlobalConfig): Promise<GlobalConfig>;
 }
-
-export interface ReadWriteJson {
-  /** Reads data from the given file */
-  read<TSchema extends z.ZodType>(filePath: string, schema: TSchema): Promise<z.infer<TSchema>>;
-  /** Writes data to the given file */
-  write<TData extends object>(filePath: string, data: TData): Promise<TData>;
-}
