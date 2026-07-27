@@ -34,9 +34,14 @@ npm run test:e2e
 
 # Run a specific file
 npx vitest run e2e-tests/strands-bedrock.test.ts
+
+# Run the test declared at a specific line
+npx vitest run e2e-tests/import-gateway.test.ts:120
 ```
 
-E2E tests are not run automatically on every PR. They run on a schedule and before releases.
+The PR E2E workflow runs baseline tests plus E2E files changed by the PR. Maintainers can also dispatch the workflow for
+a PR with a specific file, line, or test-name pattern; see
+[`docs/testing/e2e-tests.md`](../docs/testing/e2e-tests.md#running-a-specific-test-on-a-pr).
 
 ## Writing E2E Tests
 
