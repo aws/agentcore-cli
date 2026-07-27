@@ -7,7 +7,7 @@ import {
   isRatingScalePreset,
   ratingScaleFromPreset,
 } from "../../ratingScale";
-import type { SourceResolver } from "../../source";
+import type { SourceResolver } from "../../../../io";
 
 export const LEVELS = ["SESSION", "TRACE", "TOOL_CALL"] as const;
 
@@ -34,6 +34,6 @@ export async function resolveRatingScale(
 ): Promise<RatingScale | undefined> {
   if (value === undefined) return undefined;
   if (isRatingScalePreset(value)) return ratingScaleFromPreset(value);
-  const raw = await source.resolve("rating-scale", value);
+  const raw = await source.resolveText("rating-scale", value);
   return parseJsonFlag<RatingScale>("rating-scale", raw);
 }

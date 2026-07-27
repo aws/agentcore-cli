@@ -1,9 +1,9 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../../router";
 import { JsonRendererKey } from "../../../../../tui";
-import type { AppIO, Core } from "../../../../types";
+import { SourceResolver, type AppIO } from "../../../../../io";
+import type { Core } from "../../../../types";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../../utils";
-import { SourceResolver } from "../../../source";
 import { LEVELS, instructionsFlag, ratingScaleFlag, resolveRatingScale } from "../utils";
 
 export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
@@ -29,8 +29,8 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
       if (!flags["level"]) throw new TypeError("required option '--level <level>' not specified");
       if (!flags["model"]) throw new TypeError("required option '--model <model>' not specified");
 
-      const source = new SourceResolver(io);
-      const instructions = await source.resolve("instructions", flags["instructions"]);
+      const source = new SourceResolver({ stdin: io.stdin });
+      const instructions = await source.resolveText("instructions", flags["instructions"]);
       if (!instructions) {
         throw new TypeError("required option '--instructions <instructions>' not specified");
       }
@@ -40,7 +40,7 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
       }
       const tags = parseJsonFlag<Record<string, string>>(
         "tags",
-        await source.resolve("tags", flags["tags"]),
+        await source.resolveText("tags", flags["tags"]),
       );
 
       const response = await core.eval.createEvaluator(

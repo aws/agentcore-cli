@@ -1,9 +1,9 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../../router";
 import { JsonRendererKey } from "../../../../../tui";
-import type { AppIO, Core } from "../../../../types";
+import { SourceResolver, type AppIO } from "../../../../../io";
+import type { Core } from "../../../../types";
 import { coreOptsFromCtx } from "../../../../utils";
-import { SourceResolver } from "../../../source";
 import { instructionsFlag, ratingScaleFlag, resolveRatingScale } from "../utils";
 
 export const createLlmAsAJudgeUpdateHandler = (core: Core, io: AppIO) =>
@@ -21,8 +21,8 @@ export const createLlmAsAJudgeUpdateHandler = (core: Core, io: AppIO) =>
     handle: async (ctx, flags) => {
       if (!flags["id"]) throw new TypeError("required option '--id <id>' not specified");
 
-      const source = new SourceResolver(io);
-      const instructions = await source.resolve("instructions", flags["instructions"]);
+      const source = new SourceResolver({ stdin: io.stdin });
+      const instructions = await source.resolveText("instructions", flags["instructions"]);
       const ratingScale = await resolveRatingScale(flags["rating-scale"], source);
 
       const response = await core.eval.updateLlmAsAJudgeEvaluator(

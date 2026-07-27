@@ -1,9 +1,9 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../../router";
 import { JsonRendererKey } from "../../../../../tui";
-import type { AppIO, Core } from "../../../../types";
+import { SourceResolver, type AppIO } from "../../../../../io";
+import type { Core } from "../../../../types";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../../utils";
-import { SourceResolver } from "../../../source";
 
 const LEVELS = ["SESSION", "TRACE", "TOOL_CALL"] as const;
 
@@ -32,10 +32,10 @@ export const createCodeBasedCreateHandler = (core: Core, io: AppIO) =>
         throw new TypeError("required option '--lambda-arn <lambda-arn>' not specified");
       }
 
-      const source = new SourceResolver(io);
+      const source = new SourceResolver({ stdin: io.stdin });
       const tags = parseJsonFlag<Record<string, string>>(
         "tags",
-        await source.resolve("tags", flags["tags"]),
+        await source.resolveText("tags", flags["tags"]),
       );
 
       const response = await core.eval.createEvaluator(

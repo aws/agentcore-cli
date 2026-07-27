@@ -3,7 +3,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EvaluatorType, type EvaluatorSummary } from "@aws-sdk/client-bedrock-agentcore-control";
-import { createSilentLogger, TestCoreClient, testIO } from "../../../testing";
+import {
+  createSilentLogger,
+  TestCoreClient,
+  TestGlobalConfigAccessor,
+  testIO,
+} from "../../../testing";
 import { createRootHandler } from "../../index";
 import { ratingScaleFromPreset } from "../ratingScale";
 
@@ -18,7 +23,11 @@ function run(core: TestCoreClient, args: string[], stdin?: string) {
     io.io.stdin.push(stdin);
     io.io.stdin.push(null);
   }
-  const root = createRootHandler(core, { io: io.io, logger: createSilentLogger() });
+  const root = createRootHandler(core, {
+    io: io.io,
+    logger: createSilentLogger(),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
+  });
   return root.route(["node", "agentcore", ...args, "--region", REGION]).then(() => io.stdout());
 }
 
@@ -27,6 +36,7 @@ describe("eval command hierarchy", () => {
     const root = createRootHandler(new TestCoreClient(), {
       io: testIO().io,
       logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
     });
     const evaluator = root
       .children()
