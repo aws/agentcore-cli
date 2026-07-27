@@ -3,7 +3,7 @@ import { ERROR_SOURCE, type ErrorSource } from "./types";
 export interface AgentCoreCLIErrorOptions extends ErrorOptions {
   /** The source fo the error. See {@link ErrorSource} for more information */
   source?: ErrorSource;
-  /** Abitrary metdata to attach to errors for logging */
+  /** Arbitrary metdata to attach to errors for logging */
   meta?: Record<string, unknown>;
   /** Describes the exitCode for the CLI when this error hits the root handler */
   exitCode?: number;
