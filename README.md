@@ -11,7 +11,7 @@
 
 ## Overview
 
-Amazon Bedrock AgentCore enables you to deploy and operate AI agents securely at scale using any framework and model.
+Amazon Bedrock AgentCore enables you to deploy and operate AI agents securely at scale, using any framework and model.
 AgentCore provides tools and capabilities to make agents more effective, purpose-built infrastructure to securely scale
 agents, and controls to operate trustworthy agents. This CLI helps you create, develop locally, and deploy agents to
 AgentCore with minimal configuration.
