@@ -31,6 +31,7 @@ import { RuntimeListVersionsScreen } from "../handlers/runtime/version/list/scre
 import { MemoryScreen } from "../handlers/memory/screen.tsx";
 import { MemoryGetJsonScreen, MemoryGetScreen } from "../handlers/memory/get/screen.tsx";
 import { MemoryListScreen } from "../handlers/memory/list/screen.tsx";
+import { RuntimeInvokeScreen } from "../handlers/runtime/invoke/screen.tsx";
 import { RootScreen, HelpScreen } from "../handlers/screen.tsx";
 import type { Context } from "../router";
 
@@ -274,6 +275,18 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/memory/get/:memoryId/json"
             element={<MemoryGetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/invoke"
+            element={<RuntimeInvokeScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/invoke/:runtimeId"
+            element={<RuntimeInvokeScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/invoke/:runtimeId/:qualifier"
+            element={<RuntimeInvokeScreen ctx={ctx} core={core} />}
           />
           <Route path="*" element={<HelpScreen ctx={ctx} core={core} />} />
         </Routes>

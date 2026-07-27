@@ -52,6 +52,7 @@ export interface RuntimePickerProps extends ScreenProps {
   breadcrumb: string[];
   description?: string;
   onSelect: (runtimeId: string) => void;
+  onEscape?: () => void;
 }
 
 export function RuntimePicker({
@@ -60,10 +61,11 @@ export function RuntimePicker({
   breadcrumb,
   description,
   onSelect,
+  onEscape,
 }: RuntimePickerProps) {
   const opts = coreOptsFromCtx(ctx);
   const navigate = useNavigate();
-  const goBack = () => navigate("/" + breadcrumb.slice(0, -1).join("/"));
+  const goBack = onEscape ?? (() => navigate("/" + breadcrumb.slice(0, -1).join("/")));
 
   return (
     <PaginatedTablePicker

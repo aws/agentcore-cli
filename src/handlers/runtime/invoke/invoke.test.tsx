@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Writable } from "node:stream";
@@ -13,6 +13,7 @@ import {
 } from "../../../testing";
 import { ExitCode, runWithExitCode } from "../../../runnable";
 import { createRootHandler } from "../../index";
+import * as tui from "../../../tui";
 
 const REGION = "us-west-2";
 const RUNTIME_ID = "runtime-123";
@@ -153,17 +154,15 @@ describe("runtime invoke", () => {
     });
   });
 
-  test.each<[string, string[]]>([
-    ["no request options", []],
-    ["--content-type", ["--content-type", "text/plain"]],
-    ["--header", ["--header", "X-Test: value"]],
-    ["--output-file", ["--output-file", "response.bin"]],
-    ["--json", ["--json"]],
-  ])("requires a payload with %s before Core calls", async (_name, extraArgs) => {
+  test.each([
+    ["--content-type", "text/plain"],
+    ["--header", "X-Test: value"],
+    ["--output-file", "response.bin"],
+  ])("rejects request option %s without a payload before Core calls", async (flagName, value) => {
     const core = new TestCoreClient();
     const output = captureIO();
     await expect(
-      runCommand(core, output.io, ["runtime", "invoke", "--id", RUNTIME_ID, ...extraArgs]),
+      runCommand(core, output.io, ["runtime", "invoke", "--id", RUNTIME_ID, flagName, value]),
     ).rejects.toThrow(/--payload/);
     expect(core.runtime.calls).toEqual([]);
   });
@@ -340,15 +339,12 @@ describe("runtime invoke", () => {
     expect(core.runtime.calls).toEqual([]);
   });
 
-  test.each<[string, string[]]>([
-    ["--id", ["--payload", "{}"]],
-    ["--payload", ["--id", RUNTIME_ID]],
-  ])("classifies a missing %s as usage before Core calls", async (_flag, args) => {
+  test("classifies a missing --id as usage before Core calls", async () => {
     const core = new TestCoreClient();
     const output = captureIO();
 
     const code = await runWithExitCode(async () =>
-      runCommand(core, output.io, ["runtime", "invoke", ...args]),
+      runCommand(core, output.io, ["runtime", "invoke", "--payload", "{}"]),
     );
 
     expect(code).toBe(ExitCode.USAGE);
@@ -394,13 +390,65 @@ describe("runtime invoke", () => {
     expect(core.runtime.calls.map((call) => call.method)).toEqual(["getRuntime"]);
   });
 
-  test("a bare command reaches the Runtime TUI middleware without Core calls", async () => {
+  test("a bare command enters existing TUI middleware without Runtime Core calls", async () => {
     const core = new TestCoreClient();
     const output = captureIO();
 
     await expect(runCommand(core, output.io, ["runtime", "invoke"])).rejects.toThrow(
       "interactive mode requires a TTY on stdin and stdout",
     );
+    expect(core.runtime.calls).toEqual([]);
+  });
+
+  test("classifies the TUI requirement as usage at the handler boundary", async () => {
+    const core = new TestCoreClient();
+    const output = captureIO();
+    const render = spyOn(tui, "renderTuiAt").mockRejectedValue(new tui.TtyRequiredError());
+
+    try {
+      const code = await runWithExitCode(async () =>
+        runCommand(core, output.io, ["runtime", "invoke", "--id", RUNTIME_ID]),
+      );
+
+      expect(code).toBe(ExitCode.USAGE);
+      expect(core.runtime.calls).toEqual([]);
+    } finally {
+      render.mockRestore();
+    }
+  });
+
+  test("handler deep-links id-only and qualified invokes with encoded path segments", async () => {
+    const core = new TestCoreClient();
+    const output = captureIO();
+    const render = spyOn(tui, "renderTuiAt").mockResolvedValue(undefined);
+
+    try {
+      await runCommand(core, output.io, ["runtime", "invoke", "--id", "runtime/blue one"]);
+      await runCommand(core, output.io, [
+        "runtime",
+        "invoke",
+        "--id",
+        "runtime/blue one",
+        "--qualifier",
+        "prod/green one",
+      ]);
+
+      expect(render.mock.calls.map(([path]) => path)).toEqual([
+        "/agentcore/runtime/invoke/runtime%2Fblue%20one",
+        "/agentcore/runtime/invoke/runtime%2Fblue%20one/prod%2Fgreen%20one",
+      ]);
+    } finally {
+      render.mockRestore();
+    }
+  });
+
+  test("handler keeps JSON mode without a payload as a usage error", async () => {
+    const core = new TestCoreClient();
+    const output = captureIO();
+
+    await expect(
+      runCommand(core, output.io, ["runtime", "invoke", "--id", RUNTIME_ID, "--json"]),
+    ).rejects.toThrow(/--payload/);
     expect(core.runtime.calls).toEqual([]);
   });
 

@@ -58,7 +58,7 @@ agentcore                          # interactive TUI
 ├── runtime                        # inspect deployed AgentCore Runtimes
 │   ├── get                        # fetch a Runtime by id
 │   ├── list                       # list Runtimes (server-side paginated)
-│   ├── invoke                     # invoke a Runtime
+│   ├── invoke                     # invoke a Runtime headlessly or in a persistent console
 │   ├── version
 │   │   ├── get                    # get a specific Runtime version
 │   │   └── list                   # list a Runtime's versions
@@ -182,7 +182,7 @@ Source-aware values: any field flag documented as such accepts the value inline,
 
 ### Invoke a Runtime
 
-Runtime invocation accepts inline, file, or stdin payload bytes:
+Headless invocation accepts inline, file, or stdin payload bytes:
 
 ```bash
 # Inline
@@ -253,6 +253,19 @@ agentcore runtime invoke \
 agentcore runtime invoke --id <runtimeId> --payload '{"action":"status"}' --json
 # {"statusCode":200,"contentType":"application/json","bodyEncoding":"utf8","body":"{\"ok\":true}","complete":true}
 ```
+
+Without `--payload`, Runtime Invoke opens a persistent console for repeated
+requests. Bare invoke opens the Runtime and endpoint pickers; `--id` skips the
+Runtime picker, and `--id` plus `--qualifier` opens the console directly.
+
+| Shortcut | Action                                       |
+| -------- | -------------------------------------------- |
+| `Ctrl+D` | Send the request                             |
+| `Ctrl+O` | Open Request Options                         |
+| `Ctrl+T` | Change Runtime or endpoint                   |
+| `Ctrl+V` | Toggle raw and pretty completed JSON         |
+| `Esc`    | Interrupt an active request or navigate back |
+| `↑`/`↓`  | Scroll response history                      |
 
 Runtime Invoke accepts Runtime IDs from the current account only. It does not
 accept ARNs, `--version`, `--interactive`, cross-account targets, or custom

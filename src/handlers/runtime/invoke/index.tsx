@@ -1,11 +1,12 @@
 import z from "zod";
 import { InputValidationError, RuntimeInvokeInterruptedError } from "../../../errors";
-import { createHandler, flag } from "../../../router";
+import { createHandler, flag, PathKey } from "../../../router";
 import type { AppIO } from "../../../io";
 import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 import { JsonKey } from "../../keys";
 import { ExitCode } from "../../../runnable";
+import { renderTuiAt, TtyRequiredError } from "../../../tui";
 import {
   normalizeRuntimeInvokeRequest,
   parseRuntimeInvokeHeaders,
@@ -55,9 +56,27 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
         });
       }
       if (flags.payload === undefined) {
-        throw new InputValidationError("required option '--payload <payload>' not specified", {
-          exitCode: ExitCode.USAGE,
-        });
+        const requestOption = Object.entries(flags).some(
+          ([name, value]) => !["id", "qualifier", "payload"].includes(name) && value !== undefined,
+        );
+        if (ctx.require(JsonKey) || requestOption) {
+          throw new InputValidationError("required option '--payload <payload>' not specified", {
+            exitCode: ExitCode.USAGE,
+          });
+        }
+        let path = `${ctx.require(PathKey)}/${encodeURIComponent(flags.id)}`;
+        if (flags.qualifier !== undefined) {
+          path += `/${encodeURIComponent(flags.qualifier)}`;
+        }
+        try {
+          await renderTuiAt(path, ctx, core, io);
+        } catch (error) {
+          if (error instanceof TtyRequiredError) {
+            throw new InputValidationError(error.message, { cause: error });
+          }
+          throw error;
+        }
+        return;
       }
 
       const jsonOutput = ctx.require(JsonKey);

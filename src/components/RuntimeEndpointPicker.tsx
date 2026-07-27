@@ -42,6 +42,7 @@ export interface RuntimeEndpointPickerProps extends ScreenProps {
   breadcrumb: string[];
   description?: string;
   onSelect: (qualifier: string) => void;
+  onEscape?: () => void;
 }
 
 export function RuntimeEndpointPicker({
@@ -51,10 +52,11 @@ export function RuntimeEndpointPicker({
   breadcrumb,
   description,
   onSelect,
+  onEscape,
 }: RuntimeEndpointPickerProps) {
   const opts = coreOptsFromCtx(ctx);
   const navigate = useNavigate();
-  const goBack = () => navigate(-1);
+  const goBack = onEscape ?? (() => navigate(-1));
 
   return (
     <PaginatedTablePicker
