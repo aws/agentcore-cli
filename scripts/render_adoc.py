@@ -62,7 +62,7 @@ def normalize_style(text):
     text = re.sub(r"\be\.g\.(?:,)?", "for example,", text, flags=re.IGNORECASE)
     text = re.sub(
         r"\bAWS (?:Bedrock(?: AgentCore)? )?Code\s*Interpreter\b",
-        "AgentCore Code Interpreter",
+        "Amazon Bedrock AgentCore Code Interpreter",
         text,
         flags=re.IGNORECASE,
     )
@@ -71,6 +71,16 @@ def normalize_style(text):
     text = re.sub(
         r"(?<!Amazon )(?<!AWS )\bBedrock AgentCore\b",
         "Amazon Bedrock AgentCore",
+        text,
+    )
+    text = re.sub(
+        r"(?<!Amazon Bedrock )\bAgentCore Code Interpreter\b",
+        "Amazon Bedrock AgentCore Code Interpreter",
+        text,
+    )
+    text = re.sub(
+        r"(?<!Amazon Bedrock )\bAgentCore runtime\b",
+        "Amazon Bedrock AgentCore runtime",
         text,
     )
     text = re.sub(r"\bAWS region\b", "AWS Region", text, flags=re.IGNORECASE)
