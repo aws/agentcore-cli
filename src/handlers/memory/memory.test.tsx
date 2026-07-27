@@ -1,0 +1,121 @@
+import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
+import { CoreClient } from "../../core";
+import {
+  createSilentLogger,
+  fixtureFactories,
+  matchGolden,
+  TestGlobalConfigAccessor,
+  testIO,
+} from "../../testing";
+import { createRootHandler } from "../index";
+
+const REGION = "us-west-2";
+const FIXTURES = join(import.meta.dir, "__fixtures__");
+
+// These credential-free fixtures are synthetic but use the same SDK send-boundary
+// replay path as recorded fixtures, so command-to-SDK translation remains covered.
+const FIXTURE_MEMORY_ID = "agentcore_cli_memory_read_only_fixture-AbCd123456";
+const MISSING_MEMORY_ID = "missing_memory-0000000000";
+
+function createFixtureCore(): CoreClient {
+  const { createControlClient, createDataClient, createIamClient } = fixtureFactories(FIXTURES);
+
+  return new CoreClient({
+    createControlClient,
+    createDataClient,
+    createIamClient,
+    logger: createSilentLogger(),
+  });
+}
+
+async function run(args: string[]): Promise<string> {
+  const io = testIO();
+  const root = createRootHandler(createFixtureCore(), {
+    io: io.io,
+    logger: createSilentLogger(),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
+  });
+
+  await root.route(["node", "agentcore", ...args, "--region", REGION]);
+  return io.stdout();
+}
+
+describe("memory command hierarchy", () => {
+  test("registers the Memory read-only command hierarchy", () => {
+    const root = createRootHandler(createFixtureCore(), {
+      io: testIO().io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    const memory = root.children().find((child) => child.name() === "memory");
+
+    expect(memory?.flags().map((flag) => flag.name)).not.toContain("interactive");
+    expect(memory?.children().map((child) => child.name())).toEqual(["get", "list"]);
+  });
+
+  test("prints help for bare `memory` without an SDK call", async () => {
+    const stdout = await run(["memory"]);
+
+    expect(stdout).toContain("Usage: agentcore memory");
+    expect(stdout).toContain("Commands:");
+  });
+});
+
+describe("memory read-only commands", () => {
+  test("gets a Memory using the full view by default", async () => {
+    const stdout = await run(["memory", "get", "--id", FIXTURE_MEMORY_ID]);
+
+    matchGolden(FIXTURES, "get.golden.json", stdout);
+    expect(JSON.parse(stdout).memory.id).toBe(FIXTURE_MEMORY_ID);
+  });
+
+  test("accepts the without_decryption view", async () => {
+    const stdout = await run([
+      "memory",
+      "get",
+      "--id",
+      FIXTURE_MEMORY_ID,
+      "--view",
+      "without_decryption",
+    ]);
+
+    matchGolden(FIXTURES, "get.golden.json", stdout);
+  });
+
+  test("paginates Memory list with --max-results and --next-token", async () => {
+    const firstPage = await run(["memory", "list", "--max-results", "1"]);
+    matchGolden(FIXTURES, "list-page-1.golden.json", firstPage);
+
+    const first = JSON.parse(firstPage);
+    expect(first.memories).toHaveLength(1);
+    expect(first.nextToken).toBe("memory-page-2");
+
+    const secondPage = await run([
+      "memory",
+      "list",
+      "--max-results",
+      "1",
+      "--next-token",
+      first.nextToken,
+    ]);
+    matchGolden(FIXTURES, "list-page-2.golden.json", secondPage);
+    expect(JSON.parse(secondPage).memories).toHaveLength(1);
+  });
+
+  test("rejects a missing Memory selector for headless get", async () => {
+    await expect(run(["memory", "get", "--json"])).rejects.toThrow(/--id/);
+  });
+
+  test("rejects an unsupported response view", async () => {
+    await expect(
+      run(["memory", "get", "--id", FIXTURE_MEMORY_ID, "--view", "summary"]),
+    ).rejects.toThrow(/Invalid value for option '--view'/);
+  });
+
+  test("propagates ResourceNotFoundException from Memory get", async () => {
+    await expect(run(["memory", "get", "--id", MISSING_MEMORY_ID])).rejects.toMatchObject({
+      name: "ResourceNotFoundException",
+    });
+  });
+});

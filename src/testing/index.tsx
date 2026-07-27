@@ -5,6 +5,7 @@ export { tick, waitFor } from "./timing";
 export {
   TestCoreClient,
   TestHarnessClient,
+  TestMemoryClient,
   TestRuntimeClient,
   type RecordedCall,
 } from "./TestCoreClient";

@@ -64,6 +64,9 @@ agentcore                          # interactive TUI
 │   └── endpoint
 │       ├── get                    # get a Runtime endpoint by qualifier
 │       └── list                   # list a Runtime's endpoints
+├── memory                         # inspect AgentCore Memories
+│   ├── get                        # fetch a Memory by id
+│   └── list                       # list Memories (server-side paginated)
 └── config                         # read/write global config values
 ```
 
@@ -107,6 +110,11 @@ agentcore runtime version get --id <runtimeId> --version <version>
 agentcore runtime version list --id <runtimeId> --max-results 20
 agentcore runtime endpoint get --id <runtimeId> --qualifier DEFAULT
 agentcore runtime endpoint list --id <runtimeId> --max-results 20
+
+# Inspect AgentCore Memories without project configuration or deployment
+agentcore memory get --id <memoryId>
+agentcore memory get --id <memoryId> --view without_decryption
+agentcore memory list --max-results 20
 
 # Manage API key credential providers
 agentcore identity api-key-credential-provider create --name my-provider --api-key <key>
@@ -537,8 +545,8 @@ A Husky pre-commit hook runs Prettier (via lint-staged) on staged files automati
 
 - **Cover more AgentCore resources.** The harness surface (CRUD, versions,
   endpoints, invoke, exec) is fully implemented in both the CLI and the TUI;
-  the same patterns extend naturally to gateways, memory, browser profiles,
-  and the other control-plane resources.
+  the same patterns extend naturally to gateways, Memory mutations and
+  data-plane operations, browser profiles, and the other AgentCore resources.
 - **Implement `config`.** The `config` command is currently a stub — it should
   read/write real global settings (telemetry, log level, ...) through an
   injected config accessor.

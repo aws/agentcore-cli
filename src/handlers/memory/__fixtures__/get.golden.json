@@ -1,0 +1,14 @@
+{
+  "memory": {
+    "arn": "arn:aws:bedrock-agentcore:us-west-2:123456789012:memory/agentcore_cli_memory_read_only_fixture-AbCd123456",
+    "id": "agentcore_cli_memory_read_only_fixture-AbCd123456",
+    "name": "agentcore_cli_memory_read_only_fixture",
+    "description": "Stable synthetic fixture for AgentCore CLI Memory read-only tests",
+    "eventExpiryDuration": 30,
+    "status": "ACTIVE",
+    "createdAt": "2026-07-20T12:00:00.000Z",
+    "updatedAt": "2026-07-21T12:00:00.000Z",
+    "strategies": [],
+    "indexedKeys": []
+  }
+}

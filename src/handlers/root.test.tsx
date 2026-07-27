@@ -14,6 +14,7 @@ describe("createRootHandler", () => {
       "harness",
       "identity",
       "runtime",
+      "memory",
       "config",
       "project",
     ]);

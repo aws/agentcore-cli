@@ -1,0 +1,6 @@
+{
+  "$error": {
+    "name": "ResourceNotFoundException",
+    "message": "Memory missing_memory-0000000000 was not found"
+  }
+}

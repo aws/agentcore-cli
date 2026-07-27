@@ -1,0 +1,12 @@
+{
+  "memories": [
+    {
+      "arn": "arn:aws:bedrock-agentcore:us-west-2:123456789012:memory/agentcore_cli_memory_read_only_fixture-AbCd123456",
+      "id": "agentcore_cli_memory_read_only_fixture-AbCd123456",
+      "status": "ACTIVE",
+      "createdAt": "2026-07-20T12:00:00.000Z",
+      "updatedAt": "2026-07-21T12:00:00.000Z"
+    }
+  ],
+  "nextToken": "memory-page-2"
+}
