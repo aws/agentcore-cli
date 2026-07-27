@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { Readable } from "node:stream";
 import type { GetAgentRuntimeResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import { SourceResolutionError } from "../../../io";
+import { UsageError } from "./errors";
 import {
   normalizeRuntimeInvokeRequest,
   parseRuntimeInvokeHeaders,
   resolveRuntimeInvokeSources,
-  UsageError,
 } from "./request";
 
 const REGION = "us-west-2";

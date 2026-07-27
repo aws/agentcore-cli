@@ -81,7 +81,7 @@ async function run(
 }
 
 describe("runtime invoke", () => {
-  test("resolves the Runtime, invokes its ID in the current account, and streams exact bytes", async () => {
+  test("resolves the Runtime, invokes its ID in the current account, and writes exact bytes", async () => {
     const { core, output } = await run([
       "runtime",
       "invoke",
@@ -205,6 +205,41 @@ describe("runtime invoke", () => {
     expect(core.runtime.calls).toEqual([]);
   });
 
+  test("classifies --json with a streaming response as usage before reading the body", async () => {
+    let iterations = 0;
+    const core = new TestCoreClient();
+    const output = captureIO();
+    core.runtime
+      .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
+      .setInvokeResponse({
+        statusCode: 200,
+        contentType: "text/event-stream",
+        body: (async function* () {
+          iterations++;
+          yield Buffer.from("data: ready\n\n");
+        })(),
+      });
+
+    const code = await runWithExitCode(async () =>
+      runCommand(core, output.io, [
+        "runtime",
+        "invoke",
+        "--id",
+        RUNTIME_ID,
+        "--payload",
+        "{}",
+        "--json",
+      ]),
+    );
+
+    expect(code).toBe(ExitCode.USAGE);
+    expect(iterations).toBe(0);
+    expect(output.bytes()).toHaveLength(0);
+    const signal = core.runtime.calls.find((call) => call.method === "invokeRuntime")!
+      .args[2] as AbortSignal;
+    expect(signal.aborted).toBe(true);
+  });
+
   test("passes an explicitly empty payload as zero bytes", async () => {
     const { core } = await run(["runtime", "invoke", "--id", RUNTIME_ID, "--payload", ""]);
 
@@ -220,7 +255,7 @@ describe("runtime invoke", () => {
       core.runtime.calls.push({ method: "invokeRuntime", args: [request, options, signal] });
       return {
         statusCode: 200,
-        contentType: "text/plain",
+        contentType: "text/event-stream",
         body: (async function* () {
           yield Buffer.from("partial");
           await new Promise<void>((_, reject) => {

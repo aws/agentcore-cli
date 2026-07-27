@@ -4,12 +4,12 @@ import type { AppIO } from "../../../io";
 import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 import { JsonKey } from "../../keys";
+import { UsageError } from "./errors";
 import {
   normalizeRuntimeInvokeRequest,
   parseRuntimeInvokeHeaders,
   resolveRuntimeInvokeSources,
   runtimeIdSchema,
-  UsageError,
 } from "./request";
 import { writeRuntimeInvokeResponse } from "./response";
 

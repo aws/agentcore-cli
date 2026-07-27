@@ -1,6 +1,7 @@
 import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import type { RuntimeInvokeResponse } from "../types";
+import { UsageError } from "./errors";
 
 interface RuntimeInvokeOutput {
   stdout: NodeJS.WriteStream;
@@ -11,13 +12,27 @@ interface RuntimeInvokeOutput {
 }
 
 const RESPONSE_STREAM_FAILED = "response stream failed";
+const STREAMING_MEDIA_TYPES = new Set([
+  "text/event-stream",
+  "application/x-ndjson",
+  "application/ndjson",
+  "application/json-seq",
+]);
+
+function mediaType(contentType: string): string {
+  return contentType.split(";", 1)[0]!.trim().toLowerCase();
+}
+
+export function isStreamingRuntimeResponse(contentType: string): boolean {
+  return STREAMING_MEDIA_TYPES.has(mediaType(contentType));
+}
 
 export function classifyRuntimeResponse(contentType: string) {
-  const mediaType = contentType.split(";", 1)[0]!.trim().toLowerCase();
-  if (mediaType === "application/json" || /^application\/[^/]+\+json$/.test(mediaType)) {
+  const type = mediaType(contentType);
+  if (type === "application/json" || /^application\/[^/]+\+json$/.test(type)) {
     return "json";
   }
-  return mediaType.startsWith("text/") ? "text" : "binary";
+  return type.startsWith("text/") || STREAMING_MEDIA_TYPES.has(type) ? "text" : "binary";
 }
 
 async function* countBytes(
@@ -31,13 +46,13 @@ async function* countBytes(
   }
 }
 
-async function writeText(
+async function writeChunk(
   stream: NodeJS.WriteStream,
-  text: string,
+  chunk: string | Uint8Array,
   signal?: AbortSignal,
 ): Promise<void> {
   try {
-    await pipeline([text], stream, { end: false, signal });
+    await pipeline([chunk], stream, { end: false, signal });
   } catch (error) {
     failure(error);
   }
@@ -66,24 +81,29 @@ function failure(error: unknown): never {
   throw reported;
 }
 
+async function readBody(
+  body: AsyncIterable<Uint8Array>,
+  signal: AbortSignal | undefined,
+  onBytes: (size: number) => void,
+): Promise<Buffer> {
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of body) {
+    signal?.throwIfAborted();
+    const snapshot = Uint8Array.from(chunk);
+    onBytes(snapshot.byteLength);
+    chunks.push(snapshot);
+  }
+  return Buffer.concat(chunks);
+}
+
 async function writeJsonResponse(
   response: RuntimeInvokeResponse,
+  bytes: Uint8Array,
   output: RuntimeInvokeOutput,
 ): Promise<void> {
-  const chunks: Uint8Array[] = [];
-  let streamError: unknown;
-  try {
-    for await (const chunk of response.body) {
-      output.signal?.throwIfAborted();
-      chunks.push(Uint8Array.from(chunk));
-    }
-  } catch (error) {
-    streamError = error;
-  }
-  const bytes = Buffer.concat(chunks);
   const { body: _body, ...responseMetadata } = response;
   let bodyEncoding: "utf8" | "base64" = "base64";
-  let body = bytes.toString("base64");
+  let body = Buffer.from(bytes).toString("base64");
 
   if (classifyRuntimeResponse(response.contentType) !== "binary") {
     try {
@@ -96,13 +116,9 @@ async function writeJsonResponse(
     ...responseMetadata,
     bodyEncoding,
     body,
-    complete: streamError === undefined,
-    ...(streamError !== undefined && {
-      error: (streamError as Error)?.name === "AbortError" ? "interrupted" : RESPONSE_STREAM_FAILED,
-    }),
+    complete: true,
   });
-  await writeText(output.stdout, envelope, streamError === undefined ? output.signal : undefined);
-  if (streamError !== undefined) failure(streamError);
+  await writeChunk(output.stdout, envelope, output.signal);
 }
 
 function summary(
@@ -127,9 +143,11 @@ export async function writeRuntimeInvokeResponse(
   response: RuntimeInvokeResponse,
   output: RuntimeInvokeOutput,
 ): Promise<void> {
-  if (output.json) {
-    await writeJsonResponse(response, output);
-    return;
+  const streaming = isStreamingRuntimeResponse(response.contentType);
+  if (output.json && streaming) {
+    throw new UsageError(
+      "--json cannot be used with a streaming Runtime response; omit --json or use --output-file",
+    );
   }
 
   if (
@@ -137,7 +155,7 @@ export async function writeRuntimeInvokeResponse(
     output.stdout.isTTY &&
     classifyRuntimeResponse(response.contentType) === "binary"
   ) {
-    await writeText(output.stderr, summary(response, 0, false));
+    await writeChunk(output.stderr, summary(response, 0, false));
     throw new TypeError("Binary or unknown response content requires --output-file or --json");
   }
 
@@ -150,15 +168,22 @@ export async function writeRuntimeInvokeResponse(
         output.signal,
         (size) => (byteCount += size),
       );
-    } else {
+    } else if (streaming) {
       await pipeline(
         countBytes(response.body, (size) => (byteCount += size)),
         output.stdout,
         { end: false, signal: output.signal },
       );
+    } else {
+      const bytes = await readBody(response.body, output.signal, (size) => (byteCount += size));
+      if (output.json) {
+        await writeJsonResponse(response, bytes, output);
+      } else {
+        await writeChunk(output.stdout, bytes, output.signal);
+      }
     }
   } catch (error) {
-    await writeText(
+    await writeChunk(
       output.stderr,
       summary(
         response,
@@ -169,5 +194,7 @@ export async function writeRuntimeInvokeResponse(
     );
     failure(error);
   }
-  await writeText(output.stderr, summary(response, byteCount, true));
+  if (!output.json) {
+    await writeChunk(output.stderr, summary(response, byteCount, true));
+  }
 }

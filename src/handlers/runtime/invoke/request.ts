@@ -3,6 +3,7 @@ import z from "zod";
 import type { GetAgentRuntimeResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import { SourceResolutionError, SourceResolver } from "../../../io";
 import type { RuntimeInvokeRequest } from "../types";
+import { UsageError } from "./errors";
 
 export const runtimeIdSchema = z
   .string()
@@ -29,10 +30,6 @@ const RESERVED_HEADERS = new Set([
   "tracestate",
   "baggage",
 ]);
-
-export class UsageError extends TypeError {
-  readonly exitCode = 2;
-}
 
 export async function resolveRuntimeInvokeSources(
   sources: { payload: string; bearerToken?: string },
