@@ -3,6 +3,8 @@ import { useNavigate } from "react-router";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
+import { formatTimestamp, runtimeIdSuffix } from "./pickerFormatters";
+import type { DataTableColumn } from "./ui/data-table";
 
 interface RuntimeRow extends Record<string, unknown> {
   runtimeId: string;
@@ -11,6 +13,26 @@ interface RuntimeRow extends Record<string, unknown> {
   status: string;
   lastUpdatedAt: string;
 }
+
+export const runtimeColumns = [
+  { key: "runtimeName", header: "name", flex: true },
+  {
+    key: "runtimeId",
+    header: "id suffix",
+    width: 10,
+    minWidth: 10,
+    render: runtimeIdSuffix,
+  },
+  { key: "runtimeVersion", header: "ver", width: 5, minWidth: 3 },
+  { key: "status", header: "status", width: 13, minWidth: 13 },
+  {
+    key: "lastUpdatedAt",
+    header: "updated UTC",
+    width: 16,
+    minWidth: 16,
+    render: formatTimestamp,
+  },
+] satisfies DataTableColumn<RuntimeRow>[];
 
 function toRow(runtime: AgentRuntime): RuntimeRow {
   const runtimeId = runtime.agentRuntimeId ?? "";
@@ -53,13 +75,7 @@ export function RuntimePicker({
         };
       }}
       toRow={toRow}
-      columns={[
-        { key: "runtimeName", header: "name" },
-        { key: "runtimeId", header: "id" },
-        { key: "runtimeVersion", header: "latestVersion" },
-        { key: "status", header: "status" },
-        { key: "lastUpdatedAt", header: "lastUpdatedAt" },
-      ]}
+      columns={runtimeColumns}
       getValue={(row) => row.runtimeId}
       onSelect={onSelect}
       onBack={goBack}

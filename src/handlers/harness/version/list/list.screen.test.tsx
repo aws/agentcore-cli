@@ -104,7 +104,7 @@ describe("harness version list screen", () => {
   test("renders version columns and values", async () => {
     const core = coreWithVersions([
       version({
-        harnessVersion: "123",
+        harnessVersion: "99999",
         status: "UPDATE_FAILED",
         createdAt: new Date("2026-07-18T02:00:00.000Z"),
       }),
@@ -115,10 +115,10 @@ describe("harness version list screen", () => {
     const frame = r.lastFrame()!;
     expect(frame).toContain("version");
     expect(frame).toContain("status");
-    expect(frame).toContain("createdAt");
-    expect(frame).toContain("123");
+    expect(frame).toContain("created UTC");
+    expect(frame).toContain("99999");
     expect(frame).toContain("UPDATE_FAILED");
-    expect(frame).toContain("2026-07-18T02:00:00.000Z");
+    expect(frame).toContain("2026-07-18 02:00");
     r.unmount();
   });
 

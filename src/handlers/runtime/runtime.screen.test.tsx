@@ -73,9 +73,9 @@ describe("runtime picker", () => {
   test("renders Runtime identity, latest version, status, and update time", async () => {
     const core = coreWithRuntimes([
       runtime({
-        agentRuntimeId: "runtime-visible-id",
+        agentRuntimeId: "orders-AbCdEf1234",
         agentRuntimeName: "orders",
-        agentRuntimeVersion: "42",
+        agentRuntimeVersion: "99999",
         status: "CREATE_FAILED",
         lastUpdatedAt: new Date("2026-07-19T01:02:03.000Z"),
       }),
@@ -86,13 +86,15 @@ describe("runtime picker", () => {
     const frame = r.lastFrame()!;
     expect(frame).toContain("name");
     expect(frame).toContain("id");
-    expect(frame).toContain("latestVersion");
+    expect(frame).toContain("id suffix");
+    expect(frame).toContain("ver");
     expect(frame).toContain("status");
-    expect(frame).toContain("lastUpdatedAt");
-    expect(frame).toContain("runtime-visible-id");
-    expect(frame).toContain("42");
+    expect(frame).toContain("updated UTC");
+    expect(frame).toContain("AbCdEf1234");
+    expect(frame).not.toContain("orders-AbCdEf1234");
+    expect(frame).toContain("99999");
     expect(frame).toContain("CREATE_FAILED");
-    expect(frame).toContain("2026-07-19T01:02:03.000Z");
+    expect(frame).toContain("2026-07-19 01:02");
   });
 
   test("calls listRuntimes once with exact Core options", async () => {

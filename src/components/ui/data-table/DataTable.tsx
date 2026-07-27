@@ -1,19 +1,32 @@
 import React, { useEffect, useState } from "react";
-import { Box, Text, useInput } from "ink";
+import cliTruncate from "cli-truncate";
+import { Box, Text, useInput, useWindowSize } from "ink";
+import stringWidth from "string-width";
 import { darkTheme } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
+import {
+  COLUMN_GAP,
+  computeColumnWidths,
+  resolveBorderWidth,
+  SELECTION_MARKER_WIDTH,
+} from "./useColumnWidths.js";
 
-export interface DataTableColumn<T> {
+interface DataTableColumnBase<T> {
   key: keyof T & string;
   header: string;
   align?: "left" | "center" | "right";
   sortable?: boolean;
   render?: (value: unknown, row: T) => string;
-  width?: number;
 }
 
+type DataTableColumnSizing =
+  | { flex: true; width?: never; minWidth?: never }
+  | { flex?: false; width?: number; minWidth?: number };
+
+export type DataTableColumn<T> = DataTableColumnBase<T> & DataTableColumnSizing;
+
 export interface DataTableProps<T> {
-  columns: DataTableColumn<T>[];
+  columns: readonly DataTableColumn<T>[];
   data: T[];
   pageSize?: number;
   searchable?: boolean;
@@ -66,6 +79,7 @@ export function DataTable<T extends Record<string, unknown>>({
   selectionResetKey,
   theme = darkTheme,
 }: DataTableProps<T>): React.ReactElement {
+  const { columns: terminalWidth } = useWindowSize();
   const [selectedRow, setSelectedRow] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
   const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -82,8 +96,10 @@ export function DataTable<T extends Record<string, unknown>>({
   const filtered = data.filter((row) => {
     if (!searchQuery) return true;
     return columns.some((col) => {
-      const val = row[col.key];
-      return String(val).toLowerCase().includes(searchQuery.toLowerCase());
+      const rawValue = String(row[col.key] ?? "");
+      const renderedValue = col.render ? col.render(row[col.key], row) : rawValue;
+      const query = searchQuery.toLowerCase();
+      return rawValue.toLowerCase().includes(query) || renderedValue.toLowerCase().includes(query);
     });
   });
 
@@ -166,25 +182,16 @@ export function DataTable<T extends Record<string, unknown>>({
     { isActive: focus },
   );
 
-  // default the width of each column
-  const columnsWithWidths = columns.map((col) => {
-    if (col.width !== undefined) return { ...col, width: col.width };
-    const maxData = pageData.reduce((max, row) => {
-      const val = col.render ? col.render(row[col.key], row) : String(row[col.key] ?? "");
-      return Math.max(max, val.length);
-    }, 0);
-    return { ...col, width: Math.max(col.header.length + 2, maxData + 2, 6) };
-  });
-
   const pad = (s: string, w: number, align: "left" | "center" | "right" = "left") => {
-    if (s.length >= w) return s.slice(0, w);
-    const extra = w - s.length;
-    if (align === "right") return " ".repeat(extra) + s;
+    const value = cliTruncate(s, w);
+    const extra = w - stringWidth(value);
+    if (align === "right") return " ".repeat(extra) + value;
     if (align === "center")
-      return " ".repeat(Math.floor(extra / 2)) + s + " ".repeat(Math.ceil(extra / 2));
-    return s + " ".repeat(extra);
+      return " ".repeat(Math.floor(extra / 2)) + value + " ".repeat(Math.ceil(extra / 2));
+    return value + " ".repeat(extra);
   };
 
+  // Ink does not define a "none" border style and throws if it is passed through.
   const bord =
     borderStyle === "none"
       ? undefined
@@ -193,6 +200,19 @@ export function DataTable<T extends Record<string, unknown>>({
         : borderStyle === "bold"
           ? "bold"
           : "single";
+  const borderWidth = resolveBorderWidth(bord, borderLeft, borderRight);
+  const computedWidths = computeColumnWidths(columns, terminalWidth, {
+    selectable,
+    borderWidth,
+  });
+  const columnsWithWidths = columns.flatMap((column, index) => {
+    const width = computedWidths.widths[index];
+    return width === undefined ? [] : [{ column, width }];
+  });
+
+  if (columns.filter((column) => column.flex === true).length > 1) {
+    return <Text color={theme.colors.error}>DataTable supports at most one flexible column.</Text>;
+  }
 
   return (
     <Box flexDirection="column">
@@ -224,14 +244,19 @@ export function DataTable<T extends Record<string, unknown>>({
         borderRight={borderRight}
       >
         {/* Header */}
-        <Box flexDirection="row">
-          {selectable && <Text color={theme.colors.muted}>{"  "}</Text>}
-          {columnsWithWidths.map((col) => {
-            const sortArrow = sortColumn === col.key ? (sortDirection === "asc" ? " ▲" : " ▼") : "";
+        <Box flexDirection="row" columnGap={COLUMN_GAP}>
+          {selectable && (
+            <Box width={SELECTION_MARKER_WIDTH} flexShrink={0}>
+              <Text color={theme.colors.muted}> </Text>
+            </Box>
+          )}
+          {columnsWithWidths.map(({ column, width }) => {
+            const sortArrow =
+              sortColumn === column.key ? (sortDirection === "asc" ? " ▲" : " ▼") : "";
             return (
-              <Box key={col.key} width={col.width}>
-                <Text bold color={theme.colors.primary}>
-                  {pad(col.header + sortArrow, col.width, col.align)}
+              <Box key={column.key} width={width} flexShrink={0}>
+                <Text bold color={theme.colors.primary} wrap="truncate">
+                  {pad(column.header + sortArrow, width, column.align)}
                 </Text>
               </Box>
             );
@@ -241,11 +266,7 @@ export function DataTable<T extends Record<string, unknown>>({
         {/* Divider (or a blank spacer line when hidden) */}
         <Box flexDirection="row">
           <Text color={theme.colors.border}>
-            {showDivider
-              ? "─".repeat(
-                  columnsWithWidths.reduce((acc, col) => acc + col.width, 0) + (selectable ? 2 : 0),
-                )
-              : " "}
+            {showDivider ? "─".repeat(computedWidths.totalWidth) : " "}
           </Text>
         </Box>
 
@@ -258,23 +279,29 @@ export function DataTable<T extends Record<string, unknown>>({
           pageData.map((row, i) => {
             const isSelected = i === selectedRow && selectable;
             return (
-              <Box key={i} flexDirection="row">
+              <Box key={i} flexDirection="row" columnGap={COLUMN_GAP}>
                 {selectable && (
-                  <Text color={isSelected ? theme.colors.primary : theme.colors.muted}>
-                    {isSelected ? "❯ " : "  "}
-                  </Text>
+                  <Box width={SELECTION_MARKER_WIDTH} flexShrink={0}>
+                    <Text
+                      color={isSelected ? theme.colors.primary : theme.colors.muted}
+                      wrap="truncate"
+                    >
+                      {isSelected ? "❯" : " "}
+                    </Text>
+                  </Box>
                 )}
-                {columnsWithWidths.map((col) => {
-                  const val = col.render
-                    ? col.render(row[col.key], row)
-                    : String(row[col.key] ?? "");
+                {columnsWithWidths.map(({ column, width }) => {
+                  const val = column.render
+                    ? column.render(row[column.key], row)
+                    : String(row[column.key] ?? "");
                   return (
-                    <Box key={col.key} width={col.width}>
+                    <Box key={column.key} width={width} flexShrink={0}>
                       <Text
                         color={isSelected ? theme.colors.text : theme.colors.muted}
                         bold={isSelected}
+                        wrap="truncate"
                       >
-                        {pad(val, col.width, col.align)}
+                        {pad(val, width, column.align)}
                       </Text>
                     </Box>
                   );

@@ -8,9 +8,9 @@
         "@aws-sdk/client-bedrock-agentcore": "^3.1079.0",
         "@aws-sdk/client-bedrock-agentcore-control": "^3.1079.0",
         "@aws-sdk/client-iam": "^3.1080.0",
-        "@inkui-cli/data-table": "^0.2.0",
         "@smithy/core": "3.29.3",
         "@tanstack/react-query": "^5.101.2",
+        "cli-truncate": "^6.1.1",
         "commander": "^15.0.0",
         "ink": "^7.1.0",
         "ink-scroll-view": "^0.3.7",
@@ -18,6 +18,7 @@
         "react": "^19.2.7",
         "react-devtools-core": "^7.0.1",
         "react-router": "^8.3.0",
+        "string-width": "^8.2.2",
         "winston": "^3.19.0",
         "winston-daily-rotate-file": "^5.0.0",
         "zod": "^4.4.3",
@@ -78,8 +79,6 @@
     "@colors/colors": ["@colors/colors@1.6.0", "", {}, "sha512-Ir+AOibqzrIsL6ajt3Rz3LskB7OiMVHqltZmspbW/TJuTVuyOMirVqAkjfY6JISiLHgyNqicAC8AyHHGzNd/dA=="],
 
     "@dabh/diagnostics": ["@dabh/diagnostics@2.0.8", "", { "dependencies": { "@so-ric/colorspace": "^1.1.6", "enabled": "2.0.x", "kuler": "^2.0.0" } }, "sha512-R4MSXTVnuMzGD7bzHdW2ZhhdPC/igELENcq5IjEverBvq5hn1SXCWcsi6eSsdWP0/Ur+SItRRjAktmdoX/8R/Q=="],
-
-    "@inkui-cli/data-table": ["@inkui-cli/data-table@0.2.0", "", { "peerDependencies": { "ink": "^6.0.0", "react": "^19.0.0" } }, "sha512-kekgwqWnsluB/khs/SO5CGVuMUPJdaPJzGEkJNk3bFnBqFOJNq5S7DpmAtXz/Lta2PqGoiXaSPWewm6PNItznQ=="],
 
     "@oxlint/binding-android-arm-eabi": ["@oxlint/binding-android-arm-eabi@1.74.0", "", { "os": "android", "cpu": "arm" }, "sha512-+gHd12muVI9ZLBaWLPkHt3Fj7jihFjgQ1MGtBaRL8vWrWrI0P7dLUty/cHrHS0oqPYIRgQUJsPu2CExQuMcwNw=="],
 

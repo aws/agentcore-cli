@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type {
+  AgentRuntime,
   HarnessSummary,
   ListHarnessesResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { QueryClient } from "@tanstack/react-query";
+import stringWidth from "string-width";
 import { cleanupScreens, renderScreen, TestCoreClient, waitFor, waitForText } from "../testing";
 
 afterEach(cleanupScreens);
@@ -25,6 +27,19 @@ function coreWith(harnesses: HarnessSummary[]): TestCoreClient {
   const core = new TestCoreClient();
   core.harness.setListResponse({ harnesses });
   return core;
+}
+
+function runtime(overrides: Partial<AgentRuntime> = {}): AgentRuntime {
+  return {
+    agentRuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/orders-AbCdEf1234",
+    agentRuntimeId: "orders-AbCdEf1234",
+    agentRuntimeVersion: "99999",
+    agentRuntimeName: "orders-runtime-with-a-long-name",
+    description: "Orders Runtime",
+    lastUpdatedAt: new Date("2026-07-19T01:02:03.000Z"),
+    status: "CREATE_FAILED",
+    ...overrides,
+  };
 }
 
 function getResponse(summary: HarnessSummary) {
@@ -286,5 +301,55 @@ describe("paginated table picker contract", () => {
       core.harness.calls.some((call) => call.method === "getHarness" && call.args[0] === "alpha-1"),
     );
     expect(r.lastFrame()).toContain("agentcore → harness → get → alpha-1");
+  });
+
+  test("keeps rows aligned and single-line while resizing the Runtime table", async () => {
+    const core = new TestCoreClient();
+    const suffixes = ["AbCdEf1234", "BcDeFg2345", "CdEfGh3456"];
+    core.runtime.setListResponse({
+      agentRuntimes: suffixes.map((suffix, index) =>
+        runtime({
+          agentRuntimeId: `runtime_${index}-${suffix}`,
+          agentRuntimeName: `runtime_${index}_with_a_name_that_needs_truncation`,
+        }),
+      ),
+    });
+    const r = renderScreen("/agentcore/runtime/list", { core });
+
+    await waitForText(r.lastFrame, suffixes[0]!);
+    for (const width of [100, 80, 60]) {
+      if (width !== 100) await r.resize(width);
+      const lines = (r.lastFrame() ?? "").split("\n");
+      const headerIndex = lines.findIndex((line) => line.includes("id suffix"));
+      const rowLines = suffixes.map((suffix) => lines.find((line) => line.includes(suffix)));
+
+      expect(headerIndex).toBeGreaterThanOrEqual(0);
+      expect(stringWidth(lines[headerIndex + 1]!)).toBe(width);
+      expect(rowLines.every((line) => line !== undefined)).toBe(true);
+      expect(new Set(rowLines.map((line) => lines.indexOf(line!))).size).toBe(suffixes.length);
+      expect(rowLines.every((line) => stringWidth(line!) <= width)).toBe(true);
+      expect(rowLines.every((line) => /[A-Za-z0-9]{10}\s+\d/.test(line!))).toBe(true);
+    }
+  });
+
+  test("filters against rendered timestamps and raw identifiers", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setListResponse({ agentRuntimes: [runtime()] });
+    const r = renderScreen("/agentcore/runtime/list", { core });
+
+    await waitForText(r.lastFrame, "AbCdEf1234");
+    await r.write("/");
+    await r.write("2026-07-19 01:02");
+    await waitForText(r.lastFrame, "/ Filter: 2026-07-19 01:02");
+
+    expect(r.lastFrame()).toContain("AbCdEf1234");
+    expect(r.lastFrame()).not.toContain("No Runtimes found in this Region.");
+
+    await r.press("escape");
+    await r.write("/");
+    await r.write("orders-AbCdEf1234");
+    await waitForText(r.lastFrame, "/ Filter: orders-AbCdEf1234");
+
+    expect(r.lastFrame()).toContain("AbCdEf1234");
   });
 });

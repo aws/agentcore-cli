@@ -127,7 +127,7 @@ describe("Runtime version flow", () => {
         runtime({
           agentRuntimeId: "hidden-id",
           agentRuntimeName: "hidden-name",
-          agentRuntimeVersion: "10",
+          agentRuntimeVersion: "99999",
           status: "READY",
           lastUpdatedAt: new Date("2026-07-20T10:00:00.000Z"),
         }),
@@ -139,15 +139,18 @@ describe("Runtime version flow", () => {
     const frame = r.lastFrame()!;
     expect(frame).toContain("version");
     expect(frame).toContain("status");
-    expect(frame).toContain("lastUpdatedAt");
+    expect(frame).toContain("updated UTC");
+    expect(frame).toContain("2026-07-20 10:00");
     const lines = frame.split("\n");
-    const versionTen = lines.findIndex((line) => line.includes("10") && line.includes("READY"));
+    const newestVersion = lines.findIndex(
+      (line) => line.includes("99999") && line.includes("READY"),
+    );
     const versionTwo = lines.findIndex(
       (line) => line.includes("2") && line.includes("UPDATE_FAILED"),
     );
-    expect(versionTen).toBeGreaterThanOrEqual(0);
+    expect(newestVersion).toBeGreaterThanOrEqual(0);
     expect(versionTwo).toBeGreaterThanOrEqual(0);
-    expect(versionTen).toBeLessThan(versionTwo);
+    expect(newestVersion).toBeLessThan(versionTwo);
     expect(frame).not.toContain("hidden-id");
     expect(frame).not.toContain("hidden-name");
   });

@@ -89,8 +89,8 @@ describe("harness endpoint list screen", () => {
     const core = coreWithEndpoints([
       endpoint({
         endpointName: "visible-endpoint",
-        liveVersion: "7",
-        targetVersion: "88",
+        liveVersion: "99999",
+        targetVersion: "88888",
         status: "UPDATE_FAILED",
         updatedAt: new Date("2026-07-18T02:00:00.000Z"),
       }),
@@ -103,9 +103,9 @@ describe("harness endpoint list screen", () => {
     expect(frame).toContain("live");
     expect(frame).toContain("target");
     expect(frame).toContain("status");
-    expect(frame).toContain("updatedAt");
-    expect(frame).toMatch(/visible-endpoint\s+7\s+88\s+UPDATE_FAILED/);
-    expect(frame).toContain("2026-07-18T02:00:00.000Z");
+    expect(frame).toContain("updated UTC");
+    expect(frame).toMatch(/visible-endpoint\s+99999\s+88888\s+UPDATE_FAILED/);
+    expect(frame).toContain("2026-07-18 02:00");
     r.unmount();
   });
 

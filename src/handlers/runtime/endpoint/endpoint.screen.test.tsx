@@ -133,8 +133,8 @@ describe("Runtime endpoint flow", () => {
       runtimeEndpoints: [
         endpoint({
           name: "production",
-          liveVersion: "7",
-          targetVersion: "8",
+          liveVersion: "99999",
+          targetVersion: "88888",
           status: "UPDATE_FAILED",
           lastUpdatedAt: new Date("2026-07-18T02:00:00.000Z"),
         }),
@@ -148,11 +148,11 @@ describe("Runtime endpoint flow", () => {
     expect(frame).toContain("live");
     expect(frame).toContain("target");
     expect(frame).toContain("status");
-    expect(frame).toContain("lastUpdatedAt");
+    expect(frame).toContain("updated UTC");
     expect(frame).toMatch(/target\s+status/);
-    expect(frame).toMatch(/production\s+7\s+8\s+UPDATE_FAILED/);
+    expect(frame).toMatch(/production\s+99999\s+88888\s+UPDATE_FAILED/);
     expect(frame).toContain("UPDATE_FAILED");
-    expect(frame).toContain("2026-07-18T02:00:00.000Z");
+    expect(frame).toContain("2026-07-18 02:00");
     expect(frame).not.toContain("protocol");
   });
 

@@ -3,6 +3,8 @@ import type { HarnessEndpoint } from "@aws-sdk/client-bedrock-agentcore-control"
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
+import { formatTimestamp } from "./pickerFormatters";
+import type { DataTableColumn } from "./ui/data-table";
 
 // EndpointRow is the flat, display-ready shape the table renders.
 interface EndpointRow extends Record<string, unknown> {
@@ -12,6 +14,20 @@ interface EndpointRow extends Record<string, unknown> {
   status: string;
   updatedAt: string;
 }
+
+export const harnessEndpointColumns = [
+  { key: "endpointName", header: "name", flex: true },
+  { key: "liveVersion", header: "live", width: 6, minWidth: 5 },
+  { key: "targetVersion", header: "target", width: 6, minWidth: 6 },
+  { key: "status", header: "status", width: 13, minWidth: 13 },
+  {
+    key: "updatedAt",
+    header: "updated UTC",
+    width: 16,
+    minWidth: 16,
+    render: formatTimestamp,
+  },
+] satisfies DataTableColumn<EndpointRow>[];
 
 function toRow(e: HarnessEndpoint): EndpointRow {
   return {
@@ -70,13 +86,7 @@ export function HarnessEndpointPicker({
         };
       }}
       toRow={toRow}
-      columns={[
-        { key: "endpointName", header: "name" },
-        { key: "liveVersion", header: "live" },
-        { key: "targetVersion", header: "target" },
-        { key: "status", header: "status" },
-        { key: "updatedAt", header: "updatedAt" },
-      ]}
+      columns={harnessEndpointColumns}
       getValue={(row) => row.endpointName}
       onSelect={onSelect}
       onBack={goBack}

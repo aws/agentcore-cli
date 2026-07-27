@@ -3,12 +3,26 @@ import { useNavigate } from "react-router";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
+import { formatTimestamp } from "./pickerFormatters";
+import type { DataTableColumn } from "./ui/data-table";
 
 interface RuntimeVersionRow extends Record<string, unknown> {
   version: string;
   status: string;
   lastUpdatedAt: string;
 }
+
+export const runtimeVersionColumns = [
+  { key: "version", header: "version", width: 7, minWidth: 4 },
+  { key: "status", header: "status", width: 13, minWidth: 6 },
+  {
+    key: "lastUpdatedAt",
+    header: "updated UTC",
+    width: 16,
+    minWidth: 11,
+    render: formatTimestamp,
+  },
+] satisfies DataTableColumn<RuntimeVersionRow>[];
 
 function toRow(runtime: AgentRuntime): RuntimeVersionRow {
   return {
@@ -50,11 +64,7 @@ export function RuntimeVersionPicker({
         };
       }}
       toRow={toRow}
-      columns={[
-        { key: "version", header: "version" },
-        { key: "status", header: "status" },
-        { key: "lastUpdatedAt", header: "lastUpdatedAt" },
-      ]}
+      columns={runtimeVersionColumns}
       sortRows={(rows) =>
         [...rows].sort((left, right) => Number(right.version) - Number(left.version))
       }

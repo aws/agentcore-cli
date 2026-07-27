@@ -3,6 +3,8 @@ import type { HarnessSummary } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
+import { formatTimestamp } from "./pickerFormatters";
+import type { DataTableColumn } from "./ui/data-table";
 
 // HarnessRow is the flat, display-ready shape the table renders. It also satisfies
 // DataTable's `T extends Record<string, unknown>` constraint, which the SDK's
@@ -14,6 +16,19 @@ interface HarnessRow extends Record<string, unknown> {
   harnessVersion: string;
   status: string;
 }
+
+export const harnessColumns = [
+  { key: "harnessName", header: "name", flex: true },
+  { key: "harnessVersion", header: "ver", width: 5, minWidth: 3 },
+  { key: "status", header: "status", width: 13, minWidth: 13 },
+  {
+    key: "updatedAt",
+    header: "updated UTC",
+    width: 16,
+    minWidth: 16,
+    render: formatTimestamp,
+  },
+] satisfies DataTableColumn<HarnessRow>[];
 
 // toRow flattens a HarnessSummary into a HarnessRow, formatting dates.
 function toRow(h: HarnessSummary): HarnessRow {
@@ -68,12 +83,7 @@ export function HarnessPicker({
         };
       }}
       toRow={toRow}
-      columns={[
-        { key: "harnessName", header: "name" },
-        { key: "harnessVersion", header: "version" },
-        { key: "status", header: "status" },
-        { key: "updatedAt", header: "updatedAt" },
-      ]}
+      columns={harnessColumns}
       getValue={(row) => row.harnessId}
       onSelect={onSelect}
       onBack={goBack}

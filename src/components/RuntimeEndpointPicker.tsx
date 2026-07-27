@@ -3,6 +3,8 @@ import { useNavigate } from "react-router";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
+import { formatTimestamp } from "./pickerFormatters";
+import type { DataTableColumn } from "./ui/data-table";
 
 interface RuntimeEndpointRow extends Record<string, unknown> {
   qualifier: string;
@@ -11,6 +13,20 @@ interface RuntimeEndpointRow extends Record<string, unknown> {
   status: string;
   lastUpdatedAt: string;
 }
+
+export const runtimeEndpointColumns = [
+  { key: "qualifier", header: "qualifier", flex: true },
+  { key: "liveVersion", header: "live", width: 6, minWidth: 5 },
+  { key: "targetVersion", header: "target", width: 6, minWidth: 6 },
+  { key: "status", header: "status", width: 13, minWidth: 13 },
+  {
+    key: "lastUpdatedAt",
+    header: "updated UTC",
+    width: 16,
+    minWidth: 16,
+    render: formatTimestamp,
+  },
+] satisfies DataTableColumn<RuntimeEndpointRow>[];
 
 function toRow(endpoint: AgentRuntimeEndpoint): RuntimeEndpointRow {
   return {
@@ -54,13 +70,7 @@ export function RuntimeEndpointPicker({
         };
       }}
       toRow={toRow}
-      columns={[
-        { key: "qualifier", header: "qualifier" },
-        { key: "liveVersion", header: "live" },
-        { key: "targetVersion", header: "target" },
-        { key: "status", header: "status" },
-        { key: "lastUpdatedAt", header: "lastUpdatedAt" },
-      ]}
+      columns={runtimeEndpointColumns}
       getValue={(row) => row.qualifier}
       onSelect={onSelect}
       onBack={goBack}
