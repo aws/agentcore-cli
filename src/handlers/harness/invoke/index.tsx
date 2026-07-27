@@ -1,6 +1,7 @@
 import z from "zod";
 import { createHandler, flag, PathKey } from "../../../router";
-import type { AppIO, Core } from "../../types.tsx";
+import type { AppIO } from "../../../io";
+import type { Core } from "../../types.tsx";
 import { coreOptsFromCtx } from "../../utils.tsx";
 import { JsonKey } from "../../keys.tsx";
 import { JsonRendererKey, renderTuiAt } from "../../../tui";

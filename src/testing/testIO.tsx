@@ -1,5 +1,5 @@
 import { PassThrough } from "node:stream";
-import type { AppIO } from "../handlers/types";
+import type { AppIO } from "../io";
 
 // TestIO bundles an in-memory AppIO with accessors to read back what was written
 // to each stream. Pass `io` to createRootHandler({ io }) to capture a command's

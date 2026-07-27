@@ -1,4 +1,3 @@
-export { type GlobalConfigAccessor, type GlobalConfig, type ReadWriteJson } from "./types";
+export { type GlobalConfigAccessor, type GlobalConfig } from "./types";
 export { DefaultGlobalConfigAccessor } from "./accessor";
-export { FsReadWriteJson } from "./json";
 export { DEFAULT_GLOBAL_CONFIG } from "./config";

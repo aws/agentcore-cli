@@ -1,6 +1,7 @@
 import { Router } from "../../../router";
 import { renderTui } from "../../../tui";
-import type { AppIO, Core } from "../../types";
+import type { AppIO } from "../../../io";
+import type { Core } from "../../types";
 import { createGetRuntimeVersionHandler } from "./get";
 import { createListRuntimeVersionsHandler } from "./list";
 

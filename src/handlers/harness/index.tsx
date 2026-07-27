@@ -1,7 +1,8 @@
 import { renderTui } from "../../tui";
 import { withTuiOnEmptyFlagsAndArgs } from "../../middleware";
 import { Router } from "../../router";
-import type { AppIO, Core } from "../types";
+import type { AppIO } from "../../io";
+import type { Core } from "../types";
 import { createGetHarnessHandler } from "./get";
 import { createListHarnessHandler } from "./list";
 import { createCreateHarnessHandler } from "./create";

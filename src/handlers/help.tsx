@@ -1,5 +1,5 @@
 import { CommandKey, type DefaultHandle } from "../router";
-import type { AppIO } from "./types";
+import type { AppIO } from "../io";
 
 export function createHelpDefault(io: AppIO): DefaultHandle {
   return async (ctx) => {

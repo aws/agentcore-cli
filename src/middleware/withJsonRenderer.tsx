@@ -1,6 +1,6 @@
 import { type Middleware } from "../router";
 import { JsonRendererKey, renderJson } from "../tui";
-import type { AppIO } from "../handlers/types";
+import type { AppIO } from "../io";
 
 // withJsonRenderer pins a JsonRenderer on the context, prewired to write to the
 // injected stdout. Handlers emit machine-readable output via

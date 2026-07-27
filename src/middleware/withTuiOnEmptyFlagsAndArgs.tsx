@@ -1,6 +1,7 @@
 import { renderTui } from "../tui";
 import { JsonKey } from "../handlers/keys";
-import type { AppIO, Core } from "../handlers/types";
+import type { AppIO } from "../io";
+import type { Core } from "../handlers/types";
 import { type Middleware } from "../router";
 
 // countPassedValues counts how many entries of an object hold a defined value.

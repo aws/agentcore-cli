@@ -1,8 +1,10 @@
-import z from "zod";
-import { mkdir, readFile, writeFile } from "fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+
+import type z from "zod";
+
 import type { Logger } from "../logging";
 import type { ReadWriteJson } from "./types";
-import { dirname } from "path";
 
 type ReadWriteJsonConfig = {
   logger: Logger;

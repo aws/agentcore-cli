@@ -10,9 +10,10 @@ import { join } from "path";
 import { CoreClient } from "./core";
 import { createControlClient, createDataClient, createIamClient } from "./core/factories";
 import { createRootHandler } from "./handlers";
+import { FsReadWriteJson } from "./io";
 import { createFileLogger, LOG_LEVEL } from "./logging";
 import { runWithExitCode } from "./runnable";
-import { DefaultGlobalConfigAccessor, FsReadWriteJson } from "./globalConfig";
+import { DefaultGlobalConfigAccessor } from "./globalConfig";
 
 process.exit(
   await runWithExitCode(async (argv: string[]) => {
