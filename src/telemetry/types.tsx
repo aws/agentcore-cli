@@ -40,13 +40,13 @@ export type MetricName = keyof typeof METRICS;
 /**
  * Describes the value type for the given {@link Metric}
  */
-export type ValueOf<TMetricName extends MetricName> = z.infer<
+export type ValueOf<TMetricName extends MetricName> = z.input<
   (typeof METRICS)[TMetricName]["valueSchema"]
 >;
 
 /**
  * Describes the attributes type for the given {@link Metric}
  */
-export type AttributesOf<TMetricName extends MetricName> = z.infer<
+export type AttributesOf<TMetricName extends MetricName> = z.input<
   (typeof METRICS)[TMetricName]["attributeSchema"]
 >;
