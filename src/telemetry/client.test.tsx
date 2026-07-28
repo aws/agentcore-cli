@@ -43,7 +43,7 @@ describe("DefaultTelemetryClient", () => {
 
     await client.emit("cli.command_run", 123, recorder.getAttributes());
 
-    expect(sink.name).toBe("LoggingSink");
+    expect(sink.getName()).toBe("LoggingSink");
     await sink.shutdown();
     await client.shutdown();
 
@@ -65,7 +65,7 @@ describe("DefaultTelemetryClient", () => {
   test("handles sink errors gracefully without throwing", async () => {
     const recordedMetrics: string[] = [];
     const goodSink: MetricSink = {
-      name: "GoodSink",
+      getName: () => "GoodSink",
       send: (metricName) => {
         recordedMetrics.push(metricName);
       },
@@ -73,7 +73,7 @@ describe("DefaultTelemetryClient", () => {
     };
 
     const badSink: MetricSink = {
-      name: "BadSink",
+      getName: () => "BadSink",
       send: () => {
         throw new Error("record exploded");
       },

@@ -60,7 +60,7 @@ export class DefaultTelemetryClient implements TelemetryClient {
           const error = e instanceof Error ? e : new Error(String(e));
           this.logger
             .child({ errorName: error.name, errorMessage: error.message })
-            .warn(`failed to record to sink '${sink.name}'`);
+            .warn(`failed to record to sink '${sink.getName()}'`);
           // do not allow a single sink failure to fail other sinks.
         }
       });
@@ -81,7 +81,7 @@ export class DefaultTelemetryClient implements TelemetryClient {
         const error = e instanceof Error ? e : new Error(String(e));
         this.logger
           .child({ errorName: error.name, errorMessage: error.message })
-          .warn(`failed to shutdown metric sink with name '${sink.name}'`);
+          .warn(`failed to shutdown metric sink with name '${sink.getName()}'`);
       });
     });
     await Promise.all(promises);

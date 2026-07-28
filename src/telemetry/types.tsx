@@ -21,7 +21,7 @@ export interface MetricSink {
   send(metricName: string, value: number, attributes: Record<string, string | number>): void;
   /** Flush and close the given metric sink **/
   shutdown(): Promise<void>;
-  name: string;
+  getName(): string;
 }
 
 /**

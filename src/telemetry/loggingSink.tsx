@@ -25,7 +25,7 @@ export class LoggingSink implements MetricSink {
 
   async shutdown(): Promise<void> {}
 
-  get name() {
+  getName() {
     return "LoggingSink";
   }
 }
