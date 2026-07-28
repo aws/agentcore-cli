@@ -53,6 +53,7 @@
     "@aws-sdk/client-bedrock-agentcore-control": "^3.1079.0",
     "@aws-sdk/client-iam": "^3.1080.0",
     "@inkui-cli/data-table": "^0.2.0",
+    "@smithy/core": "3.29.3",
     "@tanstack/react-query": "^5.101.2",
     "commander": "^15.0.0",
     "ink": "^7.1.0",

@@ -62,7 +62,7 @@ describe("withLogging", () => {
     ]);
   });
 
-  test("logs success and error with correct command path bindings", async () => {
+  test("logs success with the correct command path binding", async () => {
     const app = new Router("myapp", "test app");
     app.use(withLogging({ logger }));
     app.handler(
@@ -72,33 +72,13 @@ describe("withLogging", () => {
         handle: async () => {},
       }),
     );
-    app.handler(
-      createHandler({
-        name: "boom",
-        description: "throws",
-        handle: async () => {
-          throw new Error("connection timeout");
-        },
-      }),
-    );
 
-    await app.route(["node", "myapp", "happy"]);
-    await app.route(["node", "myapp", "boom"]).catch(() => {});
     await app.route(["node", "myapp", "happy"]);
 
     await assertLogsMatch(tempDir, [
       {
-        filter: (l: any) =>
-          l.msg === "command executed successfully" && l.commandPath === "/myapp/happy",
-        expectedCount: 2,
-      },
-      {
-        filter: (l: any) =>
-          l.level === "error" &&
-          l.msg === "command failed" &&
-          l.errorName === "Error" &&
-          l.errorMessage === "connection timeout" &&
-          l.commandPath === "/myapp/boom",
+        filter: (log: any) =>
+          log.msg === "command executed successfully" && log.commandPath === "/myapp/happy",
         expectedCount: 1,
       },
     ]);

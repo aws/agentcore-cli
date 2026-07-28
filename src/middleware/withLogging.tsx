@@ -25,7 +25,7 @@ function redactSensitiveFlags(
 
 /**
  * Middleware that creates a child logger bound to the current command path
- * and logs execution start, success, and failure.
+ * and logs execution start and success.
  *
  * @param config - Contains the root {@link Logger} to derive children from.
  */
@@ -39,18 +39,11 @@ export function withLogging(config: WithLoggingConfig): Middleware {
     handle: async (ctx, flags, args) => {
       const commandPath = ctx.require(PathKey);
       const logger = config.logger.child({ commandPath });
-      try {
-        const safeFlags = redactSensitiveFlags(flags, h.flags());
-        logger.child({ flags: safeFlags, args }).debug("executing command");
-        await h.handle(ctx.withValue<Logger>(LoggerKey, logger), flags, args);
-        logger.debug("command executed successfully");
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        logger
-          .child({ errorName: error.name, errorMessage: error.message, stack: error.stack ?? "" })
-          .error("command failed");
-        throw err;
-      }
+      const safeFlags = redactSensitiveFlags(flags, h.flags());
+
+      logger.child({ flags: safeFlags, args }).debug("executing command");
+      await h.handle(ctx.withValue<Logger>(LoggerKey, logger), flags, args);
+      logger.debug("command executed successfully");
     },
   });
 }

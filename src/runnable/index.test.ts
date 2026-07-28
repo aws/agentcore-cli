@@ -1,8 +1,9 @@
-import { test, expect } from "bun:test";
+import { expect, test } from "bun:test";
 
-import { runRunnable, runWithExitCode, ExitCode, type Runnable } from "./index.tsx";
+import { AgentCoreCLIError } from "../errors";
+import { runRunnable, type Runnable } from "./index.tsx";
 
-test("returns SUCCESS and forwards argv when run completes", async () => {
+test("returns zero and forwards argv when run completes", async () => {
   let receivedArgv: string[] | undefined;
   const runnable: Runnable = {
     run: async (argv: string[]) => {
@@ -13,11 +14,11 @@ test("returns SUCCESS and forwards argv when run completes", async () => {
   const argv = ["node", "script", "--flag"];
   const code = await runRunnable(() => runnable, argv);
 
-  expect(code).toBe(ExitCode.SUCCESS);
+  expect(code).toBe(0);
   expect(receivedArgv).toEqual(argv);
 });
 
-test("returns FAILURE when run rejects with an Error", async () => {
+test("returns the default failure code when run rejects with an Error", async () => {
   const runnable: Runnable = {
     run: async () => {
       throw new Error("boom");
@@ -26,18 +27,25 @@ test("returns FAILURE when run rejects with an Error", async () => {
 
   const code = await runRunnable(() => runnable, []);
 
-  expect(code).toBe(ExitCode.FAILURE);
+  expect(code).toBe(1);
 });
 
-test("returns FAILURE when the factory throws a non-Error value", async () => {
+test("returns the default failure code when the factory throws a non-Error value", async () => {
   const code = await runRunnable(() => {
     throw "kaboom";
   }, []);
 
-  expect(code).toBe(ExitCode.FAILURE);
+  expect(code).toBe(1);
 });
 
-test("runWithExitCode returns SUCCESS for a resolving function", async () => {
-  const code = await runWithExitCode(async () => {});
-  expect(code).toBe(ExitCode.SUCCESS);
+test("respects custom errors codes from known errors", async () => {
+  const runnable: Runnable = {
+    run: async () => {
+      throw new AgentCoreCLIError("custom failure", { exitCode: 42 });
+    },
+  };
+
+  const code = await runRunnable(() => runnable, []);
+
+  expect(code).toBe(42);
 });
