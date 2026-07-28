@@ -62,8 +62,9 @@ describe("SourceResolver bytes", () => {
     await resolver.resolveText("payload", "-");
     const resolution = resolver.resolveText("bearer-token", "-");
 
-    await expect(resolution).rejects.toBeInstanceOf(SourceResolutionError);
     await expect(resolution).rejects.toThrow("'--bearer-token' conflicts with '--payload'");
+    await expect(resolution).rejects.toBeInstanceOf(SourceResolutionError);
+    await expect(resolution).rejects.toMatchObject({ source: "user" });
   });
 
   test("claims stdin before concurrent resolutions can race", async () => {
@@ -83,6 +84,7 @@ describe("SourceResolver bytes", () => {
 
     const resolution = resolver.resolveBytes("payload", `file://${missing}`);
     await expect(resolution).rejects.toBeInstanceOf(SourceResolutionError);
+    await expect(resolution).rejects.toMatchObject({ source: "user" });
     await expect(resolution).rejects.toThrow(`could not read '--payload' from file '${missing}'`);
   });
 
@@ -93,6 +95,7 @@ describe("SourceResolver bytes", () => {
     input.destroy(new Error("stream failed"));
 
     await expect(resolution).rejects.toBeInstanceOf(SourceResolutionError);
+    await expect(resolution).rejects.toMatchObject({ source: "user" });
     await expect(resolution).rejects.toThrow("could not read '--payload' from stdin");
   });
 });
@@ -126,6 +129,7 @@ describe("SourceResolver text", () => {
     const resolution = resolver.resolveText("api-key", `file://${path}`);
 
     await expect(resolution).rejects.toBeInstanceOf(SourceResolutionError);
+    await expect(resolution).rejects.toMatchObject({ source: "user" });
     await expect(resolution).rejects.toThrow("'--api-key' must contain valid UTF-8");
   });
 });
