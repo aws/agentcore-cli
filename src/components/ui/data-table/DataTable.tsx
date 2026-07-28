@@ -15,7 +15,6 @@ interface DataTableColumnBase<T> {
   key: keyof T & string;
   header: string;
   align?: "left" | "center" | "right";
-  sortable?: boolean;
   render?: (value: unknown, row: T) => string;
 }
 
@@ -57,12 +56,6 @@ export interface DataTableProps<T> {
   theme?: InkUITheme;
 }
 
-function headerWithSortIndicator(header: string, width: number, indicator: string): string {
-  if (!indicator) return header;
-  const suffix = `${width > stringWidth(indicator) ? " " : ""}${indicator}`;
-  return cliTruncate(header, Math.max(0, width - stringWidth(suffix))) + suffix;
-}
-
 export function DataTable<T extends Record<string, unknown>>({
   columns,
   data,
@@ -88,8 +81,6 @@ export function DataTable<T extends Record<string, unknown>>({
   const { columns: terminalWidth } = useWindowSize();
   const [selectedRow, setSelectedRow] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
-  const [sortColumn, setSortColumn] = useState<string | null>(null);
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState(false);
 
@@ -109,17 +100,8 @@ export function DataTable<T extends Record<string, unknown>>({
     });
   });
 
-  // Sort
-  const sorted = sortColumn
-    ? [...filtered].sort((a, b) => {
-        const av = String(a[sortColumn] ?? "");
-        const bv = String(b[sortColumn] ?? "");
-        return sortDirection === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-      })
-    : filtered;
-
-  const totalPages = Math.ceil(sorted.length / pageSize);
-  const pageData = sorted.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+  const totalPages = Math.ceil(filtered.length / pageSize);
+  const pageData = filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
   useInput(
     (input, key) => {
@@ -170,15 +152,6 @@ export function DataTable<T extends Record<string, unknown>>({
         setSelectedRow(0);
         setCurrentPage(0);
         setSearchMode(true);
-      } else if (input === "s") {
-        const col = columns.find((c) => c.sortable);
-        if (col) {
-          if (sortColumn === col.key) setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
-          else {
-            setSortColumn(col.key);
-            setSortDirection("asc");
-          }
-        }
       } else if (key.return) {
         const row = pageData[selectedRow];
         if (row) onSelect?.(row, currentPage * pageSize + selectedRow);
@@ -256,18 +229,13 @@ export function DataTable<T extends Record<string, unknown>>({
               <Text color={theme.colors.muted}> </Text>
             </Box>
           )}
-          {columnsWithWidths.map(({ column, width }) => {
-            const sortIndicator =
-              sortColumn === column.key ? (sortDirection === "asc" ? "▲" : "▼") : "";
-            const header = headerWithSortIndicator(column.header, width, sortIndicator);
-            return (
-              <Box key={column.key} width={width} flexShrink={0}>
-                <Text bold color={theme.colors.primary} wrap="truncate">
-                  {pad(header, width, column.align)}
-                </Text>
-              </Box>
-            );
-          })}
+          {columnsWithWidths.map(({ column, width }) => (
+            <Box key={column.key} width={width} flexShrink={0}>
+              <Text bold color={theme.colors.primary} wrap="truncate">
+                {pad(column.header, width, column.align)}
+              </Text>
+            </Box>
+          ))}
         </Box>
 
         {/* Divider (or a blank spacer line when hidden) */}
@@ -324,9 +292,9 @@ export function DataTable<T extends Record<string, unknown>>({
         <Box marginTop={0}>
           <Text color={theme.colors.muted} dimColor>
             Showing {currentPage * pageSize + 1}-
-            {Math.min((currentPage + 1) * pageSize, sorted.length)} of {sorted.length} · Page{" "}
+            {Math.min((currentPage + 1) * pageSize, filtered.length)} of {filtered.length} · Page{" "}
             {currentPage + 1}/{totalPages || 1}
-            {" · "}[↑↓/jk] Row [←→/hl] Page [/] Search [s] Sort
+            {" · "}[↑↓/jk] Row [←→/hl] Page [/] Search
           </Text>
         </Box>
       )}

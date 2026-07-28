@@ -7,7 +7,6 @@ export const SELECTION_MARKER_WIDTH = 1;
 
 export interface ColumnSizing {
   header: string;
-  sortable?: boolean;
   flex?: boolean;
   width?: number;
   minWidth?: number;
@@ -46,10 +45,7 @@ export function computeColumnWidths(
   const fixedColumns: FixedColumnWidth[] = columns.flatMap((column, index) => {
     if (index === flexIndex) return [];
 
-    const naturalWidth = Math.max(
-      stringWidth(column.header) + (column.sortable ? 2 : 0),
-      COLUMN_MIN_WIDTH,
-    );
+    const naturalWidth = Math.max(stringWidth(column.header), COLUMN_MIN_WIDTH);
     const width = column.width ?? naturalWidth;
     return [
       {
