@@ -1,10 +1,11 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../../router";
+import { InputValidationError } from "../../../../../errors";
 import { JsonRendererKey } from "../../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../../io";
 import type { Core } from "../../../../types";
 import { coreOptsFromCtx } from "../../../../utils";
-import { instructionsFlag, ratingScaleFlag, resolveRatingScale } from "../utils";
+import { instructionsFlag, ratingScaleFlag, resolveRatingScale } from "../sharedFlags";
 
 export const createLlmAsAJudgeUpdateHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -19,7 +20,7 @@ export const createLlmAsAJudgeUpdateHandler = (core: Core, io: AppIO) =>
       flag("client-token", "idempotency token", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["id"]) throw new TypeError("required option '--id <id>' not specified");
+      if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");
 
       const source = new SourceResolver({ stdin: io.stdin });
       const instructions = await source.resolveText("instructions", flags["instructions"]);

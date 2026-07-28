@@ -1,10 +1,12 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../../router";
+import { InputValidationError } from "../../../../../errors";
 import { JsonRendererKey } from "../../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../../io";
 import type { Core } from "../../../../types";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../../utils";
-import { LEVELS, instructionsFlag, ratingScaleFlag, resolveRatingScale } from "../utils";
+import { instructionsFlag, ratingScaleFlag, resolveRatingScale } from "../sharedFlags";
+import { LEVELS } from "../../levels";
 
 export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -25,18 +27,25 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
       flag("client-token", "idempotency token", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["name"]) throw new TypeError("required option '--name <name>' not specified");
-      if (!flags["level"]) throw new TypeError("required option '--level <level>' not specified");
-      if (!flags["model"]) throw new TypeError("required option '--model <model>' not specified");
+      if (!flags["name"])
+        throw new InputValidationError("required option '--name <name>' not specified");
+      if (!flags["level"])
+        throw new InputValidationError("required option '--level <level>' not specified");
+      if (!flags["model"])
+        throw new InputValidationError("required option '--model <model>' not specified");
 
       const source = new SourceResolver({ stdin: io.stdin });
       const instructions = await source.resolveText("instructions", flags["instructions"]);
       if (!instructions) {
-        throw new TypeError("required option '--instructions <instructions>' not specified");
+        throw new InputValidationError(
+          "required option '--instructions <instructions>' not specified",
+        );
       }
       const ratingScale = await resolveRatingScale(flags["rating-scale"], source);
       if (!ratingScale) {
-        throw new TypeError("required option '--rating-scale <rating-scale>' not specified");
+        throw new InputValidationError(
+          "required option '--rating-scale <rating-scale>' not specified",
+        );
       }
       const tags = parseJsonFlag<Record<string, string>>(
         "tags",

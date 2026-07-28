@@ -1,0 +1,21 @@
+{
+  "evaluators": [
+    {
+      "evaluatorArn": "arn:aws:bedrock-agentcore:::evaluator/Builtin.Faithfulness",
+      "evaluatorId": "Builtin.Faithfulness",
+      "evaluatorName": "Builtin.Faithfulness",
+      "evaluatorType": "Builtin",
+      "status": "ACTIVE",
+      "createdAt": {
+        "$date": "2024-10-22T00:00:00.000Z"
+      },
+      "updatedAt": {
+        "$date": "2024-10-22T00:00:00.000Z"
+      },
+      "description": "Response Quality Metric. Evaluates whether information in the response is supported by provided context/sources",
+      "level": "TRACE",
+      "lockedForModification": true
+    }
+  ],
+  "nextToken": "AQICAHg005/7fkIBR7tGFhppNaSDRXSe8ajCw8sa0ZnYTqa1SAHKgnaPprkoxWuT0l6IMeQpAAAAtDCBsQYJKoZIhvcNAQcGoIGjMIGgAgEAMIGaBgkqhkiG9w0BBwEwHgYJYIZIAWUDBAEuMBEEDOrgWW0ZJXn/Rd3+KAIBEIBtYRJpsDbjvjpSXuv+4f513VuXu6Bk16iuS3AJcLsHY61IEeuOhZ5IaOhOildttjcpGJF9QivFjuHDffDte2nUr+gbKKKMBF0s2NNwTAUdsLanjy7KMWAgnIfKliWRBcyHXk76AZMbgtrays4jvw=="
+}

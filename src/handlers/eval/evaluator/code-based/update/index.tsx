@@ -1,5 +1,6 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../../router";
+import { InputValidationError } from "../../../../../errors";
 import { JsonRendererKey } from "../../../../../tui";
 import type { Core } from "../../../../types";
 import { coreOptsFromCtx } from "../../../../utils";
@@ -16,7 +17,7 @@ export const createCodeBasedUpdateHandler = (core: Core) =>
       flag("client-token", "idempotency token", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["id"]) throw new TypeError("required option '--id <id>' not specified");
+      if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");
 
       const response = await core.eval.updateCodeBasedEvaluator(
         flags["id"],

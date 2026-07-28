@@ -73,8 +73,8 @@ agentcore                          # interactive TUI
 │       │   ├── create             # create (Lambda ARN + optional timeout)
 │       │   └── update             # update (merged over the existing config)
 │       ├── get                    # get an evaluator by id (type-agnostic)
-│       ├── list                   # list evaluators (client-side --type filter)
-│       └── delete                 # delete an evaluator by id (requires --yes)
+│       ├── list                   # list evaluators (server-side paginated)
+│       └── delete                 # delete an evaluator by id
 └── config                         # read/write global config values
 ```
 

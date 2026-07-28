@@ -1,0 +1,8 @@
+{
+  "evaluatorArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:evaluator/agentcore_cli_eval_fixture_llaj-lYcEl59NU5",
+  "evaluatorId": "agentcore_cli_eval_fixture_llaj-lYcEl59NU5",
+  "updatedAt": {
+    "$date": "2026-07-28T19:37:35.115Z"
+  },
+  "status": "ACTIVE"
+}

@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EvaluatorType, type EvaluatorSummary } from "@aws-sdk/client-bedrock-agentcore-control";
+import { CoreClient } from "../../../core";
 import {
   createSilentLogger,
-  TestCoreClient,
+  fixtureFactories,
+  matchGolden,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../testing";
@@ -13,27 +12,63 @@ import { createRootHandler } from "../../index";
 import { ratingScaleFromPreset } from "../ratingScale";
 
 const REGION = "us-west-2";
+const FIXTURES = join(import.meta.dir, "__fixtures__");
 
-// run drives the real router (parsing → middleware → handler) against a
-// TestCoreClient so we can assert on the exact request a handler built, plus the
-// captured stdout. Optional `stdin` seeds the in-memory input stream for `-`.
-function run(core: TestCoreClient, args: string[], stdin?: string) {
+// Record with RECORD=1 bun test src/handlers/eval/evaluator/evaluator.test.tsx
+// The RECORD run creates one evaluator of each type, exercises get/list/update
+// against them, then deletes both, so a recording leaves no residue. The ids the
+// service assigns are captured from the recorded create responses, which keeps
+// the dependent fixtures (keyed by request input) stable on replay.
+const LLAJ_NAME = "agentcore_cli_eval_fixture_llaj";
+const CODE_BASED_NAME = "agentcore_cli_eval_fixture_code";
+const MISSING_EVALUATOR_ID = "missing-evaluator-000";
+
+// CreateEvaluator validates that the Lambda exists, so recording needs a real
+// function in the fixture account. It is only referenced, never invoked.
+const FIXTURE_LAMBDA_ARN =
+  "arn:aws:lambda:us-west-2:685197708687:function:agentcore-bugbash-echo-1774451937";
+
+// SESSION-level instructions must reference at least one allowed placeholder
+// (context, available_tools, assertions, ...), so the recorded input uses {context}.
+const FIXTURE_INSTRUCTIONS =
+  "Judge from {context} whether the agent resolved the customer's request.";
+
+function createFixtureCore(): CoreClient {
+  const { createControlClient, createDataClient, createIamClient } = fixtureFactories(FIXTURES);
+  return new CoreClient({
+    createControlClient,
+    createDataClient,
+    createIamClient,
+    logger: createSilentLogger(),
+  });
+}
+
+// run drives the real router (parsing → middleware → handler → CoreClient) against
+// the fixture-backed SDK clients and returns captured stdout. Optional `stdin`
+// seeds the in-memory input stream so `-` sources can be exercised.
+async function run(args: string[], stdin?: string): Promise<string> {
   const io = testIO();
   if (stdin !== undefined) {
     io.io.stdin.push(stdin);
     io.io.stdin.push(null);
   }
-  const root = createRootHandler(core, {
+  const root = createRootHandler(createFixtureCore(), {
     io: io.io,
     logger: createSilentLogger(),
     globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
-  return root.route(["node", "agentcore", ...args, "--region", REGION]).then(() => io.stdout());
+
+  await root.route(["node", "agentcore", ...args, "--region", REGION]);
+  return io.stdout();
 }
+
+// The ids assigned by CreateEvaluator, shared by the get/update/delete tests below.
+let llajId: string;
+let codeBasedId: string;
 
 describe("eval command hierarchy", () => {
   test("registers the eval → evaluator command tree", () => {
-    const root = createRootHandler(new TestCoreClient(), {
+    const root = createRootHandler(createFixtureCore(), {
       io: testIO().io,
       logger: createSilentLogger(),
       globalConfigAccessor: new TestGlobalConfigAccessor(),
@@ -73,154 +108,163 @@ describe("eval command hierarchy", () => {
     "eval evaluator llm-as-a-judge",
     "eval evaluator code-based",
   ])("prints help for bare `%s` without an SDK call", async (command) => {
-    const core = new TestCoreClient();
-    const stdout = await run(core, command.split(" "));
+    const stdout = await run(command.split(" "));
     expect(stdout).toContain(`Usage: agentcore ${command}`);
-    expect(core.eval.calls).toHaveLength(0);
+    expect(stdout).toContain("Commands:");
   });
 });
 
-describe("llm-as-a-judge create", () => {
-  test("builds the request with a preset rating scale", async () => {
-    const core = new TestCoreClient();
-    await run(core, [
+describe("evaluator CRUDL", () => {
+  test("creates an LLM-as-a-Judge evaluator", async () => {
+    const stdout = await run([
       "eval",
       "evaluator",
       "llm-as-a-judge",
       "create",
       "--name",
-      "order-support-quality",
+      LLAJ_NAME,
       "--level",
       "SESSION",
       "--model",
-      "us.anthropic.claude-sonnet-4-5",
+      "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
       "--instructions",
-      "Judge the response.",
+      FIXTURE_INSTRUCTIONS,
       "--rating-scale",
       "1-5-quality",
     ]);
 
-    expect(core.eval.calls).toHaveLength(1);
-    const [request] = core.eval.calls[0]!.args as [any];
-    expect(request.evaluatorName).toBe("order-support-quality");
-    expect(request.level).toBe("SESSION");
-    expect(request.evaluatorConfig.llmAsAJudge.instructions).toBe("Judge the response.");
-    expect(
-      request.evaluatorConfig.llmAsAJudge.modelConfig.bedrockEvaluatorModelConfig.modelId,
-    ).toBe("us.anthropic.claude-sonnet-4-5");
-    expect(request.evaluatorConfig.llmAsAJudge.ratingScale).toEqual(
-      ratingScaleFromPreset("1-5-quality"),
-    );
+    matchGolden(FIXTURES, "llaj-create.golden.json", stdout);
+    llajId = JSON.parse(stdout).evaluatorId;
+    expect(llajId).toBeString();
   });
 
-  test("reads instructions from a file:// path", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "eval-test-"));
-    const file = join(dir, "instructions.txt");
-    writeFileSync(file, "Instructions from file.");
-    try {
-      const core = new TestCoreClient();
-      await run(core, [
-        "eval",
-        "evaluator",
-        "llm-as-a-judge",
-        "create",
-        "--name",
-        "x",
-        "--level",
-        "TRACE",
-        "--model",
-        "m",
-        "--instructions",
-        `file://${file}`,
-        "--rating-scale",
-        "pass-fail",
-      ]);
-      const [request] = core.eval.calls[0]!.args as [any];
-      expect(request.evaluatorConfig.llmAsAJudge.instructions).toBe("Instructions from file.");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+  test("creates a code-based evaluator", async () => {
+    const stdout = await run([
+      "eval",
+      "evaluator",
+      "code-based",
+      "create",
+      "--name",
+      CODE_BASED_NAME,
+      "--level",
+      "SESSION",
+      "--lambda-arn",
+      FIXTURE_LAMBDA_ARN,
+      "--timeout",
+      "30",
+    ]);
+
+    matchGolden(FIXTURES, "code-based-create.golden.json", stdout);
+    codeBasedId = JSON.parse(stdout).evaluatorId;
+    expect(codeBasedId).toBeString();
   });
 
-  test("reads instructions from stdin with `-`", async () => {
-    const core = new TestCoreClient();
-    await run(
-      core,
-      [
-        "eval",
-        "evaluator",
-        "llm-as-a-judge",
-        "create",
-        "--name",
-        "x",
-        "--level",
-        "SESSION",
-        "--model",
-        "m",
-        "--instructions",
-        "-",
-        "--rating-scale",
-        "1-3-simple",
-      ],
-      "Instructions from stdin.",
-    );
-    const [request] = core.eval.calls[0]!.args as [any];
-    expect(request.evaluatorConfig.llmAsAJudge.instructions).toBe("Instructions from stdin.");
+  test("lists evaluators", async () => {
+    const stdout = await run(["eval", "evaluator", "list"]);
+
+    matchGolden(FIXTURES, "list.golden.json", stdout);
+    expect(JSON.parse(stdout).evaluators).toBeArray();
   });
 
-  test("accepts a custom rating scale as inline JSON on --rating-scale", async () => {
-    const core = new TestCoreClient();
-    const scale = JSON.stringify({ numerical: [{ value: 1, label: "L", definition: "d" }] });
-    await run(core, [
+  test("paginates the evaluator list with --max-results and --next-token", async () => {
+    const firstPage = await run(["eval", "evaluator", "list", "--max-results", "1"]);
+    matchGolden(FIXTURES, "list-page-1.golden.json", firstPage);
+
+    const first = JSON.parse(firstPage);
+    expect(first.evaluators).toHaveLength(1);
+    expect(first.nextToken).toBeString();
+
+    const secondPage = await run([
+      "eval",
+      "evaluator",
+      "list",
+      "--max-results",
+      "1",
+      "--next-token",
+      first.nextToken,
+    ]);
+    matchGolden(FIXTURES, "list-page-2.golden.json", secondPage);
+    expect(JSON.parse(secondPage).evaluators).toHaveLength(1);
+  });
+
+  // The update handlers merge over the current config because UpdateEvaluator
+  // replaces the whole evaluatorConfig union; these assert the unset fields
+  // survive the round trip.
+  test("updates only the model on an LLM-as-a-Judge evaluator, preserving the rest", async () => {
+    const stdout = await run([
       "eval",
       "evaluator",
       "llm-as-a-judge",
-      "create",
-      "--name",
-      "x",
-      "--level",
-      "SESSION",
+      "update",
+      "--id",
+      llajId,
       "--model",
-      "m",
-      "--instructions",
-      "i",
-      "--rating-scale",
-      scale,
+      "us.anthropic.claude-haiku-4-5-20251001-v1:0",
     ]);
-    const [request] = core.eval.calls[0]!.args as [any];
-    expect(request.evaluatorConfig.llmAsAJudge.ratingScale).toEqual(JSON.parse(scale));
+
+    matchGolden(FIXTURES, "llaj-update.golden.json", stdout);
+
+    // `get` is asserted here rather than in its own test: fixtures are keyed by
+    // request input, so a second `get` of this id would share (and disagree with)
+    // this one's recording.
+    const getStdout = await run(["eval", "evaluator", "get", "--id", llajId]);
+    matchGolden(FIXTURES, "get.golden.json", getStdout);
+
+    const after = JSON.parse(getStdout);
+    expect(after.evaluatorName).toBe(LLAJ_NAME);
+    const llaj = after.evaluatorConfig.llmAsAJudge;
+    expect(llaj.modelConfig.bedrockEvaluatorModelConfig.modelId).toContain("haiku");
+    expect(llaj.instructions).toBe(FIXTURE_INSTRUCTIONS);
+    expect(llaj.ratingScale).toEqual(ratingScaleFromPreset("1-5-quality"));
   });
 
-  test("reads a custom rating scale from a file:// path on --rating-scale", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "eval-test-"));
-    const file = join(dir, "scale.json");
-    const scale = { categorical: [{ label: "P", definition: "pass" }] };
-    writeFileSync(file, JSON.stringify(scale));
-    try {
-      const core = new TestCoreClient();
-      await run(core, [
-        "eval",
-        "evaluator",
-        "llm-as-a-judge",
-        "create",
-        "--name",
-        "x",
-        "--level",
-        "SESSION",
-        "--model",
-        "m",
-        "--instructions",
-        "i",
-        "--rating-scale",
-        `file://${file}`,
-      ]);
-      const [request] = core.eval.calls[0]!.args as [any];
-      expect(request.evaluatorConfig.llmAsAJudge.ratingScale).toEqual(scale);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+  test("updates only the timeout on a code-based evaluator, preserving the Lambda ARN", async () => {
+    const stdout = await run([
+      "eval",
+      "evaluator",
+      "code-based",
+      "update",
+      "--id",
+      codeBasedId,
+      "--timeout",
+      "45",
+    ]);
+
+    matchGolden(FIXTURES, "code-based-update.golden.json", stdout);
+
+    const after = JSON.parse(await run(["eval", "evaluator", "get", "--id", codeBasedId]));
+    const lambdaConfig = after.evaluatorConfig.codeBased.lambdaConfig;
+    expect(lambdaConfig.lambdaArn).toBe(FIXTURE_LAMBDA_ARN);
+    expect(lambdaConfig.lambdaTimeoutInSeconds).toBe(45);
   });
 
+  test("rejects updating an evaluator through the wrong type's command", async () => {
+    await expect(
+      run(["eval", "evaluator", "code-based", "update", "--id", llajId, "--timeout", "60"]),
+    ).rejects.toThrow(/is not a code-based evaluator/);
+
+    await expect(
+      run(["eval", "evaluator", "llm-as-a-judge", "update", "--id", codeBasedId, "--model", "m"]),
+    ).rejects.toThrow(/is not an LLM-as-a-Judge evaluator/);
+  });
+
+  test("deletes the LLM-as-a-Judge evaluator", async () => {
+    const stdout = await run(["eval", "evaluator", "delete", "--id", llajId]);
+    matchGolden(FIXTURES, "llaj-delete.golden.json", stdout);
+  });
+
+  test("deletes the code-based evaluator", async () => {
+    const stdout = await run(["eval", "evaluator", "delete", "--id", codeBasedId]);
+    matchGolden(FIXTURES, "code-based-delete.golden.json", stdout);
+  });
+
+  test("propagates ResourceNotFoundException from get", async () => {
+    await expect(run(["eval", "evaluator", "get", "--id", MISSING_EVALUATOR_ID])).rejects.toThrow();
+  });
+});
+
+// Flag parsing and source resolution never reach the SDK, so these need no fixtures.
+describe("evaluator flag validation", () => {
   test.each([
     [
       "missing --name",
@@ -243,21 +287,34 @@ describe("llm-as-a-judge create", () => {
       /--instructions/,
     ],
     [
-      "missing rating scale",
+      "missing --rating-scale",
       ["--name", "x", "--level", "SESSION", "--model", "m", "--instructions", "i"],
       /rating-scale/,
     ],
-  ] as const)("rejects %s", async (_label, extra, message) => {
-    const core = new TestCoreClient();
-    expect(run(core, ["eval", "evaluator", "llm-as-a-judge", "create", ...extra])).rejects.toThrow(
+  ] as const)("llm-as-a-judge create rejects %s", async (_label, extra, message) => {
+    await expect(run(["eval", "evaluator", "llm-as-a-judge", "create", ...extra])).rejects.toThrow(
       message,
     );
   });
 
+  test("code-based create rejects a missing --lambda-arn", async () => {
+    await expect(
+      run(["eval", "evaluator", "code-based", "create", "--name", "x", "--level", "SESSION"]),
+    ).rejects.toThrow(/--lambda-arn/);
+  });
+
+  test.each([
+    ["llm-as-a-judge update", ["eval", "evaluator", "llm-as-a-judge", "update"]],
+    ["code-based update", ["eval", "evaluator", "code-based", "update"]],
+    ["get", ["eval", "evaluator", "get"]],
+    ["delete", ["eval", "evaluator", "delete"]],
+  ] as const)("`%s` requires --id", async (_label, args) => {
+    await expect(run([...args])).rejects.toThrow(/--id/);
+  });
+
   test("rejects malformed custom rating scale JSON", async () => {
-    const core = new TestCoreClient();
-    expect(
-      run(core, [
+    await expect(
+      run([
         "eval",
         "evaluator",
         "llm-as-a-judge",
@@ -274,102 +331,5 @@ describe("llm-as-a-judge create", () => {
         "{not json",
       ]),
     ).rejects.toThrow(/Invalid JSON for option '--rating-scale'/);
-  });
-});
-
-describe("code-based create", () => {
-  test("builds the request and omits timeout when not given", async () => {
-    const core = new TestCoreClient();
-    await run(core, [
-      "eval",
-      "evaluator",
-      "code-based",
-      "create",
-      "--name",
-      "refund-policy",
-      "--level",
-      "SESSION",
-      "--lambda-arn",
-      "arn:aws:lambda:us-west-2:123456789012:function:refund",
-    ]);
-    const [request] = core.eval.calls[0]!.args as [any];
-    expect(request.evaluatorConfig.codeBased.lambdaConfig.lambdaArn).toContain("function:refund");
-    expect(request.evaluatorConfig.codeBased.lambdaConfig.lambdaTimeoutInSeconds).toBeUndefined();
-  });
-
-  test("passes timeout through when given", async () => {
-    const core = new TestCoreClient();
-    await run(core, [
-      "eval",
-      "evaluator",
-      "code-based",
-      "create",
-      "--name",
-      "x",
-      "--level",
-      "SESSION",
-      "--lambda-arn",
-      "arn:x",
-      "--timeout",
-      "30",
-    ]);
-    const [request] = core.eval.calls[0]!.args as [any];
-    expect(request.evaluatorConfig.codeBased.lambdaConfig.lambdaTimeoutInSeconds).toBe(30);
-  });
-
-  test("rejects a missing --lambda-arn", async () => {
-    const core = new TestCoreClient();
-    expect(
-      run(core, ["eval", "evaluator", "code-based", "create", "--name", "x", "--level", "SESSION"]),
-    ).rejects.toThrow(/--lambda-arn/);
-  });
-});
-
-describe("update / get / delete required flags", () => {
-  test.each([
-    ["llm-as-a-judge update", ["eval", "evaluator", "llm-as-a-judge", "update"]],
-    ["code-based update", ["eval", "evaluator", "code-based", "update"]],
-    ["get", ["eval", "evaluator", "get"]],
-    ["delete", ["eval", "evaluator", "delete"]],
-  ] as const)("`%s` requires --id", async (_label, args) => {
-    const core = new TestCoreClient();
-    expect(run(core, [...args])).rejects.toThrow(/--id/);
-  });
-
-  test("delete calls deleteEvaluator with the id", async () => {
-    const core = new TestCoreClient();
-    await run(core, ["eval", "evaluator", "delete", "--id", "e-1"]);
-    expect(core.eval.calls).toEqual([
-      { method: "deleteEvaluator", args: ["e-1", { region: REGION, endpointUrl: undefined }] },
-    ]);
-  });
-});
-
-describe("list filtering", () => {
-  const evaluators = [
-    { evaluatorId: "b1", evaluatorType: EvaluatorType.BUILTIN },
-    { evaluatorId: "c1", evaluatorType: EvaluatorType.CODE },
-    { evaluatorId: "l1", evaluatorType: EvaluatorType.CUSTOM },
-  ] as unknown as EvaluatorSummary[];
-
-  test.each([
-    ["builtin", ["b1"]],
-    ["code-based", ["c1"]],
-    ["llm-as-a-judge", ["l1"]],
-  ] as const)("filters the returned page by --type %s", async (type, expectedIds) => {
-    const core = new TestCoreClient();
-    core.eval.setListResponse({ evaluators });
-    const stdout = await run(core, ["eval", "evaluator", "list", "--type", type, "--json"]);
-    const parsed = JSON.parse(stdout);
-    expect(parsed.evaluators.map((e: { evaluatorId: string }) => e.evaluatorId)).toEqual(
-      expectedIds,
-    );
-  });
-
-  test("returns all evaluators when --type is omitted", async () => {
-    const core = new TestCoreClient();
-    core.eval.setListResponse({ evaluators });
-    const stdout = await run(core, ["eval", "evaluator", "list", "--json"]);
-    expect(JSON.parse(stdout).evaluators).toHaveLength(3);
   });
 });

@@ -1,0 +1,17 @@
+{
+  "evaluators": [
+    {
+      "evaluatorArn": "arn:aws:bedrock-agentcore:::evaluator/Builtin.Correctness",
+      "evaluatorId": "Builtin.Correctness",
+      "evaluatorName": "Builtin.Correctness",
+      "evaluatorType": "Builtin",
+      "status": "ACTIVE",
+      "createdAt": "2024-10-22T00:00:00.000Z",
+      "updatedAt": "2024-10-22T00:00:00.000Z",
+      "description": "Response Quality Metric. Evaluates whether the information in the agent's response is factually accurate",
+      "level": "TRACE",
+      "lockedForModification": true
+    }
+  ],
+  "nextToken": "AQICAHg005/7fkIBR7tGFhppNaSDRXSe8ajCw8sa0ZnYTqa1SAGMeT1OGUEYraH1eudUhUg+AAAAszCBsAYJKoZIhvcNAQcGoIGiMIGfAgEAMIGZBgkqhkiG9w0BBwEwHgYJYIZIAWUDBAEuMBEEDA1YfspMAbdQg9EMrAIBEIBsyZKjzp5kn/PCz/fsTQ7GHUsJ5LCNS9H0b9KUilgw6vbE41MH/iZ5M3bUXl/swH9aPs8OUxgz4EVYP44uCqAWJcT+J888tXSU7nJJtXCLCHDYwcl51SmOwJ+Ab7jw+XZI4UWY6ggCpOwO+4BA"
+}

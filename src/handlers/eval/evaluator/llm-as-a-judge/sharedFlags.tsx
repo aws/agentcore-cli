@@ -9,8 +9,6 @@ import {
 } from "../../ratingScale";
 import type { SourceResolver } from "../../../../io";
 
-export const LEVELS = ["SESSION", "TRACE", "TOOL_CALL"] as const;
-
 export const instructionsFlag = flag(
   "instructions",
   "evaluation instructions (inline, file://<path>, or - for stdin)",

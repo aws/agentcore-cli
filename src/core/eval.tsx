@@ -12,6 +12,7 @@ import {
   type ListEvaluatorsResponse,
   type UpdateEvaluatorResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
+import { InputValidationError } from "../errors";
 import type { CodeBasedUpdate, CoreEvalClient, LlmAsAJudgeUpdate } from "../handlers/eval/types";
 import type { AwsClients, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
@@ -38,22 +39,33 @@ export class EvalClient implements CoreEvalClient {
   ): Promise<UpdateEvaluatorResponse> {
     const control = this.clients.control(toClientConfig(options));
     const current = await control.send(new GetEvaluatorCommand({ evaluatorId: id }));
-    const existing =
-      current.evaluatorConfig && "llmAsAJudge" in current.evaluatorConfig
-        ? current.evaluatorConfig.llmAsAJudge
-        : undefined;
+
+    // Reject a type mismatch before merging: UpdateEvaluator replaces the whole
+    // evaluatorConfig union, so merging into the wrong arm would silently convert
+    // a code-based evaluator into an LLM-as-a-Judge one.
+    if (!current.evaluatorConfig || !("llmAsAJudge" in current.evaluatorConfig)) {
+      throw new InputValidationError(`Evaluator "${id}" is not an LLM-as-a-Judge evaluator`, {
+        meta: { evaluatorId: id },
+      });
+    }
+    const existing = current.evaluatorConfig.llmAsAJudge;
 
     const instructions = update.instructions ?? existing?.instructions;
     const ratingScale = update.ratingScale ?? existing?.ratingScale;
-    const modelId =
-      update.model ??
-      (existing?.modelConfig && "bedrockEvaluatorModelConfig" in existing.modelConfig
-        ? existing.modelConfig.bedrockEvaluatorModelConfig?.modelId
-        : undefined);
+    // Preserve the existing Bedrock model config (inferenceConfig,
+    // additionalModelRequestFields, ...) and override only the model id, so an
+    // update that touches other fields does not drop model tuning.
+    const existingModel =
+      existing?.modelConfig && "bedrockEvaluatorModelConfig" in existing.modelConfig
+        ? existing.modelConfig.bedrockEvaluatorModelConfig
+        : undefined;
+    const modelId = update.model ?? existingModel?.modelId;
 
     if (!instructions || !ratingScale || !modelId) {
-      throw new TypeError(
-        `Evaluator "${id}" is not an LLM-as-a-Judge evaluator or is missing configuration required to update it`,
+      throw new InputValidationError(
+        `Evaluator "${id}" is missing configuration required to update it: ` +
+          `instructions, rating scale, and model are all required`,
+        { meta: { evaluatorId: id } },
       );
     }
 
@@ -61,7 +73,7 @@ export class EvalClient implements CoreEvalClient {
       llmAsAJudge: {
         instructions,
         ratingScale,
-        modelConfig: { bedrockEvaluatorModelConfig: { modelId } },
+        modelConfig: { bedrockEvaluatorModelConfig: { ...existingModel, modelId } },
       },
     };
 
@@ -85,23 +97,29 @@ export class EvalClient implements CoreEvalClient {
   ): Promise<UpdateEvaluatorResponse> {
     const control = this.clients.control(toClientConfig(options));
     const current = await control.send(new GetEvaluatorCommand({ evaluatorId: id }));
-    const existing =
-      current.evaluatorConfig && "codeBased" in current.evaluatorConfig
-        ? current.evaluatorConfig.codeBased
-        : undefined;
+
+    // Same union-replacement hazard as updateLlmAsAJudgeEvaluator: reject a type
+    // mismatch instead of converting the evaluator to code-based.
+    if (!current.evaluatorConfig || !("codeBased" in current.evaluatorConfig)) {
+      throw new InputValidationError(`Evaluator "${id}" is not a code-based evaluator`, {
+        meta: { evaluatorId: id },
+      });
+    }
+    const existing = current.evaluatorConfig.codeBased;
     const existingLambda =
       existing && "lambdaConfig" in existing ? existing.lambdaConfig : undefined;
 
     const lambdaArn = update.lambdaArn ?? existingLambda?.lambdaArn;
     if (!lambdaArn) {
-      throw new TypeError(
-        `Evaluator "${id}" is not a code-based evaluator or is missing configuration required to update it`,
+      throw new InputValidationError(
+        `Evaluator "${id}" is missing configuration required to update it: a Lambda ARN is required`,
+        { meta: { evaluatorId: id } },
       );
     }
     const lambdaTimeoutInSeconds = update.timeout ?? existingLambda?.lambdaTimeoutInSeconds;
 
     const evaluatorConfig: EvaluatorConfig = {
-      codeBased: { lambdaConfig: { lambdaArn, lambdaTimeoutInSeconds } },
+      codeBased: { lambdaConfig: { ...existingLambda, lambdaArn, lambdaTimeoutInSeconds } },
     };
 
     return control.send(

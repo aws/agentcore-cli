@@ -620,24 +620,58 @@ class TestIdentityClient implements CoreIdentityClient {
   }
 }
 
-// TestEvalClient records every call and returns canned responses. Configure the
-// list response to exercise the client-side `--type` filter, or set an error to
-// make the next calls throw.
+// TestEvalClient is the eval sub-client of TestCoreClient.
 export class TestEvalClient implements CoreEvalClient {
+  // calls records every invocation in order, for assertions.
   readonly calls: RecordedCall[] = [];
-  private listResponse: ListEvaluatorsResponse = DEFAULT_LIST_EVALUATORS_RESPONSE;
+
+  // List responses are keyed by the nextToken that requests them (undefined =
+  // the first page), so tests can serve multi-page listings.
+  private listResponses = new Map<string | undefined, ListEvaluatorsResponse>();
+  private createResponse: CreateEvaluatorResponse = DEFAULT_CREATE_EVALUATOR_RESPONSE;
+  private updateResponse: UpdateEvaluatorResponse = DEFAULT_UPDATE_EVALUATOR_RESPONSE;
+  private getResponse: GetEvaluatorResponse = DEFAULT_GET_EVALUATOR_RESPONSE;
+  private deleteResponse: DeleteEvaluatorResponse = DEFAULT_DELETE_EVALUATOR_RESPONSE;
   private error?: Error;
 
-  setListResponse(response: ListEvaluatorsResponse): void {
-    this.listResponse = response;
+  // setListResponse sets what listEvaluators resolves to (when not erroring).
+  // Pass `forNextToken` to serve a later page: the response is returned when
+  // listEvaluators is called with that nextToken.
+  setListResponse(response: ListEvaluatorsResponse, forNextToken?: string): this {
+    this.listResponses.set(forNextToken, response);
+    return this;
   }
 
-  setError(error: Error): void {
+  // setCreateResponse sets what createEvaluator resolves to (when not erroring).
+  setCreateResponse(response: CreateEvaluatorResponse): this {
+    this.createResponse = response;
+    return this;
+  }
+
+  // setUpdateResponse sets what both update*Evaluator methods resolve to (when
+  // not erroring).
+  setUpdateResponse(response: UpdateEvaluatorResponse): this {
+    this.updateResponse = response;
+    return this;
+  }
+
+  // setGetResponse sets what getEvaluator resolves to (when not erroring).
+  setGetResponse(response: GetEvaluatorResponse): this {
+    this.getResponse = response;
+    return this;
+  }
+
+  // setDeleteResponse sets what deleteEvaluator resolves to (when not erroring).
+  setDeleteResponse(response: DeleteEvaluatorResponse): this {
+    this.deleteResponse = response;
+    return this;
+  }
+
+  // setError makes every subsequent call reject with `error`. Pass undefined to
+  // clear it.
+  setError(error: Error | undefined): this {
     this.error = error;
-  }
-
-  private maybeThrow(): void {
-    if (this.error) throw this.error;
+    return this;
   }
 
   async createEvaluator(
@@ -645,8 +679,8 @@ export class TestEvalClient implements CoreEvalClient {
     options: CoreOptions,
   ): Promise<CreateEvaluatorResponse> {
     this.calls.push({ method: "createEvaluator", args: [request, options] });
-    this.maybeThrow();
-    return DEFAULT_CREATE_EVALUATOR_RESPONSE;
+    if (this.error) throw this.error;
+    return this.createResponse;
   }
 
   async updateLlmAsAJudgeEvaluator(
@@ -655,8 +689,8 @@ export class TestEvalClient implements CoreEvalClient {
     options: CoreOptions,
   ): Promise<UpdateEvaluatorResponse> {
     this.calls.push({ method: "updateLlmAsAJudgeEvaluator", args: [id, update, options] });
-    this.maybeThrow();
-    return DEFAULT_UPDATE_EVALUATOR_RESPONSE;
+    if (this.error) throw this.error;
+    return this.updateResponse;
   }
 
   async updateCodeBasedEvaluator(
@@ -665,14 +699,14 @@ export class TestEvalClient implements CoreEvalClient {
     options: CoreOptions,
   ): Promise<UpdateEvaluatorResponse> {
     this.calls.push({ method: "updateCodeBasedEvaluator", args: [id, update, options] });
-    this.maybeThrow();
-    return DEFAULT_UPDATE_EVALUATOR_RESPONSE;
+    if (this.error) throw this.error;
+    return this.updateResponse;
   }
 
   async getEvaluator(id: string, options: CoreOptions): Promise<GetEvaluatorResponse> {
     this.calls.push({ method: "getEvaluator", args: [id, options] });
-    this.maybeThrow();
-    return DEFAULT_GET_EVALUATOR_RESPONSE;
+    if (this.error) throw this.error;
+    return this.getResponse;
   }
 
   async listEvaluators(
@@ -681,16 +715,18 @@ export class TestEvalClient implements CoreEvalClient {
     options: CoreOptions,
   ): Promise<ListEvaluatorsResponse> {
     this.calls.push({ method: "listEvaluators", args: [nextToken, maxResults, options] });
-    this.maybeThrow();
-    // Return a fresh copy so a handler's client-side filtering can't mutate the
-    // configured response between calls.
-    return { ...this.listResponse, evaluators: [...(this.listResponse.evaluators ?? [])] };
+    if (this.error) throw this.error;
+    return (
+      this.listResponses.get(nextToken) ??
+      this.listResponses.get(undefined) ??
+      DEFAULT_LIST_EVALUATORS_RESPONSE
+    );
   }
 
   async deleteEvaluator(id: string, options: CoreOptions): Promise<DeleteEvaluatorResponse> {
     this.calls.push({ method: "deleteEvaluator", args: [id, options] });
-    this.maybeThrow();
-    return DEFAULT_DELETE_EVALUATOR_RESPONSE;
+    if (this.error) throw this.error;
+    return this.deleteResponse;
   }
 }
 

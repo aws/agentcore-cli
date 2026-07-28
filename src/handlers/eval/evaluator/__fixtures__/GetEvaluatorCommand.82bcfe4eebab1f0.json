@@ -1,0 +1,6 @@
+{
+  "$error": {
+    "name": "ValidationException",
+    "message": "1 validation error detected: Value at 'evaluatorId' failed to satisfy constraint: Member must satisfy regular expression pattern: (Builtin\\.[a-zA-Z0-9._-]+|[a-zA-Z][a-zA-Z0-9-_]{0,99}-[a-zA-Z0-9]{10})"
+  }
+}

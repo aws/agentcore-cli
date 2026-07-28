@@ -1,11 +1,11 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../../router";
+import { InputValidationError } from "../../../../../errors";
 import { JsonRendererKey } from "../../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../../io";
 import type { Core } from "../../../../types";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../../utils";
-
-const LEVELS = ["SESSION", "TRACE", "TOOL_CALL"] as const;
+import { LEVELS } from "../../levels";
 
 export const createCodeBasedCreateHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -26,10 +26,12 @@ export const createCodeBasedCreateHandler = (core: Core, io: AppIO) =>
       flag("client-token", "idempotency token", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["name"]) throw new TypeError("required option '--name <name>' not specified");
-      if (!flags["level"]) throw new TypeError("required option '--level <level>' not specified");
+      if (!flags["name"])
+        throw new InputValidationError("required option '--name <name>' not specified");
+      if (!flags["level"])
+        throw new InputValidationError("required option '--level <level>' not specified");
       if (!flags["lambda-arn"]) {
-        throw new TypeError("required option '--lambda-arn <lambda-arn>' not specified");
+        throw new InputValidationError("required option '--lambda-arn <lambda-arn>' not specified");
       }
 
       const source = new SourceResolver({ stdin: io.stdin });
