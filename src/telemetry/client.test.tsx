@@ -62,6 +62,20 @@ describe("DefaultTelemetryClient", () => {
     ]);
   });
 
+  test("throws when recorder has incomplete attributes", async () => {
+    const client = new DefaultTelemetryClient({
+      logger,
+      sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+      metricSinks: [],
+    });
+
+    const recorder = new TelemetryAttributesRecorder("cli.command_run");
+
+    expect(() => client.emit("cli.command_run", 100, recorder.getAttributes())).toThrow();
+    await client.shutdown();
+  });
+
   test("handles sink errors gracefully without throwing", async () => {
     const recordedMetrics: string[] = [];
     const goodSink: MetricSink = {
