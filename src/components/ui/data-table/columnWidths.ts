@@ -1,20 +1,13 @@
-import stringWidth from "string-width";
-
 export const COLUMN_GAP = 1;
-export const COLUMN_MIN_WIDTH = 4;
 export const FLEX_MIN_WIDTH = 16;
 export const SELECTION_MARKER_WIDTH = 1;
 
-export interface ColumnSizing {
-  header: string;
-  flex?: boolean;
-  width?: number;
-  minWidth?: number;
-}
+export type ColumnSizing =
+  | { flex: true; width?: never; minWidth?: never }
+  | { flex?: false; width: number; minWidth: number };
 
 export interface ComputedColumnWidths {
   widths: (number | undefined)[];
-  droppedIndices: number[];
   totalWidth: number;
 }
 
@@ -43,15 +36,13 @@ export function computeColumnWidths(
   const markerWidth = options.selectable ? SELECTION_MARKER_WIDTH : 0;
   const flexFloor = flexIndex === -1 ? 0 : FLEX_MIN_WIDTH;
   const fixedColumns: FixedColumnWidth[] = columns.flatMap((column, index) => {
-    if (index === flexIndex) return [];
+    if (column.flex === true) return [];
 
-    const naturalWidth = Math.max(stringWidth(column.header), COLUMN_MIN_WIDTH);
-    const width = column.width ?? naturalWidth;
     return [
       {
         index,
-        width,
-        minWidth: Math.min(column.minWidth ?? COLUMN_MIN_WIDTH, width),
+        width: column.width,
+        minWidth: Math.min(column.minWidth, column.width),
       },
     ];
   });
@@ -77,9 +68,8 @@ export function computeColumnWidths(
     }
   }
 
-  const droppedIndices: number[] = [];
   while (totalAtFloor() > frameWidth && fixedColumns.length > 0) {
-    droppedIndices.push(fixedColumns.pop()!.index);
+    fixedColumns.pop();
   }
 
   const widths: (number | undefined)[] = Array.from({ length: columns.length });
@@ -99,7 +89,6 @@ export function computeColumnWidths(
 
   return {
     widths,
-    droppedIndices: droppedIndices.sort((left, right) => left - right),
     totalWidth,
   };
 }

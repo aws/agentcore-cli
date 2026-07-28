@@ -9,7 +9,8 @@ import {
   computeColumnWidths,
   resolveBorderWidth,
   SELECTION_MARKER_WIDTH,
-} from "./useColumnWidths.js";
+} from "./columnWidths.js";
+import type { ColumnSizing } from "./columnWidths.js";
 
 interface DataTableColumnBase<T> {
   key: keyof T & string;
@@ -18,11 +19,7 @@ interface DataTableColumnBase<T> {
   render?: (value: unknown, row: T) => string;
 }
 
-type DataTableColumnSizing =
-  | { flex: true; width?: never; minWidth?: never }
-  | { flex?: false; width?: number; minWidth?: number };
-
-export type DataTableColumn<T> = DataTableColumnBase<T> & DataTableColumnSizing;
+export type DataTableColumn<T> = DataTableColumnBase<T> & ColumnSizing;
 
 export interface DataTableProps<T> {
   columns: readonly DataTableColumn<T>[];
@@ -170,6 +167,10 @@ export function DataTable<T extends Record<string, unknown>>({
     return value + " ".repeat(extra);
   };
 
+  if (columns.filter((column) => column.flex === true).length > 1) {
+    return <Text color={theme.colors.error}>DataTable supports at most one flexible column.</Text>;
+  }
+
   // Ink does not define a "none" border style and throws if it is passed through.
   const bord =
     borderStyle === "none"
@@ -188,10 +189,6 @@ export function DataTable<T extends Record<string, unknown>>({
     const width = computedWidths.widths[index];
     return width === undefined ? [] : [{ column, width }];
   });
-
-  if (columns.filter((column) => column.flex === true).length > 1) {
-    return <Text color={theme.colors.error}>DataTable supports at most one flexible column.</Text>;
-  }
 
   return (
     <Box flexDirection="column">

@@ -10,7 +10,7 @@ import {
   FLEX_MIN_WIDTH,
   resolveBorderWidth,
   SELECTION_MARKER_WIDTH,
-} from "./useColumnWidths";
+} from "./columnWidths";
 
 const widths = [40, 60, 80, 100, 120, 160, 200];
 const flexConfigs = [
@@ -49,7 +49,7 @@ describe("computeColumnWidths", () => {
 
         expect(result.totalWidth).toBe(40);
         expect(result.totalWidth).toBeLessThanOrEqual(terminalWidth);
-        expect(result.droppedIndices).toEqual([]);
+        expect(result.widths.every((width) => width !== undefined)).toBe(true);
       }
     });
   }
@@ -57,17 +57,14 @@ describe("computeColumnWidths", () => {
   test("shrinks and drops fixed columns from right to left", () => {
     expect(computeColumnWidths(runtimeColumns, 40, { selectable: true, borderWidth: 0 })).toEqual({
       widths: [23, 10, 3, undefined, undefined],
-      droppedIndices: [3, 4],
       totalWidth: 40,
     });
     expect(computeColumnWidths(runtimeColumns, 60, { selectable: true, borderWidth: 0 })).toEqual({
       widths: [29, 10, 3, 13, undefined],
-      droppedIndices: [4],
       totalWidth: 60,
     });
     expect(computeColumnWidths(runtimeColumns, 80, { selectable: true, borderWidth: 0 })).toEqual({
       widths: [30, 10, 5, 13, 16],
-      droppedIndices: [],
       totalWidth: 80,
     });
   });
@@ -116,7 +113,6 @@ describe("computeColumnWidths", () => {
     });
 
     expect(result.widths).toEqual([undefined, undefined, undefined]);
-    expect(result.droppedIndices).toEqual([0, 1, 2]);
     expect(result.totalWidth).toBe(SELECTION_MARKER_WIDTH);
   });
 
