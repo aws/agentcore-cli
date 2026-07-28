@@ -131,8 +131,8 @@ agentcore identity api-key-credential-provider delete --name my-provider
 agentcore eval evaluator llm-as-a-judge create \
   --name order-support-quality \
   --level SESSION \
-  --model us.anthropic.claude-sonnet-4-5 \
-  --instructions "Judge whether the order-support agent answered correctly." \
+  --model us.anthropic.claude-sonnet-4-5-20250929-v1:0 \
+  --instructions "Judge from {context} whether the order-support agent answered correctly." \
   --rating-scale 1-5-quality \
   --json
 

@@ -1,8 +1,5 @@
 {
   "evaluatorArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:evaluator/agentcore_cli_eval_fixture_tuned-oATpVrAtsP",
   "evaluatorId": "agentcore_cli_eval_fixture_tuned-oATpVrAtsP",
-  "createdAt": {
-    "$date": "2026-07-28T22:35:13.640Z"
-  },
-  "status": "ACTIVE"
+  "status": "DELETING"
 }

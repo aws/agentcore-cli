@@ -1,6 +1,6 @@
 {
-  "evaluatorArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:evaluator/agentcore_cli_eval_fixture_tuned-zA41dDE8Eg",
-  "evaluatorId": "agentcore_cli_eval_fixture_tuned-zA41dDE8Eg",
+  "evaluatorArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:evaluator/agentcore_cli_eval_fixture_tuned-oATpVrAtsP",
+  "evaluatorId": "agentcore_cli_eval_fixture_tuned-oATpVrAtsP",
   "evaluatorName": "agentcore_cli_eval_fixture_tuned",
   "evaluatorConfig": {
     "llmAsAJudge": {
@@ -48,10 +48,10 @@
   "level": "SESSION",
   "status": "ACTIVE",
   "createdAt": {
-    "$date": "2026-07-28T20:20:12.822Z"
+    "$date": "2026-07-28T22:35:13.640Z"
   },
   "updatedAt": {
-    "$date": "2026-07-28T20:20:15.097Z"
+    "$date": "2026-07-28T22:35:16.477Z"
   },
   "lockedForModification": false
 }

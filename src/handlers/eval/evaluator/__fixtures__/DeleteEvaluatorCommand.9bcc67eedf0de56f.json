@@ -1,5 +1,0 @@
-{
-  "evaluatorArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:evaluator/agentcore_cli_eval_fixture_llaj-TpXY9KAsvL",
-  "evaluatorId": "agentcore_cli_eval_fixture_llaj-TpXY9KAsvL",
-  "status": "DELETING"
-}

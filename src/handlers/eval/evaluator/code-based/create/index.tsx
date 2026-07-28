@@ -16,7 +16,11 @@ export const createCodeBasedCreateHandler = (core: Core, io: AppIO) =>
       flag("level", `evaluation level (${LEVELS.join(" | ")})`, z.enum(LEVELS).optional()),
       flag("lambda-arn", "ARN of the Lambda function that scores a session", z.string().optional()),
       // No default; the service applies its own timeout (60s) when omitted.
-      flag("timeout", "Lambda timeout in seconds (1-300)", z.number().optional()),
+      flag(
+        "timeout",
+        "Lambda timeout in seconds (1-300)",
+        z.number().int().min(1).max(300).optional(),
+      ),
       flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),
       flag(
         "tags",

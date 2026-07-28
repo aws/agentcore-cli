@@ -21,7 +21,10 @@ const FIXTURES = join(import.meta.dir, "__fixtures__");
 // the dependent fixtures (keyed by request input) stable on replay.
 const LLAJ_NAME = "agentcore_cli_eval_fixture_llaj";
 const CODE_BASED_NAME = "agentcore_cli_eval_fixture_code";
-const MISSING_EVALUATOR_ID = "missing-evaluator-000";
+// Evaluator ids must match `[a-zA-Z][a-zA-Z0-9-_]{0,99}-[a-zA-Z0-9]{10}`. An id that
+// fails the pattern is rejected as a ValidationException before any lookup happens,
+// so this one is well-formed and simply absent, to reach the not-found path.
+const MISSING_EVALUATOR_ID = "missing-eval-0000000000";
 
 // CreateEvaluator validates that the Lambda exists, so recording needs a real
 // function in the fixture account. It is only referenced, never invoked.
@@ -328,7 +331,9 @@ describe("evaluator CRUDL", () => {
   });
 
   test("propagates ResourceNotFoundException from get", async () => {
-    await expect(run(["eval", "evaluator", "get", "--id", MISSING_EVALUATOR_ID])).rejects.toThrow();
+    await expect(
+      run(["eval", "evaluator", "get", "--id", MISSING_EVALUATOR_ID]),
+    ).rejects.toMatchObject({ name: "ResourceNotFoundException" });
   });
 });
 
