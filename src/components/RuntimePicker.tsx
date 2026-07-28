@@ -2,8 +2,8 @@ import type { AgentRuntime } from "@aws-sdk/client-bedrock-agentcore-control";
 import { useNavigate } from "react-router";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
+import { formatTimestamp } from "./formatTimestamp";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
-import { formatTimestamp, runtimeIdSuffix } from "./pickerFormatters";
 import type { DataTableColumn } from "./ui/data-table";
 
 interface RuntimeRow extends Record<string, unknown> {
@@ -12,6 +12,11 @@ interface RuntimeRow extends Record<string, unknown> {
   runtimeVersion: string;
   status: string;
   lastUpdatedAt: string;
+}
+
+function runtimeIdSuffix(value: unknown): string {
+  const id = String(value ?? "");
+  return id.slice(id.lastIndexOf("-") + 1);
 }
 
 export const runtimeColumns = [

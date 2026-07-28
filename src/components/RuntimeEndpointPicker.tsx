@@ -2,8 +2,8 @@ import type { AgentRuntimeEndpoint } from "@aws-sdk/client-bedrock-agentcore-con
 import { useNavigate } from "react-router";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
+import { formatTimestamp } from "./formatTimestamp";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
-import { formatTimestamp } from "./pickerFormatters";
 import type { DataTableColumn } from "./ui/data-table";
 
 interface RuntimeEndpointRow extends Record<string, unknown> {
