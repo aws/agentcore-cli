@@ -21,6 +21,8 @@ const RUNTIME_ID = "runtime-123";
 const QUALIFIER = "prod";
 const RUNTIME_ARN = `arn:aws:bedrock-agentcore:${REGION}:123456789012:runtime/${RUNTIME_ID}`;
 const CONSOLE_PATH = `/agentcore/runtime/invoke/${RUNTIME_ID}/${QUALIFIER}`;
+const RUNTIME_USER_ID = "preserved-user";
+const APPLICATION_HEADER = "X-Tenant: secret-header";
 
 afterEach(cleanupScreens);
 
@@ -85,6 +87,18 @@ async function editCustom(screen: InvokeScreen, down: number, choice: number, va
   await screen.press("return");
   await screen.write(value);
   await screen.press("return");
+}
+
+async function configureRuntimeScopedOptions(screen: InvokeScreen, token: string) {
+  await screen.write("\x0f");
+  await waitForText(screen.lastFrame, "Request Options");
+  await editText(screen, 5, RUNTIME_USER_ID);
+  await screen.press("down");
+  await screen.press("return");
+  await screen.write(APPLICATION_HEADER);
+  await screen.write("\x04");
+  await editText(screen, 1, token);
+  await screen.press("escape");
 }
 
 describe("Runtime invoke routing", () => {
@@ -434,7 +448,89 @@ describe("Runtime invoke console", () => {
     await waitForText(screen.lastFrame, "Application headers: X-Test: saved");
   });
 
-  test("Ctrl+T preserves Runtime-scoped options only across endpoints", async () => {
+  test("Ctrl+T preserves Runtime-scoped credentials across endpoints and clears sessions", async () => {
+    const nextQualifier = "canary";
+    const token = "token-secret";
+    const core = new TestCoreClient();
+    core.runtime
+      .setGetResponse({
+        agentRuntimeArn: RUNTIME_ARN,
+        authorizerConfiguration: { customJWTAuthorizer: {} },
+        requestHeaderConfiguration: { requestHeaderAllowlist: ["X-Tenant"] },
+      } as GetAgentRuntimeResponse)
+      .setListResponse({
+        agentRuntimes: [runtime()],
+      })
+      .setListEndpointsResponse({
+        runtimeEndpoints: [endpoint({ name: nextQualifier, id: nextQualifier })],
+      })
+      .setInvokeResponse({
+        statusCode: 200,
+        contentType: "text/plain",
+        runtimeSessionId: "returned-runtime",
+        mcpSessionId: "returned-mcp",
+        body: responseBody(Buffer.from("old response")),
+      });
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "idle");
+    await configureRuntimeScopedOptions(screen, token);
+    await screen.write("first");
+    await screen.write("\x04");
+    await waitForText(screen.lastFrame, "old response");
+    await waitForText(screen.lastFrame, "idle");
+
+    await screen.write("\x14");
+    await waitForText(screen.lastFrame, "choose another Runtime");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "old response");
+
+    await screen.write("\x14");
+    await waitForText(screen.lastFrame, "choose another Runtime");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, nextQualifier);
+    await screen.press("return");
+    await waitForText(
+      screen.lastFrame,
+      `agentcore → runtime → invoke → ${RUNTIME_ID} → ${nextQualifier}`,
+    );
+    await waitForText(screen.lastFrame, "idle");
+    expect(screen.lastFrame()).not.toContain("old response");
+    expect(screen.lastFrame()).toContain("Sessions: Runtime new · MCP new");
+
+    await screen.write("\x0f");
+    await waitForText(screen.lastFrame, "Request Options");
+    const endpointOptions = screen.lastFrame()!;
+    expect(endpointOptions).toContain(`Runtime user ID: ${RUNTIME_USER_ID}`);
+    expect(endpointOptions).toContain(`Application headers: ${APPLICATION_HEADER}`);
+    expect(endpointOptions).toContain("*".repeat(token.length));
+    await screen.press("escape");
+
+    core.runtime.setInvokeResponse({
+      statusCode: 200,
+      contentType: "text/plain",
+      body: responseBody(Buffer.from("new response")),
+    });
+    await screen.write("second");
+    await screen.write("\x04");
+    await waitFor(
+      () => core.runtime.calls.filter((call) => call.method === "invokeRuntime").length === 2,
+    );
+
+    const second = core.runtime.calls.filter((call) => call.method === "invokeRuntime")[1]!
+      .args[0] as RuntimeInvokeRequest;
+    expect(second).toMatchObject({
+      runtimeId: RUNTIME_ID,
+      qualifier: nextQualifier,
+      runtimeUserId: RUNTIME_USER_ID,
+      bearerToken: token,
+      applicationHeaders: [["X-Tenant", "secret-header"]],
+    });
+    expect(second.runtimeSessionId).toBeUndefined();
+    expect(second.mcpSessionId).toBeUndefined();
+  });
+
+  test("Ctrl+T clears Runtime-scoped credentials and sessions for another Runtime", async () => {
     const nextRuntimeId = "runtime-next";
     const nextQualifier = "canary";
     const nextArn = RUNTIME_ARN.replace(RUNTIME_ID, nextRuntimeId);
@@ -469,45 +565,11 @@ describe("Runtime invoke console", () => {
     const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "idle");
-    await screen.write("\x0f");
-    await waitForText(screen.lastFrame, "Request Options");
-    await editText(screen, 5, "preserved-user");
-    await screen.press("down");
-    await screen.press("return");
-    await screen.write("X-Tenant: secret-header");
-    await screen.write("\x04");
-    await editText(screen, 1, token);
-    await screen.press("escape");
+    await configureRuntimeScopedOptions(screen, token);
     await screen.write("first");
     await screen.write("\x04");
     await waitForText(screen.lastFrame, "old response");
     await waitForText(screen.lastFrame, "idle");
-
-    await screen.write("\x14");
-    await waitForText(screen.lastFrame, "choose another Runtime");
-    await screen.press("escape");
-    await waitForText(screen.lastFrame, "old response");
-
-    await screen.write("\x14");
-    await waitForText(screen.lastFrame, "next-runtime");
-    await screen.press("return");
-    await waitForText(screen.lastFrame, nextQualifier);
-    await screen.press("return");
-    await waitForText(
-      screen.lastFrame,
-      `agentcore → runtime → invoke → ${RUNTIME_ID} → ${nextQualifier}`,
-    );
-    await waitForText(screen.lastFrame, "idle");
-    expect(screen.lastFrame()).not.toContain("old response");
-    expect(screen.lastFrame()).toContain("Sessions: Runtime new · MCP new");
-
-    await screen.write("\x0f");
-    await waitForText(screen.lastFrame, "Request Options");
-    const endpointOptions = screen.lastFrame()!;
-    expect(endpointOptions).toContain("Runtime user ID: preserved-user");
-    expect(endpointOptions).toContain("Application headers: X-Tenant: secret-header");
-    expect(endpointOptions).toContain("*".repeat(token.length));
-    await screen.press("escape");
 
     core.runtime.setGetResponse({
       agentRuntimeArn: nextArn,
@@ -530,10 +592,16 @@ describe("Runtime invoke console", () => {
     await screen.write("\x0f");
     await waitForText(screen.lastFrame, "Request Options");
     const options = screen.lastFrame()!;
-    expect(options).toContain("Runtime user ID: preserved-user");
+    expect(options).toContain(`Runtime user ID: ${RUNTIME_USER_ID}`);
     expect(options).not.toContain("secret-header");
     expect(options).not.toContain("*".repeat(token.length));
     await screen.press("escape");
+
+    core.runtime.setInvokeResponse({
+      statusCode: 200,
+      contentType: "text/plain",
+      body: responseBody(Buffer.from("new response")),
+    });
     await screen.write("second");
     await screen.write("\x04");
     await waitFor(
@@ -545,8 +613,10 @@ describe("Runtime invoke console", () => {
     expect(second).toMatchObject({
       runtimeId: nextRuntimeId,
       qualifier: nextQualifier,
-      runtimeUserId: "preserved-user",
+      runtimeUserId: RUNTIME_USER_ID,
     });
+    expect(second.bearerToken).toBeUndefined();
+    expect(second.applicationHeaders).toBeUndefined();
     expect(second.runtimeSessionId).toBeUndefined();
     expect(second.mcpSessionId).toBeUndefined();
   });

@@ -26,6 +26,8 @@ const theme = darkTheme;
 
 type ExchangeState = "connecting" | "streaming" | "complete" | "interrupted" | "failed";
 
+type TargetPickerState = { stage: "runtime" } | { stage: "endpoint"; runtimeId: string };
+
 interface Exchange {
   payload: string;
   response: string;
@@ -39,6 +41,26 @@ interface Exchange {
 
 const invokePath = (...parts: string[]) =>
   ["/agentcore/runtime/invoke", ...parts.map(encodeURIComponent)].join("/");
+
+function optionsAfterTargetChange(
+  options: RuntimeInvokeOptions,
+  currentRuntimeId: string,
+  nextRuntimeId: string,
+): RuntimeInvokeOptions {
+  const {
+    runtimeSessionId: _runtimeSessionId,
+    mcpSessionId: _mcpSessionId,
+    ...withoutSessions
+  } = options;
+  if (currentRuntimeId === nextRuntimeId) return withoutSessions;
+
+  const {
+    bearerToken: _bearerToken,
+    headers: _headers,
+    ...withoutRuntimeCredentials
+  } = withoutSessions;
+  return withoutRuntimeCredentials;
+}
 
 function payloadPlaceholder(contentType?: string): string {
   const mediaType = (contentType || "application/json").split(";", 1)[0]!.trim().toLowerCase();
@@ -99,7 +121,7 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
   const navigate = useNavigate();
   const { rows } = useWindowSize();
   const [target, setTarget] = useState({ runtimeId, qualifier });
-  const [switchRuntime, setSwitchRuntime] = useState<string | null>(null);
+  const [targetPicker, setTargetPicker] = useState<TargetPickerState | null>(null);
   const detail = useQuery({
     queryKey: ["runtime", opts.region, target.runtimeId],
     queryFn: ({ signal }) => core.runtime.getRuntime(target.runtimeId, opts, signal),
@@ -264,7 +286,7 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
       if (key.ctrl) {
         if (input === "o" && !abortRef.current) setShowOptions(true);
         else if (input === "v" && !abortRef.current) setPrettyJson((current) => !current);
-        else if (input === "t" && !abortRef.current) setSwitchRuntime("");
+        else if (input === "t" && !abortRef.current) setTargetPicker({ stage: "runtime" });
         else if (input === "d") void send();
         return;
       }
@@ -289,49 +311,45 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
         if (next >= bottom) stickRef.current = true;
       }
     },
-    { isActive: !showOptions && switchRuntime === null },
+    { isActive: !showOptions && targetPicker === null },
   );
 
-  if (switchRuntime === "") {
+  if (targetPicker?.stage === "runtime") {
     return (
       <RuntimePicker
         ctx={ctx}
         core={core}
         breadcrumb={["agentcore", "runtime", "invoke"]}
         description="choose another Runtime"
-        onSelect={setSwitchRuntime}
-        onEscape={() => setSwitchRuntime(null)}
+        onSelect={(selectedRuntimeId) =>
+          setTargetPicker({ stage: "endpoint", runtimeId: selectedRuntimeId })
+        }
+        onEscape={() => setTargetPicker(null)}
       />
     );
   }
 
-  if (switchRuntime) {
+  if (targetPicker?.stage === "endpoint") {
+    const nextRuntimeId = targetPicker.runtimeId;
     return (
       <RuntimeEndpointPicker
         ctx={ctx}
         core={core}
-        runtimeId={switchRuntime}
-        breadcrumb={["agentcore", "runtime", "invoke", switchRuntime]}
+        runtimeId={nextRuntimeId}
+        breadcrumb={["agentcore", "runtime", "invoke", nextRuntimeId]}
         description="choose another endpoint"
         onSelect={(selected) => {
-          if (switchRuntime !== target.runtimeId || selected !== target.qualifier) {
-            setTarget({ runtimeId: switchRuntime, qualifier: selected });
-            setRequestOptions(
-              ({
-                runtimeSessionId: _runtime,
-                mcpSessionId: _mcp,
-                bearerToken,
-                headers,
-                ...current
-              }) =>
-                switchRuntime === target.runtimeId ? { ...current, bearerToken, headers } : current,
+          if (nextRuntimeId !== target.runtimeId || selected !== target.qualifier) {
+            setTarget({ runtimeId: nextRuntimeId, qualifier: selected });
+            setRequestOptions((current) =>
+              optionsAfterTargetChange(current, target.runtimeId, nextRuntimeId),
             );
             setHistory([]);
             setPrettyJson(false);
           }
-          setSwitchRuntime(null);
+          setTargetPicker(null);
         }}
-        onEscape={() => setSwitchRuntime("")}
+        onEscape={() => setTargetPicker({ stage: "runtime" })}
       />
     );
   }
