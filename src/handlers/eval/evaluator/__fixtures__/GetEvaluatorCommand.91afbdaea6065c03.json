@@ -1,10 +1,10 @@
 {
-  "evaluatorArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:evaluator/agentcore_cli_eval_fixture_llaj-TpXY9KAsvL",
-  "evaluatorId": "agentcore_cli_eval_fixture_llaj-TpXY9KAsvL",
-  "evaluatorName": "agentcore_cli_eval_fixture_llaj",
+  "evaluatorArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:evaluator/agentcore_cli_eval_fixture_tuned-zA41dDE8Eg",
+  "evaluatorId": "agentcore_cli_eval_fixture_tuned-zA41dDE8Eg",
+  "evaluatorName": "agentcore_cli_eval_fixture_tuned",
   "evaluatorConfig": {
     "llmAsAJudge": {
-      "instructions": "Judge from {context} whether the agent resolved the customer's request.",
+      "instructions": "Judge from {context} whether the agent was both correct and polite.",
       "ratingScale": {
         "numerical": [
           {
@@ -36,14 +36,22 @@
       },
       "modelConfig": {
         "bedrockEvaluatorModelConfig": {
-          "modelId": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+          "modelId": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+          "inferenceConfig": {
+            "maxTokens": 512,
+            "temperature": 0
+          }
         }
       }
     }
   },
   "level": "SESSION",
   "status": "ACTIVE",
-  "createdAt": "2026-07-28T20:20:09.021Z",
-  "updatedAt": "2026-07-28T20:20:10.999Z",
+  "createdAt": {
+    "$date": "2026-07-28T20:20:12.822Z"
+  },
+  "updatedAt": {
+    "$date": "2026-07-28T20:20:15.097Z"
+  },
   "lockedForModification": false
 }

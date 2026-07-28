@@ -1,6 +1,6 @@
 {
-  "evaluatorArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:evaluator/agentcore_cli_eval_fixture_code-QvPh0I4Te4",
-  "evaluatorId": "agentcore_cli_eval_fixture_code-QvPh0I4Te4",
+  "evaluatorArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:evaluator/agentcore_cli_eval_fixture_code-Nq3dSd6wG2",
+  "evaluatorId": "agentcore_cli_eval_fixture_code-Nq3dSd6wG2",
   "evaluatorName": "agentcore_cli_eval_fixture_code",
   "evaluatorConfig": {
     "codeBased": {
@@ -13,10 +13,10 @@
   "level": "SESSION",
   "status": "ACTIVE",
   "createdAt": {
-    "$date": "2026-07-28T19:37:33.404Z"
+    "$date": "2026-07-28T20:20:09.288Z"
   },
   "updatedAt": {
-    "$date": "2026-07-28T19:37:35.594Z"
+    "$date": "2026-07-28T20:20:15.759Z"
   },
   "lockedForModification": false
 }

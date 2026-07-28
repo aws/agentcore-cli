@@ -193,24 +193,24 @@
       "lockedForModification": true
     },
     {
-      "evaluatorArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:evaluator/agentcore_cli_eval_fixture_code-QvPh0I4Te4",
-      "evaluatorId": "agentcore_cli_eval_fixture_code-QvPh0I4Te4",
+      "evaluatorArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:evaluator/agentcore_cli_eval_fixture_code-Nq3dSd6wG2",
+      "evaluatorId": "agentcore_cli_eval_fixture_code-Nq3dSd6wG2",
       "evaluatorName": "agentcore_cli_eval_fixture_code",
       "evaluatorType": "CustomCode",
       "status": "ACTIVE",
-      "createdAt": "2026-07-28T19:37:33.404Z",
-      "updatedAt": "2026-07-28T19:37:33.404Z",
+      "createdAt": "2026-07-28T20:20:09.288Z",
+      "updatedAt": "2026-07-28T20:20:09.288Z",
       "level": "SESSION",
       "lockedForModification": false
     },
     {
-      "evaluatorArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:evaluator/agentcore_cli_eval_fixture_llaj-lYcEl59NU5",
-      "evaluatorId": "agentcore_cli_eval_fixture_llaj-lYcEl59NU5",
+      "evaluatorArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:evaluator/agentcore_cli_eval_fixture_llaj-TpXY9KAsvL",
+      "evaluatorId": "agentcore_cli_eval_fixture_llaj-TpXY9KAsvL",
       "evaluatorName": "agentcore_cli_eval_fixture_llaj",
       "evaluatorType": "Custom",
       "status": "ACTIVE",
-      "createdAt": "2026-07-28T19:37:33.172Z",
-      "updatedAt": "2026-07-28T19:37:33.172Z",
+      "createdAt": "2026-07-28T20:20:09.021Z",
+      "updatedAt": "2026-07-28T20:20:09.021Z",
       "level": "SESSION",
       "lockedForModification": false
     }

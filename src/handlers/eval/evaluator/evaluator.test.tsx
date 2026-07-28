@@ -33,6 +33,13 @@ const FIXTURE_LAMBDA_ARN =
 const FIXTURE_INSTRUCTIONS =
   "Judge from {context} whether the agent resolved the customer's request.";
 
+// The inference tuning seeded on the "tuned" evaluator. `--model` only carries a
+// model id, so the CLI cannot set inferenceConfig; it is seeded through the SDK
+// during recording purely to prove an update preserves it. temperature and topP
+// are mutually exclusive on this model, so only temperature is set.
+const TUNED_NAME = "agentcore_cli_eval_fixture_tuned";
+const TUNED_INFERENCE_CONFIG = { temperature: 0, maxTokens: 512 };
+
 function createFixtureCore(): CoreClient {
   const { createControlClient, createDataClient, createIamClient } = fixtureFactories(FIXTURES);
   return new CoreClient({
@@ -65,6 +72,35 @@ async function run(args: string[], stdin?: string): Promise<string> {
 // The ids assigned by CreateEvaluator, shared by the get/update/delete tests below.
 let llajId: string;
 let codeBasedId: string;
+let tunedId: string;
+
+// seedTunedEvaluator creates an evaluator carrying an inferenceConfig, which no
+// CLI flag can express, so the preservation test has something to preserve. It
+// runs against the live API in record mode only; on replay the id comes from the
+// recorded fixture below.
+async function seedTunedEvaluator(): Promise<string> {
+  const response = await createFixtureCore().eval.createEvaluator(
+    {
+      evaluatorName: TUNED_NAME,
+      level: "SESSION",
+      evaluatorConfig: {
+        llmAsAJudge: {
+          instructions: FIXTURE_INSTRUCTIONS,
+          ratingScale: ratingScaleFromPreset("1-5-quality"),
+          modelConfig: {
+            bedrockEvaluatorModelConfig: {
+              modelId: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+              inferenceConfig: TUNED_INFERENCE_CONFIG,
+            },
+          },
+        },
+      },
+    },
+    { region: REGION, endpointUrl: undefined },
+  );
+  if (!response.evaluatorId) throw new Error("seeding the tuned evaluator returned no id");
+  return response.evaluatorId;
+}
 
 describe("eval command hierarchy", () => {
   test("registers the eval → evaluator command tree", () => {
@@ -216,6 +252,39 @@ describe("evaluator CRUDL", () => {
     expect(llaj.modelConfig.bedrockEvaluatorModelConfig.modelId).toContain("haiku");
     expect(llaj.instructions).toBe(FIXTURE_INSTRUCTIONS);
     expect(llaj.ratingScale).toEqual(ratingScaleFromPreset("1-5-quality"));
+  });
+
+  // Regression: the update used to rebuild bedrockEvaluatorModelConfig from
+  // modelId alone, which silently dropped inferenceConfig and
+  // additionalModelRequestFields. An update that never mentions the model must
+  // leave the tuning intact.
+  test("updates instructions without dropping the existing inferenceConfig", async () => {
+    tunedId = await seedTunedEvaluator();
+
+    const before = JSON.parse(await run(["eval", "evaluator", "get", "--id", tunedId]));
+    expect(
+      before.evaluatorConfig.llmAsAJudge.modelConfig.bedrockEvaluatorModelConfig.inferenceConfig,
+    ).toEqual(TUNED_INFERENCE_CONFIG);
+
+    await run([
+      "eval",
+      "evaluator",
+      "llm-as-a-judge",
+      "update",
+      "--id",
+      tunedId,
+      "--instructions",
+      "Judge from {context} whether the agent was both correct and polite.",
+    ]);
+
+    const model = JSON.parse(await run(["eval", "evaluator", "get", "--id", tunedId]))
+      .evaluatorConfig.llmAsAJudge.modelConfig.bedrockEvaluatorModelConfig;
+    expect(model.inferenceConfig).toEqual(TUNED_INFERENCE_CONFIG);
+    expect(model.modelId).toBe("us.anthropic.claude-sonnet-4-5-20250929-v1:0");
+  });
+
+  test("deletes the tuned evaluator", async () => {
+    await run(["eval", "evaluator", "delete", "--id", tunedId]);
   });
 
   test("updates only the timeout on a code-based evaluator, preserving the Lambda ARN", async () => {
