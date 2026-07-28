@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.25.0] - 2026-07-28
+
+### Added
+- feat(templates): upgrade A2A agents to SDK v1 (#1810) (4a9ce31d)
+
+### Fixed
+- fix(templates): avoid pulling in incompatible mcp versions (#1850) (85c7cc2b)
+- fix: preserve wrapped CLI help in API docs (#1826) (486db061)
+- fix(e2e): delete gateway + targets in import fixture cleanup (#1813) (f50487fd)
+- fix(ci): prevent secrets in E2E artifacts (#1825) (13d598f8)
+- fix(ci): provision review Python with uv on CodeBuild (#1823) (90e0e39d)
+- fix: resolve high-severity npm audit vulnerabilities (#1838) (481fb25d)
+- fix(dev): support multiple A2A runtime ports (#1818) (705e2ea7)
+- fix(deploy): fail fast on AWS account mismatch (#1787) (68ceecc7)
+- fix(ci): scope and revoke E2E GitHub App tokens (#1798) (0053ba65)
+
+### Other Changes
+- ci: migrate workflows to shared reusable workflows (#1829) (ac8dec6d)
+- ci: emit canary heartbeat metric for external failure alarm (#1812) (9d041faa)
+
 ## [0.24.2] - 2026-07-23
 
 ### Added
