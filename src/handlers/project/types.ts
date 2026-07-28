@@ -1,11 +1,24 @@
+import z from "zod";
+
 /** Available project templates for scaffolding new AgentCore projects. */
 export const PROJECT_TEMPLATES = {
-  BAREBONES: "barebones",
+  HELLO_WORLD_PYTHON: "hello-world-python",
 } as const;
 
 export type ProjectTemplate = (typeof PROJECT_TEMPLATES)[keyof typeof PROJECT_TEMPLATES];
 
+export const ProjectNameSchema = z
+  .string()
+  .min(1, "project name is required")
+  .max(23, "project name must be 23 characters or less")
+  .regex(
+    /^[A-Za-z][A-Za-z0-9]{0,22}$/,
+    "project name must start with a letter and contain only letters and digits",
+  );
+
 export type CreateProjectInput = {
+  /** The name of the project; also the directory it is scaffolded into. */
+  name: string;
   /** The project template to scaffold from. */
   template: ProjectTemplate;
 };

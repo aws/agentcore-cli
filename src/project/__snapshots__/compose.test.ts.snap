@@ -1,0 +1,21 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`projectTree scaffolds the expected file tree 1`] = `
+[
+  "agentcore.json",
+  "agentcore/aws-targets.json",
+  "agentcore/cdk/.gitignore",
+  "agentcore/cdk/.npmignore",
+  "agentcore/cdk/.prettierrc",
+  "agentcore/cdk/README.md",
+  "agentcore/cdk/bin/cdk.ts",
+  "agentcore/cdk/cdk.json",
+  "agentcore/cdk/jest.config.js",
+  "agentcore/cdk/lib/cdk-stack.ts",
+  "agentcore/cdk/package.json",
+  "agentcore/cdk/test/cdk.test.ts",
+  "agentcore/cdk/tsconfig.json",
+  "app/hello-world/main.py",
+  "app/hello-world/pyproject.toml",
+]
+`;
