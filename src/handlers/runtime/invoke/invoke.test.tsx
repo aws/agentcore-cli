@@ -386,7 +386,7 @@ describe("runtime invoke", () => {
         `file://${missing}`,
       ]),
     ).rejects.toMatchObject({
-      name: "TypeError",
+      name: "UsageError",
       message: `could not read '--payload' from file '${missing}'`,
       exitCode: ExitCode.USAGE,
     });

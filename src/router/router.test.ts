@@ -2,6 +2,7 @@ import { test, expect } from "bun:test";
 import { Command } from "commander";
 import z from "zod";
 
+import { InputValidationError } from "../errors";
 import {
   Router,
   ValueContext,
@@ -531,7 +532,7 @@ test("marks invalid argument schema input as usage", async () => {
     .parseAsync(["node", "app", "config", "toolong"])
     .catch((caught) => caught);
 
-  expect(error).toBeInstanceOf(TypeError);
+  expect(error).toBeInstanceOf(InputValidationError);
   expect(error.message).toContain("Invalid value for argument 'key'");
   expect(error.exitCode).toBe(2);
 });

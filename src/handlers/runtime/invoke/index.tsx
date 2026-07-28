@@ -4,7 +4,7 @@ import type { AppIO } from "../../../io";
 import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 import { JsonKey } from "../../keys";
-import { UsageError } from "./errors";
+import { RuntimeInvokeInterruptedError, UsageError } from "./errors";
 import {
   normalizeRuntimeInvokeRequest,
   parseRuntimeInvokeHeaders,
@@ -91,6 +91,12 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
           json: jsonOutput,
           signal: controller.signal,
         });
+      } catch (error) {
+        if (controller.signal.aborted && (error as Error)?.name === "AbortError") {
+          if (error instanceof RuntimeInvokeInterruptedError) throw error;
+          throw new RuntimeInvokeInterruptedError(error);
+        }
+        throw error;
       } finally {
         controller.abort();
         process.off("SIGINT", interrupt);

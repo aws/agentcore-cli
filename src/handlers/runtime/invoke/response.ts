@@ -1,7 +1,7 @@
 import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import type { RuntimeInvokeResponse } from "../types";
-import { UsageError } from "./errors";
+import { RuntimeInvokeInterruptedError, RuntimeInvokeResponseError, UsageError } from "./errors";
 
 interface RuntimeInvokeOutput {
   stdout: NodeJS.WriteStream;
@@ -75,10 +75,8 @@ export async function writeRuntimeInvokeFile(
 
 function failure(error: unknown): never {
   const interrupted = (error as Error)?.name === "AbortError";
-  const reported = new Error(interrupted ? "The operation was aborted" : RESPONSE_STREAM_FAILED);
-  reported.name = interrupted ? "AbortError" : "Error";
-  Object.assign(reported, { reported: true });
-  throw reported;
+  if (interrupted) throw new RuntimeInvokeInterruptedError(error, true);
+  throw new RuntimeInvokeResponseError(RESPONSE_STREAM_FAILED, error);
 }
 
 async function readBody(

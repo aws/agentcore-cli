@@ -1,7 +1,7 @@
 import { expect, spyOn, test } from "bun:test";
 import { CommanderError } from "commander";
 
-import { AgentCoreCLIError } from "../errors";
+import { AgentCoreCLIError, InputValidationError } from "../errors";
 import { ExitCode, runRunnable, runWithExitCode, type Runnable } from "./index.tsx";
 
 async function captureErrors(run: () => Promise<number>) {
@@ -62,21 +62,30 @@ test("respects custom errors codes from known errors", async () => {
     },
   };
 
-  const code = await runRunnable(() => runnable, []);
+  const { code, errors } = await captureErrors(() => runRunnable(() => runnable, []));
 
   expect(code).toBe(42);
+  expect(errors).toEqual(["Error: custom failure"]);
 });
 
 test.each([
   [
     "explicit usage",
-    new AgentCoreCLIError("bad request", { exitCode: ExitCode.USAGE }),
+    new InputValidationError("bad request", { exitCode: ExitCode.USAGE }),
     ExitCode.USAGE,
-    ["AgentCoreCLIError: bad request"],
+    ["Error: bad request"],
   ],
   [
     "interruption",
     Object.assign(new Error("The operation was aborted"), { name: "AbortError" }),
+    ExitCode.INTERRUPTED,
+    ["AbortError: The operation was aborted"],
+  ],
+  [
+    "classified interruption",
+    AgentCoreCLIError.fromError(
+      Object.assign(new Error("The operation was aborted"), { name: "AbortError" }),
+    ),
     ExitCode.INTERRUPTED,
     ["AbortError: The operation was aborted"],
   ],
@@ -87,9 +96,29 @@ test.each([
     [],
   ],
   [
+    "classified Commander parse failure",
+    AgentCoreCLIError.fromError(
+      new CommanderError(1, "commander.invalidArgument", "invalid option"),
+    ),
+    ExitCode.USAGE,
+    [],
+  ],
+  [
     "Commander help",
     new CommanderError(0, "commander.helpDisplayed", "help displayed"),
     ExitCode.SUCCESS,
+    [],
+  ],
+  [
+    "classified Commander help",
+    AgentCoreCLIError.fromError(new CommanderError(0, "commander.helpDisplayed", "help displayed")),
+    ExitCode.SUCCESS,
+    [],
+  ],
+  [
+    "classified reported failure",
+    AgentCoreCLIError.fromError(Object.assign(new Error("already reported"), { reported: true })),
+    ExitCode.FAILURE,
     [],
   ],
   [
