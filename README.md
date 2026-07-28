@@ -143,10 +143,10 @@ agentcore eval evaluator code-based create \
   --lambda-arn arn:aws:lambda:us-west-2:123456789012:function:refund-policy \
   --json
 
-# Get, list, delete. --type filters the returned page (builtin | code-based | llm-as-a-judge).
+# Get, list, delete.
 agentcore eval evaluator get --id <evaluatorId> --json
-agentcore eval evaluator list --type llm-as-a-judge --max-results 20 --json
-agentcore eval evaluator delete --id <evaluatorId> --yes --json
+agentcore eval evaluator list --max-results 20 --json
+agentcore eval evaluator delete --id <evaluatorId> --json
 ```
 
 Source-aware values: any field flag documented as such accepts the value inline,
