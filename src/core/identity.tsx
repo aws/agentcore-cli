@@ -10,7 +10,11 @@ import {
   type ListApiKeyCredentialProvidersResponse,
   type UpdateApiKeyCredentialProviderResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import type { CoreIdentityClient } from "../handlers/identity/types";
+import type {
+  CoreIdentityClient,
+  CreateApiKeyCredentialProviderInput,
+  UpdateApiKeyCredentialProviderInput,
+} from "../handlers/identity/types";
 import type { AwsClients, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
 
@@ -18,13 +22,12 @@ export class IdentityClient implements CoreIdentityClient {
   constructor(private readonly clients: AwsClients) {}
 
   async createApiKeyCredentialProvider(
-    name: string,
-    apiKey: string,
+    input: CreateApiKeyCredentialProviderInput,
     options: CoreOptions,
   ): Promise<CreateApiKeyCredentialProviderResponse> {
     return this.clients
       .control(toClientConfig(options))
-      .send(new CreateApiKeyCredentialProviderCommand({ name, apiKey }));
+      .send(new CreateApiKeyCredentialProviderCommand(input));
   }
 
   async getApiKeyCredentialProvider(
@@ -47,13 +50,12 @@ export class IdentityClient implements CoreIdentityClient {
   }
 
   async updateApiKeyCredentialProvider(
-    name: string,
-    apiKey: string,
+    input: UpdateApiKeyCredentialProviderInput,
     options: CoreOptions,
   ): Promise<UpdateApiKeyCredentialProviderResponse> {
     return this.clients
       .control(toClientConfig(options))
-      .send(new UpdateApiKeyCredentialProviderCommand({ name, apiKey }));
+      .send(new UpdateApiKeyCredentialProviderCommand(input));
   }
 
   async deleteApiKeyCredentialProvider(

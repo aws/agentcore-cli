@@ -11,9 +11,9 @@ import { createUpdateApiKeyCredentialProviderHandler } from "./update";
 export function createApiKeyCredentialProviderHandler(core: Core, io: AppIO): Router {
   return new Router("api-key-credential-provider", "manage API key credential providers")
     .default(createHelpDefault(io))
-    .handler(createCreateApiKeyCredentialProviderHandler(core))
+    .handler(createCreateApiKeyCredentialProviderHandler(core, io))
     .handler(createGetApiKeyCredentialProviderHandler(core))
     .handler(createListApiKeyCredentialProvidersHandler(core))
-    .handler(createUpdateApiKeyCredentialProviderHandler(core))
+    .handler(createUpdateApiKeyCredentialProviderHandler(core, io))
     .handler(createDeleteApiKeyCredentialProviderHandler(core));
 }

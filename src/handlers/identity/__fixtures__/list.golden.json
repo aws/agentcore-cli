@@ -3,14 +3,14 @@
     {
       "name": "agentcore-cli-identity-fixture",
       "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:token-vault/default/apikeycredentialprovider/agentcore-cli-identity-fixture",
-      "createdTime": "2026-07-23T16:31:54.009Z",
-      "lastUpdatedTime": "2026-07-23T16:31:54.009Z"
+      "createdTime": "2026-07-24T17:00:22.115Z",
+      "lastUpdatedTime": "2026-07-24T17:00:22.115Z"
     },
     {
       "name": "agentcore-cli-identity-fixture-2",
       "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:token-vault/default/apikeycredentialprovider/agentcore-cli-identity-fixture-2",
-      "createdTime": "2026-07-23T16:31:54.309Z",
-      "lastUpdatedTime": "2026-07-23T16:31:54.309Z"
+      "createdTime": "2026-07-24T17:00:22.404Z",
+      "lastUpdatedTime": "2026-07-24T17:00:22.404Z"
     }
   ]
 }

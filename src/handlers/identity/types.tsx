@@ -1,16 +1,20 @@
 import type {
+  CreateApiKeyCredentialProviderRequest,
   CreateApiKeyCredentialProviderResponse,
   DeleteApiKeyCredentialProviderResponse,
   GetApiKeyCredentialProviderResponse,
   ListApiKeyCredentialProvidersResponse,
+  UpdateApiKeyCredentialProviderRequest,
   UpdateApiKeyCredentialProviderResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { CoreOptions } from "../../core/types";
 
+export type CreateApiKeyCredentialProviderInput = CreateApiKeyCredentialProviderRequest;
+export type UpdateApiKeyCredentialProviderInput = UpdateApiKeyCredentialProviderRequest;
+
 export interface CoreIdentityClient {
   createApiKeyCredentialProvider(
-    name: string,
-    apiKey: string,
+    input: CreateApiKeyCredentialProviderInput,
     options: CoreOptions,
   ): Promise<CreateApiKeyCredentialProviderResponse>;
   getApiKeyCredentialProvider(
@@ -23,8 +27,7 @@ export interface CoreIdentityClient {
     options: CoreOptions,
   ): Promise<ListApiKeyCredentialProvidersResponse>;
   updateApiKeyCredentialProvider(
-    name: string,
-    apiKey: string,
+    input: UpdateApiKeyCredentialProviderInput,
     options: CoreOptions,
   ): Promise<UpdateApiKeyCredentialProviderResponse>;
   deleteApiKeyCredentialProvider(
