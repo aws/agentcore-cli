@@ -3,6 +3,7 @@ import { createHandler, flag } from "../../../../router";
 import type { Core } from "../../../types.tsx";
 import { coreOptsFromCtx } from "../../../utils.tsx";
 import { JsonRendererKey } from "../../../../tui";
+import { InputValidationError } from "../../../../errors";
 
 export const createGetVersionHandler = (core: Core) =>
   createHandler({
@@ -14,10 +15,10 @@ export const createGetVersionHandler = (core: Core) =>
     ],
     handle: async (ctx, flags) => {
       if (!flags["id"]) {
-        throw new TypeError("required option '--id <id>' not specified");
+        throw new InputValidationError("required option '--id <id>' not specified");
       }
       if (!flags["version"]) {
-        throw new TypeError("required option '--version <version>' not specified");
+        throw new InputValidationError("required option '--version <version>' not specified");
       }
 
       const harness = await core.harness.getHarnessVersion(

@@ -1,5 +1,6 @@
 import type { Context } from "../router";
 import type { CoreOptions } from "../core/types";
+import { InputValidationError } from "../errors";
 import { EndpointKey, RegionKey } from "./keys";
 
 // coreOptsFromCtx builds the standard CoreOptions handed to Core operations from
@@ -23,8 +24,9 @@ export function parseJsonFlag<T>(name: string, raw: string | undefined): T | und
   try {
     return JSON.parse(raw) as T;
   } catch (error) {
-    throw new TypeError(
+    throw new InputValidationError(
       `Invalid JSON for option '--${name}': ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 }

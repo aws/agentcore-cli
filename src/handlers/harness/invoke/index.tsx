@@ -5,6 +5,7 @@ import type { Core } from "../../types.tsx";
 import { coreOptsFromCtx } from "../../utils.tsx";
 import { JsonKey } from "../../keys.tsx";
 import { JsonRendererKey, renderTuiAt } from "../../../tui";
+import { InputValidationError } from "../../../errors";
 import {
   applyEvent,
   finishTurn,
@@ -35,7 +36,7 @@ export const createInvokeHarnessHandler = (core: Core, io: AppIO) =>
       // These are required at runtime but declared optional so that a bare
       // `harness invoke` falls through to the TUI middleware instead.
       if (!flags["id"]) {
-        throw new TypeError("required option '--id <id>' not specified");
+        throw new InputValidationError("required option '--id <id>' not specified");
       }
       // Without a prompt, open the interactive chat at this harness — resuming
       // the given session and targeting the given qualifier when passed. The
@@ -43,7 +44,7 @@ export const createInvokeHarnessHandler = (core: Core, io: AppIO) =>
       // JSON mode supports).
       if (!flags["prompt"]) {
         if (ctx.require(JsonKey)) {
-          throw new TypeError("required option '--prompt <text>' not specified");
+          throw new InputValidationError("required option '--prompt <text>' not specified");
         }
         let path = `${ctx.require(PathKey)}/${flags["id"]}`;
         if (flags["session-id"]) path += `/${flags["session-id"]}`;

@@ -1,4 +1,5 @@
 import z from "zod";
+import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
@@ -11,7 +12,7 @@ export const createGetApiKeyCredentialProviderHandler = (core: Core) =>
     flags: [flag("name", "the name of the API key credential provider", z.string().optional())],
     handle: async (ctx, flags) => {
       if (!flags.name) {
-        throw new TypeError("required option '--name <name>' not specified");
+        throw new InputValidationError("required option '--name <name>' not specified");
       }
 
       ctx

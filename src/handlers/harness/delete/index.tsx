@@ -3,6 +3,7 @@ import { createHandler, flag } from "../../../router";
 import type { Core } from "../../types.tsx";
 import { coreOptsFromCtx } from "../../utils.tsx";
 import { JsonRendererKey } from "../../../tui";
+import { InputValidationError } from "../../../errors";
 
 export const createDeleteHarnessHandler = (core: Core) =>
   createHandler({
@@ -21,7 +22,7 @@ export const createDeleteHarnessHandler = (core: Core) =>
       // Required at runtime but declared optional so that a bare
       // `harness delete` falls through to the TUI middleware instead.
       if (!flags["id"]) {
-        throw new TypeError("required option '--id <id>' not specified");
+        throw new InputValidationError("required option '--id <id>' not specified");
       }
 
       const response = await core.harness.deleteHarness(

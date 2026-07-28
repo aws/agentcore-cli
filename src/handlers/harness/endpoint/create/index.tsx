@@ -3,6 +3,7 @@ import { createHandler, flag } from "../../../../router";
 import type { Core } from "../../../types.tsx";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../utils.tsx";
 import { JsonRendererKey } from "../../../../tui";
+import { InputValidationError } from "../../../../errors";
 
 export const createCreateEndpointHandler = (core: Core) =>
   createHandler({
@@ -23,10 +24,10 @@ export const createCreateEndpointHandler = (core: Core) =>
       // Required at runtime but declared optional so that a bare
       // `harness endpoint create` falls through to the TUI middleware instead.
       if (!flags["id"]) {
-        throw new TypeError("required option '--id <id>' not specified");
+        throw new InputValidationError("required option '--id <id>' not specified");
       }
       if (!flags["name"]) {
-        throw new TypeError("required option '--name <name>' not specified");
+        throw new InputValidationError("required option '--name <name>' not specified");
       }
 
       const response = await core.harness.createHarnessEndpoint(

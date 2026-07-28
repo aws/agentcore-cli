@@ -13,6 +13,7 @@ import { createHandler, flag } from "../../../router";
 import type { Core } from "../../types.tsx";
 import { coreOptsFromCtx, parseJsonFlag } from "../../utils.tsx";
 import { JsonRendererKey } from "../../../tui";
+import { InputValidationError } from "../../../errors";
 import { parameterHelp } from "../parameterHelp.tsx";
 
 export const createCreateHarnessHandler = (core: Core) =>
@@ -93,7 +94,7 @@ export const createCreateHarnessHandler = (core: Core) =>
       // Required at runtime but declared optional so that a bare
       // `harness create` falls through to the TUI middleware instead.
       if (!flags["name"]) {
-        throw new TypeError("required option '--name <name>' not specified");
+        throw new InputValidationError("required option '--name <name>' not specified");
       }
 
       const response = await core.harness.createHarness(

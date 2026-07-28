@@ -1,6 +1,7 @@
 import z from "zod";
 import { createHandler, argument, GlobalConfigAccessorKey } from "../../router";
 import { JsonRendererKey } from "../../tui";
+import { InputValidationError } from "../../errors";
 import { DEFAULT_GLOBAL_CONFIG, type GlobalConfig } from "../../globalConfig";
 
 /*
@@ -63,16 +64,14 @@ function coerceValue(current: unknown, raw: string, path: string): unknown {
       const normalized = raw.trim().toLowerCase();
       if (normalized === "true") return true;
       if (normalized === "false") return false;
-      // TODO: mark as validation error.
-      throw new TypeError(`Cannot coerce "${raw}" to boolean at "${path}"`);
+      throw new InputValidationError(`Cannot coerce "${raw}" to boolean at "${path}"`);
     }
 
     case "number": {
       const trimmed = raw.trim();
       const n = Number(trimmed);
       if (trimmed === "" || Number.isNaN(n)) {
-        // TODO: mark as validation error.
-        throw new TypeError(`Cannot coerce "${raw}" to number at "${path}"`);
+        throw new InputValidationError(`Cannot coerce "${raw}" to number at "${path}"`);
       }
       return n;
     }
@@ -81,15 +80,14 @@ function coerceValue(current: unknown, raw: string, path: string): unknown {
       try {
         return JSON.parse(raw);
       } catch (e) {
-        // TODO: mark as validation error.
-
-        throw new TypeError(`Cannot coerce "${raw}" to object at "${path}"`, { cause: e });
+        throw new InputValidationError(`Cannot coerce "${raw}" to object at "${path}"`, {
+          cause: e,
+        });
       }
     }
 
     default:
-      // TODO: mark as validation error.
-      throw new TypeError(`Unsupported target type "${typeof current}" at "${path}"`);
+      throw new InputValidationError(`Unsupported target type "${typeof current}" at "${path}"`);
   }
 }
 /** Type guard that narrows `value` to a plain object record. */

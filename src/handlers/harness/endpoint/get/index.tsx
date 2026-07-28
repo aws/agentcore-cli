@@ -3,6 +3,7 @@ import { createHandler, flag } from "../../../../router";
 import type { Core } from "../../../types.tsx";
 import { coreOptsFromCtx } from "../../../utils.tsx";
 import { JsonRendererKey } from "../../../../tui";
+import { InputValidationError } from "../../../../errors";
 
 export const createGetEndpointHandler = (core: Core) =>
   createHandler({
@@ -14,10 +15,10 @@ export const createGetEndpointHandler = (core: Core) =>
     ],
     handle: async (ctx, flags) => {
       if (!flags["id"]) {
-        throw new TypeError("required option '--id <id>' not specified");
+        throw new InputValidationError("required option '--id <id>' not specified");
       }
       if (!flags["qualifier"]) {
-        throw new TypeError("required option '--qualifier <qualifier>' not specified");
+        throw new InputValidationError("required option '--qualifier <qualifier>' not specified");
       }
 
       const endpoint = await core.harness.getHarnessEndpoint(

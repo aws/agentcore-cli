@@ -3,6 +3,7 @@ import { createHandler, flag } from "../../../../router";
 import type { Core } from "../../../types.tsx";
 import { coreOptsFromCtx } from "../../../utils.tsx";
 import { JsonRendererKey } from "../../../../tui";
+import { InputValidationError } from "../../../../errors";
 
 export const createListEndpointsHandler = (core: Core) =>
   createHandler({
@@ -15,7 +16,7 @@ export const createListEndpointsHandler = (core: Core) =>
     ],
     handle: async (ctx, flags) => {
       if (!flags["id"]) {
-        throw new TypeError("required option '--id <id>' not specified");
+        throw new InputValidationError("required option '--id <id>' not specified");
       }
 
       const endpoints = await core.harness.listHarnessEndpoints(
