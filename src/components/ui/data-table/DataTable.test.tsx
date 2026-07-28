@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { Box } from "ink";
 import { cleanup, render } from "ink-testing-library";
 import stringWidth from "string-width";
+import { waitFor } from "../../../testing";
 import { DataTable, type DataTableColumn } from "./DataTable";
 
 afterEach(cleanup);
@@ -67,5 +68,36 @@ describe("DataTable layout", () => {
     );
 
     expect(instance.lastFrame()).toContain("DataTable supports at most one flexible column.");
+  });
+
+  test("preserves the sort indicator in an explicit-width column", async () => {
+    const sortableColumns = [
+      { key: "name", header: "name", width: 4, minWidth: 4, sortable: true },
+    ] satisfies DataTableColumn<Row>[];
+    const instance = render(
+      <DataTable<Row>
+        borderStyle="none"
+        columns={sortableColumns}
+        data={[
+          { name: "beta", status: "" },
+          { name: "alpha", status: "" },
+        ]}
+        searchable={false}
+        selectable={false}
+        showFooter={false}
+      />,
+    );
+
+    instance.stdin.write("s");
+    await waitFor(() => instance.lastFrame()?.includes("▲") ?? false);
+    const ascendingFrame = instance.lastFrame()!;
+    expect(ascendingFrame.split("\n")[0]).toBe("n… ▲");
+    expect(ascendingFrame.indexOf("alp…")).toBeLessThan(ascendingFrame.indexOf("beta"));
+
+    instance.stdin.write("s");
+    await waitFor(() => instance.lastFrame()?.includes("▼") ?? false);
+    const descendingFrame = instance.lastFrame()!;
+    expect(descendingFrame.split("\n")[0]).toBe("n… ▼");
+    expect(descendingFrame.indexOf("beta")).toBeLessThan(descendingFrame.indexOf("alp…"));
   });
 });

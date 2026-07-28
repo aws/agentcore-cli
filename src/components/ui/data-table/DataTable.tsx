@@ -57,6 +57,12 @@ export interface DataTableProps<T> {
   theme?: InkUITheme;
 }
 
+function headerWithSortIndicator(header: string, width: number, indicator: string): string {
+  if (!indicator) return header;
+  const suffix = `${width > stringWidth(indicator) ? " " : ""}${indicator}`;
+  return cliTruncate(header, Math.max(0, width - stringWidth(suffix))) + suffix;
+}
+
 export function DataTable<T extends Record<string, unknown>>({
   columns,
   data,
@@ -251,12 +257,13 @@ export function DataTable<T extends Record<string, unknown>>({
             </Box>
           )}
           {columnsWithWidths.map(({ column, width }) => {
-            const sortArrow =
-              sortColumn === column.key ? (sortDirection === "asc" ? " ▲" : " ▼") : "";
+            const sortIndicator =
+              sortColumn === column.key ? (sortDirection === "asc" ? "▲" : "▼") : "";
+            const header = headerWithSortIndicator(column.header, width, sortIndicator);
             return (
               <Box key={column.key} width={width} flexShrink={0}>
                 <Text bold color={theme.colors.primary} wrap="truncate">
-                  {pad(column.header + sortArrow, width, column.align)}
+                  {pad(header, width, column.align)}
                 </Text>
               </Box>
             );
