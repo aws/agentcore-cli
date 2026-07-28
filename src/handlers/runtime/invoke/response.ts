@@ -1,7 +1,7 @@
 import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import type { RuntimeInvokeResponse } from "../types";
-import { RuntimeInvokeInterruptedError, RuntimeInvokeResponseError, UsageError } from "./errors";
+import { RuntimeInvokeInterruptedError, RuntimeInvokeResponseError } from "./errors";
 
 interface RuntimeInvokeOutput {
   stdout: NodeJS.WriteStream;
@@ -12,8 +12,7 @@ interface RuntimeInvokeOutput {
 }
 
 const RESPONSE_STREAM_FAILED = "response stream failed";
-const STREAMING_MEDIA_TYPES = new Set([
-  "text/event-stream",
+const TEXTUAL_SEQUENCE_MEDIA_TYPES = new Set([
   "application/x-ndjson",
   "application/ndjson",
   "application/json-seq",
@@ -23,16 +22,12 @@ function mediaType(contentType: string): string {
   return contentType.split(";", 1)[0]!.trim().toLowerCase();
 }
 
-export function isStreamingRuntimeResponse(contentType: string): boolean {
-  return STREAMING_MEDIA_TYPES.has(mediaType(contentType));
-}
-
 export function classifyRuntimeResponse(contentType: string) {
   const type = mediaType(contentType);
   if (type === "application/json" || /^application\/[^/]+\+json$/.test(type)) {
     return "json";
   }
-  return type.startsWith("text/") || STREAMING_MEDIA_TYPES.has(type) ? "text" : "binary";
+  return type.startsWith("text/") || TEXTUAL_SEQUENCE_MEDIA_TYPES.has(type) ? "text" : "binary";
 }
 
 async function* countBytes(
@@ -141,15 +136,9 @@ export async function writeRuntimeInvokeResponse(
   response: RuntimeInvokeResponse,
   output: RuntimeInvokeOutput,
 ): Promise<void> {
-  const streaming = isStreamingRuntimeResponse(response.contentType);
-  if (output.json && streaming) {
-    throw new UsageError(
-      "--json cannot be used with a streaming Runtime response; omit --json or use --output-file",
-    );
-  }
-
   if (
     output.outputFile === undefined &&
+    !output.json &&
     output.stdout.isTTY &&
     classifyRuntimeResponse(response.contentType) === "binary"
   ) {
@@ -166,19 +155,15 @@ export async function writeRuntimeInvokeResponse(
         output.signal,
         (size) => (byteCount += size),
       );
-    } else if (streaming) {
+    } else if (output.json) {
+      const bytes = await readBody(response.body, output.signal, (size) => (byteCount += size));
+      await writeJsonResponse(response, bytes, output);
+    } else {
       await pipeline(
         countBytes(response.body, (size) => (byteCount += size)),
         output.stdout,
         { end: false, signal: output.signal },
       );
-    } else {
-      const bytes = await readBody(response.body, output.signal, (size) => (byteCount += size));
-      if (output.json) {
-        await writeJsonResponse(response, bytes, output);
-      } else {
-        await writeChunk(output.stdout, bytes, output.signal);
-      }
     }
   } catch (error) {
     await writeChunk(

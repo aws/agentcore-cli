@@ -205,7 +205,7 @@ describe("runtime invoke", () => {
     expect(core.runtime.calls).toEqual([]);
   });
 
-  test("classifies --json with a streaming response as usage before reading the body", async () => {
+  test("buffers a streaming response when --json is requested", async () => {
     let iterations = 0;
     const core = new TestCoreClient();
     const output = captureIO();
@@ -220,24 +220,24 @@ describe("runtime invoke", () => {
         })(),
       });
 
-    const code = await runWithExitCode(async () =>
-      runCommand(core, output.io, [
-        "runtime",
-        "invoke",
-        "--id",
-        RUNTIME_ID,
-        "--payload",
-        "{}",
-        "--json",
-      ]),
-    );
+    await runCommand(core, output.io, [
+      "runtime",
+      "invoke",
+      "--id",
+      RUNTIME_ID,
+      "--payload",
+      "{}",
+      "--json",
+    ]);
 
-    expect(code).toBe(ExitCode.USAGE);
-    expect(iterations).toBe(0);
-    expect(output.bytes()).toHaveLength(0);
-    const signal = core.runtime.calls.find((call) => call.method === "invokeRuntime")!
-      .args[2] as AbortSignal;
-    expect(signal.aborted).toBe(true);
+    expect(iterations).toBe(1);
+    expect(JSON.parse(output.bytes().toString())).toMatchObject({
+      statusCode: 200,
+      contentType: "text/event-stream",
+      bodyEncoding: "utf8",
+      body: "data: ready\n\n",
+      complete: true,
+    });
   });
 
   test("passes an explicitly empty payload as zero bytes", async () => {

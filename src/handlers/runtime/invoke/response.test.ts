@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { PassThrough, Writable } from "node:stream";
 import { waitFor } from "../../../testing";
 import type { RuntimeInvokeResponse } from "../types";
-import { isStreamingRuntimeResponse, writeRuntimeInvokeResponse } from "./response";
+import { writeRuntimeInvokeResponse } from "./response";
 
 const files: string[] = [];
 
@@ -46,24 +46,12 @@ function capture() {
 }
 
 describe("Runtime invoke response output", () => {
-  test.each([
-    ["SSE", "text/event-stream", true],
-    ["SSE with parameters", " Text/Event-Stream; charset=utf-8 ", true],
-    ["NDJSON", "application/x-ndjson", true],
-    ["NDJSON alias", "application/ndjson", true],
-    ["JSON text sequences", "application/json-seq", true],
-    ["JSON", "application/json", false],
-    ["plain text", "text/plain", false],
-  ])("classifies %s responses by media type", (_name, contentType, expected) => {
-    expect(isStreamingRuntimeResponse(contentType)).toBe(expected);
-  });
-
-  test("streams exact chunks for streaming content, reports metadata, and leaves stdout open", async () => {
+  test("streams exact chunks in raw mode, reports metadata, and leaves stdout open", async () => {
     const stdout = capture();
     const stderr = capture();
     const result = response({
       statusCode: 206,
-      contentType: "text/event-stream",
+      contentType: "text/plain",
       runtimeSessionId: "runtime-session",
       mcpSessionId: "mcp-session",
       mcpProtocolVersion: "2025-06-18",
@@ -81,7 +69,7 @@ describe("Runtime invoke response output", () => {
 
     expect(stdout.bytes()).toEqual(Buffer.from([0, 255, 10, 1]));
     expect(stderr.bytes().toString()).toBe(
-      "status=206 content-type=text/event-stream runtime-session-id=runtime-session " +
+      "status=206 content-type=text/plain runtime-session-id=runtime-session " +
         "mcp-session-id=mcp-session mcp-protocol-version=2025-06-18 trace-id=trace-id " +
         "trace-parent=trace-parent trace-state=trace-state baggage=tenant=retail " +
         "complete=true bytes=4\n",
@@ -91,7 +79,7 @@ describe("Runtime invoke response output", () => {
     expect(stdout.bytes()).toEqual(Buffer.from([0, 255, 10, 1, 127]));
   });
 
-  test("buffers non-streaming content before writing it once", async () => {
+  test("streams plain text before the Runtime response completes", async () => {
     const stdout = capture();
     const stderr = capture();
     const firstConsumed = Promise.withResolvers<void>();
@@ -116,7 +104,7 @@ describe("Runtime invoke response output", () => {
     finish.resolve();
     await pending;
 
-    expect(bytesBeforeCompletion).toHaveLength(0);
+    expect(bytesBeforeCompletion.toString()).toBe("first");
     expect(stdout.bytes().toString()).toBe("firstsecond");
     expect(stderr.bytes().toString()).toBe(
       "status=200 content-type=text/plain runtime-session-id=- mcp-session-id=- " +
@@ -301,7 +289,7 @@ describe("Runtime invoke response output", () => {
     );
   });
 
-  test("does not write a partial non-streaming response when buffering fails", async () => {
+  test("preserves partial raw output regardless of response media type", async () => {
     const stdout = capture();
     const stderr = capture();
     const error = new Error("secret upstream detail");
@@ -313,7 +301,7 @@ describe("Runtime invoke response output", () => {
       }),
     ).rejects.toThrow("response stream failed");
 
-    expect(stdout.bytes()).toHaveLength(0);
+    expect(stdout.bytes().toString()).toBe("partial");
     expect(stderr.bytes().toString()).toBe(
       "status=200 content-type=text/plain runtime-session-id=- mcp-session-id=- " +
         "mcp-protocol-version=- trace-id=- trace-parent=- trace-state=- baggage=- " +
@@ -344,29 +332,39 @@ describe("Runtime invoke response output", () => {
     expect(stderr.bytes().toString()).not.toContain(error.message);
   });
 
-  test("rejects JSON mode for streaming content before iterating the body", async () => {
-    let iterations = 0;
+  test("JSON mode buffers a streaming representation into one atomic envelope", async () => {
     const stdout = capture();
     const stderr = capture();
+    const firstConsumed = Promise.withResolvers<void>();
+    const finish = Promise.withResolvers<void>();
     const source = (async function* () {
-      iterations++;
-      yield Buffer.from("{}\n");
+      yield Buffer.from('data: {"part":1}\n\n');
+      firstConsumed.resolve();
+      await finish.promise;
+      yield Buffer.from('data: {"part":2}\n\n');
     })();
 
-    await expect(
-      writeRuntimeInvokeResponse(response({ contentType: "application/x-ndjson", body: source }), {
+    const pending = writeRuntimeInvokeResponse(
+      response({ contentType: "text/event-stream", body: source }),
+      {
         stdout: stdout.stream,
         stderr: stderr.stream,
         json: true,
-      }),
-    ).rejects.toMatchObject({
-      message:
-        "--json cannot be used with a streaming Runtime response; omit --json or use --output-file",
-      exitCode: 2,
-    });
+      },
+    );
 
-    expect(iterations).toBe(0);
-    expect(stdout.bytes()).toHaveLength(0);
+    await firstConsumed.promise;
+    const bytesBeforeCompletion = stdout.bytes();
+    finish.resolve();
+    await pending;
+
+    expect(bytesBeforeCompletion).toHaveLength(0);
+    expect(JSON.parse(stdout.bytes().toString())).toMatchObject({
+      contentType: "text/event-stream",
+      bodyEncoding: "utf8",
+      body: 'data: {"part":1}\n\ndata: {"part":2}\n\n',
+      complete: true,
+    });
     expect(stderr.bytes()).toHaveLength(0);
   });
 
@@ -385,6 +383,30 @@ describe("Runtime invoke response output", () => {
 
     expect(JSON.parse(stdout.bytes().toString())).toMatchObject({
       contentType,
+      bodyEncoding: "base64",
+      body: bytes.toString("base64"),
+      complete: true,
+    });
+    expect(stderr.bytes()).toHaveLength(0);
+  });
+
+  test("JSON mode base64-encodes binary content on a TTY", async () => {
+    const stdout = capture();
+    const stderr = capture();
+    Object.defineProperty(stdout.stream, "isTTY", { value: true });
+    const bytes = Buffer.from([0, 255, 1]);
+
+    await writeRuntimeInvokeResponse(
+      response({ contentType: "application/octet-stream", body: body(bytes) }),
+      {
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        json: true,
+      },
+    );
+
+    expect(JSON.parse(stdout.bytes().toString())).toMatchObject({
+      contentType: "application/octet-stream",
       bodyEncoding: "base64",
       body: bytes.toString("base64"),
       complete: true,
