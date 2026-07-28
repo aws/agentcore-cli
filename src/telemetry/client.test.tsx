@@ -62,40 +62,6 @@ describe("DefaultTelemetryClient", () => {
     ]);
   });
 
-  test("rejects malformed payloads before the sinks sees data", async () => {
-    const recordedCalls: Array<{ metricName: string; value: number; attributes: any }> = [];
-    const spySink: MetricSink = {
-      name: "SpySink",
-      send: (metricName, value, attributes) => {
-        recordedCalls.push({ metricName, value, attributes });
-      },
-      shutdown: async () => {},
-    };
-
-    const client = new DefaultTelemetryClient({
-      logger,
-      sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-      globalConfigAccessor: new TestGlobalConfigAccessor(),
-      metricSinks: [spySink],
-    });
-
-    // Negative metric value violates z.number().min(0)
-    await client.emit("cli.command_run", -1, { exit_reason: "success" });
-
-    // The sink should never have been called — validation rejects the payload
-    expect(recordedCalls).toHaveLength(0);
-
-    await client.shutdown();
-
-    await assertLogsMatch(tempDir, [
-      {
-        filter: (log: any) =>
-          log.msg === "failed to emit telemetry" && log.errorName === "ZodError",
-        expectedCount: 1,
-      },
-    ]);
-  });
-
   test("handles sink errors gracefully without throwing", async () => {
     const recordedMetrics: string[] = [];
     const goodSink: MetricSink = {

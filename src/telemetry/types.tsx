@@ -8,7 +8,7 @@ export interface TelemetryClient {
   emit<TMetricName extends MetricName>(
     metricName: TMetricName,
     metricValue: ValueOf<TMetricName>,
-    attributes: Partial<AttributesOf<TMetricName>>,
+    attributes: AttributesOf<TMetricName>,
   ): Promise<void>;
   shutdown(): Promise<void>;
 }
@@ -35,7 +35,7 @@ export const METRICS = {
   },
 } satisfies Record<string, { attributeSchema: z.ZodType; valueSchema: z.ZodType }>;
 
-export type MetricName = keyof typeof METRICS & string;
+export type MetricName = keyof typeof METRICS;
 
 /**
  * Describes the value type for the given {@link Metric}

@@ -84,11 +84,14 @@ process.exit(
 
       throw error;
     } finally {
-      await telemetryClient.emit(
-        "cli.command_run",
-        Date.now() - startTime,
-        commandRunTelemetryRecorder.getAttributes(),
-      );
+      try {
+        const attributes = commandRunTelemetryRecorder.getAttributes();
+        await telemetryClient.emit("cli.command_run", Date.now() - startTime, attributes);
+      } catch (e) {
+        const error = AgentCoreCLIError.fromError(e);
+        rootLogger.child({ error: error.json() }).warn("failed to emit telemetry");
+        // telemetry is best-effort
+      }
       await telemetryClient.shutdown();
       await rootLogger.end();
     }

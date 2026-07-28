@@ -40,7 +40,7 @@ export class DefaultTelemetryClient implements TelemetryClient {
   async emit<TMetricName extends MetricName>(
     metricName: TMetricName,
     metricValue: ValueOf<TMetricName>,
-    metricAttributes: Partial<AttributesOf<TMetricName>>,
+    metricAttributes: AttributesOf<TMetricName>,
   ): Promise<void> {
     try {
       const metricSinks = this.getMetricSinks();
@@ -48,7 +48,7 @@ export class DefaultTelemetryClient implements TelemetryClient {
       // merge in resource attributes with metric attributes before sending to sink.
       const attributes = {
         ...resourceAttributes,
-        ...METRICS[metricName]["attributeSchema"].parse(metricAttributes),
+        ...metricAttributes,
       };
 
       const validatedMetricValue = METRICS[metricName]["valueSchema"].parse(metricValue);
