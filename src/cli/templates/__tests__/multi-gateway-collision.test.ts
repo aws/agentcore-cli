@@ -136,8 +136,8 @@ describe('Multi-gateway tool-name collision fix', () => {
         hasGateway: false,
         modelProvider: 'Bedrock',
       });
-      expect(withGw).toContain('langchain-mcp-adapters >= 0.2.0');
-      expect(noGw).toContain('langchain-mcp-adapters >= 0.2.0');
+      expect(withGw).toContain('langchain-mcp-adapters >= 0.3.1');
+      expect(noGw).toContain('langchain-mcp-adapters >= 0.3.1');
       expect(noGw).not.toContain('0.1.11');
     });
   });

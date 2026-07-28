@@ -904,7 +904,7 @@ description = "MCP Server demonstrating HTTP tool patterns"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "mcp[cli] >= 1.2.0",
+    "mcp[cli] ~= 1.24.0",
     "httpx >= 0.27.0",
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
@@ -4780,8 +4780,8 @@ dependencies = [
     "aws-opentelemetry-distro",
     "opentelemetry-instrumentation-langchain >= 0.59.0",
     "langgraph >= 1.0.2",
-    "mcp >= 1.19.0",
-    "langchain-mcp-adapters >= 0.2.0",
+    "mcp ~= 1.24.0",
+    "langchain-mcp-adapters >= 0.3.1",
     "langchain >= 1.0.3",
     "bedrock-agentcore >= 1.8.0",
     "botocore[crt] >= 1.35.0",
@@ -6437,7 +6437,7 @@ dependencies = [
     "bedrock-agentcore >= 1.9.1",
     "botocore[crt] >= 1.35.0",
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
-    {{/if}}"mcp >= 1.19.0",
+    {{/if}}"mcp ~= 1.24.0",
     {{#if (eq modelProvider "OpenAI")}}"openai >= 1.0.0",
     {{/if}}{{#if (eq modelProvider "LiteLLM")}}"litellm >= 1.0.0",
     {{/if}}{{#if bedrockMantle}}"openai >= 1.0.0",
@@ -7190,7 +7190,7 @@ description = "AgentCore MCP Server"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "mcp >= 1.19.0",
+    "mcp ~= 1.24.0",
 ]
 
 [tool.hatch.build.targets.wheel]
