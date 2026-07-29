@@ -1,10 +1,11 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { atomicWrite } from "../fs";
+import { atomicWrite } from "../../fs";
 
 /**
- * A node in a project's file tree.
+ * A node in a project's file tree where directories nest and files are leaves.
+ * File bytes come from a thunk so the tree never knows where the bytes originate.
  */
 export type ProjectNode = DirNode | FileNode;
 
@@ -32,9 +33,17 @@ export const file = (name: string, bytes: () => Promise<string>): FileNode => ({
   bytes,
 });
 
+/** Thrown when scaffolding would overwrite a file that already exists. */
+export class ProjectFileExistsError extends Error {
+  constructor(public readonly path: string) {
+    super(`Refusing to overwrite existing file: ${path}`);
+    this.name = "ProjectFileExistsError";
+  }
+}
+
 /**
- * Write a project tree to `destination`. Directories are created recursively;
- * files are written atomically.
+ * Writes a project tree to the destination with atomic file writes.
+ * Refuses to overwrite an existing file so a re-run fails loudly instead of clobbering user work.
  */
 export async function writeTree(node: ProjectNode, destination: string): Promise<void> {
   const path = join(destination, node.name);
@@ -47,7 +56,7 @@ export async function writeTree(node: ProjectNode, destination: string): Promise
   }
 
   if (existsSync(path)) {
-    throw new Error(`Refusing to overwrite existing file: ${path}`);
+    throw new ProjectFileExistsError(path);
   }
   await atomicWrite(path, await node.bytes());
 }

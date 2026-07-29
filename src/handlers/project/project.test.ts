@@ -48,14 +48,20 @@ describe("project create", () => {
     const directory = await inTempDirectory();
     await run(["create", "--project-name", "MyAgent"]);
 
+    // One existence check proves the handler→manager pipe; the full manifest
+    // is covered by the FsProjectManager snapshot test.
     const projectRoot = join(directory, "MyAgent");
-    expect(await Bun.file(join(projectRoot, "agentcore.json")).exists()).toBe(true);
-    expect(await Bun.file(join(projectRoot, "app", "hello-world", "main.py")).exists()).toBe(true);
+    expect(await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).exists()).toBe(true);
   });
 
   test("rejects an invalid --project-name", async () => {
     await inTempDirectory();
     await expect(run(["create", "--project-name", "1-bad"])).rejects.toThrow();
+  });
+
+  test("rejects a reserved --project-name", async () => {
+    await inTempDirectory();
+    await expect(run(["create", "--project-name", "test"])).rejects.toThrow(/conflicts with/);
   });
 
   test("rejects an unknown --template value", async () => {

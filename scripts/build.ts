@@ -2,6 +2,7 @@
 
 import { $ } from "bun";
 import { join, resolve } from "node:path";
+import { runWithExitCode } from "../src/runnable";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
 const ASSETS_DIR = join(REPO_ROOT, "src", "assets");
@@ -9,6 +10,10 @@ const ENTRYPOINT = join(REPO_ROOT, "src", "index.ts");
 const DIST = join(REPO_ROOT, "dist");
 
 const ASSET_NAMING = "agentcore-assets/[dir]/[name].[ext]";
+
+// Shrink whitespace/syntax but keep identifiers: minified names make stack
+// traces unreadable and erase error names telemetry keys on.
+const MINIFY = { whitespace: true, syntax: true, identifiers: false } as const;
 
 /** Absolute paths of every asset file. dot:true so hidden files (.prettierrc) are included. */
 function discoverAssets(): string[] {
@@ -41,21 +46,15 @@ async function assertAssetsAreText(assets: string[]): Promise<void> {
   }
 }
 
-function reportAndExit(result: Bun.BuildOutput): void {
-  if (!result.success) {
-    for (const log of result.logs) console.error(log);
-    process.exit(1);
-  }
-}
-
+// Bun.build rejects with an AggregateError on failure (throw defaults to true),
+// so build errors propagate to runWithExitCode like any other.
 async function bundle(): Promise<void> {
-  const result = await Bun.build({
+  await Bun.build({
     entrypoints: [ENTRYPOINT],
     outdir: DIST,
     target: "node",
-    minify: true,
+    minify: MINIFY,
   });
-  reportAndExit(result);
 
   // Mirror assets beside the emitted module for resolveAssetsRoot().
   const distAssets = join(DIST, "assets");
@@ -71,29 +70,30 @@ async function compile(target: string): Promise<void> {
   const outfile = join(DIST, "bin", `agentcore-${target.replace(/^bun-/, "")}`);
   await $`mkdir -p ${join(DIST, "bin")}`;
 
-  const result = await Bun.build({
+  await Bun.build({
     entrypoints: [ENTRYPOINT, ...assets],
     compile: { target: target as Bun.Build.CompileTarget, outfile },
-    minify: true,
+    minify: MINIFY,
     root: REPO_ROOT,
     naming: { asset: ASSET_NAMING },
     plugins: [assetLoaderPlugin()],
   });
-  reportAndExit(result);
   console.log(`Compiled ${target} → ${outfile} (${assets.length} assets embedded)`);
 }
 
-const [command, target] = process.argv.slice(2);
+process.exit(
+  await runWithExitCode(async () => {
+    const [command, target] = process.argv.slice(2);
 
-if (command === "bundle") {
-  await bundle();
-} else if (command === "compile") {
-  if (!target) {
-    console.error("Usage: bun scripts/build.ts compile <bun-target>");
-    process.exit(1);
-  }
-  await compile(target);
-} else {
-  console.error("Usage: bun scripts/build.ts <bundle|compile <target>>");
-  process.exit(1);
-}
+    if (command === "bundle") {
+      await bundle();
+    } else if (command === "compile") {
+      if (!target) {
+        throw new Error("Usage: bun scripts/build.ts compile <bun-target>");
+      }
+      await compile(target);
+    } else {
+      throw new Error("Usage: bun scripts/build.ts <bundle|compile <target>>");
+    }
+  }),
+);

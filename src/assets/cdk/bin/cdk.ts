@@ -20,51 +20,34 @@ function toStackName(projectName: string, targetName: string): string {
   return `AgentCore-${sanitize(projectName)}-${sanitize(targetName)}`;
 }
 
-async function main() {
-  // Config root is parent of cdk/ directory. The CLI sets process.cwd() to agentcore/cdk/.
-  const configRoot = path.resolve(process.cwd(), '..');
-  const configIO = new ConfigIO({ baseDir: configRoot });
+// The vended CDK project compiles against the published @aws/agentcore-cdk schema
+// type, which may lag the CLI's own AgentCoreProjectSpec (e.g. payments, harnesses,
+// gateway fields). This alias documents each read of those not-yet-published fields.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SpecWithLatestFields = any;
 
-  const spec = await configIO.readProjectSpec();
-  const targets = await configIO.readAWSDeploymentTargets();
-
-  // The vended CDK project compiles against the published @aws/agentcore-cdk
-  // schema type, which may lag the CLI's own AgentCoreProjectSpec (e.g. payments,
-  // harnesses, gateway fields). Cast once so those fields are reachable.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const specAny = spec as any;
-
-  // Extract MCP configuration from project spec.
-  // Gateway fields are stored in agentcore.json but may not yet be on the
-  const mcpSpec = specAny.agentCoreGateways?.length
+// Extract MCP configuration from the project spec. Gateway fields are stored in
+// agentcore.json but may not yet be on the published spec type, so they are read
+// off the loosened alias.
+function resolveMcpSpec(spec: SpecWithLatestFields) {
+  return spec.agentCoreGateways?.length
     ? {
-        agentCoreGateways: specAny.agentCoreGateways,
-        mcpRuntimeTools: specAny.mcpRuntimeTools,
-        unassignedTargets: specAny.unassignedTargets,
+        agentCoreGateways: spec.agentCoreGateways,
+        mcpRuntimeTools: spec.mcpRuntimeTools,
+        unassignedTargets: spec.unassignedTargets,
       }
     : undefined;
+}
 
-  // Read deployed state for credential ARNs (populated by pre-deploy identity setup)
-  let deployedState: Record<string, unknown> | undefined;
-  try {
-    deployedState = JSON.parse(fs.readFileSync(path.join(configRoot, '.cli', 'deployed-state.json'), 'utf8'));
-  } catch {
-    // Deployed state may not exist on first deploy
-  }
-
-  if (targets.length === 0) {
-    throw new Error('No deployment targets configured. Please define targets in agentcore/aws-targets.json');
-  }
-
-  // Read harness configs: the full validated spec drives the CFN resource; the
-  // role-scoped fields drive the IAM role + container build.
-  const projectRoot = path.resolve(configRoot, '..');
-
-  // Read non-S3 KB connector-config files and pass their parsed contents to the
-  // L3 verbatim. The L3 does not read files; it expects the parsed
-  // connectorParameters keyed by the data source's connectorConfigFile path.
+// Read non-S3 KB connector-config files and return their parsed contents keyed by
+// the data source's connectorConfigFile path. The L3 does not read files; it
+// expects these parsed connectorParameters verbatim.
+function resolveConnectorParametersByFile(
+  spec: SpecWithLatestFields,
+  projectRoot: string
+): Record<string, Record<string, unknown>> {
   const connectorParametersByFile: Record<string, Record<string, unknown>> = {};
-  for (const kb of specAny.knowledgeBases ?? []) {
+  for (const kb of spec.knowledgeBases ?? []) {
     for (const ds of kb.dataSources ?? []) {
       if (ds.type !== 'S3' && ds.connectorConfigFile) {
         const abs = path.resolve(projectRoot, ds.connectorConfigFile);
@@ -78,10 +61,15 @@ async function main() {
       }
     }
   }
+  return connectorParametersByFile;
+}
 
-  // Synthesize an AWS::BedrockAgentCore::Harness resource for each harness entry in the spec.
+// Synthesize a HarnessConfig for each harness entry in the spec. The full validated
+// spec drives the AWS::BedrockAgentCore::Harness CFN resource; the role-scoped
+// fields drive the IAM role + container build.
+function resolveHarnessConfigs(spec: SpecWithLatestFields, projectRoot: string): HarnessConfig[] {
   const harnessConfigs: HarnessConfig[] = [];
-  for (const entry of specAny.harnesses ?? []) {
+  for (const entry of spec.harnesses ?? []) {
     const harnessDir = path.resolve(projectRoot, entry.path);
     const harnessPath = path.resolve(harnessDir, 'harness.json');
     try {
@@ -111,6 +99,34 @@ async function main() {
         `Could not read harness.json for "${entry.name}" at ${harnessPath}: ${err instanceof Error ? err.message : err}`
       );
     }
+  }
+  return harnessConfigs;
+}
+
+async function main() {
+  // Config root is parent of cdk/ directory. The CLI sets process.cwd() to agentcore/cdk/.
+  const configRoot = path.resolve(process.cwd(), '..');
+  const configIO = new ConfigIO({ baseDir: configRoot });
+
+  const spec = await configIO.readProjectSpec();
+  const targets = await configIO.readAWSDeploymentTargets();
+  if (targets.length === 0) {
+    throw new Error('No deployment targets configured. Please define targets in agentcore/aws-targets.json');
+  }
+
+  const specAny: SpecWithLatestFields = spec;
+  const projectRoot = path.resolve(configRoot, '..');
+
+  const mcpSpec = resolveMcpSpec(specAny);
+  const connectorParametersByFile = resolveConnectorParametersByFile(specAny, projectRoot);
+  const harnessConfigs = resolveHarnessConfigs(specAny, projectRoot);
+
+  // Read deployed state for credential ARNs (populated by pre-deploy identity setup)
+  let deployedState: Record<string, unknown> | undefined;
+  try {
+    deployedState = JSON.parse(fs.readFileSync(path.join(configRoot, '.cli', 'deployed-state.json'), 'utf8'));
+  } catch {
+    // Deployed state may not exist on first deploy
   }
 
   const app = new App();

@@ -6,14 +6,13 @@ import type {
   ProjectManager,
 } from "../../handlers/project/types";
 import type { Logger } from "../../logging";
-import { projectTree } from "../../project/compose";
-import { defaultSource, type Source } from "../../project/source";
-import { writeTree } from "../../project/tree";
+import { projectTree } from "./compose";
+import { defaultSource, type AssetSource } from "./source";
+import { writeTree } from "./tree";
 
 type ProjectManagerConfig = {
   logger: Logger;
-  /** Asset source; defaults to the current runtime's (disk or embedded). */
-  source?: Source;
+  source?: AssetSource; // Bun executable or dist/assets depending on runtime
 };
 
 /**
@@ -21,7 +20,7 @@ type ProjectManagerConfig = {
  */
 export class FsProjectManager implements ProjectManager {
   private readonly logger: Logger;
-  private readonly source: Source;
+  private readonly source: AssetSource;
 
   constructor(config: ProjectManagerConfig) {
     this.logger = config.logger;

@@ -4,36 +4,33 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * Provides an interface for abstracting bun executable asset reading
- * and Node asset reading
+ * Reads and lists asset files by path relative to the asset root.
+ * This is the one place that knows whether assets come from disk or from the compiled executable.
  */
-export interface Source {
-  /** Returns a thunk that reads the text of the asset at `assetPath`. */
-  read(assetPath: string): () => Promise<string>;
+export interface AssetSource {
+  /** Reads the text of the asset at `assetPath`. */
+  read(assetPath: string): Promise<string>;
   /** Lists asset paths of every file under `assetDir`, sorted, recursively. */
   list(assetDir: string): Promise<string[]>;
 }
 
-// Embedded assets are keyed by the build-time virtual path (see scripts/build.ts ASSET_NAMING)
+// Prefix the build script gives every embedded asset name at compile time.
 const EMBEDDED_PREFIX = "agentcore-assets/src/assets/";
 
-// A standalone executable exposes its assets through Bun.embeddedFiles as
-// File blobs carrying their build-time name
+// Embedded files carry a name property that Bun's types widen to Blob.
 type NamedBlob = Blob & { readonly name: string };
 
 const embeddedBlobs = () => Bun.embeddedFiles as readonly NamedBlob[];
 
-/** Reads assets from Bun.embeddedFiles — for the compiled standalone executable. */
-export const embeddedSource: Source = {
-  read(assetPath) {
+/** Reads assets embedded in the compiled standalone executable. */
+export const embeddedSource: AssetSource = {
+  async read(assetPath) {
     const name = `${EMBEDDED_PREFIX}${assetPath}`;
-    return () => {
-      const blob = embeddedBlobs().find((f) => f.name === name);
-      if (!blob) {
-        throw new Error(`Embedded asset not found: ${assetPath}`);
-      }
-      return blob.text();
-    };
+    const blob = embeddedBlobs().find((f) => f.name === name);
+    if (!blob) {
+      throw new Error(`Embedded asset not found: ${assetPath}`);
+    }
+    return blob.text();
   },
   async list(assetDir) {
     const prefix = `${EMBEDDED_PREFIX}${assetDir}/`;
@@ -44,10 +41,10 @@ export const embeddedSource: Source = {
   },
 };
 
-/** Reads assets from src/assets/ on disk — for the Node/Bun runtime from source. */
-export function fileSource(assetsRoot = resolveAssetsRoot()): Source {
+/** Reads assets from the assets directory on disk. */
+export function fileSource(assetsRoot = resolveAssetsRoot()): AssetSource {
   return {
-    read: (assetPath) => () => readFile(join(assetsRoot, assetPath), "utf8"),
+    read: (assetPath) => readFile(join(assetsRoot, assetPath), "utf8"),
     async list(assetDir) {
       const root = join(assetsRoot, assetDir);
       const entries = await readdir(root, { recursive: true, withFileTypes: true });
@@ -60,21 +57,20 @@ export function fileSource(assetsRoot = resolveAssetsRoot()): Source {
   };
 }
 
-// Bundled builds place assets/ beside the emitted module but source layout has it
-// one level up from this module
+// Bundled builds place assets beside the emitted module and the source layout keeps them two levels up.
 function resolveAssetsRoot(moduleDirectory = dirname(fileURLToPath(import.meta.url))): string {
   const bundledRoot = resolve(moduleDirectory, "assets");
   if (existsSync(bundledRoot)) {
     return bundledRoot;
   }
-  return resolve(moduleDirectory, "../assets");
+  return resolve(moduleDirectory, "../../assets");
 }
 
 /**
  * Selects the asset source for the current runtime: embedded assets when running
  * as a compiled Bun executable, disk otherwise.
  */
-export function defaultSource(): Source {
+export function defaultSource(): AssetSource {
   const embedded = typeof Bun !== "undefined" && Bun.embeddedFiles.length > 0;
   return embedded ? embeddedSource : fileSource();
 }
