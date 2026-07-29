@@ -27,14 +27,9 @@ export class FileSystemSink implements MetricSink {
   }
 
   send(metricName: string, value: number, attributes: Record<string, string | number>): void {
-    this.pendingWrite = this.pendingWrite
-      .then(() => this.appendEntry({ metricName, value, attrs: attributes }))
-      .catch((e) => {
-        const error = e instanceof Error ? e : new Error(String(e));
-        this.logger
-          .child({ errorName: error.name, errorMessage: error.message })
-          .warn("failed to append metric data to file");
-      });
+    this.pendingWrite = this.pendingWrite.then(() =>
+      this.appendEntry({ metricName, value, attrs: attributes }),
+    );
   }
 
   private async appendEntry(entry: {
@@ -47,8 +42,15 @@ export class FileSystemSink implements MetricSink {
   }
 
   async shutdown(): Promise<void> {
-    await this.pendingWrite;
-    this.logger.info(`audit file written to '${this.filePath}'`);
+    try {
+      await this.pendingWrite;
+      this.logger.info(`audit file written to '${this.filePath}'`);
+    } catch (e) {
+      const error = e instanceof Error ? e : new Error(String(e));
+      this.logger
+        .child({ errorName: error.name, errorMessage: error.message })
+        .warn(`failed to append metric data to file`);
+    }
   }
 
   getName(): string {

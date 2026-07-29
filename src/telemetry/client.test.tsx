@@ -154,6 +154,33 @@ describe("DefaultTelemetryClient", () => {
     await client.shutdown();
   });
 
+  test("FileSystemSink logs a warning when the file is not writable", async () => {
+    // Point the sink at a directory to trigger EISDIR
+    const sink = new FileSystemSink({
+      logger: logger.child({ module: "fileSystemSink" }),
+      filePath: tempDir,
+    });
+
+    const client = new DefaultTelemetryClient({
+      logger,
+      sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+      metricSinks: [sink],
+    });
+
+    await client.emit("cli.command_run", 1, { exit_reason: "success" });
+    await client.shutdown();
+
+    await assertLogsMatch(tempDir, [
+      {
+        filter: (log: any) =>
+          log.msg === "failed to append metric data to file" &&
+          log.errorMessage?.includes("EISDIR"),
+        expectedCount: 1,
+      },
+    ]);
+  });
+
   test("handles sink errors gracefully without throwing", async () => {
     const recordedMetrics: string[] = [];
     const goodSink: MetricSink = {
