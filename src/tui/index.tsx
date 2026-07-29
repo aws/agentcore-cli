@@ -11,6 +11,7 @@ import {
 import type { AppIO } from "../io";
 import type { Core } from "../handlers/types";
 import { JsonKey } from "../handlers/keys";
+import { AgentCoreCLIError, ERROR_SOURCE, type AgentCoreCLIErrorOptions } from "../errors";
 
 // renderJson pretty-prints a value as indented JSON. It is the output
 // counterpart to renderTui: handlers call it to emit machine-readable results
@@ -43,7 +44,7 @@ export async function renderTuiAt(
   io: AppIO,
 ): Promise<void> {
   if (!io.stdin.isTTY || !io.stdout.isTTY) {
-    throw new TypeError("interactive mode requires a TTY on stdin and stdout");
+    throw new InvalidEnvironmentError("interactive mode requires a TTY on stdin and stdout");
   }
 
   // alternateScreen switches the terminal to its alternate buffer so the TUI
@@ -73,4 +74,11 @@ export function renderTui(core: Core, io: AppIO): DefaultHandle {
 
     await renderTuiAt(ctx.require(PathKey), ctx, core, io);
   };
+}
+
+/** Error raised when detecting an invalid environment */
+export class InvalidEnvironmentError extends AgentCoreCLIError {
+  constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
+    super(message, { ...options, source: ERROR_SOURCE.USER });
+  }
 }

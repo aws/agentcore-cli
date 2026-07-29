@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { createRootHandler } from "../handlers";
-import { renderJson } from "./index";
+import { InvalidEnvironmentError, renderJson } from "./index";
 import {
   createSilentLogger,
   TestCoreClient,
@@ -89,9 +89,7 @@ describe("TUI stream boundary", () => {
         globalConfigAccessor: new TestGlobalConfigAccessor(),
       });
 
-      await expect(root.route(["node", "agentcore"])).rejects.toThrow(
-        "interactive mode requires a TTY on stdin and stdout",
-      );
+      await expect(root.route(["node", "agentcore"])).rejects.toThrow(InvalidEnvironmentError);
     },
   );
 

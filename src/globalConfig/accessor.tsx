@@ -76,7 +76,7 @@ export class DefaultGlobalConfigAccessor implements GlobalConfigAccessor {
   private async writeToConfigFile(data: GlobalConfigFileData): Promise<GlobalConfigFileData> {
     const dataParseResult = globalConfigFileSchema.safeParse(data);
     if (!dataParseResult.success) {
-      throw new InternalValidationError("failed to valide config data before writing to file", {
+      throw new InternalValidationError("failed to validate config data before writing to file", {
         cause: dataParseResult.error,
       });
     }
