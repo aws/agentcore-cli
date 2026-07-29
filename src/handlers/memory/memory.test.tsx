@@ -9,6 +9,7 @@ import {
   testIO,
 } from "../../testing";
 import { createRootHandler } from "../index";
+import { createGetMemoryHandler } from "./get";
 
 const REGION = "us-west-2";
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -52,6 +53,13 @@ describe("memory command hierarchy", () => {
 
     expect(memory?.flags().map((flag) => flag.name)).not.toContain("interactive");
     expect(memory?.children().map((child) => child.name())).toEqual(["get", "list"]);
+  });
+
+  test("keeps an omitted get view undefined for empty-flag routing", () => {
+    const get = createGetMemoryHandler(createFixtureCore());
+    const view = get.flags().find((flag) => flag.name === "view");
+
+    expect(view?.schema.parse(undefined)).toBeUndefined();
   });
 
   test("prints help for bare `memory` without an SDK call", async () => {

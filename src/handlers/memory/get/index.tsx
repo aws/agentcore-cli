@@ -12,7 +12,7 @@ export const createGetMemoryHandler = (core: Core) =>
     description: "get an AgentCore Memory",
     flags: [
       flag("id", "the ID of the Memory", z.string().optional()),
-      flag("view", "response view", z.enum(MEMORY_VIEWS).default("full")),
+      flag("view", "response view", z.enum(MEMORY_VIEWS).optional()),
     ],
     handle: async (ctx, flags) => {
       if (!flags.id) {
@@ -21,6 +21,8 @@ export const createGetMemoryHandler = (core: Core) =>
 
       ctx
         .require(JsonRendererKey)
-        .renderJson(await core.memory.getMemory(flags.id, flags.view, coreOptsFromCtx(ctx)));
+        .renderJson(
+          await core.memory.getMemory(flags.id, flags.view ?? "full", coreOptsFromCtx(ctx)),
+        );
     },
   });
