@@ -1,5 +1,6 @@
 import type { Context } from "../router";
 import type { CoreOptions } from "../core/types";
+import { InputValidationError } from "../errors";
 import { EndpointKey, RegionKey } from "./keys";
 
 // coreOptsFromCtx builds the standard CoreOptions handed to Core operations from
@@ -23,8 +24,9 @@ export function parseJsonFlag<T>(name: string, raw: string | undefined): T | und
   try {
     return JSON.parse(raw) as T;
   } catch (error) {
-    throw new TypeError(
+    throw new InputValidationError(
       `Invalid JSON for option '--${name}': ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 }
@@ -41,11 +43,13 @@ export function parseTags(values: string[] | undefined): Record<string, string> 
     const parsed = parseJsonFlag<Record<string, unknown>>("tags", first);
     if (parsed === undefined) return undefined;
     if (Array.isArray(parsed)) {
-      throw new TypeError("--tags JSON must be an object of string key-value pairs");
+      throw new InputValidationError("--tags JSON must be an object of string key-value pairs");
     }
     for (const [key, value] of Object.entries(parsed)) {
       if (typeof value !== "string") {
-        throw new TypeError(`--tags value for key '${key}' must be a string, got ${typeof value}`);
+        throw new InputValidationError(
+          `--tags value for key '${key}' must be a string, got ${typeof value}`,
+        );
       }
     }
     return parsed as Record<string, string>;
@@ -55,7 +59,7 @@ export function parseTags(values: string[] | undefined): Record<string, string> 
   for (const entry of values) {
     const eqIndex = entry.indexOf("=");
     if (eqIndex < 1) {
-      throw new TypeError(
+      throw new InputValidationError(
         `Invalid tag '${entry}': expected key=value format or a single JSON object`,
       );
     }

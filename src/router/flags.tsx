@@ -1,4 +1,5 @@
 import { Option } from "commander";
+import { InputValidationError } from "../errors";
 import type { Context } from "./context";
 import type { Flag, GlobalFlag } from "./handler";
 import { coerce, formatZodError, inspect } from "./schema";
@@ -62,8 +63,9 @@ function attributeName(name: string): string {
 function validateFlag(flag: Flag, opts: Record<string, unknown>): unknown {
   const result = flag.schema.safeParse(coerce(flag.schema, opts[attributeName(flag.name)]));
   if (!result.success) {
-    throw new TypeError(
+    throw new InputValidationError(
       `Invalid value for option '--${flag.name}': ${formatZodError(result.error)}`,
+      { cause: result.error },
     );
   }
   return result.data;

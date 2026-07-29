@@ -22,7 +22,13 @@ import type {
   ListHarnessesResponse,
   ListHarnessEndpointsResponse,
   ListHarnessVersionsResponse,
+  CreateEvaluatorRequest,
+  CreateEvaluatorResponse,
+  DeleteEvaluatorResponse,
+  GetEvaluatorResponse,
+  ListEvaluatorsResponse,
   MemoryView,
+  UpdateEvaluatorResponse,
   UpdateApiKeyCredentialProviderResponse,
   UpdateHarnessEndpointRequest,
   UpdateHarnessEndpointResponse,
@@ -46,6 +52,7 @@ import type {
 } from "../handlers/identity/types";
 import type { CoreMemoryClient } from "../handlers/memory/types";
 import type { CoreRuntimeClient } from "../handlers/runtime/types";
+import type { CodeBasedUpdate, CoreEvalClient, LlmAsAJudgeUpdate } from "../handlers/eval/types";
 import type { CoreOptions } from "../core/types";
 import type { ProjectManager } from "../handlers/project/types";
 import type { Logger } from "../logging";
@@ -106,6 +113,11 @@ const DEFAULT_LIST_RUNTIME_VERSIONS_RESPONSE: ListAgentRuntimeVersionsResponse =
 const DEFAULT_LIST_RUNTIME_ENDPOINTS_RESPONSE: ListAgentRuntimeEndpointsResponse = {
   runtimeEndpoints: [],
 };
+const DEFAULT_CREATE_EVALUATOR_RESPONSE = {} as CreateEvaluatorResponse;
+const DEFAULT_UPDATE_EVALUATOR_RESPONSE = {} as UpdateEvaluatorResponse;
+const DEFAULT_GET_EVALUATOR_RESPONSE = {} as GetEvaluatorResponse;
+const DEFAULT_LIST_EVALUATORS_RESPONSE: ListEvaluatorsResponse = { evaluators: [] };
+const DEFAULT_DELETE_EVALUATOR_RESPONSE = {} as DeleteEvaluatorResponse;
 
 // abortError mirrors the error the SDK's abort handling rejects with.
 function abortError(): Error {
@@ -658,12 +670,123 @@ class TestIdentityClient implements CoreIdentityClient {
   }
 }
 
+// TestEvalClient is the eval sub-client of TestCoreClient.
+export class TestEvalClient implements CoreEvalClient {
+  // calls records every invocation in order, for assertions.
+  readonly calls: RecordedCall[] = [];
+
+  // List responses are keyed by the nextToken that requests them (undefined =
+  // the first page), so tests can serve multi-page listings.
+  private listResponses = new Map<string | undefined, ListEvaluatorsResponse>();
+  private createResponse: CreateEvaluatorResponse = DEFAULT_CREATE_EVALUATOR_RESPONSE;
+  private updateResponse: UpdateEvaluatorResponse = DEFAULT_UPDATE_EVALUATOR_RESPONSE;
+  private getResponse: GetEvaluatorResponse = DEFAULT_GET_EVALUATOR_RESPONSE;
+  private deleteResponse: DeleteEvaluatorResponse = DEFAULT_DELETE_EVALUATOR_RESPONSE;
+  private error?: Error;
+
+  // setListResponse sets what listEvaluators resolves to (when not erroring).
+  // Pass `forNextToken` to serve a later page: the response is returned when
+  // listEvaluators is called with that nextToken.
+  setListResponse(response: ListEvaluatorsResponse, forNextToken?: string): this {
+    this.listResponses.set(forNextToken, response);
+    return this;
+  }
+
+  // setCreateResponse sets what createEvaluator resolves to (when not erroring).
+  setCreateResponse(response: CreateEvaluatorResponse): this {
+    this.createResponse = response;
+    return this;
+  }
+
+  // setUpdateResponse sets what both update*Evaluator methods resolve to (when
+  // not erroring).
+  setUpdateResponse(response: UpdateEvaluatorResponse): this {
+    this.updateResponse = response;
+    return this;
+  }
+
+  // setGetResponse sets what getEvaluator resolves to (when not erroring).
+  setGetResponse(response: GetEvaluatorResponse): this {
+    this.getResponse = response;
+    return this;
+  }
+
+  // setDeleteResponse sets what deleteEvaluator resolves to (when not erroring).
+  setDeleteResponse(response: DeleteEvaluatorResponse): this {
+    this.deleteResponse = response;
+    return this;
+  }
+
+  // setError makes every subsequent call reject with `error`. Pass undefined to
+  // clear it.
+  setError(error: Error | undefined): this {
+    this.error = error;
+    return this;
+  }
+
+  async createEvaluator(
+    request: CreateEvaluatorRequest,
+    options: CoreOptions,
+  ): Promise<CreateEvaluatorResponse> {
+    this.calls.push({ method: "createEvaluator", args: [request, options] });
+    if (this.error) throw this.error;
+    return this.createResponse;
+  }
+
+  async updateLlmAsAJudgeEvaluator(
+    id: string,
+    update: LlmAsAJudgeUpdate,
+    options: CoreOptions,
+  ): Promise<UpdateEvaluatorResponse> {
+    this.calls.push({ method: "updateLlmAsAJudgeEvaluator", args: [id, update, options] });
+    if (this.error) throw this.error;
+    return this.updateResponse;
+  }
+
+  async updateCodeBasedEvaluator(
+    id: string,
+    update: CodeBasedUpdate,
+    options: CoreOptions,
+  ): Promise<UpdateEvaluatorResponse> {
+    this.calls.push({ method: "updateCodeBasedEvaluator", args: [id, update, options] });
+    if (this.error) throw this.error;
+    return this.updateResponse;
+  }
+
+  async getEvaluator(id: string, options: CoreOptions): Promise<GetEvaluatorResponse> {
+    this.calls.push({ method: "getEvaluator", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.getResponse;
+  }
+
+  async listEvaluators(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListEvaluatorsResponse> {
+    this.calls.push({ method: "listEvaluators", args: [nextToken, maxResults, options] });
+    if (this.error) throw this.error;
+    return (
+      this.listResponses.get(nextToken) ??
+      this.listResponses.get(undefined) ??
+      DEFAULT_LIST_EVALUATORS_RESPONSE
+    );
+  }
+
+  async deleteEvaluator(id: string, options: CoreOptions): Promise<DeleteEvaluatorResponse> {
+    this.calls.push({ method: "deleteEvaluator", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.deleteResponse;
+  }
+}
+
 // TestCoreClient implements the Core contract with fully controllable sub-clients.
 export class TestCoreClient implements Core {
   readonly harness = new TestHarnessClient();
   readonly identity = new TestIdentityClient();
   readonly memory = new TestMemoryClient();
   readonly runtime = new TestRuntimeClient();
+  readonly eval = new TestEvalClient();
   readonly projectManager: ProjectManager;
 
   constructor(options?: TestCoreClientOptions) {

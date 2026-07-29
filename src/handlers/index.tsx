@@ -1,4 +1,5 @@
 import { Router } from "../router";
+import { createEvalHandler } from "./eval/index.tsx";
 import { createHarnessHandler } from "./harness/index.tsx";
 import { createIdentityHandler } from "./identity/index.tsx";
 import { createMemoryHandler } from "./memory/index.tsx";
@@ -45,6 +46,7 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   root.handler(createIdentityHandler(core, io));
   root.handler(createRuntimeHandler(core, io));
   root.handler(createMemoryHandler(core, io));
+  root.handler(createEvalHandler(core, io));
   root.handler(createConfigHandler());
   root.handler(createProjectHandler({ projectManager: core.projectManager }));
 

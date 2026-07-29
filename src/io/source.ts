@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { addAbortSignal } from "node:stream";
 import { buffer } from "node:stream/consumers";
+import { InputValidationError } from "../errors";
 
 const FILE_PREFIX = "file://";
 const STDIN = "-";
@@ -10,7 +11,7 @@ export type SourceResolverConfig = {
   signal?: AbortSignal;
 };
 
-export class SourceResolutionError extends TypeError {
+export class SourceResolutionError extends InputValidationError {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "SourceResolutionError";

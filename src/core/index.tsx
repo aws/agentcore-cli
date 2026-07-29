@@ -1,6 +1,7 @@
 import { BedrockAgentCoreControlClient } from "@aws-sdk/client-bedrock-agentcore-control";
 import { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import { IAMClient } from "@aws-sdk/client-iam";
+import { EvalClient } from "./eval";
 import { HarnessClient } from "./harness";
 import { IdentityClient } from "./identity";
 import { MemoryClient } from "./memory";
@@ -50,6 +51,7 @@ export class CoreClient implements AwsClients {
   readonly identity: IdentityClient = new IdentityClient(this);
   readonly memory: MemoryClient = new MemoryClient(this);
   readonly runtime: RuntimeClient = new RuntimeClient(this);
+  readonly eval: EvalClient = new EvalClient(this);
 
   readonly projectManager: ProjectManager;
 

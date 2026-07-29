@@ -1,0 +1,22 @@
+{
+  "evaluatorArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:evaluator/agentcore_cli_eval_fixture_code-KnZOVbDFFG",
+  "evaluatorId": "agentcore_cli_eval_fixture_code-KnZOVbDFFG",
+  "evaluatorName": "agentcore_cli_eval_fixture_code",
+  "evaluatorConfig": {
+    "codeBased": {
+      "lambdaConfig": {
+        "lambdaArn": "arn:aws:lambda:us-west-2:685197708687:function:agentcore-bugbash-echo-1774451937",
+        "lambdaTimeoutInSeconds": 45
+      }
+    }
+  },
+  "level": "SESSION",
+  "status": "ACTIVE",
+  "createdAt": {
+    "$date": "2026-07-28T22:35:10.771Z"
+  },
+  "updatedAt": {
+    "$date": "2026-07-28T22:35:17.137Z"
+  },
+  "lockedForModification": false
+}

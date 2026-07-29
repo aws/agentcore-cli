@@ -1,0 +1,57 @@
+{
+  "evaluatorArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:evaluator/agentcore_cli_eval_fixture_tuned-oATpVrAtsP",
+  "evaluatorId": "agentcore_cli_eval_fixture_tuned-oATpVrAtsP",
+  "evaluatorName": "agentcore_cli_eval_fixture_tuned",
+  "evaluatorConfig": {
+    "llmAsAJudge": {
+      "instructions": "Judge from {context} whether the agent was both correct and polite.",
+      "ratingScale": {
+        "numerical": [
+          {
+            "definition": "Fails to meet expectations",
+            "value": 1,
+            "label": "Poor"
+          },
+          {
+            "definition": "Partially meets expectations",
+            "value": 2,
+            "label": "Fair"
+          },
+          {
+            "definition": "Meets expectations",
+            "value": 3,
+            "label": "Good"
+          },
+          {
+            "definition": "Exceeds expectations",
+            "value": 4,
+            "label": "Very Good"
+          },
+          {
+            "definition": "Far exceeds expectations",
+            "value": 5,
+            "label": "Excellent"
+          }
+        ]
+      },
+      "modelConfig": {
+        "bedrockEvaluatorModelConfig": {
+          "modelId": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+          "inferenceConfig": {
+            "maxTokens": 512,
+            "temperature": 0
+          }
+        }
+      }
+    }
+  },
+  "level": "SESSION",
+  "status": "ACTIVE",
+  "createdAt": {
+    "$date": "2026-07-28T22:35:13.640Z"
+  },
+  "updatedAt": {
+    "$date": "2026-07-28T22:35:16.477Z"
+  },
+  "lockedForModification": false
+}

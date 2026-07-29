@@ -1,4 +1,5 @@
 import z from "zod";
+import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
@@ -14,10 +15,10 @@ export const createGetRuntimeVersionHandler = (core: Core) =>
     ],
     handle: async (ctx, flags) => {
       if (!flags.id) {
-        throw new TypeError("required option '--id <id>' not specified");
+        throw new InputValidationError("required option '--id <id>' not specified");
       }
       if (!flags.version) {
-        throw new TypeError("required option '--version <version>' not specified");
+        throw new InputValidationError("required option '--version <version>' not specified");
       }
 
       ctx

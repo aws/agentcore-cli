@@ -1,0 +1,8 @@
+{
+  "evaluatorArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:evaluator/agentcore_cli_eval_fixture_code-KnZOVbDFFG",
+  "evaluatorId": "agentcore_cli_eval_fixture_code-KnZOVbDFFG",
+  "createdAt": {
+    "$date": "2026-07-28T22:35:10.771Z"
+  },
+  "status": "ACTIVE"
+}

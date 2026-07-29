@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { createRootHandler } from "../index";
 import { createSilentLogger, TestCoreClient, testIO } from "../../testing";
 import { DefaultGlobalConfigAccessor } from "../../globalConfig";
+import { InputValidationError } from "../../errors";
 import { FsReadWriteJson } from "../../io";
 
 describe("config", () => {
@@ -94,13 +95,11 @@ describe("config", () => {
   });
 
   test("throws on invalid key", async () => {
-    // TODO: swap to validation error.
-    await expect(run(["nonexistent.key"])).rejects.toThrow(TypeError);
+    await expect(run(["nonexistent.key"])).rejects.toThrow(InputValidationError);
   });
 
   test("throws on invalid value for key", async () => {
-    // TODO: swap to validation error
-    await expect(run(["telemetry.enabled", "banana"])).rejects.toThrow(TypeError);
+    await expect(run(["telemetry.enabled", "banana"])).rejects.toThrow(InputValidationError);
   });
 
   test("coerces values based on schema", async () => {

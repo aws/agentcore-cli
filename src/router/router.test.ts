@@ -15,6 +15,7 @@ import {
   type Handler,
   type Middleware,
 } from "./index";
+import { InputValidationError } from "../errors";
 
 // --- helpers ---------------------------------------------------------------
 
@@ -281,7 +282,7 @@ test("reports invalid input via command.error (throws under exitOverride)", asyn
 
   await expect(
     cmd.parseAsync(["node", "app", "get", "--harness-id", "toolong"]), // exceeds max(3)
-  ).rejects.toThrow(/Invalid value for option '--harness-id'/);
+  ).rejects.toThrow(InputValidationError);
 });
 
 test("a required (non-optional) flag is mandatory", async () => {
@@ -367,7 +368,7 @@ test("an invalid group-level flag is reported via command.error", async () => {
   const cmd = exitOverrideAll(compile(root, ValueContext.EmptyContext()));
 
   await expect(cmd.parseAsync(["node", "app", "get", "--level", "nope"])).rejects.toThrow(
-    /Invalid value for option '--level'/,
+    InputValidationError,
   );
 });
 

@@ -1,4 +1,5 @@
 import z from "zod";
+import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
@@ -25,17 +26,21 @@ export const createCreateApiKeyCredentialProviderHandler = (core: Core, io: AppI
     ],
     handle: async (ctx, flags) => {
       if (!flags.name) {
-        throw new TypeError("required option '--name <name>' not specified");
+        throw new InputValidationError("required option '--name <name>' not specified");
       }
-
       const hasApiKey = flags["api-key"] !== undefined;
       const hasSecretRef = flags["api-key-secret-reference"] !== undefined;
 
       if (hasApiKey && hasSecretRef) {
-        throw new TypeError("--api-key and --api-key-secret-reference are mutually exclusive");
+        throw new InputValidationError(
+          "--api-key and --api-key-secret-reference are mutually exclusive",
+        );
       }
+
       if (!hasApiKey && !hasSecretRef) {
-        throw new TypeError("either --api-key or --api-key-secret-reference is required");
+        throw new InputValidationError(
+          "either --api-key or --api-key-secret-reference is required",
+        );
       }
 
       const resolver = new SourceResolver({ stdin: io.stdin });

@@ -3,6 +3,7 @@ import { createHandler, flag } from "../../../../router";
 import type { Core } from "../../../types.tsx";
 import { coreOptsFromCtx } from "../../../utils.tsx";
 import { JsonRendererKey } from "../../../../tui";
+import { InputValidationError } from "../../../../errors";
 
 export const createUpdateEndpointHandler = (core: Core) =>
   createHandler({
@@ -18,10 +19,10 @@ export const createUpdateEndpointHandler = (core: Core) =>
       // Required at runtime but declared optional so that a bare
       // `harness endpoint update` falls through to the TUI middleware instead.
       if (!flags["id"]) {
-        throw new TypeError("required option '--id <id>' not specified");
+        throw new InputValidationError("required option '--id <id>' not specified");
       }
       if (!flags["qualifier"]) {
-        throw new TypeError("required option '--qualifier <qualifier>' not specified");
+        throw new InputValidationError("required option '--qualifier <qualifier>' not specified");
       }
 
       const response = await core.harness.updateHarnessEndpoint(

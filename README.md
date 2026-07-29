@@ -67,6 +67,17 @@ agentcore                          # interactive TUI
 ├── memory                         # inspect AgentCore Memories
 │   ├── get                        # fetch a Memory by id
 │   └── list                       # list Memories (server-side paginated)
+├── eval                           # evaluate and optimize AgentCore agents
+│   └── evaluator                  # manage AgentCore evaluators
+│       ├── llm-as-a-judge         # LLM-as-a-Judge evaluators
+│       │   ├── create             # create (instructions + rating scale + model)
+│       │   └── update             # update (merged over the existing config)
+│       ├── code-based             # code-based (Lambda-backed) evaluators
+│       │   ├── create             # create (Lambda ARN + optional timeout)
+│       │   └── update             # update (merged over the existing config)
+│       ├── get                    # get an evaluator by id (type-agnostic)
+│       ├── list                   # list evaluators (server-side paginated)
+│       └── delete                 # delete an evaluator by id
 └── config                         # read/write global config values
 ```
 
@@ -122,7 +133,34 @@ agentcore identity api-key-credential-provider get --name my-provider
 agentcore identity api-key-credential-provider list --max-results 10
 agentcore identity api-key-credential-provider update --name my-provider --api-key <new-key>
 agentcore identity api-key-credential-provider delete --name my-provider
+
+# Manage evaluators
+# Create an LLM-as-a-Judge evaluator with a rating-scale preset.
+agentcore eval evaluator llm-as-a-judge create \
+  --name order-support-quality \
+  --level SESSION \
+  --model us.anthropic.claude-sonnet-4-5-20250929-v1:0 \
+  --instructions "Judge from {context} whether the order-support agent answered correctly." \
+  --rating-scale 1-5-quality \
+  --json
+
+# Create a code-based (Lambda-backed) evaluator; timeout defaults to the service value.
+agentcore eval evaluator code-based create \
+  --name refund-policy-compliance \
+  --level SESSION \
+  --lambda-arn arn:aws:lambda:us-west-2:123456789012:function:refund-policy \
+  --json
+
+# Get, list, delete.
+agentcore eval evaluator get --id <evaluatorId> --json
+agentcore eval evaluator list --max-results 20 --json
+agentcore eval evaluator delete --id <evaluatorId> --json
 ```
+
+Source-aware values: any field flag documented as such accepts the value inline,
+`file://<path>` to read it from a file, or `-` to read it from stdin (the AWS CLI
+`file://` convention). A command reads stdin from at most one flag. For example,
+`--instructions file://order-quality.txt` or `--instructions -`.
 
 Bare Runtime branches and leaves require a TTY on stdin and stdout. Supplying
 operation flags runs the command headlessly, and `--json` always suppresses TUI

@@ -13,6 +13,7 @@ import { createHandler, flag } from "../../../router";
 import type { Core } from "../../types.tsx";
 import { coreOptsFromCtx, parseJsonFlag } from "../../utils.tsx";
 import { JsonRendererKey } from "../../../tui";
+import { InputValidationError } from "../../../errors";
 import { parameterHelp } from "../parameterHelp.tsx";
 
 // updated wraps a PATCH-semantics field: `--<flag> <json>` replaces the value,
@@ -110,7 +111,7 @@ export const createUpdateHarnessHandler = (core: Core) =>
       // Required at runtime but declared optional so that a bare
       // `harness update` falls through to the TUI middleware instead.
       if (!flags["id"]) {
-        throw new TypeError("required option '--id <id>' not specified");
+        throw new InputValidationError("required option '--id <id>' not specified");
       }
 
       const response = await core.harness.updateHarness(

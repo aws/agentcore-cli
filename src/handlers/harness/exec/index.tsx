@@ -5,6 +5,7 @@ import type { Core } from "../../types.tsx";
 import { coreOptsFromCtx } from "../../utils.tsx";
 import { JsonKey } from "../../keys.tsx";
 import { JsonRendererKey, renderTuiAt } from "../../../tui";
+import { InputValidationError } from "../../../errors";
 import { applyExecEvent, finishExec, newExecItem } from "../invoke/transcript.tsx";
 
 export const createExecHarnessHandler = (core: Core, io: AppIO) =>
@@ -34,7 +35,7 @@ export const createExecHarnessHandler = (core: Core, io: AppIO) =>
       // Required at runtime but declared optional so that a bare `harness exec`
       // falls through to the TUI middleware instead.
       if (!flags["id"]) {
-        throw new TypeError("required option '--id <id>' not specified");
+        throw new InputValidationError("required option '--id <id>' not specified");
       }
       // Without a command, open the interactive exec screen at this harness —
       // resuming the given session and targeting the given qualifier when
@@ -42,7 +43,7 @@ export const createExecHarnessHandler = (core: Core, io: AppIO) =>
       // shape JSON mode supports).
       if (!flags["command"]) {
         if (ctx.require(JsonKey)) {
-          throw new TypeError("required option '--command <command>' not specified");
+          throw new InputValidationError("required option '--command <command>' not specified");
         }
         let path = `${ctx.require(PathKey)}/${flags["id"]}`;
         if (flags["session-id"]) path += `/${flags["session-id"]}`;
