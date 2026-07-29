@@ -14,9 +14,11 @@ import { createGetMemoryHandler } from "./get";
 const REGION = "us-west-2";
 const FIXTURES = join(import.meta.dir, "__fixtures__");
 
-// These credential-free fixtures are synthetic but use the same SDK send-boundary
-// replay path as recorded fixtures, so command-to-SDK translation remains covered.
-const FIXTURE_MEMORY_ID = "agentcore_cli_memory_read_only_fixture-AbCd123456";
+// The e2e-test account holds two persistent fixture Memories:
+// agentcore_cli_memory_read_only_fixture (get) and
+// agentcore_cli_memory_read_only_fixture_second (needed for list pagination, >=2).
+// Record with AWS_PROFILE=e2e-test RECORD=1 bun test src/handlers/memory/memory.test.tsx.
+const FIXTURE_MEMORY_ID = "agentcore_cli_memory_read_only_fixture-QZMh466aPK";
 const MISSING_MEMORY_ID = "missing_memory-0000000000";
 
 function createFixtureCore(): CoreClient {
@@ -97,7 +99,7 @@ describe("memory read-only commands", () => {
 
     const first = JSON.parse(firstPage);
     expect(first.memories).toHaveLength(1);
-    expect(first.nextToken).toBe("memory-page-2");
+    expect(first.nextToken).toBeString();
 
     const secondPage = await run([
       "memory",

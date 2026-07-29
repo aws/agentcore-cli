@@ -5,8 +5,12 @@
     "name": "agentcore_cli_memory_read_only_fixture",
     "eventExpiryDuration": 30,
     "status": "ACTIVE",
-    "createdAt": "2026-07-29T19:10:47.336Z",
-    "updatedAt": "2026-07-29T19:10:52.159Z",
+    "createdAt": {
+      "$date": "2026-07-29T19:10:47.336Z"
+    },
+    "updatedAt": {
+      "$date": "2026-07-29T19:10:52.159Z"
+    },
     "description": "Stable fixture for AgentCore CLI Memory read-only tests",
     "strategies": []
   }

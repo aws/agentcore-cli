@@ -1,12 +1,12 @@
 {
   "memories": [
     {
-      "arn": "arn:aws:bedrock-agentcore:us-west-2:123456789012:memory/agentcore_cli_memory_read_only_fixture-AbCd123456",
-      "id": "agentcore_cli_memory_read_only_fixture-AbCd123456",
-      "status": "ACTIVE",
-      "createdAt": "2026-07-20T12:00:00.000Z",
-      "updatedAt": "2026-07-21T12:00:00.000Z"
+      "createdAt": "2026-07-29T19:10:47.336Z",
+      "updatedAt": "2026-07-29T19:10:52.159Z",
+      "arn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:memory/agentcore_cli_memory_read_only_fixture-QZMh466aPK",
+      "id": "agentcore_cli_memory_read_only_fixture-QZMh466aPK",
+      "status": "ACTIVE"
     }
   ],
-  "nextToken": "memory-page-2"
+  "nextToken": "AQICAHiUtSe0BW1y/mGNCEkbzUvDO1/kt+MrXlU4kyNsk96TRAFZNu68ZoZRVpTi4J3mdZa1AAAA6zCB6AYJKoZIhvcNAQcGoIHaMIHXAgEAMIHRBgkqhkiG9w0BBwEwHgYJYIZIAWUDBAEuMBEEDE5I2hVBPh23XBhEhwIBEICBoyaroKFGBAkZQJ22PGY4hxH+M04e0wtFiBQUCvxcmW0/zbfP9DUozeosJuF6BAY+cNtUzg5w57FGk9+xLt3GotCE9mGKQYsVbzbLKfOpGjQBPgPQ1erPzB/rSH9RL+CII4aCgNo6RQQ39pYscVrjZVT0ZKXUqWSZbV0pGFJtq8OM5ACWTubrr87ShhGFrYzbQO9xhqsgLovhl8/7wgs9OD/bq8g="
 }

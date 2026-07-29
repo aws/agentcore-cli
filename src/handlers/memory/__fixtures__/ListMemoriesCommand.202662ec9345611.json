@@ -1,8 +1,12 @@
 {
   "memories": [
     {
-      "createdAt": "2026-07-29T19:10:49.223Z",
-      "updatedAt": "2026-07-29T19:10:53.987Z",
+      "createdAt": {
+        "$date": "2026-07-29T19:10:49.223Z"
+      },
+      "updatedAt": {
+        "$date": "2026-07-29T19:10:53.987Z"
+      },
       "arn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:memory/agentcore_cli_memory_read_only_fixture_second-yYHO1d5zJb",
       "id": "agentcore_cli_memory_read_only_fixture_second-yYHO1d5zJb",
       "status": "ACTIVE"
