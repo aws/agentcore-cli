@@ -7,7 +7,7 @@ const FILE_PREFIX = "file://";
 const STDIN = "-";
 
 export type SourceResolverConfig = {
-  stdin?: NodeJS.ReadStream;
+  stdin: NodeJS.ReadStream;
   signal?: AbortSignal;
 };
 
@@ -52,9 +52,6 @@ export class SourceResolver {
   }
 
   private async readStdin(name: string): Promise<Uint8Array> {
-    if (!this.config.stdin) {
-      throw new SourceResolutionError(`stdin is not available for '--${name}'`);
-    }
     if (this.stdinClaimedBy !== undefined) {
       throw new SourceResolutionError(
         `only one option may read from stdin; '--${name}' conflicts with ` +

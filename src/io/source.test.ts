@@ -33,22 +33,6 @@ describe("SourceResolver bytes", () => {
     expect(await resolver.resolveBytes("payload", undefined)).toBeUndefined();
   });
 
-  test("does not require stdin for non-stdin sources", async () => {
-    const resolver = new SourceResolver({});
-
-    expect(await resolver.resolveBytes("payload", "hello")).toEqual(
-      new TextEncoder().encode("hello"),
-    );
-  });
-
-  test("rejects a stdin source when stdin is unavailable", async () => {
-    const resolver = new SourceResolver({});
-    const resolution = resolver.resolveBytes("payload", "-");
-
-    await expect(resolution).rejects.toBeInstanceOf(SourceResolutionError);
-    await expect(resolution).rejects.toThrow("stdin is not available for '--payload'");
-  });
-
   test("encodes inline values as UTF-8", async () => {
     const resolver = new SourceResolver({ stdin: stdin() });
 

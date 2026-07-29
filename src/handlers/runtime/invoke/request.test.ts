@@ -54,17 +54,6 @@ describe("resolveRuntimeInvokeSources", () => {
     expect(reads).toBe(0);
   });
 
-  test("classifies source-resolution failures as usage", async () => {
-    const error = await resolveRuntimeInvokeSources({ payload: "-" }).catch((error) => error);
-
-    expect(error).toBeInstanceOf(UsageError);
-    expect(error).toMatchObject({
-      message: "stdin is not available for '--payload'",
-      exitCode: 2,
-    });
-    expect(error.cause).toBeInstanceOf(SourceResolutionError);
-  });
-
   test("rejects a bearer token that is not valid UTF-8", async () => {
     const error = await resolveRuntimeInvokeSources(
       { payload: "{}", bearerToken: "-" },

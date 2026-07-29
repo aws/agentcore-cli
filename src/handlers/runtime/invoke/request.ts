@@ -33,7 +33,7 @@ const RESERVED_HEADERS = new Set([
 
 export async function resolveRuntimeInvokeSources(
   sources: { payload: string; bearerToken?: string },
-  stdin?: NodeJS.ReadStream,
+  stdin: NodeJS.ReadStream,
   signal?: AbortSignal,
 ): Promise<{ payload: Uint8Array; bearerToken?: string }> {
   if (sources.payload === "-" && sources.bearerToken === "-") {
