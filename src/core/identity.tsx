@@ -1,19 +1,31 @@
 import {
   CreateApiKeyCredentialProviderCommand,
+  CreateOauth2CredentialProviderCommand,
   DeleteApiKeyCredentialProviderCommand,
+  DeleteOauth2CredentialProviderCommand,
   GetApiKeyCredentialProviderCommand,
+  GetOauth2CredentialProviderCommand,
   ListApiKeyCredentialProvidersCommand,
+  ListOauth2CredentialProvidersCommand,
   UpdateApiKeyCredentialProviderCommand,
+  UpdateOauth2CredentialProviderCommand,
   type CreateApiKeyCredentialProviderResponse,
+  type CreateOauth2CredentialProviderResponse,
   type DeleteApiKeyCredentialProviderResponse,
+  type DeleteOauth2CredentialProviderResponse,
   type GetApiKeyCredentialProviderResponse,
+  type GetOauth2CredentialProviderResponse,
   type ListApiKeyCredentialProvidersResponse,
+  type ListOauth2CredentialProvidersResponse,
   type UpdateApiKeyCredentialProviderResponse,
+  type UpdateOauth2CredentialProviderResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
   CoreIdentityClient,
   CreateApiKeyCredentialProviderInput,
+  CreateOauth2CredentialProviderInput,
   UpdateApiKeyCredentialProviderInput,
+  UpdateOauth2CredentialProviderInput,
 } from "../handlers/identity/types";
 import type { AwsClients, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
@@ -65,5 +77,51 @@ export class IdentityClient implements CoreIdentityClient {
     return this.clients
       .control(toClientConfig(options))
       .send(new DeleteApiKeyCredentialProviderCommand({ name }));
+  }
+
+  async createOauth2CredentialProvider(
+    input: CreateOauth2CredentialProviderInput,
+    options: CoreOptions,
+  ): Promise<CreateOauth2CredentialProviderResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new CreateOauth2CredentialProviderCommand(input));
+  }
+
+  async getOauth2CredentialProvider(
+    name: string,
+    options: CoreOptions,
+  ): Promise<GetOauth2CredentialProviderResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new GetOauth2CredentialProviderCommand({ name }));
+  }
+
+  async listOauth2CredentialProviders(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListOauth2CredentialProvidersResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new ListOauth2CredentialProvidersCommand({ nextToken, maxResults }));
+  }
+
+  async updateOauth2CredentialProvider(
+    input: UpdateOauth2CredentialProviderInput,
+    options: CoreOptions,
+  ): Promise<UpdateOauth2CredentialProviderResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new UpdateOauth2CredentialProviderCommand(input));
+  }
+
+  async deleteOauth2CredentialProvider(
+    name: string,
+    options: CoreOptions,
+  ): Promise<DeleteOauth2CredentialProviderResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new DeleteOauth2CredentialProviderCommand({ name }));
   }
 }

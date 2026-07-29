@@ -1,9 +1,11 @@
 import type {
   CreateApiKeyCredentialProviderResponse,
+  CreateOauth2CredentialProviderResponse,
   CreateHarnessEndpointRequest,
   CreateHarnessEndpointResponse,
   CreateHarnessResponse,
   DeleteApiKeyCredentialProviderResponse,
+  DeleteOauth2CredentialProviderResponse,
   DeleteHarnessEndpointRequest,
   DeleteHarnessEndpointResponse,
   DeleteHarnessRequest,
@@ -12,12 +14,14 @@ import type {
   GetGatewayRuleResponse,
   GetGatewayTargetResponse,
   GetApiKeyCredentialProviderResponse,
+  GetOauth2CredentialProviderResponse,
   GetHarnessResponse,
   GetHarnessEndpointResponse,
   GetAgentRuntimeEndpointResponse,
   GetAgentRuntimeResponse,
   GetMemoryOutput,
   ListApiKeyCredentialProvidersResponse,
+  ListOauth2CredentialProvidersResponse,
   ListAgentRuntimeEndpointsResponse,
   ListAgentRuntimesResponse,
   ListAgentRuntimeVersionsResponse,
@@ -41,6 +45,7 @@ import type {
   UpdateEvaluatorResponse,
   UpdateOnlineEvaluationConfigResponse,
   UpdateApiKeyCredentialProviderResponse,
+  UpdateOauth2CredentialProviderResponse,
   UpdateHarnessEndpointRequest,
   UpdateHarnessEndpointResponse,
   UpdateHarnessRequest,
@@ -72,7 +77,9 @@ import type { CoreGatewayClient } from "../handlers/gateway/types";
 import type {
   CoreIdentityClient,
   CreateApiKeyCredentialProviderInput,
+  CreateOauth2CredentialProviderInput,
   UpdateApiKeyCredentialProviderInput,
+  UpdateOauth2CredentialProviderInput,
 } from "../handlers/identity/types";
 import type { CoreMemoryClient } from "../handlers/memory/types";
 import type {
@@ -153,6 +160,13 @@ const DEFAULT_GET_GATEWAY_TARGET_RESPONSE = {} as GetGatewayTargetResponse;
 const DEFAULT_LIST_GATEWAY_TARGETS_RESPONSE: ListGatewayTargetsResponse = { items: [] };
 const DEFAULT_GET_GATEWAY_RULE_RESPONSE = {} as GetGatewayRuleResponse;
 const DEFAULT_LIST_GATEWAY_RULES_RESPONSE: ListGatewayRulesResponse = { gatewayRules: [] };
+const DEFAULT_CREATE_OAUTH2_RESPONSE = {} as CreateOauth2CredentialProviderResponse;
+const DEFAULT_GET_OAUTH2_RESPONSE = {} as GetOauth2CredentialProviderResponse;
+const DEFAULT_LIST_OAUTH2_RESPONSE: ListOauth2CredentialProvidersResponse = {
+  credentialProviders: [],
+};
+const DEFAULT_UPDATE_OAUTH2_RESPONSE = {} as UpdateOauth2CredentialProviderResponse;
+const DEFAULT_DELETE_OAUTH2_RESPONSE = {} as DeleteOauth2CredentialProviderResponse;
 const DEFAULT_GET_RUNTIME_RESPONSE = {} as GetAgentRuntimeResponse;
 const DEFAULT_GET_RUNTIME_ENDPOINT_RESPONSE = {} as GetAgentRuntimeEndpointResponse;
 const DEFAULT_LIST_RUNTIMES_RESPONSE: ListAgentRuntimesResponse = { agentRuntimes: [] };
@@ -941,6 +955,42 @@ class TestIdentityClient implements CoreIdentityClient {
     _options: CoreOptions,
   ): Promise<DeleteApiKeyCredentialProviderResponse> {
     return DEFAULT_DELETE_API_KEY_RESPONSE;
+  }
+
+  async createOauth2CredentialProvider(
+    _input: CreateOauth2CredentialProviderInput,
+    _options: CoreOptions,
+  ): Promise<CreateOauth2CredentialProviderResponse> {
+    return DEFAULT_CREATE_OAUTH2_RESPONSE;
+  }
+
+  async getOauth2CredentialProvider(
+    _name: string,
+    _options: CoreOptions,
+  ): Promise<GetOauth2CredentialProviderResponse> {
+    return DEFAULT_GET_OAUTH2_RESPONSE;
+  }
+
+  async listOauth2CredentialProviders(
+    _nextToken: string | undefined,
+    _maxResults: number | undefined,
+    _options: CoreOptions,
+  ): Promise<ListOauth2CredentialProvidersResponse> {
+    return DEFAULT_LIST_OAUTH2_RESPONSE;
+  }
+
+  async updateOauth2CredentialProvider(
+    _input: UpdateOauth2CredentialProviderInput,
+    _options: CoreOptions,
+  ): Promise<UpdateOauth2CredentialProviderResponse> {
+    return DEFAULT_UPDATE_OAUTH2_RESPONSE;
+  }
+
+  async deleteOauth2CredentialProvider(
+    _name: string,
+    _options: CoreOptions,
+  ): Promise<DeleteOauth2CredentialProviderResponse> {
+    return DEFAULT_DELETE_OAUTH2_RESPONSE;
   }
 }
 

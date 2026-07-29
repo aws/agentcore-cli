@@ -53,6 +53,7 @@ describe("identity command hierarchy", () => {
 
     expect(identity?.children().map((child) => child.name())).toEqual([
       "api-key-credential-provider",
+      "oauth2-credential-provider",
     ]);
     expect(
       identity
