@@ -28,6 +28,9 @@ import { RuntimeListEndpointsScreen } from "../handlers/runtime/endpoint/list/sc
 import { RuntimeVersionScreen } from "../handlers/runtime/version/screen.tsx";
 import { RuntimeGetVersionScreen } from "../handlers/runtime/version/get/screen.tsx";
 import { RuntimeListVersionsScreen } from "../handlers/runtime/version/list/screen.tsx";
+import { MemoryScreen } from "../handlers/memory/screen.tsx";
+import { MemoryGetJsonScreen, MemoryGetScreen } from "../handlers/memory/get/screen.tsx";
+import { MemoryListScreen } from "../handlers/memory/list/screen.tsx";
 import { RootScreen, HelpScreen } from "../handlers/screen.tsx";
 import type { Context } from "../router";
 
@@ -254,6 +257,23 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/runtime/endpoint/list/:runtimeId"
             element={<RuntimeListEndpointsScreen ctx={ctx} core={core} />}
+          />
+          <Route path="agentcore/memory" element={<MemoryScreen ctx={ctx} core={core} />} />
+          <Route
+            path="agentcore/memory/get"
+            element={<Navigate to="/agentcore/memory/list" replace />}
+          />
+          <Route
+            path="agentcore/memory/list"
+            element={<MemoryListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/get/:memoryId"
+            element={<MemoryGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/get/:memoryId/json"
+            element={<MemoryGetJsonScreen ctx={ctx} core={core} />}
           />
           <Route path="*" element={<HelpScreen ctx={ctx} core={core} />} />
         </Routes>
