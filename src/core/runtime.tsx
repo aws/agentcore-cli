@@ -35,7 +35,7 @@ export class RuntimeClient implements CoreRuntimeClient {
     options: CoreOptions,
     signal?: AbortSignal,
   ): Promise<RuntimeInvokeResponse> {
-    const { runtimeId, applicationHeaders, bearerToken, ...input } = request;
+    const { runtimeId, bearerToken } = request;
     const logger = this.logger.child({
       operation: "invokeRuntime",
       authMode: bearerToken === undefined ? "IAM" : "CUSTOM_JWT",
@@ -44,92 +44,111 @@ export class RuntimeClient implements CoreRuntimeClient {
       region: options.region,
     });
     if (bearerToken !== undefined) {
-      const client = this.clients.data(toClientConfig(options));
-      const endpoint = client.config.endpointProvider({
-        Region: options.region,
-        Endpoint: options.endpointUrl,
-      });
-      const url = new URL(endpoint.url);
-      if (url.protocol !== "https:") {
-        throw new TypeError("CUSTOM_JWT requires an HTTPS endpoint");
-      }
-      url.pathname = `${url.pathname.replace(/\/?$/, "/")}runtimes/${encodeURIComponent(runtimeId)}/invocations`;
-      url.search = new URLSearchParams({
-        accountId: request.accountId,
-        qualifier: request.qualifier,
-      }).toString();
-      const headers = new Headers(applicationHeaders);
-      try {
-        headers.set("Authorization", `Bearer ${bearerToken}`);
-      } catch {
-        throw new TypeError("Invalid bearer token");
-      }
-      try {
-        for (const [name, value] of [
-          ["Content-Type", request.contentType],
-          ["Accept", request.accept],
-          ["Mcp-Session-Id", request.mcpSessionId],
-          ["X-Amzn-Bedrock-AgentCore-Runtime-Session-Id", request.runtimeSessionId],
-          ["Mcp-Protocol-Version", request.mcpProtocolVersion],
-          ["Mcp-Method", request.mcpMethod],
-          ["Mcp-Name", request.mcpName],
-          ["X-Amzn-Bedrock-AgentCore-Runtime-User-Id", request.runtimeUserId],
-          ["X-Amzn-Trace-Id", request.traceId],
-          ["traceparent", request.traceParent],
-          ["tracestate", request.traceState],
-          ["baggage", request.baggage],
-        ] as const) {
-          if (value !== undefined) headers.set(name, value);
-        }
-      } catch {
-        throw new TypeError("Invalid Runtime request header");
-      }
-      let response: Response;
-      try {
-        response = await this.fetch(url, {
-          method: "POST",
-          redirect: "error",
-          headers,
-          body: request.payload as RequestInit["body"],
-          signal,
-        });
-      } catch (error) {
-        if (signal?.aborted) throw signal.reason ?? error;
-        logger
-          .child({
-            errorName:
-              error instanceof TypeError
-                ? "TypeError"
-                : error instanceof Error
-                  ? "Error"
-                  : typeof error,
-          })
-          .debug("Runtime invocation transport failed");
-        throw new Error("Runtime invocation failed");
-      }
-      if (!response.ok) {
-        logger
-          .child({ httpStatusCode: response.status })
-          .debug("Runtime invocation returned a non-success response");
-        await response.body?.cancel().catch(() => undefined);
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const body = (response.body as AsyncIterable<Uint8Array> | null) ?? emptyBody();
-      return {
-        statusCode: response.status,
-        contentType: response.headers.get("content-type") ?? "",
-        runtimeSessionId:
-          response.headers.get("x-amzn-bedrock-agentcore-runtime-session-id") ?? undefined,
-        mcpSessionId: response.headers.get("mcp-session-id") ?? undefined,
-        mcpProtocolVersion: response.headers.get("mcp-protocol-version") ?? undefined,
-        traceId: response.headers.get("x-amzn-trace-id") ?? undefined,
-        traceParent: response.headers.get("traceparent") ?? undefined,
-        traceState: response.headers.get("tracestate") ?? undefined,
-        baggage: response.headers.get("baggage") ?? undefined,
-        body: signal ? abortable(body, signal) : body,
-      };
+      return this.invokeRuntimeWithCustomJwt(request, bearerToken, options, logger, signal);
     }
+    return this.invokeRuntimeWithIam(request, options, logger, signal);
+  }
 
+  private async invokeRuntimeWithCustomJwt(
+    request: RuntimeInvokeRequest,
+    bearerToken: string,
+    options: CoreOptions,
+    logger: Logger,
+    signal?: AbortSignal,
+  ): Promise<RuntimeInvokeResponse> {
+    const client = this.clients.data(toClientConfig(options));
+    const endpoint = client.config.endpointProvider({
+      Region: options.region,
+      Endpoint: options.endpointUrl,
+    });
+    const url = new URL(endpoint.url);
+    if (url.protocol !== "https:") {
+      throw new TypeError("CUSTOM_JWT requires an HTTPS endpoint");
+    }
+    url.pathname = `${url.pathname.replace(/\/?$/, "/")}runtimes/${encodeURIComponent(request.runtimeId)}/invocations`;
+    url.search = new URLSearchParams({
+      accountId: request.accountId,
+      qualifier: request.qualifier,
+    }).toString();
+    const headers = new Headers(request.applicationHeaders);
+    try {
+      headers.set("Authorization", `Bearer ${bearerToken}`);
+    } catch {
+      throw new TypeError("Invalid bearer token");
+    }
+    try {
+      for (const [name, value] of [
+        ["Content-Type", request.contentType],
+        ["Accept", request.accept],
+        ["Mcp-Session-Id", request.mcpSessionId],
+        ["X-Amzn-Bedrock-AgentCore-Runtime-Session-Id", request.runtimeSessionId],
+        ["Mcp-Protocol-Version", request.mcpProtocolVersion],
+        ["Mcp-Method", request.mcpMethod],
+        ["Mcp-Name", request.mcpName],
+        ["X-Amzn-Bedrock-AgentCore-Runtime-User-Id", request.runtimeUserId],
+        ["X-Amzn-Trace-Id", request.traceId],
+        ["traceparent", request.traceParent],
+        ["tracestate", request.traceState],
+        ["baggage", request.baggage],
+      ] as const) {
+        if (value !== undefined) headers.set(name, value);
+      }
+    } catch {
+      throw new TypeError("Invalid Runtime request header");
+    }
+    let response: Response;
+    try {
+      response = await this.fetch(url, {
+        method: "POST",
+        redirect: "error",
+        headers,
+        body: request.payload as RequestInit["body"],
+        signal,
+      });
+    } catch (error) {
+      if (signal?.aborted) throw signal.reason ?? error;
+      logger
+        .child({
+          errorName:
+            error instanceof TypeError
+              ? "TypeError"
+              : error instanceof Error
+                ? "Error"
+                : typeof error,
+        })
+        .debug("Runtime invocation transport failed");
+      throw new Error("Runtime invocation failed");
+    }
+    if (!response.ok) {
+      logger
+        .child({ httpStatusCode: response.status })
+        .debug("Runtime invocation returned a non-success response");
+      await response.body?.cancel().catch(() => undefined);
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const body = (response.body as AsyncIterable<Uint8Array> | null) ?? emptyBody();
+    return {
+      statusCode: response.status,
+      contentType: response.headers.get("content-type") ?? "",
+      runtimeSessionId:
+        response.headers.get("x-amzn-bedrock-agentcore-runtime-session-id") ?? undefined,
+      mcpSessionId: response.headers.get("mcp-session-id") ?? undefined,
+      mcpProtocolVersion: response.headers.get("mcp-protocol-version") ?? undefined,
+      traceId: response.headers.get("x-amzn-trace-id") ?? undefined,
+      traceParent: response.headers.get("traceparent") ?? undefined,
+      traceState: response.headers.get("tracestate") ?? undefined,
+      baggage: response.headers.get("baggage") ?? undefined,
+      body: signal ? abortable(body, signal) : body,
+    };
+  }
+
+  private async invokeRuntimeWithIam(
+    request: RuntimeInvokeRequest,
+    options: CoreOptions,
+    logger: Logger,
+    signal?: AbortSignal,
+  ): Promise<RuntimeInvokeResponse> {
+    const { runtimeId, applicationHeaders, bearerToken: _bearerToken, ...input } = request;
     const command = new InvokeAgentRuntimeCommand({ ...input, agentRuntimeArn: runtimeId });
     if (applicationHeaders?.length) {
       command.middlewareStack.add(
