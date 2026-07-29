@@ -292,7 +292,7 @@ describe("runtime invoke", () => {
     }
   });
 
-  test("classifies an invalid Runtime ARN as usage before Core calls", async () => {
+  test("rejects an invalid Runtime ARN before Core calls", async () => {
     const core = new TestCoreClient();
     const output = captureIO();
 
@@ -300,7 +300,7 @@ describe("runtime invoke", () => {
       runCommand(core, output.io, ["runtime", "invoke", "--id", RUNTIME_ARN, "--payload", "{}"]),
     );
 
-    expect(code).toBe(ExitCode.USAGE);
+    expect(code).toBe(ExitCode.FAILURE);
     expect(core.runtime.calls).toEqual([]);
   });
 

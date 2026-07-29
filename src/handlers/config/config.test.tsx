@@ -7,7 +7,6 @@ import { createSilentLogger, TestCoreClient, testIO } from "../../testing";
 import { DefaultGlobalConfigAccessor } from "../../globalConfig";
 import { InputValidationError } from "../../errors";
 import { FsReadWriteJson } from "../../io";
-import { InputValidationError } from "../../errors";
 
 describe("config", () => {
   let tempDir: string;

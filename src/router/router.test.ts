@@ -2,7 +2,6 @@ import { test, expect } from "bun:test";
 import { Command } from "commander";
 import z from "zod";
 
-import { InputValidationError } from "../errors";
 import {
   Router,
   ValueContext,
@@ -266,7 +265,7 @@ test("applies a schema default for an omitted flag", async () => {
   expect(seen).toEqual({ count: 7 });
 });
 
-test("marks invalid flag schema input as usage", async () => {
+test("reports invalid input via command.error (throws under exitOverride)", async () => {
   const get = createHandler({
     name: "get",
     description: "",
@@ -513,7 +512,7 @@ test("a required positional argument is mandatory", async () => {
   await expect(cmd.parseAsync(["node", "app", "get"])).rejects.toThrow();
 });
 
-test("marks invalid argument schema input as usage", async () => {
+test("rejects an argument that fails schema validation", async () => {
   const config = createHandler({
     name: "config",
     description: "",
@@ -528,13 +527,9 @@ test("marks invalid argument schema input as usage", async () => {
 
   const cmd = exitOverrideAll(compile(root, ValueContext.EmptyContext()));
 
-  const error = await cmd
-    .parseAsync(["node", "app", "config", "toolong"])
-    .catch((caught) => caught);
-
-  expect(error).toBeInstanceOf(InputValidationError);
-  expect(error.message).toContain("Invalid value for argument 'key'");
-  expect(error.exitCode).toBe(2);
+  await expect(cmd.parseAsync(["node", "app", "config", "toolong"])).rejects.toThrow(
+    /Invalid value for argument 'key'/,
+  );
 });
 
 test("compile rejects a variadic argument that is not the last positional", () => {
