@@ -8,7 +8,8 @@ import type { ReadWriteJson } from "../io";
 import type { Logger } from "../logging";
 import { globalConfigFileSchema } from "./types";
 import { DEFAULT_GLOBAL_CONFIG, applyOverrides } from "./config";
-import { AgentCoreCLIError, ERROR_SOURCE, type AgentCoreCLIErrorOptions } from "../errors";
+import z from "zod";
+import { InputValidationError } from "../errors";
 
 type DefaultGlobalConfigAccessorConfig = {
   logger: Logger;
@@ -76,7 +77,7 @@ export class DefaultGlobalConfigAccessor implements GlobalConfigAccessor {
   private async writeToConfigFile(data: GlobalConfigFileData): Promise<GlobalConfigFileData> {
     const dataParseResult = globalConfigFileSchema.safeParse(data);
     if (!dataParseResult.success) {
-      throw new InternalValidationError("failed to validate config data before writing to file", {
+      throw new InputValidationError(z.prettifyError(dataParseResult.error), {
         cause: dataParseResult.error,
       });
     }
@@ -127,11 +128,4 @@ function diff<T extends Record<string, unknown>>(a: T, b: T): DeepPartial<T> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** Error raised by invalid data coming from internal sources **/
-export class InternalValidationError extends AgentCoreCLIError {
-  constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
-    super(message, { ...options, source: ERROR_SOURCE.INTERNAL });
-  }
 }
