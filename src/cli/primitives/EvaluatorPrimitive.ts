@@ -362,9 +362,9 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
       .option('--type <type>', 'Evaluator type: llm-as-a-judge (default) or code-based')
       .option(
         '--model <model>',
-        'Bedrock model ID: [LLM] judge model for LLM-as-a-Judge, or [3P library] judge model with ' +
-          '--model-provider bedrock (plain model ID or inference profile, e.g. ' +
-          'us.anthropic.claude-sonnet-4-20250514-v1:0 — no bedrock/ prefix)'
+        'Bedrock inference profile ID: [LLM] judge model for LLM-as-a-Judge, or [3P library] judge model with ' +
+          '--model-provider bedrock. Must be an inference profile (e.g. ' +
+          'us.anthropic.claude-sonnet-4-20250514-v1:0), not a plain model ID — no bedrock/ prefix'
       )
       .option(
         '--instructions <text>',
@@ -472,8 +472,8 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               const resolvedModelProvider = (cliOptions.modelProvider as ModelProvider | undefined) ?? 'bedrock';
               if (resolvedModelProvider === 'bedrock' && !cliOptions.model && threePLibrary) {
                 fail(
-                  '--model is required when using --model-provider bedrock (the default). Pass a Bedrock model ID or ' +
-                    'inference profile (e.g. us.anthropic.claude-sonnet-4-20250514-v1:0) — no bedrock/ prefix'
+                  '--model is required when using --model-provider bedrock (the default). Pass a Bedrock inference ' +
+                    'profile ID (e.g. us.anthropic.claude-sonnet-4-20250514-v1:0) — plain model IDs are not supported'
                 );
               }
               if (cliOptions.memory && !threePLibrary) {
