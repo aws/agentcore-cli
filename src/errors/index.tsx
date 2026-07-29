@@ -1,1 +1,2 @@
-export { AgentCoreCLIError, InputValidationError } from "./errors";
+export { AgentCoreCLIError, InputValidationError, type AgentCoreCLIErrorOptions } from "./errors";
+export { ERROR_SOURCE } from "./types";
