@@ -387,6 +387,14 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
         `[3P library] LLM judge provider: ${MODEL_PROVIDERS.join(', ')} (default: bedrock)`
       )
       .option(
+        '--3p-template-json <json>',
+        '[Code-based] Inline JSON with 3P library config: {"library", "metric", "modelProvider", "model", "params"}'
+      )
+      .option(
+        '--3p-template-json-file <path>',
+        '[Code-based] Path to JSON file with 3P library config (same format as --3p-template-json)'
+      )
+      .option(
         '--config <path>',
         'Path to evaluator config JSON file (overrides --model, --instructions, --rating-scale) [non-interactive]'
       )
@@ -407,6 +415,8 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
           param: string[];
           parametersFile?: string;
           modelProvider?: string;
+          '3pTemplateJson'?: string;
+          '3pTemplateJsonFile'?: string;
           config?: string;
           kmsKeyArn?: string;
           json?: boolean;
@@ -429,6 +439,45 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               const levelResult = EvaluationLevelSchema.safeParse(cliOptions.level);
               if (!levelResult.success) {
                 fail(`Invalid --level "${cliOptions.level}". Must be one of: SESSION, TRACE, TOOL_CALL`);
+              }
+
+              // Parse --3p-template-json or --3p-template-json-file into individual options
+              if (cliOptions['3pTemplateJson'] && cliOptions['3pTemplateJsonFile']) {
+                fail('--3p-template-json and --3p-template-json-file cannot be used together');
+              }
+              let templateJsonStr: string | undefined;
+              if (cliOptions['3pTemplateJson']) {
+                templateJsonStr = cliOptions['3pTemplateJson'];
+              } else if (cliOptions['3pTemplateJsonFile']) {
+                if (!existsSync(cliOptions['3pTemplateJsonFile'])) {
+                  fail(`--3p-template-json-file not found: ${cliOptions['3pTemplateJsonFile']}`);
+                }
+                templateJsonStr = readFileSync(cliOptions['3pTemplateJsonFile'], 'utf-8');
+              }
+              if (templateJsonStr) {
+                let templateObj: Record<string, unknown>;
+                try {
+                  templateObj = JSON.parse(templateJsonStr) as Record<string, unknown>;
+                } catch {
+                  fail('--3p-template-json must be valid JSON');
+                }
+                if (!templateObj.library || typeof templateObj.library !== 'string') {
+                  fail('--3p-template-json must include "library" (e.g. "deepeval" or "autoevals")');
+                }
+                if (!templateObj.metric || typeof templateObj.metric !== 'string') {
+                  fail('--3p-template-json must include "metric" (e.g. "AnswerRelevancyMetric")');
+                }
+                // Populate individual options from template JSON
+                cliOptions['3pLibrary'] = templateObj.library as string;
+                cliOptions.metric = templateObj.metric as string;
+                if (templateObj.modelProvider) cliOptions.modelProvider = templateObj.modelProvider as string;
+                if (templateObj.model) cliOptions.model = templateObj.model as string;
+                if (templateObj.params && typeof templateObj.params === 'object') {
+                  cliOptions.parametersFile = undefined;
+                  cliOptions.param = Object.entries(templateObj.params as Record<string, unknown>).map(
+                    ([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`
+                  );
+                }
               }
 
               // Validate --3p-library
