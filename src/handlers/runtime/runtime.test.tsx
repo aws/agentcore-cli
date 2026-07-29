@@ -60,7 +60,7 @@ function testRuntimeCommand() {
 }
 
 describe("runtime command hierarchy", () => {
-  test("registers the Runtime read-only command hierarchy", () => {
+  test("registers the Runtime command hierarchy", () => {
     const root = createRootHandler(createFixtureCore(), {
       io: testIO().io,
       logger: createSilentLogger(),
@@ -72,6 +72,7 @@ describe("runtime command hierarchy", () => {
     expect(runtime?.children().map((child) => child.name())).toEqual([
       "get",
       "list",
+      "invoke",
       "version",
       "endpoint",
     ]);

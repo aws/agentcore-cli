@@ -9,6 +9,7 @@ import { RuntimeClient } from "./runtime";
 import type {
   AwsClients,
   ClientConfig,
+  CoreFetch,
   CreateControlClient,
   CreateDataClient,
   CreateIamClient,
@@ -20,6 +21,7 @@ import { FsProjectManager } from "./project";
 export type {
   AwsClients,
   ClientConfig,
+  CoreFetch,
   CreateControlClient,
   CreateDataClient,
   CreateIamClient,
@@ -30,6 +32,7 @@ type CoreClientConfig = {
   createDataClient: CreateDataClient;
   createIamClient: CreateIamClient;
   logger: Logger;
+  fetch?: CoreFetch;
 };
 
 // CoreClient is the single entry point to the Bedrock AgentCore APIs. It owns the
@@ -50,7 +53,7 @@ export class CoreClient implements AwsClients {
   readonly harness: HarnessClient = new HarnessClient(this);
   readonly identity: IdentityClient = new IdentityClient(this);
   readonly memory: MemoryClient = new MemoryClient(this);
-  readonly runtime: RuntimeClient = new RuntimeClient(this);
+  readonly runtime: RuntimeClient;
   readonly eval: EvalClient = new EvalClient(this);
 
   readonly projectManager: ProjectManager;
@@ -60,6 +63,11 @@ export class CoreClient implements AwsClients {
     this.createDataClient = config.createDataClient;
     this.createIamClient = config.createIamClient;
     this.logger = config.logger;
+    this.runtime = new RuntimeClient(
+      this,
+      config.fetch ?? globalThis.fetch,
+      this.logger.child({ module: "runtime" }),
+    );
 
     this.projectManager = new FsProjectManager({
       logger: this.logger.child({ module: "projectManager" }),
