@@ -111,6 +111,61 @@ describe("DefaultTelemetryClient", () => {
     ]);
   });
 
+  test("enables the default audit sink only when global config audit is enabled", async () => {
+    const auditFilePath = join(tempDir, "telemetry", "config-audit.jsonl");
+    const enabledSessionId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    const disabledSessionId = "ffffffff-1111-2222-3333-444444444444";
+
+    const enabledConfigAccessor = new TestGlobalConfigAccessor();
+    const enabledConfig = await enabledConfigAccessor.get();
+    await enabledConfigAccessor.set({
+      ...enabledConfig,
+      telemetry: { ...enabledConfig.telemetry, audit: true },
+    });
+
+    const disabledConfigAccessor = new TestGlobalConfigAccessor();
+    const disabledConfig = await disabledConfigAccessor.get();
+    await disabledConfigAccessor.set({
+      ...disabledConfig,
+      telemetry: { ...disabledConfig.telemetry, audit: false },
+    });
+
+    const enabledClient = new DefaultTelemetryClient({
+      logger,
+      sessionId: enabledSessionId,
+      globalConfigAccessor: enabledConfigAccessor,
+      auditFilePath,
+    });
+    const disabledClient = new DefaultTelemetryClient({
+      logger,
+      sessionId: disabledSessionId,
+      globalConfigAccessor: disabledConfigAccessor,
+      auditFilePath,
+    });
+
+    await enabledClient.emit("cli.command_run", 123, { exit_reason: "success" });
+    await disabledClient.emit("cli.command_run", 456, { exit_reason: "failure" });
+    await Promise.all([enabledClient.shutdown(), disabledClient.shutdown()]);
+
+    const auditLines = (await readFile(auditFilePath, "utf8")).trimEnd().split("\n");
+    expect(auditLines).toHaveLength(1);
+    expect(JSON.parse(auditLines[0]!)).toEqual({
+      metricName: "cli.command_run",
+      value: 123,
+      attrs: {
+        "service.name": "agentcore-cli",
+        "service.version": "0.0.0",
+        "agentcore-cli.installation_id": enabledConfig.installationId,
+        "agentcore-cli.session_id": enabledSessionId,
+        "os.type": os.type(),
+        "os.version": os.release(),
+        "host.arch": os.arch(),
+        "node.version": process.version,
+        exit_reason: "success",
+      },
+    });
+  });
+
   test("throws when recorder has incomplete attributes", async () => {
     const client = new DefaultTelemetryClient({
       logger,
