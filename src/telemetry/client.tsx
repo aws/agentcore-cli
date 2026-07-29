@@ -1,5 +1,4 @@
 import type { Logger } from "../logging";
-import { LoggingSink } from "./loggingSink";
 import { resourceAttributesSchema, type ResourceAttributes } from "./shapes";
 import os from "os";
 import {
@@ -97,9 +96,6 @@ export class DefaultTelemetryClient implements TelemetryClient {
   private async getMetricSinks(): Promise<MetricSink[]> {
     if (this.metricSinks !== undefined) return this.metricSinks;
     this.metricSinks = [];
-    this.metricSinks.push(
-      new LoggingSink({ logger: this.logger.child({ module: "loggingSink" }) }),
-    );
 
     const globalConfig = await this.globalConfigAccessor.get();
 

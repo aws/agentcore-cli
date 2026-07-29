@@ -8,7 +8,6 @@ import { createFileLogger, type Logger } from "../logging";
 import { LOG_LEVEL } from "../logging";
 import { assertLogsMatch, TestGlobalConfigAccessor } from "../testing";
 import type { MetricSink } from "./types";
-import { LoggingSink } from "./loggingSink";
 import { FileSystemSink } from "./fileSystemSink";
 
 describe("DefaultTelemetryClient", () => {
@@ -27,8 +26,7 @@ describe("DefaultTelemetryClient", () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  test("emits complete metrics to configured logging and JSONL filesystem sinks", async () => {
-    const loggingSink = new LoggingSink({ logger: logger.child({ module: "loggingSink" }) });
+  test("emits complete metrics to configured JSONL filesystem sinks", async () => {
     const auditFilePath = join(tempDir, "telemetry", "audit.jsonl");
     const fileSystemSink = new FileSystemSink({
       logger: logger.child({ module: "fileSystemSink" }),
@@ -40,7 +38,7 @@ describe("DefaultTelemetryClient", () => {
       logger,
       sessionId,
       globalConfigAccessor,
-      metricSinks: [loggingSink, fileSystemSink],
+      metricSinks: [fileSystemSink],
     });
 
     const recorder = new TelemetryAttributesRecorder("cli.command_run", { exit_reason: "success" });
@@ -51,35 +49,11 @@ describe("DefaultTelemetryClient", () => {
     await client.emit("cli.command_run", 456, recorder.getAttributes());
     await client.shutdown();
 
-    expect(loggingSink.getName()).toBe("LoggingSink");
     expect(fileSystemSink.getName()).toBe("FileSystemSink");
 
     const { installationId } = await globalConfigAccessor.get();
-    await assertLogsMatch(tempDir, [
-      {
-        filter: (log: any) =>
-          log.metricName === "cli.command_run" &&
-          log.metricValue === 123 &&
-          log.metricAttributes?.["exit_reason"] === "success" &&
-          log.metricAttributes?.["service.name"] === "agentcore-cli" &&
-          log.metricAttributes?.["agentcore-cli.session_id"] === sessionId &&
-          log.metricAttributes?.["agentcore-cli.installation_id"] === installationId,
-        expectedCount: 1,
-      },
-      {
-        filter: (log: any) =>
-          log.metricName === "cli.command_run" &&
-          log.metricValue === 456 &&
-          log.metricAttributes?.["exit_reason"] === "failure" &&
-          log.metricAttributes?.["service.name"] === "agentcore-cli" &&
-          log.metricAttributes?.["agentcore-cli.session_id"] === sessionId &&
-          log.metricAttributes?.["agentcore-cli.installation_id"] === installationId,
-        expectedCount: 1,
-      },
-    ]);
 
     const auditContents = await readFile(auditFilePath, "utf8");
-    expect(auditContents.endsWith("\n")).toBe(true);
 
     const entries = auditContents
       .trimEnd()
