@@ -805,4 +805,16 @@ describe('parseParamFlags', () => {
   it('parses null value', () => {
     expect(parseParamFlags(['callback=null'])).toBe('callback=None');
   });
+
+  it('parses Python-style True as boolean', () => {
+    expect(parseParamFlags(['include_reason=True'])).toBe('include_reason=True');
+  });
+
+  it('parses Python-style False as boolean', () => {
+    expect(parseParamFlags(['strict=False'])).toBe('strict=False');
+  });
+
+  it('parses Python-style None as null', () => {
+    expect(parseParamFlags(['fallback=None'])).toBe('fallback=None');
+  });
 });

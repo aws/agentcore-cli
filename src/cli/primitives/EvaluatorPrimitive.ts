@@ -147,7 +147,7 @@ export function jsonToPythonValue(value: unknown): string {
 }
 
 export function jsonToKwargs(json: string): string {
-  const obj = JSON.parse(json);
+  const obj: unknown = JSON.parse(json);
   if (obj == null || typeof obj !== 'object' || Array.isArray(obj)) {
     throw new Error('Expected a JSON object of keyword arguments');
   }
@@ -177,7 +177,10 @@ export function parseParamFlags(params: string[]): string {
       try {
         value = JSON.parse(rawValue);
       } catch {
-        value = rawValue;
+        if (rawValue === 'True') value = true;
+        else if (rawValue === 'False') value = false;
+        else if (rawValue === 'None') value = null;
+        else value = rawValue;
       }
       return `${key}=${jsonToPythonValue(value)}`;
     })
