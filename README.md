@@ -258,14 +258,16 @@ Without `--payload`, Runtime Invoke opens a persistent console for repeated
 requests. Bare invoke opens the Runtime and endpoint pickers; `--id` skips the
 Runtime picker, and `--id` plus `--qualifier` opens the console directly.
 
-| Shortcut | Action                                       |
-| -------- | -------------------------------------------- |
-| `Ctrl+D` | Send the request                             |
-| `Ctrl+O` | Open Request Options                         |
-| `Ctrl+T` | Change Runtime or endpoint                   |
-| `Ctrl+V` | Toggle raw and pretty completed JSON         |
-| `Esc`    | Interrupt an active request or navigate back |
-| `↑`/`↓`  | Scroll response history                      |
+| Shortcut      | Action                                       |
+| ------------- | -------------------------------------------- |
+| `Enter`       | Send the request                             |
+| `Shift+Enter` | Insert a newline (`Alt+Enter` also works)    |
+| `Ctrl+D`      | Send the request (alternate shortcut)        |
+| `Ctrl+O`      | Open Request Options                         |
+| `Ctrl+T`      | Change Runtime or endpoint                   |
+| `Ctrl+V`      | Toggle raw and pretty completed JSON         |
+| `Esc`         | Interrupt an active request or navigate back |
+| `↑`/`↓`       | Scroll response history                      |
 
 Runtime Invoke accepts Runtime IDs from the current account only. It does not
 accept ARNs, `--version`, `--interactive`, cross-account targets, or custom

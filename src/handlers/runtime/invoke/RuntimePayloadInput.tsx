@@ -7,6 +7,8 @@ const theme = darkTheme;
 interface RuntimePayloadInputProps {
   value: string;
   onChange: (value: string) => void;
+  onSubmit: () => void;
+  submitDisabled?: boolean;
   label: string;
   placeholder: string;
   previewLines?: number;
@@ -23,6 +25,8 @@ function Cursor({ character }: { character: string }) {
 export function RuntimePayloadInput({
   value,
   onChange,
+  onSubmit,
+  submitDisabled = false,
   label,
   placeholder,
   previewLines = 4,
@@ -49,8 +53,12 @@ export function RuntimePayloadInput({
     }
 
     if (key.return) {
-      onChange(value.slice(0, cursor) + "\n" + value.slice(cursor));
-      setRawCursor(cursor + 1);
+      if (key.shift || key.meta) {
+        onChange(value.slice(0, cursor) + "\n" + value.slice(cursor));
+        setRawCursor(cursor + 1);
+      } else if (!submitDisabled) {
+        onSubmit();
+      }
       return;
     }
     if (key.ctrl || key.meta || key.escape || input === "") return;

@@ -211,7 +211,7 @@ describe("Runtime invoke console", () => {
     await screen.write("Y");
     await waitForText(screen.lastFrame, "abYc");
 
-    await screen.write("\x04");
+    await screen.press("return");
     await waitFor(
       () => core.runtime.calls.filter((call) => call.method === "invokeRuntime").length === 1,
     );
@@ -219,10 +219,40 @@ describe("Runtime invoke console", () => {
       .args[0] as RuntimeInvokeRequest;
     expect(new TextDecoder().decode(request.payload)).toBe("abYc");
     const frame = screen.lastFrame()!;
-    expect(frame).toContain("[↑↓]scroll");
-    expect(frame).toContain("[ctl+c]quit");
+    expect(frame).toContain("[↑↓] scroll");
+    expect(frame).toContain("[ctl+c] quit");
     expect(frame).toContain("Payload · application/json");
     expect(frame).not.toContain("❯");
+  });
+
+  test.each([
+    ["Shift+Enter", "\x1b[13;2u"],
+    ["Alt+Enter", "\x1b\r"],
+  ])("%s inserts a newline without sending", async (_shortcut, input) => {
+    const core = new TestCoreClient();
+    core.runtime
+      .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
+      .setInvokeResponse({
+        statusCode: 200,
+        contentType: "text/plain",
+        body: responseBody(Buffer.from("ok")),
+      });
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "idle");
+    await screen.write("first");
+    await screen.write(input);
+    await screen.write("second");
+    await waitForText(screen.lastFrame, "first\nsecond");
+    expect(core.runtime.calls.filter((call) => call.method === "invokeRuntime")).toHaveLength(0);
+
+    await screen.press("return");
+    await waitFor(
+      () => core.runtime.calls.filter((call) => call.method === "invokeRuntime").length === 1,
+    );
+    const request = core.runtime.calls.find((call) => call.method === "invokeRuntime")!
+      .args[0] as RuntimeInvokeRequest;
+    expect(new TextDecoder().decode(request.payload)).toBe("first\nsecond");
   });
 
   test("labels the payload editor with its active content type", async () => {
@@ -268,14 +298,16 @@ describe("Runtime invoke console", () => {
 
     await waitForText(screen.lastFrame, "idle");
     await screen.write("first");
-    await screen.write("\x04");
+    await screen.press("return");
     await waitForText(screen.lastFrame, "partial");
     await screen.write("second");
     await waitForText(screen.lastFrame, "second");
+    await screen.press("return");
+    expect(requests).toHaveLength(1);
 
     release.resolve();
     await waitForText(screen.lastFrame, "idle");
-    await screen.write("\x04");
+    await screen.press("return");
     await waitFor(() => requests.length === 2);
 
     expect(new TextDecoder().decode(requests[1]!.payload)).toBe("second");
@@ -719,7 +751,7 @@ describe("Runtime invoke console", () => {
 
     await waitForText(screen.lastFrame, "Enter JSON payload");
     await screen.write("first");
-    await screen.press("return");
+    await screen.write("\x1b[13;2u");
     await screen.write("payload");
     await screen.write("\x04");
     await waitForText(screen.lastFrame, 'data: {"first":"');

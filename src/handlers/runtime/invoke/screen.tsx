@@ -371,6 +371,7 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
                 { key: "ctl+c", label: "quit" },
               ]
             : [
+                { key: "enter", label: "send" },
                 ...(canPrettyJson
                   ? [
                       {
@@ -378,8 +379,7 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
                         label: prettyJson ? "raw JSON" : "pretty JSON",
                       },
                     ]
-                  : [{ key: "enter", label: "newline" }]),
-                { key: "ctl+d", label: "send" },
+                  : [{ key: "⇧↵", label: "newline" }]),
                 { key: "ctl+o", label: "options" },
                 { key: "ctl+t", label: "target" },
                 { key: "↑↓", label: "scroll" },
@@ -425,6 +425,8 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
             placeholder={payloadPlaceholder(contentType)}
             value={payload}
             onChange={setPayload}
+            onSubmit={() => void send()}
+            submitDisabled={busy}
             previewLines={4}
           />
           <Divider />
