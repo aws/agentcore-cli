@@ -1,0 +1,57 @@
+import type { Logger } from "../logging";
+import type { MetricSink } from "./types";
+import { mkdir, appendFile } from "fs/promises";
+import { dirname } from "path";
+
+export type FileSystemSinkConfig = {
+  logger: Logger;
+  filePath: string;
+};
+
+/** An implementation of {@link MetricSink} that sends all data to the specified file in JSONL format **/
+export class FileSystemSink implements MetricSink {
+  private readonly name: string;
+
+  private readonly filePath: string;
+  private logger: Logger;
+
+  /* a chain of promises describing the pending writes to the audit file */
+  private pendingWrite: Promise<void>;
+
+  constructor(config: FileSystemSinkConfig) {
+    this.filePath = config.filePath;
+    this.logger = config.logger.child({ fsSinkFilePath: this.filePath });
+    this.name = new.target.name;
+
+    this.pendingWrite = Promise.resolve();
+  }
+
+  send(metricName: string, value: number, attributes: Record<string, string | number>): void {
+    this.pendingWrite = this.pendingWrite
+      .then(() => this.appendEntry({ metricName, value, attrs: attributes }))
+      .catch((e) => {
+        const error = e instanceof Error ? e : new Error(String(e));
+        this.logger
+          .child({ errorName: error.name, errorMessage: error.message })
+          .warn("failed to append metric data to file");
+      });
+  }
+
+  private async appendEntry(entry: {
+    metricName: string;
+    value: number;
+    attrs: Record<string, string | number>;
+  }): Promise<void> {
+    await mkdir(dirname(this.filePath), { recursive: true });
+    await appendFile(this.filePath, JSON.stringify(entry) + "\n");
+  }
+
+  async shutdown(): Promise<void> {
+    await this.pendingWrite;
+    this.logger.info(`audit file written to '${this.filePath}'`);
+  }
+
+  getName(): string {
+    return this.name;
+  }
+}

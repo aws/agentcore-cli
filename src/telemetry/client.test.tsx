@@ -1,7 +1,7 @@
 import { test, describe, beforeEach, afterEach, expect } from "bun:test";
 import { join } from "node:path";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os, { tmpdir } from "node:os";
 import { DefaultTelemetryClient } from "./client";
 import { TelemetryAttributesRecorder } from "./recorder";
 import { createFileLogger, type Logger } from "../logging";
@@ -9,6 +9,7 @@ import { LOG_LEVEL } from "../logging";
 import { assertLogsMatch, TestGlobalConfigAccessor } from "../testing";
 import type { MetricSink } from "./types";
 import { LoggingSink } from "./loggingSink";
+import { FileSystemSink } from "./fileSystemSink";
 
 describe("DefaultTelemetryClient", () => {
   let tempDir: string;
@@ -26,26 +27,32 @@ describe("DefaultTelemetryClient", () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  test("emits metrics with resource and command attributes to configured sinks", async () => {
-    const sink = new LoggingSink({ logger: logger.child({ module: "loggingSink" }) });
+  test("emits complete metrics to configured logging and JSONL filesystem sinks", async () => {
+    const loggingSink = new LoggingSink({ logger: logger.child({ module: "loggingSink" }) });
+    const auditFilePath = join(tempDir, "telemetry", "audit.jsonl");
+    const fileSystemSink = new FileSystemSink({
+      logger: logger.child({ module: "fileSystemSink" }),
+      filePath: auditFilePath,
+    });
     const sessionId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
     const globalConfigAccessor = new TestGlobalConfigAccessor();
     const client = new DefaultTelemetryClient({
       logger,
       sessionId,
       globalConfigAccessor,
-      metricSinks: [sink],
+      metricSinks: [loggingSink, fileSystemSink],
     });
 
     const recorder = new TelemetryAttributesRecorder("cli.command_run", { exit_reason: "success" });
 
-    recorder.record({ exit_reason: "failure" });
-
     await client.emit("cli.command_run", 123, recorder.getAttributes());
 
-    expect(sink.getName()).toBe("LoggingSink");
-    await sink.shutdown();
+    recorder.record({ exit_reason: "failure" });
+    await client.emit("cli.command_run", 456, recorder.getAttributes());
     await client.shutdown();
+
+    expect(loggingSink.getName()).toBe("LoggingSink");
+    expect(fileSystemSink.getName()).toBe("FileSystemSink");
 
     const { installationId } = await globalConfigAccessor.get();
     await assertLogsMatch(tempDir, [
@@ -53,11 +60,53 @@ describe("DefaultTelemetryClient", () => {
         filter: (log: any) =>
           log.metricName === "cli.command_run" &&
           log.metricValue === 123 &&
+          log.metricAttributes?.["exit_reason"] === "success" &&
+          log.metricAttributes?.["service.name"] === "agentcore-cli" &&
+          log.metricAttributes?.["agentcore-cli.session_id"] === sessionId &&
+          log.metricAttributes?.["agentcore-cli.installation_id"] === installationId,
+        expectedCount: 1,
+      },
+      {
+        filter: (log: any) =>
+          log.metricName === "cli.command_run" &&
+          log.metricValue === 456 &&
           log.metricAttributes?.["exit_reason"] === "failure" &&
           log.metricAttributes?.["service.name"] === "agentcore-cli" &&
           log.metricAttributes?.["agentcore-cli.session_id"] === sessionId &&
           log.metricAttributes?.["agentcore-cli.installation_id"] === installationId,
         expectedCount: 1,
+      },
+    ]);
+
+    const auditContents = await readFile(auditFilePath, "utf8");
+    expect(auditContents.endsWith("\n")).toBe(true);
+
+    const entries = auditContents
+      .trimEnd()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+
+    const resourceAttributes = {
+      "service.name": "agentcore-cli",
+      "service.version": "0.0.0",
+      "agentcore-cli.installation_id": installationId,
+      "agentcore-cli.session_id": sessionId,
+      "os.type": os.type(),
+      "os.version": os.release(),
+      "host.arch": os.arch(),
+      "node.version": process.version,
+    };
+
+    expect(entries).toEqual([
+      {
+        metricName: "cli.command_run",
+        value: 123,
+        attrs: { ...resourceAttributes, exit_reason: "success" },
+      },
+      {
+        metricName: "cli.command_run",
+        value: 456,
+        attrs: { ...resourceAttributes, exit_reason: "failure" },
       },
     ]);
   });

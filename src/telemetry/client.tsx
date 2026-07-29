@@ -11,12 +11,15 @@ import {
   type MetricName,
 } from "./types";
 import type { GlobalConfigAccessor } from "../globalConfig";
+import { FileSystemSink } from "./fileSystemSink";
+import path from "path";
 
 export type DefaultTelemetryClientConfig = {
   logger: Logger;
   globalConfigAccessor: GlobalConfigAccessor;
   sessionId: string;
   metricSinks?: MetricSink[];
+  auditFilePath?: string;
 };
 
 /**
@@ -25,6 +28,7 @@ export type DefaultTelemetryClientConfig = {
 export class DefaultTelemetryClient implements TelemetryClient {
   private logger: Logger;
   private readonly sessionId: string;
+  private readonly auditFilePath: string;
   private globalConfigAccessor: GlobalConfigAccessor;
   private resourceAttributes: ResourceAttributes | undefined;
   private metricSinks: MetricSink[] | undefined;
@@ -35,6 +39,9 @@ export class DefaultTelemetryClient implements TelemetryClient {
     this.globalConfigAccessor = config.globalConfigAccessor;
     this.resourceAttributes = undefined;
     this.metricSinks = config.metricSinks;
+    this.auditFilePath =
+      config.auditFilePath ??
+      path.join(os.homedir(), ".agentcore", "telemetry", `${this.sessionId}.jsonl`);
   }
 
   async emit<TMetricName extends MetricName>(
@@ -43,7 +50,7 @@ export class DefaultTelemetryClient implements TelemetryClient {
     metricAttributes: AttributesOf<TMetricName>,
   ): Promise<void> {
     try {
-      const metricSinks = this.getMetricSinks();
+      const metricSinks = await this.getMetricSinks();
       const resourceAttributes = await this.getResourceAttributes();
       // merge in resource attributes with metric attributes before sending to sink.
       const attributes = {
@@ -74,7 +81,7 @@ export class DefaultTelemetryClient implements TelemetryClient {
   }
 
   async shutdown(): Promise<void> {
-    const metricSinks = this.getMetricSinks();
+    const metricSinks = await this.getMetricSinks();
 
     const promises = metricSinks.map(async (sink) => {
       return sink.shutdown().catch((e) => {
@@ -87,10 +94,22 @@ export class DefaultTelemetryClient implements TelemetryClient {
     await Promise.all(promises);
   }
 
-  private getMetricSinks(): MetricSink[] {
+  private async getMetricSinks(): Promise<MetricSink[]> {
     if (this.metricSinks !== undefined) return this.metricSinks;
+    this.metricSinks = [];
+    this.metricSinks.push(
+      new LoggingSink({ logger: this.logger.child({ module: "loggingSink" }) }),
+    );
 
-    this.metricSinks = [new LoggingSink({ logger: this.logger.child({ module: "loggingSink" }) })];
+    const globalConfig = await this.globalConfigAccessor.get();
+
+    if (globalConfig.telemetry.audit)
+      this.metricSinks.push(
+        new FileSystemSink({
+          logger: this.logger.child({ module: "fileSystemSink" }),
+          filePath: this.auditFilePath,
+        }),
+      );
 
     return this.metricSinks;
   }
