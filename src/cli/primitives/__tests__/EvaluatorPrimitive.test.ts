@@ -300,12 +300,6 @@ describe('EvaluatorPrimitive', () => {
         expect(config.codeBased!.managed!.timeoutSeconds).toBe(120);
       });
 
-      it('respects custom memory', () => {
-        // eslint-disable-next-line @typescript-eslint/dot-notation
-        const config = primitive['buildThirdPartyConfig']('my_eval', deepevalConfig, undefined, '2048');
-
-        expect(config.codeBased!.managed!.memorySizeMb).toBe(2048);
-      });
     });
 
     describe('autoevals', () => {
@@ -333,13 +327,6 @@ describe('EvaluatorPrimitive', () => {
         const config = primitive['buildThirdPartyConfig']('fact_check', autoevalsConfig, '180');
 
         expect(config.codeBased!.managed!.timeoutSeconds).toBe(180);
-      });
-
-      it('respects custom memory', () => {
-        // eslint-disable-next-line @typescript-eslint/dot-notation
-        const config = primitive['buildThirdPartyConfig']('fact_check', autoevalsConfig, undefined, '1024');
-
-        expect(config.codeBased!.managed!.memorySizeMb).toBe(1024);
       });
     });
   });

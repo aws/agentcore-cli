@@ -386,7 +386,6 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
         '--model-provider <provider>',
         `[3P library] LLM judge provider: ${MODEL_PROVIDERS.join(', ')} (default: bedrock)`
       )
-      .option('--memory <mb>', '[3P library] Lambda memory size in MB, 128-10240')
       .option(
         '--config <path>',
         'Path to evaluator config JSON file (overrides --model, --instructions, --rating-scale) [non-interactive]'
@@ -408,7 +407,6 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
           param: string[];
           parametersFile?: string;
           modelProvider?: string;
-          memory?: string;
           config?: string;
           kmsKeyArn?: string;
           json?: boolean;
@@ -476,19 +474,10 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                     'profile ID (e.g. us.anthropic.claude-sonnet-4-20250514-v1:0) — plain model IDs are not supported'
                 );
               }
-              if (cliOptions.memory && !threePLibrary) {
-                fail('--memory requires --3p-library');
-              }
               if (cliOptions.timeout) {
                 const timeoutVal = parseInt(cliOptions.timeout, 10);
                 if (isNaN(timeoutVal) || timeoutVal < 1 || timeoutVal > 300) {
                   fail('--timeout must be an integer between 1 and 300');
-                }
-              }
-              if (cliOptions.memory) {
-                const memVal = parseInt(cliOptions.memory, 10);
-                if (isNaN(memVal) || memVal < 128 || memVal > 10240) {
-                  fail('--memory must be an integer between 128 and 10240');
                 }
               }
 
@@ -518,8 +507,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 configJson = this.buildThirdPartyConfig(
                   cliOptions.name!,
                   libraryConfig,
-                  cliOptions.timeout,
-                  cliOptions.memory
+                  cliOptions.timeout
                 );
                 let kwargs: string | undefined;
                 if (cliOptions.param.length > 0) {
@@ -710,18 +698,16 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
   private buildThirdPartyConfig(
     name: string,
     libraryConfig: ThirdPartyLibraryConfig,
-    timeoutStr?: string,
-    memoryStr?: string
+    timeoutStr?: string
   ): EvaluatorConfig {
     const timeoutSeconds = timeoutStr ? parseInt(timeoutStr, 10) : libraryConfig.defaultTimeoutSeconds;
-    const memorySizeMb = memoryStr ? parseInt(memoryStr, 10) : libraryConfig.defaultMemorySizeMb;
     return {
       codeBased: {
         managed: {
           codeLocation: `app/${name}/`,
           entrypoint: DEFAULT_CODE_ENTRYPOINT,
           timeoutSeconds,
-          memorySizeMb,
+          memorySizeMb: libraryConfig.defaultMemorySizeMb,
           additionalPolicies: ['execution-role-policy.json'],
         },
       },
