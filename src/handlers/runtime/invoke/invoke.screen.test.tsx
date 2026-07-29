@@ -971,6 +971,23 @@ describe("Runtime invoke console", () => {
     expect(core.runtime.calls.filter((call) => call.method === "invokeRuntime")).toHaveLength(0);
   });
 
+  test("rejects stdin payload sources without consuming TUI input", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "idle");
+    await screen.write("-");
+    await screen.write("\x04");
+
+    await waitForText(
+      screen.lastFrame,
+      "Error: stdin sources are not available in the interactive console",
+    );
+    await waitForText(screen.lastFrame, "idle");
+    expect(core.runtime.calls.filter((call) => call.method === "invokeRuntime")).toHaveLength(0);
+  });
+
   test("shows a CUSTOM_JWT HTTP status without exposing request or response secrets", async () => {
     const token = "secret-bearer-token";
     const responseBody = "secret response body";

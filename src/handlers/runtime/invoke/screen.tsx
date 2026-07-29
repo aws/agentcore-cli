@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Box, Text, useInput, useWindowSize } from "ink";
+import { Box, Text, useInput, useStdin, useWindowSize } from "ink";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
@@ -119,6 +119,7 @@ type RuntimeInvokeConsoleProps = ScreenProps & { runtimeId: string; qualifier: s
 function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvokeConsoleProps) {
   const opts = coreOptsFromCtx(ctx);
   const navigate = useNavigate();
+  const { stdin } = useStdin();
   const { rows } = useWindowSize();
   const [target, setTarget] = useState({ runtimeId, qualifier });
   const [targetPicker, setTargetPicker] = useState<TargetPickerState | null>(null);
@@ -187,9 +188,12 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
     let responseStarted = false;
 
     try {
+      if (requestPayload === "-" || (customJwt && bearerToken === "-")) {
+        throw new UsageError("stdin sources are not available in the interactive console");
+      }
       const sources = await resolveRuntimeInvokeSources(
         { payload: requestPayload, bearerToken: customJwt ? bearerToken : undefined },
-        undefined,
+        stdin,
         controller.signal,
       );
       const request = normalizeRuntimeInvokeRequest(detail.data, {
