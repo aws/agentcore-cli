@@ -29,15 +29,12 @@ export class DefaultTelemetryClient implements TelemetryClient {
   private readonly sessionId: string;
   private readonly auditFilePath: string;
   private globalConfigAccessor: GlobalConfigAccessor;
-  private resourceAttributes: ResourceAttributes | undefined;
-  private metricSinks: MetricSink[] | undefined;
-
+  private readonly metricSinksOverride: MetricSink[] | undefined;
   constructor(config: DefaultTelemetryClientConfig) {
     this.logger = config.logger;
     this.sessionId = config.sessionId;
     this.globalConfigAccessor = config.globalConfigAccessor;
-    this.resourceAttributes = undefined;
-    this.metricSinks = config.metricSinks;
+    this.metricSinksOverride = config.metricSinks;
     this.auditFilePath =
       config.auditFilePath ??
       path.join(os.homedir(), ".agentcore", "telemetry", `${this.sessionId}.jsonl`);
@@ -93,28 +90,27 @@ export class DefaultTelemetryClient implements TelemetryClient {
     await Promise.all(promises);
   }
 
-  private async getMetricSinks(): Promise<MetricSink[]> {
-    if (this.metricSinks !== undefined) return this.metricSinks;
-    this.metricSinks = [];
+  private getMetricSinks: () => Promise<MetricSink[]> = once(async () => {
+    if (this.metricSinksOverride) return this.metricSinksOverride;
+
+    const metricSinks = [];
 
     const globalConfig = await this.globalConfigAccessor.get();
 
     if (globalConfig.telemetry.audit)
-      this.metricSinks.push(
+      metricSinks.push(
         new FileSystemSink({
           logger: this.logger.child({ module: "fileSystemSink" }),
           filePath: this.auditFilePath,
         }),
       );
 
-    return this.metricSinks;
-  }
+    return metricSinks;
+  });
 
-  private async getResourceAttributes(): Promise<ResourceAttributes> {
-    if (this.resourceAttributes !== undefined) return this.resourceAttributes;
-
+  private getResourceAttributes: () => Promise<ResourceAttributes> = once(async () => {
     const globalConfig = await this.globalConfigAccessor.get();
-    this.resourceAttributes = resourceAttributesSchema.parse({
+    return resourceAttributesSchema.parse({
       "service.name": "agentcore-cli",
       // TODO: wire up real package version.
       "service.version": "0.0.0",
@@ -125,6 +121,11 @@ export class DefaultTelemetryClient implements TelemetryClient {
       "host.arch": os.arch(),
       "node.version": process.version,
     });
-    return this.resourceAttributes;
-  }
+  });
+}
+
+/** wraps an async function such that it only executes once **/
+function once<T>(fn: () => Promise<T>): () => Promise<T> {
+  let cachedPromise: Promise<T> | undefined;
+  return () => (cachedPromise ??= fn());
 }
