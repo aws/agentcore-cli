@@ -64,3 +64,10 @@ export class InputValidationError extends AgentCoreCLIError {
     super(message, { ...options, source: ERROR_SOURCE.USER });
   }
 }
+
+/** Error raised when a command or operation has not been implemented yet. */
+export class NotImplementedError extends AgentCoreCLIError {
+  constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
+    super(message ?? "not implemented yet", { ...options, source: ERROR_SOURCE.INTERNAL });
+  }
+}

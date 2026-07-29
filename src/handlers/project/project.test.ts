@@ -17,6 +17,12 @@ async function run(args: string[]): Promise<void> {
   await root.route(["node", "agentcore", "project", ...args]);
 }
 
+describe.each(["add", "remove", "dev", "deploy", "status", "build"])("project %s", (command) => {
+  test("throws because it is not implemented yet", async () => {
+    await expect(run([command])).rejects.toThrow(/not implemented/);
+  });
+});
+
 describe("project create", () => {
   test("throws because it is not implemented yet", async () => {
     await expect(run(["create"])).rejects.toThrow(/not implemented/);
