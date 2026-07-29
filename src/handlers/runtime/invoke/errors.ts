@@ -1,10 +1,4 @@
-import { AgentCoreCLIError, InputValidationError } from "../../../errors";
-
-export class UsageError extends InputValidationError {
-  constructor(message?: string, options?: ErrorOptions) {
-    super(message, { ...options, exitCode: 2 });
-  }
-}
+import { AgentCoreCLIError } from "../../../errors";
 
 export class RuntimeInvokeInterruptedError extends AgentCoreCLIError {
   readonly reported: boolean;

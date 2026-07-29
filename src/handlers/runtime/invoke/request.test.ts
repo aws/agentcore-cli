@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Readable } from "node:stream";
 import type { GetAgentRuntimeResponse } from "@aws-sdk/client-bedrock-agentcore-control";
+import { InputValidationError } from "../../../errors";
 import { SourceResolutionError } from "../../../io";
-import { UsageError } from "./errors";
 import {
   normalizeRuntimeInvokeRequest,
   parseRuntimeInvokeHeaders,
@@ -60,7 +60,7 @@ describe("resolveRuntimeInvokeSources", () => {
       stdin(Uint8Array.from([0xff, 0x61])),
     ).catch((error) => error);
 
-    expect(error).toBeInstanceOf(UsageError);
+    expect(error).toBeInstanceOf(InputValidationError);
     expect(error.message).toBe("'--bearer-token' must contain valid UTF-8");
     expect(error.cause).toBeInstanceOf(SourceResolutionError);
   });
@@ -88,8 +88,8 @@ describe("resolveRuntimeInvokeSources", () => {
 });
 
 describe("parseRuntimeInvokeHeaders", () => {
-  test("brands validation failures as usage errors", () => {
-    expect(() => parseRuntimeInvokeHeaders(["missing separator"])).toThrow(UsageError);
+  test("brands validation failures as input errors", () => {
+    expect(() => parseRuntimeInvokeHeaders(["missing separator"])).toThrow(InputValidationError);
   });
 
   test.each([
@@ -116,7 +116,7 @@ describe("parseRuntimeInvokeHeaders", () => {
         }
       })();
 
-      expect(error).toBeInstanceOf(UsageError);
+      expect(error).toBeInstanceOf(InputValidationError);
       expect((error as Error).message).toBe(message);
       expect((error as Error).message).not.toContain(secret);
     },

@@ -562,6 +562,30 @@ test("CUSTOM_JWT invoke uses the generated endpoint and exact fetch request", as
   expect(Buffer.concat(resultBytes)).toEqual(Buffer.from([1, 2]));
 });
 
+test("CUSTOM_JWT invoke generates a Runtime session ID when omitted", async () => {
+  let headers = new Headers();
+  const core = customJwtCore(async (_input, init) => {
+    headers = new Headers(init?.headers);
+    return new Response(undefined, { status: 204 });
+  });
+
+  await core.runtime.invokeRuntime(
+    {
+      runtimeId: "runtime-123",
+      accountId: "123456789012",
+      qualifier: "DEFAULT",
+      payload: new Uint8Array(),
+      contentType: "application/json",
+      bearerToken: "secret-token",
+    },
+    { region: "us-east-1" },
+  );
+
+  expect(headers.get("X-Amzn-Bedrock-AgentCore-Runtime-Session-Id")).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
+});
+
 test("CUSTOM_JWT rejects non-HTTPS endpoints without calling fetch", async () => {
   let fetched = false;
   const core = customJwtCore(

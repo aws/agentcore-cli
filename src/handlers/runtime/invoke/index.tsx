@@ -1,10 +1,11 @@
 import z from "zod";
+import { InputValidationError } from "../../../errors";
 import { createHandler, flag } from "../../../router";
 import type { AppIO } from "../../../io";
 import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 import { JsonKey } from "../../keys";
-import { RuntimeInvokeInterruptedError, UsageError } from "./errors";
+import { RuntimeInvokeInterruptedError } from "./errors";
 import {
   normalizeRuntimeInvokeRequest,
   parseRuntimeInvokeHeaders,
@@ -50,7 +51,7 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
     handle: async (ctx, flags) => {
       const jsonOutput = ctx.require(JsonKey);
       if (jsonOutput && flags["output-file"] !== undefined) {
-        throw new UsageError("--json cannot be used with --output-file");
+        throw new InputValidationError("--json cannot be used with --output-file");
       }
       const controller = new AbortController();
       const interrupt = () => controller.abort();

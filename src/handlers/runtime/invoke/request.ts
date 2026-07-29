@@ -1,9 +1,9 @@
 import { validateHeaderName, validateHeaderValue } from "node:http";
 import z from "zod";
 import type { GetAgentRuntimeResponse } from "@aws-sdk/client-bedrock-agentcore-control";
+import { InputValidationError } from "../../../errors";
 import { SourceResolutionError, SourceResolver } from "../../../io";
 import type { RuntimeInvokeRequest } from "../types";
-import { UsageError } from "./errors";
 
 export const runtimeIdSchema = z
   .string()
@@ -37,7 +37,7 @@ export async function resolveRuntimeInvokeSources(
   signal?: AbortSignal,
 ): Promise<{ payload: Uint8Array; bearerToken?: string }> {
   if (sources.payload === "-" && sources.bearerToken === "-") {
-    throw new UsageError("Payload and bearer token cannot both read from stdin");
+    throw new InputValidationError("Payload and bearer token cannot both read from stdin");
   }
 
   const resolver = new SourceResolver({ stdin, signal });
@@ -50,7 +50,7 @@ export async function resolveRuntimeInvokeSources(
     };
   } catch (error) {
     if (error instanceof SourceResolutionError) {
-      throw new UsageError(error.message, { cause: error });
+      throw new InputValidationError(error.message, { cause: error });
     }
     throw error;
   }
@@ -61,28 +61,28 @@ export function parseRuntimeInvokeHeaders(values: string[] = []): [string, strin
 
   return values.map((header) => {
     const separator = header.indexOf(":");
-    if (separator < 1) throw new UsageError("Header must use 'Name: value' format");
+    if (separator < 1) throw new InputValidationError("Header must use 'Name: value' format");
     const name = header.slice(0, separator).trim();
     const value = header.slice(separator + 1).trim();
     try {
       validateHeaderName(name);
     } catch {
-      throw new UsageError(
+      throw new InputValidationError(
         `Invalid HTTP header name: ${name} (must use valid HTTP token characters)`,
       );
     }
     try {
       validateHeaderValue(name, value);
     } catch {
-      throw new UsageError(
+      throw new InputValidationError(
         `Invalid header value for ${name}: contains a character not allowed in HTTP headers`,
       );
     }
     const lower = name.toLowerCase();
-    if (seen.has(lower)) throw new UsageError(`Duplicate header: ${name}`);
+    if (seen.has(lower)) throw new InputValidationError(`Duplicate header: ${name}`);
     seen.add(lower);
     if (RESERVED_HEADERS.has(lower))
-      throw new UsageError(`Application header is reserved: ${name}`);
+      throw new InputValidationError(`Application header is reserved: ${name}`);
     return [name, value];
   });
 }
@@ -101,7 +101,7 @@ function validateAllowedHeaders(
   for (const [name] of headers) {
     const lower = name.toLowerCase();
     if (!lower.startsWith(CUSTOM_HEADER_PREFIX) && !allowlist.includes(lower)) {
-      throw new UsageError(`Application header is not allowed: ${name}`);
+      throw new InputValidationError(`Application header is not allowed: ${name}`);
     }
   }
 }
@@ -114,18 +114,19 @@ export function normalizeRuntimeInvokeRequest(
     /^arn:[^:]+:bedrock-agentcore:[^:]*:(\d{12}):runtime\//,
   )?.[1];
   if (!accountId) {
-    throw new UsageError("Runtime returned an invalid ARN");
+    throw new InputValidationError("Runtime returned an invalid ARN");
   }
 
   const authorizer = detail.authorizerConfiguration;
   const customJwt = authorizer !== undefined && "customJWTAuthorizer" in authorizer;
-  if (authorizer && !customJwt) throw new UsageError("Runtime uses an unsupported authorizer");
+  if (authorizer && !customJwt)
+    throw new InputValidationError("Runtime uses an unsupported authorizer");
   const { runtimeId, qualifier, payload, contentType, applicationHeaders = [], ...modeled } = input;
   if (customJwt && !modeled.bearerToken) {
-    throw new UsageError("CUSTOM_JWT Runtime requires --bearer-token");
+    throw new InputValidationError("CUSTOM_JWT Runtime requires --bearer-token");
   }
   if (!customJwt && modeled.bearerToken !== undefined) {
-    throw new UsageError("IAM Runtime does not accept --bearer-token");
+    throw new InputValidationError("IAM Runtime does not accept --bearer-token");
   }
 
   const mcp = detail.protocolConfiguration?.serverProtocol === "MCP";
@@ -136,7 +137,7 @@ export function normalizeRuntimeInvokeRequest(
     modeled.mcpName,
   ];
   if (!mcp && mcpValues.some((value) => value !== undefined)) {
-    throw new UsageError("MCP options are only valid for MCP Runtimes");
+    throw new InputValidationError("MCP options are only valid for MCP Runtimes");
   }
   validateAllowedHeaders(detail, applicationHeaders);
 

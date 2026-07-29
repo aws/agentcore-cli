@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   GetAgentRuntimeCommand,
   GetAgentRuntimeEndpointCommand,
@@ -81,7 +82,7 @@ export class RuntimeClient implements CoreRuntimeClient {
         ["Content-Type", request.contentType],
         ["Accept", request.accept],
         ["Mcp-Session-Id", request.mcpSessionId],
-        ["X-Amzn-Bedrock-AgentCore-Runtime-Session-Id", request.runtimeSessionId],
+        ["X-Amzn-Bedrock-AgentCore-Runtime-Session-Id", request.runtimeSessionId ?? randomUUID()],
         ["Mcp-Protocol-Version", request.mcpProtocolVersion],
         ["Mcp-Method", request.mcpMethod],
         ["Mcp-Name", request.mcpName],

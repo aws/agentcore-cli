@@ -292,6 +292,42 @@ describe("runtime invoke", () => {
     }
   });
 
+  test("wraps a raw Core abort after SIGINT", async () => {
+    const core = new TestCoreClient();
+    const output = captureIO();
+    const rawAbort = Object.assign(new Error("transport aborted"), { name: "AbortError" });
+    core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
+    core.runtime.invokeRuntime = async (request, options, signal) => {
+      core.runtime.calls.push({ method: "invokeRuntime", args: [request, options, signal] });
+      return new Promise<never>((_, reject) => {
+        const abort = () => reject(rawAbort);
+        if (signal?.aborted) abort();
+        else signal?.addEventListener("abort", abort, { once: true });
+      });
+    };
+    const pending = runCommand(core, output.io, [
+      "runtime",
+      "invoke",
+      "--id",
+      RUNTIME_ID,
+      "--payload",
+      "{}",
+    ]);
+
+    try {
+      await waitFor(() => core.runtime.calls.some((call) => call.method === "invokeRuntime"));
+      process.emit("SIGINT", "SIGINT");
+
+      await expect(pending).rejects.toMatchObject({
+        name: "AbortError",
+        cause: rawAbort,
+        reported: false,
+      });
+    } finally {
+      await pending.catch(() => undefined);
+    }
+  });
+
   test("rejects an invalid Runtime ARN before Core calls", async () => {
     const core = new TestCoreClient();
     const output = captureIO();
@@ -359,19 +395,22 @@ describe("runtime invoke", () => {
     ["malformed", "missing separator"],
     ["duplicate", "X-Test: one", "x-test: two"],
     ["reserved", "Authorization: secret"],
-  ])("rejects %s headers as usage before Runtime Core calls", async (_name, ...headers) => {
-    const core = new TestCoreClient();
-    const output = captureIO();
-    const args = ["runtime", "invoke", "--id", RUNTIME_ID, "--payload", "{}"];
-    for (const header of headers) args.push("--header", header);
+  ])(
+    "rejects %s headers as input failures before Runtime Core calls",
+    async (_name, ...headers) => {
+      const core = new TestCoreClient();
+      const output = captureIO();
+      const args = ["runtime", "invoke", "--id", RUNTIME_ID, "--payload", "{}"];
+      for (const header of headers) args.push("--header", header);
 
-    const code = await runWithExitCode(async () => runCommand(core, output.io, args));
+      const code = await runWithExitCode(async () => runCommand(core, output.io, args));
 
-    expect(code).toBe(ExitCode.USAGE);
-    expect(core.runtime.calls).toEqual([]);
-  });
+      expect(code).toBe(ExitCode.FAILURE);
+      expect(core.runtime.calls).toEqual([]);
+    },
+  );
 
-  test("reports an unreadable payload file as local usage before Runtime Core calls", async () => {
+  test("reports an unreadable payload file as an input failure before Runtime Core calls", async () => {
     const core = new TestCoreClient();
     const output = captureIO();
     const missing = join(tmpdir(), `missing-runtime-payload-${process.pid}`);
@@ -386,9 +425,9 @@ describe("runtime invoke", () => {
         `file://${missing}`,
       ]),
     ).rejects.toMatchObject({
-      name: "UsageError",
+      name: "InputValidationError",
       message: `could not read '--payload' from file '${missing}'`,
-      exitCode: ExitCode.USAGE,
+      exitCode: ExitCode.FAILURE,
     });
     expect(core.runtime.calls).toEqual([]);
   });

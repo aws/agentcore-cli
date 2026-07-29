@@ -206,16 +206,16 @@ agentcore runtime invoke \
   --mcp-method tools/list
 ```
 
-Responses with `text/event-stream`, `application/x-ndjson`,
-`application/ndjson`, or `application/json-seq` content types stream exact bytes
-to stdout as they arrive. Other responses are buffered and written once after
-the body completes. Response metadata is written to stderr.
+Raw stdout always streams exact response bytes as they arrive, regardless of
+content type. `--output-file` streams the same bytes directly to disk. Binary or
+unknown responses require `--output-file` or `--json` when stdout is a terminal.
+Response metadata is written to stderr.
 
-`--output-file` streams either kind of response directly to disk and is required
-for binary output when stdout is a terminal. `--json` supports non-streaming
-responses only; it buffers one response and emits a metadata envelope without
-interpreting the customer body. If a streaming response fails, bytes already
-written remain available. A failed non-streaming response writes no partial body.
+`--json` buffers the complete response, including streaming representations, and
+emits one metadata envelope without interpreting the customer body. If a raw or
+file response fails, bytes already written remain available and the stderr
+summary reports `complete=false`. A failed JSON response emits no partial
+envelope.
 
 ```bash
 agentcore runtime invoke \
