@@ -15,7 +15,7 @@ interface VersionRow extends Record<string, unknown> {
 }
 
 export const harnessVersionColumns = [
-  { key: "harnessVersion", header: "version", width: 7, minWidth: 4 },
+  { key: "harnessVersion", header: "version", width: 7 },
   { key: "status", header: "status", width: 13, minWidth: 6 },
   {
     key: "createdAt",

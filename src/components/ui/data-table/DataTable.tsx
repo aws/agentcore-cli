@@ -12,14 +12,12 @@ import {
 } from "./columnWidths.js";
 import type { ColumnSizing } from "./columnWidths.js";
 
-interface DataTableColumnBase<T> {
+export type DataTableColumn<T> = {
   key: keyof T & string;
   header: string;
   align?: "left" | "center" | "right";
   render?: (value: unknown, row: T) => string;
-}
-
-export type DataTableColumn<T> = DataTableColumnBase<T> & ColumnSizing;
+} & ColumnSizing;
 
 export interface DataTableProps<T> {
   columns: readonly DataTableColumn<T>[];
@@ -180,7 +178,11 @@ export function DataTable<T extends Record<string, unknown>>({
         : borderStyle === "bold"
           ? "bold"
           : "single";
-  const borderWidth = resolveBorderWidth(bord, borderLeft, borderRight);
+  const borderWidth = resolveBorderWidth({
+    style: bord,
+    left: borderLeft,
+    right: borderRight,
+  });
   const computedWidths = computeColumnWidths(columns, terminalWidth, {
     selectable,
     borderWidth,

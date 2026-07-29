@@ -46,7 +46,7 @@ describe("harness list screen", () => {
     expect(frame).toContain("beta");
     expect(frame).toContain("READY");
     expect(frame).toContain("name");
-    expect(frame).toContain("ver");
+    expect(frame).toContain("version");
     expect(frame).toContain("99999");
     expect(frame).toContain("status");
     expect(frame).toContain("updated UTC");

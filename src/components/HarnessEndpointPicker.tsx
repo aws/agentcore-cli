@@ -18,13 +18,12 @@ interface EndpointRow extends Record<string, unknown> {
 export const harnessEndpointColumns = [
   { key: "endpointName", header: "name", flex: true },
   { key: "liveVersion", header: "live", width: 6, minWidth: 5 },
-  { key: "targetVersion", header: "target", width: 6, minWidth: 6 },
-  { key: "status", header: "status", width: 13, minWidth: 13 },
+  { key: "targetVersion", header: "target", width: 6 },
+  { key: "status", header: "status", width: 13 },
   {
     key: "updatedAt",
     header: "updated UTC",
     width: 16,
-    minWidth: 16,
     render: formatTimestamp,
   },
 ] satisfies DataTableColumn<EndpointRow>[];

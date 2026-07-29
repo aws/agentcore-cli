@@ -19,13 +19,12 @@ interface HarnessRow extends Record<string, unknown> {
 
 export const harnessColumns = [
   { key: "harnessName", header: "name", flex: true },
-  { key: "harnessVersion", header: "ver", width: 5, minWidth: 3 },
-  { key: "status", header: "status", width: 13, minWidth: 13 },
+  { key: "harnessVersion", header: "version", width: 7 },
+  { key: "status", header: "status", width: 13 },
   {
     key: "updatedAt",
     header: "updated UTC",
     width: 16,
-    minWidth: 16,
     render: formatTimestamp,
   },
 ] satisfies DataTableColumn<HarnessRow>[];

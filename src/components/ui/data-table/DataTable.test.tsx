@@ -13,7 +13,7 @@ interface Row extends Record<string, unknown> {
 
 const columns: DataTableColumn<Row>[] = [
   { key: "name", header: "name", flex: true },
-  { key: "status", header: "status", width: 13, minWidth: 13 },
+  { key: "status", header: "status", width: 13 },
 ];
 
 function renderTableAt(columnsWide: number) {

@@ -87,7 +87,7 @@ describe("runtime picker", () => {
     expect(frame).toContain("name");
     expect(frame).toContain("id");
     expect(frame).toContain("id suffix");
-    expect(frame).toContain("ver");
+    expect(frame).toContain("version");
     expect(frame).toContain("status");
     expect(frame).toContain("updated UTC");
     expect(frame).toContain("AbCdEf1234");

@@ -25,16 +25,14 @@ export const runtimeColumns = [
     key: "runtimeId",
     header: "id suffix",
     width: 10,
-    minWidth: 10,
     render: runtimeIdSuffix,
   },
-  { key: "runtimeVersion", header: "ver", width: 5, minWidth: 3 },
-  { key: "status", header: "status", width: 13, minWidth: 13 },
+  { key: "runtimeVersion", header: "version", width: 7 },
+  { key: "status", header: "status", width: 13 },
   {
     key: "lastUpdatedAt",
     header: "updated UTC",
     width: 16,
-    minWidth: 16,
     render: formatTimestamp,
   },
 ] satisfies DataTableColumn<RuntimeRow>[];

@@ -13,7 +13,7 @@ interface RuntimeVersionRow extends Record<string, unknown> {
 }
 
 export const runtimeVersionColumns = [
-  { key: "version", header: "version", width: 7, minWidth: 4 },
+  { key: "version", header: "version", width: 7 },
   { key: "status", header: "status", width: 13, minWidth: 6 },
   {
     key: "lastUpdatedAt",

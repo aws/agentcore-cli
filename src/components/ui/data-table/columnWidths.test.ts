@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import stringWidth from "string-width";
 import { harnessEndpointColumns } from "../../HarnessEndpointPicker";
 import { harnessColumns } from "../../HarnessPicker";
 import { harnessVersionColumns } from "../../HarnessVersionPicker";
@@ -54,19 +55,48 @@ describe("computeColumnWidths", () => {
     });
   }
 
-  test("shrinks and drops fixed columns from right to left", () => {
+  test("drops fixed columns from right to left without truncating headers", () => {
     expect(computeColumnWidths(runtimeColumns, 40, { selectable: true, borderWidth: 0 })).toEqual({
-      widths: [23, 10, 3, undefined, undefined],
+      widths: [19, 10, 7, undefined, undefined],
       totalWidth: 40,
     });
     expect(computeColumnWidths(runtimeColumns, 60, { selectable: true, borderWidth: 0 })).toEqual({
-      widths: [29, 10, 3, 13, undefined],
+      widths: [25, 10, 7, 13, undefined],
       totalWidth: 60,
     });
     expect(computeColumnWidths(runtimeColumns, 80, { selectable: true, borderWidth: 0 })).toEqual({
-      widths: [30, 10, 5, 13, 16],
+      widths: [28, 10, 7, 13, 16],
       totalWidth: 80,
     });
+  });
+
+  test("defaults minWidth to width and honors explicit shrink floors", () => {
+    const columns = [{ width: 6 }, { width: 6, minWidth: 4 }];
+
+    expect(computeColumnWidths(columns, 11, { selectable: false, borderWidth: 0 })).toEqual({
+      widths: [6, 4],
+      totalWidth: 11,
+    });
+    expect(computeColumnWidths(columns, 10, { selectable: false, borderWidth: 0 })).toEqual({
+      widths: [6, undefined],
+      totalWidth: 6,
+    });
+  });
+
+  test("keeps every visible production header intact", () => {
+    for (const config of [...flexConfigs, ...fixedConfigs]) {
+      for (let terminalWidth = 1; terminalWidth <= 200; terminalWidth += 1) {
+        const result = computeColumnWidths(config.columns, terminalWidth, {
+          selectable: true,
+          borderWidth: 0,
+        });
+
+        config.columns.forEach((column, index) => {
+          const width = result.widths[index];
+          if (width !== undefined) expect(width).toBeGreaterThanOrEqual(stringWidth(column.header));
+        });
+      }
+    }
   });
 
   test("preserves all legal version digits at normal terminal widths", () => {
@@ -83,8 +113,8 @@ describe("computeColumnWidths", () => {
       borderWidth: 0,
     });
 
-    expect(runtime.widths[2]).toBe(5);
-    expect(harness.widths[1]).toBe(5);
+    expect(runtime.widths[2]).toBe(7);
+    expect(harness.widths[1]).toBe(7);
     expect(endpoint.widths[1]).toBe(6);
     expect(endpoint.widths[2]).toBe(6);
   });
@@ -117,7 +147,7 @@ describe("computeColumnWidths", () => {
   });
 
   test("accounts for resolved borders", () => {
-    const borderWidth = resolveBorderWidth("single", undefined, undefined);
+    const borderWidth = resolveBorderWidth({ style: "single" });
     const result = computeColumnWidths(runtimeColumns, 80, {
       selectable: true,
       borderWidth,
@@ -125,8 +155,8 @@ describe("computeColumnWidths", () => {
 
     expect(borderWidth).toBe(2);
     expect(result.totalWidth + borderWidth).toBe(80);
-    expect(resolveBorderWidth("single", false, undefined)).toBe(1);
-    expect(resolveBorderWidth("single", false, false)).toBe(0);
-    expect(resolveBorderWidth(undefined, undefined, undefined)).toBe(0);
+    expect(resolveBorderWidth({ style: "single", left: false })).toBe(1);
+    expect(resolveBorderWidth({ style: "single", left: false, right: false })).toBe(0);
+    expect(resolveBorderWidth({})).toBe(0);
   });
 });

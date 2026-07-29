@@ -4,26 +4,30 @@ export const SELECTION_MARKER_WIDTH = 1;
 
 export type ColumnSizing =
   | { flex: true; width?: never; minWidth?: never }
-  | { flex?: false; width: number; minWidth: number };
+  | { flex?: false; width: number; minWidth?: number };
 
-export interface ComputedColumnWidths {
+export type ComputedColumnWidths = {
   widths: (number | undefined)[];
   totalWidth: number;
-}
+};
 
-interface FixedColumnWidth {
+type FixedColumnWidth = {
   index: number;
   width: number;
   minWidth: number;
-}
+};
 
-export function resolveBorderWidth(
-  borderStyle: string | undefined,
-  borderLeft: boolean | undefined,
-  borderRight: boolean | undefined,
-): number {
-  if (borderStyle === undefined) return 0;
-  return Number(borderLeft !== false) + Number(borderRight !== false);
+export function resolveBorderWidth({
+  style,
+  left,
+  right,
+}: {
+  style?: string;
+  left?: boolean;
+  right?: boolean;
+}): number {
+  if (style === undefined) return 0;
+  return Number(left !== false) + Number(right !== false);
 }
 
 export function computeColumnWidths(
@@ -42,21 +46,22 @@ export function computeColumnWidths(
       {
         index,
         width: column.width,
-        minWidth: Math.min(column.minWidth, column.width),
+        minWidth: Math.min(column.minWidth ?? column.width, column.width),
       },
     ];
   });
 
-  const gapCount = () => {
+  const visibleFixedWidth = () => fixedColumns.reduce((total, column) => total + column.width, 0);
+  const gapWidth = () => {
     const visibleColumns = fixedColumns.length + (flexIndex === -1 ? 0 : 1);
+    // Ink inserts columnGap between adjacent children; the selection marker is also a child.
     const childCount = visibleColumns + (options.selectable ? 1 : 0);
-    return Math.max(0, childCount - 1);
+    return Math.max(0, childCount - 1) * COLUMN_GAP;
   };
-  const fixedWidth = () => fixedColumns.reduce((total, column) => total + column.width, 0);
-  const totalAtFloor = () => markerWidth + fixedWidth() + flexFloor + gapCount() * COLUMN_GAP;
+  const minimumTableWidth = () => markerWidth + visibleFixedWidth() + flexFloor + gapWidth();
 
   while (
-    totalAtFloor() > frameWidth &&
+    minimumTableWidth() > frameWidth &&
     fixedColumns.some((column) => column.width > column.minWidth)
   ) {
     for (let index = fixedColumns.length - 1; index >= 0; index -= 1) {
@@ -68,7 +73,7 @@ export function computeColumnWidths(
     }
   }
 
-  while (totalAtFloor() > frameWidth && fixedColumns.length > 0) {
+  while (minimumTableWidth() > frameWidth && fixedColumns.length > 0) {
     fixedColumns.pop();
   }
 
@@ -78,14 +83,12 @@ export function computeColumnWidths(
   if (flexIndex !== -1) {
     widths[flexIndex] = Math.max(
       FLEX_MIN_WIDTH,
-      frameWidth - markerWidth - fixedWidth() - gapCount() * COLUMN_GAP,
+      frameWidth - markerWidth - visibleFixedWidth() - gapWidth(),
     );
   }
 
   const totalWidth =
-    markerWidth +
-    widths.reduce<number>((total, width) => total + (width ?? 0), 0) +
-    gapCount() * COLUMN_GAP;
+    markerWidth + widths.reduce<number>((total, width) => total + (width ?? 0), 0) + gapWidth();
 
   return {
     widths,

@@ -17,13 +17,12 @@ interface RuntimeEndpointRow extends Record<string, unknown> {
 export const runtimeEndpointColumns = [
   { key: "qualifier", header: "qualifier", flex: true },
   { key: "liveVersion", header: "live", width: 6, minWidth: 5 },
-  { key: "targetVersion", header: "target", width: 6, minWidth: 6 },
-  { key: "status", header: "status", width: 13, minWidth: 13 },
+  { key: "targetVersion", header: "target", width: 6 },
+  { key: "status", header: "status", width: 13 },
   {
     key: "lastUpdatedAt",
     header: "updated UTC",
     width: 16,
-    minWidth: 16,
     render: formatTimestamp,
   },
 ] satisfies DataTableColumn<RuntimeEndpointRow>[];
