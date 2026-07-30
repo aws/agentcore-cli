@@ -1,1 +1,0 @@
-export { atomicWrite } from "./atomicWrite";

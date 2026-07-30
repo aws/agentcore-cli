@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { atomicWrite } from "../../fs";
+import { AgentCoreCLIError, ERROR_SOURCE } from "../../errors";
+import { atomicWrite } from "../../io";
 
 /**
  * A node in a project's file tree where directories nest and files are leaves.
@@ -9,17 +10,17 @@ import { atomicWrite } from "../../fs";
  */
 export type ProjectNode = DirNode | FileNode;
 
-export interface DirNode {
+export type DirNode = {
   kind: "dir";
   name: string;
   children: ProjectNode[];
-}
+};
 
-export interface FileNode {
+export type FileNode = {
   kind: "file";
   name: string;
   bytes: () => Promise<string>;
-}
+};
 
 export const dir = (name: string, children: ProjectNode[]): DirNode => ({
   kind: "dir",
@@ -34,10 +35,12 @@ export const file = (name: string, bytes: () => Promise<string>): FileNode => ({
 });
 
 /** Thrown when scaffolding would overwrite a file that already exists. */
-export class ProjectFileExistsError extends Error {
+export class ProjectFileExistsError extends AgentCoreCLIError {
   constructor(public readonly path: string) {
-    super(`Refusing to overwrite existing file: ${path}`);
-    this.name = "ProjectFileExistsError";
+    super(`Refusing to overwrite existing file: ${path}`, {
+      source: ERROR_SOURCE.USER,
+      meta: { path },
+    });
   }
 }
 

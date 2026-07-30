@@ -8,9 +8,9 @@ import { fileURLToPath } from "node:url";
  * This is the one place that knows whether assets come from disk or from the compiled executable.
  */
 export interface AssetSource {
-  /** Reads the text of the asset at `assetPath`. */
+  /** Reads the text of the asset at assetPath. */
   read(assetPath: string): Promise<string>;
-  /** Lists asset paths of every file under `assetDir`, sorted, recursively. */
+  /** Lists asset paths of every file under assetDir, sorted, recursively. */
   list(assetDir: string): Promise<string[]>;
 }
 
@@ -20,41 +20,47 @@ const EMBEDDED_PREFIX = "agentcore-assets/src/assets/";
 // Embedded files carry a name property that Bun's types widen to Blob.
 type NamedBlob = Blob & { readonly name: string };
 
-const embeddedBlobs = () => Bun.embeddedFiles as readonly NamedBlob[];
-
 /** Reads assets embedded in the compiled standalone executable. */
-export const embeddedSource: AssetSource = {
-  async read(assetPath) {
+export class EmbeddedAssetSource implements AssetSource {
+  private blobs(): readonly NamedBlob[] {
+    return Bun.embeddedFiles as readonly NamedBlob[];
+  }
+
+  public async read(assetPath: string): Promise<string> {
     const name = `${EMBEDDED_PREFIX}${assetPath}`;
-    const blob = embeddedBlobs().find((f) => f.name === name);
+    const blob = this.blobs().find((f) => f.name === name);
     if (!blob) {
       throw new Error(`Embedded asset not found: ${assetPath}`);
     }
     return blob.text();
-  },
-  async list(assetDir) {
+  }
+
+  public async list(assetDir: string): Promise<string[]> {
     const prefix = `${EMBEDDED_PREFIX}${assetDir}/`;
-    return embeddedBlobs()
+    return this.blobs()
       .filter((f) => f.name.startsWith(prefix))
       .map((f) => f.name.slice(EMBEDDED_PREFIX.length))
       .sort();
-  },
-};
+  }
+}
 
 /** Reads assets from the assets directory on disk. */
-export function fileSource(assetsRoot = resolveAssetsRoot()): AssetSource {
-  return {
-    read: (assetPath) => readFile(join(assetsRoot, assetPath), "utf8"),
-    async list(assetDir) {
-      const root = join(assetsRoot, assetDir);
-      const entries = await readdir(root, { recursive: true, withFileTypes: true });
-      return entries
-        .filter((entry) => entry.isFile())
-        .map((entry) => join(assetDir, relative(root, join(entry.parentPath, entry.name))))
-        .map((p) => p.replaceAll("\\", "/"))
-        .sort();
-    },
-  };
+export class FsAssetSource implements AssetSource {
+  constructor(private readonly assetsRoot: string = resolveAssetsRoot()) {}
+
+  public read(assetPath: string): Promise<string> {
+    return readFile(join(this.assetsRoot, assetPath), "utf8");
+  }
+
+  public async list(assetDir: string): Promise<string[]> {
+    const root = join(this.assetsRoot, assetDir);
+    const entries = await readdir(root, { recursive: true, withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isFile())
+      .map((entry) => join(assetDir, relative(root, join(entry.parentPath, entry.name))))
+      .map((p) => p.replaceAll("\\", "/"))
+      .sort();
+  }
 }
 
 // Bundled builds place assets beside the emitted module and the source layout keeps them two levels up.
@@ -72,5 +78,5 @@ function resolveAssetsRoot(moduleDirectory = dirname(fileURLToPath(import.meta.u
  */
 export function defaultSource(): AssetSource {
   const embedded = typeof Bun !== "undefined" && Bun.embeddedFiles.length > 0;
-  return embedded ? embeddedSource : fileSource();
+  return embedded ? new EmbeddedAssetSource() : new FsAssetSource();
 }

@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { embeddedSource } from "./source";
+import { EmbeddedAssetSource } from "./source";
 
-describe("embeddedSource", () => {
+describe("EmbeddedAssetSource", () => {
   test("throws when the asset is not embedded", () => {
-    expect(embeddedSource.read("cdk/package.json")).rejects.toThrow(/Embedded asset not found/);
+    expect(new EmbeddedAssetSource().read("cdk/package.json")).rejects.toThrow(
+      /Embedded asset not found/,
+    );
   });
 });
