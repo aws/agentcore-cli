@@ -33,9 +33,7 @@ describe("withProject", () => {
   test("throws NoProjectError when no project encloses the working directory", async () => {
     const projectManager = {
       resolve: async () => undefined,
-      create: async (): Promise<Project> => {
-        throw new Error("unused");
-      },
+      create: async () => ({}) as Project,
     };
 
     await expect(

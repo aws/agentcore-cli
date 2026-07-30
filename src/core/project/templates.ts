@@ -1,7 +1,11 @@
-import { PROJECT_TEMPLATES, type ProjectTemplate } from "../../handlers/project/types";
+import {
+  PROJECT_TEMPLATES,
+  type ProjectRuntime,
+  type ProjectTemplate,
+} from "../../handlers/project/types";
 
 type TemplateSpec = {
-  runtimes?: unknown[];
+  runtimes?: ProjectRuntime[];
   memories?: unknown[];
   harnesses?: unknown[];
 };
