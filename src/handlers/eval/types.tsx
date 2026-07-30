@@ -43,8 +43,8 @@ export type CodeBasedUpdate = {
 // caller identify the traffic to sample either by an existing agent — a plain
 // AgentCore Runtime ID or a Harness ID, both resolved to the same underlying
 // runtime by Core — or by supplying the API's dataSourceConfig directly. The
-// execution role is required: the CLI does not provision one, so the caller
-// brings a role the AgentCore service can assume.
+// execution role is optional: when omitted, Core provisions a default one scoped
+// to the resolved log groups.
 export type CreateOnlineEvalInput = {
   name: string;
   description?: string;
@@ -52,7 +52,7 @@ export type CreateOnlineEvalInput = {
   sessionTimeoutMinutes?: number;
   filters?: Rule["filters"];
   evaluatorIds?: string[];
-  evaluationExecutionRoleArn: string;
+  evaluationExecutionRoleArn?: string;
   enableOnCreate?: boolean;
 } & (
   | { agent: string; endpoint?: string; dataSourceConfig?: undefined }

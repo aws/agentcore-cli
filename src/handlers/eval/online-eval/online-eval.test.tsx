@@ -32,9 +32,8 @@ const FIXTURE_EVALUATOR_ID = "Builtin.Helpfulness";
 const FIXTURE_AGENT_ID = "testAgent_Agent-wm9hYBD93Y";
 const FIXTURE_AGENT_NAME = "testAgent_Agent";
 
-// The execution role the online evaluation assumes. The CLI does not provision
-// one, so recording references a role that already exists in the fixture account
-// and carries the trace-read / result-write permissions the service validates.
+// An explicit execution role, to record the --role-arn override path. Omitting
+// the flag provisions a default role instead, which the create test below covers.
 const FIXTURE_ROLE_ARN = "arn:aws:iam::725476964917:role/AgentCoreEvalsSDK-us-west-2-a6864eb339";
 
 // Online evaluation config ids match `[a-zA-Z][a-zA-Z0-9-_]{0,99}-[a-zA-Z0-9]{10}`.
@@ -116,8 +115,6 @@ describe("online-eval CRUDL", () => {
       "10",
       "--session-timeout-minutes",
       "30",
-      "--role-arn",
-      FIXTURE_ROLE_ARN,
       "--enable-on-create",
       "false",
     ]);
@@ -283,24 +280,6 @@ describe("flag validation", () => {
         FIXTURE_ROLE_ARN,
       ]),
     ).rejects.toThrow(/'--endpoint' can only be used with '--agent'/);
-  });
-
-  test("create requires --role-arn", async () => {
-    await expect(
-      run([
-        "eval",
-        "online-eval",
-        "create",
-        "--name",
-        CONFIG_NAME,
-        "--agent",
-        FIXTURE_AGENT_ID,
-        "--evaluator",
-        FIXTURE_EVALUATOR_ID,
-        "--sampling-rate",
-        "10",
-      ]),
-    ).rejects.toThrow(/required option '--role-arn <role-arn>' not specified/);
   });
 
   test("create rejects malformed --data-source-config JSON", async () => {

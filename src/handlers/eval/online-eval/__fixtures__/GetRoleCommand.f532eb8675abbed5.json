@@ -1,0 +1,6 @@
+{
+  "$error": {
+    "name": "NoSuchEntityException",
+    "message": "The role with name AgentCoreOnlineEval-agentcore_cli_online_eval_fixture cannot be found."
+  }
+}

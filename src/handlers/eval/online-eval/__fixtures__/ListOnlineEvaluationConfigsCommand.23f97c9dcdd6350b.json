@@ -274,16 +274,16 @@
       }
     },
     {
-      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_fixture-RFN1WrEt4l",
-      "onlineEvaluationConfigId": "agentcore_cli_online_eval_fixture-RFN1WrEt4l",
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_fixture-dR4nBd60us",
+      "onlineEvaluationConfigId": "agentcore_cli_online_eval_fixture-dR4nBd60us",
       "onlineEvaluationConfigName": "agentcore_cli_online_eval_fixture",
       "status": "CREATING",
       "executionStatus": "DISABLED",
       "createdAt": {
-        "$date": "2026-07-30T21:10:53.227Z"
+        "$date": "2026-07-30T22:23:39.166Z"
       },
       "updatedAt": {
-        "$date": "2026-07-30T21:10:53.227Z"
+        "$date": "2026-07-30T22:23:39.166Z"
       }
     },
     {
@@ -323,19 +323,6 @@
       },
       "updatedAt": {
         "$date": "2026-06-15T19:42:10.335Z"
-      }
-    },
-    {
-      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/clearendpointfalse-uq1nmfDjLL",
-      "onlineEvaluationConfigId": "clearendpointfalse-uq1nmfDjLL",
-      "onlineEvaluationConfigName": "clearendpointfalse",
-      "status": "ACTIVE",
-      "executionStatus": "DISABLED",
-      "createdAt": {
-        "$date": "2026-07-30T21:08:12.485Z"
-      },
-      "updatedAt": {
-        "$date": "2026-07-30T21:08:12.683Z"
       }
     },
     {

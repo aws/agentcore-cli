@@ -36,6 +36,7 @@ import type {
 } from "../handlers/eval/types";
 import type { AwsClients, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
+import { ensureDefaultOnlineEvalExecutionRole } from "./onlineEvalExecutionRole";
 
 const DEFAULT_ENDPOINT_QUALIFIER = "DEFAULT";
 
@@ -183,22 +184,41 @@ export class EvalClient implements CoreEvalClient {
     // `--agent` derives the CloudWatch source from the agent's default trace
     // path; an explicit dataSourceConfig passes straight through, which is how an
     // agent emitting under a custom OTel service name is pointed at its log groups.
-    const dataSourceConfig = input.agent
-      ? await agentDataSource(input.agent, input.endpoint, this.clients, options)
-      : input.dataSourceConfig;
+    const dataSourceConfig =
+      input.agent !== undefined
+        ? await agentDataSource(input.agent, input.endpoint, this.clients, options)
+        : input.dataSourceConfig;
     const control = this.clients.control(toClientConfig(options));
 
-    return control.send(
-      new CreateOnlineEvaluationConfigCommand({
-        onlineEvaluationConfigName: input.name,
-        description: input.description,
-        rule: toRule(input.samplingRate, input.sessionTimeoutMinutes, input.filters),
-        dataSourceConfig,
-        evaluators: input.evaluatorIds?.map((evaluatorId) => ({ evaluatorId })),
-        evaluationExecutionRoleArn: input.evaluationExecutionRoleArn,
-        enableOnCreate: input.enableOnCreate ?? true,
-      }),
-    );
+    // The service validates at create time that the role can query the log groups
+    // it was pointed at, and the required policy is not obvious, so provision a
+    // default role scoped to them unless the caller brought their own.
+    const evaluationExecutionRoleArn =
+      input.evaluationExecutionRoleArn ??
+      (await ensureDefaultOnlineEvalExecutionRole(
+        this.clients.iam(toClientConfig(options)),
+        input.name,
+        options.region,
+        logGroupNamesOf(dataSourceConfig),
+      ));
+
+    const command = new CreateOnlineEvaluationConfigCommand({
+      onlineEvaluationConfigName: input.name,
+      description: input.description,
+      rule: toRule(input.samplingRate, input.sessionTimeoutMinutes, input.filters),
+      dataSourceConfig,
+      evaluators: input.evaluatorIds?.map((evaluatorId) => ({ evaluatorId })),
+      evaluationExecutionRoleArn,
+      enableOnCreate: input.enableOnCreate ?? true,
+    });
+
+    // A role provisioned moments ago may not be assumable yet (IAM is eventually
+    // consistent), and the service rejects the create rather than retrying. Only
+    // worth retrying when we just created the role; a caller-supplied one that
+    // cannot be assumed is a real misconfiguration and fails immediately.
+    return input.evaluationExecutionRoleArn
+      ? control.send(command)
+      : retryWhileRoleUnassumable(() => control.send(command));
   }
 
   // updateOnlineEvaluationConfig fetches the current config and merges the
@@ -379,6 +399,33 @@ async function agentDataSource(
       serviceNames: [runtimeServiceName(runtimeName, qualifier)],
     },
   };
+}
+
+// retryWhileRoleUnassumable retries `send` while the service reports that the
+// execution role cannot be assumed, which is how a not-yet-propagated IAM role
+// surfaces. Bounded and short: propagation is normally sub-second, and a role
+// that is genuinely misconfigured should fail fast rather than hang.
+async function retryWhileRoleUnassumable<T>(send: () => Promise<T>): Promise<T> {
+  const delaysMs = [1_000, 2_000, 4_000, 8_000];
+  for (const delay of delaysMs) {
+    try {
+      return await send();
+    } catch (error) {
+      if (!/role cannot be assumed/i.test((error as Error).message)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  return send();
+}
+
+// logGroupNamesOf reads the log groups out of a resolved dataSourceConfig, for
+// scoping the default execution role. cloudWatchLogs is the only arm the API
+// defines today; an unrecognized one yields no groups rather than throwing, so a
+// future arm degrades to a role the caller can still override with --role-arn.
+function logGroupNamesOf(dataSourceConfig: DataSourceConfig): string[] {
+  return "cloudWatchLogs" in dataSourceConfig
+    ? (dataSourceConfig.cloudWatchLogs?.logGroupNames ?? [])
+    : [];
 }
 
 // runtimeIdFromLogGroup recovers the runtime id embedded in a log group path
