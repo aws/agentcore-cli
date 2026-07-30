@@ -413,7 +413,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
 
               let threePLibrary: ThirdPartyLibrary | undefined;
               let threePMetric: string | undefined;
-              let threePModelProvider: ModelProvider = 'bedrock';
+              let threePModelProvider: ModelProvider | undefined;
               let threePModel: string | undefined;
               let threePParams: string | undefined;
 
@@ -455,6 +455,10 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                   } catch (e) {
                     fail(`Invalid params in --3p-template-json: ${getErrorMessage(e)}`);
                   }
+                }
+                // Default modelProvider to 'bedrock' only when model is provided
+                if (!threePModelProvider && threePModel) {
+                  threePModelProvider = 'bedrock';
                 }
                 if (threePModelProvider === 'bedrock' && !threePModel) {
                   fail(
