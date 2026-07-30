@@ -362,9 +362,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
       .option('--type <type>', 'Evaluator type: llm-as-a-judge (default) or code-based')
       .option(
         '--model <model>',
-        'Bedrock inference profile ID: [LLM] judge model for LLM-as-a-Judge, or [3P library] judge model with ' +
-          '--model-provider bedrock. Must be an inference profile (e.g. ' +
-          'us.anthropic.claude-sonnet-4-20250514-v1:0), not a plain model ID — no bedrock/ prefix'
+        '[LLM] Bedrock inference profile ID for LLM-as-a-Judge (e.g. us.anthropic.claude-sonnet-4-20250514-v1:0)'
       )
       .option(
         '--instructions <text>',
@@ -373,19 +371,6 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
       .option('--rating-scale <preset>', `[LLM] Rating scale preset: ${presetIds.join(', ')} (default: 1-5-quality)`)
       .option('--lambda-arn <arn>', '[Code-based] Existing Lambda function ARN (external)')
       .option('--timeout <seconds>', '[Code-based] Lambda timeout in seconds, 1-300 (default: 60)')
-      .option('--3p-library <library>', `Third-party evaluation library (${SUPPORTED_LIBRARIES.join(', ')})`)
-      .option('--metric <className>', '[3P library] Metric/evaluator class name (e.g. AnswerRelevancyMetric)')
-      .option(
-        '--param <key=value>',
-        '[3P library] Metric parameter as key=value (repeatable)',
-        (val: string, prev: string[]) => [...prev, val],
-        [] as string[]
-      )
-      .option('--parameters-file <path>', '[3P library] JSON file of metric constructor kwargs')
-      .option(
-        '--model-provider <provider>',
-        `[3P library] LLM judge provider: ${MODEL_PROVIDERS.join(', ')} (default: bedrock)`
-      )
       .option(
         '--3p-template-json <json>',
         '[Code-based] Inline JSON with 3P library config: {"library", "metric", "modelProvider", "model", "params"}'
@@ -410,11 +395,6 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
           ratingScale?: string;
           lambdaArn?: string;
           timeout?: string;
-          '3pLibrary'?: string;
-          metric?: string;
-          param: string[];
-          parametersFile?: string;
-          modelProvider?: string;
           '3pTemplateJson'?: string;
           '3pTemplateJsonFile'?: string;
           config?: string;
@@ -441,7 +421,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 fail(`Invalid --level "${cliOptions.level}". Must be one of: SESSION, TRACE, TOOL_CALL`);
               }
 
-              // Parse --3p-template-json or --3p-template-json-file into individual options
+              // Parse --3p-template-json or --3p-template-json-file
               if (cliOptions['3pTemplateJson'] && cliOptions['3pTemplateJsonFile']) {
                 fail('--3p-template-json and --3p-template-json-file cannot be used together');
               }
@@ -454,6 +434,13 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 }
                 templateJsonStr = readFileSync(cliOptions['3pTemplateJsonFile'], 'utf-8');
               }
+
+              let threePLibrary: ThirdPartyLibrary | undefined;
+              let threePMetric: string | undefined;
+              let threePModelProvider: ModelProvider = 'bedrock';
+              let threePModel: string | undefined;
+              let threePParams: string | undefined;
+
               if (templateJsonStr) {
                 let templateObj: Record<string, unknown>;
                 try {
@@ -467,62 +454,40 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 if (!templateObj.metric || typeof templateObj.metric !== 'string') {
                   fail('--3p-template-json must include "metric" (e.g. "AnswerRelevancyMetric")');
                 }
-                // Populate individual options from template JSON
-                cliOptions['3pLibrary'] = templateObj.library as string;
-                cliOptions.metric = templateObj.metric as string;
-                if (templateObj.modelProvider) cliOptions.modelProvider = templateObj.modelProvider as string;
-                if (templateObj.model) cliOptions.model = templateObj.model as string;
+                if (!isSupportedLibrary(templateObj.library)) {
+                  fail(`Invalid library "${templateObj.library}". Supported: ${SUPPORTED_LIBRARIES.join(', ')}`);
+                }
+                threePLibrary = templateObj.library as ThirdPartyLibrary;
+                threePMetric = templateObj.metric as string;
+                if (templateObj.modelProvider) {
+                  if (!isSupportedModelProvider(templateObj.modelProvider as string)) {
+                    fail(`Invalid modelProvider "${templateObj.modelProvider}". Supported: ${MODEL_PROVIDERS.join(', ')}`);
+                  }
+                  threePModelProvider = templateObj.modelProvider as ModelProvider;
+                }
+                if (templateObj.model) threePModel = templateObj.model as string;
                 if (templateObj.params && typeof templateObj.params === 'object') {
-                  cliOptions.parametersFile = undefined;
-                  cliOptions.param = Object.entries(templateObj.params as Record<string, unknown>).map(
-                    ([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`
+                  try {
+                    threePParams = Object.entries(templateObj.params as Record<string, unknown>)
+                      .map(([k, v]) => {
+                        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) {
+                          throw new Error(`Invalid Python kwarg name "${k}"`);
+                        }
+                        return `${k}=${jsonToPythonValue(v)}`;
+                      })
+                      .join(', ');
+                  } catch (e) {
+                    fail(`Invalid params in --3p-template-json: ${getErrorMessage(e)}`);
+                  }
+                }
+                if (threePModelProvider === 'bedrock' && !threePModel) {
+                  fail(
+                    '--3p-template-json requires "model" when modelProvider is bedrock. ' +
+                      'Pass a Bedrock inference profile ID (e.g. us.anthropic.claude-sonnet-4-20250514-v1:0)'
                   );
                 }
               }
 
-              // Validate --3p-library
-              const threePLibraryRaw = cliOptions['3pLibrary'];
-              if (threePLibraryRaw && !isSupportedLibrary(threePLibraryRaw)) {
-                fail(`Invalid --3p-library "${threePLibraryRaw}". Supported: ${SUPPORTED_LIBRARIES.join(', ')}`);
-              }
-              const threePLibrary = threePLibraryRaw as ThirdPartyLibrary | undefined;
-              if (threePLibrary) {
-                if (!cliOptions.metric) fail('--metric is required when using --3p-library');
-                if (cliOptions.model && cliOptions.modelProvider === 'openai') {
-                  fail('--model cannot be used with --3p-library when --model-provider is openai');
-                }
-                if (cliOptions.instructions) fail('--instructions cannot be used with --3p-library');
-                if (cliOptions.ratingScale) fail('--rating-scale cannot be used with --3p-library');
-                if (cliOptions.lambdaArn) fail('--lambda-arn cannot be used with --3p-library');
-                if (cliOptions.config) fail('--config cannot be used with --3p-library');
-              }
-              if (cliOptions.metric && !threePLibrary) {
-                fail('--metric requires --3p-library');
-              }
-              if (cliOptions.param.length > 0 && !threePLibrary) {
-                fail('--param requires --3p-library');
-              }
-              if (cliOptions.parametersFile && !threePLibrary) {
-                fail('--parameters-file requires --3p-library');
-              }
-              if (cliOptions.param.length > 0 && cliOptions.parametersFile) {
-                fail('--param and --parameters-file cannot be used together');
-              }
-              if (cliOptions.modelProvider && !threePLibrary) {
-                fail('--model-provider requires --3p-library');
-              }
-              if (cliOptions.modelProvider && !isSupportedModelProvider(cliOptions.modelProvider)) {
-                fail(
-                  `Invalid --model-provider "${cliOptions.modelProvider}". Supported: ${MODEL_PROVIDERS.join(', ')}`
-                );
-              }
-              const resolvedModelProvider = (cliOptions.modelProvider as ModelProvider | undefined) ?? 'bedrock';
-              if (resolvedModelProvider === 'bedrock' && !cliOptions.model && threePLibrary) {
-                fail(
-                  '--model is required when using --model-provider bedrock (the default). Pass a Bedrock inference ' +
-                    'profile ID (e.g. us.anthropic.claude-sonnet-4-20250514-v1:0) — plain model IDs are not supported'
-                );
-              }
               if (cliOptions.timeout) {
                 const timeoutVal = parseInt(cliOptions.timeout, 10);
                 if (isNaN(timeoutVal) || timeoutVal < 1 || timeoutVal > 300) {
@@ -530,7 +495,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 }
               }
 
-              // Default --type to code-based when --3p-library is set
+              // Default --type to code-based when 3P template is provided
               const evalType = cliOptions.type ?? (threePLibrary ? 'code-based' : 'llm-as-a-judge');
               if (evalType !== 'llm-as-a-judge' && evalType !== 'code-based') {
                 fail(`Invalid --type "${evalType}". Must be one of: llm-as-a-judge, code-based`);
@@ -540,7 +505,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               if (evalType !== 'code-based') {
                 if (cliOptions.lambdaArn) fail('--lambda-arn requires --type code-based');
                 if (cliOptions.timeout) fail('--timeout requires --type code-based');
-                if (threePLibrary) fail('--3p-library requires --type code-based');
+                if (threePLibrary) fail('--3p-template-json requires --type code-based');
               }
               if (evalType === 'code-based' && !threePLibrary) {
                 if (cliOptions.model) fail('--model cannot be used with --type code-based');
@@ -558,30 +523,12 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                   libraryConfig,
                   cliOptions.timeout
                 );
-                let kwargs: string | undefined;
-                if (cliOptions.param.length > 0) {
-                  try {
-                    kwargs = parseParamFlags(cliOptions.param);
-                  } catch (e) {
-                    fail(`Invalid --param value: ${getErrorMessage(e)}`);
-                  }
-                } else if (cliOptions.parametersFile) {
-                  if (!existsSync(cliOptions.parametersFile)) {
-                    fail(`--parameters-file not found: ${cliOptions.parametersFile}`);
-                  }
-                  try {
-                    const fileContent = readFileSync(cliOptions.parametersFile, 'utf-8');
-                    kwargs = jsonToKwargs(fileContent);
-                  } catch (e) {
-                    fail(`Invalid --parameters-file: ${getErrorMessage(e)}`);
-                  }
-                }
                 thirdParty = {
                   library: threePLibrary,
-                  metricClass: cliOptions.metric!,
-                  metricParams: kwargs,
-                  modelProvider: (cliOptions.modelProvider as ModelProvider | undefined) ?? 'bedrock',
-                  model: cliOptions.model,
+                  metricClass: threePMetric!,
+                  metricParams: threePParams,
+                  modelProvider: threePModelProvider,
+                  model: threePModel,
                 };
               } else if (cliOptions.config) {
                 configJson = JSON.parse(readFileSync(cliOptions.config, 'utf-8')) as EvaluatorConfig;
