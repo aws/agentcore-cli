@@ -41,7 +41,10 @@ describe("DefaultTelemetryClient", () => {
       metricSinks: [fileSystemSink],
     });
 
-    const recorder = new TelemetryAttributesRecorder("cli.command_run", { exit_reason: "success" });
+    const recorder = new TelemetryAttributesRecorder("cli.command_run", {
+      exit_reason: "success",
+      command_path: "/agentcore",
+    });
 
     await client.emit("cli.command_run", 123, recorder.getAttributes());
 
@@ -75,12 +78,12 @@ describe("DefaultTelemetryClient", () => {
       {
         metricName: "cli.command_run",
         value: 123,
-        attrs: { ...resourceAttributes, exit_reason: "success" },
+        attrs: { ...resourceAttributes, exit_reason: "success", command_path: "/agentcore" },
       },
       {
         metricName: "cli.command_run",
         value: 456,
-        attrs: { ...resourceAttributes, exit_reason: "failure" },
+        attrs: { ...resourceAttributes, exit_reason: "failure", command_path: "/agentcore" },
       },
     ]);
   });
@@ -117,8 +120,14 @@ describe("DefaultTelemetryClient", () => {
       auditFilePath,
     });
 
-    await enabledClient.emit("cli.command_run", 123, { exit_reason: "success" });
-    await disabledClient.emit("cli.command_run", 456, { exit_reason: "failure" });
+    await enabledClient.emit("cli.command_run", 123, {
+      exit_reason: "success",
+      command_path: "/agentcore",
+    });
+    await disabledClient.emit("cli.command_run", 456, {
+      exit_reason: "failure",
+      command_path: "/agentcore",
+    });
     await Promise.all([enabledClient.shutdown(), disabledClient.shutdown()]);
 
     const auditLines = (await readFile(auditFilePath, "utf8")).trimEnd().split("\n");
@@ -136,6 +145,7 @@ describe("DefaultTelemetryClient", () => {
         "host.arch": os.arch(),
         "node.version": process.version,
         exit_reason: "success",
+        command_path: "/agentcore",
       },
     });
   });
@@ -168,7 +178,7 @@ describe("DefaultTelemetryClient", () => {
       metricSinks: [sink],
     });
 
-    await client.emit("cli.command_run", 1, { exit_reason: "success" });
+    await client.emit("cli.command_run", 1, { exit_reason: "success", command_path: "/agentcore" });
     await client.shutdown();
 
     await assertLogsMatch(tempDir, [
@@ -209,7 +219,10 @@ describe("DefaultTelemetryClient", () => {
     });
 
     // emit should not throw even though the sink's record() throws
-    await client.emit("cli.command_run", 100, { exit_reason: "success" });
+    await client.emit("cli.command_run", 100, {
+      exit_reason: "success",
+      command_path: "/agentcore",
+    });
     // shutdown should not throw even though the sink's shutdown() rejects
     await client.shutdown();
 
