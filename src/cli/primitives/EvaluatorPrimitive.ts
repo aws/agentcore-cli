@@ -462,6 +462,12 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                       'Pass a Bedrock inference profile ID (e.g. us.anthropic.claude-sonnet-4-20250514-v1:0)'
                   );
                 }
+                if (threePModelProvider === 'openai') {
+                  console.warn(
+                    '\n  ⚠️  OpenAI model provider selected. You must set OPENAI_API_KEY as a Lambda ' +
+                      'environment variable after deployment.\n'
+                  );
+                }
               }
 
               if (cliOptions.timeout) {
