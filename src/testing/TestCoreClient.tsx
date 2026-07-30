@@ -22,10 +22,15 @@ import type {
   ListHarnessVersionsResponse,
   CreateEvaluatorRequest,
   CreateEvaluatorResponse,
+  CreateOnlineEvaluationConfigResponse,
   DeleteEvaluatorResponse,
+  DeleteOnlineEvaluationConfigResponse,
   GetEvaluatorResponse,
+  GetOnlineEvaluationConfigResponse,
   ListEvaluatorsResponse,
+  ListOnlineEvaluationConfigsResponse,
   UpdateEvaluatorResponse,
+  UpdateOnlineEvaluationConfigResponse,
   UpdateApiKeyCredentialProviderResponse,
   UpdateHarnessEndpointRequest,
   UpdateHarnessEndpointResponse,
@@ -53,6 +58,11 @@ import type {
   RuntimeInvokeResponse,
 } from "../handlers/runtime/types";
 import type { CodeBasedUpdate, CoreEvalClient, LlmAsAJudgeUpdate } from "../handlers/eval/types";
+import type {
+  CoreOnlineEvalClient,
+  CreateOnlineEvalInput,
+  UpdateOnlineEvalInput,
+} from "../handlers/eval/online-eval/types";
 import { abortable } from "../core/abortable";
 import type { CoreOptions } from "../core/types";
 import type { ProjectManager } from "../handlers/project/types";
@@ -739,12 +749,99 @@ export class TestEvalClient implements CoreEvalClient {
   }
 }
 
+// TestOnlineEvalClient is the online-eval sub-client of TestCoreClient. The
+// online-eval handler tests use the fixture-backed real CoreClient, so this
+// exists to satisfy the Core contract for tests that construct a TestCoreClient
+// for unrelated reasons (TUI screens, other handlers).
+export class TestOnlineEvalClient implements CoreOnlineEvalClient {
+  readonly calls: RecordedCall[] = [];
+  private error?: Error;
+
+  setError(error: Error): void {
+    this.error = error;
+  }
+
+  private record<T>(method: string, args: unknown[], response: T): T {
+    this.calls.push({ method, args });
+    if (this.error) throw this.error;
+    return response;
+  }
+
+  async createOnlineEvaluationConfig(
+    input: CreateOnlineEvalInput,
+    options: CoreOptions,
+  ): Promise<CreateOnlineEvaluationConfigResponse> {
+    return this.record(
+      "createOnlineEvaluationConfig",
+      [input, options],
+      {} as CreateOnlineEvaluationConfigResponse,
+    );
+  }
+
+  async updateOnlineEvaluationConfig(
+    id: string,
+    update: UpdateOnlineEvalInput,
+    options: CoreOptions,
+  ): Promise<UpdateOnlineEvaluationConfigResponse> {
+    return this.record(
+      "updateOnlineEvaluationConfig",
+      [id, update, options],
+      {} as UpdateOnlineEvaluationConfigResponse,
+    );
+  }
+
+  async getOnlineEvaluationConfig(
+    id: string,
+    options: CoreOptions,
+  ): Promise<GetOnlineEvaluationConfigResponse> {
+    return this.record(
+      "getOnlineEvaluationConfig",
+      [id, options],
+      {} as GetOnlineEvaluationConfigResponse,
+    );
+  }
+
+  async listOnlineEvaluationConfigs(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListOnlineEvaluationConfigsResponse> {
+    return this.record("listOnlineEvaluationConfigs", [nextToken, maxResults, options], {
+      onlineEvaluationConfigs: [],
+    });
+  }
+
+  async setOnlineEvaluationExecutionStatus(
+    id: string,
+    executionStatus: "ENABLED" | "DISABLED",
+    options: CoreOptions,
+  ): Promise<UpdateOnlineEvaluationConfigResponse> {
+    return this.record(
+      "setOnlineEvaluationExecutionStatus",
+      [id, executionStatus, options],
+      {} as UpdateOnlineEvaluationConfigResponse,
+    );
+  }
+
+  async deleteOnlineEvaluationConfig(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteOnlineEvaluationConfigResponse> {
+    return this.record(
+      "deleteOnlineEvaluationConfig",
+      [id, options],
+      {} as DeleteOnlineEvaluationConfigResponse,
+    );
+  }
+}
+
 // TestCoreClient implements the Core contract with fully controllable sub-clients.
 export class TestCoreClient implements Core {
   readonly harness = new TestHarnessClient();
   readonly identity = new TestIdentityClient();
   readonly runtime = new TestRuntimeClient();
   readonly eval = new TestEvalClient();
+  readonly onlineEval = new TestOnlineEvalClient();
   readonly projectManager: ProjectManager;
 
   constructor(options?: TestCoreClientOptions) {

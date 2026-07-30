@@ -7,6 +7,7 @@ export {
   TestHarnessClient,
   TestRuntimeClient,
   TestEvalClient,
+  TestOnlineEvalClient,
   type RecordedCall,
 } from "./TestCoreClient";
 export { StreamController } from "./StreamController";
