@@ -27,6 +27,9 @@ curl -X POST http://localhost:8080/invocations \
   -d '{"prompt": "Hello!"}'
 ```
 
+<!-- TODO: replace the uv run + curl instructions with `agentcore dev` and
+     `agentcore invoke` once those commands are available. -->
+
 ## Build your agent
 
 Start in `main.py`:
