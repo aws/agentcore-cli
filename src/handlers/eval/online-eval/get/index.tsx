@@ -15,8 +15,6 @@ export const createGetOnlineEvalHandler = (core: Core) =>
 
       ctx
         .require(JsonRendererKey)
-        .renderJson(
-          await core.onlineEval.getOnlineEvaluationConfig(flags["id"], coreOptsFromCtx(ctx)),
-        );
+        .renderJson(await core.eval.getOnlineEvaluationConfig(flags["id"], coreOptsFromCtx(ctx)));
     },
   });

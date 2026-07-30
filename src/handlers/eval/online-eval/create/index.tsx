@@ -92,7 +92,7 @@ export const createCreateOnlineEvalHandler = (core: Core) =>
       const enableOnCreate =
         flags["enable-on-create"] === undefined ? undefined : flags["enable-on-create"] === "true";
 
-      const response = await core.onlineEval.createOnlineEvaluationConfig(
+      const response = await core.eval.createOnlineEvaluationConfig(
         hasAgent
           ? {
               name: flags["name"],

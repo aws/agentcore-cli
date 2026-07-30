@@ -4,7 +4,6 @@ import { IAMClient } from "@aws-sdk/client-iam";
 import { EvalClient } from "./eval";
 import { HarnessClient } from "./harness";
 import { IdentityClient } from "./identity";
-import { OnlineEvalClient } from "./onlineEval";
 import { RuntimeClient } from "./runtime";
 import type {
   AwsClients,
@@ -54,7 +53,6 @@ export class CoreClient implements AwsClients {
   readonly identity: IdentityClient = new IdentityClient(this);
   readonly runtime: RuntimeClient;
   readonly eval: EvalClient = new EvalClient(this);
-  readonly onlineEval: OnlineEvalClient = new OnlineEvalClient(this);
 
   readonly projectManager: ProjectManager;
 

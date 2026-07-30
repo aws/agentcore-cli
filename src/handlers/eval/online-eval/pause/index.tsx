@@ -16,7 +16,7 @@ export const createPauseOnlineEvalHandler = (core: Core) =>
       ctx
         .require(JsonRendererKey)
         .renderJson(
-          await core.onlineEval.setOnlineEvaluationExecutionStatus(
+          await core.eval.setOnlineEvaluationExecutionStatus(
             flags["id"],
             "DISABLED",
             coreOptsFromCtx(ctx),

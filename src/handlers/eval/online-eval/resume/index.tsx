@@ -16,7 +16,7 @@ export const createResumeOnlineEvalHandler = (core: Core) =>
       ctx
         .require(JsonRendererKey)
         .renderJson(
-          await core.onlineEval.setOnlineEvaluationExecutionStatus(
+          await core.eval.setOnlineEvaluationExecutionStatus(
             flags["id"],
             "ENABLED",
             coreOptsFromCtx(ctx),

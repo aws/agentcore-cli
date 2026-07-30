@@ -16,7 +16,7 @@ export const createDeleteOnlineEvalHandler = (core: Core) =>
       ctx
         .require(JsonRendererKey)
         .renderJson(
-          await core.onlineEval.deleteOnlineEvaluationConfig(flags["id"], coreOptsFromCtx(ctx)),
+          await core.eval.deleteOnlineEvaluationConfig(flags["id"], coreOptsFromCtx(ctx)),
         );
     },
   });

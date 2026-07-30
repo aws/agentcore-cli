@@ -57,12 +57,13 @@ import type {
   RuntimeInvokeRequest,
   RuntimeInvokeResponse,
 } from "../handlers/runtime/types";
-import type { CodeBasedUpdate, CoreEvalClient, LlmAsAJudgeUpdate } from "../handlers/eval/types";
 import type {
-  CoreOnlineEvalClient,
+  CodeBasedUpdate,
+  CoreEvalClient,
   CreateOnlineEvalInput,
+  LlmAsAJudgeUpdate,
   UpdateOnlineEvalInput,
-} from "../handlers/eval/online-eval/types";
+} from "../handlers/eval/types";
 import { abortable } from "../core/abortable";
 import type { CoreOptions } from "../core/types";
 import type { ProjectManager } from "../handlers/project/types";
@@ -742,29 +743,18 @@ export class TestEvalClient implements CoreEvalClient {
     );
   }
 
-  async deleteEvaluator(id: string, options: CoreOptions): Promise<DeleteEvaluatorResponse> {
-    this.calls.push({ method: "deleteEvaluator", args: [id, options] });
-    if (this.error) throw this.error;
-    return this.deleteResponse;
-  }
-}
-
-// TestOnlineEvalClient is the online-eval sub-client of TestCoreClient. The
-// online-eval handler tests use the fixture-backed real CoreClient, so this
-// exists to satisfy the Core contract for tests that construct a TestCoreClient
-// for unrelated reasons (TUI screens, other handlers).
-export class TestOnlineEvalClient implements CoreOnlineEvalClient {
-  readonly calls: RecordedCall[] = [];
-  private error?: Error;
-
-  setError(error: Error): void {
-    this.error = error;
-  }
-
+  // record captures a call, honors a configured error, and returns the canned
+  // response — the online-eval methods below need no per-operation setters.
   private record<T>(method: string, args: unknown[], response: T): T {
     this.calls.push({ method, args });
     if (this.error) throw this.error;
     return response;
+  }
+
+  async deleteEvaluator(id: string, options: CoreOptions): Promise<DeleteEvaluatorResponse> {
+    this.calls.push({ method: "deleteEvaluator", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.deleteResponse;
   }
 
   async createOnlineEvaluationConfig(
@@ -841,7 +831,6 @@ export class TestCoreClient implements Core {
   readonly identity = new TestIdentityClient();
   readonly runtime = new TestRuntimeClient();
   readonly eval = new TestEvalClient();
-  readonly onlineEval = new TestOnlineEvalClient();
   readonly projectManager: ProjectManager;
 
   constructor(options?: TestCoreClientOptions) {

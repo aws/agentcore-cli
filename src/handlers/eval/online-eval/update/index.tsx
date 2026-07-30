@@ -48,7 +48,7 @@ export const createUpdateOnlineEvalHandler = (core: Core) =>
         );
       }
 
-      const response = await core.onlineEval.updateOnlineEvaluationConfig(
+      const response = await core.eval.updateOnlineEvaluationConfig(
         flags["id"],
         {
           samplingRate: flags["sampling-rate"],

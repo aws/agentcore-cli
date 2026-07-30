@@ -13,7 +13,7 @@ export const createListOnlineEvalHandler = (core: Core) =>
       flag("max-results", "maximum number of items to return", z.number().optional()),
     ],
     handle: async (ctx, flags) => {
-      const response = await core.onlineEval.listOnlineEvaluationConfigs(
+      const response = await core.eval.listOnlineEvaluationConfigs(
         flags["next-token"],
         flags["max-results"],
         coreOptsFromCtx(ctx),
