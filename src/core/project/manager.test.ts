@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
-import { FsProjectManager } from "./manager";
+import { FsProjectManager, NestedProjectError } from "./manager";
 import { ProjectFileExistsError } from "./tree";
 import { PROJECT_TEMPLATES } from "../../handlers/project/types";
 import { createSilentLogger } from "../../testing";
@@ -68,5 +68,15 @@ describe("FsProjectManager.create", () => {
 
     await manager().create(input);
     await expect(manager().create(input)).rejects.toBeInstanceOf(ProjectFileExistsError);
+  });
+
+  test("refuses to create a project inside an existing project", async () => {
+    const directory = await inTempDirectory();
+    await manager().create({ name: "root", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON });
+
+    process.chdir(join(directory, "root"));
+    await expect(
+      manager().create({ name: "child", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON }),
+    ).rejects.toBeInstanceOf(NestedProjectError);
   });
 });

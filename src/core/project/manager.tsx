@@ -1,4 +1,6 @@
-import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { AgentCoreCLIError, ERROR_SOURCE } from "../../errors";
 import type {
   CreateProjectInput,
   ResolveProjectInput,
@@ -9,6 +11,28 @@ import type { Logger } from "../../logging";
 import { projectTree } from "./compose";
 import { defaultSource, type AssetSource } from "./source";
 import { writeTree } from "./tree";
+
+/** Thrown when scaffolding would nest a new project inside an existing AgentCore project. */
+export class NestedProjectError extends AgentCoreCLIError {
+  constructor(public readonly projectRoot: string) {
+    super(
+      `cannot create a project inside an existing AgentCore project (found ${join(projectRoot, "agentcore", "agentcore.json")})`,
+      { source: ERROR_SOURCE.USER, meta: { projectRoot } },
+    );
+  }
+}
+
+/** Walks up from directory looking for the agentcore/agentcore.json project marker. */
+function enclosingProjectRoot(directory: string): string | undefined {
+  for (let current = directory; ; current = dirname(current)) {
+    if (existsSync(join(current, "agentcore", "agentcore.json"))) {
+      return current;
+    }
+    if (dirname(current) === current) {
+      return undefined;
+    }
+  }
+}
 
 type ProjectManagerConfig = {
   logger: Logger;
@@ -32,7 +56,11 @@ export class FsProjectManager implements ProjectManager {
   }
 
   public async create(input: CreateProjectInput): Promise<Project> {
-    // Scaffold into a fresh directory.
+    // Scaffold into a fresh directory, refusing to nest inside an existing project.
+    const enclosing = enclosingProjectRoot(process.cwd());
+    if (enclosing) {
+      throw new NestedProjectError(enclosing);
+    }
     const destination = join(process.cwd(), input.name);
     this.logger.debug(`scaffolding project "${input.name}" from template "${input.template}"`);
 
