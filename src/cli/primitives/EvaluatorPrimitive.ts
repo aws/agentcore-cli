@@ -33,7 +33,6 @@ interface MetricWarning {
 export interface ThirdPartyLibraryConfig {
   templateDir: string;
   defaultTimeoutSeconds: number;
-  defaultMemorySizeMb: number;
   warnings: MetricWarning[];
 }
 
@@ -41,7 +40,6 @@ export const THIRD_PARTY_EVALUATOR_LIBRARIES = {
   deepeval: {
     templateDir: 'deepeval-lambda',
     defaultTimeoutSeconds: 300,
-    defaultMemorySizeMb: 1024,
     warnings: [
       {
         metrics: new Set([
@@ -66,7 +64,6 @@ export const THIRD_PARTY_EVALUATOR_LIBRARIES = {
   autoevals: {
     templateDir: 'autoevals-lambda',
     defaultTimeoutSeconds: 60,
-    defaultMemorySizeMb: 512,
     warnings: [
       {
         metrics: new Set(['Factuality', 'ClosedQA']),
@@ -160,8 +157,6 @@ export function jsonToKwargs(json: string): string {
     })
     .join(', ');
 }
-
-
 
 function getWarningsForMetric(libraryConfig: ThirdPartyLibraryConfig, metricClass: string): string[] {
   const messages: string[] = [];
@@ -430,16 +425,18 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 if (!templateObj.metric || typeof templateObj.metric !== 'string') {
                   fail('--3p-template-json must include "metric" (e.g. "AnswerRelevancyMetric")');
                 }
-                if (!isSupportedLibrary(templateObj.library)) {
-                  fail(`Invalid library "${templateObj.library}". Supported: ${SUPPORTED_LIBRARIES.join(', ')}`);
+                const rawLibrary = String(templateObj.library);
+                if (!isSupportedLibrary(rawLibrary)) {
+                  fail(`Invalid library "${rawLibrary}". Supported: ${SUPPORTED_LIBRARIES.join(', ')}`);
                 }
-                threePLibrary = templateObj.library as ThirdPartyLibrary;
+                threePLibrary = rawLibrary as ThirdPartyLibrary;
                 threePMetric = templateObj.metric as string;
                 if (templateObj.modelProvider) {
-                  if (!isSupportedModelProvider(templateObj.modelProvider as string)) {
-                    fail(`Invalid modelProvider "${templateObj.modelProvider}". Supported: ${MODEL_PROVIDERS.join(', ')}`);
+                  const rawProvider = templateObj.modelProvider as string;
+                  if (!isSupportedModelProvider(rawProvider)) {
+                    fail(`Invalid modelProvider "${rawProvider}". Supported: ${MODEL_PROVIDERS.join(', ')}`);
                   }
-                  threePModelProvider = templateObj.modelProvider as ModelProvider;
+                  threePModelProvider = rawProvider as ModelProvider;
                 }
                 if (templateObj.model) threePModel = templateObj.model as string;
                 if (templateObj.params && typeof templateObj.params === 'object') {
@@ -504,11 +501,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
 
               if (threePLibrary) {
                 const libraryConfig = THIRD_PARTY_EVALUATOR_LIBRARIES[threePLibrary];
-                configJson = this.buildThirdPartyConfig(
-                  cliOptions.name!,
-                  libraryConfig,
-                  cliOptions.timeout
-                );
+                configJson = this.buildThirdPartyConfig(cliOptions.name!, libraryConfig, cliOptions.timeout);
                 thirdParty = {
                   library: threePLibrary,
                   metricClass: threePMetric!,
@@ -689,7 +682,6 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
           codeLocation: `app/${name}/`,
           entrypoint: DEFAULT_CODE_ENTRYPOINT,
           timeoutSeconds,
-          memorySizeMb: libraryConfig.defaultMemorySizeMb,
           additionalPolicies: ['execution-role-policy.json'],
         },
       },

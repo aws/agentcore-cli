@@ -275,7 +275,7 @@ describe('EvaluatorPrimitive', () => {
     describe('deepeval', () => {
       const deepevalConfig = THIRD_PARTY_EVALUATOR_LIBRARIES.deepeval;
 
-      it('returns config with deepeval defaults (300s, 1024MB)', () => {
+      it('returns config with deepeval defaults (300s)', () => {
         // eslint-disable-next-line @typescript-eslint/dot-notation
         const config = primitive['buildThirdPartyConfig']('my_eval', deepevalConfig);
 
@@ -285,7 +285,6 @@ describe('EvaluatorPrimitive', () => {
               codeLocation: 'app/my_eval/',
               entrypoint: 'lambda_function.handler',
               timeoutSeconds: 300,
-              memorySizeMb: 1024,
               additionalPolicies: ['execution-role-policy.json'],
             },
           },
@@ -304,7 +303,7 @@ describe('EvaluatorPrimitive', () => {
     describe('autoevals', () => {
       const autoevalsConfig = THIRD_PARTY_EVALUATOR_LIBRARIES.autoevals;
 
-      it('returns config with autoevals defaults (60s, 512MB)', () => {
+      it('returns config with autoevals defaults (60s)', () => {
         // eslint-disable-next-line @typescript-eslint/dot-notation
         const config = primitive['buildThirdPartyConfig']('fact_check', autoevalsConfig);
 
@@ -314,7 +313,6 @@ describe('EvaluatorPrimitive', () => {
               codeLocation: 'app/fact_check/',
               entrypoint: 'lambda_function.handler',
               timeoutSeconds: 60,
-              memorySizeMb: 512,
               additionalPolicies: ['execution-role-policy.json'],
             },
           },
@@ -611,7 +609,6 @@ describe('THIRD_PARTY_EVALUATOR_LIBRARIES registry', () => {
     expect(config).toBeDefined();
     expect(config.templateDir).toBe('deepeval-lambda');
     expect(config.defaultTimeoutSeconds).toBe(300);
-    expect(config.defaultMemorySizeMb).toBe(1024);
   });
 
   it('contains autoevals with expected defaults', () => {
@@ -619,7 +616,6 @@ describe('THIRD_PARTY_EVALUATOR_LIBRARIES registry', () => {
     expect(config).toBeDefined();
     expect(config.templateDir).toBe('autoevals-lambda');
     expect(config.defaultTimeoutSeconds).toBe(60);
-    expect(config.defaultMemorySizeMb).toBe(512);
   });
 
   it('deepeval has warnings for retrieval_context metrics', () => {
