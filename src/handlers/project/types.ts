@@ -88,6 +88,12 @@ export type CreateProjectInput = {
   name: string;
   /** The project template to scaffold from. */
   template: ProjectTemplate;
+  /** Skip installing dependencies (npm install, uv sync). */
+  skipInstall?: boolean;
+  /** Skip initializing a git repository. */
+  skipGit?: boolean;
+  /** Called as each creation step begins; drives progress output. */
+  onProgress?: (message: string) => void;
 };
 
 export type ResolveProjectInput = {
