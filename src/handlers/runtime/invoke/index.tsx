@@ -72,7 +72,10 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
           await renderTuiAt(path, ctx, core, io);
         } catch (error) {
           if (error instanceof TtyRequiredError) {
-            throw new InputValidationError(error.message, { cause: error });
+            throw new InputValidationError(error.message, {
+              cause: error,
+              exitCode: ExitCode.USAGE,
+            });
           }
           throw error;
         }

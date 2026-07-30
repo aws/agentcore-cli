@@ -313,6 +313,43 @@ describe("Runtime invoke console", () => {
     expect(new TextDecoder().decode(requests[1]!.payload)).toBe("second");
   });
 
+  test("keeps settled response details out of streaming frames", async () => {
+    const release = Promise.withResolvers<void>();
+    const core = new TestCoreClient();
+    core.runtime
+      .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
+      .setInvokeResponse({
+        statusCode: 200,
+        contentType: "text/plain",
+        runtimeSessionId: "returned-runtime",
+        body: (async function* () {
+          yield Buffer.from("partial");
+          await release.promise;
+          yield Buffer.from(" response");
+        })(),
+      });
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "idle");
+    await screen.write("{}");
+    const frameCount = screen.frames.length;
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "partial");
+
+    const streamingFrames = screen.frames
+      .slice(frameCount)
+      .filter((frame) => frame.includes("streaming…"));
+    expect(streamingFrames.length).toBeGreaterThan(0);
+    for (const frame of streamingFrames) {
+      expect(frame).not.toContain("Runtime returned-runtime");
+      expect(frame).not.toContain("streaming ·");
+    }
+
+    release.resolve();
+    await waitForText(screen.lastFrame, "complete · 16 bytes");
+    expect(screen.lastFrame()).toContain("Runtime returned-runtime");
+  });
+
   test("manual scrolling stays detached while a response continues streaming", async () => {
     const release = Promise.withResolvers<void>();
     let deliveredTail = false;

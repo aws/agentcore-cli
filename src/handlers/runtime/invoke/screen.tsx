@@ -189,7 +189,9 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
 
     try {
       if (requestPayload === "-" || (customJwt && bearerToken === "-")) {
-        throw new UsageError("stdin sources are not available in the interactive console");
+        throw new InputValidationError(
+          "stdin sources are not available in the interactive console",
+        );
       }
       const sources = await resolveRuntimeInvokeSources(
         { payload: requestPayload, bearerToken: customJwt ? bearerToken : undefined },
@@ -267,7 +269,7 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
     } catch (error) {
       if (controller.signal.aborted || (error as Error)?.name === "AbortError") {
         updateExchange({ note: "interrupted", state: "interrupted" });
-        } else if (error instanceof InputValidationError) {
+      } else if (error instanceof InputValidationError) {
         updateExchange({ response: `Error: ${error.message}`, state: "failed" });
       } else if (!responseStarted && error instanceof Error) {
         updateExchange({ note: error.message, state: "failed" });
@@ -410,11 +412,15 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
                   <Text>{exchange.payload}</Text>
                   <Text bold>{exchange.heading ?? "Response"}</Text>
                   <Text>{prettyJson && exchange.pretty ? exchange.pretty : exchange.response}</Text>
-                  {exchange.metadata ? <Text color="gray">{exchange.metadata}</Text> : null}
-                  {exchange.note ? <Text color="yellow">{exchange.note}</Text> : null}
-                  <Text color={exchange.state === "failed" ? "red" : "gray"}>
-                    {exchange.state} · {exchange.byteCount} bytes
-                  </Text>
+                  {exchange.state !== "connecting" && exchange.state !== "streaming" ? (
+                    <>
+                      {exchange.metadata ? <Text color="gray">{exchange.metadata}</Text> : null}
+                      {exchange.note ? <Text color="yellow">{exchange.note}</Text> : null}
+                      <Text color={exchange.state === "failed" ? "red" : "gray"}>
+                        {exchange.state} · {exchange.byteCount} bytes
+                      </Text>
+                    </>
+                  ) : null}
                 </Box>
               ))}
             </ScrollView>
