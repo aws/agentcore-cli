@@ -1,0 +1,46 @@
+{
+  "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:runtime/testAgent_Agent-wm9hYBD93Y",
+  "agentRuntimeName": "testAgent_Agent",
+  "agentRuntimeId": "testAgent_Agent-wm9hYBD93Y",
+  "agentRuntimeVersion": "3",
+  "createdAt": {
+    "$date": "2026-03-24T16:02:00.301Z"
+  },
+  "lastUpdatedAt": {
+    "$date": "2026-03-24T16:13:08.198Z"
+  },
+  "roleArn": "arn:aws:iam::725476964917:role/AgentCore-myimport-defaul-ApplicationAgentTestAgent-tJFjyd6jLIOn",
+  "networkConfiguration": {
+    "networkMode": "PUBLIC"
+  },
+  "status": "READY",
+  "lifecycleConfiguration": {
+    "idleRuntimeSessionTimeout": 900,
+    "maxLifetime": 28800
+  },
+  "description": "AgentCore Runtime: myimport_testAgent_Agent",
+  "workloadIdentityDetails": {
+    "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:workload-identity-directory/default/workload-identity/testAgent_Agent-wm9hYBD93Y"
+  },
+  "agentRuntimeArtifact": {
+    "codeConfiguration": {
+      "code": {
+        "s3": {
+          "bucket": "cdk-hnb659fds-assets-725476964917-us-west-2",
+          "prefix": "5f58024b207272eeb8560702468b402cb3aeea1c8ee36d3c5f348fcb471bb58f.zip"
+        }
+      },
+      "runtime": "PYTHON_3_10",
+      "entryPoint": [
+        "opentelemetry-instrument",
+        "main.py"
+      ]
+    }
+  },
+  "environmentVariables": {
+    "MEMORY_TESTAGENT_AGENT_MEM_ID": "testAgent_Agent_mem-17a3Lg8yrL"
+  },
+  "metadataConfiguration": {
+    "requireMMDSV2": true
+  }
+}

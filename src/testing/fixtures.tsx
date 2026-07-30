@@ -32,6 +32,16 @@ export function isRecording(): boolean {
   return v === "1" || v === "true";
 }
 
+// settle waits out a service-side state transition between two calls that cannot
+// overlap (e.g. AgentCore rejects an update while the resource is still UPDATING).
+// It only sleeps while recording: on replay the fixtures are served from disk, so
+// there is no state machine to wait for and the test stays fast and deterministic.
+// Give the enclosing test a timeout that accommodates the wait.
+export async function settle(ms = 5_000): Promise<void> {
+  if (!isRecording()) return;
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // An AWS SDK command as seen at the `.send()` boundary: its class carries the
 // operation name and it holds the request `input`. We only read these.
 interface SdkCommand {

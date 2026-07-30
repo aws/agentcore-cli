@@ -1,11 +1,18 @@
 import type {
   CreateEvaluatorRequest,
   CreateEvaluatorResponse,
+  CreateOnlineEvaluationConfigResponse,
   DeleteEvaluatorResponse,
+  DeleteOnlineEvaluationConfigResponse,
   GetEvaluatorResponse,
+  GetOnlineEvaluationConfigResponse,
   ListEvaluatorsResponse,
+  ListOnlineEvaluationConfigsResponse,
+  DataSourceConfig,
   RatingScale,
+  Rule,
   UpdateEvaluatorResponse,
+  UpdateOnlineEvaluationConfigResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { CoreOptions } from "../../core/types";
 
@@ -32,9 +39,46 @@ export type CodeBasedUpdate = {
   clientToken?: string;
 };
 
-// CoreEvalClient is the evaluator surface the eval handlers depend on. It is
-// declared here, next to the handlers that consume it, and implemented by
-// src/core/eval.tsx (dependency inversion: handlers own the abstraction).
+// CreateOnlineEvalInput mirrors CreateOnlineEvaluationConfigRequest but lets the
+// caller identify the traffic to sample either by an existing agent — a plain
+// AgentCore Runtime ID or a Harness ID, both resolved to the same underlying
+// runtime by Core — or by supplying the API's dataSourceConfig directly. The
+// execution role is required: the CLI does not provision one, so the caller
+// brings a role the AgentCore service can assume.
+export type CreateOnlineEvalInput = {
+  name: string;
+  description?: string;
+  samplingRate: number;
+  sessionTimeoutMinutes?: number;
+  filters?: Rule["filters"];
+  evaluatorIds?: string[];
+  evaluationExecutionRoleArn: string;
+  enableOnCreate?: boolean;
+} & (
+  | { agent: string; endpoint?: string; dataSourceConfig?: undefined }
+  | { agent?: undefined; endpoint?: undefined; dataSourceConfig: DataSourceConfig }
+);
+
+// UpdateOnlineEvalInput carries the fields a caller may change on an online
+// evaluation config. Undefined fields are left untouched by Core (merged over
+// the current config, since UpdateOnlineEvaluationConfig replaces the whole
+// `rule` object); `clearEndpoint` nulls out the endpoint scope, falling back to
+// the agent's default log group.
+export type UpdateOnlineEvalInput = {
+  samplingRate?: number;
+  sessionTimeoutMinutes?: number;
+  filters?: Rule["filters"];
+  evaluatorIds?: string[];
+  // Repoint the evaluation at different traces: `agent` re-derives the source
+  // from that agent (optionally at `endpoint`), `dataSourceConfig` replaces it
+  // outright, and `endpoint`/`clearEndpoint` alone re-scope the agent the config
+  // was already built from.
+  agent?: string;
+  endpoint?: string;
+  clearEndpoint?: boolean;
+  dataSourceConfig?: DataSourceConfig;
+};
+
 export interface CoreEvalClient {
   createEvaluator(
     request: CreateEvaluatorRequest,
@@ -59,4 +103,32 @@ export interface CoreEvalClient {
     options: CoreOptions,
   ): Promise<ListEvaluatorsResponse>;
   deleteEvaluator(id: string, options: CoreOptions): Promise<DeleteEvaluatorResponse>;
+
+  createOnlineEvaluationConfig(
+    input: CreateOnlineEvalInput,
+    options: CoreOptions,
+  ): Promise<CreateOnlineEvaluationConfigResponse>;
+  updateOnlineEvaluationConfig(
+    id: string,
+    update: UpdateOnlineEvalInput,
+    options: CoreOptions,
+  ): Promise<UpdateOnlineEvaluationConfigResponse>;
+  getOnlineEvaluationConfig(
+    id: string,
+    options: CoreOptions,
+  ): Promise<GetOnlineEvaluationConfigResponse>;
+  listOnlineEvaluationConfigs(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListOnlineEvaluationConfigsResponse>;
+  setOnlineEvaluationExecutionStatus(
+    id: string,
+    executionStatus: "ENABLED" | "DISABLED",
+    options: CoreOptions,
+  ): Promise<UpdateOnlineEvaluationConfigResponse>;
+  deleteOnlineEvaluationConfig(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteOnlineEvaluationConfigResponse>;
 }

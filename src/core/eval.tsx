@@ -1,21 +1,43 @@
 import {
   CreateEvaluatorCommand,
+  CreateOnlineEvaluationConfigCommand,
   DeleteEvaluatorCommand,
+  DeleteOnlineEvaluationConfigCommand,
+  GetAgentRuntimeCommand,
   GetEvaluatorCommand,
+  GetHarnessCommand,
+  GetOnlineEvaluationConfigCommand,
   ListEvaluatorsCommand,
+  ListOnlineEvaluationConfigsCommand,
   UpdateEvaluatorCommand,
+  UpdateOnlineEvaluationConfigCommand,
   type CreateEvaluatorRequest,
   type CreateEvaluatorResponse,
+  type CreateOnlineEvaluationConfigResponse,
   type DeleteEvaluatorResponse,
+  type DeleteOnlineEvaluationConfigResponse,
   type EvaluatorConfig,
   type GetEvaluatorResponse,
+  type GetOnlineEvaluationConfigResponse,
   type ListEvaluatorsResponse,
+  type DataSourceConfig,
+  type ListOnlineEvaluationConfigsResponse,
+  type Rule,
   type UpdateEvaluatorResponse,
+  type UpdateOnlineEvaluationConfigResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { InputValidationError } from "../errors";
-import type { CodeBasedUpdate, CoreEvalClient, LlmAsAJudgeUpdate } from "../handlers/eval/types";
+import type {
+  CodeBasedUpdate,
+  CoreEvalClient,
+  CreateOnlineEvalInput,
+  LlmAsAJudgeUpdate,
+  UpdateOnlineEvalInput,
+} from "../handlers/eval/types";
 import type { AwsClients, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
+
+const DEFAULT_ENDPOINT_QUALIFIER = "DEFAULT";
 
 export class EvalClient implements CoreEvalClient {
   constructor(private readonly clients: AwsClients) {}
@@ -153,4 +175,235 @@ export class EvalClient implements CoreEvalClient {
       .control(toClientConfig(options))
       .send(new DeleteEvaluatorCommand({ evaluatorId: id }));
   }
+
+  async createOnlineEvaluationConfig(
+    input: CreateOnlineEvalInput,
+    options: CoreOptions,
+  ): Promise<CreateOnlineEvaluationConfigResponse> {
+    // `--agent` derives the CloudWatch source from the agent's default trace
+    // path; an explicit dataSourceConfig passes straight through, which is how an
+    // agent emitting under a custom OTel service name is pointed at its log groups.
+    const dataSourceConfig = input.agent
+      ? await agentDataSource(input.agent, input.endpoint, this.clients, options)
+      : input.dataSourceConfig;
+    const control = this.clients.control(toClientConfig(options));
+
+    return control.send(
+      new CreateOnlineEvaluationConfigCommand({
+        onlineEvaluationConfigName: input.name,
+        description: input.description,
+        rule: toRule(input.samplingRate, input.sessionTimeoutMinutes, input.filters),
+        dataSourceConfig,
+        evaluators: input.evaluatorIds?.map((evaluatorId) => ({ evaluatorId })),
+        evaluationExecutionRoleArn: input.evaluationExecutionRoleArn,
+        enableOnCreate: input.enableOnCreate ?? true,
+      }),
+    );
+  }
+
+  // updateOnlineEvaluationConfig fetches the current config and merges the
+  // provided fields over it, because UpdateOnlineEvaluationConfig replaces the
+  // whole `rule` (and, when endpoint changes, `dataSourceConfig`) rather than
+  // patching individual fields.
+  async updateOnlineEvaluationConfig(
+    id: string,
+    update: UpdateOnlineEvalInput,
+    options: CoreOptions,
+  ): Promise<UpdateOnlineEvaluationConfigResponse> {
+    const control = this.clients.control(toClientConfig(options));
+    const current = await control.send(
+      new GetOnlineEvaluationConfigCommand({
+        onlineEvaluationConfigId: id,
+      }),
+    );
+
+    const samplingPercentage =
+      update.samplingRate ?? current.rule?.samplingConfig?.samplingPercentage;
+    const sessionTimeoutMinutes =
+      update.sessionTimeoutMinutes ?? current.rule?.sessionConfig?.sessionTimeoutMinutes;
+    const filters = update.filters ?? current.rule?.filters;
+
+    const evaluators =
+      update.evaluatorIds !== undefined
+        ? update.evaluatorIds.map((evaluatorId) => ({ evaluatorId }))
+        : current.evaluators;
+
+    // Repointing the evaluation, in precedence order: an explicit
+    // dataSourceConfig replaces the source outright; --agent re-derives it from
+    // that agent; --endpoint/--clear-endpoint alone re-scope the agent this config
+    // was already built from, which means recovering its runtime id first.
+    let dataSourceConfig = current.dataSourceConfig;
+    if (update.dataSourceConfig !== undefined) {
+      dataSourceConfig = update.dataSourceConfig;
+    } else if (update.agent !== undefined) {
+      dataSourceConfig = await agentDataSource(
+        update.agent,
+        update.clearEndpoint ? DEFAULT_ENDPOINT_QUALIFIER : update.endpoint,
+        this.clients,
+        options,
+      );
+    } else if (update.clearEndpoint || update.endpoint !== undefined) {
+      // The runtime id only survives inside the stored log group path, so an
+      // endpoint change has to recover it from there.
+      const currentLogGroup =
+        current.dataSourceConfig && "cloudWatchLogs" in current.dataSourceConfig
+          ? current.dataSourceConfig.cloudWatchLogs?.logGroupNames?.[0]
+          : undefined;
+      const runtimeId = currentLogGroup ? runtimeIdFromLogGroup(currentLogGroup) : undefined;
+      if (!runtimeId) {
+        throw new InputValidationError(
+          `Online evaluation config "${id}" was not created from an agent; ` +
+            `pass --agent or --data-source-config to repoint it`,
+          { meta: { onlineEvaluationConfigId: id } },
+        );
+      }
+      const endpoint = update.clearEndpoint ? DEFAULT_ENDPOINT_QUALIFIER : update.endpoint;
+      dataSourceConfig = await agentDataSource(runtimeId, endpoint, this.clients, options);
+    }
+
+    return control.send(
+      new UpdateOnlineEvaluationConfigCommand({
+        onlineEvaluationConfigId: id,
+        rule: toRule(samplingPercentage, sessionTimeoutMinutes, filters),
+        dataSourceConfig,
+        evaluators,
+      }),
+    );
+  }
+
+  async getOnlineEvaluationConfig(
+    id: string,
+    options: CoreOptions,
+  ): Promise<GetOnlineEvaluationConfigResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new GetOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }));
+  }
+
+  async listOnlineEvaluationConfigs(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListOnlineEvaluationConfigsResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new ListOnlineEvaluationConfigsCommand({ nextToken, maxResults }));
+  }
+
+  async setOnlineEvaluationExecutionStatus(
+    id: string,
+    executionStatus: "ENABLED" | "DISABLED",
+    options: CoreOptions,
+  ): Promise<UpdateOnlineEvaluationConfigResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(
+        new UpdateOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id, executionStatus }),
+      );
+  }
+
+  async deleteOnlineEvaluationConfig(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteOnlineEvaluationConfigResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new DeleteOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }));
+  }
+}
+
+// runtimeLogGroup mirrors the old CLI's derivation (src/cli/aws/cloudwatch.ts):
+// AgentCore always writes a runtime endpoint's traces to this fixed path, keyed
+// by the runtime *id*.
+function runtimeLogGroup(runtimeId: string, endpoint: string): string {
+  return `/aws/bedrock-agentcore/runtimes/${runtimeId}-${endpoint}`;
+}
+
+// runtimeServiceName derives the CloudWatch trace service name that scopes a
+// CreateOnlineEvaluationConfig data source to one runtime endpoint's sessions:
+// `{runtimeName}.{endpoint}`, keyed by the runtime *name* (verified against
+// production configs — this does NOT match the log group's runtime id).
+function runtimeServiceName(runtimeName: string, endpoint: string): string {
+  return `${runtimeName}.${endpoint}`;
+}
+
+// resolveAgentToRuntime resolves `--agent <id>` to its underlying runtime id +
+// name. A harness is itself implemented as an AgentCore Runtime under the
+// hood, so a plain runtime id resolves directly via GetAgentRuntime; a harness
+// id 404s there and resolves instead via GetHarness, reading the underlying
+// runtime out of `harness.environment.agentCoreRuntimeEnvironment`. Verified
+// against real harnesses/runtimes in a live account before relying on it.
+async function resolveAgentToRuntime(
+  agent: string,
+  clients: AwsClients,
+  options: CoreOptions,
+): Promise<{ runtimeId: string; runtimeName: string }> {
+  const control = clients.control(toClientConfig(options));
+  try {
+    const runtime = await control.send(new GetAgentRuntimeCommand({ agentRuntimeId: agent }));
+    if (runtime.agentRuntimeName) {
+      return { runtimeId: agent, runtimeName: runtime.agentRuntimeName };
+    }
+  } catch (error) {
+    if ((error as Error).name !== "ResourceNotFoundException") throw error;
+  }
+
+  const harness = await control.send(new GetHarnessCommand({ harnessId: agent }));
+  const environment = harness.harness?.environment;
+  const runtimeEnv =
+    environment && "agentCoreRuntimeEnvironment" in environment
+      ? environment.agentCoreRuntimeEnvironment
+      : undefined;
+  if (!runtimeEnv?.agentRuntimeId || !runtimeEnv?.agentRuntimeName) {
+    throw new InputValidationError(`"${agent}" does not exist as a runtime or a harness`, {
+      meta: { agent },
+    });
+  }
+  return { runtimeId: runtimeEnv.agentRuntimeId, runtimeName: runtimeEnv.agentRuntimeName };
+}
+
+// agentDataSource builds the CloudWatch data source for an agent id, resolving it
+// to its underlying runtime first (the log group is keyed by the runtime id, the
+// service name by the runtime name).
+async function agentDataSource(
+  agent: string,
+  endpoint: string | undefined,
+  clients: AwsClients,
+  options: CoreOptions,
+): Promise<DataSourceConfig> {
+  const qualifier = endpoint ?? DEFAULT_ENDPOINT_QUALIFIER;
+  const { runtimeId, runtimeName } = await resolveAgentToRuntime(agent, clients, options);
+  return {
+    cloudWatchLogs: {
+      logGroupNames: [runtimeLogGroup(runtimeId, qualifier)],
+      serviceNames: [runtimeServiceName(runtimeName, qualifier)],
+    },
+  };
+}
+
+// runtimeIdFromLogGroup recovers the runtime id embedded in a log group path
+// produced by runtimeLogGroup, so an update can re-derive dataSourceConfig for a
+// new --endpoint without the caller passing --agent again. Returns undefined for
+// a path that does not follow the convention, i.e. a config pointed at custom log
+// groups, which carries no runtime id to recover.
+//
+// Splitting on the *last* hyphen is unambiguous: endpoint names are constrained
+// to [a-zA-Z][a-zA-Z0-9_]{0,47}, so they never contain one.
+function runtimeIdFromLogGroup(logGroupName: string): string | undefined {
+  const match = logGroupName.match(/^\/aws\/bedrock-agentcore\/runtimes\/(.+)-[^-]+$/);
+  return match?.[1];
+}
+
+function toRule(
+  samplingRate: number | undefined,
+  sessionTimeoutMinutes: number | undefined,
+  filters?: Rule["filters"],
+): Rule {
+  return {
+    samplingConfig: { samplingPercentage: samplingRate },
+    // sessionConfig is optional on Rule and the service does not backfill it, so
+    // omit it when unset rather than materializing the service's own default.
+    ...(sessionTimeoutMinutes !== undefined ? { sessionConfig: { sessionTimeoutMinutes } } : {}),
+    filters,
+  };
 }

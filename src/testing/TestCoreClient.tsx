@@ -24,11 +24,16 @@ import type {
   ListHarnessVersionsResponse,
   CreateEvaluatorRequest,
   CreateEvaluatorResponse,
+  CreateOnlineEvaluationConfigResponse,
   DeleteEvaluatorResponse,
+  DeleteOnlineEvaluationConfigResponse,
   GetEvaluatorResponse,
+  GetOnlineEvaluationConfigResponse,
   ListEvaluatorsResponse,
+  ListOnlineEvaluationConfigsResponse,
   MemoryView,
   UpdateEvaluatorResponse,
+  UpdateOnlineEvaluationConfigResponse,
   UpdateApiKeyCredentialProviderResponse,
   UpdateHarnessEndpointRequest,
   UpdateHarnessEndpointResponse,
@@ -56,7 +61,13 @@ import type {
   RuntimeInvokeRequest,
   RuntimeInvokeResponse,
 } from "../handlers/runtime/types";
-import type { CodeBasedUpdate, CoreEvalClient, LlmAsAJudgeUpdate } from "../handlers/eval/types";
+import type {
+  CodeBasedUpdate,
+  CoreEvalClient,
+  CreateOnlineEvalInput,
+  LlmAsAJudgeUpdate,
+  UpdateOnlineEvalInput,
+} from "../handlers/eval/types";
 import { abortable } from "../core/abortable";
 import type { CoreOptions } from "../core/types";
 import type { ProjectManager } from "../handlers/project/types";
@@ -123,6 +134,10 @@ const DEFAULT_UPDATE_EVALUATOR_RESPONSE = {} as UpdateEvaluatorResponse;
 const DEFAULT_GET_EVALUATOR_RESPONSE = {} as GetEvaluatorResponse;
 const DEFAULT_LIST_EVALUATORS_RESPONSE: ListEvaluatorsResponse = { evaluators: [] };
 const DEFAULT_DELETE_EVALUATOR_RESPONSE = {} as DeleteEvaluatorResponse;
+const DEFAULT_CREATE_ONLINE_EVAL_RESPONSE = {} as CreateOnlineEvaluationConfigResponse;
+const DEFAULT_UPDATE_ONLINE_EVAL_RESPONSE = {} as UpdateOnlineEvaluationConfigResponse;
+const DEFAULT_GET_ONLINE_EVAL_RESPONSE = {} as GetOnlineEvaluationConfigResponse;
+const DEFAULT_DELETE_ONLINE_EVAL_RESPONSE = {} as DeleteOnlineEvaluationConfigResponse;
 
 // events wraps canned events as a one-shot AsyncIterable.
 async function* events<T>(items: T[]): AsyncGenerator<T> {
@@ -691,6 +706,20 @@ export class TestEvalClient implements CoreEvalClient {
   private updateResponse: UpdateEvaluatorResponse = DEFAULT_UPDATE_EVALUATOR_RESPONSE;
   private getResponse: GetEvaluatorResponse = DEFAULT_GET_EVALUATOR_RESPONSE;
   private deleteResponse: DeleteEvaluatorResponse = DEFAULT_DELETE_EVALUATOR_RESPONSE;
+  // Online-eval responses, keyed the same way: listOnlineEvaluationConfigs pages
+  // by nextToken, the rest are single canned values.
+  private onlineEvalListResponses = new Map<
+    string | undefined,
+    ListOnlineEvaluationConfigsResponse
+  >();
+  private onlineEvalCreateResponse: CreateOnlineEvaluationConfigResponse =
+    DEFAULT_CREATE_ONLINE_EVAL_RESPONSE;
+  private onlineEvalUpdateResponse: UpdateOnlineEvaluationConfigResponse =
+    DEFAULT_UPDATE_ONLINE_EVAL_RESPONSE;
+  private onlineEvalGetResponse: GetOnlineEvaluationConfigResponse =
+    DEFAULT_GET_ONLINE_EVAL_RESPONSE;
+  private onlineEvalDeleteResponse: DeleteOnlineEvaluationConfigResponse =
+    DEFAULT_DELETE_ONLINE_EVAL_RESPONSE;
   private error?: Error;
 
   // setListResponse sets what listEvaluators resolves to (when not erroring).
@@ -723,6 +752,44 @@ export class TestEvalClient implements CoreEvalClient {
   // setDeleteResponse sets what deleteEvaluator resolves to (when not erroring).
   setDeleteResponse(response: DeleteEvaluatorResponse): this {
     this.deleteResponse = response;
+    return this;
+  }
+
+  // setOnlineEvalListResponse sets what listOnlineEvaluationConfigs resolves to
+  // (when not erroring). Pass `forNextToken` to serve a later page.
+  setOnlineEvalListResponse(
+    response: ListOnlineEvaluationConfigsResponse,
+    forNextToken?: string,
+  ): this {
+    this.onlineEvalListResponses.set(forNextToken, response);
+    return this;
+  }
+
+  // setOnlineEvalCreateResponse sets what createOnlineEvaluationConfig resolves
+  // to (when not erroring).
+  setOnlineEvalCreateResponse(response: CreateOnlineEvaluationConfigResponse): this {
+    this.onlineEvalCreateResponse = response;
+    return this;
+  }
+
+  // setOnlineEvalUpdateResponse sets what updateOnlineEvaluationConfig and
+  // setOnlineEvaluationExecutionStatus resolve to (when not erroring).
+  setOnlineEvalUpdateResponse(response: UpdateOnlineEvaluationConfigResponse): this {
+    this.onlineEvalUpdateResponse = response;
+    return this;
+  }
+
+  // setOnlineEvalGetResponse sets what getOnlineEvaluationConfig resolves to
+  // (when not erroring).
+  setOnlineEvalGetResponse(response: GetOnlineEvaluationConfigResponse): this {
+    this.onlineEvalGetResponse = response;
+    return this;
+  }
+
+  // setOnlineEvalDeleteResponse sets what deleteOnlineEvaluationConfig resolves
+  // to (when not erroring).
+  setOnlineEvalDeleteResponse(response: DeleteOnlineEvaluationConfigResponse): this {
+    this.onlineEvalDeleteResponse = response;
     return this;
   }
 
@@ -786,6 +853,69 @@ export class TestEvalClient implements CoreEvalClient {
     this.calls.push({ method: "deleteEvaluator", args: [id, options] });
     if (this.error) throw this.error;
     return this.deleteResponse;
+  }
+
+  async createOnlineEvaluationConfig(
+    input: CreateOnlineEvalInput,
+    options: CoreOptions,
+  ): Promise<CreateOnlineEvaluationConfigResponse> {
+    this.calls.push({ method: "createOnlineEvaluationConfig", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.onlineEvalCreateResponse;
+  }
+
+  async updateOnlineEvaluationConfig(
+    id: string,
+    update: UpdateOnlineEvalInput,
+    options: CoreOptions,
+  ): Promise<UpdateOnlineEvaluationConfigResponse> {
+    this.calls.push({ method: "updateOnlineEvaluationConfig", args: [id, update, options] });
+    if (this.error) throw this.error;
+    return this.onlineEvalUpdateResponse;
+  }
+
+  async getOnlineEvaluationConfig(
+    id: string,
+    options: CoreOptions,
+  ): Promise<GetOnlineEvaluationConfigResponse> {
+    this.calls.push({ method: "getOnlineEvaluationConfig", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.onlineEvalGetResponse;
+  }
+
+  async listOnlineEvaluationConfigs(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListOnlineEvaluationConfigsResponse> {
+    this.calls.push({
+      method: "listOnlineEvaluationConfigs",
+      args: [nextToken, maxResults, options],
+    });
+    if (this.error) throw this.error;
+    return this.onlineEvalListResponses.get(nextToken) ?? { onlineEvaluationConfigs: [] };
+  }
+
+  async setOnlineEvaluationExecutionStatus(
+    id: string,
+    executionStatus: "ENABLED" | "DISABLED",
+    options: CoreOptions,
+  ): Promise<UpdateOnlineEvaluationConfigResponse> {
+    this.calls.push({
+      method: "setOnlineEvaluationExecutionStatus",
+      args: [id, executionStatus, options],
+    });
+    if (this.error) throw this.error;
+    return this.onlineEvalUpdateResponse;
+  }
+
+  async deleteOnlineEvaluationConfig(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteOnlineEvaluationConfigResponse> {
+    this.calls.push({ method: "deleteOnlineEvaluationConfig", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.onlineEvalDeleteResponse;
   }
 }
 
