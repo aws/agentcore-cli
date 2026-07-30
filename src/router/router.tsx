@@ -77,12 +77,7 @@ function attachAction(
     const command = actionArgs[actionArgs.length - 1] as Command;
     const merged = command.optsWithGlobals();
 
-    const telemetryAttributesRecorder = ctx.value(TelemetryAttributesRecorderKey);
-    const commandPath = ctx.require(PathKey);
-
-    telemetryAttributesRecorder?.record({
-      command_path: commandPath,
-    });
+    recordCommandPath(ctx);
 
     // Inherited group/global flags -> context (typed, read via ctx.value(key)).
     let leafCtx = ctx.withValue(CommandKey, command);
@@ -100,6 +95,11 @@ function attachAction(
 // node's declared flags. Only group flags created via globalFlag() carry a key.
 function globalFlagsOf(node: Handler): GlobalFlag[] {
   return node.flags().filter((f): f is GlobalFlag => "id" in f);
+}
+
+/** Add the command path to active command run metric **/
+function recordCommandPath(ctx: Context): void {
+  ctx.value(TelemetryAttributesRecorderKey)?.record({ command_path: ctx.value(PathKey) });
 }
 
 // compile walks the Handler tree into a Commander Command tree.
@@ -120,7 +120,7 @@ export function compile(
   stack: Middleware[] = [],
   inheritedGlobals: GlobalFlag[] = [],
 ): Command {
-  const c = new Command(node.name()).exitOverride();
+  const c = new Command(node.name());
   c.description(node.description());
 
   const ownFlags = node.flags();
@@ -140,6 +140,12 @@ export function compile(
   const path = ctx.value(PathKey) || "";
   const newPath = `${path}/${node.name()}`;
   ctx = ctx.withValue(PathKey, newPath);
+
+  // commander may fail on invalid flags before we are able to record on the happy path, so we must record here as well
+  c.exitOverride((e) => {
+    recordCommandPath(ctx);
+    throw e;
+  });
 
   const children = node.children();
   if (children.length > 0) {
