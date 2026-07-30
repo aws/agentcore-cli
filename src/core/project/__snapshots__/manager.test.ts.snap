@@ -1,6 +1,6 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
-exports[`FsProjectManager.create scaffolds the expected file tree into a fresh directory 1`] = `
+exports[`FsProjectManager.create scaffolds the expected file tree for hello-world-python into a fresh directory 1`] = `
 [
   "agentcore/agentcore.json",
   "agentcore/aws-targets.json",
@@ -16,6 +16,28 @@ exports[`FsProjectManager.create scaffolds the expected file tree into a fresh d
   "agentcore/cdk/test/cdk.test.ts",
   "agentcore/cdk/tsconfig.json",
   "app/hello-world/README.md",
+  "app/hello-world/main.py",
+  "app/hello-world/pyproject.toml",
+]
+`;
+
+exports[`FsProjectManager.create scaffolds the expected file tree for hello-world-python-container into a fresh directory 1`] = `
+[
+  "agentcore/agentcore.json",
+  "agentcore/aws-targets.json",
+  "agentcore/cdk/.gitignore",
+  "agentcore/cdk/.npmignore",
+  "agentcore/cdk/.prettierrc",
+  "agentcore/cdk/README.md",
+  "agentcore/cdk/bin/cdk.ts",
+  "agentcore/cdk/cdk.json",
+  "agentcore/cdk/jest.config.js",
+  "agentcore/cdk/lib/cdk-stack.ts",
+  "agentcore/cdk/package.json",
+  "agentcore/cdk/test/cdk.test.ts",
+  "agentcore/cdk/tsconfig.json",
+  "app/hello-world/.dockerignore",
+  "app/hello-world/Dockerfile",
   "app/hello-world/main.py",
   "app/hello-world/pyproject.toml",
 ]

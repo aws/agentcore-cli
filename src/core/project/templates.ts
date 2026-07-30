@@ -34,4 +34,19 @@ export const TEMPLATES: Record<ProjectTemplate, Template> = {
       ],
     },
   },
+  [PROJECT_TEMPLATES.HELLO_WORLD_PYTHON_CONTAINER]: {
+    appDir: "hello-world",
+    assetDir: "templates/hello-world-python-container",
+    spec: {
+      runtimes: [
+        {
+          name: "hello_world",
+          build: "Container",
+          entrypoint: "main.py",
+          codeLocation: "app/hello-world",
+          dockerfile: "Dockerfile",
+        },
+      ],
+    },
+  },
 };

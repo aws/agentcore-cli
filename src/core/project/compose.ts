@@ -41,7 +41,7 @@ async function expandDir(src: AssetSource, assetDir: string): Promise<ProjectNod
 }
 
 function renderName(filename: string): string {
-  const ignore = filename.match(/^(git|npm)ignore\.template$/);
+  const ignore = filename.match(/^(git|npm|docker)ignore\.template$/);
   return ignore ? `.${ignore[1]}ignore` : filename;
 }
 

@@ -42,23 +42,23 @@ function manager(): { manager: FsProjectManager; commands: { command: string[]; 
 }
 
 describe("FsProjectManager.create", () => {
-  test("scaffolds the expected file tree into a fresh directory", async () => {
-    const directory = await inTempDirectory();
-    await manager().manager.create({
-      name: "example",
-      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
-    });
+  test.each(Object.values(PROJECT_TEMPLATES))(
+    "scaffolds the expected file tree for %s into a fresh directory",
+    async (template) => {
+      const directory = await inTempDirectory();
+      await manager().manager.create({ name: "example", template });
 
-    const projectRoot = join(directory, "example");
-    const manifest = (await readdir(projectRoot, { recursive: true, withFileTypes: true }))
-      .filter((entry) => entry.isFile())
-      .map((entry) =>
-        relative(projectRoot, join(entry.parentPath, entry.name)).replaceAll("\\", "/"),
-      )
-      .sort();
+      const projectRoot = join(directory, "example");
+      const manifest = (await readdir(projectRoot, { recursive: true, withFileTypes: true }))
+        .filter((entry) => entry.isFile())
+        .map((entry) =>
+          relative(projectRoot, join(entry.parentPath, entry.name)).replaceAll("\\", "/"),
+        )
+        .sort();
 
-    expect(manifest).toMatchSnapshot();
-  });
+      expect(manifest).toMatchSnapshot();
+    },
+  );
 
   test("writes a deploy-ready agentcore.json registering the template agent", async () => {
     const directory = await inTempDirectory();
@@ -79,6 +79,25 @@ describe("FsProjectManager.create", () => {
       },
     ]);
     expect(await Bun.file(join(configDir, "aws-targets.json")).json()).toEqual([]);
+  });
+
+  test("registers a Container runtime with its Dockerfile for the container template", async () => {
+    const directory = await inTempDirectory();
+    await manager().create({
+      name: "example",
+      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON_CONTAINER,
+    });
+
+    const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes).toEqual([
+      {
+        name: "hello_world",
+        build: "Container",
+        entrypoint: "main.py",
+        codeLocation: "app/hello-world",
+        dockerfile: "Dockerfile",
+      },
+    ]);
   });
 
   test("refuses to overwrite an existing project", async () => {
