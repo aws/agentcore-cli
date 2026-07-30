@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
-import { NestedProjectError, ProjectFileExistsError } from "../../errors";
+import {
+  InvalidProjectConfigError,
+  NestedProjectError,
+  ProjectFileExistsError,
+} from "../../errors";
 import { FsProjectManager } from "./manager";
 import { PROJECT_TEMPLATES } from "../../handlers/project/types";
 import { createSilentLogger } from "../../testing";
@@ -14,8 +18,8 @@ async function inTempDirectory(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "agentcore-manager-"));
   tempDirectories.push(directory);
   process.chdir(directory);
-  // cwd is the realpath (macOS tmpdir lives behind a /var -> /private/var
-  // symlink), matching the paths the manager derives from process.cwd().
+  // cwd() resolves symlinks (macOS /var -> /private/var); use the canonical
+  // path so assertions against manager-returned paths compare equal.
   return process.cwd();
 }
 
@@ -191,5 +195,77 @@ describe("FsProjectManager.create", () => {
     await expect(
       manager().manager.create({ name: "child", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON }),
     ).rejects.toBeInstanceOf(NestedProjectError);
+  });
+});
+
+describe("FsProjectManager.resolve", () => {
+  test.each(Object.values(PROJECT_TEMPLATES))(
+    "round-trips a created %s project from a nested subdirectory",
+    async (template) => {
+      const directory = await inTempDirectory();
+      const created = await manager().create({ name: "example", template });
+
+      const resolved = await manager().resolve({
+        filePath: join(directory, "example", "app", "hello-world"),
+      });
+
+      expect(resolved).toEqual(created);
+      expect(resolved?.rootPath).toBe(join(directory, "example"));
+    },
+  );
+
+  test("returns undefined when no project encloses the path", async () => {
+    const directory = await inTempDirectory();
+    expect(await manager().resolve({ filePath: directory })).toBeUndefined();
+  });
+
+  test("throws InvalidProjectConfigError for malformed JSON", async () => {
+    const directory = await inTempDirectory();
+    await mkdir(join(directory, "agentcore"), { recursive: true });
+    await Bun.write(join(directory, "agentcore", "agentcore.json"), "{ not json");
+
+    await expect(manager().resolve({ filePath: directory })).rejects.toBeInstanceOf(
+      InvalidProjectConfigError,
+    );
+  });
+
+  test("throws InvalidProjectConfigError when the spec fails validation", async () => {
+    const directory = await inTempDirectory();
+    await mkdir(join(directory, "agentcore"), { recursive: true });
+    await Bun.write(
+      join(directory, "agentcore", "agentcore.json"),
+      JSON.stringify({ name: "example", runtimes: [{ name: "broken" }] }),
+    );
+
+    await expect(manager().resolve({ filePath: directory })).rejects.toBeInstanceOf(
+      InvalidProjectConfigError,
+    );
+  });
+
+  test("resolves a spec carrying sections the CLI does not read", async () => {
+    const directory = await inTempDirectory();
+    await mkdir(join(directory, "agentcore"), { recursive: true });
+    await Bun.write(
+      join(directory, "agentcore", "agentcore.json"),
+      JSON.stringify({
+        name: "legacy",
+        version: 1,
+        managedBy: "CDK",
+        runtimes: [
+          {
+            name: "agent",
+            build: "CodeZip",
+            entrypoint: "main.py",
+            codeLocation: "app/agent",
+            protocol: "HTTP",
+          },
+        ],
+        memories: [{ name: "m1" }],
+        gateways: [],
+      }),
+    );
+
+    const resolved = await manager().resolve({ filePath: directory });
+    expect(resolved?.runtimes[0]?.name).toBe("agent");
   });
 });

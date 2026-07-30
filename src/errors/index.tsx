@@ -7,6 +7,7 @@ export {
   InvalidEnvironmentError,
   NestedProjectError,
   NetworkingError,
+  NoProjectError,
   NotImplementedError,
   ProjectFileExistsError,
   RuntimeInvokeInterruptedError,

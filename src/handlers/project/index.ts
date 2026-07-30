@@ -1,3 +1,4 @@
+import { withProject } from "../../middleware";
 import { Router } from "../../router";
 import type { AppIO } from "../../io";
 import { createCreateProjectHandler } from "./create";
@@ -12,20 +13,30 @@ import type { ProjectManager } from "./types";
 type ProjectHandlerConfig = {
   projectManager: ProjectManager;
   io: AppIO;
+  /** Directory project-scoped commands resolve the project from. */
+  cwd?: string;
 };
 
 export function createProjectHandler(config: ProjectHandlerConfig): Router {
   const project = new Router("project", "manage an AgentCore project");
 
+  // npm/bun scripts change process.cwd() to the package root; INIT_CWD
+  // preserves the directory the user actually ran the command from.
+  const cwd = config.cwd ?? process.env.INIT_CWD ?? process.cwd();
+
+  // Commands that operate on an existing project get it resolved onto the
+  // context. `create` stays unwrapped — it runs where no project exists yet.
+  const inProject = withProject({ projectManager: config.projectManager, cwd });
+
   project.handler(
     createCreateProjectHandler({ projectManager: config.projectManager, io: config.io }),
   );
-  project.handler(createAddProjectHandler());
-  project.handler(createRemoveProjectHandler());
-  project.handler(createDevProjectHandler());
-  project.handler(createDeployProjectHandler());
-  project.handler(createStatusProjectHandler());
-  project.handler(createBuildProjectHandler());
+  project.handler(inProject(createAddProjectHandler()));
+  project.handler(inProject(createRemoveProjectHandler()));
+  project.handler(inProject(createDevProjectHandler()));
+  project.handler(inProject(createDeployProjectHandler()));
+  project.handler(inProject(createStatusProjectHandler()));
+  project.handler(inProject(createBuildProjectHandler()));
 
   return project;
 }

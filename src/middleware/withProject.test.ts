@@ -1,23 +1,45 @@
 import { test, expect, describe } from "bun:test";
-import { Router, createHandler } from "../router";
-import { createSilentLogger } from "../testing";
+import { NoProjectError } from "../errors";
+import type { Project, ProjectManager } from "../handlers/project/types";
+import { ProjectKey, Router, createHandler } from "../router";
 import { withProject } from "./withProject";
-import { FsProjectManager } from "../core/project";
+
+function app(projectManager: ProjectManager, onProject: (project: Project | undefined) => void) {
+  const router = new Router("app", "test");
+  router.use(withProject({ projectManager, cwd: "/some/path" }));
+  router.handler(
+    createHandler({
+      name: "check",
+      description: "noop",
+      handle: async (ctx) => onProject(ctx.value(ProjectKey)),
+    }),
+  );
+  return router;
+}
 
 describe("withProject", () => {
-  test("throws not implemented", async () => {
-    const projectManager = new FsProjectManager({ logger: createSilentLogger() });
+  test("pins the resolved project on the context", async () => {
+    const project: Project = { name: "example", rootPath: "/some/path", runtimes: [] };
+    const projectManager = {
+      resolve: async () => project,
+      create: async () => project,
+    };
 
-    const app = new Router("app", "test");
-    app.use(withProject({ projectManager, cwd: "/some/path" }));
-    app.handler(
-      createHandler({
-        name: "check",
-        description: "noop",
-        handle: async () => {},
-      }),
-    );
+    let seen: Project | undefined;
+    await app(projectManager, (p) => (seen = p)).route(["node", "app", "check"]);
+    expect(seen).toEqual(project);
+  });
 
-    await expect(app.route(["node", "app", "check"])).rejects.toThrow(/not implemented/);
+  test("throws NoProjectError when no project encloses the working directory", async () => {
+    const projectManager = {
+      resolve: async () => undefined,
+      create: async (): Promise<Project> => {
+        throw new Error("unused");
+      },
+    };
+
+    await expect(
+      app(projectManager, () => {}).route(["node", "app", "check"]),
+    ).rejects.toBeInstanceOf(NoProjectError);
   });
 });

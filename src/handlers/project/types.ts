@@ -108,8 +108,33 @@ export type ResolveProjectInput = {
   filePath: string;
 };
 
+/**
+ * The slice of agentcore.json the CLI consumes. Parsing is loose so projects
+ * carrying sections we don't read yet (memories, gateways, ...) still resolve.
+ */
+export const ProjectSpecSchema = z.looseObject({
+  name: z.string().min(1),
+  runtimes: z
+    .array(
+      z.looseObject({
+        name: z.string().min(1),
+        build: z.enum(["CodeZip", "Container"]),
+        entrypoint: z.string().min(1),
+        codeLocation: z.string().min(1),
+        dockerfile: z.string().optional(),
+      }),
+    )
+    .default([]),
+});
+
+export type ProjectRuntime = z.infer<typeof ProjectSpecSchema>["runtimes"][number];
+
 export type Project = {
   name: string;
+  /** Absolute path to the project root (the parent of agentcore/). */
+  rootPath: string;
+  /** The runtimes registered in agentcore.json. */
+  runtimes: ProjectRuntime[];
 };
 
 /**

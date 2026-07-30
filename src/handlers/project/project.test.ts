@@ -23,7 +23,16 @@ async function run(args: string[]) {
 }
 
 describe.each(["add", "remove", "dev", "deploy", "status", "build"])("project %s", (command) => {
+  test("refuses to run outside a project", async () => {
+    await inTempDirectory();
+    await expect(run([command])).rejects.toThrow(/no AgentCore project found/);
+  });
+
   test("throws because it is not implemented yet", async () => {
+    const directory = await inTempDirectory();
+    await run(["create", "--project-name", "MyAgent"]);
+    process.chdir(join(directory, "MyAgent"));
+
     await expect(run([command])).rejects.toThrow(/not implemented/);
   });
 });

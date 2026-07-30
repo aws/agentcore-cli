@@ -69,6 +69,16 @@ export class InputValidationError extends AgentCoreCLIError {
   }
 }
 
+/** Error raised when a command requires an AgentCore project and none encloses the working directory. */
+export class NoProjectError extends AgentCoreCLIError {
+  constructor(searchPath: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
+    super(
+      `no AgentCore project found at ${searchPath} or any parent directory; run \`agentcore project create\` to make one`,
+      { ...options, source: ERROR_SOURCE.USER, meta: { ...options?.meta, searchPath } },
+    );
+  }
+}
+
 /** Error raised when a command or operation has not been implemented yet. */
 export class NotImplementedError extends AgentCoreCLIError {
   constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
