@@ -91,7 +91,7 @@ async function editCustom(screen: InvokeScreen, down: number, choice: number, va
 
 async function configureRuntimeScopedOptions(screen: InvokeScreen, token: string) {
   await screen.write("\x0f");
-  await waitForText(screen.lastFrame, "Request Options");
+  await waitForText(screen.lastFrame, "Request options");
   await editText(screen, 5, RUNTIME_USER_ID);
   await screen.press("down");
   await screen.press("return");
@@ -264,7 +264,7 @@ describe("Runtime invoke console", () => {
     expect(screen.lastFrame()).toContain("Enter JSON payload");
 
     await screen.write("\x0f");
-    await waitForText(screen.lastFrame, "Request Options");
+    await waitForText(screen.lastFrame, "Request options");
     await screen.press("down");
     await screen.press("return");
     await screen.press("down");
@@ -405,10 +405,10 @@ describe("Runtime invoke console", () => {
 
     await waitForText(screen.lastFrame, "idle");
     await screen.write("\x0f");
-    await waitForText(screen.lastFrame, "Request Options");
+    await waitForText(screen.lastFrame, "Request options");
     const frame = screen.lastFrame()!;
     expect(frame.includes("Bearer JWT")).toBe(conditional);
-    expect(frame.includes("MCP method")).toBe(conditional);
+    expect(frame.includes("MCP")).toBe(conditional);
     expect(
       frame
         .split("\n")
@@ -428,6 +428,7 @@ describe("Runtime invoke console", () => {
       .setGetResponse({
         agentRuntimeArn: RUNTIME_ARN,
         protocolConfiguration: { serverProtocol: "MCP" },
+        authorizerConfiguration: { customJWTAuthorizer: {} },
         requestHeaderConfiguration: { requestHeaderAllowlist: ["X-Tenant"] },
       } as GetAgentRuntimeResponse)
       .setInvokeResponse({
@@ -439,19 +440,24 @@ describe("Runtime invoke console", () => {
 
     await waitForText(screen.lastFrame, "idle");
     await screen.write("\x0f");
-    await waitForText(screen.lastFrame, "Request Options");
+    await waitForText(screen.lastFrame, "Request options");
     await editCustom(screen, 1, 3, "application/vnd.test+json");
-    await editCustom(screen, 1, 4, "application/vnd.test-response+json");
+    await editCustom(screen, 1, 5, "application/vnd.test-response+json");
     await editText(screen, 2, "runtime-session");
-    await moveDown(screen, 2);
+    await editText(screen, 1, "runtime-user");
+    await screen.press("down");
     await screen.press("return");
     await screen.write("X-Tenant: retail\nX-Amzn-Bedrock-AgentCore-Runtime-Custom-Mode: fast");
     await screen.write("\x04");
+    await editText(screen, 1, "bearer-token");
     await editText(screen, 1, "mcp-session");
     await editText(screen, 1, "2025-06-18");
     await editCustom(screen, 1, 4, "tasks/run");
     await editText(screen, 1, "task-name");
     await editText(screen, 1, "trace-id");
+    await editText(screen, 1, "00-trace-id-span-id-01");
+    await editText(screen, 1, "vendor=value");
+    await editText(screen, 1, "tenant=retail");
     await screen.press("escape");
     await waitForText(screen.lastFrame, "idle");
 
@@ -467,34 +473,39 @@ describe("Runtime invoke console", () => {
       contentType: "application/vnd.test+json",
       accept: "application/vnd.test-response+json",
       runtimeSessionId: "runtime-session",
+      runtimeUserId: "runtime-user",
       applicationHeaders: [
         ["X-Tenant", "retail"],
         ["X-Amzn-Bedrock-AgentCore-Runtime-Custom-Mode", "fast"],
       ],
+      bearerToken: "bearer-token",
       mcpSessionId: "mcp-session",
       mcpProtocolVersion: "2025-06-18",
       mcpMethod: "tasks/run",
       mcpName: "task-name",
       traceId: "trace-id",
+      traceParent: "00-trace-id-span-id-01",
+      traceState: "vendor=value",
+      baggage: "tenant=retail",
     });
   });
 
-  test("Request Options editors save drafts and Esc cancels them", async () => {
+  test("Request options editors save drafts and Esc cancels them", async () => {
     const core = new TestCoreClient();
     core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
     const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "idle");
     await screen.write("\x0f");
-    await waitForText(screen.lastFrame, "Request Options");
+    await waitForText(screen.lastFrame, "Request options");
     await moveDown(screen, 1);
     await screen.press("return");
     await moveDown(screen, 3);
     await screen.press("return");
     await screen.write("application/cancelled");
     await screen.press("escape");
-    await waitForText(screen.lastFrame, "Request Options");
-    expect(screen.lastFrame()).toContain("Content type: application/json");
+    await waitForText(screen.lastFrame, "Request options");
+    expect(screen.lastFrame()).toMatch(/Content type\s+application\/json/);
     expect(screen.lastFrame()).not.toContain("application/cancelled");
 
     await screen.press("return");
@@ -502,19 +513,19 @@ describe("Runtime invoke console", () => {
     await screen.press("return");
     await screen.write("application/saved");
     await screen.press("return");
-    await waitForText(screen.lastFrame, "Content type: application/saved");
+    await waitForText(screen.lastFrame, "application/saved");
 
     await moveDown(screen, 5);
     await screen.press("return");
     await screen.write("X-Test: cancelled");
     await screen.press("escape");
-    await waitForText(screen.lastFrame, "Request Options");
+    await waitForText(screen.lastFrame, "Request options");
     expect(screen.lastFrame()).not.toContain("X-Test: cancelled");
 
     await screen.press("return");
     await screen.write("X-Test: saved");
     await screen.write("\x04");
-    await waitForText(screen.lastFrame, "Application headers: X-Test: saved");
+    await waitForText(screen.lastFrame, "1 header");
   });
 
   test("Ctrl+T preserves Runtime-scoped credentials across endpoints and clears sessions", async () => {
@@ -568,11 +579,13 @@ describe("Runtime invoke console", () => {
     expect(screen.lastFrame()).toContain("Sessions: Runtime new · MCP new");
 
     await screen.write("\x0f");
-    await waitForText(screen.lastFrame, "Request Options");
+    await waitForText(screen.lastFrame, "Request options");
     const endpointOptions = screen.lastFrame()!;
-    expect(endpointOptions).toContain(`Runtime user ID: ${RUNTIME_USER_ID}`);
-    expect(endpointOptions).toContain(`Application headers: ${APPLICATION_HEADER}`);
-    expect(endpointOptions).toContain("*".repeat(token.length));
+    expect(endpointOptions).toMatch(new RegExp(`User ID\\s+${RUNTIME_USER_ID}`));
+    expect(endpointOptions).toMatch(/Application headers\s+1 header/);
+    expect(endpointOptions).toMatch(/Bearer JWT\s+Configured/);
+    expect(endpointOptions).not.toContain(APPLICATION_HEADER);
+    expect(endpointOptions).not.toContain(token);
     await screen.press("escape");
 
     core.runtime.setInvokeResponse({
@@ -659,9 +672,9 @@ describe("Runtime invoke console", () => {
     expect(screen.lastFrame()).toContain("Sessions: Runtime new · MCP new");
 
     await screen.write("\x0f");
-    await waitForText(screen.lastFrame, "Request Options");
+    await waitForText(screen.lastFrame, "Request options");
     const options = screen.lastFrame()!;
-    expect(options).toContain(`Runtime user ID: ${RUNTIME_USER_ID}`);
+    expect(options).toMatch(new RegExp(`User ID\\s+${RUNTIME_USER_ID}`));
     expect(options).not.toContain("secret-header");
     expect(options).not.toContain("*".repeat(token.length));
     await screen.press("escape");
@@ -721,7 +734,7 @@ describe("Runtime invoke console", () => {
 
     await waitForText(screen.lastFrame, "idle");
     await screen.write("\x0f");
-    await waitForText(screen.lastFrame, "Request Options");
+    await waitForText(screen.lastFrame, "Request options");
     await editText(screen, 7, "mcp-session");
     await editText(screen, 1, "2025-06-18");
     await editCustom(screen, 1, 4, "tasks/run");
@@ -864,7 +877,7 @@ describe("Runtime invoke console", () => {
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
       .setInvokeResponse({
         statusCode: 200,
-        contentType: "application/problem+json",
+        contentType: "application/json",
         body: (async function* () {
           mutable.set(Buffer.from(first));
           yield mutable.subarray(0, first.length);
@@ -978,7 +991,7 @@ describe("Runtime invoke console", () => {
     try {
       await waitForText(screen.lastFrame, "idle");
       await screen.write("\x0f");
-      await waitForText(screen.lastFrame, "Request Options");
+      await waitForText(screen.lastFrame, "Request options");
       for (let index = 0; index < 3; index++) await screen.press("down");
       await screen.press("return");
       await screen.press("down");
@@ -1006,7 +1019,7 @@ describe("Runtime invoke console", () => {
 
     await waitForText(screen.lastFrame, "idle");
     await screen.write("\x0f");
-    await waitForText(screen.lastFrame, "Request Options");
+    await waitForText(screen.lastFrame, "Request options");
     for (let index = 0; index < 3; index++) await screen.press("down");
     await screen.press("return");
     await screen.press("down");
@@ -1026,7 +1039,7 @@ describe("Runtime invoke console", () => {
 
     await waitForText(screen.lastFrame, "idle");
     await screen.write("\x0f");
-    await waitForText(screen.lastFrame, "Request Options");
+    await waitForText(screen.lastFrame, "Request options");
     await screen.press("return");
     await screen.press("down");
     await screen.press("return");
@@ -1074,7 +1087,7 @@ describe("Runtime invoke console", () => {
 
     await waitForText(screen.lastFrame, "idle");
     await screen.write("\x0f");
-    await waitForText(screen.lastFrame, "Request Options");
+    await waitForText(screen.lastFrame, "Request options");
     await editText(screen, 7, token);
     await screen.press("escape");
     await screen.write("{}");

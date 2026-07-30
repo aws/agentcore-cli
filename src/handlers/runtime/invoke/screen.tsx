@@ -18,7 +18,11 @@ import {
   parseRuntimeInvokeHeaders,
   resolveRuntimeInvokeSources,
 } from "./request";
-import { RequestOptionsScreen, type RuntimeInvokeOptions } from "./RequestOptionsScreen";
+import {
+  RequestOptionsScreen,
+  type RequestOptionsMode,
+  type RuntimeInvokeOptions,
+} from "./RequestOptionsScreen";
 import { RuntimePayloadInput } from "./RuntimePayloadInput";
 import { classifyRuntimeResponse, writeRuntimeInvokeFile } from "./response";
 
@@ -139,6 +143,7 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
     contentType: "application/json",
   });
   const [showOptions, setShowOptions] = useState(false);
+  const [optionsMode, setOptionsMode] = useState<RequestOptionsMode>("overview");
   const [history, setHistory] = useState<Exchange[]>([]);
   const [prettyJson, setPrettyJson] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -366,7 +371,23 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
       breadcrumb={["agentcore", "runtime", "invoke", target.runtimeId, target.qualifier]}
       keyHints={
         showOptions
-          ? [{ key: "esc", label: "back" }]
+          ? optionsMode === "overview"
+            ? [
+                { key: "enter", label: "edit" },
+                { key: "↑↓", label: "move" },
+                { key: "esc", label: "back" },
+              ]
+            : optionsMode === "multiline"
+              ? [
+                  { key: "ctl+d", label: "save" },
+                  { key: "enter", label: "newline" },
+                  { key: "esc", label: "cancel" },
+                ]
+              : [
+                  { key: "enter", label: optionsMode === "choice" ? "select" : "save" },
+                  ...(optionsMode === "choice" ? [{ key: "↑↓", label: "move" }] : []),
+                  { key: "esc", label: "cancel" },
+                ]
           : busy
             ? [
                 { key: "esc", label: "interrupt" },
@@ -399,7 +420,11 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
         <RequestOptionsScreen
           value={requestOptions}
           onChange={setRequestOptions}
-          onClose={() => setShowOptions(false)}
+          onClose={() => {
+            setShowOptions(false);
+            setOptionsMode("overview");
+          }}
+          onModeChange={setOptionsMode}
           customJwt={customJwt}
           mcp={mcp}
         />

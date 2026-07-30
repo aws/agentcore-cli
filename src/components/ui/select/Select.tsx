@@ -14,6 +14,8 @@ export interface SelectProps<T = string> {
   items: SelectItem<T>[];
   /** Called when the user presses Enter on an enabled item */
   onSelect: (item: SelectItem<T>) => void;
+  /** Value highlighted when the select mounts */
+  initialValue?: T;
   /** Whether this select captures keyboard input */
   focus?: boolean;
   /** Theme override — defaults to darkTheme */
@@ -68,15 +70,16 @@ function ListDisplay<T>({ items, activeIndex, isFocused, theme }: ListDisplayPro
 interface FocusedSelectProps<T> {
   items: SelectItem<T>[];
   onSelect: (item: SelectItem<T>) => void;
+  initialValue?: T;
   theme: InkUITheme;
 }
 
-function FocusedSelect<T>({ items, onSelect, theme }: FocusedSelectProps<T>) {
+function FocusedSelect<T>({ items, onSelect, initialValue, theme }: FocusedSelectProps<T>) {
   const { exit } = useApp();
 
-  // Start on the first non-disabled item
   const firstEnabled = items.findIndex((it) => !it.disabled);
-  const [index, setIndex] = useState(Math.max(0, firstEnabled));
+  const initialIndex = items.findIndex((it) => !it.disabled && Object.is(it.value, initialValue));
+  const [index, setIndex] = useState(Math.max(0, initialIndex >= 0 ? initialIndex : firstEnabled));
 
   const move = (dir: 1 | -1) => {
     setIndex((prev) => {
@@ -119,6 +122,7 @@ function FocusedSelect<T>({ items, onSelect, theme }: FocusedSelectProps<T>) {
 export function Select<T = string>({
   items,
   onSelect,
+  initialValue,
   focus = true,
   theme = darkTheme,
 }: SelectProps<T>) {
@@ -126,12 +130,13 @@ export function Select<T = string>({
   const canFocus = focus && isRawModeSupported;
 
   if (canFocus) {
-    return <FocusedSelect items={items} onSelect={onSelect} theme={theme} />;
+    return (
+      <FocusedSelect items={items} onSelect={onSelect} initialValue={initialValue} theme={theme} />
+    );
   }
 
-  const firstEnabled = Math.max(
-    0,
-    items.findIndex((it) => !it.disabled),
-  );
-  return <ListDisplay items={items} activeIndex={firstEnabled} isFocused={false} theme={theme} />;
+  const initialIndex = items.findIndex((it) => !it.disabled && Object.is(it.value, initialValue));
+  const firstEnabled = items.findIndex((it) => !it.disabled);
+  const activeIndex = Math.max(0, initialIndex >= 0 ? initialIndex : firstEnabled);
+  return <ListDisplay items={items} activeIndex={activeIndex} isFocused={false} theme={theme} />;
 }
