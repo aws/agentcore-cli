@@ -9,7 +9,7 @@ description = "AgentCore Code-Based Evaluator (Autoevals)"
 requires-python = ">=3.10"
 dependencies = [
     "bedrock-agentcore[autoevals]",
-    "autoevals>=0.0.80",
+    "autoevals>=0.0.80,<1.0.0",
 {{#if ModelProviderBedrock}}
     # autoevals grades via LiteLLMClient -> Bedrock (Converse); litellm replaces the openai judge
     "litellm>=1.60,<1.85",
