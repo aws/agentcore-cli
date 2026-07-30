@@ -69,10 +69,12 @@ export async function projectTree(
 ): Promise<ProjectNode> {
   const { appDir, assetDir } = TEMPLATES[template];
   return dir(".", [
+    file(".gitignore", () => src.read("templates/shared/gitignore.template")),
     dir("agentcore", [
       dir("cdk", await expandDir(src, "cdk")),
       file("agentcore.json", async () => json(agentcoreSpec(name, template))),
       file("aws-targets.json", async () => json([])),
+      file(".env.local", () => src.read("templates/shared/env.local.template")),
     ]),
     dir("app", [dir(appDir, await expandDir(src, assetDir))]),
   ]);

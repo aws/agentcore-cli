@@ -2,6 +2,8 @@
 
 exports[`FsProjectManager.create scaffolds the expected file tree for hello-world-python into a fresh directory 1`] = `
 [
+  ".gitignore",
+  "agentcore/.env.local",
   "agentcore/agentcore.json",
   "agentcore/aws-targets.json",
   "agentcore/cdk/.gitignore",
@@ -23,6 +25,8 @@ exports[`FsProjectManager.create scaffolds the expected file tree for hello-worl
 
 exports[`FsProjectManager.create scaffolds the expected file tree for hello-world-python-container into a fresh directory 1`] = `
 [
+  ".gitignore",
+  "agentcore/.env.local",
   "agentcore/agentcore.json",
   "agentcore/aws-targets.json",
   "agentcore/cdk/.gitignore",
