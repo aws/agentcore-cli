@@ -72,7 +72,8 @@ async function loadResources(): Promise<{ resources: ABTestResources; region: st
     for (const name of Object.keys(resources.onlineEvalConfigs ?? {})) onlineEvalConfigs.add(name);
   }
 
-  // Gateway-target names come from project spec (deployed as `${project}-${target}`).
+  // Gateway-target names come from project spec (deployed by their spec name as-is; only the gateway
+  // itself is prefixed with `${project}-`).
   for (const gw of projectSpec.agentCoreGateways ?? []) {
     for (const t of gw.targets ?? []) {
       if (t.targetType === 'httpRuntime') targets.add(t.name);

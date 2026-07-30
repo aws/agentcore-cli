@@ -1,7 +1,13 @@
 import { ConfigIO, JobNotFoundError, serializeResult } from '../../../lib';
 import { createJobEngine } from '../../operations/jobs';
 import type { ABTestJobRecord, JobType } from '../../operations/jobs';
-import { getInvocationUrl, printABTestDetail, printABTestHistory } from '../../operations/jobs/ab-test/format';
+import {
+  INVOCATION_PATH_HINT,
+  getInvocationUrl,
+  isGatewayBaseUrl,
+  printABTestDetail,
+  printABTestHistory,
+} from '../../operations/jobs/ab-test/format';
 import { printBatchEvaluationDetail, printBatchEvaluationHistory } from '../../operations/jobs/batch-evaluation/format';
 import { printInsightsDetail, printInsightsHistory } from '../../operations/jobs/insights/format';
 import { printRecommendationDetail, printRecommendationHistory } from '../../operations/jobs/recommendation/format';
@@ -44,6 +50,22 @@ const TYPE_META: Record<
   },
 };
 
+/**
+ * URL fields for `view ab-test --json`.
+ *
+ * Target-based tests have a real invocation path, so they keep `invocationUrl`. Config-bundle tests do
+ * not (the path is whichever gateway target the caller invokes — see getInvocationUrl), so they report
+ * `gatewayUrl` + `invocationUrlHint`. Scripts reading `.invocationUrl` therefore get nothing for those
+ * tests rather than a URL that 404s (issue #1854).
+ */
+function abTestUrlFields(record: ABTestJobRecord): Record<string, string | undefined> {
+  const url = getInvocationUrl(record);
+  if (url && isGatewayBaseUrl(record)) {
+    return { gatewayUrl: url, invocationUrlHint: INVOCATION_PATH_HINT };
+  }
+  return { invocationUrl: url };
+}
+
 function registerViewSubcommand(viewCmd: Command, type: JobType) {
   const meta = TYPE_META[type];
 
@@ -65,8 +87,7 @@ function registerViewSubcommand(viewCmd: Command, type: JobType) {
             if (!record) {
               throw new JobNotFoundError(`${meta.label} "${id}" not found.`);
             }
-            const extra =
-              type === 'ab-test' ? { invocationUrl: getInvocationUrl(record as unknown as ABTestJobRecord) } : {};
+            const extra = type === 'ab-test' ? abTestUrlFields(record as unknown as ABTestJobRecord) : {};
             console.log(JSON.stringify(serializeResult({ success: true, ...record, ...extra })));
             return { job_type: type };
           });

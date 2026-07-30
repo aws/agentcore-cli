@@ -4,9 +4,16 @@ import { formatJobDate } from '../shared/format';
 import type { ABTestJobRecord } from '../shared/types';
 
 /**
- * Derive the gateway invocation URL from the stored gateway ARN.
- * Target-based: `https://{gateway}/{control-target-name}/invocations`.
- * Config-bundle: `https://{gateway}/{agent-name}/invocations`.
+ * Derive the URL to send test traffic to, from the stored gateway ARN.
+ *
+ * Target-based: a full invocation URL, `https://{gateway}/{control-target-name}/invocations`.
+ *
+ * Config-bundle: the gateway base URL only. These tests attach to the whole gateway — the variants
+ * are configuration bundles, and the service splits traffic with a gateway rule — so the path segment
+ * is whichever gateway target the caller invokes, which the CLI cannot know. The path segment must be
+ * a gateway TARGET name; substituting the runtime name (`record.agent`) produced URLs that failed with
+ * "No Target found for Target name: <runtime>" whenever a target was not named identically to its
+ * runtime (issue #1854). Callers append the target path themselves.
  */
 export function getInvocationUrl(record: ABTestJobRecord): string | undefined {
   const parts = record.gatewayArn.split(':');
@@ -18,8 +25,16 @@ export function getInvocationUrl(record: ABTestJobRecord): string | undefined {
     const targetName = record.variants[0]?.targetName;
     return targetName ? `${baseUrl}/${targetName}/invocations` : undefined;
   }
-  return record.agent ? `${baseUrl}/${record.agent}/invocations` : undefined;
+  return baseUrl;
 }
+
+/** True when `getInvocationUrl` yields a gateway base URL that still needs a target path appended. */
+export function isGatewayBaseUrl(record: ABTestJobRecord): boolean {
+  return record.mode !== 'target-based';
+}
+
+/** Names what the caller must append to a gateway base URL to reach a variant. */
+export const INVOCATION_PATH_HINT = 'append /<gateway-target>/invocations (see `agentcore status --json`)';
 
 export function printABTestHistory(records: ABTestJobRecord[]): void {
   if (records.length === 0) {
@@ -47,7 +62,14 @@ export function printABTestDetail(record: ABTestJobRecord): void {
   console.log(`Gateway: ${record.gatewayArn}`);
   console.log(`Gateway filter: ${record.gatewayFilter?.targetPaths?.[0] ?? 'none'}`);
   const invocationUrl = getInvocationUrl(record);
-  if (invocationUrl) console.log(`Invocation URL: ${invocationUrl}`);
+  if (invocationUrl) {
+    if (isGatewayBaseUrl(record)) {
+      console.log(`Gateway URL: ${invocationUrl}`);
+      console.log(`  → ${INVOCATION_PATH_HINT}`);
+    } else {
+      console.log(`Invocation URL: ${invocationUrl}`);
+    }
+  }
   console.log(`Started: ${formatJobDate(record.createdAt)}`);
   if (record.completedAt) console.log(`Stopped: ${formatJobDate(record.completedAt)}`);
   if (record.maxDurationExpiresAt) console.log(`Max duration expires: ${formatJobDate(record.maxDurationExpiresAt)}`);

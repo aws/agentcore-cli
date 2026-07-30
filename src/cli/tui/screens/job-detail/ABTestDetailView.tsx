@@ -1,7 +1,7 @@
 import { getErrorMessage } from '../../../errors';
 import { isTerminal } from '../../../operations/jobs';
 import type { ABTestJobRecord, DebugCheckResult, JobEngine } from '../../../operations/jobs';
-import { getInvocationUrl } from '../../../operations/jobs/ab-test/format';
+import { INVOCATION_PATH_HINT, getInvocationUrl, isGatewayBaseUrl } from '../../../operations/jobs/ab-test/format';
 import { Panel } from '../../components';
 import { lifecycleColor, statusColor } from './helpers';
 import { Box, Text, useInput } from 'ink';
@@ -129,11 +129,22 @@ export function ABTestDetailView({
         <Text>
           <Text bold>Gateway:</Text> {record.gatewayArn}
         </Text>
-        {invocationUrl && (
-          <Text>
-            <Text bold>Invocation URL:</Text> {invocationUrl}
-          </Text>
-        )}
+        {invocationUrl &&
+          (isGatewayBaseUrl(record) ? (
+            <>
+              <Text>
+                <Text bold>Gateway URL:</Text> {invocationUrl}
+              </Text>
+              <Text dimColor>
+                {'  → '}
+                {INVOCATION_PATH_HINT}
+              </Text>
+            </>
+          ) : (
+            <Text>
+              <Text bold>Invocation URL:</Text> {invocationUrl}
+            </Text>
+          ))}
         {record.createdAt && (
           <Text>
             <Text bold>Started:</Text> {new Date(record.createdAt).toLocaleString()}
