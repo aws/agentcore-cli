@@ -17,7 +17,8 @@ import {
   type Middleware,
 } from "./index";
 import { InputValidationError } from "../errors";
-import { TelemetryAttributesRecorder } from "../telemetry";
+import { DefaultTelemetryClient } from "../telemetry";
+import { createSilentLogger, TestGlobalConfigAccessor } from "../testing";
 
 // --- helpers ---------------------------------------------------------------
 
@@ -687,10 +688,16 @@ test.each([
       handle: async () => {},
     });
 
+    const telemetryClient = new DefaultTelemetryClient({
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+      sessionId: "test-session-id",
+    });
+
     const root = new Router("agentcore");
     root.handler(get);
 
-    const recorder = new TelemetryAttributesRecorder(`cli.command_run`);
+    const recorder = telemetryClient.getAttributesRecorder("cli.command_run");
     const ctx = ValueContext.EmptyContext().withValue(TelemetryAttributesRecorderKey, recorder);
     const cmd = exitOverrideAll(compile(root, ctx));
 

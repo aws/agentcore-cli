@@ -8,7 +8,7 @@ import { Command } from "commander";
 import type { Logger } from "../logging";
 import type { GlobalConfigAccessor } from "../globalConfig";
 import type { Project } from "../handlers/project/types";
-import { TelemetryAttributesRecorder } from "../telemetry";
+import { type AttributesOf, type AttributesRecorder } from "../telemetry";
 
 // CommandKey exposes the Commander Command for the executing leaf via context.
 export const CommandKey: ContextKey<Command> = contextKey<Command>("commander.command");
@@ -18,7 +18,7 @@ export const PathKey: ContextKey<string> = contextKey<string>("path");
 export const LoggerKey = contextKey<Logger>("logger");
 
 export const TelemetryAttributesRecorderKey = contextKey<
-  TelemetryAttributesRecorder<"cli.command_run">
+  AttributesRecorder<AttributesOf<"cli.command_run">>
 >("telemetryAttributesRecorder");
 
 export const GlobalConfigAccessorKey: ContextKey<GlobalConfigAccessor> =

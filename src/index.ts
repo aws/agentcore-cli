@@ -14,7 +14,7 @@ import { FsReadWriteJson } from "./io";
 import { createFileLogger, LOG_LEVEL } from "./logging";
 import { runWithExitCode } from "./runnable";
 import { DefaultGlobalConfigAccessor } from "./globalConfig";
-import { DefaultTelemetryClient, TelemetryAttributesRecorder } from "./telemetry";
+import { DefaultTelemetryClient } from "./telemetry";
 import { AgentCoreCLIError } from "./errors";
 import { TelemetryAttributesRecorderKey, ValueContext } from "./router";
 
@@ -50,7 +50,7 @@ process.exit(
       globalConfigAccessor,
     });
 
-    const commandRunTelemetryRecorder = new TelemetryAttributesRecorder("cli.command_run", {
+    const commandRunTelemetryRecorder = telemetryClient.getAttributesRecorder("cli.command_run", {
       exit_reason: "success",
     });
 
@@ -75,9 +75,10 @@ process.exit(
         globalConfigAccessor,
       });
 
-      const context = ValueContext.EmptyContext().withValue<
-        TelemetryAttributesRecorder<"cli.command_run">
-      >(TelemetryAttributesRecorderKey, commandRunTelemetryRecorder);
+      const context = ValueContext.EmptyContext().withValue<typeof commandRunTelemetryRecorder>(
+        TelemetryAttributesRecorderKey,
+        commandRunTelemetryRecorder,
+      );
 
       // Handle the request
       await rootHandler.route(argv, context);
@@ -95,7 +96,7 @@ process.exit(
         await telemetryClient.emit(
           "cli.command_run",
           Date.now() - startTime,
-          commandRunTelemetryRecorder.getAttributes(),
+          commandRunTelemetryRecorder,
         );
       } catch (e) {
         const error = AgentCoreCLIError.fromError(e);

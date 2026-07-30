@@ -8,6 +8,7 @@ import {
   type ValueOf,
   METRICS,
   type MetricName,
+  type AttributesRecorder,
 } from "./types";
 import type { GlobalConfigAccessor } from "../globalConfig";
 import { FileSystemSink } from "./fileSystemSink";
@@ -40,40 +41,43 @@ export class DefaultTelemetryClient implements TelemetryClient {
       path.join(os.homedir(), ".agentcore", "telemetry", `${this.sessionId}.jsonl`);
   }
 
+  getAttributesRecorder<TMetricName extends MetricName>(
+    _metricName: TMetricName,
+    initialAttributes: Partial<AttributesOf<TMetricName>> = {},
+  ): AttributesRecorder<AttributesOf<TMetricName>> {
+    return new InMemoryAttributesRecorder(initialAttributes);
+  }
+
   async emit<TMetricName extends MetricName>(
     metricName: TMetricName,
     metricValue: ValueOf<TMetricName>,
-    metricAttributes: AttributesOf<TMetricName>,
+    attributesRecorder: AttributesRecorder<AttributesOf<TMetricName>>,
   ): Promise<void> {
-    try {
-      const metricSinks = await this.getMetricSinks();
-      const resourceAttributes = await this.getResourceAttributes();
-      // merge in resource attributes with metric attributes before sending to sink.
-      const attributes = {
-        ...resourceAttributes,
-        ...metricAttributes,
-      };
+    const metricSinks = await this.getMetricSinks();
+    const resourceAttributes = await this.getResourceAttributes();
 
-      const validatedMetricValue = METRICS[metricName]["valueSchema"].parse(metricValue);
+    const metricAttributes = METRICS[metricName]["attributeSchema"].parse(
+      attributesRecorder.getAttributes(),
+    );
+    const validatedMetricValue = METRICS[metricName]["valueSchema"].parse(metricValue);
 
-      metricSinks.forEach((sink) => {
-        try {
-          sink.send(metricName, validatedMetricValue, attributes);
-        } catch (e) {
-          const error = e instanceof Error ? e : new Error(String(e));
-          this.logger
-            .child({ errorName: error.name, errorMessage: error.message })
-            .warn(`failed to record to sink '${sink.getName()}'`);
-          // do not allow a single sink failure to fail other sinks.
-        }
-      });
-    } catch (e) {
-      const error = e instanceof Error ? e : new Error(String(e));
-      this.logger
-        .child({ errorName: error.name, errorMessage: error.message })
-        .warn(`failed to emit telemetry`);
-      // telemetry is best-effort, don't throw.
-    }
+    // merge in resource attributes with metric attributes before sending to sink.
+    const attributes = {
+      ...resourceAttributes,
+      ...metricAttributes,
+    };
+
+    metricSinks.forEach((sink) => {
+      try {
+        sink.send(metricName, validatedMetricValue, attributes);
+      } catch (e) {
+        const error = e instanceof Error ? e : new Error(String(e));
+        this.logger
+          .child({ errorName: error.name, errorMessage: error.message })
+          .warn(`failed to record to sink '${sink.getName()}'`);
+        // do not allow a single sink failure to fail other sinks.
+      }
+    });
   }
 
   async shutdown(): Promise<void> {
@@ -128,4 +132,27 @@ export class DefaultTelemetryClient implements TelemetryClient {
 function once<T>(fn: () => Promise<T>): () => Promise<T> {
   let cachedPromise: Promise<T> | undefined;
   return () => (cachedPromise ??= fn());
+}
+
+/** An in-memory implementation of {@link AttributesRecorder} that stores the data in memory **/
+class InMemoryAttributesRecorder<
+  TAttributes extends Record<string, unknown>,
+> implements AttributesRecorder<TAttributes> {
+  private data: Partial<TAttributes>;
+
+  constructor(initialAttributes?: Partial<TAttributes>) {
+    this.data = initialAttributes ?? {};
+  }
+
+  record(newData: Partial<TAttributes>): Partial<TAttributes> {
+    this.data = {
+      ...this.data,
+      ...newData,
+    };
+    return this.data;
+  }
+
+  getAttributes(): Partial<TAttributes> {
+    return this.data;
+  }
 }

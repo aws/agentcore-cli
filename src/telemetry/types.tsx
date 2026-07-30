@@ -5,12 +5,38 @@ import { commandRunSchema } from "./shapes";
  * The primary interface for telemetry that orchestrates the emitting of metrics
  */
 export interface TelemetryClient {
+  /**
+   * Get a recorder for accumulating attributes associated with a specific metric.  
+   */
+  getAttributesRecorder<TMetricName extends MetricName>(
+    metricName: TMetricName,
+    initialAttributes: Partial<AttributesOf<TMetricName>>,
+  ): AttributesRecorder<AttributesOf<TMetricName>>;
+
+  /**
+   * Emits the given data, attaching the attributes stored in the given attribute recorder
+   */
   emit<TMetricName extends MetricName>(
     metricName: TMetricName,
     metricValue: ValueOf<TMetricName>,
-    attributes: AttributesOf<TMetricName>,
+    attributesRecorder: AttributesRecorder<AttributesOf<TMetricName>>,
   ): Promise<void>;
+
   shutdown(): Promise<void>;
+}
+
+/**
+ * A strongly typed recorder for accumulating metric attributes
+ */
+export interface AttributesRecorder<TAttributes extends Record<string, unknown>> {
+  /**
+   * Retrieves the underlying attributes
+   */
+  getAttributes(): Partial<TAttributes>;
+  /**
+   * Add attributes that overwrite existing values if already set.
+   */
+  record(data: Partial<TAttributes>): Partial<TAttributes>;
 }
 
 /**
