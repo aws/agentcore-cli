@@ -191,6 +191,7 @@ test("exposes feature sub-clients", () => {
   });
   expect(core.harness).toBeDefined();
   expect(core.memory).toBeDefined();
+  expect(core.gateway).toBeDefined();
 });
 
 test("getRuntime sends the abort signal to the control client", async () => {

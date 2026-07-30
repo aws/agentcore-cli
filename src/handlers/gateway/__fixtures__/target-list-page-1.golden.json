@@ -1,0 +1,15 @@
+{
+  "items": [
+    {
+      "targetId": "KALJACI9HO",
+      "name": "agentcore-cli-gateway-read-target-a1",
+      "status": "READY",
+      "createdAt": "2026-07-29T22:20:22.462Z",
+      "updatedAt": "2026-07-29T22:20:25.484Z",
+      "description": "AgentCore CLI persistent Gateway Target read fixture",
+      "lastSynchronizedAt": "2026-07-29T22:20:25.286Z",
+      "targetType": "MCP_SERVER"
+    }
+  ],
+  "nextToken": "AQICAHjoR4+rRMkqrOqAClU4WXRl/BYNcFGMZzyZmTV8TePbugFWJqzdVKbd+myGJJE2QPzmAAABPjCCAToGCSqGSIb3DQEHBqCCASswggEnAgEAMIIBIAYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAxlGRbqXmW0GWjjpXQCARCAgfJloMkFwZZZ2tYdIS8tEp+oLT2WKDuRe9YKoYsiePXCXtW0HZ0DjtknJUqWnL7Jy3LrAvV0vMhSGYGjFyAwzRMpV+5o2gp8SGOZ0TW9u9+n9Mi8AidSRpGsiww/ZtISfm4ltKUo48nsnWTheeTstx28BOX9wUANsIXKIuFobJtbBzRrTBPQfE7kO3A5xBKTu44mg5l3t5aCnq6SYNAXiVEBtc0uw8i6XGOp+rh7Ux5mMeYJvRj0tSeHRmMu2nq+T9s+fv35h4yaMXyCn9un7JH+RhlnEwLuJklDOIMnYLEGmGM6o96+WvWvVsb0uufyVUVg7A=="
+}

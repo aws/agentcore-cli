@@ -1,4 +1,5 @@
 import type { CoreEvalClient } from "./eval/types.tsx";
+import type { CoreGatewayClient } from "./gateway/types.tsx";
 import type { CoreHarnessClient } from "./harness/types.tsx";
 import type { CoreIdentityClient } from "./identity/types.tsx";
 import type { CoreMemoryClient } from "./memory/types.tsx";
@@ -11,6 +12,7 @@ export interface Core {
   identity: CoreIdentityClient;
   memory: CoreMemoryClient;
   runtime: CoreRuntimeClient;
+  gateway: CoreGatewayClient;
   eval: CoreEvalClient;
   projectManager: ProjectManager;
 }

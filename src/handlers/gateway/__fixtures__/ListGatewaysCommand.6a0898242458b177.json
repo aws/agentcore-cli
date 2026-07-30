@@ -1,0 +1,19 @@
+{
+  "items": [
+    {
+      "gatewayId": "agentcore-cli-gateway-read-fixture-b-l4suujplgc",
+      "name": "agentcore-cli-gateway-read-fixture-b",
+      "status": "READY",
+      "createdAt": {
+        "$date": "2026-07-29T22:19:40.838Z"
+      },
+      "updatedAt": {
+        "$date": "2026-07-29T22:19:41.416Z"
+      },
+      "authorizerType": "NONE",
+      "description": "AgentCore CLI persistent Gateway read fixture",
+      "protocolType": "MCP"
+    }
+  ],
+  "nextToken": "AQICAHjoR4+rRMkqrOqAClU4WXRl/BYNcFGMZzyZmTV8TePbugFgEU2Zff6U7uPpIzVl3mpcAAABNjCCATIGCSqGSIb3DQEHBqCCASMwggEfAgEAMIIBGAYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAy44tTEe9iQm5g4TEICARCAgeoYkCmeUuPyXdGoQYo/zCK1lbReI/Je6RZ5Cr8gvnP++jvkOO3r/xi/0pIYhCdasgTBKRE7Aquwo6rI9dtjcVxYM1rOTrwBlJlBL4LHgGhvZ3V+PZqEnZhYJhFSzJul3zHtt2pBR5TK3dvfvNIYF86HkgK1+9aw989Yc8hbRmJw2UW1NqDyKepvkcANA7g7oOZ7RjGmCv6t8s+7WEK+10ru8MFw3Jhh1aNaQiC+mioShCF9ad/JxQro/5Ndd1Hs2edMqKcWdFSRuvmBfTRGp5URdFYrOSf7FseWFfTyxFEQHJCROFLcVsruMAA="
+}
