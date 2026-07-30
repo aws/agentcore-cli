@@ -8,7 +8,7 @@ import { Command } from "commander";
 import type { Logger } from "../logging";
 import type { GlobalConfigAccessor } from "../globalConfig";
 import type { Project } from "../handlers/project/types";
-import { TelemetryAttributesRecorder, type CommandPath } from "../telemetry";
+import { TelemetryAttributesRecorder } from "../telemetry";
 
 // CommandKey exposes the Commander Command for the executing leaf via context.
 export const CommandKey: ContextKey<Command> = contextKey<Command>("commander.command");
@@ -82,7 +82,7 @@ function attachAction(
     const commandPath = ctx.require(PathKey);
 
     telemetryAttributesRecorder?.record({
-      command_path: commandPath as CommandPath,
+      command_path: commandPath,
     });
 
     // Inherited group/global flags -> context (typed, read via ctx.value(key)).

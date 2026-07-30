@@ -26,76 +26,13 @@ export const resourceAttributesSchema = z.object({
  */
 export type ResourceAttributes = z.infer<typeof resourceAttributesSchema>;
 
-/**
- * List of all invocable command paths in the CLI that should emit telemetry.
- */
-export const COMMAND_PATHS = [
-  // root
-  "/agentcore",
-
-  // harness
-  "/agentcore/harness",
-  "/agentcore/harness/create",
-  "/agentcore/harness/get",
-  "/agentcore/harness/list",
-  "/agentcore/harness/update",
-  "/agentcore/harness/delete",
-  "/agentcore/harness/invoke",
-  "/agentcore/harness/exec",
-  "/agentcore/harness/endpoint",
-  "/agentcore/harness/endpoint/create",
-  "/agentcore/harness/endpoint/get",
-  "/agentcore/harness/endpoint/list",
-  "/agentcore/harness/endpoint/update",
-  "/agentcore/harness/endpoint/delete",
-  "/agentcore/harness/version",
-  "/agentcore/harness/version/get",
-  "/agentcore/harness/version/list",
-
-  // identity
-  "/agentcore/identity",
-  "/agentcore/identity/api-key-credential-provider",
-  "/agentcore/identity/api-key-credential-provider/create",
-  "/agentcore/identity/api-key-credential-provider/get",
-  "/agentcore/identity/api-key-credential-provider/list",
-  "/agentcore/identity/api-key-credential-provider/update",
-  "/agentcore/identity/api-key-credential-provider/delete",
-
-  // runtime
-  "/agentcore/runtime",
-  "/agentcore/runtime/get",
-  "/agentcore/runtime/list",
-  "/agentcore/runtime/invoke",
-  "/agentcore/runtime/version",
-  "/agentcore/runtime/version/get",
-  "/agentcore/runtime/version/list",
-  "/agentcore/runtime/endpoint",
-  "/agentcore/runtime/endpoint/get",
-  "/agentcore/runtime/endpoint/list",
-
-  // eval
-  "/agentcore/eval",
-  "/agentcore/eval/evaluator",
-  "/agentcore/eval/evaluator/llm-as-a-judge",
-  "/agentcore/eval/evaluator/llm-as-a-judge/create",
-  "/agentcore/eval/evaluator/llm-as-a-judge/update",
-  "/agentcore/eval/evaluator/code-based",
-  "/agentcore/eval/evaluator/code-based/create",
-  "/agentcore/eval/evaluator/code-based/update",
-  "/agentcore/eval/evaluator/get",
-  "/agentcore/eval/evaluator/list",
-  "/agentcore/eval/evaluator/delete",
-
-  // config
-  "/agentcore/config",
-
-  // project
-  "/agentcore/project/create",
-] as const;
-
-export type CommandPath = (typeof COMMAND_PATHS)[number];
-
-const commandPathSchema = z.enum([...COMMAND_PATHS, "unknown"]).catch("unknown");
+// We make an exception for command paths becase they are validated as part of their construction.
+// We still apply a reasonable narrowing here to avoid leakage.
+const commandPathSchema = z
+  .string()
+  .max(128)
+  .regex(/^\/agentcore(\/[a-z][a-z0-9-]*)*$/, "command_path must be a valid CLI command path")
+  .catch("unknown") as unknown as BaseEnumeratedField;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type BaseEnumeratedField = z.ZodEnum<any> | z.ZodBoolean | z.ZodNumber | z.ZodLiteral<any>;
