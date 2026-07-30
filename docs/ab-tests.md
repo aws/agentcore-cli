@@ -122,14 +122,18 @@ the variants per the configured weights:
 https://<gatewayId>.gateway.bedrock-agentcore.<region>.amazonaws.com/<gateway-target>/invocations
 ```
 
-The path segment is always a **gateway target** name — never a runtime name.
+The path segment is always a **gateway target** name — never a runtime name. Config-bundle tests carry no target of
+their own (their variants are configuration bundles), so the CLI resolves the gateway target(s) fronting the `--runtime`
+under test when the test is created:
 
-- **target-based** — a complete **Invocation URL**, using the control variant's target.
-- **config-bundle** — the **Gateway URL** only. These tests attach to the whole gateway rather than to one target (the
-  variants are configuration bundles), so the path segment is whichever gateway target you invoke. Append
-  `/<gateway-target>/invocations` yourself; list the gateway's targets with `agentcore status --json`.
+- **one matching target** (the common case, including target-based tests) — a complete **Invocation URL**.
+- **several matching targets** (e.g. a canary beside prod) — one **Invocation URL** per target; pick the one to send
+  traffic to.
+- **no matching target** — the **Gateway URL** only; append `/<gateway-target>/invocations` yourself, using
+  `agentcore status --json` to list the gateway's targets.
 
-With `--json`, target-based reports `invocationUrl`; config-bundle reports `gatewayUrl` plus `invocationUrlHint`.
+With `--json` the field mirrors these cases: `invocationUrl` (single), `invocationUrlCandidates` (several), or
+`gatewayUrl` + `invocationUrlHint` (none).
 
 ## Results
 

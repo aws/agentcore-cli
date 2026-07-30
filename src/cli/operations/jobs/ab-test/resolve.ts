@@ -5,7 +5,7 @@
  * Extracted from the legacy post-deploy-ab-tests.ts so the AB-test job handler's create()
  * can own role + ARN resolution at start time (the config-as-code deploy path is removed).
  */
-import type { DeployedResourceState } from '../../../../schema';
+import type { AgentCoreProjectSpec, DeployedResourceState } from '../../../../schema';
 import { getCredentialProvider } from '../../../aws/account';
 import type { ABTestEvaluationConfig, ABTestVariant } from '../../../aws/agentcore-ab-tests';
 import { arnPrefix } from '../../../aws/partition';
@@ -241,6 +241,30 @@ export function resolveOnlineEvalArn(ref: string, deployedResources?: DeployedRe
   if (ref.startsWith('arn:')) return ref;
   const config = deployedResources?.onlineEvalConfigs?.[ref];
   return config ? config.onlineEvaluationConfigArn : undefined;
+}
+
+/**
+ * Find the gateway target(s) that route to a runtime, for building a config-bundle test's invocation URL.
+ *
+ * Config-bundle variants carry bundle ARNs, not targets — the only runtime the user names is `--runtime`,
+ * which is a RUNTIME name and NOT a valid gateway path segment. The runtime→target link lives solely in
+ * `agentCoreGateways[].targets[].httpRuntime.runtime`, so reverse-resolve it here. The L3 CDK deploys each
+ * target under its spec name verbatim, so a spec target name IS the deployed path segment.
+ *
+ * Returns every httpRuntime target on the gateway that fronts the runtime, in spec order. Callers treat a
+ * single match as the invocation path and expose several as ambiguous candidates (e.g. a canary beside
+ * prod), never guessing one — a wrong path 404s with "No Target found for Target name: ..." (issue #1854).
+ */
+export function resolveRuntimeTargetNames(
+  gatewayName: string | undefined,
+  runtimeName: string | undefined,
+  projectSpec: Pick<AgentCoreProjectSpec, 'agentCoreGateways'>
+): string[] {
+  if (!gatewayName || !runtimeName) return [];
+  const gateway = (projectSpec.agentCoreGateways ?? []).find(g => g.name === gatewayName);
+  return (gateway?.targets ?? [])
+    .filter(t => t.targetType === 'httpRuntime' && t.httpRuntime?.runtime === runtimeName)
+    .map(t => t.name);
 }
 
 export type { ABTestEvaluationConfig, ABTestVariant };

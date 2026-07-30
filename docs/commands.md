@@ -1267,8 +1267,9 @@ agentcore archive ab-test -i <ab-test-id>
 View job history and details. Works for all four job types — `recommendation`, `batch-evaluation`, `ab-test`, and
 `insights`. With no `[id]` it lists every job of that type; with an `[id]` it shows that job's detail (status, inputs,
 and results). Without `--json` the command launches the interactive TUI; with `--json` it prints a machine-readable
-record (the `ab-test` detail also includes `invocationUrl` for target-based tests, or `gatewayUrl` + `invocationUrlHint`
-for config-bundle tests — see [A/B tests](ab-tests.md#invocation-url)).
+record (the `ab-test` detail also includes an invocation URL — `invocationUrl`, `invocationUrlCandidates`, or
+`gatewayUrl` + `invocationUrlHint` depending on how many gateway targets front the runtime; see
+[A/B tests](ab-tests.md#invocation-url)).
 
 ```bash
 # List all jobs of a type

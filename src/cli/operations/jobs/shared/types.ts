@@ -133,6 +133,17 @@ export interface ABTestJobRecord extends JobRecordBase {
   gatewayArn: string;
   /** Gateway NAME (spec key) — needed by promote() to locate gateway targets in agentcore.json. */
   gatewayName?: string;
+  /**
+   * Config-bundle mode: the gateway target routing to the runtime under test, resolved at create time
+   * and used as the invocation URL's path segment. Set only when exactly one target matches; when several
+   * match it is left unset and `targetCandidates` lists them instead (see resolveRuntimeTargetNames).
+   */
+  targetName?: string;
+  /**
+   * Config-bundle mode: the gateway targets routing to the runtime when more than one matches, so the
+   * user can pick a path. Unset when a single target resolved (that goes in `targetName`).
+   */
+  targetCandidates?: string[];
   roleArn?: string;
   /** True when the CLI auto-created the role in create() (so archive() cleans it up). */
   roleCreatedByCli?: boolean;

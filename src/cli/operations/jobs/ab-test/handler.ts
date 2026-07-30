@@ -25,7 +25,7 @@ import { regionFromArn, resolveJobRegion } from '../shared/region';
 import type { ABTestHandler, ABTestJobRecord, DebugCheckResult, StartABTestJobOptions } from '../shared/types';
 import { buildABTestRequest } from './build-options';
 import { promoteABTestConfig } from './promote';
-import { deleteABTestRole, getOrCreateABTestRole, resolveGatewayArn } from './resolve';
+import { deleteABTestRole, getOrCreateABTestRole, resolveGatewayArn, resolveRuntimeTargetNames } from './resolve';
 import { CloudWatchLogsClient, FilterLogEventsCommand } from '@aws-sdk/client-cloudwatch-logs';
 
 /** AB-test create retries while the freshly-created IAM role propagates (gateway/eval AccessDenied). */
@@ -190,6 +190,14 @@ export const abTestHandler: ABTestHandler = {
       opts.onProgress?.('started', `A/B test created: ${createResult.abTestId} (${createResult.executionStatus})`);
       logger?.finalize(true);
 
+      // Config-bundle tests carry no target in their variants; resolve the gateway target(s) routing to
+      // the runtime so `view` can print a complete invocation URL (a single match) or list candidates
+      // (several). Target-based tests already carry the target in variantSummaries.
+      const targetNames =
+        opts.mode === 'target-based'
+          ? []
+          : resolveRuntimeTargetNames(opts.gateway, opts.runtime ?? opts.agent, projectSpec);
+
       const record: ABTestJobRecord = {
         type: 'ab-test',
         id: createResult.abTestId,
@@ -203,6 +211,8 @@ export const abTestHandler: ABTestHandler = {
         mode: opts.mode,
         gatewayArn,
         gatewayName: opts.gateway,
+        targetName: targetNames.length === 1 ? targetNames[0] : undefined,
+        targetCandidates: targetNames.length > 1 ? targetNames : undefined,
         roleArn,
         roleCreatedByCli,
         variants: built.variantSummaries,

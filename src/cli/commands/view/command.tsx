@@ -3,8 +3,9 @@ import { createJobEngine } from '../../operations/jobs';
 import type { ABTestJobRecord, JobType } from '../../operations/jobs';
 import {
   INVOCATION_PATH_HINT,
+  getGatewayBaseUrl,
   getInvocationUrl,
-  isGatewayBaseUrl,
+  getInvocationUrlCandidates,
   printABTestDetail,
   printABTestHistory,
 } from '../../operations/jobs/ab-test/format';
@@ -53,17 +54,18 @@ const TYPE_META: Record<
 /**
  * URL fields for `view ab-test --json`.
  *
- * Target-based tests have a real invocation path, so they keep `invocationUrl`. Config-bundle tests do
- * not (the path is whichever gateway target the caller invokes — see getInvocationUrl), so they report
- * `gatewayUrl` + `invocationUrlHint`. Scripts reading `.invocationUrl` therefore get nothing for those
- * tests rather than a URL that 404s (issue #1854).
+ * When exactly one gateway target is known (target-based control, or a config-bundle runtime that
+ * resolved to a single target), emit the complete `invocationUrl`. When several targets front the
+ * runtime, emit `invocationUrlCandidates` so the consumer can choose. When none is known, emit
+ * `gatewayUrl` + `invocationUrlHint` so the path can be built by hand. The runtime name is never used
+ * as the path — that was the #1854 bug.
  */
-function abTestUrlFields(record: ABTestJobRecord): Record<string, string | undefined> {
+function abTestUrlFields(record: ABTestJobRecord): Record<string, string | string[] | undefined> {
   const url = getInvocationUrl(record);
-  if (url && isGatewayBaseUrl(record)) {
-    return { gatewayUrl: url, invocationUrlHint: INVOCATION_PATH_HINT };
-  }
-  return { invocationUrl: url };
+  if (url) return { invocationUrl: url };
+  const candidates = getInvocationUrlCandidates(record);
+  if (candidates.length) return { invocationUrlCandidates: candidates };
+  return { gatewayUrl: getGatewayBaseUrl(record), invocationUrlHint: INVOCATION_PATH_HINT };
 }
 
 function registerViewSubcommand(viewCmd: Command, type: JobType) {
