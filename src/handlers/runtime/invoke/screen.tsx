@@ -42,7 +42,8 @@ interface Exchange {
 const invokePath = (...parts: string[]) =>
   ["/agentcore/runtime/invoke", ...parts.map(encodeURIComponent)].join("/");
 
-function optionsAfterTargetChange(
+// Sessions are target-specific; credentials are reusable only within the same Runtime.
+function resetOptionsForTargetChange(
   options: RuntimeInvokeOptions,
   currentRuntimeId: string,
   nextRuntimeId: string,
@@ -348,7 +349,7 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
           if (nextRuntimeId !== target.runtimeId || selected !== target.qualifier) {
             setTarget({ runtimeId: nextRuntimeId, qualifier: selected });
             setRequestOptions((current) =>
-              optionsAfterTargetChange(current, target.runtimeId, nextRuntimeId),
+              resetOptionsForTargetChange(current, target.runtimeId, nextRuntimeId),
             );
             setHistory([]);
             setPrettyJson(false);
