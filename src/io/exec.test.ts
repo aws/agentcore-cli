@@ -1,5 +1,19 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { CommandFailedError, MissingToolError, requireTool, runCommand, toolOnPath } from "./exec";
+
+// Scripts run from files rather than `node -e` one-liners: on win32 runCommand
+// spawns through cmd.exe (for PATHEXT resolution), which mangles quoted args.
+const scriptsDir = await mkdtemp(join(tmpdir(), "agentcore-exec-"));
+async function script(name: string, source: string): Promise<string> {
+  const path = join(scriptsDir, name);
+  await writeFile(path, source);
+  return path;
+}
+
+afterAll(() => rm(scriptsDir, { recursive: true, force: true }));
 
 describe("toolOnPath", () => {
   test("finds a tool that exists", () => {
@@ -28,8 +42,9 @@ describe("requireTool", () => {
 
 describe("runCommand", () => {
   test("resolves on exit 0 and streams output to onOutput", async () => {
+    const succeeding = await script("succeed.js", "console.log('hello')");
     const chunks: string[] = [];
-    await runCommand(["node", "-e", "console.log('hello')"], {
+    await runCommand(["node", succeeding], {
       cwd: process.cwd(),
       onOutput: (chunk) => chunks.push(chunk),
     });
@@ -38,8 +53,8 @@ describe("runCommand", () => {
   });
 
   test("rejects with CommandFailedError carrying output and exit code", async () => {
-    const command = ["node", "-e", "console.error('boom'); process.exit(3)"];
-    const promise = runCommand(command, { cwd: process.cwd() });
+    const failing = await script("fail.js", "console.error('boom'); process.exit(3)");
+    const promise = runCommand(["node", failing], { cwd: process.cwd() });
 
     await expect(promise).rejects.toBeInstanceOf(CommandFailedError);
     await expect(promise).rejects.toThrow(/exit code 3/);
