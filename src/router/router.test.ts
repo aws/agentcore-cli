@@ -4,6 +4,7 @@ import z from "zod";
 
 import {
   Router,
+  TelemetryAttributesRecorderKey,
   ValueContext,
   argument,
   compile,
@@ -16,6 +17,7 @@ import {
   type Middleware,
 } from "./index";
 import { InputValidationError } from "../errors";
+import { TelemetryAttributesRecorder } from "../telemetry";
 
 // --- helpers ---------------------------------------------------------------
 
@@ -668,3 +670,40 @@ test("commands without long-form flag help have no Parameter details section", a
   expect(out).toContain("--id");
   expect(out).not.toContain("Parameter details:");
 });
+
+// --- telemetry: command path recording -------------------------------------
+
+test.each([
+  { scenario: "flag validation succeeds", idFlag: "abc", shouldThrow: false },
+  { scenario: "flag validation fails", idFlag: "toolong", shouldThrow: true },
+])(
+  "records command_path on the telemetry recorder when $scenario",
+  async ({ idFlag, shouldThrow }) => {
+    // we use a real command name here so that telemetry schemas accept the path produced below
+    const get = createHandler({
+      name: "config",
+      description: "",
+      flags: [flag("id", "id", z.string().max(3))],
+      handle: async () => {},
+    });
+
+    const root = new Router("agentcore");
+    root.handler(get);
+
+    const recorder = new TelemetryAttributesRecorder(`cli.command_run`);
+    const ctx = ValueContext.EmptyContext().withValue(TelemetryAttributesRecorderKey, recorder);
+    const cmd = exitOverrideAll(compile(root, ctx));
+
+    if (shouldThrow) {
+      await expect(
+        cmd.parseAsync(["node", "agentcore", "config", "--id", idFlag]),
+      ).rejects.toThrow();
+      recorder.record({ exit_reason: "failure" });
+    } else {
+      await cmd.parseAsync(["node", "agentcore", "config", "--id", idFlag]);
+      recorder.record({ exit_reason: "success" });
+    }
+
+    expect(recorder.getAttributes()).toMatchObject({ command_path: "/agentcore/config" });
+  },
+);

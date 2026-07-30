@@ -5,6 +5,7 @@ export {
   PathKey,
   LoggerKey,
   GlobalConfigAccessorKey,
+  TelemetryAttributesRecorderKey,
   ProjectKey,
   type DefaultHandle,
   type DefaultHandlerProvider,

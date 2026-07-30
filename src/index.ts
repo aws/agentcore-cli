@@ -16,6 +16,7 @@ import { runWithExitCode } from "./runnable";
 import { DefaultGlobalConfigAccessor } from "./globalConfig";
 import { DefaultTelemetryClient, TelemetryAttributesRecorder } from "./telemetry";
 import { AgentCoreCLIError } from "./errors";
+import { TelemetryAttributesRecorderKey, ValueContext } from "./router";
 
 process.exit(
   await runWithExitCode(async (argv: string[]) => {
@@ -74,19 +75,29 @@ process.exit(
         globalConfigAccessor,
       });
 
+      // we inject the attribute recorder early such that its available after we route the command, but before we parse the flags/args.
+      const context = ValueContext.EmptyContext().withValue<
+        TelemetryAttributesRecorder<"cli.command_run">
+      >(TelemetryAttributesRecorderKey, commandRunTelemetryRecorder);
+
       // Handle the request
-      await rootHandler.route(argv);
+      await rootHandler.route(argv, context);
     } catch (e) {
       const error = AgentCoreCLIError.fromError(e);
       rootLogger.child({ error: error.json() }).error();
-      // TODO: add error details to telemetry recorder;
-      commandRunTelemetryRecorder.record({ exit_reason: "failure" });
-
+      commandRunTelemetryRecorder.record({
+        exit_reason: "failure",
+        error_name: error.name,
+        error_source: error.source,
+      });
       throw error;
     } finally {
       try {
-        const attributes = commandRunTelemetryRecorder.getAttributes();
-        await telemetryClient.emit("cli.command_run", Date.now() - startTime, attributes);
+        await telemetryClient.emit(
+          "cli.command_run",
+          Date.now() - startTime,
+          commandRunTelemetryRecorder.getAttributes(),
+        );
       } catch (e) {
         const error = AgentCoreCLIError.fromError(e);
         rootLogger.child({ error: error.json() }).warn("failed to emit telemetry");

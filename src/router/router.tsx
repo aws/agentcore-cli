@@ -8,6 +8,7 @@ import { Command } from "commander";
 import type { Logger } from "../logging";
 import type { GlobalConfigAccessor } from "../globalConfig";
 import type { Project } from "../handlers/project/types";
+import { TelemetryAttributesRecorder, type CommandPath } from "../telemetry";
 
 // CommandKey exposes the Commander Command for the executing leaf via context.
 export const CommandKey: ContextKey<Command> = contextKey<Command>("commander.command");
@@ -15,6 +16,10 @@ export const CommandKey: ContextKey<Command> = contextKey<Command>("commander.co
 export const PathKey: ContextKey<string> = contextKey<string>("path");
 
 export const LoggerKey = contextKey<Logger>("logger");
+
+export const TelemetryAttributesRecorderKey = contextKey<
+  TelemetryAttributesRecorder<"cli.command_run">
+>("telemetryAttributesRecorder");
 
 export const GlobalConfigAccessorKey: ContextKey<GlobalConfigAccessor> =
   contextKey<GlobalConfigAccessor>("globalConfigAccessor");
@@ -71,6 +76,14 @@ function attachAction(
   c.action(async (...actionArgs: unknown[]) => {
     const command = actionArgs[actionArgs.length - 1] as Command;
     const merged = command.optsWithGlobals();
+
+    // avoid requiring telemetry to avoid bloating simple tests.
+    const telemetryAttributesRecorder = ctx.value(TelemetryAttributesRecorderKey);
+    const commandPath = ctx.require(PathKey);
+
+    telemetryAttributesRecorder?.record({
+      command_path: commandPath as CommandPath,
+    });
 
     // Inherited group/global flags -> context (typed, read via ctx.value(key)).
     let leafCtx = ctx.withValue(CommandKey, command);
