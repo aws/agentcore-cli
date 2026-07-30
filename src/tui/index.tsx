@@ -7,6 +7,7 @@ import {
   CommandKey,
   contextKey,
   type ContextKey,
+  TelemetryAttributesRecorderKey,
 } from "../router";
 import type { AppIO } from "../io";
 import type { Core } from "../handlers/types";
@@ -43,6 +44,9 @@ export async function renderTuiAt(
   core: Core,
   io: AppIO,
 ): Promise<void> {
+  const telemetryAttributesRecorder = ctx.value(TelemetryAttributesRecorderKey);
+  telemetryAttributesRecorder?.record({ is_tui: true });
+
   if (!io.stdin.isTTY || !io.stdout.isTTY) {
     throw new InvalidEnvironmentError("interactive mode requires a TTY on stdin and stdout");
   }

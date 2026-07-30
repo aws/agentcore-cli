@@ -18,7 +18,11 @@ export interface TelemetryClient {
  */
 export interface MetricSink {
   /** Send data to the given metric sink **/
-  send(metricName: string, value: number, attributes: Record<string, string | number>): void;
+  send(
+    metricName: string,
+    value: number,
+    attributes: Record<string, string | number | boolean>,
+  ): void;
   /** Flush and close the given metric sink **/
   shutdown(): Promise<void>;
   getName(): string;

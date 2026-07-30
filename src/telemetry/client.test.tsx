@@ -78,12 +78,22 @@ describe("DefaultTelemetryClient", () => {
       {
         metricName: "cli.command_run",
         value: 123,
-        attrs: { ...resourceAttributes, exit_reason: "success", command_path: "/agentcore" },
+        attrs: {
+          ...resourceAttributes,
+          exit_reason: "success",
+          command_path: "/agentcore",
+          is_tui: false,
+        },
       },
       {
         metricName: "cli.command_run",
         value: 456,
-        attrs: { ...resourceAttributes, exit_reason: "failure", command_path: "/agentcore" },
+        attrs: {
+          ...resourceAttributes,
+          exit_reason: "failure",
+          command_path: "/agentcore",
+          is_tui: false,
+        },
       },
     ]);
   });
@@ -123,10 +133,12 @@ describe("DefaultTelemetryClient", () => {
     await enabledClient.emit("cli.command_run", 123, {
       exit_reason: "success",
       command_path: "/agentcore",
+      is_tui: true,
     });
     await disabledClient.emit("cli.command_run", 456, {
       exit_reason: "failure",
       command_path: "/agentcore",
+      is_tui: false,
     });
     await Promise.all([enabledClient.shutdown(), disabledClient.shutdown()]);
 
@@ -146,6 +158,7 @@ describe("DefaultTelemetryClient", () => {
         "node.version": process.version,
         exit_reason: "success",
         command_path: "/agentcore",
+        is_tui: true,
       },
     });
   });
