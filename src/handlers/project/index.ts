@@ -13,8 +13,6 @@ import type { ProjectManager } from "./types";
 type ProjectHandlerConfig = {
   projectManager: ProjectManager;
   io: AppIO;
-  /** Directory project-scoped commands resolve the project from. */
-  cwd?: string;
 };
 
 export function createProjectHandler(config: ProjectHandlerConfig): Router {
@@ -22,7 +20,7 @@ export function createProjectHandler(config: ProjectHandlerConfig): Router {
 
   // npm/bun scripts change process.cwd() to the package root; INIT_CWD
   // preserves the directory the user actually ran the command from.
-  const cwd = config.cwd ?? process.env.INIT_CWD ?? process.cwd();
+  const cwd = process.env.INIT_CWD ?? process.cwd();
 
   // Commands that operate on an existing project get it resolved onto the
   // context. `create` stays unwrapped — it runs where no project exists yet.
