@@ -340,12 +340,15 @@ describe("runtime invoke", () => {
     expect(core.runtime.calls).toEqual([]);
   });
 
-  test("classifies required local validation as usage before Core calls", async () => {
+  test.each<[string, string[]]>([
+    ["--id", ["--payload", "{}"]],
+    ["--payload", ["--id", RUNTIME_ID]],
+  ])("classifies a missing %s as usage before Core calls", async (_flag, args) => {
     const core = new TestCoreClient();
     const output = captureIO();
 
     const code = await runWithExitCode(async () =>
-      runCommand(core, output.io, ["runtime", "invoke", "--payload", "{}"]),
+      runCommand(core, output.io, ["runtime", "invoke", ...args]),
     );
 
     expect(code).toBe(ExitCode.USAGE);
@@ -389,6 +392,16 @@ describe("runtime invoke", () => {
       runCommand(core, output.io, ["runtime", "invoke", "--id", RUNTIME_ID, "--payload", "{}"]),
     ).rejects.toThrow("Runtime returned an invalid ARN");
     expect(core.runtime.calls.map((call) => call.method)).toEqual(["getRuntime"]);
+  });
+
+  test("a bare command reaches the Runtime TUI middleware without Core calls", async () => {
+    const core = new TestCoreClient();
+    const output = captureIO();
+
+    await expect(runCommand(core, output.io, ["runtime", "invoke"])).rejects.toThrow(
+      "interactive mode requires a TTY on stdin and stdout",
+    );
+    expect(core.runtime.calls).toEqual([]);
   });
 
   test.each<[string, ...string[]]>([

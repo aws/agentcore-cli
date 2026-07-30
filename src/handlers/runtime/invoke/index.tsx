@@ -5,6 +5,7 @@ import type { AppIO } from "../../../io";
 import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 import { JsonKey } from "../../keys";
+import { ExitCode } from "../../../runnable";
 import { RuntimeInvokeInterruptedError } from "./errors";
 import {
   normalizeRuntimeInvokeRequest,
@@ -19,8 +20,8 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
     name: "invoke",
     description: "invoke a Runtime",
     flags: [
-      flag("id", "the ID of the Runtime", runtimeIdSchema),
-      flag("payload", "the inline payload to send", z.string(), {
+      flag("id", "the ID of the Runtime", runtimeIdSchema.optional()),
+      flag("payload", "the inline payload to send", z.string().optional(), {
         sensitive: true,
       }),
       flag("qualifier", "the Runtime endpoint qualifier", z.string().optional()),
@@ -49,6 +50,17 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
+      if (flags.id === undefined) {
+        throw new InputValidationError("required option '--id <id>' not specified", {
+          exitCode: ExitCode.USAGE,
+        });
+      }
+      if (flags.payload === undefined) {
+        throw new InputValidationError("required option '--payload <payload>' not specified", {
+          exitCode: ExitCode.USAGE,
+        });
+      }
+
       const jsonOutput = ctx.require(JsonKey);
       if (jsonOutput && flags["output-file"] !== undefined) {
         throw new InputValidationError("--json cannot be used with --output-file");
