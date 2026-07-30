@@ -5,7 +5,6 @@ import {
   THIRD_PARTY_EVALUATOR_LIBRARIES,
   jsonToKwargs,
   jsonToPythonValue,
-  parseParamFlags,
 } from '../EvaluatorPrimitive.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -756,52 +755,3 @@ describe('jsonToKwargs', () => {
   });
 });
 
-describe('parseParamFlags', () => {
-  it('parses number value', () => {
-    expect(parseParamFlags(['threshold=0.7'])).toBe('threshold=0.7');
-  });
-
-  it('parses string value (JSON-quoted)', () => {
-    expect(parseParamFlags(['model="gpt-4"'])).toBe('model="gpt-4"');
-  });
-
-  it('parses boolean value', () => {
-    expect(parseParamFlags(['verbose=true'])).toBe('verbose=True');
-  });
-
-  it('parses array value', () => {
-    expect(parseParamFlags(['items=[1,2,3]'])).toBe('items=[1, 2, 3]');
-  });
-
-  it('treats unquoted non-JSON string as string', () => {
-    expect(parseParamFlags(['name=hello world'])).toBe('name="hello world"');
-  });
-
-  it('parses multiple params', () => {
-    expect(parseParamFlags(['threshold=0.7', 'verbose=true'])).toBe('threshold=0.7, verbose=True');
-  });
-
-  it('throws on missing equals sign', () => {
-    expect(() => parseParamFlags(['noequalssign'])).toThrow('not in key=value format');
-  });
-
-  it('handles value containing equals sign', () => {
-    expect(parseParamFlags(['formula=a=b'])).toBe('formula="a=b"');
-  });
-
-  it('parses null value', () => {
-    expect(parseParamFlags(['callback=null'])).toBe('callback=None');
-  });
-
-  it('parses Python-style True as boolean', () => {
-    expect(parseParamFlags(['include_reason=True'])).toBe('include_reason=True');
-  });
-
-  it('parses Python-style False as boolean', () => {
-    expect(parseParamFlags(['strict=False'])).toBe('strict=False');
-  });
-
-  it('parses Python-style None as null', () => {
-    expect(parseParamFlags(['fallback=None'])).toBe('fallback=None');
-  });
-});

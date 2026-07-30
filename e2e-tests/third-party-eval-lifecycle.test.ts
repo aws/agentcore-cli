@@ -62,8 +62,15 @@ describe.sequential('e2e: third-party evaluator lifecycle (DeepEval + Autoevals)
   const run = (args: string[]) => runAgentCoreCLI(args, projectPath);
 
   it.skipIf(!canRun)(
-    'adds a DeepEval 3P evaluator with --3p-library, --model-provider bedrock, and --param',
+    'adds a DeepEval 3P evaluator with --3p-template-json',
     async () => {
+      const templateJson = JSON.stringify({
+        library: 'deepeval',
+        metric: 'AnswerRelevancyMetric',
+        modelProvider: 'bedrock',
+        model: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+        params: { threshold: 0.5 },
+      });
       const result = await run([
         'add',
         'evaluator',
@@ -71,16 +78,10 @@ describe.sequential('e2e: third-party evaluator lifecycle (DeepEval + Autoevals)
         deepevalEvalName,
         '--level',
         'TRACE',
-        '--3p-library',
-        'deepeval',
-        '--metric',
-        'AnswerRelevancyMetric',
-        '--model-provider',
-        'bedrock',
-        '--model',
-        'us.anthropic.claude-sonnet-4-20250514-v1:0',
-        '--param',
-        'threshold=0.5',
+        '--type',
+        'code-based',
+        '--3p-template-json',
+        templateJson,
         '--json',
       ]);
       expect(result.exitCode, `Add DeepEval evaluator failed: ${result.stdout}`).toBe(0);
@@ -93,8 +94,14 @@ describe.sequential('e2e: third-party evaluator lifecycle (DeepEval + Autoevals)
   );
 
   it.skipIf(!canRun)(
-    'adds an Autoevals 3P evaluator with --3p-library and --model-provider bedrock',
+    'adds an Autoevals 3P evaluator with --3p-template-json',
     async () => {
+      const templateJson = JSON.stringify({
+        library: 'autoevals',
+        metric: 'ExactMatch',
+        modelProvider: 'bedrock',
+        model: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+      });
       const result = await run([
         'add',
         'evaluator',
@@ -102,14 +109,10 @@ describe.sequential('e2e: third-party evaluator lifecycle (DeepEval + Autoevals)
         autoevalsEvalName,
         '--level',
         'TRACE',
-        '--3p-library',
-        'autoevals',
-        '--metric',
-        'ExactMatch',
-        '--model-provider',
-        'bedrock',
-        '--model',
-        'us.anthropic.claude-sonnet-4-20250514-v1:0',
+        '--type',
+        'code-based',
+        '--3p-template-json',
+        templateJson,
         '--json',
       ]);
       expect(result.exitCode, `Add Autoevals evaluator failed: ${result.stdout}`).toBe(0);

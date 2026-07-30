@@ -161,31 +161,7 @@ export function jsonToKwargs(json: string): string {
     .join(', ');
 }
 
-export function parseParamFlags(params: string[]): string {
-  return params
-    .map(param => {
-      const eqIndex = param.indexOf('=');
-      if (eqIndex === -1) {
-        throw new Error(`"${param}" is not in key=value format`);
-      }
-      const key = param.slice(0, eqIndex).trim();
-      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-        throw new Error(`Invalid Python kwarg name "${key}" in --param`);
-      }
-      const rawValue = param.slice(eqIndex + 1).trim();
-      let value: unknown;
-      try {
-        value = JSON.parse(rawValue);
-      } catch {
-        if (rawValue === 'True') value = true;
-        else if (rawValue === 'False') value = false;
-        else if (rawValue === 'None') value = null;
-        else value = rawValue;
-      }
-      return `${key}=${jsonToPythonValue(value)}`;
-    })
-    .join(', ');
-}
+
 
 function getWarningsForMetric(libraryConfig: ThirdPartyLibraryConfig, metricClass: string): string[] {
   const messages: string[] = [];
