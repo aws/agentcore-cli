@@ -35,6 +35,7 @@ function manager(): { manager: FsProjectManager; commands: { command: string[]; 
       runner: async (command, { cwd }) => {
         commands.push({ command, cwd });
       },
+      checkTool: () => {}, // CI hosts don't have uv installed
     }),
     commands,
   };
@@ -149,6 +150,7 @@ describe("FsProjectManager.create", () => {
       runner: async () => {
         throw new Error("npm exploded");
       },
+      checkTool: () => {},
     });
 
     await expect(

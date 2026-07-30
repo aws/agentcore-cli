@@ -30,6 +30,7 @@ type ProjectManagerConfig = {
   logger: Logger;
   source?: AssetSource; // Bun executable or dist/assets depending on runtime
   runner?: CommandRunner; // injectable so tests never spawn real processes
+  checkTool?: typeof requireTool; // injectable so tests don't depend on the host's PATH
 };
 
 /**
@@ -39,11 +40,13 @@ export class FsProjectManager implements ProjectManager {
   private readonly logger: Logger;
   private readonly source: AssetSource;
   private readonly runner: CommandRunner;
+  private readonly checkTool: typeof requireTool;
 
   constructor(config: ProjectManagerConfig) {
     this.logger = config.logger;
     this.source = config.source ?? defaultSource();
     this.runner = config.runner ?? runCommand;
+    this.checkTool = config.checkTool ?? requireTool;
   }
 
   public resolve(_input: ResolveProjectInput): Promise<Project> {
@@ -66,20 +69,20 @@ export class FsProjectManager implements ProjectManager {
     // A failed step leaves the scaffolded files in place; the error tells the
     // user how to rerun the step by hand.
     if (!input.skipInstall) {
-      requireTool("npm", "Install Node.js: https://nodejs.org/");
+      this.checkTool("npm", "Install Node.js: https://nodejs.org/");
       input.onProgress?.("Installing CDK dependencies (npm install)...");
       await this.run(["npm", "install"], join(destination, "agentcore", "cdk"));
 
       const appDir = join(destination, "app", TEMPLATES[input.template].appDir);
       if (existsSync(join(appDir, "pyproject.toml"))) {
-        requireTool("uv", "Install uv: https://docs.astral.sh/uv/getting-started/installation/");
+        this.checkTool("uv", "Install uv: https://docs.astral.sh/uv/getting-started/installation/");
         input.onProgress?.("Syncing Python dependencies (uv sync)...");
         await this.run(["uv", "sync"], appDir);
       }
     }
 
     if (!input.skipGit) {
-      requireTool("git", "Install git: https://git-scm.com/downloads");
+      this.checkTool("git", "Install git: https://git-scm.com/downloads");
       input.onProgress?.("Initializing git repository...");
       await this.run(["git", "init"], destination);
     }

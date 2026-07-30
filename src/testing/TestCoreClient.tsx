@@ -945,6 +945,7 @@ export class TestCoreClient implements Core {
       runner: async (command, { cwd }) => {
         this.projectCommands.push({ command, cwd });
       },
+      checkTool: () => {}, // CI hosts don't have uv installed
     });
   }
 }
