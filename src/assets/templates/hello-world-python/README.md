@@ -1,34 +1,24 @@
 # hello-world
 
-A minimal AgentCore Runtime agent built with the
-[Strands Agents SDK](https://strandsagents.com) — our recommended framework
-for building agents on AWS Bedrock AgentCore.
+An AgentCore Runtime agent built with the [Strands](https://strandsagents.com)
+SDK. Scaffolded by `agentcore project create`.
 
-## What's here
+## Layout
 
-- `main.py` — the agent. A `BedrockAgentCoreApp` wraps a Strands `Agent`;
-  the `@app.entrypoint` function receives each invocation payload and streams
-  the agent's response back to the caller.
-- `pyproject.toml` — Python dependencies, managed with
-  [uv](https://docs.astral.sh/uv/). `agentcore project create` has already run
-  `uv sync` for you (unless you passed `--skip-install`), so `.venv/` is ready.
+- `main.py` — the agent: a `BedrockAgentCoreApp` entrypoint that streams
+  responses from a Strands `Agent`.
+- `pyproject.toml` — dependencies, installed with [uv](https://docs.astral.sh/uv/).
 
-## Run it locally
+## Develop
+
+Run the agent locally from the project root:
 
 ```bash
-uv run main.py
+agentcore project dev
 ```
 
-The app listens on http://localhost:8080. Invoke it:
-
-```bash
-curl -X POST http://localhost:8080/invocations \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Hello!"}'
-```
-
-<!-- TODO: replace the uv run + curl instructions with `agentcore dev` and
-     `agentcore invoke` once those commands are available. -->
+Environment variables for local development go in `agentcore/.env.local`
+(gitignored).
 
 ## Build your agent
 
@@ -56,5 +46,6 @@ for multi-agent patterns, MCP tools, and model configuration.
 
 ## Deploy
 
-Deploy from the project root with the AgentCore CLI; the CDK app under
-`agentcore/cdk` provisions the Runtime that hosts this agent.
+```bash
+agentcore project deploy
+```
