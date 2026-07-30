@@ -403,7 +403,9 @@ describe("runtime invoke", () => {
   test("classifies the TUI requirement as usage at the handler boundary", async () => {
     const core = new TestCoreClient();
     const output = captureIO();
-    const render = spyOn(tui, "renderTuiAt").mockRejectedValue(new tui.TtyRequiredError());
+    const render = spyOn(tui, "renderTuiAt").mockRejectedValue(
+      new tui.InvalidEnvironmentError("interactive mode requires a TTY on stdin and stdout"),
+    );
 
     try {
       const code = await runWithExitCode(async () =>

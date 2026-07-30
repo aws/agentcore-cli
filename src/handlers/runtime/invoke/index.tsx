@@ -6,7 +6,7 @@ import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 import { JsonKey } from "../../keys";
 import { ExitCode } from "../../../runnable";
-import { renderTuiAt, TtyRequiredError } from "../../../tui";
+import { InvalidEnvironmentError, renderTuiAt } from "../../../tui";
 import {
   normalizeRuntimeInvokeRequest,
   parseRuntimeInvokeHeaders,
@@ -71,7 +71,7 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
         try {
           await renderTuiAt(path, ctx, core, io);
         } catch (error) {
-          if (error instanceof TtyRequiredError) {
+          if (error instanceof InvalidEnvironmentError) {
             throw new InputValidationError(error.message, {
               cause: error,
               exitCode: ExitCode.USAGE,
