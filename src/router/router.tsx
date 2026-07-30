@@ -77,7 +77,6 @@ function attachAction(
     const command = actionArgs[actionArgs.length - 1] as Command;
     const merged = command.optsWithGlobals();
 
-    // avoid requiring telemetry to avoid bloating simple tests.
     const telemetryAttributesRecorder = ctx.value(TelemetryAttributesRecorderKey);
     const commandPath = ctx.require(PathKey);
 

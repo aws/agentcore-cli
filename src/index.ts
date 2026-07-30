@@ -75,7 +75,6 @@ process.exit(
         globalConfigAccessor,
       });
 
-      // we inject the attribute recorder early such that its available after we route the command, but before we parse the flags/args.
       const context = ValueContext.EmptyContext().withValue<
         TelemetryAttributesRecorder<"cli.command_run">
       >(TelemetryAttributesRecorderKey, commandRunTelemetryRecorder);
