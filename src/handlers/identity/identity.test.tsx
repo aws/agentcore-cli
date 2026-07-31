@@ -65,14 +65,30 @@ describe("identity command hierarchy", () => {
   });
 
   test.each(["identity", "identity api-key-credential-provider"])(
-    "prints help for bare `%s` without an SDK call",
+    "prints help for `%s --json` without an SDK call",
     async (command) => {
-      const stdout = await run(command.split(" "));
+      const stdout = await run([...command.split(" "), "--json"]);
 
       expect(stdout).toContain(`Usage: agentcore ${command}`);
       expect(stdout).toContain("Commands:");
     },
   );
+});
+
+describe("api-key-credential-provider TUI dispatch", () => {
+  test.each([
+    ["identity", ["identity"]],
+    ["api-key-credential-provider", ["identity", "api-key-credential-provider"]],
+    ["create", ["identity", "api-key-credential-provider", "create"]],
+    ["get", ["identity", "api-key-credential-provider", "get"]],
+    ["list", ["identity", "api-key-credential-provider", "list"]],
+    ["update", ["identity", "api-key-credential-provider", "update"]],
+    ["delete", ["identity", "api-key-credential-provider", "delete"]],
+  ] as const)("opens the TUI for a bare `%s`", async (_label, args) => {
+    await expect(run([...args])).rejects.toThrow(
+      "interactive mode requires a TTY on stdin and stdout",
+    );
+  });
 });
 
 describe("api-key-credential-provider CRUDL", () => {
@@ -118,7 +134,7 @@ describe("api-key-credential-provider CRUDL", () => {
   });
 
   test("lists API key credential providers", async () => {
-    const stdout = await run(["identity", "api-key-credential-provider", "list"]);
+    const stdout = await run(["identity", "api-key-credential-provider", "list", "--json"]);
 
     matchGolden(FIXTURES, "list.golden.json", stdout);
     expect(JSON.parse(stdout).credentialProviders).toBeArray();
@@ -201,15 +217,21 @@ describe("api-key-credential-provider CRUDL", () => {
       ["identity", "api-key-credential-provider", "create", "--api-key", "x"],
       /--name/,
     ],
-    ["create bare", ["identity", "api-key-credential-provider", "create"], /--name/],
-    ["get bare", ["identity", "api-key-credential-provider", "get"], /--name/],
-    ["update bare", ["identity", "api-key-credential-provider", "update"], /--name/],
+    [
+      "get --json (no name)",
+      ["identity", "api-key-credential-provider", "get", "--json"],
+      /--name/,
+    ],
     [
       "update --name only",
       ["identity", "api-key-credential-provider", "update", "--name", "x"],
       /--api-key.*--api-key-secret-reference/,
     ],
-    ["delete bare", ["identity", "api-key-credential-provider", "delete"], /--name/],
+    [
+      "delete --json (no name)",
+      ["identity", "api-key-credential-provider", "delete", "--json"],
+      /--name/,
+    ],
   ] as const)("rejects missing required flags for `%s`", async (_label, args, message) => {
     expect(run([...args])).rejects.toThrow(message);
   });

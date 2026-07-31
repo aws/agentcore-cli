@@ -1,7 +1,7 @@
 import { Router } from "../../../router";
+import { renderTui } from "../../../tui";
 import type { AppIO } from "../../../io";
 import type { Core } from "../../types";
-import { createHelpDefault } from "../../help";
 import { createCreateApiKeyCredentialProviderHandler } from "./create";
 import { createDeleteApiKeyCredentialProviderHandler } from "./delete";
 import { createGetApiKeyCredentialProviderHandler } from "./get";
@@ -10,7 +10,7 @@ import { createUpdateApiKeyCredentialProviderHandler } from "./update";
 
 export function createApiKeyCredentialProviderHandler(core: Core, io: AppIO): Router {
   return new Router("api-key-credential-provider", "manage API key credential providers")
-    .default(createHelpDefault(io))
+    .default(renderTui(core, io))
     .handler(createCreateApiKeyCredentialProviderHandler(core, io))
     .handler(createGetApiKeyCredentialProviderHandler(core))
     .handler(createListApiKeyCredentialProvidersHandler(core))

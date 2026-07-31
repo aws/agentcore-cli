@@ -9,8 +9,8 @@ It gives you two ways to work, from the same binary:
 - **A scriptable CLI** — every operation is a flag-driven subcommand that emits
   JSON (`--json`), so it can be used by codeing agents and can drop cleanly into
   scripts, CI, and automation.
-- **An interactive TUI** — bare Harness, Runtime, and Memory branches and leaves open
-  their corresponding menus and selection flows.
+- **An interactive TUI** — bare Harness, Runtime, Memory, and Identity branches
+  and leaves open their corresponding menus and selection flows.
 
 ```bash
 agentcore                      # launch the interactive TUI
@@ -26,8 +26,8 @@ responses. `agentcore` wraps all of that behind one ergonomic tool.
 
 ## Command surface
 
-Commands with operation flags run headlessly. Bare Harness, Runtime, and Memory branches
-and leaves open their interactive flows.
+Commands with operation flags run headlessly. Bare Harness, Runtime, Memory, and
+Identity branches and leaves open their interactive flows.
 
 ```
 agentcore                          # interactive TUI
@@ -49,12 +49,18 @@ agentcore                          # interactive TUI
 │       ├── update
 │       └── delete
 ├── identity                       # manage AgentCore Identity resources
-│   └── api-key-credential-provider
-│       ├── create                 # create an API key credential provider
-│       ├── get                    # get an API key credential provider
-│       ├── list                   # list API key credential providers
-│       ├── update                 # update an API key credential provider
-│       └── delete                 # delete an API key credential provider
+│   ├── api-key-credential-provider
+│   │   ├── create                 # create an API key credential provider
+│   │   ├── get                    # get an API key credential provider
+│   │   ├── list                   # list API key credential providers
+│   │   ├── update                 # update an API key credential provider
+│   │   └── delete                 # delete an API key credential provider
+│   └── oauth2-credential-provider
+│       ├── create                 # create an OAuth2 credential provider
+│       ├── get                    # get an OAuth2 credential provider
+│       ├── list                   # list OAuth2 credential providers
+│       ├── update                 # update an OAuth2 credential provider
+│       └── delete                 # delete an OAuth2 credential provider
 ├── runtime                        # inspect deployed AgentCore Runtimes
 │   ├── get                        # fetch a Runtime by id
 │   ├── list                       # list Runtimes (server-side paginated)
@@ -161,6 +167,17 @@ agentcore identity api-key-credential-provider get --name my-provider
 agentcore identity api-key-credential-provider list --max-results 10
 agentcore identity api-key-credential-provider update --name my-provider --api-key <new-key>
 agentcore identity api-key-credential-provider delete --name my-provider
+
+# Manage OAuth2 credential providers (guided Custom OAuth2, or --provider-configuration for other vendors)
+agentcore identity oauth2-credential-provider create \
+  --name my-oauth-provider \
+  --vendor CustomOauth2 \
+  --client-id <client-id> \
+  --discovery-url https://issuer.example.com/.well-known/openid-configuration \
+  --client-secret -
+agentcore identity oauth2-credential-provider get --name my-oauth-provider
+agentcore identity oauth2-credential-provider list --max-results 10
+agentcore identity oauth2-credential-provider delete --name my-oauth-provider
 
 # Manage evaluators
 # Create an LLM-as-a-Judge evaluator with a rating-scale preset.
@@ -309,6 +326,19 @@ agentcore memory list
 agentcore memory get
 agentcore memory event
 agentcore memory record
+```
+
+The Identity TUI is read-only: bare `identity` branches and the `get`/`list`
+leaves open interactive menus and detail views. Mutations (`create`, `update`,
+`delete`) are intentionally CLI-only — selecting one in the TUI points you at the
+equivalent CLI command rather than hosting a write flow.
+
+```bash
+agentcore identity
+agentcore identity api-key-credential-provider list
+agentcore identity api-key-credential-provider get
+agentcore identity oauth2-credential-provider list
+agentcore identity oauth2-credential-provider get
 ```
 
 ---

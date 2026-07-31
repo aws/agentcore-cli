@@ -920,12 +920,35 @@ type TestCoreClientOptions = {
   logger?: Logger;
 };
 
-class TestIdentityClient implements CoreIdentityClient {
+export class TestIdentityClient implements CoreIdentityClient {
   readonly calls: RecordedCall[] = [];
 
+  private getApiKeyResponse: GetApiKeyCredentialProviderResponse = DEFAULT_GET_API_KEY_RESPONSE;
+  private listApiKeyResponses = new Map<
+    string | undefined,
+    ListApiKeyCredentialProvidersResponse
+  >();
   private getOauth2Response: GetOauth2CredentialProviderResponse = DEFAULT_GET_OAUTH2_RESPONSE;
+  private listOauth2Responses = new Map<
+    string | undefined,
+    ListOauth2CredentialProvidersResponse
+  >();
   private updateOauth2Response: UpdateOauth2CredentialProviderResponse =
     DEFAULT_UPDATE_OAUTH2_RESPONSE;
+  private error?: Error;
+
+  setGetApiKeyResponse(response: GetApiKeyCredentialProviderResponse): this {
+    this.getApiKeyResponse = response;
+    return this;
+  }
+
+  setListApiKeyResponse(
+    response: ListApiKeyCredentialProvidersResponse,
+    forNextToken?: string,
+  ): this {
+    this.listApiKeyResponses.set(forNextToken, response);
+    return this;
+  }
 
   setGetOauth2Response(response: GetOauth2CredentialProviderResponse): this {
     this.getOauth2Response = response;
@@ -937,11 +960,25 @@ class TestIdentityClient implements CoreIdentityClient {
     return this;
   }
 
+  setListOauth2Response(
+    response: ListOauth2CredentialProvidersResponse,
+    forNextToken?: string,
+  ): this {
+    this.listOauth2Responses.set(forNextToken, response);
+    return this;
+  }
+
+  setError(error: Error | undefined): this {
+    this.error = error;
+    return this;
+  }
+
   async createApiKeyCredentialProvider(
     input: CreateApiKeyCredentialProviderInput,
     options: CoreOptions,
   ): Promise<CreateApiKeyCredentialProviderResponse> {
     this.calls.push({ method: "createApiKeyCredentialProvider", args: [input, options] });
+    if (this.error) throw this.error;
     return DEFAULT_CREATE_API_KEY_RESPONSE;
   }
 
@@ -950,7 +987,8 @@ class TestIdentityClient implements CoreIdentityClient {
     options: CoreOptions,
   ): Promise<GetApiKeyCredentialProviderResponse> {
     this.calls.push({ method: "getApiKeyCredentialProvider", args: [name, options] });
-    return DEFAULT_GET_API_KEY_RESPONSE;
+    if (this.error) throw this.error;
+    return this.getApiKeyResponse;
   }
 
   async listApiKeyCredentialProviders(
@@ -962,7 +1000,12 @@ class TestIdentityClient implements CoreIdentityClient {
       method: "listApiKeyCredentialProviders",
       args: [nextToken, maxResults, options],
     });
-    return DEFAULT_LIST_API_KEYS_RESPONSE;
+    if (this.error) throw this.error;
+    return (
+      this.listApiKeyResponses.get(nextToken) ??
+      this.listApiKeyResponses.get(undefined) ??
+      DEFAULT_LIST_API_KEYS_RESPONSE
+    );
   }
 
   async updateApiKeyCredentialProvider(
@@ -970,6 +1013,7 @@ class TestIdentityClient implements CoreIdentityClient {
     options: CoreOptions,
   ): Promise<UpdateApiKeyCredentialProviderResponse> {
     this.calls.push({ method: "updateApiKeyCredentialProvider", args: [input, options] });
+    if (this.error) throw this.error;
     return DEFAULT_UPDATE_API_KEY_RESPONSE;
   }
 
@@ -978,6 +1022,7 @@ class TestIdentityClient implements CoreIdentityClient {
     options: CoreOptions,
   ): Promise<DeleteApiKeyCredentialProviderResponse> {
     this.calls.push({ method: "deleteApiKeyCredentialProvider", args: [name, options] });
+    if (this.error) throw this.error;
     return DEFAULT_DELETE_API_KEY_RESPONSE;
   }
 
@@ -986,6 +1031,7 @@ class TestIdentityClient implements CoreIdentityClient {
     options: CoreOptions,
   ): Promise<CreateOauth2CredentialProviderResponse> {
     this.calls.push({ method: "createOauth2CredentialProvider", args: [input, options] });
+    if (this.error) throw this.error;
     return DEFAULT_CREATE_OAUTH2_RESPONSE;
   }
 
@@ -994,6 +1040,7 @@ class TestIdentityClient implements CoreIdentityClient {
     options: CoreOptions,
   ): Promise<GetOauth2CredentialProviderResponse> {
     this.calls.push({ method: "getOauth2CredentialProvider", args: [name, options] });
+    if (this.error) throw this.error;
     return this.getOauth2Response;
   }
 
@@ -1006,7 +1053,12 @@ class TestIdentityClient implements CoreIdentityClient {
       method: "listOauth2CredentialProviders",
       args: [nextToken, maxResults, options],
     });
-    return DEFAULT_LIST_OAUTH2_RESPONSE;
+    if (this.error) throw this.error;
+    return (
+      this.listOauth2Responses.get(nextToken) ??
+      this.listOauth2Responses.get(undefined) ??
+      DEFAULT_LIST_OAUTH2_RESPONSE
+    );
   }
 
   async updateOauth2CredentialProvider(
@@ -1014,6 +1066,7 @@ class TestIdentityClient implements CoreIdentityClient {
     options: CoreOptions,
   ): Promise<UpdateOauth2CredentialProviderResponse> {
     this.calls.push({ method: "updateOauth2CredentialProvider", args: [input, options] });
+    if (this.error) throw this.error;
     return this.updateOauth2Response;
   }
 
@@ -1022,6 +1075,7 @@ class TestIdentityClient implements CoreIdentityClient {
     options: CoreOptions,
   ): Promise<DeleteOauth2CredentialProviderResponse> {
     this.calls.push({ method: "deleteOauth2CredentialProvider", args: [name, options] });
+    if (this.error) throw this.error;
     return DEFAULT_DELETE_OAUTH2_RESPONSE;
   }
 }

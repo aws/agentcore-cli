@@ -97,7 +97,7 @@ describe("oauth2-credential-provider CRUDL", () => {
   });
 
   test("lists OAuth2 credential providers", async () => {
-    const stdout = await run(["identity", "oauth2-credential-provider", "list"]);
+    const stdout = await run(["identity", "oauth2-credential-provider", "list", "--json"]);
 
     matchGolden(FIXTURES, "list.golden.json", stdout);
     expect(JSON.parse(stdout).credentialProviders).toBeArray();

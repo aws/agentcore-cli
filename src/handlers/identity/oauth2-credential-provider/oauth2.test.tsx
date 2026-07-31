@@ -100,12 +100,27 @@ describe("oauth2-credential-provider command hierarchy", () => {
     ]);
   });
 
-  test("prints help for bare `identity oauth2-credential-provider` without a Core call", async () => {
-    const { core, stdout } = await run(["identity", "oauth2-credential-provider"]);
+  test("prints help for `identity oauth2-credential-provider --json` without an SDK call", async () => {
+    const { core, stdout } = await run(["identity", "oauth2-credential-provider", "--json"]);
 
     expect(stdout).toContain("Usage: agentcore identity oauth2-credential-provider");
     expect(stdout).toContain("Commands:");
     expect(core.identity.calls).toEqual([]);
+  });
+});
+
+describe("oauth2-credential-provider TUI dispatch", () => {
+  test.each([
+    ["oauth2-credential-provider", ["identity", "oauth2-credential-provider"]],
+    ["create", ["identity", "oauth2-credential-provider", "create"]],
+    ["get", ["identity", "oauth2-credential-provider", "get"]],
+    ["list", ["identity", "oauth2-credential-provider", "list"]],
+    ["update", ["identity", "oauth2-credential-provider", "update"]],
+    ["delete", ["identity", "oauth2-credential-provider", "delete"]],
+  ] as const)("opens the TUI for a bare `%s`", async (_label, args) => {
+    await expect(run([...args])).rejects.toThrow(
+      "interactive mode requires a TTY on stdin and stdout",
+    );
   });
 });
 
@@ -129,10 +144,12 @@ describe("oauth2-credential-provider flag validation", () => {
       ],
       /--client-secret.*--client-secret-reference/,
     ],
-    ["create bare", ["identity", "oauth2-credential-provider", "create"], /--name/],
-    ["get bare", ["identity", "oauth2-credential-provider", "get"], /--name/],
-    ["update bare", ["identity", "oauth2-credential-provider", "update"], /--name/],
-    ["delete bare", ["identity", "oauth2-credential-provider", "delete"], /--name/],
+    ["get --json (no name)", ["identity", "oauth2-credential-provider", "get", "--json"], /--name/],
+    [
+      "delete --json (no name)",
+      ["identity", "oauth2-credential-provider", "delete", "--json"],
+      /--name/,
+    ],
   ] as const)("rejects missing required flags for `%s`", async (_label, args, message) => {
     expect(run([...args])).rejects.toThrow(message);
   });
