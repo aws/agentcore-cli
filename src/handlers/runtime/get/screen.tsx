@@ -1,13 +1,7 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Box, Text, useInput } from "ink";
 import { useNavigate, useParams } from "react-router";
 import { JsonDetail } from "../../../components/JsonDetail";
-import { KeyValueTable } from "../../../components/KeyValueTable.js";
-import { Layout } from "../../../components/Layout";
-import { darkTheme } from "../../../components/ui/_core.js";
-import { Divider } from "../../../components/ui/divider/Divider.js";
-import { Spinner } from "../../../components/ui/spinner";
+import { ResourceDetailScreen } from "../../../components/ResourceDetailScreen";
 import type { ScreenProps } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 
@@ -29,108 +23,52 @@ const ACTIONS = [
   },
 ] as const;
 
-export function RuntimeGetScreen({ ctx, core }: ScreenProps) {
+function useRuntimeDetail({ ctx, core }: ScreenProps, runtimeId: string | undefined) {
   const opts = coreOptsFromCtx(ctx);
-  const navigate = useNavigate();
-  const { runtimeId } = useParams();
-  const [index, setIndex] = useState(0);
-  const detail = useQuery({
+  return useQuery({
     queryKey: ["runtime", opts.region, runtimeId],
     queryFn: () => core.runtime.getRuntime(runtimeId!, opts),
     enabled: runtimeId !== undefined,
   });
+}
 
-  useInput((input, key) => {
-    if (key.escape) {
-      navigate(-1);
-      return;
-    }
-    if (input === "r" && detail.isError) {
-      void detail.refetch();
-      return;
-    }
-    if (detail.isError || !detail.data) return;
-    if (key.upArrow || input === "k") {
-      setIndex((current) => Math.max(0, current - 1));
-      return;
-    }
-    if (key.downArrow || input === "j") {
-      setIndex((current) => Math.min(ACTIONS.length - 1, current + 1));
-      return;
-    }
-    if (key.return && runtimeId) navigate(ACTIONS[index]!.to(runtimeId));
-  });
-
-  const nameWidth = ACTIONS.reduce((width, action) => Math.max(width, action.name.length), 0) + 3;
+export function RuntimeGetScreen(props: ScreenProps) {
+  const navigate = useNavigate();
+  const { runtimeId } = useParams();
+  const detail = useRuntimeDetail(props, runtimeId);
 
   return (
-    <Layout
+    <ResourceDetailScreen
       breadcrumb={["agentcore", "runtime", "get", runtimeId ?? ""]}
-      keyHints={[
-        ...(!detail.isPending && !detail.isError
-          ? [
-              { key: "↑↓/jk", label: "navigate" },
-              { key: "enter", label: "select" },
-            ]
-          : []),
-        ...(detail.isError ? [{ key: "r", label: "retry" }] : []),
-        { key: "esc", label: "back" },
-        { key: "ctl+c", label: "quit" },
-      ]}
-    >
-      {detail.isPending ? (
-        <Spinner label="Loading Runtime…" />
-      ) : detail.isError ? (
-        <Text color="red">Error: {(detail.error as Error).message}</Text>
-      ) : (
-        <Box flexDirection="column">
-          <Box flexDirection="column" paddingLeft={1}>
-            <KeyValueTable
-              items={{
-                id: detail.data.agentRuntimeId ?? "",
-                status: detail.data.status ?? "",
-                ...(detail.data.failureReason ? { failureReason: detail.data.failureReason } : {}),
-                version: detail.data.agentRuntimeVersion ?? "",
-                protocol: detail.data.protocolConfiguration?.serverProtocol ?? "-",
-                network: detail.data.networkConfiguration?.networkMode ?? "-",
-                arn: detail.data.agentRuntimeArn ?? "",
-              }}
-            />
-          </Box>
-
-          <Divider />
-
-          <Box flexDirection="column" paddingLeft={1}>
-            {ACTIONS.map((action, actionIndex) => {
-              const selected = actionIndex === index;
-              return (
-                <Box key={action.name}>
-                  <Text color={darkTheme.colors.focus}>{selected ? "❯ " : "  "}</Text>
-                  <Text
-                    bold={selected}
-                    color={selected ? darkTheme.colors.focus : darkTheme.colors.text}
-                  >
-                    {action.name.padEnd(nameWidth)}
-                  </Text>
-                  <Text color={darkTheme.colors.muted}>{action.description}</Text>
-                </Box>
-              );
-            })}
-          </Box>
-        </Box>
-      )}
-    </Layout>
+      isPending={detail.isPending}
+      error={detail.isError ? (detail.error as Error) : null}
+      items={{
+        id: detail.data?.agentRuntimeId ?? "",
+        status: detail.data?.status ?? "",
+        ...(detail.data?.failureReason ? { failureReason: detail.data.failureReason } : {}),
+        version: detail.data?.agentRuntimeVersion ?? "",
+        protocol: detail.data?.protocolConfiguration?.serverProtocol ?? "-",
+        network: detail.data?.networkConfiguration?.networkMode ?? "-",
+        arn: detail.data?.agentRuntimeArn ?? "",
+      }}
+      actions={
+        runtimeId && detail.data
+          ? ACTIONS.map((action) => ({
+              name: action.name,
+              description: action.description,
+              onSelect: () => navigate(action.to(runtimeId)),
+            }))
+          : []
+      }
+      loadingLabel="Loading Runtime…"
+      onRetry={() => void detail.refetch()}
+    />
   );
 }
 
-export function RuntimeGetJsonScreen({ ctx, core }: ScreenProps) {
-  const opts = coreOptsFromCtx(ctx);
+export function RuntimeGetJsonScreen(props: ScreenProps) {
   const { runtimeId } = useParams();
-  const detail = useQuery({
-    queryKey: ["runtime", opts.region, runtimeId],
-    queryFn: () => core.runtime.getRuntime(runtimeId!, opts),
-    enabled: runtimeId !== undefined,
-  });
+  const detail = useRuntimeDetail(props, runtimeId);
 
   return (
     <JsonDetail

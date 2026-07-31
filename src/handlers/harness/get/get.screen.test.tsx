@@ -95,6 +95,17 @@ describe("harness hub screen", () => {
     r.unmount();
   });
 
+  test("up navigation returns to the previous action", async () => {
+    const { r } = hubScreen();
+
+    await waitForText(r.lastFrame, "detail");
+    await r.press("down");
+    await r.press("up");
+    await r.press("return");
+    await waitForText(r.lastFrame, "agentcore → harness → get → MyHarness-abc123 → json");
+    r.unmount();
+  });
+
   test("enter on `endpoints` opens this harness's endpoint list", async () => {
     const { core, r } = hubScreen();
     core.harness.setListEndpointsResponse({
