@@ -16,7 +16,7 @@ import { runWithExitCode } from "./runnable";
 import { DefaultGlobalConfigAccessor } from "./globalConfig";
 import { DefaultTelemetryClient } from "./telemetry";
 import { AgentCoreCLIError } from "./errors";
-import { TelemetryAttributesRecorderKey, ValueContext } from "./router";
+import { CommandRunMetricEventKey, ValueContext } from "./router";
 
 process.exit(
   await runWithExitCode(async (argv: string[]) => {
@@ -50,7 +50,7 @@ process.exit(
       globalConfigAccessor,
     });
 
-    const commandRunTelemetryRecorder = telemetryClient.getAttributesRecorder("cli.command_run", {
+    const commandRunMetricEvent = telemetryClient.startMetricEvent("cli.command_run", {
       exit_reason: "success",
     });
 
@@ -75,9 +75,9 @@ process.exit(
         globalConfigAccessor,
       });
 
-      const context = ValueContext.EmptyContext().withValue<typeof commandRunTelemetryRecorder>(
-        TelemetryAttributesRecorderKey,
-        commandRunTelemetryRecorder,
+      const context = ValueContext.EmptyContext().withValue(
+        CommandRunMetricEventKey,
+        commandRunMetricEvent,
       );
 
       // Handle the request
@@ -85,7 +85,7 @@ process.exit(
     } catch (e) {
       const error = AgentCoreCLIError.fromError(e);
       rootLogger.child({ error: error.json() }).error();
-      commandRunTelemetryRecorder.record({
+      commandRunMetricEvent.setAttributes({
         exit_reason: "failure",
         error_name: error.name,
         error_source: error.source,
@@ -93,11 +93,7 @@ process.exit(
       throw error;
     } finally {
       try {
-        await telemetryClient.emit(
-          "cli.command_run",
-          Date.now() - startTime,
-          commandRunTelemetryRecorder,
-        );
+        await commandRunMetricEvent.end(Date.now() - startTime);
       } catch (e) {
         const error = AgentCoreCLIError.fromError(e);
         rootLogger.child({ error: error.json() }).warn("failed to emit telemetry");

@@ -8,7 +8,7 @@ import { Command } from "commander";
 import type { Logger } from "../logging";
 import type { GlobalConfigAccessor } from "../globalConfig";
 import type { Project } from "../handlers/project/types";
-import { type AttributesOf, type AttributesRecorder } from "../telemetry";
+import { type MetricEvent } from "../telemetry";
 
 // CommandKey exposes the Commander Command for the executing leaf via context.
 export const CommandKey: ContextKey<Command> = contextKey<Command>("commander.command");
@@ -17,9 +17,8 @@ export const PathKey: ContextKey<string> = contextKey<string>("path");
 
 export const LoggerKey = contextKey<Logger>("logger");
 
-export const TelemetryAttributesRecorderKey = contextKey<
-  AttributesRecorder<AttributesOf<"cli.command_run">>
->("telemetryAttributesRecorder");
+export const CommandRunMetricEventKey =
+  contextKey<MetricEvent<"cli.command_run">>("commandRunMetricEvent");
 
 export const GlobalConfigAccessorKey: ContextKey<GlobalConfigAccessor> =
   contextKey<GlobalConfigAccessor>("globalConfigAccessor");
@@ -99,7 +98,7 @@ function globalFlagsOf(node: Handler): GlobalFlag[] {
 
 /** Add the command path to active command run metric **/
 function recordCommandPath(ctx: Context): void {
-  ctx.value(TelemetryAttributesRecorderKey)?.record({ command_path: ctx.value(PathKey) });
+  ctx.value(CommandRunMetricEventKey)?.setAttributes({ command_path: ctx.value(PathKey) });
 }
 
 // compile walks the Handler tree into a Commander Command tree.

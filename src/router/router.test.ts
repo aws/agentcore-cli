@@ -4,7 +4,7 @@ import z from "zod";
 
 import {
   Router,
-  TelemetryAttributesRecorderKey,
+  CommandRunMetricEventKey,
   ValueContext,
   argument,
   compile,
@@ -677,40 +677,57 @@ test("commands without long-form flag help have no Parameter details section", a
 test.each([
   { scenario: "flag validation succeeds", idFlag: "abc", shouldThrow: false },
   { scenario: "flag validation fails", idFlag: "toolong", shouldThrow: true },
-])(
-  "records command_path on the telemetry recorder when $scenario",
-  async ({ idFlag, shouldThrow }) => {
-    // we use a real command name here so that telemetry schemas accept the path produced below
-    const get = createHandler({
-      name: "config",
-      description: "",
-      flags: [flag("id", "id", z.string().max(3))],
-      handle: async () => {},
-    });
+])("records command_path on the metric event when $scenario", async ({ idFlag, shouldThrow }) => {
+  // we use a real command name here so that telemetry schemas accept the path produced below
+  const get = createHandler({
+    name: "config",
+    description: "",
+    flags: [flag("id", "id", z.string().max(3))],
+    handle: async () => {},
+  });
 
-    const telemetryClient = new DefaultTelemetryClient({
-      logger: createSilentLogger(),
-      globalConfigAccessor: new TestGlobalConfigAccessor(),
-      sessionId: "test-session-id",
-    });
+  const recordedMetrics: { metricName: string; value: number; attributes: Record<string, any> }[] =
+    [];
+  const inMemorySink = {
+    getName: () => "InMemorySink",
+    send: (metricName: string, value: number, attributes: Record<string, any>) => {
+      recordedMetrics.push({ metricName, value, attributes });
+    },
+    shutdown: async () => {},
+  };
 
-    const root = new Router("agentcore");
-    root.handler(get);
+  const telemetryClient = new DefaultTelemetryClient({
+    logger: createSilentLogger(),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
+    sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    metricSinks: [inMemorySink],
+  });
 
-    const recorder = telemetryClient.getAttributesRecorder("cli.command_run");
-    const ctx = ValueContext.EmptyContext().withValue(TelemetryAttributesRecorderKey, recorder);
-    const cmd = exitOverrideAll(compile(root, ctx));
+  const root = new Router("agentcore");
+  root.handler(get);
 
-    if (shouldThrow) {
-      await expect(
-        cmd.parseAsync(["node", "agentcore", "config", "--id", idFlag]),
-      ).rejects.toThrow();
-      recorder.record({ exit_reason: "failure" });
-    } else {
-      await cmd.parseAsync(["node", "agentcore", "config", "--id", idFlag]);
-      recorder.record({ exit_reason: "success" });
-    }
+  const commandRunMetricEvent = telemetryClient.startMetricEvent("cli.command_run");
+  const ctx = ValueContext.EmptyContext().withValue(
+    CommandRunMetricEventKey,
+    commandRunMetricEvent,
+  );
+  const cmd = compile(root, ctx);
 
-    expect(recorder.getAttributes()).toMatchObject({ command_path: "/agentcore/config" });
-  },
-);
+  if (shouldThrow) {
+    await expect(cmd.parseAsync(["node", "agentcore", "config", "--id", idFlag])).rejects.toThrow();
+    commandRunMetricEvent.setAttributes({ exit_reason: "failure" });
+  } else {
+    await cmd.parseAsync(["node", "agentcore", "config", "--id", idFlag]);
+    commandRunMetricEvent.setAttributes({ exit_reason: "success" });
+  }
+
+  await commandRunMetricEvent.end(100);
+
+  expect(recordedMetrics).toHaveLength(1);
+  expect(recordedMetrics[0]!.metricName).toBe("cli.command_run");
+  expect(recordedMetrics[0]!.value).toBe(100);
+  expect(recordedMetrics[0]!.attributes).toMatchObject({
+    command_path: "/agentcore/config",
+    exit_reason: shouldThrow ? "failure" : "success",
+  });
+});

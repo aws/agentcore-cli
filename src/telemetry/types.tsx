@@ -6,37 +6,26 @@ import { commandRunSchema } from "./shapes";
  */
 export interface TelemetryClient {
   /**
-   * Get a recorder for accumulating attributes associated with a specific metric.  
+   * Start a new metric event that accumulates attributes over its lifecycle.
    */
-  getAttributesRecorder<TMetricName extends MetricName>(
+  startMetricEvent<TMetricName extends MetricName>(
     metricName: TMetricName,
-    initialAttributes: Partial<AttributesOf<TMetricName>>,
-  ): AttributesRecorder<AttributesOf<TMetricName>>;
-
-  /**
-   * Emits the given data, attaching the attributes stored in the given attribute recorder
-   */
-  emit<TMetricName extends MetricName>(
-    metricName: TMetricName,
-    metricValue: ValueOf<TMetricName>,
-    attributesRecorder: AttributesRecorder<AttributesOf<TMetricName>>,
-  ): Promise<void>;
+    initialAttributes?: Partial<AttributesOf<TMetricName>>,
+  ): MetricEvent<TMetricName>;
 
   shutdown(): Promise<void>;
 }
 
 /**
- * A strongly typed recorder for accumulating metric attributes
+ * A single in-flight metric event. Accumulate attributes with record(), then
+ * call end() to validate and emit. Throws if the metric is invalid.  
  */
-export interface AttributesRecorder<TAttributes extends Record<string, unknown>> {
-  /**
-   * Retrieves the underlying attributes
-   */
-  getAttributes(): Partial<TAttributes>;
-  /**
-   * Add attributes that overwrite existing values if already set.
-   */
-  record(data: Partial<TAttributes>): Partial<TAttributes>;
+export interface MetricEvent<TMetricName extends MetricName> {
+  /** Accumulate attributes incrementally. Later calls overwrite earlier values for the same key. */
+  setAttributes(data: Partial<AttributesOf<TMetricName>>): void;
+
+  /** Validate attributes, emit value + attributes to all sinks. */
+  end(value: ValueOf<TMetricName>): Promise<void>;
 }
 
 /**

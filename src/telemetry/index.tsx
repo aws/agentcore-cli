@@ -1,2 +1,2 @@
 export { DefaultTelemetryClient } from "./client";
-export { type AttributesOf, type AttributesRecorder } from "./types";
+export { type AttributesOf, type MetricEvent } from "./types";
