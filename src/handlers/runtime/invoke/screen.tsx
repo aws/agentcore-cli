@@ -12,6 +12,7 @@ import { RuntimeEndpointPicker } from "../../../components/RuntimeEndpointPicker
 import { RuntimePicker } from "../../../components/RuntimePicker";
 import { darkTheme } from "../../../components/ui/_core.js";
 import { Divider } from "../../../components/ui/divider";
+import { KeyHint, type KeyHintItem } from "../../../components/ui/key-hint";
 import { Spinner } from "../../../components/ui/spinner";
 import type { RuntimeInvokeResponse } from "../types";
 import {
@@ -93,6 +94,28 @@ const metadata = (response: RuntimeInvokeResponse) =>
     .filter((entry) => entry[1])
     .map((entry) => entry.join(" "))
     .join(" · ");
+
+function requestOptionsKeyHints(mode: RequestOptionsMode): KeyHintItem[] {
+  if (mode === "overview") {
+    return [
+      { key: "enter", label: "edit" },
+      { key: "↑↓", label: "move" },
+      { key: "esc", label: "back" },
+    ];
+  }
+  if (mode === "multiline") {
+    return [
+      { key: "ctl+d", label: "save" },
+      { key: "enter", label: "newline" },
+      { key: "esc", label: "cancel" },
+    ];
+  }
+  return [
+    { key: "enter", label: mode === "choice" ? "select" : "save" },
+    ...(mode === "choice" ? [{ key: "↑↓", label: "move" }] : []),
+    { key: "esc", label: "cancel" },
+  ];
+}
 
 export function RuntimeInvokeScreen(props: ScreenProps) {
   const { runtimeId, qualifier } = useParams();
@@ -329,6 +352,7 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
       : `Payload · ${contentType}`;
   const floatingOptions = showOptions && columns >= 72 && rows >= 34;
   const optionsPanelWidth = Math.min(76, columns - 4);
+  const optionsKeyHints = requestOptionsKeyHints(optionsMode);
   const closeOptions = () => {
     setShowOptions(false);
     setOptionsMode("overview");
@@ -422,23 +446,9 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
       breadcrumb={["agentcore", "runtime", "invoke", target.runtimeId, target.qualifier]}
       keyHints={
         showOptions
-          ? optionsMode === "overview"
-            ? [
-                { key: "enter", label: "edit" },
-                { key: "↑↓", label: "move" },
-                { key: "esc", label: "back" },
-              ]
-            : optionsMode === "multiline"
-              ? [
-                  { key: "ctl+d", label: "save" },
-                  { key: "enter", label: "newline" },
-                  { key: "esc", label: "cancel" },
-                ]
-              : [
-                  { key: "enter", label: optionsMode === "choice" ? "select" : "save" },
-                  ...(optionsMode === "choice" ? [{ key: "↑↓", label: "move" }] : []),
-                  { key: "esc", label: "cancel" },
-                ]
+          ? floatingOptions
+            ? []
+            : optionsKeyHints
           : busy
             ? [
                 { key: "esc", label: "interrupt" },
@@ -531,8 +541,8 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
               >
                 <Box
                   width={optionsPanelWidth}
-                  height="70%"
-                  minHeight={26}
+                  height="85%"
+                  minHeight={30}
                   flexDirection="column"
                   borderStyle="round"
                   borderColor={theme.colors.border}
@@ -540,7 +550,13 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
                   paddingX={1}
                   overflow="hidden"
                 >
-                  {optionsScreen}
+                  <Box flexGrow={1} flexDirection="column">
+                    {optionsScreen}
+                  </Box>
+                  <Box flexDirection="column">
+                    <Divider width={optionsPanelWidth - 4} />
+                    <KeyHint keys={optionsKeyHints} />
+                  </Box>
                 </Box>
               </Box>
             ) : null}

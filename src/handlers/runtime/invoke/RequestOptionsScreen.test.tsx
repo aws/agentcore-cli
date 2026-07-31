@@ -185,6 +185,14 @@ describe("Request options", () => {
 
     await press(screen, "return");
     expect(screen.lastFrame()).toContain('{"prompt":\n  "{{input}}"\n}');
+    await press(screen, "left");
+    await press(screen, "left");
+    await press(screen, "left");
+    await write(screen, "!");
+    expect(screen.lastFrame()).toContain('{"prompt":\n  "{{input}}!"\n}');
+    await write(screen, "\x04");
+    await press(screen, "return");
+    expect(screen.lastFrame()).toContain('{"prompt":\n  "{{input}}!"\n}');
     await press(screen, "escape");
 
     await press(screen, "up");

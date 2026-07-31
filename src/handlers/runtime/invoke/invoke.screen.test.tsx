@@ -473,16 +473,27 @@ describe("Runtime invoke console", () => {
     await waitForText(screen.lastFrame, "Request options");
 
     const optionsFrame = screen.lastFrame()!;
-    expect(optionsFrame).toContain("Payload · application/json");
-    expect(optionsFrame).toContain("draft payload");
     expect(optionsFrame).toContain("idle · Sessions");
     expect(optionsFrame).toContain("╭");
     const panelLines = optionsFrame.split("\n");
     const panelTop = panelLines.findIndex((line) => line.includes("╭"));
     const panelBottom = panelLines.findIndex((line) => line.includes("╰"));
+    const overviewHints = panelLines.findIndex((line) => line.includes("[enter] edit"));
     expect(panelBottom - panelTop + 1).toBeGreaterThanOrEqual(26);
+    expect(overviewHints).toBeGreaterThan(panelTop);
+    expect(overviewHints).toBeLessThan(panelBottom);
+    expect(panelLines.at(-1)).not.toContain("[enter] edit");
 
     await screen.write("ignored");
+    await moveDown(screen, 2);
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "[ctl+d] save");
+    const editorLines = screen.lastFrame()!.split("\n");
+    const editorBottom = editorLines.findIndex((line) => line.includes("╰"));
+    const editorHints = editorLines.findIndex((line) => line.includes("[ctl+d] save"));
+    expect(editorHints).toBeLessThan(editorBottom);
+    expect(editorLines.at(-1)).not.toContain("[ctl+d] save");
+    await screen.press("escape");
     await screen.press("escape");
     await waitForText(screen.lastFrame, "idle");
     expect(screen.lastFrame()).toContain("draft payload");
