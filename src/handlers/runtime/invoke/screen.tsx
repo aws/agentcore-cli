@@ -554,7 +554,6 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
                   flexDirection="column"
                   borderStyle="round"
                   borderColor={theme.colors.border}
-                  backgroundColor="black"
                   paddingX={1}
                   overflow="hidden"
                 >
