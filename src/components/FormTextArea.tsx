@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { darkTheme } from "./ui/_core.js";
 
@@ -17,10 +16,11 @@ export interface FormTextAreaProps {
   focused?: boolean;
 }
 
-function Cursor({ character, focused }: { character: string; focused: boolean }) {
-  return focused ? <Text inverse>{character}</Text> : <Text>{character}</Text>;
-}
-
+// FormTextArea is a minimal multiline editor: append-only typing/pasting plus
+// backspace. Pasted chunks arrive as one input string whose \r become
+// newlines, so multi-line paste just works. Enter inserts a newline only once
+// there is content — on an empty value it is left to the parent (e.g. to
+// continue a wizard step).
 export function FormTextArea({
   name,
   helpText,
@@ -30,43 +30,27 @@ export function FormTextArea({
   previewLines = 10,
   focused = true,
 }: FormTextAreaProps) {
-  const [rawCursor, setRawCursor] = useState(value.length);
-  const cursor = Math.min(rawCursor, value.length);
-
   useInput(
     (input, key) => {
-      if (key.leftArrow) {
-        setRawCursor(Math.max(0, cursor - 1));
-        return;
-      }
-      if (key.rightArrow) {
-        setRawCursor(Math.min(value.length, cursor + 1));
-        return;
-      }
-      if (key.upArrow || key.downArrow) return;
-
       if (key.return) {
-        if (value !== "") {
-          onChange(value.slice(0, cursor) + "\n" + value.slice(cursor));
-          setRawCursor(cursor + 1);
-        }
+        if (value !== "") onChange(value + "\n");
         return;
       }
       if (key.backspace || key.delete) {
-        if (cursor === 0) return;
-        onChange(value.slice(0, cursor - 1) + value.slice(cursor));
-        setRawCursor(cursor - 1);
+        onChange(value.slice(0, -1));
         return;
       }
       if (key.ctrl || key.meta || key.escape) return;
       if (input !== "") {
-        const next = input.replace(/\r/g, "\n");
-        onChange(value.slice(0, cursor) + next + value.slice(cursor));
-        setRawCursor(cursor + next.length);
+        onChange(value + input.replace(/\r/g, "\n"));
       }
     },
     { isActive: focused },
   );
+
+  const lines = value === "" ? [] : value.split("\n");
+  const hidden = Math.max(0, lines.length - previewLines);
+  const visible = lines.slice(hidden);
 
   return (
     <Box flexDirection="column">
@@ -81,57 +65,20 @@ export function FormTextArea({
         <Text color={theme.colors.text}>{name}</Text>
         <Text color={theme.colors.muted}>{helpText}</Text>
       </Box>
-      {value === "" ? (
+      {hidden > 0 && <Text color={theme.colors.muted}>… (+{hidden} earlier lines)</Text>}
+      {visible.length === 0 ? (
         <Text color={theme.colors.muted}>
-          <Cursor character={placeholder[0] ?? " "} focused={focused} />
-          {placeholder.slice(1)}
+          {placeholder}
+          <Text inverse> </Text>
         </Text>
       ) : (
-        <TextAreaValue
-          value={value}
-          cursor={cursor}
-          previewLines={previewLines}
-          focused={focused}
-        />
+        visible.map((line, i) => (
+          <Text key={i}>
+            {line}
+            {i === visible.length - 1 ? <Text inverse> </Text> : null}
+          </Text>
+        ))
       )}
     </Box>
-  );
-}
-
-function TextAreaValue({
-  value,
-  cursor,
-  previewLines,
-  focused,
-}: {
-  value: string;
-  cursor: number;
-  previewLines: number;
-  focused: boolean;
-}) {
-  const lines = value.split("\n");
-  const beforeCursor = value.slice(0, cursor);
-  const cursorLine = beforeCursor.split("\n").length - 1;
-  const lastNewline = beforeCursor.lastIndexOf("\n");
-  const cursorColumn = cursor - lastNewline - 1;
-  const start = Math.max(0, cursorLine - previewLines + 1);
-  const visible = lines.slice(start, start + previewLines);
-
-  return (
-    <>
-      {start > 0 ? <Text color={theme.colors.muted}>… (+{start} earlier lines)</Text> : null}
-      {visible.map((line, index) => {
-        const lineIndex = start + index;
-        if (lineIndex !== cursorLine) return <Text key={lineIndex}>{line}</Text>;
-
-        return (
-          <Text key={lineIndex}>
-            {line.slice(0, cursorColumn)}
-            <Cursor character={line[cursorColumn] ?? " "} focused={focused} />
-            {line.slice(cursorColumn + 1)}
-          </Text>
-        );
-      })}
-    </>
   );
 }

@@ -57,7 +57,8 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
       }
       if (flags.payload === undefined) {
         const requestOption = Object.entries(flags).some(
-          ([name, value]) => !["id", "qualifier", "payload"].includes(name) && value !== undefined,
+          ([name, value]) =>
+            !["id", "qualifier", "payload", "session-id"].includes(name) && value !== undefined,
         );
         if (ctx.require(JsonKey) || requestOption) {
           throw new InputValidationError("required option '--payload <payload>' not specified", {
@@ -67,6 +68,9 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
         let path = `${ctx.require(PathKey)}/${encodeURIComponent(flags.id)}`;
         if (flags.qualifier !== undefined) {
           path += `/${encodeURIComponent(flags.qualifier)}`;
+        }
+        if (flags["session-id"] !== undefined) {
+          path += `?${new URLSearchParams({ "session-id": flags["session-id"] })}`;
         }
         try {
           await renderTuiAt(path, ctx, core, io);

@@ -431,13 +431,33 @@ describe("runtime invoke", () => {
         "invoke",
         "--id",
         "runtime/blue one",
+        "--session-id",
+        "session/one two",
+      ]);
+      await runCommand(core, output.io, [
+        "runtime",
+        "invoke",
+        "--id",
+        "runtime/blue one",
         "--qualifier",
         "prod/green one",
+      ]);
+      await runCommand(core, output.io, [
+        "runtime",
+        "invoke",
+        "--id",
+        "runtime/blue one",
+        "--qualifier",
+        "prod/green one",
+        "--session-id",
+        "session/one two",
       ]);
 
       expect(render.mock.calls.map(([path]) => path)).toEqual([
         "/agentcore/runtime/invoke/runtime%2Fblue%20one",
+        "/agentcore/runtime/invoke/runtime%2Fblue%20one?session-id=session%2Fone+two",
         "/agentcore/runtime/invoke/runtime%2Fblue%20one/prod%2Fgreen%20one",
+        "/agentcore/runtime/invoke/runtime%2Fblue%20one/prod%2Fgreen%20one?session-id=session%2Fone+two",
       ]);
     } finally {
       render.mockRestore();
