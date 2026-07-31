@@ -226,7 +226,6 @@ describe("DefaultTelemetryClient", () => {
       command_path: "/agentcore",
     });
     await metricEvent.emit(1);
-
     await client.shutdown();
 
     await assertLogsMatch(tempDir, [
