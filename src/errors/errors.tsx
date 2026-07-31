@@ -69,6 +69,27 @@ export class InputValidationError extends AgentCoreCLIError {
   }
 }
 
+/** Error raised when a command or operation has not been implemented yet. */
+export class NotImplementedError extends AgentCoreCLIError {
+  constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
+    super(message ?? "not implemented yet", { ...options, source: ERROR_SOURCE.INTERNAL });
+  }
+}
+
+/** Error raised when detecting an invalid environment */
+export class InvalidEnvironmentError extends AgentCoreCLIError {
+  constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
+    super(message, { ...options, source: ERROR_SOURCE.USER });
+  }
+}
+
+export class SourceResolutionError extends InputValidationError {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "SourceResolutionError";
+  }
+}
+
 /** Error raised when a JSON file cannot be read, parsed, or validated against its schema. */
 export class DeserializationError extends AgentCoreCLIError {
   constructor(
@@ -92,32 +113,16 @@ export class NoProjectError extends AgentCoreCLIError {
   }
 }
 
-/** Error raised when a command or operation has not been implemented yet. */
-export class NotImplementedError extends AgentCoreCLIError {
-  constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
-    super(message ?? "not implemented yet", { ...options, source: ERROR_SOURCE.INTERNAL });
-  }
-}
-
-/** Error raised when detecting an invalid environment */
-export class InvalidEnvironmentError extends AgentCoreCLIError {
-  constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
-    super(message, { ...options, source: ERROR_SOURCE.USER });
-  }
-}
-
-export class SourceResolutionError extends InputValidationError {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = "SourceResolutionError";
-  }
-}
-
-// TODO: attach telemetry metadata to this error class.
-export class DeserializationError extends Error {
-  constructor(path: string, options?: { cause?: unknown }) {
-    super(`Failed to deserialize JSON at "${path}"`, options);
-    this.name = "DeserializationError";
+/** Thrown when a project's agentcore.json exists but cannot be parsed or fails validation. */
+export class InvalidProjectConfigError extends AgentCoreCLIError {
+  constructor(
+    public readonly configPath: string,
+    detail: string,
+  ) {
+    super(`invalid project config at ${configPath}: ${detail}`, {
+      source: ERROR_SOURCE.USER,
+      meta: { configPath },
+    });
   }
 }
 
