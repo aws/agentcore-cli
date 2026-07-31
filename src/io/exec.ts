@@ -29,18 +29,22 @@ export class ProcessFailedError extends AgentCoreCLIError {
   }
 }
 
-/** Returns true if `tool --version` runs successfully — more reliable than probing PATH. */
-export function toolAvailable(tool: string): Promise<boolean> {
+/** Returns true if running `tool` with probeArgs (`--version` by default) exits 0. */
+export function toolAvailable(tool: string, probeArgs: string[] = ["--version"]): Promise<boolean> {
   return new Promise((resolve) => {
-    const child = spawn(tool, ["--version"], { stdio: "ignore", shell: useShell });
+    const child = spawn(tool, probeArgs, { stdio: "ignore", shell: useShell });
     child.on("error", () => resolve(false));
     child.on("close", (exitCode) => resolve(exitCode === 0));
   });
 }
 
 /** Throws {@link MissingToolError} unless `tool` is available. */
-export async function requireTool(tool: string, installHint: string): Promise<void> {
-  if (!(await toolAvailable(tool))) throw new MissingToolError(tool, installHint);
+export async function requireTool(
+  tool: string,
+  installHint: string,
+  probeArgs?: string[],
+): Promise<void> {
+  if (!(await toolAvailable(tool, probeArgs))) throw new MissingToolError(tool, installHint);
 }
 
 export type RunProcessOptions = {

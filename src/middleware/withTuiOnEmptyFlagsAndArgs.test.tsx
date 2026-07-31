@@ -5,11 +5,9 @@ import { Router, createHandler, flag } from "../router";
 import { JsonKey } from "../handlers/keys";
 import { TestCoreClient, testIO } from "../testing";
 
-// The middleware decides between the TUI and the wrapped handler from what the
-// user actually typed. These tests route a real command tree so Commander's
-// option-source tracking (cli vs default) is exercised end to end; the TUI
-// branch is observable as the renderTui TTY error (testIO is not a TTY), the
-// headless branch as the leaf handler running.
+// route runs a command tree whose leaf flags all carry defaults. The branch the
+// middleware takes is observable: the TUI attempt throws (testIO is not a TTY),
+// the headless path runs the leaf handler.
 function route(args: string[]): { ran: () => boolean; routed: Promise<void> } {
   let handled = false;
   const leaf = createHandler({
@@ -40,22 +38,12 @@ describe("withTuiOnEmptyFlagsAndArgs", () => {
     expect(ran()).toBe(false);
   });
 
-  test("runs the handler when a defaulted flag is passed explicitly", async () => {
-    const { ran, routed } = route(["--skip-thing"]);
-
-    await routed;
-    expect(ran()).toBe(true);
-  });
-
-  test("runs the handler when a value flag is passed explicitly", async () => {
-    const { ran, routed } = route(["--template", "b"]);
-
-    await routed;
-    expect(ran()).toBe(true);
-  });
-
-  test("runs the handler under --json instead of opening the TUI", async () => {
-    const { ran, routed } = route(["--json"]);
+  test.each([
+    ["a defaulted boolean flag", ["--skip-thing"]],
+    ["a defaulted value flag", ["--template", "b"]],
+    ["--json", ["--json"]],
+  ])("runs the handler when %s is passed explicitly", async (_label, args) => {
+    const { ran, routed } = route(args);
 
     await routed;
     expect(ran()).toBe(true);
