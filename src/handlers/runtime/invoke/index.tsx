@@ -11,9 +11,11 @@ import {
   normalizeRuntimeInvokeRequest,
   parseRuntimeInvokeHeaders,
   resolveRuntimeInvokeSources,
+  resolveRuntimeInvokeTuiBearerToken,
   runtimeIdSchema,
 } from "./request";
 import { writeRuntimeInvokeResponse } from "./response";
+import { RuntimeInvokeLaunchContextKey } from "./launchContext";
 
 export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -58,7 +60,15 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
       if (flags.payload === undefined) {
         const requestOption = Object.entries(flags).some(
           ([name, value]) =>
-            !["id", "qualifier", "payload", "session-id"].includes(name) && value !== undefined,
+            ![
+              "id",
+              "qualifier",
+              "payload",
+              "session-id",
+              "user-id",
+              "header",
+              "bearer-token",
+            ].includes(name) && value !== undefined,
         );
         if (ctx.require(JsonKey) || requestOption) {
           throw new InputValidationError("required option '--payload <payload>' not specified", {
@@ -69,11 +79,25 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
         if (flags.qualifier !== undefined) {
           path += `/${encodeURIComponent(flags.qualifier)}`;
         }
-        if (flags["session-id"] !== undefined) {
-          path += `?${new URLSearchParams({ "session-id": flags["session-id"] })}`;
-        }
+        const applicationHeaders = parseRuntimeInvokeHeaders(flags.header);
+        const bearerToken = await resolveRuntimeInvokeTuiBearerToken(
+          flags["bearer-token"],
+          io.stdin,
+        );
+        const launchContext = {
+          runtimeId: flags.id,
+          runtimeSessionId: flags["session-id"],
+          runtimeUserId: flags["user-id"],
+          applicationHeaders,
+          bearerToken,
+        };
         try {
-          await renderTuiAt(path, ctx, core, io);
+          await renderTuiAt(
+            path,
+            ctx.withValue(RuntimeInvokeLaunchContextKey, launchContext),
+            core,
+            io,
+          );
         } catch (error) {
           if (error instanceof InvalidEnvironmentError) {
             throw new InputValidationError(error.message, {

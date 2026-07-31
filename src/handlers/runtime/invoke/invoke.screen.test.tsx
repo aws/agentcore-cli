@@ -12,6 +12,7 @@ import {
   waitFor,
   waitForText,
 } from "../../../testing";
+import { RuntimeInvokeLaunchContextKey } from "./launchContext";
 
 const REGION = "us-east-1";
 const RUNTIME_ID = "runtime-123";
@@ -117,10 +118,14 @@ describe("Runtime invoke routing", () => {
     core.runtime
       .setListEndpointsResponse({ runtimeEndpoints: [endpoint()] })
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
-    const screen = renderScreen(
-      `/agentcore/runtime/invoke/${RUNTIME_ID}?session-id=${encodeURIComponent(sessionId)}`,
-      { core },
-    );
+    const screen = renderScreen(`/agentcore/runtime/invoke/${RUNTIME_ID}`, {
+      core,
+      withContext: (ctx) =>
+        ctx.withValue(RuntimeInvokeLaunchContextKey, {
+          runtimeId: RUNTIME_ID,
+          runtimeSessionId: sessionId,
+        }),
+    });
 
     await waitForText(screen.lastFrame, QUALIFIER);
     await screen.press("return");
@@ -349,10 +354,14 @@ describe("Runtime invoke JSON console", () => {
       };
     };
     const initialSession = "cli-selected-session";
-    const screen = renderScreen(
-      `${CONSOLE_PATH}?session-id=${encodeURIComponent(initialSession)}`,
-      { core },
-    );
+    const screen = renderScreen(CONSOLE_PATH, {
+      core,
+      withContext: (ctx) =>
+        ctx.withValue(RuntimeInvokeLaunchContextKey, {
+          runtimeId: RUNTIME_ID,
+          runtimeSessionId: initialSession,
+        }),
+    });
 
     await waitForText(screen.lastFrame, `Runtime ${initialSession}`);
     await screen.write('{"turn":1}');
@@ -368,11 +377,64 @@ describe("Runtime invoke JSON console", () => {
     expect(requests[1]!.mcpSessionId).toBe("returned-mcp");
   });
 
+  test("persists launch identity, authentication, and headers without exposing values", async () => {
+    const token = "secret-bearer-token";
+    const userId = "user-123";
+    const requests: RuntimeInvokeRequest[] = [];
+    const core = new TestCoreClient();
+    core.runtime.setGetResponse({
+      agentRuntimeArn: RUNTIME_ARN,
+      authorizerConfiguration: { customJWTAuthorizer: {} },
+      requestHeaderConfiguration: { requestHeaderAllowlist: ["X-Tenant"] },
+    } as GetAgentRuntimeResponse);
+    core.runtime.invokeRuntime = async (request) => {
+      requests.push(request);
+      return {
+        statusCode: 200,
+        contentType: "application/json",
+        body: responseBody(Buffer.from('{"ok":true}')),
+      };
+    };
+    const screen = renderScreen(CONSOLE_PATH, {
+      core,
+      withContext: (ctx) =>
+        ctx.withValue(RuntimeInvokeLaunchContextKey, {
+          runtimeId: RUNTIME_ID,
+          runtimeUserId: userId,
+          applicationHeaders: [["X-Tenant", "retail"]],
+          bearerToken: token,
+        }),
+    });
+
+    await waitForText(screen.lastFrame, "Context user/JWT/1h");
+    expect(screen.lastFrame()).not.toContain(userId);
+    expect(screen.lastFrame()).not.toContain(token);
+    expect(screen.lastFrame()).not.toContain("retail");
+
+    await screen.write('{"turn":1}');
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "idle");
+    await screen.write('{"turn":2}');
+    await screen.press("return");
+    await waitFor(() => requests.length === 2);
+
+    for (const request of requests) {
+      expect(request).toMatchObject({
+        runtimeUserId: userId,
+        applicationHeaders: [["X-Tenant", "retail"]],
+        bearerToken: token,
+      });
+    }
+  });
+
   test("target switching clears transcript and target-specific sessions", async () => {
     const nextQualifier = "canary";
     const core = new TestCoreClient();
     core.runtime
-      .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
+      .setGetResponse({
+        agentRuntimeArn: RUNTIME_ARN,
+        requestHeaderConfiguration: { requestHeaderAllowlist: ["X-Tenant"] },
+      } as GetAgentRuntimeResponse)
       .setListResponse({ agentRuntimes: [runtime()] })
       .setListEndpointsResponse({
         runtimeEndpoints: [endpoint({ name: nextQualifier, id: nextQualifier })],
@@ -383,7 +445,15 @@ describe("Runtime invoke JSON console", () => {
         runtimeSessionId: "returned-runtime",
         body: responseBody(Buffer.from("old response")),
       });
-    const screen = renderScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, {
+      core,
+      withContext: (ctx) =>
+        ctx.withValue(RuntimeInvokeLaunchContextKey, {
+          runtimeId: RUNTIME_ID,
+          runtimeUserId: "user-123",
+          applicationHeaders: [["X-Tenant", "retail"]],
+        }),
+    });
 
     await waitForText(screen.lastFrame, "idle");
     await screen.write('{"turn":1}');
@@ -411,6 +481,72 @@ describe("Runtime invoke JSON console", () => {
     await screen.press("return");
     await waitFor(() => invokeRequests(core).length === 2);
     expect(invokeRequests(core)[1]!.runtimeSessionId).toBeUndefined();
+    expect(invokeRequests(core)[1]).toMatchObject({
+      runtimeUserId: "user-123",
+      applicationHeaders: [["X-Tenant", "retail"]],
+    });
+  });
+
+  test("switching Runtimes clears launch identity, authentication, and headers", async () => {
+    const nextRuntimeId = "runtime-next";
+    const nextQualifier = "canary";
+    const nextArn = RUNTIME_ARN.replace(RUNTIME_ID, nextRuntimeId);
+    const core = new TestCoreClient();
+    core.runtime
+      .setGetResponse({
+        agentRuntimeArn: RUNTIME_ARN,
+        authorizerConfiguration: { customJWTAuthorizer: {} },
+        requestHeaderConfiguration: { requestHeaderAllowlist: ["X-Tenant"] },
+      } as GetAgentRuntimeResponse)
+      .setListResponse({
+        agentRuntimes: [
+          runtime(),
+          runtime({
+            agentRuntimeId: nextRuntimeId,
+            agentRuntimeName: "next-runtime",
+            agentRuntimeArn: nextArn,
+          }),
+        ],
+      })
+      .setListEndpointsResponse({
+        runtimeEndpoints: [endpoint({ name: nextQualifier, id: nextQualifier })],
+      })
+      .setInvokeResponse({
+        statusCode: 200,
+        contentType: "text/plain",
+        body: responseBody(Buffer.from("ok")),
+      });
+    const screen = renderScreen(CONSOLE_PATH, {
+      core,
+      withContext: (ctx) =>
+        ctx.withValue(RuntimeInvokeLaunchContextKey, {
+          runtimeId: RUNTIME_ID,
+          runtimeUserId: "user-123",
+          applicationHeaders: [["X-Tenant", "retail"]],
+          bearerToken: "secret-token",
+        }),
+    });
+
+    await waitForText(screen.lastFrame, "Context user/JWT/1h");
+    core.runtime.setGetResponse({ agentRuntimeArn: nextArn } as GetAgentRuntimeResponse);
+    await screen.write("\x14");
+    await waitForText(screen.lastFrame, "next-runtime");
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, nextQualifier);
+    await screen.press("return");
+    await waitForText(
+      screen.lastFrame,
+      `agentcore → runtime → invoke → ${nextRuntimeId} → ${nextQualifier}`,
+    );
+    expect(screen.lastFrame()).not.toContain("Context");
+
+    await screen.write("{}");
+    await screen.press("return");
+    await waitFor(() => invokeRequests(core).length === 1);
+    expect(invokeRequests(core)[0]!.runtimeUserId).toBeUndefined();
+    expect(invokeRequests(core)[0]!.applicationHeaders).toBeUndefined();
+    expect(invokeRequests(core)[0]!.bearerToken).toBeUndefined();
   });
 
   test("toggles a completed JSON response between raw and pretty text", async () => {

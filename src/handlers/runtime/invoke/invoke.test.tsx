@@ -14,6 +14,7 @@ import {
 import { ExitCode, runWithExitCode } from "../../../runnable";
 import { createRootHandler } from "../../index";
 import * as tui from "../../../tui";
+import { RuntimeInvokeLaunchContextKey } from "./launchContext";
 
 const REGION = "us-west-2";
 const RUNTIME_ID = "runtime-123";
@@ -156,7 +157,6 @@ describe("runtime invoke", () => {
 
   test.each([
     ["--content-type", "text/plain"],
-    ["--header", "X-Test: value"],
     ["--output-file", "response.bin"],
   ])("rejects request option %s without a payload before Core calls", async (flagName, value) => {
     const core = new TestCoreClient();
@@ -455,13 +455,64 @@ describe("runtime invoke", () => {
 
       expect(render.mock.calls.map(([path]) => path)).toEqual([
         "/agentcore/runtime/invoke/runtime%2Fblue%20one",
-        "/agentcore/runtime/invoke/runtime%2Fblue%20one?session-id=session%2Fone+two",
+        "/agentcore/runtime/invoke/runtime%2Fblue%20one",
         "/agentcore/runtime/invoke/runtime%2Fblue%20one/prod%2Fgreen%20one",
-        "/agentcore/runtime/invoke/runtime%2Fblue%20one/prod%2Fgreen%20one?session-id=session%2Fone+two",
+        "/agentcore/runtime/invoke/runtime%2Fblue%20one/prod%2Fgreen%20one",
       ]);
+      expect(render.mock.calls[1]![1].value(RuntimeInvokeLaunchContextKey)).toMatchObject({
+        runtimeId: "runtime/blue one",
+        runtimeSessionId: "session/one two",
+      });
+      expect(render.mock.calls[3]![1].value(RuntimeInvokeLaunchContextKey)).toMatchObject({
+        runtimeId: "runtime/blue one",
+        runtimeSessionId: "session/one two",
+      });
     } finally {
       render.mockRestore();
     }
+  });
+
+  test("passes launch identity, authentication, and headers to the TUI without a payload", async () => {
+    const core = new TestCoreClient();
+    const output = captureIO();
+    const render = spyOn(tui, "renderTuiAt").mockResolvedValue(undefined);
+
+    try {
+      await runCommand(core, output.io, [
+        "runtime",
+        "invoke",
+        "--id",
+        RUNTIME_ID,
+        "--user-id",
+        "user-123",
+        "--header",
+        "X-Tenant: retail",
+        "--bearer-token",
+        "secret-token",
+      ]);
+
+      expect(render).toHaveBeenCalledTimes(1);
+      expect(render.mock.calls[0]![1].value(RuntimeInvokeLaunchContextKey)).toEqual({
+        runtimeId: RUNTIME_ID,
+        runtimeSessionId: undefined,
+        runtimeUserId: "user-123",
+        applicationHeaders: [["X-Tenant", "retail"]],
+        bearerToken: "secret-token",
+      });
+      expect(core.runtime.calls).toEqual([]);
+    } finally {
+      render.mockRestore();
+    }
+  });
+
+  test("rejects a stdin bearer token when launching the TUI", async () => {
+    const core = new TestCoreClient();
+    const output = captureIO();
+
+    await expect(
+      runCommand(core, output.io, ["runtime", "invoke", "--id", RUNTIME_ID, "--bearer-token", "-"]),
+    ).rejects.toThrow("stdin bearer tokens are not available");
+    expect(core.runtime.calls).toEqual([]);
   });
 
   test("handler keeps JSON mode without a payload as a usage error", async () => {

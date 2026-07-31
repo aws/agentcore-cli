@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, useInput, useWindowSize } from "ink";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
+import cliTruncate from "cli-truncate";
 import { InputValidationError } from "../../../errors";
 import type { ScreenProps } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
@@ -16,6 +17,7 @@ import type { RuntimeInvokeResponse } from "../types";
 import { normalizeRuntimeInvokeRequest } from "./request";
 import { RuntimePayloadInput } from "./RuntimePayloadInput";
 import { classifyRuntimeResponse } from "./response";
+import { RuntimeInvokeLaunchContextKey, type RuntimeInvokeLaunchContext } from "./launchContext";
 
 const theme = darkTheme;
 
@@ -53,9 +55,9 @@ const metadata = (response: RuntimeInvokeResponse) =>
 
 export function RuntimeInvokeScreen(props: ScreenProps) {
   const { runtimeId, qualifier } = useParams();
-  const [search] = useSearchParams();
   const navigate = useNavigate();
-  const initialSessionId = search.get("session-id") ?? undefined;
+  const launchContext = props.ctx.value(RuntimeInvokeLaunchContextKey);
+  const initialContext = launchContext?.runtimeId === runtimeId ? launchContext : undefined;
 
   if (!runtimeId) {
     return (
@@ -75,14 +77,7 @@ export function RuntimeInvokeScreen(props: ScreenProps) {
         runtimeId={runtimeId}
         breadcrumb={["agentcore", "runtime", "invoke", runtimeId]}
         description="choose an endpoint to invoke"
-        onSelect={(selected) => {
-          const path = invokePath(runtimeId, selected);
-          navigate(
-            initialSessionId
-              ? `${path}?${new URLSearchParams({ "session-id": initialSessionId })}`
-              : path,
-          );
-        }}
+        onSelect={(selected) => navigate(invokePath(runtimeId, selected))}
         onEscape={() => navigate(invokePath())}
       />
     );
@@ -93,7 +88,7 @@ export function RuntimeInvokeScreen(props: ScreenProps) {
       {...props}
       runtimeId={runtimeId}
       qualifier={qualifier}
-      initialSessionId={initialSessionId}
+      initialContext={initialContext}
     />
   );
 }
@@ -101,7 +96,7 @@ export function RuntimeInvokeScreen(props: ScreenProps) {
 type RuntimeInvokeConsoleProps = ScreenProps & {
   runtimeId: string;
   qualifier: string;
-  initialSessionId?: string;
+  initialContext?: RuntimeInvokeLaunchContext;
 };
 
 function RuntimeInvokeConsole({
@@ -109,11 +104,11 @@ function RuntimeInvokeConsole({
   core,
   runtimeId,
   qualifier,
-  initialSessionId,
+  initialContext,
 }: RuntimeInvokeConsoleProps) {
   const opts = coreOptsFromCtx(ctx);
   const navigate = useNavigate();
-  const { rows } = useWindowSize();
+  const { columns, rows } = useWindowSize();
   const [target, setTarget] = useState({ runtimeId, qualifier });
   const [targetPicker, setTargetPicker] = useState<TargetPickerState | null>(null);
   const detail = useQuery({
@@ -123,7 +118,8 @@ function RuntimeInvokeConsole({
   const mcp = detail.data?.protocolConfiguration?.serverProtocol === "MCP";
   const [payload, setPayload] = useState("");
   const [inputError, setInputError] = useState<string>();
-  const [runtimeSessionId, setRuntimeSessionId] = useState(initialSessionId);
+  const [requestContext, setRequestContext] = useState(initialContext);
+  const [runtimeSessionId, setRuntimeSessionId] = useState(initialContext?.runtimeSessionId);
   const [mcpSessionId, setMcpSessionId] = useState<string>();
   const [history, setHistory] = useState<Exchange[]>([]);
   const [prettyJson, setPrettyJson] = useState(false);
@@ -171,6 +167,9 @@ function RuntimeInvokeConsole({
         payload: new TextEncoder().encode(requestPayload),
         contentType: "application/json",
         runtimeSessionId,
+        runtimeUserId: requestContext?.runtimeUserId,
+        applicationHeaders: requestContext?.applicationHeaders,
+        bearerToken: requestContext?.bearerToken,
         ...(mcp && { mcpSessionId }),
       });
       const response = await core.runtime.invokeRuntime(request, opts, controller.signal);
@@ -242,6 +241,15 @@ function RuntimeInvokeConsole({
   const inputRows = Math.min(4, Math.max(1, payload.split("\n").length));
   const transcriptHeight = Math.max(1, rows - 8 - inputRows);
   const canPrettyJson = history.some((exchange) => exchange.pretty !== undefined);
+  const requestContextSummary = [
+    requestContext?.runtimeUserId ? "user" : undefined,
+    requestContext?.bearerToken ? "JWT" : undefined,
+    requestContext?.applicationHeaders?.length
+      ? `${requestContext.applicationHeaders.length}h`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join("/");
 
   useInput(
     (input, key) => {
@@ -300,9 +308,11 @@ function RuntimeInvokeConsole({
         description="choose another endpoint"
         onSelect={(selected) => {
           if (nextRuntimeId !== target.runtimeId || selected !== target.qualifier) {
+            const runtimeChanged = nextRuntimeId !== target.runtimeId;
             setTarget({ runtimeId: nextRuntimeId, qualifier: selected });
             setRuntimeSessionId(undefined);
             setMcpSessionId(undefined);
+            if (runtimeChanged) setRequestContext(undefined);
             setHistory([]);
             setPrettyJson(false);
             setInputError(undefined);
@@ -392,7 +402,12 @@ function RuntimeInvokeConsole({
                 <Spinner label={`${liveState}… (esc to interrupt)`} />
               ) : (
                 <Text color={theme.colors.muted}>
-                  idle · Sessions: Runtime {runtimeSessionId ?? "new"} · MCP {mcpSessionId ?? "new"}
+                  {cliTruncate(
+                    `idle · Sessions: Runtime ${runtimeSessionId ?? "new"} · MCP ${
+                      mcpSessionId ?? "new"
+                    }${requestContextSummary ? ` · Context ${requestContextSummary}` : ""}`,
+                    columns,
+                  )}
                 </Text>
               )}
             </Box>

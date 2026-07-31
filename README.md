@@ -259,7 +259,11 @@ requests. The console sends inline `application/json` payloads and renders each
 response according to its returned content type. Bare invoke opens the Runtime
 and endpoint pickers; `--id` skips the Runtime picker, and `--id` plus
 `--qualifier` opens the console directly. `--session-id` resumes that Runtime
-session in the console.
+session in the console. `--user-id`, `--header`, and `--bearer-token` seed
+request context that persists across sends and endpoint changes within that
+Runtime. The console never displays their values, and switching Runtimes clears
+them. Interactive bearer tokens may be inline or `file://` sources, but not
+stdin.
 
 | Shortcut      | Action                                       |
 | ------------- | -------------------------------------------- |
