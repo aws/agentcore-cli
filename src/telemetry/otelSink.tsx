@@ -18,7 +18,7 @@ export type OtelCollectorSinkConfig = {
   /** Describes the maximum time to wait when shutting down the sink.**/
   shutdownTimeoutMs?: number;
   /**
-   * Describes the scope to attach to the given metrics
+   * Describes the scope to attach to the given metrics. Defaults to `agentcore-cli`
    * See https://opentelemetry.io/docs/concepts/instrumentation-scope/ for more information.
    **/
   instrumentationScope?: string;
