@@ -408,7 +408,7 @@ describe("Runtime invoke console", () => {
     await waitForText(screen.lastFrame, "Request options");
     const frame = screen.lastFrame()!;
     expect(frame.includes("Bearer JWT")).toBe(conditional);
-    expect(frame.includes("MCP")).toBe(conditional);
+    expect(frame.includes("│ MCP")).toBe(conditional);
     expect(
       frame
         .split("\n")
@@ -420,6 +420,43 @@ describe("Runtime invoke console", () => {
       await waitForText(screen.lastFrame, "application/octet-stream");
       expect(screen.lastFrame()).toContain("text/plain");
     }
+  });
+
+  test("floats options over the console without editing the background payload", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "idle");
+    await screen.write("draft payload");
+    await screen.write("\x0f");
+    await waitForText(screen.lastFrame, "Request options");
+
+    const optionsFrame = screen.lastFrame()!;
+    expect(optionsFrame).toContain("Payload · application/json");
+    expect(optionsFrame).toContain("draft payload");
+    expect(optionsFrame).toContain("idle · Sessions");
+    expect(optionsFrame).toContain("╭");
+
+    await screen.write("ignored");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "idle");
+    expect(screen.lastFrame()).toContain("draft payload");
+    expect(screen.lastFrame()).not.toContain("ignored");
+  });
+
+  test("uses the full-screen options fallback in a compact terminal", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "idle");
+    await screen.resize(60, 24);
+    await screen.write("\x0f");
+    await waitForText(screen.lastFrame, "Request options");
+
+    expect(screen.lastFrame()).not.toContain("Payload · application/json");
+    expect(screen.lastFrame()).not.toContain("idle · Sessions");
   });
 
   test("manually edited protocol options reach invoke", async () => {

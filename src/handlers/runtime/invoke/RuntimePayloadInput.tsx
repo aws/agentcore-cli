@@ -9,12 +9,14 @@ interface RuntimePayloadInputProps {
   onChange: (value: string) => void;
   onSubmit: () => void;
   submitDisabled?: boolean;
+  focused?: boolean;
   label: string;
   placeholder: string;
   previewLines?: number;
 }
 
-function Cursor({ character }: { character: string }) {
+function Cursor({ character, focused }: { character: string; focused: boolean }) {
+  if (!focused) return <Text>{character}</Text>;
   return (
     <Text color={theme.colors.focus} inverse>
       {character}
@@ -27,6 +29,7 @@ export function RuntimePayloadInput({
   onChange,
   onSubmit,
   submitDisabled = false,
+  focused = true,
   label,
   placeholder,
   previewLines = 4,
@@ -34,46 +37,49 @@ export function RuntimePayloadInput({
   const [rawCursor, setRawCursor] = useState(value.length);
   const cursor = Math.min(rawCursor, value.length);
 
-  useInput((input, key) => {
-    if (key.leftArrow) {
-      setRawCursor(Math.max(0, cursor - 1));
-      return;
-    }
-    if (key.rightArrow) {
-      setRawCursor(Math.min(value.length, cursor + 1));
-      return;
-    }
-    if (key.upArrow || key.downArrow) return;
-
-    if (key.backspace || key.delete) {
-      if (cursor === 0) return;
-      onChange(value.slice(0, cursor - 1) + value.slice(cursor));
-      setRawCursor(cursor - 1);
-      return;
-    }
-
-    if (key.return) {
-      if (key.shift || key.meta) {
-        onChange(value.slice(0, cursor) + "\n" + value.slice(cursor));
-        setRawCursor(cursor + 1);
-      } else if (!submitDisabled) {
-        onSubmit();
+  useInput(
+    (input, key) => {
+      if (key.leftArrow) {
+        setRawCursor(Math.max(0, cursor - 1));
+        return;
       }
-      return;
-    }
-    if (key.ctrl || key.meta || key.escape || input === "") return;
+      if (key.rightArrow) {
+        setRawCursor(Math.min(value.length, cursor + 1));
+        return;
+      }
+      if (key.upArrow || key.downArrow) return;
 
-    const next = input.replace(/\r/g, "\n");
-    onChange(value.slice(0, cursor) + next + value.slice(cursor));
-    setRawCursor(cursor + next.length);
-  });
+      if (key.backspace || key.delete) {
+        if (cursor === 0) return;
+        onChange(value.slice(0, cursor - 1) + value.slice(cursor));
+        setRawCursor(cursor - 1);
+        return;
+      }
+
+      if (key.return) {
+        if (key.shift || key.meta) {
+          onChange(value.slice(0, cursor) + "\n" + value.slice(cursor));
+          setRawCursor(cursor + 1);
+        } else if (!submitDisabled) {
+          onSubmit();
+        }
+        return;
+      }
+      if (key.ctrl || key.meta || key.escape || input === "") return;
+
+      const next = input.replace(/\r/g, "\n");
+      onChange(value.slice(0, cursor) + next + value.slice(cursor));
+      setRawCursor(cursor + next.length);
+    },
+    { isActive: focused },
+  );
 
   if (value === "") {
     return (
       <Box flexDirection="column">
         <Text color={theme.colors.muted}>{label}</Text>
         <Box>
-          <Cursor character={placeholder[0] ?? " "} />
+          <Cursor character={placeholder[0] ?? " "} focused={focused} />
           <Text color={theme.colors.muted}>{placeholder.slice(1)}</Text>
         </Box>
       </Box>
@@ -110,7 +116,7 @@ export function RuntimePayloadInput({
           <Box key={lineIndex}>
             <Text color={theme.colors.border}>{prefix}</Text>
             {before ? <Text>{before}</Text> : null}
-            <Cursor character={at} />
+            <Cursor character={at} focused={focused} />
             {after ? <Text>{after}</Text> : null}
           </Box>
         );

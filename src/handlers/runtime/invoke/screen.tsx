@@ -125,7 +125,7 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
   const opts = coreOptsFromCtx(ctx);
   const navigate = useNavigate();
   const { stdin } = useStdin();
-  const { rows } = useWindowSize();
+  const { columns, rows } = useWindowSize();
   const [target, setTarget] = useState({ runtimeId, qualifier });
   const [targetPicker, setTargetPicker] = useState<TargetPickerState | null>(null);
   const detail = useQuery({
@@ -292,6 +292,22 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
   const inputRows = Math.min(4, Math.max(1, payload.split("\n").length));
   const canPrettyJson = history.some((exchange) => exchange.pretty !== undefined);
   const contentType = requestOptions.contentType || "application/json";
+  const floatingOptions = showOptions && columns >= 72 && rows >= 30;
+  const optionsPanelWidth = Math.min(76, columns - 4);
+  const closeOptions = () => {
+    setShowOptions(false);
+    setOptionsMode("overview");
+  };
+  const optionsScreen = (
+    <RequestOptionsScreen
+      value={requestOptions}
+      onChange={setRequestOptions}
+      onClose={closeOptions}
+      onModeChange={setOptionsMode}
+      customJwt={customJwt}
+      mcp={mcp}
+    />
+  );
 
   useInput(
     (input, key) => {
@@ -412,68 +428,88 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
               ]
       }
     >
-      {detail.isPending ? (
-        <Spinner label="Loading Runtime…" />
-      ) : detail.isError ? (
-        <Text color="red">Error: {(detail.error as Error).message}</Text>
-      ) : showOptions ? (
-        <RequestOptionsScreen
-          value={requestOptions}
-          onChange={setRequestOptions}
-          onClose={() => {
-            setShowOptions(false);
-            setOptionsMode("overview");
-          }}
-          onModeChange={setOptionsMode}
-          customJwt={customJwt}
-          mcp={mcp}
-        />
-      ) : (
-        <Box flexDirection="column">
-          <Box height={Math.max(1, rows - 8 - inputRows)} flexDirection="column">
-            <ScrollView ref={scrollRef} onContentHeightChange={keepScrolledToBottom}>
-              {history.map((exchange, index) => (
-                <Box key={index} flexDirection="column" paddingBottom={1}>
-                  <Text bold>Request</Text>
-                  <Text>{exchange.payload}</Text>
-                  <Text bold>{exchange.heading ?? "Response"}</Text>
-                  <Text>{prettyJson && exchange.pretty ? exchange.pretty : exchange.response}</Text>
-                  {exchange.state !== "connecting" && exchange.state !== "streaming" ? (
-                    <>
-                      {exchange.metadata ? <Text color="gray">{exchange.metadata}</Text> : null}
-                      {exchange.note ? <Text color="yellow">{exchange.note}</Text> : null}
-                      <Text color={exchange.state === "failed" ? "red" : "gray"}>
-                        {exchange.state} · {exchange.byteCount} bytes
+      <Box position="relative" height="100%" flexDirection="column">
+        {detail.isPending ? (
+          <Spinner label="Loading Runtime…" />
+        ) : detail.isError ? (
+          <Text color="red">Error: {(detail.error as Error).message}</Text>
+        ) : showOptions && !floatingOptions ? (
+          optionsScreen
+        ) : (
+          <>
+            <Box flexDirection="column">
+              <Box height={Math.max(1, rows - 8 - inputRows)} flexDirection="column">
+                <ScrollView ref={scrollRef} onContentHeightChange={keepScrolledToBottom}>
+                  {history.map((exchange, index) => (
+                    <Box key={index} flexDirection="column" paddingBottom={1}>
+                      <Text bold>Request</Text>
+                      <Text>{exchange.payload}</Text>
+                      <Text bold>{exchange.heading ?? "Response"}</Text>
+                      <Text>
+                        {prettyJson && exchange.pretty ? exchange.pretty : exchange.response}
                       </Text>
-                    </>
-                  ) : null}
+                      {exchange.state !== "connecting" && exchange.state !== "streaming" ? (
+                        <>
+                          {exchange.metadata ? <Text color="gray">{exchange.metadata}</Text> : null}
+                          {exchange.note ? <Text color="yellow">{exchange.note}</Text> : null}
+                          <Text color={exchange.state === "failed" ? "red" : "gray"}>
+                            {exchange.state} · {exchange.byteCount} bytes
+                          </Text>
+                        </>
+                      ) : null}
+                    </Box>
+                  ))}
+                </ScrollView>
+              </Box>
+              <Divider />
+              <RuntimePayloadInput
+                label={`Payload · ${contentType}`}
+                placeholder={payloadPlaceholder(contentType)}
+                value={payload}
+                onChange={setPayload}
+                onSubmit={() => void send()}
+                submitDisabled={busy}
+                focused={!showOptions}
+                previewLines={4}
+              />
+              <Divider />
+              <Box height={1}>
+                {busy ? (
+                  <Spinner label={`${liveState}… (esc to interrupt)`} />
+                ) : (
+                  <Text color={theme.colors.muted}>
+                    idle · Sessions: Runtime {requestOptions.runtimeSessionId ?? "new"} · MCP{" "}
+                    {requestOptions.mcpSessionId ?? "new"}
+                  </Text>
+                )}
+              </Box>
+            </Box>
+            {floatingOptions ? (
+              <Box
+                position="absolute"
+                top={0}
+                left={0}
+                width="100%"
+                height="100%"
+                alignItems="center"
+                justifyContent="center"
+              >
+                <Box
+                  width={optionsPanelWidth}
+                  flexDirection="column"
+                  borderStyle="round"
+                  borderColor={theme.colors.border}
+                  backgroundColor="black"
+                  paddingX={1}
+                  overflow="hidden"
+                >
+                  {optionsScreen}
                 </Box>
-              ))}
-            </ScrollView>
-          </Box>
-          <Divider />
-          <RuntimePayloadInput
-            label={`Payload · ${contentType}`}
-            placeholder={payloadPlaceholder(contentType)}
-            value={payload}
-            onChange={setPayload}
-            onSubmit={() => void send()}
-            submitDisabled={busy}
-            previewLines={4}
-          />
-          <Divider />
-          <Box height={1}>
-            {busy ? (
-              <Spinner label={`${liveState}… (esc to interrupt)`} />
-            ) : (
-              <Text color={theme.colors.muted}>
-                idle · Sessions: Runtime {requestOptions.runtimeSessionId ?? "new"} · MCP{" "}
-                {requestOptions.mcpSessionId ?? "new"}
-              </Text>
-            )}
-          </Box>
-        </Box>
-      )}
+              </Box>
+            ) : null}
+          </>
+        )}
+      </Box>
     </Layout>
   );
 }
