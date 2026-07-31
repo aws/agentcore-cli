@@ -417,7 +417,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 try {
                   templateObj = JSON.parse(templateJsonStr) as Record<string, unknown>;
                 } catch {
-                  fail('--3p-template-json must be valid JSON');
+                  throw new Error('--3p-template-json must be valid JSON');
                 }
                 if (!templateObj.library || typeof templateObj.library !== 'string') {
                   fail('--3p-template-json must include "library" (e.g. "deepeval" or "autoevals")');
