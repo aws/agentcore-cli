@@ -14,9 +14,10 @@ import { FsReadWriteJson } from "./io";
 import { createFileLogger, LOG_LEVEL } from "./logging";
 import { runWithExitCode } from "./runnable";
 import { DefaultGlobalConfigAccessor } from "./globalConfig";
-import { DefaultTelemetryClient, TelemetryAttributesRecorder } from "./telemetry";
+import { DefaultTelemetryClient } from "./telemetry";
 import { AgentCoreCLIError } from "./errors";
 import { PACKAGE_VERSION } from "./constants";
+import { CommandRunMetricEventKey, ValueContext } from "./router";
 
 process.exit(
   await runWithExitCode(async (argv: string[]) => {
@@ -50,7 +51,7 @@ process.exit(
       globalConfigAccessor,
     });
 
-    const commandRunTelemetryRecorder = new TelemetryAttributesRecorder("cli.command_run", {
+    const commandRunMetricEvent = telemetryClient.createMetricEvent("cli.command_run", {
       exit_reason: "success",
     });
 
@@ -75,19 +76,25 @@ process.exit(
         globalConfigAccessor,
       });
 
+      const context = ValueContext.EmptyContext().withValue(
+        CommandRunMetricEventKey,
+        commandRunMetricEvent,
+      );
+
       // Handle the request
-      await rootHandler.route(argv);
+      await rootHandler.route(argv, context);
     } catch (e) {
       const error = AgentCoreCLIError.fromError(e);
       rootLogger.child({ error: error.json() }).error();
-      // TODO: add error details to telemetry recorder;
-      commandRunTelemetryRecorder.record({ exit_reason: "failure" });
-
+      commandRunMetricEvent.setAttributes({
+        exit_reason: "failure",
+        error_name: error.name,
+        error_source: error.source,
+      });
       throw error;
     } finally {
       try {
-        const attributes = commandRunTelemetryRecorder.getAttributes();
-        await telemetryClient.emit("cli.command_run", Date.now() - startTime, attributes);
+        await commandRunMetricEvent.emit(Date.now() - startTime);
       } catch (e) {
         const error = AgentCoreCLIError.fromError(e);
         rootLogger.child({ error: error.json() }).warn("failed to emit telemetry");

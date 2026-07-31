@@ -68,6 +68,15 @@ agentcore                          # interactive TUI
 ├── memory                         # inspect AgentCore Memories
 │   ├── get                        # fetch a Memory by id
 │   └── list                       # list Memories (server-side paginated)
+├── gateway                        # inspect AgentCore Gateways
+│   ├── get                        # get a Gateway by id
+│   ├── list                       # list Gateways (server-side paginated)
+│   ├── target
+│   │   ├── get                    # get a Target under a Gateway
+│   │   └── list                   # list Targets under a Gateway
+│   └── rule
+│       ├── get                    # get a Rule under a Gateway
+│       └── list                   # list Rules under a Gateway
 ├── eval                           # evaluate and optimize AgentCore agents
 │   └── evaluator                  # manage AgentCore evaluators
 │       ├── llm-as-a-judge         # LLM-as-a-Judge evaluators
@@ -127,6 +136,14 @@ agentcore runtime endpoint list --id <runtimeId> --max-results 20
 agentcore memory get --id <memoryId>
 agentcore memory get --id <memoryId> --view without_decryption
 agentcore memory list --max-results 20
+
+# Inspect Gateway resources without project configuration or deployment
+agentcore gateway get --id <gatewayId>
+agentcore gateway list --max-results 20
+agentcore gateway target get --gateway-id <gatewayId> --target-id <targetId>
+agentcore gateway target list --gateway-id <gatewayId> --max-results 20
+agentcore gateway rule get --gateway-id <gatewayId> --rule-id <ruleId>
+agentcore gateway rule list --gateway-id <gatewayId> --max-results 20
 
 # Manage API key credential providers
 agentcore identity api-key-credential-provider create --name my-provider --api-key <key>

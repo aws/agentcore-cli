@@ -26,7 +26,11 @@ export class FileSystemSink implements MetricSink {
     this.pendingWrite = Promise.resolve();
   }
 
-  send(metricName: string, value: number, attributes: Record<string, string | number>): void {
+  send(
+    metricName: string,
+    value: number,
+    attributes: Record<string, string | number | boolean>,
+  ): void {
     this.pendingWrite = this.pendingWrite.then(() =>
       this.appendEntry({ metricName, value, attrs: attributes }),
     );
@@ -35,7 +39,7 @@ export class FileSystemSink implements MetricSink {
   private async appendEntry(entry: {
     metricName: string;
     value: number;
-    attrs: Record<string, string | number>;
+    attrs: Record<string, string | number | boolean>;
   }): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
     await appendFile(this.filePath, JSON.stringify(entry) + "\n");

@@ -5,12 +5,27 @@ import { commandRunSchema } from "./shapes";
  * The primary interface for telemetry that orchestrates the emitting of metrics
  */
 export interface TelemetryClient {
-  emit<TMetricName extends MetricName>(
+  /**
+   * Start a new metric event that accumulates attributes over its lifecycle.
+   */
+  createMetricEvent<TMetricName extends MetricName>(
     metricName: TMetricName,
-    metricValue: ValueOf<TMetricName>,
-    attributes: AttributesOf<TMetricName>,
-  ): Promise<void>;
+    initialAttributes?: Partial<AttributesOf<TMetricName>>,
+  ): MetricEvent<TMetricName>;
+
   shutdown(): Promise<void>;
+}
+
+/**
+ * A single in-flight metric event. Accumulate attributes with record(), then
+ * call end() to validate and emit. Throws if the metric is invalid.  
+ */
+export interface MetricEvent<TMetricName extends MetricName> {
+  /** Accumulate attributes incrementally. Later calls overwrite earlier values for the same key. */
+  setAttributes(data: Partial<AttributesOf<TMetricName>>): void;
+
+  /** Validate attributes and emit value + attributes to all sinks. */
+  emit(value: ValueOf<TMetricName>): Promise<void>;
 }
 
 /**
@@ -18,7 +33,11 @@ export interface TelemetryClient {
  */
 export interface MetricSink {
   /** Send data to the given metric sink **/
-  send(metricName: string, value: number, attributes: Record<string, string | number>): void;
+  send(
+    metricName: string,
+    value: number,
+    attributes: Record<string, string | number | boolean>,
+  ): void;
   /** Flush and close the given metric sink **/
   shutdown(): Promise<void>;
   getName(): string;

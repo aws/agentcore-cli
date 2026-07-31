@@ -45,7 +45,7 @@ describe("AgentCoreCLIError", () => {
   ])("fromError SDK %s → expected source", (_label, err, expectedSource) => {
     const result = AgentCoreCLIError.fromError(err as Error);
     expect(result.json()).toMatchObject({
-      name: "AgentCoreCLIError",
+      name: err.name,
       source: expectedSource,
     });
   });

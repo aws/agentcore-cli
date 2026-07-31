@@ -1,0 +1,31 @@
+{
+  "gatewayRules": [
+    {
+      "ruleId": "545ee264-f3e0-4333-ad31-0a260d0c0a7a",
+      "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:gateway/agentcore-cli-gateway-read-rule-fixture-lhpid2reoy",
+      "priority": 20,
+      "actions": [
+        {
+          "routeToTarget": {
+            "staticRoute": {
+              "targetName": "agentcore-cli-gateway-read-http-target"
+            }
+          }
+        }
+      ],
+      "createdAt": "2026-07-30T00:13:42.856Z",
+      "status": "ACTIVE",
+      "conditions": [
+        {
+          "matchPaths": {
+            "anyOf": [
+              "/agentcore-cli-gateway-read-http-target/*"
+            ]
+          }
+        }
+      ],
+      "description": "AgentCore CLI persistent Gateway Rule read fixture A2",
+      "updatedAt": "2026-07-30T00:13:42.856Z"
+    }
+  ]
+}

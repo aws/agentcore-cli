@@ -4,6 +4,7 @@ export { testIO, type TestIO } from "./testIO";
 export { tick, waitFor } from "./timing";
 export {
   TestCoreClient,
+  TestGatewayClient,
   TestHarnessClient,
   TestMemoryClient,
   TestRuntimeClient,

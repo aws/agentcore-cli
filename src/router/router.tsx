@@ -8,6 +8,7 @@ import { Command } from "commander";
 import type { Logger } from "../logging";
 import type { GlobalConfigAccessor } from "../globalConfig";
 import type { Project } from "../handlers/project/types";
+import { type MetricEvent } from "../telemetry";
 
 // CommandKey exposes the Commander Command for the executing leaf via context.
 export const CommandKey: ContextKey<Command> = contextKey<Command>("commander.command");
@@ -15,6 +16,9 @@ export const CommandKey: ContextKey<Command> = contextKey<Command>("commander.co
 export const PathKey: ContextKey<string> = contextKey<string>("path");
 
 export const LoggerKey = contextKey<Logger>("logger");
+
+export const CommandRunMetricEventKey =
+  contextKey<MetricEvent<"cli.command_run">>("commandRunMetricEvent");
 
 export const GlobalConfigAccessorKey: ContextKey<GlobalConfigAccessor> =
   contextKey<GlobalConfigAccessor>("globalConfigAccessor");
@@ -72,6 +76,8 @@ function attachAction(
     const command = actionArgs[actionArgs.length - 1] as Command;
     const merged = command.optsWithGlobals();
 
+    recordCommandPath(ctx);
+
     // Inherited group/global flags -> context (typed, read via ctx.value(key)).
     let leafCtx = ctx.withValue(CommandKey, command);
     leafCtx = applyGlobalFlags(globals, merged, leafCtx);
@@ -88,6 +94,11 @@ function attachAction(
 // node's declared flags. Only group flags created via globalFlag() carry a key.
 function globalFlagsOf(node: Handler): GlobalFlag[] {
   return node.flags().filter((f): f is GlobalFlag => "id" in f);
+}
+
+/** Add the command path to active command run metric **/
+function recordCommandPath(ctx: Context): void {
+  ctx.value(CommandRunMetricEventKey)?.setAttributes({ command_path: ctx.value(PathKey) });
 }
 
 // compile walks the Handler tree into a Commander Command tree.
@@ -108,7 +119,7 @@ export function compile(
   stack: Middleware[] = [],
   inheritedGlobals: GlobalFlag[] = [],
 ): Command {
-  const c = new Command(node.name()).exitOverride();
+  const c = new Command(node.name());
   c.description(node.description());
 
   const ownFlags = node.flags();
@@ -128,6 +139,12 @@ export function compile(
   const path = ctx.value(PathKey) || "";
   const newPath = `${path}/${node.name()}`;
   ctx = ctx.withValue(PathKey, newPath);
+
+  // commander may fail on invalid flags before we are able to record on the happy path, so we must record here as well
+  c.exitOverride((e) => {
+    recordCommandPath(ctx);
+    throw e;
+  });
 
   const children = node.children();
   if (children.length > 0) {

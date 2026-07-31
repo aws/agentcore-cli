@@ -1,0 +1,20 @@
+{
+  "items": [
+    {
+      "targetId": "ZZHBZX71VQ",
+      "name": "agentcore-cli-gateway-read-target-a2",
+      "status": "READY",
+      "createdAt": {
+        "$date": "2026-07-29T22:20:25.993Z"
+      },
+      "updatedAt": {
+        "$date": "2026-07-29T22:20:29.823Z"
+      },
+      "description": "AgentCore CLI persistent Gateway Target read fixture",
+      "lastSynchronizedAt": {
+        "$date": "2026-07-29T22:20:29.628Z"
+      },
+      "targetType": "MCP_SERVER"
+    }
+  ]
+}

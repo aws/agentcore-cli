@@ -19,6 +19,8 @@ describe("menu rendering", () => {
     expect(frame).toContain("inspect AgentCore Runtimes");
     expect(frame).toContain("memory");
     expect(frame).toContain("manage AgentCore Memories");
+    expect(frame).toContain("gateway");
+    expect(frame).toContain("inspect AgentCore Gateways");
     expect(frame).toContain("config");
     expect(frame).toContain("read/write global config values");
     r.unmount();

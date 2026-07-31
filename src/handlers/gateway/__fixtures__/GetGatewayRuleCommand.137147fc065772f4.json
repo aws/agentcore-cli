@@ -1,0 +1,6 @@
+{
+  "$error": {
+    "name": "ResourceNotFoundException",
+    "message": "GatewayRule 00000000-0000-4000-8000-000000000000 not found"
+  }
+}

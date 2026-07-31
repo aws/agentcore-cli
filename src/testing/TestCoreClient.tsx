@@ -8,6 +8,9 @@ import type {
   DeleteHarnessEndpointResponse,
   DeleteHarnessRequest,
   DeleteHarnessResponse,
+  GetGatewayResponse,
+  GetGatewayRuleResponse,
+  GetGatewayTargetResponse,
   GetApiKeyCredentialProviderResponse,
   GetHarnessResponse,
   GetHarnessEndpointResponse,
@@ -22,6 +25,9 @@ import type {
   ListHarnessesResponse,
   ListHarnessEndpointsResponse,
   ListHarnessVersionsResponse,
+  ListGatewayRulesResponse,
+  ListGatewaysResponse,
+  ListGatewayTargetsResponse,
   CreateEvaluatorRequest,
   CreateEvaluatorResponse,
   DeleteEvaluatorResponse,
@@ -45,6 +51,7 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { Core } from "../handlers/types";
 import type { CoreHarnessClient, CreateHarnessInput } from "../handlers/harness/types";
+import type { CoreGatewayClient } from "../handlers/gateway/types";
 import type {
   CoreIdentityClient,
   CreateApiKeyCredentialProviderInput,
@@ -109,6 +116,12 @@ const DEFAULT_UPDATE_API_KEY_RESPONSE = {} as UpdateApiKeyCredentialProviderResp
 const DEFAULT_DELETE_API_KEY_RESPONSE = {} as DeleteApiKeyCredentialProviderResponse;
 const DEFAULT_GET_MEMORY_RESPONSE = {} as GetMemoryOutput;
 const DEFAULT_LIST_MEMORIES_RESPONSE: ListMemoriesOutput = { memories: [] };
+const DEFAULT_GET_GATEWAY_RESPONSE = {} as GetGatewayResponse;
+const DEFAULT_LIST_GATEWAYS_RESPONSE: ListGatewaysResponse = { items: [] };
+const DEFAULT_GET_GATEWAY_TARGET_RESPONSE = {} as GetGatewayTargetResponse;
+const DEFAULT_LIST_GATEWAY_TARGETS_RESPONSE: ListGatewayTargetsResponse = { items: [] };
+const DEFAULT_GET_GATEWAY_RULE_RESPONSE = {} as GetGatewayRuleResponse;
+const DEFAULT_LIST_GATEWAY_RULES_RESPONSE: ListGatewayRulesResponse = { gatewayRules: [] };
 const DEFAULT_GET_RUNTIME_RESPONSE = {} as GetAgentRuntimeResponse;
 const DEFAULT_GET_RUNTIME_ENDPOINT_RESPONSE = {} as GetAgentRuntimeEndpointResponse;
 const DEFAULT_LIST_RUNTIMES_RESPONSE: ListAgentRuntimesResponse = { agentRuntimes: [] };
@@ -637,6 +650,129 @@ export class TestMemoryClient implements CoreMemoryClient {
   }
 }
 
+export class TestGatewayClient implements CoreGatewayClient {
+  readonly calls: RecordedCall[] = [];
+
+  private getResponse: GetGatewayResponse = DEFAULT_GET_GATEWAY_RESPONSE;
+  private listResponses = new Map<string | undefined, ListGatewaysResponse>();
+  private getTargetResponse: GetGatewayTargetResponse = DEFAULT_GET_GATEWAY_TARGET_RESPONSE;
+  private listTargetResponses = new Map<string | undefined, ListGatewayTargetsResponse>();
+  private getRuleResponse: GetGatewayRuleResponse = DEFAULT_GET_GATEWAY_RULE_RESPONSE;
+  private listRuleResponses = new Map<string | undefined, ListGatewayRulesResponse>();
+  private error?: Error;
+
+  setGetResponse(response: GetGatewayResponse): this {
+    this.getResponse = response;
+    return this;
+  }
+
+  setListResponse(response: ListGatewaysResponse, forNextToken?: string): this {
+    this.listResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setGetTargetResponse(response: GetGatewayTargetResponse): this {
+    this.getTargetResponse = response;
+    return this;
+  }
+
+  setListTargetsResponse(response: ListGatewayTargetsResponse, forNextToken?: string): this {
+    this.listTargetResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setGetRuleResponse(response: GetGatewayRuleResponse): this {
+    this.getRuleResponse = response;
+    return this;
+  }
+
+  setListRulesResponse(response: ListGatewayRulesResponse, forNextToken?: string): this {
+    this.listRuleResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setError(error: Error | undefined): this {
+    this.error = error;
+    return this;
+  }
+
+  async getGateway(id: string, options: CoreOptions): Promise<GetGatewayResponse> {
+    this.calls.push({ method: "getGateway", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.getResponse;
+  }
+
+  async listGateways(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListGatewaysResponse> {
+    this.calls.push({ method: "listGateways", args: [nextToken, maxResults, options] });
+    if (this.error) throw this.error;
+    return (
+      this.listResponses.get(nextToken) ??
+      this.listResponses.get(undefined) ??
+      DEFAULT_LIST_GATEWAYS_RESPONSE
+    );
+  }
+
+  async getGatewayTarget(
+    gatewayId: string,
+    targetId: string,
+    options: CoreOptions,
+  ): Promise<GetGatewayTargetResponse> {
+    this.calls.push({ method: "getGatewayTarget", args: [gatewayId, targetId, options] });
+    if (this.error) throw this.error;
+    return this.getTargetResponse;
+  }
+
+  async listGatewayTargets(
+    gatewayId: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListGatewayTargetsResponse> {
+    this.calls.push({
+      method: "listGatewayTargets",
+      args: [gatewayId, nextToken, maxResults, options],
+    });
+    if (this.error) throw this.error;
+    return (
+      this.listTargetResponses.get(nextToken) ??
+      this.listTargetResponses.get(undefined) ??
+      DEFAULT_LIST_GATEWAY_TARGETS_RESPONSE
+    );
+  }
+
+  async getGatewayRule(
+    gatewayId: string,
+    ruleId: string,
+    options: CoreOptions,
+  ): Promise<GetGatewayRuleResponse> {
+    this.calls.push({ method: "getGatewayRule", args: [gatewayId, ruleId, options] });
+    if (this.error) throw this.error;
+    return this.getRuleResponse;
+  }
+
+  async listGatewayRules(
+    gatewayId: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListGatewayRulesResponse> {
+    this.calls.push({
+      method: "listGatewayRules",
+      args: [gatewayId, nextToken, maxResults, options],
+    });
+    if (this.error) throw this.error;
+    return (
+      this.listRuleResponses.get(nextToken) ??
+      this.listRuleResponses.get(undefined) ??
+      DEFAULT_LIST_GATEWAY_RULES_RESPONSE
+    );
+  }
+}
+
 type TestCoreClientOptions = {
   logger?: Logger;
 };
@@ -795,6 +931,7 @@ export class TestCoreClient implements Core {
   readonly identity = new TestIdentityClient();
   readonly memory = new TestMemoryClient();
   readonly runtime = new TestRuntimeClient();
+  readonly gateway = new TestGatewayClient();
   readonly eval = new TestEvalClient();
   readonly projectManager: ProjectManager;
 

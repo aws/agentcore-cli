@@ -8,6 +8,8 @@ export interface AgentCoreCLIErrorOptions extends ErrorOptions {
   meta?: Record<string, unknown>;
   /** Describes the exitCode for the CLI when this error hits the root handler */
   exitCode?: number;
+  /** Describes the name of the underlying error, defaults to AgentCoreCLIError */
+  name?: string;
 }
 
 /** Base error for CLI failures, including their source, metadata, and process exit code. */
@@ -18,7 +20,7 @@ export class AgentCoreCLIError extends Error {
 
   constructor(message?: string, options?: AgentCoreCLIErrorOptions) {
     super(message, options);
-    this.name = new.target.name;
+    this.name = options?.name ?? new.target.name;
     this.source = options?.source ?? ERROR_SOURCE.INTERNAL;
     this.meta = options?.meta ?? {};
     this.exitCode = options?.exitCode ?? 1;
@@ -48,6 +50,7 @@ export class AgentCoreCLIError extends Error {
       return new AgentCoreCLIError(error.message, {
         cause: error,
         source,
+        name: error.name,
         meta: { ...error.$metadata },
       });
     }

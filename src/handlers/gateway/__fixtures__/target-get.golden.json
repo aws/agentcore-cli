@@ -1,0 +1,17 @@
+{
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:gateway/agentcore-cli-gateway-read-fixture-a-l6opkbe2kd",
+  "targetId": "KALJACI9HO",
+  "createdAt": "2026-07-29T22:20:22.462Z",
+  "updatedAt": "2026-07-29T22:20:25.484Z",
+  "status": "READY",
+  "name": "agentcore-cli-gateway-read-target-a1",
+  "targetConfiguration": {
+    "mcp": {
+      "mcpServer": {
+        "endpoint": "https://mcp.context7.com/mcp"
+      }
+    }
+  },
+  "description": "AgentCore CLI persistent Gateway Target read fixture",
+  "lastSynchronizedAt": "2026-07-29T22:20:25.286Z"
+}
