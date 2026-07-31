@@ -721,7 +721,7 @@ test.each([
     commandRunMetricEvent.setAttributes({ exit_reason: "success" });
   }
 
-  await commandRunMetricEvent.end(100);
+  await commandRunMetricEvent.emit(100);
 
   expect(recordedMetrics).toHaveLength(1);
   expect(recordedMetrics[0]!.metricName).toBe("cli.command_run");

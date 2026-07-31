@@ -140,7 +140,7 @@ class InMemoryMetricEvent<TMetricName extends MetricName> implements MetricEvent
     };
   }
 
-  async end(value: ValueOf<TMetricName>): Promise<void> {
+  async emit(value: ValueOf<TMetricName>): Promise<void> {
     const metricAttributes = METRICS[this.metricName]["attributeSchema"].parse(this.data);
     const validatedValue = METRICS[this.metricName]["valueSchema"].parse(value);
     const resourceAttributes = await this.getResourceAttributes();

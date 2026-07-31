@@ -45,7 +45,7 @@ describe("DefaultTelemetryClient", () => {
       command_path: "/agentcore",
     });
 
-    await metricEvent.end(123);
+    await metricEvent.emit(123);
 
     // Start a second event with failure
     const metricEvent2 = client.startMetricEvent("cli.command_run", {
@@ -53,7 +53,7 @@ describe("DefaultTelemetryClient", () => {
       command_path: "/agentcore",
     });
 
-    await metricEvent2.end(456);
+    await metricEvent2.emit(456);
     await client.shutdown();
 
     expect(fileSystemSink.getName()).toBe("FileSystemSink");
@@ -139,14 +139,14 @@ describe("DefaultTelemetryClient", () => {
       command_path: "/agentcore",
       is_tui: true,
     });
-    await enabledEvent.end(123);
+    await enabledEvent.emit(123);
 
     const disabledEvent = disabledClient.startMetricEvent("cli.command_run", {
       exit_reason: "failure",
       command_path: "/agentcore",
       is_tui: false,
     });
-    await disabledEvent.end(123);
+    await disabledEvent.emit(123);
 
     await Promise.all([enabledClient.shutdown(), disabledClient.shutdown()]);
 
@@ -181,7 +181,7 @@ describe("DefaultTelemetryClient", () => {
 
     const metricEvent = client.startMetricEvent("cli.command_run");
 
-    await expect(metricEvent.end(100)).rejects.toThrow();
+    await expect(metricEvent.emit(100)).rejects.toThrow();
     await client.shutdown();
   });
 
@@ -202,7 +202,7 @@ describe("DefaultTelemetryClient", () => {
       exit_reason: "success",
       command_path: "/agentcore",
     });
-    await metricEvent.end(1);
+    await metricEvent.emit(1);
     await client.shutdown();
 
     await assertLogsMatch(tempDir, [
@@ -248,7 +248,7 @@ describe("DefaultTelemetryClient", () => {
     });
 
     // end should not throw even though the sink's send() throws
-    await metricEvent.end(100);
+    await metricEvent.emit(100);
     // shutdown should not throw even though the sink's shutdown() rejects
     await client.shutdown();
 

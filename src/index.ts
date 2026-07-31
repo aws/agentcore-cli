@@ -93,7 +93,7 @@ process.exit(
       throw error;
     } finally {
       try {
-        await commandRunMetricEvent.end(Date.now() - startTime);
+        await commandRunMetricEvent.emit(Date.now() - startTime);
       } catch (e) {
         const error = AgentCoreCLIError.fromError(e);
         rootLogger.child({ error: error.json() }).warn("failed to emit telemetry");

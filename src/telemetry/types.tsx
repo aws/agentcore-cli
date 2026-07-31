@@ -24,8 +24,8 @@ export interface MetricEvent<TMetricName extends MetricName> {
   /** Accumulate attributes incrementally. Later calls overwrite earlier values for the same key. */
   setAttributes(data: Partial<AttributesOf<TMetricName>>): void;
 
-  /** Validate attributes, emit value + attributes to all sinks. */
-  end(value: ValueOf<TMetricName>): Promise<void>;
+  /** Validate attributes and emit value + attributes to all sinks. */
+  emit(value: ValueOf<TMetricName>): Promise<void>;
 }
 
 /**
