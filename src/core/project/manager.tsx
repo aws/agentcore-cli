@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { AgentCoreCLIError, ERROR_SOURCE } from "../../errors";
+import { NestedProjectError } from "../../errors";
 import type {
   CreateProjectInput,
   ResolveProjectInput,
@@ -11,16 +11,6 @@ import type { Logger } from "../../logging";
 import { projectTree } from "./compose";
 import { defaultSource, type AssetSource } from "./source";
 import { writeTree } from "./tree";
-
-/** Thrown when scaffolding would nest a new project inside an existing AgentCore project. */
-export class NestedProjectError extends AgentCoreCLIError {
-  constructor(public readonly projectRoot: string) {
-    super(
-      `cannot create a project inside an existing AgentCore project (found ${join(projectRoot, "agentcore", "agentcore.json")})`,
-      { source: ERROR_SOURCE.USER, meta: { projectRoot } },
-    );
-  }
-}
 
 /** Walks up from directory looking for the agentcore/agentcore.json project marker. */
 function enclosingProjectRoot(directory: string): string | undefined {

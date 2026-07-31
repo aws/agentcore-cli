@@ -16,6 +16,7 @@ import { runWithExitCode } from "./runnable";
 import { DefaultGlobalConfigAccessor } from "./globalConfig";
 import { DefaultTelemetryClient } from "./telemetry";
 import { AgentCoreCLIError } from "./errors";
+import { PACKAGE_VERSION } from "./constants";
 import { CommandRunMetricEventKey, ValueContext } from "./router";
 
 process.exit(
@@ -27,7 +28,7 @@ process.exit(
     const rootLogger = createFileLogger({
       filePath: join(homedir(), ".agentcore", "logs", "output"),
       logLevel: LOG_LEVEL.DEBUG,
-      bindings: { cliSessionId },
+      bindings: { cliSessionId, version: PACKAGE_VERSION },
     });
 
     const io = {

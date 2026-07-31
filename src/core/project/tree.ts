@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { AgentCoreCLIError, ERROR_SOURCE } from "../../errors";
+import { ProjectFileExistsError } from "../../errors";
 import { atomicWrite } from "../../io";
 
 /**
@@ -33,16 +33,6 @@ export const file = (name: string, bytes: () => Promise<string>): FileNode => ({
   name,
   bytes,
 });
-
-/** Thrown when scaffolding would overwrite a file that already exists. */
-export class ProjectFileExistsError extends AgentCoreCLIError {
-  constructor(public readonly path: string) {
-    super(`Refusing to overwrite existing file: ${path}`, {
-      source: ERROR_SOURCE.USER,
-      meta: { path },
-    });
-  }
-}
 
 /**
  * Writes a project tree to the destination with atomic file writes.

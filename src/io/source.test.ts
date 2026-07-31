@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Readable } from "node:stream";
 
-import { SourceResolutionError, SourceResolver } from "./source";
+import { SourceResolutionError } from "../errors";
+import { SourceResolver } from "./source";
 
 const tempDirectories: string[] = [];
 

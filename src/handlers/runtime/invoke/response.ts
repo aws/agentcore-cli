@@ -1,7 +1,7 @@
 import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
+import { RuntimeInvokeInterruptedError, RuntimeInvokeResponseError } from "../../../errors";
 import type { RuntimeInvokeResponse } from "../types";
-import { RuntimeInvokeInterruptedError, RuntimeInvokeResponseError } from "./errors";
 
 interface RuntimeInvokeOutput {
   stdout: NodeJS.WriteStream;

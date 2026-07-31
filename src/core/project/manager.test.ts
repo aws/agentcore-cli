@@ -2,8 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
-import { FsProjectManager, NestedProjectError } from "./manager";
-import { ProjectFileExistsError } from "./tree";
+import { NestedProjectError, ProjectFileExistsError } from "../../errors";
+import { FsProjectManager } from "./manager";
 import { PROJECT_TEMPLATES } from "../../handlers/project/types";
 import { createSilentLogger } from "../../testing";
 

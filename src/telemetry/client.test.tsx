@@ -9,6 +9,7 @@ import { assertLogsMatch, createSilentLogger, TestGlobalConfigAccessor } from ".
 import type { MetricSink } from "./types";
 import { FileSystemSink } from "./fileSystemSink";
 import { DEFAULT_GLOBAL_CONFIG } from "../globalConfig";
+import { PACKAGE_VERSION } from "../constants";
 
 describe("DefaultTelemetryClient", () => {
   let tempDir: string;
@@ -81,7 +82,7 @@ describe("DefaultTelemetryClient", () => {
 
     const resourceAttributes = {
       "service.name": "agentcore-cli",
-      "service.version": "0.0.0",
+      "service.version": PACKAGE_VERSION,
       "agentcore-cli.installation_id": installationId,
       "agentcore-cli.session_id": sessionId,
       "os.type": os.type(),
@@ -169,7 +170,7 @@ describe("DefaultTelemetryClient", () => {
       value: 123,
       attrs: {
         "service.name": "agentcore-cli",
-        "service.version": "0.0.0",
+        "service.version": PACKAGE_VERSION,
         "agentcore-cli.installation_id": enabledConfig.installationId,
         "agentcore-cli.session_id": enabledSessionId,
         "os.type": os.type(),
