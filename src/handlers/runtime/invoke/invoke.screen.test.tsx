@@ -437,6 +437,10 @@ describe("Runtime invoke console", () => {
     expect(optionsFrame).toContain("draft payload");
     expect(optionsFrame).toContain("idle · Sessions");
     expect(optionsFrame).toContain("╭");
+    const panelLines = optionsFrame.split("\n");
+    const panelTop = panelLines.findIndex((line) => line.includes("╭"));
+    const panelBottom = panelLines.findIndex((line) => line.includes("╰"));
+    expect(panelBottom - panelTop + 1).toBeGreaterThanOrEqual(26);
 
     await screen.write("ignored");
     await screen.press("escape");

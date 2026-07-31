@@ -292,7 +292,7 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
   const inputRows = Math.min(4, Math.max(1, payload.split("\n").length));
   const canPrettyJson = history.some((exchange) => exchange.pretty !== undefined);
   const contentType = requestOptions.contentType || "application/json";
-  const floatingOptions = showOptions && columns >= 72 && rows >= 30;
+  const floatingOptions = showOptions && columns >= 72 && rows >= 34;
   const optionsPanelWidth = Math.min(76, columns - 4);
   const closeOptions = () => {
     setShowOptions(false);
@@ -496,6 +496,8 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
               >
                 <Box
                   width={optionsPanelWidth}
+                  height="70%"
+                  minHeight={26}
                   flexDirection="column"
                   borderStyle="round"
                   borderColor={theme.colors.border}
