@@ -27,9 +27,20 @@ describe("DefaultTelemetryClient", () => {
 
   test("emits complete metrics to configured JSONL filesystem sinks", async () => {
     const auditFilePath = join(tempDir, "telemetry", "audit.jsonl");
+    const sinkResourceAttributes = {
+      "service.name": "agentcore-cli" as const,
+      "service.version": "0.0.0",
+      "agentcore-cli.installation_id": "00000000-0000-0000-0000-000000000000",
+      "agentcore-cli.session_id": "00000000-0000-0000-0000-000000000000",
+      "os.type": os.type(),
+      "os.version": os.release(),
+      "host.arch": os.arch(),
+      "node.version": process.version,
+    };
     const fileSystemSink = new FileSystemSink({
       logger: logger.child({ module: "fileSystemSink" }),
       filePath: auditFilePath,
+      resourceAttributes: sinkResourceAttributes,
     });
     const sessionId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
     const globalConfigAccessor = new TestGlobalConfigAccessor();
@@ -190,6 +201,16 @@ describe("DefaultTelemetryClient", () => {
     const sink = new FileSystemSink({
       logger: logger.child({ module: "fileSystemSink" }),
       filePath: tempDir,
+      resourceAttributes: {
+        "service.name": "agentcore-cli",
+        "service.version": "0.0.0",
+        "agentcore-cli.installation_id": "00000000-0000-0000-0000-000000000000",
+        "agentcore-cli.session_id": "00000000-0000-0000-0000-000000000000",
+        "os.type": os.type(),
+        "os.version": os.release(),
+        "host.arch": os.arch(),
+        "node.version": process.version,
+      },
     });
 
     const client = new DefaultTelemetryClient({
@@ -203,6 +224,7 @@ describe("DefaultTelemetryClient", () => {
       command_path: "/agentcore",
     });
     await metricEvent.emit(1);
+
     await client.shutdown();
 
     await assertLogsMatch(tempDir, [

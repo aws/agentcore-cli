@@ -52,10 +52,15 @@
     "@aws-sdk/client-bedrock-agentcore": "^3.1092.0",
     "@aws-sdk/client-bedrock-agentcore-control": "^3.1079.0",
     "@aws-sdk/client-iam": "^3.1080.0",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.221.0",
+    "@opentelemetry/resources": "^2.10.0",
+    "@opentelemetry/sdk-metrics": "^2.10.0",
     "@smithy/core": "3.29.3",
     "@tanstack/react-query": "^5.101.2",
     "cli-truncate": "^6.1.1",
     "commander": "^15.0.0",
+    "handlebars": "^4.7.9",
     "ink": "^7.1.0",
     "ink-scroll-view": "^0.3.7",
     "lodash": "^4.18.1",
@@ -65,7 +70,6 @@
     "string-width": "^8.2.2",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0",
-    "handlebars": "^4.7.9",
     "zod": "^4.4.3"
   }
 }

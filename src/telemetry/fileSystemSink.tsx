@@ -1,4 +1,5 @@
 import type { Logger } from "../logging";
+import type { ResourceAttributes } from "./shapes";
 import type { MetricSink } from "./types";
 import { mkdir, appendFile } from "fs/promises";
 import { dirname } from "path";
@@ -6,6 +7,7 @@ import { dirname } from "path";
 export type FileSystemSinkConfig = {
   logger: Logger;
   filePath: string;
+  resourceAttributes: ResourceAttributes;
 };
 
 /** An implementation of {@link MetricSink} that sends all data to the specified file in JSONL format **/
@@ -15,6 +17,8 @@ export class FileSystemSink implements MetricSink {
   private readonly filePath: string;
   private logger: Logger;
 
+  private readonly resourceAttributes: ResourceAttributes;
+
   /* a chain of promises describing the pending writes to the audit file */
   private pendingWrite: Promise<void>;
 
@@ -22,6 +26,7 @@ export class FileSystemSink implements MetricSink {
     this.filePath = config.filePath;
     this.logger = config.logger.child({ fsSinkFilePath: this.filePath });
     this.name = new.target.name;
+    this.resourceAttributes = config.resourceAttributes;
 
     this.pendingWrite = Promise.resolve();
   }
@@ -32,7 +37,7 @@ export class FileSystemSink implements MetricSink {
     attributes: Record<string, string | number | boolean>,
   ): void {
     this.pendingWrite = this.pendingWrite.then(() =>
-      this.appendEntry({ metricName, value, attrs: attributes }),
+      this.appendEntry({ metricName, value, attrs: { ...this.resourceAttributes, ...attributes } }),
     );
   }
 
