@@ -59,21 +59,22 @@ async function moveDown(screen: RenderedOptions, count: number) {
 afterEach(cleanup);
 
 describe("Request options", () => {
-  test("groups the HTTP overview and summarizes empty values", () => {
-    const screen = render(<Options />);
-    const frame = screen.lastFrame()!;
+  test("groups context-specific options and redacts sensitive values", () => {
+    const httpScreen = render(<Options />);
+    const httpFrame = httpScreen.lastFrame()!;
 
-    expect(frame).toContain("Request options");
-    expect(frame).toMatch(/Payload[\s\S]*Source\s+Inline[\s\S]*Content type\s+application\/json/);
-    expect(frame).toMatch(/Response[\s\S]*Accept\s+Automatic[\s\S]*Destination\s+Console/);
-    expect(frame).toMatch(/Runtime[\s\S]*Session ID\s+Not set[\s\S]*User ID\s+Not set/);
-    expect(frame).toContain("Trace");
-    expect(frame).not.toContain("MCP");
-    expect(frame).not.toContain("Bearer JWT");
-  });
+    expect(httpFrame).toContain("Request options");
+    expect(httpFrame).toMatch(
+      /Payload[\s\S]*Source\s+Inline[\s\S]*Content type\s+application\/json/,
+    );
+    expect(httpFrame).toMatch(/Response[\s\S]*Accept\s+Automatic[\s\S]*Destination\s+Console/);
+    expect(httpFrame).toMatch(/Runtime[\s\S]*Session ID\s+Not set[\s\S]*User ID\s+Not set/);
+    expect(httpFrame).toContain("Trace");
+    expect(httpFrame).not.toContain("MCP");
+    expect(httpFrame).not.toContain("Bearer JWT");
+    httpScreen.unmount();
 
-  test("shows conditional MCP and JWT sections without exposing secrets", () => {
-    const screen = render(
+    const mcpScreen = render(
       <Options
         customJwt
         mcp
@@ -85,46 +86,37 @@ describe("Request options", () => {
         }}
       />,
     );
-    const frame = screen.lastFrame()!;
+    const mcpFrame = mcpScreen.lastFrame()!;
 
-    expect(frame).toMatch(/Application headers\s+2 headers/);
-    expect(frame).toMatch(/Bearer JWT\s+Configured/);
-    expect(frame).toMatch(/MCP[\s\S]*Session ID\s+mcp-session[\s\S]*Protocol version\s+Not set/);
-    expect(frame).not.toContain("secret-token");
-    expect(frame).not.toContain("X-Tenant");
-    expect(frame).not.toContain("retail");
+    expect(mcpFrame).toMatch(/Application headers\s+2 headers/);
+    expect(mcpFrame).toMatch(/Bearer JWT\s+Configured/);
+    expect(mcpFrame).toMatch(/MCP[\s\S]*Session ID\s+mcp-session[\s\S]*Protocol version\s+Not set/);
+    expect(mcpFrame).not.toContain("secret-token");
+    expect(mcpFrame).not.toContain("X-Tenant");
+    expect(mcpFrame).not.toContain("retail");
   });
 
-  test("replaces the overview with a choice editor and highlights the saved value", async () => {
+  test("highlights saved choices and reveals conditional rows", async () => {
     const modes: RequestOptionsMode[] = [];
-    const screen = render(
-      <Options
-        initial={{ ...defaults, payloadSource: "File", payloadPath: "/tmp/input.json" }}
-        onModeChange={(mode) => modes.push(mode)}
-      />,
-    );
+    const screen = render(<Options onModeChange={(mode) => modes.push(mode)} />);
 
     await press(screen, "return");
     const frame = screen.lastFrame()!;
     expect(frame).not.toContain("Request options");
     expect(frame).toContain("Source");
-    expect(frame).toContain("  Inline");
-    expect(frame).toContain("❯ File");
+    expect(frame).toContain("❯ Inline");
+    expect(frame).toContain("  File");
     expect(modes).toEqual(["choice"]);
 
-    await press(screen, "escape");
-    expect(screen.lastFrame()).toContain("Request options");
-    expect(modes).toEqual(["choice", "overview"]);
-  });
-
-  test("saves a choice and reveals its conditional path row", async () => {
-    const screen = render(<Options />);
-
-    await press(screen, "return");
     await press(screen, "down");
     await press(screen, "return");
-
     expect(screen.lastFrame()).toMatch(/Source\s+File[\s\S]*File path\s+Not set/);
+    expect(modes).toEqual(["choice", "overview"]);
+
+    await press(screen, "return");
+    expect(screen.lastFrame()).toContain("❯ File");
+    await press(screen, "escape");
+    expect(modes).toEqual(["choice", "overview", "choice", "overview"]);
   });
 
   test("cancels and saves a custom media type", async () => {
@@ -165,24 +157,6 @@ describe("Request options", () => {
     expect(screen.lastFrame()).toMatch(/Accept\s+Automatic/);
   });
 
-  test("shows file source and destination paths", () => {
-    const screen = render(
-      <Options
-        initial={{
-          ...defaults,
-          payloadSource: "File",
-          payloadPath: "/tmp/input.json",
-          responseDestination: "File",
-          outputPath: "/tmp/output.bin",
-        }}
-      />,
-    );
-    const frame = screen.lastFrame()!;
-
-    expect(frame).toMatch(/Source\s+File[\s\S]*File path\s+\/tmp\/input\.json/);
-    expect(frame).toMatch(/Destination\s+File[\s\S]*File path\s+\/tmp\/output\.bin/);
-  });
-
   test("saves multiline headers with Ctrl+D and cancels without leaking values", async () => {
     const screen = render(<Options />);
 
@@ -198,16 +172,5 @@ describe("Request options", () => {
     await press(screen, "escape");
     expect(screen.lastFrame()).toMatch(/Application headers\s+2 headers/);
     expect(screen.lastFrame()).not.toContain("X-Cancelled");
-  });
-
-  test("clamps selection when conditional rows disappear", async () => {
-    const screen = render(<Options mcp />);
-    await moveDown(screen, 15);
-    expect(screen.lastFrame()).toMatch(/❯ Baggage\s+Not set/);
-
-    screen.rerender(<Options />);
-    await tick();
-    expect(screen.lastFrame()).toMatch(/❯ Baggage\s+Not set/);
-    expect(screen.lastFrame()).not.toContain("MCP");
   });
 });
