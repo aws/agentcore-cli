@@ -5,9 +5,10 @@ import os, { tmpdir } from "node:os";
 import { DefaultTelemetryClient } from "./client";
 import { createFileLogger, type Logger } from "../logging";
 import { LOG_LEVEL } from "../logging";
-import { assertLogsMatch, TestGlobalConfigAccessor } from "../testing";
+import { assertLogsMatch, createSilentLogger, TestGlobalConfigAccessor } from "../testing";
 import type { MetricSink } from "./types";
 import { FileSystemSink } from "./fileSystemSink";
+import { DEFAULT_GLOBAL_CONFIG } from "../globalConfig";
 
 describe("DefaultTelemetryClient", () => {
   let tempDir: string;
@@ -294,4 +295,110 @@ describe("DefaultTelemetryClient", () => {
       },
     ]);
   });
+});
+
+describe("OtelHistogramSink", () => {
+  let testCollector: ReturnType<typeof Bun.serve>;
+  let receivedBodies: any[];
+
+  const logger = createSilentLogger();
+
+  beforeEach(async () => {
+    receivedBodies = [];
+    testCollector = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = await req.json();
+        receivedBodies.push(body);
+        return new Response("", { status: 200 });
+      },
+    });
+  });
+
+  afterEach(async () => {
+    testCollector.stop(true);
+  });
+
+  test.each([
+    { enabled: true, expectRequests: true },
+    { enabled: false, expectRequests: false },
+  ])(
+    "telemetry.enabled=$enabled → collector receives requests=$expectRequests",
+    async ({ enabled, expectRequests }) => {
+      const sessionId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+      const exitReason = "success";
+      const commandPath = "/agentcore";
+      const metricName = "cli.command_run";
+      const scopeName = "agentcore-cli";
+      const serviceName = "agentcore-cli";
+      const globalConfigAccessor = new TestGlobalConfigAccessor({
+        initialConfigData: {
+          ...DEFAULT_GLOBAL_CONFIG,
+          telemetry: {
+            enabled,
+            audit: false,
+            endpoint: `http://localhost:${testCollector.port}`,
+          },
+        },
+      });
+
+      const client = new DefaultTelemetryClient({
+        logger,
+        sessionId,
+        globalConfigAccessor,
+      });
+
+      const event = client.createMetricEvent(metricName, {
+        exit_reason: exitReason,
+        command_path: commandPath,
+      });
+      await event.emit(100);
+      await client.shutdown();
+
+      if (expectRequests) {
+        expect(receivedBodies.length).toBeGreaterThan(0);
+
+        const body = receivedBodies[0];
+        expect(body).toMatchObject({
+          resourceMetrics: [
+            {
+              resource: {
+                attributes: expect.arrayContaining([
+                  { key: "service.name", value: { stringValue: serviceName } },
+                  {
+                    key: "agentcore-cli.session_id",
+                    value: { stringValue: sessionId },
+                  },
+                  { key: "os.type", value: { stringValue: os.type() } },
+                  { key: "host.arch", value: { stringValue: os.arch() } },
+                ]),
+              },
+              scopeMetrics: [
+                {
+                  scope: { name: scopeName },
+                  metrics: [
+                    {
+                      name: metricName,
+                      histogram: {
+                        dataPoints: [
+                          {
+                            attributes: expect.arrayContaining([
+                              { key: "exit_reason", value: { stringValue: exitReason } },
+                              { key: "command_path", value: { stringValue: commandPath } },
+                            ]),
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        });
+      } else {
+        expect(receivedBodies).toHaveLength(0);
+      }
+    },
+  );
 });
