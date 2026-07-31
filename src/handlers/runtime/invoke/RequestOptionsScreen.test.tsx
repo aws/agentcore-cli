@@ -65,7 +65,7 @@ describe("Request options", () => {
 
     expect(httpFrame).toContain("Request options");
     expect(httpFrame).toMatch(
-      /Payload[\s\S]*Source\s+Inline[\s\S]*Content type\s+application\/json/,
+      /Payload[\s\S]*Source\s+Inline[\s\S]*Content type\s+application\/json[\s\S]*Payload template\s+Not set/,
     );
     expect(httpFrame).toMatch(/Response[\s\S]*Accept\s+Automatic[\s\S]*Destination\s+Console/);
     expect(httpFrame).toMatch(/Runtime[\s\S]*Session ID\s+Not set[\s\S]*User ID\s+Not set/);
@@ -147,7 +147,7 @@ describe("Request options", () => {
   test("resets Accept to Automatic", async () => {
     const screen = render(<Options initial={{ ...defaults, accept: "text/plain" }} />);
 
-    await moveDown(screen, 2);
+    await moveDown(screen, 3);
     await press(screen, "return");
     expect(screen.lastFrame()).toContain("❯ text/plain");
     await press(screen, "up");
@@ -160,7 +160,7 @@ describe("Request options", () => {
   test("saves multiline headers with Ctrl+D and cancels without leaking values", async () => {
     const screen = render(<Options />);
 
-    await moveDown(screen, 6);
+    await moveDown(screen, 7);
     await press(screen, "return");
     await write(screen, "X-Tenant: retail\nX-Mode: fast");
     await write(screen, "\x04");
@@ -172,5 +172,64 @@ describe("Request options", () => {
     await press(screen, "escape");
     expect(screen.lastFrame()).toMatch(/Application headers\s+2 headers/);
     expect(screen.lastFrame()).not.toContain("X-Cancelled");
+  });
+
+  test("shows and validates multiline templates only for inline JSON payloads", async () => {
+    const screen = render(<Options />);
+
+    await moveDown(screen, 2);
+    await press(screen, "return");
+    await write(screen, '{"prompt":\n  "{{input}}"\n}');
+    await write(screen, "\x04");
+    expect(screen.lastFrame()).toMatch(/Payload template\s+3-line template/);
+
+    await press(screen, "return");
+    expect(screen.lastFrame()).toContain('{"prompt":\n  "{{input}}"\n}');
+    await press(screen, "escape");
+
+    await press(screen, "up");
+    await press(screen, "return");
+    await press(screen, "down");
+    await press(screen, "return");
+    expect(screen.lastFrame()).not.toContain("Payload template");
+
+    await press(screen, "return");
+    await press(screen, "up");
+    await press(screen, "return");
+    expect(screen.lastFrame()).toMatch(/Payload template\s+3-line template/);
+    screen.unmount();
+
+    const invalid = render(<Options />);
+    await moveDown(invalid, 2);
+    await press(invalid, "return");
+    await write(invalid, '{"prompt":"fixed"}');
+    await write(invalid, "\x04");
+    expect(invalid.lastFrame()).toContain(
+      'Payload template must include "{{input}}" in a string value',
+    );
+    expect(invalid.lastFrame()).toContain('{"prompt":"fixed"}');
+    invalid.unmount();
+
+    const text = render(
+      <Options initial={{ ...defaults, contentType: "text/plain", payloadTemplate: "{}" }} />,
+    );
+    expect(text.lastFrame()).not.toContain("Payload template");
+    text.unmount();
+
+    const file = render(
+      <Options initial={{ ...defaults, payloadSource: "File", payloadTemplate: "{}" }} />,
+    );
+    expect(file.lastFrame()).not.toContain("Payload template");
+    file.unmount();
+
+    const vendorJson = render(
+      <Options
+        initial={{
+          ...defaults,
+          contentType: "application/vnd.example+json; charset=utf-8",
+        }}
+      />,
+    );
+    expect(vendorJson.lastFrame()).toContain("Payload template");
   });
 });

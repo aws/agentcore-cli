@@ -92,7 +92,7 @@ async function editCustom(screen: InvokeScreen, down: number, choice: number, va
 async function configureRuntimeScopedOptions(screen: InvokeScreen, token: string) {
   await screen.write("\x0f");
   await waitForText(screen.lastFrame, "Request options");
-  await editText(screen, 5, RUNTIME_USER_ID);
+  await editText(screen, 6, RUNTIME_USER_ID);
   await screen.press("down");
   await screen.press("return");
   await screen.write(APPLICATION_HEADER);
@@ -273,6 +273,46 @@ describe("Runtime invoke console", () => {
 
     await waitForText(screen.lastFrame, "Payload · text/plain");
     expect(screen.lastFrame()).toContain("Enter text payload");
+  });
+
+  test("renders template input into the request and transcript payload", async () => {
+    const core = new TestCoreClient();
+    core.runtime
+      .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
+      .setInvokeResponse({
+        statusCode: 200,
+        contentType: "application/json",
+        body: responseBody(Buffer.from('{"ok":true}')),
+      });
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "idle");
+    await screen.write("\x0f");
+    await waitForText(screen.lastFrame, "Request options");
+    await moveDown(screen, 2);
+    await screen.press("return");
+    await screen.write('{\n  "prompt": "{{input}}",\n  "context": "User: {{input}}"\n}');
+    await screen.write("\x04");
+    await screen.press("escape");
+
+    await waitForText(screen.lastFrame, "Input · 4-line template");
+    expect(screen.lastFrame()).toContain('{"prompt":"{{input}}","context":"User: {{input}}"}');
+    expect(screen.lastFrame()).toContain("Enter input");
+
+    await screen.write('hello "world"');
+    await screen.write("\x1b[13;2u");
+    await screen.write("next");
+    await screen.press("return");
+    await waitFor(
+      () => core.runtime.calls.filter((call) => call.method === "invokeRuntime").length === 1,
+    );
+
+    const expected =
+      '{"prompt":"hello \\"world\\"\\nnext","context":"User: hello \\"world\\"\\nnext"}';
+    const request = core.runtime.calls.find((call) => call.method === "invokeRuntime")!
+      .args[0] as RuntimeInvokeRequest;
+    expect(new TextDecoder().decode(request.payload)).toBe(expected);
+    await waitForText(screen.lastFrame, expected);
   });
 
   test("accepts the next payload draft while a response is streaming", async () => {
@@ -483,7 +523,7 @@ describe("Runtime invoke console", () => {
     await screen.write("\x0f");
     await waitForText(screen.lastFrame, "Request options");
     await editCustom(screen, 1, 3, "application/vnd.test+json");
-    await editCustom(screen, 1, 5, "application/vnd.test-response+json");
+    await editCustom(screen, 2, 5, "application/vnd.test-response+json");
     await editText(screen, 2, "runtime-session");
     await editText(screen, 1, "runtime-user");
     await screen.press("down");
@@ -776,7 +816,7 @@ describe("Runtime invoke console", () => {
     await waitForText(screen.lastFrame, "idle");
     await screen.write("\x0f");
     await waitForText(screen.lastFrame, "Request options");
-    await editText(screen, 7, "mcp-session");
+    await editText(screen, 8, "mcp-session");
     await editText(screen, 1, "2025-06-18");
     await editCustom(screen, 1, 4, "tasks/run");
     await editText(screen, 1, "task-name");
@@ -1033,7 +1073,7 @@ describe("Runtime invoke console", () => {
       await waitForText(screen.lastFrame, "idle");
       await screen.write("\x0f");
       await waitForText(screen.lastFrame, "Request options");
-      for (let index = 0; index < 3; index++) await screen.press("down");
+      for (let index = 0; index < 4; index++) await screen.press("down");
       await screen.press("return");
       await screen.press("down");
       await screen.press("return");
@@ -1061,7 +1101,7 @@ describe("Runtime invoke console", () => {
     await waitForText(screen.lastFrame, "idle");
     await screen.write("\x0f");
     await waitForText(screen.lastFrame, "Request options");
-    for (let index = 0; index < 3; index++) await screen.press("down");
+    for (let index = 0; index < 4; index++) await screen.press("down");
     await screen.press("return");
     await screen.press("down");
     await screen.press("return");
@@ -1129,7 +1169,7 @@ describe("Runtime invoke console", () => {
     await waitForText(screen.lastFrame, "idle");
     await screen.write("\x0f");
     await waitForText(screen.lastFrame, "Request options");
-    await editText(screen, 7, token);
+    await editText(screen, 8, token);
     await screen.press("escape");
     await screen.write("{}");
     await screen.write("\x04");

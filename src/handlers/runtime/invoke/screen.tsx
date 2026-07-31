@@ -3,6 +3,7 @@ import { Box, Text, useInput, useStdin, useWindowSize } from "ink";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
+import cliTruncate from "cli-truncate";
 import { InputValidationError } from "../../../errors";
 import type { ScreenProps } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
@@ -24,6 +25,11 @@ import {
   type RuntimeInvokeOptions,
 } from "./RequestOptionsScreen";
 import { RuntimePayloadInput } from "./RuntimePayloadInput";
+import {
+  renderPayloadTemplate,
+  summarizePayloadTemplate,
+  supportsPayloadTemplate,
+} from "./payloadTemplate";
 import { classifyRuntimeResponse, writeRuntimeInvokeFile } from "./response";
 
 const theme = darkTheme;
@@ -174,14 +180,32 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
       mcpProtocolVersion,
       mcpMethod,
       mcpName,
+      payloadTemplate,
       ...modeled
     } = requestOptions;
-    const requestPayload = payloadSource === "File" ? `file://${payloadPath ?? ""}` : payload;
+    let requestPayload = payloadSource === "File" ? `file://${payloadPath ?? ""}` : payload;
     const appendExchange = (response: string, state: ExchangeState) =>
       setHistory((current) => [
         ...current,
         { payload: requestPayload, response, byteCount: 0, state },
       ]);
+    if (
+      payloadSource === "Inline" &&
+      payloadTemplate?.trim() &&
+      supportsPayloadTemplate(modeled.contentType)
+    ) {
+      try {
+        requestPayload = renderPayloadTemplate(payloadTemplate, payload);
+      } catch (error) {
+        appendExchange(
+          `Error: ${
+            error instanceof InputValidationError ? error.message : "Payload template is invalid"
+          }`,
+          "failed",
+        );
+        return;
+      }
+    }
     if (responseDestination === "File" && !outputPath?.trim()) {
       appendExchange("Response path is required for File destination.", "failed");
       return;
@@ -292,6 +316,17 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
   const inputRows = Math.min(4, Math.max(1, payload.split("\n").length));
   const canPrettyJson = history.some((exchange) => exchange.pretty !== undefined);
   const contentType = requestOptions.contentType || "application/json";
+  const templateActive =
+    requestOptions.payloadSource === "Inline" &&
+    supportsPayloadTemplate(requestOptions.contentType) &&
+    Boolean(requestOptions.payloadTemplate?.trim());
+  const inputLabel =
+    templateActive && requestOptions.payloadTemplate
+      ? cliTruncate(
+          `Input · ${summarizePayloadTemplate(requestOptions.payloadTemplate)}`,
+          Math.max(1, columns),
+        )
+      : `Payload · ${contentType}`;
   const floatingOptions = showOptions && columns >= 72 && rows >= 34;
   const optionsPanelWidth = Math.min(76, columns - 4);
   const closeOptions = () => {
@@ -463,8 +498,8 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
               </Box>
               <Divider />
               <RuntimePayloadInput
-                label={`Payload · ${contentType}`}
-                placeholder={payloadPlaceholder(contentType)}
+                label={inputLabel}
+                placeholder={templateActive ? "Enter input" : payloadPlaceholder(contentType)}
                 value={payload}
                 onChange={setPayload}
                 onSubmit={() => void send()}

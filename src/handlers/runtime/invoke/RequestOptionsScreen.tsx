@@ -4,12 +4,15 @@ import { FormTextArea } from "../../../components/FormTextArea";
 import { darkTheme } from "../../../components/ui/_core.js";
 import { Select } from "../../../components/ui/select";
 import { TextInput } from "../../../components/ui/text-input";
+import { InputValidationError } from "../../../errors";
+import { renderPayloadTemplate, supportsPayloadTemplate } from "./payloadTemplate";
 
 export type RuntimeInvokeOptions = {
   payloadSource: "Inline" | "File";
   responseDestination: "Console" | "File";
   payloadPath?: string;
   contentType?: string;
+  payloadTemplate?: string;
   accept?: string;
   outputPath?: string;
   runtimeSessionId?: string;
@@ -42,6 +45,7 @@ type Row = {
   label: string;
   choices?: Choice[];
   multiline?: boolean;
+  placeholder?: string;
   secret?: boolean;
 };
 
@@ -71,6 +75,17 @@ function optionRows(value: RuntimeInvokeOptions, customJwt: boolean, mcp: boolea
         { label: "Custom", custom: true },
       ],
     },
+    ...(value.payloadSource === "Inline" && supportsPayloadTemplate(value.contentType)
+      ? [
+          {
+            section: "Payload",
+            field: "payloadTemplate",
+            label: "Payload template",
+            multiline: true,
+            placeholder: '{"prompt":"{{input}}"}',
+          } as Row,
+        ]
+      : []),
     {
       section: "Response",
       field: "accept",
@@ -137,6 +152,11 @@ function optionSummary(row: Row, value: RuntimeInvokeOptions): string {
     const count = current?.split("\n").filter((line) => line.trim()).length ?? 0;
     return count === 0 ? "Not set" : `${count} ${count === 1 ? "header" : "headers"}`;
   }
+  if (row.field === "payloadTemplate") {
+    if (!current) return "Not set";
+    const lines = current.split("\n").length;
+    return `${lines}-line template`;
+  }
   if (row.field === "accept") return current || "Automatic";
   return current || "Not set";
 }
@@ -171,16 +191,29 @@ export function RequestOptionsScreen({
   const [editing, setEditing] = useState<keyof RuntimeInvokeOptions>();
   const [draft, setDraft] = useState("");
   const [custom, setCustom] = useState(false);
+  const [error, setError] = useState<string>();
   const selectedIndex = Math.min(selected, rows.length - 1);
   const row = rows[selectedIndex]!;
 
   const closeEditor = () => {
     setEditing(undefined);
     setCustom(false);
+    setError(undefined);
     onModeChange?.("overview");
   };
   const save = (next?: string) => {
-    onChange({ ...value, [row.field]: next });
+    const normalized = row.field === "payloadTemplate" ? (next?.trim() ? next : undefined) : next;
+    if (row.field === "payloadTemplate" && normalized) {
+      try {
+        renderPayloadTemplate(normalized, "");
+      } catch (cause) {
+        setError(
+          cause instanceof InputValidationError ? cause.message : "Payload template is invalid",
+        );
+        return;
+      }
+    }
+    onChange({ ...value, [row.field]: normalized });
     closeEditor();
   };
 
@@ -208,6 +241,7 @@ export function RequestOptionsScreen({
     if (key.return) {
       setDraft(value[row.field] ?? "");
       setCustom(false);
+      setError(undefined);
       setEditing(row.field);
       onModeChange?.(row.multiline ? "multiline" : row.choices ? "choice" : "text");
     }
@@ -220,9 +254,12 @@ export function RequestOptionsScreen({
           <FormTextArea
             name={row.label}
             helpText=""
-            placeholder="Name: value"
+            placeholder={row.placeholder ?? "Name: value"}
             value={draft}
-            onChange={setDraft}
+            onChange={(next) => {
+              setDraft(next);
+              setError(undefined);
+            }}
           />
         ) : (
           <Text bold>{row.label}</Text>
@@ -258,6 +295,7 @@ export function RequestOptionsScreen({
             />
           </Box>
         ) : null}
+        {error ? <Text color="red">{error}</Text> : null}
       </Box>
     );
   }
