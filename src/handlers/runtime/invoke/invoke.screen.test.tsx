@@ -255,6 +255,42 @@ describe("Runtime invoke console", () => {
     expect(new TextDecoder().decode(request.payload)).toBe("first\nsecond");
   });
 
+  test("keeps blank multiline payload rows inside the editor", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "idle");
+    const initialIdleLine = screen
+      .lastFrame()!
+      .split("\n")
+      .findIndex((line) => line.includes("idle · Sessions"));
+
+    for (let index = 0; index < 3; index++) await screen.write("\x1b[13;2u");
+
+    const expandedLines = screen.lastFrame()!.split("\n");
+    const labelLine = expandedLines.findIndex((line) =>
+      line.includes("Payload · application/json"),
+    );
+    const lowerDivider = expandedLines.findIndex(
+      (line, index) => index > labelLine && /^─+$/.test(line),
+    );
+    expect(expandedLines.findIndex((line) => line.includes("idle · Sessions"))).toBe(
+      initialIdleLine,
+    );
+    expect(lowerDivider - labelLine).toBe(5);
+    expect(screen.lastFrame()).not.toContain("…");
+
+    await screen.write("\x1b[13;2u");
+    expect(screen.lastFrame()).toContain("…");
+    expect(
+      screen
+        .lastFrame()!
+        .split("\n")
+        .findIndex((line) => line.includes("idle · Sessions")),
+    ).toBe(initialIdleLine);
+  });
+
   test("labels the payload editor with its active content type", async () => {
     const core = new TestCoreClient();
     core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);

@@ -104,7 +104,7 @@ export function RuntimePayloadInput({
           return (
             <Box key={lineIndex}>
               <Text color={theme.colors.border}>{prefix}</Text>
-              <Text>{line}</Text>
+              <Text>{line || " "}</Text>
             </Box>
           );
         }
