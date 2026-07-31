@@ -3,7 +3,7 @@ import { resourceFromAttributes } from "@opentelemetry/resources";
 import type { Logger } from "../logging";
 import { type MetricSink } from "./types";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
-import { type Histogram } from "@opentelemetry/api";
+import { type Histogram, type Meter } from "@opentelemetry/api";
 import type { ResourceAttributes } from "./shapes";
 
 export type OtelCollectorSinkConfig = {
@@ -36,16 +36,15 @@ export class OtelHistogramSink implements MetricSink {
 
   private readonly flushTimeoutMs: number;
   private readonly shutdownTimeoutMs: number;
-  private readonly instrumentationScope: string;
+  private readonly scopedMeter: Meter;
 
   constructor(config: OtelCollectorSinkConfig) {
     this.endpoint = config.collectorEndpoint;
     this.logger = config.logger.child({ telemetryEndpoint: config.collectorEndpoint });
     this.name = new.target.name;
 
-    this.flushTimeoutMs = config.flushTimeoutMs ?? 50;
-    this.shutdownTimeoutMs = config.shutdownTimeoutMs ?? 50;
-    this.instrumentationScope = config.instrumentationScope ?? "agentcore-cli";
+    this.flushTimeoutMs = config.flushTimeoutMs ?? 500;
+    this.shutdownTimeoutMs = config.shutdownTimeoutMs ?? 500;
 
     this.meterProvider = new MeterProvider({
       resource: resourceFromAttributes(config.resourceAttributes),
@@ -60,16 +59,13 @@ export class OtelHistogramSink implements MetricSink {
         }),
       ],
     });
-
+    this.scopedMeter = this.meterProvider.getMeter(config.instrumentationScope ?? "agentcore-cli");
     this.histograms = new Map<string, Histogram>();
   }
 
   private getHistogram(metricName: string): Histogram {
     if (!this.histograms.has(metricName)) {
-      this.histograms.set(
-        metricName,
-        this.meterProvider.getMeter(this.instrumentationScope).createHistogram(metricName),
-      );
+      this.histograms.set(metricName, this.scopedMeter.createHistogram(metricName));
     }
     return this.histograms.get(metricName)!;
   }
@@ -83,7 +79,15 @@ export class OtelHistogramSink implements MetricSink {
   }
 
   async shutdown(): Promise<void> {
-    await this.meterProvider.forceFlush({ timeoutMillis: this.flushTimeoutMs });
+    try {
+      await this.meterProvider.forceFlush({ timeoutMillis: this.flushTimeoutMs });
+    } catch (e) {
+      const error = e instanceof Error ? e : new Error(String(e));
+      this.logger
+        .child({ errorName: error.name, errorMessage: error.message })
+        .warn(`failed to flush metrics to ${this.getName()}`);
+      // don't let flush failures prevent shutdown
+    }
     await this.meterProvider.shutdown({ timeoutMillis: this.shutdownTimeoutMs });
   }
 
