@@ -478,8 +478,14 @@ describe("Runtime invoke console", () => {
     const panelLines = optionsFrame.split("\n");
     const panelTop = panelLines.findIndex((line) => line.includes("╭"));
     const panelBottom = panelLines.findIndex((line) => line.includes("╰"));
+    const headerDivider = panelLines.findIndex((line) => /^─+$/.test(line));
+    const payloadDivider = panelLines.findIndex(
+      (line, index) => index > panelBottom && /^─+$/.test(line),
+    );
     const overviewHints = panelLines.findIndex((line) => line.includes("[enter] edit"));
     expect(panelBottom - panelTop + 1).toBeGreaterThanOrEqual(26);
+    expect(panelLines[panelTop]!.indexOf("╭")).toBe(12);
+    expect(panelTop - headerDivider - 1).toBe(payloadDivider - panelBottom - 1);
     expect(overviewHints).toBeGreaterThan(panelTop);
     expect(overviewHints).toBeLessThan(panelBottom);
     expect(panelLines.at(-1)).not.toContain("[enter] edit");

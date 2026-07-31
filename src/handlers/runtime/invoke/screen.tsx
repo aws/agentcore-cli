@@ -337,6 +337,8 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
   const liveState = history.at(-1)?.state;
   const busy = liveState === "connecting" || liveState === "streaming";
   const inputRows = Math.min(4, Math.max(1, payload.split("\n").length));
+  const transcriptHeight = Math.max(1, rows - 8 - inputRows);
+  const optionsRegionHeight = transcriptHeight + 1;
   const canPrettyJson = history.some((exchange) => exchange.pretty !== undefined);
   const contentType = requestOptions.contentType || "application/json";
   const templateActive =
@@ -350,8 +352,17 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
           Math.max(1, columns),
         )
       : `Payload · ${contentType}`;
-  const floatingOptions = showOptions && columns >= 72 && rows >= 34;
+  const floatingOptions = showOptions && columns >= 72 && transcriptHeight >= 30;
   const optionsPanelWidth = Math.min(76, columns - 4);
+  const optionsPanelLeft = Math.floor((columns - optionsPanelWidth) / 2);
+  // Match the rendered region's parity so Ink can leave identical gaps above and below the panel.
+  const optionsPanelTargetHeight = Math.max(
+    1,
+    Math.min(optionsRegionHeight - 2, Math.max(28, Math.floor(optionsRegionHeight * 0.85))),
+  );
+  const optionsPanelHeight =
+    optionsPanelTargetHeight - ((optionsRegionHeight - optionsPanelTargetHeight) % 2);
+  const optionsPanelTop = Math.max(0, (optionsRegionHeight - optionsPanelHeight) / 2 - 1);
   const optionsKeyHints = requestOptionsKeyHints(optionsMode);
   const closeOptions = () => {
     setShowOptions(false);
@@ -483,7 +494,7 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
         ) : (
           <>
             <Box flexDirection="column">
-              <Box height={Math.max(1, rows - 8 - inputRows)} flexDirection="column">
+              <Box height={transcriptHeight} flexDirection="column">
                 <ScrollView ref={scrollRef} onContentHeightChange={keepScrolledToBottom}>
                   {history.map((exchange, index) => (
                     <Box key={index} flexDirection="column" paddingBottom={1}>
@@ -532,17 +543,14 @@ function RuntimeInvokeConsole({ ctx, core, runtimeId, qualifier }: RuntimeInvoke
             {floatingOptions ? (
               <Box
                 position="absolute"
-                top={0}
-                left={0}
-                width="100%"
-                height="100%"
-                alignItems="center"
-                justifyContent="center"
+                top={optionsPanelTop}
+                left={optionsPanelLeft}
+                width={optionsPanelWidth}
+                height={optionsPanelHeight}
               >
                 <Box
                   width={optionsPanelWidth}
-                  height="85%"
-                  minHeight={30}
+                  height={optionsPanelHeight}
                   flexDirection="column"
                   borderStyle="round"
                   borderColor={theme.colors.border}
