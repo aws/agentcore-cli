@@ -297,7 +297,6 @@ describe('EvaluatorPrimitive', () => {
 
         expect(config.codeBased!.managed!.timeoutSeconds).toBe(120);
       });
-
     });
 
     describe('autoevals', () => {
@@ -748,4 +747,3 @@ describe('jsonToKwargs', () => {
     expect(jsonToKwargs('{}')).toBe('');
   });
 });
-
