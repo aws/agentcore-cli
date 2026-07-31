@@ -933,6 +933,8 @@ export interface A2AInvokeOptions {
   headers?: Record<string, string>;
   /** Bearer token for CUSTOM_JWT auth. When provided, uses raw HTTP with Authorization header instead of SigV4. */
   bearerToken?: string;
+  /** When true, uses JSON-RPC message/stream with SSE for real-time streaming instead of message/send. */
+  stream?: boolean;
 }
 
 let a2aRequestId = 1;
@@ -977,6 +979,96 @@ export async function invokeA2ARuntime(options: A2AInvokeOptions, message: strin
   }
 
   const client = createAgentCoreClient(options.region, options.headers);
+
+  // Use message/stream (SSE) for real-time streaming when requested
+  if (options.stream) {
+    const streamBody = { ...body, method: 'message/stream' };
+    options.logger?.logSSEEvent(`A2A streaming request: ${JSON.stringify(streamBody)}`);
+
+    const streamCommand = new InvokeAgentRuntimeCommand({
+      agentRuntimeArn: options.runtimeArn,
+      payload: new TextEncoder().encode(JSON.stringify(streamBody)),
+      contentType: 'application/json',
+      accept: 'text/event-stream',
+      runtimeUserId: options.userId ?? DEFAULT_RUNTIME_USER_ID,
+      ...(options.sessionId && { runtimeSessionId: options.sessionId }),
+    });
+
+    const streamResponse = await client.send(streamCommand);
+    const sessionId = streamResponse.runtimeSessionId;
+
+    if (!streamResponse.response) {
+      throw new Error('No response from AgentCore Runtime');
+    }
+
+    const webStream = streamResponse.response.transformToWebStream();
+    const reader = webStream.getReader();
+    const decoder = new TextDecoder();
+
+    async function* a2aStreamGenerator(): AsyncGenerator<string, void, unknown> {
+      let buffer = '';
+      let streamedFromStatus = false;
+      try {
+        while (true) {
+          const result = await reader.read();
+          if (result.done) break;
+
+          buffer += decoder.decode(result.value as Uint8Array, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const data = line.slice(6).trim();
+            if (!data) continue;
+
+            options.logger?.logSSEEvent(line);
+
+            try {
+              const event = JSON.parse(data) as Record<string, unknown>;
+              // Unwrap JSON-RPC result envelope if present
+              const target = (event.result as Record<string, unknown>) ?? event;
+              const kind = target.kind as string | undefined;
+
+              if (kind === 'status-update') {
+                const status = target.status as
+                  | { state?: string; message?: { parts?: { kind?: string; text?: string }[] } }
+                  | undefined;
+                if (status?.message?.parts) {
+                  const text = status.message.parts
+                    .filter(p => p.kind === 'text' && p.text)
+                    .map(p => p.text!)
+                    .join('');
+                  if (text) {
+                    streamedFromStatus = true;
+                    yield text;
+                  }
+                }
+              } else if (kind === 'artifact-update' && !streamedFromStatus) {
+                const artifact = target.artifact as { parts?: { kind?: string; text?: string }[] } | undefined;
+                if (artifact?.parts) {
+                  const text = artifact.parts
+                    .filter(p => p.kind === 'text' && p.text)
+                    .map(p => p.text!)
+                    .join('');
+                  if (text) yield text;
+                }
+              }
+            } catch {
+              // Non-JSON SSE line, skip
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    }
+
+    return {
+      stream: a2aStreamGenerator(),
+      sessionId,
+    };
+  }
 
   const command = new InvokeAgentRuntimeCommand({
     agentRuntimeArn: options.runtimeArn,
