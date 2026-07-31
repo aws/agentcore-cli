@@ -91,7 +91,7 @@ export class DefaultTelemetryClient implements TelemetryClient {
       metricSinks.push(
         new OtelHistogramSink({
           logger: this.logger.child({ module: "otelCollectorSink" }),
-          endpoint: globalConfig.telemetry.endpoint,
+          collectorEndpoint: globalConfig.telemetry.endpoint,
           resourceAttributes,
         }),
       );

@@ -1,21 +1,32 @@
 import { MeterProvider, PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import type { Logger } from "../logging";
-import type { MetricSink } from "./types";
+import { type MetricSink } from "./types";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { type Histogram } from "@opentelemetry/api";
 import type { ResourceAttributes } from "./shapes";
 
 export type OtelCollectorSinkConfig = {
-  endpoint: string;
+  collectorEndpoint: string;
   logger: Logger;
+  /** The resource attributes to attach to all metrics.**/
   resourceAttributes: ResourceAttributes;
+  /** The time period between export flushes **/
   exportIntervalMs?: number;
+  /** Describes the maximum time to wait when flushing metrics to the sink.**/
   flushTimeoutMs?: number;
+  /** Describes the maximum time to wait when shutting down the sink.**/
   shutdownTimeoutMs?: number;
+  /**
+   * Describes the scope to attach to the given metrics
+   * See https://opentelemetry.io/docs/concepts/instrumentation-scope/ for more information.
+   **/
   instrumentationScope?: string;
 };
 
+/**
+ * An implementation of {@link MetricSink} that sends data to a collector using an otel histogram.
+ */
 export class OtelHistogramSink implements MetricSink {
   private readonly name: string;
   private readonly endpoint: string;
@@ -28,8 +39,8 @@ export class OtelHistogramSink implements MetricSink {
   private readonly instrumentationScope: string;
 
   constructor(config: OtelCollectorSinkConfig) {
-    this.endpoint = config.endpoint;
-    this.logger = config.logger.child({ telemetryEndpoint: config.endpoint });
+    this.endpoint = config.collectorEndpoint;
+    this.logger = config.logger.child({ telemetryEndpoint: config.collectorEndpoint });
     this.name = new.target.name;
 
     this.flushTimeoutMs = config.flushTimeoutMs ?? 50;
