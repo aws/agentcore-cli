@@ -12,6 +12,7 @@ import {
 import type { GlobalConfigAccessor } from "../globalConfig";
 import { FileSystemSink } from "./fileSystemSink";
 import path from "path";
+import { PACKAGE_VERSION } from "../constants";
 
 export type DefaultTelemetryClientConfig = {
   logger: Logger;
@@ -112,8 +113,7 @@ export class DefaultTelemetryClient implements TelemetryClient {
     const globalConfig = await this.globalConfigAccessor.get();
     return resourceAttributesSchema.parse({
       "service.name": "agentcore-cli",
-      // TODO: wire up real package version.
-      "service.version": "0.0.0",
+      "service.version": PACKAGE_VERSION,
       "agentcore-cli.installation_id": globalConfig.installationId,
       "agentcore-cli.session_id": this.sessionId,
       "os.type": os.type(),
