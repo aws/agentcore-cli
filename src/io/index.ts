@@ -1,12 +1,12 @@
 export { atomicWrite } from "./atomicWrite";
 export {
-  CommandFailedError,
   MissingToolError,
+  ProcessFailedError,
   requireTool,
-  runCommand,
-  toolOnPath,
-  type CommandRunner,
-  type RunCommandOptions,
+  runProcess,
+  toolAvailable,
+  type ProcessRunner,
+  type RunProcessOptions,
 } from "./exec";
 export { FsReadWriteJson } from "./json";
 export { SourceResolver, type SourceResolverConfig } from "./source";

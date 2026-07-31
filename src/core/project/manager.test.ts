@@ -35,7 +35,7 @@ function manager(): { manager: FsProjectManager; commands: { command: string[]; 
       runner: async (command, { cwd }) => {
         commands.push({ command, cwd });
       },
-      checkTool: () => {}, // CI hosts don't have uv installed
+      checkTool: async () => {}, // CI hosts don't have uv installed
     }),
     commands,
   };
@@ -132,7 +132,7 @@ describe("FsProjectManager.create", () => {
     await manager().manager.create({
       name: "example",
       template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
-      onProgress: (message) => messages.push(message),
+      onProgress: (event) => messages.push(event.message),
     });
 
     expect(messages).toEqual([
@@ -150,7 +150,7 @@ describe("FsProjectManager.create", () => {
       runner: async () => {
         throw new Error("npm exploded");
       },
-      checkTool: () => {},
+      checkTool: async () => {},
     });
 
     await expect(
@@ -163,11 +163,14 @@ describe("FsProjectManager.create", () => {
 
   test("refuses to create a project inside an existing project", async () => {
     const directory = await inTempDirectory();
-    await manager().create({ name: "root", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON });
+    await manager().manager.create({
+      name: "root",
+      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+    });
 
     process.chdir(join(directory, "root"));
     await expect(
-      manager().create({ name: "child", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON }),
+      manager().manager.create({ name: "child", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON }),
     ).rejects.toBeInstanceOf(NestedProjectError);
   });
 });

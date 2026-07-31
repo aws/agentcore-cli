@@ -93,7 +93,13 @@ export type CreateProjectInput = {
   /** Skip initializing a git repository. */
   skipGit?: boolean;
   /** Called as each creation step begins; drives progress output. */
-  onProgress?: (message: string) => void;
+  onProgress?: (event: CreateProgressEvent) => void;
+};
+
+/** A progress update emitted as a creation step begins. */
+export type CreateProgressEvent = {
+  /** Human-readable description of the step. */
+  message: string;
 };
 
 export type ResolveProjectInput = {

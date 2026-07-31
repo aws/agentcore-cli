@@ -33,7 +33,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         template: flags["template"],
         skipInstall: flags["skip-install"],
         skipGit: flags["skip-git"],
-        onProgress: (message) => config.io.stderr.write(`${message}\n`),
+        onProgress: (event) => config.io.stderr.write(`${event.message}\n`),
       });
       config.io.stderr.write(`Created project '${project.name}' in ./${project.name}\n`);
     },
