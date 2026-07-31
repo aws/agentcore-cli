@@ -42,7 +42,7 @@ export class DefaultTelemetryClient implements TelemetryClient {
       path.join(os.homedir(), ".agentcore", "telemetry", `${this.sessionId}.jsonl`);
   }
 
-  startMetricEvent<TMetricName extends MetricName>(
+  createMetricEvent<TMetricName extends MetricName>(
     metricName: TMetricName,
     initialAttributes: Partial<AttributesOf<TMetricName>> = {},
   ): MetricEvent<TMetricName> {

@@ -8,7 +8,7 @@ export interface TelemetryClient {
   /**
    * Start a new metric event that accumulates attributes over its lifecycle.
    */
-  startMetricEvent<TMetricName extends MetricName>(
+  createMetricEvent<TMetricName extends MetricName>(
     metricName: TMetricName,
     initialAttributes?: Partial<AttributesOf<TMetricName>>,
   ): MetricEvent<TMetricName>;

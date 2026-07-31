@@ -40,15 +40,15 @@ describe("DefaultTelemetryClient", () => {
       metricSinks: [fileSystemSink],
     });
 
-    const metricEvent = client.startMetricEvent("cli.command_run", {
+    const metricEvent = client.createMetricEvent("cli.command_run", {
       exit_reason: "success",
       command_path: "/agentcore",
     });
 
     await metricEvent.emit(123);
 
-    // Start a second event with failure
-    const metricEvent2 = client.startMetricEvent("cli.command_run", {
+    // create a second event with failure
+    const metricEvent2 = client.createMetricEvent("cli.command_run", {
       exit_reason: "failure",
       command_path: "/agentcore",
     });
@@ -134,14 +134,14 @@ describe("DefaultTelemetryClient", () => {
       auditFilePath,
     });
 
-    const enabledEvent = enabledClient.startMetricEvent("cli.command_run", {
+    const enabledEvent = enabledClient.createMetricEvent("cli.command_run", {
       exit_reason: "success",
       command_path: "/agentcore",
       is_tui: true,
     });
     await enabledEvent.emit(123);
 
-    const disabledEvent = disabledClient.startMetricEvent("cli.command_run", {
+    const disabledEvent = disabledClient.createMetricEvent("cli.command_run", {
       exit_reason: "failure",
       command_path: "/agentcore",
       is_tui: false,
@@ -179,7 +179,7 @@ describe("DefaultTelemetryClient", () => {
       metricSinks: [],
     });
 
-    const metricEvent = client.startMetricEvent("cli.command_run");
+    const metricEvent = client.createMetricEvent("cli.command_run");
 
     await expect(metricEvent.emit(100)).rejects.toThrow();
     await client.shutdown();
@@ -198,7 +198,7 @@ describe("DefaultTelemetryClient", () => {
       globalConfigAccessor: new TestGlobalConfigAccessor(),
       metricSinks: [sink],
     });
-    const metricEvent = client.startMetricEvent("cli.command_run", {
+    const metricEvent = client.createMetricEvent("cli.command_run", {
       exit_reason: "success",
       command_path: "/agentcore",
     });
@@ -242,7 +242,7 @@ describe("DefaultTelemetryClient", () => {
       metricSinks: [badSink, goodSink],
     });
 
-    const metricEvent = client.startMetricEvent("cli.command_run", {
+    const metricEvent = client.createMetricEvent("cli.command_run", {
       exit_reason: "success",
       command_path: "/agentcore",
     });

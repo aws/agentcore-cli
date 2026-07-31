@@ -50,7 +50,7 @@ process.exit(
       globalConfigAccessor,
     });
 
-    const commandRunMetricEvent = telemetryClient.startMetricEvent("cli.command_run", {
+    const commandRunMetricEvent = telemetryClient.createMetricEvent("cli.command_run", {
       exit_reason: "success",
     });
 

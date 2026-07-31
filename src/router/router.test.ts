@@ -706,7 +706,7 @@ test.each([
   const root = new Router("agentcore");
   root.handler(get);
 
-  const commandRunMetricEvent = telemetryClient.startMetricEvent("cli.command_run");
+  const commandRunMetricEvent = telemetryClient.createMetricEvent("cli.command_run");
   const ctx = ValueContext.EmptyContext().withValue(
     CommandRunMetricEventKey,
     commandRunMetricEvent,
