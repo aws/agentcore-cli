@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Readable } from "node:stream";
 import type { GetAgentRuntimeResponse } from "@aws-sdk/client-bedrock-agentcore-control";
-import { InputValidationError } from "../../../errors";
-import { SourceResolutionError } from "../../../io";
+import { InputValidationError, SourceResolutionError } from "../../../errors";
 import {
   normalizeRuntimeInvokeRequest,
   parseRuntimeInvokeHeaders,

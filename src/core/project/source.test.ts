@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { EmbeddedAssetNotFoundError, EmbeddedAssetSource } from "./source";
+import { EmbeddedAssetNotFoundError } from "../../errors";
+import { EmbeddedAssetSource } from "./source";
 
 describe("EmbeddedAssetSource", () => {
   test("throws a modeled error when the asset is not embedded", () => {

@@ -1,12 +1,11 @@
 import z from "zod";
-import { InputValidationError } from "../../../errors";
+import { InputValidationError, RuntimeInvokeInterruptedError } from "../../../errors";
 import { createHandler, flag } from "../../../router";
 import type { AppIO } from "../../../io";
 import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 import { JsonKey } from "../../keys";
 import { ExitCode } from "../../../runnable";
-import { RuntimeInvokeInterruptedError } from "./errors";
 import {
   normalizeRuntimeInvokeRequest,
   parseRuntimeInvokeHeaders,

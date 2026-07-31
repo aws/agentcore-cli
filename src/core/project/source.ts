@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AgentCoreCLIError } from "../../errors";
+import { EmbeddedAssetNotFoundError } from "../../errors";
 
 /**
  * Reads and lists asset files by path relative to the asset root.
@@ -20,13 +20,6 @@ const EMBEDDED_PREFIX = "agentcore-assets/src/assets/";
 
 // Embedded files carry a name property that Bun's types widen to Blob.
 type NamedBlob = Blob & { readonly name: string };
-
-/** Thrown when an asset is missing from the compiled executable, indicating a packaging bug. */
-export class EmbeddedAssetNotFoundError extends AgentCoreCLIError {
-  constructor(public readonly assetPath: string) {
-    super(`Embedded asset not found: ${assetPath}`, { meta: { assetPath } });
-  }
-}
 
 /** Reads assets embedded in the compiled standalone executable. */
 export class EmbeddedAssetSource implements AssetSource {

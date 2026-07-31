@@ -1,4 +1,5 @@
 import { ServiceException } from "@smithy/core/client";
+import { join } from "node:path";
 import { ERROR_SOURCE, type ErrorSource } from "./types";
 
 export interface AgentCoreCLIErrorOptions extends ErrorOptions {
@@ -69,5 +70,72 @@ export class InputValidationError extends AgentCoreCLIError {
 export class NotImplementedError extends AgentCoreCLIError {
   constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
     super(message ?? "not implemented yet", { ...options, source: ERROR_SOURCE.INTERNAL });
+  }
+}
+
+/** Error raised when detecting an invalid environment */
+export class InvalidEnvironmentError extends AgentCoreCLIError {
+  constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
+    super(message, { ...options, source: ERROR_SOURCE.USER });
+  }
+}
+
+export class SourceResolutionError extends InputValidationError {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "SourceResolutionError";
+  }
+}
+
+// TODO: attach telemetry metadata to this error class.
+export class DeserializationError extends Error {
+  constructor(path: string, options?: { cause?: unknown }) {
+    super(`Failed to deserialize JSON at "${path}"`, options);
+    this.name = "DeserializationError";
+  }
+}
+
+/** Thrown when scaffolding would overwrite a file that already exists. */
+export class ProjectFileExistsError extends AgentCoreCLIError {
+  constructor(public readonly path: string) {
+    super(`Refusing to overwrite existing file: ${path}`, {
+      source: ERROR_SOURCE.USER,
+      meta: { path },
+    });
+  }
+}
+
+/** Thrown when scaffolding would nest a new project inside an existing AgentCore project. */
+export class NestedProjectError extends AgentCoreCLIError {
+  constructor(public readonly projectRoot: string) {
+    super(
+      `cannot create a project inside an existing AgentCore project (found ${join(projectRoot, "agentcore", "agentcore.json")})`,
+      { source: ERROR_SOURCE.USER, meta: { projectRoot } },
+    );
+  }
+}
+
+/** Thrown when an asset is missing from the compiled executable, indicating a packaging bug. */
+export class EmbeddedAssetNotFoundError extends AgentCoreCLIError {
+  constructor(public readonly assetPath: string) {
+    super(`Embedded asset not found: ${assetPath}`, { meta: { assetPath } });
+  }
+}
+
+export class RuntimeInvokeInterruptedError extends AgentCoreCLIError {
+  readonly reported: boolean;
+
+  constructor(cause?: unknown, reported = false) {
+    super("The operation was aborted", { cause, exitCode: 130 });
+    this.name = "AbortError";
+    this.reported = reported;
+  }
+}
+
+export class RuntimeInvokeResponseError extends AgentCoreCLIError {
+  readonly reported = true;
+
+  constructor(message: string, cause?: unknown) {
+    super(message, { cause });
   }
 }

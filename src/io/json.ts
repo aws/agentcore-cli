@@ -3,20 +3,13 @@ import { dirname } from "node:path";
 
 import type z from "zod";
 
+import { DeserializationError } from "../errors";
 import type { Logger } from "../logging";
 import type { ReadWriteJson } from "./types";
 
 type ReadWriteJsonConfig = {
   logger: Logger;
 };
-
-// TODO: attach telemetry metadata to this error class.
-class DeserializationError extends Error {
-  constructor(path: string, options?: { cause?: unknown }) {
-    super(`Failed to deserialize JSON at "${path}"`, options);
-    this.name = "DeserializationError";
-  }
-}
 
 /**
  * Implements {@link ReadWriteJson} through node fs.

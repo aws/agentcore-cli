@@ -1,6 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import { createRootHandler } from "../handlers";
-import { InvalidEnvironmentError, renderJson } from "./index";
+import { InvalidEnvironmentError } from "../errors";
+import { renderJson } from "./index";
 import {
   createSilentLogger,
   TestCoreClient,
