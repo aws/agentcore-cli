@@ -69,6 +69,19 @@ export class InputValidationError extends AgentCoreCLIError {
   }
 }
 
+/** Error raised when a JSON file cannot be read, parsed, or validated against its schema. */
+export class DeserializationError extends AgentCoreCLIError {
+  constructor(
+    public readonly path: string,
+    options?: AgentCoreCLIErrorOptions,
+  ) {
+    super(`Failed to deserialize JSON at "${path}"`, {
+      ...options,
+      meta: { ...options?.meta, path },
+    });
+  }
+}
+
 /** Error raised when a command requires an AgentCore project and none encloses the working directory. */
 export class NoProjectError extends AgentCoreCLIError {
   constructor(searchPath: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
