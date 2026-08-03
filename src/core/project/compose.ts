@@ -2,7 +2,11 @@ import type { DirNode, ProjectNode } from "./tree";
 import { dir, file } from "./tree";
 import type { AssetSource } from "./source";
 import { TEMPLATES } from "./templates";
-import type { ProjectTemplate } from "../../handlers/project/types";
+import {
+  ProjectSpecSchema,
+  type ProjectSpec,
+  type ProjectTemplate,
+} from "../../handlers/project/types";
 
 /** Serializes a value as pretty-printed JSON with a trailing newline. */
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
@@ -48,14 +52,15 @@ function renderName(filename: string): string {
 /**
  * Builds the agentcore.json spec by adding the template's resource sections to the shared base.
  * The base fields and template sections never overlap so this is a plain spread.
+ * Parsed through {@link ProjectSpecSchema} so create can never write a file resolve can't read.
  */
-function agentcoreSpec(name: string, template: ProjectTemplate): unknown {
-  return {
+export function agentcoreSpec(name: string, template: ProjectTemplate): ProjectSpec {
+  return ProjectSpecSchema.parse({
     name,
     version: 1,
     managedBy: "CDK",
     ...TEMPLATES[template].spec,
-  };
+  });
 }
 
 /**

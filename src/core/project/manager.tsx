@@ -12,7 +12,7 @@ import {
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 import type { Logger } from "../../logging";
 import { requireTool, runProcess, type ProcessRunner } from "../../io";
-import { projectTree } from "./compose";
+import { agentcoreSpec, projectTree } from "./compose";
 import { defaultSource, type AssetSource } from "./source";
 import { TEMPLATES } from "./templates";
 import { writeTree } from "./tree";
@@ -111,11 +111,8 @@ export class FsProjectManager implements ProjectManager {
       await this.run(["git", "init"], destination);
     }
 
-    return {
-      name: input.name,
-      rootPath: destination,
-      runtimes: TEMPLATES[input.template].spec.runtimes ?? [],
-    };
+    const spec = agentcoreSpec(input.name, input.template);
+    return { name: spec.name, rootPath: destination, runtimes: spec.runtimes };
   }
 
   // Runs a command with its output streamed to the file logger.

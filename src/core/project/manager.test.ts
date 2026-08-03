@@ -240,30 +240,21 @@ describe("FsProjectManager.resolve", () => {
     );
   });
 
-  test("resolves a spec carrying sections the CLI does not read", async () => {
+  test("rejects a spec carrying keys the schema does not model", async () => {
     const directory = await inTempDirectory();
     await mkdir(join(directory, "agentcore"), { recursive: true });
     await Bun.write(
       join(directory, "agentcore", "agentcore.json"),
       JSON.stringify({
-        name: "legacy",
+        name: "example",
         version: 1,
         managedBy: "CDK",
-        runtimes: [
-          {
-            name: "agent",
-            build: "CodeZip",
-            entrypoint: "main.py",
-            codeLocation: "app/agent",
-            protocol: "HTTP",
-          },
-        ],
-        memories: [{ name: "m1" }],
-        gateways: [],
+        runtmes: [],
       }),
     );
 
-    const resolved = await manager().resolve({ filePath: directory });
-    expect(resolved?.runtimes[0]?.name).toBe("agent");
+    await expect(manager().resolve({ filePath: directory })).rejects.toBeInstanceOf(
+      InvalidProjectConfigError,
+    );
   });
 });

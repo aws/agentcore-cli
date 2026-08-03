@@ -4,10 +4,9 @@ import {
   type ProjectTemplate,
 } from "../../handlers/project/types";
 
+// The resource sections a template may contribute; grows with ProjectSpecSchema.
 type TemplateSpec = {
   runtimes?: ProjectRuntime[];
-  memories?: unknown[];
-  harnesses?: unknown[];
 };
 
 /**
