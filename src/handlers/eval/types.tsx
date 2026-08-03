@@ -77,6 +77,22 @@ export type UpdateOnlineEvalInput = {
   endpoint?: string;
   clearEndpoint?: boolean;
   dataSourceConfig?: DataSourceConfig;
+  // Replaces the execution role. The CLI never edits the permissions of a role the
+  // caller names here — it is theirs to manage.
+  evaluationExecutionRoleArn?: string;
+  // Whether to re-scope a CLI-provisioned role when the data source moves
+  // (default true). Only meaningful for a managed role: the old policy grants
+  // query access to the previous log groups only.
+  updateRole?: boolean;
+};
+
+// RoleScopeWarning reports that an execution role was left scoped to log groups
+// the config no longer samples, so the caller can surface it. Returned rather
+// than logged from Core so the handler owns how it is presented.
+export type RoleScopeWarning = {
+  reason: "custom-role" | "update-declined";
+  roleArn: string;
+  logGroupNames: string[];
 };
 
 export interface CoreEvalClient {
@@ -108,11 +124,16 @@ export interface CoreEvalClient {
     input: CreateOnlineEvalInput,
     options: CoreOptions,
   ): Promise<CreateOnlineEvaluationConfigResponse>;
+  // Returns the service response plus an optional warning when the execution
+  // role was left scoped to log groups the config no longer samples.
   updateOnlineEvaluationConfig(
     id: string,
     update: UpdateOnlineEvalInput,
     options: CoreOptions,
-  ): Promise<UpdateOnlineEvaluationConfigResponse>;
+  ): Promise<{
+    response: UpdateOnlineEvaluationConfigResponse;
+    roleScopeWarning?: RoleScopeWarning;
+  }>;
   getOnlineEvaluationConfig(
     id: string,
     options: CoreOptions,

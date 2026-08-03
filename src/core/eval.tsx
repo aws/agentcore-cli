@@ -29,6 +29,7 @@ import {
 import { InputValidationError } from "../errors";
 import type {
   CodeBasedUpdate,
+  RoleScopeWarning,
   CoreEvalClient,
   CreateOnlineEvalInput,
   LlmAsAJudgeUpdate,
@@ -36,7 +37,10 @@ import type {
 } from "../handlers/eval/types";
 import type { AwsClients, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
-import { ensureDefaultOnlineEvalExecutionRole } from "./onlineEvalExecutionRole";
+import {
+  ensureDefaultOnlineEvalExecutionRole,
+  onlineEvalExecutionRoleName,
+} from "./onlineEvalExecutionRole";
 
 const DEFAULT_ENDPOINT_QUALIFIER = "DEFAULT";
 
@@ -196,7 +200,9 @@ export class EvalClient implements CoreEvalClient {
     const evaluationExecutionRoleArn =
       input.evaluationExecutionRoleArn ??
       (await ensureDefaultOnlineEvalExecutionRole(
-        this.clients.iam(toClientConfig(options)),
+        // IAM is a global service; the region only selects the endpoint, and the
+        // agentcore endpoint override must not leak onto it.
+        this.clients.iam({ region: options.region }),
         input.name,
         options.region,
         logGroupNamesOf(dataSourceConfig),
@@ -229,7 +235,10 @@ export class EvalClient implements CoreEvalClient {
     id: string,
     update: UpdateOnlineEvalInput,
     options: CoreOptions,
-  ): Promise<UpdateOnlineEvaluationConfigResponse> {
+  ): Promise<{
+    response: UpdateOnlineEvaluationConfigResponse;
+    roleScopeWarning?: RoleScopeWarning;
+  }> {
     const control = this.clients.control(toClientConfig(options));
     const current = await control.send(
       new GetOnlineEvaluationConfigCommand({
@@ -281,14 +290,53 @@ export class EvalClient implements CoreEvalClient {
       dataSourceConfig = await agentDataSource(runtimeId, endpoint, this.clients, options);
     }
 
-    return control.send(
+    // Moving the data source invalidates the execution role's scope: its policy
+    // grants query access to the previous log groups only. A role the caller named
+    // via --role-arn is theirs to manage and is never edited; a CLI-provisioned one
+    // (identified by its derived name) is re-scoped unless the caller declines.
+    // Either way, skipping the refresh is reported so the caller can be told.
+    let roleScopeWarning: RoleScopeWarning | undefined;
+    const movedTo =
+      dataSourceConfig !== undefined && dataSourceConfig !== current.dataSourceConfig
+        ? dataSourceConfig
+        : undefined;
+    if (movedTo !== undefined) {
+      const configName = current.onlineEvaluationConfigName;
+      const roleArn = update.evaluationExecutionRoleArn ?? current.evaluationExecutionRoleArn;
+      const managed =
+        configName !== undefined &&
+        update.evaluationExecutionRoleArn === undefined &&
+        roleArn?.endsWith(`/${onlineEvalExecutionRoleName(configName)}`) === true;
+      const logGroupNames = logGroupNamesOf(movedTo);
+
+      if (managed && update.updateRole !== false) {
+        await ensureDefaultOnlineEvalExecutionRole(
+          // IAM is a global service; the region only selects the endpoint, and the
+          // agentcore endpoint override must not leak onto it.
+          this.clients.iam({ region: options.region }),
+          configName,
+          options.region,
+          logGroupNames,
+        );
+      } else if (roleArn) {
+        roleScopeWarning = {
+          reason: managed ? "update-declined" : "custom-role",
+          roleArn,
+          logGroupNames,
+        };
+      }
+    }
+
+    const response = await control.send(
       new UpdateOnlineEvaluationConfigCommand({
         onlineEvaluationConfigId: id,
         rule: toRule(samplingPercentage, sessionTimeoutMinutes, filters),
         dataSourceConfig,
         evaluators,
+        evaluationExecutionRoleArn: update.evaluationExecutionRoleArn,
       }),
     );
+    return { response, roleScopeWarning };
   }
 
   async getOnlineEvaluationConfig(

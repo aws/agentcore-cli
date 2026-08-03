@@ -49,6 +49,12 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
         "replace the traces to evaluate (JSON DataSourceConfig; inline, file://<path>, or - for stdin)",
         z.string().optional(),
       ),
+      flag("role-arn", "replace the IAM role the online evaluation assumes", z.string().optional()),
+      flag(
+        "update-role",
+        "whether to re-scope an auto-provisioned execution role when the data source changes (default true)",
+        z.enum(["true", "false"]).optional(),
+      ),
     ],
     handle: async (ctx, flags) => {
       if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");
@@ -72,7 +78,7 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
       }
 
       const source = new SourceResolver({ stdin: io.stdin });
-      const response = await core.eval.updateOnlineEvaluationConfig(
+      const { response, roleScopeWarning } = await core.eval.updateOnlineEvaluationConfig(
         flags["id"],
         {
           samplingRate: flags["sampling-rate"],
@@ -89,9 +95,24 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
             "data-source-config",
             await source.resolveText("data-source-config", flags["data-source-config"]),
           ),
+          evaluationExecutionRoleArn: flags["role-arn"],
+          updateRole:
+            flags["update-role"] === undefined ? undefined : flags["update-role"] === "true",
         },
         coreOptsFromCtx(ctx),
       );
+      if (roleScopeWarning) {
+        const { reason, roleArn, logGroupNames } = roleScopeWarning;
+        const detail =
+          reason === "custom-role"
+            ? "it is not managed by the CLI"
+            : "re-scoping was declined via --update-role false";
+        io.stderr.write(
+          `warning: the data source moved but the execution role was not re-scoped because ${detail}.\n` +
+            `  role: ${roleArn}\n` +
+            `  ensure it grants logs:StartQuery and logs:GetQueryResults on: ${logGroupNames.join(", ")}\n`,
+        );
+      }
       ctx.require(JsonRendererKey).renderJson(response);
     },
   });

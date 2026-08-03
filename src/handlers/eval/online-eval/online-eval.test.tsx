@@ -356,3 +356,60 @@ describe("flag validation", () => {
     );
   });
 });
+
+// A separate config, so this never perturbs the CRUDL sequence above: inserting an
+// extra update there shifts which recording each of its calls keys to.
+describe("execution role scoping on update", () => {
+  const WARN_CONFIG_NAME = "agentcore_cli_online_eval_role_warn";
+
+  test("warns when a custom role is left scoped to the old log groups", async () => {
+    const created = await run([
+      "eval",
+      "online-eval",
+      "create",
+      "--name",
+      WARN_CONFIG_NAME,
+      "--agent",
+      FIXTURE_AGENT_ID,
+      "--evaluator",
+      FIXTURE_EVALUATOR_ID,
+      "--sampling-rate",
+      "10",
+      "--role-arn",
+      FIXTURE_ROLE_ARN,
+      "--enable-on-create",
+      "false",
+    ]);
+    const warnConfigId = JSON.parse(created).onlineEvaluationConfigId;
+    await settle();
+
+    // Repointing at a different agent moves the log groups, but the role came from
+    // --role-arn, so the CLI must not touch its permissions — only report it.
+    const io = testIO();
+    const root = createRootHandler(createFixtureCore(), {
+      io: io.io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    await root.route([
+      "node",
+      "agentcore",
+      "eval",
+      "online-eval",
+      "update",
+      "--id",
+      warnConfigId,
+      "--agent",
+      "ABVfyLatest_ABVfyLatest-PFLr353QVA",
+      "--region",
+      REGION,
+    ]);
+
+    // The warning goes to stderr so --json stdout stays machine-readable.
+    expect(io.stderr()).toContain("not managed by the CLI");
+    expect(io.stderr()).toContain(FIXTURE_ROLE_ARN);
+
+    await settle();
+    await run(["eval", "online-eval", "delete", "--id", warnConfigId]);
+  }, 90_000);
+});

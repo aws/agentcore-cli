@@ -16,10 +16,26 @@ import {
 
 const POLICY_NAME = "AgentCoreOnlineEvalExecutionPolicy";
 
-// executionRoleName derives the default role's name from the online eval config
-// name. IAM role names cap at 64 characters.
+const ROLE_NAME_PREFIX = "AgentCoreOnlineEval-";
+const ROLE_NAME_MAX = 64;
+const NAME_HASH_LENGTH = 8;
+
+// onlineEvalExecutionRoleName derives the default role's name from the online eval
+// config name. IAM caps role names at 64 characters, which leaves only 44 for the
+// config name — while config names run to 100 — so a name that would overflow is
+// truncated and given a hash suffix. Truncating alone would let two configs share
+// one role, and because provisioning is idempotent by name the second create would
+// silently re-scope the first's policy to a different runtime.
 export function onlineEvalExecutionRoleName(configName: string): string {
-  return `AgentCoreOnlineEval-${configName}`.slice(0, 64);
+  const full = `${ROLE_NAME_PREFIX}${configName}`;
+  if (full.length <= ROLE_NAME_MAX) return full;
+
+  const hash = Bun.hash(configName)
+    .toString(16)
+    .padStart(NAME_HASH_LENGTH, "0")
+    .slice(-NAME_HASH_LENGTH);
+  const room = ROLE_NAME_MAX - ROLE_NAME_PREFIX.length - NAME_HASH_LENGTH - 1;
+  return `${ROLE_NAME_PREFIX}${configName.slice(0, room)}-${hash}`;
 }
 
 function trustPolicy(): string {
