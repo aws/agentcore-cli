@@ -480,25 +480,17 @@ async function retryWhileRoleUnassumable<T>(send: () => Promise<T>): Promise<T> 
 // evaluatorKmsKeys collects the customer managed KMS keys of the referenced
 // evaluators. The service validates that the execution role can decrypt them when
 // the config is created, so a provisioned role has to grant kms:Decrypt on exactly
-// these keys. Builtins carry no key, so the common case resolves to nothing. An
-// evaluator that cannot be read is fatal: provisioning a role that silently lacks
-// Decrypt would fail the create with a far less actionable error.
+// these keys. Builtins carry no key, so the common case resolves to nothing. A
+// GetEvaluator failure propagates as-is: the SDK's error already names the
+// operation and the evaluator, and it is not the caller's input at fault.
 async function evaluatorKmsKeys(
   evaluatorIds: string[],
   control: BedrockAgentCoreControlClient,
 ): Promise<string[]> {
   const keys = await Promise.all(
     evaluatorIds.map(async (evaluatorId) => {
-      try {
-        const evaluator = await control.send(new GetEvaluatorCommand({ evaluatorId }));
-        return evaluator.kmsKeyArn;
-      } catch (error) {
-        throw new InputValidationError(
-          `Cannot read evaluator "${evaluatorId}" to determine whether it is encrypted; ` +
-            `pass --role-arn to supply an execution role instead`,
-          { cause: error, meta: { evaluatorId } },
-        );
-      }
+      const evaluator = await control.send(new GetEvaluatorCommand({ evaluatorId }));
+      return evaluator.kmsKeyArn;
     }),
   );
   return [...new Set(keys.filter((key): key is string => key !== undefined))];
