@@ -55,6 +55,7 @@ export {
   DEFAULT_RUNTIME_USER_ID,
   executeBashCommand,
   invokeA2ARuntime,
+  invokeA2ARuntimeStreaming,
   invokeAgentRuntime,
   invokeAgentRuntimeStreaming,
   mcpInitSession,
