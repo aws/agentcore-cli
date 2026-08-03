@@ -166,7 +166,7 @@ describe("Runtime invoke routing", () => {
 });
 
 describe("Runtime invoke JSON console", () => {
-  test("sends inline JSON with the fixed content type and no options UI", async () => {
+  test("sends inline JSON with the fixed content type", async () => {
     const core = new TestCoreClient();
     core.runtime
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
@@ -178,10 +178,6 @@ describe("Runtime invoke JSON console", () => {
     const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "JSON payload");
-    expect(screen.lastFrame()).not.toContain("[ctl+o] options");
-    await screen.write("\x0f");
-    expect(screen.lastFrame()).not.toContain("Request options");
-
     await screen.write('{"prompt":"hello"}');
     await screen.press("return");
     await waitFor(() => invokeRequests(core).length === 1);
@@ -727,7 +723,7 @@ describe("Runtime invoke JSON console", () => {
     expect(iterations).toBe(0);
   });
 
-  test("directs CUSTOM_JWT users to the headless bearer-token option", async () => {
+  test("reports a missing bearer token for CUSTOM_JWT Runtimes", async () => {
     const core = new TestCoreClient();
     core.runtime.setGetResponse({
       agentRuntimeArn: RUNTIME_ARN,

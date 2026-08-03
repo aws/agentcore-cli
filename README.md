@@ -280,9 +280,9 @@ request paths. All requests use the Runtime `/invocations` route, including MCP
 Runtimes.
 
 Bare Runtime and Memory branches and leaves require a TTY on stdin and stdout.
-For Runtime Invoke, supplying a payload or advanced request options runs headlessly;
-`--session-id` can instead seed the persistent console. `--json` always
-suppresses TUI rendering.
+For Runtime Invoke, supplying a payload or headless-only request or output flags
+runs headlessly; `--session-id` can instead seed the persistent console.
+`--json` always suppresses TUI rendering.
 
 ```bash
 agentcore runtime

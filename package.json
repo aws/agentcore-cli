@@ -65,6 +65,7 @@
     "string-width": "^8.2.2",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0",
+    "handlebars": "^4.7.9",
     "zod": "^4.4.3"
   }
 }

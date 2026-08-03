@@ -62,7 +62,7 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
         });
       }
       if (flags.payload === undefined) {
-        const requestOption = Object.entries(flags).some(
+        const hasHeadlessOnlyFlag = Object.entries(flags).some(
           ([name, value]) =>
             ![
               "id",
@@ -74,7 +74,7 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
               "bearer-token",
             ].includes(name) && value !== undefined,
         );
-        if (ctx.require(JsonKey) || requestOption) {
+        if (ctx.require(JsonKey) || hasHeadlessOnlyFlag) {
           throw new InputValidationError("required option '--payload <payload>' not specified", {
             exitCode: ExitCode.USAGE,
           });

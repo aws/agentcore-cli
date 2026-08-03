@@ -383,8 +383,6 @@ function RuntimeInvokeConsole({
             </Box>
             <Divider />
             <RuntimePayloadInput
-              label="JSON payload"
-              placeholder="Enter JSON payload"
               value={payload}
               onChange={(value) => {
                 setPayload(value);
@@ -392,7 +390,6 @@ function RuntimeInvokeConsole({
               }}
               onSubmit={() => void send()}
               submitDisabled={busy}
-              previewLines={4}
             />
             <Divider />
             <Box height={1}>
