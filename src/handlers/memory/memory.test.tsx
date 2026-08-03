@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
+import type {
+  Event,
+  EventMetadataFilterExpression,
+  GetEventOutput,
+  ListEventsOutput,
+} from "@aws-sdk/client-bedrock-agentcore";
 import { CoreClient } from "../../core";
 import {
   createSilentLogger,
@@ -13,6 +19,7 @@ import { createRootHandler } from "../index";
 import { createGetMemoryHandler } from "./get";
 
 const REGION = "us-west-2";
+const ENDPOINT = "https://agentcore.example.test";
 const FIXTURES = join(import.meta.dir, "__fixtures__");
 
 // The e2e-test account holds two persistent fixture Memories:
@@ -21,6 +28,19 @@ const FIXTURES = join(import.meta.dir, "__fixtures__");
 // Record with AWS_PROFILE=e2e-test RECORD=1 bun test src/handlers/memory/memory.test.tsx.
 const FIXTURE_MEMORY_ID = "agentcore_cli_memory_read_only_fixture-QZMh466aPK";
 const MISSING_MEMORY_ID = "missing_memory-0000000000";
+const EVENT_MEMORY_ID = "memory-1";
+const ACTOR_ID = "actor-1";
+const SESSION_ID = "session-1";
+const EVENT_ID = "event-1";
+
+const event: Event = {
+  memoryId: EVENT_MEMORY_ID,
+  actorId: ACTOR_ID,
+  sessionId: SESSION_ID,
+  eventId: EVENT_ID,
+  eventTimestamp: new Date("2026-08-03T12:00:00.000Z"),
+  payload: [],
+};
 
 function createFixtureCore(): CoreClient {
   const { createControlClient, createDataClient, createIamClient } = fixtureFactories(FIXTURES);
@@ -33,8 +53,7 @@ function createFixtureCore(): CoreClient {
   });
 }
 
-function testMemoryCommand() {
-  const core = new TestCoreClient();
+function testMemoryCommand(core = new TestCoreClient()) {
   const io = testIO();
   const root = createRootHandler(core, {
     io: io.io,
@@ -45,6 +64,7 @@ function testMemoryCommand() {
   return {
     core,
     route: (args: string[]) => root.route(["node", "agentcore", ...args, "--region", REGION]),
+    stdout: () => io.stdout(),
   };
 }
 
@@ -68,9 +88,11 @@ describe("memory command hierarchy", () => {
       globalConfigAccessor: new TestGlobalConfigAccessor(),
     });
     const memory = root.children().find((child) => child.name() === "memory");
+    const event = memory?.children().find((child) => child.name() === "event");
 
     expect(memory?.flags().map((flag) => flag.name)).not.toContain("interactive");
-    expect(memory?.children().map((child) => child.name())).toEqual(["get", "list"]);
+    expect(memory?.children().map((child) => child.name())).toEqual(["get", "list", "event"]);
+    expect(event?.children().map((child) => child.name())).toEqual(["get", "list"]);
   });
 
   test("keeps an omitted get view undefined for empty-flag routing", () => {
@@ -157,5 +179,158 @@ describe("memory read-only commands", () => {
     await expect(run(["memory", "get", "--id", MISSING_MEMORY_ID])).rejects.toMatchObject({
       name: "ResourceNotFoundException",
     });
+  });
+});
+
+describe("memory event commands", () => {
+  test("gets an event and renders the response unchanged", async () => {
+    const response: GetEventOutput = { event };
+    const core = new TestCoreClient();
+    core.memory.setGetEventResponse(response);
+    const command = testMemoryCommand(core);
+
+    await command.route([
+      "memory",
+      "event",
+      "get",
+      "--memory",
+      EVENT_MEMORY_ID,
+      "--actor-id",
+      ACTOR_ID,
+      "--session-id",
+      SESSION_ID,
+      "--event-id",
+      EVENT_ID,
+      "--endpoint-url",
+      ENDPOINT,
+    ]);
+
+    expect(core.memory.calls).toEqual([
+      {
+        method: "getEvent",
+        args: [
+          {
+            memoryId: EVENT_MEMORY_ID,
+            actorId: ACTOR_ID,
+            sessionId: SESSION_ID,
+            eventId: EVENT_ID,
+          },
+          { region: REGION, endpointUrl: ENDPOINT },
+        ],
+      },
+    ]);
+    expect(JSON.parse(command.stdout())).toEqual(JSON.parse(JSON.stringify(response)));
+  });
+
+  test("lists events with branch, metadata, payload, and pagination options", async () => {
+    const metadataFilter: EventMetadataFilterExpression = {
+      left: { metadataKey: "tenant" },
+      operator: "EQUALS_TO",
+      right: { metadataValue: { stringValue: "acme" } },
+    };
+    const response: ListEventsOutput = {
+      events: [event],
+      nextToken: "page-3",
+    };
+    const core = new TestCoreClient();
+    core.memory.setListEventsResponse(response, "page-2");
+    const command = testMemoryCommand(core);
+
+    await command.route([
+      "memory",
+      "event",
+      "list",
+      "--memory",
+      EVENT_MEMORY_ID,
+      "--actor-id",
+      ACTOR_ID,
+      "--session-id",
+      SESSION_ID,
+      "--include-payloads",
+      "--branch",
+      "feature",
+      "--include-parent-branches",
+      "--metadata-filters",
+      JSON.stringify([metadataFilter]),
+      "--max-results",
+      "1",
+      "--next-token",
+      "page-2",
+    ]);
+
+    expect(core.memory.calls).toEqual([
+      {
+        method: "listEvents",
+        args: [
+          {
+            memoryId: EVENT_MEMORY_ID,
+            actorId: ACTOR_ID,
+            sessionId: SESSION_ID,
+            includePayloads: true,
+            filter: {
+              branch: {
+                name: "feature",
+                includeParentBranches: true,
+              },
+              eventMetadata: [metadataFilter],
+            },
+            maxResults: 1,
+            nextToken: "page-2",
+          },
+          { region: REGION },
+        ],
+      },
+    ]);
+    expect(JSON.parse(command.stdout())).toEqual(JSON.parse(JSON.stringify(response)));
+  });
+
+  test("rejects parent branch inclusion without a branch", async () => {
+    const command = testMemoryCommand();
+
+    await expect(
+      command.route([
+        "memory",
+        "event",
+        "list",
+        "--memory",
+        EVENT_MEMORY_ID,
+        "--actor-id",
+        ACTOR_ID,
+        "--session-id",
+        SESSION_ID,
+        "--include-parent-branches",
+      ]),
+    ).rejects.toThrow("'--include-parent-branches' requires '--branch'");
+    expect(command.core.memory.calls).toEqual([]);
+  });
+
+  test("rejects invalid metadata filter JSON", async () => {
+    const command = testMemoryCommand();
+
+    await expect(
+      command.route([
+        "memory",
+        "event",
+        "list",
+        "--memory",
+        EVENT_MEMORY_ID,
+        "--actor-id",
+        ACTOR_ID,
+        "--session-id",
+        SESSION_ID,
+        "--metadata-filters",
+        "{",
+      ]),
+    ).rejects.toThrow("Invalid JSON for option '--metadata-filters'");
+    expect(command.core.memory.calls).toEqual([]);
+  });
+
+  test("rejects missing event selectors without entering the TUI", async () => {
+    const command = testMemoryCommand();
+
+    await expect(command.route(["memory", "event", "get"])).rejects.toThrow(
+      "required option '--memory <memory>' not specified",
+    );
+    expect(command.core.memory.calls).toEqual([]);
   });
 });
