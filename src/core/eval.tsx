@@ -302,40 +302,87 @@ export class EvalClient implements CoreEvalClient {
       dataSourceConfig !== undefined && dataSourceConfig !== current.dataSourceConfig
         ? dataSourceConfig
         : undefined;
-    if (movedTo !== undefined) {
-      const configName = current.onlineEvaluationConfigName;
-      const roleArn = update.evaluationExecutionRoleArn ?? current.evaluationExecutionRoleArn;
-      const managed =
-        configName !== undefined &&
-        update.evaluationExecutionRoleArn === undefined &&
-        roleArn?.endsWith(`/${onlineEvalExecutionRoleName(configName)}`) === true;
-      const logGroupNames = logGroupNamesOf(movedTo);
 
-      if (managed && update.updateRole !== false) {
+    const configName = current.onlineEvaluationConfigName;
+    const roleArn = update.evaluationExecutionRoleArn ?? current.evaluationExecutionRoleArn;
+    const managedRoleName =
+      configName !== undefined &&
+      update.evaluationExecutionRoleArn === undefined &&
+      roleArn?.endsWith(`/${onlineEvalExecutionRoleName(configName)}`) === true
+        ? configName
+        : undefined;
+    const refreshManagedRole = movedTo !== undefined && managedRoleName !== undefined;
+
+    if (movedTo !== undefined && managedRoleName === undefined && roleArn) {
+      roleScopeWarning = {
+        reason: "custom-role",
+        roleArn,
+        logGroupNames: logGroupNamesOf(movedTo),
+      };
+    } else if (movedTo !== undefined && !refreshManagedRole && roleArn) {
+      // managed role, but the caller declined the refresh
+      roleScopeWarning = {
+        reason: "update-declined",
+        roleArn,
+        logGroupNames: logGroupNamesOf(movedTo),
+      };
+    }
+
+    if (refreshManagedRole && update.updateRole !== false) {
+      const iam = this.clients.iam({ region: options.region });
+      const newLogGroups = logGroupNamesOf(movedTo);
+      const oldLogGroups = current.dataSourceConfig
+        ? logGroupNamesOf(current.dataSourceConfig)
+        : [];
+      // The evaluator list may have changed alongside the data source, so
+      // re-resolve the keys rather than reusing the ones from create.
+      const kmsKeys = await evaluatorKmsKeys(
+        update.evaluatorIds ??
+          (current.evaluators ?? [])
+            .map((e) => ("evaluatorId" in e ? e.evaluatorId : undefined))
+            .filter((id): id is string => id !== undefined),
+        control,
+      );
+
+      // Widen the role to the union of old and new log groups before the update,
+      // then narrow to the new set only after it succeeds. A superset role is
+      // valid for either config state, so a failed update never leaves a
+      // config pointing at logs its role cannot query. Skipping the narrow keeps
+      // the role over-scoped-but-working, which the warning reports.
+      const union = [...new Set([...oldLogGroups, ...newLogGroups])];
+      await ensureDefaultOnlineEvalExecutionRole(
+        iam,
+        managedRoleName,
+        options.region,
+        union,
+        kmsKeys,
+      );
+
+      const response = await control.send(
+        new UpdateOnlineEvaluationConfigCommand({
+          onlineEvaluationConfigId: id,
+          rule: toRule(samplingPercentage, sessionTimeoutMinutes, filters),
+          dataSourceConfig,
+          evaluators,
+        }),
+      );
+
+      try {
         await ensureDefaultOnlineEvalExecutionRole(
-          // IAM is a global service; the region only selects the endpoint, and the
-          // agentcore endpoint override must not leak onto it.
-          this.clients.iam({ region: options.region }),
-          configName,
+          iam,
+          managedRoleName,
           options.region,
-          logGroupNames,
-          // The evaluator list may have changed alongside the data source, so
-          // re-resolve the keys rather than reusing the ones from create.
-          await evaluatorKmsKeys(
-            update.evaluatorIds ??
-              (current.evaluators ?? [])
-                .map((e) => ("evaluatorId" in e ? e.evaluatorId : undefined))
-                .filter((id): id is string => id !== undefined),
-            control,
-          ),
+          newLogGroups,
+          kmsKeys,
         );
-      } else if (roleArn) {
+      } catch {
         roleScopeWarning = {
-          reason: managed ? "update-declined" : "custom-role",
-          roleArn,
-          logGroupNames,
+          reason: "narrow-failed",
+          roleArn: roleArn!,
+          logGroupNames: newLogGroups,
         };
       }
+      return { response, roleScopeWarning };
     }
 
     const response = await control.send(

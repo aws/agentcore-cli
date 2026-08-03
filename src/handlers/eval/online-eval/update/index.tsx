@@ -106,15 +106,26 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
       // scripted caller gets a machine-readable stdout and nothing else.
       if (roleScopeWarning && !ctx.require(JsonKey)) {
         const { reason, roleArn, logGroupNames } = roleScopeWarning;
-        const detail =
-          reason === "custom-role"
-            ? "it is not managed by the CLI"
-            : "re-scoping was declined via --update-role false";
-        io.stderr.write(
-          `warning: the data source moved but the execution role was not re-scoped because ${detail}.\n` +
-            `  role: ${roleArn}\n` +
-            `  ensure it grants logs:StartQuery and logs:GetQueryResults on: ${logGroupNames.join(", ")}\n`,
-        );
+        if (reason === "narrow-failed") {
+          // The update succeeded and the role already covers the new log groups;
+          // it was only left broader than necessary because the final narrow
+          // failed. A later update re-scopes it.
+          io.stderr.write(
+            `warning: the execution role could not be narrowed after the update and remains scoped more broadly than the current data source.\n` +
+              `  role: ${roleArn}\n` +
+              `  a later update re-scopes it, or narrow it manually to: ${logGroupNames.join(", ")}\n`,
+          );
+        } else {
+          const detail =
+            reason === "custom-role"
+              ? "it is not managed by the CLI"
+              : "re-scoping was declined via --update-role false";
+          io.stderr.write(
+            `warning: the data source moved but the execution role was not re-scoped because ${detail}.\n` +
+              `  role: ${roleArn}\n` +
+              `  ensure it grants logs:StartQuery and logs:GetQueryResults on: ${logGroupNames.join(", ")}\n`,
+          );
+        }
       }
       ctx.require(JsonRendererKey).renderJson(response);
     },

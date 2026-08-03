@@ -12,7 +12,7 @@
     "MaxSessionDuration": 3600,
     "RoleLastUsed": {
       "LastUsedDate": {
-        "$date": "2026-08-03T14:54:01.000Z"
+        "$date": "2026-08-03T15:40:35.000Z"
       },
       "Region": "us-west-2"
     }
