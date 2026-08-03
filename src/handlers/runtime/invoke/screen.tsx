@@ -403,8 +403,8 @@ function RuntimeInvokeConsole({
               ) : (
                 <Text color={theme.colors.muted}>
                   {cliTruncate(
-                    `idle · Sessions: Runtime ${runtimeSessionId ?? "new"} · MCP ${
-                      mcpSessionId ?? "new"
+                    `Ready · Session ID: ${runtimeSessionId ?? "Not set"}${
+                      mcp ? ` · MCP session ID: ${mcpSessionId ?? "Not set"}` : ""
                     }${requestContextSummary ? ` · Context ${requestContextSummary}` : ""}`,
                     columns,
                   )}

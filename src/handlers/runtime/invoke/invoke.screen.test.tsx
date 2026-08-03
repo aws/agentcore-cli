@@ -130,10 +130,11 @@ describe("Runtime invoke routing", () => {
     await waitForText(screen.lastFrame, QUALIFIER);
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, `Sessions: Runtime ${sessionId} · MCP new`);
+    await waitForText(screen.lastFrame, `Ready · Session ID: ${sessionId}`);
+    expect(screen.lastFrame()).not.toContain("MCP session ID");
   });
 
-  test("idle esc from an initial console returns to its endpoint picker", async () => {
+  test("escape from a ready console returns to its endpoint picker", async () => {
     const core = new TestCoreClient();
     core.runtime
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
@@ -142,7 +143,7 @@ describe("Runtime invoke routing", () => {
       });
     const screen = renderScreen(CONSOLE_PATH, { core });
 
-    await waitForText(screen.lastFrame, "idle");
+    await waitForText(screen.lastFrame, "Ready");
     await screen.press("escape");
 
     await waitForText(screen.lastFrame, "back-to-endpoint-picker");
@@ -199,7 +200,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
     const screen = renderScreen(CONSOLE_PATH, { core });
 
-    await waitForText(screen.lastFrame, "idle");
+    await waitForText(screen.lastFrame, "Ready");
     await screen.write('{"prompt":');
     await screen.press("return");
 
@@ -219,7 +220,7 @@ describe("Runtime invoke JSON console", () => {
       });
     const screen = renderScreen(CONSOLE_PATH, { core });
 
-    await waitForText(screen.lastFrame, "idle");
+    await waitForText(screen.lastFrame, "Ready");
     await screen.write("{");
     await screen.write("\x1b[13;2u");
     await screen.write('"prompt":"hello"');
@@ -240,11 +241,11 @@ describe("Runtime invoke JSON console", () => {
     core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
     const screen = renderScreen(CONSOLE_PATH, { core });
 
-    await waitForText(screen.lastFrame, "idle");
-    const initialIdleLine = screen
+    await waitForText(screen.lastFrame, "Ready");
+    const initialStatusLine = screen
       .lastFrame()!
       .split("\n")
-      .findIndex((line) => line.includes("idle · Sessions"));
+      .findIndex((line) => line.includes("Ready · Session ID"));
 
     for (let index = 0; index < 3; index++) await screen.write("\x1b[13;2u");
 
@@ -254,8 +255,8 @@ describe("Runtime invoke JSON console", () => {
       (line, index) => index > labelLine && /^─+$/.test(line),
     );
     expect(lowerDivider - labelLine).toBe(5);
-    expect(expandedLines.findIndex((line) => line.includes("idle · Sessions"))).toBe(
-      initialIdleLine,
+    expect(expandedLines.findIndex((line) => line.includes("Ready · Session ID"))).toBe(
+      initialStatusLine,
     );
     expect(screen.lastFrame()).not.toContain("…");
 
@@ -284,7 +285,7 @@ describe("Runtime invoke JSON console", () => {
     };
     const screen = renderScreen(CONSOLE_PATH, { core });
 
-    await waitForText(screen.lastFrame, "idle");
+    await waitForText(screen.lastFrame, "Ready");
     await screen.write('{"turn":1}');
     await screen.press("return");
     await waitForText(screen.lastFrame, "partial");
@@ -293,7 +294,7 @@ describe("Runtime invoke JSON console", () => {
     expect(requests).toHaveLength(1);
 
     release.resolve();
-    await waitForText(screen.lastFrame, "idle");
+    await waitForText(screen.lastFrame, "Ready");
     await screen.press("return");
     await waitFor(() => requests.length === 2);
     expect(new TextDecoder().decode(requests[1]!.payload)).toBe('{"turn":2}');
@@ -316,7 +317,7 @@ describe("Runtime invoke JSON console", () => {
       });
     const screen = renderScreen(CONSOLE_PATH, { core });
 
-    await waitForText(screen.lastFrame, "idle");
+    await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
     const frameCount = screen.frames.length;
     await screen.press("return");
@@ -363,10 +364,13 @@ describe("Runtime invoke JSON console", () => {
         }),
     });
 
-    await waitForText(screen.lastFrame, `Runtime ${initialSession}`);
+    await waitForText(screen.lastFrame, `Session ID: ${initialSession}`);
     await screen.write('{"turn":1}');
     await screen.press("return");
-    await waitForText(screen.lastFrame, "Sessions: Runtime returned-runtime · MCP returned-mcp");
+    await waitForText(
+      screen.lastFrame,
+      "Ready · Session ID: returned-runtime · MCP session ID: returned-mcp",
+    );
     await screen.write('{"turn":2}');
     await screen.press("return");
     await waitFor(() => requests.length === 2);
@@ -413,7 +417,7 @@ describe("Runtime invoke JSON console", () => {
 
     await screen.write('{"turn":1}');
     await screen.press("return");
-    await waitForText(screen.lastFrame, "idle");
+    await waitForText(screen.lastFrame, "Ready");
     await screen.write('{"turn":2}');
     await screen.press("return");
     await waitFor(() => requests.length === 2);
@@ -455,10 +459,10 @@ describe("Runtime invoke JSON console", () => {
         }),
     });
 
-    await waitForText(screen.lastFrame, "idle");
+    await waitForText(screen.lastFrame, "Ready");
     await screen.write('{"turn":1}');
     await screen.press("return");
-    await waitForText(screen.lastFrame, "Sessions: Runtime returned-runtime");
+    await waitForText(screen.lastFrame, "Ready · Session ID: returned-runtime");
 
     await screen.write("\x14");
     await waitForText(screen.lastFrame, "choose another Runtime");
@@ -470,7 +474,8 @@ describe("Runtime invoke JSON console", () => {
       `agentcore → runtime → invoke → ${RUNTIME_ID} → ${nextQualifier}`,
     );
     expect(screen.lastFrame()).not.toContain("old response");
-    expect(screen.lastFrame()).toContain("Sessions: Runtime new · MCP new");
+    expect(screen.lastFrame()).toContain("Ready · Session ID: Not set");
+    expect(screen.lastFrame()).not.toContain("MCP session ID");
 
     core.runtime.setInvokeResponse({
       statusCode: 200,
@@ -562,11 +567,11 @@ describe("Runtime invoke JSON console", () => {
       });
     const screen = renderScreen(CONSOLE_PATH, { core });
 
-    await waitForText(screen.lastFrame, "idle");
+    await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
     await screen.press("return");
     await waitForText(screen.lastFrame, raw);
-    await waitForText(screen.lastFrame, "idle");
+    await waitForText(screen.lastFrame, "Ready");
 
     await screen.write("\x16");
     await waitForText(screen.lastFrame, pretty);
@@ -589,7 +594,7 @@ describe("Runtime invoke JSON console", () => {
       });
     const screen = renderScreen(CONSOLE_PATH, { core });
 
-    await waitForText(screen.lastFrame, "idle");
+    await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
     await screen.press("return");
 
@@ -608,7 +613,7 @@ describe("Runtime invoke JSON console", () => {
     } as GetAgentRuntimeResponse);
     const screen = renderScreen(CONSOLE_PATH, { core });
 
-    await waitForText(screen.lastFrame, "idle");
+    await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
     await screen.press("return");
 
@@ -637,7 +642,7 @@ describe("Runtime invoke JSON console", () => {
     const screen = renderScreen(CONSOLE_PATH, { core });
 
     try {
-      await waitForText(screen.lastFrame, "idle");
+      await waitForText(screen.lastFrame, "Ready");
       await screen.write("{}");
       await screen.press("return");
       await waitForText(screen.lastFrame, "data: partial");
@@ -647,7 +652,8 @@ describe("Runtime invoke JSON console", () => {
       stop.reject(Object.assign(new Error("The operation was aborted"), { name: "AbortError" }));
       await waitForText(screen.lastFrame, "interrupted · 14 bytes");
       expect(screen.lastFrame()).toContain("data: partial");
-      expect(screen.lastFrame()).toContain("Sessions: Runtime new · MCP new");
+      expect(screen.lastFrame()).toContain("Ready · Session ID: Not set");
+      expect(screen.lastFrame()).not.toContain("MCP session ID");
     } finally {
       stop.resolve();
     }
