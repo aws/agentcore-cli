@@ -67,7 +67,13 @@ agentcore                          # interactive TUI
 │       └── list                   # list a Runtime's endpoints
 ├── memory                         # inspect AgentCore Memories
 │   ├── get                        # fetch a Memory by id
-│   └── list                       # list Memories (server-side paginated)
+│   ├── list                       # list Memories (server-side paginated)
+│   ├── event
+│   │   ├── get                    # get an Event from a Memory session
+│   │   └── list                   # list Events from a Memory session
+│   └── record
+│       ├── get                    # get a long-term Memory record
+│       └── list                   # list long-term Memory records
 ├── gateway                        # inspect AgentCore Gateways
 │   ├── get                        # get a Gateway by id
 │   ├── list                       # list Gateways (server-side paginated)

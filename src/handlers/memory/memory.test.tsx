@@ -347,12 +347,71 @@ describe("memory event commands", () => {
     expect(command.core.memory.calls).toEqual([]);
   });
 
-  test("rejects missing event selectors without entering the TUI", async () => {
+  test.each([
+    ["memory", ["--json"], "--memory <memory>"],
+    ["actor", ["--memory", EVENT_MEMORY_ID, "--json"], "--actor-id <actor-id>"],
+    [
+      "session",
+      ["--memory", EVENT_MEMORY_ID, "--actor-id", ACTOR_ID, "--json"],
+      "--session-id <session-id>",
+    ],
+    [
+      "event",
+      ["--memory", EVENT_MEMORY_ID, "--actor-id", ACTOR_ID, "--session-id", SESSION_ID, "--json"],
+      "--event-id <event-id>",
+    ],
+  ] as const)("rejects a missing %s selector for event get", async (_name, flags, expected) => {
     const command = testMemoryCommand();
 
-    await expect(command.route(["memory", "event", "get"])).rejects.toThrow(
-      "required option '--memory <memory>' not specified",
-    );
+    await expect(command.route(["memory", "event", "get", ...flags])).rejects.toThrow(expected);
+    expect(command.core.memory.calls).toEqual([]);
+  });
+
+  test.each([
+    ["memory", ["--json"], "--memory <memory>"],
+    ["actor", ["--memory", EVENT_MEMORY_ID, "--json"], "--actor-id <actor-id>"],
+    [
+      "session",
+      ["--memory", EVENT_MEMORY_ID, "--actor-id", ACTOR_ID, "--json"],
+      "--session-id <session-id>",
+    ],
+  ] as const)("rejects a missing %s selector for event list", async (_name, flags, expected) => {
+    const command = testMemoryCommand();
+
+    await expect(command.route(["memory", "event", "list", ...flags])).rejects.toThrow(expected);
+    expect(command.core.memory.calls).toEqual([]);
+  });
+
+  test.each([
+    ["a non-array", "{}"],
+    [
+      "an invalid expression member",
+      JSON.stringify([
+        {
+          left: { metadataKey: "tenant" },
+          operator: "EQUALS_TO",
+          right: { metadataValue: { numberValue: 1 } },
+        },
+      ]),
+    ],
+  ])("rejects %s in event metadata filters", async (_name, metadataFilters) => {
+    const command = testMemoryCommand();
+
+    await expect(
+      command.route([
+        "memory",
+        "event",
+        "list",
+        "--memory",
+        EVENT_MEMORY_ID,
+        "--actor-id",
+        ACTOR_ID,
+        "--session-id",
+        SESSION_ID,
+        "--metadata-filters",
+        metadataFilters,
+      ]),
+    ).rejects.toThrow("Invalid value for option '--metadata-filters'");
     expect(command.core.memory.calls).toEqual([]);
   });
 });
@@ -389,12 +448,13 @@ describe("memory record commands", () => {
     expect(JSON.parse(command.stdout())).toEqual(JSON.parse(JSON.stringify(response)));
   });
 
-  test("rejects missing record selectors without entering the TUI", async () => {
+  test.each([
+    ["memory", ["--json"], "--memory <memory>"],
+    ["record", ["--memory", EVENT_MEMORY_ID, "--json"], "--record-id <record-id>"],
+  ] as const)("rejects a missing %s selector for record get", async (_name, flags, expected) => {
     const command = testMemoryCommand();
 
-    await expect(command.route(["memory", "record", "get"])).rejects.toThrow(
-      "required option '--memory <memory>' not specified",
-    );
+    await expect(command.route(["memory", "record", "get", ...flags])).rejects.toThrow(expected);
     expect(command.core.memory.calls).toEqual([]);
   });
 
@@ -488,6 +548,15 @@ describe("memory record commands", () => {
     expect(JSON.parse(command.stdout())).toEqual(JSON.parse(JSON.stringify(response)));
   });
 
+  test("rejects a missing Memory selector for record list", async () => {
+    const command = testMemoryCommand();
+
+    await expect(
+      command.route(["memory", "record", "list", "--namespace", "/customers/acme", "--json"]),
+    ).rejects.toThrow("--memory <memory>");
+    expect(command.core.memory.calls).toEqual([]);
+  });
+
   test.each([
     ["neither", []],
     ["both", ["--namespace", "/customers/acme", "--namespace-path", "/customers/acme/*"]],
@@ -516,6 +585,37 @@ describe("memory record commands", () => {
         "{",
       ]),
     ).rejects.toThrow("Invalid JSON for option '--metadata-filters'");
+    expect(command.core.memory.calls).toEqual([]);
+  });
+
+  test.each([
+    ["a non-array", "{}"],
+    [
+      "an invalid expression member",
+      JSON.stringify([
+        {
+          left: { metadataKey: "tenant" },
+          operator: "EQUALS_TO",
+          right: { metadataValue: { booleanValue: true } },
+        },
+      ]),
+    ],
+  ])("rejects %s in record metadata filters", async (_name, metadataFilters) => {
+    const command = testMemoryCommand();
+
+    await expect(
+      command.route([
+        "memory",
+        "record",
+        "list",
+        "--memory",
+        EVENT_MEMORY_ID,
+        "--namespace",
+        "/customers/acme",
+        "--metadata-filters",
+        metadataFilters,
+      ]),
+    ).rejects.toThrow("Invalid value for option '--metadata-filters'");
     expect(command.core.memory.calls).toEqual([]);
   });
 });

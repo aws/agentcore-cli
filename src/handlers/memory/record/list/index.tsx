@@ -1,17 +1,17 @@
 import z from "zod";
-import type { MemoryMetadataFilterExpression } from "@aws-sdk/client-bedrock-agentcore";
 import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
-import { coreOptsFromCtx, parseJsonFlag } from "../../../utils";
+import { coreOptsFromCtx } from "../../../utils";
+import { parseMemoryMetadataFilters } from "../../metadataFilters";
 
 export const createListMemoryRecordsHandler = (core: Core) =>
   createHandler({
     name: "list",
     description: "list AgentCore Memory records",
     flags: [
-      flag("memory", "the ID of the Memory", z.string()),
+      flag("memory", "the ID of the Memory", z.string().optional()),
       flag("namespace", "filter by namespace prefix", z.string().optional()),
       flag("namespace-path", "filter by namespace hierarchy", z.string().optional()),
       flag("strategy-id", "filter by Memory strategy ID", z.string().optional()),
@@ -20,6 +20,10 @@ export const createListMemoryRecordsHandler = (core: Core) =>
       flag("next-token", "pagination token returned by a previous request", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
+      if (!flags.memory) {
+        throw new InputValidationError("required option '--memory <memory>' not specified");
+      }
+
       const hasNamespace = flags.namespace !== undefined;
       const hasNamespacePath = flags["namespace-path"] !== undefined;
       if (hasNamespace === hasNamespacePath) {
@@ -28,10 +32,7 @@ export const createListMemoryRecordsHandler = (core: Core) =>
         );
       }
 
-      const metadataFilters = parseJsonFlag<MemoryMetadataFilterExpression[]>(
-        "metadata-filters",
-        flags["metadata-filters"],
-      );
+      const metadataFilters = parseMemoryMetadataFilters(flags["metadata-filters"]);
       const response = await core.memory.listMemoryRecords(
         {
           memoryId: flags.memory,

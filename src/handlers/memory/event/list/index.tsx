@@ -1,19 +1,19 @@
 import z from "zod";
-import type { EventMetadataFilterExpression } from "@aws-sdk/client-bedrock-agentcore";
 import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import type { Core } from "../../../types";
-import { coreOptsFromCtx, parseJsonFlag } from "../../../utils";
+import { coreOptsFromCtx } from "../../../utils";
 import { JsonRendererKey } from "../../../../tui";
+import { parseEventMetadataFilters } from "../../metadataFilters";
 
 export const createListMemoryEventsHandler = (core: Core) =>
   createHandler({
     name: "list",
     description: "list AgentCore Memory events",
     flags: [
-      flag("memory", "the ID of the Memory", z.string()),
-      flag("actor-id", "the ID of the actor", z.string()),
-      flag("session-id", "the session ID", z.string()),
+      flag("memory", "the ID of the Memory", z.string().optional()),
+      flag("actor-id", "the ID of the actor", z.string().optional()),
+      flag("session-id", "the session ID", z.string().optional()),
       flag("include-payloads", "includes event payloads in the response", z.boolean().optional()),
       flag("branch", "filter events by branch name", z.string().optional()),
       flag(
@@ -27,14 +27,21 @@ export const createListMemoryEventsHandler = (core: Core) =>
     ],
 
     handle: async (ctx, flags) => {
+      if (!flags.memory) {
+        throw new InputValidationError("required option '--memory <memory>' not specified");
+      }
+      if (!flags["actor-id"]) {
+        throw new InputValidationError("required option '--actor-id <actor-id>' not specified");
+      }
+      if (!flags["session-id"]) {
+        throw new InputValidationError("required option '--session-id <session-id>' not specified");
+      }
+
       if (flags["include-parent-branches"] && !flags.branch) {
         throw new InputValidationError("'--include-parent-branches' requires '--branch'");
       }
 
-      const eventMetadata = parseJsonFlag<EventMetadataFilterExpression[]>(
-        "metadata-filters",
-        flags["metadata-filters"],
-      );
+      const eventMetadata = parseEventMetadataFilters(flags["metadata-filters"]);
       const filter =
         flags.branch || eventMetadata
           ? {
