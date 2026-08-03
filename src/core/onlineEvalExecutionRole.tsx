@@ -62,13 +62,21 @@ function runtimeLogGroupPrefix(logGroupName: string): string {
 }
 
 // executionPolicy grants the permissions CreateOnlineEvaluationConfig validates
+// at creation time. Exported for assertion: the policy body is not observable
+// through the recorded IAM fixtures, whose responses are empty.
+//
 // at creation time: Logs Insights query access over the sampled log groups plus
 // the `aws/spans` group that carries the actual trace spans, Bedrock model
 // invocation for LLM-as-a-Judge evaluators, Lambda invocation for code-based
 // ones, and permission to write results back to CloudWatch. Modeled on the
 // policy the CDK-deployed online evaluations use, since the service rejects a
 // role that cannot query the log groups it was pointed at.
-function executionPolicy(region: string, accountId: string, logGroupNames: string[]): string {
+export function executionPolicy(
+  region: string,
+  accountId: string,
+  logGroupNames: string[],
+  kmsKeyArns: string[],
+): string {
   const logs = `arn:aws:logs:${region}:${accountId}:log-group`;
   const spansArn = `${logs}:aws/spans`;
   // Scope to the runtime prefix rather than the exact endpoint log group: the
@@ -137,6 +145,19 @@ function executionPolicy(region: string, accountId: string, logGroupNames: strin
         Action: ["lambda:GetFunction", "lambda:InvokeFunction"],
         Resource: `arn:aws:lambda:${region}:${accountId}:function:*`,
       },
+      // Evaluators encrypted with a customer managed key need kms:Decrypt on that
+      // key, which the service validates when the config is created. Scoped to the
+      // referenced keys, and omitted when no evaluator is encrypted.
+      ...(kmsKeyArns.length > 0
+        ? [
+            {
+              Sid: "DecryptEvaluatorKeys",
+              Effect: "Allow",
+              Action: ["kms:Decrypt", "kms:DescribeKey"],
+              Resource: kmsKeyArns,
+            },
+          ]
+        : []),
     ],
   });
 }
@@ -151,12 +172,14 @@ function accountIdFromRoleArn(arn: string): string {
 
 // ensureDefaultOnlineEvalExecutionRole returns the ARN of the default execution
 // role for `configName`, creating the role if it doesn't exist and
-// (re)attaching a policy scoped to `logGroupNames` either way.
+// (re)attaching a policy scoped to `logGroupNames` either way. `kmsKeyArns` adds
+// kms:Decrypt for evaluators encrypted with a customer managed key.
 export async function ensureDefaultOnlineEvalExecutionRole(
   iam: IAMClient,
   configName: string,
   region: string,
   logGroupNames: string[],
+  kmsKeyArns: string[] = [],
 ): Promise<string> {
   const roleName = onlineEvalExecutionRoleName(configName);
 
@@ -180,7 +203,12 @@ export async function ensureDefaultOnlineEvalExecutionRole(
     new PutRolePolicyCommand({
       RoleName: roleName,
       PolicyName: POLICY_NAME,
-      PolicyDocument: executionPolicy(region, accountIdFromRoleArn(roleArn), logGroupNames),
+      PolicyDocument: executionPolicy(
+        region,
+        accountIdFromRoleArn(roleArn),
+        logGroupNames,
+        kmsKeyArns,
+      ),
     }),
   );
 

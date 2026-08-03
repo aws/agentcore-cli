@@ -25,6 +25,7 @@ import {
   type Rule,
   type UpdateEvaluatorResponse,
   type UpdateOnlineEvaluationConfigResponse,
+  type BedrockAgentCoreControlClient,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { InputValidationError } from "../errors";
 import type {
@@ -206,6 +207,7 @@ export class EvalClient implements CoreEvalClient {
         input.name,
         options.region,
         logGroupNamesOf(dataSourceConfig),
+        await evaluatorKmsKeys(input.evaluatorIds ?? [], control),
       ));
 
     const command = new CreateOnlineEvaluationConfigCommand({
@@ -317,6 +319,15 @@ export class EvalClient implements CoreEvalClient {
           configName,
           options.region,
           logGroupNames,
+          // The evaluator list may have changed alongside the data source, so
+          // re-resolve the keys rather than reusing the ones from create.
+          await evaluatorKmsKeys(
+            update.evaluatorIds ??
+              (current.evaluators ?? [])
+                .map((e) => ("evaluatorId" in e ? e.evaluatorId : undefined))
+                .filter((id): id is string => id !== undefined),
+            control,
+          ),
         );
       } else if (roleArn) {
         roleScopeWarning = {
@@ -464,6 +475,33 @@ async function retryWhileRoleUnassumable<T>(send: () => Promise<T>): Promise<T> 
     }
   }
   return send();
+}
+
+// evaluatorKmsKeys collects the customer managed KMS keys of the referenced
+// evaluators. The service validates that the execution role can decrypt them when
+// the config is created, so a provisioned role has to grant kms:Decrypt on exactly
+// these keys. Builtins carry no key, so the common case resolves to nothing. An
+// evaluator that cannot be read is fatal: provisioning a role that silently lacks
+// Decrypt would fail the create with a far less actionable error.
+async function evaluatorKmsKeys(
+  evaluatorIds: string[],
+  control: BedrockAgentCoreControlClient,
+): Promise<string[]> {
+  const keys = await Promise.all(
+    evaluatorIds.map(async (evaluatorId) => {
+      try {
+        const evaluator = await control.send(new GetEvaluatorCommand({ evaluatorId }));
+        return evaluator.kmsKeyArn;
+      } catch (error) {
+        throw new InputValidationError(
+          `Cannot read evaluator "${evaluatorId}" to determine whether it is encrypted; ` +
+            `pass --role-arn to supply an execution role instead`,
+          { cause: error, meta: { evaluatorId } },
+        );
+      }
+    }),
+  );
+  return [...new Set(keys.filter((key): key is string => key !== undefined))];
 }
 
 // logGroupNamesOf reads the log groups out of a resolved dataSourceConfig, for

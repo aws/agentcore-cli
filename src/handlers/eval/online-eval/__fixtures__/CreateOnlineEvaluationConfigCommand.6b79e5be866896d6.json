@@ -1,0 +1,14 @@
+{
+  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_kms-1lJWwC4cEd",
+  "onlineEvaluationConfigId": "agentcore_cli_online_eval_kms-1lJWwC4cEd",
+  "createdAt": {
+    "$date": "2026-08-03T15:40:42.569Z"
+  },
+  "status": "CREATING",
+  "executionStatus": "DISABLED",
+  "outputConfig": {
+    "cloudWatchConfig": {
+      "logGroupName": "/aws/bedrock-agentcore/evaluations/results/agentcore_cli_online_eval_kms-1lJWwC4cEd"
+    }
+  }
+}

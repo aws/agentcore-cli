@@ -359,6 +359,51 @@ describe("flag validation", () => {
 
 // A separate config, so this never perturbs the CRUDL sequence above: inserting an
 // extra update there shifts which recording each of its calls keys to.
+// Provisioning has to grant kms:Decrypt on the keys of any customer-managed-key
+// evaluator the config references, because the service validates that permission
+// when the config is created. Resolution reads GetEvaluator.kmsKeyArn, which the
+// service currently only reports for ~2 minutes after an evaluator is created
+// (P484740478), so the encrypted evaluator here is backed by a hand-authored
+// fixture representing the documented behavior rather than a live recording.
+describe("execution role KMS scoping", () => {
+  const KMS_CONFIG_NAME = "agentcore_cli_online_eval_kms";
+
+  test("provisions a role for a config referencing an encrypted evaluator", async () => {
+    const stdout = await run([
+      "eval",
+      "online-eval",
+      "create",
+      "--name",
+      KMS_CONFIG_NAME,
+      "--agent",
+      FIXTURE_AGENT_ID,
+      // Builtin.Correctness is backed by the hand-authored fixture carrying a
+      // kmsKeyArn; Builtin.Helpfulness carries none, so this covers both arms of
+      // the resolution in one create.
+      "--evaluator",
+      FIXTURE_EVALUATOR_ID,
+      "--evaluator",
+      "Builtin.Correctness",
+      "--sampling-rate",
+      "10",
+      "--enable-on-create",
+      "false",
+    ]);
+
+    const created = JSON.parse(stdout);
+    expect(created.onlineEvaluationConfigId).toBeString();
+    // No --role-arn, so the role is the provisioned one named after the config.
+    // Asserting the ARN mirrors how harness covers its default role.
+    const detail = JSON.parse(
+      await run(["eval", "online-eval", "get", "--id", created.onlineEvaluationConfigId]),
+    );
+    expect(detail.evaluationExecutionRoleArn).toContain(`AgentCoreOnlineEval-${KMS_CONFIG_NAME}`);
+
+    await settle();
+    await run(["eval", "online-eval", "delete", "--id", created.onlineEvaluationConfigId]);
+  }, 90_000);
+});
+
 describe("execution role scoping on update", () => {
   const WARN_CONFIG_NAME = "agentcore_cli_online_eval_role_warn";
 

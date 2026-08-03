@@ -1,14 +1,14 @@
 {
-  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_role_warn-8fpFdiH7rm",
-  "onlineEvaluationConfigId": "agentcore_cli_online_eval_role_warn-8fpFdiH7rm",
+  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_role_warn-h6dbDUEhg5",
+  "onlineEvaluationConfigId": "agentcore_cli_online_eval_role_warn-h6dbDUEhg5",
   "createdAt": {
-    "$date": "2026-08-03T14:54:08.581Z"
+    "$date": "2026-08-03T15:40:48.598Z"
   },
   "status": "CREATING",
   "executionStatus": "DISABLED",
   "outputConfig": {
     "cloudWatchConfig": {
-      "logGroupName": "/aws/bedrock-agentcore/evaluations/results/agentcore_cli_online_eval_role_warn-8fpFdiH7rm"
+      "logGroupName": "/aws/bedrock-agentcore/evaluations/results/agentcore_cli_online_eval_role_warn-h6dbDUEhg5"
     }
   }
 }
