@@ -4,20 +4,18 @@ This directory contains **manually maintained** TypeScript type definitions opti
 
 ## How It Works
 
-1. The CLI embeds these `.ts` files as text at build time (via Bun's text import)
-2. During `init`, they're written to the user's `agentcore/.llm-context/` directory
+1. The CLI embeds these `.ts` files as text through the esbuild text-loader plugin
+2. During `create`, they're written to the user's `agentcore/.llm-context/` directory
 3. AI coding assistants read these files when editing AgentCore JSON configs
 
 ## Keeping In Sync With Zod Schemas
 
 When Zod schemas in `schemas/` are updated, manually update the corresponding file here:
 
-| Compacted File   | Zod Source Files                               |
-| ---------------- | ---------------------------------------------- |
-| `agentcore.ts`   | `schemas/agentcore-project.ts`                 |
-| `agent-env.ts`   | `schemas/agent-env.ts`, `schemas/primitives/*` |
-| `mcp.ts`         | `schemas/mcp.ts`, `schemas/mcp-defs.ts`        |
-| `aws-targets.ts` | `schemas/aws-targets.ts`                       |
+| Compacted File   | Zod Source Files                                                                                     |
+| ---------------- | ---------------------------------------------------------------------------------------------------- |
+| `agentcore.ts`   | `schemas/agentcore-project.ts`, `schemas/agent-env.ts`, `schemas/mcp.ts`, and `schemas/primitives/*` |
+| `aws-targets.ts` | `schemas/aws-targets.ts`                                                                             |
 
 ## Critical: Enum and Regex Accuracy
 

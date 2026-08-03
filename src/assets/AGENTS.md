@@ -57,4 +57,4 @@ For Container builds, `BaseRenderer.render()` automatically copies the `containe
 
 - These assets are rendered by the CLI's template renderer in `src/cli/templates/`
 - The `README.md` and `agents/AGENTS.md` are copied verbatim (no template rendering) during project creation
-- The `.llm-context/` files are sourced from `src/schema/llm-compacted/` and written during init
+- The `.llm-context/` files are sourced from `src/schema/llm-compacted/` and written during project creation

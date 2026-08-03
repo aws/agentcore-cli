@@ -13,8 +13,7 @@ my-project/
 │   ├── .env.local          # Secrets — API keys (gitignored)
 │   ├── .llm-context/       # TypeScript type definitions for AI assistants
 │   │   ├── agentcore.ts    # AgentCoreProjectSpec types
-│   │   ├── aws-targets.ts  # Deployment target types
-│   │   └── mcp.ts          # Gateway and MCP tool types
+│   │   └── aws-targets.ts  # Deployment target types
 │   └── cdk/                # CDK infrastructure (@aws/agentcore-cdk)
 ├── app/                    # Agent application code
 └── evaluators/             # Custom evaluator code (if any)

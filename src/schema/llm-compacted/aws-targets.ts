@@ -15,7 +15,7 @@
 type AwsDeploymentTargets = AwsDeploymentTarget[];
 
 interface AwsDeploymentTarget {
-  name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_-]*$ @max 64 - unique identifier
+  name: string; // @regex ^[a-zA-Z][a-zA-Z0-9-]*$ @min 1 @max 64 - unique identifier
   description?: string; // @max 256
   account: string; // @regex ^[0-9]{12}$ - AWS account ID (exactly 12 digits)
   region: AgentCoreRegion;
@@ -32,9 +32,13 @@ type AgentCoreRegion =
   | 'ap-south-1'
   | 'ap-southeast-1'
   | 'ap-southeast-2'
+  | 'ap-southeast-5'
+  | 'ap-southeast-7'
   | 'ca-central-1'
   | 'eu-central-1'
   | 'eu-north-1'
+  | 'eu-south-1'
+  | 'eu-south-2'
   | 'eu-west-1'
   | 'eu-west-2'
   | 'eu-west-3'

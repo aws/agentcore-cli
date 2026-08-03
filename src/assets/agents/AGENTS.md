@@ -36,8 +36,7 @@ myProject/
 │   ├── .llm-context/       # TypeScript type definitions for AI assistants
 │   │   ├── README.md       # Guide to using schema files
 │   │   ├── agentcore.ts    # AgentCoreProjectSpec types
-│   │   ├── aws-targets.ts  # AWS deployment target types
-│   │   └── mcp.ts          # Gateway and MCP tool types
+│   │   └── aws-targets.ts  # AWS deployment target types
 │   └── cdk/                # AWS CDK project (@aws/agentcore-cdk L3 constructs)
 ├── app/                    # Agent application code
 └── evaluators/             # Custom evaluator code (if any)
@@ -51,12 +50,11 @@ file maps to a JSON config file and includes validation constraints as comments 
 | JSON Config | Schema File | Root Type |
 | --- | --- | --- |
 | `agentcore/agentcore.json` | `agentcore/.llm-context/agentcore.ts` | `AgentCoreProjectSpec` |
-| `agentcore/agentcore.json` (gateways) | `agentcore/.llm-context/mcp.ts` | `AgentCoreMcpSpec` |
 | `agentcore/aws-targets.json` | `agentcore/.llm-context/aws-targets.ts` | `AwsDeploymentTarget[]` |
 
 ### Key Types
 
-- **AgentCoreProjectSpec**: Root config with `runtimes`, `memories`, `credentials`, `agentCoreGateways`, `evaluators`, `onlineEvalConfigs`, `onlineInsightsConfigs`, `knowledgeBases`, `harnesses`, `policyEngines`, `policies`, `payments` (managers + connectors), `configBundles`, `datasets`, `runtimeEndpoints` arrays
+- **AgentCoreProjectSpec**: Root config with runtimes, memories, knowledge bases, credentials, evaluators, online evals, gateways, policy engines, config bundles, A/B tests, harness registrations, datasets, and payment managers
 - **AgentEnvSpec**: Agent configuration (build type, entrypoint, code location, runtime version, network mode)
 - **Memory**: Memory resource with strategies (SEMANTIC, SUMMARIZATION, USER_PREFERENCE, EPISODIC) and expiry
 - **Credential**: API key or OAuth credential provider

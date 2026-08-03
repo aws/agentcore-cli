@@ -1,10 +1,10 @@
 /**
  * LLM-compacted schema files embedded at build time.
- * Written to agentcore/.llm-context/ during init to provide
+ * Written to agentcore/.llm-context/ during project creation to provide
  * AI coding assistants with compact, readable type definitions.
  *
  * When running from built bundle: text-loader plugin embeds contents.
- * When running from source (bun): files are read at runtime.
+ * When running from source without the text loader: files are read at runtime.
  */
 // @ts-expect-error - text import handled by build plugin
 import llmContextReadmeSrc from '../../schema/llm-compacted/README.md';
