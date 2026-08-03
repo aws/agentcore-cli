@@ -330,6 +330,35 @@ describe("paginated table picker contract", () => {
     expect(lines[38]).toMatch(/^─+$/);
   });
 
+  test("keeps pagination and footer hints below every row at narrow widths", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setListResponse({
+      agentRuntimes: Array.from({ length: 17 }, (_, index) => {
+        const suffix = String(index).padStart(10, "0");
+        return runtime({
+          agentRuntimeId: `runtime-${suffix}`,
+          agentRuntimeName: `runtime-${index}`,
+        });
+      }),
+      nextToken: "t2",
+    });
+    const r = renderScreen("/agentcore/runtime/list", { core });
+
+    await r.resize(60, 24);
+    await waitFor(() => {
+      const frame = r.lastFrame() ?? "";
+      return frame.includes("0000000016") && !frame.includes("loading page 1…");
+    });
+    const lines = (r.lastFrame() ?? "").split("\n");
+
+    expect(lines).toHaveLength(24);
+    expect(lines[20]).toContain("0000000016");
+    expect(lines[21]).toContain("page 1 · more →");
+    expect(lines[22]).toMatch(/^─{60}$/);
+    expect(lines[23]).toContain("[esc] back");
+    expect(stringWidth(lines[23]!)).toBeLessThanOrEqual(60);
+  });
+
   test("keeps rows aligned and single-line while resizing the Runtime table", async () => {
     const core = new TestCoreClient();
     const suffixes = ["AbCdEf1234", "BcDeFg2345", "CdEfGh3456"];
