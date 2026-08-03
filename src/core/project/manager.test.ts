@@ -18,8 +18,6 @@ async function inTempDirectory(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "agentcore-manager-"));
   tempDirectories.push(directory);
   process.chdir(directory);
-  // cwd() resolves symlinks (macOS /var -> /private/var); use the canonical
-  // path so assertions against manager-returned paths compare equal.
   return process.cwd();
 }
 
