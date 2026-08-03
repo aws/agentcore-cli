@@ -143,7 +143,7 @@ export function DataTable<T extends Record<string, unknown>>({
             onNextPage();
           }
         } else setCurrentPage((p) => Math.min(totalPages - 1, p + 1));
-      } else if (input === "/") {
+      } else if (searchable && input === "/") {
         setSelectedRow(0);
         setCurrentPage(0);
         setSearchMode(true);
@@ -191,26 +191,18 @@ export function DataTable<T extends Record<string, unknown>>({
     const width = computedWidths.widths[index];
     return width === undefined ? [] : [{ column, width }];
   });
+  const filterLine = searchMode ? (
+    <Text>
+      <Text color={theme.colors.primary}>/ Filter: </Text>
+      <Text color={theme.colors.text}>{searchQuery}</Text>
+      <Text color={theme.colors.primary}>█</Text>
+    </Text>
+  ) : searchQuery ? (
+    <Text color={theme.colors.muted}>/ Filter: {searchQuery}</Text>
+  ) : undefined;
 
   return (
     <Box flexDirection="column">
-      {/* Search bar */}
-      {searchable && (
-        <Box marginBottom={0}>
-          <Text color={theme.colors.muted}>
-            {searchMode ? (
-              <Text>
-                <Text color={theme.colors.primary}>/ Filter: </Text>
-                <Text color={theme.colors.text}>{searchQuery}</Text>
-                <Text color={theme.colors.primary}>█</Text>
-              </Text>
-            ) : searchQuery ? (
-              <Text color={theme.colors.muted}>/ Filter: {searchQuery}</Text>
-            ) : null}
-          </Text>
-        </Box>
-      )}
-
       {/* Table */}
       <Box
         flexDirection="column"
@@ -237,11 +229,15 @@ export function DataTable<T extends Record<string, unknown>>({
           ))}
         </Box>
 
-        {/* Divider (or a blank spacer line when hidden) */}
+        {/* Filter input replaces the divider so filtering does not change table height. */}
         <Box flexDirection="row">
-          <Text color={theme.colors.border}>
-            {showDivider ? "─".repeat(computedWidths.totalWidth) : " "}
-          </Text>
+          {searchable && filterLine ? (
+            filterLine
+          ) : (
+            <Text color={theme.colors.border}>
+              {showDivider ? "─".repeat(computedWidths.totalWidth) : " "}
+            </Text>
+          )}
         </Box>
 
         {/* Rows */}

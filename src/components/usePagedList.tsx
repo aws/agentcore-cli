@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { useWindowSize } from "ink";
 
 // CHROME_ROWS is everything a picker screen renders around the table rows:
-// the Layout header and footer (2 each), the DataTable filter line, the
-// column-header row and its divider, and the pagination status line.
-const CHROME_ROWS = 8;
+// the Layout header and footer (2 each), the DataTable column-header row and
+// divider/filter row, and the pagination status line.
+const CHROME_ROWS = 7;
 
 export interface PagedList {
   // pageSize is how many table rows fit the terminal — sent as maxResults so

@@ -154,7 +154,7 @@ describe("paginated table picker contract", () => {
     expect(core.harness.calls.filter((call) => call.method === "listHarnesses")).toEqual([
       {
         method: "listHarnesses",
-        args: [undefined, 32, { region: "us-east-1", endpointUrl: undefined }],
+        args: [undefined, 33, { region: "us-east-1", endpointUrl: undefined }],
       },
     ]);
     await r.press("down");
@@ -163,7 +163,7 @@ describe("paginated table picker contract", () => {
     await waitForText(r.lastFrame, "❯ page-two-first");
     expect(core.harness.calls.at(-1)).toEqual({
       method: "listHarnesses",
-      args: ["t2", 32, { region: "us-east-1", endpointUrl: undefined }],
+      args: ["t2", 33, { region: "us-east-1", endpointUrl: undefined }],
     });
 
     await r.press("down");
@@ -301,6 +301,33 @@ describe("paginated table picker contract", () => {
       core.harness.calls.some((call) => call.method === "getHarness" && call.args[0] === "alpha-1"),
     );
     expect(r.lastFrame()).toContain("agentcore → harness → get → alpha-1");
+  });
+
+  test("fills the content area before and during filtering", async () => {
+    const core = new TestCoreClient();
+    core.harness.setListResponse({
+      harnesses: Array.from({ length: 33 }, (_, index) =>
+        harness({
+          harnessId: `harness-${index}`,
+          harnessName: `harness-${String(index).padStart(2, "0")}`,
+        }),
+      ),
+      nextToken: "t2",
+    });
+    const r = renderScreen("/agentcore/harness/list", { core });
+
+    await waitForText(r.lastFrame, "page 1 · more →");
+    let lines = (r.lastFrame() ?? "").split("\n");
+    expect(lines[37]).toContain("page 1 · more →");
+    expect(lines[38]).toMatch(/^─+$/);
+
+    await r.write("/");
+    await waitForText(r.lastFrame, "/ Filter:");
+    lines = (r.lastFrame() ?? "").split("\n");
+    expect(lines[2]).toContain("name");
+    expect(lines[3]).toContain("/ Filter:");
+    expect(lines[37]).toContain("page 1 · more →");
+    expect(lines[38]).toMatch(/^─+$/);
   });
 
   test("keeps rows aligned and single-line while resizing the Runtime table", async () => {
