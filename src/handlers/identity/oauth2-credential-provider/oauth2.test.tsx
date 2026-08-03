@@ -293,6 +293,43 @@ describe("oauth2-credential-provider flag validation", () => {
     expect(run([...args])).rejects.toThrow(message);
   });
 
+  test.each([
+    [
+      "create: non-Custom vendor without --provider-configuration",
+      [
+        "identity",
+        "oauth2-credential-provider",
+        "create",
+        "--name",
+        "x",
+        "--vendor",
+        "GithubOauth2",
+        "--client-secret",
+        "s",
+      ],
+      /--provider-configuration is required for --vendor GithubOauth2/,
+    ],
+    [
+      "create: guided Custom without --discovery-url or --authorization-server-metadata",
+      [
+        "identity",
+        "oauth2-credential-provider",
+        "create",
+        "--name",
+        "x",
+        "--vendor",
+        "CustomOauth2",
+        "--client-secret",
+        "s",
+        "--client-id",
+        "c",
+      ],
+      /requires one of --discovery-url or --authorization-server-metadata/,
+    ],
+  ] as const)("enforces vendor/config-mode rules for `%s`", async (_label, args, message) => {
+    expect(run([...args])).rejects.toThrow(message);
+  });
+
   test("propagates ResourceNotFoundException from get", async () => {
     await expect(
       run(["identity", "oauth2-credential-provider", "get", "--name", MISSING_PROVIDER_NAME]),

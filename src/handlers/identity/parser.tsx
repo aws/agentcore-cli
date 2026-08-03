@@ -1,4 +1,14 @@
-// Requires exactly { secretId, jsonKey } with non-empty string values.
+import z from "zod";
+import { InputValidationError } from "../../errors";
+
+// Requires exactly { secretId, jsonKey }, both non-empty string, no extra fields.
+const secretReferenceSchema = z
+  .object({
+    secretId: z.string().min(1),
+    jsonKey: z.string().min(1),
+  })
+  .strict();
+
 export function parseSecretReference(
   flagName: string,
   raw: string,
@@ -7,28 +17,17 @@ export function parseSecretReference(
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
-    throw new TypeError(
+    throw new InputValidationError(
       `Invalid JSON for --${flagName}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new TypeError(`--${flagName} must be a JSON object with "secretId" and "jsonKey"`);
+  const result = secretReferenceSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new InputValidationError(
+      `--${flagName} must be a JSON object with non-empty "secretId" and "jsonKey" fields: ${result.error.message}`,
+    );
   }
 
-  const obj = parsed as Record<string, unknown>;
-  const allowedKeys = new Set(["secretId", "jsonKey"]);
-  const unexpected = Object.keys(obj).filter((k) => !allowedKeys.has(k));
-  if (unexpected.length > 0) {
-    throw new TypeError(`--${flagName} contains unexpected fields: ${unexpected.join(", ")}`);
-  }
-
-  if (typeof obj.secretId !== "string" || obj.secretId.length === 0) {
-    throw new TypeError(`--${flagName} requires a non-empty "secretId" string`);
-  }
-  if (typeof obj.jsonKey !== "string" || obj.jsonKey.length === 0) {
-    throw new TypeError(`--${flagName} requires a non-empty "jsonKey" string`);
-  }
-
-  return { secretId: obj.secretId, jsonKey: obj.jsonKey };
+  return result.data;
 }

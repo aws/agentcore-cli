@@ -241,7 +241,7 @@ describe("api-key-credential-provider CRUDL", () => {
         "--api-key-secret-reference",
         '{"jsonKey":"apiKey"}',
       ],
-      /non-empty "secretId"/,
+      /--api-key-secret-reference/,
     ],
     [
       "create: --api-key-secret-reference with unexpected field",
@@ -254,7 +254,7 @@ describe("api-key-credential-provider CRUDL", () => {
         "--api-key-secret-reference",
         '{"secretId":"arn:aws:secretsmanager:us-west-2:123:secret:s","jsonKey":"apiKey","extra":"bad"}',
       ],
-      /unexpected fields/,
+      /--api-key-secret-reference/,
     ],
     [
       "update: --api-key with --api-key-secret-reference",

@@ -1,4 +1,5 @@
 import z from "zod";
+import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
@@ -39,34 +40,39 @@ export const createUpdateOauth2CredentialProviderHandler = (core: Core, io: AppI
         "provider-configuration",
         "complete OAuth2 provider configuration JSON (alternative to guided flags)",
         z.string().optional(),
+        { sensitive: true },
       ),
     ],
     handle: async (ctx, flags) => {
       if (!flags.name) {
-        throw new TypeError("required option '--name <name>' not specified");
+        throw new InputValidationError("required option '--name <name>' not specified");
       }
 
       const hasClientSecret = flags["client-secret"] !== undefined;
       const hasSecretRef = flags["client-secret-reference"] !== undefined;
       const hasProviderConfig = flags["provider-configuration"] !== undefined;
+      const hasDiscoveryUrl = flags["discovery-url"] !== undefined;
+      const hasAuthServerMetadata = flags["authorization-server-metadata"] !== undefined;
       const hasGuidedFlags =
-        flags["client-id"] !== undefined ||
-        flags["discovery-url"] !== undefined ||
-        flags["authorization-server-metadata"] !== undefined;
+        flags["client-id"] !== undefined || hasDiscoveryUrl || hasAuthServerMetadata;
 
       if (hasClientSecret && hasSecretRef) {
-        throw new TypeError("--client-secret and --client-secret-reference are mutually exclusive");
+        throw new InputValidationError(
+          "--client-secret and --client-secret-reference are mutually exclusive",
+        );
       }
       if (!hasClientSecret && !hasSecretRef) {
-        throw new TypeError("either --client-secret or --client-secret-reference is required");
+        throw new InputValidationError(
+          "either --client-secret or --client-secret-reference is required",
+        );
       }
       if (hasProviderConfig && hasGuidedFlags) {
-        throw new TypeError(
+        throw new InputValidationError(
           "--provider-configuration and guided flags (--client-id, --discovery-url, --authorization-server-metadata) are mutually exclusive",
         );
       }
-      if (flags["discovery-url"] && flags["authorization-server-metadata"]) {
-        throw new TypeError(
+      if (hasDiscoveryUrl && hasAuthServerMetadata) {
+        throw new InputValidationError(
           "--discovery-url and --authorization-server-metadata are mutually exclusive",
         );
       }
@@ -75,23 +81,36 @@ export const createUpdateOauth2CredentialProviderHandler = (core: Core, io: AppI
       const existing = await core.identity.getOauth2CredentialProvider(flags.name, opts);
 
       if (hasClientSecret && existing.clientSecretSource === "EXTERNAL") {
-        throw new TypeError(
+        throw new InputValidationError(
           "this provider uses an external secret; use --client-secret-reference to update it",
         );
       }
       if (hasSecretRef && existing.clientSecretSource === "MANAGED") {
-        throw new TypeError(
+        throw new InputValidationError(
           "this provider uses a managed secret; use --client-secret to update it",
         );
       }
 
       const vendor = flags.vendor ?? existing.credentialProviderVendor;
       if (!vendor) {
-        throw new TypeError("required option '--vendor <vendor>' not specified");
+        throw new InputValidationError("required option '--vendor <vendor>' not specified");
       }
-      if (hasGuidedFlags && vendor !== "CustomOauth2") {
-        throw new TypeError(
+      const isCustomVendor = vendor === "CustomOauth2";
+      if (hasGuidedFlags && !isCustomVendor) {
+        throw new InputValidationError(
           "guided flags (--client-id, --discovery-url, --authorization-server-metadata) are only valid with --vendor CustomOauth2; use --provider-configuration for other vendors",
+        );
+      }
+      // non-custom vendors must supply a complete provider-configuration
+      if (!isCustomVendor && !hasProviderConfig) {
+        throw new InputValidationError(
+          `--provider-configuration is required for --vendor ${vendor}; guided flags only support CustomOauth2`,
+        );
+      }
+      // the guided CustomOAuth2 path requires one discovery form
+      if (isCustomVendor && !hasProviderConfig && !hasDiscoveryUrl && !hasAuthServerMetadata) {
+        throw new InputValidationError(
+          "guided --vendor CustomOauth2 requires one of --discovery-url or --authorization-server-metadata",
         );
       }
 
@@ -113,7 +132,7 @@ export const createUpdateOauth2CredentialProviderHandler = (core: Core, io: AppI
         )!;
         const configKey = Object.keys(config)[0];
         if (!configKey || typeof config[configKey] !== "object") {
-          throw new TypeError(
+          throw new InputValidationError(
             "--provider-configuration must contain a single vendor config object",
           );
         }
