@@ -4,7 +4,12 @@ import type {
   Event,
   EventMetadataFilterExpression,
   GetEventOutput,
+  GetMemoryRecordOutput,
   ListEventsOutput,
+  ListMemoryRecordsOutput,
+  MemoryMetadataFilterExpression,
+  MemoryRecord,
+  MemoryRecordSummary,
 } from "@aws-sdk/client-bedrock-agentcore";
 import { CoreClient } from "../../core";
 import {
@@ -32,6 +37,7 @@ const EVENT_MEMORY_ID = "memory-1";
 const ACTOR_ID = "actor-1";
 const SESSION_ID = "session-1";
 const EVENT_ID = "event-1";
+const RECORD_ID = "record-1";
 
 const event: Event = {
   memoryId: EVENT_MEMORY_ID,
@@ -41,6 +47,15 @@ const event: Event = {
   eventTimestamp: new Date("2026-08-03T12:00:00.000Z"),
   payload: [],
 };
+
+const memoryRecord: MemoryRecord = {
+  memoryRecordId: RECORD_ID,
+  content: { text: "Customer prefers email notifications." },
+  memoryStrategyId: "strategy-1",
+  namespaces: ["/customers/acme"],
+  createdAt: new Date("2026-08-03T12:00:00.000Z"),
+};
+const memoryRecordSummary: MemoryRecordSummary = memoryRecord;
 
 function createFixtureCore(): CoreClient {
   const { createControlClient, createDataClient, createIamClient } = fixtureFactories(FIXTURES);
@@ -89,10 +104,17 @@ describe("memory command hierarchy", () => {
     });
     const memory = root.children().find((child) => child.name() === "memory");
     const event = memory?.children().find((child) => child.name() === "event");
+    const record = memory?.children().find((child) => child.name() === "record");
 
     expect(memory?.flags().map((flag) => flag.name)).not.toContain("interactive");
-    expect(memory?.children().map((child) => child.name())).toEqual(["get", "list", "event"]);
+    expect(memory?.children().map((child) => child.name())).toEqual([
+      "get",
+      "list",
+      "event",
+      "record",
+    ]);
     expect(event?.children().map((child) => child.name())).toEqual(["get", "list"]);
+    expect(record?.children().map((child) => child.name())).toEqual(["get", "list"]);
   });
 
   test("keeps an omitted get view undefined for empty-flag routing", () => {
@@ -331,6 +353,169 @@ describe("memory event commands", () => {
     await expect(command.route(["memory", "event", "get"])).rejects.toThrow(
       "required option '--memory <memory>' not specified",
     );
+    expect(command.core.memory.calls).toEqual([]);
+  });
+});
+
+describe("memory record commands", () => {
+  test("gets a record and renders the response unchanged", async () => {
+    const response: GetMemoryRecordOutput = { memoryRecord };
+    const core = new TestCoreClient();
+    core.memory.setGetMemoryRecordResponse(response);
+    const command = testMemoryCommand(core);
+
+    await command.route([
+      "memory",
+      "record",
+      "get",
+      "--memory",
+      EVENT_MEMORY_ID,
+      "--record-id",
+      RECORD_ID,
+    ]);
+
+    expect(core.memory.calls).toEqual([
+      {
+        method: "getMemoryRecord",
+        args: [
+          {
+            memoryId: EVENT_MEMORY_ID,
+            memoryRecordId: RECORD_ID,
+          },
+          { region: REGION },
+        ],
+      },
+    ]);
+    expect(JSON.parse(command.stdout())).toEqual(JSON.parse(JSON.stringify(response)));
+  });
+
+  test("rejects missing record selectors without entering the TUI", async () => {
+    const command = testMemoryCommand();
+
+    await expect(command.route(["memory", "record", "get"])).rejects.toThrow(
+      "required option '--memory <memory>' not specified",
+    );
+    expect(command.core.memory.calls).toEqual([]);
+  });
+
+  test("lists records with namespace, metadata, strategy, and pagination options", async () => {
+    const metadataFilter: MemoryMetadataFilterExpression = {
+      left: { metadataKey: "tenant" },
+      operator: "EQUALS_TO",
+      right: { metadataValue: { stringValue: "acme" } },
+    };
+    const response: ListMemoryRecordsOutput = {
+      memoryRecordSummaries: [memoryRecordSummary],
+      nextToken: "page-3",
+    };
+    const core = new TestCoreClient();
+    core.memory.setListMemoryRecordsResponse(response, "page-2");
+    const command = testMemoryCommand(core);
+
+    await command.route([
+      "memory",
+      "record",
+      "list",
+      "--memory",
+      EVENT_MEMORY_ID,
+      "--namespace",
+      "/customers/acme",
+      "--strategy-id",
+      "strategy-1",
+      "--metadata-filters",
+      JSON.stringify([metadataFilter]),
+      "--max-results",
+      "1",
+      "--next-token",
+      "page-2",
+    ]);
+
+    expect(core.memory.calls).toEqual([
+      {
+        method: "listMemoryRecords",
+        args: [
+          {
+            memoryId: EVENT_MEMORY_ID,
+            namespace: "/customers/acme",
+            namespacePath: undefined,
+            memoryStrategyId: "strategy-1",
+            metadataFilters: [metadataFilter],
+            maxResults: 1,
+            nextToken: "page-2",
+          },
+          { region: REGION },
+        ],
+      },
+    ]);
+    expect(JSON.parse(command.stdout())).toEqual(JSON.parse(JSON.stringify(response)));
+  });
+
+  test("lists records by namespace hierarchy", async () => {
+    const response: ListMemoryRecordsOutput = {
+      memoryRecordSummaries: [memoryRecordSummary],
+    };
+    const core = new TestCoreClient();
+    core.memory.setListMemoryRecordsResponse(response);
+    const command = testMemoryCommand(core);
+
+    await command.route([
+      "memory",
+      "record",
+      "list",
+      "--memory",
+      EVENT_MEMORY_ID,
+      "--namespace-path",
+      "/customers/acme/*",
+    ]);
+
+    expect(core.memory.calls).toEqual([
+      {
+        method: "listMemoryRecords",
+        args: [
+          {
+            memoryId: EVENT_MEMORY_ID,
+            namespace: undefined,
+            namespacePath: "/customers/acme/*",
+            memoryStrategyId: undefined,
+            metadataFilters: undefined,
+            maxResults: undefined,
+            nextToken: undefined,
+          },
+          { region: REGION },
+        ],
+      },
+    ]);
+    expect(JSON.parse(command.stdout())).toEqual(JSON.parse(JSON.stringify(response)));
+  });
+
+  test.each([
+    ["neither", []],
+    ["both", ["--namespace", "/customers/acme", "--namespace-path", "/customers/acme/*"]],
+  ] as const)("rejects %s namespace selector", async (_case, selectors) => {
+    const command = testMemoryCommand();
+
+    await expect(
+      command.route(["memory", "record", "list", "--memory", EVENT_MEMORY_ID, ...selectors]),
+    ).rejects.toThrow("exactly one of '--namespace' or '--namespace-path' must be specified");
+    expect(command.core.memory.calls).toEqual([]);
+  });
+
+  test("rejects invalid record metadata filter JSON", async () => {
+    const command = testMemoryCommand();
+
+    await expect(
+      command.route([
+        "memory",
+        "record",
+        "list",
+        "--memory",
+        EVENT_MEMORY_ID,
+        "--namespace",
+        "/customers/acme",
+        "--metadata-filters",
+        "{",
+      ]),
+    ).rejects.toThrow("Invalid JSON for option '--metadata-filters'");
     expect(command.core.memory.calls).toEqual([]);
   });
 });

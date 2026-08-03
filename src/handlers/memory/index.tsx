@@ -6,6 +6,7 @@ import type { Core } from "../types";
 import { createMemoryEventHandler } from "./event";
 import { createGetMemoryHandler } from "./get";
 import { createListMemoriesHandler } from "./list";
+import { createMemoryRecordHandler } from "./record";
 
 export function createMemoryHandler(core: Core, io: AppIO): Router {
   return new Router("memory", "manage AgentCore Memories")
@@ -13,5 +14,6 @@ export function createMemoryHandler(core: Core, io: AppIO): Router {
     .default(renderTui(core, io))
     .handler(createGetMemoryHandler(core))
     .handler(createListMemoriesHandler(core))
-    .handler(createMemoryEventHandler(core));
+    .handler(createMemoryEventHandler(core))
+    .handler(createMemoryRecordHandler(core));
 }
