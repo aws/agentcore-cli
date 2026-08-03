@@ -1,12 +1,16 @@
 import z from "zod";
-import { InputValidationError, RuntimeInvokeInterruptedError } from "../../../errors";
+import {
+  InputValidationError,
+  InvalidEnvironmentError,
+  RuntimeInvokeInterruptedError,
+} from "../../../errors";
 import { createHandler, flag, PathKey } from "../../../router";
 import type { AppIO } from "../../../io";
 import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 import { JsonKey } from "../../keys";
 import { ExitCode } from "../../../runnable";
-import { InvalidEnvironmentError, renderTuiAt } from "../../../tui";
+import { renderTuiAt } from "../../../tui";
 import {
   normalizeRuntimeInvokeRequest,
   parseRuntimeInvokeHeaders,

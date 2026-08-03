@@ -12,6 +12,7 @@ import {
   waitFor,
 } from "../../../testing";
 import { ExitCode, runWithExitCode } from "../../../runnable";
+import { InvalidEnvironmentError } from "../../../errors";
 import { createRootHandler } from "../../index";
 import * as tui from "../../../tui";
 import { RuntimeInvokeLaunchContextKey } from "./launchContext";
@@ -404,7 +405,7 @@ describe("runtime invoke", () => {
     const core = new TestCoreClient();
     const output = captureIO();
     const render = spyOn(tui, "renderTuiAt").mockRejectedValue(
-      new tui.InvalidEnvironmentError("interactive mode requires a TTY on stdin and stdout"),
+      new InvalidEnvironmentError("interactive mode requires a TTY on stdin and stdout"),
     );
 
     try {
