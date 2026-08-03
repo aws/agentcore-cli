@@ -381,7 +381,14 @@ These EC2 and EFS `Describe*` actions do not support resource-level scoping, so 
 | Action                                           | CLI Commands                              | Purpose                                       |
 | ------------------------------------------------ | ----------------------------------------- | --------------------------------------------- |
 | `bedrock-agentcore:Evaluate`                     | `run evals`                               | Run on-demand evaluation against agent traces |
+| `lambda:InvokeFunction`                          | `run evals`                               | Invoke code-based evaluator Lambda functions  |
 | `bedrock-agentcore:UpdateOnlineEvaluationConfig` | `pause online-eval`, `resume online-eval` | Pause or resume online evaluation             |
+
+`bedrock-agentcore:Evaluate` invokes a code-based evaluator's Lambda function using the **caller's** identity, so
+`lambda:InvokeFunction` is required on the caller when running `run eval` against a `code-based` evaluator (including
+DeepEval and Autoevals third-party evaluators). Evaluator functions are named `<AgentName>-eval-<evaluatorName>`, so the
+permission can be scoped to `arn:*:lambda:*:*:function:*-eval-*`. Builtin and `llm-as-a-judge` evaluators do not need
+this permission.
 
 ### Batch evaluation and recommendations
 

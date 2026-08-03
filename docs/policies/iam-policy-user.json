@@ -57,6 +57,12 @@
       "Resource": "*"
     },
     {
+      "Sid": "CodeBasedEvaluatorInvocation",
+      "Effect": "Allow",
+      "Action": "lambda:InvokeFunction",
+      "Resource": "arn:*:lambda:*:*:function:*-eval-*"
+    },
+    {
       "Sid": "AgentCoreResourceStatus",
       "Effect": "Allow",
       "Action": [
