@@ -64,21 +64,23 @@ test("keeps role names within 64 characters and distinct", () => {
 // Each scope must map to its own policy name. Granting a new scope writes a new
 // policy rather than overwriting the current one, which is what lets an update
 // keep the old scope intact until the config change has landed.
-test("gives distinct scopes distinct policy names", () => {
-  const oldScope = scopePolicyName(["/aws/bedrock-agentcore/runtimes/orders-abc*"], []);
-  const newScope = scopePolicyName(["/aws/bedrock-agentcore/runtimes/checkout-xyz*"], []);
-  expect(oldScope).not.toBe(newScope);
+test("gives policies with different contents different names", () => {
+  const orders = scopePolicyName(executionPolicy(REGION, ACCOUNT, ["/orders*"], []));
+  const checkout = scopePolicyName(executionPolicy(REGION, ACCOUNT, ["/checkout*"], []));
+  expect(orders).not.toBe(checkout);
 });
 
 // The name is a fingerprint of the scope, so re-granting an unchanged scope is a
 // no-op rewrite of the same policy rather than an accumulating new one — and the
 // update path can compare names to know whether anything needs revoking.
-test("gives an unchanged scope a stable policy name", () => {
-  const groups = ["/a*", "/b*"];
+test("gives identical policies the same name", () => {
   const keys = ["arn:aws:kms:us-west-2:123456789012:key/aaaa"];
-  expect(scopePolicyName(groups, keys)).toBe(scopePolicyName(groups, keys));
-  // Order must not matter: the same scope listed differently is the same scope.
-  expect(scopePolicyName(["/b*", "/a*"], keys)).toBe(scopePolicyName(groups, keys));
-  // A differing KMS key is a differing scope.
-  expect(scopePolicyName(groups, [])).not.toBe(scopePolicyName(groups, keys));
+  const doc = executionPolicy(REGION, ACCOUNT, ["/a*", "/b*"], keys);
+  expect(scopePolicyName(doc)).toBe(
+    scopePolicyName(executionPolicy(REGION, ACCOUNT, ["/a*", "/b*"], keys)),
+  );
+  // A differing KMS key renders a different document, hence a different name.
+  expect(scopePolicyName(doc)).not.toBe(
+    scopePolicyName(executionPolicy(REGION, ACCOUNT, ["/a*", "/b*"], [])),
+  );
 });

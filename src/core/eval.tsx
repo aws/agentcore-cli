@@ -39,6 +39,8 @@ import type {
 import type { AwsClients, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
 import {
+  accountIdFromRoleArn,
+  executionPolicy,
   grantOnlineEvalScope,
   onlineEvalExecutionRoleName,
   revokeOnlineEvalScope,
@@ -353,13 +355,20 @@ export class EvalClient implements CoreEvalClient {
       // Allows across a role's inline policies, so both scopes are granted in
       // between — and because each scope is a separate policy, a failed update
       // leaves the one backing the current data source exactly as it was.
-      const oldPolicyName = scopePolicyName(oldLogGroups, kmsKeys);
-      const { policyName: newPolicyName } = await grantOnlineEvalScope(
+      const { roleArn: managedRoleArn, policyName: newPolicyName } = await grantOnlineEvalScope(
         iam,
         managedRoleName,
         options.region,
         newLogGroups,
         kmsKeys,
+      );
+      const oldPolicyName = scopePolicyName(
+        executionPolicy(
+          options.region,
+          accountIdFromRoleArn(managedRoleArn),
+          oldLogGroups,
+          kmsKeys,
+        ),
       );
 
       const response = await control.send(

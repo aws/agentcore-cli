@@ -168,7 +168,7 @@ export function executionPolicy(
   });
 }
 
-function accountIdFromRoleArn(arn: string): string {
+export function accountIdFromRoleArn(arn: string): string {
   const accountId = arn.split(":")[4];
   if (!accountId) {
     throw new Error(`Cannot extract an account id from role ARN "${arn}"`);
@@ -176,11 +176,13 @@ function accountIdFromRoleArn(arn: string): string {
   return accountId;
 }
 
-// scopePolicyName derives the inline-policy name for a scope. Keying the name on
-// the scope's contents means writing one scope's policy can never clobber
-// another's, so a superseded scope stays intact until it is explicitly revoked.
-export function scopePolicyName(logGroupNames: string[], kmsKeyArns: string[]): string {
-  const fingerprint = Bun.hash([...logGroupNames, ...kmsKeyArns].sort().join("\n"))
+// scopePolicyName derives the inline-policy name from a fingerprint of the whole
+// rendered policy document. Keying the name on the policy's exact contents means
+// any change to what the policy grants yields a new name, so writing one scope's
+// policy can never clobber another's — a superseded scope stays intact until it
+// is explicitly revoked.
+export function scopePolicyName(policyDocument: string): string {
+  const fingerprint = Bun.hash(policyDocument)
     .toString(16)
     .padStart(NAME_HASH_LENGTH, "0")
     .slice(-NAME_HASH_LENGTH);
@@ -216,17 +218,18 @@ export async function grantOnlineEvalScope(
     roleArn = created.Role!.Arn!;
   }
 
-  const policyName = scopePolicyName(logGroupNames, kmsKeyArns);
+  const policyDocument = executionPolicy(
+    region,
+    accountIdFromRoleArn(roleArn),
+    logGroupNames,
+    kmsKeyArns,
+  );
+  const policyName = scopePolicyName(policyDocument);
   await iam.send(
     new PutRolePolicyCommand({
       RoleName: roleName,
       PolicyName: policyName,
-      PolicyDocument: executionPolicy(
-        region,
-        accountIdFromRoleArn(roleArn),
-        logGroupNames,
-        kmsKeyArns,
-      ),
+      PolicyDocument: policyDocument,
     }),
   );
 

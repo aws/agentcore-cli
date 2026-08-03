@@ -1,6 +1,6 @@
 {
-  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_kms-k6U1GA6Gvt",
-  "onlineEvaluationConfigId": "agentcore_cli_online_eval_kms-k6U1GA6Gvt",
+  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_kms-bG4DUW3Ua5",
+  "onlineEvaluationConfigId": "agentcore_cli_online_eval_kms-bG4DUW3Ua5",
   "onlineEvaluationConfigName": "agentcore_cli_online_eval_kms",
   "rule": {
     "samplingConfig": {
@@ -17,13 +17,13 @@
       ]
     }
   },
-  "status": "CREATING",
+  "status": "ACTIVE",
   "executionStatus": "DISABLED",
   "createdAt": {
-    "$date": "2026-08-03T19:57:02.249Z"
+    "$date": "2026-08-03T21:29:51.133Z"
   },
   "updatedAt": {
-    "$date": "2026-08-03T19:57:02.249Z"
+    "$date": "2026-08-03T21:29:51.288Z"
   },
   "evaluators": [
     {
@@ -35,7 +35,7 @@
   ],
   "outputConfig": {
     "cloudWatchConfig": {
-      "logGroupName": "/aws/bedrock-agentcore/evaluations/results/agentcore_cli_online_eval_kms-k6U1GA6Gvt"
+      "logGroupName": "/aws/bedrock-agentcore/evaluations/results/agentcore_cli_online_eval_kms-bG4DUW3Ua5"
     }
   },
   "evaluationExecutionRoleArn": "arn:aws:iam::725476964917:role/AgentCoreOnlineEval-agentcore_cli_online_eval_kms"
