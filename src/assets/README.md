@@ -37,6 +37,11 @@ Run your agent locally:
 agentcore dev
 ```
 
+### Validate Invocation Input
+
+Validate runtime invocation payloads before forwarding them to an agent framework. Keep user prompts typed as strings
+and pass only prompt text to the agent.
+
 ### Deployment
 
 Deploy to AWS:

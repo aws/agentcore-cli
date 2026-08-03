@@ -3335,6 +3335,11 @@ file defines a Starlette ASGI app with the AutoGen framework running within.
 
 \`model/load.py\` instantiates your chosen model provider.
 
+## Input Validation
+
+Validate invocation input before forwarding it to the agent framework. Keep plain prompts typed as strings and pass
+only prompt text to the agent.
+
 ## Environment Variables
 
 | Variable | Required | Description |
@@ -3538,6 +3543,8 @@ async def invoke(payload, context):
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    if not isinstance(prompt, str):
+        raise ValueError("prompt must be a string")
     session_id = getattr(context, "session_id", "default-session")
 
     # Reuse the per-session agent (preserves conversation history)
@@ -3790,6 +3797,11 @@ The main entrypoint to your app is defined in \`main.py\`. Using the AgentCore S
 file defines a Starlette ASGI app with the Google ADK framework running within.
 
 \`model/load.py\` instantiates your chosen model provider (Gemini).
+
+## Input Validation
+
+Validate invocation input before forwarding it to the agent framework. Keep plain prompts typed as strings and pass
+only prompt text to the agent.
 
 ## Environment Variables
 
@@ -4058,6 +4070,8 @@ async def invoke(payload, context):
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    if not isinstance(prompt, str):
+        raise ValueError("prompt must be a string")
     session_id = getattr(context, "session_id", "default_session")
     user_id = payload.get("user_id", "default_user")
 
@@ -4250,6 +4264,11 @@ The main entrypoint to your app is defined in \`main.py\`. Using the AgentCore S
 file defines a Starlette ASGI app with the LangChain/LangGraph framework running within.
 
 \`model/load.py\` instantiates your chosen model provider.
+
+## Input Validation
+
+Validate invocation input before forwarding it to the agent framework. Keep plain prompts typed as strings and pass
+only prompt text to the agent.
 
 ## Environment Variables
 
@@ -4510,6 +4529,8 @@ async def invoke(payload, context):
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    if not isinstance(prompt, str):
+        raise ValueError("prompt must be a string")
     session_id = getattr(context, "session_id", "default-session")
     touch_thread(session_id)
     log.info(f"Agent input: {prompt}")
@@ -4529,6 +4550,8 @@ async def invoke(payload, context):
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    if not isinstance(prompt, str):
+        raise ValueError("prompt must be a string")
     session_id = getattr(context, "session_id", "default-session")
     touch_thread(session_id)
     log.info(f"Agent input: {prompt}")
@@ -4829,6 +4852,11 @@ file defines a Starlette ASGI app with the OpenAI Agents SDK framework running w
 
 \`model/load.py\` instantiates your chosen model provider (OpenAI).
 
+## Input Validation
+
+Validate invocation input before forwarding it to the agent framework. Keep plain prompts typed as strings and pass
+only prompt text to the agent.
+
 ## Environment Variables
 
 | Variable | Required | Description |
@@ -5089,6 +5117,8 @@ async def invoke(payload, context):
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    if not isinstance(prompt, str):
+        raise ValueError("prompt must be a string")
     session_id = getattr(context, "session_id", "default-session")
     session = get_session(session_id)
 
@@ -5273,6 +5303,12 @@ The main entrypoint to your app is defined in \`main.py\`. Using the AgentCore S
 file defines a Starlette ASGI app with the chosen Agent framework SDK running within.
 
 \`model/load.py\` instantiates your chosen model provider.
+
+## Input Validation
+
+Validate invocation input before forwarding it to Strands. Keep plain prompts typed as strings. If the app accepts a
+caller-supplied message history, retain \`strip_trailing_tool_use()\`, which normalizes the history tail before
+invoking the agent.
 
 ## Environment Variables
 
@@ -5830,17 +5866,53 @@ get_or_create_agent = agent_factory()
 {{/if}}
 
 
+def strip_trailing_tool_use(messages: Any) -> list[dict]:
+    """Strip toolUse blocks from the tail until the last message has none."""
+    if not isinstance(messages, list):
+        raise ValueError("messages must be a list")
+
+    messages = list(messages)
+    while messages:
+        last = messages[-1]
+        if not isinstance(last, dict):
+            raise ValueError("each message must be an object")
+        original_content = last.get("content", [])
+        if not isinstance(original_content, list) or not all(isinstance(block, dict) for block in original_content):
+            raise ValueError("each message content value must be a list of content blocks")
+
+        content = [block for block in original_content if "toolUse" not in block]
+        if len(content) == len(original_content):
+            break
+        if content:
+            messages[-1] = {**last, "content": content}
+            break
+        messages.pop()
+
+    return messages
+
+
 def _extract_prompt(payload: dict):
-    """Accept harness-style messages[], tool_results[], or plain prompt string payloads."""
+    """Accept validated harness messages, tool results, or a plain prompt string."""
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be a JSON object")
     if "messages" in payload:
-        return payload["messages"]
+        return strip_trailing_tool_use(payload["messages"])
     if "tool_results" in payload:
+        tool_results = payload["tool_results"]
+        if not isinstance(tool_results, list) or not all(
+            isinstance(tool_result, dict) and isinstance(tool_result.get("toolUseId"), str)
+            for tool_result in tool_results
+        ):
+            raise ValueError("tool_results must contain objects with a toolUseId string")
         return [{"role": "user", "content": [{"toolResult": {
             "toolUseId": tr["toolUseId"],
             "status": tr.get("status", "success"),
             "content": tr.get("content", []),
-        }} for tr in payload["tool_results"]]}]
-    return payload.get("prompt", "")
+        }} for tr in tool_results]}]
+    prompt = payload.get("prompt", "")
+    if not isinstance(prompt, str):
+        raise ValueError("prompt must be a string")
+    return prompt
 
 
 def _has_inline_function_call(messages) -> bool:
@@ -7308,6 +7380,11 @@ Run your agent locally:
 agentcore dev
 \`\`\`
 
+### Validate Invocation Input
+
+Validate runtime invocation payloads before forwarding them to an agent framework. Keep user prompts typed as strings
+and pass only prompt text to the agent.
+
 ### Deployment
 
 Deploy to AWS:
@@ -7402,6 +7479,8 @@ Tags defined in \`agentcore.json\` flow through to deployed CloudFormation resou
    \`agentcore validate\` to check.
 4. **Resource Removal:** Use \`agentcore remove\` to remove resources. Run \`agentcore deploy\` after removal to tear down
    deployed infrastructure.
+5. **Invocation Input:** Validate runtime payloads and require text prompts to be strings. If a Strands app accepts a
+   caller-supplied message history, normalize the history tail with \`strip_trailing_tool_use()\` before invocation.
 
 ## Directory Structure
 
@@ -7615,6 +7694,11 @@ defines an HTTP server that streams tokens from your chosen Agent framework SDK.
 
 \`model/load.ts\` instantiates your chosen model provider.
 
+## Input Validation
+
+The generated Zod request schema keeps plain prompts typed as strings before forwarding them to Strands. Retain this
+validation when extending the request shape, and pass only prompt text to the agent.
+
 ## Environment Variables
 
 | Variable | Required | Description |
@@ -7703,6 +7787,10 @@ const SYSTEM_PROMPT = \`
 You are a helpful assistant. Use tools when appropriate.
 \`;
 
+const requestSchema = z.object({
+  prompt: z.string().default(''),
+});
+
 {{#if hasMemory}}
 const agentCache = new Map<string, Agent>();
 
@@ -7756,7 +7844,8 @@ async function getOrCreateAgent(sessionId: string): Promise<Agent> {
 
 const app = new BedrockAgentCoreApp({
   invocationHandler: {
-    async *process(payload: any, context: any) {
+    requestSchema,
+    async *process(payload, context) {
       {{#if hasMemory}}
       const sessionId = context?.sessionId ?? 'default-session';
       const actorId = getActorId(payload, context);
@@ -7768,7 +7857,7 @@ const app = new BedrockAgentCoreApp({
 
       {{#if hasMemory}}
       try {
-        for await (const event of agent.stream(payload.prompt ?? '')) {
+        for await (const event of agent.stream(payload.prompt)) {
           if (
             event.type === 'modelStreamUpdateEvent' &&
             event.event?.type === 'modelContentBlockDeltaEvent' &&
@@ -7792,7 +7881,7 @@ const app = new BedrockAgentCoreApp({
       // e.g. Anthropic). Restoring on error keeps the session reusable.
       const snapshot = agent.takeSnapshot({ include: ['messages'] });
       try {
-        for await (const event of agent.stream(payload.prompt ?? '')) {
+        for await (const event of agent.stream(payload.prompt)) {
           if (
             event.type === 'modelStreamUpdateEvent' &&
             event.event?.type === 'modelContentBlockDeltaEvent' &&
@@ -8072,6 +8161,11 @@ defines an HTTP app that streams tokens using the Vercel AI SDK's \`streamText\`
 
 \`model/load.ts\` instantiates your chosen model provider.
 
+## Input Validation
+
+The generated Zod request schema keeps plain prompts typed as strings before forwarding them to the agent framework.
+Retain this validation when extending the request shape, and pass only prompt text to the agent.
+
 ## Environment Variables
 
 | Variable | Required | Description |
@@ -8126,9 +8220,14 @@ Thumbs.db
 exports[`Assets Directory Snapshots > TypeScript assets > typescript/typescript/http/vercelai/base/main.ts should match snapshot 1`] = `
 "import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime';
 import { streamText, type ModelMessage } from 'ai';
+import { z } from 'zod';
 import { loadModel } from './model/load.js';
 
 const SYSTEM_PROMPT = \`You are a helpful assistant.\`;
+
+const requestSchema = z.object({
+  prompt: z.string().default(''),
+});
 
 const HISTORY_LIMIT = 128;
 
@@ -8158,10 +8257,11 @@ function getHistory(sessionId: string): ModelMessage[] {
 
 const app = new BedrockAgentCoreApp({
   invocationHandler: {
-    async *process(payload: any, context: any) {
+    requestSchema,
+    async *process(payload, context) {
       const sessionId = context?.sessionId ?? 'default-session';
       const history = getHistory(sessionId);
-      const userMessage: ModelMessage = { role: 'user', content: payload.prompt ?? '' };
+      const userMessage: ModelMessage = { role: 'user', content: payload.prompt };
 
       const model = await loadModel();
       const result = streamText({

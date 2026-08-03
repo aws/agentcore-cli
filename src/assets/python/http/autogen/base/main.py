@@ -127,6 +127,8 @@ async def invoke(payload, context):
 
     # Process the user prompt
     prompt = payload.get("prompt", "What can you help me with?")
+    if not isinstance(prompt, str):
+        raise ValueError("prompt must be a string")
     session_id = getattr(context, "session_id", "default-session")
 
     # Reuse the per-session agent (preserves conversation history)

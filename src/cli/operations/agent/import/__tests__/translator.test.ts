@@ -54,6 +54,8 @@ describe('StrandsTranslator', () => {
     expect(result.mainPyContent).toContain('def invoke_agent(question: str');
     expect(result.mainPyContent).toContain('@app.entrypoint');
     expect(result.mainPyContent).toContain('async def invoke(payload, context):');
+    expect(result.mainPyContent).toContain('if not isinstance(agent_query, str):');
+    expect(result.mainPyContent).toContain('raise ValueError("prompt must be a string")');
     expect(result.collaboratorFiles.size).toBe(0);
     expect(result.features.hasMemory).toBe(false);
     expect(result.features.hasActionGroups).toBe(false);

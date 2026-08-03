@@ -326,6 +326,8 @@ memory_id = os.environ.get("MEMORY_ID", "")
       '',
       '        tools_used.clear()',
       '        agent_query = payload.get("prompt", "")',
+      '        if not isinstance(agent_query, str):',
+      '            raise ValueError("prompt must be a string")',
       '        if not agent_query:',
       '            yield "No query provided, please provide a \'prompt\' field in the payload."',
       '            return',

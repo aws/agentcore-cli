@@ -24,6 +24,11 @@ framework is restricted to `Strands` or `VercelAI`; other values are rejected. S
 | **OpenAIAgents**        | OpenAI only                        |
 | **VercelAI**            | Bedrock, Anthropic, OpenAI, Gemini |
 
+## Runtime Input Validation
+
+Validate agent invocation payloads before passing them to a framework. Template entrypoints validate plain prompts as
+strings; preserve that validation when extending a generated application, and pass only prompt text to the agent.
+
 ## Framework Selection Guide
 
 ### Strands Agents

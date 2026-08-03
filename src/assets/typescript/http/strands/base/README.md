@@ -13,6 +13,11 @@ defines an HTTP server that streams tokens from your chosen Agent framework SDK.
 
 `model/load.ts` instantiates your chosen model provider.
 
+## Input Validation
+
+The generated Zod request schema keeps plain prompts typed as strings before forwarding them to Strands. Retain this
+validation when extending the request shape, and pass only prompt text to the agent.
+
 ## Environment Variables
 
 | Variable | Required | Description |

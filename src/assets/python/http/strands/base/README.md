@@ -13,6 +13,12 @@ file defines a Starlette ASGI app with the chosen Agent framework SDK running wi
 
 `model/load.py` instantiates your chosen model provider.
 
+## Input Validation
+
+Validate invocation input before forwarding it to Strands. Keep plain prompts typed as strings. If the app accepts a
+caller-supplied message history, retain `strip_trailing_tool_use()`, which normalizes the history tail before
+invoking the agent.
+
 ## Environment Variables
 
 | Variable | Required | Description |
