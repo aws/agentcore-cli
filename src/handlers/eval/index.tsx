@@ -5,13 +5,15 @@ import type { AppIO } from "../../io";
 import type { Core } from "../types";
 import { createEvaluatorHandler } from "./evaluator";
 import { createOnlineEvalHandler } from "./online-eval";
+import { createDatasetHandler } from "./dataset";
 
 export function createEvalHandler(core: Core, io: AppIO): Router {
   return new Router("eval", "evaluate and optimize AgentCore agents")
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
     .handler(createEvaluatorHandler(core, io))
-    .handler(createOnlineEvalHandler(core, io));
+    .handler(createOnlineEvalHandler(core, io))
+    .handler(createDatasetHandler(core, io));
 }
 
 export { EvalScreen } from "./screen.tsx";

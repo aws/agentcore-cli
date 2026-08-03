@@ -32,6 +32,7 @@ import type {
   ListGatewayRulesResponse,
   ListGatewaysResponse,
   ListGatewayTargetsResponse,
+  CreateDatasetResponse,
   CreateEvaluatorRequest,
   CreateEvaluatorResponse,
   CreateOnlineEvaluationConfigResponse,
@@ -90,6 +91,7 @@ import type {
 import type {
   CodeBasedUpdate,
   CoreEvalClient,
+  CreateDatasetInput,
   CreateOnlineEvalInput,
   LlmAsAJudgeUpdate,
   UpdateOnlineEvalInput,
@@ -185,6 +187,7 @@ const DEFAULT_CREATE_ONLINE_EVAL_RESPONSE = {} as CreateOnlineEvaluationConfigRe
 const DEFAULT_UPDATE_ONLINE_EVAL_RESPONSE = {} as UpdateOnlineEvaluationConfigResponse;
 const DEFAULT_GET_ONLINE_EVAL_RESPONSE = {} as GetOnlineEvaluationConfigResponse;
 const DEFAULT_DELETE_ONLINE_EVAL_RESPONSE = {} as DeleteOnlineEvaluationConfigResponse;
+const DEFAULT_CREATE_DATASET_RESPONSE = {} as CreateDatasetResponse;
 
 // events wraps canned events as a one-shot AsyncIterable.
 async function* events<T>(items: T[]): AsyncGenerator<T> {
@@ -1106,6 +1109,7 @@ export class TestEvalClient implements CoreEvalClient {
     DEFAULT_GET_ONLINE_EVAL_RESPONSE;
   private onlineEvalDeleteResponse: DeleteOnlineEvaluationConfigResponse =
     DEFAULT_DELETE_ONLINE_EVAL_RESPONSE;
+  private createDatasetResponse: CreateDatasetResponse = DEFAULT_CREATE_DATASET_RESPONSE;
   private error?: Error;
 
   // setListResponse sets what listEvaluators resolves to (when not erroring).
@@ -1176,6 +1180,13 @@ export class TestEvalClient implements CoreEvalClient {
   // to (when not erroring).
   setOnlineEvalDeleteResponse(response: DeleteOnlineEvaluationConfigResponse): this {
     this.onlineEvalDeleteResponse = response;
+    return this;
+  }
+
+  // setCreateDatasetResponse sets what createDataset resolves to (when not
+  // erroring).
+  setCreateDatasetResponse(response: CreateDatasetResponse): this {
+    this.createDatasetResponse = response;
     return this;
   }
 
@@ -1302,6 +1313,15 @@ export class TestEvalClient implements CoreEvalClient {
     this.calls.push({ method: "deleteOnlineEvaluationConfig", args: [id, options] });
     if (this.error) throw this.error;
     return this.onlineEvalDeleteResponse;
+  }
+
+  async createDataset(
+    input: CreateDatasetInput,
+    options: CoreOptions,
+  ): Promise<CreateDatasetResponse> {
+    this.calls.push({ method: "createDataset", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.createDatasetResponse;
   }
 }
 

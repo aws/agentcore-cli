@@ -1,4 +1,6 @@
 import type {
+  CreateDatasetRequest,
+  CreateDatasetResponse,
   CreateEvaluatorRequest,
   CreateEvaluatorResponse,
   CreateOnlineEvaluationConfigResponse,
@@ -95,6 +97,12 @@ export type RoleScopeWarning = {
   logGroupNames: string[];
 };
 
+export type CreateDatasetInput = CreateDatasetRequest;
+
+// CoreEvalClient is the evaluator, online evaluation, and dataset surface the eval
+// handlers depend on. It is declared here, next to the handlers that consume it,
+// and implemented by src/core/eval.tsx (dependency inversion: handlers own the
+// abstraction).
 export interface CoreEvalClient {
   createEvaluator(
     request: CreateEvaluatorRequest,
@@ -152,4 +160,10 @@ export interface CoreEvalClient {
     id: string,
     options: CoreOptions,
   ): Promise<DeleteOnlineEvaluationConfigResponse>;
+
+  // createDataset seeds a new dataset's DRAFT from `source`, which is required.
+  // `schemaType` governs the structure of every example and is immutable after creation.
+  // The response reports status CREATING — ingestion is asynchronous, and the dataset is not
+  // writable until GetDataset reports ACTIVE.
+  createDataset(input: CreateDatasetInput, options: CoreOptions): Promise<CreateDatasetResponse>;
 }

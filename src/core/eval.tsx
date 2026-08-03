@@ -1,4 +1,5 @@
 import {
+  CreateDatasetCommand,
   CreateEvaluatorCommand,
   CreateOnlineEvaluationConfigCommand,
   DeleteEvaluatorCommand,
@@ -11,6 +12,7 @@ import {
   ListOnlineEvaluationConfigsCommand,
   UpdateEvaluatorCommand,
   UpdateOnlineEvaluationConfigCommand,
+  type CreateDatasetResponse,
   type CreateEvaluatorRequest,
   type CreateEvaluatorResponse,
   type CreateOnlineEvaluationConfigResponse,
@@ -32,6 +34,7 @@ import type {
   CodeBasedUpdate,
   RoleScopeWarning,
   CoreEvalClient,
+  CreateDatasetInput,
   CreateOnlineEvalInput,
   LlmAsAJudgeUpdate,
   UpdateOnlineEvalInput,
@@ -446,6 +449,13 @@ export class EvalClient implements CoreEvalClient {
     return this.clients
       .control(toClientConfig(options))
       .send(new DeleteOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }));
+  }
+
+  async createDataset(
+    input: CreateDatasetInput,
+    options: CoreOptions,
+  ): Promise<CreateDatasetResponse> {
+    return this.clients.control(toClientConfig(options)).send(new CreateDatasetCommand(input));
   }
 }
 
