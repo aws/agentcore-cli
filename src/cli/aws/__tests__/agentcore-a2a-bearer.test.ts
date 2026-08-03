@@ -177,6 +177,20 @@ describe('invokeA2ARuntimeStreaming SigV4', () => {
 
     expect(text).toBe('status text');
   });
+
+  it('yields trailing SSE data line without final newline', async () => {
+    const frames = ['data: {"kind":"status-update","status":{"state":"working","message":{"parts":[{"kind":"text","text":"tail chunk"}]}}}'];
+    const stream = makeReaderMock(frames);
+    mockSdkSend.mockResolvedValue({
+      runtimeSessionId: 'sigv4-stream-session-4',
+      response: { transformToWebStream: () => stream },
+    });
+
+    const result = await invokeA2ARuntimeStreaming(baseOpts, 'hello');
+    const text = await drain(result.stream);
+
+    expect(text).toBe('tail chunk');
+  });
 });
 
 describe('invokeA2ARuntimeStreaming bearer-token', () => {

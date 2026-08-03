@@ -1034,6 +1034,55 @@ export async function invokeA2ARuntimeStreaming(
     const decoder = new TextDecoder();
     let buffer = '';
     let streamedFromStatus = false;
+
+    function extractData(line: string): string {
+      if (!line.startsWith('data: ')) return '';
+      return line.slice(6).trim();
+    }
+
+    function collectTextParts(
+      parts?: { kind?: string; type?: string; text?: string }[]
+    ): string {
+      if (!parts) return '';
+      return parts
+        .filter(p => (p.kind === 'text' || p.type === 'text') && p.text)
+        .map(p => p.text!)
+        .join('');
+    }
+
+    function* parseDataLine(line: string): Generator<string, void, unknown> {
+      const data = extractData(line);
+      if (!data) return;
+
+      options.logger?.logSSEEvent(line);
+
+      try {
+        const event = JSON.parse(data) as Record<string, unknown>;
+        // Unwrap JSON-RPC result envelope if present
+        const target = (event.result as Record<string, unknown>) ?? event;
+        const kind = target.kind as string | undefined;
+
+        if (kind === 'status-update') {
+          const status = target.status as
+            | { state?: string; message?: { parts?: { kind?: string; type?: string; text?: string }[] } }
+            | undefined;
+          const text = collectTextParts(status?.message?.parts);
+          if (text) {
+            streamedFromStatus = true;
+            yield text;
+          }
+        } else if (kind === 'artifact-update' && !streamedFromStatus) {
+          const artifact = target.artifact as
+            | { parts?: { kind?: string; type?: string; text?: string }[] }
+            | undefined;
+          const text = collectTextParts(artifact?.parts);
+          if (text) yield text;
+        }
+      } catch {
+        // Non-JSON SSE line, skip
+      }
+    }
+
     try {
       while (true) {
         const result = await reader.read();
@@ -1044,48 +1093,12 @@ export async function invokeA2ARuntimeStreaming(
         buffer = lines.pop() ?? '';
 
         for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6).trim();
-          if (!data) continue;
-
-          options.logger?.logSSEEvent(line);
-
-          try {
-            const event = JSON.parse(data) as Record<string, unknown>;
-            // Unwrap JSON-RPC result envelope if present
-            const target = (event.result as Record<string, unknown>) ?? event;
-            const kind = target.kind as string | undefined;
-
-            if (kind === 'status-update') {
-              const status = target.status as
-                | { state?: string; message?: { parts?: { kind?: string; type?: string; text?: string }[] } }
-                | undefined;
-              if (status?.message?.parts) {
-                const text = status.message.parts
-                  .filter(p => (p.kind === 'text' || p.type === 'text') && p.text)
-                  .map(p => p.text!)
-                  .join('');
-                if (text) {
-                  streamedFromStatus = true;
-                  yield text;
-                }
-              }
-            } else if (kind === 'artifact-update' && !streamedFromStatus) {
-              const artifact = target.artifact as
-                | { parts?: { kind?: string; type?: string; text?: string }[] }
-                | undefined;
-              if (artifact?.parts) {
-                const text = artifact.parts
-                  .filter(p => (p.kind === 'text' || p.type === 'text') && p.text)
-                  .map(p => p.text!)
-                  .join('');
-                if (text) yield text;
-              }
-            }
-          } catch {
-            // Non-JSON SSE line, skip
-          }
+          yield* parseDataLine(line);
         }
+      }
+
+      if (buffer) {
+        yield* parseDataLine(buffer);
       }
     } finally {
       reader.releaseLock();
