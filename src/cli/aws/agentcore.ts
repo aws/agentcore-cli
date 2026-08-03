@@ -1097,6 +1097,12 @@ export async function invokeA2ARuntimeStreaming(
         }
       }
 
+      // Flush any buffered decoder state so split multi-byte characters are preserved.
+      const trailingDecoded = decoder.decode();
+      if (trailingDecoded) {
+        buffer += trailingDecoded;
+      }
+
       if (buffer) {
         yield* parseDataLine(buffer);
       }

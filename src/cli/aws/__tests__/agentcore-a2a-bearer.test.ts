@@ -194,11 +194,11 @@ describe('invokeA2ARuntimeStreaming SigV4', () => {
 });
 
 describe('invokeA2ARuntimeStreaming bearer-token', () => {
-  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  let fetchSpy: { mockRestore: () => void } | undefined;
   let capturedRequests: { url: string; init: RequestInit }[];
 
   afterEach(() => {
-    fetchSpy.mockRestore();
+    fetchSpy?.mockRestore();
     vi.clearAllMocks();
   });
 
