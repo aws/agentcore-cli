@@ -136,6 +136,10 @@ agentcore runtime endpoint list --id <runtimeId> --max-results 20
 agentcore memory get --id <memoryId>
 agentcore memory get --id <memoryId> --view without_decryption
 agentcore memory list --max-results 20
+agentcore memory event get --memory <memoryId> --actor-id <actorId> --session-id <sessionId> --event-id <eventId>
+agentcore memory event list --memory <memoryId> --actor-id <actorId> --session-id <sessionId> --max-results 20
+agentcore memory record get --memory <memoryId> --record-id <recordId>
+agentcore memory record list --memory <memoryId> --namespace <namespace> --max-results 20
 
 # Inspect Gateway resources without project configuration or deployment
 agentcore gateway get --id <gatewayId>
@@ -279,10 +283,14 @@ accept ARNs, `--version`, `--interactive`, cross-account targets, or custom
 request paths. All requests use the Runtime `/invocations` route, including MCP
 Runtimes.
 
-Bare Runtime and Memory branches and leaves require a TTY on stdin and stdout.
+Bare Runtime branches and leaves, plus `memory`, `memory get`, and `memory list`,
+require a TTY on stdin and stdout.
 For Runtime Invoke, supplying a payload or headless-only request or output flags
 runs headlessly; `--session-id` can instead seed the persistent console.
-`--json` always suppresses TUI rendering.
+Supplying Memory operation flags runs those commands headlessly, and `--json`
+always suppresses TUI rendering. The `memory event` and `memory record` groups
+are headless: invoking a group without a leaf prints help, and their leaves
+require resource selectors.
 
 ```bash
 agentcore runtime
@@ -293,6 +301,8 @@ agentcore runtime endpoint list
 agentcore memory
 agentcore memory list
 agentcore memory get
+agentcore memory event
+agentcore memory record
 ```
 
 ---
@@ -704,8 +714,9 @@ A Husky pre-commit hook runs Prettier (via lint-staged) on staged files automati
 
 - **Cover more AgentCore resources.** The harness surface (CRUD, versions,
   endpoints, invoke, exec) is fully implemented in both the CLI and the TUI;
-  the same patterns extend naturally to gateways, Memory mutations and
-  data-plane operations, browser profiles, and the other AgentCore resources.
+  the same patterns extend naturally to gateways, the remaining read-only
+  Memory data-plane operations, browser profiles, and the other AgentCore
+  resources.
 - **Implement `config`.** The `config` command is currently a stub — it should
   read/write real global settings (telemetry, log level, ...) through an
   injected config accessor.
