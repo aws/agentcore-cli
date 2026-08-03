@@ -22,8 +22,7 @@ export function createProjectHandler(config: ProjectHandlerConfig): Router {
   // preserves the directory the user actually ran the command from.
   const cwd = process.env.INIT_CWD ?? process.cwd();
 
-  // Commands that operate on an existing project get it resolved onto the
-  // context. `create` stays unwrapped — it runs where no project exists yet.
+  // Commands that operate on an existing project get it resolved onto the context.
   const inProject = withProject({ projectManager: config.projectManager, cwd });
 
   project.handler(
