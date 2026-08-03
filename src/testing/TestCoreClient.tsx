@@ -47,12 +47,20 @@ import type {
   UpdateHarnessResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
+  GetEventInput,
+  GetEventOutput,
+  GetMemoryRecordInput,
+  GetMemoryRecordOutput,
   InvokeAgentRuntimeCommandRequest,
   InvokeAgentRuntimeCommandResponse,
   InvokeAgentRuntimeCommandStreamOutput,
   InvokeHarnessRequest,
   InvokeHarnessResponse,
   InvokeHarnessStreamOutput,
+  ListEventsInput,
+  ListEventsOutput,
+  ListMemoryRecordsInput,
+  ListMemoryRecordsOutput,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { Core } from "../handlers/types";
 import type { CoreHarnessClient, CreateHarnessInput } from "../handlers/harness/types";
@@ -127,6 +135,12 @@ const DEFAULT_UPDATE_API_KEY_RESPONSE = {} as UpdateApiKeyCredentialProviderResp
 const DEFAULT_DELETE_API_KEY_RESPONSE = {} as DeleteApiKeyCredentialProviderResponse;
 const DEFAULT_GET_MEMORY_RESPONSE = {} as GetMemoryOutput;
 const DEFAULT_LIST_MEMORIES_RESPONSE: ListMemoriesOutput = { memories: [] };
+const DEFAULT_GET_EVENT_RESPONSE: GetEventOutput = { event: undefined };
+const DEFAULT_LIST_EVENTS_RESPONSE: ListEventsOutput = { events: [] };
+const DEFAULT_GET_MEMORY_RECORD_RESPONSE: GetMemoryRecordOutput = { memoryRecord: undefined };
+const DEFAULT_LIST_MEMORY_RECORDS_RESPONSE: ListMemoryRecordsOutput = {
+  memoryRecordSummaries: [],
+};
 const DEFAULT_GET_GATEWAY_RESPONSE = {} as GetGatewayResponse;
 const DEFAULT_LIST_GATEWAYS_RESPONSE: ListGatewaysResponse = { items: [] };
 const DEFAULT_GET_GATEWAY_TARGET_RESPONSE = {} as GetGatewayTargetResponse;
@@ -627,6 +641,10 @@ export class TestMemoryClient implements CoreMemoryClient {
 
   private getResponse: GetMemoryOutput = DEFAULT_GET_MEMORY_RESPONSE;
   private listResponses = new Map<string | undefined, ListMemoriesOutput>();
+  private getEventResponse: GetEventOutput = DEFAULT_GET_EVENT_RESPONSE;
+  private listEventResponses = new Map<string | undefined, ListEventsOutput>();
+  private getMemoryRecordResponse: GetMemoryRecordOutput = DEFAULT_GET_MEMORY_RECORD_RESPONSE;
+  private listMemoryRecordResponses = new Map<string | undefined, ListMemoryRecordsOutput>();
   private error?: Error;
 
   setGetResponse(response: GetMemoryOutput): this {
@@ -636,6 +654,26 @@ export class TestMemoryClient implements CoreMemoryClient {
 
   setListResponse(response: ListMemoriesOutput, forNextToken?: string): this {
     this.listResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setGetEventResponse(response: GetEventOutput): this {
+    this.getEventResponse = response;
+    return this;
+  }
+
+  setListEventsResponse(response: ListEventsOutput, forNextToken?: string): this {
+    this.listEventResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setGetMemoryRecordResponse(response: GetMemoryRecordOutput): this {
+    this.getMemoryRecordResponse = response;
+    return this;
+  }
+
+  setListMemoryRecordsResponse(response: ListMemoryRecordsOutput, forNextToken?: string): this {
+    this.listMemoryRecordResponses.set(forNextToken, response);
     return this;
   }
 
@@ -661,6 +699,44 @@ export class TestMemoryClient implements CoreMemoryClient {
       this.listResponses.get(nextToken) ??
       this.listResponses.get(undefined) ??
       DEFAULT_LIST_MEMORIES_RESPONSE
+    );
+  }
+
+  async getEvent(input: GetEventInput, options: CoreOptions): Promise<GetEventOutput> {
+    this.calls.push({ method: "getEvent", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.getEventResponse;
+  }
+
+  async listEvents(input: ListEventsInput, options: CoreOptions): Promise<ListEventsOutput> {
+    this.calls.push({ method: "listEvents", args: [input, options] });
+    if (this.error) throw this.error;
+    return (
+      this.listEventResponses.get(input.nextToken) ??
+      this.listEventResponses.get(undefined) ??
+      DEFAULT_LIST_EVENTS_RESPONSE
+    );
+  }
+
+  async getMemoryRecord(
+    input: GetMemoryRecordInput,
+    options: CoreOptions,
+  ): Promise<GetMemoryRecordOutput> {
+    this.calls.push({ method: "getMemoryRecord", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.getMemoryRecordResponse;
+  }
+
+  async listMemoryRecords(
+    input: ListMemoryRecordsInput,
+    options: CoreOptions,
+  ): Promise<ListMemoryRecordsOutput> {
+    this.calls.push({ method: "listMemoryRecords", args: [input, options] });
+    if (this.error) throw this.error;
+    return (
+      this.listMemoryRecordResponses.get(input.nextToken) ??
+      this.listMemoryRecordResponses.get(undefined) ??
+      DEFAULT_LIST_MEMORY_RECORDS_RESPONSE
     );
   }
 }
