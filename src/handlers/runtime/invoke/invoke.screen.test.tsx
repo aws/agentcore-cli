@@ -236,6 +236,33 @@ describe("Runtime invoke JSON console", () => {
     );
   });
 
+  test("edits JSON with cursor movement and backspace", async () => {
+    const core = new TestCoreClient();
+    core.runtime
+      .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
+      .setInvokeResponse({
+        statusCode: 200,
+        contentType: "text/plain",
+        body: responseBody(Buffer.from("ok")),
+      });
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "Ready");
+    await screen.write('{"a":1}');
+    await screen.press("left");
+    await screen.press("left");
+    await screen.write("2");
+    await screen.press("right");
+    await screen.write("\x7f");
+    await screen.press("return");
+
+    await waitFor(() => invokeRequests(core).length === 1);
+    expect(new TextDecoder().decode(invokeRequests(core)[0]!.payload)).toBe('{"a":2}');
+    await waitForText(screen.lastFrame, "Ready");
+    await screen.write("\x7f");
+    expect(screen.lastFrame()).toContain("Enter JSON payload");
+  });
+
   test("keeps blank multiline rows inside the four-line editor", async () => {
     const core = new TestCoreClient();
     core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
@@ -335,6 +362,101 @@ describe("Runtime invoke JSON console", () => {
     release.resolve();
     await waitForText(screen.lastFrame, "complete · 16 bytes");
     expect(screen.lastFrame()).toContain("Runtime returned-runtime");
+  });
+
+  test.each([
+    [
+      "invalid UTF-8 text",
+      "text/plain",
+      Buffer.from([0xff]),
+      "Invalid UTF-8 response; showing raw text.",
+    ],
+    [
+      "invalid JSON",
+      "application/json",
+      Buffer.from("not-json"),
+      "Invalid JSON response; showing raw text.",
+    ],
+  ])("explains %s responses", async (_case, contentType, body, note) => {
+    const core = new TestCoreClient();
+    core.runtime
+      .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
+      .setInvokeResponse({
+        statusCode: 200,
+        contentType,
+        body: responseBody(body),
+      });
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "Ready");
+    await screen.write("{}");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, note);
+    expect(screen.lastFrame()).toContain(`complete · ${body.byteLength} bytes`);
+  });
+
+  test("shows failures that occur before a response starts", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
+    core.runtime.invokeRuntime = async () => {
+      throw new Error("connection failed");
+    };
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "Ready");
+    await screen.write("{}");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "connection failed");
+    expect(screen.lastFrame()).toContain("failed · 0 bytes");
+  });
+
+  test("shows failures that occur while reading a response", async () => {
+    const core = new TestCoreClient();
+    core.runtime
+      .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
+      .setInvokeResponse({
+        statusCode: 200,
+        contentType: "text/plain",
+        body: (async function* () {
+          yield Buffer.from("partial");
+          throw new Error("stream failed");
+        })(),
+      });
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "Ready");
+    await screen.write("{}");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "response stream failed");
+    expect(screen.lastFrame()).toContain("partial");
+    expect(screen.lastFrame()).toContain("failed · 7 bytes");
+  });
+
+  test("scrolls completed response history with the arrow keys", async () => {
+    const response = Array.from({ length: 12 }, (_, index) => `response-line-${index}`).join("\n");
+    const core = new TestCoreClient();
+    core.runtime
+      .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
+      .setInvokeResponse({
+        statusCode: 200,
+        contentType: "text/plain",
+        body: responseBody(Buffer.from(response)),
+      });
+    const screen = renderScreen(CONSOLE_PATH, { core });
+    await screen.resize(80, 16);
+
+    await waitForText(screen.lastFrame, "Ready");
+    await screen.write("{}");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "response-line-11");
+
+    for (let index = 0; index < 8; index++) await screen.press("up");
+    expect(screen.lastFrame()).toContain("response-line-3");
+    for (let index = 0; index < 8; index++) await screen.press("down");
+    expect(screen.lastFrame()).toContain("response-line-11");
   });
 
   test("starts from --session-id and adopts returned Runtime and MCP sessions", async () => {

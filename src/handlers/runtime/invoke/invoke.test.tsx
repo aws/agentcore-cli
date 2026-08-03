@@ -420,6 +420,22 @@ describe("runtime invoke", () => {
     }
   });
 
+  test("preserves unexpected TUI rendering failures", async () => {
+    const core = new TestCoreClient();
+    const output = captureIO();
+    const failure = new TypeError("render failed");
+    const render = spyOn(tui, "renderTuiAt").mockRejectedValue(failure);
+
+    try {
+      await expect(
+        runCommand(core, output.io, ["runtime", "invoke", "--id", RUNTIME_ID]),
+      ).rejects.toBe(failure);
+      expect(core.runtime.calls).toEqual([]);
+    } finally {
+      render.mockRestore();
+    }
+  });
+
   test("handler deep-links id-only and qualified invokes with encoded path segments", async () => {
     const core = new TestCoreClient();
     const output = captureIO();
