@@ -39,8 +39,10 @@ import type {
 import type { AwsClients, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
 import {
-  ensureDefaultOnlineEvalExecutionRole,
+  grantOnlineEvalScope,
   onlineEvalExecutionRoleName,
+  revokeOnlineEvalScope,
+  scopePolicyName,
 } from "./onlineEvalExecutionRole";
 
 const DEFAULT_ENDPOINT_QUALIFIER = "DEFAULT";
@@ -200,15 +202,17 @@ export class EvalClient implements CoreEvalClient {
     // default role scoped to them unless the caller brought their own.
     const evaluationExecutionRoleArn =
       input.evaluationExecutionRoleArn ??
-      (await ensureDefaultOnlineEvalExecutionRole(
-        // IAM is a global service; the region only selects the endpoint, and the
-        // agentcore endpoint override must not leak onto it.
-        this.clients.iam({ region: options.region }),
-        input.name,
-        options.region,
-        logGroupNamesOf(dataSourceConfig),
-        await evaluatorKmsKeys(input.evaluatorIds ?? [], control),
-      ));
+      (
+        await grantOnlineEvalScope(
+          // IAM is a global service; the region only selects the endpoint, and the
+          // agentcore endpoint override must not leak onto it.
+          this.clients.iam({ region: options.region }),
+          input.name,
+          options.region,
+          logGroupNamesOf(dataSourceConfig),
+          await evaluatorKmsKeys(input.evaluatorIds ?? [], control),
+        )
+      ).roleArn;
 
     const command = new CreateOnlineEvaluationConfigCommand({
       onlineEvaluationConfigName: input.name,
@@ -226,7 +230,7 @@ export class EvalClient implements CoreEvalClient {
     // cannot be assumed is a real misconfiguration and fails immediately.
     return input.evaluationExecutionRoleArn
       ? control.send(command)
-      : retryWhileRoleUnassumable(() => control.send(command));
+      : retryWhileRolePropagates(() => control.send(command));
   }
 
   // updateOnlineEvaluationConfig fetches the current config and merges the
@@ -344,17 +348,17 @@ export class EvalClient implements CoreEvalClient {
         control,
       );
 
-      // Widen the role to the union of old and new log groups before the update,
-      // then narrow to the new set only after it succeeds. A superset role is
-      // valid for either config state, so a failed update never leaves a
-      // config pointing at logs its role cannot query. Skipping the narrow keeps
-      // the role over-scoped-but-working, which the warning reports.
-      const union = [...new Set([...oldLogGroups, ...newLogGroups])];
-      await ensureDefaultOnlineEvalExecutionRole(
+      // Grant the new scope as its own inline policy before the update, then
+      // revoke the superseded one only once the update has landed. IAM unions
+      // Allows across a role's inline policies, so both scopes are granted in
+      // between — and because each scope is a separate policy, a failed update
+      // leaves the one backing the current data source exactly as it was.
+      const oldPolicyName = scopePolicyName(oldLogGroups, kmsKeys);
+      const { policyName: newPolicyName } = await grantOnlineEvalScope(
         iam,
         managedRoleName,
         options.region,
-        union,
+        newLogGroups,
         kmsKeys,
       );
 
@@ -367,20 +371,18 @@ export class EvalClient implements CoreEvalClient {
         }),
       );
 
-      try {
-        await ensureDefaultOnlineEvalExecutionRole(
-          iam,
-          managedRoleName,
-          options.region,
-          newLogGroups,
-          kmsKeys,
-        );
-      } catch {
-        roleScopeWarning = {
-          reason: "narrow-failed",
-          roleArn: roleArn!,
-          logGroupNames: newLogGroups,
-        };
+      if (newPolicyName !== oldPolicyName) {
+        try {
+          await revokeOnlineEvalScope(iam, managedRoleName, oldPolicyName);
+        } catch {
+          // The config is already correct; the role just still grants a data
+          // source it no longer uses.
+          roleScopeWarning = {
+            reason: "stale-scope",
+            roleArn: roleArn!,
+            logGroupNames: oldLogGroups,
+          };
+        }
       }
       return { response, roleScopeWarning };
     }
@@ -507,17 +509,24 @@ async function agentDataSource(
   };
 }
 
-// retryWhileRoleUnassumable retries `send` while the service reports that the
-// execution role cannot be assumed, which is how a not-yet-propagated IAM role
-// surfaces. Bounded and short: propagation is normally sub-second, and a role
-// that is genuinely misconfigured should fail fast rather than hang.
-async function retryWhileRoleUnassumable<T>(send: () => Promise<T>): Promise<T> {
+// A just-written role or inline policy is not visible to the service immediately
+// (IAM is eventually consistent), and the service validates both when the config
+// is created. It surfaces as one of two messages depending on which part has not
+// propagated yet.
+const ROLE_NOT_PROPAGATED =
+  /role cannot be assumed|does not have permissions to (create log group|access the specified log groups)/i;
+
+// retryWhileRolePropagates retries `send` while the service reports the execution
+// role as unusable, which is how a not-yet-propagated role or policy surfaces.
+// Bounded and short: propagation is normally a few seconds, and a role that is
+// genuinely misconfigured should fail fast rather than hang.
+async function retryWhileRolePropagates<T>(send: () => Promise<T>): Promise<T> {
   const delaysMs = [1_000, 2_000, 4_000, 8_000];
   for (const delay of delaysMs) {
     try {
       return await send();
     } catch (error) {
-      if (!/role cannot be assumed/i.test((error as Error).message)) throw error;
+      if (!ROLE_NOT_PROPAGATED.test((error as Error).message)) throw error;
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }

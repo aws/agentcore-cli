@@ -1,5 +1,6 @@
 import {
   CreateRoleCommand,
+  DeleteRolePolicyCommand,
   GetRoleCommand,
   PutRolePolicyCommand,
   type IAMClient,
@@ -11,10 +12,15 @@ import {
 // group, invoke Bedrock models for LLM-as-a-Judge evaluators, and write
 // evaluation results back to CloudWatch. When the caller doesn't bring one,
 // OnlineEvalClient provisions a per-config default here, scoped to the log
-// group(s) being sampled. Idempotent: an existing role is reused and its
-// inline policy refreshed.
+// group(s) being sampled. Idempotent: an existing role is reused.
+//
+// Each scope is stored as its own inline policy, named after a fingerprint of the
+// scope, so granting a new scope never overwrites the policy backing the current
+// one. IAM unions Allows across a role's inline policies, which lets an update
+// grant the new scope before changing the config and drop the old scope only once
+// the change has landed.
 
-const POLICY_NAME = "AgentCoreOnlineEvalExecutionPolicy";
+const POLICY_PREFIX = "AgentCoreOnlineEvalExecutionPolicy";
 
 const ROLE_NAME_PREFIX = "AgentCoreOnlineEval-";
 const ROLE_NAME_MAX = 64;
@@ -170,17 +176,28 @@ function accountIdFromRoleArn(arn: string): string {
   return accountId;
 }
 
-// ensureDefaultOnlineEvalExecutionRole returns the ARN of the default execution
-// role for `configName`, creating the role if it doesn't exist and
-// (re)attaching a policy scoped to `logGroupNames` either way. `kmsKeyArns` adds
-// kms:Decrypt for evaluators encrypted with a customer managed key.
-export async function ensureDefaultOnlineEvalExecutionRole(
+// scopePolicyName derives the inline-policy name for a scope. Keying the name on
+// the scope's contents means writing one scope's policy can never clobber
+// another's, so a superseded scope stays intact until it is explicitly revoked.
+export function scopePolicyName(logGroupNames: string[], kmsKeyArns: string[]): string {
+  const fingerprint = Bun.hash([...logGroupNames, ...kmsKeyArns].sort().join("\n"))
+    .toString(16)
+    .padStart(NAME_HASH_LENGTH, "0")
+    .slice(-NAME_HASH_LENGTH);
+  return `${POLICY_PREFIX}-${fingerprint}`;
+}
+
+// grantOnlineEvalScope creates the execution role for `configName` if it does not
+// exist and attaches the inline policy for this scope, returning the role ARN and
+// the policy name written. The caller revokes the superseded scope once whatever
+// change prompted the new one has succeeded.
+export async function grantOnlineEvalScope(
   iam: IAMClient,
   configName: string,
   region: string,
   logGroupNames: string[],
   kmsKeyArns: string[] = [],
-): Promise<string> {
+): Promise<{ roleArn: string; policyName: string }> {
   const roleName = onlineEvalExecutionRoleName(configName);
 
   let roleArn: string;
@@ -199,10 +216,11 @@ export async function ensureDefaultOnlineEvalExecutionRole(
     roleArn = created.Role!.Arn!;
   }
 
+  const policyName = scopePolicyName(logGroupNames, kmsKeyArns);
   await iam.send(
     new PutRolePolicyCommand({
       RoleName: roleName,
-      PolicyName: POLICY_NAME,
+      PolicyName: policyName,
       PolicyDocument: executionPolicy(
         region,
         accountIdFromRoleArn(roleArn),
@@ -212,5 +230,24 @@ export async function ensureDefaultOnlineEvalExecutionRole(
     }),
   );
 
-  return roleArn;
+  return { roleArn, policyName };
+}
+
+// revokeOnlineEvalScope detaches a scope's inline policy, dropping the access it
+// granted. A scope that is already absent is treated as revoked.
+export async function revokeOnlineEvalScope(
+  iam: IAMClient,
+  configName: string,
+  policyName: string,
+): Promise<void> {
+  try {
+    await iam.send(
+      new DeleteRolePolicyCommand({
+        RoleName: onlineEvalExecutionRoleName(configName),
+        PolicyName: policyName,
+      }),
+    );
+  } catch (error) {
+    if ((error as Error).name !== "NoSuchEntityException") throw error;
+  }
 }

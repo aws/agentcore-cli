@@ -1,5 +1,9 @@
 import { test, expect } from "bun:test";
-import { executionPolicy, onlineEvalExecutionRoleName } from "./onlineEvalExecutionRole";
+import {
+  executionPolicy,
+  onlineEvalExecutionRoleName,
+  scopePolicyName,
+} from "./onlineEvalExecutionRole";
 
 const REGION = "us-west-2";
 const ACCOUNT = "123456789012";
@@ -55,4 +59,26 @@ test("keeps role names within 64 characters and distinct", () => {
   expect(b.length).toBeLessThanOrEqual(64);
   expect(a).not.toBe(b);
   expect(onlineEvalExecutionRoleName("short")).toBe("AgentCoreOnlineEval-short");
+});
+
+// Each scope must map to its own policy name. Granting a new scope writes a new
+// policy rather than overwriting the current one, which is what lets an update
+// keep the old scope intact until the config change has landed.
+test("gives distinct scopes distinct policy names", () => {
+  const oldScope = scopePolicyName(["/aws/bedrock-agentcore/runtimes/orders-abc*"], []);
+  const newScope = scopePolicyName(["/aws/bedrock-agentcore/runtimes/checkout-xyz*"], []);
+  expect(oldScope).not.toBe(newScope);
+});
+
+// The name is a fingerprint of the scope, so re-granting an unchanged scope is a
+// no-op rewrite of the same policy rather than an accumulating new one — and the
+// update path can compare names to know whether anything needs revoking.
+test("gives an unchanged scope a stable policy name", () => {
+  const groups = ["/a*", "/b*"];
+  const keys = ["arn:aws:kms:us-west-2:123456789012:key/aaaa"];
+  expect(scopePolicyName(groups, keys)).toBe(scopePolicyName(groups, keys));
+  // Order must not matter: the same scope listed differently is the same scope.
+  expect(scopePolicyName(["/b*", "/a*"], keys)).toBe(scopePolicyName(groups, keys));
+  // A differing KMS key is a differing scope.
+  expect(scopePolicyName(groups, [])).not.toBe(scopePolicyName(groups, keys));
 });

@@ -1,6 +1,6 @@
 {
-  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_fixture-mTCA9E6Yef",
-  "onlineEvaluationConfigId": "agentcore_cli_online_eval_fixture-mTCA9E6Yef",
+  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_fixture-DfR1lfEKCN",
+  "onlineEvaluationConfigId": "agentcore_cli_online_eval_fixture-DfR1lfEKCN",
   "onlineEvaluationConfigName": "agentcore_cli_online_eval_fixture",
   "rule": {
     "samplingConfig": {
@@ -22,8 +22,8 @@
   },
   "status": "ACTIVE",
   "executionStatus": "DISABLED",
-  "createdAt": "2026-08-03T17:25:12.899Z",
-  "updatedAt": "2026-08-03T17:25:13.841Z",
+  "createdAt": "2026-08-03T19:56:54.177Z",
+  "updatedAt": "2026-08-03T19:56:55.235Z",
   "evaluators": [
     {
       "evaluatorId": "Builtin.Helpfulness"
@@ -31,7 +31,7 @@
   ],
   "outputConfig": {
     "cloudWatchConfig": {
-      "logGroupName": "/aws/bedrock-agentcore/evaluations/results/agentcore_cli_online_eval_fixture-mTCA9E6Yef"
+      "logGroupName": "/aws/bedrock-agentcore/evaluations/results/agentcore_cli_online_eval_fixture-DfR1lfEKCN"
     }
   },
   "evaluationExecutionRoleArn": "arn:aws:iam::725476964917:role/AgentCoreOnlineEval-agentcore_cli_online_eval_fixture"

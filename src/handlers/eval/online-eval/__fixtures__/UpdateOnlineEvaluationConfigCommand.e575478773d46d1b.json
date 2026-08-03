@@ -1,7 +1,9 @@
 {
   "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_fixture-DfR1lfEKCN",
   "onlineEvaluationConfigId": "agentcore_cli_online_eval_fixture-DfR1lfEKCN",
-  "updatedAt": "2026-08-03T19:57:00.759Z",
+  "updatedAt": {
+    "$date": "2026-08-03T19:56:55.559Z"
+  },
   "status": "UPDATING",
-  "executionStatus": "DISABLED"
+  "executionStatus": "ENABLED"
 }

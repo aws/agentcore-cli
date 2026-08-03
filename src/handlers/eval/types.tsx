@@ -90,7 +90,7 @@ export type UpdateOnlineEvalInput = {
 // the config no longer samples, so the caller can surface it. Returned rather
 // than logged from Core so the handler owns how it is presented.
 export type RoleScopeWarning = {
-  reason: "custom-role" | "update-declined" | "narrow-failed";
+  reason: "custom-role" | "update-declined" | "stale-scope";
   roleArn: string;
   logGroupNames: string[];
 };
