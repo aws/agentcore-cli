@@ -134,19 +134,42 @@ describe("Runtime invoke routing", () => {
     expect(screen.lastFrame()).not.toContain("MCP session ID");
   });
 
-  test("escape from a ready console returns to its endpoint picker", async () => {
+  test("escape switches endpoints without restoring the launch session", async () => {
+    const nextQualifier = "back-endpoint";
     const core = new TestCoreClient();
     core.runtime
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
       .setListEndpointsResponse({
-        runtimeEndpoints: [endpoint({ name: "back-to-endpoint-picker", id: "back-endpoint" })],
+        runtimeEndpoints: [endpoint({ name: nextQualifier, id: nextQualifier })],
+      })
+      .setInvokeResponse({
+        statusCode: 200,
+        contentType: "text/plain",
+        body: responseBody(Buffer.from("ok")),
       });
-    const screen = renderScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, {
+      core,
+      withContext: (ctx) =>
+        ctx.withValue(RuntimeInvokeLaunchContextKey, {
+          runtimeId: RUNTIME_ID,
+          runtimeSessionId: "cli-selected-session",
+        }),
+    });
 
-    await waitForText(screen.lastFrame, "Ready");
+    await waitForText(screen.lastFrame, "Session ID: cli-selected-session");
     await screen.press("escape");
+    await waitForText(screen.lastFrame, nextQualifier);
+    await screen.press("return");
+    await waitForText(
+      screen.lastFrame,
+      `agentcore → runtime → invoke → ${RUNTIME_ID} → ${nextQualifier}`,
+    );
+    expect(screen.lastFrame()).toContain("Ready · Session ID: Not set");
 
-    await waitForText(screen.lastFrame, "back-to-endpoint-picker");
+    await screen.write("{}");
+    await screen.press("return");
+    await waitFor(() => invokeRequests(core).length === 1);
+    expect(invokeRequests(core)[0]!.runtimeSessionId).toBeUndefined();
   });
 
   test("unmount cancels the Runtime detail lookup", async () => {
@@ -455,7 +478,7 @@ describe("Runtime invoke JSON console", () => {
     expect(screen.lastFrame()).toContain("response-line-11");
   });
 
-  test("starts from --session-id and adopts returned Runtime and MCP sessions", async () => {
+  test("starts from --session-id and adopts returned Runtime and MCP context", async () => {
     const requests: RuntimeInvokeRequest[] = [];
     const core = new TestCoreClient();
     core.runtime.setGetResponse({
@@ -469,6 +492,7 @@ describe("Runtime invoke JSON console", () => {
         contentType: "text/event-stream",
         runtimeSessionId: "returned-runtime",
         mcpSessionId: "returned-mcp",
+        mcpProtocolVersion: "2025-06-18",
         body: responseBody(Buffer.from("data: done\n\n")),
       };
     };
@@ -495,8 +519,10 @@ describe("Runtime invoke JSON console", () => {
 
     expect(requests[0]!.runtimeSessionId).toBe(initialSession);
     expect(requests[0]!.mcpSessionId).toBeUndefined();
+    expect(requests[0]!.mcpProtocolVersion).toBeUndefined();
     expect(requests[1]!.runtimeSessionId).toBe("returned-runtime");
     expect(requests[1]!.mcpSessionId).toBe("returned-mcp");
+    expect(requests[1]!.mcpProtocolVersion).toBe("2025-06-18");
   });
 
   test("persists launch identity, authentication, and headers without exposing values", async () => {
@@ -555,6 +581,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime
       .setGetResponse({
         agentRuntimeArn: RUNTIME_ARN,
+        protocolConfiguration: { serverProtocol: "MCP" },
         requestHeaderConfiguration: { requestHeaderAllowlist: ["X-Tenant"] },
       } as GetAgentRuntimeResponse)
       .setListResponse({ agentRuntimes: [runtime()] })
@@ -565,6 +592,8 @@ describe("Runtime invoke JSON console", () => {
         statusCode: 200,
         contentType: "text/plain",
         runtimeSessionId: "returned-runtime",
+        mcpSessionId: "returned-mcp",
+        mcpProtocolVersion: "2025-06-18",
         body: responseBody(Buffer.from("old response")),
       });
     const screen = renderScreen(CONSOLE_PATH, {
@@ -593,7 +622,7 @@ describe("Runtime invoke JSON console", () => {
     );
     expect(screen.lastFrame()).not.toContain("old response");
     expect(screen.lastFrame()).toContain("Ready · Session ID: Not set");
-    expect(screen.lastFrame()).not.toContain("MCP session ID");
+    expect(screen.lastFrame()).toContain("MCP session ID: Not set");
 
     core.runtime.setInvokeResponse({
       statusCode: 200,
@@ -604,6 +633,8 @@ describe("Runtime invoke JSON console", () => {
     await screen.press("return");
     await waitFor(() => invokeRequests(core).length === 2);
     expect(invokeRequests(core)[1]!.runtimeSessionId).toBeUndefined();
+    expect(invokeRequests(core)[1]!.mcpSessionId).toBeUndefined();
+    expect(invokeRequests(core)[1]!.mcpProtocolVersion).toBeUndefined();
     expect(invokeRequests(core)[1]).toMatchObject({
       runtimeUserId: "user-123",
       applicationHeaders: [["X-Tenant", "retail"]],

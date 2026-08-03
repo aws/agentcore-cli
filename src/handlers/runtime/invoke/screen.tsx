@@ -107,7 +107,6 @@ function RuntimeInvokeConsole({
   initialContext,
 }: RuntimeInvokeConsoleProps) {
   const opts = coreOptsFromCtx(ctx);
-  const navigate = useNavigate();
   const { columns, rows } = useWindowSize();
   const [target, setTarget] = useState({ runtimeId, qualifier });
   const [targetPicker, setTargetPicker] = useState<TargetPickerState | null>(null);
@@ -121,6 +120,7 @@ function RuntimeInvokeConsole({
   const [requestContext, setRequestContext] = useState(initialContext);
   const [runtimeSessionId, setRuntimeSessionId] = useState(initialContext?.runtimeSessionId);
   const [mcpSessionId, setMcpSessionId] = useState<string>();
+  const [mcpProtocolVersion, setMcpProtocolVersion] = useState<string>();
   const [history, setHistory] = useState<Exchange[]>([]);
   const [prettyJson, setPrettyJson] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -170,7 +170,7 @@ function RuntimeInvokeConsole({
         runtimeUserId: requestContext?.runtimeUserId,
         applicationHeaders: requestContext?.applicationHeaders,
         bearerToken: requestContext?.bearerToken,
-        ...(mcp && { mcpSessionId }),
+        ...(mcp && { mcpSessionId, mcpProtocolVersion }),
       });
       const response = await core.runtime.invokeRuntime(request, opts, controller.signal);
       responseStarted = true;
@@ -220,6 +220,7 @@ function RuntimeInvokeConsole({
       }
       if (response.runtimeSessionId) setRuntimeSessionId(response.runtimeSessionId);
       if (response.mcpSessionId) setMcpSessionId(response.mcpSessionId);
+      if (response.mcpProtocolVersion) setMcpProtocolVersion(response.mcpProtocolVersion);
       updateExchange({ state: "complete" });
     } catch (error) {
       if (controller.signal.aborted || (error as Error)?.name === "AbortError") {
@@ -260,7 +261,7 @@ function RuntimeInvokeConsole({
       }
       if (key.escape) {
         if (abortRef.current) abortRef.current.abort();
-        else navigate(invokePath(target.runtimeId));
+        else setTargetPicker({ stage: "endpoint", runtimeId: target.runtimeId });
         return;
       }
       const view = scrollRef.current;
@@ -312,6 +313,7 @@ function RuntimeInvokeConsole({
             setTarget({ runtimeId: nextRuntimeId, qualifier: selected });
             setRuntimeSessionId(undefined);
             setMcpSessionId(undefined);
+            setMcpProtocolVersion(undefined);
             if (runtimeChanged) setRequestContext(undefined);
             setHistory([]);
             setPrettyJson(false);
