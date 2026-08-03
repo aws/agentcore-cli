@@ -2,6 +2,7 @@ import z from "zod";
 import type { DataSourceConfig, Filter } from "@aws-sdk/client-bedrock-agentcore-control";
 import { createHandler, flag } from "../../../../router";
 import { InputValidationError } from "../../../../errors";
+import { JsonKey } from "../../../keys";
 import { JsonRendererKey } from "../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
@@ -101,7 +102,9 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
         },
         coreOptsFromCtx(ctx),
       );
-      if (roleScopeWarning) {
+      // Suppressed under --json, matching runtime/invoke's advisory summary: a
+      // scripted caller gets a machine-readable stdout and nothing else.
+      if (roleScopeWarning && !ctx.require(JsonKey)) {
         const { reason, roleArn, logGroupNames } = roleScopeWarning;
         const detail =
           reason === "custom-role"

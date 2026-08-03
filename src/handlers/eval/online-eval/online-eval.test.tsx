@@ -405,9 +405,36 @@ describe("execution role scoping on update", () => {
       REGION,
     ]);
 
-    // The warning goes to stderr so --json stdout stays machine-readable.
+    // Human-readable mode: the advisory goes to stderr, leaving stdout alone.
     expect(io.stderr()).toContain("not managed by the CLI");
     expect(io.stderr()).toContain(FIXTURE_ROLE_ARN);
+
+    await settle();
+
+    // --json suppresses the advisory, matching runtime/invoke's summary: a scripted
+    // caller gets machine-readable stdout and an empty stderr.
+    const jsonIo = testIO();
+    const jsonRoot = createRootHandler(createFixtureCore(), {
+      io: jsonIo.io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    await jsonRoot.route([
+      "node",
+      "agentcore",
+      "eval",
+      "online-eval",
+      "update",
+      "--id",
+      warnConfigId,
+      "--agent",
+      FIXTURE_AGENT_ID,
+      "--region",
+      REGION,
+      "--json",
+    ]);
+    expect(jsonIo.stderr()).toBe("");
+    expect(JSON.parse(jsonIo.stdout()).onlineEvaluationConfigId).toBe(warnConfigId);
 
     await settle();
     await run(["eval", "online-eval", "delete", "--id", warnConfigId]);

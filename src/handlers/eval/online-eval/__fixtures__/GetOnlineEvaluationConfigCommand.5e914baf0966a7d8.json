@@ -1,6 +1,6 @@
 {
-  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_role_warn-AjI26sC5ks",
-  "onlineEvaluationConfigId": "agentcore_cli_online_eval_role_warn-AjI26sC5ks",
+  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_role_warn-8fpFdiH7rm",
+  "onlineEvaluationConfigId": "agentcore_cli_online_eval_role_warn-8fpFdiH7rm",
   "onlineEvaluationConfigName": "agentcore_cli_online_eval_role_warn",
   "rule": {
     "samplingConfig": {
@@ -10,20 +10,20 @@
   "dataSourceConfig": {
     "cloudWatchLogs": {
       "logGroupNames": [
-        "/aws/bedrock-agentcore/runtimes/testAgent_Agent-wm9hYBD93Y-DEFAULT"
+        "/aws/bedrock-agentcore/runtimes/ABVfyLatest_ABVfyLatest-PFLr353QVA-DEFAULT"
       ],
       "serviceNames": [
-        "testAgent_Agent.DEFAULT"
+        "ABVfyLatest_ABVfyLatest.DEFAULT"
       ]
     }
   },
   "status": "ACTIVE",
   "executionStatus": "DISABLED",
   "createdAt": {
-    "$date": "2026-08-03T14:40:37.678Z"
+    "$date": "2026-08-03T14:54:08.581Z"
   },
   "updatedAt": {
-    "$date": "2026-08-03T14:40:37.879Z"
+    "$date": "2026-08-03T14:54:14.188Z"
   },
   "evaluators": [
     {
@@ -32,7 +32,7 @@
   ],
   "outputConfig": {
     "cloudWatchConfig": {
-      "logGroupName": "/aws/bedrock-agentcore/evaluations/results/agentcore_cli_online_eval_role_warn-AjI26sC5ks"
+      "logGroupName": "/aws/bedrock-agentcore/evaluations/results/agentcore_cli_online_eval_role_warn-8fpFdiH7rm"
     }
   },
   "evaluationExecutionRoleArn": "arn:aws:iam::725476964917:role/AgentCoreEvalsSDK-us-west-2-a6864eb339"

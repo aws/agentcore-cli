@@ -1,9 +1,0 @@
-{
-  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_role_warn-AjI26sC5ks",
-  "onlineEvaluationConfigId": "agentcore_cli_online_eval_role_warn-AjI26sC5ks",
-  "updatedAt": {
-    "$date": "2026-08-03T14:40:43.318Z"
-  },
-  "status": "ACTIVE",
-  "executionStatus": "DISABLED"
-}

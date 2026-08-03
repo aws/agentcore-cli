@@ -274,16 +274,16 @@
       }
     },
     {
-      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_fixture-n8aOsg8mG8",
-      "onlineEvaluationConfigId": "agentcore_cli_online_eval_fixture-n8aOsg8mG8",
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_fixture-Bo0SY961CY",
+      "onlineEvaluationConfigId": "agentcore_cli_online_eval_fixture-Bo0SY961CY",
       "onlineEvaluationConfigName": "agentcore_cli_online_eval_fixture",
       "status": "CREATING",
       "executionStatus": "DISABLED",
       "createdAt": {
-        "$date": "2026-08-03T14:40:30.289Z"
+        "$date": "2026-08-03T14:54:01.048Z"
       },
       "updatedAt": {
-        "$date": "2026-08-03T14:40:30.289Z"
+        "$date": "2026-08-03T14:54:01.048Z"
       }
     },
     {
