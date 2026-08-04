@@ -12,7 +12,6 @@ const MAX_POLICY_NAME_LENGTH = 128;
 export type InlinePolicySwapConfig = {
   roleName: string;
   policyNamePrefix: string;
-  policyDocument?: string;
 };
 
 export class InlinePolicySwap {
@@ -35,15 +34,12 @@ export class InlinePolicySwap {
     return name;
   }
 
-  async run<T>(operation: () => Promise<T>): Promise<T> {
+  async run<T>(policyDocument: string | undefined, operation: () => Promise<T>): Promise<T> {
     const existingPolicyNames = (await this.listPolicyNames()).filter((name) =>
       this.isFamilyMember(name),
     );
-    const candidateName = this.config.policyDocument
-      ? InlinePolicySwap.candidatePolicyName(
-          this.config.policyNamePrefix,
-          this.config.policyDocument,
-        )
+    const candidateName = policyDocument
+      ? InlinePolicySwap.candidatePolicyName(this.config.policyNamePrefix, policyDocument)
       : undefined;
     const candidateExisted = candidateName ? existingPolicyNames.includes(candidateName) : false;
 
@@ -52,7 +48,7 @@ export class InlinePolicySwap {
         new PutRolePolicyCommand({
           RoleName: this.config.roleName,
           PolicyName: candidateName,
-          PolicyDocument: this.config.policyDocument,
+          PolicyDocument: policyDocument,
         }),
       );
     }

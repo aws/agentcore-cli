@@ -131,8 +131,7 @@ export class HarnessClient implements CoreHarnessClient {
     return new InlinePolicySwap(iam, {
       roleName: role.roleName,
       policyNamePrefix: HARNESS_EXECUTION_POLICY_NAME,
-      policyDocument: role.policyDocument,
-    }).run(() =>
+    }).run(role.policyDocument, () =>
       retryWhileRoleUnassumable(() =>
         control.send(new CreateHarnessCommand({ ...request, executionRoleArn: role.roleArn })),
       ),
