@@ -1,15 +1,15 @@
 {
   "harness": {
-    "harnessId": "AgentCoreCliE2E-TqzKXT9uZQ",
+    "harnessId": "AgentCoreCliE2E-W21v24kBuV",
     "harnessName": "AgentCoreCliE2E",
-    "arn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:harness/AgentCoreCliE2E-TqzKXT9uZQ",
-    "status": "DELETING",
-    "executionRoleArn": "arn:aws:iam::685197708687:role/AgentCoreHarness-AgentCoreCliE2E",
+    "arn": "arn:aws:bedrock-agentcore:us-west-2:501930284170:harness/AgentCoreCliE2E-W21v24kBuV",
+    "status": "READY",
+    "executionRoleArn": "arn:aws:iam::501930284170:role/AgentCoreHarness-AgentCoreCliE2E",
     "createdAt": {
-      "$date": "2026-08-04T18:26:16.030Z"
+      "$date": "2026-07-07T23:10:13.675Z"
     },
     "updatedAt": {
-      "$date": "2026-08-04T18:29:27.223Z"
+      "$date": "2026-07-07T23:12:59.899Z"
     },
     "model": {
       "bedrockModelConfig": {
@@ -37,9 +37,9 @@
     },
     "environment": {
       "agentCoreRuntimeEnvironment": {
-        "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/harness_AgentCoreCliE2E-UEtrJyFY5a",
+        "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:501930284170:runtime/harness_AgentCoreCliE2E-THv8WN5rms",
         "agentRuntimeName": "harness_AgentCoreCliE2E",
-        "agentRuntimeId": "harness_AgentCoreCliE2E-UEtrJyFY5a",
+        "agentRuntimeId": "harness_AgentCoreCliE2E-THv8WN5rms",
         "lifecycleConfiguration": {
           "idleRuntimeSessionTimeout": 900,
           "maxLifetime": 28800
@@ -52,7 +52,7 @@
     "harnessVersion": "2",
     "memory": {
       "managedMemoryConfiguration": {
-        "arn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:memory/harness_AgentCoreCliE2E_817a-366mwRGm5e"
+        "arn": "arn:aws:bedrock-agentcore:us-west-2:501930284170:memory/harness_AgentCoreCliE2E_a0dc-0y96cIE359"
       }
     },
     "maxIterations": 30,

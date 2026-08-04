@@ -1,15 +1,15 @@
 {
   "harness": {
-    "harnessId": "AgentCoreCliE2E-TqzKXT9uZQ",
+    "harnessId": "AgentCoreCliE2E-W21v24kBuV",
     "harnessName": "AgentCoreCliE2E",
-    "arn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:harness/AgentCoreCliE2E-TqzKXT9uZQ",
+    "arn": "arn:aws:bedrock-agentcore:us-west-2:501930284170:harness/AgentCoreCliE2E-W21v24kBuV",
     "status": "CREATING",
-    "executionRoleArn": "arn:aws:iam::685197708687:role/AgentCoreHarness-AgentCoreCliE2E",
+    "executionRoleArn": "arn:aws:iam::501930284170:role/AgentCoreHarness-AgentCoreCliE2E",
     "createdAt": {
-      "$date": "2026-08-04T18:26:16.030Z"
+      "$date": "2026-07-07T23:10:13.675Z"
     },
     "updatedAt": {
-      "$date": "2026-08-04T18:26:16.030Z"
+      "$date": "2026-07-07T23:10:13.675Z"
     },
     "model": {
       "bedrockModelConfig": {

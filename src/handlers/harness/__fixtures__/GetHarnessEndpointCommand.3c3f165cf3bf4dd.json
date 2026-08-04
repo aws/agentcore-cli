@@ -4,10 +4,13 @@
     "harnessName": "AgentCoreCliE2E",
     "endpointName": "live",
     "arn": "arn:aws:bedrock-agentcore:us-west-2:501930284170:harness/AgentCoreCliE2E-W21v24kBuV/harness-endpoint/live",
-    "status": "UPDATING",
-    "createdAt": "2026-07-07T23:13:05.008Z",
-    "updatedAt": "2026-07-07T23:13:10.512Z",
-    "liveVersion": "1",
-    "targetVersion": "2"
+    "status": "READY",
+    "createdAt": {
+      "$date": "2026-07-07T23:13:05.008Z"
+    },
+    "updatedAt": {
+      "$date": "2026-07-07T23:13:12.187Z"
+    },
+    "liveVersion": "2"
   }
 }
