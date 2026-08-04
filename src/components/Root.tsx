@@ -51,6 +51,9 @@ import { BatchEvaluationGetJsonScreen } from "../handlers/eval/batch-evaluation/
 import { MemoryEventScreen } from "../handlers/memory/event/screen.tsx";
 import { MemoryEventGetScreen } from "../handlers/memory/event/get/screen.tsx";
 import { MemoryEventListScreen } from "../handlers/memory/event/list/screen.tsx";
+import { MemoryRecordScreen } from "../handlers/memory/record/screen.tsx";
+import { MemoryRecordGetScreen } from "../handlers/memory/record/get/screen.tsx";
+import { MemoryRecordListScreen } from "../handlers/memory/record/list/screen.tsx";
 import { IdentityScreen } from "../handlers/identity/screen.tsx";
 import { ApiKeyCredentialProviderScreen } from "../handlers/identity/api-key-credential-provider/screen.tsx";
 import { ApiKeyCredentialProviderListScreen } from "../handlers/identity/api-key-credential-provider/list/screen.tsx";
@@ -407,6 +410,30 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/memory/event/list/:memoryId/:actorId/:sessionId"
             element={<MemoryEventListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/record"
+            element={<MemoryRecordScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/record/get"
+            element={<Navigate to="/agentcore/memory/record/list" replace />}
+          />
+          <Route
+            path="agentcore/memory/record/get/:memoryId/:recordId"
+            element={<MemoryRecordGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/record/list"
+            element={<MemoryRecordListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/record/list/:memoryId"
+            element={<MemoryRecordListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/record/list/:memoryId/:scopeKind/:scope"
+            element={<MemoryRecordListScreen ctx={ctx} core={core} />}
           />
           <Route path="agentcore/identity" element={<IdentityScreen ctx={ctx} core={core} />} />
           <Route

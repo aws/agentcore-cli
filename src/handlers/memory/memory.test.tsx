@@ -140,6 +140,8 @@ describe("memory TUI dispatch", () => {
     ["list", ["memory", "list"]],
     ["event get", ["memory", "event", "get"]],
     ["event list", ["memory", "event", "list"]],
+    ["record get", ["memory", "record", "get"]],
+    ["record list", ["memory", "record", "list"]],
   ] as const)("opens the TUI for a bare Memory %s leaf", async (_label, args) => {
     const { core, route } = testMemoryCommand();
 
