@@ -11,6 +11,7 @@ export interface FormTextInputProps {
   errorText: string;
   value: string;
   onChange: (value: string) => void;
+  onSubmit?: (value: string) => void;
   pattern?: RegExp;
   // focused controls whether the input captures keystrokes; when several
   // FormTextInputs are on screen, exactly one should be focused.
@@ -24,6 +25,7 @@ export function FormTextInput({
   errorText,
   value,
   onChange,
+  onSubmit,
   pattern,
   focused = true,
 }: FormTextInputProps) {
@@ -34,7 +36,13 @@ export function FormTextInput({
         <Text color={theme.colors.muted}>{helpText}</Text>
       </Box>
       <Box borderStyle="round" borderColor={focused ? theme.colors.focus : theme.colors.border}>
-        <TextInput value={value} onChange={onChange} placeholder={placeholder} focus={focused} />
+        <TextInput
+          value={value}
+          onChange={onChange}
+          onSubmit={onSubmit}
+          placeholder={placeholder}
+          focus={focused}
+        />
       </Box>
       {value !== "" && pattern && !pattern.test(value) && (
         <Text color={theme.colors.error}>{errorText}</Text>
