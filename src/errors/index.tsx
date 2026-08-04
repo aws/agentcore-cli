@@ -1,5 +1,7 @@
 export {
   AgentCoreCLIError,
+  DatasetDownloadError,
+  DatasetWriteError,
   DeserializationError,
   EmbeddedAssetNotFoundError,
   InputValidationError,

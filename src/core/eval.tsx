@@ -2,12 +2,15 @@ import {
   CreateDatasetCommand,
   CreateEvaluatorCommand,
   CreateOnlineEvaluationConfigCommand,
+  DeleteDatasetCommand,
   DeleteEvaluatorCommand,
   DeleteOnlineEvaluationConfigCommand,
   GetAgentRuntimeCommand,
+  GetDatasetCommand,
   GetEvaluatorCommand,
   GetHarnessCommand,
   GetOnlineEvaluationConfigCommand,
+  ListDatasetsCommand,
   ListEvaluatorsCommand,
   ListOnlineEvaluationConfigsCommand,
   UpdateEvaluatorCommand,
@@ -16,11 +19,14 @@ import {
   type CreateEvaluatorRequest,
   type CreateEvaluatorResponse,
   type CreateOnlineEvaluationConfigResponse,
+  type DeleteDatasetResponse,
   type DeleteEvaluatorResponse,
   type DeleteOnlineEvaluationConfigResponse,
   type EvaluatorConfig,
+  type GetDatasetResponse,
   type GetEvaluatorResponse,
   type GetOnlineEvaluationConfigResponse,
+  type ListDatasetsResponse,
   type ListEvaluatorsResponse,
   type DataSourceConfig,
   type ListOnlineEvaluationConfigsResponse,
@@ -29,7 +35,13 @@ import {
   type UpdateOnlineEvaluationConfigResponse,
   type BedrockAgentCoreControlClient,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import { InputValidationError } from "../errors";
+import { randomUUID } from "node:crypto";
+import { createWriteStream } from "node:fs";
+import { rename, rm } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { DatasetDownloadError, DatasetWriteError, InputValidationError } from "../errors";
 import type {
   CodeBasedUpdate,
   RoleScopeWarning,
@@ -39,7 +51,7 @@ import type {
   LlmAsAJudgeUpdate,
   UpdateOnlineEvalInput,
 } from "../handlers/eval/types";
-import type { AwsClients, CoreOptions } from "./types";
+import type { AwsClients, CoreFetch, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
 import {
   accountIdFromRoleArn,
@@ -53,7 +65,11 @@ import {
 const DEFAULT_ENDPOINT_QUALIFIER = "DEFAULT";
 
 export class EvalClient implements CoreEvalClient {
-  constructor(private readonly clients: AwsClients) {}
+  constructor(
+    private readonly clients: AwsClients,
+    // HTTP client for datasets presigned S3 URL
+    private readonly fetch: CoreFetch = globalThis.fetch,
+  ) {}
 
   async createEvaluator(
     request: CreateEvaluatorRequest,
@@ -456,6 +472,134 @@ export class EvalClient implements CoreEvalClient {
     options: CoreOptions,
   ): Promise<CreateDatasetResponse> {
     return this.clients.control(toClientConfig(options)).send(new CreateDatasetCommand(input));
+  }
+
+  async getDataset(
+    id: string,
+    version: string | undefined,
+    options: CoreOptions,
+  ): Promise<GetDatasetResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new GetDatasetCommand({ datasetId: id, datasetVersion: version }));
+  }
+
+  // downloadDataset resolves the version's presigned URL and streams it to disk.
+  // The body is streamed to a temporary file and renamed into place
+  async downloadDataset(
+    id: string,
+    version: string | undefined,
+    filePath: string,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<GetDatasetResponse> {
+    const dataset = await this.getDataset(id, version, options);
+
+    // The consolidated file is written asynchronously, so a dataset that is still
+    // ingesting has no URL to offer yet. Report the status, which is what tells
+    // the caller whether to retry.
+    if (!dataset.downloadUrl) {
+      throw new DatasetDownloadError(
+        `Dataset "${id}" has no downloadable content yet (status ${dataset.status ?? "unknown"}); ` +
+          `retry once it reports ACTIVE`,
+        { meta: { datasetId: id, datasetVersion: dataset.datasetVersion, status: dataset.status } },
+      );
+    }
+
+    let body: ReadableStream<Uint8Array>;
+    try {
+      const response = await this.fetch(dataset.downloadUrl, { signal });
+      if (!response.ok) {
+        throw new DatasetDownloadError(
+          `Downloading dataset "${id}" failed with HTTP ${response.status}`,
+          { meta: { datasetId: id, status: response.status } },
+        );
+      }
+      if (!response.body) {
+        throw new DatasetDownloadError(`Dataset "${id}" download returned an empty response`, {
+          meta: { datasetId: id },
+        });
+      }
+      body = response.body;
+    } catch (error) {
+      if (error instanceof DatasetDownloadError) throw error;
+      // A caller-initiated abort is not a download failure; propagate it so the
+      // handler can report an interruption rather than a service problem.
+      if (signal?.aborted) throw signal.reason ?? error;
+      throw new DatasetDownloadError(`Could not download dataset "${id}"`, {
+        cause: error,
+        meta: { datasetId: id },
+      });
+    }
+
+    await streamToFile(body, filePath, { datasetId: id, signal });
+    return dataset;
+  }
+
+  async listDatasets(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListDatasetsResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new ListDatasetsCommand({ nextToken, maxResults }));
+  }
+
+  async deleteDataset(
+    id: string,
+    version: string | undefined,
+    options: CoreOptions,
+  ): Promise<DeleteDatasetResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new DeleteDatasetCommand({ datasetId: id, datasetVersion: version }));
+  }
+}
+
+// endWithNewline appends a single trailing newline if the stream did not with one
+// Omitting the trailing newline causes attempts at appending to produce malformed JSONL
+// Normalizing on write keeps the downloaded file editable
+function endWithNewline(): Transform {
+  const NEWLINE = 0x0a;
+  let lastByte: number | undefined;
+  return new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      if (chunk.length > 0) lastByte = chunk[chunk.length - 1];
+      callback(null, chunk);
+    },
+    flush(callback) {
+      // An empty body is left empty rather than turned into a lone newline.
+      callback(null, lastByte === undefined || lastByte === NEWLINE ? undefined : "\n");
+    },
+  });
+}
+
+// streamToFile writes via a temporary file in the same directory as `filePath`,
+// renamed into place once the transfer completes. Streams so a large dataset
+// is never held in memory. A failed or aborted transfer removes the temp file and
+// leaves any existing file at `filePath` untouched.
+async function streamToFile(
+  body: ReadableStream<Uint8Array>,
+  filePath: string,
+  context: { datasetId: string; signal?: AbortSignal },
+): Promise<void> {
+  const tempPath = join(dirname(filePath), `.${basename(filePath)}.${randomUUID()}.tmp`);
+  try {
+    await pipeline(
+      Readable.fromWeb(body as Parameters<typeof Readable.fromWeb>[0]),
+      endWithNewline(),
+      createWriteStream(tempPath),
+      { signal: context.signal },
+    );
+    await rename(tempPath, filePath);
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    if (context.signal?.aborted) throw context.signal.reason ?? error;
+    throw new DatasetWriteError(`Could not write dataset "${context.datasetId}" to ${filePath}`, {
+      cause: error,
+      meta: { datasetId: context.datasetId, filePath },
+    });
   }
 }
 

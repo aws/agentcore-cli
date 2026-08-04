@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -16,8 +17,15 @@ const REGION = "us-west-2";
 const EXAMPLE_A = { scenario_id: "shipped-order", turns: [{ input: "Where is order 12345?" }] };
 const EXAMPLE_B = { scenario_id: "unknown-order", turns: [{ input: "Where is order 99999?" }] };
 
+const dirs: string[] = [];
+afterEach(async () => {
+  await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
+});
+
 function writeTempJsonl(...examples: unknown[]): string {
-  const path = join(mkdtempSync(join(tmpdir(), "agentcore-dataset-")), "orders.jsonl");
+  const dir = mkdtempSync(join(tmpdir(), "agentcore-dataset-"));
+  dirs.push(dir);
+  const path = join(dir, "orders.jsonl");
   writeFileSync(path, `${examples.map((e) => JSON.stringify(e)).join("\n")}\n`);
   return path;
 }
@@ -66,7 +74,7 @@ describe("eval dataset command hierarchy", () => {
       ?.children()
       .find((c) => c.name() === "dataset");
 
-    expect(dataset?.children().map((c) => c.name())).toEqual(["create"]);
+    expect(dataset?.children().map((c) => c.name())).toEqual(["create", "get", "list", "delete"]);
   });
 
   test("prints help for bare `eval dataset` without calling the service", async () => {
@@ -308,7 +316,9 @@ describe("dataset create", () => {
     });
 
     test("reports the offending line for malformed JSONL", async () => {
-      const badPath = join(mkdtempSync(join(tmpdir(), "agentcore-dataset-")), "bad.jsonl");
+      const badDir = mkdtempSync(join(tmpdir(), "agentcore-dataset-"));
+      dirs.push(badDir);
+      const badPath = join(badDir, "bad.jsonl");
       writeFileSync(badPath, `${JSON.stringify(EXAMPLE_A)}\n{"scenario_id": "broken"\n`);
       const { core, route } = testDatasetCommand();
 
@@ -327,5 +337,170 @@ describe("dataset create", () => {
       await expect(promise).rejects.toThrow(/line 2/);
       expect(core.eval.calls).toHaveLength(0);
     });
+  });
+});
+
+describe("dataset get", () => {
+  test("gets DRAFT metadata when no version is given", async () => {
+    const { core, stdout, route } = testDatasetCommand();
+    core.eval.setGetDatasetResponse({
+      datasetId: "dataset-orders-abc123",
+      datasetVersion: "DRAFT",
+      datasetName: "orders-regression",
+      status: "ACTIVE",
+      draftStatus: "MODIFIED",
+      schemaType: "AGENTCORE_EVALUATION_PREDEFINED_V1",
+      exampleCount: 2,
+    } as never);
+
+    await route(["eval", "dataset", "get", "--id", "dataset-orders-abc123"]);
+
+    const call = core.eval.calls.find((c) => c.method === "getDataset");
+    expect(call?.args.slice(0, 2)).toEqual(["dataset-orders-abc123", undefined]);
+    expect(JSON.parse(stdout())).toMatchObject({ datasetVersion: "DRAFT", exampleCount: 2 });
+  });
+
+  test("passes --version through to the service", async () => {
+    const { core, route } = testDatasetCommand();
+
+    await route(["eval", "dataset", "get", "--id", "dataset-orders-abc123", "--version", "1"]);
+
+    const call = core.eval.calls.find((c) => c.method === "getDataset");
+    expect(call?.args.slice(0, 2)).toEqual(["dataset-orders-abc123", "1"]);
+  });
+
+  // --file-path is what folds the previous CLI's `dataset download` into `get`:
+  // metadata still goes to stdout, and the examples additionally land on disk.
+  test("downloads examples when --file-path is given, still printing metadata", async () => {
+    const { core, stdout, route } = testDatasetCommand();
+    core.eval.setGetDatasetResponse({
+      datasetId: "dataset-orders-abc123",
+      datasetVersion: "DRAFT",
+      exampleCount: 2,
+    } as never);
+
+    await route([
+      "eval",
+      "dataset",
+      "get",
+      "--id",
+      "dataset-orders-abc123",
+      "--file-path",
+      "/tmp/out.jsonl",
+    ]);
+
+    // The download path replaces the plain get, rather than calling both.
+    expect(core.eval.calls.map((c) => c.method)).toEqual(["downloadDataset"]);
+    const call = core.eval.calls[0];
+    expect(call?.args.slice(0, 3)).toEqual(["dataset-orders-abc123", undefined, "/tmp/out.jsonl"]);
+    expect(JSON.parse(stdout())).toMatchObject({ exampleCount: 2 });
+  });
+
+  test("downloads a specific version when --version and --file-path are combined", async () => {
+    const { core, route } = testDatasetCommand();
+
+    await route([
+      "eval",
+      "dataset",
+      "get",
+      "--id",
+      "dataset-orders-abc123",
+      "--version",
+      "2",
+      "--file-path",
+      "/tmp/v2.jsonl",
+    ]);
+
+    const call = core.eval.calls.find((c) => c.method === "downloadDataset");
+    expect(call?.args.slice(0, 3)).toEqual(["dataset-orders-abc123", "2", "/tmp/v2.jsonl"]);
+  });
+
+  test("requires --id", async () => {
+    const { core, route } = testDatasetCommand();
+
+    await expect(route(["eval", "dataset", "get"])).rejects.toThrow(/--id/);
+    expect(core.eval.calls).toHaveLength(0);
+  });
+});
+
+describe("dataset list", () => {
+  test("lists datasets without pagination flags", async () => {
+    const { core, stdout, route } = testDatasetCommand();
+    core.eval.setListDatasetsResponse({
+      datasets: [{ datasetId: "dataset-orders-abc123", datasetName: "orders-regression" }],
+    } as never);
+
+    await route(["eval", "dataset", "list"]);
+
+    const call = core.eval.calls.find((c) => c.method === "listDatasets");
+    expect(call?.args.slice(0, 2)).toEqual([undefined, undefined]);
+    expect(JSON.parse(stdout()).datasets).toHaveLength(1);
+  });
+
+  test("paginates with --max-results and --next-token", async () => {
+    const { core, stdout, route } = testDatasetCommand();
+    core.eval.setListDatasetsResponse(
+      { datasets: [{ datasetId: "second-page" }] } as never,
+      "token-1",
+    );
+
+    await route(["eval", "dataset", "list", "--max-results", "1", "--next-token", "token-1"]);
+
+    const call = core.eval.calls.find((c) => c.method === "listDatasets");
+    expect(call?.args.slice(0, 2)).toEqual(["token-1", 1]);
+    expect(JSON.parse(stdout()).datasets).toEqual([{ datasetId: "second-page" }]);
+  });
+});
+
+describe("dataset delete", () => {
+  test("deletes the whole dataset when no version is given", async () => {
+    const { core, stdout, route } = testDatasetCommand();
+    core.eval.setDeleteDatasetResponse({
+      datasetId: "dataset-orders-abc123",
+      status: "DELETING",
+    } as never);
+
+    await route(["eval", "dataset", "delete", "--id", "dataset-orders-abc123"]);
+
+    const call = core.eval.calls.find((c) => c.method === "deleteDataset");
+    expect(call?.args.slice(0, 2)).toEqual(["dataset-orders-abc123", undefined]);
+    expect(JSON.parse(stdout())).toMatchObject({ status: "DELETING" });
+  });
+
+  // Passing a version narrows the delete to that published snapshot, leaving the
+  // dataset and its other versions in place.
+  test("deletes only the named version when --version is given", async () => {
+    const { core, route } = testDatasetCommand();
+
+    await route(["eval", "dataset", "delete", "--id", "dataset-orders-abc123", "--version", "1"]);
+
+    const call = core.eval.calls.find((c) => c.method === "deleteDataset");
+    expect(call?.args.slice(0, 2)).toEqual(["dataset-orders-abc123", "1"]);
+  });
+
+  // Deletion is destructive but takes no confirmation flag: headless commands
+  // never prompt, and the CLI has no --yes convention.
+  test("takes no confirmation flag", async () => {
+    const root = createRootHandler(new TestCoreClient(), {
+      io: testIO().io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    const del = root
+      .children()
+      .find((c) => c.name() === "eval")
+      ?.children()
+      .find((c) => c.name() === "dataset")
+      ?.children()
+      .find((c) => c.name() === "delete");
+
+    expect(del?.flags().map((f) => f.name)).toEqual(["id", "version"]);
+  });
+
+  test("requires --id", async () => {
+    const { core, route } = testDatasetCommand();
+
+    await expect(route(["eval", "dataset", "delete"])).rejects.toThrow(/--id/);
+    expect(core.eval.calls).toHaveLength(0);
   });
 });

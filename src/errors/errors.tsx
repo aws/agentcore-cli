@@ -142,3 +142,22 @@ export class RuntimeInvokeResponseError extends AgentCoreCLIError {
     super(message, { cause });
   }
 }
+
+/**
+ * A dataset's examples could not be fetched, or does not exist yet.
+ */
+export class DatasetDownloadError extends AgentCoreCLIError {
+  constructor(message: string, options?: AgentCoreCLIErrorOptions) {
+    super(message, { source: ERROR_SOURCE.SERVICE, ...options });
+  }
+}
+
+/**
+ * A downloaded dataset could not be written to its destination.
+ * Local and user-fixable: a missing directory, a permission denial, etc.
+ */
+export class DatasetWriteError extends AgentCoreCLIError {
+  constructor(message: string, options?: AgentCoreCLIErrorOptions) {
+    super(message, { source: ERROR_SOURCE.USER, ...options });
+  }
+}

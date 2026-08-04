@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SourceResolver } from "../../../io";
@@ -12,8 +13,15 @@ function resolver(): SourceResolver {
   return new SourceResolver({ stdin: null as unknown as NodeJS.ReadStream });
 }
 
+const dirs: string[] = [];
+afterEach(async () => {
+  await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
+});
+
 function writeTempFile(name: string, contents: string): string {
-  const path = join(mkdtempSync(join(tmpdir(), "agentcore-dataset-")), name);
+  const dir = mkdtempSync(join(tmpdir(), "agentcore-dataset-"));
+  dirs.push(dir);
+  const path = join(dir, name);
   writeFileSync(path, contents);
   return path;
 }
