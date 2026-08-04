@@ -34,6 +34,12 @@ export class InlinePolicySwap {
     return name;
   }
 
+  /**
+   * Attaches a complete candidate policy before running the operation, then removes
+   * previous policies in the family only after the operation succeeds. On failure,
+   * a candidate created by this invocation is removed and previous policies remain.
+   * An undefined policy document removes the policy family after a successful operation.
+   */
   async run<T>(policyDocument: string | undefined, operation: () => Promise<T>): Promise<T> {
     const existingPolicyNames = (await this.listPolicyNames()).filter((name) =>
       this.isFamilyMember(name),
