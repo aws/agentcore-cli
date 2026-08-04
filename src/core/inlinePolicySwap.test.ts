@@ -5,7 +5,7 @@ import {
   PutRolePolicyCommand,
   type IAMClient,
 } from "@aws-sdk/client-iam";
-import { candidateInlinePolicyName, swapInlinePolicyForOperation } from "./inlinePolicySwap";
+import { InlinePolicySwap } from "./inlinePolicySwap";
 
 const ROLE_NAME = "AgentCoreHarness-orders";
 const POLICY_PREFIX = "AgentCoreHarnessExecutionPolicy";
@@ -15,6 +15,14 @@ type SentCommand = DeleteRolePolicyCommand | ListRolePoliciesCommand | PutRolePo
 
 function iamClient(send: (command: SentCommand) => Promise<Record<string, unknown>>): IAMClient {
   return { send } as unknown as IAMClient;
+}
+
+function policySwap(iam: IAMClient, policyDocument?: string): InlinePolicySwap {
+  return new InlinePolicySwap(iam, {
+    roleName: ROLE_NAME,
+    policyNamePrefix: POLICY_PREFIX,
+    policyDocument,
+  });
 }
 
 test("stages a complete candidate and removes previous family policies after success", async () => {
@@ -31,20 +39,12 @@ test("stages a complete candidate and removes previous family policies after suc
     return {};
   });
 
-  const result = await swapInlinePolicyForOperation(
-    iam,
-    {
-      roleName: ROLE_NAME,
-      policyNamePrefix: POLICY_PREFIX,
-      policyDocument: POLICY_DOCUMENT,
-    },
-    async () => {
-      expect(sent.at(-1)).toBeInstanceOf(PutRolePolicyCommand);
-      return "created";
-    },
-  );
+  const result = await policySwap(iam, POLICY_DOCUMENT).run(async () => {
+    expect(sent.at(-1)).toBeInstanceOf(PutRolePolicyCommand);
+    return "created";
+  });
 
-  const candidateName = candidateInlinePolicyName(POLICY_PREFIX, POLICY_DOCUMENT);
+  const candidateName = InlinePolicySwap.candidatePolicyName(POLICY_PREFIX, POLICY_DOCUMENT);
   expect(result).toBe("created");
   expect(sent.map((command) => command.constructor.name)).toEqual([
     "ListRolePoliciesCommand",
@@ -71,28 +71,20 @@ test("removes a new candidate and preserves previous policies when the operation
   });
 
   await expect(
-    swapInlinePolicyForOperation(
-      iam,
-      {
-        roleName: ROLE_NAME,
-        policyNamePrefix: POLICY_PREFIX,
-        policyDocument: POLICY_DOCUMENT,
-      },
-      async () => {
-        throw new Error("deployment failed");
-      },
-    ),
+    policySwap(iam, POLICY_DOCUMENT).run(async () => {
+      throw new Error("deployment failed");
+    }),
   ).rejects.toThrow("deployment failed");
 
   expect(
     sent
       .filter((command) => command instanceof DeleteRolePolicyCommand)
       .map((command) => command.input.PolicyName),
-  ).toEqual([candidateInlinePolicyName(POLICY_PREFIX, POLICY_DOCUMENT)]);
+  ).toEqual([InlinePolicySwap.candidatePolicyName(POLICY_PREFIX, POLICY_DOCUMENT)]);
 });
 
 test("keeps a pre-existing candidate when the operation fails", async () => {
-  const candidateName = candidateInlinePolicyName(POLICY_PREFIX, POLICY_DOCUMENT);
+  const candidateName = InlinePolicySwap.candidatePolicyName(POLICY_PREFIX, POLICY_DOCUMENT);
   const sent: SentCommand[] = [];
   const iam = iamClient(async (command) => {
     sent.push(command);
@@ -103,17 +95,9 @@ test("keeps a pre-existing candidate when the operation fails", async () => {
   });
 
   await expect(
-    swapInlinePolicyForOperation(
-      iam,
-      {
-        roleName: ROLE_NAME,
-        policyNamePrefix: POLICY_PREFIX,
-        policyDocument: POLICY_DOCUMENT,
-      },
-      async () => {
-        throw new Error("deployment failed");
-      },
-    ),
+    policySwap(iam, POLICY_DOCUMENT).run(async () => {
+      throw new Error("deployment failed");
+    }),
   ).rejects.toThrow("deployment failed");
 
   expect(sent.some((command) => command instanceof DeleteRolePolicyCommand)).toBeFalse();
@@ -130,17 +114,9 @@ test("removes a first candidate when the first operation fails", async () => {
   });
 
   await expect(
-    swapInlinePolicyForOperation(
-      iam,
-      {
-        roleName: ROLE_NAME,
-        policyNamePrefix: POLICY_PREFIX,
-        policyDocument: POLICY_DOCUMENT,
-      },
-      async () => {
-        throw new Error("deployment failed");
-      },
-    ),
+    policySwap(iam, POLICY_DOCUMENT).run(async () => {
+      throw new Error("deployment failed");
+    }),
   ).rejects.toThrow("deployment failed");
 
   expect(sent.map((command) => command.constructor.name)).toEqual([
@@ -159,17 +135,11 @@ test("preserves both operation and rollback failures", async () => {
     return {};
   });
 
-  const error = await swapInlinePolicyForOperation(
-    iam,
-    {
-      roleName: ROLE_NAME,
-      policyNamePrefix: POLICY_PREFIX,
-      policyDocument: POLICY_DOCUMENT,
-    },
-    async () => {
+  const error = await policySwap(iam, POLICY_DOCUMENT)
+    .run(async () => {
       throw new Error("deployment failed");
-    },
-  ).catch((caught) => caught);
+    })
+    .catch((caught) => caught);
 
   expect(error).toBeInstanceOf(AggregateError);
   expect((error as AggregateError).errors.map((cause) => (cause as Error).message)).toEqual([
@@ -179,7 +149,7 @@ test("preserves both operation and rollback failures", async () => {
 });
 
 test("keeps the candidate when previous-policy cleanup fails after success", async () => {
-  const candidateName = candidateInlinePolicyName(POLICY_PREFIX, POLICY_DOCUMENT);
+  const candidateName = InlinePolicySwap.candidatePolicyName(POLICY_PREFIX, POLICY_DOCUMENT);
   const sent: SentCommand[] = [];
   const iam = iamClient(async (command) => {
     sent.push(command);
@@ -192,17 +162,9 @@ test("keeps the candidate when previous-policy cleanup fails after success", asy
     return {};
   });
 
-  await expect(
-    swapInlinePolicyForOperation(
-      iam,
-      {
-        roleName: ROLE_NAME,
-        policyNamePrefix: POLICY_PREFIX,
-        policyDocument: POLICY_DOCUMENT,
-      },
-      async () => "created",
-    ),
-  ).rejects.toThrow("Operation succeeded but previous IAM policies could not be removed");
+  await expect(policySwap(iam, POLICY_DOCUMENT).run(async () => "created")).rejects.toThrow(
+    "Operation succeeded but previous IAM policies could not be removed",
+  );
 
   expect((sent[1] as PutRolePolicyCommand).input.PolicyName).toBe(candidateName);
   expect(
@@ -224,15 +186,7 @@ test("lists every policy page before staging the candidate", async () => {
     return {};
   });
 
-  await swapInlinePolicyForOperation(
-    iam,
-    {
-      roleName: ROLE_NAME,
-      policyNamePrefix: POLICY_PREFIX,
-      policyDocument: POLICY_DOCUMENT,
-    },
-    async () => "created",
-  );
+  await policySwap(iam, POLICY_DOCUMENT).run(async () => "created");
 
   expect(sent.slice(0, 3).map((command) => command.constructor.name)).toEqual([
     "ListRolePoliciesCommand",
@@ -255,16 +209,9 @@ test("removes previous family policies after a successful operation with no cand
     return {};
   });
 
-  await swapInlinePolicyForOperation(
-    iam,
-    {
-      roleName: ROLE_NAME,
-      policyNamePrefix: POLICY_PREFIX,
-    },
-    async () => {
-      expect(sent.some((command) => command instanceof PutRolePolicyCommand)).toBeFalse();
-    },
-  );
+  await policySwap(iam).run(async () => {
+    expect(sent.some((command) => command instanceof PutRolePolicyCommand)).toBeFalse();
+  });
 
   expect(
     sent
@@ -284,16 +231,9 @@ test("preserves previous family policies after a failed operation with no candid
   });
 
   await expect(
-    swapInlinePolicyForOperation(
-      iam,
-      {
-        roleName: ROLE_NAME,
-        policyNamePrefix: POLICY_PREFIX,
-      },
-      async () => {
-        throw new Error("deployment failed");
-      },
-    ),
+    policySwap(iam).run(async () => {
+      throw new Error("deployment failed");
+    }),
   ).rejects.toThrow("deployment failed");
 
   expect(sent.map((command) => command.constructor.name)).toEqual(["ListRolePoliciesCommand"]);

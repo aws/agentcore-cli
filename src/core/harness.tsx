@@ -39,7 +39,7 @@ import type { CoreHarnessClient, CreateHarnessInput } from "../handlers/harness/
 import type { AwsClients, CoreOptions } from "./types";
 import { abortable } from "./abortable";
 import { ensureDefaultExecutionRole, HARNESS_EXECUTION_POLICY_NAME } from "./executionRole";
-import { swapInlinePolicyForOperation } from "./inlinePolicySwap";
+import { InlinePolicySwap } from "./inlinePolicySwap";
 import { toClientConfig } from "./utils";
 
 // HarnessClient implements the harness-facing operations on top of the shared AWS
@@ -128,17 +128,14 @@ export class HarnessClient implements CoreHarnessClient {
       input.harnessName!,
       options.region,
     );
-    return swapInlinePolicyForOperation(
-      iam,
-      {
-        roleName: role.roleName,
-        policyNamePrefix: HARNESS_EXECUTION_POLICY_NAME,
-        policyDocument: role.policyDocument,
-      },
-      () =>
-        retryWhileRoleUnassumable(() =>
-          control.send(new CreateHarnessCommand({ ...request, executionRoleArn: role.roleArn })),
-        ),
+    return new InlinePolicySwap(iam, {
+      roleName: role.roleName,
+      policyNamePrefix: HARNESS_EXECUTION_POLICY_NAME,
+      policyDocument: role.policyDocument,
+    }).run(() =>
+      retryWhileRoleUnassumable(() =>
+        control.send(new CreateHarnessCommand({ ...request, executionRoleArn: role.roleArn })),
+      ),
     );
   }
 

@@ -14,7 +14,7 @@ import {
 } from "@aws-sdk/client-iam";
 import { HARNESS_EXECUTION_POLICY_NAME } from "./executionRole";
 import { HarnessClient } from "./harness";
-import { candidateInlinePolicyName } from "./inlinePolicySwap";
+import { InlinePolicySwap } from "./inlinePolicySwap";
 import type { AwsClients } from "./types";
 
 const ROLE_NAME = "AgentCoreHarness-orders";
@@ -89,7 +89,7 @@ test("creates Harness with a candidate policy and removes the previous policy af
     "DeleteRolePolicyCommand",
   ]);
   expect((sent[2] as PutRolePolicyCommand).input.PolicyName).toBe(
-    candidateInlinePolicyName(HARNESS_EXECUTION_POLICY_NAME, policyDocument),
+    InlinePolicySwap.candidatePolicyName(HARNESS_EXECUTION_POLICY_NAME, policyDocument),
   );
   expect((sent[3] as CreateHarnessCommand).input.executionRoleArn).toBe(ROLE_ARN);
   expect((sent[4] as DeleteRolePolicyCommand).input.PolicyName).toBe(HARNESS_EXECUTION_POLICY_NAME);

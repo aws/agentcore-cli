@@ -9,124 +9,123 @@ import {
 const POLICY_HASH_LENGTH = 32;
 const MAX_POLICY_NAME_LENGTH = 128;
 
-export type InlinePolicySwapOptions = {
+export type InlinePolicySwapConfig = {
   roleName: string;
   policyNamePrefix: string;
   policyDocument?: string;
 };
 
-export function candidateInlinePolicyName(
-  policyNamePrefix: string,
-  policyDocument: string,
-): string {
-  const suffix = createHash("sha256")
-    .update(policyDocument)
-    .digest("hex")
-    .slice(0, POLICY_HASH_LENGTH);
-  const name = `${policyNamePrefix}-${suffix}`;
-  if (name.length > MAX_POLICY_NAME_LENGTH) {
-    throw new Error(
-      `IAM policy name prefix must be at most ${MAX_POLICY_NAME_LENGTH - POLICY_HASH_LENGTH - 1} characters`,
-    );
-  }
-  return name;
-}
+export class InlinePolicySwap {
+  constructor(
+    private readonly iam: IAMClient,
+    private readonly config: InlinePolicySwapConfig,
+  ) {}
 
-export async function swapInlinePolicyForOperation<T>(
-  iam: IAMClient,
-  options: InlinePolicySwapOptions,
-  operation: () => Promise<T>,
-): Promise<T> {
-  const existingPolicyNames = (await listInlinePolicyNames(iam, options.roleName)).filter((name) =>
-    isPolicyFamilyMember(name, options.policyNamePrefix),
-  );
-  const candidateName = options.policyDocument
-    ? candidateInlinePolicyName(options.policyNamePrefix, options.policyDocument)
-    : undefined;
-  const candidateExisted = candidateName ? existingPolicyNames.includes(candidateName) : false;
-
-  if (candidateName) {
-    await iam.send(
-      new PutRolePolicyCommand({
-        RoleName: options.roleName,
-        PolicyName: candidateName,
-        PolicyDocument: options.policyDocument,
-      }),
-    );
-  }
-
-  let result: T;
-  try {
-    result = await operation();
-  } catch (operationError) {
-    if (candidateName && !candidateExisted) {
-      try {
-        await deleteInlinePolicies(iam, options.roleName, [candidateName]);
-      } catch (rollbackError) {
-        throw new AggregateError(
-          [operationError, rollbackError],
-          "Operation failed and its candidate IAM policy could not be removed",
-        );
-      }
+  static candidatePolicyName(policyNamePrefix: string, policyDocument: string): string {
+    const suffix = createHash("sha256")
+      .update(policyDocument)
+      .digest("hex")
+      .slice(0, POLICY_HASH_LENGTH);
+    const name = `${policyNamePrefix}-${suffix}`;
+    if (name.length > MAX_POLICY_NAME_LENGTH) {
+      throw new Error(
+        `IAM policy name prefix must be at most ${MAX_POLICY_NAME_LENGTH - POLICY_HASH_LENGTH - 1} characters`,
+      );
     }
-    throw operationError;
+    return name;
   }
 
-  const previousPolicyNames = candidateName
-    ? existingPolicyNames.filter((name) => name !== candidateName)
-    : existingPolicyNames;
-  try {
-    await deleteInlinePolicies(iam, options.roleName, previousPolicyNames);
-  } catch (cleanupError) {
-    throw new AggregateError(
-      [cleanupError],
-      "Operation succeeded but previous IAM policies could not be removed",
+  async run<T>(operation: () => Promise<T>): Promise<T> {
+    const existingPolicyNames = (await this.listPolicyNames()).filter((name) =>
+      this.isFamilyMember(name),
     );
-  }
-  return result;
-}
+    const candidateName = this.config.policyDocument
+      ? InlinePolicySwap.candidatePolicyName(
+          this.config.policyNamePrefix,
+          this.config.policyDocument,
+        )
+      : undefined;
+    const candidateExisted = candidateName ? existingPolicyNames.includes(candidateName) : false;
 
-async function listInlinePolicyNames(iam: IAMClient, roleName: string): Promise<string[]> {
-  const names: string[] = [];
-  let marker: string | undefined;
-  do {
-    const response = await iam.send(
-      new ListRolePoliciesCommand({
-        RoleName: roleName,
-        ...(marker ? { Marker: marker } : {}),
-      }),
-    );
-    names.push(...(response.PolicyNames ?? []));
-    marker = response.IsTruncated ? response.Marker : undefined;
-  } while (marker);
-  return names;
-}
-
-function isPolicyFamilyMember(name: string, prefix: string): boolean {
-  if (name === prefix) return true;
-  const suffix = name.slice(prefix.length + 1);
-  return name.startsWith(`${prefix}-`) && /^[0-9a-f]{32}$/.test(suffix);
-}
-
-async function deleteInlinePolicies(
-  iam: IAMClient,
-  roleName: string,
-  policyNames: string[],
-): Promise<void> {
-  const errors: unknown[] = [];
-  for (const policyName of policyNames) {
-    try {
-      await iam.send(
-        new DeleteRolePolicyCommand({
-          RoleName: roleName,
-          PolicyName: policyName,
+    if (candidateName) {
+      await this.iam.send(
+        new PutRolePolicyCommand({
+          RoleName: this.config.roleName,
+          PolicyName: candidateName,
+          PolicyDocument: this.config.policyDocument,
         }),
       );
-    } catch (error) {
-      errors.push(error);
     }
+
+    let result: T;
+    try {
+      result = await operation();
+    } catch (operationError) {
+      if (candidateName && !candidateExisted) {
+        try {
+          await this.deletePolicies([candidateName]);
+        } catch (rollbackError) {
+          throw new AggregateError(
+            [operationError, rollbackError],
+            "Operation failed and its candidate IAM policy could not be removed",
+          );
+        }
+      }
+      throw operationError;
+    }
+
+    const previousPolicyNames = candidateName
+      ? existingPolicyNames.filter((name) => name !== candidateName)
+      : existingPolicyNames;
+    try {
+      await this.deletePolicies(previousPolicyNames);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [cleanupError],
+        "Operation succeeded but previous IAM policies could not be removed",
+      );
+    }
+    return result;
   }
-  if (errors.length > 0) {
-    throw new AggregateError(errors, "One or more IAM policies could not be removed");
+
+  private async listPolicyNames(): Promise<string[]> {
+    const names: string[] = [];
+    let marker: string | undefined;
+    do {
+      const response = await this.iam.send(
+        new ListRolePoliciesCommand({
+          RoleName: this.config.roleName,
+          ...(marker ? { Marker: marker } : {}),
+        }),
+      );
+      names.push(...(response.PolicyNames ?? []));
+      marker = response.IsTruncated ? response.Marker : undefined;
+    } while (marker);
+    return names;
+  }
+
+  private isFamilyMember(name: string): boolean {
+    if (name === this.config.policyNamePrefix) return true;
+    const suffix = name.slice(this.config.policyNamePrefix.length + 1);
+    return name.startsWith(`${this.config.policyNamePrefix}-`) && /^[0-9a-f]{32}$/.test(suffix);
+  }
+
+  private async deletePolicies(policyNames: string[]): Promise<void> {
+    const errors: unknown[] = [];
+    for (const policyName of policyNames) {
+      try {
+        await this.iam.send(
+          new DeleteRolePolicyCommand({
+            RoleName: this.config.roleName,
+            PolicyName: policyName,
+          }),
+        );
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "One or more IAM policies could not be removed");
+    }
   }
 }
