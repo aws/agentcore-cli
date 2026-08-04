@@ -303,13 +303,14 @@ describe("paginated table picker contract", () => {
     expect(r.lastFrame()).toContain("agentcore → harness → get → alpha-1");
   });
 
-  test("fills the content area before and during filtering", async () => {
+  test("fills the content area before and during a long filter", async () => {
+    const longFilter = `${"filter-prefix-".repeat(8)}visible-suffix`;
     const core = new TestCoreClient();
     core.harness.setListResponse({
       harnesses: Array.from({ length: 33 }, (_, index) =>
         harness({
           harnessId: `harness-${index}`,
-          harnessName: `harness-${String(index).padStart(2, "0")}`,
+          harnessName: `${longFilter}-${String(index).padStart(2, "0")}`,
         }),
       ),
       nextToken: "t2",
@@ -322,10 +323,13 @@ describe("paginated table picker contract", () => {
     expect(lines[38]).toMatch(/^─+$/);
 
     await r.write("/");
-    await waitForText(r.lastFrame, "/ Filter:");
+    await r.write(longFilter);
+    await waitForText(r.lastFrame, "visible-suffix");
     lines = (r.lastFrame() ?? "").split("\n");
     expect(lines[2]).toContain("name");
-    expect(lines[3]).toContain("/ Filter:");
+    expect(lines[3]).toContain("/ Filter: …");
+    expect(lines[3]).toContain("visible-suffix█");
+    expect(stringWidth(lines[3]!)).toBeLessThanOrEqual(100);
     expect(lines[37]).toContain("page 1 · more →");
     expect(lines[38]).toMatch(/^─+$/);
   });

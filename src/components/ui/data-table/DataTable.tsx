@@ -191,14 +191,29 @@ export function DataTable<T extends Record<string, unknown>>({
     const width = computedWidths.widths[index];
     return width === undefined ? [] : [{ column, width }];
   });
+  const filterPrefix = "/ Filter: ";
+  const filterCursor = searchMode ? "█" : "";
+  const availableQueryWidth = Math.max(
+    0,
+    computedWidths.totalWidth - stringWidth(filterPrefix) - stringWidth(filterCursor),
+  );
+  const visibleSearchQuery =
+    availableQueryWidth > 0
+      ? cliTruncate(searchQuery, availableQueryWidth, {
+          position: "start",
+        })
+      : "";
   const filterLine = searchMode ? (
-    <Text>
-      <Text color={theme.colors.primary}>/ Filter: </Text>
-      <Text color={theme.colors.text}>{searchQuery}</Text>
-      <Text color={theme.colors.primary}>█</Text>
+    <Text wrap="truncate">
+      <Text color={theme.colors.primary}>{filterPrefix}</Text>
+      <Text color={theme.colors.text}>{visibleSearchQuery}</Text>
+      <Text color={theme.colors.primary}>{filterCursor}</Text>
     </Text>
   ) : searchQuery ? (
-    <Text color={theme.colors.muted}>/ Filter: {searchQuery}</Text>
+    <Text color={theme.colors.muted} wrap="truncate">
+      {filterPrefix}
+      {visibleSearchQuery}
+    </Text>
   ) : undefined;
 
   return (
@@ -230,7 +245,7 @@ export function DataTable<T extends Record<string, unknown>>({
         </Box>
 
         {/* Filter input replaces the divider so filtering does not change table height. */}
-        <Box flexDirection="row">
+        <Box flexDirection="row" width={computedWidths.totalWidth}>
           {searchable && filterLine ? (
             filterLine
           ) : (
