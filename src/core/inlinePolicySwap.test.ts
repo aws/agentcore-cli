@@ -240,3 +240,61 @@ test("lists every policy page before staging the candidate", async () => {
     "PutRolePolicyCommand",
   ]);
 });
+
+test("removes previous family policies after a successful operation with no candidate", async () => {
+  const sent: SentCommand[] = [];
+  const oldCandidate = `${POLICY_PREFIX}-${"a".repeat(32)}`;
+  const iam = iamClient(async (command) => {
+    sent.push(command);
+    if (command instanceof ListRolePoliciesCommand) {
+      return {
+        PolicyNames: [POLICY_PREFIX, oldCandidate, "CustomerPolicy"],
+        IsTruncated: false,
+      };
+    }
+    return {};
+  });
+
+  await swapInlinePolicyForOperation(
+    iam,
+    {
+      roleName: ROLE_NAME,
+      policyNamePrefix: POLICY_PREFIX,
+    },
+    async () => {
+      expect(sent.some((command) => command instanceof PutRolePolicyCommand)).toBeFalse();
+    },
+  );
+
+  expect(
+    sent
+      .filter((command) => command instanceof DeleteRolePolicyCommand)
+      .map((command) => command.input.PolicyName),
+  ).toEqual([POLICY_PREFIX, oldCandidate]);
+});
+
+test("preserves previous family policies after a failed operation with no candidate", async () => {
+  const sent: SentCommand[] = [];
+  const iam = iamClient(async (command) => {
+    sent.push(command);
+    if (command instanceof ListRolePoliciesCommand) {
+      return { PolicyNames: [POLICY_PREFIX], IsTruncated: false };
+    }
+    return {};
+  });
+
+  await expect(
+    swapInlinePolicyForOperation(
+      iam,
+      {
+        roleName: ROLE_NAME,
+        policyNamePrefix: POLICY_PREFIX,
+      },
+      async () => {
+        throw new Error("deployment failed");
+      },
+    ),
+  ).rejects.toThrow("deployment failed");
+
+  expect(sent.map((command) => command.constructor.name)).toEqual(["ListRolePoliciesCommand"]);
+});

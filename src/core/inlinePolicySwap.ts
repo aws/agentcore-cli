@@ -12,7 +12,7 @@ const MAX_POLICY_NAME_LENGTH = 128;
 export type InlinePolicySwapOptions = {
   roleName: string;
   policyNamePrefix: string;
-  policyDocument: string;
+  policyDocument?: string;
 };
 
 export function candidateInlinePolicyName(
@@ -40,22 +40,26 @@ export async function swapInlinePolicyForOperation<T>(
   const existingPolicyNames = (await listInlinePolicyNames(iam, options.roleName)).filter((name) =>
     isPolicyFamilyMember(name, options.policyNamePrefix),
   );
-  const candidateName = candidateInlinePolicyName(options.policyNamePrefix, options.policyDocument);
-  const candidateExisted = existingPolicyNames.includes(candidateName);
+  const candidateName = options.policyDocument
+    ? candidateInlinePolicyName(options.policyNamePrefix, options.policyDocument)
+    : undefined;
+  const candidateExisted = candidateName ? existingPolicyNames.includes(candidateName) : false;
 
-  await iam.send(
-    new PutRolePolicyCommand({
-      RoleName: options.roleName,
-      PolicyName: candidateName,
-      PolicyDocument: options.policyDocument,
-    }),
-  );
+  if (candidateName) {
+    await iam.send(
+      new PutRolePolicyCommand({
+        RoleName: options.roleName,
+        PolicyName: candidateName,
+        PolicyDocument: options.policyDocument,
+      }),
+    );
+  }
 
   let result: T;
   try {
     result = await operation();
   } catch (operationError) {
-    if (!candidateExisted) {
+    if (candidateName && !candidateExisted) {
       try {
         await deleteInlinePolicies(iam, options.roleName, [candidateName]);
       } catch (rollbackError) {
@@ -68,7 +72,9 @@ export async function swapInlinePolicyForOperation<T>(
     throw operationError;
   }
 
-  const previousPolicyNames = existingPolicyNames.filter((name) => name !== candidateName);
+  const previousPolicyNames = candidateName
+    ? existingPolicyNames.filter((name) => name !== candidateName)
+    : existingPolicyNames;
   try {
     await deleteInlinePolicies(iam, options.roleName, previousPolicyNames);
   } catch (cleanupError) {
