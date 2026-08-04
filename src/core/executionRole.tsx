@@ -1,9 +1,4 @@
-import {
-  CreateRoleCommand,
-  GetRoleCommand,
-  PutRolePolicyCommand,
-  type IAMClient,
-} from "@aws-sdk/client-iam";
+import { CreateRoleCommand, GetRoleCommand, type IAMClient } from "@aws-sdk/client-iam";
 
 // Default harness execution role provisioning.
 //
@@ -15,7 +10,13 @@ import {
 // role is reused and its inline policy refreshed — so repeated creates of the
 // same harness name converge on one role.
 
-const POLICY_NAME = "AgentCoreHarnessExecutionPolicy";
+export const HARNESS_EXECUTION_POLICY_NAME = "AgentCoreHarnessExecutionPolicy";
+
+export type HarnessExecutionRole = {
+  roleArn: string;
+  roleName: string;
+  policyDocument: string;
+};
 
 // executionRoleName derives the default role's name from the harness name. IAM
 // role names cap at 64 characters; harness names are alphanumeric/underscore so
@@ -230,14 +231,13 @@ function accountIdFromRoleArn(arn: string): string {
   return accountId;
 }
 
-// ensureDefaultExecutionRole returns the ARN of the default execution role for
-// `harnessName`, creating the role if it doesn't exist and (re)attaching the
-// default inline policy either way.
+// ensureDefaultExecutionRole creates or reuses the role and returns the complete
+// policy document that HarnessClient applies transactionally around creation.
 export async function ensureDefaultExecutionRole(
   iam: IAMClient,
   harnessName: string,
   region: string,
-): Promise<string> {
+): Promise<HarnessExecutionRole> {
   const roleName = executionRoleName(harnessName);
 
   let roleArn: string;
@@ -256,13 +256,9 @@ export async function ensureDefaultExecutionRole(
     roleArn = created.Role!.Arn!;
   }
 
-  await iam.send(
-    new PutRolePolicyCommand({
-      RoleName: roleName,
-      PolicyName: POLICY_NAME,
-      PolicyDocument: executionPolicy(region, accountIdFromRoleArn(roleArn), harnessName),
-    }),
-  );
-
-  return roleArn;
+  return {
+    roleArn,
+    roleName,
+    policyDocument: executionPolicy(region, accountIdFromRoleArn(roleArn), harnessName),
+  };
 }

@@ -38,7 +38,8 @@ import {
 import type { CoreHarnessClient, CreateHarnessInput } from "../handlers/harness/types";
 import type { AwsClients, CoreOptions } from "./types";
 import { abortable } from "./abortable";
-import { ensureDefaultExecutionRole } from "./executionRole";
+import { ensureDefaultExecutionRole, HARNESS_EXECUTION_POLICY_NAME } from "./executionRole";
+import { swapInlinePolicyForOperation } from "./inlinePolicySwap";
 import { toClientConfig } from "./utils";
 
 // HarnessClient implements the harness-facing operations on top of the shared AWS
@@ -119,15 +120,25 @@ export class HarnessClient implements CoreHarnessClient {
     // create the harness with it. IAM is eventually consistent — a role created
     // moments ago may not yet be assumable by the AgentCore service principal —
     // so retry the create while the service reports the role as unusable.
-    const defaultRoleArn = await ensureDefaultExecutionRole(
+    const iam = this.clients.iam({ region: options.region });
+    const role = await ensureDefaultExecutionRole(
       // IAM is a global service; the region only selects the endpoint, and the
       // agentcore endpoint override must not leak onto it.
-      this.clients.iam({ region: options.region }),
+      iam,
       input.harnessName!,
       options.region,
     );
-    return retryWhileRoleUnassumable(() =>
-      control.send(new CreateHarnessCommand({ ...request, executionRoleArn: defaultRoleArn })),
+    return swapInlinePolicyForOperation(
+      iam,
+      {
+        roleName: role.roleName,
+        policyNamePrefix: HARNESS_EXECUTION_POLICY_NAME,
+        policyDocument: role.policyDocument,
+      },
+      () =>
+        retryWhileRoleUnassumable(() =>
+          control.send(new CreateHarnessCommand({ ...request, executionRoleArn: role.roleArn })),
+        ),
     );
   }
 
