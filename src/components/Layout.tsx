@@ -22,12 +22,9 @@ export const Layout: React.FC<LayoutProps> = ({ breadcrumb, description, keyHint
   const { columns, rows } = useWindowSize();
 
   return (
-    <Box width={columns} height={rows} flexDirection="column" justifyContent="space-between">
+    <Box width={columns} height={rows} flexDirection="column">
       <Header breadcrumb={breadcrumb} description={description} />
-      {/* The header and footer each occupy 2 rows (breadcrumb/divider and
-          divider/key-hints), so the content area gets the remaining rows - 4.
-          ScrollView children need a concrete height to measure their viewport. */}
-      <Box height={rows - 4} flexDirection="column">
+      <Box flexGrow={1} flexShrink={1} minHeight={0} flexDirection="column">
         {children}
       </Box>
       <Footer keys={keyHints} />

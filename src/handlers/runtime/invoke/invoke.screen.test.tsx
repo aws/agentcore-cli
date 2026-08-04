@@ -310,6 +310,26 @@ describe("Runtime invoke JSON console", () => {
     expect(screen.lastFrame()).toContain("…");
   });
 
+  test("keeps status and shortcut rows intact with a long target at narrow widths", async () => {
+    const runtimeId = "RuntimeTuiMatrix_MatrixRuntime-vKVMPm4r8j";
+    const core = new TestCoreClient();
+    core.runtime.setGetResponse({
+      agentRuntimeArn: `arn:aws:bedrock-agentcore:${REGION}:123456789012:runtime/${runtimeId}`,
+    } as GetAgentRuntimeResponse);
+    const screen = renderScreen(`/agentcore/runtime/invoke/${runtimeId}/${QUALIFIER}`, { core });
+
+    await waitForText(screen.lastFrame, "Ready");
+    await screen.resize(80, 24);
+    expect(screen.lastFrame()).toContain("Ready · Session ID: Not set");
+    expect(screen.lastFrame()).toContain(
+      "[enter] send  [⇧↵] newline  [ctl+t] target  [↑↓] scroll  [esc] back",
+    );
+
+    await screen.resize(60, 24);
+    expect(screen.lastFrame()).toContain("Ready · Session ID: Not set");
+    expect(screen.lastFrame()).toContain("[enter] send  [⇧↵] newline  [↑↓] scroll  [esc] back");
+  });
+
   test("keeps the next JSON draft while the current response streams", async () => {
     const release = Promise.withResolvers<void>();
     const requests: RuntimeInvokeRequest[] = [];
@@ -374,13 +394,13 @@ describe("Runtime invoke JSON console", () => {
       .filter((frame) => frame.includes("streaming…"));
     expect(streamingFrames.length).toBeGreaterThan(0);
     for (const frame of streamingFrames) {
-      expect(frame).not.toContain("Runtime returned-runtime");
+      expect(frame).not.toContain("Session ID: returned-runtime");
       expect(frame).not.toContain("streaming ·");
     }
 
     release.resolve();
     await waitForText(screen.lastFrame, "complete · 16 bytes");
-    expect(screen.lastFrame()).toContain("Runtime returned-runtime");
+    expect(screen.lastFrame()).toContain("Session ID: returned-runtime");
   });
 
   test.each([
@@ -802,7 +822,12 @@ describe("Runtime invoke JSON console", () => {
       await waitForText(screen.lastFrame, "interrupted · 14 bytes");
       expect(screen.lastFrame()).toContain("data: partial");
       expect(screen.lastFrame()).toContain("Ready · Session ID: Not set");
-      expect(screen.lastFrame()).not.toContain("MCP session ID");
+      expect(
+        screen
+          .lastFrame()!
+          .split("\n")
+          .find((line) => line.includes("Ready · Session ID")),
+      ).not.toContain("MCP session ID");
     } finally {
       stop.resolve();
     }

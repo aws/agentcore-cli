@@ -41,9 +41,9 @@ const invokePath = (...parts: string[]) =>
 
 const metadata = (response: RuntimeInvokeResponse) =>
   [
-    ["Runtime", response.runtimeSessionId],
-    ["MCP", response.mcpSessionId],
-    ["MCP version", response.mcpProtocolVersion],
+    ["Session ID:", response.runtimeSessionId],
+    ["MCP session ID:", response.mcpSessionId],
+    ["MCP protocol version:", response.mcpProtocolVersion],
     ["trace", response.traceId],
     ["traceparent", response.traceParent],
     ["tracestate", response.traceState],
