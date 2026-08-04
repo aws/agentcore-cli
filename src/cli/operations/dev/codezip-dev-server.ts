@@ -1,5 +1,6 @@
 import { getVenvExecutable } from '../../../lib/utils/platform';
 import type { ProtocolMode } from '../../../schema';
+import { A2A_PORT_ENV } from './constants';
 import { DevServer, type LogLevel, type SpawnConfig } from './dev-server';
 import { convertEntrypointToModule } from './utils';
 import { spawnSync } from 'child_process';
@@ -147,6 +148,8 @@ export class CodeZipDevServer extends DevServer {
     }
     if (protocol === 'A2A') {
       env.AGENTCORE_RUNTIME_URL = `http://localhost:${port}/`;
+      // serve_a2a() reads A2A_PORT, not PORT, so the host-side dev port reaches it.
+      env[A2A_PORT_ENV] = String(port);
     }
 
     if (!isPython) {

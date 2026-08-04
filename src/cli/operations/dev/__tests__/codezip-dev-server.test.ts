@@ -127,6 +127,8 @@ describe('CodeZipDevServer spawn config', () => {
     expect(env.AGENTCORE_RUNTIME_URL).toBe('http://localhost:8080/');
     expect(env.LOCAL_DEV).toBe('1');
     expect(env.MY_KEY).toBe('secret');
+    // serve_a2a() reads A2A_PORT, not PORT, so the dev port must reach it here.
+    expect(env.A2A_PORT).toBe('8080');
   });
 
   it('TypeScript HTTP: uses npx tsx watch with the entry file', async () => {

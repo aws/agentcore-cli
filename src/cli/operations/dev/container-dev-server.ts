@@ -2,7 +2,7 @@ import { CONTAINER_INTERNAL_PORT, DOCKERFILE_NAME, getDockerfilePath } from '../
 import { getCustomBuildArgs, getUvBuildArgs } from '../../../lib/packaging/build-args';
 import { ensureBuildContextDockerignore } from '../../../lib/packaging/build-context-dockerignore';
 import { detectContainerRuntime } from '../../external-requirements/detect';
-import { A2A_DEFAULT_PORT, MCP_DEFAULT_PORT } from './constants';
+import { A2A_DEFAULT_PORT, A2A_PORT_ENV, MCP_DEFAULT_PORT } from './constants';
 import { DevServer, type LogLevel, type SpawnConfig } from './dev-server';
 import { waitForServerReady } from './utils';
 import { type ChildProcess, spawn, spawnSync } from 'child_process';
@@ -250,7 +250,9 @@ export class ContainerDevServer extends DevServer {
       ...containerEnvVars,
       LOCAL_DEV: '1',
       PORT: String(internalPort),
-      ...(this.config.protocol === 'A2A' ? { AGENTCORE_RUNTIME_URL: `http://localhost:${port}/` } : {}),
+      ...(this.config.protocol === 'A2A'
+        ? { AGENTCORE_RUNTIME_URL: `http://localhost:${port}/`, [A2A_PORT_ENV]: String(internalPort) }
+        : {}),
     }).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
 
     return {

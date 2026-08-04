@@ -355,6 +355,18 @@ describe('ContainerDevServer', () => {
       expect(spawnArgs).toContain('9001:9000');
       expect(spawnArgs).toContain('PORT=9000');
       expect(spawnArgs).toContain('AGENTCORE_RUNTIME_URL=http://localhost:9001/');
+      // serve_a2a() reads A2A_PORT, not PORT.
+      expect(spawnArgs).toContain('A2A_PORT=9000');
+    });
+
+    it('does not set A2A_PORT for non-A2A protocols', async () => {
+      mockSuccessfulPrepare();
+
+      const server = new ContainerDevServer(defaultConfig, defaultOptions);
+      await server.start();
+
+      const spawnArgs = getSpawnArgs();
+      expect(spawnArgs.some((a: string) => a.startsWith('A2A_PORT='))).toBe(false);
     });
 
     it('maps an MCP host port to the MCP container port', async () => {
