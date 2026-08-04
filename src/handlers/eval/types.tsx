@@ -1,6 +1,7 @@
 import type {
   CreateDatasetRequest,
   CreateDatasetResponse,
+  CreateDatasetVersionResponse,
   CreateEvaluatorRequest,
   CreateEvaluatorResponse,
   CreateOnlineEvaluationConfigResponse,
@@ -193,4 +194,7 @@ export interface CoreEvalClient {
     version: string | undefined,
     options: CoreOptions,
   ): Promise<DeleteDatasetResponse>;
+  // publishDataset freezes the current DRAFT as the next numbered version. The
+  // DRAFT survives and stays editable, so publishing is additive
+  publishDataset(id: string, options: CoreOptions): Promise<CreateDatasetVersionResponse>;
 }

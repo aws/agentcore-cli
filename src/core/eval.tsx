@@ -1,5 +1,6 @@
 import {
   CreateDatasetCommand,
+  CreateDatasetVersionCommand,
   CreateEvaluatorCommand,
   CreateOnlineEvaluationConfigCommand,
   DeleteDatasetCommand,
@@ -16,6 +17,7 @@ import {
   UpdateEvaluatorCommand,
   UpdateOnlineEvaluationConfigCommand,
   type CreateDatasetResponse,
+  type CreateDatasetVersionResponse,
   type CreateEvaluatorRequest,
   type CreateEvaluatorResponse,
   type CreateOnlineEvaluationConfigResponse,
@@ -554,6 +556,12 @@ export class EvalClient implements CoreEvalClient {
     return this.clients
       .control(toClientConfig(options))
       .send(new DeleteDatasetCommand({ datasetId: id, datasetVersion: version }));
+  }
+
+  async publishDataset(id: string, options: CoreOptions): Promise<CreateDatasetVersionResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new CreateDatasetVersionCommand({ datasetId: id }));
   }
 }
 

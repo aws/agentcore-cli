@@ -74,7 +74,13 @@ describe("eval dataset command hierarchy", () => {
       ?.children()
       .find((c) => c.name() === "dataset");
 
-    expect(dataset?.children().map((c) => c.name())).toEqual(["create", "get", "list", "delete"]);
+    expect(dataset?.children().map((c) => c.name())).toEqual([
+      "create",
+      "get",
+      "list",
+      "delete",
+      "publish",
+    ]);
   });
 
   test("prints help for bare `eval dataset` without calling the service", async () => {
@@ -501,6 +507,55 @@ describe("dataset delete", () => {
     const { core, route } = testDatasetCommand();
 
     await expect(route(["eval", "dataset", "delete"])).rejects.toThrow(/--id/);
+    expect(core.eval.calls).toHaveLength(0);
+  });
+});
+
+describe("dataset publish", () => {
+  test("publishes the DRAFT as a new version", async () => {
+    const { core, stdout, route } = testDatasetCommand();
+    core.eval.setPublishDatasetResponse({
+      datasetId: "dataset-orders-abc123",
+      datasetVersion: "1",
+      status: "UPDATING",
+    } as never);
+
+    await route(["eval", "dataset", "publish", "--id", "dataset-orders-abc123"]);
+
+    const call = core.eval.calls.find((c) => c.method === "publishDataset");
+    expect(call?.args[0]).toBe("dataset-orders-abc123");
+    expect(JSON.parse(stdout())).toMatchObject({ datasetVersion: "1", status: "UPDATING" });
+  });
+
+  test("takes only --id", async () => {
+    const root = createRootHandler(new TestCoreClient(), {
+      io: testIO().io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    const publish = root
+      .children()
+      .find((c) => c.name() === "eval")
+      ?.children()
+      .find((c) => c.name() === "dataset")
+      ?.children()
+      .find((c) => c.name() === "publish");
+
+    expect(publish?.flags().map((f) => f.name)).toEqual(["id"]);
+  });
+
+  test("publishes without inspecting draftStatus first", async () => {
+    const { core, route } = testDatasetCommand();
+
+    await route(["eval", "dataset", "publish", "--id", "dataset-orders-abc123"]);
+
+    expect(core.eval.calls.map((c) => c.method)).toEqual(["publishDataset"]);
+  });
+
+  test("requires --id", async () => {
+    const { core, route } = testDatasetCommand();
+
+    await expect(route(["eval", "dataset", "publish"])).rejects.toThrow(/--id/);
     expect(core.eval.calls).toHaveLength(0);
   });
 });

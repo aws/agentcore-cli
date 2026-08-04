@@ -1,0 +1,6 @@
+{
+  "$error": {
+    "name": "ResourceNotFoundException",
+    "message": "The specified dataset does not exist. Please verify the datasetId and try again."
+  }
+}

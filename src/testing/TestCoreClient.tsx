@@ -33,6 +33,7 @@ import type {
   ListGatewaysResponse,
   ListGatewayTargetsResponse,
   CreateDatasetResponse,
+  CreateDatasetVersionResponse,
   CreateEvaluatorRequest,
   CreateEvaluatorResponse,
   CreateOnlineEvaluationConfigResponse,
@@ -194,6 +195,7 @@ const DEFAULT_CREATE_DATASET_RESPONSE = {} as CreateDatasetResponse;
 const DEFAULT_GET_DATASET_RESPONSE = {} as GetDatasetResponse;
 const DEFAULT_LIST_DATASETS_RESPONSE: ListDatasetsResponse = { datasets: [] };
 const DEFAULT_DELETE_DATASET_RESPONSE = {} as DeleteDatasetResponse;
+const DEFAULT_PUBLISH_DATASET_RESPONSE = {} as CreateDatasetVersionResponse;
 
 // events wraps canned events as a one-shot AsyncIterable.
 async function* events<T>(items: T[]): AsyncGenerator<T> {
@@ -1119,6 +1121,7 @@ export class TestEvalClient implements CoreEvalClient {
   private getDatasetResponse: GetDatasetResponse = DEFAULT_GET_DATASET_RESPONSE;
   private datasetListResponses = new Map<string | undefined, ListDatasetsResponse>();
   private deleteDatasetResponse: DeleteDatasetResponse = DEFAULT_DELETE_DATASET_RESPONSE;
+  private publishDatasetResponse: CreateDatasetVersionResponse = DEFAULT_PUBLISH_DATASET_RESPONSE;
   private error?: Error;
 
   // setListResponse sets what listEvaluators resolves to (when not erroring).
@@ -1217,6 +1220,13 @@ export class TestEvalClient implements CoreEvalClient {
   // erroring).
   setDeleteDatasetResponse(response: DeleteDatasetResponse): this {
     this.deleteDatasetResponse = response;
+    return this;
+  }
+
+  // setPublishDatasetResponse sets what publishDataset resolves to (when not
+  // erroring).
+  setPublishDatasetResponse(response: CreateDatasetVersionResponse): this {
+    this.publishDatasetResponse = response;
     return this;
   }
 
@@ -1394,6 +1404,12 @@ export class TestEvalClient implements CoreEvalClient {
     this.calls.push({ method: "deleteDataset", args: [id, version, options] });
     if (this.error) throw this.error;
     return this.deleteDatasetResponse;
+  }
+
+  async publishDataset(id: string, options: CoreOptions): Promise<CreateDatasetVersionResponse> {
+    this.calls.push({ method: "publishDataset", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.publishDatasetResponse;
   }
 }
 
