@@ -32,6 +32,9 @@ import { MemoryScreen } from "../handlers/memory/screen.tsx";
 import { MemoryGetJsonScreen, MemoryGetScreen } from "../handlers/memory/get/screen.tsx";
 import { MemoryListScreen } from "../handlers/memory/list/screen.tsx";
 import { RuntimeInvokeScreen } from "../handlers/runtime/invoke/screen.tsx";
+import { MemoryEventScreen } from "../handlers/memory/event/screen.tsx";
+import { MemoryEventGetScreen } from "../handlers/memory/event/get/screen.tsx";
+import { MemoryEventListScreen } from "../handlers/memory/event/list/screen.tsx";
 import { RootScreen, HelpScreen } from "../handlers/screen.tsx";
 import type { Context } from "../router";
 
@@ -287,6 +290,34 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/runtime/invoke/:runtimeId/:qualifier"
             element={<RuntimeInvokeScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event"
+            element={<MemoryEventScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event/get"
+            element={<Navigate to="/agentcore/memory/event/list" replace />}
+          />
+          <Route
+            path="agentcore/memory/event/get/:memoryId/:actorId/:sessionId/:eventId"
+            element={<MemoryEventGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event/list"
+            element={<MemoryEventListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event/list/:memoryId"
+            element={<MemoryEventListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event/list/:memoryId/:actorId"
+            element={<MemoryEventListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event/list/:memoryId/:actorId/:sessionId"
+            element={<MemoryEventListScreen ctx={ctx} core={core} />}
           />
           <Route path="*" element={<HelpScreen ctx={ctx} core={core} />} />
         </Routes>

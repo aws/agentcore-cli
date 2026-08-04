@@ -14,6 +14,6 @@ export function createMemoryHandler(core: Core, io: AppIO): Router {
     .default(renderTui(core, io))
     .handler(createGetMemoryHandler(core))
     .handler(createListMemoriesHandler(core))
-    .handler(createMemoryEventHandler(core))
+    .handler(createMemoryEventHandler(core, io))
     .handler(createMemoryRecordHandler(core));
 }

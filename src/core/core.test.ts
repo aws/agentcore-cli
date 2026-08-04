@@ -10,8 +10,10 @@ import {
   InvokeAgentRuntimeCommand,
   InvokeAgentRuntimeCommandCommand,
   InvokeHarnessCommand,
+  ListActorsCommand,
   ListEventsCommand,
   ListMemoryRecordsCommand,
+  ListSessionsCommand,
   type BedrockAgentCoreClient,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { RuntimeInvokeRequest } from "../handlers/runtime/types";
@@ -242,6 +244,49 @@ test("listEvents sends a ListEventsCommand on the data client", async () => {
   expect(sent).toHaveLength(1);
   expect(sent[0]).toBeInstanceOf(ListEventsCommand);
   expect((sent[0] as ListEventsCommand).input).toEqual(input);
+});
+
+test("listActors sends a ListActorsCommand on the data client", async () => {
+  const sent: unknown[] = [];
+  const response = { actorSummaries: [], nextToken: "next" };
+  const core = coreWithDataSend(async (command) => {
+    sent.push(command);
+    return response;
+  });
+  const input = {
+    memoryId: "memory-123",
+    maxResults: 25,
+    nextToken: "current",
+  };
+
+  const result = await core.memory.listActors(input, { region: "us-east-1" });
+
+  expect(result).toBe(response);
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toBeInstanceOf(ListActorsCommand);
+  expect((sent[0] as ListActorsCommand).input).toEqual(input);
+});
+
+test("listSessions sends a ListSessionsCommand on the data client", async () => {
+  const sent: unknown[] = [];
+  const response = { sessionSummaries: [], nextToken: "next" };
+  const core = coreWithDataSend(async (command) => {
+    sent.push(command);
+    return response;
+  });
+  const input = {
+    memoryId: "memory-123",
+    actorId: "actor-123",
+    maxResults: 25,
+    nextToken: "current",
+  };
+
+  const result = await core.memory.listSessions(input, { region: "us-east-1" });
+
+  expect(result).toBe(response);
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toBeInstanceOf(ListSessionsCommand);
+  expect((sent[0] as ListSessionsCommand).input).toEqual(input);
 });
 
 test("getMemoryRecord sends a GetMemoryRecordCommand on the data client", async () => {

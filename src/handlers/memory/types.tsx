@@ -8,10 +8,14 @@ import type {
   GetEventOutput,
   GetMemoryRecordInput,
   GetMemoryRecordOutput,
+  ListActorsInput,
+  ListActorsOutput,
   ListEventsInput,
   ListEventsOutput,
   ListMemoryRecordsInput,
   ListMemoryRecordsOutput,
+  ListSessionsInput,
+  ListSessionsOutput,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { CoreOptions } from "../../core/types";
 
@@ -34,6 +38,10 @@ export interface CoreMemoryClient {
   ): Promise<ListMemoryRecordsOutput>;
 
   getEvent(input: GetEventInput, options: CoreOptions): Promise<GetEventOutput>;
+
+  listActors(input: ListActorsInput, options: CoreOptions): Promise<ListActorsOutput>;
+
+  listSessions(input: ListSessionsInput, options: CoreOptions): Promise<ListSessionsOutput>;
 
   listEvents(input: ListEventsInput, options: CoreOptions): Promise<ListEventsOutput>;
 }

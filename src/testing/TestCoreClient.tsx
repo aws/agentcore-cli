@@ -57,10 +57,14 @@ import type {
   InvokeHarnessRequest,
   InvokeHarnessResponse,
   InvokeHarnessStreamOutput,
+  ListActorsInput,
+  ListActorsOutput,
   ListEventsInput,
   ListEventsOutput,
   ListMemoryRecordsInput,
   ListMemoryRecordsOutput,
+  ListSessionsInput,
+  ListSessionsOutput,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { Core } from "../handlers/types";
 import type { CoreHarnessClient, CreateHarnessInput } from "../handlers/harness/types";
@@ -136,6 +140,8 @@ const DEFAULT_DELETE_API_KEY_RESPONSE = {} as DeleteApiKeyCredentialProviderResp
 const DEFAULT_GET_MEMORY_RESPONSE = {} as GetMemoryOutput;
 const DEFAULT_LIST_MEMORIES_RESPONSE: ListMemoriesOutput = { memories: [] };
 const DEFAULT_GET_EVENT_RESPONSE: GetEventOutput = { event: undefined };
+const DEFAULT_LIST_ACTORS_RESPONSE: ListActorsOutput = { actorSummaries: [] };
+const DEFAULT_LIST_SESSIONS_RESPONSE: ListSessionsOutput = { sessionSummaries: [] };
 const DEFAULT_LIST_EVENTS_RESPONSE: ListEventsOutput = { events: [] };
 const DEFAULT_GET_MEMORY_RECORD_RESPONSE: GetMemoryRecordOutput = { memoryRecord: undefined };
 const DEFAULT_LIST_MEMORY_RECORDS_RESPONSE: ListMemoryRecordsOutput = {
@@ -642,6 +648,8 @@ export class TestMemoryClient implements CoreMemoryClient {
   private getResponse: GetMemoryOutput = DEFAULT_GET_MEMORY_RESPONSE;
   private listResponses = new Map<string | undefined, ListMemoriesOutput>();
   private getEventResponse: GetEventOutput = DEFAULT_GET_EVENT_RESPONSE;
+  private listActorResponses = new Map<string | undefined, ListActorsOutput>();
+  private listSessionResponses = new Map<string | undefined, ListSessionsOutput>();
   private listEventResponses = new Map<string | undefined, ListEventsOutput>();
   private getMemoryRecordResponse: GetMemoryRecordOutput = DEFAULT_GET_MEMORY_RECORD_RESPONSE;
   private listMemoryRecordResponses = new Map<string | undefined, ListMemoryRecordsOutput>();
@@ -659,6 +667,16 @@ export class TestMemoryClient implements CoreMemoryClient {
 
   setGetEventResponse(response: GetEventOutput): this {
     this.getEventResponse = response;
+    return this;
+  }
+
+  setListActorsResponse(response: ListActorsOutput, forNextToken?: string): this {
+    this.listActorResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setListSessionsResponse(response: ListSessionsOutput, forNextToken?: string): this {
+    this.listSessionResponses.set(forNextToken, response);
     return this;
   }
 
@@ -706,6 +724,26 @@ export class TestMemoryClient implements CoreMemoryClient {
     this.calls.push({ method: "getEvent", args: [input, options] });
     if (this.error) throw this.error;
     return this.getEventResponse;
+  }
+
+  async listActors(input: ListActorsInput, options: CoreOptions): Promise<ListActorsOutput> {
+    this.calls.push({ method: "listActors", args: [input, options] });
+    if (this.error) throw this.error;
+    return (
+      this.listActorResponses.get(input.nextToken) ??
+      this.listActorResponses.get(undefined) ??
+      DEFAULT_LIST_ACTORS_RESPONSE
+    );
+  }
+
+  async listSessions(input: ListSessionsInput, options: CoreOptions): Promise<ListSessionsOutput> {
+    this.calls.push({ method: "listSessions", args: [input, options] });
+    if (this.error) throw this.error;
+    return (
+      this.listSessionResponses.get(input.nextToken) ??
+      this.listSessionResponses.get(undefined) ??
+      DEFAULT_LIST_SESSIONS_RESPONSE
+    );
   }
 
   async listEvents(input: ListEventsInput, options: CoreOptions): Promise<ListEventsOutput> {
