@@ -5,8 +5,12 @@
     "endpointName": "live",
     "arn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:harness/AgentCoreCliE2E-TqzKXT9uZQ/harness-endpoint/live",
     "status": "CREATING",
-    "createdAt": "2026-08-04T18:29:06.188Z",
-    "updatedAt": "2026-08-04T18:29:06.188Z",
+    "createdAt": {
+      "$date": "2026-08-04T18:29:06.188Z"
+    },
+    "updatedAt": {
+      "$date": "2026-08-04T18:29:06.188Z"
+    },
     "targetVersion": "1"
   }
 }

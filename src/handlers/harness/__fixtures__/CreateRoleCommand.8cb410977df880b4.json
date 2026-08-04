@@ -2,10 +2,10 @@
   "Role": {
     "Path": "/",
     "RoleName": "AgentCoreHarness-AgentCoreCliE2E",
-    "RoleId": "AROAXJXLAKSFNVPXEE6SW",
-    "Arn": "arn:aws:iam::501930284170:role/AgentCoreHarness-AgentCoreCliE2E",
+    "RoleId": "AROAZ7CHXJWHXAGITE3TP",
+    "Arn": "arn:aws:iam::685197708687:role/AgentCoreHarness-AgentCoreCliE2E",
     "CreateDate": {
-      "$date": "2026-07-07T23:10:04.000Z"
+      "$date": "2026-08-04T18:26:06.000Z"
     },
     "AssumeRolePolicyDocument": "%7B%22Version%22%3A%222012-10-17%22%2C%22Statement%22%3A%5B%7B%22Effect%22%3A%22Allow%22%2C%22Principal%22%3A%7B%22Service%22%3A%22bedrock-agentcore.amazonaws.com%22%7D%2C%22Action%22%3A%22sts%3AAssumeRole%22%7D%5D%7D"
   }

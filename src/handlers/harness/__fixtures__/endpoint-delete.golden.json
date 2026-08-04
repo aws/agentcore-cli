@@ -1,12 +1,12 @@
 {
   "endpoint": {
-    "harnessId": "AgentCoreCliE2E-W21v24kBuV",
+    "harnessId": "AgentCoreCliE2E-TqzKXT9uZQ",
     "harnessName": "AgentCoreCliE2E",
     "endpointName": "live",
-    "arn": "arn:aws:bedrock-agentcore:us-west-2:501930284170:harness/AgentCoreCliE2E-W21v24kBuV/harness-endpoint/live",
+    "arn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:harness/AgentCoreCliE2E-TqzKXT9uZQ/harness-endpoint/live",
     "status": "DELETING",
-    "createdAt": "2026-07-07T23:13:05.008Z",
-    "updatedAt": "2026-07-07T23:13:15.996Z",
+    "createdAt": "2026-08-04T18:29:06.188Z",
+    "updatedAt": "2026-08-04T18:29:17.022Z",
     "liveVersion": "2"
   }
 }
