@@ -107,8 +107,49 @@ export type ResolveProjectInput = {
   filePath: string;
 };
 
+export type DeploymentTarget = {
+  name: string;
+  description?: string;
+  account: string;
+  region: string;
+};
+
 export type Project = {
   name: string;
+  root: string;
+  configDir: string;
+  managedBy: string;
+  targets: DeploymentTarget[];
+};
+
+export type ProjectProgressEvent = {
+  message: string;
+};
+
+export type BuildProjectInput = {
+  /** A path to search from when locating the project root. */
+  filePath: string;
+  /** Called as each build step begins. */
+  onProgress?: (event: ProjectProgressEvent) => void;
+};
+
+export type BuildTarget = DeploymentTarget & {
+  stackName: string;
+};
+
+export type BuildManifest = {
+  version: 1;
+  projectName: string;
+  backend: string;
+  cliVersion: string;
+  inputFingerprint: string;
+  builtAt: string;
+  cloudAssemblyPath: string;
+  targets: BuildTarget[];
+};
+
+export type BuildProjectResult = BuildManifest & {
+  manifestPath: string;
 };
 
 /**
@@ -120,4 +161,7 @@ export interface ProjectManager {
 
   /** Locate an existing AgentCore project. Returns undefined if no project can be found. */
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;
+
+  /** Validate and build all deployable artifacts for a project. */
+  build(input: BuildProjectInput): Promise<BuildProjectResult>;
 }

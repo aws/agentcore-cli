@@ -22,7 +22,7 @@ async function run(args: string[]) {
   return { io, core };
 }
 
-describe.each(["add", "remove", "dev", "deploy", "status", "build"])("project %s", (command) => {
+describe.each(["add", "remove", "dev", "deploy", "status"])("project %s", (command) => {
   test("throws because it is not implemented yet", async () => {
     await expect(run([command])).rejects.toThrow(/not implemented/);
   });
@@ -100,5 +100,53 @@ describe("project create", () => {
     await expect(
       run(["create", "--project-name", "MyAgent", "--template", "nonsense"]),
     ).rejects.toThrow();
+  });
+});
+
+describe("project build", () => {
+  test("builds from a nested directory and emits JSON plus progress", async () => {
+    const directory = await inTempDirectory();
+    await run(["create", "--project-name", "MyAgent", "--skip-install", "--skip-git"]);
+    const projectRoot = join(directory, "MyAgent");
+    await Bun.write(
+      join(projectRoot, "agentcore", "aws-targets.json"),
+      JSON.stringify([
+        {
+          name: "default",
+          account: "123456789012",
+          region: "us-east-1",
+        },
+      ]),
+    );
+    process.chdir(join(projectRoot, "app", "hello-world"));
+
+    const { io, core } = await run(["build"]);
+    const result = JSON.parse(io.stdout());
+
+    expect(result).toMatchObject({
+      projectName: "MyAgent",
+      backend: "CDK",
+      cloudAssemblyPath: "agentcore/cdk/cdk.out",
+      manifestPath: "agentcore/.build/manifest.json",
+    });
+    expect(core.projectCommands).toEqual([
+      {
+        command: ["npm", "run", "build"],
+        cwd: join(projectRoot, "agentcore", "cdk"),
+      },
+      {
+        command: [
+          "node",
+          join("node_modules", "aws-cdk", "bin", "cdk"),
+          "synth",
+          "--output",
+          "cdk.out",
+          "--quiet",
+        ],
+        cwd: join(projectRoot, "agentcore", "cdk"),
+      },
+    ]);
+    expect(io.stderr()).toContain("Compiling CDK application...");
+    expect(io.stderr()).toContain("Recording build manifest...");
   });
 });

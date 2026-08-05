@@ -71,6 +71,7 @@ export async function projectTree(
   return dir(".", [
     dir("agentcore", [
       dir("cdk", await expandDir(src, "cdk")),
+      file(".gitignore", async () => ".build/\n.cache/\n.cli/\n"),
       file("agentcore.json", async () => json(agentcoreSpec(name, template))),
       file("aws-targets.json", async () => json([])),
     ]),

@@ -93,6 +93,8 @@ import type { ProjectManager } from "../handlers/project/types";
 import type { Logger } from "../logging";
 import { createSilentLogger } from "./logging";
 import { FsProjectManager } from "../core/project";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 // TestCoreClient is a hand-controllable `Core` for tests. It implements the same
 // interface the real CoreClient satisfies, so it drops straight into
@@ -1188,6 +1190,33 @@ export class TestCoreClient implements Core {
       logger: options?.logger ?? createSilentLogger(),
       runner: async (command, { cwd }) => {
         this.projectCommands.push({ command, cwd });
+        if (command.includes("synth")) {
+          const configDir = dirname(cwd);
+          const project = JSON.parse(await readFile(join(configDir, "agentcore.json"), "utf8")) as {
+            name: string;
+          };
+          const targets = JSON.parse(
+            await readFile(join(configDir, "aws-targets.json"), "utf8"),
+          ) as { name: string }[];
+          const artifacts = Object.fromEntries(
+            targets.map((target) => {
+              const stackName = `AgentCore-${project.name.replaceAll("_", "-")}-${target.name.replaceAll("_", "-")}`;
+              return [
+                stackName,
+                {
+                  type: "aws:cloudformation:stack",
+                  properties: { stackName },
+                },
+              ];
+            }),
+          );
+          const output = join(cwd, "cdk.out");
+          await mkdir(output, { recursive: true });
+          await writeFile(
+            join(output, "manifest.json"),
+            JSON.stringify({ version: "48.0.0", artifacts }),
+          );
+        }
       },
       checkTool: async () => {}, // CI hosts don't have uv installed
     });

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { NestedProjectError, ProjectFileExistsError } from "../../errors";
@@ -34,11 +34,50 @@ function manager(): { manager: FsProjectManager; commands: { command: string[]; 
       logger: createSilentLogger(),
       runner: async (command, { cwd }) => {
         commands.push({ command, cwd });
+        if (command.includes("synth")) {
+          const configDir = join(cwd, "..");
+          const project = await Bun.file(join(configDir, "agentcore.json")).json();
+          const targets = (await Bun.file(join(configDir, "aws-targets.json")).json()) as {
+            name: string;
+          }[];
+          const artifacts = Object.fromEntries(
+            targets.map((target) => {
+              const stackName = `AgentCore-${project.name}-${target.name}`;
+              return [
+                stackName,
+                {
+                  type: "aws:cloudformation:stack",
+                  properties: { stackName },
+                },
+              ];
+            }),
+          );
+          const assembly = join(cwd, "cdk.out");
+          await mkdir(assembly, { recursive: true });
+          await writeFile(
+            join(assembly, "manifest.json"),
+            JSON.stringify({ version: "48.0.0", artifacts }),
+          );
+        }
       },
       checkTool: async () => {}, // CI hosts don't have uv installed
+      now: () => new Date("2026-08-05T12:00:00.000Z"),
     }),
     commands,
   };
+}
+
+async function configureTarget(projectRoot: string, name = "default"): Promise<void> {
+  await writeFile(
+    join(projectRoot, "agentcore", "aws-targets.json"),
+    JSON.stringify([
+      {
+        name,
+        account: "123456789012",
+        region: "us-east-1",
+      },
+    ]),
+  );
 }
 
 describe("FsProjectManager.create", () => {
@@ -76,6 +115,7 @@ describe("FsProjectManager.create", () => {
         build: "CodeZip",
         entrypoint: "main.py",
         codeLocation: "app/hello-world",
+        runtimeVersion: "PYTHON_3_14",
       },
     ]);
     expect(await Bun.file(join(configDir, "aws-targets.json")).json()).toEqual([]);
@@ -172,5 +212,164 @@ describe("FsProjectManager.create", () => {
     await expect(
       manager().manager.create({ name: "child", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON }),
     ).rejects.toBeInstanceOf(NestedProjectError);
+  });
+});
+
+describe("FsProjectManager.resolve", () => {
+  test("finds the enclosing project from a nested path", async () => {
+    const directory = await inTempDirectory();
+    const subject = manager().manager;
+    await subject.create({
+      name: "example",
+      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      skipInstall: true,
+      skipGit: true,
+    });
+    const projectRoot = join(directory, "example");
+    await configureTarget(projectRoot);
+    const nested = join(projectRoot, "app", "hello-world");
+
+    const project = await subject.resolve({ filePath: nested });
+
+    expect(project).toEqual({
+      name: "example",
+      root: projectRoot,
+      configDir: join(projectRoot, "agentcore"),
+      managedBy: "CDK",
+      targets: [
+        {
+          name: "default",
+          account: "123456789012",
+          region: "us-east-1",
+        },
+      ],
+    });
+  });
+
+  test("returns undefined outside a project", async () => {
+    const directory = await inTempDirectory();
+    expect(await manager().manager.resolve({ filePath: directory })).toBeUndefined();
+  });
+});
+
+describe("FsProjectManager.build", () => {
+  test("compiles, synthesizes every target, and writes a build manifest", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands } = manager();
+    await subject.create({
+      name: "example",
+      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      skipInstall: true,
+      skipGit: true,
+    });
+    const projectRoot = join(directory, "example");
+    await configureTarget(projectRoot);
+    commands.length = 0;
+
+    const messages: string[] = [];
+    const result = await subject.build({
+      filePath: join(projectRoot, "app", "hello-world"),
+      onProgress: ({ message }) => messages.push(message),
+    });
+
+    const cdkDirectory = join(projectRoot, "agentcore", "cdk");
+    expect(commands).toEqual([
+      { command: ["npm", "run", "build"], cwd: cdkDirectory },
+      {
+        command: [
+          "node",
+          join("node_modules", "aws-cdk", "bin", "cdk"),
+          "synth",
+          "--output",
+          "cdk.out",
+          "--quiet",
+        ],
+        cwd: cdkDirectory,
+      },
+    ]);
+    expect(result).toMatchObject({
+      version: 1,
+      projectName: "example",
+      backend: "CDK",
+      builtAt: "2026-08-05T12:00:00.000Z",
+      cloudAssemblyPath: "agentcore/cdk/cdk.out",
+      manifestPath: "agentcore/.build/manifest.json",
+      targets: [
+        {
+          name: "default",
+          account: "123456789012",
+          region: "us-east-1",
+          stackName: "AgentCore-example-default",
+        },
+      ],
+    });
+    expect(result.inputFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    const { manifestPath: _manifestPath, ...manifest } = result;
+    expect(
+      await Bun.file(join(projectRoot, "agentcore", ".build", "manifest.json")).json(),
+    ).toEqual(manifest);
+    expect(messages).toEqual([
+      "Compiling CDK application...",
+      "Validating project and synthesizing deployment artifacts...",
+      "Recording build manifest...",
+    ]);
+  });
+
+  test("changes the fingerprint when project source changes", async () => {
+    const directory = await inTempDirectory();
+    const subject = manager().manager;
+    await subject.create({
+      name: "example",
+      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      skipInstall: true,
+      skipGit: true,
+    });
+    const projectRoot = join(directory, "example");
+    await configureTarget(projectRoot);
+
+    const first = await subject.build({ filePath: projectRoot });
+    await writeFile(join(projectRoot, "app", "hello-world", "new.py"), "print('changed')\n");
+    const second = await subject.build({ filePath: projectRoot });
+
+    expect(second.inputFingerprint).not.toBe(first.inputFingerprint);
+  });
+
+  test("rejects a project without deployment targets before spawning a build", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands } = manager();
+    await subject.create({
+      name: "example",
+      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      skipInstall: true,
+      skipGit: true,
+    });
+    commands.length = 0;
+
+    await expect(subject.build({ filePath: join(directory, "example") })).rejects.toThrow(
+      /No deployment targets configured/,
+    );
+    expect(commands).toEqual([]);
+  });
+
+  test("rejects an unsupported backend before spawning a build", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands } = manager();
+    await subject.create({
+      name: "example",
+      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      skipInstall: true,
+      skipGit: true,
+    });
+    const projectRoot = join(directory, "example");
+    await configureTarget(projectRoot);
+    const specPath = join(projectRoot, "agentcore", "agentcore.json");
+    const spec = await Bun.file(specPath).json();
+    await writeFile(specPath, JSON.stringify({ ...spec, managedBy: "Terraform" }));
+    commands.length = 0;
+
+    await expect(subject.build({ filePath: projectRoot })).rejects.toThrow(
+      /backend "Terraform" is not supported/,
+    );
+    expect(commands).toEqual([]);
   });
 });

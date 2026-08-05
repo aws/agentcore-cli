@@ -25,7 +25,9 @@ export function createProjectHandler(config: ProjectHandlerConfig): Router {
   project.handler(createDevProjectHandler());
   project.handler(createDeployProjectHandler());
   project.handler(createStatusProjectHandler());
-  project.handler(createBuildProjectHandler());
+  project.handler(
+    createBuildProjectHandler({ projectManager: config.projectManager, io: config.io }),
+  );
 
   return project;
 }

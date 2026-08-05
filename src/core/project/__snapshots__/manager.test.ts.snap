@@ -2,6 +2,7 @@
 
 exports[`FsProjectManager.create scaffolds the expected file tree into a fresh directory 1`] = `
 [
+  "agentcore/.gitignore",
   "agentcore/agentcore.json",
   "agentcore/aws-targets.json",
   "agentcore/cdk/.gitignore",

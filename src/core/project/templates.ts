@@ -30,6 +30,7 @@ export const TEMPLATES: Record<ProjectTemplate, Template> = {
           build: "CodeZip",
           entrypoint: "main.py",
           codeLocation: "app/hello-world",
+          runtimeVersion: "PYTHON_3_14",
         },
       ],
     },
