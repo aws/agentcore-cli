@@ -32,6 +32,19 @@ import { MemoryScreen } from "../handlers/memory/screen.tsx";
 import { MemoryGetJsonScreen, MemoryGetScreen } from "../handlers/memory/get/screen.tsx";
 import { MemoryListScreen } from "../handlers/memory/list/screen.tsx";
 import { RuntimeInvokeScreen } from "../handlers/runtime/invoke/screen.tsx";
+import { EvalScreen } from "../handlers/eval/screen.tsx";
+import { EvaluatorScreen } from "../handlers/eval/evaluator/screen.tsx";
+import { EvaluatorListScreen } from "../handlers/eval/evaluator/list/screen.tsx";
+import {
+  EvaluatorGetScreen,
+  EvaluatorGetJsonScreen,
+} from "../handlers/eval/evaluator/get/screen.tsx";
+import { OnlineEvalScreen } from "../handlers/eval/online-eval/screen.tsx";
+import { OnlineEvalListScreen } from "../handlers/eval/online-eval/list/screen.tsx";
+import {
+  OnlineEvalGetScreen,
+  OnlineEvalGetJsonScreen,
+} from "../handlers/eval/online-eval/get/screen.tsx";
 import { RootScreen, HelpScreen } from "../handlers/screen.tsx";
 import type { Context } from "../router";
 
@@ -287,6 +300,48 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/runtime/invoke/:runtimeId/:qualifier"
             element={<RuntimeInvokeScreen ctx={ctx} core={core} />}
+          />
+          <Route path="agentcore/eval" element={<EvalScreen ctx={ctx} core={core} />} />
+          <Route
+            path="agentcore/eval/evaluator"
+            element={<EvaluatorScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/evaluator/list"
+            element={<EvaluatorListScreen ctx={ctx} core={core} />}
+          />
+          {/* Bare `get` (no id) has nothing to show — send the user to the list. */}
+          <Route
+            path="agentcore/eval/evaluator/get"
+            element={<Navigate to="/agentcore/eval/evaluator/list" replace />}
+          />
+          <Route
+            path="agentcore/eval/evaluator/get/:evaluatorId"
+            element={<EvaluatorGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/evaluator/get/:evaluatorId/json"
+            element={<EvaluatorGetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/online-eval"
+            element={<OnlineEvalScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/online-eval/list"
+            element={<OnlineEvalListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/online-eval/get"
+            element={<Navigate to="/agentcore/eval/online-eval/list" replace />}
+          />
+          <Route
+            path="agentcore/eval/online-eval/get/:configId"
+            element={<OnlineEvalGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/online-eval/get/:configId/json"
+            element={<OnlineEvalGetJsonScreen ctx={ctx} core={core} />}
           />
           <Route path="*" element={<HelpScreen ctx={ctx} core={core} />} />
         </Routes>

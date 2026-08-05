@@ -92,11 +92,25 @@ describe("eval online-eval command hierarchy", () => {
     ]);
   });
 
-  test("prints help for bare `eval online-eval` without an SDK call", async () => {
-    const stdout = await run(["eval", "online-eval"]);
+  test("prints help for bare `eval online-eval --json` without an SDK call", async () => {
+    // Under --json the empty-invocation TUI middleware prints help instead of
+    // opening the interactive UI.
+    const stdout = await run(["eval", "online-eval", "--json"]);
     expect(stdout).toContain("Usage: agentcore eval online-eval");
     expect(stdout).toContain("Commands:");
   });
+
+  // A bare read leaf (no flags, no --json) opens the interactive TUI, which the
+  // headless test IO cannot host — proving the empty-invocation middleware is
+  // wired onto the online-eval commands.
+  test.each([["get"], ["list"]] as const)(
+    "opens the TUI for a bare `eval online-eval %s` leaf",
+    async (command) => {
+      await expect(run(["eval", "online-eval", command])).rejects.toThrow(
+        "interactive mode requires a TTY on stdin and stdout",
+      );
+    },
+  );
 });
 
 describe("online-eval CRUDL", () => {
@@ -125,7 +139,9 @@ describe("online-eval CRUDL", () => {
   });
 
   test("lists online evaluation configs", async () => {
-    const stdout = await run(["eval", "online-eval", "list"]);
+    // --json forces the headless path; a bare `list` (no flags) would otherwise
+    // open the TUI under the empty-invocation middleware.
+    const stdout = await run(["eval", "online-eval", "list", "--json"]);
 
     matchGolden(FIXTURES, "list.golden.json", stdout);
     expect(JSON.parse(stdout).onlineEvaluationConfigs).toBeArray();
@@ -350,8 +366,10 @@ describe("flag validation", () => {
     ).rejects.toThrow(/'--endpoint' cannot be combined with '--data-source-config'/);
   });
 
+  // --json forces the headless path so the required-flag error surfaces; without
+  // it a bare invocation opens the TUI under the empty-invocation middleware.
   test.each(["get", "update", "pause", "resume", "delete"])("%s requires --id", async (command) => {
-    await expect(run(["eval", "online-eval", command])).rejects.toThrow(
+    await expect(run(["eval", "online-eval", command, "--json"])).rejects.toThrow(
       /required option '--id <id>' not specified/,
     );
   });
