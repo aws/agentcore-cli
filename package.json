@@ -99,7 +99,7 @@
     "@commander-js/extra-typings": "^14.0.0",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.215.0",
-    "@opentelemetry/otlp-transformer": "^0.213.0",
+    "@opentelemetry/otlp-transformer": "0.213.0",
     "@opentelemetry/resources": "^2.6.1",
     "@opentelemetry/sdk-metrics": "^2.6.1",
     "@smithy/shared-ini-file-loader": "^4.4.2",
@@ -168,17 +168,20 @@
   "overridesComments": {
     "minimatch": "GHSA-7r86-cg39-jmmj, GHSA-23c5-xmqv-rm74: minimatch 10.0.0-10.2.2 has ReDoS vulnerabilities. Multiple transitive deps (eslint, typescript-eslint, eslint-plugin-import, eslint-plugin-react, prettier-plugin-sort-imports, aws-cdk-lib) pin older versions. Remove this override once upstream packages update their minimatch dependency to >=10.2.3.",
     "glob": "glob <12 is deprecated and emits npm install warnings (https://github.com/isaacs/node-glob). Pulled in transitively via archiver-utils@5.0.2 (latest), which still pins glob@^10.0.0. archiver-utils only uses glob.sync(pattern, options), which remains compatible in glob@13. Remove this override once archiver-utils updates its glob dependency.",
-    "fast-xml-parser": "GHSA-8gc5-j5rx-235r, GHSA-jp2q-39xq-3w4g: fast-xml-parser <=5.5.6 has entity expansion bypass (CVE-2026-33036, CVE-2026-33349). Transitive via @aws-sdk/xml-builder. Remove once @aws-sdk updates to fast-xml-parser >=5.5.7.",
+    "fast-xml-parser": "GHSA-8gc5-j5rx-235r, GHSA-jp2q-39xq-3w4g, GHSA-gh4j-gqv2-49f6: fast-xml-parser <=5.6.x has entity expansion bypass and XML injection vulnerabilities. Transitive via @aws-sdk/xml-builder. Remove once @aws-sdk updates to fast-xml-parser >=5.7.0.",
     "@aws-sdk/xml-builder": "aws/aws-sdk-js-v3#7867: @aws-sdk/xml-builder <3.972.14 does not configure maxTotalExpansions on fast-xml-parser, causing 'Entity expansion limit exceeded' on large CloudFormation responses. Remove once @aws-sdk/client-* deps are bumped past 3.972.14.",
-    "protobufjs": "GHSA-f38q-mgvj-vph7, GHSA-wcpc-wj8m-hjx6, GHSA-94rc-8x27-4472: protobufjs <=7.6.2 / 8.0.0-8.5.0 has property shadowing and DoS vulnerabilities. Transitive via @opentelemetry/otlp-transformer. Remove once @opentelemetry updates to protobufjs >=7.6.3 or >=8.5.1."
+    "@opentelemetry/core": "GHSA-8988-4f7v-96qf: @opentelemetry/core <2.8.0 has unbounded memory allocation in W3C Baggage propagation. Transitive via @opentelemetry/otlp-transformer. Remove once @opentelemetry/otlp-transformer is upgraded past 0.219.0.",
+    "@opentelemetry/otlp-transformer": "Pinned to 0.213.0 — the last version that ships generated protobuf types for trace, logs, and metrics (used by the dev-mode OTLP collector). Versions 0.214–0.217 drop logs/trace protos; 0.218+ removes the generated root entirely. Remove this pin once the collector is refactored to not depend on the internal generated/root path.",
+    "protobufjs": "Multiple high-severity CVEs in protobufjs <8.7.0 (code injection, DoS, prototype pollution). Transitive via @opentelemetry/otlp-transformer@0.213.0. Remove once @opentelemetry/otlp-transformer is upgraded past 0.217.0."
   },
   "overrides": {
     "minimatch": "10.2.4",
     "glob": "^13.0.0",
-    "fast-xml-parser": "5.5.7",
+    "fast-xml-parser": "5.10.1",
     "@aws-sdk/xml-builder": "3.972.15",
-    "protobufjs": ">=7.6.3",
-    "fast-uri": "^3.1.4"
+    "@opentelemetry/core": ">=2.8.0",
+    "protobufjs": ">=8.7.0",
+    "fast-uri": "^3.1.5"
   },
   "engines": {
     "node": ">=20"
