@@ -1,4 +1,5 @@
 import z from "zod";
+import type { Oauth2ProviderConfigOutput } from "@aws-sdk/client-bedrock-agentcore-control";
 import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
@@ -7,7 +8,33 @@ import type { AppIO } from "../../../../io";
 import { coreOptsFromCtx } from "../../../utils";
 import { SourceResolver } from "../../../../io";
 import { parseSecretReference } from "../../parser";
-import { parseJsonFlag } from "../../../utils";
+import {
+  buildProviderConfigInput,
+  parseProviderConfigFlags,
+  type ProviderConfigMode,
+  validateProviderConfigMode,
+} from "../config";
+
+function validateCompleteConfigKey(
+  mode: ProviderConfigMode,
+  existingProviderConfig: Oauth2ProviderConfigOutput | undefined,
+): void {
+  if (mode.kind !== "complete") {
+    return;
+  }
+
+  const existingConfigKey = existingProviderConfig
+    ? Object.keys(existingProviderConfig)[0]
+    : undefined;
+  if (!existingConfigKey || existingConfigKey === "$unknown") {
+    throw new InputValidationError("existing provider is missing a supported configuration");
+  }
+  if (mode.configKey !== existingConfigKey) {
+    throw new InputValidationError(
+      `--provider-configuration must use "${existingConfigKey}", received "${mode.configKey}"`,
+    );
+  }
+}
 
 export const createUpdateOauth2CredentialProviderHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -50,11 +77,6 @@ export const createUpdateOauth2CredentialProviderHandler = (core: Core, io: AppI
 
       const hasClientSecret = flags["client-secret"] !== undefined;
       const hasSecretRef = flags["client-secret-reference"] !== undefined;
-      const hasProviderConfig = flags["provider-configuration"] !== undefined;
-      const hasDiscoveryUrl = flags["discovery-url"] !== undefined;
-      const hasAuthServerMetadata = flags["authorization-server-metadata"] !== undefined;
-      const hasGuidedFlags =
-        flags["client-id"] !== undefined || hasDiscoveryUrl || hasAuthServerMetadata;
 
       if (hasClientSecret && hasSecretRef) {
         throw new InputValidationError(
@@ -66,20 +88,29 @@ export const createUpdateOauth2CredentialProviderHandler = (core: Core, io: AppI
           "either --client-secret or --client-secret-reference is required",
         );
       }
-      if (hasProviderConfig && hasGuidedFlags) {
-        throw new InputValidationError(
-          "--provider-configuration and guided flags (--client-id, --discovery-url, --authorization-server-metadata) are mutually exclusive",
-        );
-      }
-      if (hasDiscoveryUrl && hasAuthServerMetadata) {
-        throw new InputValidationError(
-          "--discovery-url and --authorization-server-metadata are mutually exclusive",
-        );
-      }
+
+      const providerConfigMode = parseProviderConfigFlags({
+        clientId: flags["client-id"],
+        discoveryUrl: flags["discovery-url"],
+        authorizationServerMetadata: flags["authorization-server-metadata"],
+        providerConfiguration: flags["provider-configuration"],
+      });
 
       const opts = coreOptsFromCtx(ctx);
       const existing = await core.identity.getOauth2CredentialProvider(flags.name, opts);
 
+      // The vendor is required as an update discriminator but cannot be changed.
+      const vendor = existing.credentialProviderVendor;
+      if (!vendor) {
+        throw new InputValidationError("existing provider is missing its vendor");
+      }
+      if (flags.vendor !== undefined && flags.vendor !== vendor) {
+        throw new InputValidationError(
+          `--vendor cannot be changed during update: provider uses ${vendor}, received ${flags.vendor}`,
+        );
+      }
+
+      // Secret updates must retain the provider's existing ownership model.
       if (hasClientSecret && existing.clientSecretSource === "EXTERNAL") {
         throw new InputValidationError(
           "this provider uses an external secret; use --client-secret-reference to update it",
@@ -91,28 +122,13 @@ export const createUpdateOauth2CredentialProviderHandler = (core: Core, io: AppI
         );
       }
 
-      const vendor = flags.vendor ?? existing.credentialProviderVendor;
-      if (!vendor) {
-        throw new InputValidationError("required option '--vendor <vendor>' not specified");
-      }
-      const isCustomVendor = vendor === "CustomOauth2";
-      if (hasGuidedFlags && !isCustomVendor) {
-        throw new InputValidationError(
-          "guided flags (--client-id, --discovery-url, --authorization-server-metadata) are only valid with --vendor CustomOauth2; use --provider-configuration for other vendors",
-        );
-      }
-      // non-custom vendors must supply a complete provider-configuration
-      if (!isCustomVendor && !hasProviderConfig) {
-        throw new InputValidationError(
-          `--provider-configuration is required for --vendor ${vendor}; guided flags only support CustomOauth2`,
-        );
-      }
-      // the guided CustomOAuth2 path requires one discovery form
-      if (isCustomVendor && !hasProviderConfig && !hasDiscoveryUrl && !hasAuthServerMetadata) {
-        throw new InputValidationError(
-          "guided --vendor CustomOauth2 requires one of --discovery-url or --authorization-server-metadata",
-        );
-      }
+      // Guided updates use this output as the base for settings without flags.
+      const existingCustomConfig =
+        vendor === "CustomOauth2"
+          ? existing.oauth2ProviderConfigOutput?.customOauth2ProviderConfig
+          : undefined;
+      validateProviderConfigMode(providerConfigMode, vendor, existingCustomConfig);
+      validateCompleteConfigKey(providerConfigMode, existing.oauth2ProviderConfigOutput);
 
       const resolver = new SourceResolver({ stdin: io.stdin });
       const clientSecret = await resolver.resolveText("client-secret", flags["client-secret"]);
@@ -123,55 +139,21 @@ export const createUpdateOauth2CredentialProviderHandler = (core: Core, io: AppI
 
       const clientSecretSource = existing.clientSecretSource;
 
-      let oauth2ProviderConfigInput: Record<string, unknown>;
-
-      if (hasProviderConfig) {
-        const config = parseJsonFlag<Record<string, unknown>>(
-          "provider-configuration",
-          flags["provider-configuration"],
-        )!;
-        const configKey = Object.keys(config)[0];
-        if (!configKey || typeof config[configKey] !== "object") {
-          throw new InputValidationError(
-            "--provider-configuration must contain a single vendor config object",
-          );
-        }
-        const vendorConfig = config[configKey] as Record<string, unknown>;
-        vendorConfig.clientSecret = clientSecret;
-        vendorConfig.clientSecretConfig = clientSecretConfig;
-        vendorConfig.clientSecretSource = clientSecretSource;
-        oauth2ProviderConfigInput = config;
-      } else {
-        const authServerMetadata = parseJsonFlag<Record<string, unknown>>(
-          "authorization-server-metadata",
-          flags["authorization-server-metadata"],
-        );
-
-        const oauthDiscovery: Record<string, unknown> = {};
-        if (flags["discovery-url"]) {
-          oauthDiscovery.discoveryUrl = flags["discovery-url"];
-        }
-        if (authServerMetadata) {
-          oauthDiscovery.authorizationServerMetadata = authServerMetadata;
-        }
-
-        oauth2ProviderConfigInput = {
-          customOauth2ProviderConfig: {
-            clientId: flags["client-id"],
-            clientSecret,
-            clientSecretConfig,
-            clientSecretSource,
-            ...(Object.keys(oauthDiscovery).length > 0 && { oauthDiscovery }),
-          },
-        };
-      }
+      const oauth2ProviderConfigInput = buildProviderConfigInput(providerConfigMode, {
+        existingCustomConfig,
+        secret: {
+          clientSecret,
+          clientSecretConfig,
+          clientSecretSource,
+        },
+      });
 
       ctx.require(JsonRendererKey).renderJson(
         await core.identity.updateOauth2CredentialProvider(
           {
             name: flags.name,
-            credentialProviderVendor: vendor as any,
-            oauth2ProviderConfigInput: oauth2ProviderConfigInput as any,
+            credentialProviderVendor: vendor,
+            oauth2ProviderConfigInput,
           },
           opts,
         ),

@@ -1,50 +1,87 @@
 import { describe, expect, test } from "bun:test";
-import { join } from "node:path";
-import { CoreClient } from "../../../core";
+import type {
+  CustomOauth2ProviderConfigOutput,
+  GetOauth2CredentialProviderResponse,
+  UpdateOauth2CredentialProviderRequest,
+  UpdateOauth2CredentialProviderResponse,
+} from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   createSilentLogger,
-  fixtureFactories,
-  matchGolden,
+  TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../testing";
 import { createRootHandler } from "../../index";
+import {
+  buildProviderConfigInput,
+  parseProviderConfigFlags,
+  validateProviderConfigMode,
+} from "./config";
 
 const REGION = "us-west-2";
-const FIXTURES = join(import.meta.dir, "__fixtures__");
+const PROVIDER_NAME = "oauth2-provider";
 
-// Record with RECORD=1 bun test src/handlers/identity/oauth2-credential-provider/oauth2.test.tsx
-// Neither fixture provider should exist before recording. The RECORD run creates
-// both providers, exercises pagination (requires >=2), then deletes
-const FIXTURE_PROVIDER_NAME = "agentcore-cli-oauth2-fixture";
-const FIXTURE_PROVIDER_NAME_2 = "agentcore-cli-oauth2-fixture-2";
-const MISSING_PROVIDER_NAME = "missing-oauth2-provider-000";
+const EXISTING_CUSTOM_CONFIG: CustomOauth2ProviderConfigOutput = {
+  oauthDiscovery: {
+    discoveryUrl: "https://example.com/.well-known/openid-configuration",
+  },
+  clientId: "existing-client-id",
+  onBehalfOfTokenExchangeConfig: {
+    grantType: "TOKEN_EXCHANGE",
+    tokenExchangeGrantTypeConfig: {
+      actorTokenContent: "NONE",
+    },
+  },
+  clientAuthenticationMethod: "CLIENT_SECRET_BASIC",
+  privateEndpoint: {
+    selfManagedLatticeResource: {
+      resourceConfigurationIdentifier: "resource-config",
+    },
+  },
+  privateEndpointOverrides: [
+    {
+      domain: "token.example.com",
+      privateEndpoint: {
+        selfManagedLatticeResource: {
+          resourceConfigurationIdentifier: "override-resource-config",
+        },
+      },
+    },
+  ],
+};
 
-function createFixtureCore(): CoreClient {
-  const { createControlClient, createDataClient, createIamClient } = fixtureFactories(FIXTURES);
-  return new CoreClient({
-    createControlClient,
-    createDataClient,
-    createIamClient,
-    logger: createSilentLogger(),
-  });
-}
+const EXISTING_CUSTOM_RESPONSE = {
+  name: PROVIDER_NAME,
+  credentialProviderVendor: "CustomOauth2",
+  clientSecretSource: "MANAGED",
+  oauth2ProviderConfigOutput: {
+    customOauth2ProviderConfig: EXISTING_CUSTOM_CONFIG,
+  },
+} as GetOauth2CredentialProviderResponse;
 
-async function run(args: string[]): Promise<string> {
+const UPDATE_RESPONSE = {
+  name: PROVIDER_NAME,
+  credentialProviderVendor: "CustomOauth2",
+} as UpdateOauth2CredentialProviderResponse;
+
+async function run(
+  args: string[],
+  core = new TestCoreClient(),
+): Promise<{ core: TestCoreClient; stdout: string }> {
   const io = testIO();
-  const root = createRootHandler(createFixtureCore(), {
+  const root = createRootHandler(core, {
     io: io.io,
     logger: createSilentLogger(),
     globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
 
   await root.route(["node", "agentcore", ...args, "--region", REGION]);
-  return io.stdout();
+  return { core, stdout: io.stdout() };
 }
 
 describe("oauth2-credential-provider command hierarchy", () => {
   test("registers the oauth2-credential-provider command hierarchy", () => {
-    const root = createRootHandler(createFixtureCore(), {
+    const root = createRootHandler(new TestCoreClient(), {
       io: testIO().io,
       logger: createSilentLogger(),
       globalConfigAccessor: new TestGlobalConfigAccessor(),
@@ -63,145 +100,12 @@ describe("oauth2-credential-provider command hierarchy", () => {
     ]);
   });
 
-  test("prints help for bare `identity oauth2-credential-provider` without an SDK call", async () => {
-    const stdout = await run(["identity", "oauth2-credential-provider"]);
+  test("prints help for bare `identity oauth2-credential-provider` without a Core call", async () => {
+    const { core, stdout } = await run(["identity", "oauth2-credential-provider"]);
 
     expect(stdout).toContain("Usage: agentcore identity oauth2-credential-provider");
     expect(stdout).toContain("Commands:");
-  });
-});
-
-describe("oauth2-credential-provider CRUDL", () => {
-  test("creates an OAuth2 credential provider", async () => {
-    const stdout = await run([
-      "identity",
-      "oauth2-credential-provider",
-      "create",
-      "--name",
-      FIXTURE_PROVIDER_NAME,
-      "--vendor",
-      "CustomOauth2",
-      "--client-id",
-      "fixture-client-id",
-      "--discovery-url",
-      "https://example.com/.well-known/openid-configuration",
-      "--client-secret",
-      "fixture-secret",
-    ]);
-
-    matchGolden(FIXTURES, "create.golden.json", stdout);
-  });
-
-  test("creates a second OAuth2 credential provider for pagination", async () => {
-    const stdout = await run([
-      "identity",
-      "oauth2-credential-provider",
-      "create",
-      "--name",
-      FIXTURE_PROVIDER_NAME_2,
-      "--vendor",
-      "CustomOauth2",
-      "--client-id",
-      "fixture-client-id-2",
-      "--discovery-url",
-      "https://example.com/.well-known/openid-configuration",
-      "--client-secret",
-      "fixture-secret-2",
-    ]);
-
-    matchGolden(FIXTURES, "create-2.golden.json", stdout);
-  });
-
-  test("gets an OAuth2 credential provider", async () => {
-    const stdout = await run([
-      "identity",
-      "oauth2-credential-provider",
-      "get",
-      "--name",
-      FIXTURE_PROVIDER_NAME,
-    ]);
-
-    matchGolden(FIXTURES, "get.golden.json", stdout);
-    expect(JSON.parse(stdout).name).toBe(FIXTURE_PROVIDER_NAME);
-  });
-
-  test("lists OAuth2 credential providers", async () => {
-    const stdout = await run(["identity", "oauth2-credential-provider", "list"]);
-
-    matchGolden(FIXTURES, "list.golden.json", stdout);
-    expect(JSON.parse(stdout).credentialProviders).toBeArray();
-  });
-
-  test("paginates OAuth2 credential provider list with --max-results and --next-token", async () => {
-    const firstPage = await run([
-      "identity",
-      "oauth2-credential-provider",
-      "list",
-      "--max-results",
-      "1",
-    ]);
-    matchGolden(FIXTURES, "list-page-1.golden.json", firstPage);
-
-    const first = JSON.parse(firstPage);
-    expect(first.credentialProviders).toHaveLength(1);
-    expect(first.nextToken).toBeString();
-
-    const secondPage = await run([
-      "identity",
-      "oauth2-credential-provider",
-      "list",
-      "--max-results",
-      "1",
-      "--next-token",
-      first.nextToken,
-    ]);
-    matchGolden(FIXTURES, "list-page-2.golden.json", secondPage);
-    expect(JSON.parse(secondPage).credentialProviders).toHaveLength(1);
-  });
-
-  test("updates an OAuth2 credential provider", async () => {
-    const stdout = await run([
-      "identity",
-      "oauth2-credential-provider",
-      "update",
-      "--name",
-      FIXTURE_PROVIDER_NAME,
-      "--vendor",
-      "CustomOauth2",
-      "--client-id",
-      "updated-client-id",
-      "--discovery-url",
-      "https://example.com/.well-known/openid-configuration",
-      "--client-secret",
-      "updated-secret",
-    ]);
-
-    matchGolden(FIXTURES, "update.golden.json", stdout);
-    expect(JSON.parse(stdout).name).toBe(FIXTURE_PROVIDER_NAME);
-  });
-
-  test("deletes the first OAuth2 credential provider", async () => {
-    const stdout = await run([
-      "identity",
-      "oauth2-credential-provider",
-      "delete",
-      "--name",
-      FIXTURE_PROVIDER_NAME,
-    ]);
-
-    matchGolden(FIXTURES, "delete.golden.json", stdout);
-  });
-
-  test("deletes the second OAuth2 credential provider", async () => {
-    const stdout = await run([
-      "identity",
-      "oauth2-credential-provider",
-      "delete",
-      "--name",
-      FIXTURE_PROVIDER_NAME_2,
-    ]);
-
-    matchGolden(FIXTURES, "delete-2.golden.json", stdout);
+    expect(core.identity.calls).toEqual([]);
   });
 });
 
@@ -289,6 +193,40 @@ describe("oauth2-credential-provider flag validation", () => {
       ],
       /mutually exclusive/,
     ],
+    [
+      "update: --provider-configuration with guided flags",
+      [
+        "identity",
+        "oauth2-credential-provider",
+        "update",
+        "--name",
+        "x",
+        "--client-secret",
+        "s",
+        "--client-id",
+        "c",
+        "--provider-configuration",
+        '{"customOauth2ProviderConfig":{"clientId":"c"}}',
+      ],
+      /mutually exclusive/,
+    ],
+    [
+      "update: --discovery-url with --authorization-server-metadata",
+      [
+        "identity",
+        "oauth2-credential-provider",
+        "update",
+        "--name",
+        "x",
+        "--client-secret",
+        "s",
+        "--discovery-url",
+        "https://example.com",
+        "--authorization-server-metadata",
+        '{"issuer":"https://example.com"}',
+      ],
+      /mutually exclusive/,
+    ],
   ] as const)("rejects mutually exclusive flags for `%s`", async (_label, args, message) => {
     expect(run([...args])).rejects.toThrow(message);
   });
@@ -329,12 +267,216 @@ describe("oauth2-credential-provider flag validation", () => {
   ] as const)("enforces vendor/config-mode rules for `%s`", async (_label, args, message) => {
     expect(run([...args])).rejects.toThrow(message);
   });
+});
 
-  test("propagates ResourceNotFoundException from get", async () => {
-    await expect(
-      run(["identity", "oauth2-credential-provider", "get", "--name", MISSING_PROVIDER_NAME]),
-    ).rejects.toMatchObject({
-      name: "ResourceNotFoundException",
+describe("OAuth2 update configuration", () => {
+  test("preserves advanced settings during a guided update", () => {
+    const mode = parseProviderConfigFlags({ clientId: "updated-client-id" });
+
+    validateProviderConfigMode(mode, "CustomOauth2", EXISTING_CUSTOM_CONFIG);
+    const result = buildProviderConfigInput(mode, {
+      existingCustomConfig: EXISTING_CUSTOM_CONFIG,
+      secret: {
+        clientSecret: "updated-secret",
+        clientSecretSource: "MANAGED",
+      },
     });
+
+    expect(result.customOauth2ProviderConfig).toEqual({
+      ...EXISTING_CUSTOM_CONFIG,
+      clientId: "updated-client-id",
+      clientSecret: "updated-secret",
+      clientSecretSource: "MANAGED",
+    });
+  });
+
+  test("rejects guided updates for non-Custom providers", () => {
+    const mode = parseProviderConfigFlags({ clientId: "updated-client-id" });
+
+    expect(() => validateProviderConfigMode(mode, "GithubOauth2")).toThrow(
+      /--provider-configuration is required for --vendor GithubOauth2/,
+    );
+  });
+
+  test("requires discovery when an existing Custom config cannot provide it", () => {
+    const mode = parseProviderConfigFlags({ clientId: "updated-client-id" });
+    const existingConfig = {
+      oauthDiscovery: undefined,
+      clientId: "existing-client-id",
+    };
+
+    expect(() => validateProviderConfigMode(mode, "CustomOauth2", existingConfig)).toThrow(
+      /requires one of --discovery-url or --authorization-server-metadata/,
+    );
+  });
+
+  test("overrides discovery without dropping unrelated settings", () => {
+    const mode = parseProviderConfigFlags({
+      discoveryUrl: "https://new.example.com/.well-known/openid-configuration",
+    });
+    const result = buildProviderConfigInput(mode, {
+      existingCustomConfig: EXISTING_CUSTOM_CONFIG,
+      secret: {
+        clientSecret: "updated-secret",
+        clientSecretSource: "MANAGED",
+      },
+    });
+
+    expect(result.customOauth2ProviderConfig).toEqual({
+      ...EXISTING_CUSTOM_CONFIG,
+      oauthDiscovery: {
+        discoveryUrl: "https://new.example.com/.well-known/openid-configuration",
+      },
+      clientSecret: "updated-secret",
+      clientSecretSource: "MANAGED",
+    });
+  });
+
+  test("injects secrets into a matching complete configuration", () => {
+    const mode = parseProviderConfigFlags({
+      providerConfiguration: '{"githubOauth2ProviderConfig":{"clientId":"new-client-id"}}',
+    });
+
+    validateProviderConfigMode(mode, "GithubOauth2");
+    const result = buildProviderConfigInput(mode, {
+      secret: {
+        clientSecret: "updated-secret",
+        clientSecretSource: "MANAGED",
+      },
+    });
+
+    expect(result).toEqual({
+      githubOauth2ProviderConfig: {
+        clientId: "new-client-id",
+        clientSecret: "updated-secret",
+        clientSecretSource: "MANAGED",
+      },
+    });
+  });
+});
+
+describe("OAuth2 complete provider configuration", () => {
+  test.each([
+    "null",
+    "[]",
+    "{}",
+    '{"githubOauth2ProviderConfig":null}',
+    '{"customOauth2ProviderConfig":{},"githubOauth2ProviderConfig":{}}',
+  ])("rejects malformed configuration `%s`", (providerConfiguration) => {
+    expect(() => parseProviderConfigFlags({ providerConfiguration })).toThrow(
+      /single vendor config object/,
+    );
+  });
+
+  test("leaves create vendor and configuration compatibility to the service", () => {
+    const mode = parseProviderConfigFlags({
+      providerConfiguration: '{"githubOauth2ProviderConfig":{"clientId":"client-id"}}',
+    });
+
+    expect(() => validateProviderConfigMode(mode, "CustomOauth2")).not.toThrow();
+  });
+});
+
+describe("OAuth2 update handler", () => {
+  test("rejects attempts to change the existing vendor before update", async () => {
+    const core = new TestCoreClient();
+    core.identity.setGetOauth2Response(EXISTING_CUSTOM_RESPONSE);
+
+    await expect(
+      run(
+        [
+          "identity",
+          "oauth2-credential-provider",
+          "update",
+          "--name",
+          PROVIDER_NAME,
+          "--vendor",
+          "GithubOauth2",
+          "--client-secret",
+          "updated-secret",
+        ],
+        core,
+      ),
+    ).rejects.toThrow(/--vendor cannot be changed.*CustomOauth2.*GithubOauth2/);
+
+    expect(core.identity.calls).toEqual([
+      {
+        method: "getOauth2CredentialProvider",
+        args: [PROVIDER_NAME, { region: REGION }],
+      },
+    ]);
+  });
+
+  test("rejects complete configuration for a different provider type", async () => {
+    const core = new TestCoreClient();
+    core.identity.setGetOauth2Response(EXISTING_CUSTOM_RESPONSE);
+
+    await expect(
+      run(
+        [
+          "identity",
+          "oauth2-credential-provider",
+          "update",
+          "--name",
+          PROVIDER_NAME,
+          "--client-secret",
+          "updated-secret",
+          "--provider-configuration",
+          '{"githubOauth2ProviderConfig":{"clientId":"updated-client-id"}}',
+        ],
+        core,
+      ),
+    ).rejects.toThrow(/must use "customOauth2ProviderConfig"/);
+
+    expect(core.identity.calls).toEqual([
+      {
+        method: "getOauth2CredentialProvider",
+        args: [PROVIDER_NAME, { region: REGION }],
+      },
+    ]);
+  });
+
+  test.each([
+    ["omitted", []],
+    ["matching", ["--vendor", "CustomOauth2"]],
+  ] as const)("preserves the existing config when --vendor is %s", async (_label, vendorArgs) => {
+    const core = new TestCoreClient();
+    core.identity
+      .setGetOauth2Response(EXISTING_CUSTOM_RESPONSE)
+      .setUpdateOauth2Response(UPDATE_RESPONSE);
+
+    const { stdout } = await run(
+      [
+        "identity",
+        "oauth2-credential-provider",
+        "update",
+        "--name",
+        PROVIDER_NAME,
+        ...vendorArgs,
+        "--client-secret",
+        "updated-secret",
+      ],
+      core,
+    );
+
+    const updateCall = core.identity.calls[1];
+    const request = updateCall?.args[0] as UpdateOauth2CredentialProviderRequest;
+    expect(core.identity.calls.map((call) => call.method)).toEqual([
+      "getOauth2CredentialProvider",
+      "updateOauth2CredentialProvider",
+    ]);
+    expect(request).toEqual({
+      name: PROVIDER_NAME,
+      credentialProviderVendor: "CustomOauth2",
+      oauth2ProviderConfigInput: {
+        customOauth2ProviderConfig: {
+          ...EXISTING_CUSTOM_CONFIG,
+          clientSecret: "updated-secret",
+          clientSecretConfig: undefined,
+          clientSecretSource: "MANAGED",
+        },
+      },
+    });
+    expect(JSON.parse(stdout)).toEqual(UPDATE_RESPONSE);
   });
 });

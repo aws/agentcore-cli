@@ -1,11 +1,11 @@
 {
   "clientSecretArn": {
-    "secretArn": "arn:aws:secretsmanager:us-west-2:685197708687:secret:bedrock-agentcore-identity!default/oauth2/agentcore-cli-oauth2-fixture-2-f2d9252c-Wver51"
+    "secretArn": "arn:aws:secretsmanager:us-west-2:685197708687:secret:bedrock-agentcore-identity!default/oauth2/agentcore-cli-oauth2-fixture-2-7058dd32-VnfWeP"
   },
   "name": "agentcore-cli-oauth2-fixture-2",
   "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:token-vault/default/oauth2credentialprovider/agentcore-cli-oauth2-fixture-2",
   "clientSecretSource": "MANAGED",
-  "callbackUrl": "https://bedrock-agentcore.us-west-2.amazonaws.com/identities/oauth2/callback/060bb019-777a-45c8-a7dc-d540c1ac8ff9",
+  "callbackUrl": "https://bedrock-agentcore.us-west-2.amazonaws.com/identities/oauth2/callback/b783b413-142f-4bbd-9f5d-6198ce095ee3",
   "oauth2ProviderConfigOutput": {
     "customOauth2ProviderConfig": {
       "oauthDiscovery": {

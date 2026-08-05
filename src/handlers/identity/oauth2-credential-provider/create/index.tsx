@@ -1,4 +1,5 @@
 import z from "zod";
+import type { CredentialProviderVendorType } from "@aws-sdk/client-bedrock-agentcore-control";
 import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
@@ -7,7 +8,11 @@ import type { AppIO } from "../../../../io";
 import { coreOptsFromCtx, parseTags } from "../../../utils";
 import { SourceResolver } from "../../../../io";
 import { parseSecretReference } from "../../parser";
-import { parseJsonFlag } from "../../../utils";
+import {
+  buildProviderConfigInput,
+  parseProviderConfigFlags,
+  validateProviderConfigMode,
+} from "../config";
 
 export const createCreateOauth2CredentialProviderHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -52,14 +57,9 @@ export const createCreateOauth2CredentialProviderHandler = (core: Core, io: AppI
         throw new InputValidationError("required option '--vendor <vendor>' not specified");
       }
 
-      const isCustomVendor = flags.vendor === "CustomOauth2";
+      const vendor = flags.vendor as CredentialProviderVendorType;
       const hasClientSecret = flags["client-secret"] !== undefined;
       const hasSecretRef = flags["client-secret-reference"] !== undefined;
-      const hasProviderConfig = flags["provider-configuration"] !== undefined;
-      const hasDiscoveryUrl = flags["discovery-url"] !== undefined;
-      const hasAuthServerMetadata = flags["authorization-server-metadata"] !== undefined;
-      const hasGuidedFlags =
-        flags["client-id"] !== undefined || hasDiscoveryUrl || hasAuthServerMetadata;
 
       if (hasClientSecret && hasSecretRef) {
         throw new InputValidationError(
@@ -71,33 +71,14 @@ export const createCreateOauth2CredentialProviderHandler = (core: Core, io: AppI
           "either --client-secret or --client-secret-reference is required",
         );
       }
-      if (hasProviderConfig && hasGuidedFlags) {
-        throw new InputValidationError(
-          "--provider-configuration and guided flags (--client-id, --discovery-url, --authorization-server-metadata) are mutually exclusive",
-        );
-      }
-      if (hasGuidedFlags && !isCustomVendor) {
-        throw new InputValidationError(
-          "guided flags (--client-id, --discovery-url, --authorization-server-metadata) are only valid with --vendor CustomOauth2; use --provider-configuration for other vendors",
-        );
-      }
-      // non-custom vendors must supply a complete provider-configuration
-      if (!isCustomVendor && !hasProviderConfig) {
-        throw new InputValidationError(
-          `--provider-configuration is required for --vendor ${flags.vendor}; guided flags only support CustomOauth2`,
-        );
-      }
-      if (hasDiscoveryUrl && hasAuthServerMetadata) {
-        throw new InputValidationError(
-          "--discovery-url and --authorization-server-metadata are mutually exclusive",
-        );
-      }
-      // the guided CustomOAuth2 path requires one discovery form
-      if (isCustomVendor && !hasProviderConfig && !hasDiscoveryUrl && !hasAuthServerMetadata) {
-        throw new InputValidationError(
-          "guided --vendor CustomOauth2 requires one of --discovery-url or --authorization-server-metadata",
-        );
-      }
+
+      const providerConfigMode = parseProviderConfigFlags({
+        clientId: flags["client-id"],
+        discoveryUrl: flags["discovery-url"],
+        authorizationServerMetadata: flags["authorization-server-metadata"],
+        providerConfiguration: flags["provider-configuration"],
+      });
+      validateProviderConfigMode(providerConfigMode, vendor);
 
       const resolver = new SourceResolver({ stdin: io.stdin });
       const clientSecret = await resolver.resolveText("client-secret", flags["client-secret"]);
@@ -108,48 +89,13 @@ export const createCreateOauth2CredentialProviderHandler = (core: Core, io: AppI
 
       const clientSecretSource = hasClientSecret ? "MANAGED" : "EXTERNAL";
 
-      let oauth2ProviderConfigInput: Record<string, unknown>;
-
-      if (hasProviderConfig) {
-        const config = parseJsonFlag<Record<string, unknown>>(
-          "provider-configuration",
-          flags["provider-configuration"],
-        )!;
-        const configKey = Object.keys(config)[0];
-        if (!configKey || typeof config[configKey] !== "object") {
-          throw new InputValidationError(
-            "--provider-configuration must contain a single vendor config object",
-          );
-        }
-        const vendorConfig = config[configKey] as Record<string, unknown>;
-        vendorConfig.clientSecret = clientSecret;
-        vendorConfig.clientSecretConfig = clientSecretConfig;
-        vendorConfig.clientSecretSource = clientSecretSource;
-        oauth2ProviderConfigInput = config;
-      } else {
-        const authServerMetadata = parseJsonFlag<Record<string, unknown>>(
-          "authorization-server-metadata",
-          flags["authorization-server-metadata"],
-        );
-
-        const oauthDiscovery: Record<string, unknown> = {};
-        if (flags["discovery-url"]) {
-          oauthDiscovery.discoveryUrl = flags["discovery-url"];
-        }
-        if (authServerMetadata) {
-          oauthDiscovery.authorizationServerMetadata = authServerMetadata;
-        }
-
-        oauth2ProviderConfigInput = {
-          customOauth2ProviderConfig: {
-            clientId: flags["client-id"],
-            clientSecret,
-            clientSecretConfig,
-            clientSecretSource,
-            ...(Object.keys(oauthDiscovery).length > 0 && { oauthDiscovery }),
-          },
-        };
-      }
+      const oauth2ProviderConfigInput = buildProviderConfigInput(providerConfigMode, {
+        secret: {
+          clientSecret,
+          clientSecretConfig,
+          clientSecretSource,
+        },
+      });
 
       const tags = parseTags(flags.tags);
 
@@ -157,8 +103,8 @@ export const createCreateOauth2CredentialProviderHandler = (core: Core, io: AppI
         await core.identity.createOauth2CredentialProvider(
           {
             name: flags.name,
-            credentialProviderVendor: flags.vendor as any,
-            oauth2ProviderConfigInput: oauth2ProviderConfigInput as any,
+            credentialProviderVendor: vendor,
+            oauth2ProviderConfigInput,
             tags,
           },
           coreOptsFromCtx(ctx),

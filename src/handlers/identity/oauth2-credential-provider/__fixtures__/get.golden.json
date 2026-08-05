@@ -1,6 +1,6 @@
 {
   "clientSecretArn": {
-    "secretArn": "arn:aws:secretsmanager:us-west-2:685197708687:secret:bedrock-agentcore-identity!default/oauth2/agentcore-cli-oauth2-fixture-7aeedc5d-iuTkLZ"
+    "secretArn": "arn:aws:secretsmanager:us-west-2:685197708687:secret:bedrock-agentcore-identity!default/oauth2/agentcore-cli-oauth2-fixture-d172b1a9-dFOvOv"
   },
   "name": "agentcore-cli-oauth2-fixture",
   "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:token-vault/default/oauth2credentialprovider/agentcore-cli-oauth2-fixture",
@@ -13,9 +13,9 @@
       "clientId": "fixture-client-id"
     }
   },
-  "createdTime": "2026-07-29T14:48:42.019Z",
-  "lastUpdatedTime": "2026-07-29T14:48:42.019Z",
+  "createdTime": "2026-08-05T19:35:44.755Z",
+  "lastUpdatedTime": "2026-08-05T19:35:44.755Z",
   "clientSecretSource": "MANAGED",
-  "callbackUrl": "https://bedrock-agentcore.us-west-2.amazonaws.com/identities/oauth2/callback/6b6e9fda-8f15-4c0f-9d48-b82aa39066d8",
+  "callbackUrl": "https://bedrock-agentcore.us-west-2.amazonaws.com/identities/oauth2/callback/2edfe7c4-4655-41a5-9722-767aa15e5b45",
   "status": "READY"
 }

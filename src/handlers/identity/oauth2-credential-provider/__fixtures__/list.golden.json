@@ -4,15 +4,15 @@
       "name": "agentcore-cli-oauth2-fixture",
       "credentialProviderVendor": "CustomOauth2",
       "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:token-vault/default/oauth2credentialprovider/agentcore-cli-oauth2-fixture",
-      "createdTime": "2026-07-29T14:48:42.019Z",
-      "lastUpdatedTime": "2026-07-29T14:48:42.019Z"
+      "createdTime": "2026-08-05T19:35:44.755Z",
+      "lastUpdatedTime": "2026-08-05T19:35:44.755Z"
     },
     {
       "name": "agentcore-cli-oauth2-fixture-2",
       "credentialProviderVendor": "CustomOauth2",
       "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:token-vault/default/oauth2credentialprovider/agentcore-cli-oauth2-fixture-2",
-      "createdTime": "2026-07-29T14:48:42.317Z",
-      "lastUpdatedTime": "2026-07-29T14:48:42.317Z"
+      "createdTime": "2026-08-05T19:35:45.047Z",
+      "lastUpdatedTime": "2026-08-05T19:35:45.047Z"
     }
   ]
 }
