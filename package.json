@@ -50,7 +50,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-agentcore": "^3.1092.0",
-    "@aws-sdk/client-bedrock-agentcore-control": "^3.1079.0",
+    "@aws-sdk/client-bedrock-agentcore-control": "^3.1102.0",
     "@aws-sdk/client-cloudwatch-logs": "^3.1092.0",
     "@aws-sdk/client-iam": "^3.1080.0",
     "@smithy/core": "3.29.3",

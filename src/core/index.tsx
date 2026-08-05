@@ -109,7 +109,7 @@ export class CoreClient implements AwsClients {
   }
 
   // iam returns the IAM client for `config`, creating and caching it on first
-  // use (used to provision default harness execution roles).
+  // use (used to provision default execution roles).
   iam(config: ClientConfig): IAMClient {
     const key = cacheKey(config);
     let client = this.iamClients.get(key);

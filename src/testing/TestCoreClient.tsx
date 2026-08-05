@@ -1,6 +1,9 @@
 import type {
   CreateApiKeyCredentialProviderResponse,
   CreateOauth2CredentialProviderResponse,
+  CreateGatewayResponse,
+  CreateGatewayRuleResponse,
+  CreateGatewayTargetResponse,
   CreateHarnessEndpointRequest,
   CreateHarnessEndpointResponse,
   CreateHarnessResponse,
@@ -80,7 +83,12 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { Core } from "../handlers/types";
 import type { CoreHarnessClient, CreateHarnessInput } from "../handlers/harness/types";
-import type { CoreGatewayClient } from "../handlers/gateway/types";
+import type {
+  CoreGatewayClient,
+  CreateGatewayInput,
+  CreateGatewayRuleInput,
+  CreateGatewayTargetInput,
+} from "../handlers/gateway/types";
 import type {
   CoreIdentityClient,
   CreateApiKeyCredentialProviderInput,
@@ -166,10 +174,13 @@ const DEFAULT_GET_MEMORY_RECORD_RESPONSE: GetMemoryRecordOutput = { memoryRecord
 const DEFAULT_LIST_MEMORY_RECORDS_RESPONSE: ListMemoryRecordsOutput = {
   memoryRecordSummaries: [],
 };
+const DEFAULT_CREATE_GATEWAY_RESPONSE = {} as CreateGatewayResponse;
 const DEFAULT_GET_GATEWAY_RESPONSE = {} as GetGatewayResponse;
 const DEFAULT_LIST_GATEWAYS_RESPONSE: ListGatewaysResponse = { items: [] };
+const DEFAULT_CREATE_GATEWAY_TARGET_RESPONSE = {} as CreateGatewayTargetResponse;
 const DEFAULT_GET_GATEWAY_TARGET_RESPONSE = {} as GetGatewayTargetResponse;
 const DEFAULT_LIST_GATEWAY_TARGETS_RESPONSE: ListGatewayTargetsResponse = { items: [] };
+const DEFAULT_CREATE_GATEWAY_RULE_RESPONSE = {} as CreateGatewayRuleResponse;
 const DEFAULT_GET_GATEWAY_RULE_RESPONSE = {} as GetGatewayRuleResponse;
 const DEFAULT_LIST_GATEWAY_RULES_RESPONSE: ListGatewayRulesResponse = { gatewayRules: [] };
 const DEFAULT_CREATE_OAUTH2_RESPONSE = {} as CreateOauth2CredentialProviderResponse;
@@ -815,13 +826,22 @@ export class TestMemoryClient implements CoreMemoryClient {
 export class TestGatewayClient implements CoreGatewayClient {
   readonly calls: RecordedCall[] = [];
 
+  private createResponse: CreateGatewayResponse = DEFAULT_CREATE_GATEWAY_RESPONSE;
   private getResponse: GetGatewayResponse = DEFAULT_GET_GATEWAY_RESPONSE;
   private listResponses = new Map<string | undefined, ListGatewaysResponse>();
+  private createTargetResponse: CreateGatewayTargetResponse =
+    DEFAULT_CREATE_GATEWAY_TARGET_RESPONSE;
   private getTargetResponse: GetGatewayTargetResponse = DEFAULT_GET_GATEWAY_TARGET_RESPONSE;
   private listTargetResponses = new Map<string | undefined, ListGatewayTargetsResponse>();
+  private createRuleResponse: CreateGatewayRuleResponse = DEFAULT_CREATE_GATEWAY_RULE_RESPONSE;
   private getRuleResponse: GetGatewayRuleResponse = DEFAULT_GET_GATEWAY_RULE_RESPONSE;
   private listRuleResponses = new Map<string | undefined, ListGatewayRulesResponse>();
   private error?: Error;
+
+  setCreateResponse(response: CreateGatewayResponse): this {
+    this.createResponse = response;
+    return this;
+  }
 
   setGetResponse(response: GetGatewayResponse): this {
     this.getResponse = response;
@@ -833,6 +853,11 @@ export class TestGatewayClient implements CoreGatewayClient {
     return this;
   }
 
+  setCreateTargetResponse(response: CreateGatewayTargetResponse): this {
+    this.createTargetResponse = response;
+    return this;
+  }
+
   setGetTargetResponse(response: GetGatewayTargetResponse): this {
     this.getTargetResponse = response;
     return this;
@@ -840,6 +865,11 @@ export class TestGatewayClient implements CoreGatewayClient {
 
   setListTargetsResponse(response: ListGatewayTargetsResponse, forNextToken?: string): this {
     this.listTargetResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setCreateRuleResponse(response: CreateGatewayRuleResponse): this {
+    this.createRuleResponse = response;
     return this;
   }
 
@@ -856,6 +886,15 @@ export class TestGatewayClient implements CoreGatewayClient {
   setError(error: Error | undefined): this {
     this.error = error;
     return this;
+  }
+
+  async createGateway(
+    input: CreateGatewayInput,
+    options: CoreOptions,
+  ): Promise<CreateGatewayResponse> {
+    this.calls.push({ method: "createGateway", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.createResponse;
   }
 
   async getGateway(id: string, options: CoreOptions): Promise<GetGatewayResponse> {
@@ -876,6 +915,15 @@ export class TestGatewayClient implements CoreGatewayClient {
       this.listResponses.get(undefined) ??
       DEFAULT_LIST_GATEWAYS_RESPONSE
     );
+  }
+
+  async createGatewayTarget(
+    input: CreateGatewayTargetInput,
+    options: CoreOptions,
+  ): Promise<CreateGatewayTargetResponse> {
+    this.calls.push({ method: "createGatewayTarget", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.createTargetResponse;
   }
 
   async getGatewayTarget(
@@ -904,6 +952,15 @@ export class TestGatewayClient implements CoreGatewayClient {
       this.listTargetResponses.get(undefined) ??
       DEFAULT_LIST_GATEWAY_TARGETS_RESPONSE
     );
+  }
+
+  async createGatewayRule(
+    input: CreateGatewayRuleInput,
+    options: CoreOptions,
+  ): Promise<CreateGatewayRuleResponse> {
+    this.calls.push({ method: "createGatewayRule", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.createRuleResponse;
   }
 
   async getGatewayRule(

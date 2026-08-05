@@ -1,5 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { parseTags } from "./utils";
+import { parseJsonArrayFlag, parseJsonObjectFlag, parseTags } from "./utils";
+
+describe("structured JSON flags", () => {
+  test("parses object and array values", () => {
+    expect(parseJsonObjectFlag("config", '{"enabled":true}')).toEqual({ enabled: true });
+    expect(parseJsonArrayFlag("items", '[{"id":"a"}]')).toEqual([{ id: "a" }]);
+  });
+
+  test("rejects the wrong top-level shape", () => {
+    expect(() => parseJsonObjectFlag("config", "[]")).toThrow("must be a JSON object");
+    expect(() => parseJsonObjectFlag("config", "null")).toThrow("must be a JSON object");
+    expect(() => parseJsonArrayFlag("items", "{}")).toThrow("must be a JSON array");
+  });
+});
 
 describe("parseTags", () => {
   test("returns undefined for undefined input", () => {

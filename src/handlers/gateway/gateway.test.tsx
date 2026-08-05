@@ -59,7 +59,7 @@ async function run(
 }
 
 describe("gateway command hierarchy", () => {
-  test("registers the Gateway read command hierarchy", () => {
+  test("registers the Gateway command hierarchy", () => {
     const root = createRootHandler(new TestCoreClient(), {
       io: testIO().io,
       logger: createSilentLogger(),
@@ -72,15 +72,16 @@ describe("gateway command hierarchy", () => {
 
     expect(gateway?.flags().map((flag) => flag.name)).not.toContain("interactive");
     expect(gateway?.children().map((child) => child.name())).toEqual([
+      "create",
       "get",
       "list",
       "target",
       "connector",
       "rule",
     ]);
-    expect(target?.children().map((child) => child.name())).toEqual(["get", "list"]);
+    expect(target?.children().map((child) => child.name())).toEqual(["create", "get", "list"]);
     expect(connector?.children().map((child) => child.name())).toEqual(["get", "list"]);
-    expect(rule?.children().map((child) => child.name())).toEqual(["get", "list"]);
+    expect(rule?.children().map((child) => child.name())).toEqual(["create", "get", "list"]);
   });
 
   test.each(["gateway", "gateway target", "gateway connector", "gateway rule"])(

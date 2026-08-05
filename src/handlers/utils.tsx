@@ -51,6 +51,27 @@ export function parseJsonFlagWithSchema<T>(
   return result.data;
 }
 
+export function parseJsonObjectFlag<T extends object>(
+  name: string,
+  raw: string | undefined,
+): T | undefined {
+  const parsed = parseJsonFlag<unknown>(name, raw);
+  if (parsed === undefined) return undefined;
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new InputValidationError(`Option '--${name}' must be a JSON object`);
+  }
+  return parsed as T;
+}
+
+export function parseJsonArrayFlag<T>(name: string, raw: string | undefined): T[] | undefined {
+  const parsed = parseJsonFlag<unknown>(name, raw);
+  if (parsed === undefined) return undefined;
+  if (!Array.isArray(parsed)) {
+    throw new InputValidationError(`Option '--${name}' must be a JSON array`);
+  }
+  return parsed as T[];
+}
+
 // parseTags parses a tags flag that accepts two mutually exclusive forms:
 //   - Repeated key=value shorthand: ["env=prod", "team=foo"]
 //   - A single JSON object: ['{"env":"prod","team":"foo"}']
