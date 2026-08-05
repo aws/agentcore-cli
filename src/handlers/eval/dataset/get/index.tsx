@@ -48,7 +48,7 @@ export const createGetDatasetHandler = (core: Core) =>
           controller.signal,
         );
         // file is written in addition to the normal metadata output
-        ctx.require(JsonRendererKey).renderJson(response);
+        ctx.require(JsonRendererKey).renderJson({ ...response, filePath });
       } finally {
         process.removeListener("SIGINT", interrupt);
       }

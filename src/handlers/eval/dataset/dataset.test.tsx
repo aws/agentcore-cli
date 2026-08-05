@@ -83,10 +83,10 @@ describe("eval dataset command hierarchy", () => {
     ]);
   });
 
-  test("prints help for bare `eval dataset` without calling the service", async () => {
+  test("prints help for bare `eval dataset --json` without calling the service", async () => {
     const { core, stdout, route } = testDatasetCommand();
 
-    await route(["eval", "dataset"]);
+    await route(["eval", "dataset", "--json"]);
 
     expect(stdout()).toContain("Usage: agentcore eval dataset");
     expect(core.eval.calls).toHaveLength(0);
@@ -399,7 +399,7 @@ describe("dataset get", () => {
     expect(core.eval.calls.map((c) => c.method)).toEqual(["downloadDataset"]);
     const call = core.eval.calls[0];
     expect(call?.args.slice(0, 3)).toEqual(["dataset-orders-abc123", undefined, "/tmp/out.jsonl"]);
-    expect(JSON.parse(stdout())).toMatchObject({ exampleCount: 2 });
+    expect(JSON.parse(stdout())).toMatchObject({ exampleCount: 2, filePath: "/tmp/out.jsonl" });
   });
 
   test("downloads a specific version when --version and --file-path are combined", async () => {
@@ -424,7 +424,7 @@ describe("dataset get", () => {
   test("requires --id", async () => {
     const { core, route } = testDatasetCommand();
 
-    await expect(route(["eval", "dataset", "get"])).rejects.toThrow(/--id/);
+    await expect(route(["eval", "dataset", "get", "--json"])).rejects.toThrow(/--id/);
     expect(core.eval.calls).toHaveLength(0);
   });
 });
@@ -436,7 +436,7 @@ describe("dataset list", () => {
       datasets: [{ datasetId: "dataset-orders-abc123", datasetName: "orders-regression" }],
     } as never);
 
-    await route(["eval", "dataset", "list"]);
+    await route(["eval", "dataset", "list", "--json"]);
 
     const call = core.eval.calls.find((c) => c.method === "listDatasets");
     expect(call?.args.slice(0, 2)).toEqual([undefined, undefined]);
@@ -506,7 +506,7 @@ describe("dataset delete", () => {
   test("requires --id", async () => {
     const { core, route } = testDatasetCommand();
 
-    await expect(route(["eval", "dataset", "delete"])).rejects.toThrow(/--id/);
+    await expect(route(["eval", "dataset", "delete", "--json"])).rejects.toThrow(/--id/);
     expect(core.eval.calls).toHaveLength(0);
   });
 });
@@ -555,7 +555,7 @@ describe("dataset publish", () => {
   test("requires --id", async () => {
     const { core, route } = testDatasetCommand();
 
-    await expect(route(["eval", "dataset", "publish"])).rejects.toThrow(/--id/);
+    await expect(route(["eval", "dataset", "publish", "--json"])).rejects.toThrow(/--id/);
     expect(core.eval.calls).toHaveLength(0);
   });
 });

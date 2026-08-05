@@ -143,20 +143,15 @@ export class RuntimeInvokeResponseError extends AgentCoreCLIError {
   }
 }
 
-/**
- * A dataset's examples could not be fetched, or does not exist yet.
- */
-export class DatasetDownloadError extends AgentCoreCLIError {
+/** Remote content could not be fetched, or is not available yet. */
+export class NetworkingError extends AgentCoreCLIError {
   constructor(message: string, options?: AgentCoreCLIErrorOptions) {
     super(message, { source: ERROR_SOURCE.SERVICE, ...options });
   }
 }
 
-/**
- * A downloaded dataset could not be written to its destination.
- * Local and user-fixable: a missing directory, a permission denial, etc.
- */
-export class DatasetWriteError extends AgentCoreCLIError {
+/** A file could not be written locally: missing directory, permission denial, etc. */
+export class FileWriteError extends AgentCoreCLIError {
   constructor(message: string, options?: AgentCoreCLIErrorOptions) {
     super(message, { source: ERROR_SOURCE.USER, ...options });
   }

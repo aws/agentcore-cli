@@ -1,4 +1,9 @@
-export { atomicWrite } from "./atomicWrite";
+export {
+  atomicWrite,
+  atomicWriteStream,
+  type AtomicWriteStreamOptions,
+  type AtomicWriteStreamSource,
+} from "./atomicWrite";
 export {
   MissingToolError,
   ProcessFailedError,

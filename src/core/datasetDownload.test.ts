@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { GetDatasetCommand } from "@aws-sdk/client-bedrock-agentcore-control";
 import { EvalClient } from "./eval";
-import { DatasetDownloadError, DatasetWriteError, ERROR_SOURCE } from "../errors";
+import { ERROR_SOURCE, FileWriteError, NetworkingError } from "../errors";
 import type { AwsClients, CoreFetch } from "./types";
 
 const OPTIONS = { region: "us-west-2" };
@@ -65,13 +65,13 @@ describe("EvalClient.downloadDataset", () => {
 
     const promise = client.downloadDataset("d-1", undefined, tempPath(), OPTIONS);
 
-    await expect(promise).rejects.toThrow(DatasetDownloadError);
+    await expect(promise).rejects.toThrow(NetworkingError);
     await expect(promise).rejects.toThrow(/CREATING/);
   });
 
   // A presigned URL expires minutes after it is issued, so a 403 here is an
   // ordinary outcome rather than a bug; it must not surface as a stack trace.
-  test("surfaces a non-OK HTTP response as a download error", async () => {
+  test("surfaces a non-OK HTTP response as a networking error", async () => {
     const fetch = (async () => new Response("expired", { status: 403 })) as CoreFetch;
     const client = new EvalClient(
       stubClients({ datasetId: "d-1", downloadUrl: DOWNLOAD_URL }),
@@ -80,11 +80,11 @@ describe("EvalClient.downloadDataset", () => {
 
     const promise = client.downloadDataset("d-1", undefined, tempPath(), OPTIONS);
 
-    await expect(promise).rejects.toThrow(DatasetDownloadError);
+    await expect(promise).rejects.toThrow(NetworkingError);
     await expect(promise).rejects.toThrow(/HTTP 403/);
   });
 
-  test("wraps a transport failure as a download error", async () => {
+  test("lets unknown transport failures bubble up for root classification", async () => {
     const fetch = (async () => {
       throw new Error("socket hang up");
     }) as CoreFetch;
@@ -95,8 +95,8 @@ describe("EvalClient.downloadDataset", () => {
 
     const promise = client.downloadDataset("d-1", undefined, tempPath(), OPTIONS);
 
-    await expect(promise).rejects.toThrow(DatasetDownloadError);
-    await expect(promise).rejects.toThrow(/Could not download/);
+    await expect(promise).rejects.toThrow("socket hang up");
+    await expect(promise).rejects.not.toBeInstanceOf(NetworkingError);
   });
 
   test("requests the named version's content", async () => {
@@ -125,7 +125,7 @@ describe("EvalClient.downloadDataset", () => {
     );
 
     await expect(client.downloadDataset("d-1", undefined, path, OPTIONS)).rejects.toThrow(
-      DatasetDownloadError,
+      NetworkingError,
     );
 
     expect(readFileSync(path, "utf8")).toBe("PREVIOUS CONTENT\n");
@@ -150,7 +150,7 @@ describe("EvalClient.downloadDataset", () => {
       OPTIONS,
     );
 
-    await expect(promise).rejects.toThrow(DatasetWriteError);
+    await expect(promise).rejects.toThrow(FileWriteError);
     await expect(promise).rejects.toMatchObject({ source: ERROR_SOURCE.USER });
   });
 
@@ -233,7 +233,7 @@ describe("EvalClient.downloadDataset", () => {
 
     const promise = client.downloadDataset("d-1", undefined, path, OPTIONS, controller.signal);
 
-    await expect(promise).rejects.not.toBeInstanceOf(DatasetDownloadError);
+    await expect(promise).rejects.not.toBeInstanceOf(NetworkingError);
     expect(existsSync(path)).toBe(false);
   });
 

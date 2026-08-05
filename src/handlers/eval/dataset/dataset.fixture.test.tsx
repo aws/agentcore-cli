@@ -154,7 +154,7 @@ describe("eval dataset against recorded responses", () => {
   }, 60_000);
 
   test("lists datasets", async () => {
-    const stdout = await run(["eval", "dataset", "list"]);
+    const stdout = await run(["eval", "dataset", "list", "--json"]);
 
     matchGolden(FIXTURES, "list.golden.json", stdout);
     expect(JSON.parse(stdout).datasets).toBeArray();

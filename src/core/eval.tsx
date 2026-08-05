@@ -37,13 +37,8 @@ import {
   type UpdateOnlineEvaluationConfigResponse,
   type BedrockAgentCoreControlClient,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import { randomUUID } from "node:crypto";
-import { createWriteStream } from "node:fs";
-import { rename, rm } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
-import { Readable, Transform } from "node:stream";
-import { pipeline } from "node:stream/promises";
-import { DatasetDownloadError, DatasetWriteError, InputValidationError } from "../errors";
+import { Transform } from "node:stream";
+import { FileWriteError, InputValidationError, NetworkingError } from "../errors";
 import type {
   CodeBasedUpdate,
   RoleScopeWarning,
@@ -53,6 +48,7 @@ import type {
   LlmAsAJudgeUpdate,
   UpdateOnlineEvalInput,
 } from "../handlers/eval/types";
+import { atomicWriteStream } from "../io";
 import type { AwsClients, CoreFetch, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
 import {
@@ -501,40 +497,43 @@ export class EvalClient implements CoreEvalClient {
     // ingesting has no URL to offer yet. Report the status, which is what tells
     // the caller whether to retry.
     if (!dataset.downloadUrl) {
-      throw new DatasetDownloadError(
+      throw new NetworkingError(
         `Dataset "${id}" has no downloadable content yet (status ${dataset.status ?? "unknown"}); ` +
           `retry once it reports ACTIVE`,
         { meta: { datasetId: id, datasetVersion: dataset.datasetVersion, status: dataset.status } },
       );
     }
 
-    let body: ReadableStream<Uint8Array>;
+    let response: Response;
     try {
-      const response = await this.fetch(dataset.downloadUrl, { signal });
-      if (!response.ok) {
-        throw new DatasetDownloadError(
-          `Downloading dataset "${id}" failed with HTTP ${response.status}`,
-          { meta: { datasetId: id, status: response.status } },
-        );
-      }
-      if (!response.body) {
-        throw new DatasetDownloadError(`Dataset "${id}" download returned an empty response`, {
-          meta: { datasetId: id },
-        });
-      }
-      body = response.body;
+      response = await this.fetch(dataset.downloadUrl, { signal });
     } catch (error) {
-      if (error instanceof DatasetDownloadError) throw error;
-      // A caller-initiated abort is not a download failure; propagate it so the
-      // handler can report an interruption rather than a service problem.
       if (signal?.aborted) throw signal.reason ?? error;
-      throw new DatasetDownloadError(`Could not download dataset "${id}"`, {
-        cause: error,
+      throw error;
+    }
+    if (!response.ok) {
+      throw new NetworkingError(`Downloading dataset "${id}" failed with HTTP ${response.status}`, {
+        meta: { datasetId: id, status: response.status },
+      });
+    }
+    if (!response.body) {
+      throw new NetworkingError(`Dataset "${id}" download returned an empty response`, {
         meta: { datasetId: id },
       });
     }
 
-    await streamToFile(body, filePath, { datasetId: id, signal });
+    try {
+      await atomicWriteStream(filePath, response.body, {
+        signal,
+        transforms: [endWithNewline()],
+      });
+    } catch (error) {
+      if (signal?.aborted) throw signal.reason ?? error;
+      throw new FileWriteError(`Could not write dataset "${id}" to ${filePath}`, {
+        cause: error,
+        meta: { datasetId: id, filePath },
+      });
+    }
     return dataset;
   }
 
@@ -581,34 +580,6 @@ function endWithNewline(): Transform {
       callback(null, lastByte === undefined || lastByte === NEWLINE ? undefined : "\n");
     },
   });
-}
-
-// streamToFile writes via a temporary file in the same directory as `filePath`,
-// renamed into place once the transfer completes. Streams so a large dataset
-// is never held in memory. A failed or aborted transfer removes the temp file and
-// leaves any existing file at `filePath` untouched.
-async function streamToFile(
-  body: ReadableStream<Uint8Array>,
-  filePath: string,
-  context: { datasetId: string; signal?: AbortSignal },
-): Promise<void> {
-  const tempPath = join(dirname(filePath), `.${basename(filePath)}.${randomUUID()}.tmp`);
-  try {
-    await pipeline(
-      Readable.fromWeb(body as Parameters<typeof Readable.fromWeb>[0]),
-      endWithNewline(),
-      createWriteStream(tempPath),
-      { signal: context.signal },
-    );
-    await rename(tempPath, filePath);
-  } catch (error) {
-    await rm(tempPath, { force: true });
-    if (context.signal?.aborted) throw context.signal.reason ?? error;
-    throw new DatasetWriteError(`Could not write dataset "${context.datasetId}" to ${filePath}`, {
-      cause: error,
-      meta: { datasetId: context.datasetId, filePath },
-    });
-  }
 }
 
 // runtimeLogGroup mirrors the old CLI's derivation (src/cli/aws/cloudwatch.ts):
