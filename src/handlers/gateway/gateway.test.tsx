@@ -80,7 +80,7 @@ describe("gateway command hierarchy", () => {
       "rule",
     ]);
     expect(target?.children().map((child) => child.name())).toEqual(["create", "get", "list"]);
-    expect(connector?.children().map((child) => child.name())).toEqual(["get", "list"]);
+    expect(connector?.children().map((child) => child.name())).toEqual(["create", "get", "list"]);
     expect(rule?.children().map((child) => child.name())).toEqual(["create", "get", "list"]);
   });
 

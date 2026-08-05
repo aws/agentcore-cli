@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type {
-  CreateGatewayResponse,
-  CreateGatewayRuleResponse,
-  CreateGatewayTargetResponse,
-} from "@aws-sdk/client-bedrock-agentcore-control";
+import type { TargetConfiguration } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   createSilentLogger,
   TestCoreClient,
@@ -30,30 +26,33 @@ async function run(
   return { core, stdout: io.stdout() };
 }
 
-describe("gateway create commands", () => {
-  test.each([
-    ["mcp", "arn:aws:iam::123456789012:role/gateway"],
-    ["http", undefined],
-  ] as const)("creates a %s Gateway", async (protocol, roleArn) => {
-    const response = {
-      gatewayId: GATEWAY_ID,
-      name: "orders",
-      status: "CREATING",
-    } as CreateGatewayResponse;
-    const core = new TestCoreClient();
-    core.gateway.setCreateResponse(response);
+function createdTargetInput(core: TestCoreClient): Record<string, unknown> {
+  return core.gateway.calls[0]!.args[0] as Record<string, unknown>;
+}
 
-    const result = await run(
+describe("gateway create commands", () => {
+  test("creates an unrestricted Gateway with the complete flag surface", async () => {
+    const core = new TestCoreClient();
+    await run(
       [
         "gateway",
         "create",
         "--name",
         "orders",
-        ...(roleArn ? ["--role-arn", roleArn] : []),
-        "--protocol",
-        protocol,
         "--authorizer-type",
-        "AWS_IAM",
+        "CUSTOM_JWT",
+        "--authorizer-configuration",
+        '{"customJWTAuthorizer":{"discoveryUrl":"https://auth.example.test","allowedClients":["client"]}}',
+        "--protocol-configuration",
+        '{"mcp":{"supportedVersions":["2025-03-26"]}}',
+        "--interceptor-configurations",
+        '[{"interceptor":{"lambda":{"arn":"arn:aws:lambda:us-west-2:123456789012:function:guard"}},"interceptionPoints":["REQUEST"]}]',
+        "--policy-engine-arn",
+        "arn:aws:bedrock-agentcore:us-west-2:123456789012:policy-engine/orders",
+        "--policy-engine-mode",
+        "enforce",
+        "--exception-level",
+        "debug",
         "--tags",
         "env=test",
         "team=agentcore",
@@ -67,78 +66,178 @@ describe("gateway create commands", () => {
         args: [
           {
             name: "orders",
-            ...(roleArn ? { roleArn } : {}),
-            protocol,
-            authorizerType: "AWS_IAM",
+            authorizerType: "CUSTOM_JWT",
+            authorizerConfiguration: {
+              customJWTAuthorizer: {
+                discoveryUrl: "https://auth.example.test",
+                allowedClients: ["client"],
+              },
+            },
+            protocolConfiguration: { mcp: { supportedVersions: ["2025-03-26"] } },
+            interceptorConfigurations: [
+              {
+                interceptor: {
+                  lambda: {
+                    arn: "arn:aws:lambda:us-west-2:123456789012:function:guard",
+                  },
+                },
+                interceptionPoints: ["REQUEST"],
+              },
+            ],
+            policyEngineConfiguration: {
+              arn: "arn:aws:bedrock-agentcore:us-west-2:123456789012:policy-engine/orders",
+              mode: "ENFORCE",
+            },
+            exceptionLevel: "DEBUG",
             tags: { env: "test", team: "agentcore" },
           },
           { region: REGION },
         ],
       },
     ]);
-    expect(JSON.parse(result.stdout)).toEqual(response);
   });
 
-  test("creates a guided MCP server Target", async () => {
-    const response = {
-      targetId: "target-1",
-      name: "calendar",
-      status: "CREATING",
-    } as CreateGatewayTargetResponse;
+  test("maps --protocol mcp without requiring protocol configuration", async () => {
     const core = new TestCoreClient();
-    core.gateway.setCreateTargetResponse(response);
-
-    const result = await run(
+    await run(
       [
         "gateway",
-        "target",
         "create",
-        "--gateway-id",
-        GATEWAY_ID,
         "--name",
-        "calendar",
-        "--type",
-        "mcp-server",
-        "--endpoint",
-        "https://calendar.example.test/mcp",
+        "mcp-only",
+        "--role-arn",
+        "arn:aws:iam::123456789012:role/gateway",
+        "--protocol",
+        "mcp",
+        "--authorizer-type",
+        "AWS_IAM",
       ],
       core,
     );
 
-    expect(core.gateway.calls).toEqual([
-      {
-        method: "createGatewayTarget",
-        args: [
-          {
-            gatewayIdentifier: GATEWAY_ID,
-            name: "calendar",
-            targetConfiguration: {
-              mcp: {
-                mcpServer: {
-                  endpoint: "https://calendar.example.test/mcp",
-                },
-              },
-            },
-          },
-          { region: REGION },
-        ],
-      },
-    ]);
-    expect(JSON.parse(result.stdout)).toEqual(response);
+    expect(core.gateway.calls[0]!.args[0]).toEqual({
+      name: "mcp-only",
+      roleArn: "arn:aws:iam::123456789012:role/gateway",
+      protocol: "mcp",
+      authorizerType: "AWS_IAM",
+    });
   });
 
-  test("creates an exact Runtime Target without requiring a name", async () => {
-    const response = { targetId: "target-1", status: "CREATING" } as CreateGatewayTargetResponse;
-    const core = new TestCoreClient();
-    core.gateway.setCreateTargetResponse(response);
-    const targetConfiguration = {
-      http: {
-        agentcoreRuntime: {
-          arn: "arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/runtime-1",
-          qualifier: "DEFAULT",
+  test.each([
+    {
+      name: "MCP server",
+      args: [
+        "--name",
+        "calendar",
+        "--endpoint",
+        "https://calendar.example.test/mcp",
+        "--tool-schema",
+        '{"tools":[]}',
+      ],
+      expected: {
+        mcp: {
+          mcpServer: {
+            endpoint: "https://calendar.example.test/mcp",
+            mcpToolSchema: { inlinePayload: '{"tools":[]}' },
+          },
         },
       },
+    },
+    {
+      name: "Lambda",
+      args: [
+        "--name",
+        "calculator",
+        "--lambda-arn",
+        "arn:aws:lambda:us-west-2:123456789012:function:calculator",
+        "--tool-schema",
+        '[{"name":"add","description":"Add","inputSchema":{"type":"object"}}]',
+      ],
+      expected: {
+        mcp: {
+          lambda: {
+            lambdaArn: "arn:aws:lambda:us-west-2:123456789012:function:calculator",
+            toolSchema: {
+              inlinePayload: [
+                {
+                  name: "add",
+                  description: "Add",
+                  inputSchema: { type: "object" },
+                },
+              ],
+            },
+          },
+        },
+      },
+    },
+    {
+      name: "OpenAPI",
+      args: ["--name", "orders", "--openapi-schema", '{"openapi":"3.0.0"}'],
+      expected: { mcp: { openApiSchema: { inlinePayload: '{"openapi":"3.0.0"}' } } },
+    },
+    {
+      name: "Smithy",
+      args: ["--name", "inventory", "--smithy-model", "s3://schemas/inventory.json"],
+      expected: { mcp: { smithyModel: { s3: { uri: "s3://schemas/inventory.json" } } } },
+    },
+    {
+      name: "AgentCore Runtime",
+      args: [
+        "--runtime-arn",
+        "arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/orders",
+        "--qualifier",
+        "prod",
+      ],
+      expected: {
+        http: {
+          agentcoreRuntime: {
+            arn: "arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/orders",
+            qualifier: "prod",
+          },
+        },
+      },
+    },
+    {
+      name: "HTTP passthrough",
+      args: [
+        "--name",
+        "external",
+        "--passthrough-endpoint",
+        "https://api.example.test",
+        "--passthrough-protocol",
+        "custom",
+      ],
+      expected: {
+        http: {
+          passthrough: {
+            endpoint: "https://api.example.test",
+            protocolType: "CUSTOM",
+          },
+        },
+      },
+    },
+  ] as { name: string; args: string[]; expected: TargetConfiguration }[])(
+    "creates a $name Target",
+    async ({ args, expected }) => {
+      const core = new TestCoreClient();
+      await run(["gateway", "target", "create", "--gateway-id", GATEWAY_ID, ...args], core);
+
+      expect(createdTargetInput(core)).toEqual({
+        gatewayIdentifier: GATEWAY_ID,
+        ...(args.includes("--name") ? { name: args[args.indexOf("--name") + 1] } : {}),
+        targetConfiguration: expected,
+      });
+    },
+  );
+
+  test("creates an exact Target with authentication, metadata, and network configuration", async () => {
+    const core = new TestCoreClient();
+    const targetConfiguration = {
+      inference: { provider: { endpoint: "https://inference.example.test" } },
     };
+    const credentials = [{ credentialProviderType: "CALLER_IAM_CREDENTIALS" }];
+    const metadata = { allowedRequestHeaders: ["x-request-id"] };
+    const privateEndpoint = { vpcEndpointId: "vpce-123" };
 
     await run(
       [
@@ -147,36 +246,115 @@ describe("gateway create commands", () => {
         "create",
         "--gateway-id",
         GATEWAY_ID,
+        "--name",
+        "inference",
         "--target-configuration",
+        JSON.stringify(targetConfiguration),
+        "--credential-provider-configurations",
+        JSON.stringify(credentials),
+        "--metadata-configuration",
+        JSON.stringify(metadata),
+        "--private-endpoint",
+        JSON.stringify(privateEndpoint),
+      ],
+      core,
+    );
+
+    expect(createdTargetInput(core)).toEqual({
+      gatewayIdentifier: GATEWAY_ID,
+      name: "inference",
+      targetConfiguration,
+      credentialProviderConfigurations: credentials,
+      metadataConfiguration: metadata,
+      privateEndpoint,
+    });
+  });
+
+  test.each([
+    [
+      ["--connector", "web-search"],
+      { mcp: { connector: { source: { connectorId: "web-search" } } } },
+    ],
+    [
+      ["--connector", "bedrock-knowledge-bases", "--knowledge-base-id", "KB12345678"],
+      {
+        mcp: {
+          connector: {
+            source: { connectorId: "bedrock-knowledge-bases" },
+            configurations: [
+              {
+                name: "Retrieve",
+                parameterValues: { knowledgeBaseId: "KB12345678" },
+              },
+            ],
+          },
+        },
+      },
+    ],
+    [
+      ["--connector", "bedrock-mantle"],
+      { inference: { connector: { source: { connectorId: "bedrock-mantle" } } } },
+    ],
+  ] as [string[], TargetConfiguration][])(
+    "creates a curated Connector Target",
+    async (args, targetConfiguration) => {
+      const core = new TestCoreClient();
+      await run(
+        [
+          "gateway",
+          "connector",
+          "create",
+          "--gateway-id",
+          GATEWAY_ID,
+          "--name",
+          "connector",
+          ...args,
+        ],
+        core,
+      );
+
+      expect(createdTargetInput(core)).toEqual({
+        gatewayIdentifier: GATEWAY_ID,
+        name: "connector",
+        targetConfiguration,
+      });
+    },
+  );
+
+  test("creates a Connector from exact connector-backed Target JSON", async () => {
+    const core = new TestCoreClient();
+    const targetConfiguration = {
+      inference: { connector: { source: { connectorId: "openai" } } },
+    };
+
+    await run(
+      [
+        "gateway",
+        "connector",
+        "create",
+        "--gateway-id",
+        GATEWAY_ID,
+        "--name",
+        "openai",
+        "--connector-configuration",
         JSON.stringify(targetConfiguration),
       ],
       core,
     );
 
-    expect(core.gateway.calls[0]).toEqual({
-      method: "createGatewayTarget",
-      args: [
-        {
-          gatewayIdentifier: GATEWAY_ID,
-          targetConfiguration,
-        },
-        { region: REGION },
-      ],
+    expect(createdTargetInput(core)).toEqual({
+      gatewayIdentifier: GATEWAY_ID,
+      name: "openai",
+      targetConfiguration,
     });
   });
 
   test("creates a Rule with exact condition and action arrays", async () => {
-    const response = {
-      ruleId: "rule-1",
-      priority: 10,
-      status: "ACTIVE",
-    } as CreateGatewayRuleResponse;
     const core = new TestCoreClient();
-    core.gateway.setCreateRuleResponse(response);
     const conditions = [{ matchPaths: { anyOf: ["/orders/*"] } }];
     const actions = [{ routeToTarget: { staticRoute: { targetName: "orders-api" } } }];
 
-    const result = await run(
+    await run(
       [
         "gateway",
         "rule",
@@ -193,21 +371,18 @@ describe("gateway create commands", () => {
       core,
     );
 
-    expect(core.gateway.calls).toEqual([
-      {
-        method: "createGatewayRule",
-        args: [
-          {
-            gatewayIdentifier: GATEWAY_ID,
-            priority: 10,
-            conditions,
-            actions,
-          },
-          { region: REGION },
-        ],
-      },
-    ]);
-    expect(JSON.parse(result.stdout)).toEqual(response);
+    expect(core.gateway.calls[0]).toEqual({
+      method: "createGatewayRule",
+      args: [
+        {
+          gatewayIdentifier: GATEWAY_ID,
+          priority: 10,
+          conditions,
+          actions,
+        },
+        { region: REGION },
+      ],
+    });
   });
 });
 
@@ -216,15 +391,83 @@ describe("gateway create validation", () => {
     ["Gateway name", ["gateway", "create"], /--name/],
     ["Gateway authorizer", ["gateway", "create", "--name", "orders"], /--authorizer-type/],
     ["Target parent", ["gateway", "target", "create"], /--gateway-id/],
+    [
+      "Target input",
+      ["gateway", "target", "create", "--gateway-id", GATEWAY_ID],
+      /specify exactly one/,
+    ],
+    [
+      "Target name",
+      [
+        "gateway",
+        "target",
+        "create",
+        "--gateway-id",
+        GATEWAY_ID,
+        "--endpoint",
+        "https://example.test/mcp",
+      ],
+      /Target name/,
+    ],
+    [
+      "Lambda tool schema",
+      [
+        "gateway",
+        "target",
+        "create",
+        "--gateway-id",
+        GATEWAY_ID,
+        "--name",
+        "lambda",
+        "--lambda-arn",
+        "arn:aws:lambda:us-west-2:123456789012:function:lambda",
+      ],
+      /--tool-schema/,
+    ],
+    [
+      "Passthrough protocol",
+      [
+        "gateway",
+        "target",
+        "create",
+        "--gateway-id",
+        GATEWAY_ID,
+        "--name",
+        "http",
+        "--passthrough-endpoint",
+        "https://example.test",
+      ],
+      /--passthrough-protocol/,
+    ],
+    [
+      "Connector name",
+      ["gateway", "connector", "create", "--gateway-id", GATEWAY_ID, "--connector", "web-search"],
+      /--name/,
+    ],
+    [
+      "Knowledge Base ID",
+      [
+        "gateway",
+        "connector",
+        "create",
+        "--gateway-id",
+        GATEWAY_ID,
+        "--name",
+        "kb",
+        "--connector",
+        "bedrock-knowledge-bases",
+      ],
+      /--knowledge-base-id/,
+    ],
     ["Rule parent", ["gateway", "rule", "create"], /--gateway-id/],
-  ] as const)("rejects missing %s input before calling Core", async (_name, args, error) => {
+  ] as const)("rejects missing or inconsistent %s before Core", async (_name, args, error) => {
     const core = new TestCoreClient();
 
     await expect(run([...args], core)).rejects.toThrow(error);
     expect(core.gateway.calls).toEqual([]);
   });
 
-  test("rejects conflicting guided and exact Target input", async () => {
+  test("rejects multiple Target input modes", async () => {
     const core = new TestCoreClient();
 
     await expect(
@@ -237,8 +480,6 @@ describe("gateway create validation", () => {
           GATEWAY_ID,
           "--name",
           "calendar",
-          "--type",
-          "mcp-server",
           "--endpoint",
           "https://calendar.example.test/mcp",
           "--target-configuration",
@@ -246,7 +487,29 @@ describe("gateway create validation", () => {
         ],
         core,
       ),
-    ).rejects.toThrow(/mutually exclusive/);
+    ).rejects.toThrow(/specify exactly one/);
+    expect(core.gateway.calls).toEqual([]);
+  });
+
+  test("rejects a non-Connector exact configuration", async () => {
+    const core = new TestCoreClient();
+
+    await expect(
+      run(
+        [
+          "gateway",
+          "connector",
+          "create",
+          "--gateway-id",
+          GATEWAY_ID,
+          "--name",
+          "not-connector",
+          "--connector-configuration",
+          '{"mcp":{"mcpServer":{"endpoint":"https://example.test/mcp"}}}',
+        ],
+        core,
+      ),
+    ).rejects.toThrow(/connector Target/);
     expect(core.gateway.calls).toEqual([]);
   });
 });

@@ -2,6 +2,7 @@ import type {
   CredentialProviderConfiguration,
   MetadataConfiguration,
   PrivateEndpoint,
+  TargetConfiguration,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import z from "zod";
 import { InputValidationError } from "../../../../errors";
@@ -12,37 +13,30 @@ import type { Core } from "../../../types";
 import { coreOptsFromCtx, parseJsonArrayFlag, parseJsonObjectFlag } from "../../../utils";
 import { validateGatewayTargetCreateInput } from "../../mutations";
 import type { CreateGatewayTargetInput } from "../../types";
-import { TargetConfigurationResolver } from "./configuration";
+import { GatewayConnectorTarget } from "../target";
 
-export const createCreateGatewayTargetHandler = (core: Core, io: AppIO) =>
+export const createCreateGatewayConnectorHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "create",
-    description: "create a Gateway Target",
+    description: "create a connector-backed Gateway Target",
     flags: [
       flag("gateway-id", "the parent Gateway ID", z.string().optional()),
+      flag("name", "Connector Target name", z.string().optional()),
+      flag("description", "Connector Target description", z.string().optional()),
       flag(
-        "name",
-        "Target name; optional only for AgentCore Runtime Targets",
+        "connector-configuration",
+        "connector-backed Target configuration (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
       ),
-      flag("description", "Target description", z.string().optional()),
-      flag("endpoint", "MCP server HTTPS endpoint", z.string().optional()),
-      flag("lambda-arn", "MCP Lambda function ARN", z.string().optional()),
-      flag("openapi-schema", "OpenAPI schema source", z.string().optional()),
-      flag("smithy-model", "Smithy model source", z.string().optional()),
-      flag("runtime-arn", "AgentCore Runtime ARN", z.string().optional()),
-      flag("passthrough-endpoint", "HTTP passthrough HTTPS endpoint", z.string().optional()),
       flag(
-        "target-configuration",
-        "complete Target configuration (JSON; inline, file://<path>, or - for stdin)",
-        z.string().optional(),
+        "connector",
+        "curated connector",
+        z.enum(["web-search", "bedrock-knowledge-bases", "bedrock-mantle"]).optional(),
       ),
-      flag("tool-schema", "MCP tool schema source", z.string().optional()),
-      flag("qualifier", "AgentCore Runtime qualifier", z.string().optional()),
       flag(
-        "passthrough-protocol",
-        "HTTP passthrough application protocol",
-        z.enum(["mcp", "a2a", "inference", "custom"]).optional(),
+        "knowledge-base-id",
+        "Knowledge Base ID for the bedrock-knowledge-bases connector",
+        z.string().optional(),
       ),
       flag(
         "credential-provider-configurations",
@@ -65,20 +59,45 @@ export const createCreateGatewayTargetHandler = (core: Core, io: AppIO) =>
       if (!flags["gateway-id"]) {
         throw new InputValidationError("required option '--gateway-id <gateway-id>' not specified");
       }
+      if (!flags.name) {
+        throw new InputValidationError("required option '--name <name>' not specified");
+      }
+      if ((flags.connector === undefined) === (flags["connector-configuration"] === undefined)) {
+        throw new InputValidationError(
+          "specify exactly one of '--connector' or '--connector-configuration'",
+        );
+      }
+      if (
+        flags.connector === "bedrock-knowledge-bases" &&
+        flags["knowledge-base-id"] === undefined
+      ) {
+        throw new InputValidationError(
+          "--connector bedrock-knowledge-bases requires --knowledge-base-id",
+        );
+      }
+      if (
+        flags["knowledge-base-id"] !== undefined &&
+        flags.connector !== "bedrock-knowledge-bases"
+      ) {
+        throw new InputValidationError(
+          "--knowledge-base-id requires --connector bedrock-knowledge-bases",
+        );
+      }
 
       const source = new SourceResolver({ stdin: io.stdin });
-      const targetConfiguration = await new TargetConfigurationResolver(source).resolve({
-        endpoint: flags.endpoint,
-        lambdaArn: flags["lambda-arn"],
-        openapiSchema: flags["openapi-schema"],
-        smithyModel: flags["smithy-model"],
-        runtimeArn: flags["runtime-arn"],
-        passthroughEndpoint: flags["passthrough-endpoint"],
-        targetConfiguration: flags["target-configuration"],
-        toolSchema: flags["tool-schema"],
-        qualifier: flags.qualifier,
-        passthroughProtocol: flags["passthrough-protocol"],
-      });
+      const exactConfiguration = parseJsonObjectFlag<TargetConfiguration>(
+        "connector-configuration",
+        await source.resolveText("connector-configuration", flags["connector-configuration"]),
+      );
+      const targetConfiguration =
+        exactConfiguration ??
+        GatewayConnectorTarget.fromShortcut(flags.connector!, flags["knowledge-base-id"]);
+      if (!GatewayConnectorTarget.is(targetConfiguration)) {
+        throw new InputValidationError(
+          "--connector-configuration must contain an MCP or inference connector Target",
+        );
+      }
+
       const credentialProviderConfigurations = parseJsonArrayFlag<CredentialProviderConfiguration>(
         "credential-provider-configurations",
         await source.resolveText(
@@ -96,8 +115,8 @@ export const createCreateGatewayTargetHandler = (core: Core, io: AppIO) =>
       );
       const input: CreateGatewayTargetInput = {
         gatewayIdentifier: flags["gateway-id"],
+        name: flags.name,
         targetConfiguration,
-        ...(flags.name ? { name: flags.name } : {}),
         ...(flags.description ? { description: flags.description } : {}),
         ...(credentialProviderConfigurations ? { credentialProviderConfigurations } : {}),
         ...(metadataConfiguration ? { metadataConfiguration } : {}),

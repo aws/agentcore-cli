@@ -1,13 +1,14 @@
 import type { Action, Condition } from "@aws-sdk/client-bedrock-agentcore-control";
 import z from "zod";
 import { InputValidationError } from "../../../../errors";
+import { type AppIO, SourceResolver } from "../../../../io";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx, parseJsonArrayFlag } from "../../../utils";
 import type { CreateGatewayRuleInput } from "../../types";
 
-export const createCreateGatewayRuleHandler = (core: Core) =>
+export const createCreateGatewayRuleHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "create",
     description: "create a Gateway Rule",
@@ -34,8 +35,15 @@ export const createCreateGatewayRuleHandler = (core: Core) =>
         throw new InputValidationError("required option '--actions <actions>' not specified");
       }
 
-      const conditions = parseJsonArrayFlag<Condition>("conditions", flags.conditions);
-      const actions = parseJsonArrayFlag<Action>("actions", flags.actions)!;
+      const source = new SourceResolver({ stdin: io.stdin });
+      const conditions = parseJsonArrayFlag<Condition>(
+        "conditions",
+        await source.resolveText("conditions", flags.conditions),
+      );
+      const actions = parseJsonArrayFlag<Action>(
+        "actions",
+        await source.resolveText("actions", flags.actions),
+      )!;
       const input: CreateGatewayRuleInput = {
         gatewayIdentifier: flags["gateway-id"],
         priority: flags.priority,

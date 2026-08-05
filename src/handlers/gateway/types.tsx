@@ -14,11 +14,11 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { CoreOptions } from "../../core/types";
 
-export type GatewayProtocol = "mcp" | "http";
+export type GatewayProtocol = "mcp";
 
 export type CreateGatewayInput = Omit<CreateGatewayRequest, "protocolType" | "roleArn"> & {
   roleArn?: string;
-  protocol: GatewayProtocol;
+  protocol?: GatewayProtocol;
 };
 
 export type ResolvedCreateGatewayInput = CreateGatewayInput & {

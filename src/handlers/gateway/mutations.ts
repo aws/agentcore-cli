@@ -20,24 +20,19 @@ export function buildGatewayCreateRequest(input: ResolvedCreateGatewayInput): Cr
 }
 
 export function validateGatewayCreateInput(input: CreateGatewayInput): CreateGatewayInput {
-  const { protocol, ...request } = input;
-
-  if (!request.name) {
+  if (!input.name) {
     throw new InputValidationError("Gateway name is required");
   }
-  if (!request.authorizerType) {
+  if (!input.authorizerType) {
     throw new InputValidationError("Gateway authorizer type is required");
   }
-  if (request.authorizerType === "CUSTOM_JWT" && !request.authorizerConfiguration) {
+  if (input.authorizerType === "CUSTOM_JWT" && !input.authorizerConfiguration) {
     throw new InputValidationError("CUSTOM_JWT requires --authorizer-configuration");
   }
-  if (request.authorizerType !== "CUSTOM_JWT" && request.authorizerConfiguration) {
+  if (input.authorizerType !== "CUSTOM_JWT" && input.authorizerConfiguration) {
     throw new InputValidationError("--authorizer-configuration is valid only with CUSTOM_JWT");
   }
-  if (protocol === "http" && request.protocolConfiguration) {
-    throw new InputValidationError("--protocol-configuration is valid only with --protocol mcp");
-  }
-  const policyEngine = request.policyEngineConfiguration;
+  const policyEngine = input.policyEngineConfiguration;
   if (policyEngine && (!policyEngine.arn || !policyEngine.mode)) {
     throw new InputValidationError(
       "Policy Engine attachment requires --policy-engine-arn and --policy-engine-mode",
@@ -57,17 +52,8 @@ export function validateGatewayTargetCreateInput(
     throw new InputValidationError("Target configuration is required");
   }
   const variant = targetVariant(input.targetConfiguration);
-  if (!variant) {
-    throw new InputValidationError("Target configuration must use a known Target variant");
-  }
   if (!input.name && variant !== "http.agentcoreRuntime") {
     throw new InputValidationError("Target name is required for non-Runtime targets");
-  }
-  if (
-    input.credentialProviderConfigurations &&
-    input.credentialProviderConfigurations.length === 0
-  ) {
-    throw new InputValidationError("Credential provider configurations cannot be empty");
   }
   return input;
 }

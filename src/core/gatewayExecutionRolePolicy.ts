@@ -41,23 +41,66 @@ type PolicyDocument = {
   Statement: PolicyStatement[];
 };
 
-export function gatewayPolicyDocument(
-  configuration: GatewayRoleConfiguration,
-  gatewayArn: string,
-): string | undefined {
-  return policyDocumentForStatements(configurationStatements(configuration, gatewayArn));
-}
+export class GatewayExecutionPolicy {
+  private constructor(private readonly document: PolicyDocument) {}
 
-export function gatewayTargetPolicyDocument(
-  gateway: GatewayRoleConfiguration,
-  gatewayArn: string,
-  configurations: GatewayTargetRoleConfiguration[],
-  context: GatewayTargetPolicyContext,
-): string | undefined {
-  return policyDocumentForStatements([
-    ...configurationStatements(gateway, gatewayArn),
-    ...targetStatements(configurations, context),
-  ]);
+  static empty(): GatewayExecutionPolicy {
+    return new GatewayExecutionPolicy(policyDocument([]));
+  }
+
+  static parse(value: string | undefined): GatewayExecutionPolicy {
+    if (!value) return GatewayExecutionPolicy.empty();
+
+    let parsed: { Statement?: PolicyStatement | PolicyStatement[] };
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      parsed = JSON.parse(decodeURIComponent(value));
+    }
+    const statements = parsed.Statement
+      ? Array.isArray(parsed.Statement)
+        ? parsed.Statement
+        : [parsed.Statement]
+      : [];
+    return new GatewayExecutionPolicy(policyDocument(statements));
+  }
+
+  static forGateway(
+    configuration: GatewayRoleConfiguration,
+    gatewayArn: string,
+  ): GatewayExecutionPolicy {
+    return new GatewayExecutionPolicy(
+      policyDocument(configurationStatements(configuration, gatewayArn)),
+    );
+  }
+
+  static forTargets(
+    configurations: GatewayTargetRoleConfiguration[],
+    context: GatewayTargetPolicyContext,
+  ): GatewayExecutionPolicy {
+    return new GatewayExecutionPolicy(policyDocument(targetStatements(configurations, context)));
+  }
+
+  merge(candidate: GatewayExecutionPolicy): GatewayExecutionPolicy {
+    const statements = [...this.document.Statement];
+    for (const requested of candidate.document.Statement) {
+      const index = requested.Sid ? statements.findIndex(({ Sid }) => Sid === requested.Sid) : -1;
+      if (index === -1) {
+        statements.push(requested);
+      } else {
+        statements[index] = mergeStatements(statements[index]!, requested);
+      }
+    }
+    return new GatewayExecutionPolicy(policyDocument(statements));
+  }
+
+  equals(other: GatewayExecutionPolicy): boolean {
+    return JSON.stringify(this.document) === JSON.stringify(other.document);
+  }
+
+  toJSON(): string | undefined {
+    return this.document.Statement.length > 0 ? JSON.stringify(this.document) : undefined;
+  }
 }
 
 function configurationStatements(
@@ -105,15 +148,12 @@ function configurationStatements(
   }
   const transformArn = configuration.customTransformConfiguration?.lambda?.arn;
   if (transformArn) lambdaArns.add(transformArn);
-  if (lambdaArns.size > 0) {
-    statements.push({
-      Sid: `${GATEWAY_POLICY_SCOPE}Lambda`,
-      Effect: "Allow",
-      Action: "lambda:InvokeFunction",
-      Resource: [...lambdaArns].sort(),
-    });
-  }
-
+  addResourceStatement(
+    statements,
+    `${GATEWAY_POLICY_SCOPE}Lambda`,
+    "lambda:InvokeFunction",
+    lambdaArns,
+  );
   return statements;
 }
 
@@ -121,107 +161,110 @@ function targetStatements(
   configurations: GatewayTargetRoleConfiguration[],
   context: GatewayTargetPolicyContext,
 ): PolicyStatement[] {
-  const lambdaArns = new Set<string>();
-  const s3ObjectArns = new Set<string>();
-  const apiGatewayArns = new Set<string>();
-  const runtimeArns = new Set<string>();
-  const knowledgeBaseArns = new Set<string>();
-  const oauthProviderArns = new Set<string>();
-  const apiKeyProviderArns = new Set<string>();
-  const secretArns = new Set<string>();
+  const resources = {
+    lambda: new Set<string>(),
+    s3: new Set<string>(),
+    apiGateway: new Set<string>(),
+    runtime: new Set<string>(),
+    knowledgeBase: new Set<string>(),
+    oauthProvider: new Set<string>(),
+    apiKeyProvider: new Set<string>(),
+    secret: new Set<string>(),
+  };
   let usesWebSearch = false;
   let usesAgenticRetrieve = false;
   let usesBedrockMantle = false;
 
   for (const configuration of configurations) {
     const target = configuration.targetConfiguration;
-    assertSupportedGatewayRoleTarget(configuration);
+    let roleRequested = false;
+    let roleSupported = false;
+
     if (target && "mcp" in target && target.mcp) {
       const mcp = target.mcp;
       if ("lambda" in mcp && mcp.lambda) {
-        const lambdaArn = mcp.lambda.lambdaArn;
-        if (lambdaArn) {
-          lambdaArns.add(lambdaArn);
-          if (isUnqualifiedLambdaFunctionArn(lambdaArn)) {
-            lambdaArns.add(`${lambdaArn}:*`);
+        roleRequested = usesGatewayRole(configuration, true);
+        roleSupported = true;
+        if (roleRequested && mcp.lambda.lambdaArn) {
+          resources.lambda.add(mcp.lambda.lambdaArn);
+          if (isUnqualifiedLambdaFunctionArn(mcp.lambda.lambdaArn)) {
+            resources.lambda.add(`${mcp.lambda.lambdaArn}:*`);
           }
         }
-        addSchemaS3Object(s3ObjectArns, mcp.lambda.toolSchema, context.partition);
+        addSchemaS3Object(resources.s3, mcp.lambda.toolSchema, context.partition);
       } else if ("openApiSchema" in mcp && mcp.openApiSchema) {
-        addSchemaS3Object(s3ObjectArns, mcp.openApiSchema, context.partition);
+        roleRequested = usesGatewayRole(configuration, false);
+        addSchemaS3Object(resources.s3, mcp.openApiSchema, context.partition);
       } else if ("smithyModel" in mcp && mcp.smithyModel) {
-        addSchemaS3Object(s3ObjectArns, mcp.smithyModel, context.partition);
+        roleRequested = usesGatewayRole(configuration, true);
+        addSchemaS3Object(resources.s3, mcp.smithyModel, context.partition);
       } else if ("mcpServer" in mcp && mcp.mcpServer) {
-        addSchemaS3Object(s3ObjectArns, mcp.mcpServer.mcpToolSchema, context.partition);
+        roleRequested = usesGatewayRole(configuration, false);
+        addSchemaS3Object(resources.s3, mcp.mcpServer.mcpToolSchema, context.partition);
       } else if ("apiGateway" in mcp && mcp.apiGateway) {
-        if (usesGatewayExecutionRole(configuration)) {
-          apiGatewayArns.add(
+        roleRequested = usesGatewayRole(configuration, true);
+        roleSupported = true;
+        if (roleRequested) {
+          resources.apiGateway.add(
             `arn:${context.partition}:execute-api:${context.region}:${context.accountId}:` +
               `${mcp.apiGateway.restApiId}/${mcp.apiGateway.stage}/*/*`,
           );
         }
       } else if ("connector" in mcp && mcp.connector) {
         const connectorId = mcp.connector.source?.connectorId;
-        if (connectorId === "web-search") {
-          usesWebSearch = usesWebSearch || usesGatewayExecutionRole(configuration);
-        } else if (connectorId === "bedrock-knowledge-bases") {
-          if (usesGatewayExecutionRole(configuration)) {
-            usesAgenticRetrieve =
-              addKnowledgeBaseConnectorPermissions(
-                knowledgeBaseArns,
-                mcp.connector.configurations,
-                context,
-              ) || usesAgenticRetrieve;
-          }
+        const hasKnownRole = ["web-search", "bedrock-knowledge-bases"].includes(connectorId ?? "");
+        roleRequested = usesGatewayRole(configuration, hasKnownRole);
+        roleSupported = hasKnownRole;
+        if (roleRequested && connectorId === "web-search") {
+          usesWebSearch = true;
+        } else if (roleRequested && connectorId === "bedrock-knowledge-bases") {
+          usesAgenticRetrieve =
+            addKnowledgeBaseConnectorPermissions(
+              resources.knowledgeBase,
+              mcp.connector.configurations,
+              context,
+            ) || usesAgenticRetrieve;
         }
       }
     } else if (target && "http" in target && target.http) {
       const http = target.http;
       if ("agentcoreRuntime" in http && http.agentcoreRuntime) {
-        const runtimeArn = http.agentcoreRuntime.arn;
-        if (runtimeArn && usesGatewayExecutionRole(configuration)) {
-          runtimeArns.add(runtimeArn);
-          runtimeArns.add(
-            `${runtimeArn}/runtime-endpoint/${http.agentcoreRuntime.qualifier ?? "DEFAULT"}`,
+        roleRequested = usesGatewayRole(configuration, true);
+        roleSupported = true;
+        if (roleRequested && http.agentcoreRuntime.arn) {
+          resources.runtime.add(http.agentcoreRuntime.arn);
+          resources.runtime.add(
+            `${http.agentcoreRuntime.arn}/runtime-endpoint/` +
+              `${http.agentcoreRuntime.qualifier ?? "DEFAULT"}`,
           );
         }
-        addSchemaS3Object(s3ObjectArns, http.agentcoreRuntime.schema?.source, context.partition);
+        addSchemaS3Object(resources.s3, http.agentcoreRuntime.schema?.source, context.partition);
       } else if ("passthrough" in http && http.passthrough) {
-        addSchemaS3Object(s3ObjectArns, http.passthrough.schema?.source, context.partition);
+        roleRequested = usesGatewayRole(configuration, false);
+        addSchemaS3Object(resources.s3, http.passthrough.schema?.source, context.partition);
       }
     } else if (target && "inference" in target && target.inference) {
-      usesBedrockMantle =
-        usesBedrockMantle ||
-        (usesGatewayExecutionRole(configuration) &&
-          (("connector" in target.inference &&
-            target.inference.connector?.source?.connectorId === "bedrock-mantle") ||
-            ("provider" in target.inference &&
-              target.inference.provider?.endpoint?.includes("bedrock-mantle.") === true)));
+      const inference = target.inference;
+      const isMantle =
+        ("connector" in inference &&
+          inference.connector?.source?.connectorId === "bedrock-mantle") ||
+        ("provider" in inference &&
+          inference.provider?.endpoint?.includes("bedrock-mantle.") === true);
+      roleRequested = usesGatewayRole(configuration, isMantle);
+      roleSupported = isMantle;
+      usesBedrockMantle = usesBedrockMantle || (roleRequested && isMantle);
+    } else {
+      roleRequested = usesGatewayRole(configuration, false);
     }
 
-    for (const providerConfiguration of configuration.credentialProviderConfigurations ?? []) {
-      const provider = providerConfiguration.credentialProvider;
-      if (
-        providerConfiguration.credentialProviderType === "OAUTH" &&
-        provider &&
-        "oauthCredentialProvider" in provider &&
-        provider.oauthCredentialProvider
-      ) {
-        if (provider.oauthCredentialProvider.providerArn) {
-          oauthProviderArns.add(provider.oauthCredentialProvider.providerArn);
-        }
-      } else if (
-        providerConfiguration.credentialProviderType === "API_KEY" &&
-        provider &&
-        "apiKeyCredentialProvider" in provider &&
-        provider.apiKeyCredentialProvider?.providerArn
-      ) {
-        apiKeyProviderArns.add(provider.apiKeyCredentialProvider.providerArn);
-      }
+    if (roleRequested && !roleSupported) {
+      throw new InputValidationError(
+        "The CLI cannot infer least-privilege IAM permissions for this Target's " +
+          "GATEWAY_IAM_ROLE credential; use a customer-managed Gateway --role-arn",
+      );
     }
-    for (const secretArn of configuration.credentialProviderSecretArns ?? []) {
-      secretArns.add(secretArn);
-    }
+
+    collectCredentialResources(configuration, resources);
   }
 
   const statements: PolicyStatement[] = [];
@@ -229,31 +272,31 @@ function targetStatements(
     statements,
     `${GATEWAY_TARGET_POLICY_SCOPE}Lambda`,
     "lambda:InvokeFunction",
-    lambdaArns,
+    resources.lambda,
   );
   addResourceStatement(
     statements,
     `${GATEWAY_TARGET_POLICY_SCOPE}S3Schema`,
     "s3:GetObject",
-    s3ObjectArns,
+    resources.s3,
   );
   addResourceStatement(
     statements,
     `${GATEWAY_TARGET_POLICY_SCOPE}ApiGateway`,
     "execute-api:Invoke",
-    apiGatewayArns,
+    resources.apiGateway,
   );
   addResourceStatement(
     statements,
     `${GATEWAY_TARGET_POLICY_SCOPE}Runtime`,
     "bedrock-agentcore:InvokeAgentRuntime",
-    runtimeArns,
+    resources.runtime,
   );
   addResourceStatement(
     statements,
     `${GATEWAY_TARGET_POLICY_SCOPE}KnowledgeBase`,
     ["bedrock:GetKnowledgeBase", "bedrock:Retrieve"],
-    knowledgeBaseArns,
+    resources.knowledgeBase,
   );
   if (usesAgenticRetrieve) {
     statements.push({
@@ -281,7 +324,7 @@ function targetStatements(
   }
 
   const workloadIdentityArns =
-    oauthProviderArns.size > 0 || apiKeyProviderArns.size > 0
+    resources.oauthProvider.size > 0 || resources.apiKeyProvider.size > 0
       ? workloadIdentityResources(context)
       : [];
   if (workloadIdentityArns.length > 0) {
@@ -290,7 +333,7 @@ function targetStatements(
       Effect: "Allow",
       Action: [
         "bedrock-agentcore:GetWorkloadAccessToken",
-        ...(oauthProviderArns.size > 0
+        ...(resources.oauthProvider.size > 0
           ? [
               "bedrock-agentcore:GetWorkloadAccessTokenForJWT",
               "bedrock-agentcore:GetWorkloadAccessTokenForUserId",
@@ -300,37 +343,83 @@ function targetStatements(
       Resource: workloadIdentityArns,
     });
   }
-  if (oauthProviderArns.size > 0) {
-    const resources = tokenVaultResources(context, oauthProviderArns, workloadIdentityArns);
-    statements.push({
-      Sid: `${GATEWAY_TARGET_POLICY_SCOPE}OAuthCompleteAuth`,
-      Effect: "Allow",
-      Action: "bedrock-agentcore:CompleteResourceTokenAuth",
-      Resource: resources,
-    });
-    statements.push({
-      Sid: `${GATEWAY_TARGET_POLICY_SCOPE}OAuth`,
-      Effect: "Allow",
-      Action: "bedrock-agentcore:GetResourceOauth2Token",
-      Resource: resources,
-    });
+  if (resources.oauthProvider.size > 0) {
+    const targetResources = tokenVaultResources(
+      context,
+      resources.oauthProvider,
+      workloadIdentityArns,
+    );
+    statements.push(
+      {
+        Sid: `${GATEWAY_TARGET_POLICY_SCOPE}OAuthCompleteAuth`,
+        Effect: "Allow",
+        Action: "bedrock-agentcore:CompleteResourceTokenAuth",
+        Resource: targetResources,
+      },
+      {
+        Sid: `${GATEWAY_TARGET_POLICY_SCOPE}OAuth`,
+        Effect: "Allow",
+        Action: "bedrock-agentcore:GetResourceOauth2Token",
+        Resource: targetResources,
+      },
+    );
   }
-  if (apiKeyProviderArns.size > 0) {
+  if (resources.apiKeyProvider.size > 0) {
     statements.push({
       Sid: `${GATEWAY_TARGET_POLICY_SCOPE}ApiKey`,
       Effect: "Allow",
       Action: "bedrock-agentcore:GetResourceApiKey",
-      Resource: tokenVaultResources(context, apiKeyProviderArns, workloadIdentityArns),
+      Resource: tokenVaultResources(context, resources.apiKeyProvider, workloadIdentityArns),
     });
   }
   addResourceStatement(
     statements,
     `${GATEWAY_TARGET_POLICY_SCOPE}CredentialSecrets`,
     "secretsmanager:GetSecretValue",
-    secretArns,
+    resources.secret,
   );
-
   return statements;
+}
+
+function usesGatewayRole(
+  configuration: GatewayTargetRoleConfiguration,
+  byDefault: boolean,
+): boolean {
+  if (configuration.credentialProviderConfigurations === undefined) return byDefault;
+  return configuration.credentialProviderConfigurations.some(
+    ({ credentialProviderType }) => credentialProviderType === "GATEWAY_IAM_ROLE",
+  );
+}
+
+function collectCredentialResources(
+  configuration: GatewayTargetRoleConfiguration,
+  resources: {
+    oauthProvider: Set<string>;
+    apiKeyProvider: Set<string>;
+    secret: Set<string>;
+  },
+): void {
+  for (const providerConfiguration of configuration.credentialProviderConfigurations ?? []) {
+    const provider = providerConfiguration.credentialProvider;
+    if (
+      providerConfiguration.credentialProviderType === "OAUTH" &&
+      provider &&
+      "oauthCredentialProvider" in provider &&
+      provider.oauthCredentialProvider?.providerArn
+    ) {
+      resources.oauthProvider.add(provider.oauthCredentialProvider.providerArn);
+    } else if (
+      providerConfiguration.credentialProviderType === "API_KEY" &&
+      provider &&
+      "apiKeyCredentialProvider" in provider &&
+      provider.apiKeyCredentialProvider?.providerArn
+    ) {
+      resources.apiKeyProvider.add(provider.apiKeyCredentialProvider.providerArn);
+    }
+  }
+  for (const secretArn of configuration.credentialProviderSecretArns ?? []) {
+    resources.secret.add(secretArn);
+  }
 }
 
 function workloadIdentityResources(context: GatewayTargetPolicyContext): string[] {
@@ -345,8 +434,7 @@ function workloadIdentityResources(context: GatewayTargetPolicyContext): string[
   if (markerIndex === -1) {
     throw new Error(`Invalid Gateway workload identity ARN "${workloadIdentityArn}"`);
   }
-  const directoryArn = workloadIdentityArn.slice(0, markerIndex);
-  return [directoryArn, workloadIdentityArn].sort();
+  return [workloadIdentityArn.slice(0, markerIndex), workloadIdentityArn].sort();
 }
 
 function tokenVaultResources(
@@ -358,39 +446,6 @@ function tokenVaultResources(
     `arn:${context.partition}:bedrock-agentcore:${context.region}:${context.accountId}:` +
     "token-vault/default";
   return [...new Set([tokenVaultArn, ...providerArns, ...workloadIdentityArns])].sort();
-}
-
-function assertSupportedGatewayRoleTarget(configuration: GatewayTargetRoleConfiguration): void {
-  if (!usesGatewayExecutionRole(configuration)) return;
-  const target = configuration.targetConfiguration;
-  const supported =
-    Boolean(target && "mcp" in target && target.mcp && "lambda" in target.mcp) ||
-    Boolean(target && "mcp" in target && target.mcp && "apiGateway" in target.mcp) ||
-    Boolean(
-      target &&
-      "mcp" in target &&
-      target.mcp &&
-      "connector" in target.mcp &&
-      ["bedrock-knowledge-bases", "web-search"].includes(
-        target.mcp.connector?.source?.connectorId ?? "",
-      ),
-    ) ||
-    Boolean(target && "http" in target && target.http && "agentcoreRuntime" in target.http) ||
-    Boolean(
-      target &&
-      "inference" in target &&
-      target.inference &&
-      (("connector" in target.inference &&
-        target.inference.connector?.source?.connectorId === "bedrock-mantle") ||
-        ("provider" in target.inference &&
-          target.inference.provider?.endpoint?.includes("bedrock-mantle.") === true)),
-    );
-  if (supported) return;
-
-  throw new InputValidationError(
-    "The CLI cannot infer least-privilege IAM permissions for this Target's " +
-      "GATEWAY_IAM_ROLE credential; update the Gateway to use a customer-managed --role-arn",
-  );
 }
 
 function isUnqualifiedLambdaFunctionArn(arn: string): boolean {
@@ -454,35 +509,6 @@ function addSchemaS3Object(
   if (match) resources.add(`arn:${partition}:s3:::${match[1]}/${match[2]}`);
 }
 
-function usesGatewayExecutionRole(configuration: GatewayTargetRoleConfiguration): boolean {
-  if (configuration.credentialProviderConfigurations !== undefined) {
-    return configuration.credentialProviderConfigurations.some(
-      ({ credentialProviderType }) => credentialProviderType === "GATEWAY_IAM_ROLE",
-    );
-  }
-
-  const target = configuration.targetConfiguration;
-  return Boolean(
-    target &&
-    (("mcp" in target &&
-      target.mcp &&
-      ("lambda" in target.mcp ||
-        "smithyModel" in target.mcp ||
-        "apiGateway" in target.mcp ||
-        ("connector" in target.mcp &&
-          ["bedrock-knowledge-bases", "web-search"].includes(
-            target.mcp.connector?.source?.connectorId ?? "",
-          )))) ||
-      ("http" in target && target.http && "agentcoreRuntime" in target.http) ||
-      ("inference" in target &&
-        target.inference &&
-        (("connector" in target.inference &&
-          target.inference.connector?.source?.connectorId === "bedrock-mantle") ||
-          ("provider" in target.inference &&
-            target.inference.provider?.endpoint?.includes("bedrock-mantle.") === true)))),
-  );
-}
-
 function addResourceStatement(
   statements: PolicyStatement[],
   sid: string,
@@ -498,8 +524,33 @@ function addResourceStatement(
   });
 }
 
-function policyDocumentForStatements(statements: PolicyStatement[]): string | undefined {
-  if (statements.length === 0) return undefined;
-  const document: PolicyDocument = { Version: "2012-10-17", Statement: statements };
-  return JSON.stringify(document);
+function mergeStatements(current: PolicyStatement, requested: PolicyStatement): PolicyStatement {
+  return {
+    ...current,
+    ...requested,
+    Action: unionValues(current.Action, requested.Action),
+    Resource: unionValues(current.Resource, requested.Resource),
+  };
+}
+
+function unionValues(
+  left: string | string[] | undefined,
+  right: string | string[] | undefined,
+): string | string[] | undefined {
+  const values = new Set([...asArray(left), ...asArray(right)]);
+  if (values.size === 0) return undefined;
+  const result = [...values].sort();
+  return result.length === 1 ? result[0] : result;
+}
+
+function asArray(value: string | string[] | undefined): string[] {
+  if (value === undefined) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function policyDocument(statements: PolicyStatement[]): PolicyDocument {
+  return {
+    Version: "2012-10-17",
+    Statement: statements.sort((left, right) => (left.Sid ?? "").localeCompare(right.Sid ?? "")),
+  };
 }

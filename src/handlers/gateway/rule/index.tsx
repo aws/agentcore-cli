@@ -9,7 +9,7 @@ import { createListGatewayRulesHandler } from "./list";
 export function createGatewayRuleHandler(core: Core, io: AppIO): Router {
   return new Router("rule", "inspect rules for an AgentCore Gateway")
     .default(createHelpDefault(io))
-    .handler(createCreateGatewayRuleHandler(core))
+    .handler(createCreateGatewayRuleHandler(core, io))
     .handler(createGetGatewayRuleHandler(core))
     .handler(createListGatewayRulesHandler(core));
 }

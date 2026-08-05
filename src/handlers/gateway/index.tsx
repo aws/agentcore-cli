@@ -12,7 +12,7 @@ import { createGatewayTargetHandler } from "./target";
 export function createGatewayHandler(core: Core, io: AppIO): Router {
   return new Router("gateway", "inspect AgentCore Gateways")
     .default(createHelpDefault(io))
-    .handler(createCreateGatewayHandler(core))
+    .handler(createCreateGatewayHandler(core, io))
     .handler(createGetGatewayHandler(core))
     .handler(createListGatewaysHandler(core))
     .handler(createGatewayTargetHandler(core, io))

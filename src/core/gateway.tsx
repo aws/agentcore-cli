@@ -2,10 +2,10 @@ import {
   CreateGatewayCommand,
   CreateGatewayRuleCommand,
   CreateGatewayTargetCommand,
+  GetApiKeyCredentialProviderCommand,
   GetGatewayCommand,
   GetGatewayRuleCommand,
   GetGatewayTargetCommand,
-  GetApiKeyCredentialProviderCommand,
   GetOauth2CredentialProviderCommand,
   ListGatewayRulesCommand,
   ListGatewaysCommand,
@@ -34,8 +34,7 @@ import type {
 } from "../handlers/gateway/types";
 import type { AwsClients, CoreOptions } from "./types";
 import {
-  ensureGatewayExecutionRole,
-  getManagedGatewayTargetExecutionRole,
+  GatewayExecutionRole,
   retryWhileGatewayRoleChangesPropagate,
   type GatewayTargetRoleConfiguration,
 } from "./gatewayExecutionRole";
@@ -57,8 +56,7 @@ export class GatewayClient implements CoreGatewayClient {
     }
 
     const iam = this.clients.iam({ region: options.region });
-    const role = await ensureGatewayExecutionRole(iam, input.name!, options.region, input);
-    await role.updatePolicy();
+    const role = await GatewayExecutionRole.prepareCreate(iam, input.name!, options.region, input);
     const response = await retryWhileGatewayRoleChangesPropagate(() =>
       control.send(
         new CreateGatewayCommand(buildGatewayCreateRequest({ ...input, roleArn: role.roleArn })),
@@ -67,8 +65,14 @@ export class GatewayClient implements CoreGatewayClient {
     if (!response.gatewayArn) {
       throw new Error("CreateGateway response did not include the Gateway ARN");
     }
-    await role.updatePolicy(response.gatewayArn);
-    await role.updateTrust(response.gatewayArn);
+    try {
+      await role.finalizeGateway(input, response.gatewayArn);
+    } catch (error) {
+      throw new AggregateError(
+        [error],
+        `Gateway "${response.gatewayId ?? input.name}" was created, but its CLI-managed execution role could not be finalized`,
+      );
+    }
     return response;
   }
 
@@ -126,21 +130,39 @@ export class GatewayClient implements CoreGatewayClient {
       new GetGatewayCommand({ gatewayIdentifier: request.gatewayIdentifier }),
     );
     const iam = this.clients.iam({ region: options.region });
-    const role = await getManagedGatewayTargetExecutionRole(iam, gateway, options.region);
+    const role = await GatewayExecutionRole.fromGateway(iam, gateway, options.region);
     if (!role) {
       return control.send(new CreateGatewayTargetCommand(request));
     }
 
-    const configurations = await listTargetRoleConfigurations(
-      control,
-      request.gatewayIdentifier!,
-      undefined,
-      request,
+    const preparation = await role.prepareTargetPolicy(
+      await targetRoleConfiguration(control, request),
     );
-    await role.updatePolicy(configurations);
-    return retryWhileGatewayRoleChangesPropagate(() =>
-      control.send(new CreateGatewayTargetCommand(request)),
-    );
+    let response: CreateGatewayTargetResponse;
+    try {
+      response = await retryWhileGatewayRoleChangesPropagate(() =>
+        control.send(new CreateGatewayTargetCommand(request)),
+      );
+    } catch (error) {
+      try {
+        await preparation.rollback();
+      } catch (rollbackError) {
+        throw new AggregateError(
+          [error, rollbackError],
+          "Gateway Target creation failed and its execution-role policy could not be rolled back",
+        );
+      }
+      throw error;
+    }
+    try {
+      await preparation.commit();
+    } catch (error) {
+      throw new AggregateError(
+        [error],
+        `Gateway Target "${response.targetId ?? request.name}" was created, but its CLI-managed execution-role policy could not be finalized`,
+      );
+    }
+    return response;
   }
 
   async getGatewayRule(
@@ -179,49 +201,6 @@ export class GatewayClient implements CoreGatewayClient {
   }
 }
 
-async function listTargetRoleConfigurations(
-  control: BedrockAgentCoreControlClient,
-  gatewayId: string,
-  excludedTargetId?: string,
-  replacement?: TargetRoleConfigurationSource,
-): Promise<GatewayTargetRoleConfiguration[]> {
-  const configurations: GatewayTargetRoleConfiguration[] = [];
-  const providerSecrets = new Map<string, Promise<string | undefined>>();
-  let nextToken: string | undefined;
-  do {
-    const page = await control.send(
-      new ListGatewayTargetsCommand({
-        gatewayIdentifier: gatewayId,
-        nextToken,
-        maxResults: 100,
-      }),
-    );
-    const targets = await Promise.all(
-      (page.items ?? [])
-        .filter(({ targetId }) => targetId && targetId !== excludedTargetId)
-        .map(({ targetId }) =>
-          control.send(
-            new GetGatewayTargetCommand({
-              gatewayIdentifier: gatewayId,
-              targetId,
-            }),
-          ),
-        ),
-    );
-    configurations.push(
-      ...(await Promise.all(
-        targets.map((target) => targetRoleConfiguration(control, target, providerSecrets)),
-      )),
-    );
-    nextToken = page.nextToken;
-  } while (nextToken);
-
-  if (replacement) {
-    configurations.push(await targetRoleConfiguration(control, replacement, providerSecrets));
-  }
-  return configurations;
-}
-
 type TargetRoleConfigurationSource = Pick<
   CreateGatewayTargetInput,
   "targetConfiguration" | "credentialProviderConfigurations"
@@ -230,7 +209,6 @@ type TargetRoleConfigurationSource = Pick<
 async function targetRoleConfiguration(
   control: BedrockAgentCoreControlClient,
   target: TargetRoleConfigurationSource,
-  providerSecrets = new Map<string, Promise<string | undefined>>(),
 ): Promise<GatewayTargetRoleConfiguration> {
   return {
     targetConfiguration: target.targetConfiguration,
@@ -238,7 +216,6 @@ async function targetRoleConfiguration(
     credentialProviderSecretArns: await credentialProviderSecretArns(
       control,
       target.credentialProviderConfigurations,
-      providerSecrets,
     ),
   };
 }
@@ -246,7 +223,6 @@ async function targetRoleConfiguration(
 async function credentialProviderSecretArns(
   control: BedrockAgentCoreControlClient,
   configurations: CreateGatewayTargetInput["credentialProviderConfigurations"],
-  cache: Map<string, Promise<string | undefined>>,
 ): Promise<string[]> {
   const providers = new Map<string, "oauth" | "apiKey">();
   for (const configuration of configurations ?? []) {
@@ -270,13 +246,7 @@ async function credentialProviderSecretArns(
 
   const secrets = await Promise.all(
     [...providers].map(async ([providerArn, type]) => {
-      const key = `${type}:${providerArn}`;
-      let lookup = cache.get(key);
-      if (!lookup) {
-        lookup = lookupCredentialProviderSecret(control, providerArn, type);
-        cache.set(key, lookup);
-      }
-      return lookup;
+      return lookupCredentialProviderSecret(control, providerArn, type);
     }),
   );
   return secrets.filter((secretArn): secretArn is string => Boolean(secretArn));

@@ -4,6 +4,7 @@ import {
   CreateRoleCommand,
   DeleteRolePolicyCommand,
   GetRoleCommand,
+  GetRolePolicyCommand,
   PutRolePolicyCommand,
   UpdateAssumeRolePolicyCommand,
   type IAMClient,
@@ -11,14 +12,16 @@ import {
 } from "@aws-sdk/client-iam";
 import { InputValidationError } from "../errors";
 import {
-  gatewayPolicyDocument,
-  gatewayTargetPolicyDocument,
+  GatewayExecutionPolicy,
   type GatewayRoleConfiguration,
   type GatewayTargetPolicyContext,
   type GatewayTargetRoleConfiguration,
 } from "./gatewayExecutionRolePolicy";
 
-export type { GatewayTargetRoleConfiguration } from "./gatewayExecutionRolePolicy";
+export type {
+  GatewayRoleConfiguration,
+  GatewayTargetRoleConfiguration,
+} from "./gatewayExecutionRolePolicy";
 
 export const GATEWAY_EXECUTION_POLICY_NAME = "AgentCoreGatewayExecutionPolicy";
 export const GATEWAY_ROLE_MANAGED_BY_TAG = {
@@ -30,60 +33,177 @@ export const GATEWAY_ROLE_RESOURCE_TYPE_TAG = {
   Value: "gateway",
 } as const;
 
-export type GatewayExecutionRoleProvisioning = {
-  roleArn: string;
-  roleName: string;
-  updatePolicy(gatewayArn?: string): Promise<void>;
-  updateTrust(gatewayArn: string): Promise<void>;
+type PolicySnapshot = {
+  exists: boolean;
+  policy: GatewayExecutionPolicy;
 };
 
-export interface GatewayTargetExecutionRole {
-  roleName: string;
-  updatePolicy(configurations: GatewayTargetRoleConfiguration[]): Promise<void>;
+export type GatewayTargetPolicyPreparation = {
+  commit(): Promise<void>;
+  rollback(): Promise<void>;
+};
+
+export class GatewayExecutionRole {
+  private constructor(
+    private readonly iam: IAMClient,
+    readonly roleName: string,
+    readonly roleArn: string,
+    private readonly accountId: string,
+    private readonly targetContext?: GatewayTargetPolicyContext,
+  ) {}
+
+  static async prepareCreate(
+    iam: IAMClient,
+    gatewayName: string,
+    region: string,
+    configuration: GatewayRoleConfiguration,
+  ): Promise<GatewayExecutionRole> {
+    const roleName = gatewayExecutionRoleName(gatewayName, region);
+    const role = await getOrCreateOwnedRole(iam, roleName, gatewayName);
+    const roleArn = requiredRoleArn(role, roleName);
+    const arn = parseRoleArn(roleArn);
+    const gatewayPattern = gatewayArnPattern(arn.partition, region, arn.accountId, gatewayName);
+    const executionRole = new GatewayExecutionRole(iam, roleName, roleArn, arn.accountId);
+
+    await executionRole.writeTrust(gatewayPattern);
+    await executionRole.mergePolicy(
+      GatewayExecutionPolicy.forGateway(configuration, gatewayPattern),
+    );
+    return executionRole;
+  }
+
+  static async fromGateway(
+    iam: IAMClient,
+    gateway: GetGatewayResponse,
+    region: string,
+  ): Promise<GatewayExecutionRole | undefined> {
+    if (!gateway.roleArn || !gateway.name) return undefined;
+
+    const arn = parseRoleArn(gateway.roleArn);
+    if (arn.roleName !== gatewayExecutionRoleName(gateway.name, region)) return undefined;
+
+    const response = await iam.send(new GetRoleCommand({ RoleName: arn.roleName }));
+    if (!isOwnedGatewayRole(response.Role)) return undefined;
+
+    const gatewayId = gateway.gatewayId ?? gateway.gatewayArn?.split("/").at(-1);
+    if (!gatewayId) throw new Error("GetGateway response did not include the Gateway ID");
+    return new GatewayExecutionRole(iam, arn.roleName, gateway.roleArn, arn.accountId, {
+      partition: arn.partition,
+      region,
+      accountId: arn.accountId,
+      gatewayId,
+      workloadIdentityArn: gateway.workloadIdentityDetails?.workloadIdentityArn,
+    });
+  }
+
+  async finalizeGateway(
+    configuration: GatewayRoleConfiguration,
+    gatewayArn: string,
+  ): Promise<void> {
+    await this.writeTrust(gatewayArn);
+    await this.writePolicy(GatewayExecutionPolicy.forGateway(configuration, gatewayArn));
+  }
+
+  async prepareTargetPolicy(
+    configuration: GatewayTargetRoleConfiguration,
+  ): Promise<GatewayTargetPolicyPreparation> {
+    const contribution = GatewayExecutionPolicy.forTargets(
+      [configuration],
+      this.requiredTargetContext(),
+    );
+    const previous = await this.readPolicy();
+    await this.writePolicy(previous.policy.merge(contribution));
+
+    return {
+      commit: async () => {
+        const current = await this.readPolicy();
+        const desired = current.policy.merge(contribution);
+        if (!current.policy.equals(desired)) await this.writePolicy(desired);
+      },
+      rollback: async () => await this.restorePolicy(previous),
+    };
+  }
+
+  private requiredTargetContext(): GatewayTargetPolicyContext {
+    if (!this.targetContext) {
+      throw new Error("Gateway Target permissions require an existing Gateway");
+    }
+    return this.targetContext;
+  }
+
+  private async mergePolicy(candidate: GatewayExecutionPolicy): Promise<void> {
+    const current = await this.readPolicy();
+    const desired = current.policy.merge(candidate);
+    if (!current.policy.equals(desired)) await this.writePolicy(desired);
+  }
+
+  private async readPolicy(): Promise<PolicySnapshot> {
+    try {
+      const response = await this.iam.send(
+        new GetRolePolicyCommand({
+          RoleName: this.roleName,
+          PolicyName: GATEWAY_EXECUTION_POLICY_NAME,
+        }),
+      );
+      return {
+        exists: true,
+        policy: GatewayExecutionPolicy.parse(response.PolicyDocument),
+      };
+    } catch (error) {
+      if ((error as Error).name !== "NoSuchEntityException") throw error;
+      return { exists: false, policy: GatewayExecutionPolicy.empty() };
+    }
+  }
+
+  private async writePolicy(policy: GatewayExecutionPolicy): Promise<void> {
+    const document = policy.toJSON();
+    if (!document) {
+      await this.deletePolicy();
+      return;
+    }
+    await this.iam.send(
+      new PutRolePolicyCommand({
+        RoleName: this.roleName,
+        PolicyName: GATEWAY_EXECUTION_POLICY_NAME,
+        PolicyDocument: document,
+      }),
+    );
+  }
+
+  private async restorePolicy(snapshot: PolicySnapshot): Promise<void> {
+    if (snapshot.exists) {
+      await this.writePolicy(snapshot.policy);
+    } else {
+      await this.deletePolicy();
+    }
+  }
+
+  private async deletePolicy(): Promise<void> {
+    try {
+      await this.iam.send(
+        new DeleteRolePolicyCommand({
+          RoleName: this.roleName,
+          PolicyName: GATEWAY_EXECUTION_POLICY_NAME,
+        }),
+      );
+    } catch (error) {
+      if ((error as Error).name !== "NoSuchEntityException") throw error;
+    }
+  }
+
+  private async writeTrust(sourceArn: string): Promise<void> {
+    await this.iam.send(
+      new UpdateAssumeRolePolicyCommand({
+        RoleName: this.roleName,
+        PolicyDocument: trustPolicy(this.accountId, sourceArn),
+      }),
+    );
+  }
 }
 
 export function gatewayExecutionRoleName(gatewayName: string, region: string): string {
   const suffix = createHash("sha256").update(`${region}:${gatewayName}`).digest("hex").slice(0, 12);
   return `AgentCoreGateway-${gatewayName.slice(0, 32)}-${suffix}`;
-}
-
-export async function ensureGatewayExecutionRole(
-  iam: IAMClient,
-  gatewayName: string,
-  region: string,
-  configuration: GatewayRoleConfiguration,
-): Promise<GatewayExecutionRoleProvisioning> {
-  const roleName = gatewayExecutionRoleName(gatewayName, region);
-  const role = await getOrCreateOwnedRole(iam, roleName, gatewayName);
-  const roleArn = requiredRoleArn(role, roleName);
-  const arn = parseRoleArn(roleArn);
-  const gatewayPattern = gatewayArnPattern(arn.partition, region, arn.accountId, gatewayName);
-
-  await iam.send(
-    new UpdateAssumeRolePolicyCommand({
-      RoleName: roleName,
-      PolicyDocument: trustPolicy(arn.accountId, gatewayPattern),
-    }),
-  );
-
-  return {
-    roleArn,
-    roleName,
-    updatePolicy: async (gatewayArn = gatewayPattern) =>
-      await replaceGatewayExecutionPolicy(
-        iam,
-        roleName,
-        gatewayPolicyDocument(configuration, gatewayArn),
-      ),
-    updateTrust: async (gatewayArn) => {
-      await iam.send(
-        new UpdateAssumeRolePolicyCommand({
-          RoleName: roleName,
-          PolicyDocument: trustPolicy(arn.accountId, gatewayArn),
-        }),
-      );
-    },
-  };
 }
 
 export async function retryWhileGatewayRoleChangesPropagate<T>(
@@ -97,78 +217,9 @@ export async function retryWhileGatewayRoleChangesPropagate<T>(
     try {
       return await operation();
     } catch (error) {
-      const retryable = isGatewayRolePropagationError(error);
-      if (!retryable || attempt >= attempts) throw error;
+      if (!isGatewayRolePropagationError(error) || attempt >= attempts) throw error;
       await sleep(delayMs);
     }
-  }
-}
-
-export async function getManagedGatewayTargetExecutionRole(
-  iam: IAMClient,
-  gateway: GetGatewayResponse,
-  region: string,
-): Promise<GatewayTargetExecutionRole | undefined> {
-  if (!gateway.roleArn || !gateway.name) return undefined;
-
-  const parsedArn = parseRoleArn(gateway.roleArn);
-  const expectedRoleName = gatewayExecutionRoleName(gateway.name, region);
-  if (parsedArn.roleName !== expectedRoleName) return undefined;
-
-  const response = await iam.send(new GetRoleCommand({ RoleName: parsedArn.roleName }));
-  if (!isOwnedGatewayRole(response.Role)) return undefined;
-
-  const gatewayId = gateway.gatewayId ?? gateway.gatewayArn?.split("/").at(-1);
-  if (!gatewayId) {
-    throw new Error("GetGateway response did not include the Gateway ID");
-  }
-  const context: GatewayTargetPolicyContext = {
-    partition: parsedArn.partition,
-    region,
-    accountId: parsedArn.accountId,
-    gatewayId,
-    workloadIdentityArn: gateway.workloadIdentityDetails?.workloadIdentityArn,
-  };
-  const gatewayArn =
-    gateway.gatewayArn ??
-    `arn:${parsedArn.partition}:bedrock-agentcore:${region}:${parsedArn.accountId}:gateway/${gatewayId}`;
-
-  return {
-    roleName: parsedArn.roleName,
-    updatePolicy: async (configurations) =>
-      await replaceGatewayExecutionPolicy(
-        iam,
-        parsedArn.roleName,
-        gatewayTargetPolicyDocument(gateway, gatewayArn, configurations, context),
-      ),
-  };
-}
-
-async function replaceGatewayExecutionPolicy(
-  iam: IAMClient,
-  roleName: string,
-  policyDocument: string | undefined,
-): Promise<void> {
-  if (policyDocument) {
-    await iam.send(
-      new PutRolePolicyCommand({
-        RoleName: roleName,
-        PolicyName: GATEWAY_EXECUTION_POLICY_NAME,
-        PolicyDocument: policyDocument,
-      }),
-    );
-    return;
-  }
-
-  try {
-    await iam.send(
-      new DeleteRolePolicyCommand({
-        RoleName: roleName,
-        PolicyName: GATEWAY_EXECUTION_POLICY_NAME,
-      }),
-    );
-  } catch (error) {
-    if ((error as Error).name !== "NoSuchEntityException") throw error;
   }
 }
 
@@ -224,9 +275,7 @@ function isOwnedGatewayRole(role: Role | undefined): boolean {
 }
 
 function requiredRoleArn(role: Role, roleName: string): string {
-  if (!role.Arn) {
-    throw new Error(`IAM did not return an ARN for role "${roleName}"`);
-  }
+  if (!role.Arn) throw new Error(`IAM did not return an ARN for role "${roleName}"`);
   return role.Arn;
 }
 
@@ -280,9 +329,7 @@ function parseRoleArn(arn: string): {
 } {
   const match = /^arn:([^:]+):iam::(\d{12}):role\/(.+)$/.exec(arn);
   const roleName = match?.[3]?.split("/").at(-1);
-  if (!match || !roleName) {
-    throw new InputValidationError(`Invalid IAM role ARN "${arn}"`);
-  }
+  if (!match || !roleName) throw new InputValidationError(`Invalid IAM role ARN "${arn}"`);
   return { partition: match[1]!, accountId: match[2]!, roleName };
 }
 

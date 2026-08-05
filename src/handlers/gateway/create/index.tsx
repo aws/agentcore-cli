@@ -5,6 +5,7 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import z from "zod";
 import { InputValidationError } from "../../../errors";
+import { type AppIO, SourceResolver } from "../../../io";
 import { createHandler, flag } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
 import type { Core } from "../../types";
@@ -12,7 +13,7 @@ import { coreOptsFromCtx, parseJsonArrayFlag, parseJsonObjectFlag, parseTags } f
 import { validateGatewayCreateInput } from "../mutations";
 import type { CreateGatewayInput } from "../types";
 
-export const createCreateGatewayHandler = (core: Core) =>
+export const createCreateGatewayHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "create",
     description: "create an AgentCore Gateway",
@@ -25,8 +26,8 @@ export const createCreateGatewayHandler = (core: Core) =>
       ),
       flag(
         "protocol",
-        "Gateway protocol: mcp or http (default: http)",
-        z.enum(["mcp", "http"]).optional(),
+        "restrict Target protocols to MCP; omitted allows every Target protocol",
+        z.enum(["mcp"]).optional(),
       ),
       flag(
         "authorizer-type",
@@ -36,18 +37,18 @@ export const createCreateGatewayHandler = (core: Core) =>
       flag("description", "Gateway description", z.string().optional()),
       flag(
         "protocol-configuration",
-        "protocol configuration (JSON GatewayProtocolConfiguration)",
+        "MCP protocol configuration (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
       ),
       flag(
         "authorizer-configuration",
-        "authorizer configuration (JSON AuthorizerConfiguration)",
+        "authorizer configuration (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
       ),
       flag("kms-key-arn", "KMS key ARN", z.string().optional()),
       flag(
         "interceptor-configurations",
-        "interceptor configurations (JSON GatewayInterceptorConfiguration[])",
+        "interceptor configurations (JSON array; inline, file://<path>, or - for stdin)",
         z.string().optional(),
       ),
       flag("policy-engine-arn", "Policy Engine ARN", z.string().optional()),
@@ -82,17 +83,18 @@ export const createCreateGatewayHandler = (core: Core) =>
         );
       }
 
+      const source = new SourceResolver({ stdin: io.stdin });
       const protocolConfiguration = parseJsonObjectFlag<GatewayProtocolConfiguration>(
         "protocol-configuration",
-        flags["protocol-configuration"],
+        await source.resolveText("protocol-configuration", flags["protocol-configuration"]),
       );
       const authorizerConfiguration = parseJsonObjectFlag<AuthorizerConfiguration>(
         "authorizer-configuration",
-        flags["authorizer-configuration"],
+        await source.resolveText("authorizer-configuration", flags["authorizer-configuration"]),
       );
       const interceptorConfigurations = parseJsonArrayFlag<GatewayInterceptorConfiguration>(
         "interceptor-configurations",
-        flags["interceptor-configurations"],
+        await source.resolveText("interceptor-configurations", flags["interceptor-configurations"]),
       );
       const policyEngineConfiguration =
         flags["policy-engine-arn"] && flags["policy-engine-mode"]
@@ -104,12 +106,12 @@ export const createCreateGatewayHandler = (core: Core) =>
                   : ("LOG_ONLY" as const),
             }
           : undefined;
-      const tags = parseTags(flags.tags);
+      const tags = await resolveTags(source, flags.tags);
 
       const input: CreateGatewayInput = {
         name: flags.name,
         ...(flags["role-arn"] ? { roleArn: flags["role-arn"] } : {}),
-        protocol: flags.protocol ?? "http",
+        ...(flags.protocol ? { protocol: flags.protocol } : {}),
         authorizerType: flags["authorizer-type"],
         ...(flags.description ? { description: flags.description } : {}),
         ...(protocolConfiguration ? { protocolConfiguration } : {}),
@@ -128,3 +130,19 @@ export const createCreateGatewayHandler = (core: Core) =>
         .renderJson(await core.gateway.createGateway(input, coreOptsFromCtx(ctx)));
     },
   });
+
+async function resolveTags(
+  source: SourceResolver,
+  values: string[] | undefined,
+): Promise<Record<string, string> | undefined> {
+  const value = values?.[0];
+  if (
+    values?.length === 1 &&
+    value &&
+    (value === "-" || value.startsWith("file://") || value.trimStart().startsWith("{"))
+  ) {
+    const resolved = await source.resolveText("tags", value);
+    return parseTags([resolved!]);
+  }
+  return parseTags(values);
+}
