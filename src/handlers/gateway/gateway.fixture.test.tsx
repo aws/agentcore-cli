@@ -11,16 +11,18 @@ import {
 import { createRootHandler } from "../index";
 
 const REGION = "us-west-2";
+const CONNECTOR_REGION = "us-east-1";
 const FIXTURES = join(import.meta.dir, "__fixtures__");
 const GATEWAY_ID = "agentcore-cli-gateway-read-fixture-a-l6opkbe2kd";
 const TARGET_ID = "KALJACI9HO";
 const RULE_GATEWAY_ID = "agentcore-cli-gateway-read-rule-fixture-lhpid2reoy";
 const RULE_ID = "d396c3f4-4591-41b3-a4d5-816e03c32419";
-const CONNECTOR_ID = "HDDX5P33XN";
+const CONNECTOR_GATEWAY_ID = "agentcore-cli-gateway-read-connector-gkzcxxkc5e";
+const CONNECTOR_ID = "Z3FQ0H8JCK";
 
 // Account 685197708687 owns the persistent read-only fixture graph:
-// listable Gateways, two MCP Targets under GATEWAY_ID, and one HTTP Target, one
-// connector Target, and two Rules under RULE_GATEWAY_ID. Record with:
+// listable Gateways and Targets in REGION, plus one READY connector Target under
+// CONNECTOR_GATEWAY_ID in CONNECTOR_REGION. Record with:
 // AWS_PROFILE=e2e-test RECORD=1 bun test src/handlers/gateway/gateway.fixture.test.tsx
 function createFixtureCore(): CoreClient {
   const { createControlClient, createDataClient, createIamClient } = fixtureFactories(FIXTURES);
@@ -32,14 +34,14 @@ function createFixtureCore(): CoreClient {
   });
 }
 
-async function run(args: string[]): Promise<string> {
+async function run(args: string[], region = REGION): Promise<string> {
   const io = testIO();
   const root = createRootHandler(createFixtureCore(), {
     io: io.io,
     logger: createSilentLogger(),
     globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
-  await root.route(["node", "agentcore", ...args, "--region", REGION]);
+  await root.route(["node", "agentcore", ...args, "--region", region]);
   return io.stdout();
 }
 
@@ -114,21 +116,19 @@ describe("Gateway fixture-backed reads", () => {
   });
 
   test("gets a Gateway Connector", async () => {
-    const stdout = await run([
-      "gateway",
-      "connector",
-      "get",
-      "--gateway-id",
-      RULE_GATEWAY_ID,
-      "--id",
-      CONNECTOR_ID,
-    ]);
+    const stdout = await run(
+      ["gateway", "connector", "get", "--gateway-id", CONNECTOR_GATEWAY_ID, "--id", CONNECTOR_ID],
+      CONNECTOR_REGION,
+    );
     matchGolden(FIXTURES, "connector-get.golden.json", stdout);
     expect(JSON.parse(stdout).targetId).toBe(CONNECTOR_ID);
   });
 
   test("lists Gateway Connectors", async () => {
-    const stdout = await run(["gateway", "connector", "list", "--gateway-id", RULE_GATEWAY_ID]);
+    const stdout = await run(
+      ["gateway", "connector", "list", "--gateway-id", CONNECTOR_GATEWAY_ID],
+      CONNECTOR_REGION,
+    );
     matchGolden(FIXTURES, "connector-list.golden.json", stdout);
     expect(JSON.parse(stdout).items.map(({ targetId }: { targetId: string }) => targetId)).toEqual([
       CONNECTOR_ID,

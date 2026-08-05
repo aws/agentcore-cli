@@ -1,8 +1,12 @@
 {
   "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:685197708687:gateway/agentcore-cli-gateway-read-connector-gkzcxxkc5e",
   "targetId": "Z3FQ0H8JCK",
-  "createdAt": "2026-08-05T20:20:45.351Z",
-  "updatedAt": "2026-08-05T20:20:51.210Z",
+  "createdAt": {
+    "$date": "2026-08-05T20:20:45.351Z"
+  },
+  "updatedAt": {
+    "$date": "2026-08-05T20:20:51.210Z"
+  },
   "status": "READY",
   "name": "agentcore-cli-gateway-read-connector-openai",
   "targetConfiguration": {
@@ -28,5 +32,7 @@
     }
   ],
   "description": "AgentCore CLI persistent READY Gateway Connector Target fixture",
-  "lastSynchronizedAt": "2026-08-05T20:20:51.000Z"
+  "lastSynchronizedAt": {
+    "$date": "2026-08-05T20:20:51.000Z"
+  }
 }
