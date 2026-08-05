@@ -45,6 +45,9 @@ import {
   OnlineEvalGetScreen,
   OnlineEvalGetJsonScreen,
 } from "../handlers/eval/online-eval/get/screen.tsx";
+import { MemoryEventScreen } from "../handlers/memory/event/screen.tsx";
+import { MemoryEventGetScreen } from "../handlers/memory/event/get/screen.tsx";
+import { MemoryEventListScreen } from "../handlers/memory/event/list/screen.tsx";
 import { RootScreen, HelpScreen } from "../handlers/screen.tsx";
 import type { Context } from "../router";
 
@@ -342,6 +345,34 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/eval/online-eval/get/:configId/json"
             element={<OnlineEvalGetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event"
+            element={<MemoryEventScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event/get"
+            element={<Navigate to="/agentcore/memory/event/list" replace />}
+          />
+          <Route
+            path="agentcore/memory/event/get/:memoryId/:actorId/:sessionId/:eventId"
+            element={<MemoryEventGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event/list"
+            element={<MemoryEventListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event/list/:memoryId"
+            element={<MemoryEventListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event/list/:memoryId/:actorId"
+            element={<MemoryEventListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event/list/:memoryId/:actorId/:sessionId"
+            element={<MemoryEventListScreen ctx={ctx} core={core} />}
           />
           <Route path="*" element={<HelpScreen ctx={ctx} core={core} />} />
         </Routes>

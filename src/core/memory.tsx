@@ -1,16 +1,22 @@
 import {
   GetEventCommand,
   GetMemoryRecordCommand,
+  ListActorsCommand,
   ListEventsCommand,
   ListMemoryRecordsCommand,
+  ListSessionsCommand,
   type GetEventInput,
   type GetEventOutput,
   type GetMemoryRecordInput,
   type GetMemoryRecordOutput,
+  type ListActorsInput,
+  type ListActorsOutput,
   type ListEventsInput,
   type ListEventsOutput,
   type ListMemoryRecordsInput,
   type ListMemoryRecordsOutput,
+  type ListSessionsInput,
+  type ListSessionsOutput,
 } from "@aws-sdk/client-bedrock-agentcore";
 import {
   GetMemoryCommand,
@@ -44,6 +50,14 @@ export class MemoryClient implements CoreMemoryClient {
 
   async getEvent(input: GetEventInput, options: CoreOptions): Promise<GetEventOutput> {
     return this.clients.data(toClientConfig(options)).send(new GetEventCommand(input));
+  }
+
+  async listActors(input: ListActorsInput, options: CoreOptions): Promise<ListActorsOutput> {
+    return this.clients.data(toClientConfig(options)).send(new ListActorsCommand(input));
+  }
+
+  async listSessions(input: ListSessionsInput, options: CoreOptions): Promise<ListSessionsOutput> {
+    return this.clients.data(toClientConfig(options)).send(new ListSessionsCommand(input));
   }
 
   async listEvents(input: ListEventsInput, options: CoreOptions): Promise<ListEventsOutput> {
