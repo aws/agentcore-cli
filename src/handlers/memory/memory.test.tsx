@@ -548,6 +548,54 @@ describe("memory record commands", () => {
     expect(JSON.parse(command.stdout())).toEqual(JSON.parse(JSON.stringify(response)));
   });
 
+  test("converts ISO datetime metadata filters to SDK Dates", async () => {
+    const timestamp = "2026-08-04T16:33:58-04:00";
+    const core = new TestCoreClient();
+    const command = testMemoryCommand(core);
+
+    await command.route([
+      "memory",
+      "record",
+      "list",
+      "--memory",
+      EVENT_MEMORY_ID,
+      "--namespace",
+      "/customers/acme",
+      "--metadata-filters",
+      JSON.stringify([
+        {
+          left: { metadataKey: "createdAt" },
+          operator: "EQUALS_TO",
+          right: { metadataValue: { dateTimeValue: timestamp } },
+        },
+      ]),
+    ]);
+
+    expect(core.memory.calls).toEqual([
+      {
+        method: "listMemoryRecords",
+        args: [
+          {
+            memoryId: EVENT_MEMORY_ID,
+            namespace: "/customers/acme",
+            namespacePath: undefined,
+            memoryStrategyId: undefined,
+            metadataFilters: [
+              {
+                left: { metadataKey: "createdAt" },
+                operator: "EQUALS_TO",
+                right: { metadataValue: { dateTimeValue: new Date(timestamp) } },
+              },
+            ],
+            maxResults: undefined,
+            nextToken: undefined,
+          },
+          { region: REGION },
+        ],
+      },
+    ]);
+  });
+
   test("rejects a missing Memory selector for record list", async () => {
     const command = testMemoryCommand();
 
@@ -597,6 +645,36 @@ describe("memory record commands", () => {
           left: { metadataKey: "tenant" },
           operator: "EQUALS_TO",
           right: { metadataValue: { booleanValue: true } },
+        },
+      ]),
+    ],
+    [
+      "a null datetime",
+      JSON.stringify([
+        {
+          left: { metadataKey: "createdAt" },
+          operator: "EQUALS_TO",
+          right: { metadataValue: { dateTimeValue: null } },
+        },
+      ]),
+    ],
+    [
+      "a numeric datetime",
+      JSON.stringify([
+        {
+          left: { metadataKey: "createdAt" },
+          operator: "EQUALS_TO",
+          right: { metadataValue: { dateTimeValue: 0 } },
+        },
+      ]),
+    ],
+    [
+      "a malformed datetime",
+      JSON.stringify([
+        {
+          left: { metadataKey: "createdAt" },
+          operator: "EQUALS_TO",
+          right: { metadataValue: { dateTimeValue: "not-a-date" } },
         },
       ]),
     ],

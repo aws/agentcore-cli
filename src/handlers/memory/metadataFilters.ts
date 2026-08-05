@@ -30,7 +30,11 @@ const memoryRecordMetadataValueSchema = z.union([
   z.object({ stringValue: z.string() }).strict(),
   z.object({ stringListValue: z.array(z.string()) }).strict(),
   z.object({ numberValue: z.number() }).strict(),
-  z.object({ dateTimeValue: z.coerce.date() }).strict(),
+  z
+    .object({
+      dateTimeValue: z.iso.datetime({ offset: true }).transform((value) => new Date(value)),
+    })
+    .strict(),
 ]);
 
 const memoryMetadataFilterExpressionSchema = z
