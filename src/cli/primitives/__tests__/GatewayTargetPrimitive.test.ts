@@ -1,5 +1,6 @@
 import type { AgentCoreProjectSpec } from '../../../schema';
 import { GatewayTargetPrimitive } from '../GatewayTargetPrimitive';
+import { Command } from '@commander-js/extra-typings';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const defaultProject: AgentCoreProjectSpec = {
@@ -381,5 +382,32 @@ describe('GatewayTargetPrimitive — createWebSearchGatewayTarget', () => {
         gateway: 'does-not-exist',
       })
     ).rejects.toThrow(/not found/);
+  });
+});
+
+// Regression guard for V2304968218: --help must not advertise api-key outbound
+// auth for target types the validator rejects (mcp-server, passthrough). The
+// help text is hand-written; this keeps it in step with TARGET_TYPE_AUTH_CONFIG.
+describe('GatewayTargetPrimitive — add gateway-target --help outbound auth', () => {
+  function renderHelp(): string {
+    const add = new Command('add');
+    const remove = new Command('remove');
+    new GatewayTargetPrimitive().registerCommands(add, remove);
+    const target = add.commands.find(c => c.name() === 'gateway-target');
+    if (!target) throw new Error('gateway-target command not registered');
+    // addHelpText('after', ...) is emitted by outputHelp(), not helpInformation().
+    let out = '';
+    target.configureOutput({ writeOut: (s: string) => (out += s) });
+    target.outputHelp();
+    return out;
+  }
+
+  it('does not offer api-key for mcp-server or passthrough', () => {
+    const help = renderHelp();
+    expect(help).toMatch(/mcp-server\s+oauth or none/);
+    expect(help).toMatch(/passthrough\s+gateway-iam-role, oauth, or jwt-passthrough/);
+    // api-key stays only where the validator accepts it.
+    expect(help).toMatch(/open-api-schema\s+oauth or api-key/);
+    expect(help).toMatch(/api-gateway\s+api-key or none/);
   });
 });
