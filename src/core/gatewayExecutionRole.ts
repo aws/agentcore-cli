@@ -1,343 +1,71 @@
 import { createHash } from "node:crypto";
-import type { GetGatewayResponse } from "@aws-sdk/client-bedrock-agentcore-control";
-import {
-  CreateRoleCommand,
-  DeleteRolePolicyCommand,
-  GetRoleCommand,
-  GetRolePolicyCommand,
-  PutRolePolicyCommand,
-  UpdateAssumeRolePolicyCommand,
-  type IAMClient,
-  type Role,
-} from "@aws-sdk/client-iam";
-import { InputValidationError } from "../errors";
-import {
-  GatewayExecutionPolicy,
-  type GatewayRoleConfiguration,
-  type GatewayTargetPolicyContext,
-  type GatewayTargetRoleConfiguration,
-} from "./gatewayExecutionRolePolicy";
-
-export type {
-  GatewayRoleConfiguration,
-  GatewayTargetRoleConfiguration,
-} from "./gatewayExecutionRolePolicy";
-
-export const GATEWAY_EXECUTION_POLICY_NAME = "AgentCoreGatewayExecutionPolicy";
-export const GATEWAY_ROLE_MANAGED_BY_TAG = {
-  Key: "bedrock-agentcore:managed-by",
-  Value: "agentcore-cli",
-} as const;
-export const GATEWAY_ROLE_RESOURCE_TYPE_TAG = {
-  Key: "bedrock-agentcore:resource-type",
-  Value: "gateway",
-} as const;
-
-type PolicySnapshot = {
-  exists: boolean;
-  policy: GatewayExecutionPolicy;
-};
-
-export type GatewayTargetPolicyPreparation = {
-  commit(): Promise<void>;
-  rollback(): Promise<void>;
-};
+import { CreateRoleCommand, GetRoleCommand, type IAMClient, type Role } from "@aws-sdk/client-iam";
 
 export class GatewayExecutionRole {
-  private constructor(
-    private readonly iam: IAMClient,
-    readonly roleName: string,
-    readonly roleArn: string,
-    private readonly accountId: string,
-    private readonly targetContext?: GatewayTargetPolicyContext,
-  ) {}
-
-  static async prepareCreate(
-    iam: IAMClient,
-    gatewayName: string,
-    region: string,
-    configuration: GatewayRoleConfiguration,
-  ): Promise<GatewayExecutionRole> {
-    const roleName = gatewayExecutionRoleName(gatewayName, region);
-    const role = await getOrCreateOwnedRole(iam, roleName, gatewayName);
-    const roleArn = requiredRoleArn(role, roleName);
-    const arn = parseRoleArn(roleArn);
-    const gatewayPattern = gatewayArnPattern(arn.partition, region, arn.accountId, gatewayName);
-    const executionRole = new GatewayExecutionRole(iam, roleName, roleArn, arn.accountId);
-
-    await executionRole.writeTrust(gatewayPattern);
-    await executionRole.mergePolicy(
-      GatewayExecutionPolicy.forGateway(configuration, gatewayPattern),
-    );
-    return executionRole;
+  static roleName(gatewayName: string, region: string): string {
+    const suffix = createHash("sha256")
+      .update(`${region}:${gatewayName}`)
+      .digest("hex")
+      .slice(0, 12);
+    return `AgentCoreGateway-${gatewayName.slice(0, 32)}-${suffix}`;
   }
 
-  static async fromGateway(
-    iam: IAMClient,
-    gateway: GetGatewayResponse,
-    region: string,
-  ): Promise<GatewayExecutionRole | undefined> {
-    if (!gateway.roleArn || !gateway.name) return undefined;
+  static async ensure(iam: IAMClient, gatewayName: string, region: string): Promise<string> {
+    const roleName = GatewayExecutionRole.roleName(gatewayName, region);
 
-    const arn = parseRoleArn(gateway.roleArn);
-    if (arn.roleName !== gatewayExecutionRoleName(gateway.name, region)) return undefined;
-
-    const response = await iam.send(new GetRoleCommand({ RoleName: arn.roleName }));
-    if (!isOwnedGatewayRole(response.Role)) return undefined;
-
-    const gatewayId = gateway.gatewayId ?? gateway.gatewayArn?.split("/").at(-1);
-    if (!gatewayId) throw new Error("GetGateway response did not include the Gateway ID");
-    return new GatewayExecutionRole(iam, arn.roleName, gateway.roleArn, arn.accountId, {
-      partition: arn.partition,
-      region,
-      accountId: arn.accountId,
-      gatewayId,
-      workloadIdentityArn: gateway.workloadIdentityDetails?.workloadIdentityArn,
-    });
-  }
-
-  async finalizeGateway(
-    configuration: GatewayRoleConfiguration,
-    gatewayArn: string,
-  ): Promise<void> {
-    await this.writeTrust(gatewayArn);
-    await this.writePolicy(GatewayExecutionPolicy.forGateway(configuration, gatewayArn));
-  }
-
-  async prepareTargetPolicy(
-    configuration: GatewayTargetRoleConfiguration,
-  ): Promise<GatewayTargetPolicyPreparation> {
-    const contribution = GatewayExecutionPolicy.forTargets(
-      [configuration],
-      this.requiredTargetContext(),
-    );
-    const previous = await this.readPolicy();
-    await this.writePolicy(previous.policy.merge(contribution));
-
-    return {
-      commit: async () => {
-        const current = await this.readPolicy();
-        const desired = current.policy.merge(contribution);
-        if (!current.policy.equals(desired)) await this.writePolicy(desired);
-      },
-      rollback: async () => await this.restorePolicy(previous),
-    };
-  }
-
-  private requiredTargetContext(): GatewayTargetPolicyContext {
-    if (!this.targetContext) {
-      throw new Error("Gateway Target permissions require an existing Gateway");
-    }
-    return this.targetContext;
-  }
-
-  private async mergePolicy(candidate: GatewayExecutionPolicy): Promise<void> {
-    const current = await this.readPolicy();
-    const desired = current.policy.merge(candidate);
-    if (!current.policy.equals(desired)) await this.writePolicy(desired);
-  }
-
-  private async readPolicy(): Promise<PolicySnapshot> {
     try {
-      const response = await this.iam.send(
-        new GetRolePolicyCommand({
-          RoleName: this.roleName,
-          PolicyName: GATEWAY_EXECUTION_POLICY_NAME,
-        }),
-      );
-      return {
-        exists: true,
-        policy: GatewayExecutionPolicy.parse(response.PolicyDocument),
-      };
-    } catch (error) {
-      if ((error as Error).name !== "NoSuchEntityException") throw error;
-      return { exists: false, policy: GatewayExecutionPolicy.empty() };
-    }
-  }
-
-  private async writePolicy(policy: GatewayExecutionPolicy): Promise<void> {
-    const document = policy.toJSON();
-    if (!document) {
-      await this.deletePolicy();
-      return;
-    }
-    await this.iam.send(
-      new PutRolePolicyCommand({
-        RoleName: this.roleName,
-        PolicyName: GATEWAY_EXECUTION_POLICY_NAME,
-        PolicyDocument: document,
-      }),
-    );
-  }
-
-  private async restorePolicy(snapshot: PolicySnapshot): Promise<void> {
-    if (snapshot.exists) {
-      await this.writePolicy(snapshot.policy);
-    } else {
-      await this.deletePolicy();
-    }
-  }
-
-  private async deletePolicy(): Promise<void> {
-    try {
-      await this.iam.send(
-        new DeleteRolePolicyCommand({
-          RoleName: this.roleName,
-          PolicyName: GATEWAY_EXECUTION_POLICY_NAME,
-        }),
-      );
+      const response = await iam.send(new GetRoleCommand({ RoleName: roleName }));
+      return GatewayExecutionRole.requiredArn(response.Role, roleName);
     } catch (error) {
       if ((error as Error).name !== "NoSuchEntityException") throw error;
     }
-  }
 
-  private async writeTrust(sourceArn: string): Promise<void> {
-    await this.iam.send(
-      new UpdateAssumeRolePolicyCommand({
-        RoleName: this.roleName,
-        PolicyDocument: trustPolicy(this.accountId, sourceArn),
-      }),
-    );
-  }
-}
-
-export function gatewayExecutionRoleName(gatewayName: string, region: string): string {
-  const suffix = createHash("sha256").update(`${region}:${gatewayName}`).digest("hex").slice(0, 12);
-  return `AgentCoreGateway-${gatewayName.slice(0, 32)}-${suffix}`;
-}
-
-export async function retryWhileGatewayRoleChangesPropagate<T>(
-  operation: () => Promise<T>,
-  attempts = 8,
-  delayMs = 2000,
-  sleep: (delayMs: number) => Promise<void> = (delay) =>
-    new Promise((resolve) => setTimeout(resolve, delay)),
-): Promise<T> {
-  for (let attempt = 1; ; attempt += 1) {
-    try {
-      return await operation();
-    } catch (error) {
-      if (!isGatewayRolePropagationError(error) || attempt >= attempts) throw error;
-      await sleep(delayMs);
-    }
-  }
-}
-
-async function getOrCreateOwnedRole(
-  iam: IAMClient,
-  roleName: string,
-  gatewayName: string,
-): Promise<Role> {
-  try {
-    const existing = await iam.send(new GetRoleCommand({ RoleName: roleName }));
-    assertOwnedGatewayRole(existing.Role, roleName);
-    return existing.Role!;
-  } catch (error) {
-    if ((error as Error).name !== "NoSuchEntityException") throw error;
-  }
-
-  try {
-    const created = await iam.send(
+    const response = await iam.send(
       new CreateRoleCommand({
         RoleName: roleName,
-        AssumeRolePolicyDocument: bootstrapTrustPolicy(),
-        Description: `Execution role for the AgentCore Gateway "${gatewayName}" created by the agentcore CLI`,
-        Tags: [
-          GATEWAY_ROLE_MANAGED_BY_TAG,
-          GATEWAY_ROLE_RESOURCE_TYPE_TAG,
-          { Key: "bedrock-agentcore:resource-name", Value: gatewayName },
-        ],
+        AssumeRolePolicyDocument: GatewayExecutionRole.trustPolicy(),
+        Description: `Default execution role for the AgentCore Gateway "${gatewayName}" created by the agentcore CLI`,
       }),
     );
-    return created.Role!;
-  } catch (error) {
-    if ((error as Error).name !== "EntityAlreadyExistsException") throw error;
-    const existing = await iam.send(new GetRoleCommand({ RoleName: roleName }));
-    assertOwnedGatewayRole(existing.Role, roleName);
-    return existing.Role!;
+    return GatewayExecutionRole.requiredArn(response.Role, roleName);
   }
-}
 
-function assertOwnedGatewayRole(role: Role | undefined, roleName: string): void {
-  if (isOwnedGatewayRole(role)) return;
-  throw new InputValidationError(
-    `IAM role "${roleName}" already exists but is not managed by the agentcore CLI; ` +
-      "pass --role-arn with a customer-managed Gateway role",
-  );
-}
+  static async retryWhileUnassumable<T>(
+    operation: () => Promise<T>,
+    attempts = 8,
+    delayMs = 2000,
+    sleep: (delayMs: number) => Promise<void> = (delay) =>
+      new Promise((resolve) => setTimeout(resolve, delay)),
+  ): Promise<T> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        const retryable =
+          (error as Error).name === "ValidationException" &&
+          /role|assume|trust/i.test((error as Error).message ?? "");
+        if (!retryable || attempt >= attempts) throw error;
+        await sleep(delayMs);
+      }
+    }
+  }
 
-function isOwnedGatewayRole(role: Role | undefined): boolean {
-  const tags = new Map(role?.Tags?.map(({ Key, Value }) => [Key, Value]));
-  return (
-    tags.get(GATEWAY_ROLE_MANAGED_BY_TAG.Key) === GATEWAY_ROLE_MANAGED_BY_TAG.Value &&
-    tags.get(GATEWAY_ROLE_RESOURCE_TYPE_TAG.Key) === GATEWAY_ROLE_RESOURCE_TYPE_TAG.Value
-  );
-}
+  private static requiredArn(role: Role | undefined, roleName: string): string {
+    if (!role?.Arn) throw new Error(`IAM did not return an ARN for role "${roleName}"`);
+    return role.Arn;
+  }
 
-function requiredRoleArn(role: Role, roleName: string): string {
-  if (!role.Arn) throw new Error(`IAM did not return an ARN for role "${roleName}"`);
-  return role.Arn;
-}
-
-function bootstrapTrustPolicy(): string {
-  return JSON.stringify({
-    Version: "2012-10-17",
-    Statement: [
-      {
-        Sid: "GatewayAssumeRoleBootstrap",
-        Effect: "Deny",
-        Principal: { Service: "bedrock-agentcore.amazonaws.com" },
-        Action: "sts:AssumeRole",
-      },
-    ],
-  });
-}
-
-function trustPolicy(accountId: string, sourceArn: string): string {
-  return JSON.stringify({
-    Version: "2012-10-17",
-    Statement: [
-      {
-        Sid: "GatewayAssumeRolePolicy",
-        Effect: "Allow",
-        Principal: { Service: "bedrock-agentcore.amazonaws.com" },
-        Action: "sts:AssumeRole",
-        Condition: {
-          StringEquals: { "aws:SourceAccount": accountId },
-          ArnLike: { "aws:SourceArn": sourceArn },
+  private static trustPolicy(): string {
+    return JSON.stringify({
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Sid: "GatewayAssumeRolePolicy",
+          Effect: "Allow",
+          Principal: { Service: "bedrock-agentcore.amazonaws.com" },
+          Action: "sts:AssumeRole",
         },
-      },
-    ],
-  });
-}
-
-function isGatewayRolePropagationError(error: unknown): boolean {
-  if ((error as Error).name !== "ValidationException") return false;
-  const message = (error as Error).message ?? "";
-  return [
-    /\b(?:execution|gateway|iam)\s+role\b.*\b(?:assum|trust)\w*/i,
-    /\b(?:assum|trust)\w*\b.*\brole\b/i,
-    /\brole\b.*\b(?:lack|missing|permission|authoriz)\w*/i,
-    /\b(?:permission|authoriz)\w*\b.*\brole\b/i,
-  ].some((pattern) => pattern.test(message));
-}
-
-function parseRoleArn(arn: string): {
-  partition: string;
-  accountId: string;
-  roleName: string;
-} {
-  const match = /^arn:([^:]+):iam::(\d{12}):role\/(.+)$/.exec(arn);
-  const roleName = match?.[3]?.split("/").at(-1);
-  if (!match || !roleName) throw new InputValidationError(`Invalid IAM role ARN "${arn}"`);
-  return { partition: match[1]!, accountId: match[2]!, roleName };
-}
-
-function gatewayArnPattern(
-  partition: string,
-  region: string,
-  accountId: string,
-  gatewayName: string,
-): string {
-  return `arn:${partition}:bedrock-agentcore:${region}:${accountId}:gateway/${gatewayName}-*`;
+      ],
+    });
+  }
 }

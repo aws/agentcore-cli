@@ -21,7 +21,7 @@ export const createCreateGatewayHandler = (core: Core, io: AppIO) =>
       flag("name", "the Gateway name", z.string().optional()),
       flag(
         "role-arn",
-        "IAM role the Gateway assumes; a least-privilege role is created when omitted",
+        "IAM role the Gateway assumes; a default role is created when omitted",
         z.string().optional(),
       ),
       flag(
