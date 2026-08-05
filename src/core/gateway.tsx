@@ -18,11 +18,6 @@ import {
   type ListGatewaysResponse,
   type ListGatewayTargetsResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import {
-  buildGatewayCreateRequest,
-  validateGatewayCreateInput,
-  validateGatewayTargetCreateInput,
-} from "../handlers/gateway/mutations";
 import type {
   CoreGatewayClient,
   CreateGatewayInput,
@@ -40,22 +35,25 @@ export class GatewayClient implements CoreGatewayClient {
     input: CreateGatewayInput,
     options: CoreOptions,
   ): Promise<CreateGatewayResponse> {
-    validateGatewayCreateInput(input);
     const control = this.clients.control(toClientConfig(options));
-    if (input.roleArn) {
-      return control.send(
-        new CreateGatewayCommand(buildGatewayCreateRequest({ ...input, roleArn: input.roleArn })),
+    const { protocol, roleArn: providedRoleArn, ...request } = input;
+    const send = (roleArn: string) =>
+      control.send(
+        new CreateGatewayCommand({
+          ...request,
+          roleArn,
+          ...(protocol === "mcp" ? { protocolType: "MCP" as const } : {}),
+        }),
       );
-    }
+
+    if (providedRoleArn) return send(providedRoleArn);
 
     const roleArn = await GatewayExecutionRole.ensure(
       this.clients.iam({ region: options.region }),
       input.name!,
       options.region,
     );
-    return GatewayExecutionRole.retryWhileUnassumable(() =>
-      control.send(new CreateGatewayCommand(buildGatewayCreateRequest({ ...input, roleArn }))),
-    );
+    return GatewayExecutionRole.retryWhileUnassumable(() => send(roleArn));
   }
 
   async getGateway(id: string, options: CoreOptions): Promise<GetGatewayResponse> {
@@ -108,7 +106,7 @@ export class GatewayClient implements CoreGatewayClient {
   ): Promise<CreateGatewayTargetResponse> {
     return this.clients
       .control(toClientConfig(options))
-      .send(new CreateGatewayTargetCommand(validateGatewayTargetCreateInput(input)));
+      .send(new CreateGatewayTargetCommand(input));
   }
 
   async getGatewayRule(

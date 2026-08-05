@@ -12,7 +12,6 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx, parseJsonArrayFlag, parseJsonObjectFlag } from "../../../utils";
-import { validateGatewayTargetCreateInput } from "../../mutations";
 import type { CreateGatewayTargetInput } from "../../types";
 
 export const createCreateGatewayTargetHandler = (core: Core, io: AppIO) =>
@@ -86,6 +85,9 @@ export const createCreateGatewayTargetHandler = (core: Core, io: AppIO) =>
           },
         },
       };
+      if (!flags.name && targetConfiguration.http?.agentcoreRuntime === undefined) {
+        throw new InputValidationError("Target name is required for non-Runtime targets");
+      }
       const credentialProviderConfigurations = parseJsonArrayFlag<CredentialProviderConfiguration>(
         "credential-provider-configurations",
         await source.resolveText(
@@ -114,11 +116,6 @@ export const createCreateGatewayTargetHandler = (core: Core, io: AppIO) =>
 
       ctx
         .require(JsonRendererKey)
-        .renderJson(
-          await core.gateway.createGatewayTarget(
-            validateGatewayTargetCreateInput(input),
-            coreOptsFromCtx(ctx),
-          ),
-        );
+        .renderJson(await core.gateway.createGatewayTarget(input, coreOptsFromCtx(ctx)));
     },
   });

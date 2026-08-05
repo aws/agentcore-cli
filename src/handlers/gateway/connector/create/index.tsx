@@ -11,7 +11,6 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx, parseJsonArrayFlag, parseJsonObjectFlag } from "../../../utils";
-import { validateGatewayTargetCreateInput } from "../../mutations";
 import type { CreateGatewayTargetInput } from "../../types";
 import { GatewayConnectorTarget } from "../target";
 
@@ -126,11 +125,6 @@ export const createCreateGatewayConnectorHandler = (core: Core, io: AppIO) =>
 
       ctx
         .require(JsonRendererKey)
-        .renderJson(
-          await core.gateway.createGatewayTarget(
-            validateGatewayTargetCreateInput(input),
-            coreOptsFromCtx(ctx),
-          ),
-        );
+        .renderJson(await core.gateway.createGatewayTarget(input, coreOptsFromCtx(ctx)));
     },
   });

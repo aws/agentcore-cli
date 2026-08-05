@@ -21,10 +21,6 @@ export type CreateGatewayInput = Omit<CreateGatewayRequest, "protocolType" | "ro
   protocol?: GatewayProtocol;
 };
 
-export type ResolvedCreateGatewayInput = CreateGatewayInput & {
-  roleArn: string;
-};
-
 export type CreateGatewayTargetInput = CreateGatewayTargetRequest;
 
 export type CreateGatewayRuleInput = CreateGatewayRuleRequest;

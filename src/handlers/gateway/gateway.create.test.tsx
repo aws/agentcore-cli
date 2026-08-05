@@ -351,6 +351,39 @@ describe("gateway create validation", () => {
   test.each([
     ["Gateway name", ["gateway", "create"], /--name/],
     ["Gateway authorizer", ["gateway", "create", "--name", "orders"], /--authorizer-type/],
+    [
+      "CUSTOM_JWT configuration",
+      ["gateway", "create", "--name", "orders", "--authorizer-type", "CUSTOM_JWT"],
+      /CUSTOM_JWT requires --authorizer-configuration/,
+    ],
+    [
+      "non-JWT authorizer configuration",
+      [
+        "gateway",
+        "create",
+        "--name",
+        "orders",
+        "--authorizer-type",
+        "AWS_IAM",
+        "--authorizer-configuration",
+        '{"customJWTAuthorizer":{"discoveryUrl":"https://auth.example.test"}}',
+      ],
+      /valid only with CUSTOM_JWT/,
+    ],
+    [
+      "Policy Engine pair",
+      [
+        "gateway",
+        "create",
+        "--name",
+        "orders",
+        "--authorizer-type",
+        "AWS_IAM",
+        "--policy-engine-arn",
+        "arn:aws:bedrock-agentcore:us-west-2:123456789012:policy-engine/orders",
+      ],
+      /must be supplied together/,
+    ],
     ["Target parent", ["gateway", "target", "create"], /--gateway-id/],
     [
       "Target input",

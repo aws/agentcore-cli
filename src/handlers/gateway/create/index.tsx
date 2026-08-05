@@ -10,7 +10,6 @@ import { createHandler, flag } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
 import type { Core } from "../../types";
 import { coreOptsFromCtx, parseJsonArrayFlag, parseJsonObjectFlag, parseTags } from "../../utils";
-import { validateGatewayCreateInput } from "../mutations";
 import type { CreateGatewayInput } from "../types";
 
 export const createCreateGatewayHandler = (core: Core, io: AppIO) =>
@@ -75,6 +74,18 @@ export const createCreateGatewayHandler = (core: Core, io: AppIO) =>
         );
       }
       if (
+        flags["authorizer-type"] === "CUSTOM_JWT" &&
+        flags["authorizer-configuration"] === undefined
+      ) {
+        throw new InputValidationError("CUSTOM_JWT requires --authorizer-configuration");
+      }
+      if (
+        flags["authorizer-type"] !== "CUSTOM_JWT" &&
+        flags["authorizer-configuration"] !== undefined
+      ) {
+        throw new InputValidationError("--authorizer-configuration is valid only with CUSTOM_JWT");
+      }
+      if (
         (flags["policy-engine-arn"] === undefined) !==
         (flags["policy-engine-mode"] === undefined)
       ) {
@@ -124,7 +135,6 @@ export const createCreateGatewayHandler = (core: Core, io: AppIO) =>
         ...(flags["client-token"] ? { clientToken: flags["client-token"] } : {}),
       };
 
-      validateGatewayCreateInput(input);
       ctx
         .require(JsonRendererKey)
         .renderJson(await core.gateway.createGateway(input, coreOptsFromCtx(ctx)));
