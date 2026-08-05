@@ -1,14 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import type {
-  GatewayRuleDetail,
-  GatewaySummary,
-  GetGatewayResponse,
-  GetGatewayRuleResponse,
-  GetGatewayTargetResponse,
-  ListGatewayRulesResponse,
-  ListGatewaysResponse,
-  ListGatewayTargetsResponse,
-  TargetSummary,
+import {
+  TargetType,
+  type GatewayRuleDetail,
+  type GatewaySummary,
+  type GetGatewayResponse,
+  type GetGatewayRuleResponse,
+  type GetGatewayTargetResponse,
+  type ListGatewayRulesResponse,
+  type ListGatewaysResponse,
+  type ListGatewayTargetsResponse,
+  type TargetSummary,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   createSilentLogger,
@@ -66,6 +67,7 @@ describe("gateway command hierarchy", () => {
     });
     const gateway = root.children().find((child) => child.name() === "gateway");
     const target = gateway?.children().find((child) => child.name() === "target");
+    const connector = gateway?.children().find((child) => child.name() === "connector");
     const rule = gateway?.children().find((child) => child.name() === "rule");
 
     expect(gateway?.flags().map((flag) => flag.name)).not.toContain("interactive");
@@ -73,13 +75,15 @@ describe("gateway command hierarchy", () => {
       "get",
       "list",
       "target",
+      "connector",
       "rule",
     ]);
     expect(target?.children().map((child) => child.name())).toEqual(["get", "list"]);
+    expect(connector?.children().map((child) => child.name())).toEqual(["get", "list"]);
     expect(rule?.children().map((child) => child.name())).toEqual(["get", "list"]);
   });
 
-  test.each(["gateway", "gateway target", "gateway rule"])(
+  test.each(["gateway", "gateway target", "gateway connector", "gateway rule"])(
     "prints help for bare `%s` without a Core call",
     async (command) => {
       const { core, stdout } = await run(command.split(" "));
@@ -210,6 +214,67 @@ describe("gateway reads", () => {
     ]);
   });
 
+  test.each([
+    ["MCP", { mcp: { connector: { source: { connectorId: "web-search" } } } }],
+    ["inference", { inference: { connector: { source: { connectorId: "openai" } } } }],
+  ] as const)("gets a configured %s Connector", async (_kind, targetConfiguration) => {
+    const core = new TestCoreClient();
+    core.gateway.setGetTargetResponse({ ...targetResponse, targetConfiguration });
+
+    const result = await run(
+      ["gateway", "connector", "get", "--gateway-id", GATEWAY_ID, "--id", TARGET_ID],
+      core,
+    );
+
+    expect(result.core.gateway.calls).toEqual([
+      {
+        method: "getGatewayTarget",
+        args: [GATEWAY_ID, TARGET_ID, { region: REGION }],
+      },
+    ]);
+    expect(JSON.parse(result.stdout)).toEqual({ ...targetResponse, targetConfiguration });
+  });
+
+  test("lists only configured Connectors and preserves the service token", async () => {
+    const response: ListGatewayTargetsResponse = {
+      items: [
+        { targetId: TARGET_ID, targetType: TargetType.CONNECTOR } as TargetSummary,
+        { targetId: "target-2", targetType: TargetType.MCP_SERVER } as TargetSummary,
+      ],
+      nextToken: "target-page-2",
+    };
+    const core = new TestCoreClient();
+    core.gateway.setListTargetsResponse(response);
+
+    const result = await run(
+      ["gateway", "connector", "list", "--gateway-id", GATEWAY_ID, "--max-results", "2"],
+      core,
+    );
+
+    expect(JSON.parse(result.stdout)).toEqual({
+      items: [response.items![0]],
+      nextToken: response.nextToken,
+    });
+    expect(result.core.gateway.calls).toEqual([
+      {
+        method: "listGatewayTargets",
+        args: [GATEWAY_ID, undefined, 2, { region: REGION }],
+      },
+    ]);
+  });
+
+  test("rejects a non-Connector Target from connector get", async () => {
+    const core = new TestCoreClient();
+    core.gateway.setGetTargetResponse({
+      ...targetResponse,
+      targetConfiguration: { mcp: { mcpServer: { endpoint: "https://example.test/mcp" } } },
+    });
+
+    await expect(
+      run(["gateway", "connector", "get", "--gateway-id", GATEWAY_ID, "--id", TARGET_ID], core),
+    ).rejects.toThrow(`Gateway Target "${TARGET_ID}" is not connector-backed`);
+  });
+
   test("gets a Gateway Rule with qualified selectors", async () => {
     const core = new TestCoreClient();
     core.gateway.setGetRuleResponse(ruleResponse);
@@ -279,6 +344,9 @@ describe("gateway validation and errors", () => {
     ["Target get parent", ["gateway", "target", "get"], /--gateway-id/],
     ["Target get child", ["gateway", "target", "get", "--gateway-id", GATEWAY_ID], /--target-id/],
     ["Target list", ["gateway", "target", "list"], /--gateway-id/],
+    ["Connector get parent", ["gateway", "connector", "get"], /--gateway-id/],
+    ["Connector get child", ["gateway", "connector", "get", "--gateway-id", GATEWAY_ID], /--id/],
+    ["Connector list", ["gateway", "connector", "list"], /--gateway-id/],
     ["Rule get parent", ["gateway", "rule", "get"], /--gateway-id/],
     ["Rule get child", ["gateway", "rule", "get", "--gateway-id", GATEWAY_ID], /--rule-id/],
     ["Rule list", ["gateway", "rule", "list"], /--gateway-id/],
