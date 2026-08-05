@@ -2,10 +2,17 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
-import { NestedProjectError, ProjectFileExistsError } from "../../errors";
+import {
+  AgentCoreCLIError,
+  InputValidationError,
+  NestedProjectError,
+  ProjectFileExistsError,
+} from "../../errors";
 import { FsProjectManager } from "./manager";
 import { PROJECT_TEMPLATES } from "../../handlers/project/types";
 import { createSilentLogger } from "../../testing";
+import { defaultAssetSource, localFileSystem } from "../../io";
+import { toStackName } from "../../assets/cdk/lib/names";
 
 const originalCwd = process.cwd();
 const tempDirectories: string[] = [];
@@ -32,6 +39,7 @@ function manager(): { manager: FsProjectManager; commands: { command: string[]; 
   return {
     manager: new FsProjectManager({
       logger: createSilentLogger(),
+      source: defaultAssetSource(localFileSystem),
       runner: async (command, { cwd }) => {
         commands.push({ command, cwd });
         if (command.includes("synth")) {
@@ -42,7 +50,7 @@ function manager(): { manager: FsProjectManager; commands: { command: string[]; 
           }[];
           const artifacts = Object.fromEntries(
             targets.map((target) => {
-              const stackName = `AgentCore-${project.name}-${target.name}`;
+              const stackName = toStackName(project.name, target.name);
               return [
                 stackName,
                 {
@@ -61,6 +69,8 @@ function manager(): { manager: FsProjectManager; commands: { command: string[]; 
         }
       },
       checkTool: async () => {}, // CI hosts don't have uv installed
+      fileSystem: localFileSystem,
+      workingDirectory: () => process.cwd(),
       now: () => new Date("2026-08-05T12:00:00.000Z"),
     }),
     commands,
@@ -187,10 +197,14 @@ describe("FsProjectManager.create", () => {
     const directory = await inTempDirectory();
     const failing = new FsProjectManager({
       logger: createSilentLogger(),
+      source: defaultAssetSource(localFileSystem),
       runner: async () => {
         throw new Error("npm exploded");
       },
       checkTool: async () => {},
+      fileSystem: localFileSystem,
+      workingDirectory: () => process.cwd(),
+      now: () => new Date(),
     });
 
     await expect(
@@ -292,14 +306,19 @@ describe("FsProjectManager.build", () => {
       projectName: "example",
       backend: "CDK",
       builtAt: "2026-08-05T12:00:00.000Z",
-      cloudAssemblyPath: "agentcore/cdk/cdk.out",
+      artifact: {
+        type: "cdk-cloud-assembly",
+        path: "agentcore/cdk/cdk.out",
+        stacks: {
+          default: "AgentCore-example-default",
+        },
+      },
       manifestPath: "agentcore/.build/manifest.json",
       targets: [
         {
           name: "default",
           account: "123456789012",
           region: "us-east-1",
-          stackName: "AgentCore-example-default",
         },
       ],
     });
@@ -332,6 +351,39 @@ describe("FsProjectManager.build", () => {
     const second = await subject.build({ filePath: projectRoot });
 
     expect(second.inputFingerprint).not.toBe(first.inputFingerprint);
+  });
+
+  test("classifies malformed CDK output as an internal build failure", async () => {
+    const directory = await inTempDirectory();
+    const subject = new FsProjectManager({
+      logger: createSilentLogger(),
+      source: defaultAssetSource(localFileSystem),
+      runner: async (command, { cwd }) => {
+        if (command.includes("synth")) {
+          const assembly = join(cwd, "cdk.out");
+          await mkdir(assembly, { recursive: true });
+          await writeFile(join(assembly, "manifest.json"), "{}");
+        }
+      },
+      checkTool: async () => {},
+      fileSystem: localFileSystem,
+      workingDirectory: () => process.cwd(),
+      now: () => new Date(),
+    });
+    await subject.create({
+      name: "example",
+      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      skipInstall: true,
+      skipGit: true,
+    });
+    const projectRoot = join(directory, "example");
+    await configureTarget(projectRoot);
+
+    const error = await subject.build({ filePath: projectRoot }).catch((cause) => cause);
+
+    expect(error).toBeInstanceOf(AgentCoreCLIError);
+    expect(error).not.toBeInstanceOf(InputValidationError);
+    expect(error).toMatchObject({ source: "internal" });
   });
 
   test("rejects a project without deployment targets before spawning a build", async () => {

@@ -1,5 +1,3 @@
-import { existsSync } from "node:fs";
-import { mkdir, readFile, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { InputValidationError, NestedProjectError } from "../../errors";
 import type {
@@ -12,21 +10,23 @@ import type {
   ProjectManager,
 } from "../../handlers/project/types";
 import type { Logger } from "../../logging";
-import { atomicWrite, requireTool, runProcess, type ProcessRunner } from "../../io";
+import type { AssetSource, LocalFileSystem, ProcessRunner, ToolChecker } from "../../io";
 import { PACKAGE_VERSION } from "../../constants";
 import { projectTree } from "./compose";
-import { defaultSource, type AssetSource } from "./source";
 import { TEMPLATES } from "./templates";
 import { writeTree } from "./tree";
 import { CdkProjectBackend } from "./cdk";
 import type { ProjectBuildBackend } from "./backend";
 import { computeProjectFingerprint } from "./fingerprint";
-import { DeploymentTargetsSchema, ProjectSpecEnvelopeSchema } from "./schemas";
+import { BuildManifestSchema, DeploymentTargetsSchema, ProjectSpecEnvelopeSchema } from "./schemas";
 
 /** Walks up from directory looking for the agentcore/agentcore.json project marker. */
-function enclosingProjectRoot(directory: string): string | undefined {
+async function enclosingProjectRoot(
+  fileSystem: LocalFileSystem,
+  directory: string,
+): Promise<string | undefined> {
   for (let current = directory; ; current = dirname(current)) {
-    if (existsSync(join(current, "agentcore", "agentcore.json"))) {
+    if (await fileSystem.exists(join(current, "agentcore", "agentcore.json"))) {
       return current;
     }
     if (dirname(current) === current) {
@@ -37,10 +37,12 @@ function enclosingProjectRoot(directory: string): string | undefined {
 
 type ProjectManagerConfig = {
   logger: Logger;
-  source?: AssetSource; // Bun executable or dist/assets depending on runtime
-  runner?: ProcessRunner; // injectable so tests never spawn real processes
-  checkTool?: typeof requireTool; // injectable so tests don't depend on the host's PATH
-  now?: () => Date;
+  source: AssetSource;
+  runner: ProcessRunner;
+  checkTool: ToolChecker;
+  fileSystem: LocalFileSystem;
+  workingDirectory: () => string;
+  now: () => Date;
 };
 
 /**
@@ -50,27 +52,31 @@ export class FsProjectManager implements ProjectManager {
   private readonly logger: Logger;
   private readonly source: AssetSource;
   private readonly runner: ProcessRunner;
-  private readonly checkTool: typeof requireTool;
+  private readonly checkTool: ToolChecker;
+  private readonly fileSystem: LocalFileSystem;
+  private readonly workingDirectory: () => string;
   private readonly now: () => Date;
 
   constructor(config: ProjectManagerConfig) {
     this.logger = config.logger;
-    this.source = config.source ?? defaultSource();
-    this.runner = config.runner ?? runProcess;
-    this.checkTool = config.checkTool ?? requireTool;
-    this.now = config.now ?? (() => new Date());
+    this.source = config.source;
+    this.runner = config.runner;
+    this.checkTool = config.checkTool;
+    this.fileSystem = config.fileSystem;
+    this.workingDirectory = config.workingDirectory;
+    this.now = config.now;
   }
 
   public async resolve(input: ResolveProjectInput): Promise<Project | undefined> {
     const candidate = resolve(input.filePath);
     let directory = candidate;
     try {
-      if ((await stat(candidate)).isFile()) directory = dirname(candidate);
+      if ((await this.fileSystem.stat(candidate)).kind === "file") directory = dirname(candidate);
     } catch {
       // A non-existent path can still identify a directory beneath an enclosing project.
     }
 
-    const root = enclosingProjectRoot(directory);
+    const root = await enclosingProjectRoot(this.fileSystem, directory);
     if (!root) return undefined;
 
     return this.loadProject(root);
@@ -78,16 +84,17 @@ export class FsProjectManager implements ProjectManager {
 
   public async create(input: CreateProjectInput): Promise<Project> {
     // Scaffold into a fresh directory, refusing to nest inside an existing project.
-    const enclosing = enclosingProjectRoot(process.cwd());
+    const workingDirectory = this.workingDirectory();
+    const enclosing = await enclosingProjectRoot(this.fileSystem, workingDirectory);
     if (enclosing) {
       throw new NestedProjectError(enclosing);
     }
-    const destination = join(process.cwd(), input.name);
+    const destination = join(workingDirectory, input.name);
     this.logger.debug(`scaffolding project "${input.name}" from template "${input.template}"`);
 
     input.onProgress?.({ message: "Scaffolding project files..." });
     const tree = await projectTree(input.name, input.template, this.source);
-    await writeTree(tree, destination);
+    await writeTree(this.fileSystem, tree, destination);
 
     // A failed step leaves the scaffolded files in place; the error tells the
     // user how to rerun the step by hand.
@@ -97,7 +104,7 @@ export class FsProjectManager implements ProjectManager {
       await this.run(["npm", "install"], join(destination, "agentcore", "cdk"));
 
       const appDir = join(destination, "app", TEMPLATES[input.template].appDir);
-      if (existsSync(join(appDir, "pyproject.toml"))) {
+      if (await this.fileSystem.exists(join(appDir, "pyproject.toml"))) {
         await this.checkTool(
           "uv",
           "Install uv: https://docs.astral.sh/uv/getting-started/installation/",
@@ -134,20 +141,20 @@ export class FsProjectManager implements ProjectManager {
     const backendResult = await backend.build(project, project.targets, input.onProgress);
 
     input.onProgress?.({ message: "Recording build manifest..." });
-    const manifest: BuildManifest = {
+    const manifest = BuildManifestSchema.parse({
       version: 1,
       projectName: project.name,
       backend: backend.name,
       cliVersion: PACKAGE_VERSION,
-      inputFingerprint: await computeProjectFingerprint(project.root),
+      inputFingerprint: await computeProjectFingerprint(this.fileSystem, project.root),
       builtAt: this.now().toISOString(),
-      cloudAssemblyPath: backendResult.cloudAssemblyPath,
-      targets: backendResult.targets,
-    };
+      artifact: backendResult.artifact,
+      targets: project.targets,
+    } satisfies BuildManifest);
 
     const manifestPath = join(project.configDir, ".build", "manifest.json");
-    await mkdir(dirname(manifestPath), { recursive: true });
-    await atomicWrite(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    await this.fileSystem.createDirectory(dirname(manifestPath));
+    await this.fileSystem.writeAtomic(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
     return {
       ...manifest,
@@ -170,6 +177,7 @@ export class FsProjectManager implements ProjectManager {
       logger: this.logger,
       runner: this.runner,
       checkTool: this.checkTool,
+      fileSystem: this.fileSystem,
     });
   }
 
@@ -201,7 +209,7 @@ export class FsProjectManager implements ProjectManager {
   ): Promise<T> {
     let value: unknown;
     try {
-      value = JSON.parse(await readFile(path, "utf8"));
+      value = JSON.parse(await this.fileSystem.readText(path));
     } catch (error) {
       throw new InputValidationError(`Unable to read project configuration at ${path}`, {
         cause: error,

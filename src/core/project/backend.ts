@@ -1,13 +1,12 @@
 import type {
-  BuildTarget,
+  BuildArtifact,
   DeploymentTarget,
   Project,
   ProjectProgressEvent,
 } from "../../handlers/project/types";
 
 export type BackendBuildResult = {
-  cloudAssemblyPath: string;
-  targets: BuildTarget[];
+  artifact: BuildArtifact;
 };
 
 export type ProjectBuildBackend = {

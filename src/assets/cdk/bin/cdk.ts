@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { AgentCoreStack, type HarnessConfig } from '../lib/cdk-stack';
+import { toStackName } from '../lib/names';
 import { ConfigIO, HarnessSpecSchema, type AwsDeploymentTarget } from '@aws/agentcore-cdk';
 import { App, type Environment } from 'aws-cdk-lib';
 import * as path from 'path';
@@ -10,14 +11,6 @@ function toEnvironment(target: AwsDeploymentTarget): Environment {
     account: target.account,
     region: target.region,
   };
-}
-
-function sanitize(name: string): string {
-  return name.replace(/_/g, '-');
-}
-
-function toStackName(projectName: string, targetName: string): string {
-  return `AgentCore-${sanitize(projectName)}-${sanitize(targetName)}`;
 }
 
 // The vended CDK project compiles against the published @aws/agentcore-cdk schema

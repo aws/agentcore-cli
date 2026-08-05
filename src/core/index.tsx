@@ -18,6 +18,7 @@ import type {
 import type { Logger } from "../logging";
 import type { ProjectManager } from "../handlers/project/types";
 import { FsProjectManager } from "./project";
+import { defaultAssetSource, localFileSystem, requireTool, runProcess } from "../io";
 
 export type {
   AwsClients,
@@ -73,6 +74,12 @@ export class CoreClient implements AwsClients {
 
     this.projectManager = new FsProjectManager({
       logger: this.logger.child({ module: "projectManager" }),
+      source: defaultAssetSource(localFileSystem),
+      runner: runProcess,
+      checkTool: requireTool,
+      fileSystem: localFileSystem,
+      workingDirectory: () => process.cwd(),
+      now: () => new Date(),
     });
   }
 

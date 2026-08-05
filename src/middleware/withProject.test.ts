@@ -3,10 +3,19 @@ import { Router, createHandler } from "../router";
 import { createSilentLogger } from "../testing";
 import { withProject } from "./withProject";
 import { FsProjectManager } from "../core/project";
+import { defaultAssetSource, localFileSystem, requireTool, runProcess } from "../io";
 
 describe("withProject", () => {
   test("throws when no project can be resolved", async () => {
-    const projectManager = new FsProjectManager({ logger: createSilentLogger() });
+    const projectManager = new FsProjectManager({
+      logger: createSilentLogger(),
+      source: defaultAssetSource(localFileSystem),
+      runner: runProcess,
+      checkTool: requireTool,
+      fileSystem: localFileSystem,
+      workingDirectory: () => process.cwd(),
+      now: () => new Date(),
+    });
 
     const app = new Router("app", "test");
     app.use(withProject({ projectManager, cwd: "/some/path" }));

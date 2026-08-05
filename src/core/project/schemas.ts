@@ -49,12 +49,14 @@ export const BuildManifestSchema = z
     cliVersion: z.string().min(1),
     inputFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
     builtAt: z.iso.datetime(),
-    cloudAssemblyPath: z.string().min(1),
-    targets: z.array(
-      DeploymentTargetSchema.extend({
-        stackName: z.string().min(1),
-      }),
-    ),
+    artifact: z
+      .object({
+        type: z.literal("cdk-cloud-assembly"),
+        path: z.string().min(1),
+        stacks: z.record(z.string(), z.string().min(1)),
+      })
+      .strict(),
+    targets: z.array(DeploymentTargetSchema),
   })
   .strict();
 

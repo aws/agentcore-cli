@@ -95,6 +95,8 @@ import { createSilentLogger } from "./logging";
 import { FsProjectManager } from "../core/project";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { defaultAssetSource, localFileSystem } from "../io";
+import { toStackName } from "../assets/cdk/lib/names";
 
 // TestCoreClient is a hand-controllable `Core` for tests. It implements the same
 // interface the real CoreClient satisfies, so it drops straight into
@@ -1188,6 +1190,7 @@ export class TestCoreClient implements Core {
   constructor(options?: TestCoreClientOptions) {
     this.projectManager = new FsProjectManager({
       logger: options?.logger ?? createSilentLogger(),
+      source: defaultAssetSource(localFileSystem),
       runner: async (command, { cwd }) => {
         this.projectCommands.push({ command, cwd });
         if (command.includes("synth")) {
@@ -1200,7 +1203,7 @@ export class TestCoreClient implements Core {
           ) as { name: string }[];
           const artifacts = Object.fromEntries(
             targets.map((target) => {
-              const stackName = `AgentCore-${project.name.replaceAll("_", "-")}-${target.name.replaceAll("_", "-")}`;
+              const stackName = toStackName(project.name, target.name);
               return [
                 stackName,
                 {
@@ -1219,6 +1222,9 @@ export class TestCoreClient implements Core {
         }
       },
       checkTool: async () => {}, // CI hosts don't have uv installed
+      fileSystem: localFileSystem,
+      workingDirectory: () => process.cwd(),
+      now: () => new Date(),
     });
   }
 }

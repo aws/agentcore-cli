@@ -47,6 +47,8 @@ export async function requireTool(
   if (!(await toolAvailable(tool, probeArgs))) throw new MissingToolError(tool, installHint);
 }
 
+export type ToolChecker = typeof requireTool;
+
 export type RunProcessOptions = {
   /** Working directory the process runs in. */
   cwd: string;

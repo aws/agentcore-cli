@@ -1,8 +1,6 @@
-import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { ProjectFileExistsError } from "../../errors";
-import { atomicWrite } from "../../io";
+import type { LocalFileSystem } from "../../io";
 
 /**
  * A node in a project's file tree where directories nest and files are leaves.
@@ -38,18 +36,22 @@ export const file = (name: string, bytes: () => Promise<string>): FileNode => ({
  * Writes a project tree to the destination with atomic file writes.
  * Refuses to overwrite an existing file so a re-run fails loudly instead of clobbering user work.
  */
-export async function writeTree(node: ProjectNode, destination: string): Promise<void> {
+export async function writeTree(
+  fileSystem: LocalFileSystem,
+  node: ProjectNode,
+  destination: string,
+): Promise<void> {
   const path = join(destination, node.name);
   if (node.kind === "dir") {
-    await mkdir(path, { recursive: true });
+    await fileSystem.createDirectory(path);
     for (const child of node.children) {
-      await writeTree(child, path);
+      await writeTree(fileSystem, child, path);
     }
     return;
   }
 
-  if (existsSync(path)) {
+  if (await fileSystem.exists(path)) {
     throw new ProjectFileExistsError(path);
   }
-  await atomicWrite(path, await node.bytes());
+  await fileSystem.writeAtomic(path, await node.bytes());
 }

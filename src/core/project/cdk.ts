@@ -1,22 +1,18 @@
-import { existsSync } from "node:fs";
-import { mkdir, readFile, rm } from "node:fs/promises";
-import { isAbsolute, join, relative } from "node:path";
-import { InputValidationError } from "../../errors";
-import type { ProcessRunner } from "../../io";
+import { join, relative } from "node:path";
+import { AgentCoreCLIError, InputValidationError } from "../../errors";
+import type { LocalFileSystem, ProcessRunner, ToolChecker } from "../../io";
 import type { Logger } from "../../logging";
 import type { DeploymentTarget, Project, ProjectProgressEvent } from "../../handlers/project/types";
 import type { BackendBuildResult, ProjectBuildBackend } from "./backend";
 import { CloudAssemblyManifestSchema } from "./schemas";
+import { toStackName } from "../../assets/cdk/lib/names";
 
 type CdkBackendConfig = {
   logger: Logger;
   runner: ProcessRunner;
-  checkTool: (tool: string, installHint: string, probeArgs?: string[]) => Promise<void>;
+  checkTool: ToolChecker;
+  fileSystem: LocalFileSystem;
 };
-
-function stackName(projectName: string, targetName: string): string {
-  return `AgentCore-${projectName.replaceAll("_", "-")}-${targetName.replaceAll("_", "-")}`;
-}
 
 export class CdkProjectBackend implements ProjectBuildBackend {
   readonly name = "CDK";
@@ -30,7 +26,7 @@ export class CdkProjectBackend implements ProjectBuildBackend {
   ): Promise<BackendBuildResult> {
     const cdkDirectory = join(project.configDir, "cdk");
     const packageJson = join(cdkDirectory, "package.json");
-    if (!existsSync(packageJson)) {
+    if (!(await this.config.fileSystem.exists(packageJson))) {
       throw new InputValidationError(
         `CDK project not found at ${cdkDirectory}. Create or restore agentcore/cdk before building.`,
       );
@@ -43,8 +39,8 @@ export class CdkProjectBackend implements ProjectBuildBackend {
     await this.run(["npm", "run", "build"], cdkDirectory);
 
     const assemblyDirectory = join(cdkDirectory, "cdk.out");
-    await rm(assemblyDirectory, { recursive: true, force: true });
-    await mkdir(assemblyDirectory, { recursive: true });
+    await this.config.fileSystem.remove(assemblyDirectory);
+    await this.config.fileSystem.createDirectory(assemblyDirectory);
 
     onProgress?.({ message: "Validating project and synthesizing deployment artifacts..." });
     await this.run(
@@ -62,9 +58,9 @@ export class CdkProjectBackend implements ProjectBuildBackend {
     const manifestPath = join(assemblyDirectory, "manifest.json");
     let manifest: unknown;
     try {
-      manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+      manifest = JSON.parse(await this.config.fileSystem.readText(manifestPath));
     } catch (error) {
-      throw new InputValidationError(
+      throw new AgentCoreCLIError(
         `CDK synthesis did not produce a readable cloud assembly at ${manifestPath}`,
         { cause: error },
       );
@@ -72,7 +68,7 @@ export class CdkProjectBackend implements ProjectBuildBackend {
 
     const parsed = CloudAssemblyManifestSchema.safeParse(manifest);
     if (!parsed.success) {
-      throw new InputValidationError(`Invalid CDK cloud assembly manifest at ${manifestPath}`, {
+      throw new AgentCoreCLIError(`Invalid CDK cloud assembly manifest at ${manifestPath}`, {
         cause: parsed.error,
       });
     }
@@ -82,26 +78,28 @@ export class CdkProjectBackend implements ProjectBuildBackend {
         .filter(([, artifact]) => artifact.type === "aws:cloudformation:stack")
         .map(([artifactId, artifact]) => artifact.properties?.stackName ?? artifactId),
     );
-    const buildTargets = targets.map((target) => ({
-      ...target,
-      stackName: stackName(project.name, target.name),
-    }));
+    const stacks = Object.fromEntries(
+      targets.map((target) => [target.name, toStackName(project.name, target.name)]),
+    );
 
-    const missing = buildTargets.filter((target) => !synthesizedStacks.has(target.stackName));
+    const missing = targets.filter((target) => !synthesizedStacks.has(stacks[target.name]!));
     if (missing.length > 0) {
-      throw new InputValidationError(
+      throw new AgentCoreCLIError(
         `CDK synthesis did not produce stacks for target(s): ${missing.map((target) => target.name).join(", ")}`,
       );
     }
 
     return {
-      cloudAssemblyPath: this.relativeToProject(project.root, assemblyDirectory),
-      targets: buildTargets,
+      artifact: {
+        type: "cdk-cloud-assembly",
+        path: this.relativeToProject(project.root, assemblyDirectory),
+        stacks,
+      },
     };
   }
 
   private relativeToProject(projectRoot: string, path: string): string {
-    return isAbsolute(path) ? relative(projectRoot, path).replaceAll("\\", "/") : path;
+    return relative(projectRoot, path).replaceAll("\\", "/");
   }
 
   private run(command: string[], cwd: string): Promise<void> {

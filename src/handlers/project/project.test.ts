@@ -126,7 +126,11 @@ describe("project build", () => {
     expect(result).toMatchObject({
       projectName: "MyAgent",
       backend: "CDK",
-      cloudAssemblyPath: "agentcore/cdk/cdk.out",
+      artifact: {
+        type: "cdk-cloud-assembly",
+        path: "agentcore/cdk/cdk.out",
+        stacks: { default: "AgentCore-MyAgent-default" },
+      },
       manifestPath: "agentcore/.build/manifest.json",
     });
     expect(core.projectCommands).toEqual([

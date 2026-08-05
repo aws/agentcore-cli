@@ -133,8 +133,10 @@ export type BuildProjectInput = {
   onProgress?: (event: ProjectProgressEvent) => void;
 };
 
-export type BuildTarget = DeploymentTarget & {
-  stackName: string;
+export type BuildArtifact = {
+  type: "cdk-cloud-assembly";
+  path: string;
+  stacks: Record<string, string>;
 };
 
 export type BuildManifest = {
@@ -144,8 +146,8 @@ export type BuildManifest = {
   cliVersion: string;
   inputFingerprint: string;
   builtAt: string;
-  cloudAssemblyPath: string;
-  targets: BuildTarget[];
+  artifact: BuildArtifact;
+  targets: DeploymentTarget[];
 };
 
 export type BuildProjectResult = BuildManifest & {

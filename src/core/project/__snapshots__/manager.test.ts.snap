@@ -13,6 +13,7 @@ exports[`FsProjectManager.create scaffolds the expected file tree into a fresh d
   "agentcore/cdk/cdk.json",
   "agentcore/cdk/jest.config.js",
   "agentcore/cdk/lib/cdk-stack.ts",
+  "agentcore/cdk/lib/names.ts",
   "agentcore/cdk/package.json",
   "agentcore/cdk/test/cdk.test.ts",
   "agentcore/cdk/tsconfig.json",

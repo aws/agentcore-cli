@@ -1,6 +1,6 @@
 import type { DirNode, ProjectNode } from "./tree";
 import { dir, file } from "./tree";
-import type { AssetSource } from "./source";
+import type { AssetSource } from "../../io";
 import { TEMPLATES } from "./templates";
 import type { ProjectTemplate } from "../../handlers/project/types";
 

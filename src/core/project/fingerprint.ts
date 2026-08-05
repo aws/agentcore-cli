@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { lstat, readdir, readFile, readlink } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { PACKAGE_VERSION } from "../../constants";
+import type { LocalFileSystem } from "../../io";
 
 const EXCLUDED_DIRECTORY_NAMES = new Set([
   ".git",
@@ -43,18 +43,22 @@ function excluded(relativePath: string, isDirectory: boolean): boolean {
   );
 }
 
-async function projectFiles(root: string, directory = root): Promise<string[]> {
-  const entries = await readdir(directory, { withFileTypes: true });
+async function projectFiles(
+  fileSystem: LocalFileSystem,
+  root: string,
+  directory = root,
+): Promise<string[]> {
+  const entries = await fileSystem.readDirectory(directory);
   const paths: string[] = [];
 
   for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
     const absolutePath = join(directory, entry.name);
     const relativePath = relative(root, absolutePath);
-    if (excluded(relativePath, entry.isDirectory())) continue;
+    if (excluded(relativePath, entry.kind === "directory")) continue;
 
-    if (entry.isDirectory()) {
-      paths.push(...(await projectFiles(root, absolutePath)));
-    } else if (entry.isFile() || entry.isSymbolicLink()) {
+    if (entry.kind === "directory") {
+      paths.push(...(await projectFiles(fileSystem, root, absolutePath)));
+    } else if (entry.kind === "file" || entry.kind === "symbolic-link") {
       paths.push(absolutePath);
     }
   }
@@ -63,24 +67,27 @@ async function projectFiles(root: string, directory = root): Promise<string[]> {
 }
 
 /** Hashes build inputs by path and content, excluding generated output and dependency directories. */
-export async function computeProjectFingerprint(root: string): Promise<string> {
+export async function computeProjectFingerprint(
+  fileSystem: LocalFileSystem,
+  root: string,
+): Promise<string> {
   const hash = createHash("sha256");
   hash.update(`agentcore-cli:${PACKAGE_VERSION}\0`);
 
-  for (const absolutePath of await projectFiles(root)) {
+  for (const absolutePath of await projectFiles(fileSystem, root)) {
     const relativePath = normalize(relative(root, absolutePath));
-    const stats = await lstat(absolutePath);
+    const stats = await fileSystem.lstat(absolutePath);
     hash.update(relativePath);
     hash.update("\0");
     hash.update(String(stats.mode & 0o777));
     hash.update("\0");
 
-    if (stats.isSymbolicLink()) {
+    if (stats.kind === "symbolic-link") {
       hash.update("link\0");
-      hash.update(await readlink(absolutePath));
+      hash.update(await fileSystem.readLink(absolutePath));
     } else {
       hash.update("file\0");
-      hash.update(await readFile(absolutePath));
+      hash.update(await fileSystem.readBytes(absolutePath));
     }
     hash.update("\0");
   }
