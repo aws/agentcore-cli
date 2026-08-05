@@ -1,10 +1,16 @@
+import type { TargetConfiguration } from "@aws-sdk/client-bedrock-agentcore-control";
 import z from "zod";
 import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
-import { isConnectorTarget } from "../isConnectorTarget";
+
+function isConnectorTarget(configuration: TargetConfiguration | undefined): boolean {
+  return (
+    configuration?.mcp?.connector !== undefined || configuration?.inference?.connector !== undefined
+  );
+}
 
 export const createGetGatewayConnectorHandler = (core: Core) =>
   createHandler({

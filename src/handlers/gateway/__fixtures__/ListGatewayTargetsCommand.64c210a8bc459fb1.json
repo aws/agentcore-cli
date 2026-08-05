@@ -1,0 +1,30 @@
+{
+  "items": [
+    {
+      "targetId": "HDDX5P33XN",
+      "name": "agentcore-cli-gateway-read-connector-openai",
+      "status": "FAILED",
+      "createdAt": {
+        "$date": "2026-08-05T20:06:04.149Z"
+      },
+      "updatedAt": {
+        "$date": "2026-08-05T20:06:05.163Z"
+      },
+      "description": "AgentCore CLI persistent Gateway Connector read fixture",
+      "targetType": "CONNECTOR"
+    },
+    {
+      "targetId": "O4HB9LXPLC",
+      "name": "agentcore-cli-gateway-read-http-target",
+      "status": "READY",
+      "createdAt": {
+        "$date": "2026-07-30T00:13:31.109Z"
+      },
+      "updatedAt": {
+        "$date": "2026-07-30T00:13:31.778Z"
+      },
+      "description": "AgentCore CLI persistent HTTP Gateway Target fixture",
+      "targetType": "PASSTHROUGH"
+    }
+  ]
+}

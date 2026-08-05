@@ -16,10 +16,11 @@ const GATEWAY_ID = "agentcore-cli-gateway-read-fixture-a-l6opkbe2kd";
 const TARGET_ID = "KALJACI9HO";
 const RULE_GATEWAY_ID = "agentcore-cli-gateway-read-rule-fixture-lhpid2reoy";
 const RULE_ID = "d396c3f4-4591-41b3-a4d5-816e03c32419";
+const CONNECTOR_ID = "HDDX5P33XN";
 
 // Account 685197708687 owns the persistent read-only fixture graph:
-// two listable Gateways, two MCP Targets under GATEWAY_ID, and two Rules under
-// RULE_GATEWAY_ID. Record with:
+// listable Gateways, two MCP Targets under GATEWAY_ID, and one HTTP Target, one
+// connector Target, and two Rules under RULE_GATEWAY_ID. Record with:
 // AWS_PROFILE=e2e-test RECORD=1 bun test src/handlers/gateway/gateway.fixture.test.tsx
 function createFixtureCore(): CoreClient {
   const { createControlClient, createDataClient, createIamClient } = fixtureFactories(FIXTURES);
@@ -110,6 +111,28 @@ describe("Gateway fixture-backed reads", () => {
     ]);
     matchGolden(FIXTURES, "target-list-page-2.golden.json", page2);
     expect(JSON.parse(page2).items).toHaveLength(1);
+  });
+
+  test("gets a Gateway Connector", async () => {
+    const stdout = await run([
+      "gateway",
+      "connector",
+      "get",
+      "--gateway-id",
+      RULE_GATEWAY_ID,
+      "--id",
+      CONNECTOR_ID,
+    ]);
+    matchGolden(FIXTURES, "connector-get.golden.json", stdout);
+    expect(JSON.parse(stdout).targetId).toBe(CONNECTOR_ID);
+  });
+
+  test("lists Gateway Connectors", async () => {
+    const stdout = await run(["gateway", "connector", "list", "--gateway-id", RULE_GATEWAY_ID]);
+    matchGolden(FIXTURES, "connector-list.golden.json", stdout);
+    expect(JSON.parse(stdout).items.map(({ targetId }: { targetId: string }) => targetId)).toEqual([
+      CONNECTOR_ID,
+    ]);
   });
 
   test("gets a Gateway Rule", async () => {
