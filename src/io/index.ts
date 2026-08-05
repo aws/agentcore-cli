@@ -18,6 +18,13 @@ export {
   type StreamProcessOptions,
 } from "./exec";
 export { FsReadWriteJson } from "./json";
+export { readTextFile, type ReadTextFileOptions } from "./fileRead";
+export {
+  parseJsonObjectLines,
+  type JsonObject,
+  type JsonObjectLine,
+  type JsonValue,
+} from "./jsonl";
 export { SourceResolver, type SourceResolverConfig } from "./source";
 export type { AppIO, ReadWriteJson } from "./types";
 export { warn } from "./warn";

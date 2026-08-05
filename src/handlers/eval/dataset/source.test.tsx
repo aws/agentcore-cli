@@ -75,6 +75,15 @@ describe("resolveDatasetSource", () => {
     await expect(promise).rejects.toThrow(/scenario_id/);
   });
 
+  test("rejects a JSONL row that is not an object", async () => {
+    const path = writeTempFile("array.jsonl", `${JSON.stringify([EXAMPLE_A])}\n`);
+
+    const promise = resolveDatasetSource(`file://${path}`, resolver());
+
+    await expect(promise).rejects.toThrow(InputValidationError);
+    await expect(promise).rejects.toThrow(/expected a JSON object/);
+  });
+
   test("rejects a source that yields no examples", async () => {
     const path = writeTempFile("empty.jsonl", "\n\n");
 

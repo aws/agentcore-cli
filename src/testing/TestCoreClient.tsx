@@ -127,6 +127,7 @@ import type {
   CreateConfigurationBundleInput,
   CreateDatasetInput,
   CreateOnlineEvalInput,
+  DatasetUpdateResult,
   GetBatchEvaluationResult,
   LlmAsAJudgeUpdate,
   StartBatchEvaluationInput,
@@ -254,6 +255,13 @@ const DEFAULT_START_BATCH_EVAL_RESPONSE = {
   batchEvaluationId: "batch-eval-test",
   status: "RUNNING",
 } as unknown as StartBatchEvaluationResponse;
+const DEFAULT_UPDATE_DATASET_RESULT: DatasetUpdateResult = {
+  datasetId: "dataset-orders-abc123",
+  added: 0,
+  updated: 0,
+  deleted: 0,
+  unchanged: 0,
+};
 
 // events wraps canned events as a one-shot AsyncIterable.
 async function* events<T>(items: T[]): AsyncGenerator<T> {
@@ -1345,6 +1353,7 @@ export class TestEvalClient implements CoreEvalClient {
   private datasetListResponses = new Map<string | undefined, ListDatasetsResponse>();
   private deleteDatasetResponse: DeleteDatasetResponse = DEFAULT_DELETE_DATASET_RESPONSE;
   private publishDatasetResponse: CreateDatasetVersionResponse = DEFAULT_PUBLISH_DATASET_RESPONSE;
+  private updateDatasetResult: DatasetUpdateResult = DEFAULT_UPDATE_DATASET_RESULT;
   // Batch-evaluation responses: get returns a canned job, list pages by
   // nextToken, and the CloudWatch results are a canned array. batchEvalResultsError
   // simulates a CloudWatch read failure surfaced as `resultsError`.
@@ -1529,6 +1538,13 @@ export class TestEvalClient implements CoreEvalClient {
   // metadata is still returned.
   setBatchEvalResultsError(error: unknown): this {
     this.batchEvalResultsError = error;
+    return this;
+  }
+
+  // setUpdateDatasetResult sets what updateDatasetExamples resolves to (when not
+  // erroring).
+  setUpdateDatasetResult(result: DatasetUpdateResult): this {
+    this.updateDatasetResult = result;
     return this;
   }
 
@@ -1831,6 +1847,17 @@ export class TestEvalClient implements CoreEvalClient {
     this.calls.push({ method: "publishDataset", args: [id, options] });
     if (this.error) throw this.error;
     return this.publishDatasetResponse;
+  }
+
+  async updateDatasetExamples(
+    id: string,
+    filePath: string,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<DatasetUpdateResult> {
+    this.calls.push({ method: "updateDatasetExamples", args: [id, filePath, options, signal] });
+    if (this.error) throw this.error;
+    return this.updateDatasetResult;
   }
 }
 

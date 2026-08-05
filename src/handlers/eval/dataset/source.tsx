@@ -1,13 +1,8 @@
 import z from "zod";
-import type {
-  DataSourceType,
-  InlineExamplesSource,
-} from "@aws-sdk/client-bedrock-agentcore-control";
+import type { DataSourceType } from "@aws-sdk/client-bedrock-agentcore-control";
 import { flag } from "../../../router";
 import { InputValidationError } from "../../../errors";
-import type { SourceResolver } from "../../../io";
-
-type DatasetExample = NonNullable<InlineExamplesSource["examples"]>[number];
+import { parseJsonObjectLines, type SourceResolver } from "../../../io";
 
 const S3_PREFIX = "s3://";
 const FILE_PREFIX = "file://";
@@ -35,7 +30,7 @@ export async function resolveDatasetSource(
   if (value.startsWith(S3_PREFIX)) return { s3Source: { s3Uri: value } };
 
   const raw = await source.resolveText("source", value);
-  const examples = parseJsonl(raw ?? "");
+  const examples = parseJsonObjectLines(raw ?? "", "'--source'").map(({ value }) => value);
 
   if (examples.length === 0) {
     throw new InputValidationError(
@@ -50,38 +45,6 @@ export async function resolveDatasetSource(
   }
 
   return { inlineExamples: { examples } };
-}
-
-// parseJsonl parses newline-delimited JSON into one document per line. Blank
-// lines are skipped, so a trailing newline is not an empty example. A malformed
-// line is reported with its line number and a bounded excerpt
-//
-// Examples are untyped documents by design: the schema governing their fields is
-// the dataset's schemaType, which the service validates. The CLI passes them
-// through rather than duplicating that contract
-function parseJsonl(text: string): DatasetExample[] {
-  const examples: DatasetExample[] = [];
-
-  text.split("\n").forEach((line, index) => {
-    if (line.trim() === "") return;
-    try {
-      examples.push(JSON.parse(line) as DatasetExample);
-    } catch (error) {
-      throw new InputValidationError(
-        `Invalid JSON in '--source' at line ${index + 1}: ` +
-          `${error instanceof Error ? error.message : String(error)}\n  ${excerpt(line)}`,
-        { cause: error, meta: { line: index + 1 } },
-      );
-    }
-  });
-
-  return examples;
-}
-
-const EXCERPT_LIMIT = 120;
-
-function excerpt(line: string): string {
-  return line.length > EXCERPT_LIMIT ? `${line.slice(0, EXCERPT_LIMIT)}...` : line;
 }
 
 // looksLikePath reports whether a --source value that failed to resolve as JSONL

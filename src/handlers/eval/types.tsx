@@ -203,6 +203,17 @@ export type StartBatchEvaluationInput = {
   kmsKeyArn?: string;
 };
 
+// DatasetUpdateResult reports what reconciling a DRAFT against a local file
+// changed. The counts are examples, not requests: each phase is batched to the
+// service's per-request limit.
+export type DatasetUpdateResult = {
+  datasetId: string;
+  added: number;
+  updated: number;
+  deleted: number;
+  unchanged: number;
+};
+
 // CoreEvalClient is the evaluator, online evaluation, and dataset surface the eval
 // handlers depend on. It is declared here, next to the handlers that consume it,
 // and implemented by src/core/eval.tsx (dependency inversion: handlers own the
@@ -353,4 +364,14 @@ export interface CoreEvalClient {
   // publishDataset freezes the current DRAFT as the next numbered version. The
   // DRAFT survives and stays editable, so publishing is additive
   publishDataset(id: string, options: CoreOptions): Promise<CreateDatasetVersionResponse>;
+  // updateDatasetExamples reconciles the dataset's DRAFT with `filePath`, adding,
+  // replacing, and removing examples so the DRAFT matches the file. Service-assigned
+  // ids for added examples are written back to `filePath`, which the next update
+  // needs to match those rows.
+  updateDatasetExamples(
+    id: string,
+    filePath: string,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<DatasetUpdateResult>;
 }
