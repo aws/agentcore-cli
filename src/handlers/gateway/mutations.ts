@@ -1,7 +1,4 @@
-import type {
-  CreateGatewayRequest,
-  TargetConfiguration,
-} from "@aws-sdk/client-bedrock-agentcore-control";
+import type { CreateGatewayRequest } from "@aws-sdk/client-bedrock-agentcore-control";
 import { InputValidationError } from "../../errors";
 import type {
   CreateGatewayInput,
@@ -51,38 +48,8 @@ export function validateGatewayTargetCreateInput(
   if (!input.targetConfiguration) {
     throw new InputValidationError("Target configuration is required");
   }
-  const variant = targetVariant(input.targetConfiguration);
-  if (!input.name && variant !== "http.agentcoreRuntime") {
+  if (!input.name && input.targetConfiguration.http?.agentcoreRuntime === undefined) {
     throw new InputValidationError("Target name is required for non-Runtime targets");
   }
   return input;
-}
-
-export function targetVariant(configuration: TargetConfiguration): string | undefined {
-  if ("mcp" in configuration && configuration.mcp) {
-    return memberVariant("mcp", configuration.mcp, [
-      "openApiSchema",
-      "smithyModel",
-      "lambda",
-      "mcpServer",
-      "apiGateway",
-      "connector",
-    ]);
-  }
-  if ("http" in configuration && configuration.http) {
-    return memberVariant("http", configuration.http, ["agentcoreRuntime", "passthrough"]);
-  }
-  if ("inference" in configuration && configuration.inference) {
-    return memberVariant("inference", configuration.inference, ["connector", "provider"]);
-  }
-  return undefined;
-}
-
-function memberVariant(
-  outer: string,
-  value: object,
-  members: readonly string[],
-): string | undefined {
-  const member = members.find((candidate) => candidate in value);
-  return member ? `${outer}.${member}` : undefined;
 }

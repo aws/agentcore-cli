@@ -1,0 +1,17 @@
+{
+  "ruleId": "b68aa940-0a41-40bf-9b49-aab1647066b3",
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:gateway/agentcore-cli-gateway-create-fixture-7ky2bb3jku",
+  "priority": 10,
+  "actions": [
+    {
+      "routeToTarget": {
+        "staticRoute": {
+          "targetName": "http-fixture"
+        }
+      }
+    }
+  ],
+  "createdAt": "2026-08-05T20:52:51.379Z",
+  "status": "CREATING",
+  "description": "Disposable Gateway Rule Create fixture"
+}

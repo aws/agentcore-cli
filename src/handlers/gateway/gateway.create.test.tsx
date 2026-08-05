@@ -237,7 +237,12 @@ describe("gateway create commands", () => {
     };
     const credentials = [{ credentialProviderType: "CALLER_IAM_CREDENTIALS" }];
     const metadata = { allowedRequestHeaders: ["x-request-id"] };
-    const privateEndpoint = { vpcEndpointId: "vpce-123" };
+    const privateEndpoint = {
+      selfManagedLatticeResource: {
+        resourceConfigurationIdentifier:
+          "arn:aws:vpc-lattice:us-west-2:123456789012:resourceconfiguration/rcfg-123",
+      },
+    };
 
     await run(
       [

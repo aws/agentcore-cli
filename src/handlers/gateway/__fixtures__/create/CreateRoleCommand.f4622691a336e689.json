@@ -1,0 +1,12 @@
+{
+  "Role": {
+    "Path": "/",
+    "RoleName": "AgentCoreGateway-agentcore-cli-gateway-create-fix-64147103bcd4",
+    "RoleId": "AROAYY3QB54NYN6N6G33W",
+    "Arn": "arn:aws:iam::603141041947:role/AgentCoreGateway-agentcore-cli-gateway-create-fix-64147103bcd4",
+    "CreateDate": {
+      "$date": "2026-08-05T20:52:39.000Z"
+    },
+    "AssumeRolePolicyDocument": "%7B%22Version%22%3A%222012-10-17%22%2C%22Statement%22%3A%5B%7B%22Sid%22%3A%22GatewayAssumeRolePolicy%22%2C%22Effect%22%3A%22Allow%22%2C%22Principal%22%3A%7B%22Service%22%3A%22bedrock-agentcore.amazonaws.com%22%7D%2C%22Action%22%3A%22sts%3AAssumeRole%22%7D%5D%7D"
+  }
+}

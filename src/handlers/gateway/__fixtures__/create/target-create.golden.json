@@ -1,0 +1,16 @@
+{
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:gateway/agentcore-cli-gateway-create-fixture-7ky2bb3jku",
+  "targetId": "APUTKOW1TL",
+  "createdAt": "2026-08-05T20:52:45.837Z",
+  "updatedAt": "2026-08-05T20:52:45.837Z",
+  "status": "CREATING",
+  "name": "http-fixture",
+  "targetConfiguration": {
+    "http": {
+      "passthrough": {
+        "endpoint": "https://example.com",
+        "protocolType": "CUSTOM"
+      }
+    }
+  }
+}
