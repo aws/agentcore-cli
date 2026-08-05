@@ -182,10 +182,15 @@ describe("Gateway fixture-backed creates", () => {
           state.gatewayId!,
           "--name",
           HTTP_TARGET_NAME,
-          "--passthrough-endpoint",
-          "https://example.com",
-          "--passthrough-protocol",
-          "custom",
+          "--target-configuration",
+          JSON.stringify({
+            http: {
+              passthrough: {
+                endpoint: "https://example.com",
+                protocolType: "CUSTOM",
+              },
+            },
+          }),
         ]);
         matchGolden(FIXTURES, "target-create.golden.json", targetStdout);
         const target = JSON.parse(targetStdout);

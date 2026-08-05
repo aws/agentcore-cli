@@ -1,7 +1,9 @@
 import type {
   CredentialProviderConfiguration,
+  McpToolSchemaConfiguration,
   MetadataConfiguration,
   PrivateEndpoint,
+  TargetConfiguration,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import z from "zod";
 import { InputValidationError } from "../../../../errors";
@@ -12,7 +14,6 @@ import type { Core } from "../../../types";
 import { coreOptsFromCtx, parseJsonArrayFlag, parseJsonObjectFlag } from "../../../utils";
 import { validateGatewayTargetCreateInput } from "../../mutations";
 import type { CreateGatewayTargetInput } from "../../types";
-import { TargetConfigurationResolver } from "./configuration";
 
 export const createCreateGatewayTargetHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -27,23 +28,12 @@ export const createCreateGatewayTargetHandler = (core: Core, io: AppIO) =>
       ),
       flag("description", "Target description", z.string().optional()),
       flag("endpoint", "MCP server HTTPS endpoint", z.string().optional()),
-      flag("lambda-arn", "MCP Lambda function ARN", z.string().optional()),
-      flag("openapi-schema", "OpenAPI schema source", z.string().optional()),
-      flag("smithy-model", "Smithy model source", z.string().optional()),
-      flag("runtime-arn", "AgentCore Runtime ARN", z.string().optional()),
-      flag("passthrough-endpoint", "HTTP passthrough HTTPS endpoint", z.string().optional()),
       flag(
         "target-configuration",
         "complete Target configuration (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
       ),
       flag("tool-schema", "MCP tool schema source", z.string().optional()),
-      flag("qualifier", "AgentCore Runtime qualifier", z.string().optional()),
-      flag(
-        "passthrough-protocol",
-        "HTTP passthrough application protocol",
-        z.enum(["mcp", "a2a", "inference", "custom"]).optional(),
-      ),
       flag(
         "credential-provider-configurations",
         "outbound credentials (JSON array; inline, file://<path>, or - for stdin)",
@@ -65,20 +55,37 @@ export const createCreateGatewayTargetHandler = (core: Core, io: AppIO) =>
       if (!flags["gateway-id"]) {
         throw new InputValidationError("required option '--gateway-id <gateway-id>' not specified");
       }
+      if ((flags.endpoint === undefined) === (flags["target-configuration"] === undefined)) {
+        throw new InputValidationError(
+          "specify exactly one of '--endpoint' or '--target-configuration'",
+        );
+      }
+      if (flags["tool-schema"] !== undefined && flags.endpoint === undefined) {
+        throw new InputValidationError("--tool-schema requires --endpoint");
+      }
 
       const source = new SourceResolver({ stdin: io.stdin });
-      const targetConfiguration = await new TargetConfigurationResolver(source).resolve({
-        endpoint: flags.endpoint,
-        lambdaArn: flags["lambda-arn"],
-        openapiSchema: flags["openapi-schema"],
-        smithyModel: flags["smithy-model"],
-        runtimeArn: flags["runtime-arn"],
-        passthroughEndpoint: flags["passthrough-endpoint"],
-        targetConfiguration: flags["target-configuration"],
-        toolSchema: flags["tool-schema"],
-        qualifier: flags.qualifier,
-        passthroughProtocol: flags["passthrough-protocol"],
-      });
+      const exactConfiguration = parseJsonObjectFlag<TargetConfiguration>(
+        "target-configuration",
+        await source.resolveText("target-configuration", flags["target-configuration"]),
+      );
+      const toolSchemaSource = flags["tool-schema"];
+      let mcpToolSchema: McpToolSchemaConfiguration | undefined;
+      if (toolSchemaSource !== undefined) {
+        mcpToolSchema = toolSchemaSource.startsWith("s3://")
+          ? { s3: { uri: toolSchemaSource } }
+          : {
+              inlinePayload: (await source.resolveText("tool-schema", toolSchemaSource))!,
+            };
+      }
+      const targetConfiguration: TargetConfiguration = exactConfiguration ?? {
+        mcp: {
+          mcpServer: {
+            endpoint: flags.endpoint!,
+            ...(mcpToolSchema ? { mcpToolSchema } : {}),
+          },
+        },
+      };
       const credentialProviderConfigurations = parseJsonArrayFlag<CredentialProviderConfiguration>(
         "credential-provider-configurations",
         await source.resolveText(

@@ -123,10 +123,15 @@ describe("gateway create commands", () => {
     });
   });
 
-  test.each([
-    {
-      name: "MCP server",
-      args: [
+  test("creates an MCP server Target from the endpoint shortcut", async () => {
+    const core = new TestCoreClient();
+    await run(
+      [
+        "gateway",
+        "target",
+        "create",
+        "--gateway-id",
+        GATEWAY_ID,
         "--name",
         "calendar",
         "--endpoint",
@@ -134,7 +139,13 @@ describe("gateway create commands", () => {
         "--tool-schema",
         '{"tools":[]}',
       ],
-      expected: {
+      core,
+    );
+
+    expect(createdTargetInput(core)).toEqual({
+      gatewayIdentifier: GATEWAY_ID,
+      name: "calendar",
+      targetConfiguration: {
         mcp: {
           mcpServer: {
             endpoint: "https://calendar.example.test/mcp",
@@ -142,93 +153,8 @@ describe("gateway create commands", () => {
           },
         },
       },
-    },
-    {
-      name: "Lambda",
-      args: [
-        "--name",
-        "calculator",
-        "--lambda-arn",
-        "arn:aws:lambda:us-west-2:123456789012:function:calculator",
-        "--tool-schema",
-        '[{"name":"add","description":"Add","inputSchema":{"type":"object"}}]',
-      ],
-      expected: {
-        mcp: {
-          lambda: {
-            lambdaArn: "arn:aws:lambda:us-west-2:123456789012:function:calculator",
-            toolSchema: {
-              inlinePayload: [
-                {
-                  name: "add",
-                  description: "Add",
-                  inputSchema: { type: "object" },
-                },
-              ],
-            },
-          },
-        },
-      },
-    },
-    {
-      name: "OpenAPI",
-      args: ["--name", "orders", "--openapi-schema", '{"openapi":"3.0.0"}'],
-      expected: { mcp: { openApiSchema: { inlinePayload: '{"openapi":"3.0.0"}' } } },
-    },
-    {
-      name: "Smithy",
-      args: ["--name", "inventory", "--smithy-model", "s3://schemas/inventory.json"],
-      expected: { mcp: { smithyModel: { s3: { uri: "s3://schemas/inventory.json" } } } },
-    },
-    {
-      name: "AgentCore Runtime",
-      args: [
-        "--runtime-arn",
-        "arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/orders",
-        "--qualifier",
-        "prod",
-      ],
-      expected: {
-        http: {
-          agentcoreRuntime: {
-            arn: "arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/orders",
-            qualifier: "prod",
-          },
-        },
-      },
-    },
-    {
-      name: "HTTP passthrough",
-      args: [
-        "--name",
-        "external",
-        "--passthrough-endpoint",
-        "https://api.example.test",
-        "--passthrough-protocol",
-        "custom",
-      ],
-      expected: {
-        http: {
-          passthrough: {
-            endpoint: "https://api.example.test",
-            protocolType: "CUSTOM",
-          },
-        },
-      },
-    },
-  ] as { name: string; args: string[]; expected: TargetConfiguration }[])(
-    "creates a $name Target",
-    async ({ args, expected }) => {
-      const core = new TestCoreClient();
-      await run(["gateway", "target", "create", "--gateway-id", GATEWAY_ID, ...args], core);
-
-      expect(createdTargetInput(core)).toEqual({
-        gatewayIdentifier: GATEWAY_ID,
-        ...(args.includes("--name") ? { name: args[args.indexOf("--name") + 1] } : {}),
-        targetConfiguration: expected,
-      });
-    },
-  );
+    });
+  });
 
   test("creates an exact Target with authentication, metadata, and network configuration", async () => {
     const core = new TestCoreClient();
@@ -272,6 +198,36 @@ describe("gateway create commands", () => {
       credentialProviderConfigurations: credentials,
       metadataConfiguration: metadata,
       privateEndpoint,
+    });
+  });
+
+  test("creates an exact Runtime Target without requiring a name", async () => {
+    const core = new TestCoreClient();
+    const targetConfiguration: TargetConfiguration = {
+      http: {
+        agentcoreRuntime: {
+          arn: "arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/orders",
+          qualifier: "prod",
+        },
+      },
+    };
+
+    await run(
+      [
+        "gateway",
+        "target",
+        "create",
+        "--gateway-id",
+        GATEWAY_ID,
+        "--target-configuration",
+        JSON.stringify(targetConfiguration),
+      ],
+      core,
+    );
+
+    expect(createdTargetInput(core)).toEqual({
+      gatewayIdentifier: GATEWAY_ID,
+      targetConfiguration,
     });
   });
 
@@ -415,7 +371,7 @@ describe("gateway create validation", () => {
       /Target name/,
     ],
     [
-      "Lambda tool schema",
+      "Target tool schema",
       [
         "gateway",
         "target",
@@ -423,26 +379,13 @@ describe("gateway create validation", () => {
         "--gateway-id",
         GATEWAY_ID,
         "--name",
-        "lambda",
-        "--lambda-arn",
-        "arn:aws:lambda:us-west-2:123456789012:function:lambda",
+        "calendar",
+        "--target-configuration",
+        '{"mcp":{"mcpServer":{"endpoint":"https://example.test/mcp"}}}',
+        "--tool-schema",
+        '{"tools":[]}',
       ],
-      /--tool-schema/,
-    ],
-    [
-      "Passthrough protocol",
-      [
-        "gateway",
-        "target",
-        "create",
-        "--gateway-id",
-        GATEWAY_ID,
-        "--name",
-        "http",
-        "--passthrough-endpoint",
-        "https://example.test",
-      ],
-      /--passthrough-protocol/,
+      /--tool-schema requires --endpoint/,
     ],
     [
       "Connector name",
