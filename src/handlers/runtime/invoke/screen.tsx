@@ -399,7 +399,10 @@ function RuntimeInvokeConsole({
                     <Text>{exchange.payload}</Text>
                     <Text bold>{exchange.heading ?? "Response"}</Text>
                     <Text>
-                      {prettyJson && exchange.pretty ? exchange.pretty : exchange.response}
+                      {(prettyJson && exchange.pretty
+                        ? exchange.pretty
+                        : exchange.response
+                      ).replace(/[\r\n]+$/, "")}
                     </Text>
                     {exchange.state !== "connecting" && exchange.state !== "streaming" ? (
                       <>

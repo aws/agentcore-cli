@@ -425,6 +425,29 @@ describe("Runtime invoke JSON console", () => {
     expect(screen.lastFrame()).toContain("Session ID: returned-runtime");
   });
 
+  test("removes trailing response newlines before settled metadata", async () => {
+    const core = new TestCoreClient();
+    core.runtime
+      .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
+      .setInvokeResponse({
+        statusCode: 200,
+        contentType: "text/event-stream",
+        runtimeSessionId: "returned-runtime",
+        body: responseBody(Buffer.from("data: one\n\ndata: two\n\n")),
+      });
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "Ready");
+    await screen.write("{}");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "complete · 22 bytes");
+
+    const lines = screen.lastFrame()!.split("\n");
+    const lastEvent = lines.findIndex((line) => line.includes("data: two"));
+    const metadata = lines.findIndex((line) => line.includes("Session ID: returned-runtime"));
+    expect(metadata).toBe(lastEvent + 1);
+  });
+
   test.each([
     [
       "invalid UTF-8 text",
