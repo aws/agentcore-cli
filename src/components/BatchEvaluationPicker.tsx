@@ -14,15 +14,15 @@ interface BatchEvaluationRow extends Record<string, unknown> {
   batchEvaluationId: string;
   name: string;
   status: string;
-  createdAt: string;
+  updatedAt: string;
 }
 
 export const batchEvaluationColumns = [
   { key: "name", header: "name", flex: true },
   { key: "status", header: "status", width: 22 },
   {
-    key: "createdAt",
-    header: "created UTC",
+    key: "updatedAt",
+    header: "updated UTC",
     width: 16,
     render: formatTimestamp,
   },
@@ -34,7 +34,7 @@ function toRow(summary: BatchEvaluationSummary): BatchEvaluationRow {
     batchEvaluationId: id,
     name: summary.batchEvaluationName ?? id,
     status: summary.status ?? "-",
-    createdAt: summary.createdAt?.toISOString() ?? "-",
+    updatedAt: summary.updatedAt?.toISOString() ?? "-",
   };
 }
 

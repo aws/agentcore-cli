@@ -79,12 +79,12 @@ describe("batch-evaluation menu", () => {
 });
 
 describe("batch-evaluation picker", () => {
-  test("renders name, status, and created time", async () => {
+  test("renders name, status, and updated time", async () => {
     const core = coreWithBatchEvals([
       summary({
         batchEvaluationName: "staging_eval",
         status: "FAILED",
-        createdAt: new Date("2026-07-21T02:03:04.000Z"),
+        updatedAt: new Date("2026-07-21T02:03:04.000Z"),
       }),
     ]);
     const screen = renderScreen("/agentcore/eval/batch-evaluation/list", { core });
