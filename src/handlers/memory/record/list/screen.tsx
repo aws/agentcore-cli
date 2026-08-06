@@ -84,7 +84,7 @@ function MemoryRecordScopeScreen({ memoryId }: MemoryRecordScopeScreenProps) {
 
   useInput((_input, key) => {
     if (key.escape) {
-      navigate(`/agentcore/memory/get/${encodeURIComponent(memoryId)}`);
+      navigate(-1);
       return;
     }
     if (key.upArrow) {
@@ -173,7 +173,7 @@ function MemoryRecordPicker({ ctx, core, memoryId, scopeKind, scope }: MemoryRec
           `/agentcore/memory/record/get/${encodeURIComponent(memoryId)}/${encodeURIComponent(recordId)}`,
         )
       }
-      onBack={() => navigate(`/agentcore/memory/record/list/${encodeURIComponent(memoryId)}`)}
+      onBack={() => navigate(-1)}
       loadingMessage={`Loading Memory records for ${memoryId}...`}
       errorMessage={(error) => `Error loading Memory records for ${memoryId}: ${error.message}`}
       emptyMessage={`No Memory records found for ${scopeKind} ${scope}.`}
