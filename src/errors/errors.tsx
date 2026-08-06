@@ -62,12 +62,15 @@ export class AgentCoreCLIError extends Error {
   }
 }
 
-/** Error raised for invalid user input. */
-export class InputValidationError extends AgentCoreCLIError {
+/** Base for user-correctable validation failures: invalid input, config, or environment. */
+export class ValidationError extends AgentCoreCLIError {
   constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
     super(message, { ...options, source: ERROR_SOURCE.USER });
   }
 }
+
+/** Error raised for invalid user input. */
+export class InputValidationError extends ValidationError {}
 
 /** Error raised when a command or operation has not been implemented yet. */
 export class NotImplementedError extends AgentCoreCLIError {
@@ -77,11 +80,7 @@ export class NotImplementedError extends AgentCoreCLIError {
 }
 
 /** Error raised when detecting an invalid environment */
-export class InvalidEnvironmentError extends AgentCoreCLIError {
-  constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
-    super(message, { ...options, source: ERROR_SOURCE.USER });
-  }
-}
+export class InvalidEnvironmentError extends ValidationError {}
 
 export class SourceResolutionError extends InputValidationError {
   constructor(message: string, options?: ErrorOptions) {
@@ -104,44 +103,58 @@ export class DeserializationError extends AgentCoreCLIError {
 }
 
 /** Error raised when a command requires an AgentCore project and none encloses the working directory. */
-export class NoProjectError extends AgentCoreCLIError {
+export class NoProjectError extends ValidationError {
   constructor(searchPath: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
     super(
       `no AgentCore project found at ${searchPath} or any parent directory; run \`agentcore project create\` to make one`,
-      { ...options, source: ERROR_SOURCE.USER, meta: { ...options?.meta, searchPath } },
+      { ...options, meta: { ...options?.meta, searchPath } },
     );
   }
 }
 
 /** Thrown when a project's agentcore.json exists but cannot be parsed or fails validation. */
-export class InvalidProjectConfigError extends AgentCoreCLIError {
+export class InvalidProjectConfigError extends ValidationError {
   constructor(
     public readonly configPath: string,
     detail: string,
   ) {
-    super(`invalid project config at ${configPath}: ${detail}`, {
-      source: ERROR_SOURCE.USER,
-      meta: { configPath },
-    });
+    super(`invalid project config at ${configPath}: ${detail}`, { meta: { configPath } });
   }
 }
 
 /** Thrown when scaffolding would overwrite a file that already exists. */
-export class ProjectFileExistsError extends AgentCoreCLIError {
+export class ProjectFileExistsError extends ValidationError {
   constructor(public readonly path: string) {
-    super(`Refusing to overwrite existing file: ${path}`, {
-      source: ERROR_SOURCE.USER,
-      meta: { path },
-    });
+    super(`Refusing to overwrite existing file: ${path}`, { meta: { path } });
   }
 }
 
 /** Thrown when scaffolding would nest a new project inside an existing AgentCore project. */
-export class NestedProjectError extends AgentCoreCLIError {
+export class NestedProjectError extends ValidationError {
   constructor(public readonly projectRoot: string) {
     super(
       `cannot create a project inside an existing AgentCore project (found ${join(projectRoot, "agentcore", "agentcore.json")})`,
-      { source: ERROR_SOURCE.USER, meta: { projectRoot } },
+      { meta: { projectRoot } },
+    );
+  }
+}
+
+/** Error raised when a required executable is not found on PATH. */
+export class MissingToolError extends ValidationError {
+  constructor(tool: string, installHint: string) {
+    super(`'${tool}' was not found on your PATH. ${installHint}`, { meta: { tool } });
+  }
+}
+
+/** Error raised when a subprocess exits non-zero, carrying its captured output. */
+export class ProcessFailedError extends ValidationError {
+  constructor(command: string[], cwd: string, exitCode: number | null, output: string) {
+    const rendered = command.join(" ");
+    super(
+      `'${rendered}' failed in ${cwd} (exit code ${exitCode ?? "unknown"}).\n\n` +
+        `${output.trim()}\n\n` +
+        `Fix the issue and run 'cd ${cwd} && ${rendered}' to retry.`,
+      { meta: { command, cwd, exitCode } },
     );
   }
 }

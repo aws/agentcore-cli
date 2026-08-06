@@ -1,33 +1,10 @@
 // Local subprocess execution. Uses node:child_process (not Bun.$/Bun.spawn)
 // because the npm bundle targets Node — Bun APIs are unavailable there.
 import { spawn } from "node:child_process";
-import { AgentCoreCLIError, ERROR_SOURCE } from "../errors";
+import { MissingToolError, ProcessFailedError } from "../errors";
 
 // cmd.exe resolves PATHEXT executables (npm.cmd, uv.exe) that a bare spawn misses.
 const useShell = process.platform === "win32";
-
-/** Error raised when a required executable is not found on PATH. */
-export class MissingToolError extends AgentCoreCLIError {
-  constructor(tool: string, installHint: string) {
-    super(`'${tool}' was not found on your PATH. ${installHint}`, {
-      source: ERROR_SOURCE.USER,
-      meta: { tool },
-    });
-  }
-}
-
-/** Error raised when a subprocess exits non-zero, carrying its captured output. */
-export class ProcessFailedError extends AgentCoreCLIError {
-  constructor(command: string[], cwd: string, exitCode: number | null, output: string) {
-    const rendered = command.join(" ");
-    super(
-      `'${rendered}' failed in ${cwd} (exit code ${exitCode ?? "unknown"}).\n\n` +
-        `${output.trim()}\n\n` +
-        `Fix the issue and run 'cd ${cwd} && ${rendered}' to retry.`,
-      { source: ERROR_SOURCE.USER, meta: { command, cwd, exitCode } },
-    );
-  }
-}
 
 /** Returns true if running `tool` with probeArgs (`--version` by default) exits 0. */
 export function toolAvailable(tool: string, probeArgs: string[] = ["--version"]): Promise<boolean> {

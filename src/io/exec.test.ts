@@ -2,13 +2,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  MissingToolError,
-  ProcessFailedError,
-  requireTool,
-  runProcess,
-  toolAvailable,
-} from "./exec";
+import { MissingToolError, ProcessFailedError } from "../errors";
+import { requireTool, runProcess, toolAvailable } from "./exec";
 
 // Scripts run from files rather than `node -e` one-liners: on win32 runProcess
 // spawns through cmd.exe (for PATHEXT resolution), which mangles quoted args.

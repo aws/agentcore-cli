@@ -5,8 +5,6 @@ export {
   type AtomicWriteStreamSource,
 } from "./atomicWrite";
 export {
-  MissingToolError,
-  ProcessFailedError,
   requireTool,
   runProcess,
   toolAvailable,

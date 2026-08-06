@@ -85,7 +85,7 @@ describe("FsProjectManager.create", () => {
 
   test("registers a Container runtime with its Dockerfile for the container template", async () => {
     const directory = await inTempDirectory();
-    await manager().create({
+    await manager().manager.create({
       name: "example",
       template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON_CONTAINER,
     });
@@ -201,9 +201,9 @@ describe("FsProjectManager.resolve", () => {
     "round-trips a created %s project from a nested subdirectory",
     async (template) => {
       const directory = await inTempDirectory();
-      const created = await manager().create({ name: "example", template });
+      const created = await manager().manager.create({ name: "example", template });
 
-      const resolved = await manager().resolve({
+      const resolved = await manager().manager.resolve({
         filePath: join(directory, "example", "app", "hello-world"),
       });
 
@@ -214,7 +214,7 @@ describe("FsProjectManager.resolve", () => {
 
   test("returns undefined when no project encloses the path", async () => {
     const directory = await inTempDirectory();
-    expect(await manager().resolve({ filePath: directory })).toBeUndefined();
+    expect(await manager().manager.resolve({ filePath: directory })).toBeUndefined();
   });
 
   test("throws InvalidProjectConfigError for malformed JSON", async () => {
@@ -222,7 +222,7 @@ describe("FsProjectManager.resolve", () => {
     await mkdir(join(directory, "agentcore"), { recursive: true });
     await Bun.write(join(directory, "agentcore", "agentcore.json"), "{ not json");
 
-    await expect(manager().resolve({ filePath: directory })).rejects.toBeInstanceOf(
+    await expect(manager().manager.resolve({ filePath: directory })).rejects.toBeInstanceOf(
       InvalidProjectConfigError,
     );
   });
@@ -235,7 +235,7 @@ describe("FsProjectManager.resolve", () => {
       JSON.stringify({ name: "example", runtimes: [{ name: "broken" }] }),
     );
 
-    await expect(manager().resolve({ filePath: directory })).rejects.toBeInstanceOf(
+    await expect(manager().manager.resolve({ filePath: directory })).rejects.toBeInstanceOf(
       InvalidProjectConfigError,
     );
   });
@@ -253,7 +253,7 @@ describe("FsProjectManager.resolve", () => {
       }),
     );
 
-    await expect(manager().resolve({ filePath: directory })).rejects.toBeInstanceOf(
+    await expect(manager().manager.resolve({ filePath: directory })).rejects.toBeInstanceOf(
       InvalidProjectConfigError,
     );
   });
