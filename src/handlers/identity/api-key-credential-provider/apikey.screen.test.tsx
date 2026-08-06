@@ -54,6 +54,19 @@ function coreWithProviders(providers: ApiKeyCredentialProviderItem[]): TestCoreC
   return core;
 }
 
+describe("API key credential provider menu", () => {
+  test("offers only the read-only commands", async () => {
+    const screen = renderScreen("/agentcore/identity/api-key-credential-provider");
+
+    await waitForText(screen.lastFrame, "get an API key credential provider");
+    const frame = screen.lastFrame()!;
+    expect(frame).toContain("list");
+    expect(frame).not.toContain("create");
+    expect(frame).not.toContain("update");
+    expect(frame).not.toContain("delete");
+  });
+});
+
 describe("API key credential provider picker", () => {
   test("renders provider name, created, and updated times", async () => {
     const core = coreWithProviders([
@@ -234,20 +247,5 @@ describe("API key credential provider detail", () => {
       "agentcore → identity → api-key-credential-provider → get → api-key-1",
     );
     expect(screen.lastFrame()).not.toContain("→ json");
-  });
-});
-
-describe("API key credential provider CLI-only mutations", () => {
-  test.each([
-    ["create", "agentcore identity api-key-credential-provider create --help"],
-    ["update", "agentcore identity api-key-credential-provider update --help"],
-    ["delete", "agentcore identity api-key-credential-provider delete --help"],
-  ] as const)("`%s` points the user to the CLI without an SDK call", async (op, command) => {
-    const core = new TestCoreClient();
-    const screen = renderScreen(`/agentcore/identity/api-key-credential-provider/${op}`, { core });
-
-    await waitForText(screen.lastFrame, "This operation is available via the CLI:");
-    expect(screen.lastFrame()).toContain(command);
-    expect(core.identity.calls).toEqual([]);
   });
 });

@@ -55,18 +55,12 @@ import {
   ApiKeyCredentialProviderGetScreen,
   ApiKeyCredentialProviderGetJsonScreen,
 } from "../handlers/identity/api-key-credential-provider/get/screen.tsx";
-import { ApiKeyCredentialProviderCreateScreen } from "../handlers/identity/api-key-credential-provider/create/screen.tsx";
-import { ApiKeyCredentialProviderUpdateScreen } from "../handlers/identity/api-key-credential-provider/update/screen.tsx";
-import { ApiKeyCredentialProviderDeleteScreen } from "../handlers/identity/api-key-credential-provider/delete/screen.tsx";
 import { Oauth2CredentialProviderScreen } from "../handlers/identity/oauth2-credential-provider/screen.tsx";
 import { Oauth2CredentialProviderListScreen } from "../handlers/identity/oauth2-credential-provider/list/screen.tsx";
 import {
   Oauth2CredentialProviderGetScreen,
   Oauth2CredentialProviderGetJsonScreen,
 } from "../handlers/identity/oauth2-credential-provider/get/screen.tsx";
-import { Oauth2CredentialProviderCreateScreen } from "../handlers/identity/oauth2-credential-provider/create/screen.tsx";
-import { Oauth2CredentialProviderUpdateScreen } from "../handlers/identity/oauth2-credential-provider/update/screen.tsx";
-import { Oauth2CredentialProviderDeleteScreen } from "../handlers/identity/oauth2-credential-provider/delete/screen.tsx";
 import { RootScreen, HelpScreen } from "../handlers/screen.tsx";
 import type { Context } from "../router";
 
@@ -416,18 +410,6 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
             element={<ApiKeyCredentialProviderGetJsonScreen ctx={ctx} core={core} />}
           />
           <Route
-            path="agentcore/identity/api-key-credential-provider/create"
-            element={<ApiKeyCredentialProviderCreateScreen ctx={ctx} core={core} />}
-          />
-          <Route
-            path="agentcore/identity/api-key-credential-provider/update"
-            element={<ApiKeyCredentialProviderUpdateScreen ctx={ctx} core={core} />}
-          />
-          <Route
-            path="agentcore/identity/api-key-credential-provider/delete"
-            element={<ApiKeyCredentialProviderDeleteScreen ctx={ctx} core={core} />}
-          />
-          <Route
             path="agentcore/identity/oauth2-credential-provider"
             element={<Oauth2CredentialProviderScreen ctx={ctx} core={core} />}
           />
@@ -446,18 +428,6 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/identity/oauth2-credential-provider/get/:name/json"
             element={<Oauth2CredentialProviderGetJsonScreen ctx={ctx} core={core} />}
-          />
-          <Route
-            path="agentcore/identity/oauth2-credential-provider/create"
-            element={<Oauth2CredentialProviderCreateScreen ctx={ctx} core={core} />}
-          />
-          <Route
-            path="agentcore/identity/oauth2-credential-provider/update"
-            element={<Oauth2CredentialProviderUpdateScreen ctx={ctx} core={core} />}
-          />
-          <Route
-            path="agentcore/identity/oauth2-credential-provider/delete"
-            element={<Oauth2CredentialProviderDeleteScreen ctx={ctx} core={core} />}
           />
           <Route path="*" element={<HelpScreen ctx={ctx} core={core} />} />
         </Routes>

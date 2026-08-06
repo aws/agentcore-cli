@@ -330,8 +330,7 @@ agentcore memory record
 
 The Identity TUI is read-only: bare `identity` branches and the `get`/`list`
 leaves open interactive menus and detail views. Mutations (`create`, `update`,
-`delete`) are intentionally CLI-only — selecting one in the TUI points you at the
-equivalent CLI command rather than hosting a write flow.
+`delete`) remain available through the CLI and are omitted from the TUI menus.
 
 ```bash
 agentcore identity

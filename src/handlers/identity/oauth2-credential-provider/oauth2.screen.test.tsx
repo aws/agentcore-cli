@@ -57,6 +57,19 @@ function coreWithProviders(providers: Oauth2CredentialProviderItem[]): TestCoreC
   return core;
 }
 
+describe("OAuth2 credential provider menu", () => {
+  test("offers only the read-only commands", async () => {
+    const screen = renderScreen("/agentcore/identity/oauth2-credential-provider");
+
+    await waitForText(screen.lastFrame, "get an OAuth2 credential provider");
+    const frame = screen.lastFrame()!;
+    expect(frame).toContain("list");
+    expect(frame).not.toContain("create");
+    expect(frame).not.toContain("update");
+    expect(frame).not.toContain("delete");
+  });
+});
+
 describe("OAuth2 credential provider picker", () => {
   test("renders provider name, vendor, created, and updated times", async () => {
     const core = coreWithProviders([
@@ -199,6 +212,24 @@ describe("OAuth2 credential provider detail", () => {
     expect(hidden.lastFrame()).not.toContain("callbackUrl");
   });
 
+  test("shows status and failure reason for a failed provider", async () => {
+    const core = new TestCoreClient();
+    core.identity.setGetOauth2Response(
+      getResponse({
+        status: "CREATE_FAILED",
+        failureReason: "authorization server metadata could not be loaded",
+      }),
+    );
+    const screen = renderScreen("/agentcore/identity/oauth2-credential-provider/get/oauth2-1", {
+      core,
+    });
+
+    await waitForText(screen.lastFrame, "authorization server metadata could not be loaded");
+    const frame = screen.lastFrame()!;
+    expect(frame).toMatch(/status\s+CREATE_FAILED/);
+    expect(frame).toContain("failureReason");
+  });
+
   test("opens the complete provider JSON", async () => {
     const core = new TestCoreClient();
     core.identity.setGetOauth2Response(getResponse());
@@ -255,20 +286,5 @@ describe("OAuth2 credential provider detail", () => {
       "agentcore → identity → oauth2-credential-provider → get → oauth2-1",
     );
     expect(screen.lastFrame()).not.toContain("→ json");
-  });
-});
-
-describe("OAuth2 credential provider CLI-only mutations", () => {
-  test.each([
-    ["create", "agentcore identity oauth2-credential-provider create --help"],
-    ["update", "agentcore identity oauth2-credential-provider update --help"],
-    ["delete", "agentcore identity oauth2-credential-provider delete --help"],
-  ] as const)("`%s` points the user to the CLI without an SDK call", async (op, command) => {
-    const core = new TestCoreClient();
-    const screen = renderScreen(`/agentcore/identity/oauth2-credential-provider/${op}`, { core });
-
-    await waitForText(screen.lastFrame, "This operation is available via the CLI:");
-    expect(screen.lastFrame()).toContain(command);
-    expect(core.identity.calls).toEqual([]);
   });
 });
