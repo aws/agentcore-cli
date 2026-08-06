@@ -425,6 +425,7 @@ describe("Gateway fixture-backed creates", () => {
           (response) => response.status === "READY",
         );
 
+        // TODO: Remove this fixture-only grant when managed Gateway roles reconcile Target permissions.
         if (isRecording()) {
           await createIamClient({ region: REGION }).send(
             new PutRolePolicyCommand({
