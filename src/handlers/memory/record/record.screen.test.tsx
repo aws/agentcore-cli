@@ -71,9 +71,25 @@ describe("Memory record list flow", () => {
     expect(core.memory.calls.some((call) => call.method === "listMemoryRecords")).toBe(false);
   });
 
-  test("returns from scope selection to the Memory picker", async () => {
-    const screen = renderScreen("/agentcore/memory/record/list/memory-1");
+  test("unwinds the record table through its scope and Memory pickers", async () => {
+    const memoryId = "memory/blue one";
+    const core = new TestCoreClient();
+    core.memory.setListResponse({
+      memories: [memorySummary({ id: memoryId })],
+    });
+    core.memory.setListMemoryRecordsResponse({
+      memoryRecordSummaries: [recordSummary()],
+    });
+    const screen = renderScreen("/agentcore/memory/record/list", { core });
 
+    await waitForText(screen.lastFrame, memoryId);
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "scope type");
+    await screen.write("/customers/acme");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "Customer prefers email notifications.");
+
+    await screen.press("escape");
     await waitForText(screen.lastFrame, "scope type");
     await screen.press("escape");
     await waitForText(screen.lastFrame, "choose a Memory to list records for");

@@ -235,12 +235,15 @@ describe("Memory detail", () => {
     expect(frame).toContain('"strategies"');
   });
 
-  test("opens the event flow scoped to this Memory and returns to its detail", async () => {
+  test("unwinds the event flow from an empty actor picker through Memory detail to the list", async () => {
     const core = new TestCoreClient();
+    core.memory.setListResponse({ memories: [memorySummary()] });
     core.memory.setGetResponse(getMemoryOutput());
     core.memory.setListActorsResponse({ actorSummaries: [] });
-    const screen = renderScreen("/agentcore/memory/get/memory-1", { core });
+    const screen = renderScreen("/agentcore/memory/list", { core });
 
+    await waitForText(screen.lastFrame, "memory-1");
+    await screen.press("return");
     await waitForText(screen.lastFrame, "list this Memory's events");
     await screen.press("down");
     await screen.press("return");
@@ -253,13 +256,19 @@ describe("Memory detail", () => {
 
     await screen.press("escape");
     await waitForText(screen.lastFrame, "list this Memory's events");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "updated UTC");
+    expect(screen.lastFrame()).not.toContain("list this Memory's events");
   });
 
-  test("opens the record flow scoped to this Memory and returns to its detail", async () => {
+  test("unwinds the record flow through Memory detail to the list", async () => {
     const core = new TestCoreClient();
+    core.memory.setListResponse({ memories: [memorySummary()] });
     core.memory.setGetResponse(getMemoryOutput());
-    const screen = renderScreen("/agentcore/memory/get/memory-1", { core });
+    const screen = renderScreen("/agentcore/memory/list", { core });
 
+    await waitForText(screen.lastFrame, "memory-1");
+    await screen.press("return");
     await waitForText(screen.lastFrame, "list this Memory's records");
     await screen.press("down");
     await screen.press("down");
@@ -268,6 +277,9 @@ describe("Memory detail", () => {
 
     await screen.press("escape");
     await waitForText(screen.lastFrame, "list this Memory's records");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "updated UTC");
+    expect(screen.lastFrame()).not.toContain("list this Memory's records");
   });
 
   test("retries a failed detail query", async () => {

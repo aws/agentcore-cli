@@ -99,7 +99,7 @@ function ActorPicker({ ctx, core, memoryId }: ActorPickerProps) {
           `/agentcore/memory/event/list/${encodeURIComponent(memoryId)}/${encodeURIComponent(actorId)}`,
         )
       }
-      onBack={() => navigate("/agentcore/memory/event/list")}
+      onBack={() => navigate(-1)}
       loadingMessage={`Loading actors for Memory ${memoryId}...`}
       errorMessage={(error) => `Error loading actors for Memory ${memoryId}: ${error.message}`}
       emptyMessage={`No actors found for Memory ${memoryId}.`}
@@ -140,7 +140,7 @@ function SessionPicker({ ctx, core, memoryId, actorId }: SessionPickerProps) {
           `/agentcore/memory/event/list/${encodeURIComponent(memoryId)}/${encodeURIComponent(actorId)}/${encodeURIComponent(sessionId)}`,
         )
       }
-      onBack={() => navigate(`/agentcore/memory/event/list/${encodeURIComponent(memoryId)}`)}
+      onBack={() => navigate(-1)}
       loadingMessage={`Loading sessions for actor ${actorId}...`}
       errorMessage={(error) => `Error loading sessions for actor ${actorId}: ${error.message}`}
       emptyMessage={`No sessions found for actor ${actorId}.`}
@@ -187,11 +187,7 @@ function EventPicker({ ctx, core, memoryId, actorId, sessionId }: EventPickerPro
           `/agentcore/memory/event/get/${encodeURIComponent(memoryId)}/${encodeURIComponent(actorId)}/${encodeURIComponent(sessionId)}/${encodeURIComponent(eventId)}`,
         )
       }
-      onBack={() =>
-        navigate(
-          `/agentcore/memory/event/list/${encodeURIComponent(memoryId)}/${encodeURIComponent(actorId)}`,
-        )
-      }
+      onBack={() => navigate(-1)}
       loadingMessage={`Loading events for session ${sessionId}...`}
       errorMessage={(error) => `Error loading events for session ${sessionId}: ${error.message}`}
       emptyMessage={`No events found for session ${sessionId}.`}

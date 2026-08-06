@@ -100,6 +100,13 @@ describe("Memory event list flow", () => {
         { region: "us-east-1" },
       ],
     });
+
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "choose a session to list");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "choose an actor to list");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "choose a Memory to list");
   });
 
   test("calls listEvents with the exact route scope and Core options", async () => {
