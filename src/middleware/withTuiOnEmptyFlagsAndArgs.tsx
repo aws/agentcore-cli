@@ -3,7 +3,7 @@ import { renderTui } from "../tui";
 import { JsonKey } from "../handlers/keys";
 import type { AppIO } from "../io";
 import type { Core } from "../handlers/types";
-import { CommandKey, type Handler, type Middleware } from "../router";
+import { CommandKey, isTuiCommandSupported, type Handler, type Middleware } from "../router";
 
 // countPassedValues counts how many entries of an object hold a defined value.
 const countPassedValues = (obj: object) =>
@@ -38,9 +38,11 @@ export function withTuiOnEmptyFlagsAndArgs(core: Core, io: AppIO): Middleware {
     arguments: () => h.arguments(),
     children: () => h.children(),
     handle: async (ctx, flags, args) => {
+      const command = ctx.require(CommandKey);
       if (
+        isTuiCommandSupported(command) &&
         !ctx.require(JsonKey) &&
-        countPassedFlags(h, ctx.require(CommandKey)) === 0 &&
+        countPassedFlags(h, command) === 0 &&
         countPassedValues(args) === 0
       ) {
         await boundRenderTui(ctx, flags, args);

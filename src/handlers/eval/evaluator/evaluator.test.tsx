@@ -165,6 +165,19 @@ describe("eval command hierarchy", () => {
       );
     },
   );
+
+  test("runs normal validation for a bare CLI-only evaluator command", async () => {
+    await expect(run(["eval", "evaluator", "delete"])).rejects.toThrow(
+      "required option '--id <id>' not specified",
+    );
+  });
+
+  test("prints help for a bare CLI-only evaluator group", async () => {
+    const stdout = await run(["eval", "evaluator", "llm-as-a-judge"]);
+
+    expect(stdout).toContain("Usage: agentcore eval evaluator llm-as-a-judge");
+    expect(stdout).toContain("Commands:");
+  });
 });
 
 describe("evaluator CRUDL", () => {

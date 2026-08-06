@@ -111,6 +111,12 @@ describe("eval online-eval command hierarchy", () => {
       );
     },
   );
+
+  test("runs normal validation for a bare CLI-only command", async () => {
+    await expect(run(["eval", "online-eval", "create"])).rejects.toThrow(
+      "required option '--name <name>' not specified",
+    );
+  });
 });
 
 describe("online-eval CRUDL", () => {

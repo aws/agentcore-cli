@@ -79,16 +79,22 @@ describe("api-key-credential-provider TUI dispatch", () => {
   test.each([
     ["identity", ["identity"]],
     ["api-key-credential-provider", ["identity", "api-key-credential-provider"]],
-    ["create", ["identity", "api-key-credential-provider", "create"]],
     ["get", ["identity", "api-key-credential-provider", "get"]],
     ["list", ["identity", "api-key-credential-provider", "list"]],
-    ["update", ["identity", "api-key-credential-provider", "update"]],
-    ["delete", ["identity", "api-key-credential-provider", "delete"]],
   ] as const)("opens the TUI for a bare `%s`", async (_label, args) => {
     await expect(run([...args])).rejects.toThrow(
       "interactive mode requires a TTY on stdin and stdout",
     );
   });
+
+  test.each(["create", "update", "delete"] as const)(
+    "runs normal validation for bare CLI-only `%s`",
+    async (command) => {
+      await expect(run(["identity", "api-key-credential-provider", command])).rejects.toThrow(
+        "required option '--name <name>' not specified",
+      );
+    },
+  );
 });
 
 describe("api-key-credential-provider CRUDL", () => {

@@ -24,6 +24,15 @@ export const GlobalConfigAccessorKey: ContextKey<GlobalConfigAccessor> =
   contextKey<GlobalConfigAccessor>("globalConfigAccessor");
 export const ProjectKey = contextKey<Project>("project");
 
+// Allowlist of commands supported in TUI. Ensures read-only TUIs do not
+// render write commands, and ensures bare write commands do not launch TUI
+const supportedTuiCommandNames = new WeakMap<Handler, ReadonlySet<string>>();
+const compiledTuiSupport = new WeakMap<Command, boolean>();
+
+export function isTuiCommandSupported(command: Command): boolean {
+  return compiledTuiSupport.get(command) ?? true;
+}
+
 // DefaultHandle runs when a group is selected without a subcommand (e.g.
 // `agentcore` or `agentcore harness`). It reads group-level/global flags from the
 // context; own flags/arguments are not supported, so it receives empty objects.
@@ -118,8 +127,10 @@ export function compile(
   ctx: Context,
   stack: Middleware[] = [],
   inheritedGlobals: GlobalFlag[] = [],
+  tuiSupported = true,
 ): Command {
   const c = new Command(node.name());
+  compiledTuiSupport.set(c, tuiSupported);
   c.description(node.description());
 
   const ownFlags = node.flags();
@@ -156,8 +167,11 @@ export function compile(
     }
     // A group's own global flags become inherited flags for everything beneath it.
     const childGlobals = [...inheritedGlobals, ...globalFlagsOf(node)];
+    const tuiCommandNames = supportedTuiCommandNames.get(node);
     for (const child of children) {
-      c.addCommand(compile(child, ctx, nextStack, childGlobals));
+      const childTuiSupported =
+        tuiSupported && (tuiCommandNames === undefined || tuiCommandNames.has(child.name()));
+      c.addCommand(compile(child, ctx, nextStack, childGlobals, childTuiSupported));
     }
     // A group may also carry a default handler that runs when it is invoked
     // without a subcommand. It executes with this group's own middleware and can
@@ -200,6 +214,14 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
 
   groupFlags(...flags: GlobalFlag[]): this {
     this.globalFlags.push(...flags);
+    return this;
+  }
+
+  // supportedTuiCommands limits this router's interactive menu and bare-command
+  // TUI dispatch to the named children. Without this call, every child keeps the
+  // existing TUI behavior.
+  supportedTuiCommands(...commands: string[]): this {
+    supportedTuiCommandNames.set(this, new Set(commands));
     return this;
   }
 

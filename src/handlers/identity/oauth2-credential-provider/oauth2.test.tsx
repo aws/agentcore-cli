@@ -112,16 +112,22 @@ describe("oauth2-credential-provider command hierarchy", () => {
 describe("oauth2-credential-provider TUI dispatch", () => {
   test.each([
     ["oauth2-credential-provider", ["identity", "oauth2-credential-provider"]],
-    ["create", ["identity", "oauth2-credential-provider", "create"]],
     ["get", ["identity", "oauth2-credential-provider", "get"]],
     ["list", ["identity", "oauth2-credential-provider", "list"]],
-    ["update", ["identity", "oauth2-credential-provider", "update"]],
-    ["delete", ["identity", "oauth2-credential-provider", "delete"]],
   ] as const)("opens the TUI for a bare `%s`", async (_label, args) => {
     await expect(run([...args])).rejects.toThrow(
       "interactive mode requires a TTY on stdin and stdout",
     );
   });
+
+  test.each(["create", "update", "delete"] as const)(
+    "runs normal validation for bare CLI-only `%s`",
+    async (command) => {
+      await expect(run(["identity", "oauth2-credential-provider", command])).rejects.toThrow(
+        "required option '--name <name>' not specified",
+      );
+    },
+  );
 });
 
 describe("oauth2-credential-provider flag validation", () => {

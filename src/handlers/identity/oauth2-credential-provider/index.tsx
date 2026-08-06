@@ -11,6 +11,7 @@ import { createUpdateOauth2CredentialProviderHandler } from "./update";
 export function createOauth2CredentialProviderHandler(core: Core, io: AppIO): Router {
   return new Router("oauth2-credential-provider", "manage OAuth2 credential providers")
     .default(renderTui(core, io))
+    .supportedTuiCommands("get", "list")
     .handler(createCreateOauth2CredentialProviderHandler(core, io))
     .handler(createGetOauth2CredentialProviderHandler(core))
     .handler(createListOauth2CredentialProvidersHandler(core))

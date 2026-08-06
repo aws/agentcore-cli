@@ -15,6 +15,7 @@ export function createOnlineEvalHandler(core: Core, io: AppIO): Router {
   return new Router("online-eval", "manage AgentCore online evaluation configs")
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
+    .supportedTuiCommands("get", "list")
     .handler(createCreateOnlineEvalHandler(core, io))
     .handler(createGetOnlineEvalHandler(core))
     .handler(createListOnlineEvalHandler(core))

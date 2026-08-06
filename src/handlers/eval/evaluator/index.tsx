@@ -13,6 +13,7 @@ export function createEvaluatorHandler(core: Core, io: AppIO): Router {
   return new Router("evaluator", "manage AgentCore evaluators")
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
+    .supportedTuiCommands("get", "list")
     .handler(createLlmAsAJudgeHandler(core, io))
     .handler(createCodeBasedHandler(core, io))
     .handler(createGetEvaluatorHandler(core))

@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Box, Text, useApp, useInput, useStdin } from "ink";
 import type { Command } from "commander";
 import { useNavigate } from "react-router";
-import { CommandKey } from "../router";
+import { CommandKey, isTuiCommandSupported } from "../router";
 import { Layout } from "./Layout";
 import { Divider } from "./ui/divider";
 import { TextInput } from "./ui/text-input";
@@ -44,18 +44,13 @@ export interface RouterScreenProps extends ScreenProps {
   // segment is the app root; the last is the command whose subcommands are the
   // menu options.
   path: string[];
-  // omit hides subcommands from the menu by name. The command tree still carries
-  // them (they remain usable from the CLI), but they are not offered here — used
-  // when the TUI intentionally does not route a command yet, so it can't fall
-  // through to the HelpScreen catch-all (which exits the app).
-  omit?: string[];
 }
 
 // RouterScreen renders the interactive command menu for a Router node: a filter
 // input at the top and the node's subcommands (read straight off the Commander
 // Command) as navigable options below. Selecting an option routes to that
 // subcommand's screen.
-export function RouterScreen({ ctx, path, omit }: RouterScreenProps) {
+export function RouterScreen({ ctx, path }: RouterScreenProps) {
   const navigate = useNavigate();
   const { isRawModeSupported } = useStdin();
   const { exit } = useApp();
@@ -64,9 +59,9 @@ export function RouterScreen({ ctx, path, omit }: RouterScreenProps) {
   const options: Option[] = useMemo(
     () =>
       command.commands
-        .filter((c) => !omit?.includes(c.name()))
+        .filter(isTuiCommandSupported)
         .map((c) => ({ name: c.name(), description: c.description() })),
-    [command, omit],
+    [command],
   );
 
   const [query, setQuery] = useState("");

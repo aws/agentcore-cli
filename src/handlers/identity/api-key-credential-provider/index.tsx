@@ -11,6 +11,7 @@ import { createUpdateApiKeyCredentialProviderHandler } from "./update";
 export function createApiKeyCredentialProviderHandler(core: Core, io: AppIO): Router {
   return new Router("api-key-credential-provider", "manage API key credential providers")
     .default(renderTui(core, io))
+    .supportedTuiCommands("get", "list")
     .handler(createCreateApiKeyCredentialProviderHandler(core, io))
     .handler(createGetApiKeyCredentialProviderHandler(core))
     .handler(createListApiKeyCredentialProvidersHandler(core))

@@ -12,6 +12,7 @@ import {
   createHandler,
   flag,
   globalFlag,
+  isTuiCommandSupported,
   type Context,
   type Handler,
   type Middleware,
@@ -85,6 +86,40 @@ test("middleware applies only to the subtree where it is declared", async () => 
   await root.route(["node", "app", "top"]);
 
   expect(log).toEqual(["root", "top-handle"]);
+});
+
+// --- TUI command support ---------------------------------------------------
+
+test("all commands support the TUI when no allowlist is configured", () => {
+  const nested = new Router("nested").handler(leaf("deep", () => {}));
+  const root = new Router("app").handler(leaf("top", () => {})).handler(nested);
+
+  const command = compile(root, ValueContext.EmptyContext());
+  const top = command.commands.find((child) => child.name() === "top")!;
+  const nestedCommand = command.commands.find((child) => child.name() === "nested")!;
+  const deep = nestedCommand.commands.find((child) => child.name() === "deep")!;
+
+  expect(isTuiCommandSupported(command)).toBe(true);
+  expect(isTuiCommandSupported(top)).toBe(true);
+  expect(isTuiCommandSupported(nestedCommand)).toBe(true);
+  expect(isTuiCommandSupported(deep)).toBe(true);
+});
+
+test("a TUI allowlist supports named children and excludes other subtrees", () => {
+  const nested = new Router("nested").handler(leaf("deep", () => {}));
+  const root = new Router("app")
+    .supportedTuiCommands("top")
+    .handler(leaf("top", () => {}))
+    .handler(nested);
+
+  const command = compile(root, ValueContext.EmptyContext());
+  const top = command.commands.find((child) => child.name() === "top")!;
+  const nestedCommand = command.commands.find((child) => child.name() === "nested")!;
+  const deep = nestedCommand.commands.find((child) => child.name() === "deep")!;
+
+  expect(isTuiCommandSupported(top)).toBe(true);
+  expect(isTuiCommandSupported(nestedCommand)).toBe(false);
+  expect(isTuiCommandSupported(deep)).toBe(false);
 });
 
 // --- default handler (group invoked without a subcommand) ------------------

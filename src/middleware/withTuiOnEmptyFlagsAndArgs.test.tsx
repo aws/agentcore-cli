@@ -8,7 +8,10 @@ import { TestCoreClient, testIO } from "../testing";
 // route runs a command tree whose leaf flags all carry defaults. The branch the
 // middleware takes is observable: the TUI attempt throws (testIO is not a TTY),
 // the headless path runs the leaf handler.
-function route(args: string[]): { ran: () => boolean; routed: Promise<void> } {
+function route(
+  args: string[],
+  supportedTuiCommands?: string[],
+): { ran: () => boolean; routed: Promise<void> } {
   let handled = false;
   const leaf = createHandler({
     name: "leaf",
@@ -26,6 +29,9 @@ function route(args: string[]): { ran: () => boolean; routed: Promise<void> } {
     .groupFlags(JsonKey)
     .use(withTuiOnEmptyFlagsAndArgs(new TestCoreClient(), testIO().io))
     .handler(leaf);
+  if (supportedTuiCommands) {
+    root.supportedTuiCommands(...supportedTuiCommands);
+  }
 
   return { ran: () => handled, routed: root.route(["node", "agentcore", "leaf", ...args]) };
 }
@@ -36,6 +42,13 @@ describe("withTuiOnEmptyFlagsAndArgs", () => {
 
     await expect(routed).rejects.toThrow("interactive mode requires a TTY on stdin and stdout");
     expect(ran()).toBe(false);
+  });
+
+  test("runs an unsupported bare command through its normal handler", async () => {
+    const { ran, routed } = route([], []);
+
+    await routed;
+    expect(ran()).toBe(true);
   });
 
   test.each([
