@@ -45,6 +45,9 @@ import {
   OnlineEvalGetScreen,
   OnlineEvalGetJsonScreen,
 } from "../handlers/eval/online-eval/get/screen.tsx";
+import { BatchEvaluationScreen } from "../handlers/eval/batch-evaluation/screen.tsx";
+import { BatchEvaluationListScreen } from "../handlers/eval/batch-evaluation/list/screen.tsx";
+import { BatchEvaluationGetJsonScreen } from "../handlers/eval/batch-evaluation/get/screen.tsx";
 import { MemoryEventScreen } from "../handlers/memory/event/screen.tsx";
 import { MemoryEventGetScreen } from "../handlers/memory/event/get/screen.tsx";
 import { MemoryEventListScreen } from "../handlers/memory/event/list/screen.tsx";
@@ -358,6 +361,24 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/eval/online-eval/get/:configId/json"
             element={<OnlineEvalGetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/batch-evaluation"
+            element={<BatchEvaluationScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/batch-evaluation/list"
+            element={<BatchEvaluationListScreen ctx={ctx} core={core} />}
+          />
+          {/* Bare `get` (no id) has nothing to show — send the user to the list. */}
+          <Route
+            path="agentcore/eval/batch-evaluation/get"
+            element={<Navigate to="/agentcore/eval/batch-evaluation/list" replace />}
+          />
+          {/* get is raw JSON only — no metadata hub, so :id is the JSON view. */}
+          <Route
+            path="agentcore/eval/batch-evaluation/get/:batchEvaluationId"
+            element={<BatchEvaluationGetJsonScreen ctx={ctx} core={core} />}
           />
           <Route
             path="agentcore/memory/event"

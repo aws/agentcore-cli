@@ -21,3 +21,5 @@ export const createListBatchEvaluationsHandler = (core: Core) =>
       ctx.require(JsonRendererKey).renderJson(response);
     },
   });
+
+export { BatchEvaluationListScreen } from "./screen.tsx";
