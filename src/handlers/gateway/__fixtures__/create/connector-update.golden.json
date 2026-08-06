@@ -1,13 +1,9 @@
 {
-  "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:685197708687:gateway/agentcore-cli-gateway-create-fixture-bkf6yayfce",
-  "targetId": "U4ADV7VNSV",
-  "createdAt": {
-    "$date": "2026-08-06T17:25:52.273Z"
-  },
-  "updatedAt": {
-    "$date": "2026-08-06T17:25:52.273Z"
-  },
-  "status": "CREATING",
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:685197708687:gateway/agentcore-cli-gateway-create-fixture-gyqeg9v9tq",
+  "targetId": "8U0ZVM6TPN",
+  "createdAt": "2026-08-06T20:33:23.059Z",
+  "updatedAt": "2026-08-06T20:33:39.674Z",
+  "status": "UPDATING",
   "name": "web-search-fixture",
   "targetConfiguration": {
     "mcp": {
@@ -31,5 +27,5 @@
       "credentialProviderType": "GATEWAY_IAM_ROLE"
     }
   ],
-  "description": "Disposable Gateway Connector Create fixture"
+  "description": "Updated Connector fixture"
 }

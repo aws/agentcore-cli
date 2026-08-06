@@ -5,12 +5,14 @@ import type { Core } from "../../types";
 import { createCreateGatewayTargetHandler } from "./create";
 import { createGetGatewayTargetHandler } from "./get";
 import { createListGatewayTargetsHandler } from "./list";
+import { createUpdateGatewayTargetHandler } from "./update";
 
 export function createGatewayTargetHandler(core: Core, io: AppIO): Router {
   return new Router("target", "inspect targets for an AgentCore Gateway")
     .default(renderTui(core, io))
     .supportedTuiCommands("get", "list")
     .handler(createCreateGatewayTargetHandler(core, io))
+    .handler(createUpdateGatewayTargetHandler(core, io))
     .handler(createGetGatewayTargetHandler(core))
     .handler(createListGatewayTargetsHandler(core));
 }

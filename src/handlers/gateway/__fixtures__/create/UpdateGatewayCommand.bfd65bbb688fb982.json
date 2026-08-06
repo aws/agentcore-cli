@@ -5,13 +5,15 @@
     "$date": "2026-08-06T20:33:12.195Z"
   },
   "updatedAt": {
-    "$date": "2026-08-06T20:33:12.195Z"
+    "$date": "2026-08-06T20:33:28.692Z"
   },
-  "status": "CREATING",
+  "status": "UPDATING",
   "name": "agentcore-cli-gateway-create-fixture",
   "authorizerType": "NONE",
   "gatewayUrl": "https://agentcore-cli-gateway-create-fixture-gyqeg9v9tq.gateway.bedrock-agentcore.us-east-1.amazonaws.com",
-  "description": "Disposable Gateway Create fixture",
+  "description": "Updated Gateway fixture",
   "roleArn": "arn:aws:iam::685197708687:role/AgentCoreGateway-agentcore-cli-gateway-create-fix-f0aa3f799a4b",
-  "workloadIdentityDetails": {}
+  "workloadIdentityDetails": {
+    "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-east-1:685197708687:workload-identity-directory/default/workload-identity/agentcore-cli-gateway-create-fixture-gyqeg9v9tq"
+  }
 }

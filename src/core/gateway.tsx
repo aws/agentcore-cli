@@ -9,6 +9,9 @@ import {
   ListGatewaysCommand,
   ListGatewayTargetsCommand,
   TargetType,
+  UpdateGatewayCommand,
+  UpdateGatewayRuleCommand,
+  UpdateGatewayTargetCommand,
   type CreateGatewayResponse,
   type CreateGatewayRuleResponse,
   type CreateGatewayTargetResponse,
@@ -20,15 +23,23 @@ import {
   type ListGatewayTargetsResponse,
   type TargetConfiguration,
   type TargetSummary,
+  type UpdateGatewayResponse,
+  type UpdateGatewayRuleResponse,
+  type UpdateGatewayTargetResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { InputValidationError, ResultTruncationError } from "../errors";
+import { GatewayConnectorTarget } from "../handlers/gateway/connector/gatewayConnectorTarget";
 import type {
   CoreGatewayClient,
   CreateGatewayInput,
   CreateGatewayRuleInput,
   CreateGatewayTargetInput,
+  GatewayRuleUpdateInput,
+  GatewayTargetUpdatePatch,
+  GatewayUpdatePatch,
 } from "../handlers/gateway/types";
 import type { AwsClients, CoreOptions } from "./types";
+import { GatewayTargetUpdateRequest, GatewayUpdateRequest } from "./gatewayUpdate";
 import { toClientConfig } from "./utils";
 
 const DEFAULT_CONNECTOR_PAGE_SIZE = 100;
@@ -56,6 +67,15 @@ export class GatewayClient implements CoreGatewayClient {
     return this.clients
       .control(toClientConfig(options))
       .send(new GetGatewayCommand({ gatewayIdentifier: id }));
+  }
+
+  async updateGateway(
+    patch: GatewayUpdatePatch,
+    options: CoreOptions,
+  ): Promise<UpdateGatewayResponse> {
+    const control = this.clients.control(toClientConfig(options));
+    const current = await control.send(new GetGatewayCommand({ gatewayIdentifier: patch.id }));
+    return control.send(new UpdateGatewayCommand(GatewayUpdateRequest.from(current, patch)));
   }
 
   async listGateways(
@@ -154,6 +174,20 @@ export class GatewayClient implements CoreGatewayClient {
     );
   }
 
+  async updateGatewayTarget(
+    patch: GatewayTargetUpdatePatch,
+    options: CoreOptions,
+  ): Promise<UpdateGatewayTargetResponse> {
+    return this.updateTarget(patch, options, false);
+  }
+
+  async updateGatewayConnector(
+    patch: GatewayTargetUpdatePatch,
+    options: CoreOptions,
+  ): Promise<UpdateGatewayTargetResponse> {
+    return this.updateTarget(patch, options, true);
+  }
+
   async getGatewayRule(
     gatewayId: string,
     ruleId: string,
@@ -187,6 +221,38 @@ export class GatewayClient implements CoreGatewayClient {
     options: CoreOptions,
   ): Promise<CreateGatewayRuleResponse> {
     return this.clients.control(toClientConfig(options)).send(new CreateGatewayRuleCommand(input));
+  }
+
+  async updateGatewayRule(
+    input: GatewayRuleUpdateInput,
+    options: CoreOptions,
+  ): Promise<UpdateGatewayRuleResponse> {
+    return this.clients.control(toClientConfig(options)).send(new UpdateGatewayRuleCommand(input));
+  }
+
+  private async updateTarget(
+    patch: GatewayTargetUpdatePatch,
+    options: CoreOptions,
+    connectorOnly: boolean,
+  ): Promise<UpdateGatewayTargetResponse> {
+    const control = this.clients.control(toClientConfig(options));
+    const current = await control.send(
+      new GetGatewayTargetCommand({
+        gatewayIdentifier: patch.gatewayId,
+        targetId: patch.targetId,
+      }),
+    );
+    if (connectorOnly && !GatewayConnectorTarget.is(current.targetConfiguration)) {
+      throw new InputValidationError(`Gateway Target "${patch.targetId}" is not connector-backed`);
+    }
+
+    const request = GatewayTargetUpdateRequest.from(current, patch);
+    if (connectorOnly && !GatewayConnectorTarget.is(request.targetConfiguration)) {
+      throw new InputValidationError(
+        "--connector-configuration must contain an MCP or inference connector Target",
+      );
+    }
+    return control.send(new UpdateGatewayTargetCommand(request));
   }
 
   private static isConnectorTarget(configuration: TargetConfiguration | undefined): boolean {

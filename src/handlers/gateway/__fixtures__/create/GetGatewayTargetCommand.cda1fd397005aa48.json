@@ -1,9 +1,13 @@
 {
   "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:685197708687:gateway/agentcore-cli-gateway-create-fixture-gyqeg9v9tq",
   "targetId": "8U0ZVM6TPN",
-  "createdAt": "2026-08-06T20:33:23.059Z",
-  "updatedAt": "2026-08-06T20:33:23.059Z",
-  "status": "CREATING",
+  "createdAt": {
+    "$date": "2026-08-06T20:33:40.529Z"
+  },
+  "updatedAt": {
+    "$date": "2026-08-06T20:33:40.529Z"
+  },
+  "status": "READY",
   "name": "web-search-fixture",
   "targetConfiguration": {
     "mcp": {
@@ -27,5 +31,5 @@
       "credentialProviderType": "GATEWAY_IAM_ROLE"
     }
   ],
-  "description": "Disposable Gateway Connector Create fixture"
+  "description": "Updated Connector fixture"
 }

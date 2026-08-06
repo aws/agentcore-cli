@@ -54,6 +54,9 @@ import type {
   UpdateOnlineEvaluationConfigResponse,
   UpdateApiKeyCredentialProviderResponse,
   UpdateOauth2CredentialProviderResponse,
+  UpdateGatewayResponse,
+  UpdateGatewayRuleResponse,
+  UpdateGatewayTargetResponse,
   UpdateHarnessEndpointRequest,
   UpdateHarnessEndpointResponse,
   UpdateHarnessRequest,
@@ -89,6 +92,9 @@ import type {
   CreateGatewayInput,
   CreateGatewayRuleInput,
   CreateGatewayTargetInput,
+  GatewayRuleUpdateInput,
+  GatewayTargetUpdatePatch,
+  GatewayUpdatePatch,
 } from "../handlers/gateway/types";
 import type {
   CoreIdentityClient,
@@ -177,12 +183,15 @@ const DEFAULT_LIST_MEMORY_RECORDS_RESPONSE: ListMemoryRecordsOutput = {
   memoryRecordSummaries: [],
 };
 const DEFAULT_CREATE_GATEWAY_RESPONSE = {} as CreateGatewayResponse;
+const DEFAULT_UPDATE_GATEWAY_RESPONSE = {} as UpdateGatewayResponse;
 const DEFAULT_GET_GATEWAY_RESPONSE = {} as GetGatewayResponse;
 const DEFAULT_LIST_GATEWAYS_RESPONSE: ListGatewaysResponse = { items: [] };
 const DEFAULT_CREATE_GATEWAY_TARGET_RESPONSE = {} as CreateGatewayTargetResponse;
+const DEFAULT_UPDATE_GATEWAY_TARGET_RESPONSE = {} as UpdateGatewayTargetResponse;
 const DEFAULT_GET_GATEWAY_TARGET_RESPONSE = {} as GetGatewayTargetResponse;
 const DEFAULT_LIST_GATEWAY_TARGETS_RESPONSE: ListGatewayTargetsResponse = { items: [] };
 const DEFAULT_CREATE_GATEWAY_RULE_RESPONSE = {} as CreateGatewayRuleResponse;
+const DEFAULT_UPDATE_GATEWAY_RULE_RESPONSE = {} as UpdateGatewayRuleResponse;
 const DEFAULT_GET_GATEWAY_RULE_RESPONSE = {} as GetGatewayRuleResponse;
 const DEFAULT_LIST_GATEWAY_RULES_RESPONSE: ListGatewayRulesResponse = { gatewayRules: [] };
 const DEFAULT_CREATE_OAUTH2_RESPONSE = {} as CreateOauth2CredentialProviderResponse;
@@ -896,6 +905,15 @@ export class TestGatewayClient implements CoreGatewayClient {
     return DEFAULT_CREATE_GATEWAY_RESPONSE;
   }
 
+  async updateGateway(
+    patch: GatewayUpdatePatch,
+    options: CoreOptions,
+  ): Promise<UpdateGatewayResponse> {
+    this.calls.push({ method: "updateGateway", args: [patch, options] });
+    if (this.error) throw this.error;
+    return DEFAULT_UPDATE_GATEWAY_RESPONSE;
+  }
+
   async getGateway(id: string, options: CoreOptions): Promise<GetGatewayResponse> {
     this.calls.push({ method: "getGateway", args: [id, options] });
     if (this.error) throw this.error;
@@ -923,6 +941,24 @@ export class TestGatewayClient implements CoreGatewayClient {
     this.calls.push({ method: "createGatewayTarget", args: [input, options] });
     if (this.error) throw this.error;
     return DEFAULT_CREATE_GATEWAY_TARGET_RESPONSE;
+  }
+
+  async updateGatewayTarget(
+    patch: GatewayTargetUpdatePatch,
+    options: CoreOptions,
+  ): Promise<UpdateGatewayTargetResponse> {
+    this.calls.push({ method: "updateGatewayTarget", args: [patch, options] });
+    if (this.error) throw this.error;
+    return DEFAULT_UPDATE_GATEWAY_TARGET_RESPONSE;
+  }
+
+  async updateGatewayConnector(
+    patch: GatewayTargetUpdatePatch,
+    options: CoreOptions,
+  ): Promise<UpdateGatewayTargetResponse> {
+    this.calls.push({ method: "updateGatewayConnector", args: [patch, options] });
+    if (this.error) throw this.error;
+    return DEFAULT_UPDATE_GATEWAY_TARGET_RESPONSE;
   }
 
   async getGatewayTarget(
@@ -988,6 +1024,15 @@ export class TestGatewayClient implements CoreGatewayClient {
     this.calls.push({ method: "createGatewayRule", args: [input, options] });
     if (this.error) throw this.error;
     return DEFAULT_CREATE_GATEWAY_RULE_RESPONSE;
+  }
+
+  async updateGatewayRule(
+    input: GatewayRuleUpdateInput,
+    options: CoreOptions,
+  ): Promise<UpdateGatewayRuleResponse> {
+    this.calls.push({ method: "updateGatewayRule", args: [input, options] });
+    if (this.error) throw this.error;
+    return DEFAULT_UPDATE_GATEWAY_RULE_RESPONSE;
   }
 
   async getGatewayRule(

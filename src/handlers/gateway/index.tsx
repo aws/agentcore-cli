@@ -9,6 +9,7 @@ import { createGetGatewayHandler } from "./get";
 import { createListGatewaysHandler } from "./list";
 import { createGatewayRuleHandler } from "./rule";
 import { createGatewayTargetHandler } from "./target";
+import { createUpdateGatewayHandler } from "./update";
 
 export function createGatewayHandler(core: Core, io: AppIO): Router {
   return new Router("gateway", "inspect AgentCore Gateways")
@@ -16,6 +17,7 @@ export function createGatewayHandler(core: Core, io: AppIO): Router {
     .default(renderTui(core, io))
     .supportedTuiCommands("get", "list", "target", "connector", "rule")
     .handler(createCreateGatewayHandler(core, io))
+    .handler(createUpdateGatewayHandler(core, io))
     .handler(createGetGatewayHandler(core))
     .handler(createListGatewaysHandler(core))
     .handler(createGatewayTargetHandler(core, io))
