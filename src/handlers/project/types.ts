@@ -1,4 +1,6 @@
-import z from "zod";
+import { ProjectNameSchema } from "../../core/project/schema";
+
+export { ProjectNameSchema };
 
 /** Available project templates for scaffolding new AgentCore projects. */
 export const PROJECT_TEMPLATES = {
@@ -6,82 +8,6 @@ export const PROJECT_TEMPLATES = {
 } as const;
 
 export type ProjectTemplate = (typeof PROJECT_TEMPLATES)[keyof typeof PROJECT_TEMPLATES];
-
-// A generated project's Python package is named after the
-// project, so a name that collides with a dependency breaks imports.
-const RESERVED_PROJECT_NAMES: readonly string[] = [
-  // Core SDK packages
-  "anthropic",
-  "autogen",
-  "autogenagentchat",
-  "autogenext",
-  "bedrock",
-  "bedrockagentcore",
-  "crewai",
-  "crewaitools",
-  "googleadk",
-  "googlegenerativeai",
-  "langchain",
-  "langchainanthropic",
-  "langchainaws",
-  "langchaingooglegenai",
-  "langchainmcpadapters",
-  "langchainopenai",
-  "langgraph",
-  "mcp",
-  "openai",
-  "openaiagents",
-  "strands",
-  "strandsagents",
-  "strandsagentstools",
-  // AG-UI adapter packages
-  "agui",
-  "aguistrands",
-  "aguilanggraph",
-  "aguiadk",
-  "aguiprotocol",
-  "vercelai",
-  "aisdk",
-  // Common utilities
-  "httpx",
-  "pytest",
-  "pytestasyncio",
-  "pythondotenv",
-  "tiktoken",
-  // Build tools
-  "hatchling",
-  "setuptools",
-  "wheel",
-  // AWS packages
-  "awsopentelemetrydistro",
-  "boto3",
-  "botocore",
-  // Common Python stdlib/package names that could cause issues
-  "test",
-  "tests",
-  "src",
-  "lib",
-  "dist",
-  "build",
-  "env",
-  "venv",
-  "site",
-  "pip",
-  "uv",
-];
-
-// Mirrors ProjectNameSchema in @aws/agentcore-cdk
-export const ProjectNameSchema = z
-  .string()
-  .min(1, "project name is required")
-  .max(23, "project name must be 23 characters or less")
-  .regex(
-    /^[A-Za-z][A-Za-z0-9]{0,22}$/,
-    "project name must start with a letter and contain only letters and digits",
-  )
-  .refine((name) => !RESERVED_PROJECT_NAMES.includes(name.toLowerCase()), {
-    message: "this name conflicts with a Python package dependency; choose a different name",
-  });
 
 export type CreateProjectInput = {
   /** The name of the project; also the directory it is scaffolded into. */
