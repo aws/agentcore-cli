@@ -93,6 +93,17 @@ describe("eval dataset command hierarchy", () => {
     expect(stdout()).toContain("Usage: agentcore eval dataset");
     expect(core.eval.calls).toHaveLength(0);
   });
+
+  test.each([["get"], ["list"]] as const)(
+    "opens the TUI for a bare `eval dataset %s` leaf",
+    async (command) => {
+      const { route } = testDatasetCommand();
+
+      await expect(route(["eval", "dataset", command])).rejects.toThrow(
+        "interactive mode requires a TTY on stdin and stdout",
+      );
+    },
+  );
 });
 
 describe("dataset create", () => {

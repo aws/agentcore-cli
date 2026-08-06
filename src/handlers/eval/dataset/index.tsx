@@ -1,7 +1,8 @@
 import { Router } from "../../../router";
+import { renderTui } from "../../../tui";
+import { withTuiOnEmptyFlagsAndArgs } from "../../../middleware";
 import type { AppIO } from "../../../io";
 import type { Core } from "../../types";
-import { createHelpDefault } from "../../help";
 import { createCreateDatasetHandler } from "./create";
 import { createGetDatasetHandler } from "./get";
 import { createListDatasetsHandler } from "./list";
@@ -11,7 +12,8 @@ import { createUpdateDatasetHandler } from "./update";
 
 export function createDatasetHandler(core: Core, io: AppIO): Router {
   return new Router("dataset", "manage AgentCore evaluation datasets")
-    .default(createHelpDefault(io))
+    .use(withTuiOnEmptyFlagsAndArgs(core, io))
+    .default(renderTui(core, io))
     .handler(createCreateDatasetHandler(core, io))
     .handler(createGetDatasetHandler(core))
     .handler(createListDatasetsHandler(core))
@@ -19,3 +21,5 @@ export function createDatasetHandler(core: Core, io: AppIO): Router {
     .handler(createUpdateDatasetHandler(core, io))
     .handler(createPublishDatasetHandler(core));
 }
+
+export { DatasetScreen } from "./screen.tsx";

@@ -48,6 +48,9 @@ import {
 import { BatchEvaluationScreen } from "../handlers/eval/batch-evaluation/screen.tsx";
 import { BatchEvaluationListScreen } from "../handlers/eval/batch-evaluation/list/screen.tsx";
 import { BatchEvaluationGetJsonScreen } from "../handlers/eval/batch-evaluation/get/screen.tsx";
+import { DatasetScreen } from "../handlers/eval/dataset/screen.tsx";
+import { DatasetListScreen } from "../handlers/eval/dataset/list/screen.tsx";
+import { DatasetGetScreen, DatasetGetJsonScreen } from "../handlers/eval/dataset/get/screen.tsx";
 import { MemoryEventScreen } from "../handlers/memory/event/screen.tsx";
 import { MemoryEventGetScreen } from "../handlers/memory/event/get/screen.tsx";
 import { MemoryEventListScreen } from "../handlers/memory/event/list/screen.tsx";
@@ -457,6 +460,23 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/eval/online-eval/get/:configId/json"
             element={<OnlineEvalGetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route path="agentcore/eval/dataset" element={<DatasetScreen ctx={ctx} core={core} />} />
+          <Route
+            path="agentcore/eval/dataset/list"
+            element={<DatasetListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/dataset/get"
+            element={<Navigate to="/agentcore/eval/dataset/list" replace />}
+          />
+          <Route
+            path="agentcore/eval/dataset/get/:datasetId"
+            element={<DatasetGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/dataset/get/:datasetId/json"
+            element={<DatasetGetJsonScreen ctx={ctx} core={core} />}
           />
           <Route
             path="agentcore/eval/batch-evaluation"
