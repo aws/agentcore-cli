@@ -66,15 +66,15 @@ function coreWithMemories(memories: MemorySummary[]): TestCoreClient {
 }
 
 describe("Memory picker", () => {
-  test("keeps event and record commands out of the Memory TUI menu", async () => {
+  test("shows event and record commands in the Memory TUI menu", async () => {
     const screen = renderScreen("/agentcore/memory");
 
     await waitForText(screen.lastFrame, "manage AgentCore Memories");
     const frame = screen.lastFrame()!;
     expect(frame).toContain("get");
     expect(frame).toContain("list");
-    expect(frame).not.toContain("event");
-    expect(frame).not.toContain("record");
+    expect(frame).toContain("event");
+    expect(frame).toContain("record");
   });
 
   test("renders Memory identity, status, and update time", async () => {
