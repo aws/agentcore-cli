@@ -826,22 +826,13 @@ export class TestMemoryClient implements CoreMemoryClient {
 export class TestGatewayClient implements CoreGatewayClient {
   readonly calls: RecordedCall[] = [];
 
-  private createResponse: CreateGatewayResponse = DEFAULT_CREATE_GATEWAY_RESPONSE;
   private getResponse: GetGatewayResponse = DEFAULT_GET_GATEWAY_RESPONSE;
   private listResponses = new Map<string | undefined, ListGatewaysResponse>();
-  private createTargetResponse: CreateGatewayTargetResponse =
-    DEFAULT_CREATE_GATEWAY_TARGET_RESPONSE;
   private getTargetResponse: GetGatewayTargetResponse = DEFAULT_GET_GATEWAY_TARGET_RESPONSE;
   private listTargetResponses = new Map<string | undefined, ListGatewayTargetsResponse>();
-  private createRuleResponse: CreateGatewayRuleResponse = DEFAULT_CREATE_GATEWAY_RULE_RESPONSE;
   private getRuleResponse: GetGatewayRuleResponse = DEFAULT_GET_GATEWAY_RULE_RESPONSE;
   private listRuleResponses = new Map<string | undefined, ListGatewayRulesResponse>();
   private error?: Error;
-
-  setCreateResponse(response: CreateGatewayResponse): this {
-    this.createResponse = response;
-    return this;
-  }
 
   setGetResponse(response: GetGatewayResponse): this {
     this.getResponse = response;
@@ -853,11 +844,6 @@ export class TestGatewayClient implements CoreGatewayClient {
     return this;
   }
 
-  setCreateTargetResponse(response: CreateGatewayTargetResponse): this {
-    this.createTargetResponse = response;
-    return this;
-  }
-
   setGetTargetResponse(response: GetGatewayTargetResponse): this {
     this.getTargetResponse = response;
     return this;
@@ -865,11 +851,6 @@ export class TestGatewayClient implements CoreGatewayClient {
 
   setListTargetsResponse(response: ListGatewayTargetsResponse, forNextToken?: string): this {
     this.listTargetResponses.set(forNextToken, response);
-    return this;
-  }
-
-  setCreateRuleResponse(response: CreateGatewayRuleResponse): this {
-    this.createRuleResponse = response;
     return this;
   }
 
@@ -894,7 +875,7 @@ export class TestGatewayClient implements CoreGatewayClient {
   ): Promise<CreateGatewayResponse> {
     this.calls.push({ method: "createGateway", args: [input, options] });
     if (this.error) throw this.error;
-    return this.createResponse;
+    return DEFAULT_CREATE_GATEWAY_RESPONSE;
   }
 
   async getGateway(id: string, options: CoreOptions): Promise<GetGatewayResponse> {
@@ -923,7 +904,7 @@ export class TestGatewayClient implements CoreGatewayClient {
   ): Promise<CreateGatewayTargetResponse> {
     this.calls.push({ method: "createGatewayTarget", args: [input, options] });
     if (this.error) throw this.error;
-    return this.createTargetResponse;
+    return DEFAULT_CREATE_GATEWAY_TARGET_RESPONSE;
   }
 
   async getGatewayTarget(
@@ -960,7 +941,7 @@ export class TestGatewayClient implements CoreGatewayClient {
   ): Promise<CreateGatewayRuleResponse> {
     this.calls.push({ method: "createGatewayRule", args: [input, options] });
     if (this.error) throw this.error;
-    return this.createRuleResponse;
+    return DEFAULT_CREATE_GATEWAY_RULE_RESPONSE;
   }
 
   async getGatewayRule(
