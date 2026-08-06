@@ -26,12 +26,12 @@ type ExchangeState = "connecting" | "streaming" | "complete" | "interrupted" | "
 
 type TargetPickerState = { stage: "runtime" } | { stage: "endpoint"; runtimeId: string };
 
-interface ErrorDetails {
+type ErrorDetails = {
   name: string;
   message?: string;
   statusCode?: number;
   requestId?: string;
-}
+};
 
 interface Exchange {
   payload: string;
@@ -63,28 +63,16 @@ const metadata = (response: RuntimeInvokeResponse) =>
     .join(" · ");
 
 function errorDetails(error: unknown): ErrorDetails {
-  const serviceError = ServiceException.isInstance(error)
-    ? error
-    : error instanceof Error && ServiceException.isInstance(error.cause)
-      ? error.cause
-      : undefined;
-  if (serviceError) {
-    return {
-      name: serviceError.name,
-      message: serviceError.message || undefined,
-      statusCode: serviceError.$metadata.httpStatusCode,
-      requestId: serviceError.$metadata.requestId,
-    };
-  }
-  if (error instanceof Error) {
-    return { name: error.name, message: error.message || undefined };
-  }
-  if (typeof error === "string") return { name: "Error", message: error };
-  try {
-    return { name: "Error", message: JSON.stringify(error) ?? String(error) };
-  } catch {
-    return { name: "Error", message: String(error) };
-  }
+  const reported = error instanceof Error ? error : new Error(String(error));
+  const display = ServiceException.isInstance(reported.cause) ? reported.cause : reported;
+  return {
+    name: display.name,
+    message: display.message || undefined,
+    ...(ServiceException.isInstance(display) && {
+      statusCode: display.$metadata.httpStatusCode,
+      requestId: display.$metadata.requestId,
+    }),
+  };
 }
 
 function ErrorBlock({ details }: { details: ErrorDetails }) {
