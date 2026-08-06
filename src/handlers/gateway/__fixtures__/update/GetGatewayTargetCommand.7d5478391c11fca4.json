@@ -1,0 +1,21 @@
+{
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:603141041947:gateway/agentcore-cli-gateway-update-fixture-f4dbqmv0kb",
+  "targetId": "O4WHLU0O7E",
+  "createdAt": {
+    "$date": "2026-08-06T21:00:19.278Z"
+  },
+  "updatedAt": {
+    "$date": "2026-08-06T21:00:19.974Z"
+  },
+  "status": "READY",
+  "name": "http-update-fixture",
+  "targetConfiguration": {
+    "http": {
+      "passthrough": {
+        "endpoint": "https://example.com",
+        "protocolType": "CUSTOM"
+      }
+    }
+  },
+  "description": "Target before update"
+}

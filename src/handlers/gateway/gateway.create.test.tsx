@@ -468,9 +468,9 @@ describe("Gateway create validation", () => {
   });
 });
 
-describe("Gateway fixture-backed mutations", () => {
+describe("Gateway fixture-backed creates", () => {
   test(
-    "creates and updates a Gateway, Target, Connector, and Rule through the real Core",
+    "creates a Gateway, Target, Connector, and Rule through the real Core",
     async () => {
       const state: FixtureState = { targetIds: [] };
       const roleArn = await fixtureRoleArn();
@@ -620,101 +620,6 @@ describe("Gateway fixture-backed mutations", () => {
         await pollUntil(
           ["gateway", "rule", "get", "--gateway-id", state.gatewayId!, "--rule-id", state.ruleId!],
           (response) => response.status === "ACTIVE",
-        );
-
-        const gatewayUpdateStdout = await run([
-          "gateway",
-          "update",
-          "--id",
-          state.gatewayId!,
-          "--description",
-          "Updated Gateway fixture",
-        ]);
-        matchGolden(FIXTURES, "gateway-update.golden.json", gatewayUpdateStdout);
-        expect(JSON.parse(gatewayUpdateStdout).description).toBe("Updated Gateway fixture");
-        await pollUntil(
-          ["gateway", "get", "--id", state.gatewayId!],
-          (response) =>
-            response.status === "READY" && response.description === "Updated Gateway fixture",
-        );
-
-        const targetUpdateStdout = await run([
-          "gateway",
-          "target",
-          "update",
-          "--gateway-id",
-          state.gatewayId!,
-          "--target-id",
-          target.targetId,
-          "--description",
-          "Updated Target fixture",
-        ]);
-        matchGolden(FIXTURES, "target-update.golden.json", targetUpdateStdout);
-        expect(JSON.parse(targetUpdateStdout).description).toBe("Updated Target fixture");
-        await pollUntil(
-          [
-            "gateway",
-            "target",
-            "get",
-            "--gateway-id",
-            state.gatewayId!,
-            "--target-id",
-            target.targetId,
-          ],
-          (response) =>
-            response.status === "READY" && response.description === "Updated Target fixture",
-        );
-
-        const connectorUpdateStdout = await run([
-          "gateway",
-          "connector",
-          "update",
-          "--gateway-id",
-          state.gatewayId!,
-          "--id",
-          connector.targetId,
-          "--description",
-          "Updated Connector fixture",
-        ]);
-        matchGolden(FIXTURES, "connector-update.golden.json", connectorUpdateStdout);
-        expect(JSON.parse(connectorUpdateStdout).description).toBe("Updated Connector fixture");
-        await pollUntil(
-          [
-            "gateway",
-            "connector",
-            "get",
-            "--gateway-id",
-            state.gatewayId!,
-            "--id",
-            connector.targetId,
-          ],
-          (response) =>
-            response.status === "READY" && response.description === "Updated Connector fixture",
-        );
-
-        const ruleUpdateStdout = await run([
-          "gateway",
-          "rule",
-          "update",
-          "--gateway-id",
-          state.gatewayId!,
-          "--rule-id",
-          state.ruleId!,
-          "--priority",
-          "20",
-          "--description",
-          "Updated Rule fixture",
-        ]);
-        matchGolden(FIXTURES, "rule-update.golden.json", ruleUpdateStdout);
-        const updatedRule = JSON.parse(ruleUpdateStdout);
-        expect(updatedRule.priority).toBe(20);
-        expect(updatedRule.description).toBe("Updated Rule fixture");
-        await pollUntil(
-          ["gateway", "rule", "get", "--gateway-id", state.gatewayId!, "--rule-id", state.ruleId!],
-          (response) =>
-            response.status === "ACTIVE" &&
-            response.priority === 20 &&
-            response.description === "Updated Rule fixture",
         );
       } finally {
         await cleanup(state);

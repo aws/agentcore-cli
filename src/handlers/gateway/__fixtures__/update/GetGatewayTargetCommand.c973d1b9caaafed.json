@@ -1,14 +1,14 @@
 {
-  "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:685197708687:gateway/agentcore-cli-gateway-create-fixture-gyqeg9v9tq",
-  "targetId": "8U0ZVM6TPN",
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:603141041947:gateway/agentcore-cli-gateway-update-fixture-f4dbqmv0kb",
+  "targetId": "LN3LFG8R6V",
   "createdAt": {
-    "$date": "2026-08-06T20:33:40.529Z"
+    "$date": "2026-08-06T21:00:19.464Z"
   },
   "updatedAt": {
-    "$date": "2026-08-06T20:33:40.529Z"
+    "$date": "2026-08-06T21:00:20.415Z"
   },
   "status": "READY",
-  "name": "web-search-fixture",
+  "name": "web-search-update-fixture",
   "targetConfiguration": {
     "mcp": {
       "connector": {
@@ -31,5 +31,5 @@
       "credentialProviderType": "GATEWAY_IAM_ROLE"
     }
   ],
-  "description": "Updated Connector fixture"
+  "description": "Connector before update"
 }

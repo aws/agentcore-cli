@@ -11,7 +11,12 @@
       }
     }
   ],
-  "createdAt": "2026-08-06T17:25:57.672Z",
-  "status": "CREATING",
-  "description": "Disposable Gateway Rule Create fixture"
+  "createdAt": {
+    "$date": "2026-08-06T17:25:57.672Z"
+  },
+  "status": "ACTIVE",
+  "description": "Disposable Gateway Rule Create fixture",
+  "updatedAt": {
+    "$date": "2026-08-06T17:25:57.672Z"
+  }
 }
