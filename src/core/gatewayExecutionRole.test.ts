@@ -50,7 +50,7 @@ describe("GatewayExecutionRole", () => {
     });
   });
 
-  test("reuses an existing default role without editing it", async () => {
+  test("rejects an existing generated role with explicit reuse guidance", async () => {
     const roleName = GatewayExecutionRole.roleName("orders", REGION);
     const roleArn = `arn:aws:iam::${ACCOUNT_ID}:role/${roleName}`;
     const commands: unknown[] = [];
@@ -61,7 +61,10 @@ describe("GatewayExecutionRole", () => {
       },
     } as unknown as IAMClient;
 
-    await expect(GatewayExecutionRole.ensure(iam, "orders", REGION)).resolves.toBe(roleArn);
+    await expect(GatewayExecutionRole.ensure(iam, "orders", REGION)).rejects.toThrow(
+      `IAM role "${roleName}" already exists. Pass --role-arn "${roleArn}" to reuse it, ` +
+        "or choose a different Gateway name.",
+    );
     expect(commands).toHaveLength(1);
     expect(commands[0]).toBeInstanceOf(GetRoleCommand);
   });

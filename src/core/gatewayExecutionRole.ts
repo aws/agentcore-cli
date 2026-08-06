@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { CreateRoleCommand, GetRoleCommand, type IAMClient, type Role } from "@aws-sdk/client-iam";
+import { InputValidationError } from "../errors";
 
 export class GatewayExecutionRole {
   static roleName(gatewayName: string, region: string): string {
@@ -15,7 +16,11 @@ export class GatewayExecutionRole {
 
     try {
       const response = await iam.send(new GetRoleCommand({ RoleName: roleName }));
-      return GatewayExecutionRole.requiredArn(response.Role, roleName);
+      const roleArn = GatewayExecutionRole.requiredArn(response.Role, roleName);
+      throw new InputValidationError(
+        `IAM role "${roleName}" already exists. Pass --role-arn "${roleArn}" to reuse it, ` +
+          "or choose a different Gateway name.",
+      );
     } catch (error) {
       if ((error as Error).name !== "NoSuchEntityException") throw error;
     }
