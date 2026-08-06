@@ -1,16 +1,10 @@
-import type { TargetConfiguration } from "@aws-sdk/client-bedrock-agentcore-control";
 import z from "zod";
 import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
-
-function isConnectorTarget(configuration: TargetConfiguration | undefined): boolean {
-  return (
-    configuration?.mcp?.connector !== undefined || configuration?.inference?.connector !== undefined
-  );
-}
+import { GatewayConnectorTarget } from "../target";
 
 export const createGetGatewayConnectorHandler = (core: Core) =>
   createHandler({
@@ -33,7 +27,7 @@ export const createGetGatewayConnectorHandler = (core: Core) =>
         flags.id,
         coreOptsFromCtx(ctx),
       );
-      if (!isConnectorTarget(target.targetConfiguration)) {
+      if (!GatewayConnectorTarget.is(target.targetConfiguration)) {
         throw new InputValidationError(`Gateway Target "${flags.id}" is not connector-backed`);
       }
 
