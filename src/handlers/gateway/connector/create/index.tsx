@@ -12,7 +12,7 @@ import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx, parseJsonArrayFlag, parseJsonObjectFlag } from "../../../utils";
 import type { CreateGatewayTargetInput } from "../../types";
-import { GatewayConnectorTarget } from "../target";
+import { GatewayConnectorTarget } from "../gatewayConnectorTarget";
 
 export const createCreateGatewayConnectorHandler = (core: Core, io: AppIO) =>
   createHandler({

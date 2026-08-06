@@ -4,7 +4,7 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
-import { GatewayConnectorTarget } from "../target";
+import { GatewayConnectorTarget } from "../gatewayConnectorTarget";
 
 export const createGetGatewayConnectorHandler = (core: Core) =>
   createHandler({
