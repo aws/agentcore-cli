@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { ServiceException } from "@smithy/core/client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, useInput, useWindowSize } from "ink";
 import { useQuery } from "@tanstack/react-query";
@@ -25,9 +26,17 @@ type ExchangeState = "connecting" | "streaming" | "complete" | "interrupted" | "
 
 type TargetPickerState = { stage: "runtime" } | { stage: "endpoint"; runtimeId: string };
 
+interface ErrorDetails {
+  name: string;
+  message?: string;
+  statusCode?: number;
+  requestId?: string;
+}
+
 interface Exchange {
   payload: string;
   response: string;
+  error?: ErrorDetails;
   pretty?: string;
   note?: string;
   heading?: string;
@@ -53,16 +62,42 @@ const metadata = (response: RuntimeInvokeResponse) =>
     .map((entry) => entry.join(" "))
     .join(" · ");
 
-function describeError(error: unknown): string {
+function errorDetails(error: unknown): ErrorDetails {
+  const serviceError = ServiceException.isInstance(error)
+    ? error
+    : error instanceof Error && ServiceException.isInstance(error.cause)
+      ? error.cause
+      : undefined;
+  if (serviceError) {
+    return {
+      name: serviceError.name,
+      message: serviceError.message || undefined,
+      statusCode: serviceError.$metadata.httpStatusCode,
+      requestId: serviceError.$metadata.requestId,
+    };
+  }
   if (error instanceof Error) {
-    return error.message ? `${error.name}: ${error.message}` : error.name;
+    return { name: error.name, message: error.message || undefined };
   }
-  if (typeof error === "string") return error;
+  if (typeof error === "string") return { name: "Error", message: error };
   try {
-    return JSON.stringify(error) ?? String(error);
+    return { name: "Error", message: JSON.stringify(error) ?? String(error) };
   } catch {
-    return String(error);
+    return { name: "Error", message: String(error) };
   }
+}
+
+function ErrorBlock({ details }: { details: ErrorDetails }) {
+  return (
+    <Box flexDirection="column">
+      <Text color="red">
+        {details.name}
+        {details.statusCode ? ` · HTTP ${details.statusCode}` : ""}
+      </Text>
+      {details.message ? <Text>{details.message}</Text> : null}
+      {details.requestId ? <Text color="gray">Request ID: {details.requestId}</Text> : null}
+    </Box>
+  );
 }
 
 export function RuntimeInvokeScreen(props: ScreenProps) {
@@ -238,7 +273,7 @@ function RuntimeInvokeConsole({
       if (controller.signal.aborted || (error as Error)?.name === "AbortError") {
         updateExchange({ note: "interrupted", state: "interrupted" });
       } else {
-        updateExchange({ note: describeError(error), state: "failed" });
+        updateExchange({ error: errorDetails(error), state: "failed" });
       }
     } finally {
       abortRef.current = null;
@@ -365,7 +400,7 @@ function RuntimeInvokeConsole({
         {detail.isPending ? (
           <Spinner label="Loading Runtime…" />
         ) : detail.isError ? (
-          <Text color="red">{describeError(detail.error)}</Text>
+          <ErrorBlock details={errorDetails(detail.error)} />
         ) : (
           <Box flexDirection="column">
             <Box height={transcriptHeight} flexDirection="column">
@@ -381,6 +416,7 @@ function RuntimeInvokeConsole({
                     {exchange.state !== "connecting" && exchange.state !== "streaming" ? (
                       <>
                         {exchange.metadata ? <Text color="gray">{exchange.metadata}</Text> : null}
+                        {exchange.error ? <ErrorBlock details={exchange.error} /> : null}
                         {exchange.note ? <Text color="yellow">{exchange.note}</Text> : null}
                         <Text color={exchange.state === "failed" ? "red" : "gray"}>
                           {exchange.state} · {exchange.byteCount} bytes

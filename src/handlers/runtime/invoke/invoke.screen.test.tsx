@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { ValidationException } from "@aws-sdk/client-bedrock-agentcore";
 import type {
   AgentRuntime,
   AgentRuntimeEndpoint,
@@ -188,7 +189,8 @@ describe("Runtime invoke routing", () => {
     };
     const screen = renderScreen(CONSOLE_PATH, { core });
 
-    await waitForText(screen.lastFrame, "AccessDeniedException: not authorized for this Runtime");
+    await waitForText(screen.lastFrame, "AccessDeniedException");
+    await waitForText(screen.lastFrame, "not authorized for this Runtime");
   });
 
   test("unmount cancels the Runtime detail lookup", async () => {
@@ -467,8 +469,32 @@ describe("Runtime invoke JSON console", () => {
     await screen.write("{}");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "NetworkError: connection failed");
+    await waitForText(screen.lastFrame, "NetworkError");
+    await waitForText(screen.lastFrame, "connection failed");
     expect(screen.lastFrame()).toContain("failed · 0 bytes");
+  });
+
+  test("formats modeled AWS service errors with their diagnostics", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
+    const cause = new ValidationException({
+      message: "Runtime session ID must contain at least 33 characters",
+      reason: "FieldValidationFailed",
+      $metadata: { httpStatusCode: 400, requestId: "request-456" },
+    });
+    core.runtime.invokeRuntime = async () => {
+      throw new Error("flattened wrapper", { cause });
+    };
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "Ready");
+    await screen.write("{}");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "ValidationException · HTTP 400");
+    expect(screen.lastFrame()).toContain("Runtime session ID must contain at least 33 characters");
+    expect(screen.lastFrame()).toContain("Request ID: request-456");
+    expect(screen.lastFrame()).not.toContain("flattened wrapper");
   });
 
   test("shows failures that occur while reading a response", async () => {
@@ -489,7 +515,8 @@ describe("Runtime invoke JSON console", () => {
     await screen.write("{}");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "StreamReadError: stream failed");
+    await waitForText(screen.lastFrame, "StreamReadError");
+    await waitForText(screen.lastFrame, "stream failed");
     expect(screen.lastFrame()).toContain("partial");
     expect(screen.lastFrame()).toContain("failed · 7 bytes");
   });
