@@ -34,14 +34,14 @@ interface MemoryRecordRow extends Record<string, unknown> {
 }
 
 const recordColumns = [
-  { key: "recordId", header: "id", width: 18, minWidth: 10 },
-  { key: "content", header: "content", flex: true },
-  { key: "strategyId", header: "strategy", width: 16, minWidth: 8 },
+  { key: "recordId", header: "id", flex: true },
+  { key: "content", header: "content", width: 70, minWidth: 20 },
+  { key: "strategyId", header: "strategy", width: 32, minWidth: 16 },
   {
     key: "createdAt",
     header: "created UTC",
     width: 16,
-    minWidth: 11,
+    minWidth: 16,
     render: formatTimestamp,
   },
 ] satisfies DataTableColumn<MemoryRecordRow>[];

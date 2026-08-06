@@ -12,6 +12,7 @@ import {
   waitFor,
   waitForText,
 } from "../../../testing";
+import stringWidth from "string-width";
 
 afterEach(cleanupScreens);
 
@@ -222,6 +223,40 @@ describe("Memory record list flow", () => {
         { region: "us-east-1" },
       ],
     });
+  });
+
+  test("shows full record identifiers, content, strategy, and timestamps in a wide terminal", async () => {
+    const memoryRecordId = "mem-6ff41abc-6571-4e56-9c47-90e7581785f1";
+    const content = "User is interested in total-market ETFs with low expense ratios.";
+    const memoryStrategyId = "tui_testdata_semantic-FEeDurAJJ1";
+    const core = new TestCoreClient();
+    core.memory.setListMemoryRecordsResponse({
+      memoryRecordSummaries: [
+        recordSummary({
+          memoryRecordId,
+          content: { text: content },
+          memoryStrategyId,
+          createdAt: new Date("2026-08-04T20:44:00.000Z"),
+        }),
+      ],
+    });
+    const screen = renderScreen(
+      "/agentcore/memory/record/list/memory-1/namespace/%2Fcustomers%2Facme",
+      { core },
+    );
+
+    await waitForText(screen.lastFrame, "total-market ETFs");
+    await screen.resize(191, 24);
+
+    const row = screen
+      .lastFrame()!
+      .split("\n")
+      .find((line) => line.includes(memoryRecordId));
+    expect(row).toBeDefined();
+    expect(row!).toContain(content);
+    expect(row!).toContain(memoryStrategyId);
+    expect(row!).toContain("2026-08-04 20:44");
+    expect(stringWidth(row!)).toBeLessThanOrEqual(191);
   });
 
   test("paginates records and distinguishes later-page empty state", async () => {
