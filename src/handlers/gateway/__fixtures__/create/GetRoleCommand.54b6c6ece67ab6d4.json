@@ -1,0 +1,6 @@
+{
+  "$error": {
+    "name": "NoSuchEntityException",
+    "message": "The role with name AgentCoreGateway-agentcore-cli-gateway-create-fix-f0aa3f799a4b cannot be found."
+  }
+}

@@ -44,10 +44,6 @@ export class GatewayConnectorTarget {
             },
           },
         };
-      default: {
-        const unsupported: never = shortcut;
-        throw new Error(`Unsupported connector shortcut: ${unsupported}`);
-      }
     }
   }
 }

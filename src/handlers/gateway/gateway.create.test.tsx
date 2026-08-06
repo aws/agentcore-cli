@@ -21,16 +21,18 @@ import {
 } from "../../testing";
 import { createRootHandler } from "../index";
 
-const REGION = "us-west-2";
+const REGION = "us-east-1";
 const GATEWAY_NAME = "agentcore-cli-gateway-create-fixture";
 const HTTP_TARGET_NAME = "http-fixture";
+const CONNECTOR_TARGET_NAME = "openai-fixture";
+const API_KEY_PROVIDER_NAME = "DONOTDELETEe2eOAI";
 const FIXTURES = join(import.meta.dir, "__fixtures__", "create");
 const FLOW_TIMEOUT = 600_000;
 
 // Record with AWS_PROFILE=e2e-test RECORD=1 bun test src/handlers/gateway/gateway.create.test.tsx
 type FixtureState = {
   gatewayId?: string;
-  targetId?: string;
+  targetIds: string[];
   ruleId?: string;
 };
 
@@ -93,6 +95,42 @@ async function waitUntilMissing(operation: () => Promise<unknown>): Promise<void
   throw new Error("Timed out waiting for fixture resource deletion");
 }
 
+async function deleteTarget(
+  control: ReturnType<typeof createControlClient>,
+  gatewayId: string,
+  targetId: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    try {
+      await control.send(
+        new DeleteGatewayTargetCommand({
+          gatewayIdentifier: gatewayId,
+          targetId,
+        }),
+      );
+      await waitUntilMissing(() =>
+        control.send(
+          new GetGatewayTargetCommand({
+            gatewayIdentifier: gatewayId,
+            targetId,
+          }),
+        ),
+      );
+      return;
+    } catch (error) {
+      if ((error as Error).name === "ResourceNotFoundException") return;
+      if (
+        (error as Error).name !== "ValidationException" ||
+        !/valid state|Creating state/i.test((error as Error).message)
+      ) {
+        throw error;
+      }
+      await Bun.sleep(2_000);
+    }
+  }
+  throw new Error(`Timed out deleting fixture Target "${targetId}"`);
+}
+
 async function cleanup(state: FixtureState): Promise<void> {
   if (!isRecording()) return;
 
@@ -109,23 +147,8 @@ async function cleanup(state: FixtureState): Promise<void> {
   }
 
   if (state.gatewayId) {
-    if (state.targetId) {
-      await ignoreMissing(() =>
-        control.send(
-          new DeleteGatewayTargetCommand({
-            gatewayIdentifier: state.gatewayId,
-            targetId: state.targetId,
-          }),
-        ),
-      );
-      await waitUntilMissing(() =>
-        control.send(
-          new GetGatewayTargetCommand({
-            gatewayIdentifier: state.gatewayId,
-            targetId: state.targetId,
-          }),
-        ),
-      );
+    for (const targetId of state.targetIds) {
+      await deleteTarget(control, state.gatewayId, targetId);
     }
 
     await ignoreMissing(() =>
@@ -208,7 +231,68 @@ describe("Gateway create validation", () => {
       ],
       /--knowledge-base-id/,
     ],
+    [
+      "Connector exclusivity",
+      [
+        "gateway",
+        "connector",
+        "create",
+        "--gateway-id",
+        "gateway-1",
+        "--name",
+        "search",
+        "--connector",
+        "web-search",
+        "--connector-configuration",
+        '{"mcp":{"connector":{"source":{"connectorId":"web-search"}}}}',
+      ],
+      /specify exactly one/,
+    ],
+    [
+      "Connector Knowledge Base ID",
+      [
+        "gateway",
+        "connector",
+        "create",
+        "--gateway-id",
+        "gateway-1",
+        "--name",
+        "search",
+        "--connector",
+        "web-search",
+        "--knowledge-base-id",
+        "KB12345678",
+      ],
+      /--knowledge-base-id requires --connector bedrock-knowledge-bases/,
+    ],
+    [
+      "Target tool schema",
+      [
+        "gateway",
+        "target",
+        "create",
+        "--gateway-id",
+        "gateway-1",
+        "--name",
+        "target",
+        "--target-configuration",
+        "{}",
+        "--tool-schema",
+        "{}",
+      ],
+      /--tool-schema requires --endpoint/,
+    ],
     ["Rule parent", ["gateway", "rule", "create", "--priority", "10"], /--gateway-id/],
+    [
+      "Rule priority",
+      ["gateway", "rule", "create", "--gateway-id", "gateway-1", "--actions", "[]"],
+      /--priority/,
+    ],
+    [
+      "Rule actions",
+      ["gateway", "rule", "create", "--gateway-id", "gateway-1", "--priority", "10"],
+      /--actions/,
+    ],
   ] as const)("rejects missing or inconsistent %s before Core", async (_name, args, error) => {
     await expect(run([...args])).rejects.toThrow(error);
   });
@@ -266,9 +350,9 @@ describe("Gateway create validation", () => {
 
 describe("Gateway fixture-backed creates", () => {
   test(
-    "creates a Gateway, Target, and Rule through the real Core",
+    "creates a Gateway, Target, Connector, and Rule through the real Core",
     async () => {
-      const state: FixtureState = {};
+      const state: FixtureState = { targetIds: [] };
 
       try {
         const gatewayStdout = await run([
@@ -285,6 +369,7 @@ describe("Gateway fixture-backed creates", () => {
         const gateway = JSON.parse(gatewayStdout);
         expect(gateway.name).toBe(GATEWAY_NAME);
         expect(gateway.gatewayId).toBeString();
+        expect(gateway.gatewayArn).toBeString();
         state.gatewayId = gateway.gatewayId;
 
         await pollUntil(
@@ -313,7 +398,7 @@ describe("Gateway fixture-backed creates", () => {
         matchGolden(FIXTURES, "target-create.golden.json", targetStdout);
         const target = JSON.parse(targetStdout);
         expect(target.targetId).toBeString();
-        state.targetId = target.targetId;
+        state.targetIds.push(target.targetId);
 
         await pollUntil(
           [
@@ -324,6 +409,58 @@ describe("Gateway fixture-backed creates", () => {
             state.gatewayId!,
             "--target-id",
             target.targetId,
+          ],
+          (response) => response.status === "READY",
+        );
+
+        const connectorStdout = await run([
+          "gateway",
+          "connector",
+          "create",
+          "--gateway-id",
+          state.gatewayId!,
+          "--name",
+          CONNECTOR_TARGET_NAME,
+          "--connector-configuration",
+          '{"inference":{"connector":{"source":{"connectorId":"openai"}}}}',
+          "--credential-provider-configurations",
+          JSON.stringify([
+            {
+              credentialProviderType: "API_KEY",
+              credentialProvider: {
+                apiKeyCredentialProvider: {
+                  providerArn: apiKeyProviderArn(gateway.gatewayArn),
+                  credentialParameterName: "Authorization",
+                  credentialPrefix: "Bearer",
+                  credentialLocation: "HEADER",
+                },
+              },
+            },
+          ]),
+          "--description",
+          "Disposable Gateway Connector Create fixture",
+        ]);
+        matchGolden(FIXTURES, "connector-create.golden.json", connectorStdout);
+        const connector = JSON.parse(connectorStdout);
+        expect(connector.targetId).toBeString();
+        expect(connector.targetConfiguration).toEqual({
+          inference: {
+            connector: {
+              source: { connectorId: "openai" },
+            },
+          },
+        });
+        state.targetIds.push(connector.targetId);
+
+        await pollUntil(
+          [
+            "gateway",
+            "connector",
+            "get",
+            "--gateway-id",
+            state.gatewayId!,
+            "--id",
+            connector.targetId,
           ],
           (response) => response.status === "READY",
         );
@@ -365,3 +502,11 @@ describe("Gateway fixture-backed creates", () => {
     FLOW_TIMEOUT,
   );
 });
+
+function apiKeyProviderArn(gatewayArn: string): string {
+  const [prefix, partition, service, region, accountId] = gatewayArn.split(":");
+  if (prefix !== "arn" || service !== "bedrock-agentcore" || !region || !accountId) {
+    throw new Error(`Unexpected Gateway ARN: ${gatewayArn}`);
+  }
+  return `arn:${partition}:${service}:${region}:${accountId}:token-vault/default/apikeycredentialprovider/${API_KEY_PROVIDER_NAME}`;
+}
