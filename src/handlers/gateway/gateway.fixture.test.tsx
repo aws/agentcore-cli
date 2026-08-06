@@ -20,7 +20,7 @@ const RULE_ID = "d396c3f4-4591-41b3-a4d5-816e03c32419";
 const CONNECTOR_GATEWAY_ID = "agentcore-cli-gateway-read-connector-gkzcxxkc5e";
 const CONNECTOR_ID = "Z3FQ0H8JCK";
 
-// Account 685197708687 owns the persistent read-only fixture graph:
+// The e2e-test profile owns the persistent read-only fixture graph:
 // listable Gateways and Targets in REGION, plus one READY connector Target under
 // CONNECTOR_GATEWAY_ID in CONNECTOR_REGION. Record with:
 // AWS_PROFILE=e2e-test RECORD=1 bun test src/handlers/gateway/gateway.fixture.test.tsx
