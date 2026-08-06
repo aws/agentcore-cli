@@ -44,6 +44,13 @@ function recordSummary(overrides: Partial<MemoryRecordSummary> = {}): MemoryReco
 }
 
 describe("Memory record list flow", () => {
+  test("renders the record command menu", async () => {
+    const screen = renderScreen("/agentcore/memory/record");
+
+    await waitForText(screen.lastFrame, "inspect AgentCore Memory records");
+    expect(screen.lastFrame()).toContain("list");
+  });
+
   test("uses the Memory picker before asking for a namespace scope", async () => {
     const memoryId = "memory/blue one";
     const core = new TestCoreClient();
@@ -61,6 +68,36 @@ describe("Memory record list flow", () => {
     expect(frame).toContain("namespace path");
     expect(frame).toContain("namespace");
     expect(core.memory.calls.some((call) => call.method === "listMemoryRecords")).toBe(false);
+  });
+
+  test("returns from scope selection to the Memory picker", async () => {
+    const screen = renderScreen("/agentcore/memory/record/list/memory-1");
+
+    await waitForText(screen.lastFrame, "scope type");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "choose a Memory to list records for");
+  });
+
+  test("uses namespace scope again after moving the selector up", async () => {
+    const core = new TestCoreClient();
+    core.memory.setListMemoryRecordsResponse({
+      memoryRecordSummaries: [recordSummary()],
+    });
+    const screen = renderScreen("/agentcore/memory/record/list/memory-1", { core });
+
+    await waitForText(screen.lastFrame, "scope type");
+    await screen.press("down");
+    await screen.press("up");
+    await screen.write("/customers/acme");
+    await screen.press("return");
+    await waitFor(() => core.memory.calls.some((call) => call.method === "listMemoryRecords"));
+
+    expect(
+      core.memory.calls.find((call) => call.method === "listMemoryRecords")?.args[0],
+    ).toMatchObject({
+      namespace: "/customers/acme",
+      namespacePath: undefined,
+    });
   });
 
   test("submits a namespace prefix and calls listMemoryRecords with exact options", async () => {
@@ -97,6 +134,25 @@ describe("Memory record list flow", () => {
         ],
       },
     ]);
+  });
+
+  test("renders a placeholder when a record summary has no text content", async () => {
+    const core = new TestCoreClient();
+    core.memory.setListMemoryRecordsResponse({
+      memoryRecordSummaries: [
+        recordSummary({
+          memoryRecordId: "no-text",
+          content: { text: "" },
+        }),
+      ],
+    });
+    const screen = renderScreen(
+      "/agentcore/memory/record/list/memory-1/namespace/%2Fcustomers%2Facme",
+      { core },
+    );
+
+    await waitForText(screen.lastFrame, "no-text");
+    expect(screen.lastFrame()).toContain("-");
   });
 
   test("maps namespace-path scope to namespacePath", async () => {
