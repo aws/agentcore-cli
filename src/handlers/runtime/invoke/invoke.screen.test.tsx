@@ -497,6 +497,34 @@ describe("Runtime invoke JSON console", () => {
     expect(screen.lastFrame()).not.toContain("flattened wrapper");
   });
 
+  test.each([
+    ["string", () => "string failure", "string failure"],
+    ["object", () => ({ code: "OBJECT_FAILURE" }), '{"code":"OBJECT_FAILURE"}'],
+    [
+      "circular object",
+      () => {
+        const failure: { self?: unknown } = {};
+        failure.self = failure;
+        return failure;
+      },
+      "[object Object]",
+    ],
+  ])("surfaces a thrown %s", async (_case, failure, expected) => {
+    const core = new TestCoreClient();
+    core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
+    core.runtime.invokeRuntime = async () => {
+      throw failure();
+    };
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "Ready");
+    await screen.write("{}");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, expected);
+    expect(screen.lastFrame()).toContain("failed · 0 bytes");
+  });
+
   test("shows failures that occur while reading a response", async () => {
     const core = new TestCoreClient();
     core.runtime
