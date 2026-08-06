@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
-import { NestedProjectError, ProjectFileExistsError } from "../../errors";
+import { InputValidationError, NestedProjectError, ProjectFileExistsError } from "../../errors";
 import { FsProjectManager } from "./manager";
 import { PROJECT_TEMPLATES } from "../../handlers/project/types";
 import { createSilentLogger } from "../../testing";
@@ -39,6 +39,28 @@ function manager(): { manager: FsProjectManager; commands: { command: string[]; 
     }),
     commands,
   };
+}
+
+async function writeProject(
+  root: string,
+  options: {
+    agentcore?: unknown;
+    targets?: unknown;
+  } = {},
+): Promise<void> {
+  const configDir = join(root, "agentcore");
+  await mkdir(configDir, { recursive: true });
+  await writeFile(
+    join(configDir, "agentcore.json"),
+    JSON.stringify(
+      options.agentcore ?? {
+        name: "Example",
+        version: 1,
+        managedBy: "CDK",
+      },
+    ),
+  );
+  await writeFile(join(configDir, "aws-targets.json"), JSON.stringify(options.targets ?? []));
 }
 
 describe("FsProjectManager.create", () => {
@@ -172,5 +194,114 @@ describe("FsProjectManager.create", () => {
     await expect(
       manager().manager.create({ name: "child", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON }),
     ).rejects.toBeInstanceOf(NestedProjectError);
+  });
+});
+
+describe("FsProjectManager.resolve", () => {
+  test("loads build inputs from a nested project directory", async () => {
+    const directory = await inTempDirectory();
+    const root = join(directory, "example");
+    await writeProject(root, {
+      targets: [
+        {
+          name: "production",
+          description: "production environment",
+          account: "123456789012",
+          region: "us-west-2",
+        },
+      ],
+    });
+    const nested = join(root, "app", "service");
+    await mkdir(nested, { recursive: true });
+
+    await expect(manager().manager.resolve({ filePath: nested })).resolves.toEqual({
+      name: "Example",
+      root,
+      configDir: join(root, "agentcore"),
+      managedBy: "CDK",
+      targets: [
+        {
+          name: "production",
+          description: "production environment",
+          account: "123456789012",
+          region: "us-west-2",
+        },
+      ],
+    });
+  });
+
+  test("locates a project from a file within it", async () => {
+    const directory = await inTempDirectory();
+    const root = join(directory, "example");
+    await writeProject(root);
+    const source = join(root, "app", "main.py");
+    await mkdir(join(root, "app"), { recursive: true });
+    await writeFile(source, "print('hello')\n");
+
+    await expect(manager().manager.resolve({ filePath: source })).resolves.toMatchObject({
+      root,
+      configDir: join(root, "agentcore"),
+    });
+  });
+
+  test("returns undefined when no project marker exists", async () => {
+    const directory = await inTempDirectory();
+
+    await expect(manager().manager.resolve({ filePath: directory })).resolves.toBeUndefined();
+  });
+
+  test("defaults a missing project backend to CDK and permits empty targets", async () => {
+    const directory = await inTempDirectory();
+    await writeProject(join(directory, "example"), {
+      agentcore: {
+        name: "Example",
+        version: 1,
+      },
+    });
+
+    await expect(
+      manager().manager.resolve({ filePath: join(directory, "example") }),
+    ).resolves.toMatchObject({
+      managedBy: "CDK",
+      targets: [],
+    });
+  });
+
+  test("rejects invalid project metadata", async () => {
+    const directory = await inTempDirectory();
+    const root = join(directory, "example");
+    await writeProject(root, {
+      agentcore: {
+        name: "1-invalid",
+        version: 1,
+      },
+    });
+
+    await expect(manager().manager.resolve({ filePath: root })).rejects.toBeInstanceOf(
+      InputValidationError,
+    );
+  });
+
+  test("rejects duplicate deployment target names", async () => {
+    const directory = await inTempDirectory();
+    const root = join(directory, "example");
+    await writeProject(root, {
+      targets: [
+        {
+          name: "development",
+          account: "123456789012",
+          region: "us-east-1",
+        },
+        {
+          name: "development",
+          account: "210987654321",
+          region: "us-west-2",
+        },
+      ],
+    });
+
+    await expect(manager().manager.resolve({ filePath: root })).rejects.toBeInstanceOf(
+      InputValidationError,
+    );
   });
 });

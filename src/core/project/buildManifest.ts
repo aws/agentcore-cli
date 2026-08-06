@@ -1,27 +1,12 @@
 import z from "zod";
+import { DeploymentTargetSchema } from "../../handlers/project/types";
+
+export { DeploymentTargetSchema, type DeploymentTarget } from "../../handlers/project/types";
 
 /** Relative to the project root; build writes this file and deploy reads it. */
 export const BUILD_MANIFEST_PATH = "agentcore/.build/manifest.json";
 
 export const BUILD_MANIFEST_VERSION = 1;
-
-export const DeploymentTargetSchema = z
-  .object({
-    name: z
-      .string()
-      .min(1)
-      .max(64)
-      .regex(
-        /^[a-zA-Z][a-zA-Z0-9-]*$/,
-        "must start with a letter and contain only letters, numbers, and hyphens",
-      ),
-    description: z.string().max(256).optional(),
-    account: z.string().regex(/^[0-9]{12}$/, "must be a 12-digit AWS account ID"),
-    region: z.string().min(1),
-  })
-  .strict();
-
-export type DeploymentTarget = z.infer<typeof DeploymentTargetSchema>;
 
 const ProjectRelativePathSchema = z
   .string()

@@ -9,5 +9,6 @@ export {
   type RunProcessOptions,
 } from "./exec";
 export { FsReadWriteJson } from "./json";
+export { NodePathInspector, nodePathInspector, type PathInspector } from "./path";
 export { SourceResolver, type SourceResolverConfig } from "./source";
 export type { AppIO, ReadWriteJson } from "./types";

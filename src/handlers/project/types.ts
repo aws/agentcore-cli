@@ -83,6 +83,24 @@ export const ProjectNameSchema = z
     message: "this name conflicts with a Python package dependency; choose a different name",
   });
 
+export const DeploymentTargetSchema = z
+  .object({
+    name: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(
+        /^[a-zA-Z][a-zA-Z0-9-]*$/,
+        "must start with a letter and contain only letters, numbers, and hyphens",
+      ),
+    description: z.string().max(256).optional(),
+    account: z.string().regex(/^[0-9]{12}$/, "must be a 12-digit AWS account ID"),
+    region: z.string().min(1),
+  })
+  .strict();
+
+export type DeploymentTarget = z.infer<typeof DeploymentTargetSchema>;
+
 export type CreateProjectInput = {
   /** The name of the project; also the directory it is scaffolded into. */
   name: string;
@@ -109,6 +127,10 @@ export type ResolveProjectInput = {
 
 export type Project = {
   name: string;
+  root: string;
+  configDir: string;
+  managedBy: string;
+  targets: DeploymentTarget[];
 };
 
 /**

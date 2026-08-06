@@ -5,7 +5,7 @@ import { withProject } from "./withProject";
 import { FsProjectManager } from "../core/project";
 
 describe("withProject", () => {
-  test("throws not implemented", async () => {
+  test("throws when no project can be found", async () => {
     const projectManager = new FsProjectManager({ logger: createSilentLogger() });
 
     const app = new Router("app", "test");
@@ -18,6 +18,6 @@ describe("withProject", () => {
       }),
     );
 
-    await expect(app.route(["node", "app", "check"])).rejects.toThrow(/not implemented/);
+    await expect(app.route(["node", "app", "check"])).rejects.toThrow(/Unable to find project/);
   });
 });
