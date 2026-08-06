@@ -1,12 +1,18 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
+  GetGatewayCommand,
   GetGatewayTargetCommand,
   ListGatewayTargetsCommand,
   TargetType,
+  UpdateGatewayCommand,
+  UpdateGatewayTargetCommand,
+  type BedrockAgentCoreControlClient,
+  type GetGatewayResponse,
   type GetGatewayTargetResponse,
   type TargetSummary,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { ResultTruncationError } from "../errors";
+import type { GatewayTargetUpdatePatch, GatewayUpdatePatch } from "../handlers/gateway/types";
 import type { AwsClients } from "./types";
 import { GatewayClient } from "./gateway";
 
@@ -215,5 +221,249 @@ describe("GatewayClient Connector facade", () => {
     await expect(client.getGatewayConnector("gateway-1", "target-1", options)).rejects.toThrow(
       'Gateway Target "target-1" is not connector-backed',
     );
+  });
+});
+
+const OPTIONS = { region: "us-west-2" };
+
+function gateway(): GetGatewayResponse {
+  return {
+    gatewayId: "gateway-1",
+    name: "orders",
+    roleArn: "arn:aws:iam::123456789012:role/orders",
+    authorizerType: "CUSTOM_JWT",
+    authorizerConfiguration: {
+      customJWTAuthorizer: {
+        discoveryUrl: "https://auth.example.test/.well-known/openid-configuration",
+      },
+    },
+    protocolType: "MCP",
+    protocolConfiguration: { mcp: { supportedVersions: ["2025-11-25"] } },
+    description: "before",
+    kmsKeyArn: "arn:aws:kms:us-west-2:123456789012:key/key-1",
+    policyEngineConfiguration: {
+      arn: "arn:aws:bedrock-agentcore:us-west-2:123456789012:policy-engine/engine-1",
+      mode: "LOG_ONLY",
+    },
+    exceptionLevel: "DEBUG",
+  } as GetGatewayResponse;
+}
+
+function target(): GetGatewayTargetResponse {
+  return {
+    targetId: "target-1",
+    name: "calendar",
+    description: "before",
+    targetConfiguration: {
+      mcp: {
+        mcpServer: {
+          endpoint: "https://old.example.test/mcp",
+          mcpToolSchema: { s3: { uri: "s3://schemas/calendar.json" } },
+          listingMode: "DEFAULT",
+          resourcePriority: 100,
+        },
+      },
+    },
+    credentialProviderConfigurations: [{ credentialProviderType: "JWT_PASSTHROUGH" }],
+    metadataConfiguration: { allowedRequestHeaders: ["x-request-id"] },
+  } as unknown as GetGatewayTargetResponse;
+}
+
+function recordingGatewayClient(responses: unknown[]): {
+  client: GatewayClient;
+  commands: unknown[];
+} {
+  const commands: unknown[] = [];
+  const control = {
+    send: async (command: unknown) => {
+      commands.push(command);
+      return responses.shift();
+    },
+  } as unknown as BedrockAgentCoreControlClient;
+  const clients: AwsClients = {
+    control: () => control,
+    data: () => {
+      throw new Error("unexpected data client");
+    },
+    iam: () => {
+      throw new Error("unexpected IAM client");
+    },
+  };
+  return { client: new GatewayClient(clients), commands };
+}
+
+async function gatewayUpdateInput(
+  patch: GatewayUpdatePatch,
+  current: GetGatewayResponse = gateway(),
+): Promise<UpdateGatewayCommand["input"]> {
+  const { client, commands } = recordingGatewayClient([current, {}]);
+  await client.updateGateway(patch, OPTIONS);
+  expect(commands[0]).toBeInstanceOf(GetGatewayCommand);
+  expect((commands[0] as GetGatewayCommand).input).toEqual({
+    gatewayIdentifier: patch.id,
+  });
+  return (commands[1] as UpdateGatewayCommand).input;
+}
+
+async function targetUpdateInput(
+  patch: GatewayTargetUpdatePatch,
+  current: GetGatewayTargetResponse = target(),
+): Promise<UpdateGatewayTargetCommand["input"]> {
+  const { client, commands } = recordingGatewayClient([current, {}]);
+  await client.updateGatewayTarget(patch, OPTIONS);
+  expect(commands[0]).toBeInstanceOf(GetGatewayTargetCommand);
+  expect((commands[0] as GetGatewayTargetCommand).input).toEqual({
+    gatewayIdentifier: patch.gatewayId,
+    targetId: patch.targetId,
+  });
+  return (commands[1] as UpdateGatewayTargetCommand).input;
+}
+
+describe("GatewayClient updateGateway", () => {
+  test("preserves required and omitted fields while replacing selected configuration", async () => {
+    expect(
+      await gatewayUpdateInput({
+        id: "gateway-1",
+        description: "after",
+      }),
+    ).toEqual({
+      gatewayIdentifier: "gateway-1",
+      name: "orders",
+      roleArn: "arn:aws:iam::123456789012:role/orders",
+      authorizerType: "CUSTOM_JWT",
+      authorizerConfiguration: {
+        customJWTAuthorizer: {
+          discoveryUrl: "https://auth.example.test/.well-known/openid-configuration",
+        },
+      },
+      protocolType: "MCP",
+      protocolConfiguration: { mcp: { supportedVersions: ["2025-11-25"] } },
+      description: "after",
+      kmsKeyArn: "arn:aws:kms:us-west-2:123456789012:key/key-1",
+      policyEngineConfiguration: {
+        arn: "arn:aws:bedrock-agentcore:us-west-2:123456789012:policy-engine/engine-1",
+        mode: "LOG_ONLY",
+      },
+      exceptionLevel: "DEBUG",
+    });
+  });
+
+  test("clears requested fields and merges a Policy Engine mode change", async () => {
+    expect(
+      await gatewayUpdateInput({
+        id: "gateway-1",
+        clearProtocol: true,
+        description: null,
+        protocolConfiguration: null,
+        policyEngineConfiguration: { mode: "ENFORCE" },
+        exceptionLevel: null,
+      }),
+    ).toEqual({
+      gatewayIdentifier: "gateway-1",
+      name: "orders",
+      roleArn: "arn:aws:iam::123456789012:role/orders",
+      authorizerType: "CUSTOM_JWT",
+      authorizerConfiguration: {
+        customJWTAuthorizer: {
+          discoveryUrl: "https://auth.example.test/.well-known/openid-configuration",
+        },
+      },
+      kmsKeyArn: "arn:aws:kms:us-west-2:123456789012:key/key-1",
+      policyEngineConfiguration: {
+        arn: "arn:aws:bedrock-agentcore:us-west-2:123456789012:policy-engine/engine-1",
+        mode: "ENFORCE",
+      },
+    });
+  });
+
+  test("rejects CUSTOM_JWT configuration on another authorizer type", async () => {
+    const { client } = recordingGatewayClient([
+      { ...gateway(), authorizerType: "NONE", authorizerConfiguration: undefined },
+    ]);
+    await expect(
+      client.updateGateway(
+        {
+          id: "gateway-1",
+          authorizerConfiguration: {
+            customJWTAuthorizer: {
+              discoveryUrl: "https://auth.example.test/.well-known/openid-configuration",
+            },
+          },
+        },
+        OPTIONS,
+      ),
+    ).rejects.toThrow(/CUSTOM_JWT/);
+  });
+});
+
+describe("GatewayClient updateGatewayTarget", () => {
+  test("updates an MCP endpoint while preserving its schema and ancillary fields", async () => {
+    expect(
+      await targetUpdateInput({
+        gatewayId: "gateway-1",
+        targetId: "target-1",
+        endpoint: "https://new.example.test/mcp",
+      }),
+    ).toEqual({
+      gatewayIdentifier: "gateway-1",
+      targetId: "target-1",
+      name: "calendar",
+      description: "before",
+      targetConfiguration: {
+        mcp: {
+          mcpServer: {
+            endpoint: "https://new.example.test/mcp",
+            mcpToolSchema: { s3: { uri: "s3://schemas/calendar.json" } },
+            listingMode: "DEFAULT",
+            resourcePriority: 100,
+          },
+        },
+      },
+      credentialProviderConfigurations: [{ credentialProviderType: "JWT_PASSTHROUGH" }],
+      metadataConfiguration: { allowedRequestHeaders: ["x-request-id"] },
+    });
+  });
+
+  test("clears optional fields while preserving the Target configuration", async () => {
+    expect(
+      await targetUpdateInput({
+        gatewayId: "gateway-1",
+        targetId: "target-1",
+        description: null,
+        credentialProviderConfigurations: null,
+        metadataConfiguration: null,
+      }),
+    ).toEqual({
+      gatewayIdentifier: "gateway-1",
+      targetId: "target-1",
+      name: "calendar",
+      targetConfiguration: target().targetConfiguration,
+    });
+  });
+
+  test("rejects endpoint shorthand for a non-MCP-server Target", async () => {
+    const { client } = recordingGatewayClient([
+      {
+        targetId: "target-1",
+        targetConfiguration: {
+          http: {
+            passthrough: {
+              endpoint: "https://example.test",
+              protocolType: "CUSTOM",
+            },
+          },
+        },
+      } as GetGatewayTargetResponse,
+    ]);
+    await expect(
+      client.updateGatewayTarget(
+        {
+          gatewayId: "gateway-1",
+          targetId: "target-1",
+          endpoint: "https://new.example.test/mcp",
+        },
+        OPTIONS,
+      ),
+    ).rejects.toThrow(/existing MCP server Target/);
   });
 });

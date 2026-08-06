@@ -23,8 +23,10 @@ import {
   type ListGatewayTargetsResponse,
   type TargetConfiguration,
   type TargetSummary,
+  type UpdateGatewayRequest,
   type UpdateGatewayResponse,
   type UpdateGatewayRuleResponse,
+  type UpdateGatewayTargetRequest,
   type UpdateGatewayTargetResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { InputValidationError, ResultTruncationError } from "../errors";
@@ -39,7 +41,6 @@ import type {
   GatewayUpdatePatch,
 } from "../handlers/gateway/types";
 import type { AwsClients, CoreOptions } from "./types";
-import { GatewayTargetUpdateRequest, GatewayUpdateRequest } from "./gatewayUpdate";
 import { toClientConfig } from "./utils";
 
 const DEFAULT_CONNECTOR_PAGE_SIZE = 100;
@@ -75,7 +76,76 @@ export class GatewayClient implements CoreGatewayClient {
   ): Promise<UpdateGatewayResponse> {
     const control = this.clients.control(toClientConfig(options));
     const current = await control.send(new GetGatewayCommand({ gatewayIdentifier: patch.id }));
-    return control.send(new UpdateGatewayCommand(GatewayUpdateRequest.from(current, patch)));
+    const name = GatewayClient.required(current.name, patch.id, "name");
+    const roleArn = GatewayClient.required(current.roleArn, patch.id, "role ARN");
+    const authorizerType = GatewayClient.required(
+      current.authorizerType,
+      patch.id,
+      "authorizer type",
+    );
+    if (patch.authorizerConfiguration !== undefined && authorizerType !== "CUSTOM_JWT") {
+      throw new InputValidationError(
+        "--authorizer-configuration is valid only for a CUSTOM_JWT Gateway",
+      );
+    }
+
+    let policyEngineConfiguration = current.policyEngineConfiguration;
+    if (patch.policyEngineConfiguration === null) {
+      policyEngineConfiguration = undefined;
+    } else if (patch.policyEngineConfiguration !== undefined) {
+      const arn = patch.policyEngineConfiguration.arn ?? current.policyEngineConfiguration?.arn;
+      const mode = patch.policyEngineConfiguration.mode ?? current.policyEngineConfiguration?.mode;
+      if (!arn || !mode) {
+        throw new InputValidationError(
+          "Policy Engine update requires an ARN and mode, either existing or supplied",
+        );
+      }
+      policyEngineConfiguration = { arn, mode };
+    }
+
+    const description = GatewayClient.replace(current.description, patch.description);
+    const protocolConfiguration = GatewayClient.replace(
+      current.protocolConfiguration,
+      patch.protocolConfiguration,
+    );
+    const customTransformConfiguration = GatewayClient.replace(
+      current.customTransformConfiguration,
+      patch.customTransformConfiguration,
+    );
+    const interceptorConfigurations = GatewayClient.replace(
+      current.interceptorConfigurations,
+      patch.interceptorConfigurations,
+    );
+    const exceptionLevel = GatewayClient.replace(current.exceptionLevel, patch.exceptionLevel);
+    const wafConfiguration = GatewayClient.replace(
+      current.wafConfiguration,
+      patch.wafConfiguration,
+    );
+    const request: UpdateGatewayRequest = {
+      gatewayIdentifier: patch.id,
+      name,
+      roleArn: patch.roleArn ?? roleArn,
+      authorizerType,
+      ...(description !== undefined ? { description } : {}),
+      ...(!patch.clearProtocol && current.protocolType !== undefined
+        ? { protocolType: current.protocolType }
+        : {}),
+      ...(protocolConfiguration !== undefined ? { protocolConfiguration } : {}),
+      ...(current.authorizerConfiguration !== undefined ||
+      patch.authorizerConfiguration !== undefined
+        ? {
+            authorizerConfiguration:
+              patch.authorizerConfiguration ?? current.authorizerConfiguration,
+          }
+        : {}),
+      ...(current.kmsKeyArn !== undefined ? { kmsKeyArn: current.kmsKeyArn } : {}),
+      ...(customTransformConfiguration !== undefined ? { customTransformConfiguration } : {}),
+      ...(interceptorConfigurations !== undefined ? { interceptorConfigurations } : {}),
+      ...(policyEngineConfiguration !== undefined ? { policyEngineConfiguration } : {}),
+      ...(exceptionLevel !== undefined ? { exceptionLevel } : {}),
+      ...(wafConfiguration !== undefined ? { wafConfiguration } : {}),
+    };
+    return control.send(new UpdateGatewayCommand(request));
   }
 
   async listGateways(
@@ -246,13 +316,72 @@ export class GatewayClient implements CoreGatewayClient {
       throw new InputValidationError(`Gateway Target "${patch.targetId}" is not connector-backed`);
     }
 
-    const request = GatewayTargetUpdateRequest.from(current, patch);
+    let targetConfiguration = patch.targetConfiguration;
+    if (targetConfiguration === undefined && patch.endpoint !== undefined) {
+      const mcpServer = current.targetConfiguration?.mcp?.mcpServer;
+      if (!mcpServer) {
+        throw new InputValidationError("--endpoint requires an existing MCP server Target");
+      }
+      targetConfiguration = {
+        mcp: {
+          mcpServer: {
+            ...mcpServer,
+            endpoint: patch.endpoint,
+          },
+        },
+      };
+    }
+    targetConfiguration ??= current.targetConfiguration;
+    if (!targetConfiguration) {
+      throw new InputValidationError(
+        `Gateway Target "${patch.targetId}" is missing its configuration required for update`,
+      );
+    }
+
+    const name = GatewayClient.replace(current.name, patch.name);
+    const description = GatewayClient.replace(current.description, patch.description);
+    const credentialProviderConfigurations = GatewayClient.replace(
+      current.credentialProviderConfigurations,
+      patch.credentialProviderConfigurations,
+    );
+    const metadataConfiguration = GatewayClient.replace(
+      current.metadataConfiguration,
+      patch.metadataConfiguration,
+    );
+    const privateEndpoint = GatewayClient.replace(current.privateEndpoint, patch.privateEndpoint);
+    const request: UpdateGatewayTargetRequest = {
+      gatewayIdentifier: patch.gatewayId,
+      targetId: patch.targetId,
+      targetConfiguration,
+      ...(name !== undefined ? { name } : {}),
+      ...(description !== undefined ? { description } : {}),
+      ...(credentialProviderConfigurations !== undefined
+        ? { credentialProviderConfigurations }
+        : {}),
+      ...(metadataConfiguration !== undefined ? { metadataConfiguration } : {}),
+      ...(privateEndpoint !== undefined ? { privateEndpoint } : {}),
+    };
     if (connectorOnly && !GatewayConnectorTarget.is(request.targetConfiguration)) {
       throw new InputValidationError(
         "--connector-configuration must contain an MCP or inference connector Target",
       );
     }
     return control.send(new UpdateGatewayTargetCommand(request));
+  }
+
+  private static replace<T>(
+    current: T | undefined,
+    replacement: T | null | undefined,
+  ): T | undefined {
+    if (replacement === undefined) return current;
+    return replacement === null ? undefined : replacement;
+  }
+
+  private static required<T>(value: T | undefined, id: string, field: string): T {
+    if (value === undefined) {
+      throw new InputValidationError(`Gateway "${id}" is missing its ${field} required for update`);
+    }
+    return value;
   }
 
   private static isConnectorTarget(configuration: TargetConfiguration | undefined): boolean {
