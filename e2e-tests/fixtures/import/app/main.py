@@ -34,7 +34,10 @@ def get_or_create_agent():
 async def invoke(payload, context):
     log.info("Invoking Agent.....")
     agent = get_or_create_agent()
-    stream = agent.stream_async(payload.get("prompt"))
+    prompt = payload.get("prompt")
+    if not isinstance(prompt, str):
+        raise ValueError("prompt must be a string")
+    stream = agent.stream_async(prompt)
     async for event in stream:
         if "data" in event and isinstance(event["data"], str):
             yield event["data"]

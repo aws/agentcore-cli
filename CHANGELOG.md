@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.26.0] - 2026-08-04
+
+### Added
+- feat: add --model-provider flag for keyless Bedrock LLM judge evaluators (#1828) (8fba8160)
+
+### Fixed
+- fix(dev): inject A2A_PORT for A2A dev servers (#1909) (b2f0762d)
+- fix(deps): patch fast-uri and brace-expansion to clear audit gate (#1903) (2f27f55f)
+- fix: validate generated agent inputs (#1898) (1afa0083)
+- fix(docs): document lambda:InvokeFunction for code-based evaluators (#1891) (6f343507)
+- fix: resolve the gateway target for A/B test invocation URLs (#1854) (#1874) (badd642e)
+- fix: resolve create harness Dockerfile paths from command cwd (#1474) (369c404a)
+
+### Other Changes
+- ci: wire shared composite actions (#1842) (77b54a59)
+
 ## [0.25.0] - 2026-07-28
 
 ### Added

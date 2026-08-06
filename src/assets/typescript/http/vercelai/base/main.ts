@@ -1,8 +1,13 @@
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime';
 import { streamText, type ModelMessage } from 'ai';
+import { z } from 'zod';
 import { loadModel } from './model/load.js';
 
 const SYSTEM_PROMPT = `You are a helpful assistant.`;
+
+const requestSchema = z.object({
+  prompt: z.string().default(''),
+});
 
 const HISTORY_LIMIT = 128;
 
@@ -32,10 +37,11 @@ function getHistory(sessionId: string): ModelMessage[] {
 
 const app = new BedrockAgentCoreApp({
   invocationHandler: {
-    async *process(payload: any, context: any) {
+    requestSchema,
+    async *process(payload, context) {
       const sessionId = context?.sessionId ?? 'default-session';
       const history = getHistory(sessionId);
-      const userMessage: ModelMessage = { role: 'user', content: payload.prompt ?? '' };
+      const userMessage: ModelMessage = { role: 'user', content: payload.prompt };
 
       const model = await loadModel();
       const result = streamText({

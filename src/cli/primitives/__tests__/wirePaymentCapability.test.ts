@@ -166,7 +166,10 @@ describe('wirePaymentCapability (via PaymentManagerPrimitive.add)', () => {
       '@app.entrypoint',
       'async def invoke(payload, context):',
       '    agent = get_or_create_agent()',
-      '    stream = agent.stream_async(payload.get("prompt"))',
+      '    prompt = payload.get("prompt")',
+      '    if not isinstance(prompt, str):',
+      '        raise ValueError("prompt must be a string")',
+      '    stream = agent.stream_async(prompt)',
       '    async for event in stream:',
       '        yield event',
     ].join('\n');
@@ -242,7 +245,10 @@ describe('wirePaymentCapability (via PaymentManagerPrimitive.add)', () => {
       '        system_prompt="You are a payment assistant.",',
       '        tools=my_tools,',
       '    )',
-      '    stream = agent.stream_async(payload.get("prompt"))',
+      '    prompt = payload.get("prompt")',
+      '    if not isinstance(prompt, str):',
+      '        raise ValueError("prompt must be a string")',
+      '    stream = agent.stream_async(prompt)',
       '    async for event in stream:',
       '        yield event',
     ].join('\n');

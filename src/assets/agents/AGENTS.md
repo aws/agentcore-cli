@@ -23,6 +23,8 @@ Tags defined in `agentcore.json` flow through to deployed CloudFormation resourc
    `agentcore validate` to check.
 4. **Resource Removal:** Use `agentcore remove` to remove resources. Run `agentcore deploy` after removal to tear down
    deployed infrastructure.
+5. **Invocation Input:** Validate runtime payloads and require text prompts to be strings. If a Strands app accepts a
+   caller-supplied message history, normalize the history tail with `strip_trailing_tool_use()` before invocation.
 
 ## Directory Structure
 

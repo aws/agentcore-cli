@@ -34,6 +34,10 @@ const SYSTEM_PROMPT = `
 You are a helpful assistant. Use tools when appropriate.
 `;
 
+const requestSchema = z.object({
+  prompt: z.string().default(''),
+});
+
 {{#if hasMemory}}
 const agentCache = new Map<string, Agent>();
 
@@ -87,7 +91,8 @@ async function getOrCreateAgent(sessionId: string): Promise<Agent> {
 
 const app = new BedrockAgentCoreApp({
   invocationHandler: {
-    async *process(payload: any, context: any) {
+    requestSchema,
+    async *process(payload, context) {
       {{#if hasMemory}}
       const sessionId = context?.sessionId ?? 'default-session';
       const actorId = getActorId(payload, context);
@@ -99,7 +104,7 @@ const app = new BedrockAgentCoreApp({
 
       {{#if hasMemory}}
       try {
-        for await (const event of agent.stream(payload.prompt ?? '')) {
+        for await (const event of agent.stream(payload.prompt)) {
           if (
             event.type === 'modelStreamUpdateEvent' &&
             event.event?.type === 'modelContentBlockDeltaEvent' &&
@@ -123,7 +128,7 @@ const app = new BedrockAgentCoreApp({
       // e.g. Anthropic). Restoring on error keeps the session reusable.
       const snapshot = agent.takeSnapshot({ include: ['messages'] });
       try {
-        for await (const event of agent.stream(payload.prompt ?? '')) {
+        for await (const event of agent.stream(payload.prompt)) {
           if (
             event.type === 'modelStreamUpdateEvent' &&
             event.event?.type === 'modelContentBlockDeltaEvent' &&

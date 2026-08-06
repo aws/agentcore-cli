@@ -13,6 +13,11 @@ file defines a Starlette ASGI app with the Google ADK framework running within.
 
 `model/load.py` instantiates your chosen model provider (Gemini).
 
+## Input Validation
+
+Validate invocation input before forwarding it to the agent framework. Keep plain prompts typed as strings and pass
+only prompt text to the agent.
+
 ## Environment Variables
 
 | Variable | Required | Description |
