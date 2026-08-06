@@ -1,8 +1,5 @@
-import {
-  PROJECT_TEMPLATES,
-  type ProjectRuntime,
-  type ProjectTemplate,
-} from "../../handlers/project/types";
+import { PROJECT_TEMPLATES, type ProjectTemplate } from "../../handlers/project/types";
+import type { ProjectRuntime } from "./schema";
 
 // The resource sections a template may contribute; grows with ProjectSpecSchema.
 type TemplateSpec = {

@@ -2,11 +2,8 @@ import type { DirNode, ProjectNode } from "./tree";
 import { dir, file } from "./tree";
 import type { AssetSource } from "./source";
 import { TEMPLATES } from "./templates";
-import {
-  ProjectSpecSchema,
-  type ProjectSpec,
-  type ProjectTemplate,
-} from "../../handlers/project/types";
+import type { ProjectTemplate } from "../../handlers/project/types";
+import { ProjectSpecSchema, type ProjectSpec } from "./schema";
 
 /** Serializes a value as pretty-printed JSON with a trailing newline. */
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;

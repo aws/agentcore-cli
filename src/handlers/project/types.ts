@@ -1,4 +1,5 @@
 import z from "zod";
+import type { ProjectRuntime } from "../../core/project/schema";
 
 /** Available project templates for scaffolding new AgentCore projects. */
 export const PROJECT_TEMPLATES = {
@@ -87,6 +88,8 @@ export const ProjectNameSchema = z
 export type CreateProjectInput = {
   /** The name of the project; also the directory it is scaffolded into. */
   name: string;
+  /** Directory the project directory is created under. */
+  parentDirectory: string;
   /** The project template to scaffold from. */
   template: ProjectTemplate;
   /** Skip installing dependencies (npm install, uv sync). */
@@ -107,33 +110,6 @@ export type ResolveProjectInput = {
   /** A path to search from when locating the project root. */
   filePath: string;
 };
-
-/**
- * The agentcore.json file format. `create` writes through this schema and
- * `resolve` parses with it, so the two can never drift apart. Strict: unknown
- * keys are errors. New sections (memory, gateway, ...) are added here as the
- * CLI grows support for them.
- */
-export const ProjectSpecSchema = z.strictObject({
-  name: z.string().min(1),
-  version: z.literal(1),
-  managedBy: z.literal("CDK"),
-  runtimes: z
-    .array(
-      z.strictObject({
-        name: z.string().min(1),
-        build: z.enum(["CodeZip", "Container"]),
-        entrypoint: z.string().min(1),
-        codeLocation: z.string().min(1),
-        dockerfile: z.string().optional(),
-      }),
-    )
-    .default([]),
-});
-
-export type ProjectSpec = z.infer<typeof ProjectSpecSchema>;
-
-export type ProjectRuntime = z.infer<typeof ProjectSpecSchema>["runtimes"][number];
 
 export type Project = {
   name: string;

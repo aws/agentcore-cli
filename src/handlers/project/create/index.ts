@@ -6,6 +6,8 @@ import { PROJECT_TEMPLATES, ProjectNameSchema, type ProjectManager } from "../ty
 type CreateProjectHandlerConfig = {
   projectManager: ProjectManager;
   io: AppIO;
+  /** Directory the new project is created under. */
+  cwd: string;
 };
 
 export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =>
@@ -30,6 +32,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       // Progress and success go to stderr, keeping stdout for machine output.
       const project = await config.projectManager.create({
         name: flags["project-name"],
+        parentDirectory: config.cwd,
         template: flags["template"],
         skipInstall: flags["skip-install"],
         skipGit: flags["skip-git"],

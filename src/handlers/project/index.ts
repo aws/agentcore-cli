@@ -26,7 +26,7 @@ export function createProjectHandler(config: ProjectHandlerConfig): Router {
   const inProject = withProject({ projectManager: config.projectManager, cwd });
 
   project.handler(
-    createCreateProjectHandler({ projectManager: config.projectManager, io: config.io }),
+    createCreateProjectHandler({ projectManager: config.projectManager, io: config.io, cwd }),
   );
   project.handler(inProject(createAddProjectHandler()));
   project.handler(inProject(createRemoveProjectHandler()));

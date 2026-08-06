@@ -2,13 +2,13 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import z from "zod";
 import { DeserializationError, InvalidProjectConfigError, NestedProjectError } from "../../errors";
-import {
-  ProjectSpecSchema,
-  type CreateProjectInput,
-  type ResolveProjectInput,
-  type Project,
-  type ProjectManager,
+import type {
+  CreateProjectInput,
+  ResolveProjectInput,
+  Project,
+  ProjectManager,
 } from "../../handlers/project/types";
+import { ProjectSpecSchema } from "./schema";
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 import type { Logger } from "../../logging";
 import { requireTool, runProcess, type ProcessRunner } from "../../io";
@@ -76,11 +76,11 @@ export class FsProjectManager implements ProjectManager {
 
   public async create(input: CreateProjectInput): Promise<Project> {
     // Scaffold into a fresh directory, refusing to nest inside an existing project.
-    const enclosing = enclosingProjectRoot(process.cwd());
+    const enclosing = enclosingProjectRoot(input.parentDirectory);
     if (enclosing) {
       throw new NestedProjectError(enclosing);
     }
-    const destination = join(process.cwd(), input.name);
+    const destination = join(input.parentDirectory, input.name);
     this.logger.debug(`scaffolding project "${input.name}" from template "${input.template}"`);
 
     input.onProgress?.({ message: "Scaffolding project files..." });

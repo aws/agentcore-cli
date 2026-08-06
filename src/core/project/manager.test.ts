@@ -48,7 +48,7 @@ describe("FsProjectManager.create", () => {
     "scaffolds the expected file tree for %s into a fresh directory",
     async (template) => {
       const directory = await inTempDirectory();
-      await manager().manager.create({ name: "example", template });
+      await manager().manager.create({ name: "example", parentDirectory: directory, template });
 
       const projectRoot = join(directory, "example");
       const manifest = (await readdir(projectRoot, { recursive: true, withFileTypes: true }))
@@ -66,6 +66,7 @@ describe("FsProjectManager.create", () => {
     const directory = await inTempDirectory();
     await manager().manager.create({
       name: "example",
+      parentDirectory: directory,
       template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
     });
 
@@ -87,6 +88,7 @@ describe("FsProjectManager.create", () => {
     const directory = await inTempDirectory();
     await manager().manager.create({
       name: "example",
+      parentDirectory: directory,
       template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON_CONTAINER,
     });
 
@@ -103,8 +105,12 @@ describe("FsProjectManager.create", () => {
   });
 
   test("refuses to overwrite an existing project", async () => {
-    await inTempDirectory();
-    const input = { name: "example", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON };
+    const directory = await inTempDirectory();
+    const input = {
+      name: "example",
+      parentDirectory: directory,
+      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+    };
 
     await manager().manager.create(input);
     await expect(manager().manager.create(input)).rejects.toBeInstanceOf(ProjectFileExistsError);
@@ -113,7 +119,11 @@ describe("FsProjectManager.create", () => {
   test("runs npm install, uv sync, and git init after scaffolding", async () => {
     const directory = await inTempDirectory();
     const { manager: subject, commands } = manager();
-    await subject.create({ name: "example", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON });
+    await subject.create({
+      name: "example",
+      parentDirectory: directory,
+      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+    });
 
     const projectRoot = join(directory, "example");
     expect(commands).toEqual([
@@ -128,6 +138,7 @@ describe("FsProjectManager.create", () => {
     const { manager: subject, commands } = manager();
     await subject.create({
       name: "example",
+      parentDirectory: directory,
       template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
       skipInstall: true,
     });
@@ -136,10 +147,11 @@ describe("FsProjectManager.create", () => {
   });
 
   test("skipGit skips git init", async () => {
-    await inTempDirectory();
+    const directory = await inTempDirectory();
     const { manager: subject, commands } = manager();
     await subject.create({
       name: "example",
+      parentDirectory: directory,
       template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
       skipGit: true,
     });
@@ -148,10 +160,11 @@ describe("FsProjectManager.create", () => {
   });
 
   test("reports each step through onProgress", async () => {
-    await inTempDirectory();
+    const directory = await inTempDirectory();
     const messages: string[] = [];
     await manager().manager.create({
       name: "example",
+      parentDirectory: directory,
       template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
       onProgress: (event) => messages.push(event.message),
     });
@@ -175,7 +188,11 @@ describe("FsProjectManager.create", () => {
     });
 
     await expect(
-      failing.create({ name: "example", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON }),
+      failing.create({
+        name: "example",
+        parentDirectory: directory,
+        template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      }),
     ).rejects.toThrow("npm exploded");
     expect(await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).exists()).toBe(
       true,
@@ -186,12 +203,16 @@ describe("FsProjectManager.create", () => {
     const directory = await inTempDirectory();
     await manager().manager.create({
       name: "root",
+      parentDirectory: directory,
       template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
     });
 
-    process.chdir(join(directory, "root"));
     await expect(
-      manager().manager.create({ name: "child", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON }),
+      manager().manager.create({
+        name: "child",
+        parentDirectory: join(directory, "root"),
+        template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      }),
     ).rejects.toBeInstanceOf(NestedProjectError);
   });
 });
@@ -201,7 +222,11 @@ describe("FsProjectManager.resolve", () => {
     "round-trips a created %s project from a nested subdirectory",
     async (template) => {
       const directory = await inTempDirectory();
-      const created = await manager().manager.create({ name: "example", template });
+      const created = await manager().manager.create({
+        name: "example",
+        parentDirectory: directory,
+        template,
+      });
 
       const resolved = await manager().manager.resolve({
         filePath: join(directory, "example", "app", "hello-world"),
