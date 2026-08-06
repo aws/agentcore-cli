@@ -98,6 +98,19 @@ describe("BuildManifestSchema", () => {
     expect(BuildManifestSchema.safeParse(extra).success).toBe(false);
   });
 
+  test("rejects a manifest with no deployment targets", () => {
+    const input = manifest({
+      targets: [],
+      artifact: {
+        kind: "cdk-cloud-assembly",
+        path: "agentcore/cdk/cdk.out",
+        stacksByTarget: {},
+      },
+    });
+
+    expect(BuildManifestSchema.safeParse(input).success).toBe(false);
+  });
+
   test("rejects duplicate target names", () => {
     const input = manifest({
       targets: [

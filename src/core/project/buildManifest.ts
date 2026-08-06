@@ -55,18 +55,19 @@ export type BuildArtifact = z.infer<typeof BuildArtifactSchema>;
 /**
  * Persisted handoff from build to deploy
  *
- * Deploy requires a new build when the manifest is missing, unreadable, not valid, has unsupported manifestVerison,
- * or if its inputFinderprint differs from current project inputs. Otherwise, deploy would use the
- * typed artifact to select its backend
+ * Deploy requires a new build when the manifest is missing, unreadable, invalid, has an unsupported
+ * manifest version, or its input fingerprint differs from the current project inputs. Otherwise,
+ * deploy uses the typed artifact to select its backend.
  */
 export const BuildManifestSchema = z
   .object({
     manifestVersion: z.literal(BUILD_MANIFEST_VERSION),
     projectName: z.string().min(1),
     cliVersion: z.string().min(1),
+    /** Deploy recomputes this hash to reject artifacts built from stale project inputs. */
     inputFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
     builtAt: z.iso.datetime(),
-    targets: z.array(DeploymentTargetSchema),
+    targets: z.array(DeploymentTargetSchema).min(1, "must include at least one deployment target"),
     artifact: BuildArtifactSchema,
   })
   .strict()
