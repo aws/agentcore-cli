@@ -40,7 +40,7 @@ export class ProcessSupervisor {
   };
   private readonly reapAndExit = (signal: NodeJS.Signals) => {
     this.reap();
-    // Re-deliver the default outcome (exit code 128 + signal number).
+    // Exit as if unhandled: POSIX convention is 128 + signal number.
     process.exit(128 + (signal === "SIGTERM" ? 15 : 1));
   };
 
@@ -91,9 +91,10 @@ export class ProcessSupervisor {
   }
 
   private watch(child: ChildProcess): void {
-    // One set of CLI-exit reapers for all children, attached only while any
-    // are alive: 'exit' covers normal exit and uncaught exceptions, the
-    // signal handlers cover terminations that never fire 'exit'.
+    // Attach the reapers once, on the first live child: the 'exit' handler
+    // catches normal exits and uncaught exceptions, while the signal handlers
+    // catch the terminations that never fire 'exit' (see REAP_SIGNALS). Both
+    // exist so no dev server outlives the CLI and squats on its port.
     if (this.children.size === 0) {
       process.once("exit", this.reap);
       for (const signal of REAP_SIGNALS) process.once(signal, this.reapAndExit);

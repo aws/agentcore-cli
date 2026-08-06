@@ -5,21 +5,32 @@ import { join } from "node:path";
 import type { ProjectRuntime } from "../../core/project/schema";
 import type { StartDevServerInput, DevServerHandle } from "../../handlers/project/dev/types";
 import { createSilentLogger } from "../../testing";
-import { CodeZipDevRunner, nodePackageManager, parseEntrypoint, serverCommand } from "./codezip";
+import { CodeZipDevRunner, parseEntrypoint, serverCommand } from "./codezip";
 
-const pythonRuntime: ProjectRuntime = {
+/** The schema brands entrypoint/codeLocation as FilePath/DirectoryPath; fixtures
+ *  supply plain strings and cast through the brand in one place. */
+function runtime(spec: {
+  name: string;
+  build: "CodeZip" | "Container";
+  entrypoint: string;
+  codeLocation: string;
+}): ProjectRuntime {
+  return spec as ProjectRuntime;
+}
+
+const pythonRuntime = runtime({
   name: "hello_world",
   build: "CodeZip",
   entrypoint: "main.py",
   codeLocation: "app/hello-world",
-};
+});
 
-const tsRuntime: ProjectRuntime = {
+const tsRuntime = runtime({
   name: "hello_world",
   build: "CodeZip",
   entrypoint: "index.ts",
   codeLocation: "app/hello-world",
-};
+});
 
 /** Accumulates run/spawn calls without executing anything real. */
 function harness() {
@@ -132,14 +143,14 @@ describe("CodeZipDevRunner", () => {
     await projectFile(root, "app/hello-world/.venv/bin", "uvicorn");
 
     await runner.start(
-      startInput(root, h, { ...pythonRuntime, entrypoint: "main.py:application" }),
+      startInput(root, h, runtime({ ...pythonRuntime, entrypoint: "main.py:application" })),
     );
 
     expect(h.spawned[0]).toContain("uvicorn");
     await rm(root, { recursive: true, force: true });
   });
 
-  test("installs node_modules via detected package manager for TypeScript runtime", async () => {
+  test("installs node_modules with npm for TypeScript runtime", async () => {
     const h = harness();
     const runner = new CodeZipDevRunner({
       logger: createSilentLogger(),
@@ -149,11 +160,10 @@ describe("CodeZipDevRunner", () => {
 
     const root = join(tmpdir(), `codezip-test-${Date.now()}`);
     await projectTree(root, "app/hello-world");
-    await projectFile(root, "app/hello-world", "pnpm-lock.yaml");
 
     await runner.start(startInput(root, h, tsRuntime));
 
-    expect(h.commands[0]?.[0]).toContain("pnpm");
+    expect(h.commands[0]?.[0]).toContain("npm");
     await rm(root, { recursive: true, force: true });
   });
 });
@@ -164,23 +174,8 @@ describe("parseEntrypoint", () => {
     ["main.py:application", "main.py", "application", "python"],
     ["index.ts", "index.ts", "app", "typescript"],
     ["src/server.ts:handler", "src/server.ts", "handler", "typescript"],
-  ])("parses %s", (input, file, handler, language) => {
+  ] as const)("parses %s", (input, file, handler, language) => {
     expect(parseEntrypoint(input)).toEqual({ file, handler, language });
-  });
-});
-
-describe("nodePackageManager", () => {
-  test.each([
-    ["pnpm-lock.yaml", "pnpm"],
-    ["yarn.lock", "yarn"],
-    ["package-lock.json", "npm"],
-  ])("detects %s as %s", async (lockfile, expected) => {
-    const root = join(tmpdir(), `pm-test-${Date.now()}`);
-    await mkdir(root, { recursive: true });
-    await writeFile(join(root, lockfile), "");
-
-    expect(nodePackageManager(root)).toBe(expected);
-    await rm(root, { recursive: true, force: true });
   });
 });
 

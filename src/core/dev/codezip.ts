@@ -1,13 +1,13 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { ValidationError } from "../../errors";
+import { InputValidationError } from "../../errors";
 import type {
   DevRunner,
   DevServerHandle,
   StartDevServerInput,
 } from "../../handlers/project/dev/types";
 import type { Logger } from "../../logging";
-import { runCommand, type CommandRunner } from "./run";
+import { runProcess, type ProcessRunner } from "../../io";
 import { ProcessSupervisor, windowsExecutable, type ProcessCommand } from "./process";
 
 /** An entrypoint interpreted exactly once: "main.py:application" is the file
@@ -28,17 +28,10 @@ export function parseEntrypoint(entrypoint: string): Entrypoint {
   };
 }
 
-/** Detects the package manager for a Node project from its lockfile. */
-export function nodePackageManager(directory: string): "npm" | "pnpm" | "yarn" {
-  if (existsSync(join(directory, "pnpm-lock.yaml"))) return "pnpm";
-  if (existsSync(join(directory, "yarn.lock"))) return "yarn";
-  return "npm";
-}
-
 type CodeZipDevRunnerConfig = {
   logger: Logger;
   /** Injectable process seams so tests never spawn uv or a real server. */
-  run?: CommandRunner;
+  run?: ProcessRunner;
   supervisor?: ProcessSupervisor;
 };
 
@@ -48,19 +41,19 @@ type CodeZipDevRunnerConfig = {
  */
 export class CodeZipDevRunner implements DevRunner {
   private readonly logger: Logger;
-  private readonly run: CommandRunner;
+  private readonly run: ProcessRunner;
   private readonly supervisor: ProcessSupervisor;
 
   constructor(config: CodeZipDevRunnerConfig) {
     this.logger = config.logger;
-    this.run = config.run ?? runCommand;
+    this.run = config.run ?? runProcess;
     this.supervisor = config.supervisor ?? new ProcessSupervisor();
   }
 
   public async start(input: StartDevServerInput): Promise<DevServerHandle> {
     const directory = join(input.projectRoot, input.runtime.codeLocation);
     if (!existsSync(directory)) {
-      throw new ValidationError(`runtime code directory not found: ${directory}`);
+      throw new InputValidationError(`runtime code directory not found: ${directory}`);
     }
 
     const entrypoint = parseEntrypoint(input.runtime.entrypoint);
@@ -89,9 +82,8 @@ export class CodeZipDevRunner implements DevRunner {
   private async ensureNodeModules(directory: string, input: StartDevServerInput): Promise<void> {
     if (existsSync(join(directory, "node_modules"))) return;
 
-    const packageManager = nodePackageManager(directory);
-    input.onLog("system", `Installing Node dependencies with ${packageManager}...`);
-    await this.run([windowsExecutable(packageManager), "install"], {
+    input.onLog("system", "Installing Node dependencies with npm...");
+    await this.run([windowsExecutable("npm"), "install"], {
       cwd: directory,
       onOutput: (chunk) => this.logger.debug(chunk.trim()),
     });
