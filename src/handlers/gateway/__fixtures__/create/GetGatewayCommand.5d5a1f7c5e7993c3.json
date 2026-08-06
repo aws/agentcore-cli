@@ -1,13 +1,19 @@
 {
   "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:gateway/agentcore-cli-gateway-create-fixture-a9vcrbbtn6",
   "gatewayId": "agentcore-cli-gateway-create-fixture-a9vcrbbtn6",
-  "createdAt": "2026-08-06T14:53:37.760Z",
-  "updatedAt": "2026-08-06T14:53:37.760Z",
-  "status": "CREATING",
+  "createdAt": {
+    "$date": "2026-08-06T14:53:37.760Z"
+  },
+  "updatedAt": {
+    "$date": "2026-08-06T14:53:38.670Z"
+  },
+  "status": "READY",
   "name": "agentcore-cli-gateway-create-fixture",
   "authorizerType": "NONE",
   "gatewayUrl": "https://agentcore-cli-gateway-create-fixture-a9vcrbbtn6.gateway.bedrock-agentcore.us-west-2.amazonaws.com",
   "description": "Disposable Gateway Create fixture",
   "roleArn": "arn:aws:iam::685197708687:role/AgentCoreGateway-agentcore-cli-gateway-create-fix-64147103bcd4",
-  "workloadIdentityDetails": {}
+  "workloadIdentityDetails": {
+    "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:workload-identity-directory/default/workload-identity/agentcore-cli-gateway-create-fixture-a9vcrbbtn6"
+  }
 }

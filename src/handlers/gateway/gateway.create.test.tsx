@@ -27,7 +27,7 @@ const HTTP_TARGET_NAME = "http-fixture";
 const FIXTURES = join(import.meta.dir, "__fixtures__", "create");
 const FLOW_TIMEOUT = 600_000;
 
-// Record with AWS_PROFILE=deploy RECORD=1 bun test src/handlers/gateway/gateway.create.test.tsx
+// Record with AWS_PROFILE=e2e-test RECORD=1 bun test src/handlers/gateway/gateway.create.test.tsx
 type FixtureState = {
   gatewayId?: string;
   targetId?: string;

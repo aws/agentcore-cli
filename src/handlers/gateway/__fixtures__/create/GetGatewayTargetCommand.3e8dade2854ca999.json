@@ -1,11 +1,11 @@
 {
-  "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:gateway/agentcore-cli-gateway-create-fixture-7ky2bb3jku",
-  "targetId": "APUTKOW1TL",
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:gateway/agentcore-cli-gateway-create-fixture-a9vcrbbtn6",
+  "targetId": "C6K0TWPVPG",
   "createdAt": {
-    "$date": "2026-08-05T20:52:45.837Z"
+    "$date": "2026-08-06T14:53:43.219Z"
   },
   "updatedAt": {
-    "$date": "2026-08-05T20:52:46.644Z"
+    "$date": "2026-08-06T14:53:43.935Z"
   },
   "status": "READY",
   "name": "http-fixture",

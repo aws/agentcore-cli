@@ -1,8 +1,12 @@
 {
   "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:gateway/agentcore-cli-gateway-create-fixture-a9vcrbbtn6",
   "gatewayId": "agentcore-cli-gateway-create-fixture-a9vcrbbtn6",
-  "createdAt": "2026-08-06T14:53:37.760Z",
-  "updatedAt": "2026-08-06T14:53:37.760Z",
+  "createdAt": {
+    "$date": "2026-08-06T14:53:37.760Z"
+  },
+  "updatedAt": {
+    "$date": "2026-08-06T14:53:37.760Z"
+  },
   "status": "CREATING",
   "name": "agentcore-cli-gateway-create-fixture",
   "authorizerType": "NONE",
