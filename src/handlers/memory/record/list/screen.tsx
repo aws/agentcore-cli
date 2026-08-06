@@ -84,7 +84,7 @@ function MemoryRecordScopeScreen({ memoryId }: MemoryRecordScopeScreenProps) {
 
   useInput((_input, key) => {
     if (key.escape) {
-      navigate("/agentcore/memory/record/list");
+      navigate(`/agentcore/memory/get/${encodeURIComponent(memoryId)}`);
       return;
     }
     if (key.upArrow) {

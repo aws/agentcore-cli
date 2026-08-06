@@ -44,21 +44,26 @@ export interface RouterScreenProps extends ScreenProps {
   // segment is the app root; the last is the command whose subcommands are the
   // menu options.
   path: string[];
+  /** Subcommands that remain available headlessly but are not TUI menu options. */
+  hiddenCommands?: readonly string[];
 }
 
 // RouterScreen renders the interactive command menu for a Router node: a filter
 // input at the top and the node's subcommands (read straight off the Commander
 // Command) as navigable options below. Selecting an option routes to that
 // subcommand's screen.
-export function RouterScreen({ ctx, path }: RouterScreenProps) {
+export function RouterScreen({ ctx, path, hiddenCommands = [] }: RouterScreenProps) {
   const navigate = useNavigate();
   const { isRawModeSupported } = useStdin();
   const { exit } = useApp();
 
   const command = resolveCommand(ctx.require(CommandKey), path);
   const options: Option[] = useMemo(
-    () => command.commands.map((c) => ({ name: c.name(), description: c.description() })),
-    [command],
+    () =>
+      command.commands
+        .filter((command) => !hiddenCommands.includes(command.name()))
+        .map((command) => ({ name: command.name(), description: command.description() })),
+    [command, hiddenCommands],
   );
 
   const [query, setQuery] = useState("");

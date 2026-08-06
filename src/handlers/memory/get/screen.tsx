@@ -5,6 +5,24 @@ import { ResourceDetailScreen } from "../../../components/ResourceDetailScreen";
 import type { ScreenProps } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 
+const ACTIONS = [
+  {
+    name: "detail",
+    description: "show the full JSON definition",
+    to: (id: string) => `/agentcore/memory/get/${encodeURIComponent(id)}/json`,
+  },
+  {
+    name: "events",
+    description: "list this Memory's events",
+    to: (id: string) => `/agentcore/memory/event/list/${encodeURIComponent(id)}`,
+  },
+  {
+    name: "records",
+    description: "list this Memory's records",
+    to: (id: string) => `/agentcore/memory/record/list/${encodeURIComponent(id)}`,
+  },
+] as const;
+
 function useMemoryDetail({ ctx, core }: ScreenProps, memoryId: string | undefined) {
   const opts = coreOptsFromCtx(ctx);
   return useQuery({
@@ -37,14 +55,11 @@ export function MemoryGetScreen(props: ScreenProps) {
       }}
       actions={
         memoryId && memory
-          ? [
-              {
-                name: "detail",
-                description: "show the full JSON definition",
-                onSelect: () =>
-                  navigate(`/agentcore/memory/get/${encodeURIComponent(memoryId)}/json`),
-              },
-            ]
+          ? ACTIONS.map((action) => ({
+              name: action.name,
+              description: action.description,
+              onSelect: () => navigate(action.to(memoryId)),
+            }))
           : []
       }
       loadingLabel="Loading Memory…"

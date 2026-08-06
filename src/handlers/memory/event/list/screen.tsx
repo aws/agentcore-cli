@@ -99,7 +99,7 @@ function ActorPicker({ ctx, core, memoryId }: ActorPickerProps) {
           `/agentcore/memory/event/list/${encodeURIComponent(memoryId)}/${encodeURIComponent(actorId)}`,
         )
       }
-      onBack={() => navigate("/agentcore/memory/event/list")}
+      onBack={() => navigate(`/agentcore/memory/get/${encodeURIComponent(memoryId)}`)}
       loadingMessage={`Loading actors for Memory ${memoryId}...`}
       errorMessage={(error) => `Error loading actors for Memory ${memoryId}: ${error.message}`}
       emptyMessage={`No actors found for Memory ${memoryId}.`}

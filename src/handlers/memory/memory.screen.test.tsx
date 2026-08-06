@@ -66,6 +66,17 @@ function coreWithMemories(memories: MemorySummary[]): TestCoreClient {
 }
 
 describe("Memory picker", () => {
+  test("keeps event and record commands out of the Memory TUI menu", async () => {
+    const screen = renderScreen("/agentcore/memory");
+
+    await waitForText(screen.lastFrame, "manage AgentCore Memories");
+    const frame = screen.lastFrame()!;
+    expect(frame).toContain("get");
+    expect(frame).toContain("list");
+    expect(frame).not.toContain("event");
+    expect(frame).not.toContain("record");
+  });
+
   test("renders Memory identity, status, and update time", async () => {
     const core = coreWithMemories([
       memorySummary({
@@ -222,6 +233,41 @@ describe("Memory detail", () => {
     const frame = screen.lastFrame()!;
     expect(frame).toContain('"memoryExecutionRoleArn"');
     expect(frame).toContain('"strategies"');
+  });
+
+  test("opens the event flow scoped to this Memory and returns to its detail", async () => {
+    const core = new TestCoreClient();
+    core.memory.setGetResponse(getMemoryOutput());
+    core.memory.setListActorsResponse({ actorSummaries: [] });
+    const screen = renderScreen("/agentcore/memory/get/memory-1", { core });
+
+    await waitForText(screen.lastFrame, "list this Memory's events");
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "choose an actor to list sessions for");
+
+    await waitFor(() => core.memory.calls.some((call) => call.method === "listActors"));
+    expect(core.memory.calls.find((call) => call.method === "listActors")?.args[0]).toMatchObject({
+      memoryId: "memory-1",
+    });
+
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "list this Memory's events");
+  });
+
+  test("opens the record flow scoped to this Memory and returns to its detail", async () => {
+    const core = new TestCoreClient();
+    core.memory.setGetResponse(getMemoryOutput());
+    const screen = renderScreen("/agentcore/memory/get/memory-1", { core });
+
+    await waitForText(screen.lastFrame, "list this Memory's records");
+    await screen.press("down");
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "choose the namespace scope for the record list");
+
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "list this Memory's records");
   });
 
   test("retries a failed detail query", async () => {
