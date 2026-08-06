@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { AgentCoreCLIError, InputValidationError } from "../errors";
+import { InputValidationError, MalformedServiceResponseError } from "../errors";
 import {
   applyExampleIds,
   diffExamples,
   indexRemoteById,
   parseJsonl,
-  stableStringify,
   stripExampleId,
 } from "./datasetDiff";
 
@@ -72,7 +71,7 @@ describe("indexRemoteById", () => {
   test("rejects a remote example without an id", () => {
     const remote = parseJsonl(jsonl({ scenario_id: "missing-id" }), "remote");
 
-    expect(() => indexRemoteById(remote)).toThrow(AgentCoreCLIError);
+    expect(() => indexRemoteById(remote)).toThrow(MalformedServiceResponseError);
     expect(() => indexRemoteById(remote)).toThrow(/missing a valid exampleId/);
     try {
       indexRemoteById(remote);
@@ -84,7 +83,7 @@ describe("indexRemoteById", () => {
   test("rejects duplicate remote ids instead of overwriting an example", () => {
     const remote = parseJsonl(jsonl(withId("duplicate"), withId("duplicate")), "remote");
 
-    expect(() => indexRemoteById(remote)).toThrow(AgentCoreCLIError);
+    expect(() => indexRemoteById(remote)).toThrow(MalformedServiceResponseError);
     expect(() => indexRemoteById(remote)).toThrow(/duplicate exampleId "duplicate"/);
   });
 });
@@ -111,16 +110,36 @@ describe("diffExamples", () => {
   // must not read as modified.
   test("treats key reordering as unchanged", () => {
     const remote = indexRemoteById([
-      { exampleId: "a", content: { exampleId: "a", alpha: 1, beta: 2 } },
+      {
+        exampleId: "a",
+        content: { exampleId: "a", alpha: 1, nested: { first: 1, second: 2 } },
+      },
     ]);
     const local: Parameters<typeof diffExamples>[0] = [
-      { exampleId: "a", content: { beta: 2, exampleId: "a", alpha: 1 } },
+      {
+        exampleId: "a",
+        content: { nested: { second: 2, first: 1 }, exampleId: "a", alpha: 1 },
+      },
     ];
 
     const diff = diffExamples(local, remote);
 
     expect(diff.unchanged).toBe(1);
     expect(diff.updates).toEqual([]);
+  });
+
+  test("treats array reordering as an update", () => {
+    const remote = indexRemoteById([
+      { exampleId: "a", content: { exampleId: "a", values: [1, 2] } },
+    ]);
+    const local: Parameters<typeof diffExamples>[0] = [
+      { exampleId: "a", content: { exampleId: "a", values: [2, 1] } },
+    ];
+
+    const diff = diffExamples(local, remote);
+
+    expect(diff.unchanged).toBe(0);
+    expect(diff.updates).toEqual([{ exampleId: "a", values: [2, 1] }]);
   });
 
   // An id absent remotely is stale (e.g. the dataset was recreated); re-adding is
@@ -227,7 +246,9 @@ describe("applyExampleIds", () => {
     const local = parseJsonl(jsonl({ scenario_id: "one" }, { scenario_id: "two" }), "file-path");
     const additions = diffExamples(local, new Map()).additions;
 
-    expect(() => applyExampleIds(local, additions, assignedIds)).toThrow(AgentCoreCLIError);
+    expect(() => applyExampleIds(local, additions, assignedIds)).toThrow(
+      MalformedServiceResponseError,
+    );
     expect(() => applyExampleIds(local, additions, assignedIds)).toThrow(
       /returned \d+ exampleIds for 2 additions/,
     );
@@ -237,7 +258,7 @@ describe("applyExampleIds", () => {
     const local = parseJsonl(jsonl({ scenario_id: "one" }), "file-path");
     const additions = diffExamples(local, new Map()).additions;
 
-    expect(() => applyExampleIds(local, additions, [""])).toThrow(AgentCoreCLIError);
+    expect(() => applyExampleIds(local, additions, [""])).toThrow(MalformedServiceResponseError);
     expect(() => applyExampleIds(local, additions, [""])).toThrow(/invalid exampleId/);
   });
 
@@ -246,29 +267,11 @@ describe("applyExampleIds", () => {
     const additions = diffExamples(local, new Map()).additions;
 
     expect(() => applyExampleIds(local, additions, ["same-id", "same-id"])).toThrow(
-      AgentCoreCLIError,
+      MalformedServiceResponseError,
     );
     expect(() => applyExampleIds(local, additions, ["same-id", "same-id"])).toThrow(
       /duplicate exampleId "same-id"/,
     );
-  });
-});
-
-describe("stableStringify", () => {
-  test("sorts object keys at every depth", () => {
-    expect(stableStringify({ b: 1, a: { d: 2, c: 3 } })).toBe(
-      stableStringify({ a: { c: 3, d: 2 }, b: 1 }),
-    );
-  });
-
-  // Arrays are ordered data — reordering them is a real change, unlike key order.
-  test("preserves array order", () => {
-    expect(stableStringify([1, 2])).not.toBe(stableStringify([2, 1]));
-  });
-
-  test("handles null and primitives", () => {
-    expect(stableStringify(null)).toBe("null");
-    expect(stableStringify({ a: null })).toBe('{"a":null}');
   });
 });
 

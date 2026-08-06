@@ -5,6 +5,7 @@ export {
   FileWriteError,
   InputValidationError,
   InvalidEnvironmentError,
+  MalformedServiceResponseError,
   NestedProjectError,
   NetworkingError,
   NotImplementedError,

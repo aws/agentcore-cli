@@ -160,6 +160,13 @@ export class NetworkingError extends AgentCoreCLIError {
   }
 }
 
+/** Service data was returned successfully, but did not match the expected contract. */
+export class MalformedServiceResponseError extends AgentCoreCLIError {
+  constructor(message: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
+    super(message, { ...options, source: ERROR_SOURCE.SERVICE });
+  }
+}
+
 /** A file could not be written locally: missing directory, permission denial, etc. */
 export class FileWriteError extends AgentCoreCLIError {
   constructor(message: string, options?: AgentCoreCLIErrorOptions) {

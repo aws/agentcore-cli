@@ -1,4 +1,5 @@
-import { AgentCoreCLIError, ERROR_SOURCE, InputValidationError } from "../errors";
+import { isDeepStrictEqual } from "node:util";
+import { InputValidationError, MalformedServiceResponseError } from "../errors";
 import { parseJsonObjectLines, type JsonObject } from "../io";
 
 // One dataset example as it appears in a JSONL file: an opaque JSON document,
@@ -49,26 +50,20 @@ export function indexRemoteById(examples: ParsedExample[]): Map<string, DatasetE
   examples.forEach((example, index) => {
     const id = example.exampleId;
     if (!id) {
-      throw cliServiceError(`Remote dataset example ${index + 1} is missing a valid exampleId`, {
-        index,
-      });
+      throw new MalformedServiceResponseError(
+        `Remote dataset example ${index + 1} is missing a valid exampleId`,
+        { meta: { index } },
+      );
     }
     if (byId.has(id)) {
-      throw cliServiceError(`Remote dataset contains duplicate exampleId "${id}"`, {
-        exampleId: id,
-        index,
-      });
+      throw new MalformedServiceResponseError(
+        `Remote dataset contains duplicate exampleId "${id}"`,
+        { meta: { exampleId: id, index } },
+      );
     }
     byId.set(id, example.content);
   });
   return byId;
-}
-
-function cliServiceError(message: string, meta: Record<string, unknown>): AgentCoreCLIError {
-  return new AgentCoreCLIError(message, {
-    source: ERROR_SOURCE.SERVICE,
-    meta,
-  });
 }
 
 function validateUniqueLocalIds(local: ParsedExample[]): void {
@@ -106,8 +101,9 @@ export function diffExamples(
       return;
     }
     matched.add(example.exampleId!);
-    if (contentEquals(example.content, remoteContent)) unchanged++;
-    else updates.push(example.content);
+    if (isDeepStrictEqual(stripExampleId(example.content), stripExampleId(remoteContent))) {
+      unchanged++;
+    } else updates.push(example.content);
   });
 
   const deleteIds = [...remote.keys()].filter((id) => !matched.has(id));
@@ -121,26 +117,6 @@ export function stripExampleId(content: DatasetExample): DatasetExample {
   return rest;
 }
 
-// contentEquals compares two examples ignoring exampleId and key order. The
-// service does not preserve the key order examples were submitted in, so a plain
-// JSON.stringify comparison would report all round-trip examples as changed.
-function contentEquals(a: DatasetExample, b: DatasetExample): boolean {
-  return stableStringify(stripExampleId(a)) === stableStringify(stripExampleId(b));
-}
-
-// stableStringify serializes a JSON document with object keys sorted, so two
-// documents differing only in key order produce the same string.
-export function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
-
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, v]) => v !== undefined)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`);
-  return `{${entries.join(",")}}`;
-}
-
 // applyExampleIds renders the local file with service-assigned ids attached to the
 // rows that were added, leaving every other row untouched. `assignedIds` is
 // positional: the nth id belongs to the nth addition. Without these ids the next
@@ -151,26 +127,26 @@ export function applyExampleIds(
   assignedIds: string[],
 ): string {
   if (assignedIds.length !== additions.length) {
-    throw cliServiceError(
+    throw new MalformedServiceResponseError(
       `Dataset service returned ${assignedIds.length} exampleIds for ` +
         `${additions.length} additions`,
-      { expected: additions.length, received: assignedIds.length },
+      { meta: { expected: additions.length, received: assignedIds.length } },
     );
   }
 
   const uniqueIds = new Set<string>();
   assignedIds.forEach((id, index) => {
     if (typeof id !== "string" || id.trim() === "") {
-      throw cliServiceError(
+      throw new MalformedServiceResponseError(
         `Dataset service returned an invalid exampleId for addition ${index + 1}`,
-        { index },
+        { meta: { index } },
       );
     }
     if (uniqueIds.has(id)) {
-      throw cliServiceError(`Dataset service returned duplicate exampleId "${id}"`, {
-        exampleId: id,
-        index,
-      });
+      throw new MalformedServiceResponseError(
+        `Dataset service returned duplicate exampleId "${id}"`,
+        { meta: { exampleId: id, index } },
+      );
     }
     uniqueIds.add(id);
   });
