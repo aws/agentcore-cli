@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { ServiceException } from "@smithy/core/client";
 import {
   GetAgentRuntimeCommand,
   GetAgentRuntimeEndpointCommand,
@@ -38,17 +37,17 @@ export class RuntimeClient implements CoreRuntimeClient {
     signal?: AbortSignal,
   ): Promise<RuntimeInvokeResponse> {
     const { runtimeId, bearerToken } = request;
-    const logger = this.logger.child({
-      operation: "invokeRuntime",
-      authMode: bearerToken === undefined ? "IAM" : "CUSTOM_JWT",
-      runtimeId,
-      qualifier: request.qualifier,
-      region: options.region,
-    });
     if (bearerToken !== undefined) {
+      const logger = this.logger.child({
+        operation: "invokeRuntime",
+        authMode: "CUSTOM_JWT",
+        runtimeId,
+        qualifier: request.qualifier,
+        region: options.region,
+      });
       return this.invokeRuntimeWithCustomJwt(request, bearerToken, options, logger, signal);
     }
-    return this.invokeRuntimeWithIam(request, options, logger, signal);
+    return this.invokeRuntimeWithIam(request, options, signal);
   }
 
   private async invokeRuntimeWithCustomJwt(
@@ -147,7 +146,6 @@ export class RuntimeClient implements CoreRuntimeClient {
   private async invokeRuntimeWithIam(
     request: RuntimeInvokeRequest,
     options: CoreOptions,
-    logger: Logger,
     signal?: AbortSignal,
   ): Promise<RuntimeInvokeResponse> {
     const { runtimeId, applicationHeaders, bearerToken: _bearerToken, ...input } = request;
@@ -169,41 +167,7 @@ export class RuntimeClient implements CoreRuntimeClient {
       });
     } catch (error) {
       if (signal?.aborted) throw signal.reason ?? error;
-      const sdkError = error as {
-        name?: unknown;
-        $metadata?: { httpStatusCode?: unknown; requestId?: unknown };
-      };
-      const serviceMessage =
-        ServiceException.isInstance(error) && error.message.trim()
-          ? error.message.trim()
-          : undefined;
-      const diagnostics: string[] = [];
-      if (typeof sdkError?.name === "string" && sdkError.name !== "Error") {
-        diagnostics.push(sdkError.name);
-      }
-      if (typeof sdkError?.$metadata?.httpStatusCode === "number") {
-        diagnostics.push(`HTTP ${sdkError.$metadata.httpStatusCode}`);
-      }
-      if (typeof sdkError?.$metadata?.requestId === "string") {
-        diagnostics.push(`request ID ${sdkError.$metadata.requestId}`);
-      }
-      logger
-        .child({
-          ...(typeof sdkError?.name === "string" && { errorName: sdkError.name }),
-          ...(typeof sdkError?.$metadata?.httpStatusCode === "number" && {
-            httpStatusCode: sdkError.$metadata.httpStatusCode,
-          }),
-          ...(typeof sdkError?.$metadata?.requestId === "string" && {
-            requestId: sdkError.$metadata.requestId,
-          }),
-        })
-        .debug("Runtime invocation SDK request failed");
-      throw new Error(
-        `Runtime invocation failed${serviceMessage ? `: ${serviceMessage}` : ""}${
-          diagnostics.length ? ` (${diagnostics.join(", ")})` : ""
-        }`,
-        { cause: error },
-      );
+      throw error;
     }
 
     const body = (response.response as AsyncIterable<Uint8Array> | undefined) ?? emptyBody();

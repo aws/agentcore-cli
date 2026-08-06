@@ -500,13 +500,13 @@ describe("Runtime invoke JSON console", () => {
   test("formats modeled AWS service errors with their diagnostics", async () => {
     const core = new TestCoreClient();
     core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
-    const cause = new ValidationException({
+    const error = new ValidationException({
       message: "Runtime session ID must contain at least 33 characters",
       reason: "FieldValidationFailed",
       $metadata: { httpStatusCode: 400, requestId: "request-456" },
     });
     core.runtime.invokeRuntime = async () => {
-      throw new Error("flattened wrapper", { cause });
+      throw error;
     };
     const screen = renderScreen(CONSOLE_PATH, { core });
 
@@ -517,7 +517,6 @@ describe("Runtime invoke JSON console", () => {
     await waitForText(screen.lastFrame, "ValidationException · HTTP 400");
     expect(screen.lastFrame()).toContain("Runtime session ID must contain at least 33 characters");
     expect(screen.lastFrame()).toContain("Request ID: request-456");
-    expect(screen.lastFrame()).not.toContain("flattened wrapper");
   });
 
   test.each([

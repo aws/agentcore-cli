@@ -579,67 +579,21 @@ test("invokeRuntime aborts an established IAM response stream", async () => {
   expect(result).toBe("AbortError");
 });
 
-test("IAM invoke failures preserve safe SDK diagnostics without arbitrary causes", async () => {
-  const { logger, logs } = captureLogs();
-  const core = coreWithDataSend(async () => {
-    throw Object.assign(new Error("failed with secret request content"), {
-      name: "AccessDeniedException",
-      $metadata: {
-        httpStatusCode: 403,
-        requestId: "request-123",
-      },
-    });
-  }, logger);
-
-  const caught = await core.runtime
-    .invokeRuntime(
-      {
-        runtimeId: "runtime-123",
-        accountId: "123456789012",
-        qualifier: "DEFAULT",
-        payload: new TextEncoder().encode("secret payload"),
-        contentType: "application/json",
-        applicationHeaders: [["X-Secret", "secret-header-value"]],
-      },
-      { region: "us-east-1" },
-    )
-    .catch((caught: Error) => caught);
-  const error = caught as Error;
-
-  expect(error.message).toBe(
-    "Runtime invocation failed (AccessDeniedException, HTTP 403, request ID request-123)",
-  );
-  expect(error.message).not.toContain("secret request content");
-  expectSafeDebugLog(
-    logs,
-    "Runtime invocation SDK request failed",
-    {
-      authMode: "IAM",
-      runtimeId: "runtime-123",
-      qualifier: "DEFAULT",
-      region: "us-east-1",
-      errorName: "AccessDeniedException",
-      httpStatusCode: 403,
-      requestId: "request-123",
+test("IAM invoke preserves modeled AWS service errors", async () => {
+  const failure = new ValidationException({
+    message: "Runtime session ID must contain at least 33 characters",
+    reason: "FieldValidationFailed",
+    $metadata: {
+      httpStatusCode: 400,
+      requestId: "request-456",
     },
-    ["secret request content", "secret payload", "secret-header-value"],
-  );
-});
-
-test("IAM invoke failures include messages from modeled AWS service errors", async () => {
+  });
   const core = coreWithDataSend(async () => {
-    throw new ValidationException({
-      message: "Runtime session ID must contain at least 33 characters",
-      reason: "FieldValidationFailed",
-      $metadata: {
-        httpStatusCode: 400,
-        requestId: "request-456",
-      },
-    });
+    throw failure;
   });
 
-  const caught = await core.runtime
-    .invokeRuntime(
+  await expect(
+    core.runtime.invokeRuntime(
       {
         runtimeId: "runtime-123",
         accountId: "123456789012",
@@ -648,14 +602,8 @@ test("IAM invoke failures include messages from modeled AWS service errors", asy
         contentType: "application/json",
       },
       { region: "us-east-1" },
-    )
-    .catch((caught: Error) => caught);
-  const error = caught as Error;
-
-  expect(error.message).toBe(
-    "Runtime invocation failed: Runtime session ID must contain at least 33 characters " +
-      "(ValidationException, HTTP 400, request ID request-456)",
-  );
+    ),
+  ).rejects.toBe(failure);
 });
 
 test("CUSTOM_JWT invoke uses the generated endpoint and exact fetch request", async () => {
