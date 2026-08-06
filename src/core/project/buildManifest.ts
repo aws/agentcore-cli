@@ -53,7 +53,7 @@ export const BuildArtifactSchema = z.discriminatedUnion("kind", [CdkCloudAssembl
 export type BuildArtifact = z.infer<typeof BuildArtifactSchema>;
 
 /**
- * Persisted handofffrom build to deploy
+ * Persisted handoff from build to deploy
  *
  * Deploy requires a new build when the manifest is missing, unreadable, not valid, has unsupported manifestVerison,
  * or if its inputFinderprint differs from current project inputs. Otherwise, deploy would use the
