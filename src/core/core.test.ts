@@ -14,6 +14,7 @@ import {
   ListEventsCommand,
   ListMemoryRecordsCommand,
   ListSessionsCommand,
+  ValidationException,
   type BedrockAgentCoreClient,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { RuntimeInvokeRequest } from "../handlers/runtime/types";
@@ -622,6 +623,38 @@ test("IAM invoke failures preserve safe SDK diagnostics without arbitrary causes
       requestId: "request-123",
     },
     ["secret request content", "secret payload", "secret-header-value"],
+  );
+});
+
+test("IAM invoke failures include messages from modeled AWS service errors", async () => {
+  const core = coreWithDataSend(async () => {
+    throw new ValidationException({
+      message: "Runtime session ID must contain at least 33 characters",
+      reason: "FieldValidationFailed",
+      $metadata: {
+        httpStatusCode: 400,
+        requestId: "request-456",
+      },
+    });
+  });
+
+  const caught = await core.runtime
+    .invokeRuntime(
+      {
+        runtimeId: "runtime-123",
+        accountId: "123456789012",
+        qualifier: "DEFAULT",
+        payload: new TextEncoder().encode("{}"),
+        contentType: "application/json",
+      },
+      { region: "us-east-1" },
+    )
+    .catch((caught: Error) => caught);
+  const error = caught as Error;
+
+  expect(error.message).toBe(
+    "Runtime invocation failed: Runtime session ID must contain at least 33 characters " +
+      "(ValidationException, HTTP 400, request ID request-456)",
   );
 });
 

@@ -1,10 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, useInput, useWindowSize } from "ink";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import cliTruncate from "cli-truncate";
-import { InputValidationError } from "../../../errors";
 import type { ScreenProps } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 import { Layout } from "../../../components/Layout";
@@ -52,6 +52,18 @@ const metadata = (response: RuntimeInvokeResponse) =>
     .filter((entry) => entry[1])
     .map((entry) => entry.join(" "))
     .join(" · ");
+
+function describeError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message ? `${error.name}: ${error.message}` : error.name;
+  }
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error) ?? String(error);
+  } catch {
+    return String(error);
+  }
+}
 
 export function RuntimeInvokeScreen(props: ScreenProps) {
   const { runtimeId, qualifier } = useParams();
@@ -118,7 +130,9 @@ function RuntimeInvokeConsole({
   const [payload, setPayload] = useState("");
   const [inputError, setInputError] = useState<string>();
   const [requestContext, setRequestContext] = useState(initialContext);
-  const [runtimeSessionId, setRuntimeSessionId] = useState(initialContext?.runtimeSessionId);
+  const [runtimeSessionId, setRuntimeSessionId] = useState(
+    () => initialContext?.runtimeSessionId ?? randomUUID(),
+  );
   const [mcpSessionId, setMcpSessionId] = useState<string>();
   const [mcpProtocolVersion, setMcpProtocolVersion] = useState<string>();
   const [history, setHistory] = useState<Exchange[]>([]);
@@ -158,7 +172,6 @@ function RuntimeInvokeConsole({
     setPrettyJson(false);
     const controller = new AbortController();
     abortRef.current = controller;
-    let responseStarted = false;
 
     try {
       const request = normalizeRuntimeInvokeRequest(detail.data, {
@@ -173,7 +186,6 @@ function RuntimeInvokeConsole({
         ...(mcp && { mcpSessionId, mcpProtocolVersion }),
       });
       const response = await core.runtime.invokeRuntime(request, opts, controller.signal);
-      responseStarted = true;
       updateExchange({
         heading: `Response · ${response.statusCode} · ${response.contentType || "-"}`,
         metadata: metadata(response),
@@ -225,12 +237,8 @@ function RuntimeInvokeConsole({
     } catch (error) {
       if (controller.signal.aborted || (error as Error)?.name === "AbortError") {
         updateExchange({ note: "interrupted", state: "interrupted" });
-      } else if (error instanceof InputValidationError) {
-        updateExchange({ response: `Error: ${error.message}`, state: "failed" });
-      } else if (!responseStarted && error instanceof Error) {
-        updateExchange({ note: error.message, state: "failed" });
       } else {
-        updateExchange({ note: "response stream failed", state: "failed" });
+        updateExchange({ note: describeError(error), state: "failed" });
       }
     } finally {
       abortRef.current = null;
@@ -240,7 +248,7 @@ function RuntimeInvokeConsole({
   const liveState = history.at(-1)?.state;
   const busy = liveState === "connecting" || liveState === "streaming";
   const inputRows = Math.min(4, Math.max(1, payload.split("\n").length));
-  const transcriptHeight = Math.max(1, rows - 8 - inputRows);
+  const transcriptHeight = Math.max(1, rows - 7 - inputRows);
   const canPrettyJson = history.some((exchange) => exchange.pretty !== undefined);
   const requestContextSummary = [
     requestContext?.runtimeUserId ? "user" : undefined,
@@ -311,7 +319,7 @@ function RuntimeInvokeConsole({
           if (nextRuntimeId !== target.runtimeId || selected !== target.qualifier) {
             const runtimeChanged = nextRuntimeId !== target.runtimeId;
             setTarget({ runtimeId: nextRuntimeId, qualifier: selected });
-            setRuntimeSessionId(undefined);
+            setRuntimeSessionId(randomUUID());
             setMcpSessionId(undefined);
             setMcpProtocolVersion(undefined);
             if (runtimeChanged) setRequestContext(undefined);
@@ -357,7 +365,7 @@ function RuntimeInvokeConsole({
         {detail.isPending ? (
           <Spinner label="Loading Runtime…" />
         ) : detail.isError ? (
-          <Text color="red">Error: {(detail.error as Error).message}</Text>
+          <Text color="red">{describeError(detail.error)}</Text>
         ) : (
           <Box flexDirection="column">
             <Box height={transcriptHeight} flexDirection="column">

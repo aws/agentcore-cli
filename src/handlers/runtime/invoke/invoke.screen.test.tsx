@@ -19,6 +19,7 @@ const RUNTIME_ID = "runtime-123";
 const QUALIFIER = "prod";
 const RUNTIME_ARN = `arn:aws:bedrock-agentcore:${REGION}:123456789012:runtime/${RUNTIME_ID}`;
 const CONSOLE_PATH = `/agentcore/runtime/invoke/${RUNTIME_ID}/${QUALIFIER}`;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 afterEach(cleanupScreens);
 
@@ -61,6 +62,10 @@ function invokeRequests(core: TestCoreClient): RuntimeInvokeRequest[] {
   return core.runtime.calls
     .filter((call) => call.method === "invokeRuntime")
     .map((call) => call.args[0] as RuntimeInvokeRequest);
+}
+
+function displayedSessionId(frame: string | undefined): string | undefined {
+  return frame?.match(/Ready · Session ID: ([^ ·\n]+)/)?.[1];
 }
 
 describe("Runtime invoke routing", () => {
@@ -164,12 +169,26 @@ describe("Runtime invoke routing", () => {
       screen.lastFrame,
       `agentcore → runtime → invoke → ${RUNTIME_ID} → ${nextQualifier}`,
     );
-    expect(screen.lastFrame()).toContain("Ready · Session ID: Not set");
+    const nextSessionId = displayedSessionId(screen.lastFrame());
+    expect(nextSessionId).toMatch(UUID_PATTERN);
+    expect(nextSessionId).not.toBe("cli-selected-session");
 
     await screen.write("{}");
     await screen.press("return");
     await waitFor(() => invokeRequests(core).length === 1);
-    expect(invokeRequests(core)[0]!.runtimeSessionId).toBeUndefined();
+    expect(invokeRequests(core)[0]!.runtimeSessionId).toBe(nextSessionId);
+  });
+
+  test("shows the full Runtime lookup error", async () => {
+    const core = new TestCoreClient();
+    core.runtime.getRuntime = async () => {
+      throw Object.assign(new Error("not authorized for this Runtime"), {
+        name: "AccessDeniedException",
+      });
+    };
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "AccessDeniedException: not authorized for this Runtime");
   });
 
   test("unmount cancels the Runtime detail lookup", async () => {
@@ -200,7 +219,10 @@ describe("Runtime invoke JSON console", () => {
       });
     const screen = renderScreen(CONSOLE_PATH, { core });
 
-    await waitForText(screen.lastFrame, "JSON payload");
+    await waitForText(screen.lastFrame, "Enter JSON payload");
+    expect(screen.lastFrame()!.split("\n")).not.toContain("JSON payload");
+    const sessionId = displayedSessionId(screen.lastFrame());
+    expect(sessionId).toMatch(UUID_PATTERN);
     await screen.write('{"prompt":"hello"}');
     await screen.press("return");
     await waitFor(() => invokeRequests(core).length === 1);
@@ -209,6 +231,7 @@ describe("Runtime invoke JSON console", () => {
       runtimeId: RUNTIME_ID,
       qualifier: QUALIFIER,
       contentType: "application/json",
+      runtimeSessionId: sessionId,
     });
     expect(new TextDecoder().decode(invokeRequests(core)[0]!.payload)).toBe('{"prompt":"hello"}');
     await waitForText(screen.lastFrame, "complete · 2 bytes");
@@ -296,11 +319,8 @@ describe("Runtime invoke JSON console", () => {
     for (let index = 0; index < 3; index++) await screen.write("\x1b[13;2u");
 
     const expandedLines = screen.lastFrame()!.split("\n");
-    const labelLine = expandedLines.findIndex((line) => line.includes("JSON payload"));
-    const lowerDivider = expandedLines.findIndex(
-      (line, index) => index > labelLine && /^─+$/.test(line),
-    );
-    expect(lowerDivider - labelLine).toBe(5);
+    const dividerLines = expandedLines.flatMap((line, index) => (/^─+$/.test(line) ? [index] : []));
+    expect(dividerLines.at(-2)! - dividerLines.at(-3)!).toBe(5);
     expect(expandedLines.findIndex((line) => line.includes("Ready · Session ID"))).toBe(
       initialStatusLine,
     );
@@ -320,13 +340,13 @@ describe("Runtime invoke JSON console", () => {
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.resize(80, 24);
-    expect(screen.lastFrame()).toContain("Ready · Session ID: Not set");
+    expect(displayedSessionId(screen.lastFrame())).toMatch(UUID_PATTERN);
     expect(screen.lastFrame()).toContain(
       "[enter] send  [⇧↵] newline  [ctl+t] target  [↑↓] scroll  [esc] back",
     );
 
     await screen.resize(60, 24);
-    expect(screen.lastFrame()).toContain("Ready · Session ID: Not set");
+    expect(displayedSessionId(screen.lastFrame())).toMatch(UUID_PATTERN);
     expect(screen.lastFrame()).toContain("[enter] send  [⇧↵] newline  [↑↓] scroll  [esc] back");
   });
 
@@ -439,7 +459,7 @@ describe("Runtime invoke JSON console", () => {
     const core = new TestCoreClient();
     core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
     core.runtime.invokeRuntime = async () => {
-      throw new Error("connection failed");
+      throw Object.assign(new Error("connection failed"), { name: "NetworkError" });
     };
     const screen = renderScreen(CONSOLE_PATH, { core });
 
@@ -447,7 +467,7 @@ describe("Runtime invoke JSON console", () => {
     await screen.write("{}");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "connection failed");
+    await waitForText(screen.lastFrame, "NetworkError: connection failed");
     expect(screen.lastFrame()).toContain("failed · 0 bytes");
   });
 
@@ -460,7 +480,7 @@ describe("Runtime invoke JSON console", () => {
         contentType: "text/plain",
         body: (async function* () {
           yield Buffer.from("partial");
-          throw new Error("stream failed");
+          throw Object.assign(new Error("stream failed"), { name: "StreamReadError" });
         })(),
       });
     const screen = renderScreen(CONSOLE_PATH, { core });
@@ -469,7 +489,7 @@ describe("Runtime invoke JSON console", () => {
     await screen.write("{}");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "response stream failed");
+    await waitForText(screen.lastFrame, "StreamReadError: stream failed");
     expect(screen.lastFrame()).toContain("partial");
     expect(screen.lastFrame()).toContain("failed · 7 bytes");
   });
@@ -641,7 +661,9 @@ describe("Runtime invoke JSON console", () => {
       `agentcore → runtime → invoke → ${RUNTIME_ID} → ${nextQualifier}`,
     );
     expect(screen.lastFrame()).not.toContain("old response");
-    expect(screen.lastFrame()).toContain("Ready · Session ID: Not set");
+    const nextSessionId = displayedSessionId(screen.lastFrame());
+    expect(nextSessionId).toMatch(UUID_PATTERN);
+    expect(nextSessionId).not.toBe("returned-runtime");
     expect(screen.lastFrame()).toContain("MCP session ID: Not set");
 
     core.runtime.setInvokeResponse({
@@ -652,7 +674,7 @@ describe("Runtime invoke JSON console", () => {
     await screen.write('{"turn":2}');
     await screen.press("return");
     await waitFor(() => invokeRequests(core).length === 2);
-    expect(invokeRequests(core)[1]!.runtimeSessionId).toBeUndefined();
+    expect(invokeRequests(core)[1]!.runtimeSessionId).toBe(nextSessionId);
     expect(invokeRequests(core)[1]!.mcpSessionId).toBeUndefined();
     expect(invokeRequests(core)[1]!.mcpProtocolVersion).toBeUndefined();
     expect(invokeRequests(core)[1]).toMatchObject({
@@ -812,6 +834,8 @@ describe("Runtime invoke JSON console", () => {
 
     try {
       await waitForText(screen.lastFrame, "Ready");
+      const initialSessionId = displayedSessionId(screen.lastFrame());
+      expect(initialSessionId).toMatch(UUID_PATTERN);
       await screen.write("{}");
       await screen.press("return");
       await waitForText(screen.lastFrame, "data: partial");
@@ -821,7 +845,7 @@ describe("Runtime invoke JSON console", () => {
       stop.reject(Object.assign(new Error("The operation was aborted"), { name: "AbortError" }));
       await waitForText(screen.lastFrame, "interrupted · 14 bytes");
       expect(screen.lastFrame()).toContain("data: partial");
-      expect(screen.lastFrame()).toContain("Ready · Session ID: Not set");
+      expect(screen.lastFrame()).toContain(`Ready · Session ID: ${initialSessionId}`);
       expect(
         screen
           .lastFrame()!

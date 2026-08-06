@@ -66,12 +66,9 @@ export function RuntimePayloadInput({
 
   if (value === "") {
     return (
-      <Box flexDirection="column">
-        <Text color={theme.colors.muted}>JSON payload</Text>
-        <Box>
-          <Cursor character={PLACEHOLDER[0]!} />
-          <Text color={theme.colors.muted}>{PLACEHOLDER.slice(1)}</Text>
-        </Box>
+      <Box>
+        <Cursor character={PLACEHOLDER[0]!} />
+        <Text color={theme.colors.muted}>{PLACEHOLDER.slice(1)}</Text>
       </Box>
     );
   }
@@ -86,7 +83,6 @@ export function RuntimePayloadInput({
 
   return (
     <Box flexDirection="column">
-      <Text color={theme.colors.muted}>JSON payload</Text>
       {visible.map((line, index) => {
         const lineIndex = start + index;
         const prefix = index === 0 && start > 0 ? "… " : "";
