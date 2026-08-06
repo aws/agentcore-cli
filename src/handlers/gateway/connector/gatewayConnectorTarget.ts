@@ -14,30 +14,40 @@ export class GatewayConnectorTarget {
     shortcut: GatewayConnectorShortcut,
     knowledgeBaseId?: string,
   ): TargetConfiguration {
-    if (shortcut === "bedrock-mantle") {
-      return { inference: { connector: { source: { connectorId: shortcut } } } };
+    switch (shortcut) {
+      case "bedrock-mantle":
+        return { inference: { connector: { source: { connectorId: shortcut } } } };
+      case "bedrock-knowledge-bases":
+        if (!knowledgeBaseId) {
+          throw new Error(
+            "A Knowledge Base ID is required for the bedrock-knowledge-bases connector",
+          );
+        }
+        return {
+          mcp: {
+            connector: {
+              source: { connectorId: shortcut },
+              configurations: [
+                {
+                  name: "Retrieve",
+                  parameterValues: { knowledgeBaseId },
+                },
+              ],
+            },
+          },
+        };
+      case "web-search":
+        return {
+          mcp: {
+            connector: {
+              source: { connectorId: shortcut },
+            },
+          },
+        };
+      default: {
+        const unsupported: never = shortcut;
+        throw new Error(`Unsupported connector shortcut: ${unsupported}`);
+      }
     }
-
-    if (shortcut === "bedrock-knowledge-bases" && !knowledgeBaseId) {
-      throw new Error("A Knowledge Base ID is required for the bedrock-knowledge-bases connector");
-    }
-
-    return {
-      mcp: {
-        connector: {
-          source: { connectorId: shortcut },
-          ...(shortcut === "bedrock-knowledge-bases"
-            ? {
-                configurations: [
-                  {
-                    name: "Retrieve",
-                    parameterValues: { knowledgeBaseId: knowledgeBaseId! },
-                  },
-                ],
-              }
-            : {}),
-        },
-      },
-    };
   }
 }
