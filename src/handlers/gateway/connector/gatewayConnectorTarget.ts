@@ -41,6 +41,12 @@ export class GatewayConnectorTarget {
           mcp: {
             connector: {
               source: { connectorId: shortcut },
+              configurations: [
+                {
+                  name: "WebSearch",
+                  parameterValues: { maxResults: 10 },
+                },
+              ],
             },
           },
         };

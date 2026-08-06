@@ -1,6 +1,6 @@
 {
-  "ruleId": "0bb02e22-d2cd-42b1-8a17-8fd71d277f0c",
-  "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:685197708687:gateway/agentcore-cli-gateway-create-fixture-b8lxs2arsg",
+  "ruleId": "93d59ee8-8a9b-4535-9f11-df7006241fed",
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:685197708687:gateway/agentcore-cli-gateway-create-fixture-bkf6yayfce",
   "priority": 10,
   "actions": [
     {
@@ -12,7 +12,7 @@
     }
   ],
   "createdAt": {
-    "$date": "2026-08-06T16:16:52.214Z"
+    "$date": "2026-08-06T17:25:57.672Z"
   },
   "status": "CREATING",
   "description": "Disposable Gateway Rule Create fixture"

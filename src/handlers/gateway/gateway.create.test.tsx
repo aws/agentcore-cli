@@ -7,7 +7,11 @@ import {
   GetGatewayCommand,
   GetGatewayTargetCommand,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import { DeleteRoleCommand } from "@aws-sdk/client-iam";
+import {
+  DeleteRoleCommand,
+  DeleteRolePolicyCommand,
+  PutRolePolicyCommand,
+} from "@aws-sdk/client-iam";
 import { CoreClient } from "../../core";
 import { createControlClient, createIamClient } from "../../core/factories";
 import { GatewayExecutionRole } from "../../core/gatewayExecutionRole";
@@ -24,8 +28,8 @@ import { createRootHandler } from "../index";
 const REGION = "us-east-1";
 const GATEWAY_NAME = "agentcore-cli-gateway-create-fixture";
 const HTTP_TARGET_NAME = "http-fixture";
-const CONNECTOR_TARGET_NAME = "openai-fixture";
-const API_KEY_PROVIDER_NAME = "DONOTDELETEe2eOAI";
+const CONNECTOR_TARGET_NAME = "web-search-fixture";
+const WEB_SEARCH_POLICY_NAME = "AgentCoreCliWebSearchFixture";
 const FIXTURES = join(import.meta.dir, "__fixtures__", "create");
 const FLOW_TIMEOUT = 600_000;
 
@@ -160,6 +164,14 @@ async function cleanup(state: FixtureState): Promise<void> {
   }
 
   const iam = createIamClient({ region: REGION });
+  await ignoreMissing(() =>
+    iam.send(
+      new DeleteRolePolicyCommand({
+        RoleName: GatewayExecutionRole.roleName(GATEWAY_NAME, REGION),
+        PolicyName: WEB_SEARCH_POLICY_NAME,
+      }),
+    ),
+  );
   await ignoreMissing(() =>
     iam.send(
       new DeleteRoleCommand({
@@ -413,6 +425,16 @@ describe("Gateway fixture-backed creates", () => {
           (response) => response.status === "READY",
         );
 
+        if (isRecording()) {
+          await createIamClient({ region: REGION }).send(
+            new PutRolePolicyCommand({
+              RoleName: GatewayExecutionRole.roleName(GATEWAY_NAME, REGION),
+              PolicyName: WEB_SEARCH_POLICY_NAME,
+              PolicyDocument: JSON.stringify(webSearchPolicy(gateway.gatewayArn)),
+            }),
+          );
+        }
+
         const connectorStdout = await run([
           "gateway",
           "connector",
@@ -421,22 +443,10 @@ describe("Gateway fixture-backed creates", () => {
           state.gatewayId!,
           "--name",
           CONNECTOR_TARGET_NAME,
-          "--connector-configuration",
-          '{"inference":{"connector":{"source":{"connectorId":"openai"}}}}',
+          "--connector",
+          "web-search",
           "--credential-provider-configurations",
-          JSON.stringify([
-            {
-              credentialProviderType: "API_KEY",
-              credentialProvider: {
-                apiKeyCredentialProvider: {
-                  providerArn: apiKeyProviderArn(gateway.gatewayArn),
-                  credentialParameterName: "Authorization",
-                  credentialPrefix: "Bearer",
-                  credentialLocation: "HEADER",
-                },
-              },
-            },
-          ]),
+          '[{"credentialProviderType":"GATEWAY_IAM_ROLE"}]',
           "--description",
           "Disposable Gateway Connector Create fixture",
         ]);
@@ -444,9 +454,15 @@ describe("Gateway fixture-backed creates", () => {
         const connector = JSON.parse(connectorStdout);
         expect(connector.targetId).toBeString();
         expect(connector.targetConfiguration).toEqual({
-          inference: {
+          mcp: {
             connector: {
-              source: { connectorId: "openai" },
+              source: { connectorId: "web-search" },
+              configurations: [
+                {
+                  name: "WebSearch",
+                  parameterValues: { maxResults: 10 },
+                },
+              ],
             },
           },
         });
@@ -503,10 +519,24 @@ describe("Gateway fixture-backed creates", () => {
   );
 });
 
-function apiKeyProviderArn(gatewayArn: string): string {
-  const [prefix, partition, service, region, accountId] = gatewayArn.split(":");
-  if (prefix !== "arn" || service !== "bedrock-agentcore" || !region || !accountId) {
+function webSearchPolicy(gatewayArn: string): Record<string, unknown> {
+  const [prefix, partition, service, region] = gatewayArn.split(":");
+  if (prefix !== "arn" || service !== "bedrock-agentcore" || !region) {
     throw new Error(`Unexpected Gateway ARN: ${gatewayArn}`);
   }
-  return `arn:${partition}:${service}:${region}:${accountId}:token-vault/default/apikeycredentialprovider/${API_KEY_PROVIDER_NAME}`;
+  return {
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Effect: "Allow",
+        Action: "bedrock-agentcore:InvokeGateway",
+        Resource: gatewayArn,
+      },
+      {
+        Effect: "Allow",
+        Action: "bedrock-agentcore:InvokeWebSearch",
+        Resource: `arn:${partition}:${service}:${region}:aws:tool/web-search.v1`,
+      },
+    ],
+  };
 }

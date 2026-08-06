@@ -1,8 +1,12 @@
 {
   "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:685197708687:gateway/agentcore-cli-gateway-create-fixture-bkf6yayfce",
   "targetId": "U4ADV7VNSV",
-  "createdAt": "2026-08-06T17:25:52.273Z",
-  "updatedAt": "2026-08-06T17:25:52.273Z",
+  "createdAt": {
+    "$date": "2026-08-06T17:25:52.273Z"
+  },
+  "updatedAt": {
+    "$date": "2026-08-06T17:25:52.273Z"
+  },
   "status": "CREATING",
   "name": "web-search-fixture",
   "targetConfiguration": {

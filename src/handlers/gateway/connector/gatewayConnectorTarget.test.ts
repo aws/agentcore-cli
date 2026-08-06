@@ -10,6 +10,12 @@ describe("GatewayConnectorTarget.fromShortcut", () => {
         mcp: {
           connector: {
             source: { connectorId: "web-search" },
+            configurations: [
+              {
+                name: "WebSearch",
+                parameterValues: { maxResults: 10 },
+              },
+            ],
           },
         },
       },
