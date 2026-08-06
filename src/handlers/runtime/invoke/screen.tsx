@@ -33,7 +33,7 @@ type ErrorDetails = {
   requestId?: string;
 };
 
-interface Exchange {
+type Exchange = {
   payload: string;
   response: string;
   error?: ErrorDetails;
@@ -43,7 +43,7 @@ interface Exchange {
   metadata?: string;
   byteCount: number;
   state: ExchangeState;
-}
+};
 
 const invokePath = (...parts: string[]) =>
   ["/agentcore/runtime/invoke", ...parts.map(encodeURIComponent)].join("/");
