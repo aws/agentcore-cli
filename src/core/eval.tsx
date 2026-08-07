@@ -1,38 +1,52 @@
 import {
+  CreateConfigurationBundleCommand,
   CreateDatasetCommand,
   CreateDatasetVersionCommand,
   CreateEvaluatorCommand,
   CreateOnlineEvaluationConfigCommand,
+  DeleteConfigurationBundleCommand,
   DeleteDatasetCommand,
   DeleteEvaluatorCommand,
   DeleteOnlineEvaluationConfigCommand,
+  GetConfigurationBundleCommand,
+  GetConfigurationBundleVersionCommand,
   GetAgentRuntimeCommand,
   GetDatasetCommand,
   GetEvaluatorCommand,
   GetHarnessCommand,
   GetOnlineEvaluationConfigCommand,
+  ListConfigurationBundlesCommand,
+  ListConfigurationBundleVersionsCommand,
   ListDatasetsCommand,
   ListEvaluatorsCommand,
   ListOnlineEvaluationConfigsCommand,
+  UpdateConfigurationBundleCommand,
   UpdateEvaluatorCommand,
   UpdateOnlineEvaluationConfigCommand,
+  type CreateConfigurationBundleResponse,
   type CreateDatasetResponse,
   type CreateDatasetVersionResponse,
   type CreateEvaluatorRequest,
   type CreateEvaluatorResponse,
   type CreateOnlineEvaluationConfigResponse,
+  type DeleteConfigurationBundleResponse,
   type DeleteDatasetResponse,
   type DeleteEvaluatorResponse,
   type DeleteOnlineEvaluationConfigResponse,
   type EvaluatorConfig,
+  type GetConfigurationBundleResponse,
+  type GetConfigurationBundleVersionResponse,
   type GetDatasetResponse,
   type GetEvaluatorResponse,
   type GetOnlineEvaluationConfigResponse,
+  type ListConfigurationBundlesResponse,
+  type ListConfigurationBundleVersionsResponse,
   type ListDatasetsResponse,
   type ListEvaluatorsResponse,
   type DataSourceConfig,
   type ListOnlineEvaluationConfigsResponse,
   type Rule,
+  type UpdateConfigurationBundleResponse,
   type UpdateEvaluatorResponse,
   type UpdateOnlineEvaluationConfigResponse,
   type BedrockAgentCoreControlClient,
@@ -53,12 +67,14 @@ import type {
   CodeBasedUpdate,
   RoleScopeWarning,
   CoreEvalClient,
+  CreateConfigurationBundleInput,
   CreateDatasetInput,
   CreateOnlineEvalInput,
   GetBatchEvaluationResult,
   LlmAsAJudgeUpdate,
   SessionSourceValue,
   StartBatchEvaluationInput,
+  UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
 } from "../handlers/eval/types";
 import { atomicWriteStream } from "../io";
@@ -599,6 +615,83 @@ export class EvalClient implements CoreEvalClient {
     return this.clients
       .control(toClientConfig(options))
       .send(new DeleteOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }));
+  }
+
+  async createConfigurationBundle(
+    input: CreateConfigurationBundleInput,
+    options: CoreOptions,
+  ): Promise<CreateConfigurationBundleResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new CreateConfigurationBundleCommand(input));
+  }
+
+  async getConfigurationBundle(
+    id: string,
+    version: string | undefined,
+    options: CoreOptions,
+  ): Promise<GetConfigurationBundleResponse | GetConfigurationBundleVersionResponse> {
+    const control = this.clients.control(toClientConfig(options));
+    return version === undefined
+      ? control.send(new GetConfigurationBundleCommand({ bundleId: id }))
+      : control.send(
+          new GetConfigurationBundleVersionCommand({ bundleId: id, versionId: version }),
+        );
+  }
+
+  async listConfigurationBundles(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListConfigurationBundlesResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new ListConfigurationBundlesCommand({ nextToken, maxResults }));
+  }
+
+  async updateConfigurationBundle(
+    id: string,
+    update: UpdateConfigurationBundleInput,
+    options: CoreOptions,
+  ): Promise<UpdateConfigurationBundleResponse> {
+    const control = this.clients.control(toClientConfig(options));
+    const current = await control.send(new GetConfigurationBundleCommand({ bundleId: id }));
+    if (!current.versionId) {
+      throw new NetworkingError(
+        `Configuration bundle "${id}" returned no latest version and cannot be updated`,
+        { meta: { bundleId: id } },
+      );
+    }
+
+    return control.send(
+      new UpdateConfigurationBundleCommand({
+        bundleId: id,
+        components: update.components,
+        commitMessage: update.commitMessage,
+        kmsKeyArn: update.kmsKeyArn,
+        parentVersionIds: [current.versionId],
+      }),
+    );
+  }
+
+  async deleteConfigurationBundle(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteConfigurationBundleResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new DeleteConfigurationBundleCommand({ bundleId: id }));
+  }
+
+  async listConfigurationBundleVersions(
+    id: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListConfigurationBundleVersionsResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new ListConfigurationBundleVersionsCommand({ bundleId: id, nextToken, maxResults }));
   }
 
   async createDataset(

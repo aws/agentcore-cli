@@ -1,22 +1,31 @@
 import type {
+  CreateConfigurationBundleRequest,
+  CreateConfigurationBundleResponse,
   CreateDatasetRequest,
   CreateDatasetResponse,
   CreateDatasetVersionResponse,
   CreateEvaluatorRequest,
   CreateEvaluatorResponse,
   CreateOnlineEvaluationConfigResponse,
+  DeleteConfigurationBundleResponse,
   DeleteDatasetResponse,
   DeleteEvaluatorResponse,
   DeleteOnlineEvaluationConfigResponse,
+  GetConfigurationBundleResponse,
+  GetConfigurationBundleVersionResponse,
   GetDatasetResponse,
   GetEvaluatorResponse,
   GetOnlineEvaluationConfigResponse,
+  ListConfigurationBundlesResponse,
+  ListConfigurationBundleVersionsResponse,
   ListDatasetsResponse,
   ListEvaluatorsResponse,
   ListOnlineEvaluationConfigsResponse,
   DataSourceConfig,
   RatingScale,
   Rule,
+  UpdateConfigurationBundleRequest,
+  UpdateConfigurationBundleResponse,
   UpdateEvaluatorResponse,
   UpdateOnlineEvaluationConfigResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
@@ -172,6 +181,14 @@ export type RoleScopeWarning = {
 };
 
 export type CreateDatasetInput = CreateDatasetRequest;
+export type CreateConfigurationBundleInput = Pick<
+  CreateConfigurationBundleRequest,
+  "bundleName" | "components" | "kmsKeyArn"
+>;
+export type UpdateConfigurationBundleInput = Required<
+  Pick<UpdateConfigurationBundleRequest, "components" | "commitMessage">
+> &
+  Pick<UpdateConfigurationBundleRequest, "kmsKeyArn">;
 
 // StartBatchEvaluationInput is the CLI-facing shape for `batch-evaluation
 // evaluate`. Core turns `source` into the API's dataSourceConfig union and
@@ -269,6 +286,39 @@ export interface CoreEvalClient {
     id: string,
     options: CoreOptions,
   ): Promise<DeleteOnlineEvaluationConfigResponse>;
+
+  createConfigurationBundle(
+    input: CreateConfigurationBundleInput,
+    options: CoreOptions,
+  ): Promise<CreateConfigurationBundleResponse>;
+  // Omitting version returns the latest mainline version; an explicit version
+  // selects the immutable version API.
+  getConfigurationBundle(
+    id: string,
+    version: string | undefined,
+    options: CoreOptions,
+  ): Promise<GetConfigurationBundleResponse | GetConfigurationBundleVersionResponse>;
+  listConfigurationBundles(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListConfigurationBundlesResponse>;
+  // Updates are appended to the latest mainline version by the Core client.
+  updateConfigurationBundle(
+    id: string,
+    update: UpdateConfigurationBundleInput,
+    options: CoreOptions,
+  ): Promise<UpdateConfigurationBundleResponse>;
+  deleteConfigurationBundle(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteConfigurationBundleResponse>;
+  listConfigurationBundleVersions(
+    id: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListConfigurationBundleVersionsResponse>;
 
   // createDataset seeds a new dataset's DRAFT from `source`, which is required.
   // `schemaType` governs the structure of every example and is immutable after creation.
