@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
-import { ProjectStateError } from "../../errors/errors";
+import { InputValidationError, ProjectStateError } from "../../errors/errors";
 import { FsProjectManager } from "./manager";
 import {
   PROJECT_TEMPLATES,
@@ -160,7 +160,9 @@ describe("FsProjectManager.create", () => {
       "Syncing Python dependencies with uv",
       "Initializing git repository",
     ]);
-    expect(project).toEqual({ name: "example" });
+    expect(project.name).toBe("example");
+    expect(project.rootPath).toContain("example");
+    expect(project.runtimes).toHaveLength(1);
   });
 
   test("a failed step propagates and leaves the scaffolded files in place", async () => {
@@ -195,5 +197,35 @@ describe("FsProjectManager.create", () => {
         template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
       }),
     ).rejects.toBeInstanceOf(ProjectStateError);
+  });
+});
+
+describe("FsProjectManager.resolve", () => {
+  test("round-trips a project it just created", async () => {
+    const root = await inTempDirectory();
+    const subject = manager().manager;
+    await runCreate(subject, { name: "example", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON });
+
+    // Resolve from a nested path to prove the walk-up to the project root.
+    const resolved = await subject.resolve({ filePath: join(root, "example", "app") });
+
+    expect(resolved?.name).toBe("example");
+    expect(resolved?.rootPath).toBe(join(root, "example"));
+    expect(resolved?.runtimes).toHaveLength(1);
+  });
+
+  test("returns undefined when no project encloses the path", async () => {
+    const root = await inTempDirectory();
+    expect(await manager().manager.resolve({ filePath: root })).toBeUndefined();
+  });
+
+  test("throws InputValidationError on a malformed agentcore.json", async () => {
+    const root = await inTempDirectory();
+    await mkdir(join(root, "agentcore"), { recursive: true });
+    await writeFile(join(root, "agentcore", "agentcore.json"), "{ not valid json");
+
+    await expect(manager().manager.resolve({ filePath: root })).rejects.toBeInstanceOf(
+      InputValidationError,
+    );
   });
 });

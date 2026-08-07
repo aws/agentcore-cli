@@ -8,17 +8,25 @@ import type {
   ProjectEvent,
 } from "../../handlers/project/types";
 import type { Logger } from "../../logging";
-import { requireTool, runProcess, type ProcessRunner } from "../../io";
+import {
+  FsReadWriteJson,
+  requireTool,
+  runProcess,
+  type ProcessRunner,
+  type ReadWriteJson,
+} from "../../io";
 import { defaultSource, type AssetSource } from "./source";
 import { createProjectTreeFromTemplate, TEMPLATES } from "./templates";
+import { ProjectSpecSchema } from "./schema";
 import { enclosingProjectRoot } from "./fsUtils";
-import { ProjectStateError } from "../../errors/errors";
+import { DeserializationError, InputValidationError, ProjectStateError } from "../../errors/errors";
 
 type ProjectManagerConfig = {
   logger: Logger;
   source?: AssetSource; // Bun executable or dist/assets depending on runtime
   runner?: ProcessRunner; // injectable so tests never spawn real processes
   checkTool?: typeof requireTool; // injectable so tests don't depend on the host's PATH
+  json?: ReadWriteJson; // injectable so tests read fixtures instead of disk
 };
 
 /**
@@ -29,16 +37,33 @@ export class FsProjectManager implements ProjectManager {
   private readonly source: AssetSource;
   private readonly runner: ProcessRunner;
   private readonly checkTool: typeof requireTool;
+  private readonly json: ReadWriteJson;
 
   constructor(config: ProjectManagerConfig) {
     this.logger = config.logger;
     this.source = config.source ?? defaultSource();
     this.runner = config.runner ?? runProcess;
     this.checkTool = config.checkTool ?? requireTool;
+    this.json = config.json ?? new FsReadWriteJson({ logger: config.logger });
   }
 
-  public resolve(_input: ResolveProjectInput): Promise<Project> {
-    throw new Error(`ProjectManager.resolve is not implemented yet`);
+  public async resolve(input: ResolveProjectInput): Promise<Project | undefined> {
+    const rootPath = enclosingProjectRoot(input.filePath);
+    if (!rootPath) return undefined;
+
+    const configPath = join(rootPath, "agentcore", "agentcore.json");
+    try {
+      const spec = await this.json.read(configPath, ProjectSpecSchema);
+      return { name: spec.name, rootPath, runtimes: spec.runtimes };
+    } catch (error) {
+      // A malformed agentcore.json is a user-correctable problem, not a crash.
+      if (error instanceof DeserializationError) {
+        throw new InputValidationError(`invalid project configuration at ${configPath}`, {
+          cause: error,
+        });
+      }
+      throw error;
+    }
   }
 
   public async *create(input: CreateProjectInput): AsyncGenerator<ProjectEvent> {
@@ -81,7 +106,12 @@ export class FsProjectManager implements ProjectManager {
       await this.run(["git", "init"], destination);
     }
 
-    return { name: input.name };
+    // Return the same shape resolve() would: a created project is a resolvable one.
+    return {
+      name: input.name,
+      rootPath: destination,
+      runtimes: TEMPLATES[input.template].spec.runtimes ?? [],
+    };
   }
 
   // Runs a command with its output streamed to the file logger.

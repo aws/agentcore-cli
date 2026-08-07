@@ -1,4 +1,5 @@
 import { ProjectNameSchema } from "../../core/project/schema";
+import type { ProjectRuntime } from "../../core/project/schema";
 
 export { ProjectNameSchema };
 
@@ -33,6 +34,10 @@ export type ResolveProjectInput = {
 
 export type Project = {
   name: string;
+  /** Absolute path to the project root (the parent of agentcore/). */
+  rootPath: string;
+  /** The runtimes registered in agentcore.json. */
+  runtimes: ProjectRuntime[];
 };
 
 /**
