@@ -63,6 +63,16 @@ describe("harness custom validation", () => {
         config: { agentCoreBrowser: {} },
       }).success,
     ).toBe(false);
+    expect(
+      HarnessToolSchema.safeParse({
+        type: "remote_mcp",
+        name: "mcp",
+        config: {
+          remoteMcp: { url: "https://example.com/mcp" },
+          agentCoreBrowser: {},
+        },
+      }).success,
+    ).toBe(false);
   });
   it("rejects the removed gateway credentialProviderName with migration guidance", () => {
     const result = HarnessToolSchema.safeParse({
@@ -160,6 +170,32 @@ describe("harness custom validation", () => {
       false,
     );
     expect(HarnessSpecSchema.safeParse({ ...minimalHarness, networkConfig }).success).toBe(false);
+  });
+  it("requires a VPC ID only for Dockerfile builds in VPC mode", () => {
+    expect(
+      HarnessSpecSchema.safeParse({
+        ...minimalHarness,
+        dockerfile: "Dockerfile",
+        networkMode: "VPC",
+        networkConfig,
+      }).success,
+    ).toBe(false);
+    expect(
+      HarnessSpecSchema.safeParse({
+        ...minimalHarness,
+        dockerfile: "Dockerfile",
+        networkMode: "VPC",
+        networkConfig: { ...networkConfig, vpcId: "vpc-0123456789abcdef0" },
+      }).success,
+    ).toBe(true);
+    expect(
+      HarnessSpecSchema.safeParse({
+        ...minimalHarness,
+        containerUri: "123456789012.dkr.ecr.us-east-1.amazonaws.com/repo:tag",
+        networkMode: "VPC",
+        networkConfig,
+      }).success,
+    ).toBe(true);
   });
   it("requires VPC mode for external mounts and unique mount paths", () => {
     const efsAccessPoints = [

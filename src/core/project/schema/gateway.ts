@@ -273,6 +273,46 @@ export const PassthroughConfigSchema = z
   })
   .strict();
 export type PassthroughConfig = z.infer<typeof PassthroughConfigSchema>;
+const TARGET_CONFIGURATION_FIELDS = [
+  "toolDefinitions",
+  "compute",
+  "endpoint",
+  "outboundAuth",
+  "apiGateway",
+  "schemaSource",
+  "lambdaFunctionArn",
+  "httpRuntime",
+  "connectorId",
+  "configurations",
+  "passthrough",
+] as const;
+type TargetConfigurationField = (typeof TARGET_CONFIGURATION_FIELDS)[number];
+const ALLOWED_TARGET_CONFIGURATION_FIELDS: Record<
+  GatewayTargetType,
+  readonly TargetConfigurationField[]
+> = {
+  lambda: ["toolDefinitions", "compute", "outboundAuth"],
+  mcpServer: ["toolDefinitions", "compute", "endpoint", "outboundAuth"],
+  openApiSchema: ["schemaSource", "outboundAuth"],
+  smithyModel: ["schemaSource"],
+  apiGateway: ["apiGateway", "outboundAuth"],
+  lambdaFunctionArn: ["lambdaFunctionArn"],
+  httpRuntime: ["httpRuntime", "outboundAuth"],
+  connector: ["connectorId", "configurations"],
+  passthrough: ["passthrough", "outboundAuth"],
+};
+const REQUIRED_TARGET_CONFIGURATION_FIELDS: Partial<
+  Record<GatewayTargetType, readonly TargetConfigurationField[]>
+> = {
+  lambda: ["toolDefinitions", "compute"],
+  openApiSchema: ["schemaSource"],
+  smithyModel: ["schemaSource"],
+  apiGateway: ["apiGateway"],
+  lambdaFunctionArn: ["lambdaFunctionArn"],
+  httpRuntime: ["httpRuntime"],
+  connector: ["connectorId"],
+  passthrough: ["passthrough"],
+};
 export const AgentCoreGatewayTargetSchema = z
   .object({
     name: z.string().min(1),
@@ -308,400 +348,73 @@ export const AgentCoreGatewayTargetSchema = z
   })
   .strict()
   .superRefine((data, ctx) => {
-    if (data.targetType === "apiGateway") {
-      if (!data.apiGateway) {
+    const allowedFields = ALLOWED_TARGET_CONFIGURATION_FIELDS[data.targetType];
+    for (const field of TARGET_CONFIGURATION_FIELDS) {
+      if (data[field] !== undefined && !allowedFields.includes(field)) {
         ctx.addIssue({
           code: "custom",
-          message: "apiGateway config is required for apiGateway target type",
-          path: ["apiGateway"],
-        });
-      }
-      if (data.compute) {
-        ctx.addIssue({
-          code: "custom",
-          message: "compute is not applicable for apiGateway target type",
-          path: ["compute"],
-        });
-      }
-      if (data.endpoint) {
-        ctx.addIssue({
-          code: "custom",
-          message: "endpoint is not applicable for apiGateway target type",
-          path: ["endpoint"],
-        });
-      }
-      if (data.toolDefinitions && data.toolDefinitions.length > 0) {
-        ctx.addIssue({
-          code: "custom",
-          message:
-            "toolDefinitions is not applicable for apiGateway target type (tools are auto-discovered)",
-          path: ["toolDefinitions"],
-        });
-      }
-      if (data.lambdaFunctionArn) {
-        ctx.addIssue({
-          code: "custom",
-          message: "lambdaFunctionArn is not applicable for apiGateway target type",
-          path: ["lambdaFunctionArn"],
+          message: `${field} is not applicable for ${data.targetType} target type`,
+          path: [field],
         });
       }
     }
-    if (data.targetType === "openApiSchema" || data.targetType === "smithyModel") {
-      if (!data.schemaSource) {
+    for (const field of REQUIRED_TARGET_CONFIGURATION_FIELDS[data.targetType] ?? []) {
+      const value = data[field];
+      if (value === undefined || (Array.isArray(value) && value.length === 0)) {
         ctx.addIssue({
           code: "custom",
-          message: `${data.targetType} targets require a schemaSource.`,
-          path: ["schemaSource"],
-        });
-      }
-      if (data.compute) {
-        ctx.addIssue({
-          code: "custom",
-          message: `compute is not applicable for ${data.targetType} target type`,
-          path: ["compute"],
-        });
-      }
-      if (data.endpoint) {
-        ctx.addIssue({
-          code: "custom",
-          message: `endpoint is not applicable for ${data.targetType} target type`,
-          path: ["endpoint"],
-        });
-      }
-      if (data.toolDefinitions && data.toolDefinitions.length > 0) {
-        ctx.addIssue({
-          code: "custom",
-          message: `toolDefinitions is not applicable for ${data.targetType} target type`,
-          path: ["toolDefinitions"],
-        });
-      }
-      if (data.apiGateway) {
-        ctx.addIssue({
-          code: "custom",
-          message: `apiGateway config is not applicable for ${data.targetType} target type`,
-          path: ["apiGateway"],
+          message: `${field} is required for ${data.targetType} target type`,
+          path: [field],
         });
       }
     }
-    if (data.targetType === "lambdaFunctionArn") {
-      if (!data.lambdaFunctionArn) {
-        ctx.addIssue({
-          code: "custom",
-          message: "lambdaFunctionArn config is required for lambdaFunctionArn target type",
-          path: ["lambdaFunctionArn"],
-        });
-      }
-      if (data.compute) {
-        ctx.addIssue({
-          code: "custom",
-          message: "compute is not applicable for lambdaFunctionArn target type",
-          path: ["compute"],
-        });
-      }
-      if (data.endpoint) {
-        ctx.addIssue({
-          code: "custom",
-          message: "endpoint is not applicable for lambdaFunctionArn target type",
-          path: ["endpoint"],
-        });
-      }
-      if (data.apiGateway) {
-        ctx.addIssue({
-          code: "custom",
-          message: "apiGateway is not applicable for lambdaFunctionArn target type",
-          path: ["apiGateway"],
-        });
-      }
-      if (data.outboundAuth) {
-        ctx.addIssue({
-          code: "custom",
-          message: "outboundAuth is not applicable for lambdaFunctionArn target type",
-          path: ["outboundAuth"],
-        });
-      }
-      if (data.toolDefinitions && data.toolDefinitions.length > 0) {
-        ctx.addIssue({
-          code: "custom",
-          message:
-            "toolDefinitions is not applicable for lambdaFunctionArn target type (tools are defined via toolSchemaFile)",
-          path: ["toolDefinitions"],
-        });
-      }
-    }
-    if (data.targetType === "mcpServer") {
-      if (!data.compute && !data.endpoint) {
-        ctx.addIssue({
-          code: "custom",
-          message: "MCP Server targets require either an endpoint URL or compute configuration.",
-        });
-      }
-      if (data.apiGateway) {
-        ctx.addIssue({
-          code: "custom",
-          message: "apiGateway is not applicable for mcpServer target type",
-          path: ["apiGateway"],
-        });
-      }
-      if (data.lambdaFunctionArn) {
-        ctx.addIssue({
-          code: "custom",
-          message: "lambdaFunctionArn is not applicable for mcpServer target type",
-          path: ["lambdaFunctionArn"],
-        });
-      }
-    }
-    if (data.targetType === "httpRuntime") {
-      if (!data.httpRuntime) {
-        ctx.addIssue({
-          code: "custom",
-          message:
-            "httpRuntime targets require an httpRuntime configuration (with a runtime reference).",
-          path: ["httpRuntime"],
-        });
-      }
-      if (data.endpoint) {
-        ctx.addIssue({
-          code: "custom",
-          message:
-            "httpRuntime targets should use httpRuntime.runtimeEndpoint instead of endpoint.",
-          path: ["endpoint"],
-        });
-      }
-      if (data.compute) {
-        ctx.addIssue({
-          code: "custom",
-          message: "compute is not applicable for httpRuntime target type",
-          path: ["compute"],
-        });
-      }
-      if (data.apiGateway) {
-        ctx.addIssue({
-          code: "custom",
-          message: "apiGateway is not applicable for httpRuntime target type",
-          path: ["apiGateway"],
-        });
-      }
-      if (data.lambdaFunctionArn) {
-        ctx.addIssue({
-          code: "custom",
-          message: "lambdaFunctionArn is not applicable for httpRuntime target type",
-          path: ["lambdaFunctionArn"],
-        });
-      }
-      if (data.toolDefinitions && data.toolDefinitions.length > 0) {
-        ctx.addIssue({
-          code: "custom",
-          message: "toolDefinitions is not applicable for httpRuntime target type",
-          path: ["toolDefinitions"],
-        });
-      }
-    }
-    if (data.targetType === "passthrough") {
-      if (!data.passthrough) {
-        ctx.addIssue({
-          code: "custom",
-          message: "passthrough targets require a passthrough configuration (with an endpoint).",
-          path: ["passthrough"],
-        });
-      }
-      if (data.endpoint) {
-        ctx.addIssue({
-          code: "custom",
-          message: "passthrough targets should use passthrough.endpoint instead of endpoint.",
-          path: ["endpoint"],
-        });
-      }
-      if (data.compute) {
-        ctx.addIssue({
-          code: "custom",
-          message: "compute is not applicable for passthrough target type",
-          path: ["compute"],
-        });
-      }
-      if (data.apiGateway) {
-        ctx.addIssue({
-          code: "custom",
-          message: "apiGateway is not applicable for passthrough target type",
-          path: ["apiGateway"],
-        });
-      }
-      if (data.lambdaFunctionArn) {
-        ctx.addIssue({
-          code: "custom",
-          message: "lambdaFunctionArn is not applicable for passthrough target type",
-          path: ["lambdaFunctionArn"],
-        });
-      }
-      if (data.httpRuntime) {
-        ctx.addIssue({
-          code: "custom",
-          message: "httpRuntime is not applicable for passthrough target type",
-          path: ["httpRuntime"],
-        });
-      }
-      if (data.toolDefinitions && data.toolDefinitions.length > 0) {
-        ctx.addIssue({
-          code: "custom",
-          message: "toolDefinitions is not applicable for passthrough target type",
-          path: ["toolDefinitions"],
-        });
-      }
-    }
-    if (data.targetType === "lambda" && !data.compute) {
+    if (data.targetType === "mcpServer" && !data.compute && !data.endpoint) {
       ctx.addIssue({
         code: "custom",
-        message: "Lambda targets require compute configuration.",
-        path: ["compute"],
+        message: "MCP Server targets require either an endpoint URL or compute configuration.",
       });
-    }
-    if (
-      data.targetType === "lambda" &&
-      (!data.toolDefinitions || data.toolDefinitions.length === 0)
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Lambda targets require at least one tool definition.",
-        path: ["toolDefinitions"],
-      });
-    }
-    if (data.targetType === "connector") {
-      if (!data.connectorId) {
-        ctx.addIssue({
-          code: "custom",
-          message: "connectorId is required for connector target type",
-          path: ["connectorId"],
-        });
-      }
-      if (data.compute) {
-        ctx.addIssue({
-          code: "custom",
-          message: "compute is not applicable for connector target type",
-          path: ["compute"],
-        });
-      }
-      if (data.endpoint) {
-        ctx.addIssue({
-          code: "custom",
-          message: "endpoint is not applicable for connector target type",
-          path: ["endpoint"],
-        });
-      }
-      if (data.toolDefinitions && data.toolDefinitions.length > 0) {
-        ctx.addIssue({
-          code: "custom",
-          message: "toolDefinitions is not applicable for connector target type",
-          path: ["toolDefinitions"],
-        });
-      }
-      if (data.apiGateway) {
-        ctx.addIssue({
-          code: "custom",
-          message: "apiGateway is not applicable for connector target type",
-          path: ["apiGateway"],
-        });
-      }
-      if (data.lambdaFunctionArn) {
-        ctx.addIssue({
-          code: "custom",
-          message: "lambdaFunctionArn is not applicable for connector target type",
-          path: ["lambdaFunctionArn"],
-        });
-      }
-      if (data.schemaSource) {
-        ctx.addIssue({
-          code: "custom",
-          message: "schemaSource is not applicable for connector target type",
-          path: ["schemaSource"],
-        });
-      }
-      if (data.httpRuntime) {
-        ctx.addIssue({
-          code: "custom",
-          message: "httpRuntime is not applicable for connector target type",
-          path: ["httpRuntime"],
-        });
-      }
-      if (data.passthrough) {
-        ctx.addIssue({
-          code: "custom",
-          message: "passthrough is not applicable for connector target type",
-          path: ["passthrough"],
-        });
-      }
-    }
-    if (data.targetType !== "connector") {
-      if (data.connectorId) {
-        ctx.addIssue({
-          code: "custom",
-          message: `connectorId only applies to connector target type`,
-          path: ["connectorId"],
-        });
-      }
-      if (data.configurations && data.configurations.length > 0) {
-        ctx.addIssue({
-          code: "custom",
-          message: `configurations only applies to connector target type`,
-          path: ["configurations"],
-        });
-      }
     }
     const authConfig = TARGET_TYPE_AUTH_CONFIG[data.targetType];
     const authType = data.outboundAuth?.type ?? "NONE";
-    if (authConfig.authRequired && authType === "NONE") {
-      ctx.addIssue({
-        code: "custom",
-        message: `${data.targetType} targets require outbound auth (${authConfig.validAuthTypes.join(" or ")})`,
-        path: ["outboundAuth"],
-      });
-    }
-    if (authConfig.validAuthTypes.length === 0 && authType !== "NONE") {
-      ctx.addIssue({
-        code: "custom",
-        message: `${data.targetType} targets use IAM role auth; outboundAuth is not applicable`,
-        path: ["outboundAuth"],
-      });
-    }
-    if (
-      authConfig.validAuthTypes.length > 0 &&
-      authType !== "NONE" &&
-      !authConfig.validAuthTypes.includes(authType)
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        message: `${data.targetType} targets do not support ${authType} outbound auth`,
-        path: ["outboundAuth"],
-      });
-    }
-    if (
-      data.outboundAuth &&
-      data.outboundAuth.type !== "NONE" &&
-      data.outboundAuth.type !== "GATEWAY_IAM_ROLE" &&
-      data.outboundAuth.type !== "JWT_PASSTHROUGH" &&
-      !data.outboundAuth.credentialName
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        message: `${data.outboundAuth.type} outbound auth requires a credentialName.`,
-        path: ["outboundAuth", "credentialName"],
-      });
-    }
-    if (
-      data.targetType === "passthrough" &&
-      data.outboundAuth?.type === "GATEWAY_IAM_ROLE" &&
-      !data.outboundAuth.service
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        message: "GATEWAY_IAM_ROLE outbound auth on passthrough targets requires a service name.",
-        path: ["outboundAuth", "service"],
-      });
-    }
-    if (data.outboundAuth?.type === "JWT_PASSTHROUGH" && data.targetType !== "passthrough") {
-      ctx.addIssue({
-        code: "custom",
-        message: "JWT_PASSTHROUGH outbound auth is only valid for passthrough targets.",
-        path: ["outboundAuth", "type"],
-      });
+    if (allowedFields.includes("outboundAuth")) {
+      if (authConfig.authRequired && authType === "NONE") {
+        ctx.addIssue({
+          code: "custom",
+          message: `${data.targetType} targets require outbound auth (${authConfig.validAuthTypes.join(" or ")})`,
+          path: ["outboundAuth"],
+        });
+      }
+      if (authType !== "NONE" && !authConfig.validAuthTypes.includes(authType)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `${data.targetType} targets do not support ${authType} outbound auth`,
+          path: ["outboundAuth"],
+        });
+      }
+      if (
+        data.outboundAuth &&
+        data.outboundAuth.type !== "NONE" &&
+        data.outboundAuth.type !== "GATEWAY_IAM_ROLE" &&
+        data.outboundAuth.type !== "JWT_PASSTHROUGH" &&
+        !data.outboundAuth.credentialName
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: `${data.outboundAuth.type} outbound auth requires a credentialName.`,
+          path: ["outboundAuth", "credentialName"],
+        });
+      }
+      if (
+        data.outboundAuth?.type === "GATEWAY_IAM_ROLE" &&
+        data.targetType === "passthrough" &&
+        !data.outboundAuth.service
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "GATEWAY_IAM_ROLE outbound auth on passthrough targets requires a service name.",
+          path: ["outboundAuth", "service"],
+        });
+      }
     }
   });
 export type AgentCoreGatewayTarget = z.infer<typeof AgentCoreGatewayTargetSchema>;
@@ -779,8 +492,3 @@ export const AgentCoreMcpRuntimeToolSchema = z
   })
   .strict();
 export type AgentCoreMcpRuntimeTool = z.infer<typeof AgentCoreMcpRuntimeToolSchema>;
-export interface AgentCoreMcpSpec {
-  agentCoreGateways: AgentCoreGateway[];
-  mcpRuntimeTools?: AgentCoreMcpRuntimeTool[];
-  unassignedTargets?: AgentCoreGatewayTarget[];
-}

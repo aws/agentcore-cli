@@ -8,13 +8,13 @@ export const SchemaPrimitiveTypeSchema = z.enum([
   "integer",
 ]);
 export type SchemaPrimitiveType = z.infer<typeof SchemaPrimitiveTypeSchema>;
-export interface SchemaDefinition {
+export type SchemaDefinition = {
   type: SchemaPrimitiveType;
   description?: string;
   items?: SchemaDefinition;
   properties?: Record<string, SchemaDefinition>;
   required?: string[];
-}
+};
 export const SchemaDefinitionSchema: z.ZodType<SchemaDefinition> = z.object({
   type: SchemaPrimitiveTypeSchema,
   description: z.string().optional(),

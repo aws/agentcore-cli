@@ -151,22 +151,28 @@ export const HarnessToolNameSchema = z
     /^[a-zA-Z0-9_-]+$/,
     "Tool name must contain only alphanumeric characters, hyphens, and underscores (1-64 chars)",
   );
-export const RemoteMcpConfigSchema = z.object({
-  remoteMcp: z.object({
-    url: z.string().min(1),
-    headers: z.record(z.string(), z.string()).optional(),
-  }),
-});
-export const AgentCoreBrowserConfigSchema = z.object({
-  agentCoreBrowser: z.object({
-    browserArn: z.string().optional(),
-  }),
-});
-export const AgentCoreCodeInterpreterConfigSchema = z.object({
-  agentCoreCodeInterpreter: z.object({
-    codeInterpreterArn: z.string().optional(),
-  }),
-});
+export const RemoteMcpConfigSchema = z
+  .object({
+    remoteMcp: z.object({
+      url: z.string().min(1),
+      headers: z.record(z.string(), z.string()).optional(),
+    }),
+  })
+  .strict();
+export const AgentCoreBrowserConfigSchema = z
+  .object({
+    agentCoreBrowser: z.object({
+      browserArn: z.string().optional(),
+    }),
+  })
+  .strict();
+export const AgentCoreCodeInterpreterConfigSchema = z
+  .object({
+    agentCoreCodeInterpreter: z.object({
+      codeInterpreterArn: z.string().optional(),
+    }),
+  })
+  .strict();
 export const GatewayOAuthGrantTypeSchema = z.enum(["CLIENT_CREDENTIALS", "USER_FEDERATION"]);
 export const HarnessGatewayOutboundAuthSchema = z.union([
   z.object({ awsIam: z.object({}) }),
@@ -181,30 +187,34 @@ export const HarnessGatewayOutboundAuthSchema = z.union([
   }),
 ]);
 export type HarnessGatewayOutboundAuth = z.infer<typeof HarnessGatewayOutboundAuthSchema>;
-export const AgentCoreGatewayConfigSchema = z.object({
-  agentCoreGateway: z
-    .object({
-      gatewayArn: z.string().min(1),
-      outboundAuth: HarnessGatewayOutboundAuthSchema.optional(),
-    })
-    .passthrough()
-    .superRefine((data, ctx) => {
-      if ("credentialProviderName" in data) {
-        ctx.addIssue({
-          code: "custom",
-          message:
-            'credentialProviderName is no longer supported. Use outboundAuth instead. Example: outboundAuth: { awsIam: {} } or outboundAuth: { oauth: { providerArn: "...", scopes: [...] } }',
-          path: ["credentialProviderName"],
-        });
-      }
+export const AgentCoreGatewayConfigSchema = z
+  .object({
+    agentCoreGateway: z
+      .object({
+        gatewayArn: z.string().min(1),
+        outboundAuth: HarnessGatewayOutboundAuthSchema.optional(),
+      })
+      .passthrough()
+      .superRefine((data, ctx) => {
+        if ("credentialProviderName" in data) {
+          ctx.addIssue({
+            code: "custom",
+            message:
+              'credentialProviderName is no longer supported. Use outboundAuth instead. Example: outboundAuth: { awsIam: {} } or outboundAuth: { oauth: { providerArn: "...", scopes: [...] } }',
+            path: ["credentialProviderName"],
+          });
+        }
+      }),
+  })
+  .strict();
+export const InlineFunctionConfigSchema = z
+  .object({
+    inlineFunction: z.object({
+      description: z.string().min(1),
+      inputSchema: z.record(z.string(), z.unknown()),
     }),
-});
-export const InlineFunctionConfigSchema = z.object({
-  inlineFunction: z.object({
-    description: z.string().min(1),
-    inputSchema: z.record(z.string(), z.unknown()),
-  }),
-});
+  })
+  .strict();
 export const HarnessToolConfigSchema = z.union([
   RemoteMcpConfigSchema,
   AgentCoreBrowserConfigSchema,
@@ -505,6 +515,14 @@ export const HarnessSpecSchema = z
         code: "custom",
         message: "networkConfig is only allowed when networkMode is VPC",
         path: ["networkConfig"],
+      });
+    }
+    if (data.networkMode === "VPC" && data.dockerfile && !data.networkConfig?.vpcId) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "networkConfig.vpcId is required for Dockerfile builds in VPC mode (CodeBuild cannot infer the VPC from subnets)",
+        path: ["networkConfig", "vpcId"],
       });
     }
     if (

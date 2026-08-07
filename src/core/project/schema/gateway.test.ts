@@ -94,6 +94,30 @@ describe("gateway custom validation", () => {
     });
     expect(result.success).toBe(false);
   });
+  it("rejects unrelated configuration fields on otherwise valid targets", () => {
+    const apiGateway = {
+      restApiId: "api",
+      stage: "prod",
+      apiGatewayToolConfiguration: { toolFilters: [{ filterPath: "/*", methods: ["GET"] }] },
+    };
+    expect(
+      AgentCoreGatewayTargetSchema.safeParse({
+        name: "target",
+        targetType: "apiGateway",
+        apiGateway,
+        schemaSource: { inline: { path: "schema.json" } },
+      }).success,
+    ).toBe(false);
+    expect(
+      AgentCoreGatewayTargetSchema.safeParse({
+        name: "target",
+        targetType: "lambda",
+        compute: lambdaCompute,
+        toolDefinitions: [toolDefinition],
+        apiGateway,
+      }).success,
+    ).toBe(false);
+  });
   it("centralizes outbound authentication rules by target type", () => {
     const openApi = {
       name: "openapi",
