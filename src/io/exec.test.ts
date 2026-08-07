@@ -7,7 +7,9 @@ import {
   ProcessFailedError,
   requireTool,
   runProcess,
+  streamProcess,
   toolAvailable,
+  type ProcessEvent,
 } from "./exec";
 
 // Scripts run from files rather than `node -e` one-liners: on win32 runProcess
@@ -73,3 +75,108 @@ describe("runProcess", () => {
     ).rejects.toBeInstanceOf(ProcessFailedError);
   });
 });
+
+async function collect(events: AsyncIterable<ProcessEvent>): Promise<ProcessEvent[]> {
+  const collected: ProcessEvent[] = [];
+  for await (const event of events) collected.push(event);
+  return collected;
+}
+
+describe("streamProcess", () => {
+  test("yields complete lines with their source stream", async () => {
+    const streaming = await script(
+      "stream.js",
+      "console.log('one'); console.log('two'); console.error('0 errors')",
+    );
+
+    const events = await collect(streamProcess(["node", streaming], { cwd: process.cwd() }));
+
+    expect(events).toContainEqual({ type: "stdout", line: "one" });
+    expect(events).toContainEqual({ type: "stdout", line: "two" });
+    expect(events).toContainEqual({ type: "stderr", line: "0 errors" });
+  });
+
+  test("throws ProcessFailedError after yielding failure output", async () => {
+    const failing = await script("stream-fail.js", "console.error('boom'); process.exit(3)");
+    const iterator = streamProcess(["node", failing], { cwd: process.cwd() });
+
+    expect(await iterator.next()).toEqual({
+      done: false,
+      value: { type: "stderr", line: "boom" },
+    });
+    await expect(iterator.next()).rejects.toThrow(/exit code 3/);
+  });
+
+  test("throws ProcessFailedError when the executable cannot spawn", async () => {
+    await expect(
+      collect(streamProcess(["definitely-not-a-real-tool-xyz"], { cwd: process.cwd() })),
+    ).rejects.toBeInstanceOf(ProcessFailedError);
+  });
+
+  test("aborts a running process", async () => {
+    const running = await script("running.js", "console.log('ready'); setInterval(() => {}, 1000)");
+    const controller = new AbortController();
+    const iterator = streamProcess(["node", running], {
+      cwd: process.cwd(),
+      signal: controller.signal,
+    });
+
+    expect(await iterator.next()).toEqual({
+      done: false,
+      value: { type: "stdout", line: "ready" },
+    });
+    controller.abort();
+
+    await expect(iterator.next()).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  test("stops the process when iteration ends early", async () => {
+    const running = await script(
+      "return.js",
+      "console.log('ready'); setInterval(() => console.log('tick'), 1000)",
+    );
+    const iterator = streamProcess(["node", running], { cwd: process.cwd() });
+
+    expect((await iterator.next()).value).toEqual({ type: "stdout", line: "ready" });
+    await expect(iterator.return(undefined)).resolves.toEqual({ done: true, value: undefined });
+  });
+
+  test("kills descendants that outlive the direct child", async () => {
+    if (process.platform === "win32") return;
+
+    const parent = await script(
+      "process-tree.js",
+      [
+        "const { spawn } = require('node:child_process');",
+        "const child = spawn(process.execPath, ['-e', 'process.on(\"SIGTERM\", () => {}); setInterval(() => {}, 1000)'], { stdio: 'ignore' });",
+        "console.log(child.pid);",
+        "process.on('SIGTERM', () => process.exit(0));",
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+    const controller = new AbortController();
+    const iterator = streamProcess(["node", parent], {
+      cwd: process.cwd(),
+      signal: controller.signal,
+    });
+    const first = await iterator.next();
+    const descendantPid = Number(first.value?.line);
+
+    try {
+      controller.abort();
+      await expect(iterator.next()).rejects.toMatchObject({ name: "AbortError" });
+      expect(processExists(descendantPid)).toBe(false);
+    } finally {
+      if (processExists(descendantPid)) process.kill(descendantPid, "SIGKILL");
+    }
+  });
+});
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}

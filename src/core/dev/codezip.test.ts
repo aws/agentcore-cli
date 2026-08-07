@@ -1,207 +1,155 @@
-import { describe, expect, test } from "bun:test";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ProjectRuntime } from "../../core/project/schema";
-import type { StartDevServerInput, DevServerHandle } from "../../handlers/project/dev/types";
-import { createSilentLogger } from "../../testing";
-import { CodeZipDevRunner, parseEntrypoint, serverCommand } from "./codezip";
+import type { ProjectRuntime } from "../project/schema";
+import type { DevEvent, DevServerInput } from "../../handlers/project/dev/types";
+import type { ProcessEvent, ProcessStreamer, StreamProcessOptions } from "../../io";
+import { CodeZipDevRunner } from "./codezip";
 
-/** The schema brands entrypoint/codeLocation as FilePath/DirectoryPath; fixtures
- *  supply plain strings and cast through the brand in one place. */
-function runtime(spec: {
-  name: string;
-  build: "CodeZip" | "Container";
-  entrypoint: string;
-  codeLocation: string;
-}): ProjectRuntime {
-  return spec as ProjectRuntime;
+type ProcessCall = {
+  command: string[];
+  options: StreamProcessOptions;
+};
+
+const tempDirectories: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+  );
+});
+
+function runtime(
+  overrides: { entrypoint?: string; protocol?: ProjectRuntime["protocol"] } = {},
+): ProjectRuntime {
+  return {
+    name: "hello_world",
+    build: "CodeZip",
+    entrypoint: "main.py",
+    codeLocation: "app/hello-world",
+    protocol: "HTTP",
+    ...overrides,
+  } as ProjectRuntime;
 }
 
-const pythonRuntime = runtime({
-  name: "hello_world",
-  build: "CodeZip",
-  entrypoint: "main.py",
-  codeLocation: "app/hello-world",
-});
+async function projectRoot(withNodeModules = false): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "agentcore-codezip-"));
+  tempDirectories.push(root);
+  await mkdir(join(root, "app", "hello-world"), { recursive: true });
+  if (withNodeModules) {
+    await mkdir(join(root, "app", "hello-world", "node_modules"));
+  }
+  return root;
+}
 
-const tsRuntime = runtime({
-  name: "hello_world",
-  build: "CodeZip",
-  entrypoint: "index.ts",
-  codeLocation: "app/hello-world",
-});
-
-/** Accumulates run/spawn calls without executing anything real. */
-function harness() {
-  const commands: string[][] = [];
-  const spawned: string[] = [];
+function harness(output: ProcessEvent[] = []) {
+  const calls: ProcessCall[] = [];
+  const fakeStreamProcess: ProcessStreamer = async function* (command, options) {
+    calls.push({ command, options });
+    yield* output;
+  };
   return {
-    commands,
-    spawned,
-    run: async (cmd: string[]) => {
-      commands.push(cmd);
-    },
-    supervisor: {
-      spawn: (cmd: { executable: string; args: string[] }) => {
-        spawned.push(cmd.executable);
-        return {
-          exited: Promise.resolve({ kind: "exited", code: 0 }),
-          stop: () => Promise.resolve({ kind: "exited", code: 0 }),
-        } as DevServerHandle;
-      },
-    },
+    calls,
+    runner: new CodeZipDevRunner({ streamProcess: fakeStreamProcess }),
   };
 }
 
-function startInput(
-  root: string,
-  h: ReturnType<typeof harness>,
-  runtime: ProjectRuntime,
-): StartDevServerInput {
+function input(root: string, projectRuntime: ProjectRuntime): DevServerInput {
   return {
-    runtime,
+    runtime: projectRuntime,
     projectRoot: root,
-    port: 8080,
-    onLog: () => {},
+    port: 9000,
+    env: { CUSTOM_ENV: "value" },
+    signal: new AbortController().signal,
   };
 }
 
-async function projectTree(root: string, codeDir: string) {
-  await mkdir(join(root, codeDir), { recursive: true });
-}
-
-async function projectFile(root: string, codeDir: string, file: string, content = "") {
-  await writeFile(join(root, codeDir, file), content);
+async function collect(events: AsyncIterable<DevEvent>): Promise<DevEvent[]> {
+  const collected: DevEvent[] = [];
+  for await (const event of events) collected.push(event);
+  return collected;
 }
 
 describe("CodeZipDevRunner", () => {
-  test("throws when code directory is missing", async () => {
-    const h = harness();
-    const runner = new CodeZipDevRunner({
-      logger: createSilentLogger(),
-      run: h.run,
-      supervisor: h.supervisor as any,
-    });
-    const root = join(tmpdir(), `codezip-test-${Date.now()}`);
-    await mkdir(root, { recursive: true });
+  test("rejects a missing runtime code directory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agentcore-codezip-"));
+    tempDirectories.push(root);
 
-    await expect(runner.start(startInput(root, h, pythonRuntime))).rejects.toThrow(
-      /code directory not found/,
+    await expect(collect(harness().runner.run(input(root, runtime())))).rejects.toThrow(
+      /runtime code directory not found/,
     );
-    await rm(root, { recursive: true, force: true });
   });
 
-  test("bootstraps venv via uv sync when uvicorn is not installed", async () => {
-    const h = harness();
-    const runner = new CodeZipDevRunner({
-      logger: createSilentLogger(),
-      run: h.run,
-      supervisor: h.supervisor as any,
-    });
-
-    const root = join(tmpdir(), `codezip-test-${Date.now()}`);
-    await projectTree(root, "app/hello-world");
-
-    await runner.start(startInput(root, h, pythonRuntime));
-
-    expect(h.commands).toEqual([["uv", "sync"]]);
-    await rm(root, { recursive: true, force: true });
-  });
-
-  test("skips venv setup when uvicorn is already present", async () => {
-    const h = harness();
-    const runner = new CodeZipDevRunner({
-      logger: createSilentLogger(),
-      run: h.run,
-      supervisor: h.supervisor as any,
-    });
-
-    const root = join(tmpdir(), `codezip-test-${Date.now()}`);
-    await projectTree(root, "app/hello-world");
-    // Simulate installed uvicorn.
-    await mkdir(join(root, "app/hello-world/.venv/bin"), { recursive: true });
-    await projectFile(root, "app/hello-world/.venv/bin", "uvicorn");
-
-    await runner.start(startInput(root, h, pythonRuntime));
-
-    expect(h.commands).toEqual([]);
-    await rm(root, { recursive: true, force: true });
-  });
-
-  test("spawns uvicorn with the entrypoint in ASGI form", async () => {
-    const h = harness();
-    const runner = new CodeZipDevRunner({
-      logger: createSilentLogger(),
-      run: h.run,
-      supervisor: h.supervisor as any,
-    });
-
-    const root = join(tmpdir(), `codezip-test-${Date.now()}`);
-    await projectTree(root, "app/hello-world");
-    await mkdir(join(root, "app/hello-world/.venv/bin"), { recursive: true });
-    await projectFile(root, "app/hello-world/.venv/bin", "uvicorn");
-
-    await runner.start(
-      startInput(root, h, runtime({ ...pythonRuntime, entrypoint: "main.py:application" })),
+  test("runs HTTP Python entrypoints with uvicorn", async () => {
+    const root = await projectRoot();
+    const { calls, runner } = harness([{ type: "stdout", line: "server output" }]);
+    const events = await collect(
+      runner.run(input(root, runtime({ entrypoint: "src/main.py:application" }))),
     );
 
-    expect(h.spawned[0]).toContain("uvicorn");
-    await rm(root, { recursive: true, force: true });
-  });
-
-  test("installs node_modules with npm for TypeScript runtime", async () => {
-    const h = harness();
-    const runner = new CodeZipDevRunner({
-      logger: createSilentLogger(),
-      run: h.run,
-      supervisor: h.supervisor as any,
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.command).toEqual([
+      "uv",
+      "run",
+      "uvicorn",
+      "src.main:application",
+      "--reload",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "9000",
+    ]);
+    expect(calls[0]?.options).toMatchObject({
+      cwd: join(root, "app", "hello-world"),
+      env: { CUSTOM_ENV: "value", PORT: "9000", LOCAL_DEV: "1" },
     });
-
-    const root = join(tmpdir(), `codezip-test-${Date.now()}`);
-    await projectTree(root, "app/hello-world");
-
-    await runner.start(startInput(root, h, tsRuntime));
-
-    expect(h.commands[0]?.[0]).toContain("npm");
-    await rm(root, { recursive: true, force: true });
+    expect(events).toEqual([
+      { type: "status", message: "Starting development server" },
+      { type: "stdout", line: "server output" },
+    ]);
   });
-});
 
-describe("parseEntrypoint", () => {
-  test.each([
-    ["main.py", "main.py", "app", "python"],
-    ["main.py:application", "main.py", "application", "python"],
-    ["index.ts", "index.ts", "app", "typescript"],
-    ["src/server.ts:handler", "src/server.ts", "handler", "typescript"],
-  ] as const)("parses %s", (input, file, handler, language) => {
-    expect(parseEntrypoint(input)).toEqual({ file, handler, language });
-  });
-});
+  test.each(["MCP", "A2A", "AGUI"] as const)(
+    "runs %s Python entrypoints directly",
+    async (protocol) => {
+      const root = await projectRoot();
+      const { calls, runner } = harness();
 
-describe("serverCommand", () => {
-  test("builds uvicorn command for Python", () => {
-    const cmd = serverCommand(
-      { file: "main.py", handler: "app", language: "python" },
-      "/project/app/hello",
-      { runtime: pythonRuntime, projectRoot: "/project", port: 9000, onLog: () => {} },
+      await collect(runner.run(input(root, runtime({ protocol, entrypoint: "main.py:handler" }))));
+
+      expect(calls[0]?.command).toEqual(["uv", "run", "python", "main.py"]);
+      expect(calls[0]?.options.env?.FASTMCP_PORT).toBe(protocol === "MCP" ? "9000" : undefined);
+    },
+  );
+
+  test("installs missing Node dependencies before starting tsx", async () => {
+    const root = await projectRoot();
+    const { calls, runner } = harness([{ type: "stderr", line: "0 errors" }]);
+    const events = await collect(
+      runner.run(input(root, runtime({ entrypoint: "src/index.ts:handler" }))),
     );
 
-    expect(cmd.args).toContain("main:app");
-    expect(cmd.args).toContain("--reload");
-    expect(cmd.env.PORT).toBe("9000");
-    expect(cmd.env.LOCAL_DEV).toBe("1");
+    expect(calls.map(({ command }) => command)).toEqual([
+      ["npm", "install"],
+      ["npm", "exec", "--", "tsx", "watch", "src/index.ts"],
+    ]);
+    expect(events).toEqual([
+      { type: "status", message: "Installing Node dependencies with npm" },
+      { type: "stderr", line: "0 errors" },
+      { type: "status", message: "Starting development server" },
+      { type: "stderr", line: "0 errors" },
+    ]);
   });
 
-  test("builds tsx command for TypeScript", () => {
-    const cmd = serverCommand(
-      { file: "index.ts", handler: "app", language: "typescript" },
-      "/project/app/hello",
-      { runtime: tsRuntime, projectRoot: "/project", port: 9000, onLog: () => {} },
-    );
+  test("starts tsx directly when Node dependencies exist", async () => {
+    const root = await projectRoot(true);
+    const { calls, runner } = harness();
 
-    expect(cmd.args).toContain("tsx");
-    expect(cmd.args).toContain("watch");
-    expect(cmd.args).toContain("index.ts");
+    await collect(runner.run(input(root, runtime({ entrypoint: "index.js" }))));
+
+    expect(calls.map(({ command }) => command)).toEqual([
+      ["npm", "exec", "--", "tsx", "watch", "index.js"],
+    ]);
   });
 });

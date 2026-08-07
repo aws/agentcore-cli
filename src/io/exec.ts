@@ -1,10 +1,13 @@
 // Local subprocess execution. Uses node:child_process (not Bun.$/Bun.spawn)
 // because the npm bundle targets Node — Bun APIs are unavailable there.
-import { spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
+import { createInterface } from "node:readline";
 import { AgentCoreCLIError, ERROR_SOURCE } from "../errors";
 
 // cmd.exe resolves PATHEXT executables (npm.cmd, uv.exe) that a bare spawn misses.
 const useShell = process.platform === "win32";
+const KILL_GRACE_MS = 2000;
+const MAX_ERROR_OUTPUT_LINES = 20;
 
 /** Error raised when a required executable is not found on PATH. */
 export class MissingToolError extends AgentCoreCLIError {
@@ -57,6 +60,19 @@ export type RunProcessOptions = {
 /** Runs a subprocess to completion. Injectable so tests never spawn real processes. */
 export type ProcessRunner = (command: string[], options: RunProcessOptions) => Promise<void>;
 
+export type ProcessEvent = { type: "stdout"; line: string } | { type: "stderr"; line: string };
+
+export type StreamProcessOptions = {
+  cwd: string;
+  env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
+};
+
+export type ProcessStreamer = (
+  command: string[],
+  options: StreamProcessOptions,
+) => AsyncGenerator<ProcessEvent, void>;
+
 /**
  * Runs a subprocess, streaming combined stdout/stderr to `onOutput` while also
  * capturing it; rejects with {@link ProcessFailedError} on a non-zero exit.
@@ -87,3 +103,147 @@ export const runProcess: ProcessRunner = ([executable, ...args], { cwd, onOutput
     });
   });
 };
+
+/**
+ * Runs a subprocess until it exits or is aborted, yielding complete output
+ * lines while preserving their source stream.
+ */
+export async function* streamProcess(
+  command: string[],
+  options: StreamProcessOptions,
+): AsyncGenerator<ProcessEvent, void> {
+  const [executable, ...args] = command;
+  if (!executable) {
+    throw new ProcessFailedError(command, options.cwd, null, "command is empty");
+  }
+  if (options.signal?.aborted) throw abortReason(options.signal);
+
+  let child: ChildProcess;
+  try {
+    child = spawn(executable, args, {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: useShell,
+      detached: !useShell,
+    });
+  } catch (error) {
+    throw new ProcessFailedError(command, options.cwd, null, String(error));
+  }
+
+  const events: ProcessEvent[] = [];
+  const recentOutput: string[] = [];
+  let wake: (() => void) | undefined;
+  let closed = false;
+  let exitCode: number | null = null;
+  let exitSignal: NodeJS.Signals | null = null;
+  let spawnError: Error | undefined;
+  let killTimer: ReturnType<typeof setTimeout> | undefined;
+  let terminating = false;
+  let resolveClosed: () => void = () => {};
+  const closedPromise = new Promise<void>((resolve) => {
+    resolveClosed = resolve;
+  });
+
+  const notify = () => {
+    wake?.();
+    wake = undefined;
+  };
+  const push = (event: ProcessEvent) => {
+    if (!event.line) return;
+    events.push(event);
+    recentOutput.push(event.line);
+    if (recentOutput.length > MAX_ERROR_OUTPUT_LINES) recentOutput.shift();
+    notify();
+  };
+  const terminate = () => {
+    if (closed || terminating) return;
+    terminating = true;
+    killTree(child, "SIGTERM");
+    killTimer = setTimeout(() => killTree(child, "SIGKILL"), KILL_GRACE_MS);
+    killTimer.unref();
+    notify();
+  };
+
+  const stdout = createInterface({ input: child.stdout! });
+  const stderr = createInterface({ input: child.stderr! });
+  stdout.on("line", (line) => push({ type: "stdout", line }));
+  stderr.on("line", (line) => push({ type: "stderr", line }));
+
+  child.once("error", (error) => {
+    spawnError = error;
+    notify();
+  });
+  child.once("close", (code, signal) => {
+    closed = true;
+    exitCode = code;
+    exitSignal = signal;
+    resolveClosed();
+    notify();
+  });
+  options.signal?.addEventListener("abort", terminate, { once: true });
+
+  try {
+    while (!closed || events.length > 0) {
+      const event = events.shift();
+      if (event) {
+        yield event;
+      } else {
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
+      }
+    }
+
+    if (options.signal?.aborted) throw abortReason(options.signal);
+    if (spawnError) {
+      throw new ProcessFailedError(command, options.cwd, null, String(spawnError));
+    }
+    if (exitCode !== 0) {
+      const signalMessage = exitSignal ? `terminated by ${exitSignal}` : "";
+      throw new ProcessFailedError(
+        command,
+        options.cwd,
+        exitCode,
+        [...recentOutput, signalMessage].filter(Boolean).join("\n"),
+      );
+    }
+  } finally {
+    options.signal?.removeEventListener("abort", terminate);
+    stdout.close();
+    stderr.close();
+    if (!closed) {
+      terminate();
+      await closedPromise;
+    }
+    if (terminating && processTreeAlive(child)) killTree(child, "SIGKILL");
+    if (killTimer) clearTimeout(killTimer);
+  }
+}
+
+function abortReason(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException("The operation was aborted", "AbortError");
+}
+
+function killTree(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (!child.pid) return;
+  try {
+    if (useShell) {
+      execFileSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+    } else {
+      process.kill(-child.pid, signal);
+    }
+  } catch {
+    if (child.exitCode === null && child.signalCode === null) child.kill(signal);
+  }
+}
+
+function processTreeAlive(child: ChildProcess): boolean {
+  if (useShell || !child.pid) return false;
+  try {
+    process.kill(-child.pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}

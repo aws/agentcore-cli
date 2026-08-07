@@ -9,9 +9,13 @@ export {
   ProcessFailedError,
   requireTool,
   runProcess,
+  streamProcess,
   toolAvailable,
+  type ProcessEvent,
   type ProcessRunner,
+  type ProcessStreamer,
   type RunProcessOptions,
+  type StreamProcessOptions,
 } from "./exec";
 export { FsReadWriteJson } from "./json";
 export { SourceResolver, type SourceResolverConfig } from "./source";
