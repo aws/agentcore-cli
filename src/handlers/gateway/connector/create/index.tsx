@@ -6,13 +6,13 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import z from "zod";
 import { InputValidationError } from "../../../../errors";
+import { GatewayConnectorTarget } from "../../../../gateway/gatewayConnectorTarget";
 import { type AppIO, SourceResolver } from "../../../../io";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx, parseJsonArrayFlag, parseJsonObjectFlag } from "../../../utils";
 import type { CreateGatewayTargetInput } from "../../types";
-import { GatewayConnectorTarget } from "../gatewayConnectorTarget";
 
 export const createCreateGatewayConnectorHandler = (core: Core, io: AppIO) =>
   createHandler({

@@ -48,16 +48,6 @@ export const createUpdateGatewayRuleHandler = (core: Core, io: AppIO) =>
       if (flags.description === "") {
         throw new InputValidationError("Rule description cannot be empty or cleared");
       }
-      if (
-        flags.priority === undefined &&
-        flags.conditions === undefined &&
-        !flags["clear-conditions"] &&
-        flags.actions === undefined &&
-        flags.description === undefined
-      ) {
-        throw new InputValidationError("Rule update requires at least one mutation option");
-      }
-
       const source = new SourceResolver({ stdin: io.stdin });
       const conditions = parseJsonArrayFlag<Condition>(
         "conditions",
@@ -67,17 +57,19 @@ export const createUpdateGatewayRuleHandler = (core: Core, io: AppIO) =>
         "actions",
         await source.resolveText("actions", flags.actions),
       );
+      const mutations: Omit<GatewayRuleUpdateInput, "gatewayIdentifier" | "ruleId"> = {
+        priority: flags.priority,
+        conditions: flags["clear-conditions"] ? [] : conditions,
+        actions,
+        description: flags.description,
+      };
+      if (Object.values(mutations).every((value) => value === undefined)) {
+        throw new InputValidationError("Rule update requires at least one mutation option");
+      }
       const input: GatewayRuleUpdateInput = {
         gatewayIdentifier: flags["gateway-id"],
         ruleId: flags["rule-id"],
-        ...(flags.priority !== undefined ? { priority: flags.priority } : {}),
-        ...(flags["clear-conditions"]
-          ? { conditions: [] }
-          : conditions !== undefined
-            ? { conditions }
-            : {}),
-        ...(actions !== undefined ? { actions } : {}),
-        ...(flags.description !== undefined ? { description: flags.description } : {}),
+        ...mutations,
       };
 
       ctx

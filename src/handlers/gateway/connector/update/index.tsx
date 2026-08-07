@@ -6,13 +6,13 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import z from "zod";
 import { InputValidationError } from "../../../../errors";
+import { GatewayConnectorTarget } from "../../../../gateway/gatewayConnectorTarget";
 import { type AppIO, SourceResolver } from "../../../../io";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx, parseJsonArrayFlag, parseJsonObjectFlag } from "../../../utils";
 import type { GatewayTargetUpdatePatch } from "../../types";
-import { GatewayConnectorTarget } from "../gatewayConnectorTarget";
 
 export const createUpdateGatewayConnectorHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -106,22 +106,6 @@ export const createUpdateGatewayConnectorHandler = (core: Core, io: AppIO) =>
         }
       }
 
-      const hasMutation =
-        flags.name !== undefined ||
-        flags.description !== undefined ||
-        flags["clear-description"] ||
-        flags.connector !== undefined ||
-        flags["connector-configuration"] !== undefined ||
-        flags["credential-provider-configurations"] !== undefined ||
-        flags["clear-credential-provider-configurations"] ||
-        flags["metadata-configuration"] !== undefined ||
-        flags["clear-metadata-configuration"] ||
-        flags["private-endpoint"] !== undefined ||
-        flags["clear-private-endpoint"];
-      if (!hasMutation) {
-        throw new InputValidationError("Connector update requires at least one mutation option");
-      }
-
       const source = new SourceResolver({ stdin: io.stdin });
       const exactConfiguration = parseJsonObjectFlag<TargetConfiguration>(
         "connector-configuration",
@@ -153,31 +137,23 @@ export const createUpdateGatewayConnectorHandler = (core: Core, io: AppIO) =>
         await source.resolveText("private-endpoint", flags["private-endpoint"]),
       );
 
+      const mutations: Omit<GatewayTargetUpdatePatch, "gatewayId" | "targetId"> = {
+        name: flags.name,
+        description: flags["clear-description"] ? null : flags.description,
+        targetConfiguration,
+        credentialProviderConfigurations: flags["clear-credential-provider-configurations"]
+          ? null
+          : credentialProviderConfigurations,
+        metadataConfiguration: flags["clear-metadata-configuration"] ? null : metadataConfiguration,
+        privateEndpoint: flags["clear-private-endpoint"] ? null : privateEndpoint,
+      };
+      if (Object.values(mutations).every((value) => value === undefined)) {
+        throw new InputValidationError("Connector update requires at least one mutation option");
+      }
       const patch: GatewayTargetUpdatePatch = {
         gatewayId: flags["gateway-id"],
         targetId: flags.id,
-        ...(flags.name !== undefined ? { name: flags.name } : {}),
-        ...(flags["clear-description"]
-          ? { description: null }
-          : flags.description !== undefined
-            ? { description: flags.description }
-            : {}),
-        ...(targetConfiguration !== undefined ? { targetConfiguration } : {}),
-        ...(flags["clear-credential-provider-configurations"]
-          ? { credentialProviderConfigurations: null }
-          : credentialProviderConfigurations !== undefined
-            ? { credentialProviderConfigurations }
-            : {}),
-        ...(flags["clear-metadata-configuration"]
-          ? { metadataConfiguration: null }
-          : metadataConfiguration !== undefined
-            ? { metadataConfiguration }
-            : {}),
-        ...(flags["clear-private-endpoint"]
-          ? { privateEndpoint: null }
-          : privateEndpoint !== undefined
-            ? { privateEndpoint }
-            : {}),
+        ...mutations,
       };
 
       ctx

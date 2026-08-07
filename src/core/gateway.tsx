@@ -30,7 +30,7 @@ import {
   type UpdateGatewayTargetResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { InputValidationError, ResultTruncationError } from "../errors";
-import { GatewayConnectorTarget } from "../handlers/gateway/connector/gatewayConnectorTarget";
+import { GatewayConnectorTarget } from "../gateway/gatewayConnectorTarget";
 import type {
   CoreGatewayClient,
   CreateGatewayInput,
@@ -85,7 +85,7 @@ export class GatewayClient implements CoreGatewayClient {
     );
     if (patch.authorizerConfiguration !== undefined && authorizerType !== "CUSTOM_JWT") {
       throw new InputValidationError(
-        "--authorizer-configuration is valid only for a CUSTOM_JWT Gateway",
+        "Authorizer configuration can only be updated for a CUSTOM_JWT Gateway",
       );
     }
 
@@ -126,24 +126,16 @@ export class GatewayClient implements CoreGatewayClient {
       name,
       roleArn: patch.roleArn ?? roleArn,
       authorizerType,
-      ...(description !== undefined ? { description } : {}),
-      ...(!patch.clearProtocol && current.protocolType !== undefined
-        ? { protocolType: current.protocolType }
-        : {}),
-      ...(protocolConfiguration !== undefined ? { protocolConfiguration } : {}),
-      ...(current.authorizerConfiguration !== undefined ||
-      patch.authorizerConfiguration !== undefined
-        ? {
-            authorizerConfiguration:
-              patch.authorizerConfiguration ?? current.authorizerConfiguration,
-          }
-        : {}),
-      ...(current.kmsKeyArn !== undefined ? { kmsKeyArn: current.kmsKeyArn } : {}),
-      ...(customTransformConfiguration !== undefined ? { customTransformConfiguration } : {}),
-      ...(interceptorConfigurations !== undefined ? { interceptorConfigurations } : {}),
-      ...(policyEngineConfiguration !== undefined ? { policyEngineConfiguration } : {}),
-      ...(exceptionLevel !== undefined ? { exceptionLevel } : {}),
-      ...(wafConfiguration !== undefined ? { wafConfiguration } : {}),
+      description,
+      protocolType: patch.clearProtocol ? undefined : current.protocolType,
+      protocolConfiguration,
+      authorizerConfiguration: patch.authorizerConfiguration ?? current.authorizerConfiguration,
+      kmsKeyArn: current.kmsKeyArn,
+      customTransformConfiguration,
+      interceptorConfigurations,
+      policyEngineConfiguration,
+      exceptionLevel,
+      wafConfiguration,
     };
     return control.send(new UpdateGatewayCommand(request));
   }
@@ -320,7 +312,7 @@ export class GatewayClient implements CoreGatewayClient {
     if (targetConfiguration === undefined && patch.endpoint !== undefined) {
       const mcpServer = current.targetConfiguration?.mcp?.mcpServer;
       if (!mcpServer) {
-        throw new InputValidationError("--endpoint requires an existing MCP server Target");
+        throw new InputValidationError("Endpoint updates require an existing MCP server Target");
       }
       targetConfiguration = {
         mcp: {
@@ -353,17 +345,15 @@ export class GatewayClient implements CoreGatewayClient {
       gatewayIdentifier: patch.gatewayId,
       targetId: patch.targetId,
       targetConfiguration,
-      ...(name !== undefined ? { name } : {}),
-      ...(description !== undefined ? { description } : {}),
-      ...(credentialProviderConfigurations !== undefined
-        ? { credentialProviderConfigurations }
-        : {}),
-      ...(metadataConfiguration !== undefined ? { metadataConfiguration } : {}),
-      ...(privateEndpoint !== undefined ? { privateEndpoint } : {}),
+      name,
+      description,
+      credentialProviderConfigurations,
+      metadataConfiguration,
+      privateEndpoint,
     };
     if (connectorOnly && !GatewayConnectorTarget.is(request.targetConfiguration)) {
       throw new InputValidationError(
-        "--connector-configuration must contain an MCP or inference connector Target",
+        "Connector updates require an MCP or inference connector Target configuration",
       );
     }
     return control.send(new UpdateGatewayTargetCommand(request));

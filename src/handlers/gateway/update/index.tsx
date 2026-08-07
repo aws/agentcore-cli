@@ -108,29 +108,6 @@ export const createUpdateGatewayHandler = (core: Core, io: AppIO) =>
         throw new InputValidationError("--policy-engine-arn requires --policy-engine-mode");
       }
 
-      const hasMutation =
-        flags["role-arn"] !== undefined ||
-        flags["clear-protocol"] ||
-        flags.description !== undefined ||
-        flags["clear-description"] ||
-        flags["protocol-configuration"] !== undefined ||
-        flags["clear-protocol-configuration"] ||
-        flags["authorizer-configuration"] !== undefined ||
-        flags["custom-transform-configuration"] !== undefined ||
-        flags["clear-custom-transform-configuration"] ||
-        flags["interceptor-configurations"] !== undefined ||
-        flags["clear-interceptor-configurations"] ||
-        flags["policy-engine-arn"] !== undefined ||
-        flags["policy-engine-mode"] !== undefined ||
-        flags["clear-policy-engine"] ||
-        flags["exception-level"] !== undefined ||
-        flags["clear-exception-level"] ||
-        flags["waf-configuration"] !== undefined ||
-        flags["clear-waf-configuration"];
-      if (!hasMutation) {
-        throw new InputValidationError("Gateway update requires at least one mutation option");
-      }
-
       const source = new SourceResolver({ stdin: io.stdin });
       const protocolConfiguration = parseJsonObjectFlag<GatewayProtocolConfiguration>(
         "protocol-configuration",
@@ -156,61 +133,42 @@ export const createUpdateGatewayHandler = (core: Core, io: AppIO) =>
         await source.resolveText("waf-configuration", flags["waf-configuration"]),
       );
 
-      const patch: GatewayUpdatePatch = {
-        id: flags.id,
-        ...(flags["role-arn"] !== undefined ? { roleArn: flags["role-arn"] } : {}),
-        ...(flags["clear-protocol"] ? { clearProtocol: true } : {}),
-        ...(flags["clear-description"]
-          ? { description: null }
-          : flags.description !== undefined
-            ? { description: flags.description }
-            : {}),
-        ...(flags["clear-protocol-configuration"]
-          ? { protocolConfiguration: null }
-          : protocolConfiguration !== undefined
-            ? { protocolConfiguration }
-            : {}),
-        ...(authorizerConfiguration !== undefined ? { authorizerConfiguration } : {}),
-        ...(flags["clear-custom-transform-configuration"]
-          ? { customTransformConfiguration: null }
-          : customTransformConfiguration !== undefined
-            ? { customTransformConfiguration }
-            : {}),
-        ...(flags["clear-interceptor-configurations"]
-          ? { interceptorConfigurations: null }
-          : interceptorConfigurations !== undefined
-            ? { interceptorConfigurations }
-            : {}),
-        ...(flags["clear-policy-engine"]
-          ? { policyEngineConfiguration: null }
+      const mutations: Omit<GatewayUpdatePatch, "id"> = {
+        roleArn: flags["role-arn"],
+        clearProtocol: flags["clear-protocol"] || undefined,
+        description: flags["clear-description"] ? null : flags.description,
+        protocolConfiguration: flags["clear-protocol-configuration"] ? null : protocolConfiguration,
+        authorizerConfiguration,
+        customTransformConfiguration: flags["clear-custom-transform-configuration"]
+          ? null
+          : customTransformConfiguration,
+        interceptorConfigurations: flags["clear-interceptor-configurations"]
+          ? null
+          : interceptorConfigurations,
+        policyEngineConfiguration: flags["clear-policy-engine"]
+          ? null
           : flags["policy-engine-arn"] !== undefined || flags["policy-engine-mode"] !== undefined
             ? {
-                policyEngineConfiguration: {
-                  ...(flags["policy-engine-arn"] !== undefined
-                    ? { arn: flags["policy-engine-arn"] }
-                    : {}),
-                  ...(flags["policy-engine-mode"] !== undefined
-                    ? {
-                        mode:
-                          flags["policy-engine-mode"] === "enforce"
-                            ? ("ENFORCE" as const)
-                            : ("LOG_ONLY" as const),
-                      }
-                    : {}),
-                },
+                arn: flags["policy-engine-arn"],
+                mode:
+                  flags["policy-engine-mode"] === undefined
+                    ? undefined
+                    : flags["policy-engine-mode"] === "enforce"
+                      ? "ENFORCE"
+                      : "LOG_ONLY",
               }
-            : {}),
-        ...(flags["clear-exception-level"]
-          ? { exceptionLevel: null }
+            : undefined,
+        exceptionLevel: flags["clear-exception-level"]
+          ? null
           : flags["exception-level"]
-            ? { exceptionLevel: "DEBUG" as const }
-            : {}),
-        ...(flags["clear-waf-configuration"]
-          ? { wafConfiguration: null }
-          : wafConfiguration !== undefined
-            ? { wafConfiguration }
-            : {}),
+            ? "DEBUG"
+            : undefined,
+        wafConfiguration: flags["clear-waf-configuration"] ? null : wafConfiguration,
       };
+      if (Object.values(mutations).every((value) => value === undefined)) {
+        throw new InputValidationError("Gateway update requires at least one mutation option");
+      }
+      const patch: GatewayUpdatePatch = { id: flags.id, ...mutations };
 
       ctx
         .require(JsonRendererKey)
