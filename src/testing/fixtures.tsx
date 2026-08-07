@@ -11,6 +11,7 @@ import type {
   CreateDataClient,
   CreateIamClient,
   CreateLogsClient,
+  CoreFetch,
 } from "../core/types";
 import {
   createControlClient,
@@ -19,6 +20,11 @@ import {
   createLogsClient,
 } from "../core/factories";
 import { parse, stringify } from "./serialization";
+
+// A fixture represents the first response for one normalized request. Recording
+// refreshes an existing fixture on its first use, then preserves that response
+// when polling or another command repeats the same request later in the run.
+const recordedPaths = new Set<string>();
 
 // Golden-file record/replay for the AWS SDK seam.
 //
@@ -62,8 +68,17 @@ interface SdkCommand {
 // staying deterministic and offline-stable across runs.
 function fixturePath(dir: string, command: SdkCommand): string {
   const op = command.constructor.name;
-  const hash = Bun.hash(stringify(command.input ?? {})).toString(16);
+  const hash = Bun.hash(stringify(normalizeFixtureInput(command.input ?? {}))).toString(16);
   return join(dir, `${op}.${hash}.json`);
+}
+
+// The top-level clientToken is intentionally nondeterministic for idempotent
+// mutations. Nested fields belong to the command payload and remain part of the
+// fixture key.
+function normalizeFixtureInput(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const { clientToken: _clientToken, ...input } = value as Record<string, unknown>;
+  return input;
 }
 
 // normalizeResponse strips volatile transport metadata from a recorded SDK
@@ -113,6 +128,8 @@ function makeRecordingSend<C extends { send: (command: any) => Promise<any> }>(
     const path = fixturePath(dir, command);
 
     if (isRecording()) {
+      const shouldWrite = !recordedPaths.has(path);
+      recordedPaths.add(path);
       mkdirSync(dir, { recursive: true });
       let response: unknown;
       try {
@@ -121,10 +138,10 @@ function makeRecordingSend<C extends { send: (command: any) => Promise<any> }>(
         const tagged: TaggedError = {
           [ERROR_TAG]: { name: (error as Error).name, message: (error as Error).message },
         };
-        writeFileSync(path, stringify(tagged));
+        if (shouldWrite) writeFileSync(path, stringify(tagged));
         throw error;
       }
-      writeFileSync(path, stringify(response));
+      if (shouldWrite) writeFileSync(path, stringify(response));
       return response;
     }
 
@@ -178,6 +195,59 @@ export function fixtureFactories(dir: string): {
       } as unknown as CloudWatchLogsClient;
     },
   };
+}
+
+type FetchFixture = {
+  status: number;
+  statusText?: string;
+  body: string;
+};
+
+function fetchFixturePath(
+  dir: string,
+  input: Parameters<CoreFetch>[0],
+  init: Parameters<CoreFetch>[1],
+): string {
+  const url = input instanceof Request ? input.url : String(input);
+  const parsed = new URL(url);
+  const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+  const hash = Bun.hash(stringify({ method, path: parsed.pathname })).toString(16);
+  return join(dir, `Fetch.${hash}.json`);
+}
+
+// fixtureFetch records/replays presigned content downloads, which sit outside
+// the AWS SDK `.send()` seam. The fixture key ignores volatile query params on
+// presigned URLs and keys on the stable object path instead.
+export function fixtureFetch(dir: string): CoreFetch {
+  return (async (input, init) => {
+    const path = fetchFixturePath(dir, input, init);
+
+    if (isRecording()) {
+      const shouldWrite = !recordedPaths.has(path);
+      recordedPaths.add(path);
+      mkdirSync(dir, { recursive: true });
+      const response = await globalThis.fetch(input, init);
+      const fixture: FetchFixture = {
+        status: response.status,
+        statusText: response.statusText,
+        body: await response.text(),
+      };
+      if (shouldWrite) writeFileSync(path, stringify(fixture));
+      return new Response(fixture.body, {
+        status: fixture.status,
+        statusText: fixture.statusText,
+      });
+    }
+
+    if (!existsSync(path)) {
+      throw new Error(`Missing fetch fixture ${path}. Re-run with RECORD=1 to record it.`);
+    }
+    const fixture = parse<FetchFixture>(readFileSync(path, "utf8"));
+    return new Response(fixture.body, {
+      status: fixture.status,
+      statusText: fixture.statusText,
+    });
+  }) as CoreFetch;
 }
 
 // matchGolden compares `actual` against the golden file `<dir>/<name>`. In record

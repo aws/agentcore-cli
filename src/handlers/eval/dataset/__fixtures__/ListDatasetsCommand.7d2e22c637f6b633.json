@@ -1,21 +1,21 @@
 {
   "datasets": [
     {
-      "datasetArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:dataset/agentcore_cli_dataset_fixture-l9ZqTR71Kx",
-      "datasetId": "agentcore_cli_dataset_fixture-l9ZqTR71Kx",
+      "datasetArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:dataset/agentcore_cli_dataset_fixture-jzVpQaA5It",
+      "datasetId": "agentcore_cli_dataset_fixture-jzVpQaA5It",
       "datasetName": "agentcore_cli_dataset_fixture",
       "status": "ACTIVE",
       "schemaType": "AGENTCORE_EVALUATION_PREDEFINED_V1",
       "exampleCount": 2,
       "createdAt": {
-        "$date": "2026-08-04T20:47:35.742Z"
+        "$date": "2026-08-07T19:02:41.330Z"
       },
       "updatedAt": {
-        "$date": "2026-08-04T20:47:37.482Z"
+        "$date": "2026-08-07T19:02:58.844Z"
       },
       "description": "Recorded fixture for the dataset commands",
       "draftStatus": "MODIFIED"
     }
   ],
-  "nextToken": "AQICAHg005/7fkIBR7tGFhppNaSDRXSe8ajCw8sa0ZnYTqa1SAFRZG4yefRahLBknF7241iwAAABDzCCAQsGCSqGSIb3DQEHBqCB/TCB+gIBADCB9AYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAzf/yKfp0XwtMdtIHsCARCAgcZVDuGNXCFXhEmo9lZ+I2GwAp/hW98DlO4E9sqbkUJ0l9jawUK8EJ/gZKS7pzCZqNe/hKfEl3aBM73HGZ+AfsnlNldPJtcEjK3IDXjRFZTn+KXmjvBkpv//JdsVhs/lTCd/Px6yER5zR9shvLQbBJWJdHtzKQ1KzvClGvbvjDvnwYrF2Iyl7a12o02b4zoGDYQicetfcyCirXCnMhpqu7idpTTobfq2y6zJ3Jwv8w7Q/jVExI+8QuW/EfeGEH90euLPiR/JJ/A="
+  "nextToken": "AQICAHg005/7fkIBR7tGFhppNaSDRXSe8ajCw8sa0ZnYTqa1SAGw9GwOwc1IkOD+mhtw9DxuAAABDzCCAQsGCSqGSIb3DQEHBqCB/TCB+gIBADCB9AYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAy69febGAs5+tNX+awCARCAgcZMrnpoMDKYNhHBlHSyrg77OkuEO4zCUVQ+bFaDu2QYYox3thMeJi4fFpgM69RkVI2H82E0bfyy3NUp46bpJ3kzlcd3TJHfmzOQYoLPx2VNOytRYHeGIw8/H3DrGAo0D3JbLxNYV6+ZD02wuuMWSgMC8+z75D8Cfj+QG8ymeZ3q0fjeCqucg3VAyKwu+HO5QwVjizsov4os8Xf/8nCy5aGb9TXCPYmhVWmWqcuBljgUR1TMx2SJkRscypaEvZl7bsAbnqJRSs8="
 }

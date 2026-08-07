@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +9,7 @@ import { createControlClient } from "../../../core/factories";
 import {
   createSilentLogger,
   fixtureFactories,
+  fixtureFetch,
   isRecording,
   matchGolden,
   settle,
@@ -65,6 +66,55 @@ function writeExamples(): string {
   return path;
 }
 
+async function writeUpdateExamples(): Promise<{
+  path: string;
+  keptExampleId: string;
+  deletedExampleId: string;
+}> {
+  const dir = mkdtempSync(join(tmpdir(), "agentcore-dataset-update-fixture-"));
+  dirs.push(dir);
+  const path = join(dir, "orders-update.jsonl");
+
+  // Use the IDs assigned by the live service or returned by the download
+  // fixture. This keeps record and replay on the same code path.
+  await run(["eval", "dataset", "get", "--id", datasetId, "--file-path", path]);
+  const current = readFileSync(path, "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  const kept = current.find((example) => example.scenario_id === "shipped-order");
+  const deleted = current.find((example) => example.scenario_id === "unknown-order");
+
+  expect(current).toHaveLength(EXAMPLES.length);
+  expect(kept?.exampleId).toBeString();
+  expect(deleted?.exampleId).toBeString();
+
+  const keptExampleId = kept!.exampleId as string;
+  const deletedExampleId = deleted!.exampleId as string;
+  const updated = {
+    ...kept,
+    turns: [
+      {
+        input: "Where is order 12345?",
+        expectedResponse: "Order 12345 shipped with UPS and now arrives on July 24, 2026.",
+      },
+    ],
+  };
+  const added = {
+    scenario_id: "address-change",
+    turns: [
+      {
+        input: "Can I change the shipping address for order 24680?",
+        expectedResponse: "I can help change the shipping address if the order has not shipped.",
+      },
+    ],
+    assertions: ["The response explains when the shipping address can be changed."],
+    expected_trajectory: ["lookup_order", "update_shipping_address"],
+  };
+  writeFileSync(path, `${[updated, added].map((e) => JSON.stringify(e)).join("\n")}\n`);
+  return { path, keptExampleId, deletedExampleId };
+}
+
 function createFixtureCore(): CoreClient {
   const { createControlClient, createDataClient, createIamClient, createLogsClient } =
     fixtureFactories(FIXTURES);
@@ -74,6 +124,7 @@ function createFixtureCore(): CoreClient {
     createIamClient,
     createLogsClient,
     logger: createSilentLogger(),
+    fetch: fixtureFetch(FIXTURES),
   });
 }
 
@@ -153,6 +204,32 @@ describe("eval dataset against recorded responses", () => {
     expect(response.exampleCount).toBe(EXAMPLES.length);
     expect(response.schemaType).toBe("AGENTCORE_EVALUATION_PREDEFINED_V1");
     expect(response.draftStatus).toBe("MODIFIED");
+  }, 60_000);
+
+  test("updates the DRAFT from a local JSONL file", async () => {
+    await settle();
+    const { path, keptExampleId, deletedExampleId } = await writeUpdateExamples();
+
+    const stdout = await run(["eval", "dataset", "update", "--id", datasetId, "--file-path", path]);
+
+    matchGolden(FIXTURES, "update.golden.json", stdout);
+    expect(JSON.parse(stdout)).toEqual({
+      datasetId,
+      added: 1,
+      updated: 1,
+      deleted: 1,
+      unchanged: 0,
+    });
+
+    const rows = readFileSync(path, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(rows.map((row) => row.scenario_id)).toEqual(["shipped-order", "address-change"]);
+    expect(rows[0].exampleId).toBe(keptExampleId);
+    expect(rows[1].exampleId).toBeString();
+    expect(rows[1].exampleId).not.toBe(keptExampleId);
+    expect(rows[1].exampleId).not.toBe(deletedExampleId);
   }, 60_000);
 
   test("lists datasets", async () => {
