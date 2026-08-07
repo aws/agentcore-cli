@@ -24,13 +24,36 @@ export const GlobalConfigAccessorKey: ContextKey<GlobalConfigAccessor> =
   contextKey<GlobalConfigAccessor>("globalConfigAccessor");
 export const ProjectKey = contextKey<Project>("project");
 
-// Allowlist of commands supported in TUI. Ensures read-only TUIs do not
-// render write commands, and ensures bare write commands do not launch TUI
-const supportedTuiCommandNames = new WeakMap<Handler, ReadonlySet<string>>();
-const compiledTuiSupport = new WeakMap<Command, boolean>();
+// RoutedCommand keeps the compiled handler and Commander command tree together.
+// TUI consumers can therefore read handler metadata without module-level state.
+class RoutedCommand extends Command {
+  constructor(readonly handler: Handler) {
+    super(handler.name());
+  }
+}
 
 export function isTuiCommandSupported(command: Command): boolean {
-  return compiledTuiSupport.get(command) ?? true;
+  return command instanceof RoutedCommand ? command.handler.doesSupportTui() : true;
+}
+
+interface TuiChildSupportProvider {
+  supportsTuiCommand(commandName: string): boolean;
+}
+
+function isTuiChildSupportProvider(h: Handler): h is Handler & TuiChildSupportProvider {
+  return typeof (h as Partial<TuiChildSupportProvider>).supportsTuiCommand === "function";
+}
+
+function withEffectiveTuiSupport(handler: Handler, supported: boolean): Handler {
+  return {
+    name: () => handler.name(),
+    description: () => handler.description(),
+    flags: () => handler.flags(),
+    arguments: () => handler.arguments(),
+    doesSupportTui: () => supported,
+    handle: (ctx, flags, args) => handler.handle(ctx, flags, args),
+    children: () => handler.children(),
+  };
 }
 
 // DefaultHandle runs when a group is selected without a subcommand (e.g.
@@ -129,8 +152,9 @@ export function compile(
   inheritedGlobals: GlobalFlag[] = [],
   tuiSupported = true,
 ): Command {
-  const c = new Command(node.name());
-  compiledTuiSupport.set(c, tuiSupported);
+  const effectiveTuiSupport = tuiSupported && node.doesSupportTui();
+  const compiledNode = withEffectiveTuiSupport(node, effectiveTuiSupport);
+  const c = new RoutedCommand(compiledNode);
   c.description(node.description());
 
   const ownFlags = node.flags();
@@ -167,10 +191,10 @@ export function compile(
     }
     // A group's own global flags become inherited flags for everything beneath it.
     const childGlobals = [...inheritedGlobals, ...globalFlagsOf(node)];
-    const tuiCommandNames = supportedTuiCommandNames.get(node);
     for (const child of children) {
       const childTuiSupported =
-        tuiSupported && (tuiCommandNames === undefined || tuiCommandNames.has(child.name()));
+        effectiveTuiSupport &&
+        (!isTuiChildSupportProvider(node) || node.supportsTuiCommand(child.name()));
       c.addCommand(compile(child, ctx, nextStack, childGlobals, childTuiSupported));
     }
     // A group may also carry a default handler that runs when it is invoked
@@ -179,11 +203,18 @@ export function compile(
     // has no own flags/arguments (globals-only).
     const fallback = isDefaultHandlerProvider(node) ? node.defaultHandler() : undefined;
     if (fallback) {
-      attachAction(c, fallback, ctx, nextStack, childGlobals, []);
+      attachAction(
+        c,
+        withEffectiveTuiSupport(fallback, effectiveTuiSupport && fallback.doesSupportTui()),
+        ctx,
+        nextStack,
+        childGlobals,
+        [],
+      );
     }
   } else {
     // Middleware wraps the node here; the wrapper's logic runs at leaf execution.
-    attachAction(c, node, ctx, nextStack, inheritedGlobals, ownFlags);
+    attachAction(c, compiledNode, ctx, nextStack, inheritedGlobals, ownFlags);
   }
 
   return c;
@@ -194,6 +225,7 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
   private handlers: Handler[] = [];
   private globalFlags: GlobalFlag[] = [];
   private defaultHandle?: DefaultHandle;
+  private tuiCommandNames?: ReadonlySet<string>;
 
   constructor(
     private readonly cmdName: string,
@@ -221,8 +253,12 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
   // TUI dispatch to the named children. Without this call, every child keeps the
   // existing TUI behavior.
   supportedTuiCommands(...commands: string[]): this {
-    supportedTuiCommandNames.set(this, new Set(commands));
+    this.tuiCommandNames = new Set(commands);
     return this;
+  }
+
+  supportsTuiCommand(commandName: string): boolean {
+    return this.tuiCommandNames?.has(commandName) ?? true;
   }
 
   // default registers a handler that runs when this group is selected without a
@@ -254,6 +290,10 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
     return [];
   }
 
+  doesSupportTui(): boolean {
+    return true;
+  }
+
   // A group/branch never executes directly; it just hosts subcommands.
   async handle(_ctx: Context, _flags: any, _args: any): Promise<void> {}
 
@@ -278,6 +318,7 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
       description: () => this.cmdDescription,
       flags: () => [],
       arguments: () => [],
+      doesSupportTui: () => true,
       handle: fn,
       children: () => [],
     };

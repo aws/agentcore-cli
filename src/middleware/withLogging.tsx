@@ -35,6 +35,7 @@ export function withLogging(config: WithLoggingConfig): Middleware {
     description: () => h.description(),
     flags: () => h.flags(),
     arguments: () => h.arguments(),
+    doesSupportTui: () => h.doesSupportTui(),
     children: () => h.children(),
     handle: async (ctx, flags, args) => {
       const commandPath = ctx.require(PathKey);

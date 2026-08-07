@@ -19,6 +19,7 @@ export function withProject(config: WithProjectConfig): Middleware {
     description: () => h.description(),
     flags: () => h.flags(),
     arguments: () => h.arguments(),
+    doesSupportTui: () => h.doesSupportTui(),
     children: () => h.children(),
     handle: async (ctx, flags, args) => {
       const project = await config.projectManager.resolve({ filePath: config.cwd });

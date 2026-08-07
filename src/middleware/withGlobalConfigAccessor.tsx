@@ -12,6 +12,7 @@ export function withGlobalConfigAccessor(accessor: GlobalConfigAccessor): Middle
     description: () => h.description(),
     flags: () => h.flags(),
     arguments: () => h.arguments(),
+    doesSupportTui: () => h.doesSupportTui(),
     children: () => h.children(),
     handle: async (ctx, flags, args) => {
       await h.handle(ctx.withValue(GlobalConfigAccessorKey, accessor), flags, args);

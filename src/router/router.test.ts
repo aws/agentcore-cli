@@ -31,6 +31,7 @@ function record(log: string[], label: string): Middleware {
     description: () => h.description(),
     flags: () => h.flags(),
     arguments: () => h.arguments(),
+    doesSupportTui: () => h.doesSupportTui(),
     children: () => h.children(),
     handle: async (ctx: Context, flags: any, args: any) => {
       log.push(label);

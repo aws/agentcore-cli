@@ -61,6 +61,7 @@ export function withRegion(): Middleware {
     description: () => h.description(),
     flags: () => h.flags(),
     arguments: () => h.arguments(),
+    doesSupportTui: () => h.doesSupportTui(),
     children: () => h.children(),
     handle: async (ctx, flags, args) => {
       const region = await resolveRegion(ctx.value(RegionKey));

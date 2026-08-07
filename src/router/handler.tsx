@@ -83,6 +83,8 @@ export interface Handler {
   description(): string;
   flags(): Flag[];
   arguments(): Argument[];
+  // Middleware must preserve this metadata when wrapping a handler.
+  doesSupportTui(): boolean;
   // At runtime `handle` receives the validated, coerced flags object. The precise
   // shape is supplied to authors via createHandler's generic; the interface keeps
   // it erased so middleware can forward it uniformly.
@@ -137,6 +139,10 @@ class BaseHandler implements Handler {
 
   arguments(): Argument[] {
     return this._arguments;
+  }
+
+  doesSupportTui(): boolean {
+    return true;
   }
 
   async handle(ctx: Context, flags: any, args: any): Promise<void> {

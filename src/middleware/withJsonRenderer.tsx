@@ -18,6 +18,7 @@ export function withJsonRenderer(io: AppIO): Middleware {
     description: () => h.description(),
     flags: () => h.flags(),
     arguments: () => h.arguments(),
+    doesSupportTui: () => h.doesSupportTui(),
     children: () => h.children(),
     handle: async (ctx, flags, args) => {
       await h.handle(ctx.withValue(JsonRendererKey, renderer), flags, args);
