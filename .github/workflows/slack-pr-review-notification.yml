@@ -1,12 +1,10 @@
 # Caller: posts PR-review activity to the "PR Summary" Slack workflow with @-mentions.
-# Copy this file verbatim into each of the 6 repos' .github/workflows/ — it is
-# repo-agnostic (the reusable auto-detects github.repository). Pin @<SHA> to the
-# devtools main commit that added reusable-slack-pr-review-notification.yml.
+# Repo-agnostic (the reusable auto-detects github.repository).
 name: Slack PR Review Notification
 
 on:
   pull_request:
-    types: [review_requested, synchronize]
+    types: [review_requested]
   pull_request_review:
     types: [submitted]
 
