@@ -16,8 +16,7 @@ import type { CoreOptions } from "../../core/types";
 
 export type GatewayProtocol = "mcp";
 
-export type CreateGatewayInput = Omit<CreateGatewayRequest, "protocolType" | "roleArn"> & {
-  roleArn?: string;
+export type CreateGatewayInput = Omit<CreateGatewayRequest, "protocolType"> & {
   protocol?: GatewayProtocol;
 };
 

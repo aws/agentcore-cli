@@ -25,7 +25,6 @@ import type {
   CreateGatewayTargetInput,
 } from "../handlers/gateway/types";
 import type { AwsClients, CoreOptions } from "./types";
-import { GatewayExecutionRole } from "./gatewayExecutionRole";
 import { toClientConfig } from "./utils";
 
 export class GatewayClient implements CoreGatewayClient {
@@ -36,24 +35,14 @@ export class GatewayClient implements CoreGatewayClient {
     options: CoreOptions,
   ): Promise<CreateGatewayResponse> {
     const control = this.clients.control(toClientConfig(options));
-    const { protocol, roleArn: providedRoleArn, ...request } = input;
-    const send = (roleArn: string) =>
-      control.send(
-        new CreateGatewayCommand({
-          ...request,
-          roleArn,
-          ...(protocol === "mcp" ? { protocolType: "MCP" as const } : {}),
-        }),
-      );
-
-    if (providedRoleArn) return send(providedRoleArn);
-
-    const roleArn = await GatewayExecutionRole.ensure(
-      this.clients.iam({ region: options.region }),
-      input.name!,
-      options.region,
+    const { protocol, roleArn, ...request } = input;
+    return control.send(
+      new CreateGatewayCommand({
+        ...request,
+        roleArn,
+        ...(protocol === "mcp" ? { protocolType: "MCP" as const } : {}),
+      }),
     );
-    return GatewayExecutionRole.retryWhileUnassumable(() => send(roleArn));
   }
 
   async getGateway(id: string, options: CoreOptions): Promise<GetGatewayResponse> {

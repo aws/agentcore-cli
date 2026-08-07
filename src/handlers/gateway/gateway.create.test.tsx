@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   DeleteGatewayCommand,
@@ -8,13 +9,13 @@ import {
   GetGatewayTargetCommand,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
+  CreateRoleCommand,
   DeleteRoleCommand,
   DeleteRolePolicyCommand,
   PutRolePolicyCommand,
 } from "@aws-sdk/client-iam";
 import { CoreClient } from "../../core";
 import { createControlClient, createIamClient } from "../../core/factories";
-import { GatewayExecutionRole } from "../../core/gatewayExecutionRole";
 import {
   createSilentLogger,
   fixtureFactories,
@@ -29,9 +30,11 @@ const REGION = "us-east-1";
 const GATEWAY_NAME = "agentcore-cli-gateway-create-fixture";
 const HTTP_TARGET_NAME = "http-fixture";
 const CONNECTOR_TARGET_NAME = "web-search-fixture";
+const ROLE_NAME = "AgentCoreGateway-agentcore-cli-gateway-create-fix-f0aa3f799a4b";
 const WEB_SEARCH_POLICY_NAME = "AgentCoreCliWebSearchFixture";
 const FIXTURES = join(import.meta.dir, "__fixtures__", "create");
 const FLOW_TIMEOUT = 600_000;
+const TEST_ROLE_ARN = "arn:aws:iam::123456789012:role/GatewayFixtureRole";
 
 // Record with AWS_PROFILE=e2e-test RECORD=1 bun test src/handlers/gateway/gateway.create.test.tsx
 type FixtureState = {
@@ -97,6 +100,38 @@ async function waitUntilMissing(operation: () => Promise<unknown>): Promise<void
     await Bun.sleep(2_000);
   }
   throw new Error("Timed out waiting for fixture resource deletion");
+}
+
+async function fixtureRoleArn(): Promise<string> {
+  if (!isRecording()) {
+    return JSON.parse(readFileSync(join(FIXTURES, "gateway-create.golden.json"), "utf8")).roleArn;
+  }
+
+  const iam = createIamClient({ region: REGION });
+  await ignoreMissing(() =>
+    iam.send(
+      new DeleteRolePolicyCommand({ RoleName: ROLE_NAME, PolicyName: WEB_SEARCH_POLICY_NAME }),
+    ),
+  );
+  await ignoreMissing(() => iam.send(new DeleteRoleCommand({ RoleName: ROLE_NAME })));
+  const response = await iam.send(
+    new CreateRoleCommand({
+      RoleName: ROLE_NAME,
+      AssumeRolePolicyDocument: JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [
+          {
+            Effect: "Allow",
+            Principal: { Service: "bedrock-agentcore.amazonaws.com" },
+            Action: "sts:AssumeRole",
+          },
+        ],
+      }),
+    }),
+  );
+  if (!response.Role?.Arn) throw new Error("IAM did not return the fixture role ARN");
+  await Bun.sleep(10_000);
+  return response.Role.Arn;
 }
 
 async function deleteTarget(
@@ -167,7 +202,7 @@ async function cleanup(state: FixtureState): Promise<void> {
   await ignoreMissing(() =>
     iam.send(
       new DeleteRolePolicyCommand({
-        RoleName: GatewayExecutionRole.roleName(GATEWAY_NAME, REGION),
+        RoleName: ROLE_NAME,
         PolicyName: WEB_SEARCH_POLICY_NAME,
       }),
     ),
@@ -175,7 +210,7 @@ async function cleanup(state: FixtureState): Promise<void> {
   await ignoreMissing(() =>
     iam.send(
       new DeleteRoleCommand({
-        RoleName: GatewayExecutionRole.roleName(GATEWAY_NAME, REGION),
+        RoleName: ROLE_NAME,
       }),
     ),
   );
@@ -184,10 +219,28 @@ async function cleanup(state: FixtureState): Promise<void> {
 describe("Gateway create validation", () => {
   test.each([
     ["Gateway name", ["gateway", "create", "--authorizer-type", "NONE"], /--name/],
-    ["Gateway authorizer", ["gateway", "create", "--name", "orders"], /--authorizer-type/],
+    [
+      "Gateway role",
+      ["gateway", "create", "--name", "orders", "--authorizer-type", "NONE"],
+      /--role-arn/,
+    ],
+    [
+      "Gateway authorizer",
+      ["gateway", "create", "--name", "orders", "--role-arn", TEST_ROLE_ARN],
+      /--authorizer-type/,
+    ],
     [
       "CUSTOM_JWT configuration",
-      ["gateway", "create", "--name", "orders", "--authorizer-type", "CUSTOM_JWT"],
+      [
+        "gateway",
+        "create",
+        "--name",
+        "orders",
+        "--role-arn",
+        TEST_ROLE_ARN,
+        "--authorizer-type",
+        "CUSTOM_JWT",
+      ],
       /CUSTOM_JWT requires --authorizer-configuration/,
     ],
     [
@@ -197,6 +250,8 @@ describe("Gateway create validation", () => {
         "create",
         "--name",
         "orders",
+        "--role-arn",
+        TEST_ROLE_ARN,
         "--authorizer-type",
         "AWS_IAM",
         "--policy-engine-arn",
@@ -365,6 +420,7 @@ describe("Gateway fixture-backed creates", () => {
     "creates a Gateway, Target, Connector, and Rule through the real Core",
     async () => {
       const state: FixtureState = { targetIds: [] };
+      const roleArn = await fixtureRoleArn();
 
       try {
         const gatewayStdout = await run([
@@ -372,6 +428,8 @@ describe("Gateway fixture-backed creates", () => {
           "create",
           "--name",
           GATEWAY_NAME,
+          "--role-arn",
+          roleArn,
           "--authorizer-type",
           "NONE",
           "--description",
@@ -429,7 +487,7 @@ describe("Gateway fixture-backed creates", () => {
         if (isRecording()) {
           await createIamClient({ region: REGION }).send(
             new PutRolePolicyCommand({
-              RoleName: GatewayExecutionRole.roleName(GATEWAY_NAME, REGION),
+              RoleName: ROLE_NAME,
               PolicyName: WEB_SEARCH_POLICY_NAME,
               PolicyDocument: JSON.stringify(webSearchPolicy(gateway.gatewayArn)),
             }),
