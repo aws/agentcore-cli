@@ -242,6 +242,18 @@ describe("Gateway nested browse", () => {
     expect(screen.lastFrame()).toContain('"web-search"');
   });
 
+  test("rejects a non-Connector Target opened through the Connector route", async () => {
+    const core = new TestCoreClient();
+    core.gateway.setGetTargetResponse(targetDetail(TARGET_ID));
+    const screen = renderScreen(
+      `/agentcore/gateway/browse/${encodeURIComponent(GATEWAY_ID)}/connectors/${encodeURIComponent(TARGET_ID)}`,
+      { core },
+    );
+
+    await waitForText(screen.lastFrame, `Gateway Target "${TARGET_ID}" is not connector-backed`);
+    expect(screen.lastFrame()).toContain("[r] retry");
+  });
+
   test("browses Rules and opens the selected Rule JSON", async () => {
     const core = new TestCoreClient();
     core.gateway.setListRulesResponse({ gatewayRules: [rule()] }).setGetRuleResponse(ruleDetail());
