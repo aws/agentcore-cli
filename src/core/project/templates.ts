@@ -36,6 +36,21 @@ export const TEMPLATES: Record<ProjectTemplate, Template> = {
       ],
     },
   },
+  [PROJECT_TEMPLATES.HELLO_WORLD_PYTHON_CONTAINER]: {
+    appDir: "hello-world",
+    assetDir: "templates/hello-world-python-container",
+    spec: {
+      runtimes: [
+        {
+          name: "hello_world",
+          build: "Container",
+          entrypoint: "main.py",
+          codeLocation: "app/hello-world",
+          dockerfile: "Dockerfile",
+        },
+      ],
+    },
+  },
 };
 
 /** Serializes a value as pretty-printed JSON with a trailing newline. */
@@ -61,10 +76,12 @@ export async function createProjectTreeFromTemplate(
 ): Promise<FsTreeNode> {
   const { appDir, assetDir } = TEMPLATES[template];
   return FsTreeNode.createDirectory(".", [
+    FsTreeNode.createFile(".gitignore", () => src.read("templates/shared/gitignore.template")),
     FsTreeNode.createDirectory("agentcore", [
       await FsTreeNode.fromAssetSource(src, "cdk"),
       FsTreeNode.createFile("agentcore.json", async () => json(agentcoreSpec(name, template))),
       FsTreeNode.createFile("aws-targets.json", async () => json([])),
+      FsTreeNode.createFile(".env.local", () => src.read("templates/shared/env.local.template")),
     ]),
     FsTreeNode.createDirectory("app", [await FsTreeNode.fromAssetSource(src, assetDir, appDir)]),
   ]);

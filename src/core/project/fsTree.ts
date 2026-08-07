@@ -105,6 +105,6 @@ export class FsTreeNode {
  * Ignore templates are renamed to dotfiles because npm strips real dotfiles when publishing.
  */
 function renderName(filename: string): string {
-  const ignore = filename.match(/^(git|npm)ignore\.template$/);
+  const ignore = filename.match(/^(git|npm|docker)ignore\.template$/);
   return ignore ? `.${ignore[1]}ignore` : filename;
 }

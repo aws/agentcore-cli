@@ -1,4 +1,5 @@
 import type { Project, ProjectManager } from "../handlers/project/types";
+import { InputValidationError } from "../errors/errors";
 import { ProjectKey, type Middleware } from "../router";
 
 interface WithProjectConfig {
@@ -22,8 +23,9 @@ export function withProject(config: WithProjectConfig): Middleware {
     children: () => h.children(),
     handle: async (ctx, flags, args) => {
       const project = await config.projectManager.resolve({ filePath: config.cwd });
-      // TODO: swap this for a typed error.
-      if (!project) throw new Error(`Unable to find project at path ${config.cwd}`);
+      if (!project) {
+        throw new InputValidationError(`no AgentCore project found at ${config.cwd}`);
+      }
       await h.handle(ctx.withValue<Project>(ProjectKey, project), flags, args);
     },
   });

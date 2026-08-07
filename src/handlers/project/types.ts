@@ -6,6 +6,7 @@ export { ProjectNameSchema };
 /** Available project templates for scaffolding new AgentCore projects. */
 export const PROJECT_TEMPLATES = {
   HELLO_WORLD_PYTHON: "hello-world-python",
+  HELLO_WORLD_PYTHON_CONTAINER: "hello-world-python-container",
 } as const;
 
 export type ProjectTemplate = (typeof PROJECT_TEMPLATES)[keyof typeof PROJECT_TEMPLATES];

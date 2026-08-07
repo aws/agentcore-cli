@@ -1,0 +1,17 @@
+# Local environment (loaded by `agentcore dev`; never commit secrets)
+.env.local
+.env*.local
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Node
+node_modules/
+
+# AgentCore CLI state
+agentcore/.cli/
+
+# CDK
+agentcore/cdk/cdk.out/

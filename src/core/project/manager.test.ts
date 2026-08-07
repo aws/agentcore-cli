@@ -102,6 +102,23 @@ describe("FsProjectManager.create", () => {
     expect(await Bun.file(join(configDir, "aws-targets.json")).json()).toEqual([]);
   });
 
+  test("scaffolds the container template with a Dockerfile and .dockerignore", async () => {
+    const directory = await inTempDirectory();
+    await runCreate(manager().manager, {
+      name: "example",
+      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON_CONTAINER,
+    });
+
+    const appDir = join(directory, "example", "app", "hello-world");
+    // dockerignore.template must render to .dockerignore (the fsTree regex fix).
+    expect(await Bun.file(join(appDir, ".dockerignore")).exists()).toBe(true);
+    expect(await Bun.file(join(appDir, "dockerignore.template")).exists()).toBe(false);
+    expect(await Bun.file(join(appDir, "Dockerfile")).exists()).toBe(true);
+
+    const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0]).toMatchObject({ build: "Container", dockerfile: "Dockerfile" });
+  });
+
   test("refuses to overwrite an existing project", async () => {
     await inTempDirectory();
     const input = { name: "example", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON };

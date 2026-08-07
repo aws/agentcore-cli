@@ -18,6 +18,6 @@ describe("withProject", () => {
       }),
     );
 
-    await expect(app.route(["node", "app", "check"])).rejects.toThrow(/find project/);
+    await expect(app.route(["node", "app", "check"])).rejects.toThrow(/no AgentCore project found/);
   });
 });
