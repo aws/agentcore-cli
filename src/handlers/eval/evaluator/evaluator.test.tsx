@@ -44,11 +44,13 @@ const TUNED_NAME = "agentcore_cli_eval_fixture_tuned";
 const TUNED_INFERENCE_CONFIG = { temperature: 0, maxTokens: 512 };
 
 function createFixtureCore(): CoreClient {
-  const { createControlClient, createDataClient, createIamClient } = fixtureFactories(FIXTURES);
+  const { createControlClient, createDataClient, createIamClient, createLogsClient } =
+    fixtureFactories(FIXTURES);
   return new CoreClient({
     createControlClient,
     createDataClient,
     createIamClient,
+    createLogsClient,
     logger: createSilentLogger(),
   });
 }

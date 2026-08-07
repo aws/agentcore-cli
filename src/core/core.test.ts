@@ -4,6 +4,7 @@ import {
   type BedrockAgentCoreControlClient,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { IAMClient } from "@aws-sdk/client-iam";
+import type { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import {
   GetEventCommand,
   GetMemoryRecordCommand,
@@ -76,6 +77,9 @@ function fakeData(config: ClientConfig): BedrockAgentCoreClient {
 function fakeIam(config: ClientConfig): IAMClient {
   return { config, kind: "iam" } as unknown as IAMClient;
 }
+function fakeLogs(config: ClientConfig): CloudWatchLogsClient {
+  return { config, kind: "logs" } as unknown as CloudWatchLogsClient;
+}
 
 function coreWithDataSend(
   send: (command: unknown, options: unknown) => Promise<unknown>,
@@ -86,6 +90,7 @@ function coreWithDataSend(
     createDataClient: (config) =>
       ({ config, kind: "data", send }) as unknown as BedrockAgentCoreClient,
     createIamClient: fakeIam,
+    createLogsClient: fakeLogs,
     logger,
   });
 }
@@ -121,6 +126,7 @@ function customJwtCore(
         },
       }) as unknown as BedrockAgentCoreClient,
     createIamClient: fakeIam,
+    createLogsClient: fakeLogs,
     fetch,
     logger,
   });
@@ -135,6 +141,7 @@ test("control() constructs a client once per config and caches it", () => {
     },
     createDataClient: fakeData,
     createIamClient: fakeIam,
+    createLogsClient: fakeLogs,
     logger: createSilentLogger(),
   });
 
@@ -154,6 +161,7 @@ test("control() builds a distinct client per distinct config", () => {
     },
     createDataClient: fakeData,
     createIamClient: fakeIam,
+    createLogsClient: fakeLogs,
     logger: createSilentLogger(),
   });
 
@@ -177,6 +185,7 @@ test("data() caches independently of control()", () => {
       return fakeData(config);
     },
     createIamClient: fakeIam,
+    createLogsClient: fakeLogs,
     logger: createSilentLogger(),
   });
 
@@ -194,6 +203,7 @@ test("exposes feature sub-clients", () => {
     createControlClient: fakeControl,
     createDataClient: fakeData,
     createIamClient: fakeIam,
+    createLogsClient: fakeLogs,
     logger: createSilentLogger(),
   });
   expect(core.harness).toBeDefined();
@@ -346,6 +356,7 @@ test("getRuntime sends the abort signal to the control client", async () => {
       }) as unknown as BedrockAgentCoreControlClient,
     createDataClient: fakeData,
     createIamClient: fakeIam,
+    createLogsClient: fakeLogs,
     logger: createSilentLogger(),
   });
   const controller = new AbortController();
@@ -380,6 +391,7 @@ test("invokeHarness sends an InvokeHarnessCommand on the data client with the ab
       } as unknown as BedrockAgentCoreClient;
     },
     createIamClient: fakeIam,
+    createLogsClient: fakeLogs,
     logger: createSilentLogger(),
   });
 

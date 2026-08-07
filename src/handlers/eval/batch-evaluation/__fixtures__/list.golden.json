@@ -1,0 +1,547 @@
+{
+  "batchEvaluations": [
+    {
+      "batchEvaluationId": "ABBatchEvalLatest-a7b8db0f3d",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/ABBatchEvalLatest-a7b8db0f3d",
+      "batchEvaluationName": "ABBatchEvalLatest",
+      "status": "COMPLETED",
+      "createdAt": "2026-06-17T22:15:50.980Z",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.Helpfulness"
+        }
+      ],
+      "updatedAt": "2026-06-17T22:16:55.626Z"
+    },
+    {
+      "batchEvaluationId": "ABBatchEvalVfy-f39e3e215c",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/ABBatchEvalVfy-f39e3e215c",
+      "batchEvaluationName": "ABBatchEvalVfy",
+      "status": "COMPLETED",
+      "createdAt": "2026-06-17T20:41:07.938Z",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.Helpfulness"
+        }
+      ],
+      "updatedAt": "2026-06-17T20:42:11.819Z"
+    },
+    {
+      "batchEvaluationId": "E2eArch82403176_E2eArch82403176_1781282542120-bc78b8200c",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/E2eArch82403176_E2eArch82403176_1781282542120-bc78b8200c",
+      "batchEvaluationName": "E2eArch82403176_E2eArch82403176_1781282542120",
+      "status": "COMPLETED",
+      "createdAt": "2026-06-12T16:42:23.077Z",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.Faithfulness"
+        }
+      ],
+      "updatedAt": "2026-06-12T16:42:27.934Z"
+    },
+    {
+      "batchEvaluationId": "E2eArch82403176_E2eArch82403176_1781282564749-2116d5dcff",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/E2eArch82403176_E2eArch82403176_1781282564749-2116d5dcff",
+      "batchEvaluationName": "E2eArch82403176_E2eArch82403176_1781282564749",
+      "status": "COMPLETED",
+      "createdAt": "2026-06-12T16:42:45.552Z",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.Faithfulness"
+        }
+      ],
+      "updatedAt": "2026-06-12T16:42:48.388Z"
+    },
+    {
+      "batchEvaluationId": "E2eArch82403176_E2eArch82403176_1781282587195-6953163407",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/E2eArch82403176_E2eArch82403176_1781282587195-6953163407",
+      "batchEvaluationName": "E2eArch82403176_E2eArch82403176_1781282587195",
+      "status": "COMPLETED",
+      "createdAt": "2026-06-12T16:43:08.112Z",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.Faithfulness"
+        }
+      ],
+      "updatedAt": "2026-06-12T16:43:11.487Z"
+    },
+    {
+      "batchEvaluationId": "E2eArch82403176_E2eArch82403176_1781282609720-466418f536",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/E2eArch82403176_E2eArch82403176_1781282609720-466418f536",
+      "batchEvaluationName": "E2eArch82403176_E2eArch82403176_1781282609720",
+      "status": "COMPLETED",
+      "createdAt": "2026-06-12T16:43:30.992Z",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.Faithfulness"
+        }
+      ],
+      "updatedAt": "2026-06-12T16:43:33.973Z"
+    },
+    {
+      "batchEvaluationId": "E2eArch82403176_E2eArch82403176_1781282632632-6e14e4d8e0",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/E2eArch82403176_E2eArch82403176_1781282632632-6e14e4d8e0",
+      "batchEvaluationName": "E2eArch82403176_E2eArch82403176_1781282632632",
+      "status": "COMPLETED",
+      "createdAt": "2026-06-12T16:43:53.618Z",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.Faithfulness"
+        }
+      ],
+      "updatedAt": "2026-06-12T16:43:56.416Z"
+    },
+    {
+      "batchEvaluationId": "E2eArch82403176_E2eArch82403176_1781282655261-68c5d69e9b",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/E2eArch82403176_E2eArch82403176_1781282655261-68c5d69e9b",
+      "batchEvaluationName": "E2eArch82403176_E2eArch82403176_1781282655261",
+      "status": "COMPLETED",
+      "createdAt": "2026-06-12T16:44:16.201Z",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.Faithfulness"
+        }
+      ],
+      "updatedAt": "2026-06-12T16:45:20.791Z"
+    },
+    {
+      "batchEvaluationId": "GTProbe2_1786034545579-8ffefc851e",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/GTProbe2_1786034545579-8ffefc851e",
+      "batchEvaluationName": "GTProbe2_1786034545579",
+      "status": "COMPLETED",
+      "createdAt": "2026-08-06T16:42:26.468Z",
+      "description": "GT probe #2: repro1427 recent sessions; confirm GT/assertion/trajectory attributes in result logs",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.Correctness"
+        },
+        {
+          "evaluatorId": "Builtin.Helpfulness"
+        }
+      ],
+      "updatedAt": "2026-08-06T16:43:30.696Z"
+    },
+    {
+      "batchEvaluationId": "GTProbe_1786033993684-52f5045e6a",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/GTProbe_1786033993684-52f5045e6a",
+      "batchEvaluationName": "GTProbe_1786033993684",
+      "status": "FAILED",
+      "createdAt": "2026-08-06T16:33:14.495Z",
+      "description": "GT probe: confirm whether GT/assertion/trajectory outcomes surface as result-log attributes",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.Correctness"
+        },
+        {
+          "evaluatorId": "Builtin.Helpfulness"
+        }
+      ],
+      "errorDetails": [
+        "All 4 sessions failed during batch evaluation."
+      ],
+      "updatedAt": "2026-08-06T16:33:18.035Z"
+    },
+    {
+      "batchEvaluationId": "HarnessBatchEvalCodex_20260723_1824-a6e5e74a3b",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/HarnessBatchEvalCodex_20260723_1824-a6e5e74a3b",
+      "batchEvaluationName": "HarnessBatchEvalCodex_20260723_1824",
+      "status": "FAILED",
+      "createdAt": "2026-07-23T18:23:42.907Z",
+      "description": "Real test: batch-evaluate one session produced by InvokeHarness",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.Helpfulness"
+        }
+      ],
+      "errorDetails": [
+        "All 1 sessions failed during batch evaluation."
+      ],
+      "updatedAt": "2026-07-23T18:24:45.539Z"
+    },
+    {
+      "batchEvaluationId": "HarnessBatchEvalRetry_20260723_1827-72f41d37b1",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/HarnessBatchEvalRetry_20260723_1827-72f41d37b1",
+      "batchEvaluationName": "HarnessBatchEvalRetry_20260723_1827",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-23T18:26:50.667Z",
+      "description": "Retry after 180s transaction-search ingestion window",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.Helpfulness"
+        }
+      ],
+      "updatedAt": "2026-07-23T18:27:53.396Z"
+    },
+    {
+      "batchEvaluationId": "bugbashagent_bugbash_agent_1781546276665-5ce2806e26",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/bugbashagent_bugbash_agent_1781546276665-5ce2806e26",
+      "batchEvaluationName": "bugbashagent_bugbash_agent_1781546276665",
+      "status": "STOPPED",
+      "createdAt": "2026-06-15T17:57:57.655Z",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.Correctness"
+        }
+      ],
+      "updatedAt": "2026-06-15T17:59:02.065Z"
+    },
+    {
+      "batchEvaluationId": "bugbashagent_bugbash_agent_1781546320304-280eaabe92",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/bugbashagent_bugbash_agent_1781546320304-280eaabe92",
+      "batchEvaluationName": "bugbashagent_bugbash_agent_1781546320304",
+      "status": "COMPLETED",
+      "createdAt": "2026-06-15T17:58:41.095Z",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.Correctness"
+        }
+      ],
+      "updatedAt": "2026-06-15T17:59:45.093Z"
+    },
+    {
+      "batchEvaluationId": "bugbashagent_bugbash_agent_1781546632740-c43173cffd",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/bugbashagent_bugbash_agent_1781546632740-c43173cffd",
+      "batchEvaluationName": "bugbashagent_bugbash_agent_1781546632740",
+      "status": "COMPLETED",
+      "createdAt": "2026-06-15T18:03:53.641Z",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.Correctness"
+        }
+      ],
+      "updatedAt": "2026-06-15T18:04:56.478Z"
+    },
+    {
+      "batchEvaluationId": "bugbashagent_bugbash_agent_1781557193089-fb5b514cfe",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/bugbashagent_bugbash_agent_1781557193089-fb5b514cfe",
+      "batchEvaluationName": "bugbashagent_bugbash_agent_1781557193089",
+      "status": "COMPLETED",
+      "createdAt": "2026-06-15T20:59:54.052Z",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.Correctness"
+        }
+      ],
+      "updatedAt": "2026-06-15T21:00:56.284Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalEval2_20260716_180855-d6c24f32e1",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalEval2_20260716_180855-d6c24f32e1",
+      "batchEvaluationName": "demoEvalEval2_20260716_180855",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-16T18:08:56.885Z",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.GoalSuccessRate"
+        }
+      ],
+      "updatedAt": "2026-07-16T18:10:00.711Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalEvaluator_20260716_173405-073d204a91",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalEvaluator_20260716_173405-073d204a91",
+      "batchEvaluationName": "demoEvalEvaluator_20260716_173405",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-16T17:34:06.242Z",
+      "description": "goal-success-rate",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.GoalSuccessRate"
+        }
+      ],
+      "updatedAt": "2026-07-16T17:34:09.129Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalEvaluator_20260716_174250-17776eb7d0",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalEvaluator_20260716_174250-17776eb7d0",
+      "batchEvaluationName": "demoEvalEvaluator_20260716_174250",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-16T17:42:51.683Z",
+      "description": "goal-success-rate",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.GoalSuccessRate"
+        }
+      ],
+      "updatedAt": "2026-07-16T17:42:54.282Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalEvaluator_20260716_174359-4eb49ebe4e",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalEvaluator_20260716_174359-4eb49ebe4e",
+      "batchEvaluationName": "demoEvalEvaluator_20260716_174359",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-16T17:44:00.222Z",
+      "description": "goal-success-rate",
+      "evaluators": [
+        {
+          "evaluatorId": "Builtin.GoalSuccessRate"
+        }
+      ],
+      "updatedAt": "2026-07-16T17:45:03.585Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalInsight2_20260716_180854-42e0199ba5",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalInsight2_20260716_180854-42e0199ba5",
+      "batchEvaluationName": "demoEvalInsight2_20260716_180854",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-16T18:08:55.918Z",
+      "insights": [
+        {
+          "insightId": "Builtin.Insight.UserIntent"
+        }
+      ],
+      "updatedAt": "2026-07-16T18:10:02.597Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalInsight_20260716_173405-b0b4cea93d",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalInsight_20260716_173405-b0b4cea93d",
+      "batchEvaluationName": "demoEvalInsight_20260716_173405",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-16T17:34:07.167Z",
+      "description": "failure-analysis",
+      "insights": [
+        {
+          "insightId": "Builtin.Insight.FailureAnalysis"
+        }
+      ],
+      "updatedAt": "2026-07-16T17:34:09.798Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalInsight_20260716_174250-6eda2d4c70",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalInsight_20260716_174250-6eda2d4c70",
+      "batchEvaluationName": "demoEvalInsight_20260716_174250",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-16T17:42:56.078Z",
+      "description": "failure-analysis",
+      "insights": [
+        {
+          "insightId": "Builtin.Insight.FailureAnalysis"
+        }
+      ],
+      "updatedAt": "2026-07-16T17:42:58.975Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalInsight_20260716_174359-a486e71be6",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalInsight_20260716_174359-a486e71be6",
+      "batchEvaluationName": "demoEvalInsight_20260716_174359",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-16T17:44:01.167Z",
+      "description": "failure-analysis",
+      "insights": [
+        {
+          "insightId": "Builtin.Insight.FailureAnalysis"
+        }
+      ],
+      "updatedAt": "2026-07-16T17:45:05.973Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260717T000000-81e740f320",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260717T000000-81e740f320",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260717T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-17T00:00:18.961Z",
+      "updatedAt": "2026-07-17T00:00:21.457Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260718T000000-b08c7273ef",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260718T000000-b08c7273ef",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260718T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-18T00:00:15.272Z",
+      "updatedAt": "2026-07-18T00:00:16.466Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260719T000000-6725a187ac",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260719T000000-6725a187ac",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260719T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-19T00:00:27.744Z",
+      "updatedAt": "2026-07-19T00:00:29.241Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260720T000000-753d17f872",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260720T000000-753d17f872",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260720T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-20T00:00:15.234Z",
+      "updatedAt": "2026-07-20T00:00:16.417Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260721T000000-7e9b12c2d5",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260721T000000-7e9b12c2d5",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260721T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-21T00:00:18.477Z",
+      "updatedAt": "2026-07-21T00:00:19.822Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260722T000000-0eeb7036f2",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260722T000000-0eeb7036f2",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260722T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-22T00:00:15.292Z",
+      "updatedAt": "2026-07-22T00:00:16.485Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260723T000000-62e70e3c39",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260723T000000-62e70e3c39",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260723T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-23T00:00:25.556Z",
+      "updatedAt": "2026-07-23T00:00:48.515Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260724T000000-da1c165b6e",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260724T000000-da1c165b6e",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260724T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-24T00:00:29.078Z",
+      "updatedAt": "2026-07-24T00:00:30.329Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260725T000000-f34f3fe301",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260725T000000-f34f3fe301",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260725T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-25T00:00:15.442Z",
+      "updatedAt": "2026-07-25T00:00:17.095Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260726T000000-eab34f736d",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260726T000000-eab34f736d",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260726T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-26T00:00:26.368Z",
+      "updatedAt": "2026-07-26T00:00:27.852Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260727T000000-b1d27d55aa",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260727T000000-b1d27d55aa",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260727T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-27T00:00:15.341Z",
+      "updatedAt": "2026-07-27T00:00:16.908Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260728T000000-6208ac119c",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260728T000000-6208ac119c",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260728T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-28T00:00:15.384Z",
+      "updatedAt": "2026-07-28T00:00:16.846Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260729T000000-d74d2e8d84",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260729T000000-d74d2e8d84",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260729T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-29T00:00:15.412Z",
+      "updatedAt": "2026-07-29T00:00:16.691Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260730T000000-b1707fe880",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260730T000000-b1707fe880",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260730T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-30T00:00:15.225Z",
+      "updatedAt": "2026-07-30T00:00:16.547Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260731T000000-0af248e59b",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260731T000000-0af248e59b",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260731T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-31T00:00:24.837Z",
+      "updatedAt": "2026-07-31T00:00:47.847Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260801T000000-2c49e7bf38",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260801T000000-2c49e7bf38",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260801T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-08-01T00:00:15.438Z",
+      "updatedAt": "2026-08-01T00:00:16.758Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260802T000000-d5a5c37eca",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260802T000000-d5a5c37eca",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260802T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-08-02T00:00:15.357Z",
+      "updatedAt": "2026-08-02T00:00:16.631Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260803T000000-8585ad10f1",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260803T000000-8585ad10f1",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260803T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-08-03T00:00:15.392Z",
+      "updatedAt": "2026-08-03T00:00:16.713Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260804T000000-ee69e14201",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260804T000000-ee69e14201",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260804T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-08-04T00:00:15.438Z",
+      "updatedAt": "2026-08-04T00:00:17.020Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260805T000000-421bd7cc5d",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260805T000000-421bd7cc5d",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260805T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-08-05T00:00:15.350Z",
+      "updatedAt": "2026-08-05T00:00:16.889Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260806T000000-efedca8bcc",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260806T000000-efedca8bcc",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260806T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-08-06T00:00:15.225Z",
+      "updatedAt": "2026-08-06T00:00:16.536Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsights1_daily_20260807T000000-34a8f4df8a",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsights1_daily_20260807T000000-34a8f4df8a",
+      "batchEvaluationName": "demoEvalonlineInsights1_daily_20260807T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-08-07T00:00:15.585Z",
+      "updatedAt": "2026-08-07T00:00:17.284Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsightsBoto_daily_20260717T000000-071c070564",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsightsBoto_daily_20260717T000000-071c070564",
+      "batchEvaluationName": "demoEvalonlineInsightsBoto_daily_20260717T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-17T00:00:31.359Z",
+      "updatedAt": "2026-07-17T00:00:32.915Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsightsBoto_daily_20260718T000000-4550946fea",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsightsBoto_daily_20260718T000000-4550946fea",
+      "batchEvaluationName": "demoEvalonlineInsightsBoto_daily_20260718T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-18T00:00:31.216Z",
+      "updatedAt": "2026-07-18T00:00:32.766Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsightsBoto_daily_20260719T000000-7b3cc3c5b8",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsightsBoto_daily_20260719T000000-7b3cc3c5b8",
+      "batchEvaluationName": "demoEvalonlineInsightsBoto_daily_20260719T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-19T00:00:31.272Z",
+      "updatedAt": "2026-07-19T00:00:33.196Z"
+    },
+    {
+      "batchEvaluationId": "demoEvalonlineInsightsBoto_daily_20260720T000000-722fc2ebbd",
+      "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/demoEvalonlineInsightsBoto_daily_20260720T000000-722fc2ebbd",
+      "batchEvaluationName": "demoEvalonlineInsightsBoto_daily_20260720T000000",
+      "status": "COMPLETED",
+      "createdAt": "2026-07-20T00:00:31.373Z",
+      "updatedAt": "2026-07-20T00:00:32.917Z"
+    }
+  ],
+  "nextToken": "eyJhd3NBY2NvdW50SWQiOiI3MjU0NzY5NjQ5MTciLCJiYXRjaEV2YWx1YXRlSWQiOiJkZW1vRXZhbG9ubGluZUluc2lnaHRzQm90b19kYWlseV8yMDI2MDcyMFQwMDAwMDAtNzIyZmMyZWJiZCJ9"
+}

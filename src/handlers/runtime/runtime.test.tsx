@@ -22,12 +22,14 @@ const FIXTURE_RUNTIME_ID = "agentcore_cli_runtime_read_only_fixture-wZ7V4Q6vhx";
 const MISSING_RUNTIME_ID = "missing_runtime-0000000000";
 
 function createFixtureCore(): CoreClient {
-  const { createControlClient, createDataClient, createIamClient } = fixtureFactories(FIXTURES);
+  const { createControlClient, createDataClient, createIamClient, createLogsClient } =
+    fixtureFactories(FIXTURES);
 
   return new CoreClient({
     createControlClient,
     createDataClient,
     createIamClient,
+    createLogsClient,
     logger: createSilentLogger(),
   });
 }

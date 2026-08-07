@@ -1,0 +1,6 @@
+{
+  "$error": {
+    "name": "ResourceNotFoundException",
+    "message": "Failed to retrieve the resource because it doesn't exist. Retry the request with a different resource identifier."
+  }
+}

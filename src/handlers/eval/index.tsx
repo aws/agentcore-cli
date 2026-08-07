@@ -6,6 +6,7 @@ import type { Core } from "../types";
 import { createEvaluatorHandler } from "./evaluator";
 import { createOnlineEvalHandler } from "./online-eval";
 import { createDatasetHandler } from "./dataset";
+import { createBatchEvaluationHandler } from "./batch-evaluation";
 
 export function createEvalHandler(core: Core, io: AppIO): Router {
   return new Router("eval", "evaluate and optimize AgentCore agents")
@@ -13,7 +14,8 @@ export function createEvalHandler(core: Core, io: AppIO): Router {
     .default(renderTui(core, io))
     .handler(createEvaluatorHandler(core, io))
     .handler(createOnlineEvalHandler(core, io))
-    .handler(createDatasetHandler(core, io));
+    .handler(createDatasetHandler(core, io))
+    .handler(createBatchEvaluationHandler(core, io));
 }
 
 export { EvalScreen } from "./screen.tsx";

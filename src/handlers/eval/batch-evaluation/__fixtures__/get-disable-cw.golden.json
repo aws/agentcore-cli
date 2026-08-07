@@ -1,0 +1,64 @@
+{
+  "batchEvaluationId": "GTProbe2_1786034545579-8ffefc851e",
+  "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/GTProbe2_1786034545579-8ffefc851e",
+  "batchEvaluationName": "GTProbe2_1786034545579",
+  "status": "COMPLETED",
+  "createdAt": "2026-08-06T16:42:26.468Z",
+  "evaluators": [
+    {
+      "evaluatorId": "Builtin.Correctness"
+    },
+    {
+      "evaluatorId": "Builtin.Helpfulness"
+    }
+  ],
+  "dataSourceConfig": {
+    "cloudWatchLogs": {
+      "serviceNames": [
+        "repro1427_ReproAgent.DEFAULT"
+      ],
+      "logGroupNames": [
+        "/aws/bedrock-agentcore/runtimes/repro1427_ReproAgent-zqNEUl8I0f-DEFAULT"
+      ],
+      "filterConfig": {
+        "timeRange": {
+          "startTime": "2026-07-29T00:00:00.000Z",
+          "endTime": "2026-07-30T00:00:00.000Z"
+        }
+      }
+    }
+  },
+  "outputConfig": {
+    "cloudWatchConfig": {
+      "logGroupName": "/aws/bedrock-agentcore/evaluations/batch-evaluations/results/default",
+      "logStreamName": "run-GTProbe2_1786034545579-8ffefc851e"
+    }
+  },
+  "evaluationResults": {
+    "numberOfSessionsCompleted": 9,
+    "numberOfSessionsInProgress": 0,
+    "numberOfSessionsFailed": 0,
+    "totalNumberOfSessions": 9,
+    "numberOfSessionsIgnored": 0,
+    "evaluatorSummaries": [
+      {
+        "evaluatorId": "Builtin.Helpfulness",
+        "statistics": {
+          "averageScore": 0.83
+        },
+        "totalEvaluated": 9,
+        "totalFailed": 0
+      },
+      {
+        "evaluatorId": "Builtin.Correctness",
+        "statistics": {
+          "averageScore": 1
+        },
+        "totalEvaluated": 9,
+        "totalFailed": 0
+      }
+    ]
+  },
+  "description": "GT probe #2: repro1427 recent sessions; confirm GT/assertion/trajectory attributes in result logs",
+  "updatedAt": "2026-08-06T16:43:30.696Z"
+}

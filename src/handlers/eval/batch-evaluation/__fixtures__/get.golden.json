@@ -1,0 +1,228 @@
+{
+  "batchEvaluationId": "GTProbe2_1786034545579-8ffefc851e",
+  "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:batch-evaluate/GTProbe2_1786034545579-8ffefc851e",
+  "batchEvaluationName": "GTProbe2_1786034545579",
+  "status": "COMPLETED",
+  "createdAt": "2026-08-06T16:42:26.468Z",
+  "evaluators": [
+    {
+      "evaluatorId": "Builtin.Correctness"
+    },
+    {
+      "evaluatorId": "Builtin.Helpfulness"
+    }
+  ],
+  "dataSourceConfig": {
+    "cloudWatchLogs": {
+      "serviceNames": [
+        "repro1427_ReproAgent.DEFAULT"
+      ],
+      "logGroupNames": [
+        "/aws/bedrock-agentcore/runtimes/repro1427_ReproAgent-zqNEUl8I0f-DEFAULT"
+      ],
+      "filterConfig": {
+        "timeRange": {
+          "startTime": "2026-07-29T00:00:00.000Z",
+          "endTime": "2026-07-30T00:00:00.000Z"
+        }
+      }
+    }
+  },
+  "outputConfig": {
+    "cloudWatchConfig": {
+      "logGroupName": "/aws/bedrock-agentcore/evaluations/batch-evaluations/results/default",
+      "logStreamName": "run-GTProbe2_1786034545579-8ffefc851e"
+    }
+  },
+  "evaluationResults": {
+    "numberOfSessionsCompleted": 9,
+    "numberOfSessionsInProgress": 0,
+    "numberOfSessionsFailed": 0,
+    "totalNumberOfSessions": 9,
+    "numberOfSessionsIgnored": 0,
+    "evaluatorSummaries": [
+      {
+        "evaluatorId": "Builtin.Helpfulness",
+        "statistics": {
+          "averageScore": 0.83
+        },
+        "totalEvaluated": 9,
+        "totalFailed": 0
+      },
+      {
+        "evaluatorId": "Builtin.Correctness",
+        "statistics": {
+          "averageScore": 1
+        },
+        "totalEvaluated": 9,
+        "totalFailed": 0
+      }
+    ]
+  },
+  "description": "GT probe #2: repro1427 recent sessions; confirm GT/assertion/trajectory attributes in result logs",
+  "updatedAt": "2026-08-06T16:43:30.696Z",
+  "results": [
+    {
+      "evaluatorId": "Builtin.Correctness",
+      "level": "Trace",
+      "sessionId": "baseline-session-3-1785350958-aaaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4b30737b856660b6a2c37e1c4b93",
+      "score": 1,
+      "label": "Correct",
+      "explanation": "The user asked to add 17 and 25 using the add_numbers tool and report the result. The correct mathematical answer is 17 + 25 = 42. The agent responded that the result is 42, which is mathematically correct. The expected response indicates the assistant should provide a correct, helpful, well-grounded answer, which the agent did. The agent correctly identified the sum as 42."
+    },
+    {
+      "evaluatorId": "Builtin.Helpfulness",
+      "level": "Trace",
+      "sessionId": "baseline-session-3-1785350958-aaaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4b30737b856660b6a2c37e1c4b93",
+      "score": 0.83,
+      "label": "Very Helpful",
+      "explanation": "The user's goal was simple and clear: use the add_numbers tool to add 17 and 25, then be told the result. The assistant successfully called the tool with the correct parameters (17 and 25), received the result (42), and clearly communicated the answer to the user. The response is concise, accurate (based on tool output), and directly addresses what the user asked for. The user's goal has been fully achieved with no unnecessary detours or missing information."
+    },
+    {
+      "evaluatorId": "Builtin.Correctness",
+      "level": "Trace",
+      "sessionId": "baseline-session-1-1785350935-aaaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4b1806f680cd2ed2308c1062be9b",
+      "score": 1,
+      "label": "Correct",
+      "explanation": "The user asked to use the add_numbers tool to add 17 and 25 and report the result. The correct mathematical answer is 17 + 25 = 42. The agent responded that the result is 42, which is mathematically correct. The expected response indicates the assistant should provide a correct, helpful, well-grounded answer, which the agent did. The agent correctly identified the sum as 42."
+    },
+    {
+      "evaluatorId": "Builtin.Helpfulness",
+      "level": "Trace",
+      "sessionId": "baseline-session-1-1785350935-aaaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4b1806f680cd2ed2308c1062be9b",
+      "score": 0.83,
+      "label": "Very Helpful",
+      "explanation": "The user's goal was simple and clear: use the add_numbers tool to add 17 and 25, then be told the result. The assistant accomplished exactly this - it called the tool with the correct parameters (17 and 25), received the result (42), and clearly communicated the answer to the user in a concise, well-formatted response. The response directly addresses what the user asked for, provides the correct result from the tool, and does so efficiently without unnecessary information. This fully satisfies the user's request."
+    },
+    {
+      "evaluatorId": "Builtin.Correctness",
+      "level": "Trace",
+      "sessionId": "baseline-session-2-1785350947-aaaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4b24480148ae03510a1f2dee038b",
+      "score": 1,
+      "label": "Correct",
+      "explanation": "The user asked to use the add_numbers tool to add 17 and 25 and report the result. The correct mathematical answer is 17 + 25 = 42. The agent responded that the result is 42, which is mathematically correct. The expected response indicates the assistant should provide a correct, helpful, well-grounded answer, which the agent did. The agent correctly identified the sum as 42."
+    },
+    {
+      "evaluatorId": "Builtin.Helpfulness",
+      "level": "Trace",
+      "sessionId": "baseline-session-2-1785350947-aaaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4b24480148ae03510a1f2dee038b",
+      "score": 0.83,
+      "label": "Very Helpful",
+      "explanation": "The user's goal was simple and clear: use the add_numbers tool to add 17 and 25, then be told the result. The assistant did exactly this - it called the tool with the correct parameters (17 and 25), received the result (42), and clearly communicated the answer to the user. The response is concise, accurate (based on tool output), and directly addresses what the user asked for. The user's goal has been fully achieved with no unnecessary detours or missing information. This is a complete and satisfying response to the user's request."
+    },
+    {
+      "evaluatorId": "Builtin.Correctness",
+      "level": "Trace",
+      "sessionId": "mutated-session-1-1785352047-aaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4f7157db99706f811b26729cf203",
+      "score": 1,
+      "label": "Perfectly Correct",
+      "explanation": "The tool was called with parameters a=17 and b=25, and returned the result '42'. The candidate response states 'The result of adding 17 and 25 is 42', which matches the tool output exactly. This is factually correct."
+    },
+    {
+      "evaluatorId": "Builtin.Helpfulness",
+      "level": "Trace",
+      "sessionId": "mutated-session-1-1785352047-aaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4f7157db99706f811b26729cf203",
+      "score": 0.83,
+      "label": "Very Helpful",
+      "explanation": "The user's goal was simple and clear: use the add_numbers tool to add 17 and 25, then be told the result. The assistant successfully called the tool (as shown in the tool call/result), and then clearly communicated the result (42) to the user in a concise, direct manner. The response directly addresses what the user asked for - the result of the addition. The tool was used correctly, and the answer was communicated clearly. This fully satisfies the user's request. There's nothing more needed here - the response is complete and accurate based on the tool output."
+    },
+    {
+      "evaluatorId": "Builtin.Correctness",
+      "level": "Trace",
+      "sessionId": "mutated-session-3-1785352090-aaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4f9c162d822072bf7b9c024376e0",
+      "score": 1,
+      "label": "Perfectly Correct",
+      "explanation": "The tool was called with parameters a=17 and b=25, and returned the result '42'. The candidate response states 'The result of adding 17 and 25 is 42', which correctly reflects the tool output. This is factually accurate and directly addresses the task."
+    },
+    {
+      "evaluatorId": "Builtin.Helpfulness",
+      "level": "Trace",
+      "sessionId": "mutated-session-3-1785352090-aaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4f9c162d822072bf7b9c024376e0",
+      "score": 0.83,
+      "label": "Very Helpful",
+      "explanation": "The user's goal was simple and clear: use the add_numbers tool to add 17 and 25, then be told the result. The assistant successfully called the tool (as shown in the tool call/result), and then clearly communicated the result (42) to the user in a concise, well-formatted response. The response directly addresses what the user asked for - the result of the addition. The tool was used correctly, and the answer was communicated clearly with bold formatting for emphasis. This fully satisfies the user's request without any unnecessary detours or missing information."
+    },
+    {
+      "evaluatorId": "Builtin.Correctness",
+      "level": "Trace",
+      "sessionId": "baseline-session-5-1785351439-aaaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4d117acbcba224bffcdb1451334f",
+      "score": 1,
+      "label": "Perfectly Correct",
+      "explanation": "The tool was called with parameters a=17 and b=25, and returned the result '42'. The candidate response states 'The result of adding 17 and 25 is 42', which matches the tool output exactly. This is factually correct."
+    },
+    {
+      "evaluatorId": "Builtin.Helpfulness",
+      "level": "Trace",
+      "sessionId": "baseline-session-5-1785351439-aaaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4d117acbcba224bffcdb1451334f",
+      "score": 0.83,
+      "label": "Very Helpful",
+      "explanation": "The user's goal was simple and clear: use the add_numbers tool to add 17 and 25, then be told the result. The assistant did exactly this - it called the tool with the correct parameters (17 and 25), received the result (42), and clearly communicated the answer to the user. The response is concise, accurate (based on tool output), and directly addresses what the user asked for. The user's goal has been fully achieved with no unnecessary detours or missing information. This is a complete and satisfying response to the user's request."
+    },
+    {
+      "evaluatorId": "Builtin.Correctness",
+      "level": "Trace",
+      "sessionId": "baseline-session-4-1785351428-aaaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4d066e5a0bd8430a5b5937d51a4a",
+      "score": 1,
+      "label": "Perfectly Correct",
+      "explanation": "The tool was called with parameters a=17 and b=25, and returned the result '42'. The candidate response states 'The result of adding 17 and 25 is 42', which matches the tool output exactly. This is factually correct."
+    },
+    {
+      "evaluatorId": "Builtin.Helpfulness",
+      "level": "Trace",
+      "sessionId": "baseline-session-4-1785351428-aaaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4d066e5a0bd8430a5b5937d51a4a",
+      "score": 0.83,
+      "label": "Very Helpful",
+      "explanation": "The user's goal was simple and clear: use the add_numbers tool to add 17 and 25, then be told the result. The assistant successfully called the tool (as shown in the tool call/result), and then clearly communicated the result (42) to the user in a concise, well-formatted response. The response directly addresses what the user asked for - the result of the addition. The tool was used correctly, and the answer was communicated clearly. This fully satisfies the user's request without any unnecessary detours or missing information."
+    },
+    {
+      "evaluatorId": "Builtin.Correctness",
+      "level": "Trace",
+      "sessionId": "mutated-session-2-1785352070-aaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4f8708321dbf4e1235643d19eb3b",
+      "score": 1,
+      "label": "Perfectly Correct",
+      "explanation": "The tool was called with parameters a=17 and b=25, and returned the result '42'. The candidate response states 'The result of adding 17 and 25 is 42', which correctly reflects the tool output. This is factually accurate and directly addresses the task."
+    },
+    {
+      "evaluatorId": "Builtin.Helpfulness",
+      "level": "Trace",
+      "sessionId": "mutated-session-2-1785352070-aaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4f8708321dbf4e1235643d19eb3b",
+      "score": 0.83,
+      "label": "Very Helpful",
+      "explanation": "The user's goal was simple and clear: use the add_numbers tool to add 17 and 25, then be told the result. The assistant successfully called the tool (as shown in the tool call/result), and then clearly communicated the result (42) to the user in a concise, well-formatted response. The answer directly addresses what the user asked for - the result of the addition. The tool was used correctly, and the result was accurately reported. This fully satisfies the user's request with no unnecessary detours or missing information."
+    },
+    {
+      "evaluatorId": "Builtin.Correctness",
+      "level": "Trace",
+      "sessionId": "baseline-session-6-1785351450-aaaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4d1c17cb3b204b884a0647affe2b",
+      "score": 1,
+      "label": "Perfectly Correct",
+      "explanation": "The tool was called with parameters a=17 and b=25, and returned the result '42'. The candidate response states 'The result of adding 17 and 25 is 42', which matches the tool output exactly. This is factually correct."
+    },
+    {
+      "evaluatorId": "Builtin.Helpfulness",
+      "level": "Trace",
+      "sessionId": "baseline-session-6-1785351450-aaaaaaaaaaaaaaaaaaaaaaa",
+      "traceId": "6a6a4d1c17cb3b204b884a0647affe2b",
+      "score": 0.83,
+      "label": "Very Helpful",
+      "explanation": "The user's goal was simple and clear: use the add_numbers tool to add 17 and 25, then be told the result. The assistant successfully called the tool (as shown in the tool call/result), and then clearly communicated the result (42) to the user in a concise, direct manner. The response directly addresses what the user asked for - the result of the addition. The tool was used correctly, and the answer was communicated clearly. This fully satisfies the user's request without any unnecessary detours or missing information. The response is complete and accurate based on the tool output."
+    }
+  ]
+}

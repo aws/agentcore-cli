@@ -4,13 +4,20 @@ import { expect } from "bun:test";
 import type { BedrockAgentCoreControlClient } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import type { IAMClient } from "@aws-sdk/client-iam";
+import type { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import type {
   ClientConfig,
   CreateControlClient,
   CreateDataClient,
   CreateIamClient,
+  CreateLogsClient,
 } from "../core/types";
-import { createControlClient, createDataClient, createIamClient } from "../core/factories";
+import {
+  createControlClient,
+  createDataClient,
+  createIamClient,
+  createLogsClient,
+} from "../core/factories";
 import { parse, stringify } from "./serialization";
 
 // Golden-file record/replay for the AWS SDK seam.
@@ -141,6 +148,7 @@ export function fixtureFactories(dir: string): {
   createControlClient: CreateControlClient;
   createDataClient: CreateDataClient;
   createIamClient: CreateIamClient;
+  createLogsClient: CreateLogsClient;
 } {
   return {
     createControlClient: (config: ClientConfig) => {
@@ -162,6 +170,12 @@ export function fixtureFactories(dir: string): {
       return {
         send: makeRecordingSend(real, dir),
       } as unknown as IAMClient;
+    },
+    createLogsClient: (config: ClientConfig) => {
+      const real = createLogsClient(config);
+      return {
+        send: makeRecordingSend(real, dir),
+      } as unknown as CloudWatchLogsClient;
     },
   };
 }

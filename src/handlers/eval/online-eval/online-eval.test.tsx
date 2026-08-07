@@ -42,11 +42,13 @@ const FIXTURE_ROLE_ARN = "arn:aws:iam::725476964917:role/AgentCoreEvalsSDK-us-we
 const MISSING_CONFIG_ID = "missing-online-0000000000";
 
 function createFixtureCore(): CoreClient {
-  const { createControlClient, createDataClient, createIamClient } = fixtureFactories(FIXTURES);
+  const { createControlClient, createDataClient, createIamClient, createLogsClient } =
+    fixtureFactories(FIXTURES);
   return new CoreClient({
     createControlClient,
     createDataClient,
     createIamClient,
+    createLogsClient,
     logger: createSilentLogger(),
   });
 }

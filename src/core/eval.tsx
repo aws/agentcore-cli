@@ -37,19 +37,28 @@ import {
   type UpdateOnlineEvaluationConfigResponse,
   type BedrockAgentCoreControlClient,
 } from "@aws-sdk/client-bedrock-agentcore-control";
+import {
+  GetBatchEvaluationCommand,
+  ListBatchEvaluationsCommand,
+  type ListBatchEvaluationsResponse,
+} from "@aws-sdk/client-bedrock-agentcore";
 import { Transform } from "node:stream";
 import { FileWriteError, InputValidationError, NetworkingError } from "../errors";
 import type {
+  BatchEvaluationDetail,
   CodeBasedUpdate,
   RoleScopeWarning,
   CoreEvalClient,
   CreateDatasetInput,
   CreateOnlineEvalInput,
+  GetBatchEvaluationResult,
   LlmAsAJudgeUpdate,
   UpdateOnlineEvalInput,
 } from "../handlers/eval/types";
 import { atomicWriteStream } from "../io";
+import { isTerminalStatus, readEvaluationResults } from "./batchEvaluationResults";
 import type { AwsClients, CoreFetch, CoreOptions } from "./types";
+import type { Logger } from "../logging";
 import { toClientConfig } from "./utils";
 import {
   accountIdFromRoleArn,
@@ -62,11 +71,24 @@ import {
 
 const DEFAULT_ENDPOINT_QUALIFIER = "DEFAULT";
 
+// noopLogger is the default for the optional logger arg so callers that don't
+// need batch-evaluation result-log diagnostics (e.g. dataset-only tests) can
+// omit it. Production (src/core/index.tsx) injects a real child logger.
+const noopLogger: Logger = {
+  debug: () => {},
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+  child: () => noopLogger,
+};
+
 export class EvalClient implements CoreEvalClient {
   constructor(
     private readonly clients: AwsClients,
     // HTTP client for datasets presigned S3 URL
     private readonly fetch: CoreFetch = globalThis.fetch,
+    // logger for batch-evaluation result-log diagnostics
+    private readonly logger: Logger = noopLogger,
   ) {}
 
   async createEvaluator(
@@ -201,6 +223,61 @@ export class EvalClient implements CoreEvalClient {
     return this.clients
       .control(toClientConfig(options))
       .send(new DeleteEvaluatorCommand({ evaluatorId: id }));
+  }
+
+  // getBatchEvaluation returns the service-side job (status + evaluator summaries
+  // + CloudWatch output config) and, by default, the per-session results read from
+  // the job's CloudWatch stream once it is terminal. Batch evaluation lives on the
+  // data plane, not control.
+  //
+  // Returns `{ detail, resultsError? }` rather than merging silently: a CloudWatch
+  // read failure must never hide the job status, and Core has no stderr to warn on,
+  // so it surfaces the error to the caller (the handler warns; the TUI ignores it).
+  // `includeResults: false` (the CLI's --disable-cw-results) skips the CloudWatch
+  // read entirely and returns metadata only.
+  async getBatchEvaluation(
+    id: string,
+    options: CoreOptions,
+    { includeResults = true }: { includeResults?: boolean } = {},
+  ): Promise<GetBatchEvaluationResult> {
+    const job = await this.clients
+      .data(toClientConfig(options))
+      .send(new GetBatchEvaluationCommand({ batchEvaluationId: id }));
+
+    const detail: BatchEvaluationDetail = { ...job };
+    const cw = job.outputConfig?.cloudWatchConfig;
+    if (
+      !includeResults ||
+      !isTerminalStatus(job.status) ||
+      !cw?.logGroupName ||
+      !cw.logStreamName
+    ) {
+      return { detail };
+    }
+
+    try {
+      detail.results = await readEvaluationResults(
+        this.clients.logs({ region: options.region }),
+        cw.logGroupName,
+        cw.logStreamName,
+        this.logger,
+      );
+      return { detail };
+    } catch (resultsError) {
+      // Return the metadata regardless — the caller decides how to surface the
+      // CloudWatch failure (stderr warning in the CLI, ignored in the TUI).
+      return { detail, resultsError };
+    }
+  }
+
+  async listBatchEvaluations(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListBatchEvaluationsResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new ListBatchEvaluationsCommand({ nextToken, maxResults }));
   }
 
   async createOnlineEvaluationConfig(

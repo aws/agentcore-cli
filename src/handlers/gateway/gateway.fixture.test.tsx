@@ -25,11 +25,13 @@ const CONNECTOR_ID = "Z3FQ0H8JCK";
 // CONNECTOR_GATEWAY_ID in CONNECTOR_REGION. Record with:
 // AWS_PROFILE=e2e-test RECORD=1 bun test src/handlers/gateway/gateway.fixture.test.tsx
 function createFixtureCore(): CoreClient {
-  const { createControlClient, createDataClient, createIamClient } = fixtureFactories(FIXTURES);
+  const { createControlClient, createDataClient, createIamClient, createLogsClient } =
+    fixtureFactories(FIXTURES);
   return new CoreClient({
     createControlClient,
     createDataClient,
     createIamClient,
+    createLogsClient,
     logger: createSilentLogger(),
   });
 }

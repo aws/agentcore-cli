@@ -20,7 +20,54 @@ import type {
   UpdateEvaluatorResponse,
   UpdateOnlineEvaluationConfigResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
+import type {
+  GetBatchEvaluationResponse,
+  ListBatchEvaluationsResponse,
+} from "@aws-sdk/client-bedrock-agentcore";
 import type { CoreOptions } from "../../core/types";
+
+// BatchEvaluationResultEntry is one per-session/-trace/-tool evaluation score,
+// parsed from the CloudWatch output log stream a completed batch evaluation
+// writes to. Unlike the old CLI's parser — which read only the evaluator name,
+// score, label, and explanation and so flattened every level into an
+// indistinguishable list — this keeps `level` and the id fields so callers can
+// tell a SESSION result from a TRACE or TOOL_CALL one, and group by session.
+export type BatchEvaluationResultEntry = {
+  evaluatorId: string;
+  // The scope the score applies to, read from the result log record's
+  // `aws.bedrock_agentcore.evaluation_level` attribute (Title-case, e.g. "Trace"
+  // / "Session"). The trustworthy discriminator — do not infer it from which id
+  // fields are set, since a trace-level result can still carry a session id.
+  level?: string;
+  sessionId?: string;
+  traceId?: string;
+  spanId?: string;
+  toolName?: string;
+  score?: number;
+  label?: string;
+  explanation?: string;
+  error?: string;
+};
+
+// BatchEvaluationDetail is a GetBatchEvaluation response augmented with the
+// per-session results read from CloudWatch. `results` is present only when the
+// job is terminal, the response carried a CloudWatch output config, and the
+// caller did not pass --disable-cw-results. A CloudWatch read failure leaves
+// `results` absent and is surfaced as a warning on stderr rather than embedded
+// here, so the job status is never hidden and --json stdout stays clean.
+export type BatchEvaluationDetail = GetBatchEvaluationResponse & {
+  results?: BatchEvaluationResultEntry[];
+};
+
+// GetBatchEvaluationResult is what getBatchEvaluation returns: the detail plus an
+// optional `resultsError`. Core surfaces a CloudWatch read failure here rather
+// than throwing (which would hide the job status) or logging silently (Core has
+// no stderr) — the handler warns on stderr, the TUI ignores it. `resultsError` is
+// only ever set when results were requested and the CloudWatch read threw.
+export type GetBatchEvaluationResult = {
+  detail: BatchEvaluationDetail;
+  resultsError?: unknown;
+};
 
 // LlmAsAJudgeUpdate carries the fields a caller may change on an LLM-as-a-Judge
 // evaluator. Any field left undefined is preserved from the existing evaluator:
@@ -131,6 +178,21 @@ export interface CoreEvalClient {
     options: CoreOptions,
   ): Promise<ListEvaluatorsResponse>;
   deleteEvaluator(id: string, options: CoreOptions): Promise<DeleteEvaluatorResponse>;
+
+  // getBatchEvaluation returns the service-side job and, unless `includeResults`
+  // is false, the per-session results read from its per-job CloudWatch stream once
+  // terminal. A CloudWatch read failure is returned as `resultsError` (never
+  // thrown) so the job status is never hidden.
+  getBatchEvaluation(
+    id: string,
+    options: CoreOptions,
+    opts?: { includeResults?: boolean },
+  ): Promise<GetBatchEvaluationResult>;
+  listBatchEvaluations(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListBatchEvaluationsResponse>;
 
   createOnlineEvaluationConfig(
     input: CreateOnlineEvalInput,

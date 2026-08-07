@@ -16,3 +16,4 @@ export {
 export { FsReadWriteJson } from "./json";
 export { SourceResolver, type SourceResolverConfig } from "./source";
 export type { AppIO, ReadWriteJson } from "./types";
+export { warn } from "./warn";

@@ -32,7 +32,7 @@ function stubClients(dataset: Record<string, unknown>): AwsClients {
     throw new Error(`unexpected command: ${(command as object).constructor.name}`);
   };
   const client = { send } as never;
-  return { control: () => client, data: () => client, iam: () => client };
+  return { control: () => client, data: () => client, iam: () => client, logs: () => client };
 }
 
 describe("EvalClient.downloadDataset", () => {

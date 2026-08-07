@@ -57,6 +57,7 @@ import type {
   UpdateHarnessResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
+  GetBatchEvaluationResponse,
   GetEventInput,
   GetEventOutput,
   GetMemoryRecordInput,
@@ -69,6 +70,7 @@ import type {
   InvokeHarnessStreamOutput,
   ListActorsInput,
   ListActorsOutput,
+  ListBatchEvaluationsResponse,
   ListEventsInput,
   ListEventsOutput,
   ListMemoryRecordsInput,
@@ -93,13 +95,17 @@ import type {
   RuntimeInvokeResponse,
 } from "../handlers/runtime/types";
 import type {
+  BatchEvaluationDetail,
+  BatchEvaluationResultEntry,
   CodeBasedUpdate,
   CoreEvalClient,
   CreateDatasetInput,
   CreateOnlineEvalInput,
+  GetBatchEvaluationResult,
   LlmAsAJudgeUpdate,
   UpdateOnlineEvalInput,
 } from "../handlers/eval/types";
+import { isTerminalStatus } from "../core/batchEvaluationResults";
 import { abortable } from "../core/abortable";
 import type { CoreOptions } from "../core/types";
 import type { ProjectManager } from "../handlers/project/types";
@@ -196,6 +202,8 @@ const DEFAULT_GET_DATASET_RESPONSE = {} as GetDatasetResponse;
 const DEFAULT_LIST_DATASETS_RESPONSE: ListDatasetsResponse = { datasets: [] };
 const DEFAULT_DELETE_DATASET_RESPONSE = {} as DeleteDatasetResponse;
 const DEFAULT_PUBLISH_DATASET_RESPONSE = {} as CreateDatasetVersionResponse;
+const DEFAULT_GET_BATCH_EVAL_RESPONSE = {} as GetBatchEvaluationResponse;
+const DEFAULT_LIST_BATCH_EVALS_RESPONSE: ListBatchEvaluationsResponse = { batchEvaluations: [] };
 
 // events wraps canned events as a one-shot AsyncIterable.
 async function* events<T>(items: T[]): AsyncGenerator<T> {
@@ -1122,6 +1130,13 @@ export class TestEvalClient implements CoreEvalClient {
   private datasetListResponses = new Map<string | undefined, ListDatasetsResponse>();
   private deleteDatasetResponse: DeleteDatasetResponse = DEFAULT_DELETE_DATASET_RESPONSE;
   private publishDatasetResponse: CreateDatasetVersionResponse = DEFAULT_PUBLISH_DATASET_RESPONSE;
+  // Batch-evaluation responses: get returns a canned job, list pages by
+  // nextToken, and the CloudWatch results are a canned array. batchEvalResultsError
+  // simulates a CloudWatch read failure surfaced as `resultsError`.
+  private batchEvalGetResponse: GetBatchEvaluationResponse = DEFAULT_GET_BATCH_EVAL_RESPONSE;
+  private batchEvalListResponses = new Map<string | undefined, ListBatchEvaluationsResponse>();
+  private batchEvalResults: BatchEvaluationResultEntry[] = [];
+  private batchEvalResultsError?: unknown;
   private error?: Error;
 
   // setListResponse sets what listEvaluators resolves to (when not erroring).
@@ -1230,6 +1245,36 @@ export class TestEvalClient implements CoreEvalClient {
     return this;
   }
 
+  // setBatchEvalGetResponse sets what getBatchEvaluation resolves to (when not
+  // erroring).
+  setBatchEvalGetResponse(response: GetBatchEvaluationResponse): this {
+    this.batchEvalGetResponse = response;
+    return this;
+  }
+
+  // setBatchEvalListResponse sets what listBatchEvaluations resolves to (when
+  // not erroring). Pass `forNextToken` to serve a later page.
+  setBatchEvalListResponse(response: ListBatchEvaluationsResponse, forNextToken?: string): this {
+    this.batchEvalListResponses.set(forNextToken, response);
+    return this;
+  }
+
+  // setBatchEvalResults sets the per-session results getBatchEvaluation merges in
+  // (when results are requested, the job is terminal, and it has a CloudWatch
+  // output config).
+  setBatchEvalResults(results: BatchEvaluationResultEntry[]): this {
+    this.batchEvalResults = results;
+    return this;
+  }
+
+  // setBatchEvalResultsError makes getBatchEvaluation return `resultsError`
+  // instead of merged results, simulating a CloudWatch read failure. The job
+  // metadata is still returned.
+  setBatchEvalResultsError(error: unknown): this {
+    this.batchEvalResultsError = error;
+    return this;
+  }
+
   // setError makes every subsequent call reject with `error`. Pass undefined to
   // clear it.
   setError(error: Error | undefined): this {
@@ -1290,6 +1335,43 @@ export class TestEvalClient implements CoreEvalClient {
     this.calls.push({ method: "deleteEvaluator", args: [id, options] });
     if (this.error) throw this.error;
     return this.deleteResponse;
+  }
+
+  async getBatchEvaluation(
+    id: string,
+    options: CoreOptions,
+    opts: { includeResults?: boolean } = {},
+  ): Promise<GetBatchEvaluationResult> {
+    this.calls.push({ method: "getBatchEvaluation", args: [id, options, opts] });
+    if (this.error) throw this.error;
+
+    const detail: BatchEvaluationDetail = { ...this.batchEvalGetResponse };
+    const includeResults = opts.includeResults ?? true;
+    const cw = detail.outputConfig?.cloudWatchConfig;
+    // Mirror the real client's gate: only merge results when requested, terminal,
+    // and a CloudWatch output config exists.
+    if (!includeResults || !isTerminalStatus(detail.status) || !cw?.logGroupName) {
+      return { detail };
+    }
+    if (this.batchEvalResultsError !== undefined) {
+      return { detail, resultsError: this.batchEvalResultsError };
+    }
+    detail.results = this.batchEvalResults;
+    return { detail };
+  }
+
+  async listBatchEvaluations(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListBatchEvaluationsResponse> {
+    this.calls.push({ method: "listBatchEvaluations", args: [nextToken, maxResults, options] });
+    if (this.error) throw this.error;
+    return (
+      this.batchEvalListResponses.get(nextToken) ??
+      this.batchEvalListResponses.get(undefined) ??
+      DEFAULT_LIST_BATCH_EVALS_RESPONSE
+    );
   }
 
   async createOnlineEvaluationConfig(

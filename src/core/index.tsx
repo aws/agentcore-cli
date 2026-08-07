@@ -1,6 +1,7 @@
 import { BedrockAgentCoreControlClient } from "@aws-sdk/client-bedrock-agentcore-control";
 import { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import { IAMClient } from "@aws-sdk/client-iam";
+import { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import { EvalClient } from "./eval";
 import { GatewayClient } from "./gateway";
 import { HarnessClient } from "./harness";
@@ -14,6 +15,7 @@ import type {
   CreateControlClient,
   CreateDataClient,
   CreateIamClient,
+  CreateLogsClient,
 } from "./types";
 import type { Logger } from "../logging";
 import type { ProjectManager } from "../handlers/project/types";
@@ -26,12 +28,14 @@ export type {
   CreateControlClient,
   CreateDataClient,
   CreateIamClient,
+  CreateLogsClient,
 } from "./types";
 
 type CoreClientConfig = {
   createControlClient: CreateControlClient;
   createDataClient: CreateDataClient;
   createIamClient: CreateIamClient;
+  createLogsClient: CreateLogsClient;
   logger: Logger;
   fetch?: CoreFetch;
 };
@@ -44,10 +48,12 @@ export class CoreClient implements AwsClients {
   private controlClients = new Map<string, BedrockAgentCoreControlClient>();
   private dataClients = new Map<string, BedrockAgentCoreClient>();
   private iamClients = new Map<string, IAMClient>();
+  private logsClients = new Map<string, CloudWatchLogsClient>();
 
   private readonly createControlClient: CreateControlClient;
   private readonly createDataClient: CreateDataClient;
   private readonly createIamClient: CreateIamClient;
+  private readonly createLogsClient: CreateLogsClient;
   private logger: Logger;
 
   // Feature-scoped sub-clients. Access as e.g. `coreClient.harness.getHarness(...)`.
@@ -64,12 +70,14 @@ export class CoreClient implements AwsClients {
     this.createControlClient = config.createControlClient;
     this.createDataClient = config.createDataClient;
     this.createIamClient = config.createIamClient;
+    this.createLogsClient = config.createLogsClient;
     this.logger = config.logger;
     const fetch = config.fetch ?? globalThis.fetch;
     this.runtime = new RuntimeClient(this, fetch, this.logger.child({ module: "runtime" }));
     // EvalClient shares the injected fetch: dataset content is served from a
-    // presigned S3 URL, outside the SDK seam the other operations use.
-    this.eval = new EvalClient(this, fetch);
+    // presigned S3 URL, outside the SDK seam the other operations use. The logger
+    // is used for batch-evaluation result-log diagnostics.
+    this.eval = new EvalClient(this, fetch, this.logger.child({ module: "eval" }));
 
     this.projectManager = new FsProjectManager({
       logger: this.logger.child({ module: "projectManager" }),
@@ -108,6 +116,18 @@ export class CoreClient implements AwsClients {
     if (!client) {
       client = this.createIamClient(config);
       this.iamClients.set(key, client);
+    }
+    return client;
+  }
+
+  // logs returns the CloudWatch Logs client for `config`, creating and caching it
+  // on first use (used to read batch-evaluation result log streams).
+  logs(config: ClientConfig): CloudWatchLogsClient {
+    const key = cacheKey(config);
+    let client = this.logsClients.get(key);
+    if (!client) {
+      client = this.createLogsClient(config);
+      this.logsClients.set(key, client);
     }
     return client;
   }

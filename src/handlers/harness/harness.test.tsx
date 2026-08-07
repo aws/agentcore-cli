@@ -30,11 +30,13 @@ const REGION = "us-west-2";
 // keeps tests isolated) over an in-memory io, routes `args` beneath `agentcore`,
 // and returns whatever the command wrote to stdout.
 async function run(args: string[]): Promise<string> {
-  const { createControlClient, createDataClient, createIamClient } = fixtureFactories(FIXTURES);
+  const { createControlClient, createDataClient, createIamClient, createLogsClient } =
+    fixtureFactories(FIXTURES);
   const core = new CoreClient({
     createControlClient,
     createDataClient,
     createIamClient,
+    createLogsClient,
     logger: createSilentLogger(),
   });
   const io = testIO();
