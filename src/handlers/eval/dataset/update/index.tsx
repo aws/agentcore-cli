@@ -1,11 +1,12 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../router";
 import { InputValidationError } from "../../../../errors";
+import type { AppIO } from "../../../../io";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 
-export const createUpdateDatasetHandler = (core: Core) =>
+export const createUpdateDatasetHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "update",
     description: "update a dataset DRAFT from a local JSONL file",
@@ -31,6 +32,7 @@ export const createUpdateDatasetHandler = (core: Core) =>
               flags["file-path"],
               coreOptsFromCtx(ctx),
               controller.signal,
+              (event) => io.stderr.write(`${event.message}\n`),
             ),
           );
       } finally {

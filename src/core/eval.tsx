@@ -78,6 +78,7 @@ import {
 import type {
   BatchEvaluationDetail,
   CodeBasedUpdate,
+  DatasetUpdateProgressEvent,
   DatasetUpdateResult,
   RoleScopeWarning,
   CoreEvalClient,
@@ -817,6 +818,7 @@ export class EvalClient implements CoreEvalClient {
     filePath: string,
     options: CoreOptions,
     signal?: AbortSignal,
+    onProgress?: (event: DatasetUpdateProgressEvent) => void,
   ): Promise<DatasetUpdateResult> {
     const control = this.clients.control(toClientConfig(options));
     const localText = await readLocalDatasetFile(filePath, signal);
@@ -849,12 +851,23 @@ export class EvalClient implements CoreEvalClient {
         clientToken,
       }),
     });
+    const totalBatches = deleteBatches.length + updateBatches.length + additionBatches.length;
+    let nextBatch = 0;
+    const reportProgress = onProgress
+      ? () => {
+          nextBatch++;
+          onProgress({
+            message: `Applying update (batch ${nextBatch} of ${totalBatches})...`,
+          });
+        }
+      : undefined;
 
     await runDatasetExampleBatches({
       batches: deleteBatches,
       datasetId: id,
       control,
       signal,
+      onBatchStart: reportProgress,
       operation: (exampleIds, clientToken) =>
         control.send(new DeleteDatasetExamplesCommand({ datasetId: id, exampleIds, clientToken }), {
           abortSignal: signal,
@@ -866,6 +879,7 @@ export class EvalClient implements CoreEvalClient {
       datasetId: id,
       control,
       signal,
+      onBatchStart: reportProgress,
       operation: (examples, clientToken) =>
         control.send(new UpdateDatasetExamplesCommand({ datasetId: id, examples, clientToken }), {
           abortSignal: signal,
@@ -879,6 +893,7 @@ export class EvalClient implements CoreEvalClient {
       datasetId: id,
       control,
       signal,
+      onBatchStart: reportProgress,
       operation: (additions, clientToken) =>
         control.send(
           new AddDatasetExamplesCommand({
@@ -1061,12 +1076,14 @@ async function runDatasetExampleBatches<T, R>(options: {
   datasetId: string;
   control: BedrockAgentCoreControlClient;
   signal?: AbortSignal;
+  onBatchStart?: () => void;
   operation: (batch: T[], clientToken: string) => Promise<R>;
   afterOperation?: (batch: T[], response: R) => Promise<void>;
 }): Promise<void> {
-  const { batches, datasetId, control, signal, operation, afterOperation } = options;
+  const { batches, datasetId, control, signal, onBatchStart, operation, afterOperation } = options;
   for (const batch of batches) {
     signal?.throwIfAborted();
+    onBatchStart?.();
     const response = await operation(batch.items, batch.clientToken);
     await afterOperation?.(batch.items, response);
     await waitForDatasetActive(control, datasetId, signal);

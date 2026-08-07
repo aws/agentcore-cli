@@ -49,6 +49,7 @@ function testDatasetCommand(stdin?: string) {
   return {
     core,
     stdout: io.stdout,
+    stderr: io.stderr,
     route: (args: string[]) => root.route(["node", "agentcore", ...args, "--region", REGION]),
   };
 }
@@ -564,7 +565,7 @@ describe("dataset publish", () => {
 describe("dataset update", () => {
   test("updates the DRAFT from a local JSONL file", async () => {
     const path = writeTempJsonl(EXAMPLE_A);
-    const { core, stdout, route } = testDatasetCommand();
+    const { core, stdout, stderr, route } = testDatasetCommand();
     core.eval.setUpdateDatasetResult({
       datasetId: "dataset-orders-abc123",
       added: 1,
@@ -589,6 +590,9 @@ describe("dataset update", () => {
       path,
       { region: REGION, endpointUrl: undefined },
     ]);
+    const onProgress = call?.args[4] as ((event: { message: string }) => void) | undefined;
+    onProgress?.({ message: "Applying update (batch 1 of 2)..." });
+    expect(stderr()).toBe("Applying update (batch 1 of 2)...");
     expect(JSON.parse(stdout())).toEqual({
       datasetId: "dataset-orders-abc123",
       added: 1,

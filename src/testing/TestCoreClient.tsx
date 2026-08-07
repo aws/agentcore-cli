@@ -128,6 +128,7 @@ import type {
   CreateDatasetInput,
   CreateOnlineEvalInput,
   DatasetUpdateResult,
+  DatasetUpdateProgressEvent,
   GetBatchEvaluationResult,
   LlmAsAJudgeUpdate,
   StartBatchEvaluationInput,
@@ -1854,8 +1855,12 @@ export class TestEvalClient implements CoreEvalClient {
     filePath: string,
     options: CoreOptions,
     signal?: AbortSignal,
+    onProgress?: (event: DatasetUpdateProgressEvent) => void,
   ): Promise<DatasetUpdateResult> {
-    this.calls.push({ method: "updateDatasetExamples", args: [id, filePath, options, signal] });
+    this.calls.push({
+      method: "updateDatasetExamples",
+      args: [id, filePath, options, signal, onProgress],
+    });
     if (this.error) throw this.error;
     return this.updateDatasetResult;
   }

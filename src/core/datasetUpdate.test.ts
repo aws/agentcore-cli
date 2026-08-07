@@ -103,8 +103,15 @@ describe("EvalClient.updateDatasetExamples", () => {
     const fetch = (async () => new Response(remote, { status: 200 })) as CoreFetch;
     const client = new EvalClient(stubClients({ commands, requestOptions }), fetch);
     const controller = new AbortController();
+    const progress: string[] = [];
 
-    const result = await client.updateDatasetExamples("d-1", localPath, OPTIONS, controller.signal);
+    const result = await client.updateDatasetExamples(
+      "d-1",
+      localPath,
+      OPTIONS,
+      controller.signal,
+      (event) => progress.push(event.message),
+    );
 
     expect(result).toEqual({
       datasetId: "d-1",
@@ -126,6 +133,11 @@ describe("EvalClient.updateDatasetExamples", () => {
     expect(requestOptions.every((options) => options?.abortSignal === controller.signal)).toBe(
       true,
     );
+    expect(progress).toEqual([
+      "Applying update (batch 1 of 3)...",
+      "Applying update (batch 2 of 3)...",
+      "Applying update (batch 3 of 3)...",
+    ]);
 
     const deleteInput = (commands[1] as DeleteDatasetExamplesCommand).input;
     expect(deleteInput).toMatchObject({ datasetId: "d-1", exampleIds: ["gone"] });
@@ -192,7 +204,14 @@ describe("EvalClient.updateDatasetExamples", () => {
       fetch,
     );
 
-    const result = await client.updateDatasetExamples("d-1", localPath, OPTIONS);
+    const progress: string[] = [];
+    const result = await client.updateDatasetExamples(
+      "d-1",
+      localPath,
+      OPTIONS,
+      undefined,
+      (event) => progress.push(event.message),
+    );
     const addCommands = commands.filter(
       (command): command is AddDatasetExamplesCommand =>
         command instanceof AddDatasetExamplesCommand,
@@ -202,6 +221,10 @@ describe("EvalClient.updateDatasetExamples", () => {
     expect(addCommands).toHaveLength(2);
     expect(addCommands[0]?.input.source?.inlineExamples?.examples).toHaveLength(1000);
     expect(addCommands[1]?.input.source?.inlineExamples?.examples).toHaveLength(1);
+    expect(progress).toEqual([
+      "Applying update (batch 1 of 2)...",
+      "Applying update (batch 2 of 2)...",
+    ]);
   });
 
   test("batches additions by UTF-8 encoded request size", async () => {
@@ -558,9 +581,17 @@ describe("EvalClient.updateDatasetExamples", () => {
     const fetch = (async () => new Response(contents, { status: 200 })) as CoreFetch;
     const client = new EvalClient(stubClients({ commands }), fetch);
 
-    const result = await client.updateDatasetExamples("d-1", localPath, OPTIONS);
+    const progress: string[] = [];
+    const result = await client.updateDatasetExamples(
+      "d-1",
+      localPath,
+      OPTIONS,
+      undefined,
+      (event) => progress.push(event.message),
+    );
 
     expect(result).toMatchObject({ added: 0, updated: 0, deleted: 0, unchanged: 1 });
+    expect(progress).toEqual([]);
     expect(readFileSync(localPath, "utf8")).toBe(contents);
     expect(commands.map((c) => (c as object).constructor.name)).toEqual(["GetDatasetCommand"]);
   });

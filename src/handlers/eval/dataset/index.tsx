@@ -16,6 +16,6 @@ export function createDatasetHandler(core: Core, io: AppIO): Router {
     .handler(createGetDatasetHandler(core))
     .handler(createListDatasetsHandler(core))
     .handler(createDeleteDatasetHandler(core))
-    .handler(createUpdateDatasetHandler(core))
+    .handler(createUpdateDatasetHandler(core, io))
     .handler(createPublishDatasetHandler(core));
 }

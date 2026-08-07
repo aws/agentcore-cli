@@ -35,7 +35,6 @@ export function parseJsonl(text: string, flagName: string): ParsedExample[] {
       throw new InputValidationError(
         `Invalid exampleId in '--${flagName}' at line ${lineNumber}: ` +
           `expected a non-empty string`,
-        { meta: { line: lineNumber } },
       );
     }
 

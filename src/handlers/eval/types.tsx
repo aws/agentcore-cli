@@ -214,6 +214,11 @@ export type DatasetUpdateResult = {
   unchanged: number;
 };
 
+export type DatasetUpdateProgressEvent = {
+  /** Human-readable description of the batch about to run. */
+  message: string;
+};
+
 // CoreEvalClient is the evaluator, online evaluation, and dataset surface the eval
 // handlers depend on. It is declared here, next to the handlers that consume it,
 // and implemented by src/core/eval.tsx (dependency inversion: handlers own the
@@ -373,5 +378,7 @@ export interface CoreEvalClient {
     filePath: string,
     options: CoreOptions,
     signal?: AbortSignal,
+    // Called immediately before each mutation batch starts.
+    onProgress?: (event: DatasetUpdateProgressEvent) => void,
   ): Promise<DatasetUpdateResult>;
 }
