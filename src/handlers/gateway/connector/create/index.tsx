@@ -52,7 +52,6 @@ export const createCreateGatewayConnectorHandler = (core: Core, io: AppIO) =>
         "private endpoint (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
       ),
-      flag("client-token", "idempotency token", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
       if (!flags["gateway-id"]) {
@@ -120,7 +119,6 @@ export const createCreateGatewayConnectorHandler = (core: Core, io: AppIO) =>
         ...(credentialProviderConfigurations ? { credentialProviderConfigurations } : {}),
         ...(metadataConfiguration ? { metadataConfiguration } : {}),
         ...(privateEndpoint ? { privateEndpoint } : {}),
-        ...(flags["client-token"] ? { clientToken: flags["client-token"] } : {}),
       };
 
       ctx

@@ -22,7 +22,6 @@ export const createCreateGatewayRuleHandler = (core: Core, io: AppIO) =>
       flag("conditions", "Rule conditions (JSON Condition[])", z.string().optional()),
       flag("actions", "Rule actions (JSON Action[])", z.string().optional()),
       flag("description", "Rule description", z.string().optional()),
-      flag("client-token", "idempotency token", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
       if (!flags["gateway-id"]) {
@@ -50,7 +49,6 @@ export const createCreateGatewayRuleHandler = (core: Core, io: AppIO) =>
         actions,
         ...(conditions !== undefined ? { conditions } : {}),
         ...(flags.description ? { description: flags.description } : {}),
-        ...(flags["client-token"] ? { clientToken: flags["client-token"] } : {}),
       };
       ctx
         .require(JsonRendererKey)
