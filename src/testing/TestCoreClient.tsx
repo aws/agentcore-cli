@@ -1427,13 +1427,25 @@ export class TestCoreClient implements Core {
   // recorded instead of spawned so tests stay fast and hermetic.
   readonly projectCommands: { command: string[]; cwd: string }[] = [];
 
+  // The account ID the project manager's deployment-target detection resolves;
+  // set projectAccountError to make detection fail instead.
+  projectAccount = "123456789012";
+  projectAccountError?: Error;
+
   constructor(options?: TestCoreClientOptions) {
     this.projectManager = new FsProjectManager({
       logger: options?.logger ?? createSilentLogger(),
-      runner: async (command, { cwd }) => {
+      runner: async (command, { cwd, onOutput }) => {
         this.projectCommands.push({ command, cwd });
+        // A predictable stand-in for the subprocess's streamed output, so tests
+        // can assert it reaches the user.
+        onOutput?.(`ran ${command.join(" ")}\n`);
       },
       checkTool: async () => {}, // CI hosts don't have uv installed
+      resolveAccount: async () => {
+        if (this.projectAccountError) throw this.projectAccountError;
+        return this.projectAccount;
+      },
     });
   }
 }

@@ -8,7 +8,12 @@ import { homedir } from "os";
 import { join } from "path";
 
 import { CoreClient } from "./core";
-import { createControlClient, createDataClient, createIamClient } from "./core/factories";
+import {
+  createControlClient,
+  createDataClient,
+  createIamClient,
+  createStsClient,
+} from "./core/factories";
 import { createRootHandler } from "./handlers";
 import { FsReadWriteJson } from "./io";
 import { createFileLogger, LOG_LEVEL } from "./logging";
@@ -64,6 +69,7 @@ process.exit(
         createControlClient,
         createDataClient,
         createIamClient,
+        createStsClient,
         logger: rootLogger.child({ module: "core" }),
       });
 

@@ -32,6 +32,8 @@ export const TEMPLATES: Record<ProjectTemplate, Template> = {
           build: "CodeZip",
           entrypoint: "main.py",
           codeLocation: "app/hello-world",
+          // Required for CodeZip builds by the vended CDK's spec validation.
+          runtimeVersion: "PYTHON_3_14",
         },
       ],
     },

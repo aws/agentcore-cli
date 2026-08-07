@@ -1,6 +1,7 @@
 import { BedrockAgentCoreControlClient } from "@aws-sdk/client-bedrock-agentcore-control";
 import { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import { IAMClient } from "@aws-sdk/client-iam";
+import { GetCallerIdentityCommand, type STSClient } from "@aws-sdk/client-sts";
 import { EvalClient } from "./eval";
 import { GatewayClient } from "./gateway";
 import { HarnessClient } from "./harness";
@@ -14,10 +15,12 @@ import type {
   CreateControlClient,
   CreateDataClient,
   CreateIamClient,
+  CreateStsClient,
 } from "./types";
 import type { Logger } from "../logging";
 import type { ProjectManager } from "../handlers/project/types";
 import { FsProjectManager } from "./project";
+import { createStsClient } from "./factories";
 
 export type {
   AwsClients,
@@ -26,12 +29,14 @@ export type {
   CreateControlClient,
   CreateDataClient,
   CreateIamClient,
+  CreateStsClient,
 } from "./types";
 
 type CoreClientConfig = {
   createControlClient: CreateControlClient;
   createDataClient: CreateDataClient;
   createIamClient: CreateIamClient;
+  createStsClient?: CreateStsClient;
   logger: Logger;
   fetch?: CoreFetch;
 };
@@ -44,10 +49,12 @@ export class CoreClient implements AwsClients {
   private controlClients = new Map<string, BedrockAgentCoreControlClient>();
   private dataClients = new Map<string, BedrockAgentCoreClient>();
   private iamClients = new Map<string, IAMClient>();
+  private stsClients = new Map<string, STSClient>();
 
   private readonly createControlClient: CreateControlClient;
   private readonly createDataClient: CreateDataClient;
   private readonly createIamClient: CreateIamClient;
+  private readonly createStsClient: CreateStsClient;
   private logger: Logger;
 
   // Feature-scoped sub-clients. Access as e.g. `coreClient.harness.getHarness(...)`.
@@ -64,6 +71,7 @@ export class CoreClient implements AwsClients {
     this.createControlClient = config.createControlClient;
     this.createDataClient = config.createDataClient;
     this.createIamClient = config.createIamClient;
+    this.createStsClient = config.createStsClient ?? createStsClient;
     this.logger = config.logger;
     const fetch = config.fetch ?? globalThis.fetch;
     this.runtime = new RuntimeClient(this, fetch, this.logger.child({ module: "runtime" }));
@@ -73,6 +81,11 @@ export class CoreClient implements AwsClients {
 
     this.projectManager = new FsProjectManager({
       logger: this.logger.child({ module: "projectManager" }),
+      resolveAccount: async (region) => {
+        const { Account } = await this.sts({ region }).send(new GetCallerIdentityCommand({}));
+        if (!Account) throw new Error("GetCallerIdentity returned no account ID");
+        return Account;
+      },
     });
   }
 
@@ -108,6 +121,19 @@ export class CoreClient implements AwsClients {
     if (!client) {
       client = this.createIamClient(config);
       this.iamClients.set(key, client);
+    }
+    return client;
+  }
+
+  // sts returns the STS client for `config`, creating and caching it on first
+  // use. Not part of AwsClients: no sub-client consumes it — it backs the
+  // project manager's deployment-target account detection.
+  sts(config: ClientConfig): STSClient {
+    const key = cacheKey(config);
+    let client = this.stsClients.get(key);
+    if (!client) {
+      client = this.createStsClient(config);
+      this.stsClients.set(key, client);
     }
     return client;
   }

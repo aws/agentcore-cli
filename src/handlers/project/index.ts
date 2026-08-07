@@ -23,9 +23,13 @@ export function createProjectHandler(config: ProjectHandlerConfig): Router {
   project.handler(createAddProjectHandler());
   project.handler(createRemoveProjectHandler());
   project.handler(createDevProjectHandler());
-  project.handler(createDeployProjectHandler());
+  project.handler(
+    createDeployProjectHandler({ projectManager: config.projectManager, io: config.io }),
+  );
   project.handler(createStatusProjectHandler());
-  project.handler(createBuildProjectHandler());
+  project.handler(
+    createBuildProjectHandler({ projectManager: config.projectManager, io: config.io }),
+  );
 
   return project;
 }

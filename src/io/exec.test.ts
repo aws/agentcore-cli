@@ -72,4 +72,20 @@ describe("runProcess", () => {
       runProcess(["definitely-not-a-real-tool-xyz"], { cwd: process.cwd() }),
     ).rejects.toBeInstanceOf(ProcessFailedError);
   });
+
+  test("merges env over the parent environment", async () => {
+    const echoing = await script(
+      "env.js",
+      "console.log(process.env.AGENTCORE_TEST_ENV + '/' + (process.env.PATH ? 'has-path' : ''))",
+    );
+    const chunks: string[] = [];
+    await runProcess(["node", echoing], {
+      cwd: process.cwd(),
+      env: { AGENTCORE_TEST_ENV: "injected" },
+      onOutput: (chunk) => chunks.push(chunk),
+    });
+
+    // The injected variable is present and the parent environment survives.
+    expect(chunks.join("")).toContain("injected/has-path");
+  });
 });

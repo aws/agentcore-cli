@@ -1,6 +1,7 @@
 import type { BedrockAgentCoreControlClient } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import type { IAMClient } from "@aws-sdk/client-iam";
+import type { STSClient } from "@aws-sdk/client-sts";
 
 // CoreOptions is the standard trailing argument for Core operations. It carries
 // the per-call settings a handler resolves from context (the AWS region and an
@@ -25,6 +26,7 @@ export interface ClientConfig {
 export type CreateControlClient = (config: ClientConfig) => BedrockAgentCoreControlClient;
 export type CreateDataClient = (config: ClientConfig) => BedrockAgentCoreClient;
 export type CreateIamClient = (config: ClientConfig) => IAMClient;
+export type CreateStsClient = (config: ClientConfig) => STSClient;
 export type CoreFetch = (
   ...args: Parameters<typeof globalThis.fetch>
 ) => ReturnType<typeof globalThis.fetch>;

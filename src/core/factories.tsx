@@ -1,7 +1,13 @@
 import { BedrockAgentCoreControlClient } from "@aws-sdk/client-bedrock-agentcore-control";
 import { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import { IAMClient } from "@aws-sdk/client-iam";
-import type { CreateControlClient, CreateDataClient, CreateIamClient } from "./types";
+import { STSClient } from "@aws-sdk/client-sts";
+import type {
+  CreateControlClient,
+  CreateDataClient,
+  CreateIamClient,
+  CreateStsClient,
+} from "./types";
 
 // createControlClient / createDataClient are the production factories injected
 // into CoreClient at the app edge (src/index.ts). They live here — rather than
@@ -15,3 +21,5 @@ export const createDataClient: CreateDataClient = (config) =>
   new BedrockAgentCoreClient({ ...config });
 
 export const createIamClient: CreateIamClient = (config) => new IAMClient({ ...config });
+
+export const createStsClient: CreateStsClient = (config) => new STSClient({ ...config });

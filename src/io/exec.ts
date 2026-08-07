@@ -52,6 +52,8 @@ export type RunProcessOptions = {
   cwd: string;
   /** Receives each chunk of combined stdout/stderr as it streams (e.g. into a logger). */
   onOutput?: (chunk: string) => void;
+  /** Extra environment variables, merged over the parent process's environment. */
+  env?: Record<string, string>;
 };
 
 /** Runs a subprocess to completion. Injectable so tests never spawn real processes. */
@@ -61,12 +63,13 @@ export type ProcessRunner = (command: string[], options: RunProcessOptions) => P
  * Runs a subprocess, streaming combined stdout/stderr to `onOutput` while also
  * capturing it; rejects with {@link ProcessFailedError} on a non-zero exit.
  */
-export const runProcess: ProcessRunner = ([executable, ...args], { cwd, onOutput }) => {
+export const runProcess: ProcessRunner = ([executable, ...args], { cwd, onOutput, env }) => {
   return new Promise((resolve, reject) => {
     const child = spawn(executable!, args, {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
       shell: useShell,
+      env: env ? { ...process.env, ...env } : undefined,
     });
 
     let output = "";

@@ -105,8 +105,22 @@ export type ResolveProjectInput = {
   filePath: string;
 };
 
+export type BuildProjectInput = {
+  /** A path inside the project; the project root is located by walking up from here. */
+  path: string;
+  /** The resolved AWS region, forwarded to the CDK subprocesses and the default deployment target. */
+  region: string;
+};
+
+export type DeployProjectInput = BuildProjectInput & {
+  /** Skip bootstrapping the target environments before deploying. */
+  skipBootstrap?: boolean;
+};
+
 export type Project = {
   name: string;
+  /** Absolute path to the project root (the directory containing agentcore/). */
+  root: string;
 };
 
 /**
@@ -118,4 +132,10 @@ export interface ProjectManager {
 
   /** Locate an existing AgentCore project. Returns undefined if no project can be found. */
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;
+
+  /** Synthesize the project's CloudFormation templates with the CDK. */
+  build(input: BuildProjectInput): AsyncGenerator<ProjectEvent>;
+
+  /** Build the project and deploy its stacks to AWS. */
+  deploy(input: DeployProjectInput): AsyncGenerator<ProjectEvent>;
 }
