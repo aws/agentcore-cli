@@ -2,9 +2,14 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
-import { NestedProjectError, ProjectFileExistsError } from "../../errors";
+import { ProjectStateError } from "../../errors/errors";
 import { FsProjectManager } from "./manager";
-import { PROJECT_TEMPLATES } from "../../handlers/project/types";
+import {
+  PROJECT_TEMPLATES,
+  type CreateProjectInput,
+  type Project,
+  type ProjectEvent,
+} from "../../handlers/project/types";
 import { createSilentLogger } from "../../testing";
 
 const originalCwd = process.cwd();
@@ -41,10 +46,26 @@ function manager(): { manager: FsProjectManager; commands: { command: string[]; 
   };
 }
 
+async function runCreate(
+  subject: FsProjectManager,
+  input: CreateProjectInput,
+): Promise<{ events: ProjectEvent[]; project: Project }> {
+  const iterator = subject.create(input);
+  const events: ProjectEvent[] = [];
+
+  while (true) {
+    const next = await iterator.next();
+    if (next.done) {
+      return { events, project: next.value as Project };
+    }
+    events.push(next.value);
+  }
+}
+
 describe("FsProjectManager.create", () => {
   test("scaffolds the expected file tree into a fresh directory", async () => {
     const directory = await inTempDirectory();
-    await manager().manager.create({
+    await runCreate(manager().manager, {
       name: "example",
       template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
     });
@@ -62,7 +83,7 @@ describe("FsProjectManager.create", () => {
 
   test("writes a deploy-ready agentcore.json registering the template agent", async () => {
     const directory = await inTempDirectory();
-    await manager().manager.create({
+    await runCreate(manager().manager, {
       name: "example",
       template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
     });
@@ -85,14 +106,14 @@ describe("FsProjectManager.create", () => {
     await inTempDirectory();
     const input = { name: "example", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON };
 
-    await manager().manager.create(input);
-    await expect(manager().manager.create(input)).rejects.toBeInstanceOf(ProjectFileExistsError);
+    await runCreate(manager().manager, input);
+    await expect(runCreate(manager().manager, input)).rejects.toBeInstanceOf(ProjectStateError);
   });
 
   test("runs npm install, uv sync, and git init after scaffolding", async () => {
     const directory = await inTempDirectory();
     const { manager: subject, commands } = manager();
-    await subject.create({ name: "example", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON });
+    await runCreate(subject, { name: "example", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON });
 
     const projectRoot = join(directory, "example");
     expect(commands).toEqual([
@@ -105,7 +126,7 @@ describe("FsProjectManager.create", () => {
   test("skipInstall skips npm install and uv sync", async () => {
     const directory = await inTempDirectory();
     const { manager: subject, commands } = manager();
-    await subject.create({
+    await runCreate(subject, {
       name: "example",
       template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
       skipInstall: true,
@@ -117,7 +138,7 @@ describe("FsProjectManager.create", () => {
   test("skipGit skips git init", async () => {
     await inTempDirectory();
     const { manager: subject, commands } = manager();
-    await subject.create({
+    await runCreate(subject, {
       name: "example",
       template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
       skipGit: true,
@@ -126,21 +147,20 @@ describe("FsProjectManager.create", () => {
     expect(commands.map(({ command }) => command[0])).toEqual(["npm", "uv"]);
   });
 
-  test("reports each step through onProgress", async () => {
+  test("yields each step as a project event", async () => {
     await inTempDirectory();
-    const messages: string[] = [];
-    await manager().manager.create({
+    const { events, project } = await runCreate(manager().manager, {
       name: "example",
       template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
-      onProgress: (event) => messages.push(event.message),
     });
 
-    expect(messages).toEqual([
-      "Scaffolding project files...",
-      "Installing CDK dependencies (npm install)...",
-      "Syncing Python dependencies (uv sync)...",
-      "Initializing git repository...",
+    expect(events.map((event) => event.message)).toEqual([
+      "Creating project tree",
+      "Installing CDK dependencies with npm",
+      "Syncing Python dependencies with uv",
+      "Initializing git repository",
     ]);
+    expect(project).toEqual({ name: "example" });
   });
 
   test("a failed step propagates and leaves the scaffolded files in place", async () => {
@@ -154,7 +174,7 @@ describe("FsProjectManager.create", () => {
     });
 
     await expect(
-      failing.create({ name: "example", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON }),
+      runCreate(failing, { name: "example", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON }),
     ).rejects.toThrow("npm exploded");
     expect(await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).exists()).toBe(
       true,
@@ -163,14 +183,17 @@ describe("FsProjectManager.create", () => {
 
   test("refuses to create a project inside an existing project", async () => {
     const directory = await inTempDirectory();
-    await manager().manager.create({
+    await runCreate(manager().manager, {
       name: "root",
       template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
     });
 
     process.chdir(join(directory, "root"));
     await expect(
-      manager().manager.create({ name: "child", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON }),
-    ).rejects.toBeInstanceOf(NestedProjectError);
+      runCreate(manager().manager, {
+        name: "child",
+        template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      }),
+    ).rejects.toBeInstanceOf(ProjectStateError);
   });
 });

@@ -92,14 +92,12 @@ export type CreateProjectInput = {
   skipInstall?: boolean;
   /** Skip initializing a git repository. */
   skipGit?: boolean;
-  /** Called as each creation step begins; drives progress output. */
-  onProgress?: (event: CreateProgressEvent) => void;
 };
 
-/** A progress update emitted as a creation step begins. */
-export type CreateProgressEvent = {
-  /** Human-readable description of the step. */
-  message: string;
+export type ProjectEvent = {
+  message?: string;
+  subprocessOutput?: string;
+  project?: Project;
 };
 
 export type ResolveProjectInput = {
@@ -116,7 +114,7 @@ export type Project = {
  */
 export interface ProjectManager {
   /** Scaffold a new AgentCore project from the given template. */
-  create(input: CreateProjectInput): Promise<Project>;
+  create(input: CreateProjectInput): AsyncGenerator<ProjectEvent>;
 
   /** Locate an existing AgentCore project. Returns undefined if no project can be found. */
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;

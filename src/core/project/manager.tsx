@@ -1,30 +1,18 @@
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { NestedProjectError } from "../../errors";
+import { join } from "node:path";
 import type {
   CreateProjectInput,
   ResolveProjectInput,
   Project,
   ProjectManager,
+  ProjectEvent,
 } from "../../handlers/project/types";
 import type { Logger } from "../../logging";
 import { requireTool, runProcess, type ProcessRunner } from "../../io";
-import { projectTree } from "./compose";
 import { defaultSource, type AssetSource } from "./source";
-import { TEMPLATES } from "./templates";
-import { writeTree } from "./tree";
-
-/** Walks up from directory looking for the agentcore/agentcore.json project marker. */
-function enclosingProjectRoot(directory: string): string | undefined {
-  for (let current = directory; ; current = dirname(current)) {
-    if (existsSync(join(current, "agentcore", "agentcore.json"))) {
-      return current;
-    }
-    if (dirname(current) === current) {
-      return undefined;
-    }
-  }
-}
+import { createProjectTreeFromTemplate, TEMPLATES } from "./templates";
+import { enclosingProjectRoot } from "./fsUtils";
+import { ProjectStateError } from "../../errors/errors";
 
 type ProjectManagerConfig = {
   logger: Logger;
@@ -53,24 +41,27 @@ export class FsProjectManager implements ProjectManager {
     throw new Error(`ProjectManager.resolve is not implemented yet`);
   }
 
-  public async create(input: CreateProjectInput): Promise<Project> {
+  public async *create(input: CreateProjectInput): AsyncGenerator<ProjectEvent> {
     // Scaffold into a fresh directory, refusing to nest inside an existing project.
     const enclosing = enclosingProjectRoot(process.cwd());
     if (enclosing) {
-      throw new NestedProjectError(enclosing);
+      throw new ProjectStateError(
+        `You cannot create a project inside an existing project: ${enclosing}`,
+      );
     }
+
     const destination = join(process.cwd(), input.name);
     this.logger.debug(`scaffolding project "${input.name}" from template "${input.template}"`);
 
-    input.onProgress?.({ message: "Scaffolding project files..." });
-    const tree = await projectTree(input.name, input.template, this.source);
-    await writeTree(tree, destination);
+    yield { message: "Creating project tree" };
+    const tree = await createProjectTreeFromTemplate(input.name, input.template, this.source);
+    await tree.write(destination);
 
     // A failed step leaves the scaffolded files in place; the error tells the
     // user how to rerun the step by hand.
     if (!input.skipInstall) {
       await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
-      input.onProgress?.({ message: "Installing CDK dependencies (npm install)..." });
+      yield { message: "Installing CDK dependencies with npm" };
       await this.run(["npm", "install"], join(destination, "agentcore", "cdk"));
 
       const appDir = join(destination, "app", TEMPLATES[input.template].appDir);
@@ -79,14 +70,14 @@ export class FsProjectManager implements ProjectManager {
           "uv",
           "Install uv: https://docs.astral.sh/uv/getting-started/installation/",
         );
-        input.onProgress?.({ message: "Syncing Python dependencies (uv sync)..." });
+        yield { message: "Syncing Python dependencies with uv" };
         await this.run(["uv", "sync"], appDir);
       }
     }
 
     if (!input.skipGit) {
       await this.checkTool("git", "Install git: https://git-scm.com/downloads");
-      input.onProgress?.({ message: "Initializing git repository..." });
+      yield { message: "Initializing git repository" };
       await this.run(["git", "init"], destination);
     }
 

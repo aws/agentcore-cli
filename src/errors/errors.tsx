@@ -98,6 +98,16 @@ export class DeserializationError extends Error {
   }
 }
 
+/** Thrown for any project state related errors. */
+export class ProjectStateError extends AgentCoreCLIError {
+  constructor(message: string, options: AgentCoreCLIErrorOptions = {}) {
+    super(message, {
+      source: ERROR_SOURCE.USER,
+      ...options,
+    });
+  }
+}
+
 /** Thrown when scaffolding would overwrite a file that already exists. */
 export class ProjectFileExistsError extends AgentCoreCLIError {
   constructor(public readonly path: string) {
