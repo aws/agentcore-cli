@@ -1,6 +1,5 @@
 import { ShellKickedError } from '../../../lib/errors/types.js';
 import { buildShellUrl, connectShell, startKeepalive } from '../connect-shell.js';
-import { ShellChannel } from '../shell-framer.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
@@ -19,14 +18,14 @@ vi.mock('../account', () => ({
 const wsState = vi.hoisted(() => {
   return {
     calls: [] as string[],
-    messageHandler: undefined as ((data: Buffer) => void) | undefined,
+    openHandler: undefined as (() => void) | undefined,
     closeHandler: undefined as ((code: number) => void) | undefined,
     errorHandler: undefined as ((err: Error) => void) | undefined,
     upgradeHandler: undefined as ((response: { headers: Record<string, string> }) => void) | undefined,
     terminateCalled: false,
     reset() {
       this.calls = [];
-      this.messageHandler = undefined;
+      this.openHandler = undefined;
       this.closeHandler = undefined;
       this.errorHandler = undefined;
       this.upgradeHandler = undefined;
@@ -41,7 +40,7 @@ vi.mock('ws', () => ({
       wsState.calls.push(url);
     }
     on(event: string, handler: (...args: unknown[]) => void) {
-      if (event === 'message') wsState.messageHandler = handler as (data: Buffer) => void;
+      if (event === 'open') wsState.openHandler = handler as () => void;
       if (event === 'close') wsState.closeHandler = handler as (code: number) => void;
       if (event === 'error') wsState.errorHandler = handler as (err: Error) => void;
       if (event === 'upgrade')
@@ -107,80 +106,71 @@ describe('buildShellUrl', () => {
 });
 
 // ---------------------------------------------------------------------------
-// connectShell
+// connectShell — immediate connect (no confirmation frame wait)
 // ---------------------------------------------------------------------------
 
 describe('connectShell', () => {
-  function makeConfirmationFrame(shellId: string, reconnected = false): Buffer {
-    const payload = JSON.stringify({
-      kind: 'Status',
-      apiVersion: 'v1',
-      metadata: { shellId, reconnected },
-      status: 'Success',
-    });
-    return Buffer.concat([Buffer.from([ShellChannel.STATUS]), Buffer.from(payload)]);
-  }
-
   beforeEach(() => {
     wsState.reset();
   });
 
-  it('resolves with shellId from X-Amzn-Bedrock-AgentCore-Shell-Id 101 header (primary)', async () => {
+  it('resolves with shellId from X-Amzn-Bedrock-AgentCore-Shell-Id 101 header', async () => {
     const connectPromise = connectShell({
       region: 'us-east-1',
       runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r',
     });
 
     await new Promise(r => setTimeout(r, 0));
-    // Header fires first (101 upgrade), then STATUS frame arrives
+    // Header fires first (101 upgrade), then open event
     wsState.upgradeHandler?.({ headers: { 'x-amzn-bedrock-agentcore-shell-id': 'header-shell-id' } });
-    wsState.messageHandler?.(makeConfirmationFrame('frame-shell-id'));
+    wsState.openHandler?.();
 
     const conn = await connectPromise;
-    // Header takes precedence over STATUS frame
     expect(conn.shellId).toBe('header-shell-id');
   });
 
-  it('falls back to shellId from STATUS frame when header is absent', async () => {
+  it('uses provided shellId as fallback when header is absent', async () => {
     const connectPromise = connectShell({
       region: 'us-east-1',
       runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r',
+      shellId: 'my-fallback-shell',
     });
 
     await new Promise(r => setTimeout(r, 0));
-    // No upgrade event fired — STATUS frame is the only source
-    wsState.messageHandler?.(makeConfirmationFrame('frame-shell-id'));
+    // No upgrade event — open fires without header
+    wsState.openHandler?.();
 
     const conn = await connectPromise;
-    expect(conn.shellId).toBe('frame-shell-id');
+    expect(conn.shellId).toBe('my-fallback-shell');
   });
 
-  it('resolves with shellId from STATUS confirmation frame', async () => {
+  it('resolves immediately on open event (no confirmation frame needed)', async () => {
     const connectPromise = connectShell({
       region: 'us-east-1',
       runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r',
     });
 
-    // Flush microtask queue (SigV4 signing chain needs >1 tick before WS is constructed)
     await new Promise(r => setTimeout(r, 0));
-    wsState.messageHandler?.(makeConfirmationFrame('server-assigned-id'));
+    wsState.upgradeHandler?.({ headers: { 'x-amzn-bedrock-agentcore-shell-id': 'fast-shell' } });
+    wsState.openHandler?.();
 
     const conn = await connectPromise;
-    expect(conn.shellId).toBe('server-assigned-id');
-    expect(conn.reconnected).toBe(false);
+    expect(conn.shellId).toBe('fast-shell');
   });
 
-  it('sets reconnected=true from STATUS frame metadata', async () => {
+  it('does not have reconnected or bytesDropped on ShellConnection', async () => {
     const connectPromise = connectShell({
       region: 'us-east-1',
       runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r',
     });
 
     await new Promise(r => setTimeout(r, 0));
-    wsState.messageHandler?.(makeConfirmationFrame('existing-shell', true));
+    wsState.upgradeHandler?.({ headers: { 'x-amzn-bedrock-agentcore-shell-id': 'shell-1' } });
+    wsState.openHandler?.();
 
     const conn = await connectPromise;
-    expect(conn.reconnected).toBe(true);
+    expect(conn).not.toHaveProperty('reconnected');
+    expect(conn).not.toHaveProperty('bytesDropped');
   });
 
   it('throws ShellKickedError when WS closes with code 4000', async () => {
@@ -195,7 +185,7 @@ describe('connectShell', () => {
     await expect(connectPromise).rejects.toThrow(ShellKickedError);
   });
 
-  it('throws generic error when WS closes with non-4000 code before confirmation', async () => {
+  it('throws generic error when WS closes with non-4000 code before open', async () => {
     const connectPromise = connectShell({
       region: 'us-east-1',
       runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r',
@@ -204,10 +194,10 @@ describe('connectShell', () => {
     await new Promise(r => setTimeout(r, 0));
     wsState.closeHandler?.(1006);
 
-    await expect(connectPromise).rejects.toThrow(/closed before confirmation/);
+    await expect(connectPromise).rejects.toThrow(/closed before open/);
   });
 
-  it('throws on WS error before confirmation', async () => {
+  it('throws on WS error before open', async () => {
     const connectPromise = connectShell({
       region: 'us-east-1',
       runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r',
@@ -217,23 +207,6 @@ describe('connectShell', () => {
     wsState.errorHandler?.(new Error('ECONNREFUSED'));
 
     await expect(connectPromise).rejects.toThrow('ECONNREFUSED');
-  });
-
-  it('ignores non-STATUS frames before confirmation', async () => {
-    const connectPromise = connectShell({
-      region: 'us-east-1',
-      runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r',
-    });
-
-    await new Promise(r => setTimeout(r, 0));
-    // Send a STDOUT frame first — should be ignored
-    const stdout = Buffer.concat([Buffer.from([ShellChannel.STDOUT]), Buffer.from('noise')]);
-    wsState.messageHandler?.(stdout);
-    // Then send confirmation
-    wsState.messageHandler?.(makeConfirmationFrame('abc'));
-
-    const conn = await connectPromise;
-    expect(conn.shellId).toBe('abc');
   });
 
   it('does not retry after ShellKickedError (close code 4000)', async () => {
@@ -259,69 +232,12 @@ describe('connectShell', () => {
     });
 
     await new Promise(r => setTimeout(r, 0));
-    wsState.messageHandler?.(makeConfirmationFrame('reconnect-id', true));
+    wsState.upgradeHandler?.({ headers: { 'x-amzn-bedrock-agentcore-shell-id': 'reconnect-id' } });
+    wsState.openHandler?.();
 
     const conn = await connectPromise;
     expect(conn.shellId).toBe('reconnect-id');
-    expect(conn.reconnected).toBe(true);
-
     expect(wsState.calls[0]).toContain('shellId=reconnect-id');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// confirmationTimeoutMs — rejects if STATUS frame never arrives
-// ---------------------------------------------------------------------------
-
-describe('connectShell confirmationTimeoutMs', () => {
-  beforeEach(() => {
-    wsState.reset();
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('rejects with timeout message when STATUS frame never arrives', async () => {
-    // Use bearerToken path to bypass async SigV4 signing — WS is created synchronously
-    // so the confirmation timer is registered before we advance fake timers.
-    const connectPromise = connectShell({
-      region: 'us-east-1',
-      runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r',
-      bearerToken: 'test-token',
-      confirmationTimeoutMs: 5_000,
-    });
-
-    // One tick for the Promise constructor inside openWebSocket to run
-    await Promise.resolve();
-    vi.advanceTimersByTime(5_001);
-
-    await expect(connectPromise).rejects.toThrow(/Timed out waiting for shell confirmation \(5s\)/);
-  });
-
-  it('does not reject when STATUS frame arrives before the timeout', async () => {
-    // Use real timers for this test — fake timers interfere with the async signing chain.
-    vi.useRealTimers();
-
-    const connectPromise = connectShell({
-      region: 'us-east-1',
-      runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r',
-      confirmationTimeoutMs: 5_000,
-    });
-
-    // Wait for the SigV4 signing microtasks + WS construction to complete
-    await new Promise(r => setTimeout(r, 0));
-    const payload = JSON.stringify({
-      kind: 'Status',
-      apiVersion: 'v1',
-      metadata: { shellId: 'fast-shell', reconnected: false },
-      status: 'Success',
-    });
-    wsState.messageHandler?.(Buffer.concat([Buffer.from([ShellChannel.STATUS]), Buffer.from(payload)]));
-
-    const conn = await connectPromise;
-    expect(conn.shellId).toBe('fast-shell');
   });
 });
 
@@ -348,7 +264,7 @@ describe('buildShellUrl AGENTCORE_STAGE case-insensitivity', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Gap 1 — serviceEndpoint() in buildShellUrl (partition-aware prod URL)
+// Partition-aware prod URL
 // ---------------------------------------------------------------------------
 
 describe('buildShellUrl partition-aware hostname', () => {
@@ -363,28 +279,16 @@ describe('buildShellUrl partition-aware hostname', () => {
 
   it('uses the region-specific DNS suffix for GovCloud (us-gov-west-1)', () => {
     const url = buildShellUrl('us-gov-west-1', 'arn:aws-us-gov:bedrock-agentcore:us-gov-west-1:123:runtime/r');
-    // GovCloud partition dnsSuffix is 'amazonaws.com' per @aws-sdk/util-endpoints
     expect(url.hostname).toBe('bedrock-agentcore.us-gov-west-1.amazonaws.com');
-    // Confirm partition name is aws-us-gov (i.e. serviceEndpoint was used, not a hardcoded domain)
     expect(url.hostname).toMatch(/^bedrock-agentcore\.us-gov-west-1\./);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Gap 2 — HTTP upgrade error translation (indirect via WS mock)
+// HTTP upgrade error translation
 // ---------------------------------------------------------------------------
 
 describe('connectShell error translation', () => {
-  function _makeConfirmationFrame(shellId: string, reconnected = false): Buffer {
-    const payload = JSON.stringify({
-      kind: 'Status',
-      apiVersion: 'v1',
-      metadata: { shellId, reconnected },
-      status: 'Success',
-    });
-    return Buffer.concat([Buffer.from([ShellChannel.STATUS]), Buffer.from(payload)]);
-  }
-
   beforeEach(() => {
     wsState.reset();
   });
@@ -439,20 +343,10 @@ describe('connectShell error translation', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Gap 3 — Reconnect UX callbacks
+// Reconnect UX callbacks
 // ---------------------------------------------------------------------------
 
 describe('connectShell reconnect callbacks', () => {
-  function makeConfirmationFrame(shellId: string, reconnected = false): Buffer {
-    const payload = JSON.stringify({
-      kind: 'Status',
-      apiVersion: 'v1',
-      metadata: { shellId, reconnected },
-      status: 'Success',
-    });
-    return Buffer.concat([Buffer.from([ShellChannel.STATUS]), Buffer.from(payload)]);
-  }
-
   beforeEach(() => {
     wsState.reset();
   });
@@ -472,7 +366,7 @@ describe('connectShell reconnect callbacks', () => {
     expect(onKicked).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onAttempt(1, reason) on first retry when WS fails before confirmation', async () => {
+  it('calls onAttempt(1, reason) on first retry when WS fails before open', async () => {
     const onAttempt = vi.fn();
 
     // Use a very short base delay so the test doesn't wait
@@ -490,8 +384,9 @@ describe('connectShell reconnect callbacks', () => {
     // Wait for backoff + second WS to be constructed
     await new Promise(r => setTimeout(r, 50));
 
-    // Second attempt: send confirmation
-    wsState.messageHandler?.(makeConfirmationFrame('new-shell-id'));
+    // Second attempt: fire open
+    wsState.upgradeHandler?.({ headers: { 'x-amzn-bedrock-agentcore-shell-id': 'new-shell-id' } });
+    wsState.openHandler?.();
 
     await connectPromise;
 
@@ -500,7 +395,7 @@ describe('connectShell reconnect callbacks', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Gap 5 — startKeepalive
+// startKeepalive
 // ---------------------------------------------------------------------------
 
 function makeMockWs() {

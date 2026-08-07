@@ -76,10 +76,6 @@ export class ShellFramer {
   encodeHeartbeat(): Buffer {
     return Buffer.from([ShellChannel.HEARTBEAT]);
   }
-
-  encodeClose(): Buffer {
-    return Buffer.from([ShellChannel.CLOSE]);
-  }
 }
 
 export class ValueError extends Error {

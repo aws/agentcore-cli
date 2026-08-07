@@ -131,13 +131,6 @@ describe('ShellFramer.encodeHeartbeat', () => {
   });
 });
 
-describe('ShellFramer.encodeClose', () => {
-  it('returns single-byte CLOSE frame', () => {
-    const buf = framer.encodeClose();
-    expect(buf).toEqual(Buffer.from([ShellChannel.CLOSE]));
-  });
-});
-
 describe('parseStatusFrame', () => {
   it('identifies a confirmation frame with shellId', () => {
     const payload = JSON.stringify({

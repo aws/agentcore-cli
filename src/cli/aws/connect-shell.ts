@@ -1,6 +1,5 @@
 import { ShellKickedError } from '../../lib/errors/types';
 import { getCredentialProvider } from './account';
-import { ShellChannel, ShellFramer, parseStatusFrame } from './shell-framer';
 import { dataPlaneEndpoint } from './stage-endpoint';
 import { Sha256 } from '@aws-crypto/sha256-js';
 import { HttpRequest } from '@smithy/protocol-http';
@@ -22,10 +21,6 @@ export interface ShellReconnectOptions {
   onAttempt?: (attempt: number, reason: string) => void;
   /** Called when close code 4000 is received — another client took the session. */
   onKicked?: () => void;
-  /** Called when reconnect yields a fresh shell (previous session expired). */
-  onNewSession?: (shellId: string) => void;
-  /** Called when the confirmation frame reports bytes lost during disconnect. */
-  onBytesDropped?: (n: number) => void;
 }
 
 export interface ConnectShellOptions {
@@ -41,18 +36,13 @@ export interface ConnectShellOptions {
   reconnect?: ShellReconnectOptions;
   /** Bearer token for CUSTOM_JWT auth. When set, authenticates via WebSocket subprotocol instead of SigV4. */
   bearerToken?: string;
-  /** Milliseconds to wait for the STATUS confirmation frame before failing. Default: 10_000 */
-  confirmationTimeoutMs?: number;
 }
 
 export interface ShellConnection {
   ws: WebSocket;
-  /** The server-assigned shell identifier (from wire `shellId`). */
+  /** The server-assigned shell identifier (from the 101 upgrade response header). */
   shellId: string;
   sessionId?: string;
-  reconnected: boolean;
-  /** Bytes of output lost during a disconnect, reported in the confirmation frame. */
-  bytesDropped?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -138,7 +128,7 @@ function translateUpgradeError(err: Error): Error {
 // ---------------------------------------------------------------------------
 
 async function openWebSocket(options: ConnectShellOptions): Promise<ShellConnection> {
-  const { region, runtimeArn, shellId, sessionId, bearerToken, confirmationTimeoutMs = 10_000 } = options;
+  const { region, runtimeArn, shellId, sessionId, bearerToken } = options;
   const url = buildShellUrl(region, runtimeArn, shellId);
 
   let ws: WebSocket;
@@ -166,28 +156,19 @@ async function openWebSocket(options: ConnectShellOptions): Promise<ShellConnect
   }
 
   return new Promise<ShellConnection>((resolve, reject) => {
-    const framer = new ShellFramer();
     let settled = false;
-    // Shell ID from the 101 response header — preferred over the STATUS frame per spec.
+    // Shell ID from the 101 response header — the primary (and now only) source.
     let shellIdFromHeader: string | undefined;
 
     const fail = (err: Error) => {
       if (!settled) {
         settled = true;
-        clearTimeout(confirmationTimer);
         ws.terminate();
         reject(translateUpgradeError(err));
       }
     };
 
-    // Fail fast if the server never sends the STATUS confirmation frame
-    const confirmationTimer = setTimeout(
-      () => fail(new Error(`Timed out waiting for shell confirmation (${confirmationTimeoutMs / 1000}s)`)),
-      confirmationTimeoutMs
-    );
-
-    // Read shellId from the 101 Switching Protocols response headers (primary source).
-    // The STATUS frame (0x03) is the fallback for browser clients that cannot read headers.
+    // Read shellId from the 101 Switching Protocols response headers.
     ws.on('upgrade', (response: { headers: Record<string, string | string[] | undefined> }) => {
       const raw = response.headers['x-amzn-bedrock-agentcore-shell-id'];
       if (raw) {
@@ -202,42 +183,20 @@ async function openWebSocket(options: ConnectShellOptions): Promise<ShellConnect
         if (code === 4000) {
           fail(new ShellKickedError());
         } else {
-          fail(new Error(`WebSocket closed before confirmation (code ${code})`));
+          fail(new Error(`WebSocket closed before open (code ${code})`));
         }
       }
     });
 
-    ws.on('message', (data: Buffer) => {
+    // Connection is ready immediately after WebSocket opens — no confirmation frame wait.
+    ws.on('open', () => {
       if (settled) return;
-      let frame;
-      try {
-        frame = framer.decode(Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer));
-      } catch {
-        return; // malformed — wait for status frame
-      }
-
-      if (frame.channel !== ShellChannel.STATUS) return;
-
-      const parsed = parseStatusFrame(frame);
-      if (parsed.type === 'confirmation') {
-        settled = true;
-        clearTimeout(confirmationTimer);
-        const conn: ShellConnection = {
-          ws,
-          // Header is primary; STATUS frame is fallback for browser clients.
-          shellId: shellIdFromHeader ?? parsed.shellId,
-          sessionId: options.sessionId,
-          reconnected: parsed.reconnected,
-        };
-        if (parsed.bytesDropped !== undefined) {
-          conn.bytesDropped = parsed.bytesDropped;
-        }
-        resolve(conn);
-      }
-      // termination before confirmation — treat as error
-      if (parsed.type === 'termination') {
-        fail(new Error('Shell terminated before confirmation frame'));
-      }
+      settled = true;
+      resolve({
+        ws,
+        shellId: shellIdFromHeader ?? shellId ?? '',
+        sessionId: options.sessionId,
+      });
     });
   });
 }
@@ -306,15 +265,7 @@ export async function connectShell(options: ConnectShellOptions): Promise<ShellC
     return openWebSocket(options);
   }
 
-  const {
-    maxRetries = 5,
-    baseDelay = 1,
-    maxDelay = 15,
-    onAttempt,
-    onKicked,
-    onNewSession,
-    onBytesDropped,
-  } = options.reconnect;
+  const { maxRetries = 5, baseDelay = 1, maxDelay = 15, onAttempt, onKicked } = options.reconnect;
   const OUTER_DELAY_MS = 30_000;
   const TOTAL_WINDOW_MS = 15 * 60 * 1000; // ~15 min
 
@@ -326,16 +277,6 @@ export async function connectShell(options: ConnectShellOptions): Promise<ShellC
   while (true) {
     try {
       const conn = await openWebSocket({ ...options, shellId: currentShellId });
-
-      // Surface bytesDropped — already present in the confirmation frame returned by openWebSocket
-      if (conn.bytesDropped !== undefined && onBytesDropped) {
-        onBytesDropped(conn.bytesDropped);
-      }
-
-      // Surface new-session (reconnected=false after a retry means the shell expired)
-      if (attempt > 0 && !conn.reconnected && onNewSession) {
-        onNewSession(conn.shellId);
-      }
 
       // Carry shellId forward so subsequent reconnects reattach to the same PTY
       currentShellId = conn.shellId;
