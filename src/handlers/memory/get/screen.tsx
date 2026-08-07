@@ -21,6 +21,16 @@ const ACTIONS = [
     description: "list this Memory's records",
     to: (id: string) => `/agentcore/memory/record/list/${encodeURIComponent(id)}`,
   },
+  {
+    name: "actors",
+    description: "list this Memory's actors",
+    to: (id: string) => `/agentcore/memory/actor/list/${encodeURIComponent(id)}`,
+  },
+  {
+    name: "sessions",
+    description: "choose an actor to list this Memory's sessions",
+    to: (id: string) => `/agentcore/memory/session/list/${encodeURIComponent(id)}`,
+  },
 ] as const;
 
 function useMemoryDetail({ ctx, core }: ScreenProps, memoryId: string | undefined) {

@@ -66,7 +66,7 @@ function coreWithMemories(memories: MemorySummary[]): TestCoreClient {
 }
 
 describe("Memory picker", () => {
-  test("shows event and record commands in the Memory TUI menu", async () => {
+  test("shows event, record, actor, and session commands in the Memory TUI menu", async () => {
     const screen = renderScreen("/agentcore/memory");
 
     await waitForText(screen.lastFrame, "manage AgentCore Memories");
@@ -75,6 +75,8 @@ describe("Memory picker", () => {
     expect(frame).toContain("list");
     expect(frame).toContain("event");
     expect(frame).toContain("record");
+    expect(frame).toContain("actor");
+    expect(frame).toContain("session");
   });
 
   test("renders Memory identity, status, and update time", async () => {
@@ -190,6 +192,8 @@ describe("Memory detail", () => {
     expect(frame).toMatch(/eventExpiryDays\s+30/);
     expect(frame).toMatch(/strategies\s+1/);
     expect(frame).toContain("arn:aws:bedrock-agentcore");
+    expect(frame).toContain("list this Memory's actors");
+    expect(frame).toContain("choose an actor to list this Memory's sessions");
     expect(core.memory.calls.find((call) => call.method === "getMemory")).toEqual({
       method: "getMemory",
       args: [
