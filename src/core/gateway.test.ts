@@ -10,6 +10,7 @@ import {
   type GetGatewayResponse,
   type GetGatewayTargetResponse,
   type TargetSummary,
+  type TargetConfiguration,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { ResultTruncationError } from "../errors";
 import type { GatewayTargetUpdatePatch, GatewayUpdatePatch } from "../handlers/gateway/types";
@@ -465,5 +466,50 @@ describe("GatewayClient updateGatewayTarget", () => {
         OPTIONS,
       ),
     ).rejects.toThrow(/existing MCP server Target/);
+  });
+});
+
+describe("GatewayClient updateGatewayConnector", () => {
+  test.each([
+    ["MCP", { mcp: { connector: { source: { connectorId: "web-search" } } } }],
+    ["inference", { inference: { connector: { source: { connectorId: "bedrock-mantle" } } } }],
+  ] as [string, TargetConfiguration][])(
+    "updates an existing %s connector Target",
+    async (_kind, targetConfiguration) => {
+      const { client, commands } = recordingGatewayClient([
+        { targetId: "target-1", targetConfiguration } as GetGatewayTargetResponse,
+        {},
+      ]);
+
+      await client.updateGatewayConnector(
+        {
+          gatewayId: "gateway-1",
+          targetId: "target-1",
+          description: "after",
+        },
+        OPTIONS,
+      );
+
+      expect(commands[1]).toBeInstanceOf(UpdateGatewayTargetCommand);
+      expect((commands[1] as UpdateGatewayTargetCommand).input.targetConfiguration).toEqual(
+        targetConfiguration,
+      );
+    },
+  );
+
+  test("rejects an existing non-connector Target", async () => {
+    const { client, commands } = recordingGatewayClient([target()]);
+
+    await expect(
+      client.updateGatewayConnector(
+        {
+          gatewayId: "gateway-1",
+          targetId: "target-1",
+          description: "after",
+        },
+        OPTIONS,
+      ),
+    ).rejects.toThrow(/not connector-backed/);
+    expect(commands).toHaveLength(1);
   });
 });

@@ -30,7 +30,6 @@ import {
   type UpdateGatewayTargetResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { InputValidationError, ResultTruncationError } from "../errors";
-import { GatewayConnectorTarget } from "../gateway/gatewayConnectorTarget";
 import type {
   CoreGatewayClient,
   CreateGatewayInput,
@@ -304,7 +303,7 @@ export class GatewayClient implements CoreGatewayClient {
         targetId: patch.targetId,
       }),
     );
-    if (connectorOnly && !GatewayConnectorTarget.is(current.targetConfiguration)) {
+    if (connectorOnly && !GatewayClient.isConnectorTarget(current.targetConfiguration)) {
       throw new InputValidationError(`Gateway Target "${patch.targetId}" is not connector-backed`);
     }
 
@@ -351,7 +350,7 @@ export class GatewayClient implements CoreGatewayClient {
       metadataConfiguration,
       privateEndpoint,
     };
-    if (connectorOnly && !GatewayConnectorTarget.is(request.targetConfiguration)) {
+    if (connectorOnly && !GatewayClient.isConnectorTarget(request.targetConfiguration)) {
       throw new InputValidationError(
         "Connector updates require an MCP or inference connector Target configuration",
       );
