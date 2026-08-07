@@ -64,6 +64,14 @@ import {
   Oauth2CredentialProviderGetScreen,
   Oauth2CredentialProviderGetJsonScreen,
 } from "../handlers/identity/oauth2-credential-provider/get/screen.tsx";
+import { GatewayBrowseScreen } from "../handlers/gateway/screen.tsx";
+import { GatewayDetailScreen, GatewayJsonScreen } from "../handlers/gateway/get/screen.tsx";
+import { GatewayTargetListScreen } from "../handlers/gateway/target/list/screen.tsx";
+import { GatewayTargetJsonScreen } from "../handlers/gateway/target/get/screen.tsx";
+import { GatewayConnectorListScreen } from "../handlers/gateway/connector/list/screen.tsx";
+import { GatewayConnectorJsonScreen } from "../handlers/gateway/connector/get/screen.tsx";
+import { GatewayRuleListScreen } from "../handlers/gateway/rule/list/screen.tsx";
+import { GatewayRuleJsonScreen } from "../handlers/gateway/rule/get/screen.tsx";
 import { RootScreen, HelpScreen } from "../handlers/screen.tsx";
 import type { Context } from "../router";
 
@@ -319,6 +327,39 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/runtime/invoke/:runtimeId/:qualifier"
             element={<RuntimeInvokeScreen ctx={ctx} core={core} />}
+          />
+          <Route path="agentcore/gateway" element={<GatewayBrowseScreen ctx={ctx} core={core} />} />
+          <Route
+            path="agentcore/gateway/browse/:gatewayId"
+            element={<GatewayDetailScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/gateway/browse/:gatewayId/json"
+            element={<GatewayJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/gateway/browse/:gatewayId/targets"
+            element={<GatewayTargetListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/gateway/browse/:gatewayId/targets/:targetId"
+            element={<GatewayTargetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/gateway/browse/:gatewayId/connectors"
+            element={<GatewayConnectorListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/gateway/browse/:gatewayId/connectors/:targetId"
+            element={<GatewayConnectorJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/gateway/browse/:gatewayId/rules"
+            element={<GatewayRuleListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/gateway/browse/:gatewayId/rules/:ruleId"
+            element={<GatewayRuleJsonScreen ctx={ctx} core={core} />}
           />
           <Route path="agentcore/eval" element={<EvalScreen ctx={ctx} core={core} />} />
           <Route

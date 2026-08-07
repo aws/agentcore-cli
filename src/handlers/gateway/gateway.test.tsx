@@ -84,7 +84,27 @@ describe("gateway command hierarchy", () => {
     expect(rule?.children().map((child) => child.name())).toEqual(["create", "get", "list"]);
   });
 
-  test.each(["gateway", "gateway target", "gateway connector", "gateway rule"])(
+  test("opens only the Gateway root in the TUI and keeps read leaves headless", async () => {
+    await expect(run(["gateway"])).rejects.toThrow(
+      "interactive mode requires a TTY on stdin and stdout",
+    );
+    await expect(run(["gateway", "get"])).rejects.toThrow(/--id/);
+
+    const core = new TestCoreClient();
+    core.gateway.setListResponse({ items: [] });
+    await run(["gateway", "list"], core);
+    expect(core.gateway.calls).toEqual([
+      {
+        method: "listGateways",
+        args: [undefined, undefined, { region: REGION }],
+      },
+    ]);
+
+    const target = await run(["gateway", "target"]);
+    expect(target.stdout).toContain("Usage: agentcore gateway target");
+  });
+
+  test.each(["gateway target", "gateway connector", "gateway rule"])(
     "prints help for bare `%s` without a Core call",
     async (command) => {
       const { core, stdout } = await run(command.split(" "));

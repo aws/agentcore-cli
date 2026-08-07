@@ -1,6 +1,6 @@
+import { renderTui } from "../../tui";
 import type { AppIO } from "../../io";
 import { Router } from "../../router";
-import { createHelpDefault } from "../help";
 import type { Core } from "../types";
 import { createGatewayConnectorHandler } from "./connector";
 import { createCreateGatewayHandler } from "./create";
@@ -11,7 +11,7 @@ import { createGatewayTargetHandler } from "./target";
 
 export function createGatewayHandler(core: Core, io: AppIO): Router {
   return new Router("gateway", "inspect AgentCore Gateways")
-    .default(createHelpDefault(io))
+    .default(renderTui(core, io))
     .handler(createCreateGatewayHandler(core, io))
     .handler(createGetGatewayHandler(core))
     .handler(createListGatewaysHandler(core))
