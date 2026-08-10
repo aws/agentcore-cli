@@ -1,6 +1,7 @@
 import type { TargetSummary } from "@aws-sdk/client-bedrock-agentcore-control";
 import { useNavigate, useParams } from "react-router";
 import { formatTimestamp } from "../../../../components/formatTimestamp";
+import { GatewayPicker } from "../../../../components/GatewayPicker";
 import { PaginatedTablePicker } from "../../../../components/PaginatedTablePicker";
 import type { DataTableColumn } from "../../../../components/ui/data-table";
 import type { ScreenProps } from "../../../types";
@@ -40,11 +41,22 @@ export function GatewayTargetListScreen({ ctx, core }: ScreenProps) {
   const { gatewayId } = useParams();
   const opts = coreOptsFromCtx(ctx);
   const navigate = useNavigate();
-  const encodedGatewayId = encodeURIComponent(gatewayId ?? "");
+
+  if (!gatewayId) {
+    return (
+      <GatewayPicker
+        ctx={ctx}
+        core={core}
+        breadcrumb={["agentcore", "gateway", "target", "list"]}
+        description="choose a Gateway to list Targets for"
+        onSelect={(id) => navigate(`/agentcore/gateway/target/list/${encodeURIComponent(id)}`)}
+      />
+    );
+  }
 
   return (
     <PaginatedTablePicker
-      breadcrumb={["agentcore", "gateway", gatewayId ?? "", "targets"]}
+      breadcrumb={["agentcore", "gateway", "target", "list", gatewayId]}
       queryKey={["gateway-targets", opts.region, gatewayId]}
       loadPage={async (token, pageSize) => {
         const response = await core.gateway.listGatewayTargets(gatewayId!, token, pageSize, opts);
@@ -58,14 +70,14 @@ export function GatewayTargetListScreen({ ctx, core }: ScreenProps) {
       getValue={(row) => row.targetId}
       onSelect={(targetId) =>
         navigate(
-          `/agentcore/gateway/browse/${encodedGatewayId}/targets/${encodeURIComponent(targetId)}`,
+          `/agentcore/gateway/target/get/${encodeURIComponent(gatewayId)}/${encodeURIComponent(targetId)}`,
         )
       }
-      onBack={() => navigate(`/agentcore/gateway/browse/${encodedGatewayId}`)}
-      loadingMessage="Loading Gateway Targets…"
-      errorMessage={(error) => `Error: ${error.message}`}
+      onBack={() => navigate(-1)}
+      loadingMessage={`Loading Targets for Gateway ${gatewayId}…`}
+      errorMessage={(error) => `Error loading Targets for Gateway ${gatewayId}: ${error.message}`}
       emptyMessage="This Gateway has no Targets."
-      emptyPageMessage="No Targets on this page."
+      emptyPageMessage={`No Targets on this page for Gateway ${gatewayId}.`}
     />
   );
 }

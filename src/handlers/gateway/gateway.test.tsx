@@ -84,36 +84,24 @@ describe("gateway command hierarchy", () => {
     expect(rule?.children().map((child) => child.name())).toEqual(["create", "get", "list"]);
   });
 
-  test("opens only the Gateway root in the TUI and keeps read leaves headless", async () => {
-    await expect(run(["gateway"])).rejects.toThrow(
+  test.each([
+    ["Gateway", ["gateway"]],
+    ["Gateway get", ["gateway", "get"]],
+    ["Gateway list", ["gateway", "list"]],
+    ["Target", ["gateway", "target"]],
+    ["Target get", ["gateway", "target", "get"]],
+    ["Target list", ["gateway", "target", "list"]],
+    ["Connector", ["gateway", "connector"]],
+    ["Connector get", ["gateway", "connector", "get"]],
+    ["Connector list", ["gateway", "connector", "list"]],
+    ["Rule", ["gateway", "rule"]],
+    ["Rule get", ["gateway", "rule", "get"]],
+    ["Rule list", ["gateway", "rule", "list"]],
+  ] as const)("opens the TUI for a bare %s command", async (_label, args) => {
+    await expect(run([...args])).rejects.toThrow(
       "interactive mode requires a TTY on stdin and stdout",
     );
-    await expect(run(["gateway", "get"])).rejects.toThrow(/--id/);
-
-    const core = new TestCoreClient();
-    core.gateway.setListResponse({ items: [] });
-    await run(["gateway", "list"], core);
-    expect(core.gateway.calls).toEqual([
-      {
-        method: "listGateways",
-        args: [undefined, undefined, { region: REGION }],
-      },
-    ]);
-
-    const target = await run(["gateway", "target"]);
-    expect(target.stdout).toContain("Usage: agentcore gateway target");
   });
-
-  test.each(["gateway target", "gateway connector", "gateway rule"])(
-    "prints help for bare `%s` without a Core call",
-    async (command) => {
-      const { core, stdout } = await run(command.split(" "));
-
-      expect(stdout).toContain(`Usage: agentcore ${command}`);
-      expect(stdout).toContain("Commands:");
-      expect(core.gateway.calls).toEqual([]);
-    },
-  );
 });
 
 describe("gateway reads", () => {
@@ -361,16 +349,16 @@ describe("gateway reads", () => {
 
 describe("gateway validation and errors", () => {
   test.each([
-    ["Gateway get", ["gateway", "get"], /--id/],
-    ["Target get parent", ["gateway", "target", "get"], /--gateway-id/],
+    ["Gateway get", ["gateway", "get", "--id", ""], /--id/],
+    ["Target get parent", ["gateway", "target", "get", "--target-id", TARGET_ID], /--gateway-id/],
     ["Target get child", ["gateway", "target", "get", "--gateway-id", GATEWAY_ID], /--target-id/],
-    ["Target list", ["gateway", "target", "list"], /--gateway-id/],
-    ["Connector get parent", ["gateway", "connector", "get"], /--gateway-id/],
+    ["Target list", ["gateway", "target", "list", "--max-results", "1"], /--gateway-id/],
+    ["Connector get parent", ["gateway", "connector", "get", "--id", TARGET_ID], /--gateway-id/],
     ["Connector get child", ["gateway", "connector", "get", "--gateway-id", GATEWAY_ID], /--id/],
-    ["Connector list", ["gateway", "connector", "list"], /--gateway-id/],
-    ["Rule get parent", ["gateway", "rule", "get"], /--gateway-id/],
+    ["Connector list", ["gateway", "connector", "list", "--max-results", "1"], /--gateway-id/],
+    ["Rule get parent", ["gateway", "rule", "get", "--rule-id", RULE_ID], /--gateway-id/],
     ["Rule get child", ["gateway", "rule", "get", "--gateway-id", GATEWAY_ID], /--rule-id/],
-    ["Rule list", ["gateway", "rule", "list"], /--gateway-id/],
+    ["Rule list", ["gateway", "rule", "list", "--max-results", "1"], /--gateway-id/],
   ] as const)(
     "rejects a missing selector for %s before calling Core",
     async (_name, args, error) => {

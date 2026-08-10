@@ -5,10 +5,6 @@ import { ResourceDetailScreen } from "../../../components/ResourceDetailScreen";
 import type { ScreenProps } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 
-function gatewayPath(gatewayId: string): string {
-  return `/agentcore/gateway/browse/${encodeURIComponent(gatewayId)}`;
-}
-
 function useGatewayDetail({ ctx, core }: ScreenProps, gatewayId: string | undefined) {
   const opts = coreOptsFromCtx(ctx);
   return useQuery({
@@ -18,14 +14,14 @@ function useGatewayDetail({ ctx, core }: ScreenProps, gatewayId: string | undefi
   });
 }
 
-export function GatewayDetailScreen(props: ScreenProps) {
+export function GatewayGetScreen(props: ScreenProps) {
   const navigate = useNavigate();
   const { gatewayId } = useParams();
   const detail = useGatewayDetail(props, gatewayId);
 
   return (
     <ResourceDetailScreen
-      breadcrumb={["agentcore", "gateway", gatewayId ?? ""]}
+      breadcrumb={["agentcore", "gateway", "get", gatewayId ?? ""]}
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       items={{
@@ -42,22 +38,26 @@ export function GatewayDetailScreen(props: ScreenProps) {
               {
                 name: "detail",
                 description: "show the full JSON definition",
-                onSelect: () => navigate(`${gatewayPath(gatewayId)}/json`),
+                onSelect: () =>
+                  navigate(`/agentcore/gateway/get/${encodeURIComponent(gatewayId)}/json`),
               },
               {
                 name: "targets",
                 description: "browse every Target",
-                onSelect: () => navigate(`${gatewayPath(gatewayId)}/targets`),
+                onSelect: () =>
+                  navigate(`/agentcore/gateway/target/list/${encodeURIComponent(gatewayId)}`),
               },
               {
                 name: "connectors",
-                description: "browse connector-backed Targets",
-                onSelect: () => navigate(`${gatewayPath(gatewayId)}/connectors`),
+                description: "browse configured Connectors",
+                onSelect: () =>
+                  navigate(`/agentcore/gateway/connector/list/${encodeURIComponent(gatewayId)}`),
               },
               {
                 name: "rules",
                 description: "browse routing Rules",
-                onSelect: () => navigate(`${gatewayPath(gatewayId)}/rules`),
+                onSelect: () =>
+                  navigate(`/agentcore/gateway/rule/list/${encodeURIComponent(gatewayId)}`),
               },
             ]
           : []
@@ -69,13 +69,13 @@ export function GatewayDetailScreen(props: ScreenProps) {
   );
 }
 
-export function GatewayJsonScreen(props: ScreenProps) {
+export function GatewayGetJsonScreen(props: ScreenProps) {
   const { gatewayId } = useParams();
   const detail = useGatewayDetail(props, gatewayId);
 
   return (
     <JsonDetail
-      breadcrumb={["agentcore", "gateway", gatewayId ?? "", "json"]}
+      breadcrumb={["agentcore", "gateway", "get", gatewayId ?? "", "json"]}
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data}

@@ -9,8 +9,8 @@ It gives you two ways to work, from the same binary:
 - **A scriptable CLI** — every operation is a flag-driven subcommand that emits
   JSON (`--json`), so it can be used by codeing agents and can drop cleanly into
   scripts, CI, and automation.
-- **An interactive TUI** — bare Harness, Runtime, Memory, and Identity branches
-  and leaves open their corresponding menus and selection flows.
+- **An interactive TUI** — bare Harness, Runtime, Memory, Identity, and Gateway
+  branches and leaves open their corresponding menus and selection flows.
 
 ```bash
 agentcore                      # launch the interactive TUI
@@ -26,8 +26,8 @@ responses. `agentcore` wraps all of that behind one ergonomic tool.
 
 ## Command surface
 
-Commands with operation flags run headlessly. Bare Harness, Runtime, Memory, and
-Identity branches and leaves open their interactive flows.
+Commands with operation flags run headlessly. Bare Harness, Runtime, Memory,
+Identity, and Gateway branches and leaves open their interactive flows.
 
 ```
 agentcore                          # interactive TUI
@@ -86,6 +86,9 @@ agentcore                          # interactive TUI
 │   ├── target
 │   │   ├── get                    # get a Target under a Gateway
 │   │   └── list                   # list Targets under a Gateway
+│   ├── connector
+│   │   ├── get                    # get a connector-backed Target
+│   │   └── list                   # list connector-backed Targets
 │   └── rule
 │       ├── get                    # get a Rule under a Gateway
 │       └── list                   # list Rules under a Gateway
@@ -158,6 +161,8 @@ agentcore gateway get --id <gatewayId>
 agentcore gateway list --max-results 20
 agentcore gateway target get --gateway-id <gatewayId> --target-id <targetId>
 agentcore gateway target list --gateway-id <gatewayId> --max-results 20
+agentcore gateway connector get --gateway-id <gatewayId> --id <targetId>
+agentcore gateway connector list --gateway-id <gatewayId> --max-results 20
 agentcore gateway rule get --gateway-id <gatewayId> --rule-id <ruleId>
 agentcore gateway rule list --gateway-id <gatewayId> --max-results 20
 
@@ -338,6 +343,23 @@ agentcore identity api-key-credential-provider list
 agentcore identity api-key-credential-provider get
 agentcore identity oauth2-credential-provider list
 agentcore identity oauth2-credential-provider get
+```
+
+The Gateway TUI is read-only: bare Gateway, Target, Connector, and Rule
+branches and their `get`/`list` leaves open command menus and scoped selection
+flows. Connector is presented as a separate resource experience while using
+Gateway Target operations internally.
+
+```bash
+agentcore gateway
+agentcore gateway list
+agentcore gateway get
+agentcore gateway target list
+agentcore gateway target get
+agentcore gateway connector list
+agentcore gateway connector get
+agentcore gateway rule list
+agentcore gateway rule get
 ```
 
 ---
@@ -749,9 +771,8 @@ A Husky pre-commit hook runs Prettier (via lint-staged) on staged files automati
 
 - **Cover more AgentCore resources.** The harness surface (CRUD, versions,
   endpoints, invoke, exec) is fully implemented in both the CLI and the TUI;
-  the same patterns extend naturally to gateways, the remaining read-only
-  Memory data-plane operations, browser profiles, and the other AgentCore
-  resources.
+  the same patterns extend naturally to the remaining read-only Memory
+  data-plane operations, browser profiles, and the other AgentCore resources.
 - **Implement `config`.** The `config` command is currently a stub — it should
   read/write real global settings (telemetry, log level, ...) through an
   injected config accessor.

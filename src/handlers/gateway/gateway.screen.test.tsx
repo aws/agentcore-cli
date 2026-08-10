@@ -104,10 +104,21 @@ function coreWithGateways(items: GatewaySummary[]): TestCoreClient {
   return core;
 }
 
-describe("Gateway browse", () => {
+describe("Gateway menu and list", () => {
+  test("renders the Gateway command menu without calling Core", async () => {
+    const screen = renderScreen("/agentcore/gateway");
+
+    await waitForText(screen.lastFrame, "inspect AgentCore Gateways");
+    const frame = screen.lastFrame()!;
+    for (const command of ["get", "list", "target", "connector", "rule"]) {
+      expect(frame).toContain(command);
+    }
+    expect(screen.core.gateway.calls).toEqual([]);
+  });
+
   test("renders Gateway identity and calls list with exact Core options", async () => {
     const core = coreWithGateways([gateway()]);
-    const screen = renderScreen("/agentcore/gateway", { core, endpointUrl: ENDPOINT });
+    const screen = renderScreen("/agentcore/gateway/list", { core, endpointUrl: ENDPOINT });
 
     await waitForText(screen.lastFrame, "checkout-gateway");
     const frame = screen.lastFrame()!;
@@ -128,20 +139,20 @@ describe("Gateway browse", () => {
     const loadingCore = new TestCoreClient();
     const pending = Promise.withResolvers<ListGatewaysResponse>();
     loadingCore.gateway.listGateways = async () => pending.promise;
-    const loading = renderScreen("/agentcore/gateway", { core: loadingCore });
+    const loading = renderScreen("/agentcore/gateway/list", { core: loadingCore });
 
     await waitForText(loading.lastFrame, "Loading Gateways");
     await loading.press("escape");
-    await waitForText(loading.lastFrame, "the platform for production AI agents");
+    await waitForText(loading.lastFrame, "inspect AgentCore Gateways");
     loading.unmount();
 
-    const empty = renderScreen("/agentcore/gateway");
+    const empty = renderScreen("/agentcore/gateway/list");
     await waitForText(empty.lastFrame, "No Gateways found in this Region.");
     empty.unmount();
 
     const errorCore = new TestCoreClient();
     errorCore.gateway.setError(new Error("gateway unavailable"));
-    const error = renderScreen("/agentcore/gateway", { core: errorCore });
+    const error = renderScreen("/agentcore/gateway/list", { core: errorCore });
 
     await waitForText(error.lastFrame, "gateway unavailable");
     expect(error.lastFrame()).toContain("[r] retry");
@@ -154,12 +165,12 @@ describe("Gateway browse", () => {
   test("selects a Gateway and renders only read-only hub actions", async () => {
     const core = coreWithGateways([gateway()]);
     core.gateway.setGetResponse(gatewayDetail());
-    const screen = renderScreen("/agentcore/gateway", { core, endpointUrl: ENDPOINT });
+    const screen = renderScreen("/agentcore/gateway/list", { core, endpointUrl: ENDPOINT });
 
     await waitForText(screen.lastFrame, "checkout-gateway");
     await screen.press("return");
     await waitForText(screen.lastFrame, "show the full JSON definition");
-    expect(screen.lastFrame()).toContain(`agentcore → gateway → ${GATEWAY_ID}`);
+    expect(screen.lastFrame()).toContain(`agentcore → gateway → get → ${GATEWAY_ID}`);
     const frame = screen.lastFrame()!;
     for (const action of ["detail", "targets", "connectors", "rules"]) {
       expect(frame).toContain(action);
@@ -176,7 +187,7 @@ describe("Gateway browse", () => {
   test("opens complete Gateway JSON from the detail action", async () => {
     const core = new TestCoreClient();
     core.gateway.setGetResponse(gatewayDetail());
-    const screen = renderScreen(`/agentcore/gateway/browse/${encodeURIComponent(GATEWAY_ID)}`, {
+    const screen = renderScreen(`/agentcore/gateway/get/${encodeURIComponent(GATEWAY_ID)}`, {
       core,
     });
 
@@ -187,10 +198,49 @@ describe("Gateway browse", () => {
     await screen.press("escape");
     await waitForText(screen.lastFrame, "show the full JSON definition");
   });
+
+  test("bare Gateway get redirects to the Gateway picker", async () => {
+    const core = coreWithGateways([gateway({ name: "redirected-gateway" })]);
+    const screen = renderScreen("/agentcore/gateway/get", { core });
+
+    await waitForText(screen.lastFrame, "redirected-gateway");
+    expect(core.gateway.calls[0]?.method).toBe("listGateways");
+  });
 });
 
-describe("Gateway nested browse", () => {
-  test("browses Targets and opens the selected Target JSON", async () => {
+describe("Gateway Target flow", () => {
+  test("renders the Target command menu without calling Core", async () => {
+    const screen = renderScreen("/agentcore/gateway/target");
+
+    await waitForText(screen.lastFrame, "inspect targets for an AgentCore Gateway");
+    expect(screen.lastFrame()).toContain("get");
+    expect(screen.lastFrame()).toContain("list");
+    expect(screen.core.gateway.calls).toEqual([]);
+  });
+
+  test("selects a Gateway before listing Targets", async () => {
+    const core = coreWithGateways([gateway()]);
+    core.gateway.setListTargetsResponse({
+      items: [target(TARGET_ID, "orders-target", TargetType.PASSTHROUGH)],
+    });
+    const screen = renderScreen("/agentcore/gateway/target/list", { core });
+
+    await waitForText(screen.lastFrame, "checkout-gateway");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, `agentcore → gateway → target → list → ${GATEWAY_ID}`);
+    await waitForText(screen.lastFrame, "orders-target");
+    expect(core.gateway.calls.find((call) => call.method === "listGatewayTargets")).toEqual({
+      method: "listGatewayTargets",
+      args: [
+        GATEWAY_ID,
+        undefined,
+        expect.any(Number),
+        { region: "us-east-1", endpointUrl: undefined },
+      ],
+    });
+  });
+
+  test("opens the selected Target JSON with exact selectors", async () => {
     const core = new TestCoreClient();
     core.gateway
       .setListTargetsResponse({
@@ -198,8 +248,11 @@ describe("Gateway nested browse", () => {
       })
       .setGetTargetResponse(targetDetail(TARGET_ID));
     const screen = renderScreen(
-      `/agentcore/gateway/browse/${encodeURIComponent(GATEWAY_ID)}/targets`,
-      { core, endpointUrl: ENDPOINT },
+      `/agentcore/gateway/target/list/${encodeURIComponent(GATEWAY_ID)}`,
+      {
+        core,
+        endpointUrl: ENDPOINT,
+      },
     );
 
     await waitForText(screen.lastFrame, "orders-target");
@@ -213,11 +266,77 @@ describe("Gateway nested browse", () => {
       ],
     });
     await screen.press("return");
+    await waitForText(
+      screen.lastFrame,
+      `agentcore → gateway → target → get → ${GATEWAY_ID} → ${TARGET_ID}`,
+    );
     await waitForText(screen.lastFrame, '"targetId"');
     expect(core.gateway.calls.at(-1)).toEqual({
       method: "getGatewayTarget",
       args: [GATEWAY_ID, TARGET_ID, { region: "us-east-1", endpointUrl: ENDPOINT }],
     });
+  });
+
+  test("bare Target get redirects to Gateway selection", async () => {
+    const core = coreWithGateways([gateway({ name: "target-parent" })]);
+    const screen = renderScreen("/agentcore/gateway/target/get", { core });
+
+    await waitForText(screen.lastFrame, "target-parent");
+    expect(core.gateway.calls[0]?.method).toBe("listGateways");
+  });
+
+  test("unwinds Target detail through the scoped list and Gateway picker", async () => {
+    const core = coreWithGateways([gateway()]);
+    core.gateway
+      .setListTargetsResponse({
+        items: [target(TARGET_ID, "orders-target", TargetType.PASSTHROUGH)],
+      })
+      .setGetTargetResponse(targetDetail(TARGET_ID));
+    const screen = renderScreen("/agentcore/gateway/target/list", { core });
+
+    await waitForText(screen.lastFrame, "checkout-gateway");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "orders-target");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, '"targetId"');
+
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, `agentcore → gateway → target → list → ${GATEWAY_ID}`);
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "choose a Gateway to list Targets for");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "inspect targets for an AgentCore Gateway");
+  });
+});
+
+describe("Gateway Connector flow", () => {
+  test("renders the separate Connector command menu without calling Core", async () => {
+    const screen = renderScreen("/agentcore/gateway/connector");
+
+    await waitForText(screen.lastFrame, "inspect connectors configured for an AgentCore Gateway");
+    expect(screen.lastFrame()).toContain("get");
+    expect(screen.lastFrame()).toContain("list");
+    expect(screen.core.gateway.calls).toEqual([]);
+  });
+
+  test("selects a Gateway before showing the dedicated Connector list", async () => {
+    const core = coreWithGateways([gateway()]);
+    core.gateway.setListTargetsResponse({
+      items: [
+        target(TARGET_ID, "ordinary-target", TargetType.PASSTHROUGH),
+        target(CONNECTOR_ID, "search-connector", TargetType.CONNECTOR),
+      ],
+    });
+    const screen = renderScreen("/agentcore/gateway/connector/list", { core });
+
+    await waitForText(screen.lastFrame, "checkout-gateway");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, `agentcore → gateway → connector → list → ${GATEWAY_ID}`);
+    await waitForText(screen.lastFrame, "search-connector");
+    const frame = screen.lastFrame()!;
+    expect(frame).not.toContain("ordinary-target");
+    expect(frame).toContain("updated UTC");
+    expect(frame).not.toMatch(/\btype\b/);
   });
 
   test("filters Connectors and opens the selected Connector JSON", async () => {
@@ -231,22 +350,30 @@ describe("Gateway nested browse", () => {
       })
       .setGetTargetResponse(targetDetail(CONNECTOR_ID, true));
     const screen = renderScreen(
-      `/agentcore/gateway/browse/${encodeURIComponent(GATEWAY_ID)}/connectors`,
+      `/agentcore/gateway/connector/list/${encodeURIComponent(GATEWAY_ID)}`,
       { core },
     );
 
     await waitForText(screen.lastFrame, "search-connector");
     expect(screen.lastFrame()).not.toContain("ordinary-target");
     await screen.press("return");
+    await waitForText(
+      screen.lastFrame,
+      `agentcore → gateway → connector → get → ${GATEWAY_ID} → ${CONNECTOR_ID}`,
+    );
     await waitForText(screen.lastFrame, '"targetConfiguration"');
     expect(screen.lastFrame()).toContain('"web-search"');
+    expect(core.gateway.calls.at(-1)).toEqual({
+      method: "getGatewayTarget",
+      args: [GATEWAY_ID, CONNECTOR_ID, { region: "us-east-1", endpointUrl: undefined }],
+    });
   });
 
   test("rejects a non-Connector Target opened through the Connector route", async () => {
     const core = new TestCoreClient();
     core.gateway.setGetTargetResponse(targetDetail(TARGET_ID));
     const screen = renderScreen(
-      `/agentcore/gateway/browse/${encodeURIComponent(GATEWAY_ID)}/connectors/${encodeURIComponent(TARGET_ID)}`,
+      `/agentcore/gateway/connector/get/${encodeURIComponent(GATEWAY_ID)}/${encodeURIComponent(TARGET_ID)}`,
       { core },
     );
 
@@ -254,16 +381,82 @@ describe("Gateway nested browse", () => {
     expect(screen.lastFrame()).toContain("[r] retry");
   });
 
-  test("browses Rules and opens the selected Rule JSON", async () => {
+  test("preserves Target pagination when a filtered Connector page is empty", async () => {
     const core = new TestCoreClient();
-    core.gateway.setListRulesResponse({ gatewayRules: [rule()] }).setGetRuleResponse(ruleDetail());
+    core.gateway
+      .setListTargetsResponse({
+        items: [target(TARGET_ID, "ordinary-target", TargetType.PASSTHROUGH)],
+        nextToken: "page-2",
+      })
+      .setListTargetsResponse(
+        {
+          items: [target(CONNECTOR_ID, "page-two-connector", TargetType.CONNECTOR)],
+        },
+        "page-2",
+      );
     const screen = renderScreen(
-      `/agentcore/gateway/browse/${encodeURIComponent(GATEWAY_ID)}/rules`,
+      `/agentcore/gateway/connector/list/${encodeURIComponent(GATEWAY_ID)}`,
       { core },
     );
 
+    await waitForText(screen.lastFrame, "No Connectors on this page.");
+    expect(screen.lastFrame()).toContain("page 1 · more →");
+    await screen.write("l");
+    await waitForText(screen.lastFrame, "page-two-connector");
+  });
+
+  test("bare Connector get redirects to Gateway selection", async () => {
+    const core = coreWithGateways([gateway({ name: "connector-parent" })]);
+    const screen = renderScreen("/agentcore/gateway/connector/get", { core });
+
+    await waitForText(screen.lastFrame, "connector-parent");
+    expect(core.gateway.calls[0]?.method).toBe("listGateways");
+  });
+});
+
+describe("Gateway Rule flow", () => {
+  test("renders the Rule command menu without calling Core", async () => {
+    const screen = renderScreen("/agentcore/gateway/rule");
+
+    await waitForText(screen.lastFrame, "inspect rules for an AgentCore Gateway");
+    expect(screen.lastFrame()).toContain("get");
+    expect(screen.lastFrame()).toContain("list");
+    expect(screen.core.gateway.calls).toEqual([]);
+  });
+
+  test("selects a Gateway before listing Rules", async () => {
+    const core = coreWithGateways([gateway()]);
+    core.gateway.setListRulesResponse({ gatewayRules: [rule()] });
+    const screen = renderScreen("/agentcore/gateway/rule/list", { core });
+
+    await waitForText(screen.lastFrame, "checkout-gateway");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, `agentcore → gateway → rule → list → ${GATEWAY_ID}`);
+    await waitForText(screen.lastFrame, "Route orders");
+    expect(core.gateway.calls.find((call) => call.method === "listGatewayRules")).toEqual({
+      method: "listGatewayRules",
+      args: [
+        GATEWAY_ID,
+        undefined,
+        expect.any(Number),
+        { region: "us-east-1", endpointUrl: undefined },
+      ],
+    });
+  });
+
+  test("opens the selected Rule JSON with exact selectors", async () => {
+    const core = new TestCoreClient();
+    core.gateway.setListRulesResponse({ gatewayRules: [rule()] }).setGetRuleResponse(ruleDetail());
+    const screen = renderScreen(`/agentcore/gateway/rule/list/${encodeURIComponent(GATEWAY_ID)}`, {
+      core,
+    });
+
     await waitForText(screen.lastFrame, "Route orders");
     await screen.press("return");
+    await waitForText(
+      screen.lastFrame,
+      `agentcore → gateway → rule → get → ${GATEWAY_ID} → ${RULE_ID}`,
+    );
     await waitForText(screen.lastFrame, '"ruleId"');
     expect(core.gateway.calls.at(-1)).toEqual({
       method: "getGatewayRule",
@@ -271,22 +464,26 @@ describe("Gateway nested browse", () => {
     });
   });
 
-  test("keeps nested lists empty and retryable without exposing write actions", async () => {
+  test("keeps scoped lists empty and retryable", async () => {
     const core = new TestCoreClient();
-    core.gateway.setError(new Error("targets unavailable"));
-    const screen = renderScreen(
-      `/agentcore/gateway/browse/${encodeURIComponent(GATEWAY_ID)}/targets`,
-      { core },
-    );
+    core.gateway.setError(new Error("rules unavailable"));
+    const screen = renderScreen(`/agentcore/gateway/rule/list/${encodeURIComponent(GATEWAY_ID)}`, {
+      core,
+    });
 
-    await waitForText(screen.lastFrame, "targets unavailable");
+    await waitForText(screen.lastFrame, "rules unavailable");
     expect(screen.lastFrame()).toContain("[r] retry");
-    for (const excluded of ["create", "update", "delete"]) {
-      expect(screen.lastFrame()).not.toMatch(new RegExp(`\\b${excluded}\\b`));
-    }
     core.gateway.setError(undefined);
-    core.gateway.setListTargetsResponse({ items: [] });
+    core.gateway.setListRulesResponse({ gatewayRules: [] });
     await screen.write("r");
-    await waitForText(screen.lastFrame, "This Gateway has no Targets.");
+    await waitForText(screen.lastFrame, "This Gateway has no Rules.");
+  });
+
+  test("bare Rule get redirects to Gateway selection", async () => {
+    const core = coreWithGateways([gateway({ name: "rule-parent" })]);
+    const screen = renderScreen("/agentcore/gateway/rule/get", { core });
+
+    await waitForText(screen.lastFrame, "rule-parent");
+    expect(core.gateway.calls[0]?.method).toBe("listGateways");
   });
 });

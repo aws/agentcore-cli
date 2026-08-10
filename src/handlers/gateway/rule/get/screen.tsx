@@ -4,7 +4,7 @@ import { JsonDetail } from "../../../../components/JsonDetail";
 import type { ScreenProps } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 
-export function GatewayRuleJsonScreen(props: ScreenProps) {
+export function GatewayRuleGetScreen(props: ScreenProps) {
   const { gatewayId, ruleId } = useParams();
   const opts = coreOptsFromCtx(props.ctx);
   const detail = useQuery({
@@ -15,7 +15,7 @@ export function GatewayRuleJsonScreen(props: ScreenProps) {
 
   return (
     <JsonDetail
-      breadcrumb={["agentcore", "gateway", gatewayId ?? "", "rules", ruleId ?? ""]}
+      breadcrumb={["agentcore", "gateway", "rule", "get", gatewayId ?? "", ruleId ?? ""]}
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data}

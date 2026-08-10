@@ -1,5 +1,6 @@
 import type { GatewayRuleDetail } from "@aws-sdk/client-bedrock-agentcore-control";
 import { useNavigate, useParams } from "react-router";
+import { GatewayPicker } from "../../../../components/GatewayPicker";
 import { PaginatedTablePicker } from "../../../../components/PaginatedTablePicker";
 import type { DataTableColumn } from "../../../../components/ui/data-table";
 import type { ScreenProps } from "../../../types";
@@ -37,11 +38,22 @@ export function GatewayRuleListScreen({ ctx, core }: ScreenProps) {
   const { gatewayId } = useParams();
   const opts = coreOptsFromCtx(ctx);
   const navigate = useNavigate();
-  const encodedGatewayId = encodeURIComponent(gatewayId ?? "");
+
+  if (!gatewayId) {
+    return (
+      <GatewayPicker
+        ctx={ctx}
+        core={core}
+        breadcrumb={["agentcore", "gateway", "rule", "list"]}
+        description="choose a Gateway to list Rules for"
+        onSelect={(id) => navigate(`/agentcore/gateway/rule/list/${encodeURIComponent(id)}`)}
+      />
+    );
+  }
 
   return (
     <PaginatedTablePicker
-      breadcrumb={["agentcore", "gateway", gatewayId ?? "", "rules"]}
+      breadcrumb={["agentcore", "gateway", "rule", "list", gatewayId]}
       queryKey={["gateway-rules", opts.region, gatewayId]}
       loadPage={async (token, pageSize) => {
         const response = await core.gateway.listGatewayRules(gatewayId!, token, pageSize, opts);
@@ -55,14 +67,14 @@ export function GatewayRuleListScreen({ ctx, core }: ScreenProps) {
       getValue={(row) => row.ruleId}
       onSelect={(ruleId) =>
         navigate(
-          `/agentcore/gateway/browse/${encodedGatewayId}/rules/${encodeURIComponent(ruleId)}`,
+          `/agentcore/gateway/rule/get/${encodeURIComponent(gatewayId)}/${encodeURIComponent(ruleId)}`,
         )
       }
-      onBack={() => navigate(`/agentcore/gateway/browse/${encodedGatewayId}`)}
-      loadingMessage="Loading Gateway Rules…"
-      errorMessage={(error) => `Error: ${error.message}`}
+      onBack={() => navigate(-1)}
+      loadingMessage={`Loading Rules for Gateway ${gatewayId}…`}
+      errorMessage={(error) => `Error loading Rules for Gateway ${gatewayId}: ${error.message}`}
       emptyMessage="This Gateway has no Rules."
-      emptyPageMessage="No Rules on this page."
+      emptyPageMessage={`No Rules on this page for Gateway ${gatewayId}.`}
     />
   );
 }
