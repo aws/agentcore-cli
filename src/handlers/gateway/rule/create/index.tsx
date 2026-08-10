@@ -19,8 +19,16 @@ export const createCreateGatewayRuleHandler = (core: Core, io: AppIO) =>
         "Rule priority from 1 to 1000000",
         z.number().int().min(1).max(1_000_000).optional(),
       ),
-      flag("conditions", "Rule conditions (JSON Condition[])", z.string().optional()),
-      flag("actions", "Rule actions (JSON Action[])", z.string().optional()),
+      flag(
+        "conditions",
+        "Rule conditions (JSON Condition[]; inline, file://<path>, or - for stdin)",
+        z.string().optional(),
+      ),
+      flag(
+        "actions",
+        "Rule actions (JSON Action[]; inline, file://<path>, or - for stdin)",
+        z.string().optional(),
+      ),
       flag("description", "Rule description", z.string().optional()),
     ],
     handle: async (ctx, flags) => {

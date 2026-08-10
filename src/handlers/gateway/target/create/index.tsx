@@ -32,7 +32,11 @@ export const createCreateGatewayTargetHandler = (core: Core, io: AppIO) =>
         "complete Target configuration (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
       ),
-      flag("tool-schema", "MCP tool schema source", z.string().optional()),
+      flag(
+        "tool-schema",
+        "MCP tool schema (inline JSON, file://<path>, - for stdin, or s3:// URI)",
+        z.string().optional(),
+      ),
       flag(
         "credential-provider-configurations",
         "outbound credentials (JSON array; inline, file://<path>, or - for stdin)",

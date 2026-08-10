@@ -55,7 +55,7 @@ export const createCreateGatewayHandler = (core: Core, io: AppIO) =>
       flag("exception-level", "exception detail level: debug", z.enum(["debug"]).optional()),
       flag(
         "tags",
-        "tags as key=value (repeatable) or a JSON object",
+        "tags as repeated key=value or a JSON object (inline, file://<path>, or - for stdin)",
         z.array(z.string()).optional(),
       ),
       flag("client-token", "idempotency token", z.string().optional()),
