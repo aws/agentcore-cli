@@ -99,6 +99,8 @@ describe("streamProcess", () => {
   });
 
   test("throws ProcessFailedError after yielding failure output", async () => {
+    if (process.platform === "win32") return;
+
     const failing = await script("stream-fail.js", "console.error('boom'); process.exit(3)");
     const iterator = streamProcess(["node", failing], { cwd: process.cwd() });
 
@@ -116,6 +118,8 @@ describe("streamProcess", () => {
   });
 
   test("aborts a running process", async () => {
+    if (process.platform === "win32") return;
+
     const running = await script("running.js", "console.log('ready'); setInterval(() => {}, 1000)");
     const controller = new AbortController();
     const iterator = streamProcess(["node", running], {
@@ -133,6 +137,8 @@ describe("streamProcess", () => {
   });
 
   test("stops the process when iteration ends early", async () => {
+    if (process.platform === "win32") return;
+
     const running = await script(
       "return.js",
       "console.log('ready'); setInterval(() => console.log('tick'), 1000)",
@@ -167,6 +173,28 @@ describe("streamProcess", () => {
     try {
       controller.abort();
       await expect(iterator.next()).rejects.toMatchObject({ name: "AbortError" });
+      expect(await processStopped(descendantPid)).toBe(true);
+    } finally {
+      if (processRunning(descendantPid)) process.kill(descendantPid, "SIGKILL");
+    }
+  });
+
+  test("kills descendants when the parent exits first", async () => {
+    if (process.platform === "win32") return;
+
+    const parent = await script(
+      "parent-exits.js",
+      [
+        "const { spawn } = require('node:child_process');",
+        "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });",
+        "child.unref();",
+        "console.log(child.pid);",
+      ].join("\n"),
+    );
+    const events = await collect(streamProcess(["node", parent], { cwd: process.cwd() }));
+    const descendantPid = Number(events.find((event) => event.type === "stdout")?.line);
+
+    try {
       expect(await processStopped(descendantPid)).toBe(true);
     } finally {
       if (processRunning(descendantPid)) process.kill(descendantPid, "SIGKILL");

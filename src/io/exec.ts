@@ -151,6 +151,12 @@ export async function* streamProcess(
     wake?.();
     wake = undefined;
   };
+  const finish = () => {
+    if (closed) return;
+    closed = true;
+    resolveClosed();
+    notify();
+  };
   const push = (event: ProcessEvent) => {
     if (!event.line) return;
     events.push(event);
@@ -174,14 +180,12 @@ export async function* streamProcess(
 
   child.once("error", (error) => {
     spawnError = error;
-    notify();
+    finish();
   });
   child.once("close", (code, signal) => {
-    closed = true;
     exitCode = code;
     exitSignal = signal;
-    resolveClosed();
-    notify();
+    finish();
   });
   options.signal?.addEventListener("abort", terminate, { once: true });
 
@@ -218,7 +222,7 @@ export async function* streamProcess(
       terminate();
       await closedPromise;
     }
-    if (terminating && processTreeAlive(child)) killTree(child, "SIGKILL");
+    if (processTreeAlive(child)) killTree(child, "SIGKILL");
     if (killTimer) clearTimeout(killTimer);
   }
 }
