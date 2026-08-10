@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import stringWidth from "string-width";
+import { gatewayConnectorColumns } from "../../GatewayConnectorPicker";
+import { gatewayColumns } from "../../GatewayPicker";
+import { gatewayRuleColumns } from "../../GatewayRulePicker";
+import { gatewayTargetColumns } from "../../GatewayTargetPicker";
 import { harnessEndpointColumns } from "../../HarnessEndpointPicker";
 import { harnessColumns } from "../../HarnessPicker";
 import { harnessVersionColumns } from "../../HarnessVersionPicker";
@@ -16,6 +20,10 @@ import { memoryColumns } from "../../MemoryPicker";
 
 const widths = [40, 60, 80, 100, 120, 160, 200];
 const flexConfigs = [
+  { name: "Gateway", columns: gatewayColumns, flexIndex: 0 },
+  { name: "Gateway Target", columns: gatewayTargetColumns, flexIndex: 0 },
+  { name: "Gateway Connector", columns: gatewayConnectorColumns, flexIndex: 0 },
+  { name: "Gateway Rule", columns: gatewayRuleColumns, flexIndex: 2 },
   { name: "Runtime", columns: runtimeColumns, flexIndex: 0 },
   { name: "Harness", columns: harnessColumns, flexIndex: 0 },
   { name: "Harness endpoint", columns: harnessEndpointColumns, flexIndex: 0 },
