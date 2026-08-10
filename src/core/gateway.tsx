@@ -19,6 +19,7 @@ import {
   type ListGatewaysResponse,
   type ListGatewayTargetsResponse,
   type TargetConfiguration,
+  type TargetSummary,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { InputValidationError } from "../errors";
 import type {
@@ -119,11 +120,21 @@ export class GatewayClient implements CoreGatewayClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListGatewayTargetsResponse> {
-    const response = await this.listGatewayTargets(gatewayId, nextToken, maxResults, options);
-    return {
-      ...response,
-      items: response.items?.filter((target) => target.targetType === TargetType.CONNECTOR),
-    };
+    const items: TargetSummary[] = [];
+    let token = nextToken;
+
+    while (true) {
+      const remaining = maxResults === undefined ? undefined : maxResults - items.length;
+      const response = await this.listGatewayTargets(gatewayId, token, remaining, options);
+      items.push(
+        ...(response.items ?? []).filter((target) => target.targetType === TargetType.CONNECTOR),
+      );
+      const full = maxResults === undefined ? items.length > 0 : items.length >= maxResults;
+      if (full || response.nextToken === undefined) {
+        return { ...response, items };
+      }
+      token = response.nextToken;
+    }
   }
 
   async getGatewayRule(

@@ -11,6 +11,14 @@ import { GatewayClient } from "./gateway";
 
 const options = { region: "us-west-2", endpointUrl: "https://agentcore.example.test" };
 
+function connector(targetId: string): TargetSummary {
+  return { targetId, targetType: TargetType.CONNECTOR } as TargetSummary;
+}
+
+function ordinary(targetId: string): TargetSummary {
+  return { targetId, targetType: TargetType.MCP_SERVER } as TargetSummary;
+}
+
 function gatewayClient(
   send: (command: GetGatewayTargetCommand | ListGatewayTargetsCommand) => Promise<unknown>,
 ): GatewayClient {
@@ -20,15 +28,8 @@ function gatewayClient(
 }
 
 describe("GatewayClient Connector facade", () => {
-  test("lists only Connector Targets and preserves the service token", async () => {
-    const connector = {
-      targetId: "connector-1",
-      targetType: TargetType.CONNECTOR,
-    } as TargetSummary;
-    const ordinary = {
-      targetId: "target-1",
-      targetType: TargetType.MCP_SERVER,
-    } as TargetSummary;
+  test("filters Connector Targets from the final service page", async () => {
+    const connectorTarget = connector("connector-1");
     const client = gatewayClient(async (command) => {
       expect(command).toBeInstanceOf(ListGatewayTargetsCommand);
       expect(command.input).toEqual({
@@ -36,15 +37,106 @@ describe("GatewayClient Connector facade", () => {
         nextToken: "page-2",
         maxResults: 10,
       });
-      return { items: [connector, ordinary], nextToken: "page-3" };
+      return { items: [connectorTarget, ordinary("target-1")] };
     });
 
     await expect(client.listGatewayConnectors("gateway-1", "page-2", 10, options)).resolves.toEqual(
       {
-        items: [connector],
-        nextToken: "page-3",
+        items: [connectorTarget],
       },
     );
+  });
+
+  test("fills a Connector page without reading past the returned token", async () => {
+    const requests: unknown[] = [];
+    const connectors = [
+      connector("connector-1"),
+      connector("connector-2"),
+      connector("connector-3"),
+    ];
+    const client = gatewayClient(async (command) => {
+      if (!(command instanceof ListGatewayTargetsCommand)) {
+        throw new Error("expected ListGatewayTargetsCommand");
+      }
+      requests.push(command.input);
+      switch (command.input.nextToken) {
+        case undefined:
+          return {
+            items: [ordinary("target-1"), connectors[0], ordinary("target-2")],
+            nextToken: "page-2",
+          };
+        case "page-2":
+          return {
+            items: [ordinary("target-3"), connectors[1]],
+            nextToken: "page-3",
+          };
+        case "page-3":
+          return { items: [connectors[2]], nextToken: "page-4" };
+        default:
+          throw new Error(`unexpected token ${command.input.nextToken}`);
+      }
+    });
+
+    await expect(client.listGatewayConnectors("gateway-1", undefined, 3, options)).resolves.toEqual(
+      {
+        items: connectors,
+        nextToken: "page-4",
+      },
+    );
+    expect(requests).toEqual([
+      { gatewayIdentifier: "gateway-1", nextToken: undefined, maxResults: 3 },
+      { gatewayIdentifier: "gateway-1", nextToken: "page-2", maxResults: 2 },
+      { gatewayIdentifier: "gateway-1", nextToken: "page-3", maxResults: 1 },
+    ]);
+  });
+
+  test("returns a partial Connector page when Targets are exhausted", async () => {
+    const connectorTarget = connector("connector-1");
+    const requests: unknown[] = [];
+    const client = gatewayClient(async (command) => {
+      if (!(command instanceof ListGatewayTargetsCommand)) {
+        throw new Error("expected ListGatewayTargetsCommand");
+      }
+      requests.push(command.input);
+      return command.input.nextToken === undefined
+        ? { items: [ordinary("target-1"), connectorTarget], nextToken: "page-2" }
+        : { items: [ordinary("target-2")] };
+    });
+
+    await expect(client.listGatewayConnectors("gateway-1", undefined, 3, options)).resolves.toEqual(
+      {
+        items: [connectorTarget],
+      },
+    );
+    expect(requests).toEqual([
+      { gatewayIdentifier: "gateway-1", nextToken: undefined, maxResults: 3 },
+      { gatewayIdentifier: "gateway-1", nextToken: "page-2", maxResults: 2 },
+    ]);
+  });
+
+  test("uses service-default pages when maxResults is omitted", async () => {
+    const connectorTarget = connector("connector-1");
+    const requests: unknown[] = [];
+    const client = gatewayClient(async (command) => {
+      if (!(command instanceof ListGatewayTargetsCommand)) {
+        throw new Error("expected ListGatewayTargetsCommand");
+      }
+      requests.push(command.input);
+      return command.input.nextToken === undefined
+        ? { items: [ordinary("target-1")], nextToken: "page-2" }
+        : { items: [connectorTarget, ordinary("target-2")], nextToken: "page-3" };
+    });
+
+    await expect(
+      client.listGatewayConnectors("gateway-1", undefined, undefined, options),
+    ).resolves.toEqual({
+      items: [connectorTarget],
+      nextToken: "page-3",
+    });
+    expect(requests).toEqual([
+      { gatewayIdentifier: "gateway-1", nextToken: undefined, maxResults: undefined },
+      { gatewayIdentifier: "gateway-1", nextToken: "page-2", maxResults: undefined },
+    ]);
   });
 
   test("gets a Connector-backed Target", async () => {

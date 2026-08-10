@@ -380,28 +380,13 @@ describe("Gateway Connector flow", () => {
     expect(screen.lastFrame()).toContain("[r] retry");
   });
 
-  test("preserves Connector pagination when a page is empty", async () => {
-    const core = new TestCoreClient();
-    core.gateway
-      .setListConnectorsResponse({
-        items: [],
-        nextToken: "page-2",
-      })
-      .setListConnectorsResponse(
-        {
-          items: [target(CONNECTOR_ID, "page-two-connector", TargetType.CONNECTOR)],
-        },
-        "page-2",
-      );
+  test("shows the Gateway-level empty state when no Connectors exist", async () => {
     const screen = renderScreen(
       `/agentcore/gateway/connector/list/${encodeURIComponent(GATEWAY_ID)}`,
-      { core },
     );
 
-    await waitForText(screen.lastFrame, "No Connectors on this page.");
-    expect(screen.lastFrame()).toContain("page 1 · more →");
-    await screen.write("l");
-    await waitForText(screen.lastFrame, "page-two-connector");
+    await waitForText(screen.lastFrame, "This Gateway has no Connectors.");
+    expect(screen.lastFrame()).not.toContain("more →");
   });
 
   test("bare Connector get redirects to Gateway selection", async () => {
