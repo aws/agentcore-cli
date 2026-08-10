@@ -20,15 +20,20 @@ export function isTerminalStatus(status?: string): boolean {
 
 // GetLogEvents returns at most 1 MB / 10,000 events per call, so a job with many
 // results spans multiple pages. This caps the page loop as a safety valve against
-// a non-advancing token (see below); at 10k events/page it allows ~1M results,
-// far beyond the 500-session job limit.
+// a non-advancing token (see below). At 10k events/page it allows ~1M results, but
+// the 1 MB limit binds first — large explanations can cap a page well under 10k, so
+// this is not a "far beyond any real job" ceiling. Hitting it means the results are
+// truncated, which we surface as an error (see below) rather than silently
+// returning a partial list as if complete.
 const MAX_RESULT_PAGES = 100;
 
 // readEvaluationResults reads and parses the per-session/-trace/-tool scores from
 // a completed batch evaluation's CloudWatch result stream, following pagination to
-// completion. The caller supplies the log group and stream name from the job's
-// GetBatchEvaluation outputConfig (the service-selected values — we do not derive
-// the stream name, since its format is not part of the SDK contract).
+// completion. Throws if the stream exceeds MAX_RESULT_PAGES (results would be
+// truncated) — see the throw site. The caller supplies the log group and stream
+// name from the job's GetBatchEvaluation outputConfig (the service-selected values
+// — we do not derive the stream name, since its format is not part of the SDK
+// contract).
 export async function readEvaluationResults(
   logs: CloudWatchLogsClient,
   logGroupName: string,
@@ -63,10 +68,15 @@ export async function readEvaluationResults(
     token = next;
   }
 
-  logger.warn(
-    `stopped reading batch-evaluation results after ${MAX_RESULT_PAGES} pages; results may be truncated`,
+  // Cap reached with the token still advancing: the stream has more pages than we
+  // read, so `results` is truncated. Throw rather than return the partial list —
+  // getBatchEvaluation catches this into `resultsError`, which the CLI surfaces as
+  // a stderr warning (stdout metadata stays clean), the same customer-visible path
+  // as any other CloudWatch read failure. A silent partial list would read as
+  // complete.
+  throw new Error(
+    `batch-evaluation results exceed ${MAX_RESULT_PAGES} CloudWatch pages; retrieved ${results.length} results are incomplete`,
   );
-  return results;
 }
 
 // parseEvaluationLogEvent turns one CloudWatch result-log message into a result

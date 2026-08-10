@@ -156,6 +156,29 @@ test("readEvaluationResults skips lines without an evaluation name", async () =>
   expect(results).toEqual([]);
 });
 
+test("readEvaluationResults throws (not silently truncates) when it hits the page cap", async () => {
+  // Token advances on every call, so the loop never detects exhaustion and runs
+  // into MAX_RESULT_PAGES. It must throw so the caller surfaces truncation, rather
+  // than returning the accumulated partial list as if it were complete.
+  let call = 0;
+  const everAdvancing = {
+    send: async () => ({
+      events: [
+        {
+          message: JSON.stringify({
+            attributes: { "gen_ai.evaluation.name": "Builtin.Correctness" },
+          }),
+        },
+      ],
+      nextForwardToken: `t-${call++}`, // always changes → never exhausts
+    }),
+  } as unknown as CloudWatchLogsClient;
+
+  await expect(
+    readEvaluationResults(everAdvancing, "lg", "ls", createSilentLogger()),
+  ).rejects.toThrow(/incomplete/);
+});
+
 test("parseEvaluationLogEvent warns on and skips an unparseable line", () => {
   const warnings: string[] = [];
   const logger = createSilentLogger();
