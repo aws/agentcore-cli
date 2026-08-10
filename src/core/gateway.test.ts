@@ -289,6 +289,9 @@ function recordingGatewayClient(responses: unknown[]): {
     iam: () => {
       throw new Error("unexpected IAM client");
     },
+    logs: () => {
+      throw new Error("unexpected Logs client");
+    },
   };
   return { client: new GatewayClient(clients), commands };
 }
