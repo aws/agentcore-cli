@@ -34,6 +34,14 @@ const FIXTURE_JOB_ID = "GTProbe2_1786034545579-8ffefc851e";
 // ValidationException short-circuiting the lookup.
 const MISSING_JOB_ID = "missing-batch-eval-0000000000";
 
+// evaluate is a WRITE: a record run resolves this agent (GetAgentRuntime) and
+// submits a real StartBatchEvaluation job that runs to completion — there is no
+// undo, same as the get/list fixtures pinning a real job. Re-recording needs the
+// agent to still exist and a unique --name (the service rejects a duplicate), so
+// bump FIXTURE_EVAL_NAME when re-recording.
+const FIXTURE_EVAL_AGENT = "demoEval_demoAgent-qGEpAAE68u";
+const FIXTURE_EVAL_NAME = "golden_batch_evaluate";
+
 function createFixtureCore(): CoreClient {
   const { createControlClient, createDataClient, createIamClient, createLogsClient } =
     fixtureFactories(FIXTURES);
@@ -105,5 +113,27 @@ describe("eval batch-evaluation (fixture-backed)", () => {
     await expect(
       run(["eval", "batch-evaluation", "get", "--id", MISSING_JOB_ID, "--json"]),
     ).rejects.toThrow();
+  });
+
+  test("evaluate submits a job for the --agent source", async () => {
+    // Records GetAgentRuntimeCommand.<hash>.json (agent → runtime resolution) AND
+    // StartBatchEvaluationCommand.<hash>.json (the submitted job).
+    const stdout = await run([
+      "eval",
+      "batch-evaluation",
+      "evaluate",
+      "--agent",
+      FIXTURE_EVAL_AGENT,
+      "--evaluator",
+      "Builtin.Helpfulness",
+      "--name",
+      FIXTURE_EVAL_NAME,
+      "--json",
+    ]);
+
+    matchGolden(FIXTURES, "evaluate.golden.json", stdout);
+    const job = JSON.parse(stdout);
+    expect(job.batchEvaluationId).toBeTruthy();
+    expect(job.status).toBeTruthy();
   });
 });

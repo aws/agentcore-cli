@@ -1,0 +1,43 @@
+{
+  "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:runtime/demoEval_demoAgent-qGEpAAE68u",
+  "agentRuntimeName": "demoEval_demoAgent",
+  "agentRuntimeId": "demoEval_demoAgent-qGEpAAE68u",
+  "agentRuntimeVersion": "1",
+  "createdAt": {
+    "$date": "2026-07-16T17:25:43.408Z"
+  },
+  "lastUpdatedAt": {
+    "$date": "2026-07-16T17:25:56.842Z"
+  },
+  "roleArn": "arn:aws:iam::725476964917:role/AgentCore-demoEval-defaul-ApplicationAgentDemoAgent-dvtfHphOLpXL",
+  "networkConfiguration": {
+    "networkMode": "PUBLIC"
+  },
+  "status": "READY",
+  "lifecycleConfiguration": {
+    "idleRuntimeSessionTimeout": 900,
+    "maxLifetime": 28800
+  },
+  "description": "AgentCore Runtime: demoEval_demoAgent",
+  "workloadIdentityDetails": {
+    "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:workload-identity-directory/default/workload-identity/demoEval_demoAgent-qGEpAAE68u"
+  },
+  "agentRuntimeArtifact": {
+    "codeConfiguration": {
+      "code": {
+        "s3": {
+          "bucket": "cdk-hnb659fds-assets-725476964917-us-west-2",
+          "prefix": "57d7f4c7b51efde95d53b6c1c2d8aea9fa5d116ab4a0eb0dc53a6656a143ab30.zip"
+        }
+      },
+      "runtime": "PYTHON_3_14",
+      "entryPoint": [
+        "opentelemetry-instrument",
+        "main.py"
+      ]
+    }
+  },
+  "metadataConfiguration": {
+    "requireMMDSV2": true
+  }
+}
