@@ -25,10 +25,15 @@ async function run(args: string[], opts?: { core?: TestCoreClient }) {
   return { io, core };
 }
 
-describe.each(["remove", "dev", "deploy", "status"])("project %s", (command) => {
+describe.each(["remove", "deploy", "status"])("project %s", (command) => {
   test("throws because it is not implemented yet", async () => {
     await expect(run([command])).rejects.toThrow(/not implemented/);
   });
+});
+
+test("project dev requires an AgentCore project", async () => {
+  await inTempDirectory();
+  await expect(run(["dev"])).rejects.toThrow(/No AgentCore project found/);
 });
 
 const originalCwd = process.cwd();

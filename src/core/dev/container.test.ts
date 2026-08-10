@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { InputValidationError, InvalidEnvironmentError } from "../../errors";
@@ -61,6 +61,8 @@ function harness(
   config: {
     available?: (tool: string, probeArgs?: string[]) => Promise<boolean>;
     stream?: StreamBehavior;
+    awsDirectory?: string;
+    processEnv?: NodeJS.ProcessEnv;
   } = {},
 ) {
   const calls: ProcessCall[] = [];
@@ -77,6 +79,11 @@ function harness(
         (async (tool) => {
           return tool === "docker";
         }),
+      awsDirectory: config.awsDirectory ?? join(tmpdir(), "agentcore-container-no-aws"),
+      processEnv: config.processEnv ?? {
+        AWS_ACCESS_KEY_ID: "test-access-key",
+        AWS_SECRET_ACCESS_KEY: "test-secret-key",
+      },
     }),
   };
 }
@@ -189,17 +196,65 @@ describe("ContainerDevRunner", () => {
       "-p",
       `127.0.0.1:3000:${containerPort}`,
       "-e",
-      "API_KEY=super-secret",
+      "AWS_ACCESS_KEY_ID",
       "-e",
-      `PORT=${containerPort}`,
+      "AWS_SECRET_ACCESS_KEY",
       "-e",
-      "LOCAL_DEV=1",
-      ...(protocol === "MCP" ? ["-e", "FASTMCP_PORT=8000"] : []),
+      "API_KEY",
+      "-e",
+      "PORT",
+      "-e",
+      "LOCAL_DEV",
+      ...(protocol === "MCP" ? ["-e", "FASTMCP_PORT"] : []),
       imageTag(root),
     ]);
-    expect(run.options.env).toBe(process.env);
-    expect(run.options.redactedCommand).toContain("API_KEY=<redacted>");
-    expect(run.options.redactedCommand?.join(" ")).not.toContain("super-secret");
+    expect(run.options.env).toMatchObject({
+      AWS_ACCESS_KEY_ID: "test-access-key",
+      AWS_SECRET_ACCESS_KEY: "test-secret-key",
+      API_KEY: "super-secret",
+      PORT: String(containerPort),
+      LOCAL_DEV: "1",
+      ...(protocol === "MCP" ? { FASTMCP_PORT: "8000" } : {}),
+    });
+    expect(run.command.join(" ")).not.toContain("super-secret");
+    expect(run.command.join(" ")).not.toContain("test-secret-key");
+  });
+
+  test("uses a shared AWS config and rejects missing credentials", async () => {
+    const projectRuntime = runtime();
+    const root = await projectRoot(projectRuntime);
+    const awsDirectory = join(root, ".aws");
+    await mkdir(awsDirectory);
+    await writeFile(join(awsDirectory, "config"), "[profile sandbox]\nregion=us-east-1\n");
+    const { calls, runner } = harness({
+      awsDirectory,
+      processEnv: { AWS_PROFILE: "sandbox", AWS_REGION: "us-east-1" },
+    });
+
+    await collect(runner.run(input(root, projectRuntime)));
+
+    const run = commandCall(calls, "run");
+    expect(run.command).toContain(`${awsDirectory}:/aws-config:ro`);
+    expect(run.command).toContain("AWS_PROFILE");
+    expect(run.command).toContain("AWS_CONFIG_FILE");
+    expect(run.options.env).toMatchObject({
+      AWS_PROFILE: "sandbox",
+      AWS_REGION: "us-east-1",
+      AWS_CONFIG_FILE: "/aws-config/config",
+      AWS_SHARED_CREDENTIALS_FILE: "/aws-config/credentials",
+    });
+    expect(run.command.join(" ")).not.toContain("sandbox");
+
+    const missing = harness({
+      awsDirectory: join(root, "missing-aws"),
+      processEnv: {},
+    });
+    const missingCredentials = collect(missing.runner.run(input(root, projectRuntime)));
+    await expect(missingCredentials).rejects.toBeInstanceOf(InvalidEnvironmentError);
+    await expect(missingCredentials).rejects.toThrow(
+      "Unable to resolve AWS credentials for the container",
+    );
+    expect(missing.calls).toHaveLength(0);
   });
 
   test("preserves an existing build context .dockerignore", async () => {
@@ -244,7 +299,7 @@ describe("ContainerDevRunner", () => {
     );
   });
 
-  test("keeps app variables out of the container CLI environment", async () => {
+  test("supplies app variable values through the container CLI environment", async () => {
     const projectRuntime = runtime();
     const root = await projectRoot(projectRuntime);
     const { calls, runner } = harness();
@@ -254,9 +309,9 @@ describe("ContainerDevRunner", () => {
     await collect(runner.run(runInput));
 
     const run = commandCall(calls, "run");
-    expect(run.command).toContain("DOCKER_HOST=tcp://application-value");
-    expect(run.options.env).toBe(process.env);
-    expect(run.options.redactedCommand).toContain("DOCKER_HOST=<redacted>");
+    expect(run.command).toContain("DOCKER_HOST");
+    expect(run.command.join(" ")).not.toContain("tcp://application-value");
+    expect(run.options.env?.DOCKER_HOST).toBe("tcp://application-value");
   });
 
   test("selects the first tool that supports container builds", async () => {
@@ -407,6 +462,33 @@ describe("ContainerDevRunner", () => {
     ).rejects.toMatchObject({ name: "AbortError" });
 
     expect(calls.map(({ command }) => command[1])).toEqual(["rm"]);
+  });
+
+  test("rejects build contexts outside the project root, including symlinks", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agentcore-container-"));
+    const outside = await mkdtemp(join(tmpdir(), "agentcore-container-outside-"));
+    tempDirectories.push(root, outside);
+    await symlink(outside, join(root, "linked"), process.platform === "win32" ? "junction" : "dir");
+    const probes: string[] = [];
+
+    for (const buildContextPath of ["..", "linked"]) {
+      const { calls, runner } = harness({
+        available: async (tool) => {
+          probes.push(tool);
+          return true;
+        },
+      });
+
+      const escapedContext = collect(runner.run(input(root, runtime({ buildContextPath }))));
+      await expect(escapedContext).rejects.toBeInstanceOf(InputValidationError);
+      await expect(escapedContext).rejects.toThrow(
+        "container build context must be within the project root",
+      );
+      expect(calls).toHaveLength(0);
+    }
+
+    expect(probes).toHaveLength(0);
+    await expect(readFile(join(outside, ".dockerignore"), "utf8")).rejects.toThrow();
   });
 
   test("rejects a build context that is not a directory", async () => {

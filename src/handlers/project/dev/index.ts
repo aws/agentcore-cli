@@ -1,11 +1,123 @@
-import { createHandler } from "../../../router";
-import { NotImplementedError } from "../../../errors";
+import z from "zod";
+import { resolveDevPort } from "../../../core/dev/port";
+import type { ProjectRuntime } from "../../../projectSchemas/runtime";
+import {
+  CommandInterruptedError,
+  InputValidationError,
+  ResourceNotFoundError,
+} from "../../../errors";
+import type { AppIO, PortChecker } from "../../../io";
+import { createHandler, flag, ProjectKey } from "../../../router";
+import { JsonRendererKey, type JsonRenderer } from "../../../tui";
+import { JsonKey, RegionKey } from "../../keys";
+import type { Project } from "../types";
+import type { DevEnvironmentLoader } from "./environment";
+import type { DevEvent, DevRunner } from "./types";
 
-export const createDevProjectHandler = () =>
+export type DevProjectHandlerConfig = {
+  io: AppIO;
+  runners: { CodeZip: DevRunner; Container: DevRunner };
+  loadDevEnvironment: DevEnvironmentLoader;
+  checkPort: PortChecker;
+};
+
+function selectRuntime(project: Project, name?: string): ProjectRuntime {
+  if (project.runtimes.length === 0) {
+    throw new InputValidationError(
+      "This project has no runtimes. Add a runtime to agentcore/agentcore.json and retry.",
+    );
+  }
+  const available = project.runtimes.map(({ name }) => name).join(", ");
+
+  if (name) {
+    const runtime = project.runtimes.find((candidate) => candidate.name === name);
+    if (runtime) return runtime;
+    throw new ResourceNotFoundError(
+      `Runtime '${name}' was not found. Available runtimes: ${available}.`,
+    );
+  }
+
+  if (project.runtimes.length === 1) return project.runtimes[0]!;
+  throw new InputValidationError(
+    `Multiple runtimes found. Use --agent to select one. Available runtimes: ${available}.`,
+  );
+}
+
+function renderEvent(io: AppIO, event: DevEvent, json?: JsonRenderer): void {
+  if (json) {
+    json.renderJsonLine(event);
+    return;
+  }
+
+  const output = event.type === "stdout" ? io.stdout : io.stderr;
+  output.write(`${event.type === "status" ? event.message : event.line}\n`);
+}
+
+export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
   createHandler({
     name: "dev",
     description: "run the project locally for development",
-    handle: async () => {
-      throw new NotImplementedError("agentcore project dev is not implemented yet");
+    flags: [
+      flag("agent", "runtime to run", z.string().optional()),
+      flag(
+        "port",
+        "port for the development server",
+        z.coerce.number().int().min(1).max(65535).optional(),
+      ),
+    ],
+    handle: async (ctx, flags) => {
+      const controller = new AbortController();
+      const json = ctx.require(JsonKey) ? ctx.require(JsonRendererKey) : undefined;
+      const interrupt = () => {
+        if (controller.signal.aborted) return;
+        config.io.stderr.write("Shutting down…\n");
+        controller.abort();
+      };
+
+      const signals = ["SIGINT", "SIGTERM"] as const;
+      for (const signal of signals) process.on(signal, interrupt);
+      try {
+        const project = ctx.require(ProjectKey);
+        const runtime = selectRuntime(project, flags.agent);
+        const devPort = await resolveDevPort(
+          runtime.protocol,
+          flags.port,
+          config.checkPort,
+          controller.signal,
+        );
+        if (devPort.port !== devPort.requestedPort) {
+          renderEvent(
+            config.io,
+            {
+              type: "status",
+              message: `Port ${devPort.requestedPort} is in use; using ${devPort.port}.`,
+            },
+            json,
+          );
+        }
+
+        const { env } = await config.loadDevEnvironment({
+          projectRoot: project.rootPath,
+          runtime,
+          region: ctx.require(RegionKey),
+        });
+        controller.signal.throwIfAborted();
+
+        const runner = config.runners[runtime.build];
+        for await (const event of runner.run({
+          runtime,
+          projectRoot: project.rootPath,
+          port: devPort.port,
+          env,
+          signal: controller.signal,
+        })) {
+          renderEvent(config.io, event, json);
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) throw error;
+        throw new CommandInterruptedError(error, true);
+      } finally {
+        for (const signal of signals) process.removeListener(signal, interrupt);
+      }
     },
   });

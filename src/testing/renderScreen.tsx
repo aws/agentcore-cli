@@ -43,7 +43,7 @@ function baseContext(core: TestCoreClient, endpointUrl?: string): Context {
     .withValue(EndpointKey, endpointUrl)
     .withValue(JsonKey, false)
     .withValue(DebugKey, false)
-    .withValue(JsonRendererKey, { renderJson: () => {} });
+    .withValue(JsonRendererKey, { renderJson: () => {}, renderJsonLine: () => {} });
 }
 
 // testQueryClient returns a QueryClient with retries and caching disabled so

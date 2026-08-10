@@ -1,7 +1,7 @@
 import { expect, spyOn, test } from "bun:test";
 import { CommanderError } from "commander";
 
-import { AgentCoreCLIError, InputValidationError } from "../errors";
+import { AgentCoreCLIError, CommandInterruptedError, InputValidationError } from "../errors";
 import { ExitCode, runRunnable, runWithExitCode, type Runnable } from "./index.tsx";
 
 async function captureErrors(run: () => Promise<number>) {
@@ -88,6 +88,12 @@ test.each([
     ),
     ExitCode.INTERRUPTED,
     ["AbortError: The operation was aborted"],
+  ],
+  [
+    "reported command interruption",
+    new CommandInterruptedError(undefined, true),
+    ExitCode.INTERRUPTED,
+    [],
   ],
   [
     "Commander parse failure",
