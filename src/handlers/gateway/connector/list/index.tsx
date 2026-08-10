@@ -1,4 +1,3 @@
-import { TargetType } from "@aws-sdk/client-bedrock-agentcore-control";
 import z from "zod";
 import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
@@ -20,16 +19,13 @@ export const createListGatewayConnectorsHandler = (core: Core) =>
         throw new InputValidationError("required option '--gateway-id <gateway-id>' not specified");
       }
 
-      const response = await core.gateway.listGatewayTargets(
+      const response = await core.gateway.listGatewayConnectors(
         flags["gateway-id"],
         flags["next-token"],
         flags["max-results"],
         coreOptsFromCtx(ctx),
       );
 
-      ctx.require(JsonRendererKey).renderJson({
-        ...response,
-        items: response.items?.filter((target) => target.targetType === TargetType.CONNECTOR),
-      });
+      ctx.require(JsonRendererKey).renderJson(response);
     },
   });

@@ -1,10 +1,9 @@
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
-import { GatewayConnectorTarget } from "../gatewayConnectorTarget";
+import { InputValidationError } from "../../../../errors";
 
 export const createGetGatewayConnectorHandler = (core: Core) =>
   createHandler({
@@ -22,14 +21,11 @@ export const createGetGatewayConnectorHandler = (core: Core) =>
         throw new InputValidationError("required option '--id <id>' not specified");
       }
 
-      const target = await core.gateway.getGatewayTarget(
+      const target = await core.gateway.getGatewayConnector(
         flags["gateway-id"],
         flags.id,
         coreOptsFromCtx(ctx),
       );
-      if (!GatewayConnectorTarget.is(target.targetConfiguration)) {
-        throw new InputValidationError(`Gateway Target "${flags.id}" is not connector-backed`);
-      }
 
       ctx.require(JsonRendererKey).renderJson(target);
     },

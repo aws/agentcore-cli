@@ -1,4 +1,4 @@
-import { TargetType, type TargetSummary } from "@aws-sdk/client-bedrock-agentcore-control";
+import type { TargetSummary } from "@aws-sdk/client-bedrock-agentcore-control";
 import { useNavigate } from "react-router";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
@@ -57,11 +57,9 @@ export function GatewayConnectorPicker({
       description={description}
       queryKey={["gateway-connectors", opts.region, gatewayId]}
       loadPage={async (token, pageSize) => {
-        const response = await core.gateway.listGatewayTargets(gatewayId, token, pageSize, opts);
+        const response = await core.gateway.listGatewayConnectors(gatewayId, token, pageSize, opts);
         return {
-          items: (response.items ?? []).filter(
-            (target) => target.targetType === TargetType.CONNECTOR,
-          ),
+          items: response.items ?? [],
           nextToken: response.nextToken,
         };
       }}

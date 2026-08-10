@@ -1,23 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
-import { InputValidationError } from "../../../../errors";
 import type { ScreenProps } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
-import { GatewayConnectorTarget } from "../gatewayConnectorTarget";
 
 export function GatewayConnectorGetScreen(props: ScreenProps) {
   const { gatewayId, targetId } = useParams();
   const opts = coreOptsFromCtx(props.ctx);
   const detail = useQuery({
     queryKey: ["gateway-connector", opts.region, gatewayId, targetId],
-    queryFn: async () => {
-      const target = await props.core.gateway.getGatewayTarget(gatewayId!, targetId!, opts);
-      if (!GatewayConnectorTarget.is(target.targetConfiguration)) {
-        throw new InputValidationError(`Gateway Target "${targetId}" is not connector-backed`);
-      }
-      return target;
-    },
+    queryFn: () => props.core.gateway.getGatewayConnector(gatewayId!, targetId!, opts),
     enabled: gatewayId !== undefined && targetId !== undefined,
   });
 

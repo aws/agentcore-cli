@@ -47,6 +47,17 @@ export interface CoreGatewayClient {
     input: CreateGatewayTargetInput,
     options: CoreOptions,
   ): Promise<CreateGatewayTargetResponse>;
+  getGatewayConnector(
+    gatewayId: string,
+    targetId: string,
+    options: CoreOptions,
+  ): Promise<GetGatewayTargetResponse>;
+  listGatewayConnectors(
+    gatewayId: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListGatewayTargetsResponse>;
   getGatewayRule(
     gatewayId: string,
     ruleId: string,

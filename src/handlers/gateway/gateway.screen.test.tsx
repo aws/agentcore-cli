@@ -321,11 +321,8 @@ describe("Gateway Connector flow", () => {
 
   test("selects a Gateway before showing the dedicated Connector list", async () => {
     const core = coreWithGateways([gateway()]);
-    core.gateway.setListTargetsResponse({
-      items: [
-        target(TARGET_ID, "ordinary-target", TargetType.PASSTHROUGH),
-        target(CONNECTOR_ID, "search-connector", TargetType.CONNECTOR),
-      ],
+    core.gateway.setListConnectorsResponse({
+      items: [target(CONNECTOR_ID, "search-connector", TargetType.CONNECTOR)],
     });
     const screen = renderScreen("/agentcore/gateway/connector/list", { core });
 
@@ -339,16 +336,13 @@ describe("Gateway Connector flow", () => {
     expect(frame).not.toMatch(/\btype\b/);
   });
 
-  test("filters Connectors and opens the selected Connector JSON", async () => {
+  test("lists Connectors and opens the selected Connector JSON", async () => {
     const core = new TestCoreClient();
     core.gateway
-      .setListTargetsResponse({
-        items: [
-          target(TARGET_ID, "ordinary-target", TargetType.PASSTHROUGH),
-          target(CONNECTOR_ID, "search-connector", TargetType.CONNECTOR),
-        ],
+      .setListConnectorsResponse({
+        items: [target(CONNECTOR_ID, "search-connector", TargetType.CONNECTOR)],
       })
-      .setGetTargetResponse(targetDetail(CONNECTOR_ID, true));
+      .setGetConnectorResponse(targetDetail(CONNECTOR_ID, true));
     const screen = renderScreen(
       `/agentcore/gateway/connector/list/${encodeURIComponent(GATEWAY_ID)}`,
       { core },
@@ -364,14 +358,14 @@ describe("Gateway Connector flow", () => {
     await waitForText(screen.lastFrame, '"targetConfiguration"');
     expect(screen.lastFrame()).toContain('"web-search"');
     expect(core.gateway.calls.at(-1)).toEqual({
-      method: "getGatewayTarget",
+      method: "getGatewayConnector",
       args: [GATEWAY_ID, CONNECTOR_ID, { region: "us-east-1", endpointUrl: undefined }],
     });
   });
 
   test("rejects a non-Connector Target opened through the Connector route", async () => {
     const core = new TestCoreClient();
-    core.gateway.setGetTargetResponse(targetDetail(TARGET_ID));
+    core.gateway.setError(new Error(`Gateway Target "${TARGET_ID}" is not connector-backed`));
     const screen = renderScreen(
       `/agentcore/gateway/connector/get/${encodeURIComponent(GATEWAY_ID)}/${encodeURIComponent(TARGET_ID)}`,
       { core },
@@ -381,14 +375,14 @@ describe("Gateway Connector flow", () => {
     expect(screen.lastFrame()).toContain("[r] retry");
   });
 
-  test("preserves Target pagination when a filtered Connector page is empty", async () => {
+  test("preserves Connector pagination when a page is empty", async () => {
     const core = new TestCoreClient();
     core.gateway
-      .setListTargetsResponse({
-        items: [target(TARGET_ID, "ordinary-target", TargetType.PASSTHROUGH)],
+      .setListConnectorsResponse({
+        items: [],
         nextToken: "page-2",
       })
-      .setListTargetsResponse(
+      .setListConnectorsResponse(
         {
           items: [target(CONNECTOR_ID, "page-two-connector", TargetType.CONNECTOR)],
         },

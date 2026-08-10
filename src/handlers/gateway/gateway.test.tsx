@@ -228,7 +228,7 @@ describe("gateway reads", () => {
     ["inference", { inference: { connector: { source: { connectorId: "openai" } } } }],
   ] as const)("gets a configured %s Connector", async (_kind, targetConfiguration) => {
     const core = new TestCoreClient();
-    core.gateway.setGetTargetResponse({ ...targetResponse, targetConfiguration });
+    core.gateway.setGetConnectorResponse({ ...targetResponse, targetConfiguration });
 
     const result = await run(
       ["gateway", "connector", "get", "--gateway-id", GATEWAY_ID, "--id", TARGET_ID],
@@ -237,7 +237,7 @@ describe("gateway reads", () => {
 
     expect(result.core.gateway.calls).toEqual([
       {
-        method: "getGatewayTarget",
+        method: "getGatewayConnector",
         args: [GATEWAY_ID, TARGET_ID, { region: REGION }],
       },
     ]);
@@ -246,42 +246,35 @@ describe("gateway reads", () => {
 
   test("lists only configured Connectors and preserves the service token", async () => {
     const response: ListGatewayTargetsResponse = {
-      items: [
-        { targetId: TARGET_ID, targetType: TargetType.CONNECTOR } as TargetSummary,
-        { targetId: "target-2", targetType: TargetType.MCP_SERVER } as TargetSummary,
-      ],
+      items: [{ targetId: TARGET_ID, targetType: TargetType.CONNECTOR } as TargetSummary],
       nextToken: "target-page-2",
     };
     const core = new TestCoreClient();
-    core.gateway.setListTargetsResponse(response);
+    core.gateway.setListConnectorsResponse(response);
 
     const result = await run(
       ["gateway", "connector", "list", "--gateway-id", GATEWAY_ID, "--max-results", "2"],
       core,
     );
 
-    expect(JSON.parse(result.stdout)).toEqual({
-      items: [response.items![0]],
-      nextToken: response.nextToken,
-    });
+    expect(JSON.parse(result.stdout)).toEqual(response);
     expect(result.core.gateway.calls).toEqual([
       {
-        method: "listGatewayTargets",
+        method: "listGatewayConnectors",
         args: [GATEWAY_ID, undefined, 2, { region: REGION }],
       },
     ]);
   });
 
-  test("rejects a non-Connector Target from connector get", async () => {
+  test("propagates Core validation from connector get", async () => {
+    const error = new Error(`Gateway Target "${TARGET_ID}" is not connector-backed`);
+    error.name = "InputValidationError";
     const core = new TestCoreClient();
-    core.gateway.setGetTargetResponse({
-      ...targetResponse,
-      targetConfiguration: { mcp: { mcpServer: { endpoint: "https://example.test/mcp" } } },
-    });
+    core.gateway.setError(error);
 
     await expect(
       run(["gateway", "connector", "get", "--gateway-id", GATEWAY_ID, "--id", TARGET_ID], core),
-    ).rejects.toThrow(`Gateway Target "${TARGET_ID}" is not connector-backed`);
+    ).rejects.toBe(error);
   });
 
   test("gets a Gateway Rule with qualified selectors", async () => {

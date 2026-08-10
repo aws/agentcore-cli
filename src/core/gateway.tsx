@@ -8,6 +8,7 @@ import {
   ListGatewayRulesCommand,
   ListGatewaysCommand,
   ListGatewayTargetsCommand,
+  TargetType,
   type CreateGatewayResponse,
   type CreateGatewayRuleResponse,
   type CreateGatewayTargetResponse,
@@ -17,7 +18,9 @@ import {
   type ListGatewayRulesResponse,
   type ListGatewaysResponse,
   type ListGatewayTargetsResponse,
+  type TargetConfiguration,
 } from "@aws-sdk/client-bedrock-agentcore-control";
+import { InputValidationError } from "../errors";
 import type {
   CoreGatewayClient,
   CreateGatewayInput,
@@ -98,6 +101,31 @@ export class GatewayClient implements CoreGatewayClient {
       .send(new CreateGatewayTargetCommand(input));
   }
 
+  async getGatewayConnector(
+    gatewayId: string,
+    targetId: string,
+    options: CoreOptions,
+  ): Promise<GetGatewayTargetResponse> {
+    const target = await this.getGatewayTarget(gatewayId, targetId, options);
+    if (!GatewayClient.isConnectorTarget(target.targetConfiguration)) {
+      throw new InputValidationError(`Gateway Target "${targetId}" is not connector-backed`);
+    }
+    return target;
+  }
+
+  async listGatewayConnectors(
+    gatewayId: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListGatewayTargetsResponse> {
+    const response = await this.listGatewayTargets(gatewayId, nextToken, maxResults, options);
+    return {
+      ...response,
+      items: response.items?.filter((target) => target.targetType === TargetType.CONNECTOR),
+    };
+  }
+
   async getGatewayRule(
     gatewayId: string,
     ruleId: string,
@@ -131,5 +159,12 @@ export class GatewayClient implements CoreGatewayClient {
     options: CoreOptions,
   ): Promise<CreateGatewayRuleResponse> {
     return this.clients.control(toClientConfig(options)).send(new CreateGatewayRuleCommand(input));
+  }
+
+  private static isConnectorTarget(configuration: TargetConfiguration | undefined): boolean {
+    return (
+      configuration?.mcp?.connector !== undefined ||
+      configuration?.inference?.connector !== undefined
+    );
   }
 }

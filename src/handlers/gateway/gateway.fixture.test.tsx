@@ -126,6 +126,12 @@ describe("Gateway fixture-backed reads", () => {
     expect(JSON.parse(stdout).targetId).toBe(CONNECTOR_ID);
   });
 
+  test("rejects a non-Connector Target through Connector get", async () => {
+    await expect(
+      run(["gateway", "connector", "get", "--gateway-id", GATEWAY_ID, "--id", TARGET_ID]),
+    ).rejects.toThrow(`Gateway Target "${TARGET_ID}" is not connector-backed`);
+  });
+
   test("lists Gateway Connectors", async () => {
     const stdout = await run(
       ["gateway", "connector", "list", "--gateway-id", CONNECTOR_GATEWAY_ID],
