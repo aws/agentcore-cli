@@ -5,6 +5,7 @@ import { type MetricSink } from "./types";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { type Histogram, type Meter } from "@opentelemetry/api";
 import type { ResourceAttributes } from "./shapes";
+import { AgentCoreCLIError } from "../errors";
 
 export type OtelCollectorSinkConfig = {
   collectorEndpoint: string;
@@ -82,7 +83,7 @@ export class OtelHistogramSink implements MetricSink {
     try {
       await this.meterProvider.forceFlush({ timeoutMillis: this.flushTimeoutMs });
     } catch (e) {
-      const error = e instanceof Error ? e : new Error(String(e));
+      const error = AgentCoreCLIError.fromError(e);
       this.logger
         .child({ errorName: error.name, errorMessage: error.message })
         .warn(`failed to flush metrics to ${this.getName()}`);
