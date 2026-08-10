@@ -9,6 +9,7 @@ import { createListGatewayConnectorsHandler } from "./list";
 export function createGatewayConnectorHandler(core: Core, io: AppIO): Router {
   return new Router("connector", "inspect connectors configured for an AgentCore Gateway")
     .default(renderTui(core, io))
+    .supportedTuiCommands("get", "list")
     .handler(createCreateGatewayConnectorHandler(core, io))
     .handler(createGetGatewayConnectorHandler(core))
     .handler(createListGatewayConnectorsHandler(core));

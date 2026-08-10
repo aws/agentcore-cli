@@ -71,6 +71,15 @@ describe("gateway command hierarchy", () => {
       "interactive mode requires a TTY on stdin and stdout",
     );
   });
+
+  test.each([
+    ["Gateway create", ["gateway", "create"], /--name/],
+    ["Target create", ["gateway", "target", "create"], /--gateway-id/],
+    ["Connector create", ["gateway", "connector", "create"], /--gateway-id/],
+    ["Rule create", ["gateway", "rule", "create"], /--gateway-id/],
+  ] as const)("runs normal validation for bare CLI-only %s", async (_label, args, error) => {
+    await expect(run([...args])).rejects.toThrow(error);
+  });
 });
 
 describe("gateway validation", () => {

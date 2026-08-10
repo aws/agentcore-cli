@@ -14,6 +14,7 @@ export function createGatewayHandler(core: Core, io: AppIO): Router {
   return new Router("gateway", "inspect AgentCore Gateways")
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
+    .supportedTuiCommands("get", "list", "target", "connector", "rule")
     .handler(createCreateGatewayHandler(core, io))
     .handler(createGetGatewayHandler(core))
     .handler(createListGatewaysHandler(core))
