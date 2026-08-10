@@ -1,4 +1,5 @@
 import { GetLogEventsCommand, type CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
+import { ResultTruncationError } from "../errors";
 import type { BatchEvaluationResultEntry } from "../handlers/eval/types";
 import type { Logger } from "../logging";
 
@@ -74,8 +75,16 @@ export async function readEvaluationResults(
   // a stderr warning (stdout metadata stays clean), the same customer-visible path
   // as any other CloudWatch read failure. A silent partial list would read as
   // complete.
-  throw new Error(
+  throw new ResultTruncationError(
     `batch-evaluation results exceed ${MAX_RESULT_PAGES} CloudWatch pages; retrieved ${results.length} results are incomplete`,
+    {
+      meta: {
+        logGroupName,
+        logStreamName,
+        maxResultPages: MAX_RESULT_PAGES,
+        retrieved: results.length,
+      },
+    },
   );
 }
 

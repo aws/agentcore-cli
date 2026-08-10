@@ -9,6 +9,7 @@ export {
   NetworkingError,
   NotImplementedError,
   ProjectFileExistsError,
+  ResultTruncationError,
   RuntimeInvokeInterruptedError,
   RuntimeInvokeResponseError,
   SourceResolutionError,

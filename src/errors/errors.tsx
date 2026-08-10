@@ -166,3 +166,14 @@ export class FileWriteError extends AgentCoreCLIError {
     super(message, { source: ERROR_SOURCE.USER, ...options });
   }
 }
+
+/**
+ * Thrown when a paginated read is cut short by a client-side page cap, so the
+ * returned data is incomplete rather than the full result set. INTERNAL: the
+ * service and the user are both fine — the limit is ours.
+ */
+export class ResultTruncationError extends AgentCoreCLIError {
+  constructor(message: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
+    super(message, { ...options, source: ERROR_SOURCE.INTERNAL });
+  }
+}

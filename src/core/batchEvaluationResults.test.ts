@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import type { CloudWatchLogsClient, OutputLogEvent } from "@aws-sdk/client-cloudwatch-logs";
+import { ResultTruncationError } from "../errors";
 import { createSilentLogger } from "../testing";
 import {
   isTerminalStatus,
@@ -174,9 +175,14 @@ test("readEvaluationResults throws (not silently truncates) when it hits the pag
     }),
   } as unknown as CloudWatchLogsClient;
 
-  await expect(
-    readEvaluationResults(everAdvancing, "lg", "ls", createSilentLogger()),
-  ).rejects.toThrow(/incomplete/);
+  const err = await readEvaluationResults(everAdvancing, "lg", "ls", createSilentLogger()).then(
+    () => undefined,
+    (e) => e as ResultTruncationError,
+  );
+  expect(err).toBeInstanceOf(ResultTruncationError);
+  expect(err?.message).toMatch(/incomplete/);
+  expect(err?.source).toBe("internal"); // our page cap, not a user or service fault
+  expect(err?.meta).toMatchObject({ logGroupName: "lg", logStreamName: "ls" });
 });
 
 test("parseEvaluationLogEvent warns on and skips an unparseable line", () => {
