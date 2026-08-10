@@ -26,5 +26,13 @@ export {
   type JsonValue,
 } from "./jsonl";
 export { SourceResolver, type SourceResolverConfig } from "./source";
+export {
+  classifyStreamingResponse,
+  writeStreamingResponse,
+  writeStreamingResponseFile,
+  type StreamingResponse,
+  type StreamingResponseOutput,
+  type StreamingResponseWriter,
+} from "./streamingResponse";
 export type { AppIO, ReadWriteJson } from "./types";
 export { warn } from "./warn";

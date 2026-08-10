@@ -65,6 +65,7 @@ describe("gateway command hierarchy", () => {
       "get",
       "list",
       "delete",
+      "invoke",
       "target",
       "connector",
       "rule",

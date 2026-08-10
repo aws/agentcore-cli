@@ -49,15 +49,36 @@ import type {
   GatewayRuleUpdateInput,
   GatewayTargetUpdatePatch,
   GatewayUpdatePatch,
+  GatewayInvokeRequest,
+  GatewayInvokeResponse,
 } from "../handlers/gateway/types";
-import type { AwsClients, CoreOptions } from "./types";
+import type { Logger } from "../logging";
+import { abortable } from "./abortable";
+import type { AwsClients, CoreFetch, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
 
 const DEFAULT_CONNECTOR_PAGE_SIZE = 100;
 const MAX_CONNECTOR_TARGET_PAGES = 101;
 
+async function* emptyBody(): AsyncGenerator<Uint8Array> {}
+
+function toQuery(url: URL): Record<string, string | string[]> {
+  const query: Record<string, string | string[]> = {};
+  for (const [name, value] of url.searchParams) {
+    const previous = query[name];
+    if (previous === undefined) query[name] = value;
+    else if (Array.isArray(previous)) previous.push(value);
+    else query[name] = [previous, value];
+  }
+  return query;
+}
+
 export class GatewayClient implements CoreGatewayClient {
-  constructor(private readonly clients: AwsClients) {}
+  constructor(
+    private readonly clients: AwsClients,
+    private readonly fetch: CoreFetch,
+    private readonly logger: Logger,
+  ) {}
 
   async createGateway(
     input: CreateGatewayInput,
@@ -74,10 +95,128 @@ export class GatewayClient implements CoreGatewayClient {
     );
   }
 
-  async getGateway(id: string, options: CoreOptions): Promise<GetGatewayResponse> {
+  async invokeGateway(
+    request: GatewayInvokeRequest,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<GatewayInvokeResponse> {
+    const logger = this.logger.child({
+      operation: "invokeGateway",
+      authMode: request.authorizerType,
+      gatewayId: request.gatewayId,
+      method: request.method,
+      region: options.region,
+    });
+    const url = new URL(request.url);
+    if (url.protocol !== "https:") {
+      throw new TypeError("Gateway invocation requires an HTTPS URL");
+    }
+
+    const headers = new Headers(request.applicationHeaders);
+    try {
+      if (request.contentType !== undefined) headers.set("Content-Type", request.contentType);
+      if (request.accept !== undefined) headers.set("Accept", request.accept);
+      if (request.runtimeSessionId !== undefined) {
+        headers.set("X-Amzn-Bedrock-AgentCore-Runtime-Session-Id", request.runtimeSessionId);
+      }
+      if (request.mcpSessionId !== undefined) {
+        headers.set("Mcp-Session-Id", request.mcpSessionId);
+      }
+      if (request.mcpProtocolVersion !== undefined) {
+        headers.set("Mcp-Protocol-Version", request.mcpProtocolVersion);
+      }
+      if (
+        request.authorizerType === "CUSTOM_JWT" ||
+        request.authorizerType === "AUTHENTICATE_ONLY"
+      ) {
+        headers.set("Authorization", `Bearer ${request.bearerToken}`);
+      }
+    } catch {
+      throw new TypeError("Invalid Gateway request header");
+    }
+
+    let fetchHeaders: RequestInit["headers"] = headers;
+    try {
+      if (request.authorizerType === "AWS_IAM") {
+        const client = this.clients.data(toClientConfig(options));
+        const signer = await client.config.signer({
+          name: "sigv4",
+          signingName: "bedrock-agentcore",
+          signingRegion: options.region,
+          properties: {},
+        });
+        const signed = await signer.sign({
+          method: request.method,
+          protocol: url.protocol,
+          hostname: url.hostname,
+          ...(url.port && { port: Number(url.port) }),
+          path: url.pathname,
+          query: toQuery(url),
+          headers: {
+            ...Object.fromEntries(headers.entries()),
+            host: url.host,
+          },
+          ...(request.payload !== undefined && { body: request.payload }),
+        });
+        fetchHeaders = signed.headers;
+      }
+
+      const response = await this.fetch(url, {
+        method: request.method,
+        redirect: "error",
+        headers: fetchHeaders,
+        ...(request.payload !== undefined && {
+          body: request.payload as RequestInit["body"],
+        }),
+        signal,
+      });
+      if (!response.ok) {
+        logger
+          .child({ httpStatusCode: response.status })
+          .debug("Gateway invocation returned a non-success response");
+        await response.body?.cancel().catch(() => undefined);
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const body = (response.body as AsyncIterable<Uint8Array> | null) ?? emptyBody();
+      return {
+        statusCode: response.status,
+        contentType: response.headers.get("content-type") ?? "",
+        runtimeSessionId:
+          response.headers.get("x-amzn-bedrock-agentcore-runtime-session-id") ?? undefined,
+        mcpSessionId: response.headers.get("mcp-session-id") ?? undefined,
+        mcpProtocolVersion: response.headers.get("mcp-protocol-version") ?? undefined,
+        requestId:
+          response.headers.get("x-amzn-requestid") ??
+          response.headers.get("x-amz-request-id") ??
+          undefined,
+        body: signal ? abortable(body, signal) : body,
+      };
+    } catch (error) {
+      if (signal?.aborted) throw signal.reason ?? error;
+      if ((error as Error)?.message?.startsWith("HTTP ")) throw error;
+      logger
+        .child({
+          errorName:
+            error instanceof TypeError
+              ? "TypeError"
+              : error instanceof Error
+                ? "Error"
+                : typeof error,
+        })
+        .debug("Gateway invocation transport failed");
+      throw new Error("Gateway invocation failed");
+    }
+  }
+
+  async getGateway(
+    id: string,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<GetGatewayResponse> {
     return this.clients
       .control(toClientConfig(options))
-      .send(new GetGatewayCommand({ gatewayIdentifier: id }));
+      .send(new GetGatewayCommand({ gatewayIdentifier: id }), { abortSignal: signal });
   }
 
   async updateGateway(

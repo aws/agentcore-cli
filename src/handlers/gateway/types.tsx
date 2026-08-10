@@ -1,4 +1,5 @@
 import type {
+  AuthorizerType,
   CreateGatewayRequest,
   CreateGatewayResponse,
   CreateGatewayRuleRequest,
@@ -64,10 +65,42 @@ export type GatewayTargetUpdatePatch = {
 
 export type GatewayRuleUpdateInput = UpdateGatewayRuleRequest;
 
+export type GatewayInvokeMethod = "GET" | "POST" | "DELETE";
+
+export type GatewayInvokeRequest = {
+  gatewayId: string;
+  url: string;
+  method: GatewayInvokeMethod;
+  authorizerType: AuthorizerType;
+  payload?: Uint8Array;
+  contentType?: string;
+  accept?: string;
+  applicationHeaders?: [string, string][];
+  bearerToken?: string;
+  runtimeSessionId?: string;
+  mcpSessionId?: string;
+  mcpProtocolVersion?: string;
+};
+
+export type GatewayInvokeResponse = {
+  statusCode: number;
+  contentType: string;
+  runtimeSessionId?: string;
+  mcpSessionId?: string;
+  mcpProtocolVersion?: string;
+  requestId?: string;
+  body: AsyncIterable<Uint8Array>;
+};
+
 export interface CoreGatewayClient {
   createGateway(input: CreateGatewayInput, options: CoreOptions): Promise<CreateGatewayResponse>;
   updateGateway(patch: GatewayUpdatePatch, options: CoreOptions): Promise<UpdateGatewayResponse>;
-  getGateway(id: string, options: CoreOptions): Promise<GetGatewayResponse>;
+  invokeGateway(
+    request: GatewayInvokeRequest,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<GatewayInvokeResponse>;
+  getGateway(id: string, options: CoreOptions, signal?: AbortSignal): Promise<GetGatewayResponse>;
   listGateways(
     nextToken: string | undefined,
     maxResults: number | undefined,

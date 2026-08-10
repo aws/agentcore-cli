@@ -83,6 +83,7 @@ agentcore                          # interactive TUI
 ├── gateway                        # inspect AgentCore Gateways
 │   ├── get                        # get a Gateway by id
 │   ├── list                       # list Gateways (server-side paginated)
+│   ├── invoke                     # send a headless request through a Gateway
 │   ├── target
 │   │   ├── get                    # get a Target under a Gateway
 │   │   └── list                   # list Targets under a Gateway
@@ -159,6 +160,7 @@ agentcore memory record list --memory <memoryId> --namespace <namespace> --max-r
 # Inspect Gateway resources without project configuration or deployment
 agentcore gateway get --id <gatewayId>
 agentcore gateway list --max-results 20
+agentcore gateway invoke --id <gatewayId> --payload file://request.json
 agentcore gateway target get --gateway-id <gatewayId> --target-id <targetId>
 agentcore gateway target list --gateway-id <gatewayId> --max-results 20
 agentcore gateway connector get --gateway-id <gatewayId> --id <targetId>
@@ -211,6 +213,62 @@ Source-aware values: any field flag documented as such accepts the value inline,
 `file://<path>` to read it from a file, or `-` to read it from stdin (the AWS CLI
 `file://` convention). A command reads stdin from at most one flag. For example,
 `--instructions file://order-quality.txt` or `--instructions -`.
+
+### Invoke a Gateway
+
+Gateway Invoke is a headless, project-independent HTTP request command. It gets
+the Gateway by ID, uses the returned HTTPS origin, selects authentication from
+the Gateway's authorizer, and preserves the request and response bodies.
+
+```bash
+# MCP Gateway: use the exact gatewayUrl returned by GetGateway.
+agentcore gateway invoke \
+  --id <gatewayId> \
+  --payload '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"agentcore-cli","version":"1"}}}' \
+  --accept 'application/json, text/event-stream' \
+  --mcp-protocol-version 2025-03-26
+
+# HTTP target: --path is relative to the Gateway origin.
+agentcore gateway invoke \
+  --id <gatewayId> \
+  --path support-agent/invocations \
+  --payload file://request.json \
+  --session-id <runtimeSessionId>
+
+# Inference target.
+agentcore gateway invoke \
+  --id <gatewayId> \
+  --path inference/v1/messages \
+  --payload file://message.json \
+  --json
+
+# GET requests do not accept a payload.
+agentcore gateway invoke \
+  --id <gatewayId> \
+  --method GET \
+  --path inference/v1/models
+```
+
+`--path` replaces the path in the returned Gateway URL while retaining its
+origin. It must remain relative to the selected Gateway and may include a query
+string. Omitting it uses the returned `gatewayUrl` exactly. Supported methods
+are `GET`, `POST` (the default), and `DELETE`. POST requires `--payload`; DELETE
+may include one. Payloads accept inline bytes, `file://<path>`, or `-` for stdin.
+
+Authentication follows `GetGateway.authorizerType`: `AWS_IAM` requests use
+SigV4, `CUSTOM_JWT` and `AUTHENTICATE_ONLY` require `--bearer-token`, and `NONE`
+uses unsigned HTTPS. Bearer tokens accept inline, `file://`, or stdin sources;
+payload and token cannot both read stdin.
+
+Raw responses stream exact bytes to stdout. `--output-file` streams those bytes
+to disk, while `--json` buffers one envelope containing status, selected session
+and request metadata, body encoding, and body. Binary or unknown output requires
+`--output-file` or `--json` when stdout is a terminal. Response metadata goes to
+stderr in raw and file modes.
+
+Gateway Invoke V1 has no TUI, required request-type selector, tool/model
+discovery command, or protocol-specific payload builder. Callers provide the
+Gateway-relative route and protocol payload directly.
 
 ### Invoke a Runtime
 
