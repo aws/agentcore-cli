@@ -17,6 +17,10 @@ export interface JsonDetailProps {
   // loadingLabel names what's loading (e.g. "Loading endpoint…").
   loadingLabel: string;
   onRetry?: () => void;
+  // warning, when set, renders a persistent advisory above the JSON — the TUI's
+  // equivalent of the CLI's stderr warning (e.g. a CloudWatch results read that
+  // failed while the job metadata is still intact).
+  warning?: string;
 }
 
 // JsonDetail is the shared "show me the raw resource" screen body: a scrollable
@@ -30,6 +34,7 @@ export function JsonDetail({
   data,
   loadingLabel,
   onRetry,
+  warning,
 }: JsonDetailProps) {
   const navigate = useNavigate();
   const scrollRef = useRef<ScrollViewRef>(null);
@@ -67,6 +72,7 @@ export function JsonDetail({
         <Text color="red">Error: {error.message}</Text>
       ) : (
         <ScrollView ref={scrollRef}>
+          {warning ? <Text color="yellow">Warning: {warning}</Text> : null}
           <CodeBlock
             language="json"
             showLineNumbers={false}

@@ -180,6 +180,8 @@ describe("batch-evaluation detail (raw JSON)", () => {
     const frame = screen.lastFrame()!;
     expect(frame).toContain("COMPLETED"); // status intact
     expect(frame).not.toContain('"results"'); // results omitted, screen didn't crash
+    expect(frame).toContain("could not retrieve CloudWatch results"); // warned, not silent
+    expect(frame).toContain("AccessDenied");
   });
 
   test("retries a failed detail query", async () => {

@@ -5,14 +5,15 @@ import type { ScreenProps } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 
 // getBatchEvaluation already fetches the job and merges the per-session CloudWatch
-// results, returning `{ detail, resultsError? }`. The screen unwraps `detail`;
-// `resultsError` is ignored here — a CloudWatch read failure just omits `results`
-// (the CLI is the surface that warns on stderr).
+// results, returning `{ detail, resultsError? }`. The screen keeps both: a
+// CloudWatch read failure omits `results` but must stay distinguishable from a job
+// that simply has none yet, so `resultsError` drives a warning banner (the TUI's
+// equivalent of the CLI's stderr warning).
 function useBatchEvaluationDetail({ ctx, core }: ScreenProps, id: string | undefined) {
   const opts = coreOptsFromCtx(ctx);
   return useQuery({
     queryKey: ["batch-evaluation", opts.region, id],
-    queryFn: async () => (await core.eval.getBatchEvaluation(id!, opts)).detail,
+    queryFn: () => core.eval.getBatchEvaluation(id!, opts),
     enabled: id !== undefined,
   });
 }
@@ -22,16 +23,22 @@ function useBatchEvaluationDetail({ ctx, core }: ScreenProps, id: string | undef
 // cleanly; a curated field subset would just hide data.
 export function BatchEvaluationGetJsonScreen(props: ScreenProps) {
   const { batchEvaluationId } = useParams();
-  const detail = useBatchEvaluationDetail(props, batchEvaluationId);
+  const query = useBatchEvaluationDetail(props, batchEvaluationId);
+  const resultsError = query.data?.resultsError;
 
   return (
     <JsonDetail
       breadcrumb={["agentcore", "eval", "batch-evaluation", "get", batchEvaluationId ?? ""]}
-      isPending={detail.isPending}
-      error={detail.isError ? (detail.error as Error) : null}
-      data={detail.data}
+      isPending={query.isPending}
+      error={query.isError ? (query.error as Error) : null}
+      data={query.data?.detail}
+      warning={
+        resultsError
+          ? `could not retrieve CloudWatch results (${(resultsError as Error).message}). Job status is unaffected.`
+          : undefined
+      }
       loadingLabel="Loading batch evaluation…"
-      onRetry={() => void detail.refetch()}
+      onRetry={() => void query.refetch()}
     />
   );
 }
