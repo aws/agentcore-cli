@@ -975,6 +975,15 @@ export class TestGatewayClient implements CoreGatewayClient {
     );
   }
 
+  async createGatewayRule(
+    input: CreateGatewayRuleInput,
+    options: CoreOptions,
+  ): Promise<CreateGatewayRuleResponse> {
+    this.calls.push({ method: "createGatewayRule", args: [input, options] });
+    if (this.error) throw this.error;
+    return DEFAULT_CREATE_GATEWAY_RULE_RESPONSE;
+  }
+
   async getGatewayRule(
     gatewayId: string,
     ruleId: string,
@@ -1001,15 +1010,6 @@ export class TestGatewayClient implements CoreGatewayClient {
       this.listRuleResponses.get(undefined) ??
       DEFAULT_LIST_GATEWAY_RULES_RESPONSE
     );
-  }
-
-  async createGatewayRule(
-    input: CreateGatewayRuleInput,
-    options: CoreOptions,
-  ): Promise<CreateGatewayRuleResponse> {
-    this.calls.push({ method: "createGatewayRule", args: [input, options] });
-    if (this.error) throw this.error;
-    return DEFAULT_CREATE_GATEWAY_RULE_RESPONSE;
   }
 }
 

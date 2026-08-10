@@ -113,6 +113,7 @@ describe("Gateway menu and list", () => {
     for (const command of ["get", "list", "target", "connector", "rule"]) {
       expect(frame).toContain(command);
     }
+    expect(frame).not.toMatch(/\bcreate\b/);
     expect(screen.core.gateway.calls).toEqual([]);
   });
 
@@ -213,8 +214,10 @@ describe("Gateway Target flow", () => {
     const screen = renderScreen("/agentcore/gateway/target");
 
     await waitForText(screen.lastFrame, "inspect targets for an AgentCore Gateway");
-    expect(screen.lastFrame()).toContain("get");
-    expect(screen.lastFrame()).toContain("list");
+    const frame = screen.lastFrame()!;
+    expect(frame).toContain("get");
+    expect(frame).toContain("list");
+    expect(frame).not.toMatch(/\bcreate\b/);
     expect(screen.core.gateway.calls).toEqual([]);
   });
 
@@ -314,8 +317,10 @@ describe("Gateway Connector flow", () => {
     const screen = renderScreen("/agentcore/gateway/connector");
 
     await waitForText(screen.lastFrame, "inspect connectors configured for an AgentCore Gateway");
-    expect(screen.lastFrame()).toContain("get");
-    expect(screen.lastFrame()).toContain("list");
+    const frame = screen.lastFrame()!;
+    expect(frame).toContain("get");
+    expect(frame).toContain("list");
+    expect(frame).not.toMatch(/\bcreate\b/);
     expect(screen.core.gateway.calls).toEqual([]);
   });
 
@@ -413,8 +418,10 @@ describe("Gateway Rule flow", () => {
     const screen = renderScreen("/agentcore/gateway/rule");
 
     await waitForText(screen.lastFrame, "inspect rules for an AgentCore Gateway");
-    expect(screen.lastFrame()).toContain("get");
-    expect(screen.lastFrame()).toContain("list");
+    const frame = screen.lastFrame()!;
+    expect(frame).toContain("get");
+    expect(frame).toContain("list");
+    expect(frame).not.toMatch(/\bcreate\b/);
     expect(screen.core.gateway.calls).toEqual([]);
   });
 
