@@ -2,6 +2,7 @@ import type { AppIO } from "../../io";
 import { Router } from "../../router";
 import { createHelpDefault } from "../help";
 import type { Core } from "../types";
+import { createGatewayConnectorHandler } from "./connector";
 import { createGetGatewayHandler } from "./get";
 import { createListGatewaysHandler } from "./list";
 import { createGatewayRuleHandler } from "./rule";
@@ -13,5 +14,6 @@ export function createGatewayHandler(core: Core, io: AppIO): Router {
     .handler(createGetGatewayHandler(core))
     .handler(createListGatewaysHandler(core))
     .handler(createGatewayTargetHandler(core, io))
+    .handler(createGatewayConnectorHandler(core, io))
     .handler(createGatewayRuleHandler(core, io));
 }

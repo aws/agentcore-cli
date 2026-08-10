@@ -1,5 +1,5 @@
 export { parse, stringify } from "./serialization";
-export { fixtureFactories, isRecording, matchGolden } from "./fixtures";
+export { fixtureFactories, isRecording, matchGolden, settle } from "./fixtures";
 export { testIO, type TestIO } from "./testIO";
 export { tick, waitFor } from "./timing";
 export {

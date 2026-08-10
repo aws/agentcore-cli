@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { ServiceException } from "@smithy/core/client";
 import {
   GetAgentRuntimeCommand,
   GetAgentRuntimeEndpointCommand,
@@ -172,6 +173,10 @@ export class RuntimeClient implements CoreRuntimeClient {
         name?: unknown;
         $metadata?: { httpStatusCode?: unknown; requestId?: unknown };
       };
+      const serviceMessage =
+        ServiceException.isInstance(error) && error.message.trim()
+          ? error.message.trim()
+          : undefined;
       const diagnostics: string[] = [];
       if (typeof sdkError?.name === "string" && sdkError.name !== "Error") {
         diagnostics.push(sdkError.name);
@@ -194,7 +199,10 @@ export class RuntimeClient implements CoreRuntimeClient {
         })
         .debug("Runtime invocation SDK request failed");
       throw new Error(
-        `Runtime invocation failed${diagnostics.length ? ` (${diagnostics.join(", ")})` : ""}`,
+        `Runtime invocation failed${serviceMessage ? `: ${serviceMessage}` : ""}${
+          diagnostics.length ? ` (${diagnostics.join(", ")})` : ""
+        }`,
+        { cause: error },
       );
     }
 

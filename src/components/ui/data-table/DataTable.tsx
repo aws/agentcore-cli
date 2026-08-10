@@ -143,7 +143,7 @@ export function DataTable<T extends Record<string, unknown>>({
             onNextPage();
           }
         } else setCurrentPage((p) => Math.min(totalPages - 1, p + 1));
-      } else if (input === "/") {
+      } else if (searchable && input === "/") {
         setSelectedRow(0);
         setCurrentPage(0);
         setSearchMode(true);
@@ -191,26 +191,33 @@ export function DataTable<T extends Record<string, unknown>>({
     const width = computedWidths.widths[index];
     return width === undefined ? [] : [{ column, width }];
   });
+  const filterPrefix = "/ Filter: ";
+  const filterCursor = searchMode ? "█" : "";
+  const availableQueryWidth = Math.max(
+    0,
+    computedWidths.totalWidth - stringWidth(filterPrefix) - stringWidth(filterCursor),
+  );
+  const visibleSearchQuery =
+    availableQueryWidth > 0
+      ? cliTruncate(searchQuery, availableQueryWidth, {
+          position: "start",
+        })
+      : "";
+  const filterLine = searchMode ? (
+    <Text wrap="truncate">
+      <Text color={theme.colors.primary}>{filterPrefix}</Text>
+      <Text color={theme.colors.text}>{visibleSearchQuery}</Text>
+      <Text color={theme.colors.primary}>{filterCursor}</Text>
+    </Text>
+  ) : searchQuery ? (
+    <Text color={theme.colors.muted} wrap="truncate">
+      {filterPrefix}
+      {visibleSearchQuery}
+    </Text>
+  ) : undefined;
 
   return (
     <Box flexDirection="column">
-      {/* Search bar */}
-      {searchable && (
-        <Box marginBottom={0}>
-          <Text color={theme.colors.muted}>
-            {searchMode ? (
-              <Text>
-                <Text color={theme.colors.primary}>/ Filter: </Text>
-                <Text color={theme.colors.text}>{searchQuery}</Text>
-                <Text color={theme.colors.primary}>█</Text>
-              </Text>
-            ) : searchQuery ? (
-              <Text color={theme.colors.muted}>/ Filter: {searchQuery}</Text>
-            ) : null}
-          </Text>
-        </Box>
-      )}
-
       {/* Table */}
       <Box
         flexDirection="column"
@@ -237,11 +244,15 @@ export function DataTable<T extends Record<string, unknown>>({
           ))}
         </Box>
 
-        {/* Divider (or a blank spacer line when hidden) */}
-        <Box flexDirection="row">
-          <Text color={theme.colors.border}>
-            {showDivider ? "─".repeat(computedWidths.totalWidth) : " "}
-          </Text>
+        {/* Filter input replaces the divider so filtering does not change table height. */}
+        <Box flexDirection="row" width={computedWidths.totalWidth}>
+          {searchable && filterLine ? (
+            filterLine
+          ) : (
+            <Text color={theme.colors.border}>
+              {showDivider ? "─".repeat(computedWidths.totalWidth) : " "}
+            </Text>
+          )}
         </Box>
 
         {/* Rows */}

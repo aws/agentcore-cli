@@ -31,6 +31,36 @@ import { RuntimeListVersionsScreen } from "../handlers/runtime/version/list/scre
 import { MemoryScreen } from "../handlers/memory/screen.tsx";
 import { MemoryGetJsonScreen, MemoryGetScreen } from "../handlers/memory/get/screen.tsx";
 import { MemoryListScreen } from "../handlers/memory/list/screen.tsx";
+import { RuntimeInvokeScreen } from "../handlers/runtime/invoke/screen.tsx";
+import { EvalScreen } from "../handlers/eval/screen.tsx";
+import { EvaluatorScreen } from "../handlers/eval/evaluator/screen.tsx";
+import { EvaluatorListScreen } from "../handlers/eval/evaluator/list/screen.tsx";
+import {
+  EvaluatorGetScreen,
+  EvaluatorGetJsonScreen,
+} from "../handlers/eval/evaluator/get/screen.tsx";
+import { OnlineEvalScreen } from "../handlers/eval/online-eval/screen.tsx";
+import { OnlineEvalListScreen } from "../handlers/eval/online-eval/list/screen.tsx";
+import {
+  OnlineEvalGetScreen,
+  OnlineEvalGetJsonScreen,
+} from "../handlers/eval/online-eval/get/screen.tsx";
+import { MemoryEventScreen } from "../handlers/memory/event/screen.tsx";
+import { MemoryEventGetScreen } from "../handlers/memory/event/get/screen.tsx";
+import { MemoryEventListScreen } from "../handlers/memory/event/list/screen.tsx";
+import { IdentityScreen } from "../handlers/identity/screen.tsx";
+import { ApiKeyCredentialProviderScreen } from "../handlers/identity/api-key-credential-provider/screen.tsx";
+import { ApiKeyCredentialProviderListScreen } from "../handlers/identity/api-key-credential-provider/list/screen.tsx";
+import {
+  ApiKeyCredentialProviderGetScreen,
+  ApiKeyCredentialProviderGetJsonScreen,
+} from "../handlers/identity/api-key-credential-provider/get/screen.tsx";
+import { Oauth2CredentialProviderScreen } from "../handlers/identity/oauth2-credential-provider/screen.tsx";
+import { Oauth2CredentialProviderListScreen } from "../handlers/identity/oauth2-credential-provider/list/screen.tsx";
+import {
+  Oauth2CredentialProviderGetScreen,
+  Oauth2CredentialProviderGetJsonScreen,
+} from "../handlers/identity/oauth2-credential-provider/get/screen.tsx";
 import { RootScreen, HelpScreen } from "../handlers/screen.tsx";
 import type { Context } from "../router";
 
@@ -274,6 +304,130 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/memory/get/:memoryId/json"
             element={<MemoryGetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/invoke"
+            element={<RuntimeInvokeScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/invoke/:runtimeId"
+            element={<RuntimeInvokeScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/invoke/:runtimeId/:qualifier"
+            element={<RuntimeInvokeScreen ctx={ctx} core={core} />}
+          />
+          <Route path="agentcore/eval" element={<EvalScreen ctx={ctx} core={core} />} />
+          <Route
+            path="agentcore/eval/evaluator"
+            element={<EvaluatorScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/evaluator/list"
+            element={<EvaluatorListScreen ctx={ctx} core={core} />}
+          />
+          {/* Bare `get` (no id) has nothing to show — send the user to the list. */}
+          <Route
+            path="agentcore/eval/evaluator/get"
+            element={<Navigate to="/agentcore/eval/evaluator/list" replace />}
+          />
+          <Route
+            path="agentcore/eval/evaluator/get/:evaluatorId"
+            element={<EvaluatorGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/evaluator/get/:evaluatorId/json"
+            element={<EvaluatorGetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/online-eval"
+            element={<OnlineEvalScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/online-eval/list"
+            element={<OnlineEvalListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/online-eval/get"
+            element={<Navigate to="/agentcore/eval/online-eval/list" replace />}
+          />
+          <Route
+            path="agentcore/eval/online-eval/get/:configId"
+            element={<OnlineEvalGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/online-eval/get/:configId/json"
+            element={<OnlineEvalGetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event"
+            element={<MemoryEventScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event/get"
+            element={<Navigate to="/agentcore/memory/event/list" replace />}
+          />
+          <Route
+            path="agentcore/memory/event/get/:memoryId/:actorId/:sessionId/:eventId"
+            element={<MemoryEventGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event/list"
+            element={<MemoryEventListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event/list/:memoryId"
+            element={<MemoryEventListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event/list/:memoryId/:actorId"
+            element={<MemoryEventListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/event/list/:memoryId/:actorId/:sessionId"
+            element={<MemoryEventListScreen ctx={ctx} core={core} />}
+          />
+          <Route path="agentcore/identity" element={<IdentityScreen ctx={ctx} core={core} />} />
+          <Route
+            path="agentcore/identity/api-key-credential-provider"
+            element={<ApiKeyCredentialProviderScreen ctx={ctx} core={core} />}
+          />
+          {/* Bare `get` (no name) has nothing to show — send the user to the list. */}
+          <Route
+            path="agentcore/identity/api-key-credential-provider/get"
+            element={<Navigate to="/agentcore/identity/api-key-credential-provider/list" replace />}
+          />
+          <Route
+            path="agentcore/identity/api-key-credential-provider/list"
+            element={<ApiKeyCredentialProviderListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/identity/api-key-credential-provider/get/:name"
+            element={<ApiKeyCredentialProviderGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/identity/api-key-credential-provider/get/:name/json"
+            element={<ApiKeyCredentialProviderGetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/identity/oauth2-credential-provider"
+            element={<Oauth2CredentialProviderScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/identity/oauth2-credential-provider/get"
+            element={<Navigate to="/agentcore/identity/oauth2-credential-provider/list" replace />}
+          />
+          <Route
+            path="agentcore/identity/oauth2-credential-provider/list"
+            element={<Oauth2CredentialProviderListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/identity/oauth2-credential-provider/get/:name"
+            element={<Oauth2CredentialProviderGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/identity/oauth2-credential-provider/get/:name/json"
+            element={<Oauth2CredentialProviderGetJsonScreen ctx={ctx} core={core} />}
           />
           <Route path="*" element={<HelpScreen ctx={ctx} core={core} />} />
         </Routes>

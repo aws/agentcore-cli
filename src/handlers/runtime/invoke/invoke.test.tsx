@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Writable } from "node:stream";
@@ -12,7 +12,10 @@ import {
   waitFor,
 } from "../../../testing";
 import { ExitCode, runWithExitCode } from "../../../runnable";
+import { InvalidEnvironmentError } from "../../../errors";
 import { createRootHandler } from "../../index";
+import * as tui from "../../../tui";
+import { RuntimeInvokeLaunchContextKey } from "./launchContext";
 
 const REGION = "us-west-2";
 const RUNTIME_ID = "runtime-123";
@@ -153,17 +156,14 @@ describe("runtime invoke", () => {
     });
   });
 
-  test.each<[string, string[]]>([
-    ["no request options", []],
-    ["--content-type", ["--content-type", "text/plain"]],
-    ["--header", ["--header", "X-Test: value"]],
-    ["--output-file", ["--output-file", "response.bin"]],
-    ["--json", ["--json"]],
-  ])("requires a payload with %s before Core calls", async (_name, extraArgs) => {
+  test.each([
+    ["--content-type", "text/plain"],
+    ["--output-file", "response.bin"],
+  ])("rejects request option %s without a payload before Core calls", async (flagName, value) => {
     const core = new TestCoreClient();
     const output = captureIO();
     await expect(
-      runCommand(core, output.io, ["runtime", "invoke", "--id", RUNTIME_ID, ...extraArgs]),
+      runCommand(core, output.io, ["runtime", "invoke", "--id", RUNTIME_ID, flagName, value]),
     ).rejects.toThrow(/--payload/);
     expect(core.runtime.calls).toEqual([]);
   });
@@ -340,15 +340,12 @@ describe("runtime invoke", () => {
     expect(core.runtime.calls).toEqual([]);
   });
 
-  test.each<[string, string[]]>([
-    ["--id", ["--payload", "{}"]],
-    ["--payload", ["--id", RUNTIME_ID]],
-  ])("classifies a missing %s as usage before Core calls", async (_flag, args) => {
+  test("classifies a missing --id as usage before Core calls", async () => {
     const core = new TestCoreClient();
     const output = captureIO();
 
     const code = await runWithExitCode(async () =>
-      runCommand(core, output.io, ["runtime", "invoke", ...args]),
+      runCommand(core, output.io, ["runtime", "invoke", "--payload", "{}"]),
     );
 
     expect(code).toBe(ExitCode.USAGE);
@@ -394,13 +391,154 @@ describe("runtime invoke", () => {
     expect(core.runtime.calls.map((call) => call.method)).toEqual(["getRuntime"]);
   });
 
-  test("a bare command reaches the Runtime TUI middleware without Core calls", async () => {
+  test("a bare command enters existing TUI middleware without Runtime Core calls", async () => {
     const core = new TestCoreClient();
     const output = captureIO();
 
     await expect(runCommand(core, output.io, ["runtime", "invoke"])).rejects.toThrow(
       "interactive mode requires a TTY on stdin and stdout",
     );
+    expect(core.runtime.calls).toEqual([]);
+  });
+
+  test("classifies the TUI requirement as usage at the handler boundary", async () => {
+    const core = new TestCoreClient();
+    const output = captureIO();
+    const render = spyOn(tui, "renderTuiAt").mockRejectedValue(
+      new InvalidEnvironmentError("interactive mode requires a TTY on stdin and stdout"),
+    );
+
+    try {
+      const code = await runWithExitCode(async () =>
+        runCommand(core, output.io, ["runtime", "invoke", "--id", RUNTIME_ID]),
+      );
+
+      expect(code).toBe(ExitCode.USAGE);
+      expect(core.runtime.calls).toEqual([]);
+    } finally {
+      render.mockRestore();
+    }
+  });
+
+  test("preserves unexpected TUI rendering failures", async () => {
+    const core = new TestCoreClient();
+    const output = captureIO();
+    const failure = new TypeError("render failed");
+    const render = spyOn(tui, "renderTuiAt").mockRejectedValue(failure);
+
+    try {
+      await expect(
+        runCommand(core, output.io, ["runtime", "invoke", "--id", RUNTIME_ID]),
+      ).rejects.toBe(failure);
+      expect(core.runtime.calls).toEqual([]);
+    } finally {
+      render.mockRestore();
+    }
+  });
+
+  test("handler deep-links id-only and qualified invokes with encoded path segments", async () => {
+    const core = new TestCoreClient();
+    const output = captureIO();
+    const render = spyOn(tui, "renderTuiAt").mockResolvedValue(undefined);
+
+    try {
+      await runCommand(core, output.io, ["runtime", "invoke", "--id", "runtime/blue one"]);
+      await runCommand(core, output.io, [
+        "runtime",
+        "invoke",
+        "--id",
+        "runtime/blue one",
+        "--session-id",
+        "session/one two",
+      ]);
+      await runCommand(core, output.io, [
+        "runtime",
+        "invoke",
+        "--id",
+        "runtime/blue one",
+        "--qualifier",
+        "prod/green one",
+      ]);
+      await runCommand(core, output.io, [
+        "runtime",
+        "invoke",
+        "--id",
+        "runtime/blue one",
+        "--qualifier",
+        "prod/green one",
+        "--session-id",
+        "session/one two",
+      ]);
+
+      expect(render.mock.calls.map(([path]) => path)).toEqual([
+        "/agentcore/runtime/invoke/runtime%2Fblue%20one",
+        "/agentcore/runtime/invoke/runtime%2Fblue%20one",
+        "/agentcore/runtime/invoke/runtime%2Fblue%20one/prod%2Fgreen%20one",
+        "/agentcore/runtime/invoke/runtime%2Fblue%20one/prod%2Fgreen%20one",
+      ]);
+      expect(render.mock.calls[1]![1].value(RuntimeInvokeLaunchContextKey)).toMatchObject({
+        runtimeId: "runtime/blue one",
+        runtimeSessionId: "session/one two",
+      });
+      expect(render.mock.calls[3]![1].value(RuntimeInvokeLaunchContextKey)).toMatchObject({
+        runtimeId: "runtime/blue one",
+        runtimeSessionId: "session/one two",
+      });
+    } finally {
+      render.mockRestore();
+    }
+  });
+
+  test("passes launch identity, authentication, and headers to the TUI without a payload", async () => {
+    const core = new TestCoreClient();
+    const output = captureIO();
+    const render = spyOn(tui, "renderTuiAt").mockResolvedValue(undefined);
+
+    try {
+      await runCommand(core, output.io, [
+        "runtime",
+        "invoke",
+        "--id",
+        RUNTIME_ID,
+        "--user-id",
+        "user-123",
+        "--header",
+        "X-Tenant: retail",
+        "--bearer-token",
+        "secret-token",
+      ]);
+
+      expect(render).toHaveBeenCalledTimes(1);
+      expect(render.mock.calls[0]![1].value(RuntimeInvokeLaunchContextKey)).toEqual({
+        runtimeId: RUNTIME_ID,
+        runtimeSessionId: undefined,
+        runtimeUserId: "user-123",
+        applicationHeaders: [["X-Tenant", "retail"]],
+        bearerToken: "secret-token",
+      });
+      expect(core.runtime.calls).toEqual([]);
+    } finally {
+      render.mockRestore();
+    }
+  });
+
+  test("rejects a stdin bearer token when launching the TUI", async () => {
+    const core = new TestCoreClient();
+    const output = captureIO();
+
+    await expect(
+      runCommand(core, output.io, ["runtime", "invoke", "--id", RUNTIME_ID, "--bearer-token", "-"]),
+    ).rejects.toThrow("stdin bearer tokens are not available");
+    expect(core.runtime.calls).toEqual([]);
+  });
+
+  test("handler keeps JSON mode without a payload as a usage error", async () => {
+    const core = new TestCoreClient();
+    const output = captureIO();
+
+    await expect(
+      runCommand(core, output.io, ["runtime", "invoke", "--id", RUNTIME_ID, "--json"]),
+    ).rejects.toThrow(/--payload/);
     expect(core.runtime.calls).toEqual([]);
   });
 

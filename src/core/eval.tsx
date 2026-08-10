@@ -1,24 +1,73 @@
 import {
+  CreateDatasetCommand,
+  CreateDatasetVersionCommand,
   CreateEvaluatorCommand,
+  CreateOnlineEvaluationConfigCommand,
+  DeleteDatasetCommand,
   DeleteEvaluatorCommand,
+  DeleteOnlineEvaluationConfigCommand,
+  GetAgentRuntimeCommand,
+  GetDatasetCommand,
   GetEvaluatorCommand,
+  GetHarnessCommand,
+  GetOnlineEvaluationConfigCommand,
+  ListDatasetsCommand,
   ListEvaluatorsCommand,
+  ListOnlineEvaluationConfigsCommand,
   UpdateEvaluatorCommand,
+  UpdateOnlineEvaluationConfigCommand,
+  type CreateDatasetResponse,
+  type CreateDatasetVersionResponse,
   type CreateEvaluatorRequest,
   type CreateEvaluatorResponse,
+  type CreateOnlineEvaluationConfigResponse,
+  type DeleteDatasetResponse,
   type DeleteEvaluatorResponse,
+  type DeleteOnlineEvaluationConfigResponse,
   type EvaluatorConfig,
+  type GetDatasetResponse,
   type GetEvaluatorResponse,
+  type GetOnlineEvaluationConfigResponse,
+  type ListDatasetsResponse,
   type ListEvaluatorsResponse,
+  type DataSourceConfig,
+  type ListOnlineEvaluationConfigsResponse,
+  type Rule,
   type UpdateEvaluatorResponse,
+  type UpdateOnlineEvaluationConfigResponse,
+  type BedrockAgentCoreControlClient,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import { InputValidationError } from "../errors";
-import type { CodeBasedUpdate, CoreEvalClient, LlmAsAJudgeUpdate } from "../handlers/eval/types";
-import type { AwsClients, CoreOptions } from "./types";
+import { Transform } from "node:stream";
+import { FileWriteError, InputValidationError, NetworkingError } from "../errors";
+import type {
+  CodeBasedUpdate,
+  RoleScopeWarning,
+  CoreEvalClient,
+  CreateDatasetInput,
+  CreateOnlineEvalInput,
+  LlmAsAJudgeUpdate,
+  UpdateOnlineEvalInput,
+} from "../handlers/eval/types";
+import { atomicWriteStream } from "../io";
+import type { AwsClients, CoreFetch, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
+import {
+  accountIdFromRoleArn,
+  executionPolicy,
+  grantOnlineEvalScope,
+  onlineEvalExecutionRoleName,
+  revokeOnlineEvalScope,
+  scopePolicyName,
+} from "./onlineEvalExecutionRole";
+
+const DEFAULT_ENDPOINT_QUALIFIER = "DEFAULT";
 
 export class EvalClient implements CoreEvalClient {
-  constructor(private readonly clients: AwsClients) {}
+  constructor(
+    private readonly clients: AwsClients,
+    // HTTP client for datasets presigned S3 URL
+    private readonly fetch: CoreFetch = globalThis.fetch,
+  ) {}
 
   async createEvaluator(
     request: CreateEvaluatorRequest,
@@ -153,4 +202,531 @@ export class EvalClient implements CoreEvalClient {
       .control(toClientConfig(options))
       .send(new DeleteEvaluatorCommand({ evaluatorId: id }));
   }
+
+  async createOnlineEvaluationConfig(
+    input: CreateOnlineEvalInput,
+    options: CoreOptions,
+  ): Promise<CreateOnlineEvaluationConfigResponse> {
+    // `--agent` derives the CloudWatch source from the agent's default trace
+    // path; an explicit dataSourceConfig passes straight through, which is how an
+    // agent emitting under a custom OTel service name is pointed at its log groups.
+    const dataSourceConfig =
+      input.agent !== undefined
+        ? await agentDataSource(input.agent, input.endpoint, this.clients, options)
+        : input.dataSourceConfig;
+    const control = this.clients.control(toClientConfig(options));
+
+    // The service validates at create time that the role can query the log groups
+    // it was pointed at, and the required policy is not obvious, so provision a
+    // default role scoped to them unless the caller brought their own.
+    const evaluationExecutionRoleArn =
+      input.evaluationExecutionRoleArn ??
+      (
+        await grantOnlineEvalScope(
+          // IAM is a global service; the region only selects the endpoint, and the
+          // agentcore endpoint override must not leak onto it.
+          this.clients.iam({ region: options.region }),
+          input.name,
+          options.region,
+          logGroupNamesOf(dataSourceConfig),
+          await evaluatorKmsKeys(input.evaluatorIds ?? [], control),
+        )
+      ).roleArn;
+
+    const command = new CreateOnlineEvaluationConfigCommand({
+      onlineEvaluationConfigName: input.name,
+      description: input.description,
+      rule: toRule(input.samplingRate, input.sessionTimeoutMinutes, input.filters),
+      dataSourceConfig,
+      evaluators: input.evaluatorIds?.map((evaluatorId) => ({ evaluatorId })),
+      evaluationExecutionRoleArn,
+      enableOnCreate: input.enableOnCreate ?? true,
+    });
+
+    // A role provisioned moments ago may not be assumable yet (IAM is eventually
+    // consistent), and the service rejects the create rather than retrying. Only
+    // worth retrying when we just created the role; a caller-supplied one that
+    // cannot be assumed is a real misconfiguration and fails immediately.
+    return input.evaluationExecutionRoleArn
+      ? control.send(command)
+      : retryWhileRolePropagates(() => control.send(command));
+  }
+
+  // updateOnlineEvaluationConfig fetches the current config and merges the
+  // provided fields over it, because UpdateOnlineEvaluationConfig replaces the
+  // whole `rule` (and, when endpoint changes, `dataSourceConfig`) rather than
+  // patching individual fields.
+  async updateOnlineEvaluationConfig(
+    id: string,
+    update: UpdateOnlineEvalInput,
+    options: CoreOptions,
+  ): Promise<{
+    response: UpdateOnlineEvaluationConfigResponse;
+    roleScopeWarning?: RoleScopeWarning;
+  }> {
+    const control = this.clients.control(toClientConfig(options));
+    const current = await control.send(
+      new GetOnlineEvaluationConfigCommand({
+        onlineEvaluationConfigId: id,
+      }),
+    );
+
+    const samplingPercentage =
+      update.samplingRate ?? current.rule?.samplingConfig?.samplingPercentage;
+    const sessionTimeoutMinutes =
+      update.sessionTimeoutMinutes ?? current.rule?.sessionConfig?.sessionTimeoutMinutes;
+    const filters = update.filters ?? current.rule?.filters;
+
+    const evaluators =
+      update.evaluatorIds !== undefined
+        ? update.evaluatorIds.map((evaluatorId) => ({ evaluatorId }))
+        : current.evaluators;
+
+    // Repointing the evaluation, in precedence order: an explicit
+    // dataSourceConfig replaces the source outright; --agent re-derives it from
+    // that agent; --endpoint/--clear-endpoint alone re-scope the agent this config
+    // was already built from, which means recovering its runtime id first.
+    let dataSourceConfig = current.dataSourceConfig;
+    if (update.dataSourceConfig !== undefined) {
+      dataSourceConfig = update.dataSourceConfig;
+    } else if (update.agent !== undefined) {
+      dataSourceConfig = await agentDataSource(
+        update.agent,
+        update.clearEndpoint ? DEFAULT_ENDPOINT_QUALIFIER : update.endpoint,
+        this.clients,
+        options,
+      );
+    } else if (update.clearEndpoint || update.endpoint !== undefined) {
+      // The runtime id only survives inside the stored log group path, so an
+      // endpoint change has to recover it from there.
+      const currentLogGroup =
+        current.dataSourceConfig && "cloudWatchLogs" in current.dataSourceConfig
+          ? current.dataSourceConfig.cloudWatchLogs?.logGroupNames?.[0]
+          : undefined;
+      const runtimeId = currentLogGroup ? runtimeIdFromLogGroup(currentLogGroup) : undefined;
+      if (!runtimeId) {
+        throw new InputValidationError(
+          `Online evaluation config "${id}" was not created from an agent; ` +
+            `pass --agent or --data-source-config to repoint it`,
+          { meta: { onlineEvaluationConfigId: id } },
+        );
+      }
+      const endpoint = update.clearEndpoint ? DEFAULT_ENDPOINT_QUALIFIER : update.endpoint;
+      dataSourceConfig = await agentDataSource(runtimeId, endpoint, this.clients, options);
+    }
+
+    // Moving the data source invalidates the execution role's scope: its policy
+    // grants query access to the previous log groups only. A role the caller named
+    // via --role-arn is theirs to manage and is never edited; a CLI-provisioned one
+    // (identified by its derived name) is re-scoped unless the caller declines.
+    // Either way, skipping the refresh is reported so the caller can be told.
+    let roleScopeWarning: RoleScopeWarning | undefined;
+    const movedTo =
+      dataSourceConfig !== undefined && dataSourceConfig !== current.dataSourceConfig
+        ? dataSourceConfig
+        : undefined;
+
+    const configName = current.onlineEvaluationConfigName;
+    const roleArn = update.evaluationExecutionRoleArn ?? current.evaluationExecutionRoleArn;
+    const managedRoleName =
+      configName !== undefined &&
+      update.evaluationExecutionRoleArn === undefined &&
+      roleArn?.endsWith(`/${onlineEvalExecutionRoleName(configName)}`) === true
+        ? configName
+        : undefined;
+    const refreshManagedRole = movedTo !== undefined && managedRoleName !== undefined;
+
+    if (movedTo !== undefined && managedRoleName === undefined && roleArn) {
+      roleScopeWarning = {
+        reason: "custom-role",
+        roleArn,
+        logGroupNames: logGroupNamesOf(movedTo),
+      };
+    } else if (movedTo !== undefined && !refreshManagedRole && roleArn) {
+      // managed role, but the caller declined the refresh
+      roleScopeWarning = {
+        reason: "update-declined",
+        roleArn,
+        logGroupNames: logGroupNamesOf(movedTo),
+      };
+    }
+
+    if (refreshManagedRole && update.updateRole !== false) {
+      const iam = this.clients.iam({ region: options.region });
+      const newLogGroups = logGroupNamesOf(movedTo);
+      const oldLogGroups = current.dataSourceConfig
+        ? logGroupNamesOf(current.dataSourceConfig)
+        : [];
+      // The evaluator list may have changed alongside the data source, so
+      // re-resolve the keys rather than reusing the ones from create.
+      const kmsKeys = await evaluatorKmsKeys(
+        update.evaluatorIds ??
+          (current.evaluators ?? [])
+            .map((e) => ("evaluatorId" in e ? e.evaluatorId : undefined))
+            .filter((id): id is string => id !== undefined),
+        control,
+      );
+
+      // Grant the new scope as its own inline policy before the update, then
+      // revoke the superseded one only once the update has landed. IAM unions
+      // Allows across a role's inline policies, so both scopes are granted in
+      // between — and because each scope is a separate policy, a failed update
+      // leaves the one backing the current data source exactly as it was.
+      const { roleArn: managedRoleArn, policyName: newPolicyName } = await grantOnlineEvalScope(
+        iam,
+        managedRoleName,
+        options.region,
+        newLogGroups,
+        kmsKeys,
+      );
+      const oldPolicyName = scopePolicyName(
+        executionPolicy(
+          options.region,
+          accountIdFromRoleArn(managedRoleArn),
+          oldLogGroups,
+          kmsKeys,
+        ),
+      );
+
+      const response = await control.send(
+        new UpdateOnlineEvaluationConfigCommand({
+          onlineEvaluationConfigId: id,
+          rule: toRule(samplingPercentage, sessionTimeoutMinutes, filters),
+          dataSourceConfig,
+          evaluators,
+        }),
+      );
+
+      if (newPolicyName !== oldPolicyName) {
+        try {
+          await revokeOnlineEvalScope(iam, managedRoleName, oldPolicyName);
+        } catch {
+          // The config is already correct; the role just still grants a data
+          // source it no longer uses.
+          roleScopeWarning = {
+            reason: "stale-scope",
+            roleArn: roleArn!,
+            logGroupNames: oldLogGroups,
+          };
+        }
+      }
+      return { response, roleScopeWarning };
+    }
+
+    const response = await control.send(
+      new UpdateOnlineEvaluationConfigCommand({
+        onlineEvaluationConfigId: id,
+        rule: toRule(samplingPercentage, sessionTimeoutMinutes, filters),
+        dataSourceConfig,
+        evaluators,
+        evaluationExecutionRoleArn: update.evaluationExecutionRoleArn,
+      }),
+    );
+    return { response, roleScopeWarning };
+  }
+
+  async getOnlineEvaluationConfig(
+    id: string,
+    options: CoreOptions,
+  ): Promise<GetOnlineEvaluationConfigResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new GetOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }));
+  }
+
+  async listOnlineEvaluationConfigs(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListOnlineEvaluationConfigsResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new ListOnlineEvaluationConfigsCommand({ nextToken, maxResults }));
+  }
+
+  async setOnlineEvaluationExecutionStatus(
+    id: string,
+    executionStatus: "ENABLED" | "DISABLED",
+    options: CoreOptions,
+  ): Promise<UpdateOnlineEvaluationConfigResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(
+        new UpdateOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id, executionStatus }),
+      );
+  }
+
+  async deleteOnlineEvaluationConfig(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteOnlineEvaluationConfigResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new DeleteOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }));
+  }
+
+  async createDataset(
+    input: CreateDatasetInput,
+    options: CoreOptions,
+  ): Promise<CreateDatasetResponse> {
+    return this.clients.control(toClientConfig(options)).send(new CreateDatasetCommand(input));
+  }
+
+  async getDataset(
+    id: string,
+    version: string | undefined,
+    options: CoreOptions,
+  ): Promise<GetDatasetResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new GetDatasetCommand({ datasetId: id, datasetVersion: version }));
+  }
+
+  // downloadDataset resolves the version's presigned URL and streams it to disk.
+  // The body is streamed to a temporary file and renamed into place
+  async downloadDataset(
+    id: string,
+    version: string | undefined,
+    filePath: string,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<GetDatasetResponse> {
+    const dataset = await this.getDataset(id, version, options);
+
+    // The consolidated file is written asynchronously, so a dataset that is still
+    // ingesting has no URL to offer yet. Report the status, which is what tells
+    // the caller whether to retry.
+    if (!dataset.downloadUrl) {
+      throw new NetworkingError(
+        `Dataset "${id}" has no downloadable content yet (status ${dataset.status ?? "unknown"}); ` +
+          `retry once it reports ACTIVE`,
+        { meta: { datasetId: id, datasetVersion: dataset.datasetVersion, status: dataset.status } },
+      );
+    }
+
+    let response: Response;
+    try {
+      response = await this.fetch(dataset.downloadUrl, { signal });
+    } catch (error) {
+      if (signal?.aborted) throw signal.reason ?? error;
+      throw error;
+    }
+    if (!response.ok) {
+      throw new NetworkingError(`Downloading dataset "${id}" failed with HTTP ${response.status}`, {
+        meta: { datasetId: id, status: response.status },
+      });
+    }
+    if (!response.body) {
+      throw new NetworkingError(`Dataset "${id}" download returned an empty response`, {
+        meta: { datasetId: id },
+      });
+    }
+
+    try {
+      await atomicWriteStream(filePath, response.body, {
+        signal,
+        transforms: [endWithNewline()],
+      });
+    } catch (error) {
+      if (signal?.aborted) throw signal.reason ?? error;
+      throw new FileWriteError(`Could not write dataset "${id}" to ${filePath}`, {
+        cause: error,
+        meta: { datasetId: id, filePath },
+      });
+    }
+    return dataset;
+  }
+
+  async listDatasets(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListDatasetsResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new ListDatasetsCommand({ nextToken, maxResults }));
+  }
+
+  async deleteDataset(
+    id: string,
+    version: string | undefined,
+    options: CoreOptions,
+  ): Promise<DeleteDatasetResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new DeleteDatasetCommand({ datasetId: id, datasetVersion: version }));
+  }
+
+  async publishDataset(id: string, options: CoreOptions): Promise<CreateDatasetVersionResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new CreateDatasetVersionCommand({ datasetId: id }));
+  }
+}
+
+// endWithNewline appends a single trailing newline if the stream did not with one
+// Omitting the trailing newline causes attempts at appending to produce malformed JSONL
+// Normalizing on write keeps the downloaded file editable
+function endWithNewline(): Transform {
+  const NEWLINE = 0x0a;
+  let lastByte: number | undefined;
+  return new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      if (chunk.length > 0) lastByte = chunk[chunk.length - 1];
+      callback(null, chunk);
+    },
+    flush(callback) {
+      // An empty body is left empty rather than turned into a lone newline.
+      callback(null, lastByte === undefined || lastByte === NEWLINE ? undefined : "\n");
+    },
+  });
+}
+
+// runtimeLogGroup mirrors the old CLI's derivation (src/cli/aws/cloudwatch.ts):
+// AgentCore always writes a runtime endpoint's traces to this fixed path, keyed
+// by the runtime *id*.
+function runtimeLogGroup(runtimeId: string, endpoint: string): string {
+  return `/aws/bedrock-agentcore/runtimes/${runtimeId}-${endpoint}`;
+}
+
+// runtimeServiceName derives the CloudWatch trace service name that scopes a
+// CreateOnlineEvaluationConfig data source to one runtime endpoint's sessions:
+// `{runtimeName}.{endpoint}`, keyed by the runtime *name* (verified against
+// production configs — this does NOT match the log group's runtime id).
+function runtimeServiceName(runtimeName: string, endpoint: string): string {
+  return `${runtimeName}.${endpoint}`;
+}
+
+// resolveAgentToRuntime resolves `--agent <id>` to its underlying runtime id +
+// name. A harness is itself implemented as an AgentCore Runtime under the
+// hood, so a plain runtime id resolves directly via GetAgentRuntime; a harness
+// id 404s there and resolves instead via GetHarness, reading the underlying
+// runtime out of `harness.environment.agentCoreRuntimeEnvironment`. Verified
+// against real harnesses/runtimes in a live account before relying on it.
+async function resolveAgentToRuntime(
+  agent: string,
+  clients: AwsClients,
+  options: CoreOptions,
+): Promise<{ runtimeId: string; runtimeName: string }> {
+  const control = clients.control(toClientConfig(options));
+  try {
+    const runtime = await control.send(new GetAgentRuntimeCommand({ agentRuntimeId: agent }));
+    if (runtime.agentRuntimeName) {
+      return { runtimeId: agent, runtimeName: runtime.agentRuntimeName };
+    }
+  } catch (error) {
+    if ((error as Error).name !== "ResourceNotFoundException") throw error;
+  }
+
+  const harness = await control.send(new GetHarnessCommand({ harnessId: agent }));
+  const environment = harness.harness?.environment;
+  const runtimeEnv =
+    environment && "agentCoreRuntimeEnvironment" in environment
+      ? environment.agentCoreRuntimeEnvironment
+      : undefined;
+  if (!runtimeEnv?.agentRuntimeId || !runtimeEnv?.agentRuntimeName) {
+    throw new InputValidationError(`"${agent}" does not exist as a runtime or a harness`, {
+      meta: { agent },
+    });
+  }
+  return { runtimeId: runtimeEnv.agentRuntimeId, runtimeName: runtimeEnv.agentRuntimeName };
+}
+
+// agentDataSource builds the CloudWatch data source for an agent id, resolving it
+// to its underlying runtime first (the log group is keyed by the runtime id, the
+// service name by the runtime name).
+async function agentDataSource(
+  agent: string,
+  endpoint: string | undefined,
+  clients: AwsClients,
+  options: CoreOptions,
+): Promise<DataSourceConfig> {
+  const qualifier = endpoint ?? DEFAULT_ENDPOINT_QUALIFIER;
+  const { runtimeId, runtimeName } = await resolveAgentToRuntime(agent, clients, options);
+  return {
+    cloudWatchLogs: {
+      logGroupNames: [runtimeLogGroup(runtimeId, qualifier)],
+      serviceNames: [runtimeServiceName(runtimeName, qualifier)],
+    },
+  };
+}
+
+// A just-written role or inline policy is not visible to the service immediately
+// (IAM is eventually consistent), and the service validates both when the config
+// is created. It surfaces as one of two messages depending on which part has not
+// propagated yet.
+const ROLE_NOT_PROPAGATED =
+  /role cannot be assumed|does not have permissions to (create log group|access the specified log groups)/i;
+
+// retryWhileRolePropagates retries `send` while the service reports the execution
+// role as unusable, which is how a not-yet-propagated role or policy surfaces.
+// Bounded and short: propagation is normally a few seconds, and a role that is
+// genuinely misconfigured should fail fast rather than hang.
+async function retryWhileRolePropagates<T>(send: () => Promise<T>): Promise<T> {
+  const delaysMs = [1_000, 2_000, 4_000, 8_000];
+  for (const delay of delaysMs) {
+    try {
+      return await send();
+    } catch (error) {
+      if (!ROLE_NOT_PROPAGATED.test((error as Error).message)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  return send();
+}
+
+// evaluatorKmsKeys collects the customer managed KMS keys of the referenced
+// evaluators. The service validates that the execution role can decrypt them when
+// the config is created, so a provisioned role has to grant kms:Decrypt on exactly
+// these keys. Builtins carry no key, so the common case resolves to nothing. A
+// GetEvaluator failure propagates as-is: the SDK's error already names the
+// operation and the evaluator, and it is not the caller's input at fault.
+async function evaluatorKmsKeys(
+  evaluatorIds: string[],
+  control: BedrockAgentCoreControlClient,
+): Promise<string[]> {
+  const keys = await Promise.all(
+    evaluatorIds.map(async (evaluatorId) => {
+      const evaluator = await control.send(new GetEvaluatorCommand({ evaluatorId }));
+      return evaluator.kmsKeyArn;
+    }),
+  );
+  return [...new Set(keys.filter((key): key is string => key !== undefined))];
+}
+
+// logGroupNamesOf reads the log groups out of a resolved dataSourceConfig, for
+// scoping the default execution role. cloudWatchLogs is the only arm the API
+// defines today; an unrecognized one yields no groups rather than throwing, so a
+// future arm degrades to a role the caller can still override with --role-arn.
+function logGroupNamesOf(dataSourceConfig: DataSourceConfig): string[] {
+  return "cloudWatchLogs" in dataSourceConfig
+    ? (dataSourceConfig.cloudWatchLogs?.logGroupNames ?? [])
+    : [];
+}
+
+// runtimeIdFromLogGroup recovers the runtime id embedded in a log group path
+// produced by runtimeLogGroup, so an update can re-derive dataSourceConfig for a
+// new --endpoint without the caller passing --agent again. Returns undefined for
+// a path that does not follow the convention, i.e. a config pointed at custom log
+// groups, which carries no runtime id to recover.
+//
+// Splitting on the *last* hyphen is unambiguous: endpoint names are constrained
+// to [a-zA-Z][a-zA-Z0-9_]{0,47}, so they never contain one.
+function runtimeIdFromLogGroup(logGroupName: string): string | undefined {
+  const match = logGroupName.match(/^\/aws\/bedrock-agentcore\/runtimes\/(.+)-[^-]+$/);
+  return match?.[1];
+}
+
+function toRule(
+  samplingRate: number | undefined,
+  sessionTimeoutMinutes: number | undefined,
+  filters?: Rule["filters"],
+): Rule {
+  return {
+    samplingConfig: { samplingPercentage: samplingRate },
+    // sessionConfig is optional on Rule and the service does not backfill it, so
+    // omit it when unset rather than materializing the service's own default.
+    ...(sessionTimeoutMinutes !== undefined ? { sessionConfig: { sessionTimeoutMinutes } } : {}),
+    filters,
+  };
 }

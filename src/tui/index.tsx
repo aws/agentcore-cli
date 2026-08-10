@@ -57,6 +57,7 @@ export async function renderTuiAt(
     stdout: io.stdout,
     stderr: io.stderr,
     alternateScreen: true,
+    incrementalRendering: true,
   });
   await waitUntilExit();
 }

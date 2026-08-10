@@ -1,4 +1,5 @@
 import { Router } from "../../router";
+import type { AppIO } from "../../io";
 import { createCreateProjectHandler } from "./create";
 import { createAddProjectHandler } from "./add";
 import { createRemoveProjectHandler } from "./remove";
@@ -10,12 +11,15 @@ import type { ProjectManager } from "./types";
 
 type ProjectHandlerConfig = {
   projectManager: ProjectManager;
+  io: AppIO;
 };
 
 export function createProjectHandler(config: ProjectHandlerConfig): Router {
   const project = new Router("project", "manage an AgentCore project");
 
-  project.handler(createCreateProjectHandler({ projectManager: config.projectManager }));
+  project.handler(
+    createCreateProjectHandler({ projectManager: config.projectManager, io: config.io }),
+  );
   project.handler(createAddProjectHandler());
   project.handler(createRemoveProjectHandler());
   project.handler(createDevProjectHandler());

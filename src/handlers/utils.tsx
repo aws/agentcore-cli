@@ -1,6 +1,8 @@
 import type { Context } from "../router";
+import type z from "zod";
 import type { CoreOptions } from "../core/types";
 import { InputValidationError } from "../errors";
+import { formatZodError } from "../router/schema";
 import { EndpointKey, RegionKey } from "./keys";
 
 // coreOptsFromCtx builds the standard CoreOptions handed to Core operations from
@@ -29,6 +31,24 @@ export function parseJsonFlag<T>(name: string, raw: string | undefined): T | und
       { cause: error },
     );
   }
+}
+
+export function parseJsonFlagWithSchema<T>(
+  name: string,
+  raw: string | undefined,
+  schema: z.ZodType<T>,
+): T | undefined {
+  const parsed = parseJsonFlag<unknown>(name, raw);
+  if (parsed === undefined) return undefined;
+
+  const result = schema.safeParse(parsed);
+  if (!result.success) {
+    throw new InputValidationError(
+      `Invalid value for option '--${name}': ${formatZodError(result.error)}`,
+      { cause: result.error },
+    );
+  }
+  return result.data;
 }
 
 // parseTags parses a tags flag that accepts two mutually exclusive forms:

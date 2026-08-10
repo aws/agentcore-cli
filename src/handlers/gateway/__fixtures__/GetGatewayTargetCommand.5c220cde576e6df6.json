@@ -1,0 +1,38 @@
+{
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:685197708687:gateway/agentcore-cli-gateway-read-connector-gkzcxxkc5e",
+  "targetId": "Z3FQ0H8JCK",
+  "createdAt": {
+    "$date": "2026-08-05T20:20:45.351Z"
+  },
+  "updatedAt": {
+    "$date": "2026-08-05T20:20:51.210Z"
+  },
+  "status": "READY",
+  "name": "agentcore-cli-gateway-read-connector-openai",
+  "targetConfiguration": {
+    "inference": {
+      "connector": {
+        "source": {
+          "connectorId": "openai"
+        }
+      }
+    }
+  },
+  "credentialProviderConfigurations": [
+    {
+      "credentialProviderType": "API_KEY",
+      "credentialProvider": {
+        "apiKeyCredentialProvider": {
+          "providerArn": "arn:aws:bedrock-agentcore:us-east-1:685197708687:token-vault/default/apikeycredentialprovider/DONOTDELETEe2eOAI",
+          "credentialParameterName": "Authorization",
+          "credentialPrefix": "Bearer",
+          "credentialLocation": "HEADER"
+        }
+      }
+    }
+  ],
+  "description": "AgentCore CLI persistent READY Gateway Connector Target fixture",
+  "lastSynchronizedAt": {
+    "$date": "2026-08-05T20:20:51.000Z"
+  }
+}

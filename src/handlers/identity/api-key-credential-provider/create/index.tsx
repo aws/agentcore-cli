@@ -6,7 +6,7 @@ import type { Core } from "../../../types";
 import type { AppIO } from "../../../../io";
 import { coreOptsFromCtx, parseTags } from "../../../utils";
 import { SourceResolver } from "../../../../io";
-import { parseSecretReference } from "../parser";
+import { parseSecretReference } from "../../parser";
 
 export const createCreateApiKeyCredentialProviderHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -46,7 +46,7 @@ export const createCreateApiKeyCredentialProviderHandler = (core: Core, io: AppI
       const resolver = new SourceResolver({ stdin: io.stdin });
       const apiKey = await resolver.resolveText("api-key", flags["api-key"]);
       const apiKeySecretConfig = hasSecretRef
-        ? parseSecretReference(flags["api-key-secret-reference"]!)
+        ? parseSecretReference("api-key-secret-reference", flags["api-key-secret-reference"]!)
         : undefined;
       const apiKeySecretSource = hasApiKey ? "MANAGED" : "EXTERNAL";
       const tags = parseTags(flags.tags);

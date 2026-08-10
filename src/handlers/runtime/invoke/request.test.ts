@@ -1,11 +1,13 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { Readable } from "node:stream";
 import type { GetAgentRuntimeResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import { InputValidationError, SourceResolutionError } from "../../../errors";
+import { SourceResolver } from "../../../io";
 import {
   normalizeRuntimeInvokeRequest,
   parseRuntimeInvokeHeaders,
   resolveRuntimeInvokeSources,
+  resolveRuntimeInvokeTuiBearerToken,
 } from "./request";
 
 const REGION = "us-west-2";
@@ -84,6 +86,30 @@ describe("resolveRuntimeInvokeSources", () => {
       await resolving.catch(() => {});
     }
   });
+});
+
+test("brands TUI bearer-token file failures as input errors", async () => {
+  const missing = `file:///tmp/missing-runtime-token-${process.pid}`;
+  const error = await resolveRuntimeInvokeTuiBearerToken(missing, stdin(new Uint8Array())).catch(
+    (error) => error,
+  );
+
+  expect(error).toBeInstanceOf(InputValidationError);
+  expect(error.message).toContain("could not read '--bearer-token' from file");
+  expect(error.cause).toBeInstanceOf(SourceResolutionError);
+});
+
+test("preserves unexpected TUI bearer-token source failures", async () => {
+  const failure = new TypeError("source failed");
+  const resolve = spyOn(SourceResolver.prototype, "resolveText").mockRejectedValue(failure);
+
+  try {
+    await expect(resolveRuntimeInvokeTuiBearerToken("token", stdin(new Uint8Array()))).rejects.toBe(
+      failure,
+    );
+  } finally {
+    resolve.mockRestore();
+  }
 });
 
 describe("parseRuntimeInvokeHeaders", () => {

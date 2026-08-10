@@ -26,6 +26,7 @@ export interface PaginatedTablePickerProps<TItem, TRow extends Record<string, un
   errorMessage: (error: Error) => string;
   emptyMessage: string;
   emptyPageMessage: string;
+  maxPageSize?: number;
 }
 
 export function PaginatedTablePicker<TItem, TRow extends Record<string, unknown>>({
@@ -43,8 +44,9 @@ export function PaginatedTablePicker<TItem, TRow extends Record<string, unknown>
   errorMessage,
   emptyMessage,
   emptyPageMessage,
+  maxPageSize,
 }: PaginatedTablePickerProps<TItem, TRow>) {
-  const paging = usePagedList();
+  const paging = usePagedList(maxPageSize);
   const list = useQuery({
     queryKey: [...queryKey, paging.pageSize, paging.token],
     queryFn: () => loadPage(paging.token, paging.pageSize),

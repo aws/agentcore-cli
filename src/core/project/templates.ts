@@ -1,4 +1,6 @@
 import { PROJECT_TEMPLATES, type ProjectTemplate } from "../../handlers/project/types";
+import { FsTreeNode } from "./fsTree";
+import type { AssetSource } from "./source";
 
 type TemplateSpec = {
   runtimes?: unknown[];
@@ -34,4 +36,53 @@ export const TEMPLATES: Record<ProjectTemplate, Template> = {
       ],
     },
   },
+  [PROJECT_TEMPLATES.HELLO_WORLD_PYTHON_CONTAINER]: {
+    appDir: "hello-world",
+    assetDir: "templates/hello-world-python-container",
+    spec: {
+      runtimes: [
+        {
+          name: "hello_world",
+          build: "Container",
+          entrypoint: "main.py",
+          codeLocation: "app/hello-world",
+          dockerfile: "Dockerfile",
+        },
+      ],
+    },
+  },
 };
+
+/** Serializes a value as pretty-printed JSON with a trailing newline. */
+const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
+
+/**
+ * Builds the agentcore.json spec by adding the template's resource sections to the shared base.
+ * The base fields and template sections never overlap so this is a plain spread.
+ */
+function agentcoreSpec(name: string, template: ProjectTemplate): unknown {
+  return {
+    name,
+    version: 1,
+    managedBy: "CDK",
+    ...TEMPLATES[template].spec,
+  };
+}
+
+export async function createProjectTreeFromTemplate(
+  name: string,
+  template: ProjectTemplate,
+  src: AssetSource,
+): Promise<FsTreeNode> {
+  const { appDir, assetDir } = TEMPLATES[template];
+  return FsTreeNode.createDirectory(".", [
+    FsTreeNode.createFile(".gitignore", () => src.read("templates/shared/gitignore.template")),
+    FsTreeNode.createDirectory("agentcore", [
+      await FsTreeNode.fromAssetSource(src, "cdk"),
+      FsTreeNode.createFile("agentcore.json", async () => json(agentcoreSpec(name, template))),
+      FsTreeNode.createFile("aws-targets.json", async () => json([])),
+      FsTreeNode.createFile(".env.local", () => src.read("templates/shared/env.local.template")),
+    ]),
+    FsTreeNode.createDirectory("app", [await FsTreeNode.fromAssetSource(src, assetDir, appDir)]),
+  ]);
+}

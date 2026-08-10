@@ -2,6 +2,8 @@
 
 exports[`FsProjectManager.create scaffolds the expected file tree into a fresh directory 1`] = `
 [
+  ".gitignore",
+  "agentcore/.env.local",
   "agentcore/agentcore.json",
   "agentcore/aws-targets.json",
   "agentcore/cdk/.gitignore",
@@ -15,6 +17,7 @@ exports[`FsProjectManager.create scaffolds the expected file tree into a fresh d
   "agentcore/cdk/package.json",
   "agentcore/cdk/test/cdk.test.ts",
   "agentcore/cdk/tsconfig.json",
+  "app/hello-world/README.md",
   "app/hello-world/main.py",
   "app/hello-world/pyproject.toml",
 ]

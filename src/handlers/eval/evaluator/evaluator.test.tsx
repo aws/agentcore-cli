@@ -141,16 +141,30 @@ describe("eval command hierarchy", () => {
     ).toEqual(["create", "update"]);
   });
 
+  // Under --json the empty-invocation TUI middleware prints help instead of
+  // opening the interactive UI, so these exercise the headless path.
   test.each([
     "eval",
     "eval evaluator",
     "eval evaluator llm-as-a-judge",
     "eval evaluator code-based",
-  ])("prints help for bare `%s` without an SDK call", async (command) => {
-    const stdout = await run(command.split(" "));
+  ])("prints help for bare `%s --json` without an SDK call", async (command) => {
+    const stdout = await run([...command.split(" "), "--json"]);
     expect(stdout).toContain(`Usage: agentcore ${command}`);
     expect(stdout).toContain("Commands:");
   });
+
+  // A bare read leaf (no flags, no --json) opens the interactive TUI, which the
+  // headless test IO cannot host — proving the empty-invocation middleware is
+  // wired onto the evaluator commands.
+  test.each([["get"], ["list"]] as const)(
+    "opens the TUI for a bare `eval evaluator %s` leaf",
+    async (command) => {
+      await expect(run(["eval", "evaluator", command])).rejects.toThrow(
+        "interactive mode requires a TTY on stdin and stdout",
+      );
+    },
+  );
 });
 
 describe("evaluator CRUDL", () => {
@@ -199,7 +213,9 @@ describe("evaluator CRUDL", () => {
   });
 
   test("lists evaluators", async () => {
-    const stdout = await run(["eval", "evaluator", "list"]);
+    // --json forces the headless path; a bare `list` (no flags) would otherwise
+    // open the TUI under the empty-invocation middleware.
+    const stdout = await run(["eval", "evaluator", "list", "--json"]);
 
     matchGolden(FIXTURES, "list.golden.json", stdout);
     expect(JSON.parse(stdout).evaluators).toBeArray();
@@ -377,13 +393,15 @@ describe("evaluator flag validation", () => {
     ).rejects.toThrow(/--lambda-arn/);
   });
 
+  // --json forces the headless path so the required-flag error surfaces; without
+  // it a bare invocation opens the TUI under the empty-invocation middleware.
   test.each([
     ["llm-as-a-judge update", ["eval", "evaluator", "llm-as-a-judge", "update"]],
     ["code-based update", ["eval", "evaluator", "code-based", "update"]],
     ["get", ["eval", "evaluator", "get"]],
     ["delete", ["eval", "evaluator", "delete"]],
   ] as const)("`%s` requires --id", async (_label, args) => {
-    await expect(run([...args])).rejects.toThrow(/--id/);
+    await expect(run([...args, "--json"])).rejects.toThrow(/--id/);
   });
 
   test("rejects malformed custom rating scale JSON", async () => {

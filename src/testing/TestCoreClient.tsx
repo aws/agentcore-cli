@@ -1,9 +1,11 @@
 import type {
   CreateApiKeyCredentialProviderResponse,
+  CreateOauth2CredentialProviderResponse,
   CreateHarnessEndpointRequest,
   CreateHarnessEndpointResponse,
   CreateHarnessResponse,
   DeleteApiKeyCredentialProviderResponse,
+  DeleteOauth2CredentialProviderResponse,
   DeleteHarnessEndpointRequest,
   DeleteHarnessEndpointResponse,
   DeleteHarnessRequest,
@@ -12,12 +14,14 @@ import type {
   GetGatewayRuleResponse,
   GetGatewayTargetResponse,
   GetApiKeyCredentialProviderResponse,
+  GetOauth2CredentialProviderResponse,
   GetHarnessResponse,
   GetHarnessEndpointResponse,
   GetAgentRuntimeEndpointResponse,
   GetAgentRuntimeResponse,
   GetMemoryOutput,
   ListApiKeyCredentialProvidersResponse,
+  ListOauth2CredentialProvidersResponse,
   ListAgentRuntimeEndpointsResponse,
   ListAgentRuntimesResponse,
   ListAgentRuntimeVersionsResponse,
@@ -28,26 +32,49 @@ import type {
   ListGatewayRulesResponse,
   ListGatewaysResponse,
   ListGatewayTargetsResponse,
+  CreateDatasetResponse,
+  CreateDatasetVersionResponse,
   CreateEvaluatorRequest,
   CreateEvaluatorResponse,
+  CreateOnlineEvaluationConfigResponse,
+  DeleteDatasetResponse,
   DeleteEvaluatorResponse,
+  DeleteOnlineEvaluationConfigResponse,
+  GetDatasetResponse,
+  ListDatasetsResponse,
   GetEvaluatorResponse,
+  GetOnlineEvaluationConfigResponse,
   ListEvaluatorsResponse,
+  ListOnlineEvaluationConfigsResponse,
   MemoryView,
   UpdateEvaluatorResponse,
+  UpdateOnlineEvaluationConfigResponse,
   UpdateApiKeyCredentialProviderResponse,
+  UpdateOauth2CredentialProviderResponse,
   UpdateHarnessEndpointRequest,
   UpdateHarnessEndpointResponse,
   UpdateHarnessRequest,
   UpdateHarnessResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
+  GetEventInput,
+  GetEventOutput,
+  GetMemoryRecordInput,
+  GetMemoryRecordOutput,
   InvokeAgentRuntimeCommandRequest,
   InvokeAgentRuntimeCommandResponse,
   InvokeAgentRuntimeCommandStreamOutput,
   InvokeHarnessRequest,
   InvokeHarnessResponse,
   InvokeHarnessStreamOutput,
+  ListActorsInput,
+  ListActorsOutput,
+  ListEventsInput,
+  ListEventsOutput,
+  ListMemoryRecordsInput,
+  ListMemoryRecordsOutput,
+  ListSessionsInput,
+  ListSessionsOutput,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { Core } from "../handlers/types";
 import type { CoreHarnessClient, CreateHarnessInput } from "../handlers/harness/types";
@@ -55,7 +82,9 @@ import type { CoreGatewayClient } from "../handlers/gateway/types";
 import type {
   CoreIdentityClient,
   CreateApiKeyCredentialProviderInput,
+  CreateOauth2CredentialProviderInput,
   UpdateApiKeyCredentialProviderInput,
+  UpdateOauth2CredentialProviderInput,
 } from "../handlers/identity/types";
 import type { CoreMemoryClient } from "../handlers/memory/types";
 import type {
@@ -63,7 +92,14 @@ import type {
   RuntimeInvokeRequest,
   RuntimeInvokeResponse,
 } from "../handlers/runtime/types";
-import type { CodeBasedUpdate, CoreEvalClient, LlmAsAJudgeUpdate } from "../handlers/eval/types";
+import type {
+  CodeBasedUpdate,
+  CoreEvalClient,
+  CreateDatasetInput,
+  CreateOnlineEvalInput,
+  LlmAsAJudgeUpdate,
+  UpdateOnlineEvalInput,
+} from "../handlers/eval/types";
 import { abortable } from "../core/abortable";
 import type { CoreOptions } from "../core/types";
 import type { ProjectManager } from "../handlers/project/types";
@@ -116,12 +152,27 @@ const DEFAULT_UPDATE_API_KEY_RESPONSE = {} as UpdateApiKeyCredentialProviderResp
 const DEFAULT_DELETE_API_KEY_RESPONSE = {} as DeleteApiKeyCredentialProviderResponse;
 const DEFAULT_GET_MEMORY_RESPONSE = {} as GetMemoryOutput;
 const DEFAULT_LIST_MEMORIES_RESPONSE: ListMemoriesOutput = { memories: [] };
+const DEFAULT_GET_EVENT_RESPONSE: GetEventOutput = { event: undefined };
+const DEFAULT_LIST_ACTORS_RESPONSE: ListActorsOutput = { actorSummaries: [] };
+const DEFAULT_LIST_SESSIONS_RESPONSE: ListSessionsOutput = { sessionSummaries: [] };
+const DEFAULT_LIST_EVENTS_RESPONSE: ListEventsOutput = { events: [] };
+const DEFAULT_GET_MEMORY_RECORD_RESPONSE: GetMemoryRecordOutput = { memoryRecord: undefined };
+const DEFAULT_LIST_MEMORY_RECORDS_RESPONSE: ListMemoryRecordsOutput = {
+  memoryRecordSummaries: [],
+};
 const DEFAULT_GET_GATEWAY_RESPONSE = {} as GetGatewayResponse;
 const DEFAULT_LIST_GATEWAYS_RESPONSE: ListGatewaysResponse = { items: [] };
 const DEFAULT_GET_GATEWAY_TARGET_RESPONSE = {} as GetGatewayTargetResponse;
 const DEFAULT_LIST_GATEWAY_TARGETS_RESPONSE: ListGatewayTargetsResponse = { items: [] };
 const DEFAULT_GET_GATEWAY_RULE_RESPONSE = {} as GetGatewayRuleResponse;
 const DEFAULT_LIST_GATEWAY_RULES_RESPONSE: ListGatewayRulesResponse = { gatewayRules: [] };
+const DEFAULT_CREATE_OAUTH2_RESPONSE = {} as CreateOauth2CredentialProviderResponse;
+const DEFAULT_GET_OAUTH2_RESPONSE = {} as GetOauth2CredentialProviderResponse;
+const DEFAULT_LIST_OAUTH2_RESPONSE: ListOauth2CredentialProvidersResponse = {
+  credentialProviders: [],
+};
+const DEFAULT_UPDATE_OAUTH2_RESPONSE = {} as UpdateOauth2CredentialProviderResponse;
+const DEFAULT_DELETE_OAUTH2_RESPONSE = {} as DeleteOauth2CredentialProviderResponse;
 const DEFAULT_GET_RUNTIME_RESPONSE = {} as GetAgentRuntimeResponse;
 const DEFAULT_GET_RUNTIME_ENDPOINT_RESPONSE = {} as GetAgentRuntimeEndpointResponse;
 const DEFAULT_LIST_RUNTIMES_RESPONSE: ListAgentRuntimesResponse = { agentRuntimes: [] };
@@ -136,6 +187,15 @@ const DEFAULT_UPDATE_EVALUATOR_RESPONSE = {} as UpdateEvaluatorResponse;
 const DEFAULT_GET_EVALUATOR_RESPONSE = {} as GetEvaluatorResponse;
 const DEFAULT_LIST_EVALUATORS_RESPONSE: ListEvaluatorsResponse = { evaluators: [] };
 const DEFAULT_DELETE_EVALUATOR_RESPONSE = {} as DeleteEvaluatorResponse;
+const DEFAULT_CREATE_ONLINE_EVAL_RESPONSE = {} as CreateOnlineEvaluationConfigResponse;
+const DEFAULT_UPDATE_ONLINE_EVAL_RESPONSE = {} as UpdateOnlineEvaluationConfigResponse;
+const DEFAULT_GET_ONLINE_EVAL_RESPONSE = {} as GetOnlineEvaluationConfigResponse;
+const DEFAULT_DELETE_ONLINE_EVAL_RESPONSE = {} as DeleteOnlineEvaluationConfigResponse;
+const DEFAULT_CREATE_DATASET_RESPONSE = {} as CreateDatasetResponse;
+const DEFAULT_GET_DATASET_RESPONSE = {} as GetDatasetResponse;
+const DEFAULT_LIST_DATASETS_RESPONSE: ListDatasetsResponse = { datasets: [] };
+const DEFAULT_DELETE_DATASET_RESPONSE = {} as DeleteDatasetResponse;
+const DEFAULT_PUBLISH_DATASET_RESPONSE = {} as CreateDatasetVersionResponse;
 
 // events wraps canned events as a one-shot AsyncIterable.
 async function* events<T>(items: T[]): AsyncGenerator<T> {
@@ -612,6 +672,12 @@ export class TestMemoryClient implements CoreMemoryClient {
 
   private getResponse: GetMemoryOutput = DEFAULT_GET_MEMORY_RESPONSE;
   private listResponses = new Map<string | undefined, ListMemoriesOutput>();
+  private getEventResponse: GetEventOutput = DEFAULT_GET_EVENT_RESPONSE;
+  private listActorResponses = new Map<string | undefined, ListActorsOutput>();
+  private listSessionResponses = new Map<string | undefined, ListSessionsOutput>();
+  private listEventResponses = new Map<string | undefined, ListEventsOutput>();
+  private getMemoryRecordResponse: GetMemoryRecordOutput = DEFAULT_GET_MEMORY_RECORD_RESPONSE;
+  private listMemoryRecordResponses = new Map<string | undefined, ListMemoryRecordsOutput>();
   private error?: Error;
 
   setGetResponse(response: GetMemoryOutput): this {
@@ -621,6 +687,36 @@ export class TestMemoryClient implements CoreMemoryClient {
 
   setListResponse(response: ListMemoriesOutput, forNextToken?: string): this {
     this.listResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setGetEventResponse(response: GetEventOutput): this {
+    this.getEventResponse = response;
+    return this;
+  }
+
+  setListActorsResponse(response: ListActorsOutput, forNextToken?: string): this {
+    this.listActorResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setListSessionsResponse(response: ListSessionsOutput, forNextToken?: string): this {
+    this.listSessionResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setListEventsResponse(response: ListEventsOutput, forNextToken?: string): this {
+    this.listEventResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setGetMemoryRecordResponse(response: GetMemoryRecordOutput): this {
+    this.getMemoryRecordResponse = response;
+    return this;
+  }
+
+  setListMemoryRecordsResponse(response: ListMemoryRecordsOutput, forNextToken?: string): this {
+    this.listMemoryRecordResponses.set(forNextToken, response);
     return this;
   }
 
@@ -646,6 +742,64 @@ export class TestMemoryClient implements CoreMemoryClient {
       this.listResponses.get(nextToken) ??
       this.listResponses.get(undefined) ??
       DEFAULT_LIST_MEMORIES_RESPONSE
+    );
+  }
+
+  async getEvent(input: GetEventInput, options: CoreOptions): Promise<GetEventOutput> {
+    this.calls.push({ method: "getEvent", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.getEventResponse;
+  }
+
+  async listActors(input: ListActorsInput, options: CoreOptions): Promise<ListActorsOutput> {
+    this.calls.push({ method: "listActors", args: [input, options] });
+    if (this.error) throw this.error;
+    return (
+      this.listActorResponses.get(input.nextToken) ??
+      this.listActorResponses.get(undefined) ??
+      DEFAULT_LIST_ACTORS_RESPONSE
+    );
+  }
+
+  async listSessions(input: ListSessionsInput, options: CoreOptions): Promise<ListSessionsOutput> {
+    this.calls.push({ method: "listSessions", args: [input, options] });
+    if (this.error) throw this.error;
+    return (
+      this.listSessionResponses.get(input.nextToken) ??
+      this.listSessionResponses.get(undefined) ??
+      DEFAULT_LIST_SESSIONS_RESPONSE
+    );
+  }
+
+  async listEvents(input: ListEventsInput, options: CoreOptions): Promise<ListEventsOutput> {
+    this.calls.push({ method: "listEvents", args: [input, options] });
+    if (this.error) throw this.error;
+    return (
+      this.listEventResponses.get(input.nextToken) ??
+      this.listEventResponses.get(undefined) ??
+      DEFAULT_LIST_EVENTS_RESPONSE
+    );
+  }
+
+  async getMemoryRecord(
+    input: GetMemoryRecordInput,
+    options: CoreOptions,
+  ): Promise<GetMemoryRecordOutput> {
+    this.calls.push({ method: "getMemoryRecord", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.getMemoryRecordResponse;
+  }
+
+  async listMemoryRecords(
+    input: ListMemoryRecordsInput,
+    options: CoreOptions,
+  ): Promise<ListMemoryRecordsOutput> {
+    this.calls.push({ method: "listMemoryRecords", args: [input, options] });
+    if (this.error) throw this.error;
+    return (
+      this.listMemoryRecordResponses.get(input.nextToken) ??
+      this.listMemoryRecordResponses.get(undefined) ??
+      DEFAULT_LIST_MEMORY_RECORDS_RESPONSE
     );
   }
 }
@@ -777,41 +931,163 @@ type TestCoreClientOptions = {
   logger?: Logger;
 };
 
-class TestIdentityClient implements CoreIdentityClient {
+export class TestIdentityClient implements CoreIdentityClient {
+  readonly calls: RecordedCall[] = [];
+
+  private getApiKeyResponse: GetApiKeyCredentialProviderResponse = DEFAULT_GET_API_KEY_RESPONSE;
+  private listApiKeyResponses = new Map<
+    string | undefined,
+    ListApiKeyCredentialProvidersResponse
+  >();
+  private getOauth2Response: GetOauth2CredentialProviderResponse = DEFAULT_GET_OAUTH2_RESPONSE;
+  private listOauth2Responses = new Map<
+    string | undefined,
+    ListOauth2CredentialProvidersResponse
+  >();
+  private updateOauth2Response: UpdateOauth2CredentialProviderResponse =
+    DEFAULT_UPDATE_OAUTH2_RESPONSE;
+  private error?: Error;
+
+  setGetApiKeyResponse(response: GetApiKeyCredentialProviderResponse): this {
+    this.getApiKeyResponse = response;
+    return this;
+  }
+
+  setListApiKeyResponse(
+    response: ListApiKeyCredentialProvidersResponse,
+    forNextToken?: string,
+  ): this {
+    this.listApiKeyResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setGetOauth2Response(response: GetOauth2CredentialProviderResponse): this {
+    this.getOauth2Response = response;
+    return this;
+  }
+
+  setUpdateOauth2Response(response: UpdateOauth2CredentialProviderResponse): this {
+    this.updateOauth2Response = response;
+    return this;
+  }
+
+  setListOauth2Response(
+    response: ListOauth2CredentialProvidersResponse,
+    forNextToken?: string,
+  ): this {
+    this.listOauth2Responses.set(forNextToken, response);
+    return this;
+  }
+
+  setError(error: Error | undefined): this {
+    this.error = error;
+    return this;
+  }
+
   async createApiKeyCredentialProvider(
-    _input: CreateApiKeyCredentialProviderInput,
-    _options: CoreOptions,
+    input: CreateApiKeyCredentialProviderInput,
+    options: CoreOptions,
   ): Promise<CreateApiKeyCredentialProviderResponse> {
+    this.calls.push({ method: "createApiKeyCredentialProvider", args: [input, options] });
+    if (this.error) throw this.error;
     return DEFAULT_CREATE_API_KEY_RESPONSE;
   }
 
   async getApiKeyCredentialProvider(
-    _name: string,
-    _options: CoreOptions,
+    name: string,
+    options: CoreOptions,
   ): Promise<GetApiKeyCredentialProviderResponse> {
-    return DEFAULT_GET_API_KEY_RESPONSE;
+    this.calls.push({ method: "getApiKeyCredentialProvider", args: [name, options] });
+    if (this.error) throw this.error;
+    return this.getApiKeyResponse;
   }
 
   async listApiKeyCredentialProviders(
-    _nextToken: string | undefined,
-    _maxResults: number | undefined,
-    _options: CoreOptions,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
   ): Promise<ListApiKeyCredentialProvidersResponse> {
-    return DEFAULT_LIST_API_KEYS_RESPONSE;
+    this.calls.push({
+      method: "listApiKeyCredentialProviders",
+      args: [nextToken, maxResults, options],
+    });
+    if (this.error) throw this.error;
+    return (
+      this.listApiKeyResponses.get(nextToken) ??
+      this.listApiKeyResponses.get(undefined) ??
+      DEFAULT_LIST_API_KEYS_RESPONSE
+    );
   }
 
   async updateApiKeyCredentialProvider(
-    _input: UpdateApiKeyCredentialProviderInput,
-    _options: CoreOptions,
+    input: UpdateApiKeyCredentialProviderInput,
+    options: CoreOptions,
   ): Promise<UpdateApiKeyCredentialProviderResponse> {
+    this.calls.push({ method: "updateApiKeyCredentialProvider", args: [input, options] });
+    if (this.error) throw this.error;
     return DEFAULT_UPDATE_API_KEY_RESPONSE;
   }
 
   async deleteApiKeyCredentialProvider(
-    _name: string,
-    _options: CoreOptions,
+    name: string,
+    options: CoreOptions,
   ): Promise<DeleteApiKeyCredentialProviderResponse> {
+    this.calls.push({ method: "deleteApiKeyCredentialProvider", args: [name, options] });
+    if (this.error) throw this.error;
     return DEFAULT_DELETE_API_KEY_RESPONSE;
+  }
+
+  async createOauth2CredentialProvider(
+    input: CreateOauth2CredentialProviderInput,
+    options: CoreOptions,
+  ): Promise<CreateOauth2CredentialProviderResponse> {
+    this.calls.push({ method: "createOauth2CredentialProvider", args: [input, options] });
+    if (this.error) throw this.error;
+    return DEFAULT_CREATE_OAUTH2_RESPONSE;
+  }
+
+  async getOauth2CredentialProvider(
+    name: string,
+    options: CoreOptions,
+  ): Promise<GetOauth2CredentialProviderResponse> {
+    this.calls.push({ method: "getOauth2CredentialProvider", args: [name, options] });
+    if (this.error) throw this.error;
+    return this.getOauth2Response;
+  }
+
+  async listOauth2CredentialProviders(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListOauth2CredentialProvidersResponse> {
+    this.calls.push({
+      method: "listOauth2CredentialProviders",
+      args: [nextToken, maxResults, options],
+    });
+    if (this.error) throw this.error;
+    return (
+      this.listOauth2Responses.get(nextToken) ??
+      this.listOauth2Responses.get(undefined) ??
+      DEFAULT_LIST_OAUTH2_RESPONSE
+    );
+  }
+
+  async updateOauth2CredentialProvider(
+    input: UpdateOauth2CredentialProviderInput,
+    options: CoreOptions,
+  ): Promise<UpdateOauth2CredentialProviderResponse> {
+    this.calls.push({ method: "updateOauth2CredentialProvider", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.updateOauth2Response;
+  }
+
+  async deleteOauth2CredentialProvider(
+    name: string,
+    options: CoreOptions,
+  ): Promise<DeleteOauth2CredentialProviderResponse> {
+    this.calls.push({ method: "deleteOauth2CredentialProvider", args: [name, options] });
+    if (this.error) throw this.error;
+    return DEFAULT_DELETE_OAUTH2_RESPONSE;
   }
 }
 
@@ -827,6 +1103,25 @@ export class TestEvalClient implements CoreEvalClient {
   private updateResponse: UpdateEvaluatorResponse = DEFAULT_UPDATE_EVALUATOR_RESPONSE;
   private getResponse: GetEvaluatorResponse = DEFAULT_GET_EVALUATOR_RESPONSE;
   private deleteResponse: DeleteEvaluatorResponse = DEFAULT_DELETE_EVALUATOR_RESPONSE;
+  // Online-eval responses, keyed the same way: listOnlineEvaluationConfigs pages
+  // by nextToken, the rest are single canned values.
+  private onlineEvalListResponses = new Map<
+    string | undefined,
+    ListOnlineEvaluationConfigsResponse
+  >();
+  private onlineEvalCreateResponse: CreateOnlineEvaluationConfigResponse =
+    DEFAULT_CREATE_ONLINE_EVAL_RESPONSE;
+  private onlineEvalUpdateResponse: UpdateOnlineEvaluationConfigResponse =
+    DEFAULT_UPDATE_ONLINE_EVAL_RESPONSE;
+  private onlineEvalGetResponse: GetOnlineEvaluationConfigResponse =
+    DEFAULT_GET_ONLINE_EVAL_RESPONSE;
+  private onlineEvalDeleteResponse: DeleteOnlineEvaluationConfigResponse =
+    DEFAULT_DELETE_ONLINE_EVAL_RESPONSE;
+  private createDatasetResponse: CreateDatasetResponse = DEFAULT_CREATE_DATASET_RESPONSE;
+  private getDatasetResponse: GetDatasetResponse = DEFAULT_GET_DATASET_RESPONSE;
+  private datasetListResponses = new Map<string | undefined, ListDatasetsResponse>();
+  private deleteDatasetResponse: DeleteDatasetResponse = DEFAULT_DELETE_DATASET_RESPONSE;
+  private publishDatasetResponse: CreateDatasetVersionResponse = DEFAULT_PUBLISH_DATASET_RESPONSE;
   private error?: Error;
 
   // setListResponse sets what listEvaluators resolves to (when not erroring).
@@ -859,6 +1154,79 @@ export class TestEvalClient implements CoreEvalClient {
   // setDeleteResponse sets what deleteEvaluator resolves to (when not erroring).
   setDeleteResponse(response: DeleteEvaluatorResponse): this {
     this.deleteResponse = response;
+    return this;
+  }
+
+  // setOnlineEvalListResponse sets what listOnlineEvaluationConfigs resolves to
+  // (when not erroring). Pass `forNextToken` to serve a later page.
+  setOnlineEvalListResponse(
+    response: ListOnlineEvaluationConfigsResponse,
+    forNextToken?: string,
+  ): this {
+    this.onlineEvalListResponses.set(forNextToken, response);
+    return this;
+  }
+
+  // setOnlineEvalCreateResponse sets what createOnlineEvaluationConfig resolves
+  // to (when not erroring).
+  setOnlineEvalCreateResponse(response: CreateOnlineEvaluationConfigResponse): this {
+    this.onlineEvalCreateResponse = response;
+    return this;
+  }
+
+  // setOnlineEvalUpdateResponse sets what updateOnlineEvaluationConfig and
+  // setOnlineEvaluationExecutionStatus resolve to (when not erroring).
+  setOnlineEvalUpdateResponse(response: UpdateOnlineEvaluationConfigResponse): this {
+    this.onlineEvalUpdateResponse = response;
+    return this;
+  }
+
+  // setOnlineEvalGetResponse sets what getOnlineEvaluationConfig resolves to
+  // (when not erroring).
+  setOnlineEvalGetResponse(response: GetOnlineEvaluationConfigResponse): this {
+    this.onlineEvalGetResponse = response;
+    return this;
+  }
+
+  // setOnlineEvalDeleteResponse sets what deleteOnlineEvaluationConfig resolves
+  // to (when not erroring).
+  setOnlineEvalDeleteResponse(response: DeleteOnlineEvaluationConfigResponse): this {
+    this.onlineEvalDeleteResponse = response;
+    return this;
+  }
+
+  // setCreateDatasetResponse sets what createDataset resolves to (when not
+  // erroring).
+  setCreateDatasetResponse(response: CreateDatasetResponse): this {
+    this.createDatasetResponse = response;
+    return this;
+  }
+
+  // setGetDatasetResponse sets what getDataset and downloadDataset resolve to
+  // (when not erroring).
+  setGetDatasetResponse(response: GetDatasetResponse): this {
+    this.getDatasetResponse = response;
+    return this;
+  }
+
+  // setListDatasetsResponse sets what listDatasets resolves to (when not
+  // erroring). Pass `forNextToken` to serve a later page.
+  setListDatasetsResponse(response: ListDatasetsResponse, forNextToken?: string): this {
+    this.datasetListResponses.set(forNextToken, response);
+    return this;
+  }
+
+  // setDeleteDatasetResponse sets what deleteDataset resolves to (when not
+  // erroring).
+  setDeleteDatasetResponse(response: DeleteDatasetResponse): this {
+    this.deleteDatasetResponse = response;
+    return this;
+  }
+
+  // setPublishDatasetResponse sets what publishDataset resolves to (when not
+  // erroring).
+  setPublishDatasetResponse(response: CreateDatasetVersionResponse): this {
+    this.publishDatasetResponse = response;
     return this;
   }
 
@@ -923,6 +1291,126 @@ export class TestEvalClient implements CoreEvalClient {
     if (this.error) throw this.error;
     return this.deleteResponse;
   }
+
+  async createOnlineEvaluationConfig(
+    input: CreateOnlineEvalInput,
+    options: CoreOptions,
+  ): Promise<CreateOnlineEvaluationConfigResponse> {
+    this.calls.push({ method: "createOnlineEvaluationConfig", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.onlineEvalCreateResponse;
+  }
+
+  async updateOnlineEvaluationConfig(
+    id: string,
+    update: UpdateOnlineEvalInput,
+    options: CoreOptions,
+  ): Promise<{ response: UpdateOnlineEvaluationConfigResponse }> {
+    this.calls.push({ method: "updateOnlineEvaluationConfig", args: [id, update, options] });
+    if (this.error) throw this.error;
+    return { response: this.onlineEvalUpdateResponse };
+  }
+
+  async getOnlineEvaluationConfig(
+    id: string,
+    options: CoreOptions,
+  ): Promise<GetOnlineEvaluationConfigResponse> {
+    this.calls.push({ method: "getOnlineEvaluationConfig", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.onlineEvalGetResponse;
+  }
+
+  async listOnlineEvaluationConfigs(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListOnlineEvaluationConfigsResponse> {
+    this.calls.push({
+      method: "listOnlineEvaluationConfigs",
+      args: [nextToken, maxResults, options],
+    });
+    if (this.error) throw this.error;
+    return this.onlineEvalListResponses.get(nextToken) ?? { onlineEvaluationConfigs: [] };
+  }
+
+  async setOnlineEvaluationExecutionStatus(
+    id: string,
+    executionStatus: "ENABLED" | "DISABLED",
+    options: CoreOptions,
+  ): Promise<UpdateOnlineEvaluationConfigResponse> {
+    this.calls.push({
+      method: "setOnlineEvaluationExecutionStatus",
+      args: [id, executionStatus, options],
+    });
+    if (this.error) throw this.error;
+    return this.onlineEvalUpdateResponse;
+  }
+
+  async deleteOnlineEvaluationConfig(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteOnlineEvaluationConfigResponse> {
+    this.calls.push({ method: "deleteOnlineEvaluationConfig", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.onlineEvalDeleteResponse;
+  }
+
+  async createDataset(
+    input: CreateDatasetInput,
+    options: CoreOptions,
+  ): Promise<CreateDatasetResponse> {
+    this.calls.push({ method: "createDataset", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.createDatasetResponse;
+  }
+
+  async getDataset(
+    id: string,
+    version: string | undefined,
+    options: CoreOptions,
+  ): Promise<GetDatasetResponse> {
+    this.calls.push({ method: "getDataset", args: [id, version, options] });
+    if (this.error) throw this.error;
+    return this.getDatasetResponse;
+  }
+
+  async downloadDataset(
+    id: string,
+    version: string | undefined,
+    filePath: string,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<GetDatasetResponse> {
+    this.calls.push({ method: "downloadDataset", args: [id, version, filePath, options, signal] });
+    if (this.error) throw this.error;
+    return this.getDatasetResponse;
+  }
+
+  async listDatasets(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListDatasetsResponse> {
+    this.calls.push({ method: "listDatasets", args: [nextToken, maxResults, options] });
+    if (this.error) throw this.error;
+    return this.datasetListResponses.get(nextToken) ?? DEFAULT_LIST_DATASETS_RESPONSE;
+  }
+
+  async deleteDataset(
+    id: string,
+    version: string | undefined,
+    options: CoreOptions,
+  ): Promise<DeleteDatasetResponse> {
+    this.calls.push({ method: "deleteDataset", args: [id, version, options] });
+    if (this.error) throw this.error;
+    return this.deleteDatasetResponse;
+  }
+
+  async publishDataset(id: string, options: CoreOptions): Promise<CreateDatasetVersionResponse> {
+    this.calls.push({ method: "publishDataset", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.publishDatasetResponse;
+  }
 }
 
 // TestCoreClient implements the Core contract with fully controllable sub-clients.
@@ -935,7 +1423,17 @@ export class TestCoreClient implements Core {
   readonly eval = new TestEvalClient();
   readonly projectManager: ProjectManager;
 
+  // Commands the project manager would have run (npm install, git init, ...),
+  // recorded instead of spawned so tests stay fast and hermetic.
+  readonly projectCommands: { command: string[]; cwd: string }[] = [];
+
   constructor(options?: TestCoreClientOptions) {
-    this.projectManager = new FsProjectManager({ logger: options?.logger ?? createSilentLogger() });
+    this.projectManager = new FsProjectManager({
+      logger: options?.logger ?? createSilentLogger(),
+      runner: async (command, { cwd }) => {
+        this.projectCommands.push({ command, cwd });
+      },
+      checkTool: async () => {}, // CI hosts don't have uv installed
+    });
   }
 }

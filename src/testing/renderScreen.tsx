@@ -61,6 +61,8 @@ export interface RenderScreenOptions {
   core?: TestCoreClient;
   // ctx overrides the base context (rarely needed).
   ctx?: Context;
+  // withContext adds screen-specific launch values to the otherwise real base context.
+  withContext?: (ctx: Context) => Context;
   // queryClient overrides the deterministic default when a test needs to
   // exercise cache behavior.
   queryClient?: QueryClient;
@@ -122,7 +124,8 @@ export function cleanupScreens(): void {
 // and returns handles to read frames and send input.
 export function renderScreen(path: string, options: RenderScreenOptions = {}): RenderScreenResult {
   const core = options.core ?? new TestCoreClient();
-  const ctx = options.ctx ?? baseContext(core, options.endpointUrl);
+  const base = options.ctx ?? baseContext(core, options.endpointUrl);
+  const ctx = options.withContext?.(base) ?? base;
   const queryClient = options.queryClient ?? testQueryClient();
 
   const instance = render(<></>);

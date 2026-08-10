@@ -56,7 +56,7 @@ export class CoreClient implements AwsClients {
   readonly memory: MemoryClient = new MemoryClient(this);
   readonly runtime: RuntimeClient;
   readonly gateway: GatewayClient = new GatewayClient(this);
-  readonly eval: EvalClient = new EvalClient(this);
+  readonly eval: EvalClient;
 
   readonly projectManager: ProjectManager;
 
@@ -65,11 +65,11 @@ export class CoreClient implements AwsClients {
     this.createDataClient = config.createDataClient;
     this.createIamClient = config.createIamClient;
     this.logger = config.logger;
-    this.runtime = new RuntimeClient(
-      this,
-      config.fetch ?? globalThis.fetch,
-      this.logger.child({ module: "runtime" }),
-    );
+    const fetch = config.fetch ?? globalThis.fetch;
+    this.runtime = new RuntimeClient(this, fetch, this.logger.child({ module: "runtime" }));
+    // EvalClient shares the injected fetch: dataset content is served from a
+    // presigned S3 URL, outside the SDK seam the other operations use.
+    this.eval = new EvalClient(this, fetch);
 
     this.projectManager = new FsProjectManager({
       logger: this.logger.child({ module: "projectManager" }),

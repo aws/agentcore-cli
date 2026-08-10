@@ -154,7 +154,7 @@ describe("paginated table picker contract", () => {
     expect(core.harness.calls.filter((call) => call.method === "listHarnesses")).toEqual([
       {
         method: "listHarnesses",
-        args: [undefined, 32, { region: "us-east-1", endpointUrl: undefined }],
+        args: [undefined, 33, { region: "us-east-1", endpointUrl: undefined }],
       },
     ]);
     await r.press("down");
@@ -163,7 +163,7 @@ describe("paginated table picker contract", () => {
     await waitForText(r.lastFrame, "❯ page-two-first");
     expect(core.harness.calls.at(-1)).toEqual({
       method: "listHarnesses",
-      args: ["t2", 32, { region: "us-east-1", endpointUrl: undefined }],
+      args: ["t2", 33, { region: "us-east-1", endpointUrl: undefined }],
     });
 
     await r.press("down");
@@ -301,6 +301,66 @@ describe("paginated table picker contract", () => {
       core.harness.calls.some((call) => call.method === "getHarness" && call.args[0] === "alpha-1"),
     );
     expect(r.lastFrame()).toContain("agentcore → harness → get → alpha-1");
+  });
+
+  test("fills the content area before and during a long filter", async () => {
+    const longFilter = `${"filter-prefix-".repeat(8)}visible-suffix`;
+    const core = new TestCoreClient();
+    core.harness.setListResponse({
+      harnesses: Array.from({ length: 33 }, (_, index) =>
+        harness({
+          harnessId: `harness-${index}`,
+          harnessName: `${longFilter}-${String(index).padStart(2, "0")}`,
+        }),
+      ),
+      nextToken: "t2",
+    });
+    const r = renderScreen("/agentcore/harness/list", { core });
+
+    await waitForText(r.lastFrame, "page 1 · more →");
+    let lines = (r.lastFrame() ?? "").split("\n");
+    expect(lines[37]).toContain("page 1 · more →");
+    expect(lines[38]).toMatch(/^─+$/);
+
+    await r.write("/");
+    await r.write(longFilter);
+    await waitForText(r.lastFrame, "visible-suffix");
+    lines = (r.lastFrame() ?? "").split("\n");
+    expect(lines[2]).toContain("name");
+    expect(lines[3]).toContain("/ Filter: …");
+    expect(lines[3]).toContain("visible-suffix█");
+    expect(stringWidth(lines[3]!)).toBeLessThanOrEqual(100);
+    expect(lines[37]).toContain("page 1 · more →");
+    expect(lines[38]).toMatch(/^─+$/);
+  });
+
+  test("keeps pagination and footer hints below every row at narrow widths", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setListResponse({
+      agentRuntimes: Array.from({ length: 17 }, (_, index) => {
+        const suffix = String(index).padStart(10, "0");
+        return runtime({
+          agentRuntimeId: `runtime-${suffix}`,
+          agentRuntimeName: `runtime-${index}`,
+        });
+      }),
+      nextToken: "t2",
+    });
+    const r = renderScreen("/agentcore/runtime/list", { core });
+
+    await r.resize(60, 24);
+    await waitFor(() => {
+      const frame = r.lastFrame() ?? "";
+      return frame.includes("0000000016") && !frame.includes("loading page 1…");
+    });
+    const lines = (r.lastFrame() ?? "").split("\n");
+
+    expect(lines).toHaveLength(24);
+    expect(lines[20]).toContain("0000000016");
+    expect(lines[21]).toContain("page 1 · more →");
+    expect(lines[22]).toMatch(/^─{60}$/);
+    expect(lines[23]).toContain("[esc] back");
+    expect(stringWidth(lines[23]!)).toBeLessThanOrEqual(60);
   });
 
   test("keeps rows aligned and single-line while resizing the Runtime table", async () => {

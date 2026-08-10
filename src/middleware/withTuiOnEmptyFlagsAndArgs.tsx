@@ -1,8 +1,9 @@
+import { Option, type Command } from "commander";
 import { renderTui } from "../tui";
 import { JsonKey } from "../handlers/keys";
 import type { AppIO } from "../io";
 import type { Core } from "../handlers/types";
-import { type Middleware } from "../router";
+import { CommandKey, type Handler, type Middleware } from "../router";
 
 // countPassedValues counts how many entries of an object hold a defined value.
 const countPassedValues = (obj: object) =>
@@ -13,6 +14,16 @@ const countPassedValues = (obj: object) =>
 
     return acc;
   }, 0);
+
+// countPassedFlags counts the leaf's own flags the user actually supplied on
+// the command line. The parsed flags object can't be used for this: schema
+// (and Commander boolean) defaults arrive there as defined values, which would
+// make a leaf with defaulted flags look non-empty on a bare invocation.
+const countPassedFlags = (h: Handler, command: Command) =>
+  h.flags().filter((f) => {
+    const attribute = new Option(`--${f.name}`).attributeName();
+    return command.getOptionValueSource(attribute) === "cli";
+  }).length;
 
 // withTuiOnEmptyFlagsAndArgs opens the interactive TUI when a leaf command is
 // invoked with no flags or arguments (and not in JSON mode); otherwise it
@@ -29,7 +40,7 @@ export function withTuiOnEmptyFlagsAndArgs(core: Core, io: AppIO): Middleware {
     handle: async (ctx, flags, args) => {
       if (
         !ctx.require(JsonKey) &&
-        countPassedValues(flags) === 0 &&
+        countPassedFlags(h, ctx.require(CommandKey)) === 0 &&
         countPassedValues(args) === 0
       ) {
         await boundRenderTui(ctx, flags, args);

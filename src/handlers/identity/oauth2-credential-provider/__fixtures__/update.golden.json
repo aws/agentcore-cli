@@ -1,0 +1,21 @@
+{
+  "clientSecretArn": {
+    "secretArn": "arn:aws:secretsmanager:us-west-2:685197708687:secret:bedrock-agentcore-identity!default/oauth2/agentcore-cli-oauth2-fixture-d172b1a9-dFOvOv"
+  },
+  "name": "agentcore-cli-oauth2-fixture",
+  "credentialProviderVendor": "CustomOauth2",
+  "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:token-vault/default/oauth2credentialprovider/agentcore-cli-oauth2-fixture",
+  "oauth2ProviderConfigOutput": {
+    "customOauth2ProviderConfig": {
+      "oauthDiscovery": {
+        "discoveryUrl": "https://example.com/.well-known/openid-configuration"
+      },
+      "clientId": "updated-client-id"
+    }
+  },
+  "createdTime": "2026-08-05T19:35:44.755Z",
+  "lastUpdatedTime": "2026-08-05T19:35:45.871Z",
+  "clientSecretSource": "MANAGED",
+  "callbackUrl": "https://bedrock-agentcore.us-west-2.amazonaws.com/identities/oauth2/callback/2edfe7c4-4655-41a5-9722-767aa15e5b45",
+  "status": "READY"
+}

@@ -1,18 +1,25 @@
 import z from "zod";
-import { InputValidationError, RuntimeInvokeInterruptedError } from "../../../errors";
-import { createHandler, flag } from "../../../router";
+import {
+  InputValidationError,
+  InvalidEnvironmentError,
+  RuntimeInvokeInterruptedError,
+} from "../../../errors";
+import { createHandler, flag, PathKey } from "../../../router";
 import type { AppIO } from "../../../io";
 import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 import { JsonKey } from "../../keys";
 import { ExitCode } from "../../../runnable";
+import { renderTuiAt } from "../../../tui";
 import {
   normalizeRuntimeInvokeRequest,
   parseRuntimeInvokeHeaders,
   resolveRuntimeInvokeSources,
+  resolveRuntimeInvokeTuiBearerToken,
   runtimeIdSchema,
 } from "./request";
 import { writeRuntimeInvokeResponse } from "./response";
+import { RuntimeInvokeLaunchContextKey } from "./launchContext";
 
 export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -55,9 +62,56 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
         });
       }
       if (flags.payload === undefined) {
-        throw new InputValidationError("required option '--payload <payload>' not specified", {
-          exitCode: ExitCode.USAGE,
-        });
+        const hasHeadlessOnlyFlag = Object.entries(flags).some(
+          ([name, value]) =>
+            ![
+              "id",
+              "qualifier",
+              "payload",
+              "session-id",
+              "user-id",
+              "header",
+              "bearer-token",
+            ].includes(name) && value !== undefined,
+        );
+        if (ctx.require(JsonKey) || hasHeadlessOnlyFlag) {
+          throw new InputValidationError("required option '--payload <payload>' not specified", {
+            exitCode: ExitCode.USAGE,
+          });
+        }
+        let path = `${ctx.require(PathKey)}/${encodeURIComponent(flags.id)}`;
+        if (flags.qualifier !== undefined) {
+          path += `/${encodeURIComponent(flags.qualifier)}`;
+        }
+        const applicationHeaders = parseRuntimeInvokeHeaders(flags.header);
+        const bearerToken = await resolveRuntimeInvokeTuiBearerToken(
+          flags["bearer-token"],
+          io.stdin,
+        );
+        const launchContext = {
+          runtimeId: flags.id,
+          runtimeSessionId: flags["session-id"],
+          runtimeUserId: flags["user-id"],
+          applicationHeaders,
+          bearerToken,
+        };
+        try {
+          await renderTuiAt(
+            path,
+            ctx.withValue(RuntimeInvokeLaunchContextKey, launchContext),
+            core,
+            io,
+          );
+        } catch (error) {
+          if (error instanceof InvalidEnvironmentError) {
+            throw new InputValidationError(error.message, {
+              cause: error,
+              exitCode: ExitCode.USAGE,
+            });
+          }
+          throw error;
+        }
+        return;
       }
 
       const jsonOutput = ctx.require(JsonKey);

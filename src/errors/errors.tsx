@@ -98,6 +98,16 @@ export class DeserializationError extends Error {
   }
 }
 
+/** Thrown for any project state related errors. */
+export class ProjectStateError extends AgentCoreCLIError {
+  constructor(message: string, options: AgentCoreCLIErrorOptions = {}) {
+    super(message, {
+      source: ERROR_SOURCE.USER,
+      ...options,
+    });
+  }
+}
+
 /** Thrown when scaffolding would overwrite a file that already exists. */
 export class ProjectFileExistsError extends AgentCoreCLIError {
   constructor(public readonly path: string) {
@@ -140,5 +150,19 @@ export class RuntimeInvokeResponseError extends AgentCoreCLIError {
 
   constructor(message: string, cause?: unknown) {
     super(message, { cause });
+  }
+}
+
+/** Remote content could not be fetched, or is not available yet. */
+export class NetworkingError extends AgentCoreCLIError {
+  constructor(message: string, options?: AgentCoreCLIErrorOptions) {
+    super(message, { source: ERROR_SOURCE.SERVICE, ...options });
+  }
+}
+
+/** A file could not be written locally: missing directory, permission denial, etc. */
+export class FileWriteError extends AgentCoreCLIError {
+  constructor(message: string, options?: AgentCoreCLIErrorOptions) {
+    super(message, { source: ERROR_SOURCE.USER, ...options });
   }
 }

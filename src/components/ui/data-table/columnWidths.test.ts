@@ -6,6 +6,7 @@ import { harnessVersionColumns } from "../../HarnessVersionPicker";
 import { runtimeEndpointColumns } from "../../RuntimeEndpointPicker";
 import { runtimeColumns } from "../../RuntimePicker";
 import { runtimeVersionColumns } from "../../RuntimeVersionPicker";
+import { memoryColumns } from "../../../handlers/memory/list/screen";
 import {
   computeColumnWidths,
   FLEX_MIN_WIDTH,
@@ -19,10 +20,9 @@ const flexConfigs = [
   { name: "Harness", columns: harnessColumns, flexIndex: 0 },
   { name: "Harness endpoint", columns: harnessEndpointColumns, flexIndex: 0 },
   { name: "Runtime endpoint", columns: runtimeEndpointColumns, flexIndex: 0 },
-] as const;
-const fixedConfigs = [
-  { name: "Runtime version", columns: runtimeVersionColumns },
-  { name: "Harness version", columns: harnessVersionColumns },
+  { name: "Runtime version", columns: runtimeVersionColumns, flexIndex: 0 },
+  { name: "Harness version", columns: harnessVersionColumns, flexIndex: 0 },
+  { name: "Memory", columns: memoryColumns, flexIndex: 0 },
 ] as const;
 
 describe("computeColumnWidths", () => {
@@ -36,21 +36,6 @@ describe("computeColumnWidths", () => {
 
         expect(result.totalWidth).toBe(terminalWidth);
         expect(result.widths[config.flexIndex]!).toBeGreaterThanOrEqual(FLEX_MIN_WIDTH);
-      }
-    });
-  }
-
-  for (const config of fixedConfigs) {
-    test(`${config.name} remains content-sized when space is available`, () => {
-      for (const terminalWidth of widths) {
-        const result = computeColumnWidths(config.columns, terminalWidth, {
-          selectable: true,
-          borderWidth: 0,
-        });
-
-        expect(result.totalWidth).toBe(40);
-        expect(result.totalWidth).toBeLessThanOrEqual(terminalWidth);
-        expect(result.widths.every((width) => width !== undefined)).toBe(true);
       }
     });
   }
@@ -84,7 +69,7 @@ describe("computeColumnWidths", () => {
   });
 
   test("keeps every visible production header intact", () => {
-    for (const config of [...flexConfigs, ...fixedConfigs]) {
+    for (const config of flexConfigs) {
       for (let terminalWidth = 1; terminalWidth <= 200; terminalWidth += 1) {
         const result = computeColumnWidths(config.columns, terminalWidth, {
           selectable: true,
@@ -120,7 +105,7 @@ describe("computeColumnWidths", () => {
   });
 
   test("terminates and respects the documented narrow-terminal bound", () => {
-    for (const config of [...flexConfigs, ...fixedConfigs]) {
+    for (const config of flexConfigs) {
       const hasFlex = config.columns.some((column) => "flex" in column && column.flex === true);
       for (let terminalWidth = 1; terminalWidth <= 20; terminalWidth += 1) {
         const result = computeColumnWidths(config.columns, terminalWidth, {
@@ -137,12 +122,12 @@ describe("computeColumnWidths", () => {
   });
 
   test("does not reserve a phantom gap after every data column drops", () => {
-    const result = computeColumnWidths(runtimeVersionColumns, 1, {
+    const result = computeColumnWidths([{ width: 6 }], 1, {
       selectable: true,
       borderWidth: 0,
     });
 
-    expect(result.widths).toEqual([undefined, undefined, undefined]);
+    expect(result.widths).toEqual([undefined]);
     expect(result.totalWidth).toBe(SELECTION_MARKER_WIDTH);
   });
 

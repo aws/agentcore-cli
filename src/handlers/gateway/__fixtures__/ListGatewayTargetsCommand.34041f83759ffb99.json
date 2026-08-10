@@ -1,0 +1,20 @@
+{
+  "items": [
+    {
+      "targetId": "Z3FQ0H8JCK",
+      "name": "agentcore-cli-gateway-read-connector-openai",
+      "status": "READY",
+      "createdAt": {
+        "$date": "2026-08-05T20:20:45.351Z"
+      },
+      "updatedAt": {
+        "$date": "2026-08-05T20:20:51.210Z"
+      },
+      "description": "AgentCore CLI persistent READY Gateway Connector Target fixture",
+      "lastSynchronizedAt": {
+        "$date": "2026-08-05T20:20:51.000Z"
+      },
+      "targetType": "CONNECTOR"
+    }
+  ]
+}

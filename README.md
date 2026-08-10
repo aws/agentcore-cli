@@ -9,8 +9,8 @@ It gives you two ways to work, from the same binary:
 - **A scriptable CLI** — every operation is a flag-driven subcommand that emits
   JSON (`--json`), so it can be used by codeing agents and can drop cleanly into
   scripts, CI, and automation.
-- **An interactive TUI** — bare Harness, Runtime, and Memory branches and leaves open
-  their corresponding menus and selection flows.
+- **An interactive TUI** — bare Harness, Runtime, Memory, and Identity branches
+  and leaves open their corresponding menus and selection flows.
 
 ```bash
 agentcore                      # launch the interactive TUI
@@ -26,8 +26,8 @@ responses. `agentcore` wraps all of that behind one ergonomic tool.
 
 ## Command surface
 
-Commands with operation flags run headlessly. Bare Harness, Runtime, and Memory branches
-and leaves open their interactive flows.
+Commands with operation flags run headlessly. Bare Harness, Runtime, Memory, and
+Identity branches and leaves open their interactive flows.
 
 ```
 agentcore                          # interactive TUI
@@ -49,16 +49,22 @@ agentcore                          # interactive TUI
 │       ├── update
 │       └── delete
 ├── identity                       # manage AgentCore Identity resources
-│   └── api-key-credential-provider
-│       ├── create                 # create an API key credential provider
-│       ├── get                    # get an API key credential provider
-│       ├── list                   # list API key credential providers
-│       ├── update                 # update an API key credential provider
-│       └── delete                 # delete an API key credential provider
+│   ├── api-key-credential-provider
+│   │   ├── create                 # create an API key credential provider
+│   │   ├── get                    # get an API key credential provider
+│   │   ├── list                   # list API key credential providers
+│   │   ├── update                 # update an API key credential provider
+│   │   └── delete                 # delete an API key credential provider
+│   └── oauth2-credential-provider
+│       ├── create                 # create an OAuth2 credential provider
+│       ├── get                    # get an OAuth2 credential provider
+│       ├── list                   # list OAuth2 credential providers
+│       ├── update                 # update an OAuth2 credential provider
+│       └── delete                 # delete an OAuth2 credential provider
 ├── runtime                        # inspect deployed AgentCore Runtimes
 │   ├── get                        # fetch a Runtime by id
 │   ├── list                       # list Runtimes (server-side paginated)
-│   ├── invoke                     # invoke a Runtime
+│   ├── invoke                     # invoke a Runtime headlessly or in a persistent console
 │   ├── version
 │   │   ├── get                    # get a specific Runtime version
 │   │   └── list                   # list a Runtime's versions
@@ -67,7 +73,13 @@ agentcore                          # interactive TUI
 │       └── list                   # list a Runtime's endpoints
 ├── memory                         # inspect AgentCore Memories
 │   ├── get                        # fetch a Memory by id
-│   └── list                       # list Memories (server-side paginated)
+│   ├── list                       # list Memories (server-side paginated)
+│   ├── event
+│   │   ├── get                    # get an Event from a Memory session
+│   │   └── list                   # list Events from a Memory session
+│   └── record
+│       ├── get                    # get a long-term Memory record
+│       └── list                   # list long-term Memory records
 ├── gateway                        # inspect AgentCore Gateways
 │   ├── get                        # get a Gateway by id
 │   ├── list                       # list Gateways (server-side paginated)
@@ -136,6 +148,10 @@ agentcore runtime endpoint list --id <runtimeId> --max-results 20
 agentcore memory get --id <memoryId>
 agentcore memory get --id <memoryId> --view without_decryption
 agentcore memory list --max-results 20
+agentcore memory event get --memory <memoryId> --actor-id <actorId> --session-id <sessionId> --event-id <eventId>
+agentcore memory event list --memory <memoryId> --actor-id <actorId> --session-id <sessionId> --max-results 20
+agentcore memory record get --memory <memoryId> --record-id <recordId>
+agentcore memory record list --memory <memoryId> --namespace <namespace> --max-results 20
 
 # Inspect Gateway resources without project configuration or deployment
 agentcore gateway get --id <gatewayId>
@@ -151,6 +167,17 @@ agentcore identity api-key-credential-provider get --name my-provider
 agentcore identity api-key-credential-provider list --max-results 10
 agentcore identity api-key-credential-provider update --name my-provider --api-key <new-key>
 agentcore identity api-key-credential-provider delete --name my-provider
+
+# Manage OAuth2 credential providers (guided Custom OAuth2, or --provider-configuration for other vendors)
+agentcore identity oauth2-credential-provider create \
+  --name my-oauth-provider \
+  --vendor CustomOauth2 \
+  --client-id <client-id> \
+  --discovery-url https://issuer.example.com/.well-known/openid-configuration \
+  --client-secret -
+agentcore identity oauth2-credential-provider get --name my-oauth-provider
+agentcore identity oauth2-credential-provider list --max-results 10
+agentcore identity oauth2-credential-provider delete --name my-oauth-provider
 
 # Manage evaluators
 # Create an LLM-as-a-Judge evaluator with a rating-scale preset.
@@ -182,7 +209,7 @@ Source-aware values: any field flag documented as such accepts the value inline,
 
 ### Invoke a Runtime
 
-Runtime invocation accepts inline, file, or stdin payload bytes:
+Headless invocation accepts inline, file, or stdin payload bytes:
 
 ```bash
 # Inline
@@ -254,14 +281,39 @@ agentcore runtime invoke --id <runtimeId> --payload '{"action":"status"}' --json
 # {"statusCode":200,"contentType":"application/json","bodyEncoding":"utf8","body":"{\"ok\":true}","complete":true}
 ```
 
+Without `--payload`, Runtime Invoke opens a persistent JSON console for repeated
+requests. The console sends inline `application/json` payloads and renders each
+response according to its returned content type. Bare invoke opens the Runtime
+and endpoint pickers; `--id` skips the Runtime picker, and `--id` plus
+`--qualifier` opens the console directly. `--session-id` resumes that Runtime
+session in the console. `--user-id`, `--header`, and `--bearer-token` seed
+request context that persists across sends and endpoint changes within that
+Runtime. The console never displays their values, and switching Runtimes clears
+them. Interactive bearer tokens may be inline or `file://` sources, but not
+stdin.
+
+| Shortcut      | Action                                       |
+| ------------- | -------------------------------------------- |
+| `Enter`       | Send the JSON request                        |
+| `Shift+Enter` | Insert a newline                             |
+| `Ctrl+T`      | Change Runtime or endpoint                   |
+| `Ctrl+V`      | Toggle raw and pretty completed JSON         |
+| `Esc`         | Interrupt an active request or navigate back |
+| `↑`/`↓`       | Scroll response history                      |
+
 Runtime Invoke accepts Runtime IDs from the current account only. It does not
 accept ARNs, `--version`, `--interactive`, cross-account targets, or custom
 request paths. All requests use the Runtime `/invocations` route, including MCP
 Runtimes.
 
-Bare Runtime and Memory branches and leaves require a TTY on stdin and stdout. Supplying
-operation flags runs the command headlessly, and `--json` always suppresses TUI
-rendering.
+Bare Runtime branches and leaves, plus `memory`, `memory get`, and `memory list`,
+require a TTY on stdin and stdout.
+For Runtime Invoke, supplying a payload or headless-only request or output flags
+runs headlessly; `--session-id` can instead seed the persistent console.
+Supplying Memory operation flags runs those commands headlessly, and `--json`
+always suppresses TUI rendering. The `memory event` and `memory record` groups
+are headless: invoking a group without a leaf prints help, and their leaves
+require resource selectors.
 
 ```bash
 agentcore runtime
@@ -272,6 +324,20 @@ agentcore runtime endpoint list
 agentcore memory
 agentcore memory list
 agentcore memory get
+agentcore memory event
+agentcore memory record
+```
+
+The Identity TUI is read-only: bare `identity` branches and the `get`/`list`
+leaves open interactive menus and detail views. Mutations (`create`, `update`,
+`delete`) remain available through the CLI and are omitted from the TUI menus.
+
+```bash
+agentcore identity
+agentcore identity api-key-credential-provider list
+agentcore identity api-key-credential-provider get
+agentcore identity oauth2-credential-provider list
+agentcore identity oauth2-credential-provider get
 ```
 
 ---
@@ -683,8 +749,9 @@ A Husky pre-commit hook runs Prettier (via lint-staged) on staged files automati
 
 - **Cover more AgentCore resources.** The harness surface (CRUD, versions,
   endpoints, invoke, exec) is fully implemented in both the CLI and the TUI;
-  the same patterns extend naturally to gateways, Memory mutations and
-  data-plane operations, browser profiles, and the other AgentCore resources.
+  the same patterns extend naturally to gateways, the remaining read-only
+  Memory data-plane operations, browser profiles, and the other AgentCore
+  resources.
 - **Implement `config`.** The `config` command is currently a stub — it should
   read/write real global settings (telemetry, log level, ...) through an
   injected config accessor.

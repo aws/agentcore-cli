@@ -10,14 +10,16 @@ import {
   testIO,
 } from "../../testing";
 
-async function run(args: string[]): Promise<void> {
+async function run(args: string[]) {
   const io = testIO();
-  const root = createRootHandler(new TestCoreClient(), {
+  const core = new TestCoreClient();
+  const root = createRootHandler(core, {
     io: io.io,
     globalConfigAccessor: new TestGlobalConfigAccessor(),
     logger: createSilentLogger(),
   });
   await root.route(["node", "agentcore", "project", ...args]);
+  return { io, core };
 }
 
 describe.each(["add", "remove", "dev", "deploy", "status", "build"])("project %s", (command) => {
@@ -33,7 +35,9 @@ async function inTempDirectory(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "agentcore-project-"));
   tempDirectories.push(directory);
   process.chdir(directory);
-  return directory;
+  // cwd is the realpath (macOS tmpdir lives behind a /var -> /private/var
+  // symlink), matching the paths the manager derives from process.cwd().
+  return process.cwd();
 }
 
 afterEach(async () => {
@@ -46,7 +50,7 @@ afterEach(async () => {
 describe("project create", () => {
   test("scaffolds the project into a fresh directory named for the project", async () => {
     const directory = await inTempDirectory();
-    await run(["create", "--project-name", "MyAgent"]);
+    await run(["create", "--name", "MyAgent"]);
 
     // One existence check proves the handler→manager pipe; the full manifest
     // is covered by the FsProjectManager snapshot test.
@@ -56,18 +60,40 @@ describe("project create", () => {
 
   test("rejects an invalid --project-name", async () => {
     await inTempDirectory();
-    await expect(run(["create", "--project-name", "1-bad"])).rejects.toThrow();
+    await expect(run(["create", "--name", "1-bad"])).rejects.toThrow();
   });
 
   test("rejects a reserved --project-name", async () => {
     await inTempDirectory();
-    await expect(run(["create", "--project-name", "test"])).rejects.toThrow(/conflicts with/);
+    await expect(run(["create", "--name", "test"])).rejects.toThrow(/conflicts with/);
+  });
+
+  test("runs the post-scaffold steps and reports progress on stderr", async () => {
+    const directory = await inTempDirectory();
+    const { io, core } = await run(["create", "--name", "MyAgent"]);
+
+    const projectRoot = join(directory, "MyAgent");
+    expect(core.projectCommands).toEqual([
+      { command: ["npm", "install"], cwd: join(projectRoot, "agentcore", "cdk") },
+      { command: ["uv", "sync"], cwd: join(projectRoot, "app", "hello-world") },
+      { command: ["git", "init"], cwd: projectRoot },
+    ]);
+    expect(io.stderr()).toContain("Creating project tree");
+    expect(io.stderr()).toContain("Installing CDK dependencies with npm");
+    expect(io.stderr()).toContain("Syncing Python dependencies with uv");
+    expect(io.stderr()).toContain("Initializing git repository");
+    expect(io.stderr()).toContain("Created project 'MyAgent' in ./MyAgent");
+  });
+
+  test("--skip-install and --skip-git run no commands", async () => {
+    await inTempDirectory();
+    const { core } = await run(["create", "--name", "MyAgent", "--skip-install", "--skip-git"]);
+
+    expect(core.projectCommands).toEqual([]);
   });
 
   test("rejects an unknown --template value", async () => {
     await inTempDirectory();
-    await expect(
-      run(["create", "--project-name", "MyAgent", "--template", "nonsense"]),
-    ).rejects.toThrow();
+    await expect(run(["create", "--name", "MyAgent", "--template", "nonsense"])).rejects.toThrow();
   });
 });

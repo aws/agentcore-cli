@@ -5,9 +5,16 @@ import {
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { IAMClient } from "@aws-sdk/client-iam";
 import {
+  GetEventCommand,
+  GetMemoryRecordCommand,
   InvokeAgentRuntimeCommand,
   InvokeAgentRuntimeCommandCommand,
   InvokeHarnessCommand,
+  ListActorsCommand,
+  ListEventsCommand,
+  ListMemoryRecordsCommand,
+  ListSessionsCommand,
+  ValidationException,
   type BedrockAgentCoreClient,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { RuntimeInvokeRequest } from "../handlers/runtime/types";
@@ -192,6 +199,138 @@ test("exposes feature sub-clients", () => {
   expect(core.harness).toBeDefined();
   expect(core.memory).toBeDefined();
   expect(core.gateway).toBeDefined();
+});
+
+test("getEvent sends a GetEventCommand on the data client", async () => {
+  const sent: unknown[] = [];
+  const response = { event: undefined };
+  const core = coreWithDataSend(async (command) => {
+    sent.push(command);
+    return response;
+  });
+  const input = {
+    memoryId: "memory-123",
+    actorId: "actor-123",
+    sessionId: "session-123",
+    eventId: "event-123",
+  };
+
+  const result = await core.memory.getEvent(input, { region: "us-east-1" });
+
+  expect(result).toBe(response);
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toBeInstanceOf(GetEventCommand);
+  expect((sent[0] as GetEventCommand).input).toEqual(input);
+});
+
+test("listEvents sends a ListEventsCommand on the data client", async () => {
+  const sent: unknown[] = [];
+  const response = { events: [], nextToken: "next" };
+  const core = coreWithDataSend(async (command) => {
+    sent.push(command);
+    return response;
+  });
+  const input = {
+    memoryId: "memory-123",
+    actorId: "actor-123",
+    sessionId: "session-123",
+    includePayloads: true,
+    maxResults: 25,
+    nextToken: "current",
+  };
+
+  const result = await core.memory.listEvents(input, { region: "us-east-1" });
+
+  expect(result).toBe(response);
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toBeInstanceOf(ListEventsCommand);
+  expect((sent[0] as ListEventsCommand).input).toEqual(input);
+});
+
+test("listActors sends a ListActorsCommand on the data client", async () => {
+  const sent: unknown[] = [];
+  const response = { actorSummaries: [], nextToken: "next" };
+  const core = coreWithDataSend(async (command) => {
+    sent.push(command);
+    return response;
+  });
+  const input = {
+    memoryId: "memory-123",
+    maxResults: 25,
+    nextToken: "current",
+  };
+
+  const result = await core.memory.listActors(input, { region: "us-east-1" });
+
+  expect(result).toBe(response);
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toBeInstanceOf(ListActorsCommand);
+  expect((sent[0] as ListActorsCommand).input).toEqual(input);
+});
+
+test("listSessions sends a ListSessionsCommand on the data client", async () => {
+  const sent: unknown[] = [];
+  const response = { sessionSummaries: [], nextToken: "next" };
+  const core = coreWithDataSend(async (command) => {
+    sent.push(command);
+    return response;
+  });
+  const input = {
+    memoryId: "memory-123",
+    actorId: "actor-123",
+    maxResults: 25,
+    nextToken: "current",
+  };
+
+  const result = await core.memory.listSessions(input, { region: "us-east-1" });
+
+  expect(result).toBe(response);
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toBeInstanceOf(ListSessionsCommand);
+  expect((sent[0] as ListSessionsCommand).input).toEqual(input);
+});
+
+test("getMemoryRecord sends a GetMemoryRecordCommand on the data client", async () => {
+  const sent: unknown[] = [];
+  const response = { memoryRecord: undefined };
+  const core = coreWithDataSend(async (command) => {
+    sent.push(command);
+    return response;
+  });
+  const input = {
+    memoryId: "memory-123",
+    memoryRecordId: "record-123",
+  };
+
+  const result = await core.memory.getMemoryRecord(input, { region: "us-east-1" });
+
+  expect(result).toBe(response);
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toBeInstanceOf(GetMemoryRecordCommand);
+  expect((sent[0] as GetMemoryRecordCommand).input).toEqual(input);
+});
+
+test("listMemoryRecords sends a ListMemoryRecordsCommand on the data client", async () => {
+  const sent: unknown[] = [];
+  const response = { memoryRecordSummaries: [], nextToken: "next" };
+  const core = coreWithDataSend(async (command) => {
+    sent.push(command);
+    return response;
+  });
+  const input = {
+    memoryId: "memory-123",
+    namespace: "/customers/acme",
+    memoryStrategyId: "strategy-123",
+    maxResults: 25,
+    nextToken: "current",
+  };
+
+  const result = await core.memory.listMemoryRecords(input, { region: "us-east-1" });
+
+  expect(result).toBe(response);
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toBeInstanceOf(ListMemoryRecordsCommand);
+  expect((sent[0] as ListMemoryRecordsCommand).input).toEqual(input);
 });
 
 test("getRuntime sends the abort signal to the control client", async () => {
@@ -484,6 +623,38 @@ test("IAM invoke failures preserve safe SDK diagnostics without arbitrary causes
       requestId: "request-123",
     },
     ["secret request content", "secret payload", "secret-header-value"],
+  );
+});
+
+test("IAM invoke failures include messages from modeled AWS service errors", async () => {
+  const core = coreWithDataSend(async () => {
+    throw new ValidationException({
+      message: "Runtime session ID must contain at least 33 characters",
+      reason: "FieldValidationFailed",
+      $metadata: {
+        httpStatusCode: 400,
+        requestId: "request-456",
+      },
+    });
+  });
+
+  const caught = await core.runtime
+    .invokeRuntime(
+      {
+        runtimeId: "runtime-123",
+        accountId: "123456789012",
+        qualifier: "DEFAULT",
+        payload: new TextEncoder().encode("{}"),
+        contentType: "application/json",
+      },
+      { region: "us-east-1" },
+    )
+    .catch((caught: Error) => caught);
+  const error = caught as Error;
+
+  expect(error.message).toBe(
+    "Runtime invocation failed: Runtime session ID must contain at least 33 characters " +
+      "(ValidationException, HTTP 400, request ID request-456)",
   );
 });
 

@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { useWindowSize } from "ink";
 
 // CHROME_ROWS is everything a picker screen renders around the table rows:
-// the Layout header and footer (2 each), the DataTable filter line, the
-// column-header row and its divider, and the pagination status line.
-const CHROME_ROWS = 8;
+// the Layout header and footer (2 each), the DataTable column-header row and
+// divider/filter row, and the pagination status line.
+const CHROME_ROWS = 7;
 
 export interface PagedList {
   // pageSize is how many table rows fit the terminal — sent as maxResults so
@@ -37,9 +37,13 @@ function initialPagination(pageSize: number): PaginationState {
 // usePagedList holds the server-side pagination state shared by the picker
 // tables: a terminal-height-derived page size and the trail of nextTokens
 // leading to the current page, so ←/h can walk back through cached pages.
-export function usePagedList(): PagedList {
+//
+// maxPageSize caps the terminal-derived page size for APIs that constrain
+// maxResults (e.g. identity list operation capped at 20)
+export function usePagedList(maxPageSize?: number): PagedList {
   const { rows } = useWindowSize();
-  const pageSize = Math.max(3, rows - CHROME_ROWS);
+  const fitsTerminal = Math.max(3, rows - CHROME_ROWS);
+  const pageSize = maxPageSize ? Math.min(fitsTerminal, maxPageSize) : fitsTerminal;
 
   const [state, setState] = useState<PaginationState>(() => initialPagination(pageSize));
   const pageSizeChanged = state.pageSize !== pageSize;
