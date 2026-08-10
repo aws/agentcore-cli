@@ -182,7 +182,6 @@ test("readEvaluationResults throws (not silently truncates) when it hits the pag
   expect(err).toBeInstanceOf(ResultTruncationError);
   expect(err?.message).toMatch(/incomplete/);
   expect(err?.source).toBe("internal"); // our page cap, not a user or service fault
-  expect(err?.meta).toMatchObject({ logGroupName: "lg", logStreamName: "ls" });
 });
 
 test("parseEvaluationLogEvent warns on and skips an unparseable line", () => {

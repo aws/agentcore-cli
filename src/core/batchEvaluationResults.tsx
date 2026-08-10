@@ -77,14 +77,6 @@ export async function readEvaluationResults(
   // complete.
   throw new ResultTruncationError(
     `batch-evaluation results exceed ${MAX_RESULT_PAGES} CloudWatch pages; retrieved ${results.length} results are incomplete`,
-    {
-      meta: {
-        logGroupName,
-        logStreamName,
-        maxResultPages: MAX_RESULT_PAGES,
-        retrieved: results.length,
-      },
-    },
   );
 }
 
