@@ -24,12 +24,16 @@ export class CodeZipDevRunner implements DevRunner {
     const [entrypoint] = input.runtime.entrypoint.split(":");
     if (!entrypoint!.endsWith(".py") && !existsSync(join(directory, "node_modules"))) {
       yield { type: "status", message: "Installing Node dependencies with npm" };
-      yield* this.streamProcess(["npm", "install"], { cwd: directory, signal: input.signal });
+      yield* this.streamProcess(["npm", "install"], {
+        cwd: directory,
+        signal: input.signal,
+        shell: process.platform === "win32",
+      });
     }
 
     yield { type: "status", message: "Starting development server" };
-    const process = commandForRuntime(entrypoint!, directory, input);
-    yield* this.streamProcess(process.command, process.options);
+    const serverProcess = commandForRuntime(entrypoint!, directory, input);
+    yield* this.streamProcess(serverProcess.command, serverProcess.options);
   }
 }
 
@@ -52,7 +56,12 @@ function commandForRuntime(
   if (!entrypoint.endsWith(".py")) {
     return {
       command: ["npm", "exec", "--", "tsx", "watch", entrypoint],
-      options: { cwd: directory, env, signal: input.signal },
+      options: {
+        cwd: directory,
+        env,
+        signal: input.signal,
+        shell: process.platform === "win32",
+      },
     };
   }
 

@@ -66,6 +66,8 @@ export type StreamProcessOptions = {
   cwd: string;
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
+  /** Required on Windows for command scripts such as npm.cmd. */
+  shell?: boolean;
 };
 
 export type ProcessStreamer = (
@@ -124,7 +126,7 @@ export async function* streamProcess(
       cwd: options.cwd,
       env: options.env,
       stdio: ["ignore", "pipe", "pipe"],
-      shell: useShell,
+      shell: options.shell ?? false,
       detached: !useShell,
     });
   } catch (error) {
