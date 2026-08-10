@@ -333,6 +333,55 @@ describe("Gateway create validation", () => {
       /--knowledge-base-id requires --connector bedrock-knowledge-bases/,
     ],
     [
+      "Connector credentials",
+      [
+        "gateway",
+        "connector",
+        "create",
+        "--gateway-id",
+        "gateway-1",
+        "--name",
+        "openai",
+        "--connector-configuration",
+        '{"inference":{"connector":{"source":{"connectorId":"openai"}}}}',
+      ],
+      /--connector-configuration requires --credential-provider-configurations/,
+    ],
+    [
+      "Connector empty credentials",
+      [
+        "gateway",
+        "connector",
+        "create",
+        "--gateway-id",
+        "gateway-1",
+        "--name",
+        "search",
+        "--connector",
+        "web-search",
+        "--credential-provider-configurations",
+        "[]",
+      ],
+      /--credential-provider-configurations must contain exactly one configuration/,
+    ],
+    [
+      "Connector multiple credentials",
+      [
+        "gateway",
+        "connector",
+        "create",
+        "--gateway-id",
+        "gateway-1",
+        "--name",
+        "search",
+        "--connector",
+        "web-search",
+        "--credential-provider-configurations",
+        '[{"credentialProviderType":"GATEWAY_IAM_ROLE"},{"credentialProviderType":"GATEWAY_IAM_ROLE"}]',
+      ],
+      /--credential-provider-configurations must contain exactly one configuration/,
+    ],
+    [
       "Target tool schema",
       [
         "gateway",
@@ -410,6 +459,8 @@ describe("Gateway create validation", () => {
         "not-connector",
         "--connector-configuration",
         '{"mcp":{"mcpServer":{"endpoint":"https://example.test/mcp"}}}',
+        "--credential-provider-configurations",
+        '[{"credentialProviderType":"GATEWAY_IAM_ROLE"}]',
       ]),
     ).rejects.toThrow(/connector Target/);
   });
@@ -504,8 +555,6 @@ describe("Gateway fixture-backed creates", () => {
           CONNECTOR_TARGET_NAME,
           "--connector",
           "web-search",
-          "--credential-provider-configurations",
-          '[{"credentialProviderType":"GATEWAY_IAM_ROLE"}]',
           "--description",
           "Disposable Gateway Connector Create fixture",
         ]);

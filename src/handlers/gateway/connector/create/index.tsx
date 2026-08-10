@@ -39,7 +39,7 @@ export const createCreateGatewayConnectorHandler = (core: Core, io: AppIO) =>
       ),
       flag(
         "credential-provider-configurations",
-        "outbound credentials (JSON array; inline, file://<path>, or - for stdin)",
+        "one outbound credential configuration (JSON array; inline, file://<path>, or - for stdin); required with --connector-configuration and defaults to GATEWAY_IAM_ROLE with --connector",
         z.string().optional(),
       ),
       flag(
@@ -81,6 +81,14 @@ export const createCreateGatewayConnectorHandler = (core: Core, io: AppIO) =>
           "--knowledge-base-id requires --connector bedrock-knowledge-bases",
         );
       }
+      if (
+        flags["connector-configuration"] !== undefined &&
+        flags["credential-provider-configurations"] === undefined
+      ) {
+        throw new InputValidationError(
+          "--connector-configuration requires --credential-provider-configurations",
+        );
+      }
 
       const source = new SourceResolver({ stdin: io.stdin });
       const exactConfiguration = parseJsonObjectFlag<TargetConfiguration>(
@@ -96,13 +104,19 @@ export const createCreateGatewayConnectorHandler = (core: Core, io: AppIO) =>
         );
       }
 
-      const credentialProviderConfigurations = parseJsonArrayFlag<CredentialProviderConfiguration>(
-        "credential-provider-configurations",
-        await source.resolveText(
+      const credentialProviderConfigurations: CredentialProviderConfiguration[] =
+        parseJsonArrayFlag<CredentialProviderConfiguration>(
           "credential-provider-configurations",
-          flags["credential-provider-configurations"],
-        ),
-      );
+          await source.resolveText(
+            "credential-provider-configurations",
+            flags["credential-provider-configurations"],
+          ),
+        ) ?? [{ credentialProviderType: "GATEWAY_IAM_ROLE" }];
+      if (credentialProviderConfigurations.length !== 1) {
+        throw new InputValidationError(
+          "--credential-provider-configurations must contain exactly one configuration",
+        );
+      }
       const metadataConfiguration = parseJsonObjectFlag<MetadataConfiguration>(
         "metadata-configuration",
         await source.resolveText("metadata-configuration", flags["metadata-configuration"]),
@@ -116,7 +130,7 @@ export const createCreateGatewayConnectorHandler = (core: Core, io: AppIO) =>
         name: flags.name,
         targetConfiguration,
         ...(flags.description ? { description: flags.description } : {}),
-        ...(credentialProviderConfigurations ? { credentialProviderConfigurations } : {}),
+        credentialProviderConfigurations,
         ...(metadataConfiguration ? { metadataConfiguration } : {}),
         ...(privateEndpoint ? { privateEndpoint } : {}),
       };
