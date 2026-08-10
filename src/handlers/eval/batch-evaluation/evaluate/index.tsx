@@ -128,12 +128,14 @@ function resolveSource(
     );
   }
 
+  const hasIds = !!flags["session-ids"]?.length;
+
   if (hasRaw) {
     // The raw config is self-contained; the ergonomic filter flags don't apply.
     if (
       flags["start-time"] !== undefined ||
       flags["end-time"] !== undefined ||
-      (flags["session-ids"]?.length ?? 0) > 0 ||
+      hasIds ||
       flags["endpoint"] !== undefined
     ) {
       throw new InputValidationError(
@@ -144,7 +146,6 @@ function resolveSource(
   }
 
   const window = resolveWindow(flags);
-  const hasIds = (flags["session-ids"]?.length ?? 0) > 0;
 
   if (hasOnlineEval) {
     // The online-eval arm has no sessionIds filter and no endpoint.
