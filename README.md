@@ -9,7 +9,7 @@ It gives you two ways to work, from the same binary:
 - **A scriptable CLI** — every operation is a flag-driven subcommand that emits
   JSON (`--json`), so it can be used by codeing agents and can drop cleanly into
   scripts, CI, and automation.
-- **An interactive TUI** — bare Harness and Runtime branches and leaves open
+- **An interactive TUI** — bare Harness, Runtime, and Memory branches and leaves open
   their corresponding menus and selection flows.
 
 ```bash
@@ -26,7 +26,7 @@ responses. `agentcore` wraps all of that behind one ergonomic tool.
 
 ## Command surface
 
-Commands with operation flags run headlessly. Bare Harness and Runtime branches
+Commands with operation flags run headlessly. Bare Harness, Runtime, and Memory branches
 and leaves open their interactive flows.
 
 ```
@@ -259,7 +259,7 @@ accept ARNs, `--version`, `--interactive`, cross-account targets, or custom
 request paths. All requests use the Runtime `/invocations` route, including MCP
 Runtimes.
 
-Bare Runtime branches and leaves require a TTY on stdin and stdout. Supplying
+Bare Runtime and Memory branches and leaves require a TTY on stdin and stdout. Supplying
 operation flags runs the command headlessly, and `--json` always suppresses TUI
 rendering.
 
@@ -269,6 +269,9 @@ agentcore runtime list
 agentcore runtime get
 agentcore runtime version list
 agentcore runtime endpoint list
+agentcore memory
+agentcore memory list
+agentcore memory get
 ```
 
 ---

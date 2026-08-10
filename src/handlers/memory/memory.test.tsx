@@ -5,6 +5,7 @@ import {
   createSilentLogger,
   fixtureFactories,
   matchGolden,
+  TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../testing";
@@ -30,6 +31,21 @@ function createFixtureCore(): CoreClient {
     createIamClient,
     logger: createSilentLogger(),
   });
+}
+
+function testMemoryCommand() {
+  const core = new TestCoreClient();
+  const io = testIO();
+  const root = createRootHandler(core, {
+    io: io.io,
+    logger: createSilentLogger(),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
+  });
+
+  return {
+    core,
+    route: (args: string[]) => root.route(["node", "agentcore", ...args, "--region", REGION]),
+  };
 }
 
 async function run(args: string[]): Promise<string> {
@@ -64,11 +80,25 @@ describe("memory command hierarchy", () => {
     expect(view?.schema.parse(undefined)).toBeUndefined();
   });
 
-  test("prints help for bare `memory` without an SDK call", async () => {
-    const stdout = await run(["memory"]);
+  test("prints help for `memory --json` without an SDK call", async () => {
+    const stdout = await run(["memory", "--json"]);
 
     expect(stdout).toContain("Usage: agentcore memory");
     expect(stdout).toContain("Commands:");
+  });
+});
+
+describe("memory TUI dispatch", () => {
+  test.each([
+    ["get", ["memory", "get"]],
+    ["list", ["memory", "list"]],
+  ] as const)("opens the TUI for a bare Memory %s leaf", async (_label, args) => {
+    const { core, route } = testMemoryCommand();
+
+    await expect(route([...args])).rejects.toThrow(
+      "interactive mode requires a TTY on stdin and stdout",
+    );
+    expect(core.memory.calls).toEqual([]);
   });
 });
 
