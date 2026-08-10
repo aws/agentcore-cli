@@ -1,7 +1,9 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   MissingToolError,
   ProcessFailedError,
@@ -165,16 +167,29 @@ describe("streamProcess", () => {
     try {
       controller.abort();
       await expect(iterator.next()).rejects.toMatchObject({ name: "AbortError" });
-      expect(processExists(descendantPid)).toBe(false);
+      expect(await processStopped(descendantPid)).toBe(true);
     } finally {
-      if (processExists(descendantPid)) process.kill(descendantPid, "SIGKILL");
+      if (processRunning(descendantPid)) process.kill(descendantPid, "SIGKILL");
     }
   });
 });
 
-function processExists(pid: number): boolean {
+async function processStopped(pid: number): Promise<boolean> {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    if (!processRunning(pid)) return true;
+    await delay(10);
+  }
+  return false;
+}
+
+function processRunning(pid: number): boolean {
   try {
     process.kill(pid, 0);
+    // Linux reports kill(pid, 0) success for zombies that cannot execute.
+    if (process.platform === "linux") {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      return stat.slice(stat.lastIndexOf(") ") + 2, stat.lastIndexOf(") ") + 3) !== "Z";
+    }
     return true;
   } catch {
     return false;
