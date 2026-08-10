@@ -24,7 +24,6 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
         "tags to apply (JSON object of key/value strings; inline, file://<path>, or - for stdin)",
         z.string().optional(),
       ),
-      flag("client-token", "idempotency token", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
       if (!flags["name"])
@@ -65,7 +64,6 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
           },
           kmsKeyArn: flags["kms-key-arn"],
           tags,
-          clientToken: flags["client-token"],
         },
         coreOptsFromCtx(ctx),
       );

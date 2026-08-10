@@ -17,7 +17,6 @@ export const createLlmAsAJudgeUpdateHandler = (core: Core, io: AppIO) =>
       flag("model", "the Bedrock model id used to judge", z.string().optional()),
       ratingScaleFlag,
       flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),
-      flag("client-token", "idempotency token", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
       if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");
@@ -33,7 +32,6 @@ export const createLlmAsAJudgeUpdateHandler = (core: Core, io: AppIO) =>
           model: flags["model"],
           ratingScale,
           kmsKeyArn: flags["kms-key-arn"],
-          clientToken: flags["client-token"],
         },
         coreOptsFromCtx(ctx),
       );

@@ -105,7 +105,6 @@ export const createUpdateHarnessHandler = (core: Core) =>
       flag("max-iterations", "max agent loop iterations per invocation", z.number().optional()),
       flag("max-tokens", "max total output tokens per invocation", z.number().optional()),
       flag("timeout-seconds", "max duration in seconds per invocation", z.number().optional()),
-      flag("client-token", "idempotency token", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
       // Required at runtime but declared optional so that a bare
@@ -156,7 +155,6 @@ export const createUpdateHarnessHandler = (core: Core) =>
           maxIterations: flags["max-iterations"],
           maxTokens: flags["max-tokens"],
           timeoutSeconds: flags["timeout-seconds"],
-          clientToken: flags["client-token"],
         },
         coreOptsFromCtx(ctx),
       );

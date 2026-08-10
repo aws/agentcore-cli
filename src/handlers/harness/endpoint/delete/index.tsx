@@ -12,7 +12,6 @@ export const createDeleteEndpointHandler = (core: Core) =>
     flags: [
       flag("id", "the ID of the harness", z.string().max(48).optional()),
       flag("qualifier", "the endpoint name (qualifier)", z.string().optional()),
-      flag("client-token", "idempotency token", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
       // Required at runtime but declared optional so that a bare
@@ -28,7 +27,6 @@ export const createDeleteEndpointHandler = (core: Core) =>
         {
           harnessId: flags["id"],
           endpointName: flags["qualifier"],
-          clientToken: flags["client-token"],
         },
         coreOptsFromCtx(ctx),
       );

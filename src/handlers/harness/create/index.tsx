@@ -88,7 +88,6 @@ export const createCreateHarnessHandler = (core: Core) =>
       flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional(), {
         help: parameterHelp.tags,
       }),
-      flag("client-token", "idempotency token", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
       // Required at runtime but declared optional so that a bare
@@ -131,7 +130,6 @@ export const createCreateHarnessHandler = (core: Core) =>
           maxTokens: flags["max-tokens"],
           timeoutSeconds: flags["timeout-seconds"],
           tags: parseJsonFlag<Record<string, string>>("tags", flags["tags"]),
-          clientToken: flags["client-token"],
         },
         coreOptsFromCtx(ctx),
       );

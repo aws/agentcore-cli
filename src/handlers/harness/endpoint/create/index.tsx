@@ -18,7 +18,6 @@ export const createCreateEndpointHandler = (core: Core) =>
         z.string().optional(),
       ),
       flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),
-      flag("client-token", "idempotency token", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
       // Required at runtime but declared optional so that a bare
@@ -36,7 +35,6 @@ export const createCreateEndpointHandler = (core: Core) =>
           endpointName: flags["name"],
           targetVersion: flags["target-version"],
           tags: parseJsonFlag<Record<string, string>>("tags", flags["tags"]),
-          clientToken: flags["client-token"],
         },
         coreOptsFromCtx(ctx),
       );

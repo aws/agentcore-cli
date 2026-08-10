@@ -16,7 +16,6 @@ export const createDeleteHarnessHandler = (core: Core) =>
         "whether to also delete the managed memory (default true; pass false to keep it)",
         z.enum(["true", "false"]).optional(),
       ),
-      flag("client-token", "idempotency token", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
       // Required at runtime but declared optional so that a bare
@@ -32,7 +31,6 @@ export const createDeleteHarnessHandler = (core: Core) =>
             flags["delete-managed-memory"] === undefined
               ? undefined
               : flags["delete-managed-memory"] === "true",
-          clientToken: flags["client-token"],
         },
         coreOptsFromCtx(ctx),
       );

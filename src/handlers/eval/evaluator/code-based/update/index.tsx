@@ -18,7 +18,6 @@ export const createCodeBasedUpdateHandler = (core: Core) =>
         z.number().int().min(1).max(300).optional(),
       ),
       flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),
-      flag("client-token", "idempotency token", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
       if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");
@@ -29,7 +28,6 @@ export const createCodeBasedUpdateHandler = (core: Core) =>
           lambdaArn: flags["lambda-arn"],
           timeout: flags["timeout"],
           kmsKeyArn: flags["kms-key-arn"],
-          clientToken: flags["client-token"],
         },
         coreOptsFromCtx(ctx),
       );
