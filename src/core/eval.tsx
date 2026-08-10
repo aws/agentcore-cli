@@ -40,7 +40,11 @@ import {
 import {
   GetBatchEvaluationCommand,
   ListBatchEvaluationsCommand,
+  StartBatchEvaluationCommand,
   type ListBatchEvaluationsResponse,
+  type StartBatchEvaluationResponse,
+  type DataSourceConfig as DataPlaneDataSourceConfig,
+  type CloudWatchFilterConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
 import { Transform } from "node:stream";
 import { FileWriteError, InputValidationError, NetworkingError } from "../errors";
@@ -53,6 +57,8 @@ import type {
   CreateOnlineEvalInput,
   GetBatchEvaluationResult,
   LlmAsAJudgeUpdate,
+  SessionSourceValue,
+  StartBatchEvaluationInput,
   UpdateOnlineEvalInput,
 } from "../handlers/eval/types";
 import { atomicWriteStream } from "../io";
@@ -276,6 +282,66 @@ export class EvalClient implements CoreEvalClient {
     return this.clients
       .data(toClientConfig(options))
       .send(new ListBatchEvaluationsCommand({ nextToken, maxResults }));
+  }
+
+  // startBatchEvaluation submits the async, service-side job. Core translates the
+  // resolved SessionSourceValue into the dataSourceConfig union: the agent arm
+  // resolves the harness/runtime id to a log group (reusing agentDataSource), the
+  // online-eval arm points at a config ARN, and the raw arm passes JSON through.
+  async startBatchEvaluation(
+    input: StartBatchEvaluationInput,
+    options: CoreOptions,
+  ): Promise<StartBatchEvaluationResponse> {
+    const dataSourceConfig = await this.dataSourceConfigForSource(input.source, options);
+    return this.clients.data(toClientConfig(options)).send(
+      new StartBatchEvaluationCommand({
+        batchEvaluationName: input.name,
+        description: input.description,
+        evaluators: input.evaluatorIds.map((evaluatorId) => ({ evaluatorId })),
+        dataSourceConfig,
+        evaluationMetadata: input.groundTruth ? { sessionMetadata: input.groundTruth } : undefined,
+        kmsKeyArn: input.kmsKeyArn,
+      }),
+    );
+  }
+
+  // dataSourceConfigForSource maps a resolved SessionSourceValue to the data-plane
+  // dataSourceConfig union. The agent arm reuses the same runtime resolution +
+  // log-group derivation the control-plane agentDataSource uses, then attaches the
+  // session-id / time-range filters; the raw arm is returned verbatim.
+  private async dataSourceConfigForSource(
+    source: SessionSourceValue,
+    options: CoreOptions,
+  ): Promise<DataPlaneDataSourceConfig> {
+    if (source.origin === "raw") return source.dataSourceConfig;
+
+    // SessionWindow is already { startTime, endTime } — the SDK's SessionFilterConfig shape.
+    const timeRange = source.window;
+
+    if (source.origin === "online-eval") {
+      return {
+        onlineEvaluationConfigSource: {
+          onlineEvaluationConfigArn: source.onlineEvaluationConfigId,
+          timeRange,
+        },
+      };
+    }
+
+    const qualifier = source.endpoint ?? DEFAULT_ENDPOINT_QUALIFIER;
+    const { runtimeId, runtimeName } = await resolveAgentToRuntime(
+      source.agent,
+      this.clients,
+      options,
+    );
+    const filterConfig: CloudWatchFilterConfig | undefined =
+      source.sessionIds || timeRange ? { sessionIds: source.sessionIds, timeRange } : undefined;
+    return {
+      cloudWatchLogs: {
+        logGroupNames: [runtimeLogGroup(runtimeId, qualifier)],
+        serviceNames: [runtimeServiceName(runtimeName, qualifier)],
+        filterConfig,
+      },
+    };
   }
 
   async createOnlineEvaluationConfig(

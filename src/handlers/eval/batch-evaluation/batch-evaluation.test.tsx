@@ -6,7 +6,7 @@ import type {
 import { createRootHandler } from "../../index";
 import { createSilentLogger, TestCoreClient, testIO } from "../../../testing";
 import { TestGlobalConfigAccessor } from "../../../testing/";
-import type { BatchEvaluationResultEntry } from "../types";
+import type { BatchEvaluationResultEntry, StartBatchEvaluationInput } from "../types";
 
 // Command-flow tests for `eval batch-evaluation`, driven through the real root
 // handler against a TestCoreClient (no network). These cover the edges that the
@@ -60,7 +60,7 @@ describe("eval batch-evaluation command hierarchy", () => {
       .find((c) => c.name() === "eval")
       ?.children()
       .find((c) => c.name() === "batch-evaluation");
-    expect(group?.children().map((c) => c.name())).toEqual(["get", "list"]);
+    expect(group?.children().map((c) => c.name())).toEqual(["evaluate", "get", "list"]);
   });
 
   test("prints help for `eval batch-evaluation --json` without an SDK call", async () => {
@@ -69,6 +69,127 @@ describe("eval batch-evaluation command hierarchy", () => {
     const { core, stdout } = await run(["eval", "batch-evaluation", "--json"]);
     expect(stdout).toContain("Usage: agentcore eval batch-evaluation");
     expect(core.eval.calls).toHaveLength(0);
+  });
+});
+
+describe("eval batch-evaluation evaluate", () => {
+  test("requires --name and --evaluator", async () => {
+    await expect(
+      run(["eval", "batch-evaluation", "evaluate", "--agent", "a", "--json"]),
+    ).rejects.toThrow(/--name/);
+    await expect(
+      run(["eval", "batch-evaluation", "evaluate", "--name", "n", "--json"]),
+    ).rejects.toThrow(/--evaluator/);
+  });
+
+  test("rejects zero or multiple source arms", async () => {
+    await expect(
+      run([
+        "eval",
+        "batch-evaluation",
+        "evaluate",
+        "--name",
+        "n",
+        "--evaluator",
+        "Builtin.Helpfulness",
+        "--json",
+      ]),
+    ).rejects.toThrow(/exactly one source/);
+    await expect(
+      run([
+        "eval",
+        "batch-evaluation",
+        "evaluate",
+        "--name",
+        "n",
+        "--evaluator",
+        "Builtin.Helpfulness",
+        "--agent",
+        "a",
+        "--online-eval",
+        "oe",
+        "--json",
+      ]),
+    ).rejects.toThrow(/exactly one source/);
+  });
+
+  test("passes the resolved agent source + evaluators to Core", async () => {
+    const { core, stdout } = await run([
+      "eval",
+      "batch-evaluation",
+      "evaluate",
+      "--name",
+      "job1",
+      "--agent",
+      "orders-agent",
+      "--endpoint",
+      "prod",
+      "--evaluator",
+      "Builtin.Helpfulness",
+      "Builtin.Correctness",
+      "--start-time",
+      "2026-01-01T00:00:00Z",
+      "--end-time",
+      "2026-01-08T00:00:00Z",
+      "--json",
+    ]);
+    expect(JSON.parse(stdout).batchEvaluationId).toBe("batch-eval-test");
+    const call = core.eval.calls.find((c) => c.method === "startBatchEvaluation");
+    expect(call).toBeDefined();
+    const input = call!.args[0] as StartBatchEvaluationInput;
+    expect(input.name).toBe("job1");
+    expect(input.evaluatorIds).toEqual(["Builtin.Helpfulness", "Builtin.Correctness"]);
+    expect(input.source).toEqual({
+      origin: "agent",
+      agent: "orders-agent",
+      endpoint: "prod",
+      window: {
+        startTime: new Date("2026-01-01T00:00:00Z"),
+        endTime: new Date("2026-01-08T00:00:00Z"),
+      },
+      sessionIds: undefined,
+    });
+  });
+
+  test("resolves the online-eval source arm", async () => {
+    const { core } = await run([
+      "eval",
+      "batch-evaluation",
+      "evaluate",
+      "--name",
+      "job2",
+      "--online-eval",
+      "oe-1",
+      "--evaluator",
+      "Builtin.Helpfulness",
+      "--json",
+    ]);
+    const call = core.eval.calls.find((c) => c.method === "startBatchEvaluation");
+    const input = call!.args[0] as StartBatchEvaluationInput;
+    expect(input.source).toEqual({
+      origin: "online-eval",
+      onlineEvaluationConfigId: "oe-1",
+      window: undefined,
+    });
+  });
+
+  test("rejects --session-ids on the online-eval arm", async () => {
+    await expect(
+      run([
+        "eval",
+        "batch-evaluation",
+        "evaluate",
+        "--name",
+        "n",
+        "--evaluator",
+        "Builtin.Helpfulness",
+        "--online-eval",
+        "oe",
+        "--session-ids",
+        "s1",
+        "--json",
+      ]),
+    ).rejects.toThrow(/session-ids/);
   });
 });
 

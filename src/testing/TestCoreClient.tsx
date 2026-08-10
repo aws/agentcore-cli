@@ -80,6 +80,7 @@ import type {
   ListMemoryRecordsOutput,
   ListSessionsInput,
   ListSessionsOutput,
+  StartBatchEvaluationResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { Core } from "../handlers/types";
 import type { CoreHarnessClient, CreateHarnessInput } from "../handlers/harness/types";
@@ -111,6 +112,7 @@ import type {
   CreateOnlineEvalInput,
   GetBatchEvaluationResult,
   LlmAsAJudgeUpdate,
+  StartBatchEvaluationInput,
   UpdateOnlineEvalInput,
 } from "../handlers/eval/types";
 import { isTerminalStatus } from "../core/batchEvaluationResults";
@@ -215,6 +217,10 @@ const DEFAULT_DELETE_DATASET_RESPONSE = {} as DeleteDatasetResponse;
 const DEFAULT_PUBLISH_DATASET_RESPONSE = {} as CreateDatasetVersionResponse;
 const DEFAULT_GET_BATCH_EVAL_RESPONSE = {} as GetBatchEvaluationResponse;
 const DEFAULT_LIST_BATCH_EVALS_RESPONSE: ListBatchEvaluationsResponse = { batchEvaluations: [] };
+const DEFAULT_START_BATCH_EVAL_RESPONSE = {
+  batchEvaluationId: "batch-eval-test",
+  status: "RUNNING",
+} as unknown as StartBatchEvaluationResponse;
 
 // events wraps canned events as a one-shot AsyncIterable.
 async function* events<T>(items: T[]): AsyncGenerator<T> {
@@ -1175,6 +1181,7 @@ export class TestEvalClient implements CoreEvalClient {
   private batchEvalListResponses = new Map<string | undefined, ListBatchEvaluationsResponse>();
   private batchEvalResults: BatchEvaluationResultEntry[] = [];
   private batchEvalResultsError?: unknown;
+  private startBatchEvalResponse: StartBatchEvaluationResponse = DEFAULT_START_BATCH_EVAL_RESPONSE;
   private error?: Error;
 
   // setListResponse sets what listEvaluators resolves to (when not erroring).
@@ -1410,6 +1417,15 @@ export class TestEvalClient implements CoreEvalClient {
       this.batchEvalListResponses.get(undefined) ??
       DEFAULT_LIST_BATCH_EVALS_RESPONSE
     );
+  }
+
+  async startBatchEvaluation(
+    input: StartBatchEvaluationInput,
+    options: CoreOptions,
+  ): Promise<StartBatchEvaluationResponse> {
+    this.calls.push({ method: "startBatchEvaluation", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.startBatchEvalResponse;
   }
 
   async createOnlineEvaluationConfig(

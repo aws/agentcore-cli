@@ -23,8 +23,33 @@ import type {
 import type {
   GetBatchEvaluationResponse,
   ListBatchEvaluationsResponse,
+  StartBatchEvaluationResponse,
+  SessionMetadataShape,
+  DataSourceConfig as DataPlaneDataSourceConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { CoreOptions } from "../../core/types";
+
+// SessionWindow is the resolved explicit time filter for a batch evaluation's
+// session source (from --start-time/--end-time). Maps directly to the SDK's
+// SessionFilterConfig.
+export type SessionWindow = { startTime: Date; endTime: Date };
+
+// SessionSourceValue is the resolved batch-evaluation session source. `origin`
+// discriminates which dataSourceConfig arm Core builds; `window` is the shared
+// time filter (absent means "all available sessions").
+export type SessionSourceValue =
+  // `agent` is a harness id or runtime id; Core resolves it to the runtime + log group.
+  | {
+      origin: "agent";
+      agent: string;
+      endpoint?: string;
+      window?: SessionWindow;
+      sessionIds?: string[];
+    }
+  | { origin: "online-eval"; onlineEvaluationConfigId: string; window?: SessionWindow }
+  // Raw escape hatch: a full DataSourceConfig supplied via --data-source-config,
+  // already parsed from JSON. Passed through to the API untouched.
+  | { origin: "raw"; dataSourceConfig: DataPlaneDataSourceConfig };
 
 // BatchEvaluationResultEntry is one per-session/-trace/-tool evaluation score,
 // parsed from the CloudWatch output log stream a completed batch evaluation
@@ -148,6 +173,19 @@ export type RoleScopeWarning = {
 
 export type CreateDatasetInput = CreateDatasetRequest;
 
+// StartBatchEvaluationInput is the CLI-facing shape for `batch-evaluation
+// evaluate`. Core turns `source` into the API's dataSourceConfig union and
+// `groundTruth` into evaluationMetadata.
+export type StartBatchEvaluationInput = {
+  name: string;
+  description?: string;
+  evaluatorIds: string[];
+  source: SessionSourceValue;
+  // Already-parsed --ground-truth (SessionMetadataShape[]) → evaluationMetadata.
+  groundTruth?: SessionMetadataShape[];
+  kmsKeyArn?: string;
+};
+
 // CoreEvalClient is the evaluator, online evaluation, and dataset surface the eval
 // handlers depend on. It is declared here, next to the handlers that consume it,
 // and implemented by src/core/eval.tsx (dependency inversion: handlers own the
@@ -191,6 +229,13 @@ export interface CoreEvalClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListBatchEvaluationsResponse>;
+  // startBatchEvaluation submits an async, service-side evaluation over sessions
+  // the service gathers from the resolved data source. Returns the durable job id
+  // + RUNNING status; poll with getBatchEvaluation.
+  startBatchEvaluation(
+    input: StartBatchEvaluationInput,
+    options: CoreOptions,
+  ): Promise<StartBatchEvaluationResponse>;
 
   createOnlineEvaluationConfig(
     input: CreateOnlineEvalInput,
