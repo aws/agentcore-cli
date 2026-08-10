@@ -6,13 +6,13 @@ import { harnessVersionColumns } from "../../HarnessVersionPicker";
 import { runtimeEndpointColumns } from "../../RuntimeEndpointPicker";
 import { runtimeColumns } from "../../RuntimePicker";
 import { runtimeVersionColumns } from "../../RuntimeVersionPicker";
-import { memoryColumns } from "../../../handlers/memory/list/screen";
 import {
   computeColumnWidths,
   FLEX_MIN_WIDTH,
   resolveBorderWidth,
   SELECTION_MARKER_WIDTH,
 } from "./columnWidths";
+import { memoryColumns } from "../../MemoryPicker";
 
 const widths = [40, 60, 80, 100, 120, 160, 200];
 const flexConfigs = [
