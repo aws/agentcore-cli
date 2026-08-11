@@ -1,13 +1,13 @@
 import { Router } from "../../router";
 import type { AppIO } from "../../io";
 import { createCreateProjectHandler } from "./create";
-import { createAddProjectHandler } from "./add";
 import { createRemoveProjectHandler } from "./remove";
 import { createDevProjectHandler } from "./dev";
 import { createDeployProjectHandler } from "./deploy";
 import { createStatusProjectHandler } from "./status";
 import { createBuildProjectHandler } from "./build";
 import type { ProjectManager } from "./types";
+import { createAddProjectResourceHandler } from "./add";
 
 type ProjectHandlerConfig = {
   projectManager: ProjectManager;
@@ -20,7 +20,7 @@ export function createProjectHandler(config: ProjectHandlerConfig): Router {
   project.handler(
     createCreateProjectHandler({ projectManager: config.projectManager, io: config.io }),
   );
-  project.handler(createAddProjectHandler());
+  project.handler(createAddProjectResourceHandler(config));
   project.handler(createRemoveProjectHandler());
   project.handler(createDevProjectHandler());
   project.handler(createDeployProjectHandler());
