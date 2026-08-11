@@ -5,6 +5,7 @@ import {
   TestGlobalConfigAccessor,
   testIO,
 } from "../../testing";
+import { compile, isTuiCommandSupported, ValueContext } from "../../router";
 import { createRootHandler } from "../index";
 
 const REGION = "us-west-2";
@@ -25,6 +26,24 @@ async function run(
 
   await root.route(["node", "agentcore", ...args, "--region", REGION]);
   return { core, stdout: io.stdout() };
+}
+
+function supportsTui(path: readonly string[]): boolean {
+  let command = compile(
+    createRootHandler(new TestCoreClient(), {
+      io: testIO().io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    }),
+    ValueContext.EmptyContext(),
+  );
+
+  for (const name of path) {
+    const child = command.commands.find((candidate) => candidate.name() === name);
+    if (!child) throw new Error(`missing command ${path.join(" ")}`);
+    command = child;
+  }
+  return isTuiCommandSupported(command);
 }
 
 describe("gateway command hierarchy", () => {
@@ -66,10 +85,8 @@ describe("gateway command hierarchy", () => {
     ["Rule", ["gateway", "rule"]],
     ["Rule get", ["gateway", "rule", "get"]],
     ["Rule list", ["gateway", "rule", "list"]],
-  ] as const)("opens the TUI for a bare %s command", async (_label, args) => {
-    await expect(run([...args])).rejects.toThrow(
-      "interactive mode requires a TTY on stdin and stdout",
-    );
+  ] as const)("marks bare %s as TUI-supported", (_label, args) => {
+    expect(supportsTui(args)).toBe(true);
   });
 
   test.each([
@@ -77,7 +94,8 @@ describe("gateway command hierarchy", () => {
     ["Target create", ["gateway", "target", "create"], /--gateway-id/],
     ["Connector create", ["gateway", "connector", "create"], /--gateway-id/],
     ["Rule create", ["gateway", "rule", "create"], /--gateway-id/],
-  ] as const)("runs normal validation for bare CLI-only %s", async (_label, args, error) => {
+  ] as const)("keeps bare CLI-only %s out of the TUI", async (_label, args, error) => {
+    expect(supportsTui(args)).toBe(false);
     await expect(run([...args])).rejects.toThrow(error);
   });
 });
