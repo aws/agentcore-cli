@@ -8,11 +8,6 @@ import type { SessionMetadataShape, DataSourceConfig } from "@aws-sdk/client-bed
 import { coreOptsFromCtx, parseJsonFlag } from "../../../utils";
 import type { SessionSourceValue, SessionWindow } from "../../types";
 
-// createEvaluateBatchEvaluationHandler wires `batch-evaluation evaluate`: an
-// async, service-side evaluation over existing sessions. The session source is one
-// of --agent (harness/runtime id → CloudWatch), --online-eval, or a raw
-// --data-source-config JSON escape hatch, narrowed by a time window and (agent
-// arm only) --session-ids.
 export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "evaluate",
@@ -78,7 +73,7 @@ export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
         "data-source-config",
         await resolver.resolveText("data-source-config", flags["data-source-config"]),
       );
-      const source = resolveSource(flags, rawDataSourceConfig);
+      const source = resolveDataSource(flags, rawDataSourceConfig);
 
       const groundTruth = parseJsonFlag<SessionMetadataShape[]>(
         "ground-truth",
@@ -109,11 +104,8 @@ type SourceFlags = {
   "session-ids"?: string[];
 };
 
-// resolveSource picks exactly one source arm and validates the filters legal for
-// it. `rawDataSourceConfig` is the already-parsed --data-source-config (JSON
-// resolution is async and happens in the handler; this stays sync/pure). Kept
-// local for now; extract to a shared util when on-demand evaluate reuses it.
-function resolveSource(
+// Kept local for now; extract to a shared util when on-demand evaluate reuses it.
+function resolveDataSource(
   flags: SourceFlags,
   rawDataSourceConfig: DataSourceConfig | undefined,
 ): SessionSourceValue {

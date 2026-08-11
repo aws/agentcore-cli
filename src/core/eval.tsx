@@ -284,10 +284,6 @@ export class EvalClient implements CoreEvalClient {
       .send(new ListBatchEvaluationsCommand({ nextToken, maxResults }));
   }
 
-  // startBatchEvaluation submits the async, service-side job. Core translates the
-  // resolved SessionSourceValue into the dataSourceConfig union: the agent arm
-  // resolves the harness/runtime id to a log group (reusing agentDataSource), the
-  // online-eval arm points at a config ARN, and the raw arm passes JSON through.
   async startBatchEvaluation(
     input: StartBatchEvaluationInput,
     options: CoreOptions,
@@ -315,7 +311,6 @@ export class EvalClient implements CoreEvalClient {
   ): Promise<DataPlaneDataSourceConfig> {
     if (source.origin === "raw") return source.dataSourceConfig;
 
-    // SessionWindow is already { startTime, endTime } — the SDK's SessionFilterConfig shape.
     const timeRange = source.window;
 
     if (source.origin === "online-eval") {
