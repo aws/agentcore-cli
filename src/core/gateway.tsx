@@ -125,10 +125,7 @@ export class GatewayClient implements CoreGatewayClient {
       if (request.mcpProtocolVersion !== undefined) {
         headers.set("Mcp-Protocol-Version", request.mcpProtocolVersion);
       }
-      if (
-        request.authorizerType === "CUSTOM_JWT" ||
-        request.authorizerType === "AUTHENTICATE_ONLY"
-      ) {
+      if (request.authorizerType === "CUSTOM_JWT") {
         headers.set("Authorization", `Bearer ${request.bearerToken}`);
       }
     } catch {
@@ -137,7 +134,7 @@ export class GatewayClient implements CoreGatewayClient {
 
     let fetchHeaders: RequestInit["headers"] = headers;
     try {
-      if (request.authorizerType === "AWS_IAM") {
+      if (request.authorizerType === "AWS_IAM" || request.authorizerType === "AUTHENTICATE_ONLY") {
         const client = this.clients.data(toClientConfig(options));
         const signer = await client.config.signer({
           name: "sigv4",

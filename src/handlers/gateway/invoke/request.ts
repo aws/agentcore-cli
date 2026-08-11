@@ -133,11 +133,11 @@ function validateAuthorizer(
 ): AuthorizerType {
   switch (authorizerType) {
     case "CUSTOM_JWT":
-    case "AUTHENTICATE_ONLY":
       if (!bearerToken) {
         throw new InputValidationError(`${authorizerType} Gateway requires --bearer-token`);
       }
       return authorizerType;
+    case "AUTHENTICATE_ONLY":
     case "AWS_IAM":
     case "NONE":
       if (bearerToken !== undefined) {

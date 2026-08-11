@@ -255,10 +255,10 @@ string. Omitting it uses the returned `gatewayUrl` exactly. Supported methods
 are `GET`, `POST` (the default), and `DELETE`. POST requires `--payload`; DELETE
 may include one. Payloads accept inline bytes, `file://<path>`, or `-` for stdin.
 
-Authentication follows `GetGateway.authorizerType`: `AWS_IAM` requests use
-SigV4, `CUSTOM_JWT` and `AUTHENTICATE_ONLY` require `--bearer-token`, and `NONE`
-uses unsigned HTTPS. Bearer tokens accept inline, `file://`, or stdin sources;
-payload and token cannot both read stdin.
+Authentication follows `GetGateway.authorizerType`: `AWS_IAM` and
+`AUTHENTICATE_ONLY` requests use SigV4, `CUSTOM_JWT` requires `--bearer-token`,
+and `NONE` uses unsigned HTTPS. Bearer tokens accept inline, `file://`, or stdin
+sources; payload and token cannot both read stdin.
 
 Raw responses stream exact bytes to stdout. `--output-file` streams those bytes
 to disk, while `--json` buffers one envelope containing status, selected session

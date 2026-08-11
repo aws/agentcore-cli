@@ -179,18 +179,18 @@ describe("normalizeGatewayInvokeRequest", () => {
     expect(() => normalizeGatewayInvokeRequest(gateway, requestInput)).toThrow(message);
   });
 
-  test.each(["CUSTOM_JWT", "AUTHENTICATE_ONLY"] as const)(
-    "requires a bearer token for %s",
+  test.each(["CUSTOM_JWT"] as const)("requires a bearer token for %s", (authorizerType) => {
+    expect(() => normalizeGatewayInvokeRequest(detail({ authorizerType }), input())).toThrow(
+      "requires --bearer-token",
+    );
+  });
+
+  test.each(["AUTHENTICATE_ONLY", "AWS_IAM", "NONE"] as const)(
+    "rejects a bearer token for %s",
     (authorizerType) => {
-      expect(() => normalizeGatewayInvokeRequest(detail({ authorizerType }), input())).toThrow(
-        "requires --bearer-token",
-      );
+      expect(() =>
+        normalizeGatewayInvokeRequest(detail({ authorizerType }), input({ bearerToken: "secret" })),
+      ).toThrow("does not accept --bearer-token");
     },
   );
-
-  test.each(["AWS_IAM", "NONE"] as const)("rejects a bearer token for %s", (authorizerType) => {
-    expect(() =>
-      normalizeGatewayInvokeRequest(detail({ authorizerType }), input({ bearerToken: "secret" })),
-    ).toThrow("does not accept --bearer-token");
-  });
 });

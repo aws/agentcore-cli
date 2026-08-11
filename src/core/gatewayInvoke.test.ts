@@ -56,7 +56,7 @@ function coreWithFetch(
 }
 
 describe("Gateway invoke Core transport", () => {
-  test.each(["CUSTOM_JWT", "AUTHENTICATE_ONLY"] as const)(
+  test.each(["CUSTOM_JWT"] as const)(
     "sends exact bytes and bearer authentication for %s",
     async (authorizerType) => {
       const calls: { input: string | URL | Request; init?: RequestInit }[] = [];
@@ -122,54 +122,57 @@ describe("Gateway invoke Core transport", () => {
     },
   );
 
-  test("signs IAM requests with the data client's resolved signer", async () => {
-    const fetchCalls: { input: string | URL | Request; init?: RequestInit }[] = [];
-    const signedRequests: unknown[] = [];
-    const core = coreWithFetch(
-      async (input, init) => {
-        fetchCalls.push({ input, init });
-        return new Response(undefined, { status: 204 });
-      },
-      async (requestToSign) => {
-        signedRequests.push(requestToSign);
-        return {
-          ...requestToSign,
-          headers: {
-            ...requestToSign.headers,
-            authorization: "AWS4-HMAC-SHA256 signed",
-            "x-amz-date": "20260810T000000Z",
-          },
-        };
-      },
-    );
-
-    await core.gateway.invokeGateway(
-      request({
-        authorizerType: "AWS_IAM",
-        url: "https://gateway.example.test:8443/path?tag=one&tag=two&space=a+b",
-      }),
-      { region: "us-east-1", endpointUrl: "https://control.example.test" },
-    );
-
-    expect(signedRequests).toEqual([
-      {
-        method: "POST",
-        protocol: "https:",
-        hostname: "gateway.example.test",
-        port: 8443,
-        path: "/path",
-        query: { tag: ["one", "two"], space: "a b" },
-        headers: {
-          "content-type": "application/json",
-          host: "gateway.example.test:8443",
+  test.each(["AWS_IAM", "AUTHENTICATE_ONLY"] as const)(
+    "signs %s requests with the data client's resolved signer",
+    async (authorizerType) => {
+      const fetchCalls: { input: string | URL | Request; init?: RequestInit }[] = [];
+      const signedRequests: unknown[] = [];
+      const core = coreWithFetch(
+        async (input, init) => {
+          fetchCalls.push({ input, init });
+          return new Response(undefined, { status: 204 });
         },
-        body: new TextEncoder().encode("{}"),
-      },
-    ]);
-    expect(new Headers(fetchCalls[0]!.init!.headers).get("authorization")).toBe(
-      "AWS4-HMAC-SHA256 signed",
-    );
-  });
+        async (requestToSign) => {
+          signedRequests.push(requestToSign);
+          return {
+            ...requestToSign,
+            headers: {
+              ...requestToSign.headers,
+              authorization: "AWS4-HMAC-SHA256 signed",
+              "x-amz-date": "20260810T000000Z",
+            },
+          };
+        },
+      );
+
+      await core.gateway.invokeGateway(
+        request({
+          authorizerType,
+          url: "https://gateway.example.test:8443/path?tag=one&tag=two&space=a+b",
+        }),
+        { region: "us-east-1", endpointUrl: "https://control.example.test" },
+      );
+
+      expect(signedRequests).toEqual([
+        {
+          method: "POST",
+          protocol: "https:",
+          hostname: "gateway.example.test",
+          port: 8443,
+          path: "/path",
+          query: { tag: ["one", "two"], space: "a b" },
+          headers: {
+            "content-type": "application/json",
+            host: "gateway.example.test:8443",
+          },
+          body: new TextEncoder().encode("{}"),
+        },
+      ]);
+      expect(new Headers(fetchCalls[0]!.init!.headers).get("authorization")).toBe(
+        "AWS4-HMAC-SHA256 signed",
+      );
+    },
+  );
 
   test("sends NONE requests unsigned and supports GET without a body", async () => {
     let init: RequestInit | undefined;
