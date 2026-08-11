@@ -104,7 +104,6 @@ type SourceFlags = {
   "session-ids"?: string[];
 };
 
-// Kept local for now; extract to a shared util when on-demand evaluate reuses it.
 function resolveDataSource(
   flags: SourceFlags,
   rawDataSourceConfig: DataSourceConfig | undefined,

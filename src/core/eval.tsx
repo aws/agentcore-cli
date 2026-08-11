@@ -323,7 +323,7 @@ export class EvalClient implements CoreEvalClient {
     }
 
     const qualifier = source.endpoint ?? DEFAULT_ENDPOINT_QUALIFIER;
-    const { runtimeId, runtimeName } = await resolveAgentToRuntime(
+    const { runtimeId, runtimeName } = await resolveAgentToNameAndId(
       source.agent,
       this.clients,
       options,
@@ -733,13 +733,13 @@ function runtimeServiceName(runtimeName: string, endpoint: string): string {
   return `${runtimeName}.${endpoint}`;
 }
 
-// resolveAgentToRuntime resolves `--agent <id>` to its underlying runtime id +
+// resolveAgentToNameAndId resolves `--agent <id>` to its underlying runtime id +
 // name. A harness is itself implemented as an AgentCore Runtime under the
 // hood, so a plain runtime id resolves directly via GetAgentRuntime; a harness
 // id 404s there and resolves instead via GetHarness, reading the underlying
 // runtime out of `harness.environment.agentCoreRuntimeEnvironment`. Verified
 // against real harnesses/runtimes in a live account before relying on it.
-async function resolveAgentToRuntime(
+async function resolveAgentToNameAndId(
   agent: string,
   clients: AwsClients,
   options: CoreOptions,
@@ -778,7 +778,7 @@ async function agentDataSource(
   options: CoreOptions,
 ): Promise<DataSourceConfig> {
   const qualifier = endpoint ?? DEFAULT_ENDPOINT_QUALIFIER;
-  const { runtimeId, runtimeName } = await resolveAgentToRuntime(agent, clients, options);
+  const { runtimeId, runtimeName } = await resolveAgentToNameAndId(agent, clients, options);
   return {
     cloudWatchLogs: {
       logGroupNames: [runtimeLogGroup(runtimeId, qualifier)],
