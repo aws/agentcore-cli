@@ -32,6 +32,10 @@ export const TEMPLATES: Record<ProjectTemplate, Template> = {
           build: "CodeZip",
           entrypoint: "main.py",
           codeLocation: "app/hello-world",
+          // Required for CodeZip builds: the CDK construct library rejects a
+          // CodeZip runtime with no runtimeVersion, and it is what selects the
+          // packager. Container builds take their version from the image.
+          runtimeVersion: "PYTHON_3_14",
         },
       ],
     },

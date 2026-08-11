@@ -97,6 +97,7 @@ describe("FsProjectManager.create", () => {
         build: "CodeZip",
         entrypoint: "main.py",
         codeLocation: "app/hello-world",
+        runtimeVersion: "PYTHON_3_14",
       },
     ]);
     expect(await Bun.file(join(configDir, "aws-targets.json")).json()).toEqual([]);
