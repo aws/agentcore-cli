@@ -118,6 +118,26 @@ export class FsProjectManager implements ProjectManager {
     return project;
   }
 
+  public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
+    const cdkDir = join(project.rootPath, "agentcore", "cdk");
+
+    // The generated CDK app is built from its own node_modules; without them the
+    // failure would otherwise surface as an opaque "cdk: not found".
+    if (!existsSync(join(cdkDir, "node_modules"))) {
+      throw new ProjectStateError(
+        `CDK dependencies are missing for project '${project.name}'. ` +
+          `Run 'cd ${cdkDir} && npm install'.`,
+      );
+    }
+    await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
+
+    // The generated package.json defines `cdk` as "npm run build && cdk", so this
+    // single command compiles the app and then synthesizes it. Synthesis needs no
+    // AWS credentials: each stack's environment comes from aws-targets.json.
+    yield { message: "Synthesizing CloudFormation templates" };
+    await this.run(["npm", "run", "cdk", "--", "synth", "--quiet"], cdkDir);
+  }
+
   // Runs a command with its output streamed to the file logger.
   private run(command: string[], cwd: string): Promise<void> {
     return this.runner(command, { cwd, onOutput: (chunk) => this.logger.debug(chunk) });

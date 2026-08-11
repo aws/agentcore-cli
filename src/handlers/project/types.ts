@@ -44,6 +44,9 @@ export interface ProjectManager {
   /** Scaffold a new AgentCore project from the given template. */
   create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project>;
 
+  /** Compile the project's CDK app and synthesize its CloudFormation templates. */
+  build(project: Project): AsyncGenerator<ProjectEvent, void>;
+
   /** Locate an existing AgentCore project. Returns undefined if no project can be found. */
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;
 }
