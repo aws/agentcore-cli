@@ -39,8 +39,8 @@ const MISSING_JOB_ID = "missing-batch-eval-0000000000";
 // undo, same as the get/list fixtures pinning a real job. Re-recording needs the
 // agent to still exist and a unique --name (the service rejects a duplicate), so
 // bump FIXTURE_EVAL_NAME when re-recording.
-const FIXTURE_EVAL_AGENT = "demoEval_demoAgent-qGEpAAE68u";
-const FIXTURE_EVAL_NAME = "golden_batch_evaluate";
+const FIXTURE_EVAL_AGENT = "asdf_MyAgent-3s5axvBC6Q";
+const FIXTURE_EVAL_NAME = "golden_batch_evaluate_fixture685";
 
 function createFixtureCore(): CoreClient {
   const { createControlClient, createDataClient, createIamClient, createLogsClient } =

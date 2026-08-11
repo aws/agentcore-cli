@@ -3,7 +3,9 @@
   "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:batch-evaluate/golden_batch_evaluate_fixture685-d2967f9a21",
   "batchEvaluationName": "golden_batch_evaluate_fixture685",
   "status": "PENDING",
-  "createdAt": "2026-08-11T21:19:58.199Z",
+  "createdAt": {
+    "$date": "2026-08-11T21:19:58.199Z"
+  },
   "evaluators": [
     {
       "evaluatorId": "Builtin.Helpfulness"

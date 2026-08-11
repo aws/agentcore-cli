@@ -1,0 +1,47 @@
+{
+  "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q",
+  "agentRuntimeName": "asdf_MyAgent",
+  "agentRuntimeId": "asdf_MyAgent-3s5axvBC6Q",
+  "agentRuntimeVersion": "1",
+  "createdAt": {
+    "$date": "2026-04-23T21:17:21.895Z"
+  },
+  "lastUpdatedAt": {
+    "$date": "2026-04-23T21:17:35.159Z"
+  },
+  "roleArn": "arn:aws:iam::685197708687:role/AgentCore-asdf-default-ApplicationAgentMyAgentRunti-KdyUbgImzDRK",
+  "networkConfiguration": {
+    "networkMode": "PUBLIC"
+  },
+  "status": "READY",
+  "lifecycleConfiguration": {
+    "idleRuntimeSessionTimeout": 900,
+    "maxLifetime": 28800
+  },
+  "description": "AgentCore Runtime: asdf_MyAgent",
+  "workloadIdentityDetails": {
+    "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:workload-identity-directory/default/workload-identity/asdf_MyAgent-3s5axvBC6Q"
+  },
+  "agentRuntimeArtifact": {
+    "codeConfiguration": {
+      "code": {
+        "s3": {
+          "bucket": "cdk-hnb659fds-assets-685197708687-us-west-2",
+          "prefix": "a07977786dda1e2e5be304cb7485237a19ed24d5e05b02e73ca91a43fd2e7280.zip"
+        }
+      },
+      "runtime": "PYTHON_3_13",
+      "entryPoint": [
+        "opentelemetry-instrument",
+        "main.py"
+      ]
+    }
+  },
+  "environmentVariables": {
+    "AGENTCORE_GATEWAY_BUGBASHGW1776978672_AUTH_TYPE": "NONE",
+    "AGENTCORE_GATEWAY_BUGBASHGW1776978672_URL": "https://bugbashgw1776978672-zsy8cbqwts.gateway.bedrock-agentcore.us-west-2.amazonaws.com/mcp"
+  },
+  "metadataConfiguration": {
+    "requireMMDSV2": true
+  }
+}
