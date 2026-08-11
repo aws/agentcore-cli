@@ -106,16 +106,16 @@ async function* rejectedEvents(error: unknown): AsyncGenerator<ProcessEvent, voi
   throw error;
 }
 
-function projectIdentifier(projectRoot: string): string {
-  return createHash("sha256").update(resolve(projectRoot)).digest("hex").slice(0, 12);
+function hashString(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, 12);
 }
 
 function imageTag(projectRoot: string): string {
-  return `agentcore-dev/hello_world-${projectIdentifier(projectRoot)}`;
+  return `agentcore-dev/hello_world-${hashString(resolve(projectRoot))}`;
 }
 
 function containerName(projectRoot: string): string {
-  return `agentcore-dev-hello_world-${projectIdentifier(projectRoot)}`;
+  return `agentcore-dev-hello_world-${hashString(resolve(projectRoot))}`;
 }
 
 function commandCall(calls: ProcessCall[], operation: "build" | "run"): ProcessCall {
@@ -339,6 +339,27 @@ describe("ContainerDevRunner", () => {
     expect(probes).toEqual(["docker"]);
     expect(calls).toHaveLength(0);
     await expect(readFile(join(root, ".dockerignore"), "utf8")).rejects.toThrow();
+  });
+
+  test("does not build when aborted during stale container cleanup", async () => {
+    const projectRuntime = runtime();
+    const root = await projectRoot(projectRuntime);
+    const controller = new AbortController();
+    const { calls, runner } = harness({
+      stream: async function* (command) {
+        if (command[1] === "rm") {
+          await Promise.resolve();
+          controller.abort();
+        }
+        yield* [];
+      },
+    });
+
+    await expect(
+      collect(runner.run(input(root, projectRuntime, controller.signal))),
+    ).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(calls.map(({ command }) => command[1])).toEqual(["rm"]);
   });
 
   test("rejects a build context that is not a directory", async () => {

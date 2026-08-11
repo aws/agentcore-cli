@@ -81,11 +81,11 @@ export class ContainerDevRunner implements DevRunner {
     }
 
     const runtimeName = input.runtime.name.toLowerCase();
-    const projectId = projectIdentifier(input.projectRoot);
+    const projectId = hashString(resolve(input.projectRoot));
     const imageTag = `agentcore-dev/${runtimeName}-${projectId}`;
     const containerName = `agentcore-dev-${runtimeName}-${projectId}`;
-    input.signal.throwIfAborted();
     await this.removeContainer(tool, containerName, context);
+    input.signal.throwIfAborted();
 
     const buildArgs = input.runtime.customDockerBuildArgs ?? {};
     const buildArgFlags = Object.keys(buildArgs).flatMap((key) => ["--build-arg", key]);
@@ -197,6 +197,6 @@ function ensureBuildContextDockerignore(context: string): string | undefined {
   return dockerignore;
 }
 
-function projectIdentifier(projectRoot: string): string {
-  return createHash("sha256").update(resolve(projectRoot)).digest("hex").slice(0, 12);
+function hashString(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, 12);
 }
