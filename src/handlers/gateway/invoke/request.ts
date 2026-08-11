@@ -62,6 +62,25 @@ export async function resolveGatewayInvokeSources(
   }
 }
 
+export async function resolveGatewayInvokeTuiBearerToken(
+  source: string | undefined,
+  stdin: NodeJS.ReadStream,
+): Promise<string | undefined> {
+  if (source === "-") {
+    throw new InputValidationError(
+      "stdin bearer tokens are not available when launching the interactive console",
+    );
+  }
+  try {
+    return await new SourceResolver({ stdin }).resolveText("bearer-token", source);
+  } catch (error) {
+    if (error instanceof SourceResolutionError) {
+      throw new InputValidationError(error.message, { cause: error });
+    }
+    throw error;
+  }
+}
+
 export function parseGatewayInvokeHeaders(values: string[] = []): [string, string][] {
   const seen = new Set<string>();
 

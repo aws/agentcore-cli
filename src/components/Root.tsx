@@ -89,6 +89,7 @@ import { GatewayConnectorGetScreen } from "../handlers/gateway/connector/get/scr
 import { GatewayRuleScreen } from "../handlers/gateway/rule/screen.tsx";
 import { GatewayRuleListScreen } from "../handlers/gateway/rule/list/screen.tsx";
 import { GatewayRuleGetScreen } from "../handlers/gateway/rule/get/screen.tsx";
+import { GatewayInvokeScreen } from "../handlers/gateway/invoke/screen.tsx";
 import { RootScreen, HelpScreen } from "../handlers/screen.tsx";
 import type { Context } from "../router";
 
@@ -365,6 +366,14 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/gateway/get/:gatewayId/json"
             element={<GatewayGetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/gateway/invoke"
+            element={<GatewayInvokeScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/gateway/invoke/:gatewayId"
+            element={<GatewayInvokeScreen ctx={ctx} core={core} />}
           />
           <Route
             path="agentcore/gateway/target"

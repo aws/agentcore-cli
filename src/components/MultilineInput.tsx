@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { Box, Text, useInput } from "ink";
-import { darkTheme } from "../../../components/ui/_core.js";
+import { darkTheme } from "./ui/_core.js";
 
 const theme = darkTheme;
 const PREVIEW_LINES = 4;
-const PLACEHOLDER = "Enter JSON payload";
 
-interface RuntimePayloadInputProps {
+export interface MultilineInputProps {
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
+  placeholder?: string;
   submitDisabled?: boolean;
 }
 
@@ -21,12 +21,13 @@ function Cursor({ character }: { character: string }) {
   );
 }
 
-export function RuntimePayloadInput({
+export function MultilineInput({
   value,
   onChange,
   onSubmit,
+  placeholder = "Enter text",
   submitDisabled = false,
-}: RuntimePayloadInputProps) {
+}: MultilineInputProps) {
   const [rawCursor, setRawCursor] = useState(value.length);
   const cursor = Math.min(rawCursor, value.length);
 
@@ -67,8 +68,8 @@ export function RuntimePayloadInput({
   if (value === "") {
     return (
       <Box>
-        <Cursor character={PLACEHOLDER[0]!} />
-        <Text color={theme.colors.muted}>{PLACEHOLDER.slice(1)}</Text>
+        <Cursor character={placeholder[0] ?? " "} />
+        <Text color={theme.colors.muted}>{placeholder.slice(1)}</Text>
       </Box>
     );
   }

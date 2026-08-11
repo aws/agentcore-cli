@@ -3,10 +3,12 @@ import {
   GatewayInvokeInterruptedError,
   GatewayInvokeResponseError,
   InputValidationError,
+  InvalidEnvironmentError,
 } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { ExitCode } from "../../../runnable";
-import { createHandler, flag } from "../../../router";
+import { createHandler, flag, PathKey } from "../../../router";
+import { renderTuiAt } from "../../../tui";
 import { JsonKey } from "../../keys";
 import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
@@ -16,8 +18,10 @@ import {
   normalizeGatewayInvokeRequest,
   parseGatewayInvokeHeaders,
   resolveGatewayInvokeSources,
+  resolveGatewayInvokeTuiBearerToken,
 } from "./request";
 import { writeGatewayInvokeResponse } from "./response";
+import { GatewayInvokeLaunchContextKey } from "./launchContext";
 
 export const createInvokeGatewayHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -58,6 +62,55 @@ export const createInvokeGatewayHandler = (core: Core, io: AppIO) =>
       }
 
       const jsonOutput = ctx.require(JsonKey);
+      if (flags.payload === undefined) {
+        const hasHeadlessOnlyFlag = Object.entries(flags).some(
+          ([name, value]) =>
+            ![
+              "id",
+              "path",
+              "payload",
+              "header",
+              "bearer-token",
+              "session-id",
+              "mcp-session-id",
+              "mcp-protocol-version",
+            ].includes(name) && value !== undefined,
+        );
+        if (!jsonOutput && !hasHeadlessOnlyFlag) {
+          const applicationHeaders = parseGatewayInvokeHeaders(flags.header);
+          const bearerToken = await resolveGatewayInvokeTuiBearerToken(
+            flags["bearer-token"],
+            io.stdin,
+          );
+          const launchContext = {
+            gatewayId: flags.id,
+            path: flags.path,
+            runtimeSessionId: flags["session-id"],
+            mcpSessionId: flags["mcp-session-id"],
+            mcpProtocolVersion: flags["mcp-protocol-version"],
+            applicationHeaders,
+            bearerToken,
+          };
+          try {
+            await renderTuiAt(
+              `${ctx.require(PathKey)}/${encodeURIComponent(flags.id)}`,
+              ctx.withValue(GatewayInvokeLaunchContextKey, launchContext),
+              core,
+              io,
+            );
+          } catch (error) {
+            if (error instanceof InvalidEnvironmentError) {
+              throw new InputValidationError(error.message, {
+                cause: error,
+                exitCode: ExitCode.USAGE,
+              });
+            }
+            throw error;
+          }
+          return;
+        }
+      }
+
       if (jsonOutput && flags["output-file"] !== undefined) {
         throw new InputValidationError("--json cannot be used with --output-file");
       }
