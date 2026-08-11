@@ -21,7 +21,7 @@ import {
   type TargetConfiguration,
   type TargetSummary,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import { InputValidationError } from "../errors";
+import { InputValidationError, ResultTruncationError } from "../errors";
 import type {
   CoreGatewayClient,
   CreateGatewayInput,
@@ -30,6 +30,9 @@ import type {
 } from "../handlers/gateway/types";
 import type { AwsClients, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
+
+const DEFAULT_CONNECTOR_PAGE_SIZE = 100;
+const MAX_CONNECTOR_TARGET_PAGES = 101;
 
 export class GatewayClient implements CoreGatewayClient {
   constructor(private readonly clients: AwsClients) {}
@@ -120,21 +123,35 @@ export class GatewayClient implements CoreGatewayClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListGatewayTargetsResponse> {
+    const pageSize = maxResults ?? DEFAULT_CONNECTOR_PAGE_SIZE;
     const items: TargetSummary[] = [];
     let token = nextToken;
+    let filling = true;
 
-    while (true) {
-      const remaining = maxResults === undefined ? undefined : maxResults - items.length;
-      const response = await this.listGatewayTargets(gatewayId, token, remaining, options);
-      items.push(
-        ...(response.items ?? []).filter((target) => target.targetType === TargetType.CONNECTOR),
+    for (let page = 0; page < MAX_CONNECTOR_TARGET_PAGES; page++) {
+      const requestToken = token;
+      const requestSize = filling ? pageSize - items.length : DEFAULT_CONNECTOR_PAGE_SIZE;
+      const response = await this.listGatewayTargets(gatewayId, token, requestSize, options);
+      const connectors = (response.items ?? []).filter(
+        (target) => target.targetType === TargetType.CONNECTOR,
       );
-      const full = maxResults === undefined ? items.length > 0 : items.length >= maxResults;
-      if (full || response.nextToken === undefined) {
-        return { ...response, items };
+
+      if (filling) {
+        items.push(...connectors);
+        filling = items.length < pageSize;
+      } else if (connectors.length > 0) {
+        return { ...response, items, nextToken: requestToken };
+      }
+
+      if (response.nextToken === undefined) {
+        return { ...response, items, nextToken: undefined };
       }
       token = response.nextToken;
     }
+
+    throw new ResultTruncationError(
+      `Gateway Connector discovery exceeded ${MAX_CONNECTOR_TARGET_PAGES} Target pages; results are incomplete`,
+    );
   }
 
   async getGatewayRule(
