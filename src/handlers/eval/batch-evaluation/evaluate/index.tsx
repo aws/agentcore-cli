@@ -95,7 +95,10 @@ export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
     },
   });
 
-type SourceFlags = {
+// DataSourceFlags is hand-listed and can drift from the flag declarations above.
+// When insights lands as a second consumer, promote this type + resolveDataSource
+// into a static SessionSource class instead of keeping them as loose siblings.
+type DataSourceFlags = {
   agent?: string;
   endpoint?: string;
   "online-eval"?: string;
@@ -105,7 +108,7 @@ type SourceFlags = {
 };
 
 function resolveDataSource(
-  flags: SourceFlags,
+  flags: DataSourceFlags,
   rawDataSourceConfig: DataSourceConfig | undefined,
 ): SessionSourceValue {
   const hasAgent = flags["agent"] !== undefined;
@@ -158,7 +161,7 @@ function resolveDataSource(
 
 // resolveWindow validates the explicit time window: both halves must come
 // together and start must precede end.
-function resolveWindow(flags: SourceFlags): SessionWindow | undefined {
+function resolveWindow(flags: DataSourceFlags): SessionWindow | undefined {
   const hasStart = flags["start-time"] !== undefined;
   const hasEnd = flags["end-time"] !== undefined;
   if (!hasStart && !hasEnd) return undefined; // no time filter — all available sessions
