@@ -3,7 +3,7 @@ import { ServiceException } from "@smithy/core/client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, useInput, useWindowSize } from "ink";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router";
+import { useLocation, useNavigate, useParams } from "react-router";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import cliTruncate from "cli-truncate";
 import type { ScreenProps } from "../../types";
@@ -25,6 +25,10 @@ const theme = darkTheme;
 type ExchangeState = "connecting" | "streaming" | "complete" | "interrupted" | "failed";
 
 type TargetPickerState = { stage: "runtime" } | { stage: "endpoint"; runtimeId: string };
+
+type RuntimeInvokeLocationState = {
+  returnOnEscape?: boolean;
+};
 
 type ErrorDetails = {
   name: string;
@@ -90,9 +94,11 @@ function ErrorBlock({ details }: { details: ErrorDetails }) {
 
 export function RuntimeInvokeScreen(props: ScreenProps) {
   const { runtimeId, qualifier } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const launchContext = props.ctx.value(RuntimeInvokeLaunchContextKey);
   const initialContext = launchContext?.runtimeId === runtimeId ? launchContext : undefined;
+  const returnOnEscape = (location.state as RuntimeInvokeLocationState | null)?.returnOnEscape;
 
   if (!runtimeId) {
     return (
@@ -112,8 +118,13 @@ export function RuntimeInvokeScreen(props: ScreenProps) {
         runtimeId={runtimeId}
         breadcrumb={["agentcore", "runtime", "invoke", runtimeId]}
         description="choose an endpoint to invoke"
-        onSelect={(selected) => navigate(invokePath(runtimeId, selected))}
-        onEscape={() => navigate(invokePath())}
+        onSelect={(selected) =>
+          navigate(invokePath(runtimeId, selected), {
+            replace: returnOnEscape === true,
+            state: returnOnEscape ? { returnOnEscape } : undefined,
+          })
+        }
+        onEscape={() => (returnOnEscape ? navigate(-1) : navigate(invokePath()))}
       />
     );
   }
@@ -124,6 +135,7 @@ export function RuntimeInvokeScreen(props: ScreenProps) {
       runtimeId={runtimeId}
       qualifier={qualifier}
       initialContext={initialContext}
+      returnOnEscape={returnOnEscape}
     />
   );
 }
@@ -132,6 +144,7 @@ type RuntimeInvokeConsoleProps = ScreenProps & {
   runtimeId: string;
   qualifier: string;
   initialContext?: RuntimeInvokeLaunchContext;
+  returnOnEscape?: boolean;
 };
 
 function RuntimeInvokeConsole({
@@ -140,8 +153,10 @@ function RuntimeInvokeConsole({
   runtimeId,
   qualifier,
   initialContext,
+  returnOnEscape,
 }: RuntimeInvokeConsoleProps) {
   const opts = coreOptsFromCtx(ctx);
+  const navigate = useNavigate();
   const { columns, rows } = useWindowSize();
   const [target, setTarget] = useState({ runtimeId, qualifier });
   const [targetPicker, setTargetPicker] = useState<TargetPickerState | null>(null);
@@ -292,6 +307,7 @@ function RuntimeInvokeConsole({
       }
       if (key.escape) {
         if (abortRef.current) abortRef.current.abort();
+        else if (returnOnEscape) navigate(-1);
         else setTargetPicker({ stage: "endpoint", runtimeId: target.runtimeId });
         return;
       }

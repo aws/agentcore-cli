@@ -7,9 +7,15 @@ import { coreOptsFromCtx } from "../../utils";
 
 const ACTIONS = [
   {
-    name: "detail",
-    description: "show the full JSON definition",
-    to: (id: string) => `/agentcore/runtime/get/${encodeURIComponent(id)}/json`,
+    name: "invoke",
+    description: "invoke this Runtime",
+    to: (id: string) => `/agentcore/runtime/invoke/${encodeURIComponent(id)}`,
+    returnsToDetails: true,
+  },
+  {
+    name: "endpoints",
+    description: "list this Runtime's endpoints",
+    to: (id: string) => `/agentcore/runtime/endpoint/list/${encodeURIComponent(id)}`,
   },
   {
     name: "versions",
@@ -17,9 +23,9 @@ const ACTIONS = [
     to: (id: string) => `/agentcore/runtime/version/list/${encodeURIComponent(id)}`,
   },
   {
-    name: "endpoints",
-    description: "list this Runtime's endpoints",
-    to: (id: string) => `/agentcore/runtime/endpoint/list/${encodeURIComponent(id)}`,
+    name: "detail",
+    description: "show the full JSON definition",
+    to: (id: string) => `/agentcore/runtime/get/${encodeURIComponent(id)}/json`,
   },
 ] as const;
 
@@ -56,7 +62,13 @@ export function RuntimeGetScreen(props: ScreenProps) {
           ? ACTIONS.map((action) => ({
               name: action.name,
               description: action.description,
-              onSelect: () => navigate(action.to(runtimeId)),
+              onSelect: () =>
+                navigate(action.to(runtimeId), {
+                  state:
+                    "returnsToDetails" in action && action.returnsToDetails
+                      ? { returnOnEscape: true }
+                      : undefined,
+                }),
             }))
           : []
       }

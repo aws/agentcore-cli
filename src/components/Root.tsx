@@ -23,7 +23,10 @@ import { RuntimeScreen } from "../handlers/runtime/screen.tsx";
 import { RuntimeGetJsonScreen, RuntimeGetScreen } from "../handlers/runtime/get/screen.tsx";
 import { RuntimeListScreen } from "../handlers/runtime/list/screen.tsx";
 import { RuntimeEndpointScreen } from "../handlers/runtime/endpoint/screen.tsx";
-import { RuntimeGetEndpointScreen } from "../handlers/runtime/endpoint/get/screen.tsx";
+import {
+  RuntimeGetEndpointJsonScreen,
+  RuntimeGetEndpointScreen,
+} from "../handlers/runtime/endpoint/get/screen.tsx";
 import { RuntimeListEndpointsScreen } from "../handlers/runtime/endpoint/list/screen.tsx";
 import { RuntimeVersionScreen } from "../handlers/runtime/version/screen.tsx";
 import { RuntimeGetVersionScreen } from "../handlers/runtime/version/get/screen.tsx";
@@ -282,6 +285,10 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/runtime/endpoint/get/:runtimeId/:qualifier"
             element={<RuntimeGetEndpointScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/endpoint/get/:runtimeId/:qualifier/json"
+            element={<RuntimeGetEndpointJsonScreen ctx={ctx} core={core} />}
           />
           <Route
             path="agentcore/runtime/endpoint/list"
