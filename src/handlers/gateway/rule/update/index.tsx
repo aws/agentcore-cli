@@ -5,7 +5,7 @@ import { type AppIO, SourceResolver } from "../../../../io";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
-import { coreOptsFromCtx, parseJsonArrayFlag } from "../../../utils";
+import { coreOptsFromCtx, parseJsonArrayFlag, validateSetClearConflicts } from "../../../utils";
 import type { GatewayRuleUpdateInput } from "../../types";
 
 export const createUpdateGatewayRuleHandler = (core: Core, io: AppIO) =>
@@ -40,11 +40,7 @@ export const createUpdateGatewayRuleHandler = (core: Core, io: AppIO) =>
       if (!flags["rule-id"]) {
         throw new InputValidationError("required option '--rule-id <rule-id>' not specified");
       }
-      if (flags.conditions !== undefined && flags["clear-conditions"]) {
-        throw new InputValidationError(
-          "--conditions and --clear-conditions are mutually exclusive",
-        );
-      }
+      validateSetClearConflicts([["conditions", flags.conditions, flags["clear-conditions"]]]);
       if (flags.description === "") {
         throw new InputValidationError("Rule description cannot be empty or cleared");
       }

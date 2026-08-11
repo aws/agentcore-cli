@@ -11,7 +11,12 @@ import { type AppIO, SourceResolver } from "../../../io";
 import { createHandler, flag } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
 import type { Core } from "../../types";
-import { coreOptsFromCtx, parseJsonArrayFlag, parseJsonObjectFlag } from "../../utils";
+import {
+  coreOptsFromCtx,
+  parseJsonArrayFlag,
+  parseJsonObjectFlag,
+  validateSetClearConflicts,
+} from "../../utils";
 import type { GatewayUpdatePatch } from "../types";
 
 export const createUpdateGatewayHandler = (core: Core, io: AppIO) =>
@@ -72,7 +77,7 @@ export const createUpdateGatewayHandler = (core: Core, io: AppIO) =>
         throw new InputValidationError("required option '--id <id>' not specified");
       }
 
-      for (const [name, value, clear] of [
+      validateSetClearConflicts([
         ["description", flags.description, flags["clear-description"]],
         [
           "protocol-configuration",
@@ -91,11 +96,7 @@ export const createUpdateGatewayHandler = (core: Core, io: AppIO) =>
         ],
         ["exception-level", flags["exception-level"], flags["clear-exception-level"]],
         ["waf-configuration", flags["waf-configuration"], flags["clear-waf-configuration"]],
-      ] as const) {
-        if (value !== undefined && clear) {
-          throw new InputValidationError(`--${name} and --clear-${name} are mutually exclusive`);
-        }
-      }
+      ]);
       if (
         flags["clear-policy-engine"] &&
         (flags["policy-engine-arn"] !== undefined || flags["policy-engine-mode"] !== undefined)

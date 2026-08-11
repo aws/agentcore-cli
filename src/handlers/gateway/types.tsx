@@ -1,30 +1,22 @@
 import type {
-  AuthorizerConfiguration,
   CreateGatewayRequest,
   CreateGatewayResponse,
   CreateGatewayRuleRequest,
   CreateGatewayRuleResponse,
   CreateGatewayTargetRequest,
   CreateGatewayTargetResponse,
-  CustomTransformConfiguration,
-  ExceptionLevel,
-  GatewayInterceptorConfiguration,
-  GatewayPolicyEngineConfiguration,
-  GatewayProtocolConfiguration,
   GetGatewayResponse,
   GetGatewayRuleResponse,
   GetGatewayTargetResponse,
   ListGatewayRulesResponse,
   ListGatewaysResponse,
   ListGatewayTargetsResponse,
-  MetadataConfiguration,
-  PrivateEndpoint,
-  TargetConfiguration,
+  UpdateGatewayRequest,
   UpdateGatewayResponse,
   UpdateGatewayRuleRequest,
   UpdateGatewayRuleResponse,
+  UpdateGatewayTargetRequest,
   UpdateGatewayTargetResponse,
-  WafConfiguration,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { CoreOptions } from "../../core/types";
 
@@ -40,29 +32,31 @@ export type CreateGatewayRuleInput = CreateGatewayRuleRequest;
 
 export type GatewayUpdatePatch = {
   id: string;
-  roleArn?: string;
+  roleArn?: UpdateGatewayRequest["roleArn"];
   clearProtocol?: boolean;
-  description?: string | null;
-  protocolConfiguration?: GatewayProtocolConfiguration | null;
-  authorizerConfiguration?: AuthorizerConfiguration;
-  customTransformConfiguration?: CustomTransformConfiguration | null;
-  interceptorConfigurations?: GatewayInterceptorConfiguration[] | null;
-  policyEngineConfiguration?: Partial<GatewayPolicyEngineConfiguration> | null;
-  exceptionLevel?: ExceptionLevel | null;
-  wafConfiguration?: WafConfiguration | null;
+  description?: UpdateGatewayRequest["description"] | null;
+  protocolConfiguration?: UpdateGatewayRequest["protocolConfiguration"] | null;
+  authorizerConfiguration?: UpdateGatewayRequest["authorizerConfiguration"];
+  customTransformConfiguration?: UpdateGatewayRequest["customTransformConfiguration"] | null;
+  interceptorConfigurations?: UpdateGatewayRequest["interceptorConfigurations"] | null;
+  policyEngineConfiguration?: Partial<
+    NonNullable<UpdateGatewayRequest["policyEngineConfiguration"]>
+  > | null;
+  exceptionLevel?: UpdateGatewayRequest["exceptionLevel"] | null;
+  wafConfiguration?: UpdateGatewayRequest["wafConfiguration"] | null;
 };
 
 export type GatewayTargetUpdatePatch = {
   gatewayId: string;
   targetId: string;
-  name?: string;
-  description?: string | null;
+  name?: UpdateGatewayTargetRequest["name"];
+  description?: UpdateGatewayTargetRequest["description"] | null;
   endpoint?: string;
-  targetConfiguration?: TargetConfiguration;
+  targetConfiguration?: UpdateGatewayTargetRequest["targetConfiguration"];
   credentialProviderConfigurations?:
-    CreateGatewayTargetRequest["credentialProviderConfigurations"] | null;
-  metadataConfiguration?: MetadataConfiguration | null;
-  privateEndpoint?: PrivateEndpoint | null;
+    UpdateGatewayTargetRequest["credentialProviderConfigurations"] | null;
+  metadataConfiguration?: UpdateGatewayTargetRequest["metadataConfiguration"] | null;
+  privateEndpoint?: UpdateGatewayTargetRequest["privateEndpoint"] | null;
 };
 
 export type GatewayRuleUpdateInput = UpdateGatewayRuleRequest;

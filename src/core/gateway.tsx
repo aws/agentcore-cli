@@ -29,7 +29,12 @@ import {
   type UpdateGatewayTargetRequest,
   type UpdateGatewayTargetResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import { InputValidationError, ResultTruncationError } from "../errors";
+import {
+  AgentCoreCLIError,
+  ERROR_SOURCE,
+  InputValidationError,
+  ResultTruncationError,
+} from "../errors";
 import type {
   CoreGatewayClient,
   CreateGatewayInput,
@@ -75,11 +80,12 @@ export class GatewayClient implements CoreGatewayClient {
   ): Promise<UpdateGatewayResponse> {
     const control = this.clients.control(toClientConfig(options));
     const current = await control.send(new GetGatewayCommand({ gatewayIdentifier: patch.id }));
-    const name = GatewayClient.required(current.name, patch.id, "name");
-    const roleArn = GatewayClient.required(current.roleArn, patch.id, "role ARN");
+    const resource = `Gateway "${patch.id}"`;
+    const name = GatewayClient.required(current.name, resource, "name");
+    const roleArn = GatewayClient.required(current.roleArn, resource, "role ARN");
     const authorizerType = GatewayClient.required(
       current.authorizerType,
-      patch.id,
+      resource,
       "authorizer type",
     );
     if (patch.authorizerConfiguration !== undefined && authorizerType !== "CUSTOM_JWT") {
@@ -303,13 +309,18 @@ export class GatewayClient implements CoreGatewayClient {
         targetId: patch.targetId,
       }),
     );
-    if (connectorOnly && !GatewayClient.isConnectorTarget(current.targetConfiguration)) {
+    const currentTargetConfiguration = GatewayClient.required(
+      current.targetConfiguration,
+      `Gateway Target "${patch.targetId}"`,
+      "configuration",
+    );
+    if (connectorOnly && !GatewayClient.isConnectorTarget(currentTargetConfiguration)) {
       throw new InputValidationError(`Gateway Target "${patch.targetId}" is not connector-backed`);
     }
 
     let targetConfiguration = patch.targetConfiguration;
     if (targetConfiguration === undefined && patch.endpoint !== undefined) {
-      const mcpServer = current.targetConfiguration?.mcp?.mcpServer;
+      const mcpServer = currentTargetConfiguration.mcp?.mcpServer;
       if (!mcpServer) {
         throw new InputValidationError("Endpoint updates require an existing MCP server Target");
       }
@@ -322,12 +333,7 @@ export class GatewayClient implements CoreGatewayClient {
         },
       };
     }
-    targetConfiguration ??= current.targetConfiguration;
-    if (!targetConfiguration) {
-      throw new InputValidationError(
-        `Gateway Target "${patch.targetId}" is missing its configuration required for update`,
-      );
-    }
+    targetConfiguration ??= currentTargetConfiguration;
 
     const name = GatewayClient.replace(current.name, patch.name);
     const description = GatewayClient.replace(current.description, patch.description);
@@ -366,9 +372,11 @@ export class GatewayClient implements CoreGatewayClient {
     return replacement === null ? undefined : replacement;
   }
 
-  private static required<T>(value: T | undefined, id: string, field: string): T {
+  private static required<T>(value: T | undefined, resource: string, field: string): T {
     if (value === undefined) {
-      throw new InputValidationError(`Gateway "${id}" is missing its ${field} required for update`);
+      throw new AgentCoreCLIError(`${resource} is missing its ${field} required for update`, {
+        source: ERROR_SOURCE.SERVICE,
+      });
     }
     return value;
   }

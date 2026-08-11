@@ -10,7 +10,12 @@ import { type AppIO, SourceResolver } from "../../../../io";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
-import { coreOptsFromCtx, parseJsonArrayFlag, parseJsonObjectFlag } from "../../../utils";
+import {
+  coreOptsFromCtx,
+  parseJsonArrayFlag,
+  parseJsonObjectFlag,
+  validateSetClearConflicts,
+} from "../../../utils";
 import type { GatewayTargetUpdatePatch } from "../../types";
 
 export const createUpdateGatewayTargetHandler = (core: Core, io: AppIO) =>
@@ -56,7 +61,7 @@ export const createUpdateGatewayTargetHandler = (core: Core, io: AppIO) =>
         throw new InputValidationError("required option '--target-id <target-id>' not specified");
       }
 
-      for (const [name, value, clear] of [
+      validateSetClearConflicts([
         ["description", flags.description, flags["clear-description"]],
         [
           "credential-provider-configurations",
@@ -69,11 +74,7 @@ export const createUpdateGatewayTargetHandler = (core: Core, io: AppIO) =>
           flags["clear-metadata-configuration"],
         ],
         ["private-endpoint", flags["private-endpoint"], flags["clear-private-endpoint"]],
-      ] as const) {
-        if (value !== undefined && clear) {
-          throw new InputValidationError(`--${name} and --clear-${name} are mutually exclusive`);
-        }
-      }
+      ]);
       if (flags.endpoint !== undefined && flags["target-configuration"] !== undefined) {
         throw new InputValidationError(
           "--endpoint and --target-configuration are mutually exclusive",

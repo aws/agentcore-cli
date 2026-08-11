@@ -10,7 +10,12 @@ import { type AppIO, SourceResolver } from "../../../../io";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
-import { coreOptsFromCtx, parseJsonArrayFlag, parseJsonObjectFlag } from "../../../utils";
+import {
+  coreOptsFromCtx,
+  parseJsonArrayFlag,
+  parseJsonObjectFlag,
+  validateSetClearConflicts,
+} from "../../../utils";
 import type { GatewayTargetUpdatePatch } from "../../types";
 import { GatewayConnectorTarget } from "../gatewayConnectorTarget";
 
@@ -87,7 +92,7 @@ export const createUpdateGatewayConnectorHandler = (core: Core, io: AppIO) =>
         );
       }
 
-      for (const [name, value, clear] of [
+      validateSetClearConflicts([
         ["description", flags.description, flags["clear-description"]],
         [
           "credential-provider-configurations",
@@ -100,11 +105,7 @@ export const createUpdateGatewayConnectorHandler = (core: Core, io: AppIO) =>
           flags["clear-metadata-configuration"],
         ],
         ["private-endpoint", flags["private-endpoint"], flags["clear-private-endpoint"]],
-      ] as const) {
-        if (value !== undefined && clear) {
-          throw new InputValidationError(`--${name} and --clear-${name} are mutually exclusive`);
-        }
-      }
+      ]);
 
       const source = new SourceResolver({ stdin: io.stdin });
       const exactConfiguration = parseJsonObjectFlag<TargetConfiguration>(

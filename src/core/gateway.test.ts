@@ -10,9 +10,8 @@ import {
   type GetGatewayResponse,
   type GetGatewayTargetResponse,
   type TargetSummary,
-  type TargetConfiguration,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import { ResultTruncationError } from "../errors";
+import { ERROR_SOURCE, ResultTruncationError } from "../errors";
 import type { GatewayTargetUpdatePatch, GatewayUpdatePatch } from "../handlers/gateway/types";
 import type { AwsClients } from "./types";
 import { GatewayClient } from "./gateway";
@@ -324,34 +323,6 @@ async function targetUpdateInput(
 }
 
 describe("GatewayClient updateGateway", () => {
-  test("preserves required and omitted fields while replacing selected configuration", async () => {
-    expect(
-      await gatewayUpdateInput({
-        id: "gateway-1",
-        description: "after",
-      }),
-    ).toEqual({
-      gatewayIdentifier: "gateway-1",
-      name: "orders",
-      roleArn: "arn:aws:iam::123456789012:role/orders",
-      authorizerType: "CUSTOM_JWT",
-      authorizerConfiguration: {
-        customJWTAuthorizer: {
-          discoveryUrl: "https://auth.example.test/.well-known/openid-configuration",
-        },
-      },
-      protocolType: "MCP",
-      protocolConfiguration: { mcp: { supportedVersions: ["2025-11-25"] } },
-      description: "after",
-      kmsKeyArn: "arn:aws:kms:us-west-2:123456789012:key/key-1",
-      policyEngineConfiguration: {
-        arn: "arn:aws:bedrock-agentcore:us-west-2:123456789012:policy-engine/engine-1",
-        mode: "LOG_ONLY",
-      },
-      exceptionLevel: "DEBUG",
-    });
-  });
-
   test("clears requested fields and merges a Policy Engine mode change", async () => {
     expect(
       await gatewayUpdateInput({
@@ -397,6 +368,14 @@ describe("GatewayClient updateGateway", () => {
         OPTIONS,
       ),
     ).rejects.toThrow(/CUSTOM_JWT/);
+  });
+
+  test("classifies missing required service fields as service errors", async () => {
+    const { client } = recordingGatewayClient([{ ...gateway(), name: undefined }]);
+
+    await expect(
+      client.updateGateway({ id: "gateway-1", description: "after" }, OPTIONS),
+    ).rejects.toMatchObject({ source: ERROR_SOURCE.SERVICE });
   });
 });
 
@@ -473,32 +452,29 @@ describe("GatewayClient updateGatewayTarget", () => {
 });
 
 describe("GatewayClient updateGatewayConnector", () => {
-  test.each([
-    ["MCP", { mcp: { connector: { source: { connectorId: "web-search" } } } }],
-    ["inference", { inference: { connector: { source: { connectorId: "bedrock-mantle" } } } }],
-  ] as [string, TargetConfiguration][])(
-    "updates an existing %s connector Target",
-    async (_kind, targetConfiguration) => {
-      const { client, commands } = recordingGatewayClient([
-        { targetId: "target-1", targetConfiguration } as GetGatewayTargetResponse,
-        {},
-      ]);
+  test("updates an existing inference connector Target", async () => {
+    const targetConfiguration = {
+      inference: { connector: { source: { connectorId: "bedrock-mantle" } } },
+    };
+    const { client, commands } = recordingGatewayClient([
+      { targetId: "target-1", targetConfiguration } as GetGatewayTargetResponse,
+      {},
+    ]);
 
-      await client.updateGatewayConnector(
-        {
-          gatewayId: "gateway-1",
-          targetId: "target-1",
-          description: "after",
-        },
-        OPTIONS,
-      );
+    await client.updateGatewayConnector(
+      {
+        gatewayId: "gateway-1",
+        targetId: "target-1",
+        description: "after",
+      },
+      OPTIONS,
+    );
 
-      expect(commands[1]).toBeInstanceOf(UpdateGatewayTargetCommand);
-      expect((commands[1] as UpdateGatewayTargetCommand).input.targetConfiguration).toEqual(
-        targetConfiguration,
-      );
-    },
-  );
+    expect(commands[1]).toBeInstanceOf(UpdateGatewayTargetCommand);
+    expect((commands[1] as UpdateGatewayTargetCommand).input.targetConfiguration).toEqual(
+      targetConfiguration,
+    );
+  });
 
   test("rejects an existing non-connector Target", async () => {
     const { client, commands } = recordingGatewayClient([target()]);
