@@ -718,6 +718,27 @@ describe("Gateway invoke JSON console", () => {
     expect(screen.lastFrame()).toContain("[esc] back");
   });
 
+  test("horizontally windows long single-line JSON without corrupting status rows", async () => {
+    const core = new TestCoreClient();
+    core.gateway.setGetResponse(gatewayDetail());
+    const screen = renderScreen(CONSOLE_PATH, { core });
+    await screen.resize(100, 24);
+
+    await waitForText(screen.lastFrame, "Ready");
+    await screen.write(
+      JSON.stringify({
+        model: "provider/model",
+        messages: [{ role: "user", content: "x".repeat(180) }],
+      }),
+    );
+
+    const frame = screen.lastFrame()!;
+    expect(frame.split("\n")).toHaveLength(24);
+    expect(frame).toContain("Ready · Session ID:");
+    expect(frame).toContain("Auth: NONE");
+    expect(frame).not.toContain("NONEon ID");
+  });
+
   test("scrolls completed response history", async () => {
     const response = Array.from({ length: 12 }, (_, index) => `response-line-${index}`).join("\n");
     const core = new TestCoreClient();

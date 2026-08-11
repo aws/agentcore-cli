@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Box, Text, useInput } from "ink";
+import cliTruncate from "cli-truncate";
+import { Box, Text, useInput, useWindowSize } from "ink";
 import { darkTheme } from "./ui/_core.js";
 
 const theme = darkTheme;
@@ -28,6 +29,7 @@ export function MultilineInput({
   placeholder = "Enter text",
   submitDisabled = false,
 }: MultilineInputProps) {
+  const { columns } = useWindowSize();
   const [rawCursor, setRawCursor] = useState(value.length);
   const cursor = Math.min(rawCursor, value.length);
 
@@ -89,19 +91,25 @@ export function MultilineInput({
         const prefix = index === 0 && start > 0 ? "… " : "";
         if (lineIndex !== cursorLine) {
           return (
-            <Box key={lineIndex}>
-              <Text color={theme.colors.border}>{prefix}</Text>
-              <Text>{line || " "}</Text>
+            <Box key={lineIndex} width={columns}>
+              <Text wrap="truncate-end">{cliTruncate(`${prefix}${line || " "}`, columns)}</Text>
             </Box>
           );
         }
 
-        const before = line.slice(0, cursorColumn);
+        const horizontalMarker = cursorColumn >= columns - prefix.length ? "… " : "";
+        const available = Math.max(1, columns - prefix.length - horizontalMarker.length);
+        const offset = Math.max(0, cursorColumn - available + 1);
+        const before = line.slice(offset, cursorColumn);
         const at = line[cursorColumn] ?? " ";
-        const after = line.slice(cursorColumn + 1);
+        const after = line.slice(
+          cursorColumn + 1,
+          cursorColumn + 1 + Math.max(0, available - before.length - 1),
+        );
         return (
-          <Box key={lineIndex}>
+          <Box key={lineIndex} width={columns}>
             <Text color={theme.colors.border}>{prefix}</Text>
+            <Text color={theme.colors.border}>{horizontalMarker}</Text>
             {before ? <Text>{before}</Text> : null}
             <Cursor character={at} />
             {after ? <Text>{after}</Text> : null}
