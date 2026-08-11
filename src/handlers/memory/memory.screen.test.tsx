@@ -184,12 +184,17 @@ describe("Memory detail", () => {
       endpointUrl: memoryEndpointUrl,
     });
 
-    await waitForText(screen.lastFrame, "show the full JSON definition");
+    await waitForText(screen.lastFrame, "browse this Memory's events");
     const frame = screen.lastFrame()!;
     expect(frame).toContain("orders-memory");
     expect(frame).toMatch(/eventExpiryDays\s+30/);
     expect(frame).toMatch(/strategies\s+1/);
     expect(frame).toContain("arn:aws:bedrock-agentcore");
+    expect(frame).toMatch(/❯ events\s+browse this Memory's events/);
+    expect(frame).toContain("list this Memory's records");
+    expect(frame).toContain("show the full JSON definition");
+    expect(frame).toContain("[enter] select");
+    expect(frame).not.toContain("[enter] open detail");
     expect(core.memory.calls.find((call) => call.method === "getMemory")).toEqual({
       method: "getMemory",
       args: [
@@ -227,7 +232,9 @@ describe("Memory detail", () => {
     core.memory.setGetResponse(getMemoryOutput());
     const screen = renderScreen("/agentcore/memory/get/memory-1", { core });
 
-    await waitForText(screen.lastFrame, "show the full JSON definition");
+    await waitForText(screen.lastFrame, "browse this Memory's events");
+    await screen.press("down");
+    await screen.press("down");
     await screen.press("return");
     await waitForText(screen.lastFrame, "agentcore → memory → get → memory-1 → json");
     const frame = screen.lastFrame()!;
@@ -244,8 +251,7 @@ describe("Memory detail", () => {
 
     await waitForText(screen.lastFrame, "memory-1");
     await screen.press("return");
-    await waitForText(screen.lastFrame, "list this Memory's events");
-    await screen.press("down");
+    await waitForText(screen.lastFrame, "browse this Memory's events");
     await screen.press("return");
     await waitForText(screen.lastFrame, "choose an actor to list sessions for");
 
@@ -255,10 +261,10 @@ describe("Memory detail", () => {
     });
 
     await screen.press("escape");
-    await waitForText(screen.lastFrame, "list this Memory's events");
+    await waitForText(screen.lastFrame, "browse this Memory's events");
     await screen.press("escape");
     await waitForText(screen.lastFrame, "updated UTC");
-    expect(screen.lastFrame()).not.toContain("list this Memory's events");
+    expect(screen.lastFrame()).not.toContain("browse this Memory's events");
   });
 
   test("unwinds the record flow through Memory detail to the list", async () => {
@@ -270,7 +276,6 @@ describe("Memory detail", () => {
     await waitForText(screen.lastFrame, "memory-1");
     await screen.press("return");
     await waitForText(screen.lastFrame, "list this Memory's records");
-    await screen.press("down");
     await screen.press("down");
     await screen.press("return");
     await waitForText(screen.lastFrame, "choose the namespace scope for the record list");
@@ -293,7 +298,7 @@ describe("Memory detail", () => {
     core.memory.setError(undefined);
     core.memory.setGetResponse(getMemoryOutput());
     await screen.write("r");
-    await waitForText(screen.lastFrame, "show the full JSON definition");
+    await waitForText(screen.lastFrame, "browse this Memory's events");
   });
 
   test("does not open cached detail after a background refresh fails", async () => {
@@ -306,7 +311,7 @@ describe("Memory detail", () => {
     });
     const screen = renderScreen("/agentcore/memory/get/memory-1", { core, queryClient });
 
-    await waitForText(screen.lastFrame, "show the full JSON definition");
+    await waitForText(screen.lastFrame, "browse this Memory's events");
     core.memory.setError(new Error("background refresh failed"));
     await queryClient.invalidateQueries({
       queryKey: ["memory", "us-east-1", "memory-1", "full"],
