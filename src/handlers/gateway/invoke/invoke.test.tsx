@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import type { GetGatewayResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { AppIO } from "../../../io";
@@ -238,6 +241,102 @@ describe("gateway invoke", () => {
     expect(output.stderr()).toHaveLength(0);
   });
 
+  test("streams a non-2xx body before returning a failure exit code", async () => {
+    const core = configuredCore();
+    core.gateway.setInvokeResponse({
+      statusCode: 405,
+      contentType: "text/plain",
+      requestId: "request-405",
+      body: body(Buffer.from("Method Not Allowed")),
+    });
+    const output = captureIO();
+
+    const code = await runWithExitCode(async () =>
+      runCommand(core, output.io, ["gateway", "invoke", "--id", GATEWAY_ID, "--method", "GET"]),
+    );
+
+    expect(code).toBe(ExitCode.FAILURE);
+    expect(output.stdout().toString()).toBe("Method Not Allowed");
+    expect(output.stderr().toString()).toContain(
+      "status=405 content-type=text/plain runtime-session-id=- mcp-session-id=- " +
+        "mcp-protocol-version=- request-id=request-405 complete=true bytes=18",
+    );
+  });
+
+  test("writes a non-2xx JSON envelope before returning a failure exit code", async () => {
+    const core = configuredCore();
+    core.gateway.setInvokeResponse({
+      statusCode: 422,
+      contentType: "application/problem+json",
+      requestId: "request-422",
+      body: body(Buffer.from('{"message":"invalid request"}')),
+    });
+    const output = captureIO();
+
+    const code = await runWithExitCode(async () =>
+      runCommand(core, output.io, [
+        "gateway",
+        "invoke",
+        "--id",
+        GATEWAY_ID,
+        "--payload",
+        "{}",
+        "--json",
+      ]),
+    );
+
+    expect(code).toBe(ExitCode.FAILURE);
+    expect(JSON.parse(output.stdout().toString())).toEqual({
+      statusCode: 422,
+      contentType: "application/problem+json",
+      requestId: "request-422",
+      bodyEncoding: "utf8",
+      body: '{"message":"invalid request"}',
+      complete: true,
+    });
+    expect(output.stderr()).toHaveLength(0);
+  });
+
+  test("writes a non-2xx body to a file before returning a failure exit code", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "gateway-invoke-"));
+    const outputPath = join(directory, "response.bin");
+    try {
+      const core = configuredCore();
+      const responseBytes = Buffer.from([0, 255, 10, 1]);
+      core.gateway.setInvokeResponse({
+        statusCode: 503,
+        contentType: "application/octet-stream",
+        requestId: "request-503",
+        body: body(responseBytes),
+      });
+      const output = captureIO();
+
+      const code = await runWithExitCode(async () =>
+        runCommand(core, output.io, [
+          "gateway",
+          "invoke",
+          "--id",
+          GATEWAY_ID,
+          "--payload",
+          "{}",
+          "--output-file",
+          outputPath,
+        ]),
+      );
+
+      expect(code).toBe(ExitCode.FAILURE);
+      expect(await readFile(outputPath)).toEqual(responseBytes);
+      expect(output.stdout()).toHaveLength(0);
+      expect(output.stderr().toString()).toContain(
+        "status=503 content-type=application/octet-stream runtime-session-id=- " +
+          "mcp-session-id=- mcp-protocol-version=- request-id=request-503 " +
+          "complete=true bytes=4",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   test.each([
     [["gateway", "invoke", "--payload", "{}"], /--id/],
     [["gateway", "invoke", "--id", GATEWAY_ID], /--payload/],
@@ -326,5 +425,6 @@ describe("gateway invoke", () => {
 
     expect(invoke).toBeDefined();
     expect(invoke?.flags().map((registered) => registered.name)).not.toContain("request-type");
+    expect(invoke?.flags().find((registered) => registered.name === "path")?.sensitive).toBe(true);
   });
 });

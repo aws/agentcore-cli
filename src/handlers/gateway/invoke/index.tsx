@@ -1,5 +1,9 @@
 import z from "zod";
-import { GatewayInvokeInterruptedError, InputValidationError } from "../../../errors";
+import {
+  GatewayInvokeInterruptedError,
+  GatewayInvokeResponseError,
+  InputValidationError,
+} from "../../../errors";
 import type { AppIO } from "../../../io";
 import { ExitCode } from "../../../runnable";
 import { createHandler, flag } from "../../../router";
@@ -25,6 +29,7 @@ export const createInvokeGatewayHandler = (core: Core, io: AppIO) =>
         "path",
         "the path relative to the Gateway origin",
         z.string().min(1, "requires a nonempty path").optional(),
+        { sensitive: true },
       ),
       flag("method", "the HTTP request method", z.enum(["GET", "POST", "DELETE"]).optional()),
       flag("payload", "the inline payload to send", z.string().optional(), { sensitive: true }),
@@ -90,6 +95,9 @@ export const createInvokeGatewayHandler = (core: Core, io: AppIO) =>
           json: jsonOutput,
           signal: controller.signal,
         });
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw new GatewayInvokeResponseError(`HTTP ${response.statusCode}`);
+        }
       } catch (error) {
         if (controller.signal.aborted && (error as Error)?.name === "AbortError") {
           if (error instanceof GatewayInvokeInterruptedError) throw error;

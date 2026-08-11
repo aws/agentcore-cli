@@ -264,7 +264,9 @@ Raw responses stream exact bytes to stdout. `--output-file` streams those bytes
 to disk, while `--json` buffers one envelope containing status, selected session
 and request metadata, body encoding, and body. Binary or unknown output requires
 `--output-file` or `--json` when stdout is a terminal. Response metadata goes to
-stderr in raw and file modes.
+stderr in raw and file modes. Redirects are returned without being followed.
+Non-2xx response bodies use the selected output mode before the command exits
+with a failure status.
 
 Gateway Invoke V1 has no TUI, required request-type selector, tool/model
 discovery command, or protocol-specific payload builder. Callers provide the

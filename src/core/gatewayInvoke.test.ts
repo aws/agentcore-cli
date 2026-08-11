@@ -97,7 +97,7 @@ describe("Gateway invoke Core transport", () => {
       );
       expect(calls[0]!.init).toMatchObject({
         method: "POST",
-        redirect: "error",
+        redirect: "manual",
         body: payload,
         signal: controller.signal,
       });
@@ -196,42 +196,38 @@ describe("Gateway invoke Core transport", () => {
     );
 
     expect(signerCalled).toBe(false);
-    expect(init).toMatchObject({ method: "GET", redirect: "error" });
+    expect(init).toMatchObject({ method: "GET", redirect: "manual" });
     expect(init).not.toHaveProperty("body");
     expect(new Headers(init!.headers).has("authorization")).toBe(false);
   });
 
-  test("cancels non-success bodies without reading or exposing their content", async () => {
-    let cancelled = 0;
-    let read = false;
-    const response = {
-      ok: false,
-      status: 403,
-      headers: new Headers(),
-      body: {
-        cancel: async () => {
-          cancelled++;
-        },
-        async *[Symbol.asyncIterator]() {
-          read = true;
-          yield Buffer.from("secret response body");
-        },
-      },
-    } as unknown as Response;
-    const core = coreWithFetch(async () => response);
+  test.each([
+    [302, "redirect response"],
+    [405, "Method Not Allowed"],
+  ])("returns HTTP %d bodies without following or discarding them", async (status, content) => {
+    let init: RequestInit | undefined;
+    const core = coreWithFetch(async (_input, requestInit) => {
+      init = requestInit;
+      return new Response(content, {
+        status,
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
 
-    await expect(
-      core.gateway.invokeGateway(
-        request({
-          authorizerType: "CUSTOM_JWT",
-          bearerToken: "secret-token",
-          applicationHeaders: [["X-Secret", "secret-header"]],
-        }),
-        { region: "us-east-1" },
-      ),
-    ).rejects.toThrow(/^HTTP 403$/);
-    expect(cancelled).toBe(1);
-    expect(read).toBe(false);
+    const response = await core.gateway.invokeGateway(
+      request({
+        authorizerType: "CUSTOM_JWT",
+        bearerToken: "secret-token",
+        applicationHeaders: [["X-Secret", "secret-header"]],
+      }),
+      { region: "us-east-1" },
+    );
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of response.body) chunks.push(chunk);
+
+    expect(init?.redirect).toBe("manual");
+    expect(response.statusCode).toBe(status);
+    expect(Buffer.concat(chunks).toString()).toBe(content);
   });
 
   test("sanitizes transport failures", async () => {

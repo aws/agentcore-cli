@@ -163,7 +163,7 @@ export class GatewayClient implements CoreGatewayClient {
 
       const response = await this.fetch(url, {
         method: request.method,
-        redirect: "error",
+        redirect: "manual",
         headers: fetchHeaders,
         ...(request.payload !== undefined && {
           body: request.payload as RequestInit["body"],
@@ -174,8 +174,6 @@ export class GatewayClient implements CoreGatewayClient {
         logger
           .child({ httpStatusCode: response.status })
           .debug("Gateway invocation returned a non-success response");
-        await response.body?.cancel().catch(() => undefined);
-        throw new Error(`HTTP ${response.status}`);
       }
 
       const body = (response.body as AsyncIterable<Uint8Array> | null) ?? emptyBody();
@@ -194,7 +192,6 @@ export class GatewayClient implements CoreGatewayClient {
       };
     } catch (error) {
       if (signal?.aborted) throw signal.reason ?? error;
-      if ((error as Error)?.message?.startsWith("HTTP ")) throw error;
       logger
         .child({
           errorName:
