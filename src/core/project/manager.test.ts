@@ -56,7 +56,7 @@ async function runCreate(
   while (true) {
     const next = await iterator.next();
     if (next.done) {
-      return { events, project: next.value as Project };
+      return { events, project: next.value };
     }
     events.push(next.value);
   }

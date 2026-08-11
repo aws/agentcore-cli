@@ -34,9 +34,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         skipInstall: flags["skip-install"],
         skipGit: flags["skip-git"],
       })) {
-        if (event.message) {
-          config.io.stderr.write(`${event.message}\n`);
-        }
+        config.io.stderr.write(`${event.message}\n`);
       }
 
       config.io.stderr.write(`Created project '${flags["name"]}' in ./${flags["name"]}\n`);

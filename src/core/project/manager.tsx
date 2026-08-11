@@ -66,7 +66,7 @@ export class FsProjectManager implements ProjectManager {
     }
   }
 
-  public async *create(input: CreateProjectInput): AsyncGenerator<ProjectEvent> {
+  public async *create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project> {
     // Scaffold into a fresh directory, refusing to nest inside an existing project.
     const enclosing = enclosingProjectRoot(process.cwd());
     if (enclosing) {
@@ -106,12 +106,16 @@ export class FsProjectManager implements ProjectManager {
       await this.run(["git", "init"], destination);
     }
 
-    // Return the same shape resolve() would: a created project is a resolvable one.
-    return {
-      name: input.name,
-      rootPath: destination,
-      runtimes: TEMPLATES[input.template].spec.runtimes ?? [],
-    };
+    // A created project is a resolvable one, so read it back rather than
+    // duplicating the template's shape: the returned runtimes are then
+    // schema-validated instead of the template's loosely-typed spec sections.
+    const project = await this.resolve({ filePath: destination });
+    if (!project) {
+      throw new ProjectStateError(
+        `the project scaffolded at ${destination} could not be read back`,
+      );
+    }
+    return project;
   }
 
   // Runs a command with its output streamed to the file logger.

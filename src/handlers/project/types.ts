@@ -22,10 +22,9 @@ export type CreateProjectInput = {
   skipGit?: boolean;
 };
 
+/** A progress step reported while a long-running project operation runs. */
 export type ProjectEvent = {
-  message?: string;
-  subprocessOutput?: string;
-  project?: Project;
+  message: string;
 };
 
 export type ResolveProjectInput = {
@@ -46,7 +45,7 @@ export type Project = {
  */
 export interface ProjectManager {
   /** Scaffold a new AgentCore project from the given template. */
-  create(input: CreateProjectInput): AsyncGenerator<ProjectEvent>;
+  create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project>;
 
   /** Locate an existing AgentCore project. Returns undefined if no project can be found. */
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;
