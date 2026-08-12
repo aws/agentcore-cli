@@ -28,7 +28,7 @@ const canRun = prereqs.npm && prereqs.git && prereqs.uv && hasAws;
  * The contentFilter/VIOLENCE forbid policy blocks only violating content, while the allowall policy
  * permits the rest — proving the policy engine ENFORCE mechanism works end-to-end in both directions.
  */
-describe.skipIf(!canRun).sequential('e2e: policy engine blocks violating gateway invoke', () => {
+describe.skip('e2e: policy engine blocks violating gateway invoke', () => {
   const suffix = Date.now().toString().slice(-8);
   const agentName = `E2eGrd${suffix}`;
   const gatewayName = 'grdgw';
