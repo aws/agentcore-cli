@@ -118,7 +118,7 @@ function PathEditor({
         width={Math.max(32, Math.min(72, columns - 4))}
         flexDirection="column"
         borderStyle="round"
-        borderColor={theme.colors.focus}
+        borderColor={theme.colors.border}
         backgroundColor="black"
         paddingX={1}
         paddingY={1}
