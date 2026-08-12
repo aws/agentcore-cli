@@ -86,6 +86,36 @@ describe('integration: run insights command validation', () => {
     expect(json.error).not.toContain('--session-ids');
   });
 
+  it('accepts a valid --kms-key ARN', async () => {
+    const result = await runCLI(
+      [
+        'run',
+        'insights',
+        '--runtime',
+        project.agentName,
+        '--kms-key',
+        'arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012',
+        '--json',
+      ],
+      project.projectPath,
+      { env: telemetry.env }
+    );
+    expect(result.exitCode).toBe(1);
+    const json = parseJsonOutput(result.stdout) as Record<string, unknown>;
+    expect(json.error).not.toContain('--kms-key');
+  });
+
+  it('rejects an invalid --kms-key ARN', async () => {
+    const result = await runCLI(
+      ['run', 'insights', '--runtime', project.agentName, '--kms-key', 'not-a-kms-arn', '--json'],
+      project.projectPath,
+      { env: telemetry.env }
+    );
+    expect(result.exitCode).toBe(1);
+    const json = parseJsonOutput(result.stdout) as Record<string, unknown>;
+    expect(json.error).toContain('--kms-key must be a valid KMS key ARN');
+  });
+
   it('accepts --online-eval-config-arn as data source (no --runtime needed)', async () => {
     const result = await runCLI(
       [

@@ -39,6 +39,7 @@ export const CredentialType = z.enum(['api-key', 'oauth']);
 export const DepSyncOutcome = z.enum(['synced', 'check-only', 'opted-out', 'skipped', 'failure-suppressed', 'failed']);
 export const SkillSourceType = z.enum(['path', 's3', 'git', 'aws_skills']);
 export const EvaluatorType = z.enum(['llm-as-a-judge', 'code-based']);
+export const EvaluatorModelProvider = z.enum(['bedrock', 'openresponses']);
 export const ExitReason = z.enum(['success', 'failure']);
 export const FilterState = z.enum(['deployed', 'local-only', 'pending-removal', 'none']);
 export const FilterType = z.enum([
@@ -178,6 +179,7 @@ export const ATTRIBUTES = {
   enable_on_create: z.boolean(),
   error_name: ErrorName,
   evaluator_count: Count,
+  evaluator_model_provider: EvaluatorModelProvider,
   evaluator_type: EvaluatorType,
   exit_reason: ExitReason,
   filter_state: FilterState,

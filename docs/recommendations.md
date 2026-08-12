@@ -91,7 +91,21 @@ agentcore run recommendation ... --session-id <id-1> <id-2>
 
 # From a local spans file (OTEL format)
 agentcore run recommendation ... --spans-file ./traces.json
+
+# Reuse an existing evaluation run's scores
+agentcore run recommendation ... --batch-evaluation-arn <arn>
+agentcore run recommendation ... --online-evaluation-arn <arn>
 ```
+
+When the trace source is a batch or online evaluation (`--from-insights`, `--batch-evaluation-arn`, or
+`--online-evaluation-arn`), the recommendation inherits that evaluation's evaluator, so `--evaluator` is not required.
+If you do pass an `--evaluator` that differs from the referenced evaluation's, the two source types behave differently:
+
+- **Batch evaluation:** falls back to running a fresh evaluation with the evaluator you specified.
+- **Online evaluation:** fails — an online config's evaluator cannot be overridden.
+
+For online and CloudWatch sources, `--lookback` bounds the window of scores/traces considered
+(`startTime = now − lookback`, `endTime = now`).
 
 ## Encrypting Results with KMS
 

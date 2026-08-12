@@ -7,4 +7,6 @@ export * from './connections';
 export * from './deployed-state';
 export * from './mcp';
 export * from './mcp-defs';
+export { EvaluatorModelIdSchema, EvaluatorModelProviderSchema } from './primitives/evaluator';
+export type { EvaluatorModelProvider } from './primitives/evaluator';
 export * from './zod-util';

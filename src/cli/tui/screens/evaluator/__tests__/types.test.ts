@@ -1,7 +1,10 @@
 import {
   DEFAULT_INSTRUCTIONS,
   DEFAULT_MODEL,
+  DEFAULT_OPENAI_MODEL,
+  EVALUATOR_MODEL_PROVIDER_OPTIONS,
   LEVEL_PLACEHOLDERS,
+  getEvaluatorModelOptions,
   parseCustomRatingScale,
   validateInstructionPlaceholders,
 } from '../types.js';
@@ -54,6 +57,24 @@ describe('DEFAULT_MODEL', () => {
   it('is a Claude Sonnet model ID', () => {
     expect(DEFAULT_MODEL).toContain('anthropic');
     expect(DEFAULT_MODEL).toContain('sonnet');
+  });
+});
+
+describe('evaluator model providers', () => {
+  it('offers Bedrock and OpenResponses providers', () => {
+    expect(EVALUATOR_MODEL_PROVIDER_OPTIONS.map(option => option.id)).toEqual(['Bedrock', 'OpenResponses']);
+  });
+
+  it('offers OpenAI models for OpenResponses', () => {
+    const options = getEvaluatorModelOptions('OpenResponses');
+    expect(options.some(option => option.id === DEFAULT_OPENAI_MODEL)).toBe(true);
+    expect(options.every(option => option.id.startsWith('openai.') || option.id === '__custom__')).toBe(true);
+  });
+
+  it('keeps Bedrock models separate from OpenAI models', () => {
+    const options = getEvaluatorModelOptions('Bedrock');
+    expect(options.some(option => option.id === DEFAULT_MODEL)).toBe(true);
+    expect(options.some(option => option.id.startsWith('openai.'))).toBe(false);
   });
 });
 

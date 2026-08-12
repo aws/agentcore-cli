@@ -14,6 +14,7 @@ import {
   DeployModeSchema,
   DevAction,
   EvaluatorLevel,
+  EvaluatorModelProvider,
   EvaluatorType,
   FilterState,
   FilterType,
@@ -75,7 +76,11 @@ const AddMemoryAttrs = safeSchema({
 
 const AddCredentialAttrs = safeSchema({ credential_type: CredentialType });
 
-const AddEvaluatorAttrs = safeSchema({ evaluator_type: EvaluatorType, evaluator_level: EvaluatorLevel });
+const AddEvaluatorAttrs = safeSchema({
+  evaluator_type: EvaluatorType,
+  evaluator_level: EvaluatorLevel,
+  evaluator_model_provider: EvaluatorModelProvider.optional(),
+});
 
 const AddOnlineEvalAttrs = safeSchema({ evaluator_count: Count, enable_on_create: z.boolean() });
 

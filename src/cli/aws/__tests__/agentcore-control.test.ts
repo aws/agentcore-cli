@@ -118,6 +118,76 @@ describe('getEvaluator', () => {
     expect(result.description).toBe('A test evaluator');
   });
 
+  it('maps Bedrock model config without adding a provider field', async () => {
+    mockSend.mockResolvedValueOnce({
+      evaluatorId: 'eval-bedrock',
+      evaluatorArn: 'arn:aws:bedrock-agentcore:us-east-1:123456:evaluator/eval-bedrock',
+      evaluatorName: 'bedrock-evaluator',
+      level: 'SESSION',
+      status: 'ACTIVE',
+      evaluatorConfig: {
+        llmAsAJudge: {
+          modelConfig: {
+            bedrockEvaluatorModelConfig: {
+              modelId: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+            },
+          },
+          instructions: 'Evaluate {context}',
+          ratingScale: {
+            categorical: [{ label: 'Pass', definition: 'Meets expectations' }],
+          },
+        },
+      },
+    });
+
+    const result = await getEvaluator({ region: 'us-east-1', evaluatorId: 'eval-bedrock' });
+
+    expect(result.evaluatorConfig?.llmAsAJudge).toEqual({
+      model: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+      instructions: 'Evaluate {context}',
+      ratingScale: {
+        categorical: [{ label: 'Pass', definition: 'Meets expectations' }],
+      },
+    });
+  });
+
+  it('maps OpenResponses evaluator model config', async () => {
+    mockSend.mockResolvedValueOnce({
+      evaluatorId: 'eval-openai',
+      evaluatorArn: 'arn:aws:bedrock-agentcore:us-east-1:123456:evaluator/eval-openai',
+      evaluatorName: 'openai-evaluator',
+      level: 'SESSION',
+      status: 'ACTIVE',
+      evaluatorConfig: {
+        llmAsAJudge: {
+          modelConfig: {
+            responsesEvaluatorModelConfig: {
+              modelId: 'openai.gpt-5.4',
+              maxOutputTokens: 8192,
+              topP: 0.9,
+              reasoning: { effort: 'high' },
+            },
+          },
+          instructions: 'Evaluate {context}',
+          ratingScale: {
+            categorical: [{ label: 'Pass', definition: 'Meets expectations' }],
+          },
+        },
+      },
+    });
+
+    const result = await getEvaluator({ region: 'us-east-1', evaluatorId: 'eval-openai' });
+
+    expect(result.evaluatorConfig?.llmAsAJudge).toEqual({
+      modelProvider: 'OpenResponses',
+      model: 'openai.gpt-5.4',
+      instructions: 'Evaluate {context}',
+      ratingScale: {
+        categorical: [{ label: 'Pass', definition: 'Meets expectations' }],
+      },
+    });
+  });
+
   it('throws when no evaluatorId in response', async () => {
     mockSend.mockResolvedValue({ evaluatorId: undefined });
 

@@ -98,6 +98,38 @@ describe('toEvaluatorSpec', () => {
     expect(result.evaluator.tags).toBeUndefined();
   });
 
+  it('preserves the OpenResponses provider and model', () => {
+    const detail: GetEvaluatorResult = {
+      evaluatorId: 'eval-openai',
+      evaluatorArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:evaluator/eval-openai',
+      evaluatorName: 'openai_eval',
+      level: 'SESSION',
+      status: 'ACTIVE',
+      evaluatorConfig: {
+        llmAsAJudge: {
+          modelProvider: 'OpenResponses',
+          model: 'openai.gpt-5.4',
+          instructions: 'Evaluate {context}',
+          ratingScale: {
+            categorical: [{ label: 'Pass', definition: 'Meets expectations' }],
+          },
+        },
+      },
+    };
+
+    const result = toEvaluatorSpec(detail, 'openai_eval');
+
+    assert(result.success);
+    expect(result.evaluator.config.llmAsAJudge).toEqual({
+      modelProvider: 'OpenResponses',
+      model: 'openai.gpt-5.4',
+      instructions: 'Evaluate {context}',
+      ratingScale: {
+        categorical: [{ label: 'Pass', definition: 'Meets expectations' }],
+      },
+    });
+  });
+
   it('maps code-based evaluator as external with Lambda ARN', () => {
     const detail: GetEvaluatorResult = {
       evaluatorId: 'eval-code-789',

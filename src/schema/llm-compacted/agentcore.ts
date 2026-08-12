@@ -286,7 +286,8 @@ interface Evaluator {
 }
 
 interface LlmAsAJudgeConfig {
-  model: string;
+  modelProvider?: 'Bedrock' | 'OpenResponses'; // Defaults to Bedrock when omitted
+  model: string; // Bedrock model ID/ARN or OpenAI model ID
   instructions: string;
   ratingScale:
     | { numerical: { value: number; label: string; definition: string }[]; categorical?: never }

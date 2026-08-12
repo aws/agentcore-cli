@@ -1,6 +1,8 @@
 import { createTestProject, parseJsonOutput, readProjectConfig, runCLI } from '../src/test-utils/index.js';
 import type { TestProject } from '../src/test-utils/index.js';
 import { createTelemetryHelper } from '../src/test-utils/telemetry-helper.js';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const telemetry = createTelemetryHelper();
@@ -67,6 +69,7 @@ describe('integration: add and remove evaluators and online eval configs', () =>
       const found = config.evaluators.find(e => e.name === evalName);
       expect(found).toBeDefined();
       expect(found!.level).toBe('SESSION');
+      expect(found!.config.llmAsAJudge?.modelProvider).toBeUndefined();
     });
 
     it('rejects duplicate evaluator name', async () => {
@@ -140,6 +143,39 @@ describe('integration: add and remove evaluators and online eval configs', () =>
   });
 
   describe('error cases', () => {
+    it('adds an OpenResponses evaluator', async () => {
+      const name = `OpenResponsesEval${Date.now().toString().slice(-6)}`;
+      const json = await runSuccess(
+        [
+          'add',
+          'evaluator',
+          '--name',
+          name,
+          '--level',
+          'SESSION',
+          '--model-provider',
+          'OpenResponses',
+          '--model',
+          'openai.gpt-5.4',
+          '--instructions',
+          'Evaluate the session quality. Context: {context}',
+          '--json',
+        ],
+        project.projectPath
+      );
+      expect(json.evaluatorName).toBe(name);
+
+      const config = await readProjectConfig(project.projectPath);
+      expect(config.evaluators.find(e => e.name === name)?.config.llmAsAJudge).toEqual(
+        expect.objectContaining({
+          modelProvider: 'OpenResponses',
+          model: 'openai.gpt-5.4',
+        })
+      );
+
+      await runSuccess(['remove', 'evaluator', '--name', name, '--json'], project.projectPath);
+    });
+
     it('fails to remove non-existent evaluator', async () => {
       const json = await runFailure(['remove', 'evaluator', '--name', 'NonExistent', '--json'], project.projectPath);
       expect(json.error).toContain('not found');
@@ -163,6 +199,82 @@ describe('integration: add and remove evaluators and online eval configs', () =>
         project.projectPath
       );
       expect(json.error).toContain('--config');
+    });
+
+    it('rejects the obsolete OpenAI provider discriminator', async () => {
+      const json = await runFailure(
+        [
+          'add',
+          'evaluator',
+          '--name',
+          'ObsoleteProvider',
+          '--level',
+          'SESSION',
+          '--model-provider',
+          'OpenAI',
+          '--model',
+          'openai.gpt-5.4',
+          '--instructions',
+          'Evaluate {context}',
+          '--json',
+        ],
+        project.projectPath
+      );
+      expect(json.error).toContain('Bedrock, OpenResponses');
+    });
+
+    it('rejects invalid model IDs before writing config', async () => {
+      const json = await runFailure(
+        [
+          'add',
+          'evaluator',
+          '--name',
+          'InvalidModel',
+          '--level',
+          'SESSION',
+          '--model-provider',
+          'OpenResponses',
+          '--model',
+          '   ',
+          '--instructions',
+          'Evaluate {context}',
+          '--json',
+        ],
+        project.projectPath
+      );
+      expect(json.error).toContain('Model ID is required');
+    });
+
+    it('rejects --model-provider when --config is used', async () => {
+      const configPath = join(project.projectPath, 'evaluator-config.json');
+      await writeFile(
+        configPath,
+        JSON.stringify({
+          llmAsAJudge: {
+            model: 'openai.gpt-5.4',
+            instructions: 'Evaluate {context}',
+            ratingScale: { categorical: [{ label: 'Pass', definition: 'Meets expectations' }] },
+          },
+        })
+      );
+
+      const json = await runFailure(
+        [
+          'add',
+          'evaluator',
+          '--name',
+          'ConfigProviderConflict',
+          '--level',
+          'SESSION',
+          '--config',
+          configPath,
+          '--model-provider',
+          'OpenResponses',
+          '--json',
+        ],
+        project.projectPath
+      );
+      expect(json.error).toContain('--model-provider cannot be used with --config');
     });
 
     it('rejects evaluator with instructions missing required placeholders', async () => {

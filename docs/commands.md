@@ -600,6 +600,14 @@ agentcore add evaluator \
   --instructions "Evaluate the response quality. Context: {context}" \
   --rating-scale 1-5-quality
 
+# OpenAI through Bedrock Mantle/OpenResponses
+agentcore add evaluator \
+  --name OpenAIQuality \
+  --level SESSION \
+  --model-provider OpenResponses \
+  --model openai.gpt-5.4 \
+  --instructions "Evaluate the response quality. Context: {context}"
+
 # Code-based (existing Lambda)
 agentcore add evaluator \
   --name LatencyCheck \
@@ -609,19 +617,20 @@ agentcore add evaluator \
   --timeout 60
 ```
 
-| Flag                      | Description                                                                   |
-| ------------------------- | ----------------------------------------------------------------------------- |
-| `--name <name>`           | Evaluator name                                                                |
-| `--type <type>`           | `llm-as-a-judge` (default) or `code-based`                                    |
-| `--level <level>`         | `SESSION`, `TRACE`, or `TOOL_CALL`                                            |
-| `--model <model>`         | [LLM] Bedrock model ID for the LLM judge                                      |
-| `--instructions <text>`   | [LLM] Evaluation prompt with placeholders (e.g. `{context}`)                  |
-| `--rating-scale <preset>` | [LLM] `1-5-quality`, `1-3-simple`, `pass-fail`, `good-neutral-bad`, or custom |
-| `--lambda-arn <arn>`      | [Code-based] Existing Lambda function ARN                                     |
-| `--timeout <seconds>`     | [Code-based] Lambda timeout in seconds (1–300)                                |
-| `--kms-key-arn <arn>`     | KMS key ARN for evaluator encryption (optional)                               |
-| `--config <path>`         | Config JSON file (overrides `--model`, `--instructions`, `--rating-scale`)    |
-| `--json`                  | JSON output                                                                   |
+| Flag                          | Description                                                                   |
+| ----------------------------- | ----------------------------------------------------------------------------- |
+| `--name <name>`               | Evaluator name                                                                |
+| `--type <type>`               | `llm-as-a-judge` (default) or `code-based`                                    |
+| `--level <level>`             | `SESSION`, `TRACE`, or `TOOL_CALL`                                            |
+| `--model <model>`             | [LLM] Bedrock model ID/profile or OpenAI model ID                             |
+| `--model-provider <provider>` | [LLM] `Bedrock` (default) or `OpenResponses`                                  |
+| `--instructions <text>`       | [LLM] Evaluation prompt with placeholders (e.g. `{context}`)                  |
+| `--rating-scale <preset>`     | [LLM] `1-5-quality`, `1-3-simple`, `pass-fail`, `good-neutral-bad`, or custom |
+| `--lambda-arn <arn>`          | [Code-based] Existing Lambda function ARN                                     |
+| `--timeout <seconds>`         | [Code-based] Lambda timeout in seconds (1–300)                                |
+| `--kms-key-arn <arn>`         | KMS key ARN for evaluator encryption (optional)                               |
+| `--config <path>`             | Config JSON file; cannot be combined with `--model-provider`                  |
+| `--json`                      | JSON output                                                                   |
 
 ### add online-eval
 

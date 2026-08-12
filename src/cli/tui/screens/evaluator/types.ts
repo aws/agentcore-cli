@@ -1,4 +1,4 @@
-import type { EvaluationLevel, EvaluatorConfig } from '../../../../schema';
+import type { EvaluationLevel, EvaluatorConfig, EvaluatorModelProvider } from '../../../../schema';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Evaluator Flow Types
@@ -12,6 +12,7 @@ export type AddEvaluatorStep =
   | 'code-based-type'
   | 'name'
   | 'level'
+  | 'model-provider'
   | 'model'
   | 'model-custom'
   | 'instructions'
@@ -35,6 +36,7 @@ export const EVALUATOR_STEP_LABELS: Record<AddEvaluatorStep, string> = {
   'code-based-type': 'Mode',
   name: 'Name',
   level: 'Level',
+  'model-provider': 'Provider',
   model: 'Model',
   'model-custom': 'Model',
   instructions: 'Prompt',
@@ -88,8 +90,26 @@ export const EVALUATION_LEVEL_OPTIONS = [
 
 // Cross-region inference profile ID — works in all US regions where AgentCore is available
 export const DEFAULT_MODEL = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0';
+export const DEFAULT_OPENAI_MODEL = 'openai.gpt-5.4';
 
 export const CUSTOM_MODEL_ID = '__custom__';
+
+export const EVALUATOR_MODEL_PROVIDER_OPTIONS = [
+  {
+    id: 'Bedrock',
+    title: 'Amazon Bedrock',
+    description: 'Use the Bedrock Converse API',
+  },
+  {
+    id: 'OpenResponses',
+    title: 'OpenAI on Bedrock',
+    description: 'Use the OpenResponses API through Bedrock Mantle',
+  },
+] as const satisfies readonly {
+  id: EvaluatorModelProvider;
+  title: string;
+  description: string;
+}[];
 
 export interface EvaluatorModelOption {
   id: string;
@@ -97,7 +117,7 @@ export interface EvaluatorModelOption {
   description: string;
 }
 
-export const EVALUATOR_MODEL_OPTIONS: EvaluatorModelOption[] = [
+export const BEDROCK_EVALUATOR_MODEL_OPTIONS: EvaluatorModelOption[] = [
   {
     id: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
     title: 'Claude Sonnet 4.5',
@@ -129,6 +149,40 @@ export const EVALUATOR_MODEL_OPTIONS: EvaluatorModelOption[] = [
     description: 'Enter a custom Bedrock model ID or ARN',
   },
 ];
+
+export const OPENAI_EVALUATOR_MODEL_OPTIONS: EvaluatorModelOption[] = [
+  {
+    id: 'openai.gpt-5.4',
+    title: 'GPT-5.4',
+    description: 'Recommended — high-quality reasoning and evaluation',
+  },
+  {
+    id: 'openai.gpt-5.5',
+    title: 'GPT-5.5',
+    description: 'Most capable OpenAI model',
+  },
+  {
+    id: 'openai.gpt-oss-120b',
+    title: 'GPT OSS 120B',
+    description: 'Open-weight model for complex evaluations',
+  },
+  {
+    id: 'openai.gpt-oss-20b',
+    title: 'GPT OSS 20B',
+    description: 'Open-weight model for faster evaluations',
+  },
+  {
+    id: CUSTOM_MODEL_ID,
+    title: 'Other',
+    description: 'Enter a custom OpenAI model ID',
+  },
+];
+
+export const EVALUATOR_MODEL_OPTIONS = BEDROCK_EVALUATOR_MODEL_OPTIONS;
+
+export function getEvaluatorModelOptions(provider: EvaluatorModelProvider): EvaluatorModelOption[] {
+  return provider === 'OpenResponses' ? OPENAI_EVALUATOR_MODEL_OPTIONS : BEDROCK_EVALUATOR_MODEL_OPTIONS;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Placeholder Constants

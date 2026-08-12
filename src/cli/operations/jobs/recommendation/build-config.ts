@@ -136,6 +136,7 @@ export interface BuildConfigOptions {
   spansFile?: string;
   fromInsights?: string;
   batchEvaluationArn?: string;
+  onlineEvaluationArn?: string;
   runtimeId: string;
   accountId: string;
   region: string;
@@ -175,6 +176,21 @@ export async function buildRecommendationConfig(opts: BuildConfigOptions): Promi
       );
     }
     agentTraces = { batchEvaluation: { batchEvaluationArn: batchEvalArn } };
+  } else if (opts.traceSource === 'online-evaluation') {
+    if (!opts.onlineEvaluationArn) {
+      throw new Error('--online-evaluation-arn is required for online-evaluation trace source.');
+    }
+    // Online evaluation is a continuous stream, so the recommendation reuses only
+    // the scores in a bounded window. Derive it from --lookback-days (endTime = now),
+    // matching the cloudwatch source's lookback semantics.
+    const lookbackDays = opts.lookbackDays ?? 7;
+    agentTraces = {
+      onlineEvaluation: {
+        onlineEvaluationConfigArn: opts.onlineEvaluationArn,
+        startTime: new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      },
+    };
   } else if (opts.traceSource === 'spans-file' && opts.spansFile) {
     // Explicit spans file — read and use as inline sessionSpans
     const spansContent = readFileSync(opts.spansFile, 'utf-8');
@@ -244,9 +260,10 @@ export async function buildRecommendationConfig(opts: BuildConfigOptions): Promi
     };
   }
 
-  const evaluationConfig: RecommendationEvaluationConfig = {
-    evaluators: [{ evaluatorArn: opts.evaluatorIds[0]! }],
-  };
+  // With no evaluator (batch/online inheritance) the config is omitted so the service falls back to
+  // the referenced evaluation's evaluator; building an empty {evaluators:[{}]} would be malformed.
+  const evaluationConfig: RecommendationEvaluationConfig | undefined =
+    opts.evaluatorIds.length > 0 ? { evaluators: [{ evaluatorArn: opts.evaluatorIds[0]! }] } : undefined;
 
   // Validate required fields for config-bundle source (API requires all three)
   if (opts.inputSource === 'config-bundle' && opts.bundleArn && !opts.bundleVersion) {
@@ -283,7 +300,7 @@ export async function buildRecommendationConfig(opts: BuildConfigOptions): Promi
               }
             : { text: opts.inlineContent ?? '' },
         agentTraces,
-        evaluationConfig,
+        ...(evaluationConfig ? { evaluationConfig } : {}),
       },
     };
   }

@@ -28,6 +28,7 @@ export function toEvaluatorSpec(detail: GetEvaluatorResult, localName: string): 
     const llm = detail.evaluatorConfig.llmAsAJudge;
     config = {
       llmAsAJudge: {
+        ...(llm.modelProvider && { modelProvider: llm.modelProvider }),
         model: llm.model,
         instructions: llm.instructions,
         ratingScale: llm.ratingScale,

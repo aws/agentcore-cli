@@ -32,7 +32,12 @@ export type ABTestMode = 'config-bundle' | 'target-based';
 export type RecommendationInputSource = 'config-bundle' | 'inline' | 'file';
 
 /** CLI-facing trace source for a recommendation. */
-export type RecommendationTraceSource = 'cloudwatch' | 'sessions' | 'spans-file' | 'batch-evaluation';
+export type RecommendationTraceSource =
+  | 'cloudwatch'
+  | 'sessions'
+  | 'spans-file'
+  | 'batch-evaluation'
+  | 'online-evaluation';
 
 /** Where the batch evaluation sessions came from. */
 export type BatchEvaluationSource = 'traces' | 'dataset';
@@ -224,6 +229,8 @@ export interface StartRecommendationJobOptions {
   fromInsights?: string;
   /** Use a batch evaluation ARN directly as trace source */
   batchEvaluationArn?: string;
+  /** Use an online evaluation config ARN as trace source (reuses its scores over the lookback window). */
+  onlineEvaluationArn?: string;
   region?: string;
   /** Optional recommendation name. */
   recommendationName?: string;
@@ -297,6 +304,7 @@ export interface StartInsightsJobOptions {
   endTime?: string;
   sessionIds?: string[];
   name?: string;
+  kmsKeyArn?: string;
   region?: string;
   endpoint?: string;
   onProgress?: (status: string, message: string) => void;

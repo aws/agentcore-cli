@@ -86,6 +86,16 @@ export abstract class BasePrimitive<
   }
 
   /**
+   * Read, mutate, and write agentcore.json under a cross-process lock.
+   */
+  protected async updateProjectSpec(
+    mutate: (spec: AgentCoreProjectSpec) => AgentCoreProjectSpec | void | Promise<AgentCoreProjectSpec | void>,
+    configIO?: ConfigIO
+  ): Promise<AgentCoreProjectSpec> {
+    return (configIO ?? this.configIO).updateProjectSpec(mutate);
+  }
+
+  /**
    * Check for duplicate names in an array.
    * Throws if a resource with the given name already exists.
    */

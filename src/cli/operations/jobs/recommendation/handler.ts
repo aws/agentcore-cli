@@ -82,7 +82,10 @@ export const recommendationHandler: RecommendationHandler = {
       // Resolve agent (needed for runtimeId + account id from its ARN) — skip for batch-evaluation source
       logger?.startStep('Resolve agent and evaluators');
       const agentState = opts.agent ? resolveAgentState(deployedState, opts.agent) : undefined;
-      if (!agentState && opts.traceSource !== 'batch-evaluation') {
+      // Batch and online evaluation sources reference an existing evaluation run,
+      // so they need no locally-deployed agent to resolve a runtime from.
+      const sourceNeedsNoAgent = opts.traceSource === 'batch-evaluation' || opts.traceSource === 'online-evaluation';
+      if (!agentState && !sourceNeedsNoAgent) {
         const err = new ResourceNotFoundError(`Agent "${opts.agent}" not deployed. Run \`agentcore deploy\` first.`);
         logger?.endStep('error', err.message);
         logger?.finalize(false);
@@ -103,11 +106,21 @@ export const recommendationHandler: RecommendationHandler = {
         }
         evaluatorIds.push(id);
       }
-      if (opts.type === 'SYSTEM_PROMPT_RECOMMENDATION' && evaluatorIds.length !== 1) {
-        const err = new ValidationError('System prompt recommendations require exactly one evaluator.');
-        logger?.endStep('error', err.message);
-        logger?.finalize(false);
-        return { success: false, error: err };
+      if (opts.type === 'SYSTEM_PROMPT_RECOMMENDATION') {
+        // Batch/online sources can inherit the referenced evaluation's evaluator, so 0 is allowed
+        // there (the config omits evaluationConfig entirely); every other source needs exactly 1.
+        const tooFew = !sourceNeedsNoAgent && evaluatorIds.length !== 1;
+        const tooMany = evaluatorIds.length > 1;
+        if (tooFew || tooMany) {
+          const err = new ValidationError(
+            tooMany
+              ? 'System prompt recommendations accept at most one evaluator.'
+              : 'System prompt recommendations require exactly one evaluator.'
+          );
+          logger?.endStep('error', err.message);
+          logger?.finalize(false);
+          return { success: false, error: err };
+        }
       }
       logger?.log(`Evaluators: ${evaluatorIds.join(', ') || '(none)'}`);
       logger?.endStep('success');
@@ -215,6 +228,7 @@ export const recommendationHandler: RecommendationHandler = {
         spansFile: opts.spansFile,
         fromInsights: opts.fromInsights,
         batchEvaluationArn: opts.batchEvaluationArn,
+        onlineEvaluationArn: opts.onlineEvaluationArn,
         runtimeId: agentState?.runtimeId ?? '',
         accountId,
         region,

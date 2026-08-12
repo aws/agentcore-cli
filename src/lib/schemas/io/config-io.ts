@@ -25,12 +25,18 @@ import { detectAwsAccount } from '../../utils';
 import { type PathConfig, PathResolver, findConfigRoot } from './path-resolver';
 import { loadSharedConfigFiles } from '@smithy/shared-ini-file-loader';
 import { existsSync } from 'fs';
-import { mkdir, readFile, writeFile } from 'fs/promises';
+import { type FileHandle, mkdir, open, readFile, rename, stat, unlink, writeFile } from 'fs/promises';
+import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { dirname } from 'path';
 import { type ZodType } from 'zod';
 
 /** Supported schema versions. Extend this union as new versions are published. */
 type SchemaVersion = 1;
+
+const PROJECT_LOCK_RETRY_MS = 25;
+const PROJECT_LOCK_TIMEOUT_MS = 45_000;
+const PROJECT_LOCK_STALE_MS = 60_000;
 
 export function getSchemaUrlForVersion(version: SchemaVersion): string {
   return `https://schema.agentcore.aws.dev/v${version}/agentcore.json`;
@@ -137,6 +143,23 @@ export class ConfigIO {
     if (cleaned.configBundles?.length === 0) delete (cleaned as Record<string, unknown>).configBundles;
     if (cleaned.abTests?.length === 0) delete (cleaned as Record<string, unknown>).abTests;
     await this.validateAndWrite(filePath, 'AgentCore Project Config', AgentCoreProjectSpecSchema, cleaned);
+  }
+
+  /**
+   * Atomically read, mutate, validate, and write the project configuration.
+   * The cross-process lock prevents concurrent CLI commands from losing updates.
+   */
+  async updateProjectSpec(
+    mutate: (project: AgentCoreProjectSpec) => AgentCoreProjectSpec | void | Promise<AgentCoreProjectSpec | void>
+  ): Promise<AgentCoreProjectSpec> {
+    const filePath = this.pathResolver.getAgentConfigPath();
+    return this.withFileLock(filePath, async () => {
+      const project = await this.readProjectSpec();
+      const result = await mutate(project);
+      const updated = result ?? project;
+      await this.writeProjectSpec(updated);
+      return updated;
+    });
   }
 
   /**
@@ -368,13 +391,60 @@ export class ConfigIO {
       throw new ConfigWriteError(filePath, normalizedError);
     }
 
-    // Write file with pretty formatting
+    // Write to a sibling temp file and rename so readers never observe partial JSON.
+    const tempPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
     try {
       const jsonContent = JSON.stringify(result.data, null, 2);
-      await writeFile(filePath, jsonContent, 'utf-8');
+      await writeFile(tempPath, jsonContent, 'utf-8');
+      await rename(tempPath, filePath);
     } catch (err: unknown) {
+      await unlink(tempPath).catch(() => undefined);
       const normalizedError = err instanceof Error ? err : new Error('Unknown error');
       throw new ConfigWriteError(filePath, normalizedError);
+    }
+  }
+
+  private async withFileLock<T>(filePath: string, operation: () => Promise<T>): Promise<T> {
+    const lockPath = `${filePath}.lock`;
+    const startedAt = Date.now();
+    let lockHandle: FileHandle | undefined;
+
+    while (!lockHandle) {
+      try {
+        lockHandle = await open(lockPath, 'wx');
+      } catch (err: unknown) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== 'EEXIST') {
+          const normalizedError = err instanceof Error ? err : new Error('Unknown error');
+          throw new ConfigWriteError(filePath, normalizedError);
+        }
+
+        try {
+          const lockStat = await stat(lockPath);
+          if (Date.now() - lockStat.mtimeMs > PROJECT_LOCK_STALE_MS) {
+            await unlink(lockPath);
+            continue;
+          }
+        } catch (lockErr: unknown) {
+          if ((lockErr as NodeJS.ErrnoException).code === 'ENOENT') continue;
+          const normalizedError = lockErr instanceof Error ? lockErr : new Error('Unknown error');
+          throw new ConfigWriteError(filePath, normalizedError);
+        }
+
+        if (Date.now() - startedAt >= PROJECT_LOCK_TIMEOUT_MS) {
+          throw new ConfigWriteError(filePath, new Error('Timed out waiting for another configuration update'));
+        }
+        await delay(PROJECT_LOCK_RETRY_MS);
+      }
+    }
+
+    try {
+      return await operation();
+    } finally {
+      await lockHandle.close();
+      await unlink(lockPath).catch(err => {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      });
     }
   }
 }

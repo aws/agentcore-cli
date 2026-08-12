@@ -10,11 +10,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mockReadProjectSpec = vi.fn();
 const mockWriteProjectSpec = vi.fn();
+const mockUpdateProjectSpec = vi.fn(async (mutate: (project: ReturnType<typeof makeProject>) => unknown) => {
+  const project = await mockReadProjectSpec();
+  const result = await mutate(project);
+  const updated = result ?? project;
+  await mockWriteProjectSpec(updated);
+  return updated;
+});
 
 vi.mock('../../../lib/index.js', () => ({
   ConfigIO: class {
     readProjectSpec = mockReadProjectSpec;
     writeProjectSpec = mockWriteProjectSpec;
+    updateProjectSpec = mockUpdateProjectSpec;
   },
   findConfigRoot: () => '/fake/root',
   toError: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),

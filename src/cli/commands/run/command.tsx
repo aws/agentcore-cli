@@ -1,4 +1,5 @@
 import { ConfigIO, ValidationError, findConfigRoot, serializeResult } from '../../../lib';
+import { isValidKmsKeyArn } from '../../../schema';
 import type { RecommendationType } from '../../aws/agentcore-recommendation';
 import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
@@ -12,6 +13,7 @@ import type {
   BatchEvaluationJobRecord,
   InsightsJobRecord,
   RecommendationJobRecord,
+  RecommendationTraceSource,
   StartABTestJobOptions,
   StartBatchEvaluationJobOptions,
 } from '../../operations/jobs';
@@ -372,6 +374,7 @@ export const registerRun = (program: Command) => {
     .option('--end-time <iso8601>', 'Session filter end time')
     .option('-s, --session-ids <ids...>', 'Limit to specific session IDs')
     .option('-n, --name <name>', 'Job name (auto-generated if omitted)')
+    .option('--kms-key <arn>', 'KMS key ARN for encrypting insights job results')
     .option('--wait', 'Block until the job reaches a terminal state')
     .option('--region <region>', 'AWS region (auto-detected if omitted)')
     .option('--endpoint <name>', 'Runtime endpoint name (e.g. PROMPT_V1)')
@@ -387,6 +390,7 @@ export const registerRun = (program: Command) => {
         endTime?: string;
         sessionIds?: string[];
         name?: string;
+        kmsKey?: string;
         wait?: boolean;
         region?: string;
         endpoint?: string;
@@ -401,6 +405,11 @@ export const registerRun = (program: Command) => {
         await runCliCommand('run.job', !!cliOptions.json, async () => {
           if (cliOptions.name?.trim() === '') {
             throw new ValidationError('--name must not be empty. Omit the flag to auto-generate a name.');
+          }
+          if (cliOptions.kmsKey && !isValidKmsKeyArn(cliOptions.kmsKey)) {
+            throw new ValidationError(
+              '--kms-key must be a valid KMS key ARN (e.g. arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012)'
+            );
           }
 
           const engine = createJobEngine(new ConfigIO());
@@ -421,6 +430,7 @@ export const registerRun = (program: Command) => {
             endTime: cliOptions.endTime,
             sessionIds: cliOptions.sessionIds,
             name: cliOptions.name,
+            kmsKeyArn: cliOptions.kmsKey,
             region: cliOptions.region,
             endpoint: cliOptions.endpoint,
             onProgress: cliOptions.json ? undefined : (_status, message) => console.log(message),
@@ -457,7 +467,10 @@ export const registerRun = (program: Command) => {
     .description('Optimize a system prompt or tool descriptions using agent traces as signal')
     .option('-t, --type <type>', 'What to optimize: system-prompt or tool-description (default: system-prompt)')
     .option('-r, --runtime <name>', 'Runtime name from project config')
-    .option('-e, --evaluator <name>', 'Evaluator name — required for system-prompt (exactly one)')
+    .option(
+      '-e, --evaluator <name>',
+      'Evaluator name (exactly one). Required for system-prompt unless the trace source is a batch or online evaluation, which inherits its evaluator'
+    )
     .option('--prompt-file <path>', 'Load the current system prompt from a file')
     .option('--inline <content>', 'Provide the current system prompt or tool descriptions inline')
     .option('--bundle-name <name>', 'Read current content from a deployed config bundle')
@@ -475,13 +488,18 @@ export const registerRun = (program: Command) => {
       'Tool name:description pairs (repeatable, e.g. --tools "search:Searches the web" --tools "calc:Does math")'
     )
     .option('--spans-file <path>', 'JSON file with OTEL session spans (use instead of CloudWatch traces)')
-    .option('--lookback <days>', 'How far back to search for traces in CloudWatch (days)', '7')
+    .option(
+      '--lookback <days>',
+      'How far back to collect traces (days). Also bounds the online-evaluation reuse window: startTime = now − lookback, endTime = now',
+      '7'
+    )
     .option('-s, --session-id <ids...>', 'Limit trace collection to specific session IDs')
     .option('-n, --run <name>', 'Run name prefix for the recommendation')
     .option('--region <region>', 'AWS region')
     .option('--kms-key <arn>', 'KMS key ARN for encrypting recommendation results')
     .option('--from-insights <id>', 'Use a local insights run as trace source (resolves batch eval ARN)')
     .option('--batch-evaluation-arn <arn>', 'Use a batch evaluation ARN directly as trace source')
+    .option('--online-evaluation-arn <arn>', 'Use an online evaluation config ARN as trace source')
     .option('--wait', 'Block until the recommendation reaches a terminal state')
     .option('--json', 'Output as JSON')
     .action(
@@ -504,12 +522,30 @@ export const registerRun = (program: Command) => {
         kmsKey?: string;
         fromInsights?: string;
         batchEvaluationArn?: string;
+        onlineEvaluationArn?: string;
         wait?: boolean;
         json?: boolean;
       }) => {
         requireProject();
 
-        if (!cliOptions.runtime && !cliOptions.json) {
+        const onlineEvaluationArn = cliOptions.onlineEvaluationArn;
+
+        // The five mutually-exclusive trace sources. Presence of any one signals
+        // non-interactive intent (B3) and lets us detect conflicts (B2). --lookback
+        // is a modifier, not a source, so it is excluded.
+        const traceSourceFlags = [
+          { name: '--batch-evaluation-arn', set: !!cliOptions.batchEvaluationArn },
+          { name: '--from-insights', set: !!cliOptions.fromInsights },
+          { name: '--online-evaluation-arn', set: !!onlineEvaluationArn },
+          { name: '--spans-file', set: !!cliOptions.spansFile },
+          { name: '--session-id', set: !!cliOptions.sessionId },
+        ];
+        const hasSource = traceSourceFlags.some(f => f.set);
+
+        // Output format (--json) must not decide TUI-vs-CLI: a fully-specified source
+        // needs no runtime and must run headless even without --json. Only a bare
+        // invocation (no runtime, no source) drops into the TUI.
+        if (!cliOptions.runtime && !hasSource && !cliOptions.json) {
           const { requireTTY } = await import('../../tui/guards/tty');
           requireTTY();
           const { RecommendationFlow } = await import('../../tui/screens/recommendation/RecommendationFlow');
@@ -525,6 +561,19 @@ export const registerRun = (program: Command) => {
           return;
         }
 
+        // The five sources are mutually exclusive; picking one silently would hide
+        // the others, so fail early naming the conflict rather than resolving a path.
+        const setSourceFlags = traceSourceFlags.filter(f => f.set).map(f => f.name);
+        if (setSourceFlags.length > 1) {
+          const error = `Only one trace source may be specified. Got: ${setSourceFlags.join(', ')}. Use exactly one of --batch-evaluation-arn, --from-insights, --online-evaluation-arn, --spans-file, or --session-id.`;
+          if (cliOptions.json) {
+            console.log(JSON.stringify({ success: false, error }));
+          } else {
+            render(<Text color="red">{error}</Text>);
+          }
+          process.exit(1);
+        }
+
         const typeKey = cliOptions.type ?? 'system-prompt';
         const recType = RECOMMENDATION_TYPE_MAP[typeKey];
         if (!recType) {
@@ -538,11 +587,16 @@ export const registerRun = (program: Command) => {
         }
 
         const isBatchEvalSource = !!(cliOptions.fromInsights ?? cliOptions.batchEvaluationArn);
+        const isOnlineEvalSource = !!onlineEvaluationArn;
+        // Batch and online evaluation sources reference an existing evaluation run,
+        // so neither needs a locally-deployed runtime.
+        const sourceNeedsNoAgent = isBatchEvalSource || isOnlineEvalSource;
         const agent = cliOptions.runtime;
         const evaluator = cliOptions.evaluator;
 
-        if (!agent && !isBatchEvalSource) {
-          const error = '--runtime is required (unless --from-insights or --batch-evaluation-arn is provided)';
+        if (!agent && !sourceNeedsNoAgent) {
+          const error =
+            '--runtime is required (unless --from-insights, --batch-evaluation-arn, or --online-evaluation-arn is provided)';
           if (cliOptions.json) {
             console.log(JSON.stringify({ success: false, error }));
           } else {
@@ -551,9 +605,11 @@ export const registerRun = (program: Command) => {
           process.exit(1);
         }
 
-        // Evaluator is required for system-prompt recs, optional for tool-description and batch-eval source
-        if (recType === 'SYSTEM_PROMPT_RECOMMENDATION' && !evaluator && !isBatchEvalSource) {
-          const error = '--evaluator is required for system-prompt recommendations (unless using --from-insights)';
+        // Evaluator is required for system-prompt recs, optional for tool-description and for
+        // evaluation-backed sources (batch/online), which inherit the referenced eval's evaluator.
+        if (recType === 'SYSTEM_PROMPT_RECOMMENDATION' && !evaluator && !sourceNeedsNoAgent) {
+          const error =
+            '--evaluator is required for system-prompt recommendations (unless using --from-insights, --batch-evaluation-arn, or --online-evaluation-arn)';
           if (cliOptions.json) {
             console.log(JSON.stringify({ success: false, error }));
           } else {
@@ -570,13 +626,24 @@ export const registerRun = (program: Command) => {
               ? ('config-bundle' as const)
               : ('inline' as const);
 
-        const traceSource = isBatchEvalSource
-          ? ('batch-evaluation' as const)
-          : cliOptions.spansFile
-            ? ('spans-file' as const)
-            : cliOptions.sessionId
-              ? ('sessions' as const)
-              : ('cloudwatch' as const);
+        let traceSource: RecommendationTraceSource;
+        switch (true) {
+          case isBatchEvalSource:
+            traceSource = 'batch-evaluation';
+            break;
+          case isOnlineEvalSource:
+            traceSource = 'online-evaluation';
+            break;
+          case !!cliOptions.spansFile:
+            traceSource = 'spans-file';
+            break;
+          case !!cliOptions.sessionId:
+            traceSource = 'sessions';
+            break;
+          default:
+            traceSource = 'cloudwatch';
+            break;
+        }
 
         // Parse --tool-desc-json-path pairs ("toolName:$.json.path") into structured format
         const toolDescJsonPaths = cliOptions.toolDescJsonPath
@@ -608,6 +675,7 @@ export const registerRun = (program: Command) => {
             spansFile: cliOptions.spansFile,
             fromInsights: cliOptions.fromInsights,
             batchEvaluationArn: cliOptions.batchEvaluationArn,
+            onlineEvaluationArn,
             recommendationName: cliOptions.run,
             region: cliOptions.region,
             kmsKeyArn: cliOptions.kmsKey,

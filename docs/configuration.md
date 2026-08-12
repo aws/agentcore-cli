@@ -329,11 +329,31 @@ See [Evaluations](evals.md) for the full guide.
 
 ### LLM-as-a-Judge Config
 
-| Field          | Required | Description                                            |
-| -------------- | -------- | ------------------------------------------------------ |
-| `model`        | Yes      | Bedrock model ID or cross-region inference profile     |
-| `instructions` | Yes      | Evaluation prompt with placeholders (e.g. `{context}`) |
-| `ratingScale`  | Yes      | Either `numerical` or `categorical` array (not both)   |
+| Field           | Required | Description                                            |
+| --------------- | -------- | ------------------------------------------------------ |
+| `modelProvider` | No       | `"Bedrock"` (default) or `"OpenResponses"`             |
+| `model`         | Yes      | Bedrock model ID/profile or OpenAI model ID            |
+| `instructions`  | Yes      | Evaluation prompt with placeholders (e.g. `{context}`) |
+| `ratingScale`   | Yes      | Either `numerical` or `categorical` array (not both)   |
+
+OpenAI evaluators run through the OpenResponses API on Bedrock Mantle with maximum output tokens set to `4096`,
+temperature set to `0`, and top P left unset.
+
+```json
+{
+  "llmAsAJudge": {
+    "modelProvider": "OpenResponses",
+    "model": "openai.gpt-5.4",
+    "instructions": "Evaluate the response quality. Context: {context}",
+    "ratingScale": {
+      "categorical": [
+        { "label": "Pass", "definition": "Meets expectations" },
+        { "label": "Fail", "definition": "Does not meet expectations" }
+      ]
+    }
+  }
+}
+```
 
 ### Rating Scale
 

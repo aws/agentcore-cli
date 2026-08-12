@@ -41,6 +41,15 @@ agentcore add evaluator \
   --instructions "Evaluate the agent response quality. Context: {context}" \
   --rating-scale 1-5-quality
 
+# Non-interactive — OpenAI through Bedrock Mantle/OpenResponses
+agentcore add evaluator \
+  --name OpenAIQuality \
+  --level SESSION \
+  --model-provider OpenResponses \
+  --model openai.gpt-5.4 \
+  --instructions "Evaluate the agent response quality. Context: {context}" \
+  --rating-scale 1-5-quality
+
 # Non-interactive — Code-based (existing Lambda)
 agentcore add evaluator \
   --name LatencyCheck \
@@ -50,22 +59,24 @@ agentcore add evaluator \
   --timeout 60
 ```
 
-| Flag                      | Description                                                                             |
-| ------------------------- | --------------------------------------------------------------------------------------- |
-| `--name <name>`           | Evaluator name (alphanumeric + underscore, max 48 chars)                                |
-| `--type <type>`           | Evaluator type: `llm-as-a-judge` (default) or `code-based`                              |
-| `--level <level>`         | Evaluation level: `SESSION`, `TRACE`, `TOOL_CALL`                                       |
-| `--model <model>`         | [LLM] Bedrock model ID for the LLM judge                                                |
-| `--instructions <text>`   | [LLM] Evaluation prompt (must include level-appropriate placeholders — see below)       |
-| `--rating-scale <preset>` | [LLM] Rating scale preset or custom format (default: `1-5-quality`)                     |
-| `--lambda-arn <arn>`      | [Code-based] Existing Lambda function ARN                                               |
-| `--timeout <seconds>`     | [Code-based] Lambda timeout in seconds, 1–300 (default: 60)                             |
-| `--kms-key-arn <arn>`     | KMS key ARN for evaluator encryption (optional)                                         |
-| `--config <path>`         | Path to evaluator config JSON (overrides `--model`, `--instructions`, `--rating-scale`) |
-| `--json`                  | JSON output                                                                             |
+| Flag                          | Description                                                                       |
+| ----------------------------- | --------------------------------------------------------------------------------- |
+| `--name <name>`               | Evaluator name (alphanumeric + underscore, max 48 chars)                          |
+| `--type <type>`               | Evaluator type: `llm-as-a-judge` (default) or `code-based`                        |
+| `--level <level>`             | Evaluation level: `SESSION`, `TRACE`, `TOOL_CALL`                                 |
+| `--model <model>`             | [LLM] Bedrock model ID/profile or OpenAI model ID                                 |
+| `--model-provider <provider>` | [LLM] `Bedrock` (default) or `OpenResponses`                                      |
+| `--instructions <text>`       | [LLM] Evaluation prompt (must include level-appropriate placeholders — see below) |
+| `--rating-scale <preset>`     | [LLM] Rating scale preset or custom format (default: `1-5-quality`)               |
+| `--lambda-arn <arn>`          | [Code-based] Existing Lambda function ARN                                         |
+| `--timeout <seconds>`         | [Code-based] Lambda timeout in seconds, 1–300 (default: 60)                       |
+| `--kms-key-arn <arn>`         | KMS key ARN for evaluator encryption (optional)                                   |
+| `--config <path>`             | Path to evaluator config JSON; cannot be combined with `--model-provider`         |
+| `--json`                      | JSON output                                                                       |
 
 > **Note**: For LLM-as-a-Judge, `--instructions` is required in non-interactive mode unless `--config` is provided. For
-> code-based evaluators, `--lambda-arn` is required.
+> code-based evaluators, `--lambda-arn` is required. OpenAI evaluators use maximum output tokens `4096`, temperature
+> `0`, and leave top P unset.
 
 ### Instruction Placeholders
 
@@ -143,15 +154,20 @@ Evaluators are stored in the `evaluators` array of `agentcore.json`:
 
 ### Model Selection
 
-Model availability varies by AWS region. Recommended models:
+Model availability varies by AWS region. Bedrock models use the Converse API; OpenAI models use the OpenResponses API
+through Bedrock Mantle.
 
-| Model             | Description                                 |
-| ----------------- | ------------------------------------------- |
-| Claude Sonnet 4.5 | Recommended — balanced speed and accuracy   |
-| Claude Opus 4.5   | Most capable — best for complex evaluations |
-| Claude Haiku 4.5  | Fastest — good for high-volume evaluations  |
-| Amazon Nova Pro   | Strong reasoning                            |
-| Amazon Nova Lite  | Fast and cost-effective                     |
+| Provider | Model             | Description                                 |
+| -------- | ----------------- | ------------------------------------------- |
+| Bedrock  | Claude Sonnet 4.5 | Recommended — balanced speed and accuracy   |
+| Bedrock  | Claude Opus 4.5   | Most capable — best for complex evaluations |
+| Bedrock  | Claude Haiku 4.5  | Fastest — good for high-volume evaluations  |
+| Bedrock  | Amazon Nova Pro   | Strong reasoning                            |
+| Bedrock  | Amazon Nova Lite  | Fast and cost-effective                     |
+| OpenAI   | GPT-5.4           | High-quality reasoning and evaluation       |
+| OpenAI   | GPT-5.5           | Most capable OpenAI model                   |
+| OpenAI   | GPT OSS 120B      | Open-weight model for complex evaluations   |
+| OpenAI   | GPT OSS 20B       | Open-weight model for faster evaluations    |
 
 ---
 

@@ -1,5 +1,5 @@
 import type { NetworkConfig } from '../../schema';
-import type { EvaluationLevel } from '../../schema/schemas/primitives/evaluator';
+import type { EvaluationLevel, EvaluatorModelProvider } from '../../schema/schemas/primitives/evaluator';
 import { resolveVpcIdFromSubnets } from '../commands/shared/vpc-utils';
 import { getCredentialProvider } from './account';
 import { controlPlaneEndpoint } from './stage-endpoint';
@@ -472,6 +472,7 @@ export interface GetEvaluatorOptions {
 }
 
 export interface GetEvaluatorLlmConfig {
+  modelProvider?: EvaluatorModelProvider;
   model: string;
   instructions: string;
   ratingScale: {
@@ -526,8 +527,8 @@ export async function getEvaluator(options: GetEvaluatorOptions): Promise<GetEva
   if (response.evaluatorConfig) {
     if ('llmAsAJudge' in response.evaluatorConfig && response.evaluatorConfig.llmAsAJudge) {
       const llm = response.evaluatorConfig.llmAsAJudge;
-      // AWS API nests model ID under modelConfig.bedrockEvaluatorModelConfig.modelId;
-      // CLI schema flattens this to config.llmAsAJudge.model
+      // Flatten the SDK model-config union into the CLI's provider + model fields.
+      let modelProvider: EvaluatorModelProvider | undefined;
       let model = '';
       if (
         llm.modelConfig &&
@@ -535,6 +536,14 @@ export async function getEvaluator(options: GetEvaluatorOptions): Promise<GetEva
         llm.modelConfig.bedrockEvaluatorModelConfig
       ) {
         model = llm.modelConfig.bedrockEvaluatorModelConfig.modelId ?? '';
+      } else if (
+        llm.modelConfig &&
+        'responsesEvaluatorModelConfig' in llm.modelConfig &&
+        llm.modelConfig.responsesEvaluatorModelConfig
+      ) {
+        const responsesConfig = llm.modelConfig.responsesEvaluatorModelConfig;
+        modelProvider = 'OpenResponses';
+        model = responsesConfig.modelId ?? '';
       }
       const ratingScale: GetEvaluatorLlmConfig['ratingScale'] = {};
       if (llm.ratingScale) {
@@ -552,7 +561,12 @@ export async function getEvaluator(options: GetEvaluatorOptions): Promise<GetEva
         }
       }
       evaluatorConfig = {
-        llmAsAJudge: { model, instructions: llm.instructions ?? '', ratingScale },
+        llmAsAJudge: {
+          ...(modelProvider && { modelProvider }),
+          model,
+          instructions: llm.instructions ?? '',
+          ratingScale,
+        },
       };
     } else if ('codeBased' in response.evaluatorConfig && response.evaluatorConfig.codeBased) {
       const cb = response.evaluatorConfig.codeBased;

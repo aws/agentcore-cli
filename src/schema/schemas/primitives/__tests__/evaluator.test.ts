@@ -2,6 +2,7 @@ import {
   CategoricalRatingSchema,
   EvaluationLevelSchema,
   EvaluatorConfigSchema,
+  EvaluatorModelIdSchema,
   EvaluatorNameSchema,
   NumericalRatingSchema,
   RatingScaleSchema,
@@ -142,6 +143,30 @@ describe('EvaluatorConfigSchema', () => {
     expect(EvaluatorConfigSchema.safeParse(validConfig).success).toBe(true);
   });
 
+  it('accepts an OpenResponses model config', () => {
+    const config = {
+      llmAsAJudge: {
+        ...validConfig.llmAsAJudge,
+        modelProvider: 'OpenResponses',
+        model: 'openai.gpt-5.4',
+      },
+    };
+
+    expect(EvaluatorConfigSchema.safeParse(config).success).toBe(true);
+  });
+
+  it('rejects the obsolete OpenAI provider discriminator', () => {
+    const config = {
+      llmAsAJudge: {
+        ...validConfig.llmAsAJudge,
+        modelProvider: 'OpenAI',
+        model: 'openai.gpt-5.4',
+      },
+    };
+
+    expect(EvaluatorConfigSchema.safeParse(config).success).toBe(false);
+  });
+
   it('rejects missing model', () => {
     const config = { llmAsAJudge: { ...validConfig.llmAsAJudge, model: '' } };
     expect(EvaluatorConfigSchema.safeParse(config).success).toBe(false);
@@ -154,6 +179,20 @@ describe('EvaluatorConfigSchema', () => {
 
   it('rejects missing llmAsAJudge key', () => {
     expect(EvaluatorConfigSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('EvaluatorModelIdSchema', () => {
+  it('accepts Bedrock and OpenResponses model IDs', () => {
+    expect(EvaluatorModelIdSchema.safeParse('us.anthropic.claude-sonnet-4-5-20250929-v1:0').success).toBe(true);
+    expect(EvaluatorModelIdSchema.safeParse('openai.gpt-5.4').success).toBe(true);
+  });
+
+  it('rejects whitespace, control characters, Unicode, and oversized IDs', () => {
+    expect(EvaluatorModelIdSchema.safeParse('   ').success).toBe(false);
+    expect(EvaluatorModelIdSchema.safeParse('openai.gpt-5.4\nspoofed').success).toBe(false);
+    expect(EvaluatorModelIdSchema.safeParse('openai.gpt-5.4\u202e').success).toBe(false);
+    expect(EvaluatorModelIdSchema.safeParse('a'.repeat(2049)).success).toBe(false);
   });
 });
 

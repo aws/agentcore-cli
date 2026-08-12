@@ -1,5 +1,10 @@
-import type { EvaluationLevel, EvaluatorConfig } from '../../../../schema';
-import { EvaluatorNameSchema, isValidBedrockModelId, isValidKmsKeyArn } from '../../../../schema';
+import type { EvaluationLevel, EvaluatorConfig, EvaluatorModelProvider } from '../../../../schema';
+import {
+  EvaluatorModelIdSchema,
+  EvaluatorNameSchema,
+  isValidBedrockModelId,
+  isValidKmsKeyArn,
+} from '../../../../schema';
 import type { SelectableItem } from '../../components';
 import { ConfirmReview, Panel, Screen, StepIndicator, TextInput, WizardSelect } from '../../components';
 import { HELP_TEXT } from '../../constants';
@@ -12,7 +17,7 @@ import {
   DEFAULT_CODE_TIMEOUT,
   DEFAULT_INSTRUCTIONS,
   EVALUATION_LEVEL_OPTIONS,
-  EVALUATOR_MODEL_OPTIONS,
+  EVALUATOR_MODEL_PROVIDER_OPTIONS,
   EVALUATOR_STEP_LABELS,
   EVALUATOR_TYPE_OPTIONS,
   LEVEL_PLACEHOLDERS,
@@ -20,6 +25,7 @@ import {
   RATING_SCALE_PRESETS,
   RATING_SCALE_TYPE_OPTIONS,
   REFERENCE_INPUT_PLACEHOLDERS,
+  getEvaluatorModelOptions,
   parseCustomRatingScale,
   validateInstructionPlaceholders,
 } from './types';
@@ -75,7 +81,22 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
   );
 
   const modelItems: SelectableItem[] = useMemo(
-    () => EVALUATOR_MODEL_OPTIONS.map(opt => ({ id: opt.id, title: opt.title, description: opt.description })),
+    () =>
+      getEvaluatorModelOptions(wizard.config.config.llmAsAJudge?.modelProvider ?? 'Bedrock').map(opt => ({
+        id: opt.id,
+        title: opt.title,
+        description: opt.description,
+      })),
+    [wizard.config.config.llmAsAJudge?.modelProvider]
+  );
+
+  const modelProviderItems: SelectableItem[] = useMemo(
+    () =>
+      EVALUATOR_MODEL_PROVIDER_OPTIONS.map(opt => ({
+        id: opt.id,
+        title: opt.title,
+        description: opt.description,
+      })),
     []
   );
 
@@ -83,6 +104,7 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
   const isCodeBasedTypeStep = wizard.step === 'code-based-type';
   const isNameStep = wizard.step === 'name';
   const isLevelStep = wizard.step === 'level';
+  const isModelProviderStep = wizard.step === 'model-provider';
   const isModelStep = wizard.step === 'model';
   const isModelCustomStep = wizard.step === 'model-custom';
   const isInstructionsStep = wizard.step === 'instructions';
@@ -120,6 +142,14 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
     onSelect: item => wizard.selectModel(item.id),
     onExit: () => wizard.goBack(),
     isActive: isModelStep,
+    resetKey: wizard.config.config.llmAsAJudge?.modelProvider ?? 'Bedrock',
+  });
+
+  const modelProviderNav = useListNavigation({
+    items: modelProviderItems,
+    onSelect: item => wizard.selectModelProvider(item.id as EvaluatorModelProvider),
+    onExit: () => wizard.goBack(),
+    isActive: isModelProviderStep,
   });
 
   const ratingScaleNav = useListNavigation({
@@ -150,6 +180,7 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
     isEvaluatorTypeStep ||
     isCodeBasedTypeStep ||
     isLevelStep ||
+    isModelProviderStep ||
     isRatingScaleStep ||
     isModelStep ||
     isRatingScaleTypeStep;
@@ -172,6 +203,7 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
         { label: 'Type', value: 'LLM-as-a-Judge' },
         { label: 'Name', value: wizard.config.name },
         { label: 'Level', value: wizard.config.level },
+        { label: 'Model Provider', value: llm.modelProvider ?? 'Bedrock' },
         { label: 'Model', value: llm.model },
         {
           label: 'Instructions',
@@ -257,16 +289,31 @@ export function AddEvaluatorScreen({ onComplete, onExit, existingEvaluatorNames 
           />
         )}
 
+        {isModelProviderStep && (
+          <WizardSelect
+            title="Select model provider"
+            description="Choose the inference API used by the LLM judge."
+            items={modelProviderItems}
+            selectedIndex={modelProviderNav.selectedIndex}
+          />
+        )}
+
         {isModelCustomStep && (
           <TextInput
             key="model-custom"
-            prompt="Bedrock model ID"
+            prompt={
+              wizard.config.config.llmAsAJudge?.modelProvider === 'OpenResponses'
+                ? 'OpenResponses model ID'
+                : 'Bedrock model ID'
+            }
             initialValue=""
             onSubmit={wizard.setCustomModel}
             onCancel={() => wizard.goBack()}
             customValidation={value =>
-              isValidBedrockModelId(value) ||
-              'Must be a valid Bedrock model ID (e.g. us.anthropic.claude-sonnet-4-5-20250929-v1:0) or model ARN'
+              wizard.config.config.llmAsAJudge?.modelProvider === 'OpenResponses'
+                ? EvaluatorModelIdSchema.safeParse(value).success || 'A valid OpenResponses model ID is required'
+                : isValidBedrockModelId(value) ||
+                  'Must be a valid Bedrock model ID (e.g. us.anthropic.claude-sonnet-4-5-20250929-v1:0) or model ARN'
             }
           />
         )}

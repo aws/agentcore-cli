@@ -142,6 +142,7 @@ export const insightsHandler: InsightsHandler = {
           : {}),
         dataSourceConfig,
         clientToken: generateClientToken(),
+        kmsKeyArn: opts.kmsKeyArn,
       });
       logger?.log(`Response: ${JSON.stringify(startResult, null, 2)}`);
       logger?.endStep('success');

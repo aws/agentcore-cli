@@ -55,6 +55,9 @@ export type RatingScale = z.infer<typeof RatingScaleSchema>;
 // LLM-as-a-Judge Config
 // ============================================================================
 
+export const EvaluatorModelProviderSchema = z.enum(['Bedrock', 'OpenResponses']);
+export type EvaluatorModelProvider = z.infer<typeof EvaluatorModelProviderSchema>;
+
 // eslint-disable-next-line security/detect-unsafe-regex -- anchored pattern, no backtracking risk
 const BEDROCK_MODEL_ID_PATTERN = /^[a-z][a-z0-9-]*\.[a-zA-Z0-9._-]+(:[0-9]+)?$/;
 const BEDROCK_ARN_PATTERN = /^arn:aws[a-z-]*:bedrock:[a-z0-9-]+:\d{12}:(inference-profile|foundation-model)\/.+$/;
@@ -63,10 +66,19 @@ export function isValidBedrockModelId(value: string): boolean {
   return BEDROCK_MODEL_ID_PATTERN.test(value) || BEDROCK_ARN_PATTERN.test(value);
 }
 
-export const BedrockModelIdSchema = z.string().min(1, 'Model ID is required');
+export const EvaluatorModelIdSchema = z
+  .string()
+  .trim()
+  .min(1, 'Model ID is required')
+  .max(2048, 'Model ID must be 2048 characters or fewer')
+  .regex(/^[\x21-\x7e]+$/, 'Model ID must contain only printable ASCII characters without spaces');
+
+// Retained for compatibility with existing imports.
+export const BedrockModelIdSchema = EvaluatorModelIdSchema;
 
 export const LlmAsAJudgeConfigSchema = z.object({
-  model: BedrockModelIdSchema,
+  modelProvider: EvaluatorModelProviderSchema.optional(),
+  model: EvaluatorModelIdSchema,
   instructions: z.string().min(1, 'Evaluation instructions are required'),
   ratingScale: RatingScaleSchema,
 });

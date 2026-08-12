@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { mkdir, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('ConfigIO', () => {
@@ -201,6 +202,48 @@ describe('ConfigIO', () => {
       expect(readBack.version).toBe(1);
       expect(readBack.runtimes).toHaveLength(1);
       expect(readBack.runtimes[0]!.name).toBe('myagent');
+    });
+
+    it('serializes concurrent project mutations without losing updates', async () => {
+      const projectDir = join(testDir, `concurrent-update-${randomUUID()}`);
+      const agentcoreDir = join(projectDir, 'agentcore');
+      mkdirSync(agentcoreDir, { recursive: true });
+
+      const first = new ConfigIO({ baseDir: agentcoreDir });
+      const second = new ConfigIO({ baseDir: agentcoreDir });
+      await first.writeProjectSpec({
+        name: 'ConcurrentProject',
+        version: 1,
+        managedBy: 'CDK',
+        runtimes: [],
+      } as any);
+
+      const makeEvaluator = (name: string) =>
+        ({
+          name,
+          level: 'SESSION',
+          config: {
+            llmAsAJudge: {
+              model: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+              instructions: 'Evaluate {context}',
+              ratingScale: { categorical: [{ label: 'Pass', definition: 'Meets expectations' }] },
+            },
+          },
+        }) as any;
+
+      await Promise.all([
+        first.updateProjectSpec(async project => {
+          await delay(50);
+          project.evaluators.push(makeEvaluator('First'));
+        }),
+        second.updateProjectSpec(project => {
+          project.evaluators.push(makeEvaluator('Second'));
+        }),
+      ]);
+
+      const result = await first.readProjectSpec();
+      expect(result.evaluators.map(evaluator => evaluator.name).sort()).toEqual(['First', 'Second']);
+      expect(existsSync(`${join(agentcoreDir, 'agentcore.json')}.lock`)).toBe(false);
     });
   });
 

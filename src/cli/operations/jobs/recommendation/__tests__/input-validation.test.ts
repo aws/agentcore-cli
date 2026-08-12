@@ -93,6 +93,62 @@ describe('buildRecommendationConfig — tool name validation', () => {
   });
 });
 
+describe('buildRecommendationConfig — online-evaluation trace source', () => {
+  const onlineEvalArn = 'arn:aws:bedrock-agentcore:us-east-1:123456789012:online-evaluation-config/test-ABCDE12345';
+  const baseOpts = {
+    type: 'SYSTEM_PROMPT_RECOMMENDATION' as const,
+    inlineContent: 'You are helpful',
+    inputSource: 'inline',
+    traceSource: 'online-evaluation',
+    runtimeId: '',
+    accountId: '',
+    region: 'us-east-1',
+    evaluatorIds: ['arn:aws:bedrock-agentcore:::evaluator/Builtin.Correctness'],
+  };
+
+  it('builds an onlineEvaluation agentTraces member from the ARN', async () => {
+    const result = await buildRecommendationConfig({ ...baseOpts, onlineEvaluationArn: onlineEvalArn });
+    const traces = result.systemPromptRecommendationConfig?.agentTraces;
+    expect(traces?.onlineEvaluation?.onlineEvaluationConfigArn).toBe(onlineEvalArn);
+    // Both bounds are @required by the service.
+    expect(traces?.onlineEvaluation?.startTime).toBeDefined();
+    expect(traces?.onlineEvaluation?.endTime).toBeDefined();
+    // No other trace member should be populated for this source.
+    expect(traces?.cloudwatchLogs).toBeUndefined();
+    expect(traces?.batchEvaluation).toBeUndefined();
+    expect(traces?.sessionSpans).toBeUndefined();
+  });
+
+  it('derives the window from lookbackDays (startTime = now - lookback)', async () => {
+    const result = await buildRecommendationConfig({
+      ...baseOpts,
+      onlineEvaluationArn: onlineEvalArn,
+      lookbackDays: 3,
+    });
+    const traces = result.systemPromptRecommendationConfig!.agentTraces.onlineEvaluation!;
+    const spanMs = new Date(traces.endTime).getTime() - new Date(traces.startTime).getTime();
+    // 3 days ± a small tolerance for clock drift across the two Date.now() reads.
+    expect(spanMs).toBeGreaterThan(3 * 24 * 60 * 60 * 1000 - 5000);
+    expect(spanMs).toBeLessThan(3 * 24 * 60 * 60 * 1000 + 5000);
+  });
+
+  it('throws when --online-evaluation-arn is missing', async () => {
+    await expect(buildRecommendationConfig({ ...baseOpts })).rejects.toThrow('--online-evaluation-arn is required');
+  });
+
+  it('omits evaluationConfig entirely with zero evaluators (inherits from the referenced evaluation)', async () => {
+    const result = await buildRecommendationConfig({
+      ...baseOpts,
+      onlineEvaluationArn: onlineEvalArn,
+      evaluatorIds: [],
+    });
+    const config = result.systemPromptRecommendationConfig!;
+    // Must not serialize to the malformed {"evaluators":[{}]}; the key should be absent altogether.
+    expect('evaluationConfig' in config).toBe(false);
+    expect(config.evaluationConfig).toBeUndefined();
+  });
+});
+
 describe('buildRecommendationConfig — spans limit validation', () => {
   it('rejects spans file exceeding max count', async () => {
     const { writeFileSync, mkdtempSync, rmSync } = await import('fs');

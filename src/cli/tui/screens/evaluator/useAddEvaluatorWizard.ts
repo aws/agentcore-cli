@@ -1,4 +1,4 @@
-import type { EvaluationLevel, EvaluatorConfig } from '../../../../schema';
+import type { EvaluationLevel, EvaluatorConfig, EvaluatorModelProvider } from '../../../../schema';
 import type {
   AddEvaluatorConfig,
   AddEvaluatorStep,
@@ -12,6 +12,7 @@ import {
   DEFAULT_CODE_ENTRYPOINT,
   DEFAULT_CODE_TIMEOUT,
   DEFAULT_MODEL,
+  DEFAULT_OPENAI_MODEL,
 } from './types';
 import { useCallback, useMemo, useState } from 'react';
 
@@ -19,6 +20,7 @@ const LLM_STEPS: AddEvaluatorStep[] = [
   'evaluator-type',
   'name',
   'level',
+  'model-provider',
   'model',
   'instructions',
   'ratingScale',
@@ -186,6 +188,15 @@ export function useAddEvaluatorWizard() {
     [nextStep]
   );
 
+  const selectModelProvider = useCallback((modelProvider: EvaluatorModelProvider) => {
+    setLlmConfig(config => ({
+      ...config,
+      modelProvider: modelProvider === 'OpenResponses' ? modelProvider : undefined,
+      model: modelProvider === 'OpenResponses' ? DEFAULT_OPENAI_MODEL : DEFAULT_MODEL,
+    }));
+    setStep('model');
+  }, []);
+
   const selectModel = useCallback(
     (modelId: string) => {
       if (modelId === CUSTOM_MODEL_ID) {
@@ -298,6 +309,7 @@ export function useAddEvaluatorWizard() {
     selectCodeBasedType,
     setName,
     setLevel,
+    selectModelProvider,
     selectModel,
     setCustomModel,
     setInstructions,

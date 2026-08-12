@@ -1,11 +1,22 @@
 import { ConflictError, ResourceNotFoundError, findConfigRoot, serializeResult, toError } from '../../lib';
 import type { Result } from '../../lib/result';
 import type { EvaluationLevel, Evaluator, EvaluatorConfig } from '../../schema';
-import { EvaluationLevelSchema, EvaluatorSchema, isValidKmsKeyArn } from '../../schema';
+import {
+  EvaluationLevelSchema,
+  EvaluatorModelIdSchema,
+  EvaluatorModelProviderSchema,
+  EvaluatorSchema,
+  isValidKmsKeyArn,
+} from '../../schema';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand } from '../telemetry/cli-command-run.js';
-import { EvaluatorLevel, EvaluatorType, standardize } from '../telemetry/schemas/common-shapes.js';
+import {
+  EvaluatorLevel,
+  EvaluatorModelProvider,
+  EvaluatorType,
+  standardize,
+} from '../telemetry/schemas/common-shapes.js';
 import { renderCodeBasedEvaluatorTemplate, renderThirdPartyEvaluatorTemplate } from '../templates/EvaluatorRenderer';
 import { requireTTY } from '../tui/guards/tty';
 import {
@@ -93,8 +104,9 @@ export const MODEL_PROVIDERS = ['openai', 'bedrock'] as const;
 
 export type ModelProvider = (typeof MODEL_PROVIDERS)[number];
 
-function isSupportedModelProvider(value: string): value is ModelProvider {
-  return (MODEL_PROVIDERS as readonly string[]).includes(value);
+function normalizeModelProvider(value: string): ModelProvider | undefined {
+  const normalized = value.toLowerCase();
+  return (MODEL_PROVIDERS as readonly string[]).includes(normalized) ? (normalized as ModelProvider) : undefined;
 }
 
 // ============================================================================
@@ -331,10 +343,8 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
       .option('--name <name>', 'Evaluator name')
       .option('--level <level>', 'Evaluation level: SESSION, TRACE, TOOL_CALL')
       .option('--type <type>', 'Evaluator type: llm-as-a-judge (default) or code-based')
-      .option(
-        '--model <model>',
-        '[LLM] Bedrock inference profile ID for LLM-as-a-Judge (e.g. us.anthropic.claude-sonnet-4-20250514-v1:0)'
-      )
+      .option('--model <model>', '[LLM] Bedrock inference profile ID or OpenResponses model ID for LLM-as-a-Judge')
+      .option('--model-provider <provider>', '[LLM] Model provider: Bedrock (default) or OpenResponses')
       .option(
         '--instructions <text>',
         '[LLM] Evaluation prompt instructions (must include level-appropriate placeholders, e.g. {context})'
@@ -362,6 +372,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
           level?: string;
           type?: string;
           model?: string;
+          modelProvider?: string;
           instructions?: string;
           ratingScale?: string;
           lambdaArn?: string;
@@ -433,10 +444,11 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 threePMetric = templateObj.metric as string;
                 if (templateObj.modelProvider) {
                   const rawProvider = templateObj.modelProvider as string;
-                  if (!isSupportedModelProvider(rawProvider)) {
+                  const normalizedProvider = normalizeModelProvider(rawProvider);
+                  if (!normalizedProvider) {
                     fail(`Invalid modelProvider "${rawProvider}". Supported: ${MODEL_PROVIDERS.join(', ')}`);
                   }
-                  threePModelProvider = rawProvider as ModelProvider;
+                  threePModelProvider = normalizedProvider;
                 }
                 if (templateObj.model) threePModel = templateObj.model as string;
                 if (templateObj.params && typeof templateObj.params === 'object') {
@@ -490,10 +502,16 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 if (cliOptions.timeout) fail('--timeout requires --type code-based');
                 if (threePLibrary) fail('--3p-template-json requires --type code-based');
               }
-              if (evalType === 'code-based' && !threePLibrary) {
+              if (evalType === 'code-based') {
                 if (cliOptions.model) fail('--model cannot be used with --type code-based');
+                if (cliOptions.modelProvider) fail('--model-provider cannot be used with --type code-based');
                 if (cliOptions.instructions) fail('--instructions cannot be used with --type code-based');
                 if (cliOptions.ratingScale) fail('--rating-scale cannot be used with --type code-based');
+              }
+              if (cliOptions.config && cliOptions.modelProvider) {
+                fail(
+                  '--model-provider cannot be used with --config; set config.llmAsAJudge.modelProvider in the config file'
+                );
               }
 
               let configJson: EvaluatorConfig;
@@ -518,6 +536,21 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 if (!cliOptions.model) {
                   fail('Either --config or --model is required for LLM-as-a-Judge evaluators');
                 }
+
+                const modelResult = EvaluatorModelIdSchema.safeParse(cliOptions.model);
+                if (!modelResult.success) {
+                  fail(modelResult.error.issues[0]?.message ?? 'Invalid --model');
+                }
+
+                const modelProviderResult = EvaluatorModelProviderSchema.safeParse(
+                  cliOptions.modelProvider ?? 'Bedrock'
+                );
+                if (!modelProviderResult.success) {
+                  fail(
+                    `Invalid --model-provider "${cliOptions.modelProvider}". Must be one of: Bedrock, OpenResponses`
+                  );
+                }
+                const modelProvider = modelProviderResult.data!;
 
                 if (!cliOptions.instructions) {
                   const level = levelResult.data!;
@@ -554,7 +587,8 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
 
                 configJson = {
                   llmAsAJudge: {
-                    model: cliOptions.model!,
+                    ...(modelProvider === 'OpenResponses' && { modelProvider }),
+                    model: modelResult.data!,
                     instructions: cliOptions.instructions!,
                     ratingScale,
                   },
@@ -611,6 +645,12 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               return {
                 evaluator_type: standardize(EvaluatorType, evalType),
                 evaluator_level: standardize(EvaluatorLevel, levelResult.data),
+                ...(configJson.llmAsAJudge && {
+                  evaluator_model_provider: standardize(
+                    EvaluatorModelProvider,
+                    configJson.llmAsAJudge.modelProvider ?? 'Bedrock'
+                  ),
+                }),
               };
             });
           } else {
@@ -689,10 +729,6 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
   }
 
   private async createEvaluator(options: AddEvaluatorOptions): Promise<Evaluator> {
-    const project = await this.readProjectSpec();
-
-    this.checkDuplicate(project.evaluators, options.name);
-
     const evaluator: Evaluator = {
       name: options.name,
       level: options.level,
@@ -701,8 +737,10 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
       ...(options.kmsKeyArn && { kmsKeyArn: options.kmsKeyArn }),
     };
 
-    project.evaluators.push(evaluator);
-    await this.writeProjectSpec(project);
+    await this.updateProjectSpec(project => {
+      this.checkDuplicate(project.evaluators, options.name);
+      project.evaluators.push(evaluator);
+    });
 
     return evaluator;
   }

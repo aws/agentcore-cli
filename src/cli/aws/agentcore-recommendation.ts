@@ -55,7 +55,7 @@ export interface SessionSpan {
   spanId: string;
 }
 
-/** Agent trace source — inline spans, CloudWatch Logs, or batch evaluation. */
+/** Agent trace source — inline spans, CloudWatch Logs, batch evaluation, or online evaluation. */
 export interface AgentTracesSource {
   sessionSpans?: SessionSpan[];
   cloudwatchLogs?: {
@@ -69,6 +69,13 @@ export interface AgentTracesSource {
   batchEvaluation?: {
     batchEvaluationArn: string;
   };
+  onlineEvaluation?: {
+    onlineEvaluationConfigArn: string;
+    // Both @required by the service: an online evaluation is a continuous stream,
+    // so the window bounds which already-scored sessions the recommendation draws from.
+    startTime: string;
+    endTime: string;
+  };
 }
 
 /** Evaluation config — exactly one evaluator as objective signal (API constraint: min 1, max 1). */
@@ -80,7 +87,9 @@ export interface RecommendationEvaluationConfig {
 export interface SystemPromptRecommendationConfig {
   systemPrompt: SystemPromptSource;
   agentTraces: AgentTracesSource;
-  evaluationConfig: RecommendationEvaluationConfig;
+  // Optional: batch/online trace sources inherit the referenced evaluation's evaluator, so the field
+  // is omitted for them. All other sources require it.
+  evaluationConfig?: RecommendationEvaluationConfig;
 }
 
 /** Config for TOOL_DESCRIPTION_RECOMMENDATION type. */
