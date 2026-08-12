@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { InputValidationError } from "../../errors";
+import { InputValidationError, InvalidEnvironmentError } from "../../errors";
 import type { DevEvent, DevServerInput } from "../../handlers/project/dev/types";
 import {
   MissingToolError,
@@ -125,7 +125,7 @@ function commandCall(calls: ProcessCall[], operation: "build" | "run"): ProcessC
 }
 
 describe("ContainerDevRunner", () => {
-  test("builds with a widened context and keeps build arg values out of argv", async () => {
+  test("builds with a widened context and redacts build arg values from errors", async () => {
     const projectRuntime = runtime({
       buildContextPath: ".",
       dockerfile: "docker/Dockerfile",
@@ -148,18 +148,17 @@ describe("ContainerDevRunner", () => {
       "-t",
       imageTag(root),
       "--build-arg",
-      "AGENT_NAME",
+      "AGENT_NAME=hello-world",
       "--build-arg",
-      "TARGET",
+      "TARGET=development",
       ".",
     ]);
     expect(build.options.cwd).toBe(root);
-    expect(build.options.env).toMatchObject({
-      AGENT_NAME: "hello-world",
-      TARGET: "development",
-    });
-    expect(build.command.join(" ")).not.toContain("hello-world");
-    expect(build.command.join(" ")).not.toContain("development");
+    expect(build.options.env).toBe(process.env);
+    expect(build.options.redactedCommand).toContain("AGENT_NAME=<redacted>");
+    expect(build.options.redactedCommand).toContain("TARGET=<redacted>");
+    expect(build.options.redactedCommand?.join(" ")).not.toContain("hello-world");
+    expect(build.options.redactedCommand?.join(" ")).not.toContain("development");
 
     const dockerignore = await readFile(join(root, ".dockerignore"), "utf8");
     for (const pattern of [".env", "**/.env", "**/node_modules", "agentcore/"]) {
@@ -190,21 +189,17 @@ describe("ContainerDevRunner", () => {
       "-p",
       `127.0.0.1:3000:${containerPort}`,
       "-e",
-      "API_KEY",
+      "API_KEY=super-secret",
       "-e",
-      "PORT",
+      `PORT=${containerPort}`,
       "-e",
-      "LOCAL_DEV",
-      ...(protocol === "MCP" ? ["-e", "FASTMCP_PORT"] : []),
+      "LOCAL_DEV=1",
+      ...(protocol === "MCP" ? ["-e", "FASTMCP_PORT=8000"] : []),
       imageTag(root),
     ]);
-    expect(run.options.env).toMatchObject({
-      API_KEY: "super-secret",
-      PORT: String(containerPort),
-      LOCAL_DEV: "1",
-    });
-    expect(run.options.env?.FASTMCP_PORT).toBe(protocol === "MCP" ? "8000" : undefined);
-    expect(run.command.join(" ")).not.toContain("super-secret");
+    expect(run.options.env).toBe(process.env);
+    expect(run.options.redactedCommand).toContain("API_KEY=<redacted>");
+    expect(run.options.redactedCommand?.join(" ")).not.toContain("super-secret");
   });
 
   test("preserves an existing build context .dockerignore", async () => {
@@ -235,6 +230,33 @@ describe("ContainerDevRunner", () => {
     expect(first.calls[0]?.command).toContain(containerName(firstRoot));
     expect(second.calls[0]?.command).toContain(containerName(secondRoot));
     expect(containerName(firstRoot)).not.toBe(containerName(secondRoot));
+  });
+
+  test("limits image names to two consecutive underscores", async () => {
+    const projectRuntime = runtime({ name: "Hello___World" });
+    const root = await projectRoot(projectRuntime);
+    const { calls, runner } = harness();
+
+    await collect(runner.run(input(root, projectRuntime)));
+
+    expect(commandCall(calls, "build").command).toContain(
+      `agentcore-dev/hello__world-${hashString(resolve(root))}`,
+    );
+  });
+
+  test("keeps app variables out of the container CLI environment", async () => {
+    const projectRuntime = runtime();
+    const root = await projectRoot(projectRuntime);
+    const { calls, runner } = harness();
+    const runInput = input(root, projectRuntime);
+    runInput.env = { ...runInput.env, DOCKER_HOST: "tcp://application-value" };
+
+    await collect(runner.run(runInput));
+
+    const run = commandCall(calls, "run");
+    expect(run.command).toContain("DOCKER_HOST=tcp://application-value");
+    expect(run.options.env).toBe(process.env);
+    expect(run.options.redactedCommand).toContain("DOCKER_HOST=<redacted>");
   });
 
   test("selects the first tool that supports container builds", async () => {
@@ -284,6 +306,31 @@ describe("ContainerDevRunner", () => {
     await collect(runner.run(input(root, projectRuntime)));
 
     expect(commandCall(calls, "build").command[0]).toBe("finch");
+  });
+
+  test("passes explicit build arg values to finch", async () => {
+    const projectRuntime = runtime({ customDockerBuildArgs: { AGENT_NAME: "hello-world" } });
+    const root = await projectRoot(projectRuntime);
+    const { calls, runner } = harness({
+      available: async (tool) => tool === "finch",
+    });
+
+    await collect(runner.run(input(root, projectRuntime)));
+
+    expect(commandCall(calls, "build").command).toContain("AGENT_NAME=hello-world");
+  });
+
+  test("suggests initializing the Finch VM when its build probe fails", async () => {
+    const projectRuntime = runtime();
+    const root = await projectRoot(projectRuntime);
+    const { runner } = harness({
+      available: async (tool, probeArgs) => tool === "finch" && probeArgs === undefined,
+    });
+
+    const promise = collect(runner.run(input(root, projectRuntime)));
+
+    await expect(promise).rejects.toBeInstanceOf(InvalidEnvironmentError);
+    await expect(promise).rejects.toThrow("finch vm init");
   });
 
   test("throws a useful error when no container runtime is available", async () => {

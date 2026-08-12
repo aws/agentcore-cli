@@ -66,6 +66,8 @@ export type StreamProcessOptions = {
   cwd: string;
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
+  /** Command rendered in errors when the actual arguments contain sensitive values. */
+  redactedCommand?: string[];
   /** Required on Windows for command scripts such as npm.cmd. */
   shell?: boolean;
 };
@@ -115,8 +117,9 @@ export async function* streamProcess(
   options: StreamProcessOptions,
 ): AsyncGenerator<ProcessEvent, void> {
   const [executable, ...args] = command;
+  const errorCommand = options.redactedCommand ?? command;
   if (!executable) {
-    throw new ProcessFailedError(command, options.cwd, null, "command is empty");
+    throw new ProcessFailedError(errorCommand, options.cwd, null, "command is empty");
   }
   if (options.signal?.aborted) throw abortReason(options.signal);
 
@@ -130,7 +133,7 @@ export async function* streamProcess(
       detached: !useShell,
     });
   } catch (error) {
-    throw new ProcessFailedError(command, options.cwd, null, String(error));
+    throw new ProcessFailedError(errorCommand, options.cwd, null, String(error));
   }
 
   const events: ProcessEvent[] = [];
@@ -203,12 +206,12 @@ export async function* streamProcess(
 
     if (options.signal?.aborted) throw abortReason(options.signal);
     if (spawnError) {
-      throw new ProcessFailedError(command, options.cwd, null, String(spawnError));
+      throw new ProcessFailedError(errorCommand, options.cwd, null, String(spawnError));
     }
     if (exitCode !== 0) {
       const signalMessage = exitSignal ? `terminated by ${exitSignal}` : "";
       throw new ProcessFailedError(
-        command,
+        errorCommand,
         options.cwd,
         exitCode,
         [...recentOutput, signalMessage].filter(Boolean).join("\n"),

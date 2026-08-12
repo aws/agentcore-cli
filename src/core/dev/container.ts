@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { InputValidationError } from "../../errors";
+import { InputValidationError, InvalidEnvironmentError } from "../../errors";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import {
   MissingToolError,
@@ -82,24 +82,39 @@ export class ContainerDevRunner implements DevRunner {
 
     const runtimeName = input.runtime.name.toLowerCase();
     const projectId = hashString(resolve(input.projectRoot));
-    const imageTag = `agentcore-dev/${runtimeName}-${projectId}`;
+    const imageTag = `agentcore-dev/${sanitizeImageNameComponent(runtimeName)}-${projectId}`;
     const containerName = `agentcore-dev-${runtimeName}-${projectId}`;
     await this.removeContainer(tool, containerName, context);
     input.signal.throwIfAborted();
 
     const buildArgs = input.runtime.customDockerBuildArgs ?? {};
-    const buildArgFlags = Object.keys(buildArgs).flatMap((key) => ["--build-arg", key]);
+    const buildArgFlags = Object.entries(buildArgs).flatMap(([key, value]) => [
+      "--build-arg",
+      `${key}=${value}`,
+    ]);
+    const redactedBuildArgFlags = Object.keys(buildArgs).flatMap((key) => [
+      "--build-arg",
+      `${key}=<redacted>`,
+    ]);
+    const buildCommand = [tool, "build", "-f", dockerfile, "-t", imageTag, ...buildArgFlags, "."];
     const buildOptions: StreamProcessOptions = {
       cwd: context,
-      env: { ...process.env, ...buildArgs },
+      env: process.env,
+      redactedCommand: [
+        tool,
+        "build",
+        "-f",
+        dockerfile,
+        "-t",
+        imageTag,
+        ...redactedBuildArgFlags,
+        ".",
+      ],
       signal: input.signal,
     };
 
     yield { type: "status", message: `Building image with ${tool}` };
-    yield* this.streamProcess(
-      [tool, "build", "-f", dockerfile, "-t", imageTag, ...buildArgFlags, "."],
-      buildOptions,
-    );
+    yield* this.streamProcess(buildCommand, buildOptions);
 
     const containerPort = portForProtocol(input.runtime.protocol);
     const forwardedEnv: Record<string, string> = {
@@ -110,12 +125,32 @@ export class ContainerDevRunner implements DevRunner {
     if (input.runtime.protocol === "MCP") {
       forwardedEnv.FASTMCP_PORT = String(containerPort);
     }
-    const envNameFlags = Object.keys(forwardedEnv).flatMap((key) => ["-e", key]);
+    const envFlags = Object.entries(forwardedEnv).flatMap(([key, value]) => [
+      "-e",
+      `${key}=${value}`,
+    ]);
+    const redactedEnvFlags = Object.keys(forwardedEnv).flatMap((key) => [
+      "-e",
+      `${key}=<redacted>`,
+    ]);
+    const runCommand = [
+      tool,
+      "run",
+      "--rm",
+      "--name",
+      containerName,
+      "-p",
+      `127.0.0.1:${input.port}:${containerPort}`,
+      ...envFlags,
+      imageTag,
+    ];
 
     yield { type: "status", message: "Starting container" };
     try {
-      yield* this.streamProcess(
-        [
+      yield* this.streamProcess(runCommand, {
+        cwd: context,
+        env: process.env,
+        redactedCommand: [
           tool,
           "run",
           "--rm",
@@ -123,15 +158,11 @@ export class ContainerDevRunner implements DevRunner {
           containerName,
           "-p",
           `127.0.0.1:${input.port}:${containerPort}`,
-          ...envNameFlags,
+          ...redactedEnvFlags,
           imageTag,
         ],
-        {
-          cwd: context,
-          env: { ...process.env, ...forwardedEnv },
-          signal: input.signal,
-        },
-      );
+        signal: input.signal,
+      });
     } finally {
       await this.removeContainer(tool, containerName, context);
     }
@@ -146,6 +177,11 @@ export class ContainerDevRunner implements DevRunner {
       const canBuild = await this.toolAvailable(tool, ["build", "--help"]);
       signal.throwIfAborted();
       if (canBuild) return tool;
+      if (tool === "finch") {
+        throw new InvalidEnvironmentError(
+          "Finch is installed but its VM is not initialized. Run 'finch vm init' and retry.",
+        );
+      }
     }
     throw new MissingToolError("container runtime", CONTAINER_RUNTIME_INSTALL_HINT);
   }
@@ -199,4 +235,8 @@ function ensureBuildContextDockerignore(context: string): string | undefined {
 
 function hashString(value: string): string {
   return createHash("sha256").update(value).digest("hex").slice(0, 12);
+}
+
+function sanitizeImageNameComponent(value: string): string {
+  return value.replace(/_{3,}/g, "__");
 }

@@ -111,6 +111,20 @@ describe("streamProcess", () => {
     await expect(iterator.next()).rejects.toThrow(/exit code 3/);
   });
 
+  test("redacts sensitive command arguments from process errors", async () => {
+    const failing = await script("stream-redacted-fail.js", "process.exit(3)");
+    const iterator = streamProcess(["node", failing, "super-secret"], {
+      cwd: process.cwd(),
+      redactedCommand: ["node", failing, "<redacted>"],
+    });
+
+    const error = await iterator.next().catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ProcessFailedError);
+    expect(String(error)).toContain("<redacted>");
+    expect(String(error)).not.toContain("super-secret");
+  });
+
   test("throws ProcessFailedError when the executable cannot spawn", async () => {
     await expect(
       collect(streamProcess(["definitely-not-a-real-tool-xyz"], { cwd: process.cwd() })),
