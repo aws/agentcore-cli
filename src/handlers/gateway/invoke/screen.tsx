@@ -49,7 +49,7 @@ const invokePath = (...parts: string[]) =>
 
 const metadata = (response: GatewayInvokeResponse) =>
   [
-    ["Session ID:", response.runtimeSessionId],
+    ["Runtime session ID:", response.runtimeSessionId],
     ["MCP session ID:", response.mcpSessionId],
     ["MCP protocol version:", response.mcpProtocolVersion],
     ["Request ID:", response.requestId],
@@ -57,6 +57,16 @@ const metadata = (response: GatewayInvokeResponse) =>
     .filter((entry) => entry[1])
     .map((entry) => entry.join(" "))
     .join(" · ");
+
+function displayPath(path: string, gatewayUrl?: string): string {
+  if (path) return path;
+  try {
+    const url = new URL(gatewayUrl ?? "");
+    return `${url.pathname || "/"}${url.search} (Gateway URL)`;
+  } catch {
+    return "Gateway URL";
+  }
+}
 
 function errorDetails(error: unknown): ErrorDetails {
   const reported = error instanceof Error ? error : new Error(String(error));
@@ -87,42 +97,44 @@ function ErrorBlock({ details }: { details: ErrorDetails }) {
 }
 
 function PathEditor({
-  gatewayId,
   value,
   onChange,
   onSave,
   onCancel,
 }: {
-  gatewayId: string;
   value: string;
   onChange: (value: string) => void;
   onSave: () => void;
   onCancel: () => void;
 }) {
+  const { columns } = useWindowSize();
   useInput((_input, key) => {
     if (key.escape) onCancel();
   });
 
   return (
-    <Layout
-      breadcrumb={["agentcore", "gateway", "invoke", gatewayId, "path"]}
-      description="edit the Gateway-relative path"
-      keyHints={[
-        { key: "enter", label: "save" },
-        { key: "esc", label: "cancel" },
-        { key: "ctl+c", label: "quit" },
-      ]}
-    >
-      <Box flexDirection="column" paddingY={1}>
+    <Box position="absolute" width="100%" height="100%" alignItems="center" justifyContent="center">
+      <Box
+        width={Math.max(32, Math.min(72, columns - 4))}
+        flexDirection="column"
+        borderStyle="round"
+        borderColor={theme.colors.focus}
+        backgroundColor="black"
+        paddingX={1}
+        paddingY={1}
+      >
+        <Text bold color={theme.colors.primary}>
+          Edit path
+        </Text>
         <TextInput
           value={value}
           onChange={onChange}
           onSubmit={onSave}
-          placeholder="Gateway default"
+          placeholder="Use Gateway URL"
           prompt="Path: "
         />
       </Box>
-    </Layout>
+    </Box>
   );
 }
 
@@ -407,42 +419,36 @@ function GatewayInvokeConsole({ ctx, core, gatewayId, initialContext }: GatewayI
     );
   }
 
-  if (editingPath) {
-    return (
-      <PathEditor
-        gatewayId={targetGatewayId}
-        value={pathDraft}
-        onChange={setPathDraft}
-        onSave={savePath}
-        onCancel={() => setEditingPath(false)}
-      />
-    );
-  }
-
   return (
     <Layout
       breadcrumb={["agentcore", "gateway", "invoke", targetGatewayId]}
       keyHints={
-        busy
+        editingPath
           ? [
-              { key: "esc", label: "interrupt" },
-              { key: "↑↓", label: "scroll" },
+              { key: "enter", label: "save" },
+              { key: "esc", label: "cancel" },
               { key: "ctl+c", label: "quit" },
             ]
-          : [
-              { key: "enter", label: "send" },
-              ...(canPrettyJson
-                ? [{ key: "ctl+v", label: prettyJson ? "raw JSON" : "pretty JSON" }]
-                : [{ key: "⇧↵", label: "newline" }]),
-              { key: "ctl+p", label: "path" },
-              { key: "ctl+t", label: "gateway" },
-              { key: "↑↓", label: "scroll" },
-              { key: "esc", label: "back" },
-              { key: "ctl+c", label: "quit" },
-            ]
+          : busy
+            ? [
+                { key: "esc", label: "interrupt" },
+                { key: "↑↓", label: "scroll" },
+                { key: "ctl+c", label: "quit" },
+              ]
+            : [
+                { key: "enter", label: "send" },
+                ...(canPrettyJson
+                  ? [{ key: "ctl+v", label: prettyJson ? "raw JSON" : "pretty JSON" }]
+                  : [{ key: "⇧↵", label: "newline" }]),
+                { key: "ctl+p", label: "path" },
+                { key: "ctl+t", label: "gateway" },
+                { key: "↑↓", label: "scroll" },
+                { key: "esc", label: "back" },
+                { key: "ctl+c", label: "quit" },
+              ]
       }
     >
-      <Box height="100%" flexDirection="column">
+      <Box height="100%" flexDirection="column" position="relative">
         {detail.isPending ? (
           <Spinner label="Loading Gateway…" />
         ) : detail.isError ? (
@@ -494,6 +500,7 @@ function GatewayInvokeConsole({ ctx, core, gatewayId, initialContext }: GatewayI
               onSubmit={() => void send()}
               placeholder="Enter JSON payload"
               submitDisabled={busy || missingBearerToken || unavailableStatus !== undefined}
+              focus={!editingPath}
             />
             <Divider />
             <Box height={2} flexDirection="column">
@@ -513,7 +520,10 @@ function GatewayInvokeConsole({ ctx, core, gatewayId, initialContext }: GatewayI
                 <>
                   <Text color={theme.colors.muted}>
                     {cliTruncate(
-                      `Ready · Session ID: ${runtimeSessionId} · Path: ${path || "default"}`,
+                      `Ready · Runtime session ID: ${runtimeSessionId} · Path: ${displayPath(
+                        path,
+                        detail.data?.gatewayUrl,
+                      )}`,
                       columns,
                     )}
                   </Text>
@@ -530,6 +540,14 @@ function GatewayInvokeConsole({ ctx, core, gatewayId, initialContext }: GatewayI
             </Box>
           </Box>
         )}
+        {editingPath ? (
+          <PathEditor
+            value={pathDraft}
+            onChange={setPathDraft}
+            onSave={savePath}
+            onCancel={() => setEditingPath(false)}
+          />
+        ) : null}
       </Box>
     </Layout>
   );

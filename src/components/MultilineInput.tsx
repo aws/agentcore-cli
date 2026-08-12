@@ -12,6 +12,7 @@ export interface MultilineInputProps {
   onSubmit: () => void;
   placeholder?: string;
   submitDisabled?: boolean;
+  focus?: boolean;
 }
 
 function Cursor({ character }: { character: string }) {
@@ -28,44 +29,48 @@ export function MultilineInput({
   onSubmit,
   placeholder = "Enter text",
   submitDisabled = false,
+  focus = true,
 }: MultilineInputProps) {
   const { columns } = useWindowSize();
   const [rawCursor, setRawCursor] = useState(value.length);
   const cursor = Math.min(rawCursor, value.length);
 
-  useInput((input, key) => {
-    if (key.leftArrow) {
-      setRawCursor(Math.max(0, cursor - 1));
-      return;
-    }
-    if (key.rightArrow) {
-      setRawCursor(Math.min(value.length, cursor + 1));
-      return;
-    }
-    if (key.upArrow || key.downArrow) return;
-
-    if (key.backspace || key.delete) {
-      if (cursor === 0) return;
-      onChange(value.slice(0, cursor - 1) + value.slice(cursor));
-      setRawCursor(cursor - 1);
-      return;
-    }
-
-    if (key.return) {
-      if (key.shift || key.meta) {
-        onChange(value.slice(0, cursor) + "\n" + value.slice(cursor));
-        setRawCursor(cursor + 1);
-      } else if (!submitDisabled) {
-        onSubmit();
+  useInput(
+    (input, key) => {
+      if (key.leftArrow) {
+        setRawCursor(Math.max(0, cursor - 1));
+        return;
       }
-      return;
-    }
-    if (key.ctrl || key.meta || key.escape || input === "") return;
+      if (key.rightArrow) {
+        setRawCursor(Math.min(value.length, cursor + 1));
+        return;
+      }
+      if (key.upArrow || key.downArrow) return;
 
-    const next = input.replace(/\r/g, "\n");
-    onChange(value.slice(0, cursor) + next + value.slice(cursor));
-    setRawCursor(cursor + next.length);
-  });
+      if (key.backspace || key.delete) {
+        if (cursor === 0) return;
+        onChange(value.slice(0, cursor - 1) + value.slice(cursor));
+        setRawCursor(cursor - 1);
+        return;
+      }
+
+      if (key.return) {
+        if (key.shift || key.meta) {
+          onChange(value.slice(0, cursor) + "\n" + value.slice(cursor));
+          setRawCursor(cursor + 1);
+        } else if (!submitDisabled) {
+          onSubmit();
+        }
+        return;
+      }
+      if (key.ctrl || key.meta || key.escape || input === "") return;
+
+      const next = input.replace(/\r/g, "\n");
+      onChange(value.slice(0, cursor) + next + value.slice(cursor));
+      setRawCursor(cursor + next.length);
+    },
+    { isActive: focus },
+  );
 
   if (value === "") {
     return (

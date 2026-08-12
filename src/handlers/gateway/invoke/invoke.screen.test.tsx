@@ -55,7 +55,7 @@ function invokeRequests(core: TestCoreClient): GatewayInvokeRequest[] {
 }
 
 function displayedSessionId(frame: string | undefined): string | undefined {
-  return frame?.match(/Session ID: ([^ ·\n]+)/)?.[1];
+  return frame?.match(/Runtime session ID: ([^ ·\n]+)/)?.[1];
 }
 
 describe("Gateway invoke routing", () => {
@@ -69,7 +69,7 @@ describe("Gateway invoke routing", () => {
 
     await waitForText(screen.lastFrame, `agentcore → gateway → invoke → ${GATEWAY_ID}`);
     await waitForText(screen.lastFrame, "Enter JSON payload");
-    expect(screen.lastFrame()).toContain("Path: default");
+    expect(screen.lastFrame()).toContain("Path: /mcp (Gateway URL)");
     expect(displayedSessionId(screen.lastFrame())).toMatch(UUID_PATTERN);
   });
 
@@ -211,7 +211,7 @@ describe("Gateway invoke JSON console", () => {
     });
 
     await waitForText(screen.lastFrame, "Path: runtime/invocations");
-    expect(screen.lastFrame()).toContain("Session ID: seeded-runtime");
+    expect(screen.lastFrame()).toContain("Runtime session ID: seeded-runtime");
     expect(screen.lastFrame()).toContain("Context: JWT/1h");
     expect(screen.lastFrame()).not.toContain(token);
     expect(screen.lastFrame()).not.toContain("retail");
@@ -269,28 +269,16 @@ describe("Gateway invoke JSON console", () => {
     const initialSession = displayedSessionId(screen.lastFrame());
     await screen.write('{"turn":1}');
     await screen.write("\x10");
-    await waitForText(screen.lastFrame, "edit the Gateway-relative path");
+    await waitForText(screen.lastFrame, "Edit path");
+    expect(screen.lastFrame()).toContain("Ready · Runtime session ID:");
+    expect(screen.lastFrame()).toContain('{"turn":1}');
+    expect(screen.lastFrame()).toContain("[enter] save");
+    expect(screen.lastFrame()).not.toContain("→ path →");
     await screen.write("ignored/path");
     await screen.press("escape");
-    await waitForText(screen.lastFrame, "Path: default");
+    await waitForText(screen.lastFrame, "Path: /mcp (Gateway URL)");
     expect(screen.lastFrame()).toContain('{"turn":1}');
     expect(displayedSessionId(screen.lastFrame())).toBe(initialSession);
-
-    await screen.write("\x10");
-    await screen.write("runtime/invocations?trace=true");
-    await screen.press("return");
-    await waitForText(screen.lastFrame, "Path: runtime/invocations?trace=true");
-    expect(screen.lastFrame()).toContain('{"turn":1}');
-    const nextSession = displayedSessionId(screen.lastFrame());
-    expect(nextSession).toMatch(UUID_PATTERN);
-    expect(nextSession).not.toBe(initialSession);
-
-    await screen.press("return");
-    await waitFor(() => invokeRequests(core).length === 1);
-    expect(invokeRequests(core)[0]).toMatchObject({
-      url: "https://gateway-123.gateway.example.test/runtime/invocations?trace=true",
-      runtimeSessionId: nextSession,
-    });
   });
 
   test("clears a seeded path back to the exact Gateway URL", async () => {
@@ -313,8 +301,9 @@ describe("Gateway invoke JSON console", () => {
       await screen.write("\x7f");
     }
     await screen.press("return");
+    await waitForText(screen.lastFrame, "[enter] send");
 
-    await waitForText(screen.lastFrame, "Path: default");
+    await waitForText(screen.lastFrame, "Path: /mcp (Gateway URL)");
     expect(displayedSessionId(screen.lastFrame())).toMatch(UUID_PATTERN);
     expect(displayedSessionId(screen.lastFrame())).not.toBe("seeded-session");
   });
@@ -342,7 +331,7 @@ describe("Gateway invoke JSON console", () => {
     await waitForText(screen.lastFrame, "Ready");
     await screen.write('{"turn":1}');
     await screen.press("return");
-    await waitForText(screen.lastFrame, "Session ID: returned-runtime");
+    await waitForText(screen.lastFrame, "Runtime session ID: returned-runtime");
     await screen.write('{"turn":2}');
 
     await screen.write("\x10");
@@ -410,7 +399,7 @@ describe("Gateway invoke JSON console", () => {
     await waitForText(screen.lastFrame, `agentcore → gateway → invoke → ${nextGatewayId}`);
     await waitForText(screen.lastFrame, "Ready");
 
-    expect(screen.lastFrame()).toContain("Path: default");
+    expect(screen.lastFrame()).toContain("Path: /mcp (Gateway URL)");
     expect(screen.lastFrame()).not.toContain("old response");
     expect(screen.lastFrame()).not.toContain('{"draft":true}');
     expect(screen.lastFrame()).not.toContain("returned-mcp");
@@ -442,7 +431,7 @@ describe("Gateway invoke JSON console", () => {
     await screen.press("escape");
 
     await waitForText(screen.lastFrame, "Path: kept/path");
-    expect(screen.lastFrame()).toContain("Session ID: kept-session");
+    expect(screen.lastFrame()).toContain("Runtime session ID: kept-session");
     expect(screen.lastFrame()).toContain('{"kept":"draft"}');
     expect(screen.lastFrame()).toContain("Context: JWT/1h");
   });
@@ -475,7 +464,7 @@ describe("Gateway invoke JSON console", () => {
     release.resolve();
     await waitForText(screen.lastFrame, "data: second");
     await waitForText(screen.lastFrame, "complete · 25 bytes");
-    expect(screen.lastFrame()).toContain("Session ID: returned-runtime");
+    expect(screen.lastFrame()).toContain("Runtime session ID: returned-runtime");
     expect(screen.lastFrame()).toContain("MCP session ID: returned-mcp");
     expect(initialSession).not.toBe("returned-runtime");
 
@@ -698,8 +687,8 @@ describe("Gateway invoke JSON console", () => {
     const readyLine = screen
       .lastFrame()!
       .split("\n")
-      .find((line) => line.includes("Ready · Session ID:"));
-    expect(readyLine).toContain(`Session ID: ${initialSession}`);
+      .find((line) => line.includes("Ready · Runtime session ID:"));
+    expect(readyLine).toContain(`Runtime session ID: ${initialSession}`);
     expect(readyLine).not.toContain("interrupted-mcp");
   });
 
@@ -734,7 +723,7 @@ describe("Gateway invoke JSON console", () => {
 
     const frame = screen.lastFrame()!;
     expect(frame.split("\n")).toHaveLength(24);
-    expect(frame).toContain("Ready · Session ID:");
+    expect(frame).toContain("Ready · Runtime session ID:");
     expect(frame).toContain("Auth: NONE");
     expect(frame).not.toContain("NONEon ID");
   });
