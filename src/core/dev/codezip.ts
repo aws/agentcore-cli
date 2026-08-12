@@ -62,7 +62,7 @@ export class CodeZipDevRunner implements DevRunner {
         yield {
           type: "status",
           message:
-            "OTEL auto-instrumentation is not installed in the agent environment; traces will not be collected. Add opentelemetry-distro to enable them.",
+            "OTEL auto-instrumentation is not installed in the agent environment; traces will not be collected. Add aws-opentelemetry-distro to the agent's dependencies to enable them.",
         };
       }
     }
