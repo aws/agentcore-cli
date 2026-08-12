@@ -629,11 +629,12 @@ export class EvalClient implements CoreEvalClient {
   async getConfigurationBundle(
     id: string,
     version: string | undefined,
+    branchName: string,
     options: CoreOptions,
   ): Promise<GetConfigurationBundleResponse | GetConfigurationBundleVersionResponse> {
     const control = this.clients.control(toClientConfig(options));
     return version === undefined
-      ? control.send(new GetConfigurationBundleCommand({ bundleId: id }))
+      ? control.send(new GetConfigurationBundleCommand({ bundleId: id, branchName }))
       : control.send(
           new GetConfigurationBundleVersionCommand({ bundleId: id, versionId: version }),
         );
@@ -655,7 +656,9 @@ export class EvalClient implements CoreEvalClient {
     options: CoreOptions,
   ): Promise<UpdateConfigurationBundleResponse> {
     const control = this.clients.control(toClientConfig(options));
-    const current = await control.send(new GetConfigurationBundleCommand({ bundleId: id }));
+    const current = await control.send(
+      new GetConfigurationBundleCommand({ bundleId: id, branchName: update.branchName }),
+    );
     if (!current.versionId) {
       throw new NetworkingError(
         `Configuration bundle "${id}" returned no latest version and cannot be updated`,
@@ -666,6 +669,7 @@ export class EvalClient implements CoreEvalClient {
     return control.send(
       new UpdateConfigurationBundleCommand({
         bundleId: id,
+        branchName: update.branchName,
         components: update.components,
         commitMessage: update.commitMessage,
         kmsKeyArn: update.kmsKeyArn,

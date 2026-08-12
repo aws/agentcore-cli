@@ -101,10 +101,17 @@ describe("eval config-bundle command hierarchy", () => {
     expect(
       configBundle
         ?.children()
+        .find((child) => child.name() === "get")
+        ?.flags()
+        .map((candidate) => candidate.name),
+    ).toEqual(["id", "version", "branch-name"]);
+    expect(
+      configBundle
+        ?.children()
         .find((child) => child.name() === "update")
         ?.flags()
         .map((candidate) => candidate.name),
-    ).toEqual(["id", "components", "commit-message", "kms-key-arn"]);
+    ).toEqual(["id", "components", "commit-message", "branch-name", "kms-key-arn"]);
   });
 
   test("prints help for a bare config-bundle command", async () => {
@@ -238,7 +245,11 @@ describe("config-bundle get", () => {
 
     await route(["eval", "config-bundle", "get", "--id", "b-1"]);
 
-    expect(callArgs(core, "getConfigurationBundle").slice(0, 2)).toEqual(["b-1", undefined]);
+    expect(callArgs(core, "getConfigurationBundle").slice(0, 3)).toEqual([
+      "b-1",
+      undefined,
+      "mainline",
+    ]);
     expect(JSON.parse(stdout()).versionId).toBe("latest-v");
   });
 
@@ -247,7 +258,23 @@ describe("config-bundle get", () => {
 
     await route(["eval", "config-bundle", "get", "--id", "b-1", "--version", "v-2"]);
 
-    expect(callArgs(core, "getConfigurationBundle").slice(0, 2)).toEqual(["b-1", "v-2"]);
+    expect(callArgs(core, "getConfigurationBundle").slice(0, 3)).toEqual([
+      "b-1",
+      "v-2",
+      "mainline",
+    ]);
+  });
+
+  test("gets the latest version from an explicit branch", async () => {
+    const { core, route } = testConfigBundleCommand();
+
+    await route(["eval", "config-bundle", "get", "--id", "b-1", "--branch-name", "review-branch"]);
+
+    expect(callArgs(core, "getConfigurationBundle").slice(0, 3)).toEqual([
+      "b-1",
+      undefined,
+      "review-branch",
+    ]);
   });
 });
 
@@ -300,11 +327,34 @@ describe("config-bundle update", () => {
     expect(callArgs(core, "updateConfigurationBundle").slice(0, 2)).toEqual([
       "b-1",
       {
+        branchName: "mainline",
         components: COMPONENTS,
         commitMessage: "Replace order support configuration",
         kmsKeyArn: "arn:aws:kms:us-west-2:123456789012:key/replacement",
       } satisfies UpdateConfigurationBundleInput,
     ]);
+  });
+
+  test("updates an explicit branch", async () => {
+    const { core, route } = testConfigBundleCommand();
+
+    await route([
+      "eval",
+      "config-bundle",
+      "update",
+      "--id",
+      "b-1",
+      "--components",
+      JSON.stringify(COMPONENTS),
+      "--commit-message",
+      "Update review branch configuration",
+      "--branch-name",
+      "review-branch",
+    ]);
+
+    expect(callArgs(core, "updateConfigurationBundle")[1]).toMatchObject({
+      branchName: "review-branch",
+    });
   });
 
   test("requires components even when a KMS key is provided", async () => {

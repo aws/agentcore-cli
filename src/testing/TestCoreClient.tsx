@@ -1620,9 +1620,10 @@ export class TestEvalClient implements CoreEvalClient {
   async getConfigurationBundle(
     id: string,
     version: string | undefined,
+    branchName: string,
     options: CoreOptions,
   ): Promise<GetConfigurationBundleResponse | GetConfigurationBundleVersionResponse> {
-    this.calls.push({ method: "getConfigurationBundle", args: [id, version, options] });
+    this.calls.push({ method: "getConfigurationBundle", args: [id, version, branchName, options] });
     if (this.error) throw this.error;
     return version === undefined
       ? this.getConfigBundleResponse

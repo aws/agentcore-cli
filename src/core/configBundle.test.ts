@@ -67,11 +67,14 @@ describe("EvalClient configuration bundles", () => {
       return {};
     });
 
-    await client.getConfigurationBundle("b-1", undefined, OPTIONS);
-    await client.getConfigurationBundle("b-1", "v-2", OPTIONS);
+    await client.getConfigurationBundle("b-1", undefined, "review-branch", OPTIONS);
+    await client.getConfigurationBundle("b-1", "v-2", "mainline", OPTIONS);
 
     expect(sent[0]).toBeInstanceOf(GetConfigurationBundleCommand);
-    expect((sent[0] as GetConfigurationBundleCommand).input).toEqual({ bundleId: "b-1" });
+    expect((sent[0] as GetConfigurationBundleCommand).input).toEqual({
+      bundleId: "b-1",
+      branchName: "review-branch",
+    });
     expect(sent[1]).toBeInstanceOf(GetConfigurationBundleVersionCommand);
     expect((sent[1] as GetConfigurationBundleVersionCommand).input).toEqual({
       bundleId: "b-1",
@@ -118,6 +121,7 @@ describe("EvalClient configuration bundles", () => {
       await client.updateConfigurationBundle(
         "b-1",
         {
+          branchName: "review-branch",
           components: COMPONENTS,
           commitMessage: "Replace order support configuration",
           kmsKeyArn: "arn:aws:kms:us-west-2:123456789012:key/new",
@@ -128,10 +132,14 @@ describe("EvalClient configuration bundles", () => {
 
     expect(sent).toHaveLength(2);
     expect(sent[0]).toBeInstanceOf(GetConfigurationBundleCommand);
-    expect((sent[0] as GetConfigurationBundleCommand).input).toEqual({ bundleId: "b-1" });
+    expect((sent[0] as GetConfigurationBundleCommand).input).toEqual({
+      bundleId: "b-1",
+      branchName: "review-branch",
+    });
     expect(sent[1]).toBeInstanceOf(UpdateConfigurationBundleCommand);
     expect((sent[1] as UpdateConfigurationBundleCommand).input).toEqual({
       bundleId: "b-1",
+      branchName: "review-branch",
       components: COMPONENTS,
       commitMessage: "Replace order support configuration",
       kmsKeyArn: "arn:aws:kms:us-west-2:123456789012:key/new",
@@ -149,6 +157,7 @@ describe("EvalClient configuration bundles", () => {
     const promise = client.updateConfigurationBundle(
       "b-1",
       {
+        branchName: "mainline",
         components: COMPONENTS,
         commitMessage: "Replace order support configuration",
         kmsKeyArn: "arn:aws:kms:us-west-2:123456789012:key/new",
@@ -160,6 +169,10 @@ describe("EvalClient configuration bundles", () => {
     await expect(promise).rejects.toThrow(/returned no latest version/);
     expect(sent).toHaveLength(1);
     expect(sent[0]).toBeInstanceOf(GetConfigurationBundleCommand);
+    expect((sent[0] as GetConfigurationBundleCommand).input).toEqual({
+      bundleId: "b-1",
+      branchName: "mainline",
+    });
   });
 
   test("delete sends DeleteConfigurationBundleCommand", async () => {

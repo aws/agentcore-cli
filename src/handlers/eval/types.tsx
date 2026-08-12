@@ -186,7 +186,7 @@ export type CreateConfigurationBundleInput = Pick<
   "bundleName" | "components" | "kmsKeyArn"
 >;
 export type UpdateConfigurationBundleInput = Required<
-  Pick<UpdateConfigurationBundleRequest, "components" | "commitMessage">
+  Pick<UpdateConfigurationBundleRequest, "components" | "commitMessage" | "branchName">
 > &
   Pick<UpdateConfigurationBundleRequest, "kmsKeyArn">;
 
@@ -291,11 +291,12 @@ export interface CoreEvalClient {
     input: CreateConfigurationBundleInput,
     options: CoreOptions,
   ): Promise<CreateConfigurationBundleResponse>;
-  // Omitting version returns the latest mainline version; an explicit version
-  // selects the immutable version API.
+  // Omitting version returns the latest version on branchName; an explicit
+  // version selects the immutable version API.
   getConfigurationBundle(
     id: string,
     version: string | undefined,
+    branchName: string,
     options: CoreOptions,
   ): Promise<GetConfigurationBundleResponse | GetConfigurationBundleVersionResponse>;
   listConfigurationBundles(
@@ -303,7 +304,7 @@ export interface CoreEvalClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListConfigurationBundlesResponse>;
-  // Updates are appended to the latest mainline version by the Core client.
+  // Updates are appended to the latest version on update.branchName.
   updateConfigurationBundle(
     id: string,
     update: UpdateConfigurationBundleInput,

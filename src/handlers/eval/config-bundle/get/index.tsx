@@ -12,6 +12,11 @@ export const createGetConfigBundleHandler = (core: Core) =>
     flags: [
       flag("id", "the ID of the configuration bundle", z.string().optional()),
       flag("version", "the immutable version ID to retrieve", z.string().optional()),
+      flag(
+        "branch-name",
+        "branch used when retrieving the latest version",
+        z.string().default("mainline"),
+      ),
     ],
     handle: async (ctx, flags) => {
       if (!flags["id"]) {
@@ -24,6 +29,7 @@ export const createGetConfigBundleHandler = (core: Core) =>
           await core.eval.getConfigurationBundle(
             flags["id"],
             flags["version"],
+            flags["branch-name"],
             coreOptsFromCtx(ctx),
           ),
         );

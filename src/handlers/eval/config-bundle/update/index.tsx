@@ -23,6 +23,7 @@ export const createUpdateConfigBundleHandler = (core: Core, io: AppIO) =>
         "message describing the configuration bundle update",
         z.string().max(500).optional(),
       ),
+      flag("branch-name", "branch to update", z.string().default("mainline")),
       flag(
         "kms-key-arn",
         "customer managed KMS key ARN to rotate component encryption to",
@@ -50,6 +51,7 @@ export const createUpdateConfigBundleHandler = (core: Core, io: AppIO) =>
         await core.eval.updateConfigurationBundle(
           flags["id"],
           {
+            branchName: flags["branch-name"],
             components,
             commitMessage: flags["commit-message"],
             kmsKeyArn: flags["kms-key-arn"],
