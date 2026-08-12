@@ -1,3 +1,4 @@
+import type { ManagedBy } from "../../projectSchemas/project";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 
 /** Available project templates for scaffolding new AgentCore projects. */
@@ -33,6 +34,8 @@ export type Project = {
   name: string;
   /** Absolute path to the project root (the parent of agentcore/). */
   rootPath: string;
+  /** The infrastructure backend that owns the project's deployable artifacts. */
+  managedBy: ManagedBy;
   /** The runtimes registered in agentcore.json. */
   runtimes: ProjectRuntime[];
 };

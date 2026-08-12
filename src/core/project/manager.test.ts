@@ -273,6 +273,18 @@ describe("FsProjectManager.build", () => {
     expect(commands).toEqual([]);
   });
 
+  test("refuses a project managed by a backend it cannot build", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands } = manager();
+    const project = await scaffolded(subject, directory);
+    commands.length = 0;
+
+    // CDK is the only backend today; the cast stands in for a future one.
+    const foreign = { ...project, managedBy: "Terraform" as Project["managedBy"] };
+    await expect(drain(subject.build(foreign))).rejects.toThrow(/unsupported backend: Terraform/);
+    expect(commands).toEqual([]);
+  });
+
   test("propagates a synthesis failure", async () => {
     const directory = await inTempDirectory();
     const { manager: subject } = manager();
@@ -300,6 +312,7 @@ describe("FsProjectManager.resolve", () => {
 
     expect(resolved?.name).toBe("example");
     expect(resolved?.rootPath).toBe(join(root, "example"));
+    expect(resolved?.managedBy).toBe("CDK");
     expect(resolved?.runtimes).toHaveLength(1);
   });
 
