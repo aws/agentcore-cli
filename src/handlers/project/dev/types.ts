@@ -16,3 +16,16 @@ export type DevServerInput = {
 export interface DevRunner {
   run(input: DevServerInput): AsyncGenerator<DevEvent, void>;
 }
+
+/** A local OTLP receiver that spawned agents export traces to. */
+export interface DevTraceCollector {
+  port: number;
+  /** Environment variables that point an agent's OTEL SDK at the receiver. */
+  envVars: Record<string, string>;
+  close(): Promise<void>;
+}
+
+export type DevTraceCollectorStarter = (options: {
+  tracesDirectory: string;
+  signal?: AbortSignal;
+}) => Promise<DevTraceCollector>;

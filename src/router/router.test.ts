@@ -284,6 +284,27 @@ test("boolean flags default to false when omitted", async () => {
   expect(seen).toEqual({ verbose: false });
 });
 
+test("a boolean flag defaulting to true is declared as its --no- negation", async () => {
+  const seen: { traces: boolean }[] = [];
+
+  const run = createHandler({
+    name: "run",
+    description: "",
+    flags: [flag("traces", "collect traces", z.boolean().default(true))],
+    handle: async (_ctx, flags) => {
+      seen.push(flags);
+    },
+  });
+
+  const root = new Router("app");
+  root.handler(run);
+
+  await root.route(["node", "app", "run"]);
+  await root.route(["node", "app", "run", "--no-traces"]);
+
+  expect(seen).toEqual([{ traces: true }, { traces: false }]);
+});
+
 test("applies a schema default for an omitted flag", async () => {
   let seen: { count: number } | undefined;
 
