@@ -12,10 +12,10 @@ import { createHandler, flag } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
 import type { Core } from "../../types";
 import {
+  assertMutuallyExclusiveInputs,
   coreOptsFromCtx,
   parseJsonArrayFlag,
   parseJsonObjectFlag,
-  validateSetClearConflicts,
 } from "../../utils";
 import type { GatewayUpdatePatch } from "../types";
 
@@ -77,25 +77,43 @@ export const createUpdateGatewayHandler = (core: Core, io: AppIO) =>
         throw new InputValidationError("required option '--id <id>' not specified");
       }
 
-      validateSetClearConflicts([
-        ["description", flags.description, flags["clear-description"]],
+      assertMutuallyExclusiveInputs([
+        [
+          "description",
+          flags.description,
+          "clear-description",
+          flags["clear-description"] || undefined,
+        ],
         [
           "protocol-configuration",
           flags["protocol-configuration"],
-          flags["clear-protocol-configuration"],
+          "clear-protocol-configuration",
+          flags["clear-protocol-configuration"] || undefined,
         ],
         [
           "custom-transform-configuration",
           flags["custom-transform-configuration"],
-          flags["clear-custom-transform-configuration"],
+          "clear-custom-transform-configuration",
+          flags["clear-custom-transform-configuration"] || undefined,
         ],
         [
           "interceptor-configurations",
           flags["interceptor-configurations"],
-          flags["clear-interceptor-configurations"],
+          "clear-interceptor-configurations",
+          flags["clear-interceptor-configurations"] || undefined,
         ],
-        ["exception-level", flags["exception-level"], flags["clear-exception-level"]],
-        ["waf-configuration", flags["waf-configuration"], flags["clear-waf-configuration"]],
+        [
+          "exception-level",
+          flags["exception-level"],
+          "clear-exception-level",
+          flags["clear-exception-level"] || undefined,
+        ],
+        [
+          "waf-configuration",
+          flags["waf-configuration"],
+          "clear-waf-configuration",
+          flags["clear-waf-configuration"] || undefined,
+        ],
       ]);
       if (
         flags["clear-policy-engine"] &&

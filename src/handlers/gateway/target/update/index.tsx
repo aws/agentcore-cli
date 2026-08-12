@@ -11,10 +11,10 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import {
+  assertMutuallyExclusiveInputs,
   coreOptsFromCtx,
   parseJsonArrayFlag,
   parseJsonObjectFlag,
-  validateSetClearConflicts,
 } from "../../../utils";
 import type { GatewayTargetUpdatePatch } from "../../types";
 
@@ -61,25 +61,33 @@ export const createUpdateGatewayTargetHandler = (core: Core, io: AppIO) =>
         throw new InputValidationError("required option '--target-id <target-id>' not specified");
       }
 
-      validateSetClearConflicts([
-        ["description", flags.description, flags["clear-description"]],
+      assertMutuallyExclusiveInputs([
+        [
+          "description",
+          flags.description,
+          "clear-description",
+          flags["clear-description"] || undefined,
+        ],
         [
           "credential-provider-configurations",
           flags["credential-provider-configurations"],
-          flags["clear-credential-provider-configurations"],
+          "clear-credential-provider-configurations",
+          flags["clear-credential-provider-configurations"] || undefined,
         ],
         [
           "metadata-configuration",
           flags["metadata-configuration"],
-          flags["clear-metadata-configuration"],
+          "clear-metadata-configuration",
+          flags["clear-metadata-configuration"] || undefined,
         ],
-        ["private-endpoint", flags["private-endpoint"], flags["clear-private-endpoint"]],
+        [
+          "private-endpoint",
+          flags["private-endpoint"],
+          "clear-private-endpoint",
+          flags["clear-private-endpoint"] || undefined,
+        ],
+        ["endpoint", flags.endpoint, "target-configuration", flags["target-configuration"]],
       ]);
-      if (flags.endpoint !== undefined && flags["target-configuration"] !== undefined) {
-        throw new InputValidationError(
-          "--endpoint and --target-configuration are mutually exclusive",
-        );
-      }
 
       const source = new SourceResolver({ stdin: io.stdin });
       const targetConfiguration = parseJsonObjectFlag<TargetConfiguration>(

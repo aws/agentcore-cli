@@ -72,12 +72,17 @@ export function parseJsonArrayFlag<T>(name: string, raw: string | undefined): T[
   return parsed as T[];
 }
 
-export function validateSetClearConflicts(
-  pairs: readonly (readonly [name: string, value: unknown, clear: boolean])[],
+export function assertMutuallyExclusiveInputs(
+  pairs: readonly (readonly [
+    leftName: string,
+    leftValue: unknown,
+    rightName: string,
+    rightValue: unknown,
+  ])[],
 ): void {
-  for (const [name, value, clear] of pairs) {
-    if (value !== undefined && clear) {
-      throw new InputValidationError(`--${name} and --clear-${name} are mutually exclusive`);
+  for (const [leftName, leftValue, rightName, rightValue] of pairs) {
+    if (leftValue !== undefined && rightValue !== undefined) {
+      throw new InputValidationError(`--${leftName} and --${rightName} are mutually exclusive`);
     }
   }
 }

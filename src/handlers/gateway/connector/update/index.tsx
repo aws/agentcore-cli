@@ -11,10 +11,10 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import {
+  assertMutuallyExclusiveInputs,
   coreOptsFromCtx,
   parseJsonArrayFlag,
   parseJsonObjectFlag,
-  validateSetClearConflicts,
 } from "../../../utils";
 import type { GatewayTargetUpdatePatch } from "../../types";
 import { GatewayConnectorTarget } from "../gatewayConnectorTarget";
@@ -70,11 +70,33 @@ export const createUpdateGatewayConnectorHandler = (core: Core, io: AppIO) =>
       if (!flags.id) {
         throw new InputValidationError("required option '--id <id>' not specified");
       }
-      if (flags.connector !== undefined && flags["connector-configuration"] !== undefined) {
-        throw new InputValidationError(
-          "--connector and --connector-configuration are mutually exclusive",
-        );
-      }
+      assertMutuallyExclusiveInputs([
+        ["connector", flags.connector, "connector-configuration", flags["connector-configuration"]],
+        [
+          "description",
+          flags.description,
+          "clear-description",
+          flags["clear-description"] || undefined,
+        ],
+        [
+          "credential-provider-configurations",
+          flags["credential-provider-configurations"],
+          "clear-credential-provider-configurations",
+          flags["clear-credential-provider-configurations"] || undefined,
+        ],
+        [
+          "metadata-configuration",
+          flags["metadata-configuration"],
+          "clear-metadata-configuration",
+          flags["clear-metadata-configuration"] || undefined,
+        ],
+        [
+          "private-endpoint",
+          flags["private-endpoint"],
+          "clear-private-endpoint",
+          flags["clear-private-endpoint"] || undefined,
+        ],
+      ]);
       if (
         flags.connector === "bedrock-knowledge-bases" &&
         flags["knowledge-base-id"] === undefined
@@ -91,21 +113,6 @@ export const createUpdateGatewayConnectorHandler = (core: Core, io: AppIO) =>
           "--knowledge-base-id requires --connector bedrock-knowledge-bases",
         );
       }
-
-      validateSetClearConflicts([
-        ["description", flags.description, flags["clear-description"]],
-        [
-          "credential-provider-configurations",
-          flags["credential-provider-configurations"],
-          flags["clear-credential-provider-configurations"],
-        ],
-        [
-          "metadata-configuration",
-          flags["metadata-configuration"],
-          flags["clear-metadata-configuration"],
-        ],
-        ["private-endpoint", flags["private-endpoint"], flags["clear-private-endpoint"]],
-      ]);
 
       const source = new SourceResolver({ stdin: io.stdin });
       const exactConfiguration = parseJsonObjectFlag<TargetConfiguration>(
