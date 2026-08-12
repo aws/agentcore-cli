@@ -43,5 +43,4 @@ export {
   type HttpRequestHandler,
   type HttpResponse,
   type HttpServerHandle,
-  type HttpServerStarter,
 } from "./httpServer";

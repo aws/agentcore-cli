@@ -33,8 +33,6 @@ export interface HttpServerHandle {
   close(): Promise<void>;
 }
 
-export type HttpServerStarter = typeof startHttpServer;
-
 /**
  * Starts a loopback-only HTTP server for local dev tooling. Binds 127.0.0.1 on
  * the given port (0 lets the OS assign one). Handler errors become plain 500s;

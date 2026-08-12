@@ -2,12 +2,7 @@
 // SDKs export over HTTP) with the generated types from @opentelemetry/otlp-transformer.
 // The version is pinned: newer releases dropped the generated request decoders.
 import root from "@opentelemetry/otlp-transformer/build/src/generated/root";
-import {
-  type HttpRequest,
-  type HttpResponse,
-  type HttpServerStarter,
-  startHttpServer,
-} from "../../../io";
+import { type HttpRequest, type HttpResponse, startHttpServer } from "../../../io";
 import { TraceStore } from "./store";
 import type { OtlpPayload } from "./types";
 
@@ -53,7 +48,6 @@ export interface StartOtelCollectorOptions {
   tracesDirectory: string;
   /** Closes the collector when aborted. */
   signal?: AbortSignal;
-  startServer?: HttpServerStarter;
 }
 
 /**
@@ -65,8 +59,9 @@ export async function startOtelCollector(
   options: StartOtelCollectorOptions,
 ): Promise<OtelCollector> {
   const store = new TraceStore(options.tracesDirectory);
-  const startServer = options.startServer ?? startHttpServer;
-  const server = await startServer((request) => route(request, store), { signal: options.signal });
+  const server = await startHttpServer((request) => route(request, store), {
+    signal: options.signal,
+  });
 
   return { port: server.port, store, envVars: otelEnvVars(server.port), close: server.close };
 }
