@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.27.0] - 2026-08-12
+
+### Added
+- feat: August 12 release — evaluator OpenResponses, insights KMS, recommendation trace sources (#1981) (de227a14)
+
+### Fixed
+- fix: remove duplicate canary failure notification (#1959) (c00bf7ab)
+- fix(audit): address high security audit (#1952) (523257e1)
+- fix(schema): refresh llm-compacted context (#1894) (c4e1ff77)
+- fix: resolve npm audit vulnerabilities in production dependencies (#1918) (478e8012)
+
+### Other Changes
+- chore: skip guardrail test in e2e test suite (#1984) (3da34485)
+- ci: add Slack PR review notification caller (#1947) (6fb2b5db)
+
 ## [0.26.0] - 2026-08-04
 
 ### Added
