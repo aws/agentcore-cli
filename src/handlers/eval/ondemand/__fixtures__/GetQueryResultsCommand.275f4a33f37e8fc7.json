@@ -1,0 +1,212 @@
+{
+  "queryLanguage": "CWLI",
+  "results": [
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.40.0\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"aws.log.stream.names\":\"otel-rt-logs\",\"deployment.environment.name\":\"bedrock-agentcore:default\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"cloud.provider\":\"aws\",\"cloud.region\":\"us-west-2\",\"telemetry.auto.version\":\"0.17.0-aws\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"aws.service.type\":\"gen_ai_agent\"}},\"scope\":{\"name\":\"strands.telemetry.tracer\"},\"timeUnixNano\":1786555394010008258,\"observedTimeUnixNano\":1786555395351842794,\"severityNumber\":9,\"severityText\":\"\",\"body\":{\"input\":{\"messages\":[{\"role\":\"system\",\"content\":{\"content\":\"[{\\\"text\\\": \\\"\\\\n                You are a helpful assistant. Use tools when appropriate.\\\\n            \\\"}]\"}},{\"role\":\"user\",\"content\":{\"content\":\"[{\\\"text\\\": \\\"What is 2+2? Answer concisely.\\\"}]\"}}]},\"output\":{\"messages\":[{\"role\":\"assistant\",\"content\":{\"finish_reason\":\"tool_use\",\"message\":\"[{\\\"toolUse\\\": {\\\"toolUseId\\\": \\\"tooluse_wZxoTzan8sypzmeYPveFwA\\\", \\\"name\\\": \\\"add_numbers\\\", \\\"input\\\": {\\\"a\\\": 2, \\\"b\\\": 2}}}]\"}}]}},\"attributes\":{\"session.id\":\"67ebf93b-65e3-4127-9e13-483b239f256a\",\"event.name\":\"strands.telemetry.tracer\"},\"flags\":1,\"traceId\":\"6a7cabfa3bfe9a7348415c7b507648a8\",\"spanId\":\"db6cce231beea7f0\"}"
+      },
+      {
+        "field": "sessionId",
+        "value": "67ebf93b-65e3-4127-9e13-483b239f256a"
+      },
+      {
+        "field": "traceId",
+        "value": "6a7cabfa3bfe9a7348415c7b507648a8"
+      },
+      {
+        "field": "spanId",
+        "value": "db6cce231beea7f0"
+      },
+      {
+        "field": "@ptr",
+        "value": "CswBCo8BCkw2ODUxOTc3MDg2ODc6L2F3cy9iZWRyb2NrLWFnZW50Y29yZS9ydW50aW1lcy9hc2RmX015QWdlbnQtM3M1YXh2QkM2US1ERUZBVUxUEAAaJGY2ZGY3NDIyLWVlZTQtNDhkNS05NDg3LTE0NTZkYjdkZGE1YiIOCICYk5r/MxDn16zD/zNA0cHR4dszSAASNhoYAgaNwSWxAAAABgdxOn0ABqfKutAAAAASIAEo47b/t/8zMJza/7f/MzgjQKiJAkjbfFCXVCACEBoYAQ=="
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.40.0\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"aws.log.stream.names\":\"otel-rt-logs\",\"deployment.environment.name\":\"bedrock-agentcore:default\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"cloud.provider\":\"aws\",\"cloud.region\":\"us-west-2\",\"telemetry.auto.version\":\"0.17.0-aws\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"aws.service.type\":\"gen_ai_agent\"}},\"scope\":{\"name\":\"strands.telemetry.tracer\"},\"timeUnixNano\":1786555394011480146,\"observedTimeUnixNano\":1786555395352095155,\"severityNumber\":9,\"severityText\":\"\",\"body\":{\"input\":{\"messages\":[{\"role\":\"user\",\"content\":{\"content\":\"[{\\\"text\\\": \\\"What is 2+2? Answer concisely.\\\"}]\"}}]},\"output\":{\"messages\":[{\"role\":\"assistant\",\"content\":{\"message\":\"[{\\\"toolUse\\\": {\\\"toolUseId\\\": \\\"tooluse_wZxoTzan8sypzmeYPveFwA\\\", \\\"name\\\": \\\"add_numbers\\\", \\\"input\\\": {\\\"a\\\": 2, \\\"b\\\": 2}}}]\",\"tool.result\":\"[{\\\"toolResult\\\": {\\\"toolUseId\\\": \\\"tooluse_wZxoTzan8sypzmeYPveFwA\\\", \\\"status\\\": \\\"success\\\", \\\"content\\\": [{\\\"text\\\": \\\"4\\\"}]}}]\"}},{\"role\":\"assistant\",\"content\":\"[{\\\"toolResult\\\": {\\\"toolUseId\\\": \\\"tooluse_wZxoTzan8sypzmeYPveFwA\\\", \\\"status\\\": \\\"success\\\", \\\"content\\\": [{\\\"text\\\": \\\"4\\\"}]}}]\"}]}},\"attributes\":{\"session.id\":\"67ebf93b-65e3-4127-9e13-483b239f256a\",\"event.name\":\"strands.telemetry.tracer\"},\"flags\":1,\"traceId\":\"6a7cabfa3bfe9a7348415c7b507648a8\",\"spanId\":\"7f719fd629b95bca\"}"
+      },
+      {
+        "field": "sessionId",
+        "value": "67ebf93b-65e3-4127-9e13-483b239f256a"
+      },
+      {
+        "field": "traceId",
+        "value": "6a7cabfa3bfe9a7348415c7b507648a8"
+      },
+      {
+        "field": "spanId",
+        "value": "7f719fd629b95bca"
+      },
+      {
+        "field": "@ptr",
+        "value": "CswBCo8BCkw2ODUxOTc3MDg2ODc6L2F3cy9iZWRyb2NrLWFnZW50Y29yZS9ydW50aW1lcy9hc2RmX015QWdlbnQtM3M1YXh2QkM2US1ERUZBVUxUEAAaJGY2ZGY3NDIyLWVlZTQtNDhkNS05NDg3LTE0NTZkYjdkZGE1YiIOCICYk5r/MxDn16zD/zNA0cHR4dszSAASNhoYAgaNwSWxAAAABgdxOn0ABqfKutAAAAASIAEo47b/t/8zMJza/7f/MzgjQKiJAkjbfFCXVCACEBwYAQ=="
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.40.0\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"aws.log.stream.names\":\"otel-rt-logs\",\"deployment.environment.name\":\"bedrock-agentcore:default\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"cloud.provider\":\"aws\",\"cloud.region\":\"us-west-2\",\"telemetry.auto.version\":\"0.17.0-aws\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"aws.service.type\":\"gen_ai_agent\"}},\"scope\":{\"name\":\"strands.telemetry.tracer\"},\"timeUnixNano\":1786555394011315403,\"observedTimeUnixNano\":1786555395351997309,\"severityNumber\":9,\"severityText\":\"\",\"body\":{\"input\":{\"messages\":[{\"role\":\"tool\",\"content\":{\"role\":\"tool\",\"content\":\"{\\\"a\\\": 2, \\\"b\\\": 2}\",\"id\":\"tooluse_wZxoTzan8sypzmeYPveFwA\"}}]},\"output\":{\"messages\":[{\"role\":\"assistant\",\"content\":{\"message\":\"[{\\\"text\\\": \\\"4\\\"}]\",\"id\":\"tooluse_wZxoTzan8sypzmeYPveFwA\"}}]}},\"attributes\":{\"session.id\":\"67ebf93b-65e3-4127-9e13-483b239f256a\",\"event.name\":\"strands.telemetry.tracer\"},\"flags\":1,\"traceId\":\"6a7cabfa3bfe9a7348415c7b507648a8\",\"spanId\":\"26952cbd9a43fe35\"}"
+      },
+      {
+        "field": "sessionId",
+        "value": "67ebf93b-65e3-4127-9e13-483b239f256a"
+      },
+      {
+        "field": "traceId",
+        "value": "6a7cabfa3bfe9a7348415c7b507648a8"
+      },
+      {
+        "field": "spanId",
+        "value": "26952cbd9a43fe35"
+      },
+      {
+        "field": "@ptr",
+        "value": "CswBCo8BCkw2ODUxOTc3MDg2ODc6L2F3cy9iZWRyb2NrLWFnZW50Y29yZS9ydW50aW1lcy9hc2RmX015QWdlbnQtM3M1YXh2QkM2US1ERUZBVUxUEAAaJGY2ZGY3NDIyLWVlZTQtNDhkNS05NDg3LTE0NTZkYjdkZGE1YiIOCICYk5r/MxDn16zD/zNA0cHR4dszSAASNhoYAgaNwSWxAAAABgdxOn0ABqfKutAAAAASIAEo47b/t/8zMJza/7f/MzgjQKiJAkjbfFCXVCACEBsYAQ=="
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.40.0\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"aws.log.stream.names\":\"otel-rt-logs\",\"deployment.environment.name\":\"bedrock-agentcore:default\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"cloud.provider\":\"aws\",\"cloud.region\":\"us-west-2\",\"telemetry.auto.version\":\"0.17.0-aws\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"aws.service.type\":\"gen_ai_agent\"}},\"scope\":{\"name\":\"strands.telemetry.tracer\"},\"timeUnixNano\":1786555397052514047,\"observedTimeUnixNano\":1786555400454612062,\"severityNumber\":9,\"severityText\":\"\",\"body\":{\"input\":{\"messages\":[{\"role\":\"system\",\"content\":{\"content\":\"[{\\\"text\\\": \\\"\\\\n                You are a helpful assistant. Use tools when appropriate.\\\\n            \\\"}]\"}},{\"role\":\"user\",\"content\":{\"content\":\"[{\\\"text\\\": \\\"What is 2+2? Answer concisely.\\\"}]\"}},{\"role\":\"tool\",\"content\":{\"content\":\"[{\\\"toolResult\\\": {\\\"toolUseId\\\": \\\"tooluse_wZxoTzan8sypzmeYPveFwA\\\", \\\"status\\\": \\\"success\\\", \\\"content\\\": [{\\\"text\\\": \\\"4\\\"}]}}]\"}}]},\"output\":{\"messages\":[{\"role\":\"assistant\",\"content\":{\"content\":\"[{\\\"toolUse\\\": {\\\"toolUseId\\\": \\\"tooluse_wZxoTzan8sypzmeYPveFwA\\\", \\\"name\\\": \\\"add_numbers\\\", \\\"input\\\": {\\\"a\\\": 2, \\\"b\\\": 2}}}]\"}},{\"role\":\"assistant\",\"content\":{\"finish_reason\":\"end_turn\",\"message\":\"[{\\\"text\\\": \\\"2 + 2 = 4\\\"}]\"}}]}},\"attributes\":{\"session.id\":\"67ebf93b-65e3-4127-9e13-483b239f256a\",\"event.name\":\"strands.telemetry.tracer\"},\"flags\":1,\"traceId\":\"6a7cabfa3bfe9a7348415c7b507648a8\",\"spanId\":\"7576c2384130fece\"}"
+      },
+      {
+        "field": "sessionId",
+        "value": "67ebf93b-65e3-4127-9e13-483b239f256a"
+      },
+      {
+        "field": "traceId",
+        "value": "6a7cabfa3bfe9a7348415c7b507648a8"
+      },
+      {
+        "field": "spanId",
+        "value": "7576c2384130fece"
+      },
+      {
+        "field": "@ptr",
+        "value": "CssBCo8BCkw2ODUxOTc3MDg2ODc6L2F3cy9iZWRyb2NrLWFnZW50Y29yZS9ydW50aW1lcy9hc2RmX015QWdlbnQtM3M1YXh2QkM2US1ERUZBVUxUEAAaJGY2ZGY3NDIyLWVlZTQtNDhkNS05NDg3LTE0NTZkYjdkZGE1YiIOCICYk5r/MxDn16zD/zNA0cHR4dszSAASNRoYAgagz3ApAAAAAR7TYTwABqfKuvAAAAOSIAEo47b/t/8zML3n/7f/MzgFQJ4zSM9CUJYnIAIQAhgB"
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.40.0\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"aws.log.stream.names\":\"otel-rt-logs\",\"deployment.environment.name\":\"bedrock-agentcore:default\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"cloud.provider\":\"aws\",\"cloud.region\":\"us-west-2\",\"telemetry.auto.version\":\"0.17.0-aws\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"aws.service.type\":\"gen_ai_agent\"}},\"scope\":{\"name\":\"strands.telemetry.tracer\"},\"timeUnixNano\":1786555397052873967,\"observedTimeUnixNano\":1786555400454777045,\"severityNumber\":9,\"severityText\":\"\",\"body\":{\"input\":{\"messages\":[{\"role\":\"user\",\"content\":{\"content\":\"[{\\\"text\\\": \\\"What is 2+2? Answer concisely.\\\"}]\"}},{\"role\":\"tool\",\"content\":{\"content\":\"[{\\\"toolResult\\\": {\\\"toolUseId\\\": \\\"tooluse_wZxoTzan8sypzmeYPveFwA\\\", \\\"status\\\": \\\"success\\\", \\\"content\\\": [{\\\"text\\\": \\\"4\\\"}]}}]\"}}]},\"output\":{\"messages\":[{\"role\":\"assistant\",\"content\":{\"content\":\"[{\\\"toolUse\\\": {\\\"toolUseId\\\": \\\"tooluse_wZxoTzan8sypzmeYPveFwA\\\", \\\"name\\\": \\\"add_numbers\\\", \\\"input\\\": {\\\"a\\\": 2, \\\"b\\\": 2}}}]\"}}]}},\"attributes\":{\"session.id\":\"67ebf93b-65e3-4127-9e13-483b239f256a\",\"event.name\":\"strands.telemetry.tracer\"},\"flags\":1,\"traceId\":\"6a7cabfa3bfe9a7348415c7b507648a8\",\"spanId\":\"a1d0f9231c5db33d\"}"
+      },
+      {
+        "field": "sessionId",
+        "value": "67ebf93b-65e3-4127-9e13-483b239f256a"
+      },
+      {
+        "field": "traceId",
+        "value": "6a7cabfa3bfe9a7348415c7b507648a8"
+      },
+      {
+        "field": "spanId",
+        "value": "a1d0f9231c5db33d"
+      },
+      {
+        "field": "@ptr",
+        "value": "CssBCo8BCkw2ODUxOTc3MDg2ODc6L2F3cy9iZWRyb2NrLWFnZW50Y29yZS9ydW50aW1lcy9hc2RmX015QWdlbnQtM3M1YXh2QkM2US1ERUZBVUxUEAAaJGY2ZGY3NDIyLWVlZTQtNDhkNS05NDg3LTE0NTZkYjdkZGE1YiIOCICYk5r/MxDn16zD/zNA0cHR4dszSAASNRoYAgagz3ApAAAAAR7TYTwABqfKuvAAAAOSIAEo47b/t/8zML3n/7f/MzgFQJ4zSM9CUJYnIAIQAxgB"
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.40.0\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"aws.log.stream.names\":\"otel-rt-logs\",\"deployment.environment.name\":\"bedrock-agentcore:default\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"cloud.provider\":\"aws\",\"cloud.region\":\"us-west-2\",\"telemetry.auto.version\":\"0.17.0-aws\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"aws.service.type\":\"gen_ai_agent\"}},\"scope\":{\"name\":\"strands.telemetry.tracer\"},\"timeUnixNano\":1786555397053072269,\"observedTimeUnixNano\":1786555400454894614,\"severityNumber\":9,\"severityText\":\"\",\"body\":{\"input\":{\"messages\":[{\"role\":\"system\",\"content\":\"\\n                You are a helpful assistant. Use tools when appropriate.\\n            \"},{\"role\":\"user\",\"content\":{\"content\":\"[{\\\"text\\\": \\\"What is 2+2? Answer concisely.\\\"}]\"}}]},\"output\":{\"messages\":[{\"role\":\"assistant\",\"content\":{\"message\":\"2 + 2 = 4\\n\",\"finish_reason\":\"end_turn\"}}]}},\"attributes\":{\"session.id\":\"67ebf93b-65e3-4127-9e13-483b239f256a\",\"event.name\":\"strands.telemetry.tracer\"},\"flags\":1,\"traceId\":\"6a7cabfa3bfe9a7348415c7b507648a8\",\"spanId\":\"a5e83c7e772efdf6\"}"
+      },
+      {
+        "field": "sessionId",
+        "value": "67ebf93b-65e3-4127-9e13-483b239f256a"
+      },
+      {
+        "field": "traceId",
+        "value": "6a7cabfa3bfe9a7348415c7b507648a8"
+      },
+      {
+        "field": "spanId",
+        "value": "a5e83c7e772efdf6"
+      },
+      {
+        "field": "@ptr",
+        "value": "CssBCo8BCkw2ODUxOTc3MDg2ODc6L2F3cy9iZWRyb2NrLWFnZW50Y29yZS9ydW50aW1lcy9hc2RmX015QWdlbnQtM3M1YXh2QkM2US1ERUZBVUxUEAAaJGY2ZGY3NDIyLWVlZTQtNDhkNS05NDg3LTE0NTZkYjdkZGE1YiIOCICYk5r/MxDn16zD/zNA0cHR4dszSAASNRoYAgagz3ApAAAAAR7TYTwABqfKuvAAAAOSIAEo47b/t/8zML3n/7f/MzgFQJ4zSM9CUJYnIAIQBBgB"
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.40.0\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"aws.log.stream.names\":\"otel-rt-logs\",\"deployment.environment.name\":\"bedrock-agentcore:default\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"cloud.provider\":\"aws\",\"cloud.region\":\"us-west-2\",\"telemetry.auto.version\":\"0.17.0-aws\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"aws.service.type\":\"gen_ai_agent\"}},\"scope\":{\"name\":\"strands.telemetry.tracer\"},\"timeUnixNano\":1786555414476887232,\"observedTimeUnixNano\":1786555419396909949,\"severityNumber\":9,\"severityText\":\"\",\"body\":{\"input\":{\"messages\":[{\"role\":\"system\",\"content\":{\"content\":\"[{\\\"text\\\": \\\"\\\\n                You are a helpful assistant. Use tools when appropriate.\\\\n            \\\"}]\"}},{\"role\":\"user\",\"content\":{\"content\":\"[{\\\"text\\\": \\\"Name a primary color.\\\"}]\"}}]},\"output\":{\"messages\":[{\"role\":\"assistant\",\"content\":{\"finish_reason\":\"end_turn\",\"message\":\"[{\\\"text\\\": \\\"A primary color is **red**.\\\\n\\\\nThe three primary colors are red, blue, and yellow (in traditional color theory) or red, green, and blue (in the RGB/additive color model used for light).\\\"}]\"}}]}},\"attributes\":{\"session.id\":\"7f983b9f-9569-4a4d-bdc2-5c997ff346dd\",\"event.name\":\"strands.telemetry.tracer\"},\"flags\":1,\"traceId\":\"6a7cac0e3fa42bfe5437eef070d1231c\",\"spanId\":\"627f6364bb0599fa\"}"
+      },
+      {
+        "field": "sessionId",
+        "value": "7f983b9f-9569-4a4d-bdc2-5c997ff346dd"
+      },
+      {
+        "field": "traceId",
+        "value": "6a7cac0e3fa42bfe5437eef070d1231c"
+      },
+      {
+        "field": "spanId",
+        "value": "627f6364bb0599fa"
+      },
+      {
+        "field": "@ptr",
+        "value": "CssBCo8BCkw2ODUxOTc3MDg2ODc6L2F3cy9iZWRyb2NrLWFnZW50Y29yZS9ydW50aW1lcy9hc2RmX015QWdlbnQtM3M1YXh2QkM2US1ERUZBVUxUEAAaJGY2ZGY3NDIyLWVlZTQtNDhkNS05NDg3LTE0NTZkYjdkZGE1YiIOCICYk5r/MxDn16zD/zNA0cHR4dszSAASNRoYAgah79P0AAAABj7klGgABqfKwVAAAAdCIAEovO6AuP8zMM3vgLj/MzgFQKovSNk7UMkjIAIQAhgB"
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.40.0\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"aws.log.stream.names\":\"otel-rt-logs\",\"deployment.environment.name\":\"bedrock-agentcore:default\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"cloud.provider\":\"aws\",\"cloud.region\":\"us-west-2\",\"telemetry.auto.version\":\"0.17.0-aws\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"aws.service.type\":\"gen_ai_agent\"}},\"scope\":{\"name\":\"strands.telemetry.tracer\"},\"timeUnixNano\":1786555414477366577,\"observedTimeUnixNano\":1786555419397161059,\"severityNumber\":9,\"severityText\":\"\",\"body\":{\"input\":{\"messages\":[{\"role\":\"system\",\"content\":\"\\n                You are a helpful assistant. Use tools when appropriate.\\n            \"},{\"role\":\"user\",\"content\":{\"content\":\"[{\\\"text\\\": \\\"Name a primary color.\\\"}]\"}}]},\"output\":{\"messages\":[{\"role\":\"assistant\",\"content\":{\"message\":\"A primary color is **red**.\\n\\nThe three primary colors are red, blue, and yellow (in traditional color theory) or red, green, and blue (in the RGB/additive color model used for light).\\n\",\"finish_reason\":\"end_turn\"}}]}},\"attributes\":{\"session.id\":\"7f983b9f-9569-4a4d-bdc2-5c997ff346dd\",\"event.name\":\"strands.telemetry.tracer\"},\"flags\":1,\"traceId\":\"6a7cac0e3fa42bfe5437eef070d1231c\",\"spanId\":\"00821fcc8a234519\"}"
+      },
+      {
+        "field": "sessionId",
+        "value": "7f983b9f-9569-4a4d-bdc2-5c997ff346dd"
+      },
+      {
+        "field": "traceId",
+        "value": "6a7cac0e3fa42bfe5437eef070d1231c"
+      },
+      {
+        "field": "spanId",
+        "value": "00821fcc8a234519"
+      },
+      {
+        "field": "@ptr",
+        "value": "CssBCo8BCkw2ODUxOTc3MDg2ODc6L2F3cy9iZWRyb2NrLWFnZW50Y29yZS9ydW50aW1lcy9hc2RmX015QWdlbnQtM3M1YXh2QkM2US1ERUZBVUxUEAAaJGY2ZGY3NDIyLWVlZTQtNDhkNS05NDg3LTE0NTZkYjdkZGE1YiIOCICYk5r/MxDn16zD/zNA0cHR4dszSAASNRoYAgah79P0AAAABj7klGgABqfKwVAAAAdCIAEovO6AuP8zMM3vgLj/MzgFQKovSNk7UMkjIAIQBBgB"
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.40.0\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"aws.log.stream.names\":\"otel-rt-logs\",\"deployment.environment.name\":\"bedrock-agentcore:default\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"cloud.provider\":\"aws\",\"cloud.region\":\"us-west-2\",\"telemetry.auto.version\":\"0.17.0-aws\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"aws.service.type\":\"gen_ai_agent\"}},\"scope\":{\"name\":\"strands.telemetry.tracer\"},\"timeUnixNano\":1786555414477214324,\"observedTimeUnixNano\":1786555419397054030,\"severityNumber\":9,\"severityText\":\"\",\"body\":{\"input\":{\"messages\":[{\"role\":\"user\",\"content\":{\"content\":\"[{\\\"text\\\": \\\"Name a primary color.\\\"}]\"}}]}},\"attributes\":{\"session.id\":\"7f983b9f-9569-4a4d-bdc2-5c997ff346dd\",\"event.name\":\"strands.telemetry.tracer\"},\"flags\":1,\"traceId\":\"6a7cac0e3fa42bfe5437eef070d1231c\",\"spanId\":\"e90c8e0cb4712af5\"}"
+      },
+      {
+        "field": "sessionId",
+        "value": "7f983b9f-9569-4a4d-bdc2-5c997ff346dd"
+      },
+      {
+        "field": "traceId",
+        "value": "6a7cac0e3fa42bfe5437eef070d1231c"
+      },
+      {
+        "field": "spanId",
+        "value": "e90c8e0cb4712af5"
+      },
+      {
+        "field": "@ptr",
+        "value": "CssBCo8BCkw2ODUxOTc3MDg2ODc6L2F3cy9iZWRyb2NrLWFnZW50Y29yZS9ydW50aW1lcy9hc2RmX015QWdlbnQtM3M1YXh2QkM2US1ERUZBVUxUEAAaJGY2ZGY3NDIyLWVlZTQtNDhkNS05NDg3LTE0NTZkYjdkZGE1YiIOCICYk5r/MxDn16zD/zNA0cHR4dszSAASNRoYAgah79P0AAAABj7klGgABqfKwVAAAAdCIAEovO6AuP8zMM3vgLj/MzgFQKovSNk7UMkjIAIQAxgB"
+      }
+    ]
+  ],
+  "statistics": {
+    "recordsMatched": 9,
+    "recordsScanned": 72,
+    "estimatedRecordsSkipped": 3,
+    "bytesScanned": 68886,
+    "estimatedBytesSkipped": 349,
+    "logGroupsScanned": 1
+  },
+  "status": "Complete"
+}

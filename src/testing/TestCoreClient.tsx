@@ -110,8 +110,12 @@ import type {
   CoreEvalClient,
   CreateDatasetInput,
   CreateOnlineEvalInput,
+  EvaluateInput,
+  EvaluateResult,
   GetBatchEvaluationResult,
+  GetTracesInput,
   LlmAsAJudgeUpdate,
+  SessionTrace,
   StartBatchEvaluationInput,
   UpdateOnlineEvalInput,
 } from "../handlers/eval/types";
@@ -1222,6 +1226,12 @@ export class TestEvalClient implements CoreEvalClient {
   private batchEvalResults: BatchEvaluationResultEntry[] = [];
   private batchEvalResultsError?: unknown;
   private startBatchEvalResponse: StartBatchEvaluationResponse = DEFAULT_START_BATCH_EVAL_RESPONSE;
+  private getTracesResponse: SessionTrace[] = [];
+  private evaluateResponse: EvaluateResult = {
+    sessionsRequested: 0,
+    sessionsEvaluated: 0,
+    results: [],
+  };
   private error?: Error;
 
   // setListResponse sets what listEvaluators resolves to (when not erroring).
@@ -1466,6 +1476,31 @@ export class TestEvalClient implements CoreEvalClient {
     this.calls.push({ method: "startBatchEvaluation", args: [input, options] });
     if (this.error) throw this.error;
     return this.startBatchEvalResponse;
+  }
+
+  // setGetTracesResponse sets what getTracesForAgent resolves to (when not
+  // erroring).
+  setGetTracesResponse(traces: SessionTrace[]): this {
+    this.getTracesResponse = traces;
+    return this;
+  }
+
+  // setEvaluateResponse sets what evaluate resolves to (when not erroring).
+  setEvaluateResponse(response: EvaluateResult): this {
+    this.evaluateResponse = response;
+    return this;
+  }
+
+  async getTracesForAgent(input: GetTracesInput, options: CoreOptions): Promise<SessionTrace[]> {
+    this.calls.push({ method: "getTracesForAgent", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.getTracesResponse;
+  }
+
+  async evaluate(input: EvaluateInput, options: CoreOptions): Promise<EvaluateResult> {
+    this.calls.push({ method: "evaluate", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.evaluateResponse;
   }
 
   async createOnlineEvaluationConfig(
