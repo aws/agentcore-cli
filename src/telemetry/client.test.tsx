@@ -71,8 +71,6 @@ describe("DefaultTelemetryClient", () => {
 
     expect(fileSystemSink.getName()).toBe("FileSystemSink");
 
-    const { installationId } = await globalConfigAccessor.get();
-
     const auditContents = await readFile(auditFilePath, "utf8");
 
     const entries = auditContents
@@ -80,23 +78,12 @@ describe("DefaultTelemetryClient", () => {
       .split("\n")
       .map((line) => JSON.parse(line));
 
-    const resourceAttributes = {
-      "service.name": "agentcore-cli",
-      "service.version": PACKAGE_VERSION,
-      "agentcore-cli.installation_id": installationId,
-      "agentcore-cli.session_id": sessionId,
-      "os.type": os.type(),
-      "os.version": os.release(),
-      "host.arch": os.arch(),
-      "node.version": process.version,
-    };
-
     expect(entries).toEqual([
       {
         metricName: "cli.command_run",
         value: 123,
         attrs: {
-          ...resourceAttributes,
+          ...sinkResourceAttributes,
           exit_reason: "success",
           command_path: "/agentcore",
           is_tui: false,
@@ -106,7 +93,7 @@ describe("DefaultTelemetryClient", () => {
         metricName: "cli.command_run",
         value: 456,
         attrs: {
-          ...resourceAttributes,
+          ...sinkResourceAttributes,
           exit_reason: "failure",
           command_path: "/agentcore",
           is_tui: false,
