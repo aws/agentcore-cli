@@ -79,6 +79,25 @@ describe("Gateway invoke response output", () => {
     expect(stderr.bytes()).toHaveLength(0);
   });
 
+  test.each([204, 205])("allows HTTP %s without a content type on a TTY", async (statusCode) => {
+    const stdout = capture();
+    const stderr = capture();
+    Object.defineProperty(stdout.stream, "isTTY", { value: true });
+
+    await writeGatewayInvokeResponse(
+      response({
+        statusCode,
+        contentType: "",
+        body: body(),
+      }),
+      { stdout: stdout.stream, stderr: stderr.stream },
+    );
+
+    expect(stdout.bytes()).toHaveLength(0);
+    expect(stderr.bytes().toString()).toContain(`status=${statusCode} content-type=-`);
+    expect(stderr.bytes().toString()).toContain("complete=true bytes=0");
+  });
+
   test("preserves partial output and reports a sanitized stream failure", async () => {
     const stdout = capture();
     const stderr = capture();

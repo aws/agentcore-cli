@@ -2,6 +2,7 @@ import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 
 export type StreamingResponse = {
+  statusCode?: number;
   contentType: string;
   body: AsyncIterable<Uint8Array>;
 };
@@ -127,6 +128,8 @@ export async function writeStreamingResponse<T extends StreamingResponse>(
     output.outputFile === undefined &&
     !output.json &&
     output.stdout.isTTY &&
+    response.statusCode !== 204 &&
+    response.statusCode !== 205 &&
     classifyStreamingResponse(response.contentType) === "binary"
   ) {
     await writeChunk(output.stderr, writer.summary(response, 0, false), output.signal, writer.fail);
