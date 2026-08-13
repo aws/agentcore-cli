@@ -164,6 +164,7 @@ type GatewayInvokeConsoleProps = ScreenProps & {
 };
 
 function GatewayInvokeConsole({ ctx, core, gatewayId, initialContext }: GatewayInvokeConsoleProps) {
+  const navigate = useNavigate();
   const opts = coreOptsFromCtx(ctx);
   const { columns, rows } = useWindowSize();
   const [targetGatewayId, setTargetGatewayId] = useState(gatewayId);
@@ -384,7 +385,7 @@ function GatewayInvokeConsole({ ctx, core, gatewayId, initialContext }: GatewayI
       }
       if (key.escape) {
         if (abortRef.current) abortRef.current.abort();
-        else setPickingGateway(true);
+        else navigate(invokePath());
         return;
       }
       const view = scrollRef.current;

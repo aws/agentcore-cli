@@ -99,6 +99,21 @@ describe("Gateway invoke routing", () => {
     pendingScreen.unmount();
     await waitFor(() => signal!.aborted);
   });
+
+  test("idle Escape returns through the invoke picker to the Gateway menu", async () => {
+    const core = new TestCoreClient();
+    core.gateway.setGetResponse(gatewayDetail()).setListResponse({ items: [gatewaySummary()] });
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "Ready");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "choose a Gateway to invoke");
+    await waitForText(screen.lastFrame, "checkout-gateway");
+    expect(screen.lastFrame()).toContain("checkout-gateway");
+
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "inspect AgentCore Gateways");
+  });
 });
 
 describe("Gateway invoke JSON console", () => {
