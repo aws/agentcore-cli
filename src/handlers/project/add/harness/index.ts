@@ -146,11 +146,15 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
       };
 
       const project = ctx.require(ProjectKey);
-      for await (const event of config.projectManager.add(project, "harness", harnessConfig)) {
+      for await (const event of config.projectManager.addResource(
+        project,
+        "harness",
+        harnessConfig,
+      )) {
         config.io.stderr.write(`${event.message}\n`);
       }
 
-      config.io.stderr.write(`added harness '${flags["name"]}' to '${project.name}'`);
+      config.io.stderr.write(`added harness '${flags["name"]}' to '${project.name}'\n`);
     },
   });
 
@@ -207,7 +211,12 @@ function toTool(tool: SdkHarnessTool): HarnessTool {
     return {
       type: tool.type,
       name: tool.name,
-      config: { remoteMcp: { url: c.remoteMcp.url!, headers: c.remoteMcp.headers } },
+      config: {
+        remoteMcp: {
+          url: requireField(c.remoteMcp.url, "remoteMcp.url"),
+          headers: c.remoteMcp.headers,
+        },
+      },
     };
   }
   if ("agentCoreBrowser" in c && c.agentCoreBrowser) {
@@ -221,7 +230,11 @@ function toTool(tool: SdkHarnessTool): HarnessTool {
     return {
       type: tool.type,
       name: tool.name,
-      config: { agentCoreGateway: { gatewayArn: c.agentCoreGateway.gatewayArn! } },
+      config: {
+        agentCoreGateway: {
+          gatewayArn: requireField(c.agentCoreGateway.gatewayArn, "agentCoreGateway.gatewayArn"),
+        },
+      },
     };
   }
   if ("inlineFunction" in c && c.inlineFunction) {
@@ -230,7 +243,7 @@ function toTool(tool: SdkHarnessTool): HarnessTool {
       name: tool.name,
       config: {
         inlineFunction: {
-          description: c.inlineFunction.description!,
+          description: requireField(c.inlineFunction.description, "inlineFunction.description"),
           inputSchema: c.inlineFunction.inputSchema as Record<string, unknown>,
         },
       },
@@ -256,14 +269,20 @@ function toSkill(skill: SdkHarnessSkill): HarnessSkill {
     return { path: skill.path };
   }
   if ("s3" in skill && skill.s3) {
-    return { s3Uri: skill.s3.uri! };
+    return { s3Uri: requireField(skill.s3.uri, "skill.s3.uri") };
   }
   if ("git" in skill && skill.git) {
     return {
-      gitUrl: skill.git.url!,
+      gitUrl: requireField(skill.git.url, "skill.git.url"),
       path: skill.git.path,
       auth: skill.git.auth
-        ? { credentialName: skill.git.auth.credentialArn!, username: skill.git.auth.username }
+        ? {
+            credentialName: requireField(
+              skill.git.auth.credentialArn,
+              "skill.git.auth.credentialArn",
+            ),
+            username: skill.git.auth.username,
+          }
         : undefined,
     };
   }
@@ -360,8 +379,11 @@ function toEnvironment(env: HarnessEnvironmentProviderRequest) {
     networkMode: net?.networkMode as "PUBLIC" | "VPC" | undefined,
     networkConfig: net?.networkModeConfig
       ? {
-          subnets: net.networkModeConfig.subnets!,
-          securityGroups: net.networkModeConfig.securityGroups!,
+          subnets: requireField(net.networkModeConfig.subnets, "networkConfiguration.subnets"),
+          securityGroups: requireField(
+            net.networkModeConfig.securityGroups,
+            "networkConfiguration.securityGroups",
+          ),
         }
       : undefined,
     lifecycleConfig: rt.lifecycleConfiguration
@@ -372,20 +394,36 @@ function toEnvironment(env: HarnessEnvironmentProviderRequest) {
       : undefined,
     sessionStoragePath:
       sessionStorage && "sessionStorage" in sessionStorage
-        ? sessionStorage.sessionStorage!.mountPath!
+        ? requireField(
+            ("sessionStorage" in sessionStorage ? sessionStorage.sessionStorage : undefined)
+              ?.mountPath,
+            "sessionStorage.mountPath",
+          )
         : undefined,
     efsAccessPoints:
       efsAccessPoints.length > 0
         ? efsAccessPoints.map((f) => {
-            const efs = "efsAccessPoint" in f ? f.efsAccessPoint! : undefined;
-            return { accessPointArn: efs!.accessPointArn!, mountPath: efs!.mountPath! };
+            const efs = requireField(
+              "efsAccessPoint" in f ? f.efsAccessPoint : undefined,
+              "efsAccessPoint",
+            );
+            return {
+              accessPointArn: requireField(efs.accessPointArn, "efsAccessPoint.accessPointArn"),
+              mountPath: requireField(efs.mountPath, "efsAccessPoint.mountPath"),
+            };
           })
         : undefined,
     s3AccessPoints:
       s3AccessPoints.length > 0
         ? s3AccessPoints.map((f) => {
-            const s3 = "s3FilesAccessPoint" in f ? f.s3FilesAccessPoint! : undefined;
-            return { accessPointArn: s3!.accessPointArn!, mountPath: s3!.mountPath! };
+            const s3 = requireField(
+              "s3FilesAccessPoint" in f ? f.s3FilesAccessPoint : undefined,
+              "s3FilesAccessPoint",
+            );
+            return {
+              accessPointArn: requireField(s3.accessPointArn, "s3FilesAccessPoint.accessPointArn"),
+              mountPath: requireField(s3.mountPath, "s3FilesAccessPoint.mountPath"),
+            };
           })
         : undefined,
   };
@@ -394,7 +432,18 @@ function toEnvironment(env: HarnessEnvironmentProviderRequest) {
 /** Decomposes the SDK's environment artifact tagged union into flat HarnessSpec fields. */
 function toEnvironmentArtifact(artifact: HarnessEnvironmentArtifact) {
   if ("containerConfiguration" in artifact && artifact.containerConfiguration) {
-    return { containerUri: artifact.containerConfiguration.containerUri! };
+    return {
+      containerUri: requireField(
+        artifact.containerConfiguration.containerUri,
+        "containerConfiguration.containerUri",
+      ),
+    };
   }
   throw new InputValidationError("Unrecognized environment artifact variant");
+}
+
+/** Validates a required field is present, throwing with context instead of crashing opaquely. */
+function requireField<T>(value: T | undefined | null, field: string): T {
+  if (value == null) throw new InputValidationError(`${field} is required`);
+  return value;
 }

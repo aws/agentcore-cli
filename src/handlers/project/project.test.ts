@@ -48,6 +48,15 @@ afterEach(async () => {
   );
 });
 
+/** Scaffolds a project and cds into it so withProject resolves it. */
+async function inProject(name = "TestProject"): Promise<string> {
+  const directory = await inTempDirectory();
+  await run(["create", "--name", name, "--skip-install", "--skip-git"]);
+  const projectRoot = join(directory, name);
+  process.chdir(projectRoot);
+  return projectRoot;
+}
+
 describe("project create", () => {
   test("scaffolds the project into a fresh directory named for the project", async () => {
     const directory = await inTempDirectory();
@@ -100,12 +109,6 @@ describe("project create", () => {
 });
 
 describe("project add harness", () => {
-  async function scaffoldProject() {
-    const directory = await inTempDirectory();
-    await run(["create", "--name", "TestProject", "--skip-install", "--skip-git"]);
-    process.chdir(join(directory, "TestProject"));
-  }
-
   test.each([
     ["minimal — name only", ["--name", "my-agent"]],
     [
@@ -298,7 +301,7 @@ describe("project add harness", () => {
       ["--name", "x", "--max-iterations", "10", "--max-tokens", "4096", "--timeout-seconds", "60"],
     ],
   ])("%s", async (_label, flags) => {
-    await scaffoldProject();
+    await inProject();
     // TODO: update to verify that the project updates.
     await expect(run(["add", "harness", ...flags])).rejects.toThrow("not yet implemented");
   });
@@ -345,26 +348,21 @@ describe("project add harness", () => {
       ],
     ],
   ])("%s", async (_label, flags) => {
-    await scaffoldProject();
+    await inProject();
     await expect(run(["add", "harness", ...flags])).rejects.toBeInstanceOf(InputValidationError);
   });
 });
 
 describe("project build", () => {
-  // Scaffolds a project, then runs from inside it so withProject resolves it.
-  async function inProject(): Promise<string> {
-    const directory = await inTempDirectory();
-    await run(["create", "--name", "MyAgent", "--skip-install", "--skip-git"]);
-
-    const projectRoot = join(directory, "MyAgent");
+  async function inBuildableProject(): Promise<string> {
+    const projectRoot = await inProject("MyAgent");
     // create --skip-install leaves no node_modules, which build requires.
     await mkdir(join(projectRoot, "agentcore", "cdk", "node_modules"), { recursive: true });
-    process.chdir(projectRoot);
     return projectRoot;
   }
 
   test("synthesizes the CDK app of the enclosing project", async () => {
-    const projectRoot = await inProject();
+    const projectRoot = await inBuildableProject();
     const { io, core } = await run(["build"]);
 
     expect(core.projectCommands).toEqual([
@@ -378,7 +376,7 @@ describe("project build", () => {
   });
 
   test("resolves the project from a nested directory", async () => {
-    const projectRoot = await inProject();
+    const projectRoot = await inBuildableProject();
     process.chdir(join(projectRoot, "app", "hello-world"));
 
     const { core } = await run(["build"]);
@@ -394,7 +392,7 @@ describe("project build", () => {
   });
 
   test("fails when the CDK dependencies have not been installed", async () => {
-    const projectRoot = await inProject();
+    const projectRoot = await inBuildableProject();
     await rm(join(projectRoot, "agentcore", "cdk", "node_modules"), { recursive: true });
 
     await expect(run(["build"])).rejects.toThrow(/npm install/);

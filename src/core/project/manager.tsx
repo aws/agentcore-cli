@@ -131,12 +131,12 @@ export class FsProjectManager implements ProjectManager {
   }
 
   // eslint-disable-next-line require-yield
-  public async *add<TResource extends ProjectResource>(
+  public async *addResource<TResource extends ProjectResource>(
     _project: Project,
     _resourceType: TResource,
     _resourceConfig: ProjectResourceConfig<TResource>,
   ): AsyncGenerator<ProjectEvent, Project> {
-    throw new NotImplementedError("FsProjectManager.add is not yet implemented");
+    throw new NotImplementedError("FsProjectManager.addResource is not yet implemented");
   }
 
   public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {

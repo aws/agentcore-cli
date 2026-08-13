@@ -66,7 +66,7 @@ export interface ProjectManager {
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;
 
   /** Add a resource to an existing AgentCore project. */
-  add<TResource extends ProjectResource>(
+  addResource<TResource extends ProjectResource>(
     project: Project,
     resourceType: TResource,
     resourceConfig: ProjectResourceConfig<TResource>,
