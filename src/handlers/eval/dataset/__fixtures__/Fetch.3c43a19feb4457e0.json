@@ -1,0 +1,5 @@
+{
+  "status": 200,
+  "statusText": "OK",
+  "body": "{\"exampleId\":\"e2df86f5-3690-4188-a88e-5ec07d2af0f1\",\"assertions\":[\"The response includes the shipping status.\"],\"scenario_id\":\"shipped-order\",\"expected_trajectory\":[\"lookup_order\"],\"turns\":[{\"input\":\"Where is order 12345?\",\"expectedResponse\":\"Order 12345 has shipped with UPS and arrives on July 23, 2026.\"}]}\n{\"exampleId\":\"234641cb-b348-452a-996d-693587439911\",\"assertions\":[\"The response states that the order was not found.\"],\"scenario_id\":\"unknown-order\",\"expected_trajectory\":[\"lookup_order\"],\"turns\":[{\"input\":\"Where is order 99999?\",\"expectedResponse\":\"I could not find order 99999. Please verify the order number.\"}]}"
+}

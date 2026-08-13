@@ -2,6 +2,9 @@ import {
   CreateGatewayCommand,
   CreateGatewayRuleCommand,
   CreateGatewayTargetCommand,
+  DeleteGatewayCommand,
+  DeleteGatewayRuleCommand,
+  DeleteGatewayTargetCommand,
   GetGatewayCommand,
   GetGatewayRuleCommand,
   GetGatewayTargetCommand,
@@ -15,6 +18,9 @@ import {
   type CreateGatewayResponse,
   type CreateGatewayRuleResponse,
   type CreateGatewayTargetResponse,
+  type DeleteGatewayResponse,
+  type DeleteGatewayRuleResponse,
+  type DeleteGatewayTargetResponse,
   type GetGatewayResponse,
   type GetGatewayRuleResponse,
   type GetGatewayTargetResponse,
@@ -155,6 +161,12 @@ export class GatewayClient implements CoreGatewayClient {
       .send(new ListGatewaysCommand({ nextToken, maxResults }));
   }
 
+  async deleteGateway(id: string, options: CoreOptions): Promise<DeleteGatewayResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new DeleteGatewayCommand({ gatewayIdentifier: id }));
+  }
+
   async getGatewayTarget(
     gatewayId: string,
     targetId: string,
@@ -255,6 +267,19 @@ export class GatewayClient implements CoreGatewayClient {
     return this.updateTarget(patch, options, true);
   }
 
+  async deleteGatewayTarget(
+    gatewayId: string,
+    targetId: string,
+    options: CoreOptions,
+  ): Promise<DeleteGatewayTargetResponse> {
+    return this.clients.control(toClientConfig(options)).send(
+      new DeleteGatewayTargetCommand({
+        gatewayIdentifier: gatewayId,
+        targetId,
+      }),
+    );
+  }
+
   async getGatewayRule(
     gatewayId: string,
     ruleId: string,
@@ -295,6 +320,19 @@ export class GatewayClient implements CoreGatewayClient {
     options: CoreOptions,
   ): Promise<UpdateGatewayRuleResponse> {
     return this.clients.control(toClientConfig(options)).send(new UpdateGatewayRuleCommand(input));
+  }
+
+  async deleteGatewayRule(
+    gatewayId: string,
+    ruleId: string,
+    options: CoreOptions,
+  ): Promise<DeleteGatewayRuleResponse> {
+    return this.clients.control(toClientConfig(options)).send(
+      new DeleteGatewayRuleCommand({
+        gatewayIdentifier: gatewayId,
+        ruleId,
+      }),
+    );
   }
 
   private async updateTarget(

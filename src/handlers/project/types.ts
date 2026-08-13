@@ -1,4 +1,5 @@
 import { HarnessSpecSchema } from "../../projectSchemas/harness";
+import type { ManagedBy } from "../../projectSchemas/project";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import type z from "zod";
 
@@ -45,6 +46,8 @@ export type Project = {
   name: string;
   /** Absolute path to the project root (the parent of agentcore/). */
   rootPath: string;
+  /** The infrastructure backend that owns the project's deployable artifacts. */
+  managedBy: ManagedBy;
   /** The runtimes registered in agentcore.json. */
   runtimes: ProjectRuntime[];
 };
@@ -55,6 +58,9 @@ export type Project = {
 export interface ProjectManager {
   /** Scaffold a new AgentCore project from the given template. */
   create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project>;
+
+  /** Compile the project's CDK app and synthesize its CloudFormation templates. */
+  build(project: Project): AsyncGenerator<ProjectEvent, void>;
 
   /** Locate an existing AgentCore project. Returns undefined if no project can be found. */
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;

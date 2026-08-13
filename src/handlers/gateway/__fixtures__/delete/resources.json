@@ -1,0 +1,7 @@
+{
+  "gatewayId": "agentcore-cli-gateway-delete-fixture-oiemu02wfc",
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:685197708687:gateway/agentcore-cli-gateway-delete-fixture-oiemu02wfc",
+  "targetId": "JYNNGDZ42F",
+  "connectorId": "U9OM2R9I8Q",
+  "ruleId": "80e073e4-eb05-4371-8e6a-f4bde522699c"
+}

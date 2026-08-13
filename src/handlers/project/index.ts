@@ -1,4 +1,5 @@
 import { Router } from "../../router";
+import { withProject } from "../../middleware";
 import type { AppIO } from "../../io";
 import { createCreateProjectHandler } from "./create";
 import { createRemoveProjectHandler } from "./remove";
@@ -25,7 +26,13 @@ export function createProjectHandler(config: ProjectHandlerConfig): Router {
   project.handler(createDevProjectHandler());
   project.handler(createDeployProjectHandler());
   project.handler(createStatusProjectHandler());
-  project.handler(createBuildProjectHandler());
+  // withProject wraps only the commands that require an existing project, so
+  // `create` (which refuses to nest inside one) stays unaffected.
+  project.handler(
+    withProject({ projectManager: config.projectManager })(
+      createBuildProjectHandler({ projectManager: config.projectManager, io: config.io }),
+    ),
+  );
 
   return project;
 }

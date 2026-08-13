@@ -97,6 +97,7 @@ describe("FsProjectManager.create", () => {
         build: "CodeZip",
         entrypoint: "main.py",
         codeLocation: "app/hello-world",
+        runtimeVersion: "PYTHON_3_14",
       },
     ]);
     expect(await Bun.file(join(configDir, "aws-targets.json")).json()).toEqual([]);
@@ -217,6 +218,89 @@ describe("FsProjectManager.create", () => {
   });
 });
 
+describe("FsProjectManager.build", () => {
+  // build() requires the CDK app's node_modules; create() with skipInstall
+  // never produces them, so tests stub the directory in.
+  async function scaffolded(
+    subject: FsProjectManager,
+    directory: string,
+    withDependencies = true,
+  ): Promise<Project> {
+    const { project } = await runCreate(subject, {
+      name: "example",
+      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      skipInstall: true,
+      skipGit: true,
+    });
+    if (withDependencies) {
+      await mkdir(join(directory, "example", "agentcore", "cdk", "node_modules"), {
+        recursive: true,
+      });
+    }
+    return project;
+  }
+
+  async function drain(generator: AsyncGenerator<ProjectEvent, void>): Promise<ProjectEvent[]> {
+    const events: ProjectEvent[] = [];
+    for await (const event of generator) events.push(event);
+    return events;
+  }
+
+  test("compiles and synthesizes via the generated cdk script", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands } = manager();
+    const project = await scaffolded(subject, directory);
+    commands.length = 0; // discard create()'s commands
+
+    const events = await drain(subject.build(project));
+
+    expect(commands).toEqual([
+      {
+        command: ["npm", "run", "cdk", "--", "synth", "--quiet"],
+        cwd: join(directory, "example", "agentcore", "cdk"),
+      },
+    ]);
+    expect(events).toEqual([{ message: "Synthesizing CloudFormation templates" }]);
+  });
+
+  test("fails actionably when the CDK dependencies are missing", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands } = manager();
+    const project = await scaffolded(subject, directory, false);
+    commands.length = 0;
+
+    await expect(drain(subject.build(project))).rejects.toThrow(/npm install/);
+    expect(commands).toEqual([]);
+  });
+
+  test("refuses a project managed by a backend it cannot build", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands } = manager();
+    const project = await scaffolded(subject, directory);
+    commands.length = 0;
+
+    // CDK is the only backend today; the cast stands in for a future one.
+    const foreign = { ...project, managedBy: "Terraform" as Project["managedBy"] };
+    await expect(drain(subject.build(foreign))).rejects.toThrow(/unsupported backend: Terraform/);
+    expect(commands).toEqual([]);
+  });
+
+  test("propagates a synthesis failure", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject } = manager();
+    const project = await scaffolded(subject, directory);
+    const failing = new FsProjectManager({
+      logger: createSilentLogger(),
+      runner: async () => {
+        throw new Error("cdk synth exploded");
+      },
+      checkTool: async () => {},
+    });
+
+    await expect(drain(failing.build(project))).rejects.toThrow("cdk synth exploded");
+  });
+});
+
 describe("FsProjectManager.resolve", () => {
   test("round-trips a project it just created", async () => {
     const root = await inTempDirectory();
@@ -228,6 +312,7 @@ describe("FsProjectManager.resolve", () => {
 
     expect(resolved?.name).toBe("example");
     expect(resolved?.rootPath).toBe(join(root, "example"));
+    expect(resolved?.managedBy).toBe("CDK");
     expect(resolved?.runtimes).toHaveLength(1);
   });
 

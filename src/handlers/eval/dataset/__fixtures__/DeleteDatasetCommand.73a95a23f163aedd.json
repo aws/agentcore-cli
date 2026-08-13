@@ -1,9 +1,0 @@
-{
-  "datasetArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:dataset/agentcore_cli_dataset_fixture-l9ZqTR71Kx",
-  "datasetId": "agentcore_cli_dataset_fixture-l9ZqTR71Kx",
-  "status": "DELETING",
-  "datasetVersion": "DRAFT",
-  "updatedAt": {
-    "$date": "2026-08-04T20:48:02.805Z"
-  }
-}

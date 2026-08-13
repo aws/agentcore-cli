@@ -1,5 +1,8 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
+  DeleteGatewayCommand,
+  DeleteGatewayRuleCommand,
+  DeleteGatewayTargetCommand,
   GetGatewayCommand,
   GetGatewayTargetCommand,
   ListGatewayTargetsCommand,
@@ -268,6 +271,30 @@ function target(): GetGatewayTargetResponse {
     metadataConfiguration: { allowedRequestHeaders: ["x-request-id"] },
   } as unknown as GetGatewayTargetResponse;
 }
+
+test("maps Gateway, Target, and Rule selectors to their delete commands", async () => {
+  const { client, commands } = recordingGatewayClient([{}, {}, {}]);
+
+  await client.deleteGateway("gateway-1", OPTIONS);
+  await client.deleteGatewayTarget("gateway-1", "target-1", OPTIONS);
+  await client.deleteGatewayRule("gateway-1", "rule-1", OPTIONS);
+
+  expect(commands).toHaveLength(3);
+  expect(commands[0]).toBeInstanceOf(DeleteGatewayCommand);
+  expect((commands[0] as DeleteGatewayCommand).input).toEqual({
+    gatewayIdentifier: "gateway-1",
+  });
+  expect(commands[1]).toBeInstanceOf(DeleteGatewayTargetCommand);
+  expect((commands[1] as DeleteGatewayTargetCommand).input).toEqual({
+    gatewayIdentifier: "gateway-1",
+    targetId: "target-1",
+  });
+  expect(commands[2]).toBeInstanceOf(DeleteGatewayRuleCommand);
+  expect((commands[2] as DeleteGatewayRuleCommand).input).toEqual({
+    gatewayIdentifier: "gateway-1",
+    ruleId: "rule-1",
+  });
+});
 
 function recordingGatewayClient(responses: unknown[]): {
   client: GatewayClient;

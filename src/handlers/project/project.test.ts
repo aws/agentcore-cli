@@ -1,5 +1,5 @@
 import { afterEach, test, expect, describe } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createRootHandler } from "../index";
@@ -23,7 +23,7 @@ async function run(args: string[]) {
   return { io, core };
 }
 
-describe.each(["remove", "dev", "deploy", "status", "build"])("project %s", (command) => {
+describe.each(["remove", "dev", "deploy", "status"])("project %s", (command) => {
   test("throws because it is not implemented yet", async () => {
     await expect(run([command])).rejects.toThrow(/not implemented/);
   });
@@ -336,5 +336,56 @@ describe("project add harness", () => {
   ])("%s", async (_label, flags) => {
     await scaffoldProject();
     await expect(run(["add", "harness", ...flags])).rejects.toBeInstanceOf(InputValidationError);
+  });
+});
+
+describe("project build", () => {
+  // Scaffolds a project, then runs from inside it so withProject resolves it.
+  async function inProject(): Promise<string> {
+    const directory = await inTempDirectory();
+    await run(["create", "--name", "MyAgent", "--skip-install", "--skip-git"]);
+
+    const projectRoot = join(directory, "MyAgent");
+    // create --skip-install leaves no node_modules, which build requires.
+    await mkdir(join(projectRoot, "agentcore", "cdk", "node_modules"), { recursive: true });
+    process.chdir(projectRoot);
+    return projectRoot;
+  }
+
+  test("synthesizes the CDK app of the enclosing project", async () => {
+    const projectRoot = await inProject();
+    const { io, core } = await run(["build"]);
+
+    expect(core.projectCommands).toEqual([
+      {
+        command: ["npm", "run", "cdk", "--", "synth", "--quiet"],
+        cwd: join(projectRoot, "agentcore", "cdk"),
+      },
+    ]);
+    expect(io.stderr()).toContain("Synthesizing CloudFormation templates");
+    expect(io.stderr()).toContain("Built project 'MyAgent'");
+  });
+
+  test("resolves the project from a nested directory", async () => {
+    const projectRoot = await inProject();
+    process.chdir(join(projectRoot, "app", "hello-world"));
+
+    const { core } = await run(["build"]);
+
+    expect(core.projectCommands.map(({ cwd }) => cwd)).toEqual([
+      join(projectRoot, "agentcore", "cdk"),
+    ]);
+  });
+
+  test("fails with actionable guidance outside a project", async () => {
+    await inTempDirectory();
+    await expect(run(["build"])).rejects.toThrow(/No AgentCore project found/);
+  });
+
+  test("fails when the CDK dependencies have not been installed", async () => {
+    const projectRoot = await inProject();
+    await rm(join(projectRoot, "agentcore", "cdk", "node_modules"), { recursive: true });
+
+    await expect(run(["build"])).rejects.toThrow(/npm install/);
   });
 });

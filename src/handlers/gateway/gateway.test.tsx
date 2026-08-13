@@ -64,6 +64,7 @@ describe("gateway command hierarchy", () => {
       "update",
       "get",
       "list",
+      "delete",
       "target",
       "connector",
       "rule",
@@ -73,18 +74,21 @@ describe("gateway command hierarchy", () => {
       "update",
       "get",
       "list",
+      "delete",
     ]);
     expect(connector?.children().map((child) => child.name())).toEqual([
       "create",
       "update",
       "get",
       "list",
+      "delete",
     ]);
     expect(rule?.children().map((child) => child.name())).toEqual([
       "create",
       "update",
       "get",
       "list",
+      "delete",
     ]);
   });
 

@@ -142,6 +142,7 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
         efsAccessPoints: env?.efsAccessPoints,
         s3AccessPoints: env?.s3AccessPoints,
         containerUri: artifact?.containerUri,
+        dockerfile: flags["dockerfile"],
       };
 
       const project = ctx.require(ProjectKey);

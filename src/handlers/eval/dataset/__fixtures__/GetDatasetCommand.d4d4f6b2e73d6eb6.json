@@ -1,0 +1,20 @@
+{
+  "datasetArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:dataset/agentcore_cli_dataset_fixture-jzVpQaA5It",
+  "datasetId": "agentcore_cli_dataset_fixture-jzVpQaA5It",
+  "datasetVersion": "1",
+  "datasetName": "agentcore_cli_dataset_fixture",
+  "status": "ACTIVE",
+  "schemaType": "AGENTCORE_EVALUATION_PREDEFINED_V1",
+  "exampleCount": 2,
+  "createdAt": {
+    "$date": "2026-08-07T19:02:41.330Z"
+  },
+  "updatedAt": {
+    "$date": "2026-08-07T19:03:12.548Z"
+  },
+  "description": "Recorded fixture for the dataset commands",
+  "downloadUrl": "https://agentcoredatasets685197708687-284077270265-us-west-2-an.s3.us-west-2.amazonaws.com/685197708687/datasets/agentcore_cli_dataset_fixture-jzVpQaA5It/versions/0000000001/dataset.jsonl?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEJP%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLXdlc3QtMiJGMEQCIHR0WWqYSWqarnJM32OwCnjhfkTaf69m4edNGFMXe763AiAOERClyuMMz%2BbmJSvFv%2BoZ0SigCoGBvSJ1bU3JeTz%2F2yryBAhcEAAaDDI4NDA3NzI3MDI2NSIMXhacolbR57Pg97c2Ks8EQaC8PBD7E78CWGeY4JEqqYezN%2FVd1J6xcdO3w0X8GDP6AB3%2F5vVdQmXpZFCY3hM%2BEM%2BDxUo9RbROo9o%2Bp%2BSxcDdKC99OaYkQn0f1%2F%2F7ZCpd9GaDjGQYNv3NVNNiZqZUDzkpnudpS2l4byDhkftl9XrO%2BrAtf9g09QSIruNQoEnCemkv8BYwRLJ9A1fGzWLzoEZYAE%2FRyfrYRcj0yaK2zR04mTcL%2FNOiqfrdsrp24fC6b3lsCTV0PFeXQ1X2FrHT3DeG9mtHJJgGPmjUUcwJ3rYyKlgob%2FwDmUJ3C5MNkjmU3bKg0Vm9xZ27yvK%2BxgBC8UZUxjws7hSD2dKqISg8kfdlLyrnehzU7fUyoW2ysopYn%2BtXnKLN4K9oVHLIR6oKt%2FFJOSsapD%2BVZyH7n5YV2pf%2BryBgQbxpEaukY9IGqQbz99mdI8z70nuhDCQAIgQ2QZwhS5fEY7ysKUW%2Fncqd9Fpr4buaa1BhsPyOsRzVhIpxUU%2FrNZqN7WazknJw%2FY11anljRSPzrhaJD8lHivDLB9O0nrEKCR90nrDhGlnv9DU2hTEYw8bDtWhtHWgWARjJhb74ctpSGxMn7mHT6A2QkCkT8eFIPRUHUzCr97J0DfReZc%2BJLbOLEsJB39vtu9tRWTCeaTH6QbRQis%2FLJwCFZ8mbaP6zUCdjYVytTUKgS3knE1qFyn0kNYqdmK4xaCnIfwYKdQ9COR5WtQ%2FJowlQYF0H9cJwuQ8ktadx3ramoMBxEHbHlLTJ7PCa5rx8nVnpTROOBFbUwUkHkMdd0wwtBMKTJ2NMGOqQB%2FI%2FeqOo0lup99%2B8Qv9b%2BnGfPmhgo%2BMmeZnTcIZxBdyevyTqyMPs9ZidZl2uWyEEHflMriN2VXFCsOb3RWYtemPvY16A6u5Bzj6s3TsuvCKJNce%2FbqbdOI5m8fbkzSihZxq1JydlY8m8o%2BuGdWfXWNiaCqjH0%2B%2Ft5OGkZ2lrwGuGPypQ8mFV9R5U5T5R%2F7JqRLyBV5qUZKpTjlsixLXnrxp0t7uM%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260807T190317Z&X-Amz-SignedHeaders=host&X-Amz-Credential=ASIAUEJCTET4SMRXICVN%2F20260807%2Fus-west-2%2Fs3%2Faws4_request&X-Amz-Expires=300&X-Amz-Signature=2ddab3cbeccfdcaf9dc7350897b4471499163764b0f565821da6a58a117a4791",
+  "downloadUrlExpiresAt": {
+    "$date": "2026-08-07T19:08:17.513Z"
+  }
+}

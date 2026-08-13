@@ -1,0 +1,9 @@
+{
+  "datasetArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:dataset/agentcore_cli_dataset_fixture-qhP7ipAkaf",
+  "datasetId": "agentcore_cli_dataset_fixture-qhP7ipAkaf",
+  "status": "UPDATING",
+  "datasetVersion": "1",
+  "updatedAt": {
+    "$date": "2026-08-13T14:22:36.056Z"
+  }
+}

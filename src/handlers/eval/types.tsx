@@ -1,22 +1,31 @@
 import type {
+  CreateConfigurationBundleRequest,
+  CreateConfigurationBundleResponse,
   CreateDatasetRequest,
   CreateDatasetResponse,
   CreateDatasetVersionResponse,
   CreateEvaluatorRequest,
   CreateEvaluatorResponse,
   CreateOnlineEvaluationConfigResponse,
+  DeleteConfigurationBundleResponse,
   DeleteDatasetResponse,
   DeleteEvaluatorResponse,
   DeleteOnlineEvaluationConfigResponse,
+  GetConfigurationBundleResponse,
+  GetConfigurationBundleVersionResponse,
   GetDatasetResponse,
   GetEvaluatorResponse,
   GetOnlineEvaluationConfigResponse,
+  ListConfigurationBundlesResponse,
+  ListConfigurationBundleVersionsResponse,
   ListDatasetsResponse,
   ListEvaluatorsResponse,
   ListOnlineEvaluationConfigsResponse,
   DataSourceConfig,
   RatingScale,
   Rule,
+  UpdateConfigurationBundleRequest,
+  UpdateConfigurationBundleResponse,
   UpdateEvaluatorResponse,
   UpdateOnlineEvaluationConfigResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
@@ -172,6 +181,14 @@ export type RoleScopeWarning = {
 };
 
 export type CreateDatasetInput = CreateDatasetRequest;
+export type CreateConfigurationBundleInput = Pick<
+  CreateConfigurationBundleRequest,
+  "bundleName" | "components" | "kmsKeyArn"
+>;
+export type UpdateConfigurationBundleInput = Required<
+  Pick<UpdateConfigurationBundleRequest, "components" | "commitMessage" | "branchName">
+> &
+  Pick<UpdateConfigurationBundleRequest, "kmsKeyArn">;
 
 // StartBatchEvaluationInput is the CLI-facing shape for `batch-evaluation
 // evaluate`. Core turns `source` into the API's dataSourceConfig union and
@@ -184,6 +201,22 @@ export type StartBatchEvaluationInput = {
   // Already-parsed --ground-truth (SessionMetadataShape[]) → evaluationMetadata.
   groundTruth?: SessionMetadataShape[];
   kmsKeyArn?: string;
+};
+
+// DatasetUpdateResult reports what reconciling a DRAFT against a local file
+// changed. The counts are examples, not requests: each phase is batched to the
+// service's per-request limit.
+export type DatasetUpdateResult = {
+  datasetId: string;
+  added: number;
+  updated: number;
+  deleted: number;
+  unchanged: number;
+};
+
+export type DatasetUpdateProgressEvent = {
+  /** Human-readable description of the batch about to run. */
+  message: string;
 };
 
 // CoreEvalClient is the evaluator, online evaluation, and dataset surface the eval
@@ -270,6 +303,40 @@ export interface CoreEvalClient {
     options: CoreOptions,
   ): Promise<DeleteOnlineEvaluationConfigResponse>;
 
+  createConfigurationBundle(
+    input: CreateConfigurationBundleInput,
+    options: CoreOptions,
+  ): Promise<CreateConfigurationBundleResponse>;
+  // Omitting version returns the latest version on branchName; an explicit
+  // version selects the immutable version API.
+  getConfigurationBundle(
+    id: string,
+    version: string | undefined,
+    branchName: string,
+    options: CoreOptions,
+  ): Promise<GetConfigurationBundleResponse | GetConfigurationBundleVersionResponse>;
+  listConfigurationBundles(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListConfigurationBundlesResponse>;
+  // Updates are appended to the latest version on update.branchName.
+  updateConfigurationBundle(
+    id: string,
+    update: UpdateConfigurationBundleInput,
+    options: CoreOptions,
+  ): Promise<UpdateConfigurationBundleResponse>;
+  deleteConfigurationBundle(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteConfigurationBundleResponse>;
+  listConfigurationBundleVersions(
+    id: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListConfigurationBundleVersionsResponse>;
+
   // createDataset seeds a new dataset's DRAFT from `source`, which is required.
   // `schemaType` governs the structure of every example and is immutable after creation.
   // The response reports status CREATING — ingestion is asynchronous, and the dataset is not
@@ -302,4 +369,16 @@ export interface CoreEvalClient {
   // publishDataset freezes the current DRAFT as the next numbered version. The
   // DRAFT survives and stays editable, so publishing is additive
   publishDataset(id: string, options: CoreOptions): Promise<CreateDatasetVersionResponse>;
+  // updateDatasetExamples reconciles the dataset's DRAFT with `filePath`, adding,
+  // replacing, and removing examples so the DRAFT matches the file. Service-assigned
+  // ids for added examples are written back to `filePath`, which the next update
+  // needs to match those rows.
+  updateDatasetExamples(
+    id: string,
+    filePath: string,
+    options: CoreOptions,
+    signal?: AbortSignal,
+    // Called immediately before each mutation batch starts.
+    onProgress?: (event: DatasetUpdateProgressEvent) => void,
+  ): Promise<DatasetUpdateResult>;
 }

@@ -1,41 +1,60 @@
 import {
+  CreateConfigurationBundleCommand,
+  AddDatasetExamplesCommand,
   CreateDatasetCommand,
   CreateDatasetVersionCommand,
   CreateEvaluatorCommand,
   CreateOnlineEvaluationConfigCommand,
+  DeleteConfigurationBundleCommand,
   DeleteDatasetCommand,
+  DeleteDatasetExamplesCommand,
   DeleteEvaluatorCommand,
   DeleteOnlineEvaluationConfigCommand,
+  GetConfigurationBundleCommand,
+  GetConfigurationBundleVersionCommand,
   GetAgentRuntimeCommand,
   GetDatasetCommand,
   GetEvaluatorCommand,
   GetHarnessCommand,
   GetOnlineEvaluationConfigCommand,
+  ListConfigurationBundlesCommand,
+  ListConfigurationBundleVersionsCommand,
   ListDatasetsCommand,
   ListEvaluatorsCommand,
   ListOnlineEvaluationConfigsCommand,
+  UpdateConfigurationBundleCommand,
+  UpdateDatasetExamplesCommand,
   UpdateEvaluatorCommand,
   UpdateOnlineEvaluationConfigCommand,
+  type CreateConfigurationBundleResponse,
+  type AddDatasetExamplesResponse,
+  type BedrockAgentCoreControlClient,
   type CreateDatasetResponse,
   type CreateDatasetVersionResponse,
   type CreateEvaluatorRequest,
   type CreateEvaluatorResponse,
   type CreateOnlineEvaluationConfigResponse,
+  type DeleteConfigurationBundleResponse,
   type DeleteDatasetResponse,
   type DeleteEvaluatorResponse,
   type DeleteOnlineEvaluationConfigResponse,
+  type DatasetStatus,
   type EvaluatorConfig,
+  type GetConfigurationBundleResponse,
+  type GetConfigurationBundleVersionResponse,
   type GetDatasetResponse,
   type GetEvaluatorResponse,
   type GetOnlineEvaluationConfigResponse,
+  type ListConfigurationBundlesResponse,
+  type ListConfigurationBundleVersionsResponse,
   type ListDatasetsResponse,
   type ListEvaluatorsResponse,
   type DataSourceConfig,
   type ListOnlineEvaluationConfigsResponse,
   type Rule,
+  type UpdateConfigurationBundleResponse,
   type UpdateEvaluatorResponse,
   type UpdateOnlineEvaluationConfigResponse,
-  type BedrockAgentCoreControlClient,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   GetBatchEvaluationCommand,
@@ -46,23 +65,38 @@ import {
   type DataSourceConfig as DataPlaneDataSourceConfig,
   type CloudWatchFilterConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
+import { randomUUID } from "node:crypto";
+import { basename, dirname, extname, join } from "node:path";
 import { Transform } from "node:stream";
-import { FileWriteError, InputValidationError, NetworkingError } from "../errors";
+import { setTimeout as sleep } from "node:timers/promises";
+import {
+  AgentCoreCLIError,
+  ERROR_SOURCE,
+  FileWriteError,
+  InputValidationError,
+  NetworkingError,
+} from "../errors";
 import type {
   BatchEvaluationDetail,
   CodeBasedUpdate,
+  DatasetUpdateProgressEvent,
+  DatasetUpdateResult,
   RoleScopeWarning,
   CoreEvalClient,
+  CreateConfigurationBundleInput,
   CreateDatasetInput,
   CreateOnlineEvalInput,
   GetBatchEvaluationResult,
   LlmAsAJudgeUpdate,
   SessionSourceValue,
   StartBatchEvaluationInput,
+  UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
 } from "../handlers/eval/types";
-import { atomicWriteStream } from "../io";
+import { atomicWrite, atomicWriteStream, readTextFile } from "../io";
 import { isTerminalStatus, readEvaluationResults } from "./batchEvaluationResults";
+import { applyExampleIds, diffExamples, indexRemoteById, parseJsonl } from "./datasetDiff";
+import type { Addition } from "./datasetDiff";
 import type { AwsClients, CoreFetch, CoreOptions } from "./types";
 import type { Logger } from "../logging";
 import { toClientConfig } from "./utils";
@@ -76,6 +110,17 @@ import {
 } from "./onlineEvalExecutionRole";
 
 const DEFAULT_ENDPOINT_QUALIFIER = "DEFAULT";
+const DATASET_EXAMPLES_BATCH_LIMIT = 1000;
+const DATASET_MUTATION_PAYLOAD_LIMIT_BYTES = 5 * 1024 * 1024;
+const DATASET_ACTIVE_TIMEOUT_MS = 60_000;
+const DATASET_ACTIVE_POLL_MS = 2_000;
+// Service permits modifications to following dataset statuses
+const ALLOWED_DATASET_STATUSES: ReadonlySet<DatasetStatus> = new Set([
+  "ACTIVE",
+  "CREATE_FAILED",
+  "UPDATE_FAILED",
+]);
+const RETRYABLE_DATASET_STATUSES: ReadonlySet<DatasetStatus> = new Set(["CREATING", "UPDATING"]);
 
 // noopLogger is the default for the optional logger arg so callers that don't
 // need batch-evaluation result-log diagnostics (e.g. dataset-only tests) can
@@ -601,6 +646,87 @@ export class EvalClient implements CoreEvalClient {
       .send(new DeleteOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }));
   }
 
+  async createConfigurationBundle(
+    input: CreateConfigurationBundleInput,
+    options: CoreOptions,
+  ): Promise<CreateConfigurationBundleResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new CreateConfigurationBundleCommand(input));
+  }
+
+  async getConfigurationBundle(
+    id: string,
+    version: string | undefined,
+    branchName: string,
+    options: CoreOptions,
+  ): Promise<GetConfigurationBundleResponse | GetConfigurationBundleVersionResponse> {
+    const control = this.clients.control(toClientConfig(options));
+    return version === undefined
+      ? control.send(new GetConfigurationBundleCommand({ bundleId: id, branchName }))
+      : control.send(
+          new GetConfigurationBundleVersionCommand({ bundleId: id, versionId: version }),
+        );
+  }
+
+  async listConfigurationBundles(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListConfigurationBundlesResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new ListConfigurationBundlesCommand({ nextToken, maxResults }));
+  }
+
+  async updateConfigurationBundle(
+    id: string,
+    update: UpdateConfigurationBundleInput,
+    options: CoreOptions,
+  ): Promise<UpdateConfigurationBundleResponse> {
+    const control = this.clients.control(toClientConfig(options));
+    const current = await control.send(
+      new GetConfigurationBundleCommand({ bundleId: id, branchName: update.branchName }),
+    );
+    if (!current.versionId) {
+      throw new NetworkingError(
+        `Configuration bundle "${id}" returned no latest version and cannot be updated`,
+        { meta: { bundleId: id } },
+      );
+    }
+
+    return control.send(
+      new UpdateConfigurationBundleCommand({
+        bundleId: id,
+        branchName: update.branchName,
+        components: update.components,
+        commitMessage: update.commitMessage,
+        kmsKeyArn: update.kmsKeyArn,
+        parentVersionIds: [current.versionId],
+      }),
+    );
+  }
+
+  async deleteConfigurationBundle(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteConfigurationBundleResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new DeleteConfigurationBundleCommand({ bundleId: id }));
+  }
+
+  async listConfigurationBundleVersions(
+    id: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListConfigurationBundleVersionsResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new ListConfigurationBundleVersionsCommand({ bundleId: id, nextToken, maxResults }));
+  }
+
   async createDataset(
     input: CreateDatasetInput,
     options: CoreOptions,
@@ -640,18 +766,7 @@ export class EvalClient implements CoreEvalClient {
       );
     }
 
-    let response: Response;
-    try {
-      response = await this.fetch(dataset.downloadUrl, { signal });
-    } catch (error) {
-      if (signal?.aborted) throw signal.reason ?? error;
-      throw error;
-    }
-    if (!response.ok) {
-      throw new NetworkingError(`Downloading dataset "${id}" failed with HTTP ${response.status}`, {
-        meta: { datasetId: id, status: response.status },
-      });
-    }
+    const response = await this.fetchDatasetDownload(id, dataset.downloadUrl, signal);
     if (!response.body) {
       throw new NetworkingError(`Dataset "${id}" download returned an empty response`, {
         meta: { datasetId: id },
@@ -698,6 +813,365 @@ export class EvalClient implements CoreEvalClient {
       .control(toClientConfig(options))
       .send(new CreateDatasetVersionCommand({ datasetId: id }));
   }
+
+  async updateDatasetExamples(
+    id: string,
+    filePath: string,
+    options: CoreOptions,
+    signal?: AbortSignal,
+    onProgress?: (event: DatasetUpdateProgressEvent) => void,
+  ): Promise<DatasetUpdateResult> {
+    const control = this.clients.control(toClientConfig(options));
+    const localText = await readLocalDatasetFile(filePath, signal);
+    const localExamples = parseJsonl(localText, "file-path");
+
+    const dataset = await control.send(new GetDatasetCommand({ datasetId: id }), {
+      abortSignal: signal,
+    });
+    const remoteText = await this.downloadDatasetDraftForDiff(id, dataset, signal);
+    const remoteExamples = parseRemoteDatasetExamples(remoteText);
+    const diff = diffExamples(localExamples, indexRemoteById(remoteExamples));
+
+    // Build every batch before mutating the remote draft so an oversized
+    // individual example cannot fail after earlier phases have already run.
+    const deleteBatches = buildDatasetExampleBatches({
+      items: diff.deleteIds,
+      payloadItem: (exampleId) => exampleId,
+      requestBody: (exampleIds, clientToken) => ({ datasetId: id, exampleIds, clientToken }),
+    });
+    const updateBatches = buildDatasetExampleBatches({
+      items: diff.updates,
+      payloadItem: (example) => example,
+      requestBody: (examples, clientToken) => ({ datasetId: id, examples, clientToken }),
+    });
+    const additionBatches = buildDatasetExampleBatches({
+      items: diff.additions,
+      payloadItem: (addition) => addition.content,
+      requestBody: (examples, clientToken) => ({
+        datasetId: id,
+        source: { inlineExamples: { examples } },
+        clientToken,
+      }),
+    });
+    const totalBatches = deleteBatches.length + updateBatches.length + additionBatches.length;
+    let nextBatch = 0;
+    const reportProgress = onProgress
+      ? () => {
+          nextBatch++;
+          onProgress({
+            message: `Applying update (batch ${nextBatch} of ${totalBatches})...`,
+          });
+        }
+      : undefined;
+
+    await runDatasetExampleBatches({
+      batches: deleteBatches,
+      datasetId: id,
+      control,
+      signal,
+      onBatchStart: reportProgress,
+      operation: (exampleIds, clientToken) =>
+        control.send(new DeleteDatasetExamplesCommand({ datasetId: id, exampleIds, clientToken }), {
+          abortSignal: signal,
+        }),
+    });
+
+    await runDatasetExampleBatches({
+      batches: updateBatches,
+      datasetId: id,
+      control,
+      signal,
+      onBatchStart: reportProgress,
+      operation: (examples, clientToken) =>
+        control.send(new UpdateDatasetExamplesCommand({ datasetId: id, examples, clientToken }), {
+          abortSignal: signal,
+        }),
+    });
+
+    const completedAdditions: Addition[] = [];
+    const assignedIds: string[] = [];
+    let expectedLocalText = localText;
+    let checkpointConflict: InputValidationError | undefined;
+    await runDatasetExampleBatches({
+      batches: additionBatches,
+      datasetId: id,
+      control,
+      signal,
+      onBatchStart: reportProgress,
+      operation: (additions, clientToken) =>
+        control.send(
+          new AddDatasetExamplesCommand({
+            datasetId: id,
+            source: {
+              inlineExamples: { examples: additions.map((addition) => addition.content) },
+            },
+            clientToken,
+          }),
+          { abortSignal: signal },
+        ),
+      afterOperation: async (additions, response: AddDatasetExamplesResponse): Promise<void> => {
+        completedAdditions.push(...additions);
+        assignedIds.push(...(response.exampleIds ?? []));
+        const nextLocalText = applyExampleIds(localExamples, completedAdditions, assignedIds);
+
+        const currentLocalText = await readTextFile(filePath);
+        if (currentLocalText !== expectedLocalText) {
+          const recoveryFilePath = datasetRecoveryFilePath(filePath);
+          try {
+            await atomicWrite(recoveryFilePath, nextLocalText);
+          } catch (error) {
+            throw new FileWriteError(
+              `Dataset "${id}" changed while the update was running and its recovered IDs ` +
+                `could not be written to ${recoveryFilePath}`,
+              {
+                cause: error,
+                meta: { datasetId: id, filePath, recoveryFilePath },
+              },
+            );
+          }
+          checkpointConflict = new InputValidationError(
+            `Dataset file "${filePath}" changed while the update was running. ` +
+              `The file was left untouched and the reconciled content was written to ` +
+              `"${recoveryFilePath}".`,
+            { meta: { datasetId: id, filePath, recoveryFilePath } },
+          );
+          return;
+        }
+
+        try {
+          // The remote request has already succeeded, so checkpoint its IDs even
+          // if cancellation arrives before the next poll or batch.
+          await atomicWrite(filePath, nextLocalText);
+          expectedLocalText = nextLocalText;
+        } catch (error) {
+          throw new FileWriteError(`Could not write dataset "${id}" to ${filePath}`, {
+            cause: error,
+            meta: { datasetId: id, filePath },
+          });
+        }
+      },
+      afterBatchSettled: async (): Promise<void> => {
+        if (checkpointConflict) throw checkpointConflict;
+      },
+    });
+
+    return {
+      datasetId: id,
+      added: diff.additions.length,
+      updated: diff.updates.length,
+      deleted: diff.deleteIds.length,
+      unchanged: diff.unchanged,
+    };
+  }
+
+  private async downloadDatasetDraftForDiff(
+    id: string,
+    dataset: GetDatasetResponse,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    if (!dataset.status || !ALLOWED_DATASET_STATUSES.has(dataset.status)) {
+      const status = dataset.status ?? "unknown";
+      const retry =
+        dataset.status && RETRYABLE_DATASET_STATUSES.has(dataset.status)
+          ? " Retry once its status is ACTIVE."
+          : "";
+      throw new NetworkingError(
+        `Dataset "${id}" cannot be updated with status ${status}.${retry}`,
+        { meta: { datasetId: id, datasetVersion: dataset.datasetVersion, status: dataset.status } },
+      );
+    }
+    if (!dataset.downloadUrl) {
+      if (dataset.exampleCount === 0) return "";
+      throw new NetworkingError(
+        `Dataset "${id}" has no downloadable DRAFT content yet (status ${dataset.status ?? "unknown"}); ` +
+          `retry once DRAFT content is available`,
+        { meta: { datasetId: id, datasetVersion: dataset.datasetVersion, status: dataset.status } },
+      );
+    }
+
+    return this.fetchDatasetDownload(id, dataset.downloadUrl, signal).then((response) =>
+      response.text(),
+    );
+  }
+
+  private async fetchDatasetDownload(
+    id: string,
+    downloadUrl: string,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    let response: Response;
+    try {
+      response = await this.fetch(downloadUrl, { signal });
+    } catch (error) {
+      if (signal?.aborted) throw signal.reason ?? error;
+      throw error;
+    }
+    if (!response.ok) {
+      throw new NetworkingError(`Downloading dataset "${id}" failed with HTTP ${response.status}`, {
+        meta: { datasetId: id, status: response.status },
+      });
+    }
+    return response;
+  }
+}
+
+async function readLocalDatasetFile(filePath: string, signal?: AbortSignal): Promise<string> {
+  try {
+    return await readTextFile(filePath, { signal });
+  } catch (error) {
+    if (signal?.aborted) throw signal.reason ?? error;
+    throw new InputValidationError(`could not read '--file-path' from file '${filePath}'`, {
+      cause: error,
+      meta: { filePath },
+    });
+  }
+}
+
+function datasetRecoveryFilePath(filePath: string): string {
+  const extension = extname(filePath);
+  const stem = basename(filePath, extension);
+  return join(
+    dirname(filePath),
+    `${stem}.agentcore-recovery-${randomUUID()}${extension || ".jsonl"}`,
+  );
+}
+
+function parseRemoteDatasetExamples(text: string): ReturnType<typeof parseJsonl> {
+  try {
+    return parseJsonl(text, "remote dataset");
+  } catch (error) {
+    // map back to AgentCoreCLIError, since this should be source: SERVICE, not USER
+    if (error instanceof InputValidationError) {
+      throw new AgentCoreCLIError(`Remote dataset DRAFT is invalid: ${error.message}`, {
+        cause: error,
+        source: ERROR_SOURCE.SERVICE,
+      });
+    }
+    throw error;
+  }
+}
+
+type DatasetExampleBatch<T> = {
+  items: T[];
+  clientToken: string;
+};
+
+function buildDatasetExampleBatches<T, P>(options: {
+  items: T[];
+  payloadItem: (item: T) => P;
+  requestBody: (items: P[], clientToken: string) => unknown;
+}): DatasetExampleBatch<T>[] {
+  const { items, payloadItem, requestBody } = options;
+  const batches: DatasetExampleBatch<T>[] = [];
+  let batch: DatasetExampleBatch<T> | undefined;
+  let batchBytes = 0;
+
+  for (const [index, item] of items.entries()) {
+    const itemBytes = encodedJsonBytes(payloadItem(item));
+    if (!batch) {
+      batch = { items: [], clientToken: randomUUID() };
+      batchBytes = encodedJsonBytes(requestBody([], batch.clientToken));
+    }
+
+    const separatorBytes = batch.items.length === 0 ? 0 : 1;
+    const exceedsCount = batch.items.length >= DATASET_EXAMPLES_BATCH_LIMIT;
+    const exceedsPayload =
+      batchBytes + separatorBytes + itemBytes > DATASET_MUTATION_PAYLOAD_LIMIT_BYTES;
+    if (exceedsCount || exceedsPayload) {
+      if (batch.items.length > 0) batches.push(batch);
+      batch = { items: [], clientToken: randomUUID() };
+      batchBytes = encodedJsonBytes(requestBody([], batch.clientToken));
+    }
+
+    const nextBatchBytes = batchBytes + (batch.items.length === 0 ? 0 : 1) + itemBytes;
+    if (nextBatchBytes > DATASET_MUTATION_PAYLOAD_LIMIT_BYTES) {
+      throw new InputValidationError(
+        `Dataset example ${index + 1} exceeds the 5 MB mutation request limit`,
+        {
+          meta: {
+            example: index + 1,
+            payloadBytes: nextBatchBytes,
+            payloadLimitBytes: DATASET_MUTATION_PAYLOAD_LIMIT_BYTES,
+          },
+        },
+      );
+    }
+
+    batch.items.push(item);
+    batchBytes = nextBatchBytes;
+  }
+
+  if (batch?.items.length) batches.push(batch);
+  return batches;
+}
+
+function encodedJsonBytes(value: unknown): number {
+  const json = JSON.stringify(value);
+  if (json === undefined) {
+    throw new InputValidationError("Dataset example cannot be serialized as JSON");
+  }
+  return Buffer.byteLength(json, "utf8");
+}
+
+async function runDatasetExampleBatches<T, R>(options: {
+  batches: DatasetExampleBatch<T>[];
+  datasetId: string;
+  control: BedrockAgentCoreControlClient;
+  signal?: AbortSignal;
+  onBatchStart?: () => void;
+  operation: (batch: T[], clientToken: string) => Promise<R>;
+  afterOperation?: (batch: T[], response: R) => Promise<void>;
+  afterBatchSettled?: (batch: T[], response: R) => Promise<void>;
+}): Promise<void> {
+  const {
+    batches,
+    datasetId,
+    control,
+    signal,
+    onBatchStart,
+    operation,
+    afterOperation,
+    afterBatchSettled,
+  } = options;
+  for (const batch of batches) {
+    signal?.throwIfAborted();
+    onBatchStart?.();
+    const response = await operation(batch.items, batch.clientToken);
+    await afterOperation?.(batch.items, response);
+    await waitForDatasetActive(control, datasetId, signal);
+    await afterBatchSettled?.(batch.items, response);
+  }
+}
+
+async function waitForDatasetActive(
+  control: BedrockAgentCoreControlClient,
+  datasetId: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < DATASET_ACTIVE_TIMEOUT_MS) {
+    signal?.throwIfAborted();
+    const dataset = await control.send(new GetDatasetCommand({ datasetId }), {
+      abortSignal: signal,
+    });
+    if (dataset.status === "ACTIVE") return;
+    if (dataset.status?.endsWith("_FAILED")) {
+      throw new NetworkingError(`Dataset entered failed state: ${dataset.status}`, {
+        meta: { datasetId, status: dataset.status },
+      });
+    }
+    try {
+      await sleep(DATASET_ACTIVE_POLL_MS, undefined, { signal });
+    } catch (error) {
+      if (signal?.aborted) throw signal.reason ?? error;
+      throw error;
+    }
+  }
+  throw new NetworkingError(
+    `Timed out waiting for dataset "${datasetId}" to become ACTIVE ` +
+      `(waited ${DATASET_ACTIVE_TIMEOUT_MS / 1000}s)`,
+    { meta: { datasetId } },
+  );
 }
 
 // endWithNewline appends a single trailing newline if the stream did not with one
