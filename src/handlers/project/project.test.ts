@@ -1,5 +1,5 @@
 import { afterEach, test, expect, describe } from "bun:test";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createRootHandler } from "../index";
@@ -10,10 +10,20 @@ import {
   testIO,
 } from "../../testing";
 import { InputValidationError } from "../../errors";
+import type { CdkEvent, CdkOperation } from "../../io";
 
-async function run(args: string[]) {
+// The synth command build and deploy both issue. --output pins the assembly to the
+// directory deploy reads, so cdk.json's own `output` cannot send the two apart.
+function SYNTH(cdkDir: string): string[] {
+  return ["npm", "run", "cdk", "--", "synth", "--quiet", "--output", join(cdkDir, "cdk.out")];
+}
+
+async function run(
+  args: string[],
+  onCdkOperation?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void,
+) {
   const io = testIO();
-  const core = new TestCoreClient();
+  const core = new TestCoreClient({ onCdkOperation });
   const root = createRootHandler(core, {
     io: io.io,
     globalConfigAccessor: new TestGlobalConfigAccessor(),
@@ -23,7 +33,7 @@ async function run(args: string[]) {
   return { io, core };
 }
 
-describe.each(["remove", "dev", "deploy", "status"])("project %s", (command) => {
+describe.each(["remove", "dev", "status"])("project %s", (command) => {
   test("throws because it is not implemented yet", async () => {
     await expect(run([command])).rejects.toThrow(/not implemented/);
   });
@@ -365,12 +375,8 @@ describe("project build", () => {
     const projectRoot = await inBuildableProject();
     const { io, core } = await run(["build"]);
 
-    expect(core.projectCommands).toEqual([
-      {
-        command: ["npm", "run", "cdk", "--", "synth", "--quiet"],
-        cwd: join(projectRoot, "agentcore", "cdk"),
-      },
-    ]);
+    const cdkDir = join(projectRoot, "agentcore", "cdk");
+    expect(core.projectCommands).toEqual([{ command: SYNTH(cdkDir), cwd: cdkDir }]);
     expect(io.stderr()).toContain("Synthesizing CloudFormation templates");
     expect(io.stderr()).toContain("Built project 'MyAgent'");
   });
@@ -396,5 +402,77 @@ describe("project build", () => {
     await rm(join(projectRoot, "agentcore", "cdk", "node_modules"), { recursive: true });
 
     await expect(run(["build"])).rejects.toThrow(/npm install/);
+  });
+});
+
+describe("project deploy", () => {
+  // Scaffolds a project with one deployment target, then runs from inside it so
+  // withProject resolves it. create() scaffolds an empty target list, which deploy
+  // refuses, so the file is filled in here.
+  async function inProject(): Promise<string> {
+    const directory = await inTempDirectory();
+    await run(["create", "--name", "MyAgent", "--skip-install", "--skip-git"]);
+
+    const projectRoot = join(directory, "MyAgent");
+    // create --skip-install leaves no node_modules, which the build step requires.
+    await mkdir(join(projectRoot, "agentcore", "cdk", "node_modules"), { recursive: true });
+    await writeFile(
+      join(projectRoot, "agentcore", "aws-targets.json"),
+      JSON.stringify([{ name: "default", account: "111122223333", region: "us-east-1" }]),
+    );
+    process.chdir(projectRoot);
+    return projectRoot;
+  }
+
+  test("synthesizes, bootstraps, and deploys the enclosing project", async () => {
+    const projectRoot = await inProject();
+    const { io, core } = await run(["deploy"]);
+
+    const cdkDir = join(projectRoot, "agentcore", "cdk");
+    // Synthesis shells out; bootstrap and deploy go through the CDK toolkit, which
+    // reads the assembly synthesis just wrote.
+    expect(core.projectCommands).toEqual([{ command: SYNTH(cdkDir), cwd: cdkDir }]);
+    const options = { assemblyDirectory: join(cdkDir, "cdk.out"), region: "us-east-1" };
+    expect(core.cdkRuns).toEqual([
+      { operation: { kind: "bootstrap", environments: ["aws://111122223333/us-east-1"] }, options },
+      { operation: { kind: "deploy" }, options },
+    ]);
+    expect(io.stderr()).toContain("Bootstrapping aws://111122223333/us-east-1");
+    expect(io.stderr()).toContain("Deploying stacks");
+    expect(io.stderr()).toContain("Deployed project 'MyAgent'");
+  });
+
+  test("--skip-bootstrap deploys without bootstrapping", async () => {
+    const projectRoot = await inProject();
+    const { io, core } = await run(["deploy", "--skip-bootstrap"]);
+
+    const cdkDir = join(projectRoot, "agentcore", "cdk");
+    expect(core.projectCommands).toEqual([{ command: SYNTH(cdkDir), cwd: cdkDir }]);
+    expect(core.cdkRuns.map(({ operation }) => operation)).toEqual([{ kind: "deploy" }]);
+    expect(io.stderr()).not.toContain("Bootstrapping");
+    expect(io.stderr()).toContain("Deployed project 'MyAgent'");
+  });
+
+  test("writes the CDK toolkit's own messages to stderr", async () => {
+    await inProject();
+    const { io } = await run(["deploy", "--skip-bootstrap"], (operation, emit) => {
+      if (operation.kind === "deploy") {
+        emit({ level: "info", message: "example-stack | 1/2 | CREATE_IN_PROGRESS" });
+      }
+    });
+
+    expect(io.stderr()).toContain("example-stack | 1/2 | CREATE_IN_PROGRESS\n");
+  });
+
+  test("fails with actionable guidance when no targets are configured", async () => {
+    const projectRoot = await inProject();
+    await writeFile(join(projectRoot, "agentcore", "aws-targets.json"), "[]");
+
+    await expect(run(["deploy"])).rejects.toThrow(/aws-targets\.json/);
+  });
+
+  test("fails with actionable guidance outside a project", async () => {
+    await inTempDirectory();
+    await expect(run(["deploy"])).rejects.toThrow(/No AgentCore project found/);
   });
 });

@@ -32,9 +32,21 @@ export type CreateProjectInput = {
   skipGit?: boolean;
 };
 
-/** A progress step reported while a long-running project operation runs. */
+/**
+ * A progress step reported while a long-running project operation runs, or a line
+ * of output from the tool it drives. One of the two is set per event: a step is
+ * this CLI's own wording, while output is forwarded as the tool phrased it.
+ */
 export type ProjectEvent = {
-  message: string;
+  message?: string;
+  output?: string;
+};
+
+export type DeployProjectOptions = {
+  /** The resolved AWS region, forwarded to the CDK subprocesses. */
+  region: string;
+  /** Skip bootstrapping the target environments before deploying. */
+  skipBootstrap: boolean;
 };
 
 export type ResolveProjectInput = {
@@ -61,6 +73,9 @@ export interface ProjectManager {
 
   /** Compile the project's CDK app and synthesize its CloudFormation templates. */
   build(project: Project): AsyncGenerator<ProjectEvent, void>;
+
+  /** Build the project, then deploy the synthesized stacks to its deployment targets. */
+  deploy(project: Project, options: DeployProjectOptions): AsyncGenerator<ProjectEvent, void>;
 
   /** Locate an existing AgentCore project. Returns undefined if no project can be found. */
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;

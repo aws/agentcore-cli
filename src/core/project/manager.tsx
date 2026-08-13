@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type {
   CreateProjectInput,
+  DeployProjectOptions,
   ResolveProjectInput,
   Project,
   ProjectManager,
@@ -13,13 +14,18 @@ import type { Logger } from "../../logging";
 import {
   FsReadWriteJson,
   requireTool,
+  runCdk,
   runProcess,
+  type CdkOperation,
+  type CdkRunner,
+  type CdkRunOptions,
   type ProcessRunner,
   type ReadWriteJson,
 } from "../../io";
 import { defaultSource, type AssetSource } from "./source";
 import { createProjectTreeFromTemplate, TEMPLATES } from "./templates";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
+import { AwsTargetsSchema, type AwsTarget } from "../../projectSchemas/aws-targets";
 import { enclosingProjectRoot } from "./fsUtils";
 import {
   DeserializationError,
@@ -28,10 +34,14 @@ import {
   ProjectStateError,
 } from "../../errors/errors";
 
+// Shown when aws-targets.json names no usable target, so the fix is on screen.
+const TARGETS_EXAMPLE = `[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]`;
+
 type ProjectManagerConfig = {
   logger: Logger;
   source?: AssetSource; // Bun executable or dist/assets depending on runtime
   runner?: ProcessRunner; // injectable so tests never spawn real processes
+  cdk?: CdkRunner; // injectable so tests never reach AWS
   checkTool?: typeof requireTool; // injectable so tests don't depend on the host's PATH
   json?: ReadWriteJson; // injectable so tests read fixtures instead of disk
 };
@@ -43,6 +53,7 @@ export class FsProjectManager implements ProjectManager {
   private readonly logger: Logger;
   private readonly source: AssetSource;
   private readonly runner: ProcessRunner;
+  private readonly cdk: CdkRunner;
   private readonly checkTool: typeof requireTool;
   private readonly json: ReadWriteJson;
 
@@ -50,6 +61,7 @@ export class FsProjectManager implements ProjectManager {
     this.logger = config.logger;
     this.source = config.source ?? defaultSource();
     this.runner = config.runner ?? runProcess;
+    this.cdk = config.cdk ?? runCdk;
     this.checkTool = config.checkTool ?? requireTool;
     this.json = config.json ?? new FsReadWriteJson({ logger: config.logger });
   }
@@ -174,8 +186,122 @@ export class FsProjectManager implements ProjectManager {
     // The generated package.json defines `cdk` as "npm run build && cdk", so this
     // single command compiles the app and then synthesizes it. Synthesis needs no
     // AWS credentials: each stack's environment comes from aws-targets.json.
+    //
+    // --output is passed explicitly rather than left to cdk.json, because deploy
+    // reads this directory back. A project that sets cdk.json's `output` would
+    // otherwise send synth somewhere deploy never looks, and deploy would ship
+    // whatever stale assembly it found there while reporting success.
     yield { message: "Synthesizing CloudFormation templates" };
-    await this.run(["npm", "run", "cdk", "--", "synth", "--quiet"], cdkDir);
+    await this.run(
+      ["npm", "run", "cdk", "--", "synth", "--quiet", "--output", this.assemblyPath(project)],
+      cdkDir,
+    );
+  }
+
+  // Where build writes the synthesized assembly and deploy reads it from. Both go
+  // through here so the two can never disagree about the location.
+  private assemblyPath(project: Project): string {
+    return join(project.rootPath, "agentcore", "cdk", "cdk.out");
+  }
+
+  public async *deploy(
+    project: Project,
+    options: DeployProjectOptions,
+  ): AsyncGenerator<ProjectEvent, void> {
+    // Dispatched the same way build is: the backend that owns the artifacts owns
+    // how they reach AWS.
+    switch (project.managedBy) {
+      case "CDK":
+        yield* this.deployWithCdk(project, options);
+        break;
+      default: {
+        // Exhaustiveness: a new ManagedBy member fails to compile until it is handled.
+        const unsupported: never = project.managedBy;
+        throw new ProjectStateError(
+          `project '${project.name}' declares an unsupported backend: ${String(unsupported)}`,
+        );
+      }
+    }
+  }
+
+  // Synthesizes, bootstraps each target environment, then deploys every stack.
+  private async *deployWithCdk(
+    project: Project,
+    options: DeployProjectOptions,
+  ): AsyncGenerator<ProjectEvent, void> {
+    // Every stack's environment comes from aws-targets.json, so an empty list means
+    // there is nowhere to deploy. Resolving an account from the active credentials
+    // would let deploy guess where the user's infrastructure belongs; name the file
+    // to fix instead, which also keeps deploy from depending on a working STS call.
+    //
+    // Read before synthesizing: the generated CDK app refuses to synth an empty
+    // list too, so checking first replaces its message with one naming the file to
+    // edit, and skips a synth that could not have produced anything deployable.
+    const targets = await this.readDeploymentTargets(project.rootPath);
+    if (targets.length === 0) {
+      throw new ProjectStateError(
+        `No deployment targets are configured for project '${project.name}'. ` +
+          `Add at least one to ${this.targetsPath(project.rootPath)}, e.g.:\n\n${TARGETS_EXAMPLE}`,
+      );
+    }
+
+    // Deploying exactly what was just synthesized keeps the two from drifting, and
+    // build's dependency check runs before anything touches AWS.
+    yield* this.buildWithCdk(project);
+
+    // build synthesized into cdk.out; deploy reads that assembly rather than
+    // re-synthesizing, so what reaches AWS is exactly what was synthesized.
+    const run = {
+      assemblyDirectory: this.assemblyPath(project),
+      region: options.region,
+    };
+
+    if (!options.skipBootstrap) {
+      // Bootstrap is idempotent and no-ops quickly on an already-current
+      // environment, so it runs every deploy rather than probing CloudFormation
+      // first. Targets often share an environment, so deduplicate first.
+      const environments = [
+        ...new Set(targets.map((target) => `aws://${target.account}/${target.region}`)),
+      ];
+      yield { message: `Bootstrapping ${environments.join(", ")}` };
+      yield* this.streamCdk({ kind: "bootstrap", environments }, run);
+    }
+
+    yield { message: "Deploying stacks" };
+    yield* this.streamCdk({ kind: "deploy" }, run);
+  }
+
+  // Drives a CDK operation, surfacing the toolkit's messages as project events and
+  // logging them. Anything below info stays in the debug log rather than on screen.
+  private async *streamCdk(
+    operation: CdkOperation,
+    options: CdkRunOptions,
+  ): AsyncGenerator<ProjectEvent, void> {
+    for await (const event of this.cdk(operation, options)) {
+      this.logger.debug(event.message);
+      if (event.level === "debug" || event.level === "trace") continue;
+      yield { output: event.message };
+    }
+  }
+
+  // Reads aws-targets.json, treating a missing file as empty and surfacing a parse
+  // failure as an actionable error that names the file rather than a Zod dump.
+  private async readDeploymentTargets(projectRoot: string): Promise<AwsTarget[]> {
+    const path = this.targetsPath(projectRoot);
+    if (!existsSync(path)) return [];
+    try {
+      return await this.json.read(path, AwsTargetsSchema);
+    } catch (cause) {
+      if (!(cause instanceof DeserializationError)) throw cause;
+      throw new ProjectStateError(
+        `${path} is not a valid list of deployment targets. Fix it, e.g.:\n\n${TARGETS_EXAMPLE}`,
+        { cause },
+      );
+    }
+  }
+
+  private targetsPath(projectRoot: string): string {
+    return join(projectRoot, "agentcore", "aws-targets.json");
   }
 
   // Runs a command with its output streamed to the file logger.

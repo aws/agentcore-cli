@@ -144,6 +144,7 @@ import type {
 import { isTerminalStatus } from "../core/batchEvaluationResults";
 import { abortable } from "../core/abortable";
 import type { CoreOptions } from "../core/types";
+import type { CdkEvent, CdkOperation, CdkRunOptions } from "../io";
 import type { ProjectManager } from "../handlers/project/types";
 import type { Logger } from "../logging";
 import { createSilentLogger } from "./logging";
@@ -1177,6 +1178,12 @@ export class TestGatewayClient implements CoreGatewayClient {
 
 type TestCoreClientOptions = {
   logger?: Logger;
+  /**
+   * Called in place of driving the CDK toolkit, so a test can stand in for it:
+   * `emit` yields a toolkit message to the operation's consumer, and throwing
+   * fails the operation.
+   */
+  onCdkOperation?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void;
 };
 
 export class TestIdentityClient implements CoreIdentityClient {
@@ -1945,11 +1952,32 @@ export class TestCoreClient implements Core {
   // recorded instead of spawned so tests stay fast and hermetic.
   readonly projectCommands: { command: string[]; cwd: string }[] = [];
 
+  // CDK operations the project manager would have driven, recorded instead of
+  // run so tests never reach AWS.
+  readonly cdkRuns: { operation: CdkOperation; options: CdkRunOptions }[] = [];
+
   constructor(options?: TestCoreClientOptions) {
+    // A generator cannot be an arrow function, so close over the array instead of
+    // reaching for `this` inside it.
+    const cdkRuns = this.cdkRuns;
     this.projectManager = new FsProjectManager({
       logger: options?.logger ?? createSilentLogger(),
       runner: async (command, { cwd }) => {
         this.projectCommands.push({ command, cwd });
+      },
+      cdk: async function* (operation, runOptions) {
+        cdkRuns.push({ operation, options: runOptions });
+        const emitted: CdkEvent[] = [];
+        let failure: unknown;
+        try {
+          options?.onCdkOperation?.(operation, (event) => emitted.push(event));
+        } catch (error) {
+          failure = error;
+        }
+        // Emit before throwing, as the real runner does: the output explaining a
+        // failure is only useful if the consumer sees it.
+        yield* emitted;
+        if (failure) throw failure;
       },
       checkTool: async () => {}, // CI hosts don't have uv installed
     });

@@ -5,6 +5,13 @@ export {
   type AtomicWriteStreamSource,
 } from "./atomicWrite";
 export {
+  runCdk,
+  type CdkEvent,
+  type CdkOperation,
+  type CdkRunner,
+  type CdkRunOptions,
+} from "./cdk";
+export {
   MissingToolError,
   ProcessFailedError,
   requireTool,

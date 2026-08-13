@@ -11,6 +11,7 @@ import {
   type ProjectEvent,
 } from "../../handlers/project/types";
 import { createSilentLogger } from "../../testing";
+import type { CdkEvent, CdkOperation, CdkRunOptions } from "../../io";
 
 const originalCwd = process.cwd();
 const tempDirectories: string[] = [];
@@ -254,10 +255,22 @@ describe("FsProjectManager.build", () => {
 
     const events = await drain(subject.build(project));
 
+    const cdkDir = join(directory, "example", "agentcore", "cdk");
     expect(commands).toEqual([
       {
-        command: ["npm", "run", "cdk", "--", "synth", "--quiet"],
-        cwd: join(directory, "example", "agentcore", "cdk"),
+        // --output pins the assembly where deploy looks for it, so a project that
+        // sets cdk.json's `output` cannot send synth somewhere deploy never reads.
+        command: [
+          "npm",
+          "run",
+          "cdk",
+          "--",
+          "synth",
+          "--quiet",
+          "--output",
+          join(cdkDir, "cdk.out"),
+        ],
+        cwd: cdkDir,
       },
     ]);
     expect(events).toEqual([{ message: "Synthesizing CloudFormation templates" }]);
@@ -298,6 +311,289 @@ describe("FsProjectManager.build", () => {
     });
 
     await expect(drain(failing.build(project))).rejects.toThrow("cdk synth exploded");
+  });
+});
+
+describe("FsProjectManager.deploy", () => {
+  // Synth is pinned to the directory deploy reads, so both name it the same way.
+  function synthCommand(directory: string): string[] {
+    return [
+      "npm",
+      "run",
+      "cdk",
+      "--",
+      "synth",
+      "--quiet",
+      "--output",
+      assemblyDirectory(directory),
+    ];
+  }
+  const REGION = "us-west-2";
+
+  type RecordedCommand = { command: string[]; cwd: string };
+  type RecordedCdkRun = { operation: CdkOperation; options: CdkRunOptions };
+
+  // Like manager(), but also records the CDK operations the manager drives, and lets
+  // a test supply the events one of them emits (and the failure it ends with).
+  function deployManager(
+    onCdk?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void,
+  ): { manager: FsProjectManager; commands: RecordedCommand[]; runs: RecordedCdkRun[] } {
+    const commands: RecordedCommand[] = [];
+    const runs: RecordedCdkRun[] = [];
+    return {
+      manager: new FsProjectManager({
+        logger: createSilentLogger(),
+        runner: async (command, { cwd }) => {
+          commands.push({ command, cwd });
+        },
+        cdk: async function* (operation, options) {
+          runs.push({ operation, options });
+          const events: CdkEvent[] = [];
+          let failure: unknown;
+          try {
+            onCdk?.(operation, (event) => events.push(event));
+          } catch (error) {
+            failure = error;
+          }
+          // Emit before throwing, as the real runner does: the output explaining a
+          // failure is only useful if the consumer sees it.
+          yield* events;
+          if (failure) throw failure;
+        },
+        checkTool: async () => {},
+      }),
+      commands,
+      runs,
+    };
+  }
+
+  // The assembly directory every operation reads, which build synthesized into.
+  function assemblyDirectory(directory: string): string {
+    return join(directory, "example", "agentcore", "cdk", "cdk.out");
+  }
+
+  // deploy() builds first, so the CDK app's node_modules must exist; create() with
+  // skipInstall never produces them. Targets overwrite the empty list create()
+  // scaffolds; null leaves that empty list in place, and a string is written verbatim
+  // so a test can supply invalid JSON.
+  async function scaffolded(
+    subject: FsProjectManager,
+    directory: string,
+    targets: unknown = [{ name: "default", account: "111122223333", region: "us-east-1" }],
+  ): Promise<Project> {
+    const { project } = await runCreate(subject, {
+      name: "example",
+      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      skipInstall: true,
+      skipGit: true,
+    });
+    await mkdir(join(directory, "example", "agentcore", "cdk", "node_modules"), {
+      recursive: true,
+    });
+    if (targets !== null) {
+      await writeFile(
+        join(directory, "example", "agentcore", "aws-targets.json"),
+        typeof targets === "string" ? targets : JSON.stringify(targets),
+      );
+    }
+    return project;
+  }
+
+  async function drain(generator: AsyncGenerator<ProjectEvent, void>): Promise<ProjectEvent[]> {
+    const events: ProjectEvent[] = [];
+    for await (const event of generator) events.push(event);
+    return events;
+  }
+
+  test("synthesizes, bootstraps the target environment, then deploys every stack", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands, runs } = deployManager();
+    const project = await scaffolded(subject, directory);
+    commands.length = 0; // discard create()'s commands
+    const cdkDir = join(directory, "example", "agentcore", "cdk");
+    const options = { assemblyDirectory: assemblyDirectory(directory), region: REGION };
+
+    const events = await drain(subject.deploy(project, { region: REGION, skipBootstrap: false }));
+
+    // Only synthesis shells out; everything that reaches AWS goes through the toolkit.
+    expect(commands).toEqual([{ command: synthCommand(directory), cwd: cdkDir }]);
+    expect(runs).toEqual([
+      { operation: { kind: "bootstrap", environments: ["aws://111122223333/us-east-1"] }, options },
+      { operation: { kind: "deploy" }, options },
+    ]);
+    expect(events).toEqual([
+      { message: "Synthesizing CloudFormation templates" },
+      { message: "Bootstrapping aws://111122223333/us-east-1" },
+      { message: "Deploying stacks" },
+    ]);
+  });
+
+  test("synthesizes into the same directory the toolkit deploys from", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands, runs } = deployManager();
+    const project = await scaffolded(subject, directory);
+    commands.length = 0;
+
+    await drain(subject.deploy(project, { region: REGION, skipBootstrap: true }));
+
+    // The invariant behind passing --output at all: whatever synth was told to write
+    // is exactly what the toolkit is handed. Left to cdk.json's `output`, synth could
+    // write elsewhere and deploy would ship a stale assembly while reporting success.
+    const assembly = assemblyDirectory(directory);
+    expect(commands[0]?.command.at(-1)).toBe(assembly);
+    expect(runs.map(({ options }) => options.assemblyDirectory)).toEqual([assembly]);
+  });
+
+  test("bootstraps each distinct environment once, however many targets share it", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, runs } = deployManager();
+    const project = await scaffolded(subject, directory, [
+      { name: "alpha", account: "111122223333", region: "us-east-1" },
+      { name: "beta", account: "111122223333", region: "us-east-1" }, // same environment
+      { name: "gamma", account: "444455556666", region: "eu-west-1" },
+    ]);
+
+    await drain(subject.deploy(project, { region: REGION, skipBootstrap: false }));
+
+    expect(
+      runs.flatMap(({ operation }) =>
+        operation.kind === "bootstrap" ? operation.environments : [],
+      ),
+    ).toEqual(["aws://111122223333/us-east-1", "aws://444455556666/eu-west-1"]);
+  });
+
+  test("skips bootstrapping when asked, and still deploys", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands, runs } = deployManager();
+    const project = await scaffolded(subject, directory);
+    commands.length = 0;
+    const cdkDir = join(directory, "example", "agentcore", "cdk");
+
+    const events = await drain(subject.deploy(project, { region: REGION, skipBootstrap: true }));
+
+    expect(commands).toEqual([{ command: synthCommand(directory), cwd: cdkDir }]);
+    expect(runs.map(({ operation }) => operation)).toEqual([{ kind: "deploy" }]);
+    expect(events).not.toContainEqual({ message: "Bootstrapping aws://111122223333/us-east-1" });
+  });
+
+  test("names the file to fix when no deployment targets are configured", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands, runs } = deployManager();
+    // create() scaffolds an empty list, which is what a fresh project has.
+    const project = await scaffolded(subject, directory, null);
+    commands.length = 0;
+
+    await expect(
+      drain(subject.deploy(project, { region: REGION, skipBootstrap: false })),
+    ).rejects.toThrow(/aws-targets\.json/);
+    // Nothing ran at all: a deploy with nowhere to go does not even synthesize.
+    expect(commands).toEqual([]);
+    expect(runs).toEqual([]);
+  });
+
+  test("reports a malformed aws-targets.json as an actionable error", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject } = deployManager();
+    const project = await scaffolded(subject, directory, "{ not a target list");
+
+    await expect(
+      drain(subject.deploy(project, { region: REGION, skipBootstrap: false })),
+    ).rejects.toThrow(/is not a valid list of deployment targets/);
+  });
+
+  test("rejects targets that omit a required field", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject } = deployManager();
+    const project = await scaffolded(subject, directory, [
+      { name: "default", region: "us-east-1" },
+    ]);
+
+    await expect(
+      drain(subject.deploy(project, { region: REGION, skipBootstrap: false })),
+    ).rejects.toThrow(/is not a valid list of deployment targets/);
+  });
+
+  test("streams the CDK toolkit's messages as they arrive", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject } = deployManager((operation, emit) => {
+      if (operation.kind !== "deploy") return;
+      emit({ level: "info", message: "example-stack: creating CloudFormation changeset..." });
+      emit({ level: "result", message: "example-stack: deployed" });
+    });
+    const project = await scaffolded(subject, directory);
+
+    const events = await drain(subject.deploy(project, { region: REGION, skipBootstrap: true }));
+
+    expect(events.map((event) => event.output).filter(Boolean)).toEqual([
+      "example-stack: creating CloudFormation changeset...",
+      "example-stack: deployed",
+    ]);
+  });
+
+  test("keeps the toolkit's debug and trace messages off screen", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject } = deployManager((operation, emit) => {
+      if (operation.kind !== "deploy") return;
+      emit({ level: "debug", message: "resolved 3 environments" });
+      emit({ level: "trace", message: "sdk call: DescribeStacks" });
+      emit({ level: "warn", message: "example-stack: no changes" });
+    });
+    const project = await scaffolded(subject, directory);
+
+    const events = await drain(subject.deploy(project, { region: REGION, skipBootstrap: true }));
+
+    // The suppressed ones are still in the debug log; only the warning is surfaced.
+    expect(events.map((event) => event.output).filter(Boolean)).toEqual([
+      "example-stack: no changes",
+    ]);
+  });
+
+  test("yields the output that explains a failure before propagating it", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject } = deployManager((operation, emit) => {
+      if (operation.kind !== "deploy") return;
+      emit({ level: "error", message: "example-stack: CREATE_FAILED" });
+      throw new Error("cdk deploy exploded");
+    });
+    const project = await scaffolded(subject, directory);
+
+    const events: ProjectEvent[] = [];
+    const generator = subject.deploy(project, { region: REGION, skipBootstrap: true });
+    await expect(
+      (async () => {
+        for await (const event of generator) events.push(event);
+      })(),
+    ).rejects.toThrow("cdk deploy exploded");
+    expect(events).toContainEqual({ output: "example-stack: CREATE_FAILED" });
+  });
+
+  test("refuses a project managed by a backend it cannot deploy", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands, runs } = deployManager();
+    const project = await scaffolded(subject, directory);
+    commands.length = 0;
+
+    // CDK is the only backend today; the cast stands in for a future one.
+    const foreign = { ...project, managedBy: "Terraform" as Project["managedBy"] };
+    await expect(
+      drain(subject.deploy(foreign, { region: REGION, skipBootstrap: false })),
+    ).rejects.toThrow(/unsupported backend: Terraform/);
+    expect(commands).toEqual([]);
+    expect(runs).toEqual([]);
+  });
+
+  test("fails before touching AWS when the CDK dependencies are missing", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands, runs } = deployManager();
+    const project = await scaffolded(subject, directory);
+    await rm(join(directory, "example", "agentcore", "cdk", "node_modules"), { recursive: true });
+    commands.length = 0;
+
+    await expect(
+      drain(subject.deploy(project, { region: REGION, skipBootstrap: false })),
+    ).rejects.toThrow(/npm install/);
+    expect(commands).toEqual([]);
+    expect(runs).toEqual([]);
   });
 });
 
