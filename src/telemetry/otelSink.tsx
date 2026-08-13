@@ -1,4 +1,8 @@
-import { MeterProvider, PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
+import {
+  AggregationTemporality,
+  MeterProvider,
+  PeriodicExportingMetricReader,
+} from "@opentelemetry/sdk-metrics";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import type { Logger } from "../logging";
 import { type MetricSink } from "./types";
@@ -55,6 +59,10 @@ export class OtelHistogramSink implements MetricSink {
             url: this.endpoint.endsWith("/v1/metrics")
               ? this.endpoint
               : `${this.endpoint}/v1/metrics`,
+            headers: {
+              "X-Installation-Id": config.resourceAttributes["agentcore-cli.installation_id"],
+            },
+            temporalityPreference: AggregationTemporality.DELTA,
           }),
           exportIntervalMillis: config.exportIntervalMs ?? 5_000,
         }),
