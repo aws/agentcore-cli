@@ -243,6 +243,32 @@ describe("Runtime endpoint flow", () => {
     });
   });
 
+  test("shows the endpoint failure reason only when the service provides one", async () => {
+    const healthyCore = new TestCoreClient();
+    healthyCore.runtime.setGetEndpointResponse(getEndpointResponse());
+    const healthy = renderScreen("/agentcore/runtime/endpoint/get/runtime-123/prod", {
+      core: healthyCore,
+    });
+
+    await waitForText(healthy.lastFrame, "invoke this Runtime endpoint");
+    expect(healthy.lastFrame()).not.toContain("failureReason");
+    healthy.unmount();
+
+    const failedCore = new TestCoreClient();
+    failedCore.runtime.setGetEndpointResponse(
+      getEndpointResponse({
+        status: "UPDATE_FAILED",
+        failureReason: "Endpoint failed its health check",
+      }),
+    );
+    const failed = renderScreen("/agentcore/runtime/endpoint/get/runtime-123/prod", {
+      core: failedCore,
+    });
+
+    await waitForText(failed.lastFrame, "Endpoint failed its health check");
+    expect(failed.lastFrame()).toMatch(/failureReason\s+Endpoint failed its health check/);
+  });
+
   test("opens complete endpoint JSON from the detail action and returns to the summary", async () => {
     const core = new TestCoreClient();
     core.runtime.setGetEndpointResponse(getEndpointResponse());

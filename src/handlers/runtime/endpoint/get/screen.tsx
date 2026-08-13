@@ -37,6 +37,7 @@ export function RuntimeGetEndpointScreen(props: ScreenProps) {
       items={{
         qualifier: endpoint?.name ?? qualifier ?? "",
         status: endpoint?.status ?? "",
+        ...(endpoint?.failureReason ? { failureReason: endpoint.failureReason } : {}),
         liveVersion: endpoint?.liveVersion ?? "-",
         targetVersion: endpoint?.targetVersion ?? "-",
         description: endpoint?.description ?? "-",
