@@ -1,5 +1,6 @@
 import { ConfigIO } from '../../../lib';
 import { executeBashCommand } from '../../aws/agentcore';
+import { regionFromArn } from '../../aws/arn';
 import { connectShell, startKeepalive } from '../../aws/connect-shell';
 import { ShellChannel, ShellFramer, parseStatusFrame } from '../../aws/shell-framer';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
@@ -38,6 +39,7 @@ function assertInteractiveHarnessUnsupported(options: ExecOptions, ctx: ExecCont
 
 /** Resolve region + runtimeArn from options and/or agentcore.json deployed state.
  *  --runtime accepts either a full ARN (arn:...) or an agent name from deployed state.
+ *  A full ARN resolves with no project and no config on disk; only a *name* needs deployed state.
  */
 export async function loadExecContext(options: ExecOptions, configIO: ConfigIO = new ConfigIO()): Promise<ExecContext> {
   // Mutual exclusion: --runtime and --harness cannot both be set. Checked first so it applies to
@@ -46,19 +48,29 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
     throw new Error('Cannot specify both --runtime and --harness.');
   }
 
-  // Short-circuit: explicit ARN + region — no need to read deployed state
-  if (options.runtimeArn?.startsWith('arn:') && options.region) {
-    return assertInteractiveHarnessUnsupported(options, { region: options.region, runtimeArn: options.runtimeArn });
+  // Short-circuit: an explicit ARN already carries its region in field 3, so --region is optional.
+  // Reading config here would demand a project, an aws-targets.json and a completed deploy purely to
+  // recover a value the caller already supplied — which blocks `exec` for anyone who deploys their
+  // runtimes outside this CLI (CDK, pipelines, personal stacks).
+  // A region-less/malformed ARN still falls through so config can supply the region.
+  if (options.runtimeArn?.startsWith('arn:')) {
+    const region = options.region ?? regionFromArn(options.runtimeArn);
+    if (region) {
+      return assertInteractiveHarnessUnsupported(options, { region, runtimeArn: options.runtimeArn });
+    }
   }
 
-  // Same short-circuit for --harness <arn> + region. Validate it's a harness ARN (not a runtime ARN).
-  if (options.harnessName?.startsWith('arn:') && options.region) {
+  // Same short-circuit for --harness <arn>. Validate it's a harness ARN (not a runtime ARN).
+  if (options.harnessName?.startsWith('arn:')) {
     if (!isHarnessArn(options.harnessName)) {
       throw new Error(
         `--harness expects a harness ARN (…:harness/…), got '${options.harnessName}'. Use --runtime for a runtime ARN.`
       );
     }
-    return assertInteractiveHarnessUnsupported(options, { region: options.region, runtimeArn: options.harnessName });
+    const region = options.region ?? regionFromArn(options.harnessName);
+    if (region) {
+      return assertInteractiveHarnessUnsupported(options, { region, runtimeArn: options.harnessName });
+    }
   }
 
   const awsTargets = await configIO.readAWSDeploymentTargets();
@@ -85,7 +97,8 @@ export async function loadExecContext(options: ExecOptions, configIO: ConfigIO =
   const runtimeKeys = Object.keys(targetState?.resources?.runtimes ?? {});
   const harnessKeys = Object.keys(targetState?.resources?.harnesses ?? {});
 
-  // --runtime <arn> with no --region: ARN provided but region must come from config
+  // --runtime <arn> whose region field is empty or malformed: only reachable when the short-circuit
+  // above could not derive a region, so config is the last resort.
   if (options.runtimeArn?.startsWith('arn:')) {
     return assertInteractiveHarnessUnsupported(options, {
       region: options.region ?? targetConfig.region,

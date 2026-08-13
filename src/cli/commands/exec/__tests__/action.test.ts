@@ -767,13 +767,55 @@ describe('loadExecContext --runtime as ARN or name', () => {
     ).not.toHaveBeenCalled();
   });
 
-  it('resolves region from config when --runtime is a full ARN but --region is omitted', async () => {
+  // A full ARN already carries its region, so exec must not need a project to recover it. Reading
+  // config here used to fail outright with "AWS Targets config file not found" for anyone deploying
+  // runtimes outside this CLI (CDK, pipelines, personal stacks) — the ARN was enough all along.
+  it('takes the region from the ARN when --region is omitted, without reading config', async () => {
+    // Config reads throw, standing in for "no project / no aws-targets.json in cwd".
+    const noProject = {
+      readAWSDeploymentTargets: vi.fn().mockRejectedValue(new Error('AWS Targets config file not found')),
+      readDeployedState: vi.fn().mockRejectedValue(new Error('State config file not found')),
+    } as unknown as ConfigIO;
+
+    const ctx = await loadExecContext({ runtimeArn: 'arn:aws:bedrock-agentcore:eu-west-2:123:runtime/X' }, noProject);
+
+    expect(ctx.region).toBe('eu-west-2'); // from the ARN, not config
+    expect(ctx.runtimeArn).toBe('arn:aws:bedrock-agentcore:eu-west-2:123:runtime/X');
+    expect(
+      (noProject as unknown as { readAWSDeploymentTargets: ReturnType<typeof vi.fn> }).readAWSDeploymentTargets
+    ).not.toHaveBeenCalled();
+    expect(
+      (noProject as unknown as { readDeployedState: ReturnType<typeof vi.fn> }).readDeployedState
+    ).not.toHaveBeenCalled();
+  });
+
+  it('lets an explicit --region override the region in the ARN', async () => {
     const ctx = await loadExecContext(
-      { runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/X' },
+      { runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/X', region: 'us-west-2' },
       TWO_AGENT_CONFIG
     );
+    expect(ctx.region).toBe('us-west-2');
+  });
+
+  // Region is field 3 regardless of partition, so GovCloud and China ARNs resolve the same way.
+  it.each([
+    ['arn:aws-us-gov:bedrock-agentcore:us-gov-west-1:123:runtime/X', 'us-gov-west-1'],
+    ['arn:aws-cn:bedrock-agentcore:cn-north-1:123:runtime/X', 'cn-north-1'],
+  ])('parses the region out of a non-commercial partition ARN (%s)', async (arn, expected) => {
+    const throwing = {
+      readAWSDeploymentTargets: vi.fn().mockRejectedValue(new Error('should not be read')),
+      readDeployedState: vi.fn().mockRejectedValue(new Error('should not be read')),
+    } as unknown as ConfigIO;
+
+    const ctx = await loadExecContext({ runtimeArn: arn }, throwing);
+    expect(ctx.region).toBe(expected);
+  });
+
+  // An ARN with an empty region field carries no region to use, so config remains the fallback.
+  it('falls back to config when the ARN has no region field', async () => {
+    const ctx = await loadExecContext({ runtimeArn: 'arn:aws:bedrock-agentcore::123:runtime/X' }, TWO_AGENT_CONFIG);
     expect(ctx.region).toBe('us-east-1'); // from config
-    expect(ctx.runtimeArn).toBe('arn:aws:bedrock-agentcore:us-east-1:123:runtime/X');
+    expect(ctx.runtimeArn).toBe('arn:aws:bedrock-agentcore::123:runtime/X');
   });
 
   it('resolves runtimeArn when --runtime is an agent name', async () => {
@@ -858,10 +900,22 @@ describe('loadExecContext with harnesses', () => {
     ).not.toHaveBeenCalled();
   });
 
-  it('resolves region from config for --harness <arn> when --region is omitted', async () => {
-    const ctx = await loadExecContext({ harnessName: HARNESS_ARN }, HARNESS_ONLY_CONFIG);
-    expect(ctx.runtimeArn).toBe(HARNESS_ARN);
-    expect(ctx.region).toBe('us-east-1'); // from config target
+  it('takes the region from a --harness <arn> when --region is omitted, without reading config', async () => {
+    const noProject = {
+      readAWSDeploymentTargets: vi.fn().mockRejectedValue(new Error('AWS Targets config file not found')),
+      readDeployedState: vi.fn().mockRejectedValue(new Error('State config file not found')),
+    } as unknown as ConfigIO;
+
+    const ctx = await loadExecContext(
+      { harnessName: 'arn:aws:bedrock-agentcore:eu-west-2:123:harness/h1-abc' },
+      noProject
+    );
+
+    expect(ctx.runtimeArn).toBe('arn:aws:bedrock-agentcore:eu-west-2:123:harness/h1-abc');
+    expect(ctx.region).toBe('eu-west-2'); // from the ARN, not config
+    expect(
+      (noProject as unknown as { readAWSDeploymentTargets: ReturnType<typeof vi.fn> }).readAWSDeploymentTargets
+    ).not.toHaveBeenCalled();
   });
 
   it('rejects a runtime ARN passed to --harness (with --region)', async () => {
