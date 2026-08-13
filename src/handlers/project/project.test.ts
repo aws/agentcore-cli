@@ -333,6 +333,17 @@ describe("project add harness", () => {
       "unrecognized environment-artifact variant",
       ["--name", "x", "--environment-artifact", '{"unknownArtifact":{}}'],
     ],
+    [
+      "containerUri and dockerfile are mutually exclusive",
+      [
+        "--name",
+        "x",
+        "--environment-artifact",
+        '{"containerConfiguration":{"containerUri":"123456789012.dkr.ecr.us-east-1.amazonaws.com/img:v1"}}',
+        "--dockerfile",
+        "Dockerfile",
+      ],
+    ],
   ])("%s", async (_label, flags) => {
     await scaffoldProject();
     await expect(run(["add", "harness", ...flags])).rejects.toBeInstanceOf(InputValidationError);

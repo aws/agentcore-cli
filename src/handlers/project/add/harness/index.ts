@@ -26,7 +26,7 @@ import type { AuthorizerConfig } from "../../../../projectSchemas/auth";
 export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "harness",
-    description: "adds a harness to the active project",
+    description: "adds a harness to the current project",
     flags: [
       flag("name", "the name of the harness", z.string().optional()),
       flag(
