@@ -324,7 +324,10 @@ function recordingGatewayClient(responses: unknown[]): {
       throw new Error("unexpected Logs client");
     },
   };
-  return { client: new GatewayClient(clients), commands };
+  return {
+    client: new GatewayClient(clients, globalThis.fetch, createSilentLogger()),
+    commands,
+  };
 }
 
 async function gatewayUpdateInput(
