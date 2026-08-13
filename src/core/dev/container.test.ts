@@ -11,7 +11,7 @@ import {
   type ProcessStreamer,
   type StreamProcessOptions,
 } from "../../io";
-import type { ProjectRuntime } from "../project/schema";
+import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import { ContainerDevRunner } from "./container";
 
 type ProcessCall = {
