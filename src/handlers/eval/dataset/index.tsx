@@ -14,6 +14,7 @@ export function createDatasetHandler(core: Core, io: AppIO): Router {
   return new Router("dataset", "manage AgentCore evaluation datasets")
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
+    .supportedTuiCommands("get", "list")
     .handler(createCreateDatasetHandler(core, io))
     .handler(createGetDatasetHandler(core))
     .handler(createListDatasetsHandler(core))

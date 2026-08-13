@@ -104,6 +104,14 @@ describe("eval dataset command hierarchy", () => {
       );
     },
   );
+
+  test("runs normal validation for a bare CLI-only dataset command", async () => {
+    const { route } = testDatasetCommand();
+
+    await expect(route(["eval", "dataset", "update"])).rejects.toThrow(
+      "required option '--id <id>' not specified",
+    );
+  });
 });
 
 describe("dataset create", () => {
