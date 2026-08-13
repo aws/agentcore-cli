@@ -20,6 +20,7 @@ export interface PaginatedTablePickerProps<TItem, TRow extends Record<string, un
   columns: DataTableColumn<TRow>[];
   sortRows?: (rows: TRow[]) => TRow[];
   getValue: (row: TRow) => string | undefined;
+  initialValue?: string;
   onSelect: (value: string) => void;
   onBack: () => void;
   loadingMessage: string;
@@ -38,6 +39,7 @@ export function PaginatedTablePicker<TItem, TRow extends Record<string, unknown>
   columns,
   sortRows,
   getValue,
+  initialValue,
   onSelect,
   onBack,
   loadingMessage,
@@ -57,6 +59,12 @@ export function PaginatedTablePicker<TItem, TRow extends Record<string, unknown>
   const pageTransition = list.isFetching && !list.isPending;
   const mappedRows = (list.data?.items ?? []).map(toRow);
   const rows = sortRows ? sortRows(mappedRows) : mappedRows;
+  const initialSelectedRow = initialValue
+    ? Math.max(
+        0,
+        rows.findIndex((row) => getValue(row) === initialValue),
+      )
+    : 0;
 
   useInput(
     (input, key) => {
@@ -106,6 +114,7 @@ export function PaginatedTablePicker<TItem, TRow extends Record<string, unknown>
             showFooter={false}
             showDivider={true}
             pageSize={paging.pageSize}
+            initialSelectedRow={initialSelectedRow}
             selectionResetKey={paging.pageSize}
             focus={!pageTransition}
             columns={columns}

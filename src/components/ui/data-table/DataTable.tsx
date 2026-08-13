@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import cliTruncate from "cli-truncate";
 import { Box, Text, useInput, useWindowSize } from "ink";
 import stringWidth from "string-width";
@@ -47,6 +47,7 @@ export interface DataTableProps<T> {
   showFooter?: boolean;
   emptyMessage?: string;
   focus?: boolean;
+  initialSelectedRow?: number;
   selectionResetKey?: string | number;
   theme?: InkUITheme;
 }
@@ -70,16 +71,20 @@ export function DataTable<T extends Record<string, unknown>>({
   showFooter = true,
   emptyMessage = "No data",
   focus = true,
+  initialSelectedRow = 0,
   selectionResetKey,
   theme = darkTheme,
 }: DataTableProps<T>): React.ReactElement {
   const { columns: terminalWidth } = useWindowSize();
-  const [selectedRow, setSelectedRow] = useState(0);
+  const [selectedRow, setSelectedRow] = useState(() => Math.max(0, initialSelectedRow));
   const [currentPage, setCurrentPage] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState(false);
+  const selectionResetKeyRef = useRef(selectionResetKey);
 
   useEffect(() => {
+    if (selectionResetKeyRef.current === selectionResetKey) return;
+    selectionResetKeyRef.current = selectionResetKey;
     setSelectedRow(0);
     setCurrentPage(0);
   }, [selectionResetKey]);

@@ -220,6 +220,30 @@ describe("Memory event list flow", () => {
     });
   });
 
+  test("restores the selected Event after returning from its JSON", async () => {
+    const selectedEvent = event({ eventId: "event-3" });
+    const core = new TestCoreClient();
+    core.memory.setListEventsResponse({
+      events: [event({ eventId: "event-1" }), event({ eventId: "event-2" }), selectedEvent],
+    });
+    core.memory.setGetEventResponse({ event: selectedEvent });
+    const screen = renderScreen("/agentcore/memory/event/list/memory-1/actor-1/session-1", {
+      core,
+    });
+
+    await waitForText(screen.lastFrame, "event-3");
+    await screen.press("down");
+    await screen.press("down");
+    await waitForText(screen.lastFrame, "❯ event-3");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, '"eventId": "event-3"');
+
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "occurred UTC");
+    expect(screen.lastFrame()).toContain("❯ event-3");
+    expect(screen.lastFrame()).not.toContain("❯ event-1");
+  });
+
   test("paginates events and distinguishes a later-page empty state", async () => {
     const core = new TestCoreClient();
     core.memory.setListEventsResponse({
