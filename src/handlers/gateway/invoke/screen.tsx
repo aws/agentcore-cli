@@ -256,7 +256,7 @@ function GatewayInvokeConsole({ ctx, core, gatewayId, initialContext }: GatewayI
         state: "streaming",
       });
       const kind = classifyStreamingResponse(response.contentType);
-      if (kind === "binary") {
+      if (response.statusCode !== 204 && response.statusCode !== 205 && kind === "binary") {
         controller.abort();
         updateExchange({
           response: "Binary or unknown responses require headless invoke with --output-file.",

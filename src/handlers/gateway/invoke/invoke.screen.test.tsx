@@ -635,6 +635,27 @@ describe("Gateway invoke JSON console", () => {
     expect(screen.lastFrame()).toContain("failed · 7 bytes");
   });
 
+  test.each([204, 205])(
+    "accepts HTTP %s without a content type or response body",
+    async (statusCode) => {
+      const core = new TestCoreClient();
+      core.gateway.setGetResponse(gatewayDetail()).setInvokeResponse({
+        statusCode,
+        contentType: "",
+        body: responseBody(),
+      });
+      const screen = renderScreen(CONSOLE_PATH, { core });
+
+      await waitForText(screen.lastFrame, "Ready");
+      await screen.write("{}");
+      await screen.press("return");
+
+      await waitForText(screen.lastFrame, "complete · 0 bytes");
+      expect(screen.lastFrame()).toContain(`Response · ${statusCode} · -`);
+      expect(screen.lastFrame()).not.toContain("Binary or unknown responses");
+    },
+  );
+
   test("rejects binary console responses without consuming their bodies", async () => {
     let iterations = 0;
     const core = new TestCoreClient();
