@@ -892,11 +892,8 @@ export class TestGatewayClient implements CoreGatewayClient {
     DEFAULT_DELETE_GATEWAY_TARGET_RESPONSE;
   private getRuleResponse: GetGatewayRuleResponse = DEFAULT_GET_GATEWAY_RULE_RESPONSE;
   private listRuleResponses = new Map<string | undefined, ListGatewayRulesResponse>();
-<<<<<<< HEAD
   private deleteRuleResponse: DeleteGatewayRuleResponse = DEFAULT_DELETE_GATEWAY_RULE_RESPONSE;
-=======
   private invokeResponse: GatewayInvokeResponse = DEFAULT_GATEWAY_INVOKE_RESPONSE;
->>>>>>> 325f6470 (feat(gateway): add headless invoke command)
   private error?: Error;
 
   setGetResponse(response: GetGatewayResponse): this {
