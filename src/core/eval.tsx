@@ -79,6 +79,7 @@ import {
 } from "@aws-sdk/client-cloudwatch-logs";
 import type { DocumentType } from "@smithy/types";
 import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
 import { Transform } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -106,12 +107,17 @@ import type {
   LlmAsAJudgeUpdate,
   SessionSourceValue,
   SessionTrace,
+  SimulateInput,
+  SimulateResult,
   SpanRecord,
   StartBatchEvaluationInput,
   UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
 } from "../handlers/eval/types";
-import { atomicWrite, atomicWriteStream, readTextFile } from "../io";
+import { atomicWrite, atomicWriteStream, readTextFile, renderJsonTemplate } from "../io";
+import { invokeRuntime } from "./invokeRuntime";
+import { loadDatasetFile, runScenarios, toSessionMetadata } from "./eval/simulate";
+import { normalizeRuntimeInvokeRequest } from "../handlers/runtime/invoke/request";
 import { isTerminalStatus, readEvaluationResults } from "./batchEvaluationResults";
 import { applyExampleIds, diffExamples, indexRemoteById, parseJsonl } from "./datasetDiff";
 import type { Addition } from "./datasetDiff";
@@ -505,6 +511,84 @@ export class EvalClient implements CoreEvalClient {
       sessionsEvaluated: evaluatedSessions.size,
       results,
     };
+  }
+
+  async simulate(input: SimulateInput, options: CoreOptions): Promise<SimulateResult> {
+    // Load scenarios: a local JSONL path directly, else download the dataset id.
+    const path = (await Bun.file(input.dataset).exists())
+      ? input.dataset
+      : await this.downloadDatasetToTemp(input.dataset, input.datasetVersion, options);
+    const scenarios = await loadDatasetFile(path);
+    const byId = new Map(scenarios.map((s) => [s.scenarioId, s]));
+
+    // Resolve the runtime once; normalizeRuntimeInvokeRequest validates auth + fills
+    // accountId. Invoke is the extracted free fn — no RuntimeClient dependency.
+    const runtime = await this.clients
+      .control(toClientConfig(options))
+      .send(new GetAgentRuntimeCommand({ agentRuntimeId: input.runtimeId }));
+    const deps = { clients: this.clients, fetch: this.fetch, logger: this.logger };
+
+    const { ok, failed } = await runScenarios(scenarios, async (scenario) => {
+      const request = normalizeRuntimeInvokeRequest(runtime, {
+        runtimeId: input.runtimeId,
+        qualifier: input.qualifier,
+        payload: renderJsonTemplate(input.payloadTemplate, { input: scenario.turns[0]?.input ?? "" }),
+        contentType: "application/json",
+        accept: "application/json",
+        applicationHeaders: input.headers,
+        bearerToken: input.bearerToken,
+        runtimeSessionId: input.sessionId,
+        runtimeUserId: input.userId,
+      });
+      const response = await invokeRuntime(deps, request, options);
+      for await (const _chunk of response.body) {
+        // Drain the stream so the turn completes; only the session id is needed.
+      }
+      if (!response.runtimeSessionId) throw new Error("invoke returned no session id");
+      return { scenarioId: scenario.scenarioId, sessionId: response.runtimeSessionId };
+    });
+
+    if (ok.length === 0) {
+      throw new InputValidationError(
+        `no scenarios could be invoked (${failed} failed) — nothing to evaluate`,
+      );
+    }
+
+    const job = await this.startBatchEvaluation(
+      {
+        name: input.name,
+        description: input.description,
+        evaluatorIds: input.evaluatorIds,
+        source: {
+          origin: "agent",
+          agent: input.runtimeId,
+          endpoint: input.qualifier,
+          sessionIds: ok.map((r) => r.sessionId),
+        },
+        groundTruth: ok.map((r) => toSessionMetadata(byId.get(r.scenarioId)!, r.sessionId)),
+        kmsKeyArn: input.kmsKeyArn,
+      },
+      options,
+    );
+
+    return {
+      batchEvaluationId: job.batchEvaluationId,
+      status: job.status,
+      scenariosInvoked: ok.length,
+      scenariosFailed: failed,
+    };
+  }
+
+  // downloadDatasetToTemp streams a dataset version's JSONL to a temp file so
+  // loadDatasetFile can read it — reuses downloadDataset rather than re-fetching.
+  private async downloadDatasetToTemp(
+    id: string,
+    version: string | undefined,
+    options: CoreOptions,
+  ): Promise<string> {
+    const path = join(tmpdir(), `agentcore-dataset-${randomUUID()}.jsonl`);
+    await this.downloadDataset(id, version, path, options);
+    return path;
   }
 
   async createOnlineEvaluationConfig(

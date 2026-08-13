@@ -205,6 +205,35 @@ export type StartBatchEvaluationInput = {
   kmsKeyArn?: string;
 };
 
+// SimulateInput is the CLI-facing shape for `batch-evaluation simulate` — dataset
+// replay + batch grade. SDK-native fields only (no RuntimeInvokeRequest/EvaluateInput
+// leak): Core invokes each scenario against the runtime, then submits a batch
+// evaluation scoped to the sessions it created. Invoke fields mirror `runtime invoke`.
+export type SimulateInput = {
+  runtimeId: string;
+  qualifier?: string;
+  payloadTemplate: string; // e.g. {"prompt":"{input}"} — {input} is the scenario's turn input
+  headers?: [string, string][];
+  bearerToken?: string;
+  sessionId?: string;
+  userId?: string;
+  dataset: string; // local JSONL path or a dataset id
+  datasetVersion?: string;
+  evaluatorIds: string[];
+  name: string;
+  description?: string;
+  kmsKeyArn?: string;
+};
+
+// SimulateResult reports the submitted job plus how many scenarios were actually
+// invoked vs dropped (a failed invoke is skipped, not fatal, unless all fail).
+export type SimulateResult = {
+  batchEvaluationId?: string;
+  status?: string;
+  scenariosInvoked: number;
+  scenariosFailed: number;
+};
+
 // SpanRecord is one OTel span/log document — the parsed `@message` JSON of a
 // CloudWatch Logs Insights result row. Left open (arbitrary JSON) because it is
 // handed to the Evaluate API's `sessionSpans` verbatim; the CLI only reads a few
@@ -329,6 +358,10 @@ export interface CoreEvalClient {
   // Evaluate API and returns per-session scores. No job, no CloudWatch — the
   // trace read happened in getTracesForAgent.
   evaluate(input: EvaluateInput, options: CoreOptions): Promise<EvaluateResult>;
+  // simulate replays a dataset against the runtime (invoke per scenario, client-side)
+  // then submits a batch evaluation over the sessions it created. No dataset API
+  // exists service-side, so the CLI creates the sessions and the service grades them.
+  simulate(input: SimulateInput, options: CoreOptions): Promise<SimulateResult>;
 
   createOnlineEvaluationConfig(
     input: CreateOnlineEvalInput,

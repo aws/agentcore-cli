@@ -133,6 +133,8 @@ import type {
   DatasetUpdateProgressEvent,
   EvaluateInput,
   EvaluateResult,
+  SimulateInput,
+  SimulateResult,
   GetBatchEvaluationResult,
   GetTracesInput,
   LlmAsAJudgeUpdate,
@@ -1403,6 +1405,12 @@ export class TestEvalClient implements CoreEvalClient {
     sessionsEvaluated: 0,
     results: [],
   };
+  private simulateResponse: SimulateResult = {
+    batchEvaluationId: "batch-eval-test",
+    status: "RUNNING",
+    scenariosInvoked: 0,
+    scenariosFailed: 0,
+  };
   private error?: Error;
 
   // setListResponse sets what listEvaluators resolves to (when not erroring).
@@ -1720,6 +1728,18 @@ export class TestEvalClient implements CoreEvalClient {
     this.calls.push({ method: "evaluate", args: [input, options] });
     if (this.error) throw this.error;
     return this.evaluateResponse;
+  }
+
+  // setSimulateResponse sets what simulate resolves to (when not erroring).
+  setSimulateResponse(response: SimulateResult): this {
+    this.simulateResponse = response;
+    return this;
+  }
+
+  async simulate(input: SimulateInput, options: CoreOptions): Promise<SimulateResult> {
+    this.calls.push({ method: "simulate", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.simulateResponse;
   }
 
   async createOnlineEvaluationConfig(
