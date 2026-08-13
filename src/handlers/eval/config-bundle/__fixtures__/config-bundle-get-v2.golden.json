@@ -1,0 +1,25 @@
+{
+  "bundleArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:configuration-bundle/agentcore_cli_config_bundle_fixture-s03KQeHM93",
+  "bundleId": "agentcore_cli_config_bundle_fixture-s03KQeHM93",
+  "bundleName": "agentcore_cli_config_bundle_fixture",
+  "versionId": "c3eea665-5638-4c59-8c03-478180ecabcb",
+  "components": {
+    "arn:aws:bedrock-agentcore:us-west-2:314146320088:runtime/stmFixes_StmFixesAgent-XsFfJU4cAp": {
+      "configuration": {
+        "settings": {
+          "revision": 2
+        },
+        "system_prompt": "Configuration bundle fixture version two."
+      }
+    }
+  },
+  "createdAt": "2026-08-13T14:04:44.109Z",
+  "versionCreatedAt": "2026-08-13T14:04:49.892Z",
+  "lineageMetadata": {
+    "parentVersionIds": [
+      "c67c8477-9b51-4bfc-92c4-36b7f2cdcbdc"
+    ],
+    "branchName": "mainline",
+    "commitMessage": "Record configuration bundle fixture version two"
+  }
+}

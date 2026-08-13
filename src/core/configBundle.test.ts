@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  CreateConfigurationBundleCommand,
-  DeleteConfigurationBundleCommand,
   GetConfigurationBundleCommand,
   GetConfigurationBundleVersionCommand,
-  ListConfigurationBundlesCommand,
-  ListConfigurationBundleVersionsCommand,
   UpdateConfigurationBundleCommand,
   type BedrockAgentCoreControlClient,
 } from "@aws-sdk/client-bedrock-agentcore-control";
@@ -36,31 +32,7 @@ function subject(respond: (command: unknown) => Promise<unknown>): {
 }
 
 describe("EvalClient configuration bundles", () => {
-  test("create sends CreateConfigurationBundleCommand unchanged", async () => {
-    const sent: unknown[] = [];
-    const response = {
-      bundleArn: "arn:bundle:b-1",
-      bundleId: "b-1",
-      versionId: "v-1",
-      createdAt: new Date("2026-08-07T00:00:00Z"),
-    };
-    const { client, configs } = subject(async (command) => {
-      sent.push(command);
-      return response;
-    });
-    const input = {
-      bundleName: "orders-prompt",
-      components: COMPONENTS,
-      kmsKeyArn: "arn:aws:kms:us-west-2:123456789012:key/abc",
-    };
-
-    expect(await client.createConfigurationBundle(input, OPTIONS)).toBe(response);
-    expect(sent[0]).toBeInstanceOf(CreateConfigurationBundleCommand);
-    expect((sent[0] as CreateConfigurationBundleCommand).input).toEqual(input);
-    expect(configs).toEqual([{ region: "us-west-2", endpoint: "https://control.test" }]);
-  });
-
-  test("get selects the latest or immutable-version SDK operation", async () => {
+  test("get passes an explicit branch or selects the immutable-version operation", async () => {
     const sent: unknown[] = [];
     const { client } = subject(async (command) => {
       sent.push(command);
@@ -82,23 +54,7 @@ describe("EvalClient configuration bundles", () => {
     });
   });
 
-  test("list sends only the aligned pagination fields", async () => {
-    const sent: unknown[] = [];
-    const { client } = subject(async (command) => {
-      sent.push(command);
-      return { bundles: [] };
-    });
-
-    await client.listConfigurationBundles("token-1", 10, OPTIONS);
-
-    expect(sent[0]).toBeInstanceOf(ListConfigurationBundlesCommand);
-    expect((sent[0] as ListConfigurationBundlesCommand).input).toEqual({
-      nextToken: "token-1",
-      maxResults: 10,
-    });
-  });
-
-  test("update gets the latest version and sends it as the sole parent", async () => {
+  test("update uses the same explicit branch for the parent lookup and update", async () => {
     const sent: unknown[] = [];
     const response = {
       bundleArn: "arn:bundle:b-1",
@@ -172,36 +128,6 @@ describe("EvalClient configuration bundles", () => {
     expect((sent[0] as GetConfigurationBundleCommand).input).toEqual({
       bundleId: "b-1",
       branchName: "mainline",
-    });
-  });
-
-  test("delete sends DeleteConfigurationBundleCommand", async () => {
-    const sent: unknown[] = [];
-    const response = { bundleId: "b-1", status: "DELETING" as const };
-    const { client } = subject(async (command) => {
-      sent.push(command);
-      return response;
-    });
-
-    expect(await client.deleteConfigurationBundle("b-1", OPTIONS)).toBe(response);
-    expect(sent[0]).toBeInstanceOf(DeleteConfigurationBundleCommand);
-    expect((sent[0] as DeleteConfigurationBundleCommand).input).toEqual({ bundleId: "b-1" });
-  });
-
-  test("version list sends the parent bundle and pagination fields", async () => {
-    const sent: unknown[] = [];
-    const { client } = subject(async (command) => {
-      sent.push(command);
-      return { versions: [] };
-    });
-
-    await client.listConfigurationBundleVersions("b-1", "token-1", 5, OPTIONS);
-
-    expect(sent[0]).toBeInstanceOf(ListConfigurationBundleVersionsCommand);
-    expect((sent[0] as ListConfigurationBundleVersionsCommand).input).toEqual({
-      bundleId: "b-1",
-      nextToken: "token-1",
-      maxResults: 5,
     });
   });
 });

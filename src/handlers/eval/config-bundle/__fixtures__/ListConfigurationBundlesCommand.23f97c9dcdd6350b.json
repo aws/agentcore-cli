@@ -1,0 +1,12 @@
+{
+  "bundles": [
+    {
+      "bundleArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:configuration-bundle/agentcore_cli_config_bundle_fixture-s03KQeHM93",
+      "bundleId": "agentcore_cli_config_bundle_fixture-s03KQeHM93",
+      "bundleName": "agentcore_cli_config_bundle_fixture",
+      "createdAt": {
+        "$date": "2026-08-13T14:04:44.109Z"
+      }
+    }
+  ]
+}

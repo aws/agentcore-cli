@@ -17,6 +17,7 @@ export const createCreateConfigBundleHandler = (core: Core, io: AppIO) =>
         "components",
         "complete component configuration map (JSON inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { sensitive: true },
       ),
       flag(
         "kms-key-arn",

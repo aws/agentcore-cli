@@ -17,6 +17,7 @@ export const createUpdateConfigBundleHandler = (core: Core, io: AppIO) =>
         "components",
         "replacement component configuration map (JSON inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { sensitive: true },
       ),
       flag(
         "commit-message",

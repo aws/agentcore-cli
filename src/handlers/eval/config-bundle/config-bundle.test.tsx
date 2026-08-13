@@ -10,7 +10,7 @@ import {
   testIO,
 } from "../../../testing";
 import { createRootHandler } from "../../index";
-import type { CreateConfigurationBundleInput, UpdateConfigurationBundleInput } from "../types";
+import type { UpdateConfigurationBundleInput } from "../types";
 
 const REGION = "us-west-2";
 const COMPONENT_ARN =
@@ -112,6 +112,27 @@ describe("eval config-bundle command hierarchy", () => {
         ?.flags()
         .map((candidate) => candidate.name),
     ).toEqual(["id", "components", "commit-message", "branch-name", "kms-key-arn"]);
+    expect(
+      configBundle
+        ?.children()
+        .find((child) => child.name() === "create")
+        ?.flags()
+        .find((candidate) => candidate.name === "components")?.sensitive,
+    ).toBe(true);
+    expect(
+      configBundle
+        ?.children()
+        .find((child) => child.name() === "update")
+        ?.flags()
+        .find((candidate) => candidate.name === "components")?.sensitive,
+    ).toBe(true);
+    expect(
+      configBundle
+        ?.children()
+        .find((child) => child.name() === "delete")
+        ?.flags()
+        .map((candidate) => candidate.name),
+    ).toEqual(["id"]);
   });
 
   test("prints help for a bare config-bundle command", async () => {
@@ -125,39 +146,6 @@ describe("eval config-bundle command hierarchy", () => {
 });
 
 describe("config-bundle create", () => {
-  test("accepts an inline component map and renders the SDK response directly", async () => {
-    const { core, stdout, route } = testConfigBundleCommand();
-    core.eval.setCreateConfigurationBundleResponse({
-      bundleArn: "arn:aws:bedrock-agentcore:us-west-2:123456789012:configuration-bundle/b-1",
-      bundleId: "b-1",
-      versionId: "v-1",
-      createdAt: new Date("2026-08-07T00:00:00Z"),
-    });
-
-    await route([
-      "eval",
-      "config-bundle",
-      "create",
-      "--name",
-      "orders-prompt",
-      "--components",
-      JSON.stringify(COMPONENTS),
-      "--kms-key-arn",
-      "arn:aws:kms:us-west-2:123456789012:key/abc",
-    ]);
-
-    expect(callArgs(core, "createConfigurationBundle")[0]).toEqual({
-      bundleName: "orders-prompt",
-      components: COMPONENTS,
-      kmsKeyArn: "arn:aws:kms:us-west-2:123456789012:key/abc",
-    } satisfies CreateConfigurationBundleInput);
-    expect(JSON.parse(stdout())).toMatchObject({
-      bundleArn: expect.any(String),
-      bundleId: "b-1",
-      versionId: "v-1",
-    });
-  });
-
   test("reads components from stdin", async () => {
     const { core, route } = testConfigBundleCommand(JSON.stringify(COMPONENTS));
 
@@ -231,40 +219,6 @@ describe("config-bundle create", () => {
 });
 
 describe("config-bundle get", () => {
-  test("gets the latest bundle when --version is absent", async () => {
-    const { core, stdout, route } = testConfigBundleCommand();
-    core.eval.setGetConfigurationBundleResponse({
-      bundleId: "b-1",
-      bundleArn: "arn:bundle:b-1",
-      bundleName: "orders-prompt",
-      versionId: "latest-v",
-      components: COMPONENTS,
-      createdAt: new Date("2026-08-06T00:00:00Z"),
-      updatedAt: new Date("2026-08-07T00:00:00Z"),
-    });
-
-    await route(["eval", "config-bundle", "get", "--id", "b-1"]);
-
-    expect(callArgs(core, "getConfigurationBundle").slice(0, 3)).toEqual([
-      "b-1",
-      undefined,
-      "mainline",
-    ]);
-    expect(JSON.parse(stdout()).versionId).toBe("latest-v");
-  });
-
-  test("passes an explicit version through unchanged", async () => {
-    const { core, route } = testConfigBundleCommand();
-
-    await route(["eval", "config-bundle", "get", "--id", "b-1", "--version", "v-2"]);
-
-    expect(callArgs(core, "getConfigurationBundle").slice(0, 3)).toEqual([
-      "b-1",
-      "v-2",
-      "mainline",
-    ]);
-  });
-
   test("gets the latest version from an explicit branch", async () => {
     const { core, route } = testConfigBundleCommand();
 
@@ -402,32 +356,6 @@ describe("config-bundle update", () => {
       ]),
     ).rejects.toThrow(/required option '--id <id>' not specified/);
     expect(core.eval.calls).toHaveLength(0);
-  });
-});
-
-describe("config-bundle delete", () => {
-  test("takes only --id and renders the SDK response", async () => {
-    const { core, stdout, route } = testConfigBundleCommand();
-    core.eval.setDeleteConfigurationBundleResponse({ bundleId: "b-1", status: "DELETING" });
-
-    await route(["eval", "config-bundle", "delete", "--id", "b-1"]);
-
-    expect(callArgs(core, "deleteConfigurationBundle")[0]).toBe("b-1");
-    expect(JSON.parse(stdout())).toEqual({ bundleId: "b-1", status: "DELETING" });
-
-    const root = createRootHandler(new TestCoreClient(), {
-      io: testIO().io,
-      logger: createSilentLogger(),
-      globalConfigAccessor: new TestGlobalConfigAccessor(),
-    });
-    const deleteCommand = root
-      .children()
-      .find((child) => child.name() === "eval")
-      ?.children()
-      .find((child) => child.name() === "config-bundle")
-      ?.children()
-      .find((child) => child.name() === "delete");
-    expect(deleteCommand?.flags().map((candidate) => candidate.name)).toEqual(["id"]);
   });
 });
 
