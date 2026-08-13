@@ -53,7 +53,6 @@ export class DefaultTelemetryClient implements TelemetryClient {
       initialAttributes,
       logger: this.logger,
       getSinks: () => this.getMetricSinks(),
-      getResourceAttributes: () => this.getResourceAttributes(),
     });
   }
 
@@ -126,7 +125,6 @@ type InMemoryMetricEventConfig<TMetricName extends MetricName> = {
   initialAttributes?: Partial<AttributesOf<TMetricName>>;
   logger: Logger;
   getSinks: () => Promise<MetricSink[]>;
-  getResourceAttributes: () => Promise<ResourceAttributes>;
 };
 
 /** An in-memory implementation of {@link MetricEvent} that accumulates attributes and emits on end() **/
@@ -135,14 +133,12 @@ class InMemoryMetricEvent<TMetricName extends MetricName> implements MetricEvent
   private readonly metricName: TMetricName;
   private readonly logger: Logger;
   private readonly getSinks: () => Promise<MetricSink[]>;
-  private readonly getResourceAttributes: () => Promise<ResourceAttributes>;
 
   constructor(config: InMemoryMetricEventConfig<TMetricName>) {
     this.metricName = config.metricName;
     this.data = config.initialAttributes ?? {};
     this.logger = config.logger;
     this.getSinks = config.getSinks;
-    this.getResourceAttributes = config.getResourceAttributes;
   }
 
   setAttributes(newData: Partial<AttributesOf<TMetricName>>): void {
@@ -155,18 +151,12 @@ class InMemoryMetricEvent<TMetricName extends MetricName> implements MetricEvent
   async emit(value: ValueOf<TMetricName>): Promise<void> {
     const metricAttributes = METRICS[this.metricName]["attributeSchema"].parse(this.data);
     const validatedValue = METRICS[this.metricName]["valueSchema"].parse(value);
-    const resourceAttributes = await this.getResourceAttributes();
-
-    const attributes = {
-      ...resourceAttributes,
-      ...metricAttributes,
-    };
 
     const sinks = await this.getSinks();
 
     sinks.forEach((sink) => {
       try {
-        sink.send(this.metricName, validatedValue, attributes);
+        sink.send(this.metricName, validatedValue, metricAttributes);
       } catch (e) {
         const error = e instanceof Error ? e : new Error(String(e));
         this.logger
