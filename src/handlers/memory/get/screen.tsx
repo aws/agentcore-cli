@@ -7,19 +7,19 @@ import { coreOptsFromCtx } from "../../utils";
 
 const ACTIONS = [
   {
+    name: "detail",
+    description: "show the full JSON definition",
+    to: (id: string) => `/agentcore/memory/get/${encodeURIComponent(id)}/json`,
+  },
+  {
     name: "events",
-    description: "browse this Memory's events",
+    description: "list this Memory's events",
     to: (id: string) => `/agentcore/memory/event/list/${encodeURIComponent(id)}`,
   },
   {
     name: "records",
     description: "list this Memory's records",
     to: (id: string) => `/agentcore/memory/record/list/${encodeURIComponent(id)}`,
-  },
-  {
-    name: "detail",
-    description: "show the full JSON definition",
-    to: (id: string) => `/agentcore/memory/get/${encodeURIComponent(id)}/json`,
   },
 ] as const;
 
@@ -64,6 +64,7 @@ export function MemoryGetScreen(props: ScreenProps) {
       }
       loadingLabel="Loading Memory…"
       onRetry={() => void detail.refetch()}
+      selectLabel="open detail"
     />
   );
 }

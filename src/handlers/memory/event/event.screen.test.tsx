@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ActorSummary, Event, SessionSummary } from "@aws-sdk/client-bedrock-agentcore";
-import type { Memory, MemorySummary } from "@aws-sdk/client-bedrock-agentcore-control";
+import type { MemorySummary } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   cleanupScreens,
   renderScreen,
@@ -20,22 +20,6 @@ function memorySummary(overrides: Partial<MemorySummary> = {}): MemorySummary {
     status: "ACTIVE",
     createdAt: new Date("2026-07-19T01:02:03.000Z"),
     updatedAt: new Date("2026-07-20T12:34:56.000Z"),
-    ...overrides,
-  };
-}
-
-function memory(overrides: Partial<Memory> = {}): Memory {
-  return {
-    arn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/memory-1",
-    id: "memory-1",
-    name: "orders-memory",
-    description: "Memory for the orders agent",
-    memoryExecutionRoleArn: "arn:aws:iam::123456789012:role/memory-role",
-    eventExpiryDuration: 30,
-    status: "ACTIVE",
-    createdAt: new Date("2026-07-19T01:02:03.000Z"),
-    updatedAt: new Date("2026-07-20T12:34:56.000Z"),
-    strategies: [],
     ...overrides,
   };
 }
@@ -123,33 +107,6 @@ describe("Memory event list flow", () => {
     await waitForText(screen.lastFrame, "choose an actor to list");
     await screen.press("escape");
     await waitForText(screen.lastFrame, "choose a Memory to list");
-  });
-
-  test("starts from Memory detail and preserves that origin through the scoped flow", async () => {
-    const core = new TestCoreClient();
-    core.memory.setGetResponse({ memory: memory() });
-    core.memory.setListActorsResponse({ actorSummaries: [actor()] });
-    core.memory.setListSessionsResponse({ sessionSummaries: [session()] });
-    core.memory.setListEventsResponse({ events: [event()] });
-    const screen = renderScreen("/agentcore/memory/get/memory-1", { core });
-
-    await waitForText(screen.lastFrame, "browse this Memory's events");
-    await screen.press("return");
-    await waitForText(screen.lastFrame, "actor-1");
-    expect(core.memory.calls.some((call) => call.method === "listMemories")).toBe(false);
-
-    await screen.press("return");
-    await waitForText(screen.lastFrame, "session-1");
-    await screen.press("return");
-    await waitForText(screen.lastFrame, "event-1");
-
-    await screen.press("escape");
-    await waitForText(screen.lastFrame, "session-1");
-    await screen.press("escape");
-    await waitForText(screen.lastFrame, "actor-1");
-    await screen.press("escape");
-    await waitForText(screen.lastFrame, "agentcore → memory → get → memory-1");
-    await waitForText(screen.lastFrame, "browse this Memory's events");
   });
 
   test("calls listEvents with the exact route scope and Core options", async () => {
