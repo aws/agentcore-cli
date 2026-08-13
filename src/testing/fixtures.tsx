@@ -21,11 +21,6 @@ import {
 } from "../core/factories";
 import { parse, stringify } from "./serialization";
 
-// A fixture represents the first response for one normalized request. Recording
-// refreshes an existing fixture on its first use, then preserves that response
-// when polling or another command repeats the same request later in the run.
-const recordedPaths = new Set<string>();
-
 // Golden-file record/replay for the AWS SDK seam.
 //
 // The whole suite runs in one of two modes, selected by the RECORD env var:
@@ -81,6 +76,40 @@ function normalizeFixtureInput(value: unknown): unknown {
   return input;
 }
 
+const PRESIGNED_QUERY_KEYS = [
+  "X-Amz-Credential",
+  "X-Amz-Security-Token",
+  "X-Amz-Signature",
+] as const;
+
+// Recording continues with the original response so live downloads work. Only
+// the persisted fixture or golden copy has presigned credentials removed.
+export function sanitizePresignedUrls<T>(value: T): T {
+  if (typeof value === "string") {
+    try {
+      const url = new URL(value);
+      if (PRESIGNED_QUERY_KEYS.some((key) => url.searchParams.has(key))) {
+        url.search = "";
+        return url.toString() as T;
+      }
+    } catch {
+      // Most strings are not URLs.
+    }
+    return value;
+  }
+  if (value instanceof Date) return value;
+  if (Array.isArray(value)) return value.map(sanitizePresignedUrls) as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+        key,
+        sanitizePresignedUrls(entry),
+      ]),
+    ) as T;
+  }
+  return value;
+}
+
 // normalizeResponse strips volatile transport metadata from a recorded SDK
 // response. `$metadata` holds the HTTP status, retry counts, and a per-request
 // `requestId` — none of it domain data, all of it non-deterministic across
@@ -128,8 +157,6 @@ function makeRecordingSend<C extends { send: (command: any) => Promise<any> }>(
     const path = fixturePath(dir, command);
 
     if (isRecording()) {
-      const shouldWrite = !recordedPaths.has(path);
-      recordedPaths.add(path);
       mkdirSync(dir, { recursive: true });
       let response: unknown;
       try {
@@ -138,10 +165,10 @@ function makeRecordingSend<C extends { send: (command: any) => Promise<any> }>(
         const tagged: TaggedError = {
           [ERROR_TAG]: { name: (error as Error).name, message: (error as Error).message },
         };
-        if (shouldWrite) writeFileSync(path, stringify(tagged));
+        writeFileSync(path, stringify(sanitizePresignedUrls(tagged)));
         throw error;
       }
-      if (shouldWrite) writeFileSync(path, stringify(response));
+      writeFileSync(path, stringify(sanitizePresignedUrls(response)));
       return response;
     }
 
@@ -223,8 +250,6 @@ export function fixtureFetch(dir: string): CoreFetch {
     const path = fetchFixturePath(dir, input, init);
 
     if (isRecording()) {
-      const shouldWrite = !recordedPaths.has(path);
-      recordedPaths.add(path);
       mkdirSync(dir, { recursive: true });
       const response = await globalThis.fetch(input, init);
       const fixture: FetchFixture = {
@@ -232,7 +257,7 @@ export function fixtureFetch(dir: string): CoreFetch {
         statusText: response.statusText,
         body: await response.text(),
       };
-      if (shouldWrite) writeFileSync(path, stringify(fixture));
+      writeFileSync(path, stringify(fixture));
       return new Response(fixture.body, {
         status: fixture.status,
         statusText: fixture.statusText,
@@ -260,10 +285,11 @@ export function fixtureFetch(dir: string): CoreFetch {
 // behavior difference worth failing on.
 export function matchGolden(dir: string, name: string, actual: string): void {
   const path = join(dir, name);
+  const sanitizedActual = sanitizeGoldenOutput(actual);
 
   if (isRecording()) {
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path, actual);
+    writeFileSync(path, sanitizedActual);
     return;
   }
 
@@ -271,5 +297,15 @@ export function matchGolden(dir: string, name: string, actual: string): void {
     throw new Error(`Missing golden file ${path}. Re-run with RECORD=1 to record expected output.`);
   }
   const expected = readFileSync(path, "utf8");
-  expect(actual.replace(/\s+$/, "")).toBe(expected.replace(/\s+$/, ""));
+  expect(sanitizedActual.replace(/\s+$/, "")).toBe(
+    sanitizeGoldenOutput(expected).replace(/\s+$/, ""),
+  );
+}
+
+function sanitizeGoldenOutput(output: string): string {
+  try {
+    return JSON.stringify(sanitizePresignedUrls(JSON.parse(output)), null, 2);
+  } catch {
+    return output;
+  }
 }

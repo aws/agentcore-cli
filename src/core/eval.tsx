@@ -66,6 +66,7 @@ import {
   type CloudWatchFilterConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
 import { randomUUID } from "node:crypto";
+import { basename, dirname, extname, join } from "node:path";
 import { Transform } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
@@ -836,17 +837,18 @@ export class EvalClient implements CoreEvalClient {
     const deleteBatches = buildDatasetExampleBatches({
       items: diff.deleteIds,
       payloadItem: (exampleId) => exampleId,
-      requestBody: (exampleIds, clientToken) => ({ exampleIds, clientToken }),
+      requestBody: (exampleIds, clientToken) => ({ datasetId: id, exampleIds, clientToken }),
     });
     const updateBatches = buildDatasetExampleBatches({
       items: diff.updates,
       payloadItem: (example) => example,
-      requestBody: (examples, clientToken) => ({ examples, clientToken }),
+      requestBody: (examples, clientToken) => ({ datasetId: id, examples, clientToken }),
     });
     const additionBatches = buildDatasetExampleBatches({
       items: diff.additions,
       payloadItem: (addition) => addition.content,
       requestBody: (examples, clientToken) => ({
+        datasetId: id,
         source: { inlineExamples: { examples } },
         clientToken,
       }),
@@ -888,6 +890,8 @@ export class EvalClient implements CoreEvalClient {
 
     const completedAdditions: Addition[] = [];
     const assignedIds: string[] = [];
+    let expectedLocalText = localText;
+    let checkpointConflict: InputValidationError | undefined;
     await runDatasetExampleBatches({
       batches: additionBatches,
       datasetId: id,
@@ -909,16 +913,45 @@ export class EvalClient implements CoreEvalClient {
         completedAdditions.push(...additions);
         assignedIds.push(...(response.exampleIds ?? []));
         const nextLocalText = applyExampleIds(localExamples, completedAdditions, assignedIds);
+
+        const currentLocalText = await readTextFile(filePath);
+        if (currentLocalText !== expectedLocalText) {
+          const recoveryFilePath = datasetRecoveryFilePath(filePath);
+          try {
+            await atomicWrite(recoveryFilePath, nextLocalText);
+          } catch (error) {
+            throw new FileWriteError(
+              `Dataset "${id}" changed while the update was running and its recovered IDs ` +
+                `could not be written to ${recoveryFilePath}`,
+              {
+                cause: error,
+                meta: { datasetId: id, filePath, recoveryFilePath },
+              },
+            );
+          }
+          checkpointConflict = new InputValidationError(
+            `Dataset file "${filePath}" changed while the update was running. ` +
+              `The file was left untouched and the reconciled content was written to ` +
+              `"${recoveryFilePath}".`,
+            { meta: { datasetId: id, filePath, recoveryFilePath } },
+          );
+          return;
+        }
+
         try {
           // The remote request has already succeeded, so checkpoint its IDs even
           // if cancellation arrives before the next poll or batch.
           await atomicWrite(filePath, nextLocalText);
+          expectedLocalText = nextLocalText;
         } catch (error) {
           throw new FileWriteError(`Could not write dataset "${id}" to ${filePath}`, {
             cause: error,
             meta: { datasetId: id, filePath },
           });
         }
+      },
+      afterBatchSettled: async (): Promise<void> => {
+        if (checkpointConflict) throw checkpointConflict;
       },
     });
 
@@ -992,6 +1025,15 @@ async function readLocalDatasetFile(filePath: string, signal?: AbortSignal): Pro
       meta: { filePath },
     });
   }
+}
+
+function datasetRecoveryFilePath(filePath: string): string {
+  const extension = extname(filePath);
+  const stem = basename(filePath, extension);
+  return join(
+    dirname(filePath),
+    `${stem}.agentcore-recovery-${randomUUID()}${extension || ".jsonl"}`,
+  );
 }
 
 function parseRemoteDatasetExamples(text: string): ReturnType<typeof parseJsonl> {
@@ -1079,14 +1121,25 @@ async function runDatasetExampleBatches<T, R>(options: {
   onBatchStart?: () => void;
   operation: (batch: T[], clientToken: string) => Promise<R>;
   afterOperation?: (batch: T[], response: R) => Promise<void>;
+  afterBatchSettled?: (batch: T[], response: R) => Promise<void>;
 }): Promise<void> {
-  const { batches, datasetId, control, signal, onBatchStart, operation, afterOperation } = options;
+  const {
+    batches,
+    datasetId,
+    control,
+    signal,
+    onBatchStart,
+    operation,
+    afterOperation,
+    afterBatchSettled,
+  } = options;
   for (const batch of batches) {
     signal?.throwIfAborted();
     onBatchStart?.();
     const response = await operation(batch.items, batch.clientToken);
     await afterOperation?.(batch.items, response);
     await waitForDatasetActive(control, datasetId, signal);
+    await afterBatchSettled?.(batch.items, response);
   }
 }
 

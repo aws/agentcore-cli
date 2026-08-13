@@ -20,6 +20,7 @@ import { createRootHandler } from "../../index";
 
 const REGION = "us-west-2";
 const FIXTURES = join(import.meta.dir, "__fixtures__");
+const UPDATE_FIXTURES = join(FIXTURES, "update");
 
 // Record with RECORD=1 bun test src/handlers/eval/dataset/dataset.fixture.test.tsx
 // The RECORD run walks one dataset through its whole life against the live API —
@@ -77,7 +78,7 @@ async function writeUpdateExamples(): Promise<{
 
   // Use the IDs assigned by the live service or returned by the download
   // fixture. This keeps record and replay on the same code path.
-  await run(["eval", "dataset", "get", "--id", datasetId, "--file-path", path]);
+  await run(["eval", "dataset", "get", "--id", datasetId, "--file-path", path], UPDATE_FIXTURES);
   const current = readFileSync(path, "utf8")
     .trim()
     .split("\n")
@@ -115,22 +116,22 @@ async function writeUpdateExamples(): Promise<{
   return { path, keptExampleId, deletedExampleId };
 }
 
-function createFixtureCore(): CoreClient {
+function createFixtureCore(fixtures: string): CoreClient {
   const { createControlClient, createDataClient, createIamClient, createLogsClient } =
-    fixtureFactories(FIXTURES);
+    fixtureFactories(fixtures);
   return new CoreClient({
     createControlClient,
     createDataClient,
     createIamClient,
     createLogsClient,
     logger: createSilentLogger(),
-    fetch: fixtureFetch(FIXTURES),
+    fetch: fixtureFetch(fixtures),
   });
 }
 
-async function run(args: string[]): Promise<string> {
+async function run(args: string[], fixtures = FIXTURES): Promise<string> {
   const io = testIO();
-  const root = createRootHandler(createFixtureCore(), {
+  const root = createRootHandler(createFixtureCore(fixtures), {
     io: io.io,
     logger: createSilentLogger(),
     globalConfigAccessor: new TestGlobalConfigAccessor(),
@@ -210,7 +211,10 @@ describe("eval dataset against recorded responses", () => {
     await settle();
     const { path, keptExampleId, deletedExampleId } = await writeUpdateExamples();
 
-    const stdout = await run(["eval", "dataset", "update", "--id", datasetId, "--file-path", path]);
+    const stdout = await run(
+      ["eval", "dataset", "update", "--id", datasetId, "--file-path", path],
+      UPDATE_FIXTURES,
+    );
 
     matchGolden(FIXTURES, "update.golden.json", stdout);
     expect(JSON.parse(stdout)).toEqual({

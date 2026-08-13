@@ -6,10 +6,16 @@
   "status": "ACTIVE",
   "schemaType": "AGENTCORE_EVALUATION_PREDEFINED_V1",
   "exampleCount": 2,
-  "createdAt": "2026-08-13T14:21:59.997Z",
-  "updatedAt": "2026-08-13T14:22:01.465Z",
+  "createdAt": {
+    "$date": "2026-08-13T14:21:59.997Z"
+  },
+  "updatedAt": {
+    "$date": "2026-08-13T14:22:17.603Z"
+  },
   "description": "Recorded fixture for the dataset commands",
   "draftStatus": "MODIFIED",
   "downloadUrl": "https://agentcoredatasets685197708687-284077270265-us-west-2-an.s3.us-west-2.amazonaws.com/685197708687/datasets/agentcore_cli_dataset_fixture-qhP7ipAkaf/draft/dataset.jsonl",
-  "downloadUrlExpiresAt": "2026-08-13T14:27:05.644Z"
+  "downloadUrlExpiresAt": {
+    "$date": "2026-08-13T14:27:19.528Z"
+  }
 }

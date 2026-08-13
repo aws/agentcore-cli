@@ -3,7 +3,13 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fixtureFactories, fixtureFetch, isRecording } from "./fixtures";
+import {
+  fixtureFactories,
+  fixtureFetch,
+  isRecording,
+  matchGolden,
+  sanitizePresignedUrls,
+} from "./fixtures";
 import { stringify } from "./serialization";
 
 const dirs: string[] = [];
@@ -33,6 +39,38 @@ replayTest("fetch fixtures ignore presigned query parameters", async () => {
 
   expect(response.status).toBe(200);
   expect(await response.text()).toBe('{"exampleId":"e-1"}\n');
+});
+
+test("sanitizes AWS presigned URLs without changing ordinary URLs", () => {
+  const signed =
+    "https://bucket.s3.amazonaws.com/dataset.jsonl?" +
+    "X-Amz-Credential=temporary&X-Amz-Security-Token=secret&X-Amz-Signature=signature";
+  const ordinary = "https://example.com/file.json?version=2";
+
+  expect(sanitizePresignedUrls({ downloadUrl: signed, ordinary })).toEqual({
+    downloadUrl: "https://bucket.s3.amazonaws.com/dataset.jsonl",
+    ordinary,
+  });
+});
+
+replayTest("golden matching ignores presigned URL credentials", () => {
+  const dir = fixtureDir();
+  writeFileSync(
+    join(dir, "signed.golden.json"),
+    JSON.stringify({
+      downloadUrl: "https://bucket.s3.amazonaws.com/dataset.jsonl?X-Amz-Signature=old-signature",
+    }),
+  );
+
+  expect(() =>
+    matchGolden(
+      dir,
+      "signed.golden.json",
+      JSON.stringify({
+        downloadUrl: "https://bucket.s3.amazonaws.com/dataset.jsonl?X-Amz-Signature=new-signature",
+      }),
+    ),
+  ).not.toThrow();
 });
 
 replayTest("SDK fixtures ignore only the top-level client token", async () => {

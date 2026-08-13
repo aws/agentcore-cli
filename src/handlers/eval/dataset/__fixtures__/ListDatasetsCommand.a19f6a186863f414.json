@@ -7,8 +7,12 @@
       "status": "ACTIVE",
       "schemaType": "AGENTCORE_EVALUATION_PREDEFINED_V1",
       "exampleCount": 2,
-      "createdAt": "2026-08-13T14:22:19.871Z",
-      "updatedAt": "2026-08-13T14:22:21.067Z",
+      "createdAt": {
+        "$date": "2026-08-13T14:22:19.871Z"
+      },
+      "updatedAt": {
+        "$date": "2026-08-13T14:22:21.067Z"
+      },
       "draftStatus": "MODIFIED"
     }
   ]

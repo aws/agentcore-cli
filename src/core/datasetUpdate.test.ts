@@ -256,11 +256,7 @@ describe("EvalClient.updateDatasetExamples", () => {
 
     expect(addCommands).toHaveLength(2);
     for (const command of addCommands) {
-      const requestBody = {
-        source: command.input.source,
-        clientToken: command.input.clientToken,
-      };
-      expect(Buffer.byteLength(JSON.stringify(requestBody), "utf8")).toBeLessThanOrEqual(
+      expect(Buffer.byteLength(JSON.stringify(command.input), "utf8")).toBeLessThanOrEqual(
         PAYLOAD_LIMIT_BYTES,
       );
     }
@@ -292,12 +288,27 @@ describe("EvalClient.updateDatasetExamples", () => {
 
     expect(updateCommands).toHaveLength(2);
     expect(updateCommands.every((command) => command.input.examples?.length === 1)).toBe(true);
+    expect(
+      updateCommands.every(
+        (command) =>
+          Buffer.byteLength(JSON.stringify(command.input), "utf8") <= PAYLOAD_LIMIT_BYTES,
+      ),
+    ).toBe(true);
   });
 
-  test("rejects an individually oversized example before mutating the dataset", async () => {
-    const localPath = tempFile(
-      jsonl({ scenario_id: "too-large", value: "x".repeat(PAYLOAD_LIMIT_BYTES) }),
-    );
+  test("includes datasetId when rejecting an oversized mutation before changing the dataset", async () => {
+    const clientToken = "0".repeat(36);
+    const example = { scenario_id: "too-large", value: "" };
+    const bodyWithoutDatasetId = {
+      source: { inlineExamples: { examples: [example] } },
+      clientToken,
+    };
+    const valueBytes =
+      PAYLOAD_LIMIT_BYTES - Buffer.byteLength(JSON.stringify(bodyWithoutDatasetId));
+    example.value = "x".repeat(valueBytes);
+    expect(Buffer.byteLength(JSON.stringify(bodyWithoutDatasetId))).toBe(PAYLOAD_LIMIT_BYTES);
+
+    const localPath = tempFile(jsonl(example));
     const commands: unknown[] = [];
     const fetch = (() => {
       throw new Error("fetch should not be called");
@@ -495,6 +506,52 @@ describe("EvalClient.updateDatasetExamples", () => {
       .split("\n")
       .map((line) => JSON.parse(line));
     expect(checkpoint.filter((row) => row.exampleId !== undefined)).toHaveLength(1000);
+  });
+
+  test("preserves concurrent edits and stops after writing assigned IDs to a recovery file", async () => {
+    const localRows = Array.from({ length: 1001 }, (_, i) => ({ scenario_id: `new-${i}` }));
+    const localPath = tempFile(jsonl(...localRows));
+    const editedContents = jsonl({ scenario_id: "edited-while-request-was-running" });
+    const commands: unknown[] = [];
+    let addCalls = 0;
+    const client = new EvalClient(
+      stubClients({
+        commands,
+        dataset: { datasetId: "d-1", datasetVersion: "DRAFT", status: "ACTIVE", exampleCount: 0 },
+        addIds: Array.from({ length: 1000 }, (_, i) => `fresh-${i}`),
+        beforeSend: (command) => {
+          if (!(command instanceof AddDatasetExamplesCommand) || ++addCalls !== 1) return;
+          writeFileSync(localPath, editedContents);
+        },
+      }),
+      (() => {
+        throw new Error("fetch should not be called");
+      }) as unknown as CoreFetch,
+    );
+
+    let conflict: unknown;
+    try {
+      await client.updateDatasetExamples("d-1", localPath, OPTIONS);
+    } catch (error) {
+      conflict = error;
+    }
+
+    expect(conflict).toBeInstanceOf(InputValidationError);
+    const recoveryFilePath = (conflict as InputValidationError).meta.recoveryFilePath;
+    expect(recoveryFilePath).toBeString();
+    expect(readFileSync(localPath, "utf8")).toBe(editedContents);
+
+    const recovered = readFileSync(recoveryFilePath as string, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(recovered[0]?.exampleId).toBe("fresh-0");
+    expect(recovered[999]?.exampleId).toBe("fresh-999");
+    expect(recovered[1000]).not.toHaveProperty("exampleId");
+    expect(commands.filter((command) => command instanceof AddDatasetExamplesCommand)).toHaveLength(
+      1,
+    );
+    expect(commands.at(-1)).toBeInstanceOf(GetDatasetCommand);
   });
 
   test("aborts a pending mutation through the SDK request options", async () => {

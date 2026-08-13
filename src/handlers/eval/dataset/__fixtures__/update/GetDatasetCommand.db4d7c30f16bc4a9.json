@@ -1,0 +1,21 @@
+{
+  "datasetArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:dataset/agentcore_cli_dataset_fixture-jzVpQaA5It",
+  "datasetId": "agentcore_cli_dataset_fixture-jzVpQaA5It",
+  "datasetVersion": "DRAFT",
+  "datasetName": "agentcore_cli_dataset_fixture",
+  "status": "ACTIVE",
+  "schemaType": "AGENTCORE_EVALUATION_PREDEFINED_V1",
+  "exampleCount": 2,
+  "createdAt": {
+    "$date": "2026-08-07T19:02:41.330Z"
+  },
+  "updatedAt": {
+    "$date": "2026-08-07T19:02:42.848Z"
+  },
+  "description": "Recorded fixture for the dataset commands",
+  "draftStatus": "MODIFIED",
+  "downloadUrl": "https://agentcoredatasets685197708687-284077270265-us-west-2-an.s3.us-west-2.amazonaws.com/685197708687/datasets/agentcore_cli_dataset_fixture-jzVpQaA5It/draft/dataset.jsonl",
+  "downloadUrlExpiresAt": {
+    "$date": "2026-08-07T19:07:46.811Z"
+  }
+}
