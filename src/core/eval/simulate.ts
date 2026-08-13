@@ -12,8 +12,12 @@ export type Scenario = {
 };
 
 // parseScenarios reads dataset JSONL (one scenario per line) into Scenario records.
+// Each scenario needs a non-empty, unique `scenario_id` — the id is the join key
+// between the session created for it and its ground truth, so a missing/duplicate
+// id silently misassigns ground truth to the wrong session.
 export function parseScenarios(text: string): Scenario[] {
   const scenarios: Scenario[] = [];
+  const seen = new Set<string>();
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -23,7 +27,23 @@ export function parseScenarios(text: string): Scenario[] {
     } catch {
       throw new InputValidationError("dataset contains a line that is not valid JSON");
     }
-    scenarios.push(toScenario(row));
+    const scenario = toScenario(row);
+    if (!scenario.scenarioId) {
+      throw new InputValidationError("dataset scenario is missing 'scenario_id'");
+    }
+    if (seen.has(scenario.scenarioId)) {
+      throw new InputValidationError(`dataset has a duplicate scenario_id: "${scenario.scenarioId}"`);
+    }
+    if (scenario.turns.length !== 1) {
+      // Multi-turn replay isn't implemented yet; the ground-truth mapper emits
+      // per-turn entries but simulate only invokes turn[0]. Reject rather than
+      // silently misalign turns[i] to a single-turn session.
+      throw new InputValidationError(
+        `scenario "${scenario.scenarioId}" has ${scenario.turns.length} turns; simulate v1 supports single-turn scenarios only`,
+      );
+    }
+    seen.add(scenario.scenarioId);
+    scenarios.push(scenario);
   }
   if (scenarios.length === 0) throw new InputValidationError("dataset has no scenarios");
   return scenarios;
@@ -48,29 +68,33 @@ export async function loadDatasetFile(path: string): Promise<Scenario[]> {
   return parseScenarios(await Bun.file(path).text());
 }
 
-// runScenarios runs `worker` over every scenario with bounded concurrency, dropping
-// failures (a single bad invocation must not sink the run). Returns the successful
-// results plus a failure count so the caller can warn / error on all-failed.
+// runScenarios runs `worker` over every scenario with bounded concurrency. A failed
+// worker doesn't sink the run — the failure is captured (so the caller can report
+// on all-failed) but drops that scenario. Returns ok results + the first error we
+// saw, which the caller can surface to explain a total failure.
+export type ScenarioRun<T> = { ok: T[]; failed: number; firstError?: Error };
 export async function runScenarios<T>(
   scenarios: Scenario[],
   worker: (scenario: Scenario) => Promise<T>,
   concurrency = 5,
-): Promise<{ ok: T[]; failed: number }> {
+): Promise<ScenarioRun<T>> {
   const ok: T[] = [];
   let failed = 0;
+  let firstError: Error | undefined;
   let next = 0;
   const run = async (): Promise<void> => {
     while (next < scenarios.length) {
       const scenario = scenarios[next++]!;
       try {
         ok.push(await worker(scenario));
-      } catch {
+      } catch (error) {
         failed++;
+        if (!firstError) firstError = error instanceof Error ? error : new Error(String(error));
       }
     }
   };
   await Promise.all(Array.from({ length: Math.min(concurrency, scenarios.length) }, run));
-  return { ok, failed };
+  return { ok, failed, firstError };
 }
 
 // toSessionMetadata maps a scenario's ground truth onto the session the replay

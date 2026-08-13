@@ -528,30 +528,55 @@ export class EvalClient implements CoreEvalClient {
       .send(new GetAgentRuntimeCommand({ agentRuntimeId: input.runtimeId }));
     const deps = { clients: this.clients, fetch: this.fetch, logger: this.logger };
 
-    const { ok, failed } = await runScenarios(scenarios, async (scenario) => {
+    const { ok, failed, firstError } = await runScenarios(scenarios, async (scenario) => {
+      // Generate the session id client-side. The CUSTOM_JWT invoke path relies on
+      // the server echoing back x-amzn-bedrock-agentcore-runtime-session-id, which
+      // is not guaranteed; picking the id here means we know it regardless of the
+      // auth mode. Also keeps IAM-path ids deterministic per scenario.
+      const runtimeSessionId = randomUUID();
       const request = normalizeRuntimeInvokeRequest(runtime, {
         runtimeId: input.runtimeId,
         qualifier: input.qualifier,
-        payload: renderJsonTemplate(input.payloadTemplate, { input: scenario.turns[0]?.input ?? "" }),
+        payload: renderJsonTemplate(input.payloadTemplate, { input: scenario.turns[0]!.input }),
         contentType: "application/json",
         accept: "application/json",
         applicationHeaders: input.headers,
         bearerToken: input.bearerToken,
-        runtimeSessionId: input.sessionId,
+        runtimeSessionId,
         runtimeUserId: input.userId,
       });
-      const response = await invokeRuntime(deps, request, options);
-      for await (const _chunk of response.body) {
-        // Drain the stream so the turn completes; only the session id is needed.
+      try {
+        const response = await invokeRuntime(deps, request, options);
+        for await (const _chunk of response.body) {
+          // Drain the stream so the turn completes; only the session id is needed.
+        }
+      } catch (error) {
+        this.logger.debug(
+          `simulate: invoke failed for scenario "${scenario.scenarioId}": ${(error as Error).message}`,
+        );
+        throw error;
       }
-      if (!response.runtimeSessionId) throw new Error("invoke returned no session id");
-      return { scenarioId: scenario.scenarioId, sessionId: response.runtimeSessionId };
+      return { scenarioId: scenario.scenarioId, sessionId: runtimeSessionId };
     });
 
     if (ok.length === 0) {
+      const detail = firstError ? `; first error: ${firstError.message}` : "";
       throw new InputValidationError(
-        `no scenarios could be invoked (${failed} failed) — nothing to evaluate`,
+        `no scenarios could be invoked (${failed} failed) — nothing to evaluate${detail}`,
       );
+    }
+    if (failed > 0) {
+      this.logger.warn(`simulate: ${failed} scenario(s) failed to invoke and were dropped`);
+    }
+
+    // AgentCore takes ~30s-3min to emit spans for a freshly invoked session; submit
+    // too early and the service reads an empty log group and marks every session
+    // failed. Wait once for the batch to be safely ingestible (matches the old CLI's
+    // 180s wait). Skipped when disabled via `SIMULATE_INGESTION_WAIT_MS=0` (tests).
+    const waitMs = Number(process.env.SIMULATE_INGESTION_WAIT_MS ?? 180_000);
+    if (waitMs > 0) {
+      this.logger.info(`waiting ${Math.round(waitMs / 1000)}s for span ingestion before submitting`);
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
     }
 
     const job = await this.startBatchEvaluation(

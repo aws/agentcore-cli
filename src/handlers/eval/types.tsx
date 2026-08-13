@@ -215,7 +215,8 @@ export type SimulateInput = {
   payloadTemplate: string; // e.g. {"prompt":"{input}"} — {input} is the scenario's turn input
   headers?: [string, string][];
   bearerToken?: string;
-  sessionId?: string;
+  // simulate always creates a fresh session per scenario. Reusing one session
+  // across scenarios interleaves unrelated turns and collides ground-truth keys.
   userId?: string;
   dataset: string; // local JSONL path or a dataset id
   datasetVersion?: string;
