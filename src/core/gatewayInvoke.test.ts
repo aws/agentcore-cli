@@ -148,7 +148,10 @@ describe("Gateway invoke Core transport", () => {
       await core.gateway.invokeGateway(
         request({
           authorizerType,
-          url: "https://gateway.example.test:8443/path?tag=one&tag=two&space=a+b",
+          url:
+            "https://gateway.example.test:8443/path" +
+            "?tag=one&tag=two&literal=a+b&space=a%20b&encoded=a%2Bb" +
+            "&__proto__=prototype&toString=method",
         }),
         { region: "us-east-1", endpointUrl: "https://control.example.test" },
       );
@@ -160,7 +163,14 @@ describe("Gateway invoke Core transport", () => {
           hostname: "gateway.example.test",
           port: 8443,
           path: "/path",
-          query: { tag: ["one", "two"], space: "a b" },
+          query: {
+            tag: ["one", "two"],
+            literal: "a+b",
+            space: "a b",
+            encoded: "a+b",
+            ["__proto__"]: "prototype",
+            toString: "method",
+          },
           headers: {
             "content-type": "application/json",
             host: "gateway.example.test:8443",
@@ -171,6 +181,7 @@ describe("Gateway invoke Core transport", () => {
       expect(new Headers(fetchCalls[0]!.init!.headers).get("authorization")).toBe(
         "AWS4-HMAC-SHA256 signed",
       );
+      expect(Object.getPrototypeOf((signedRequests[0] as { query: object }).query)).toBeNull();
     },
   );
 

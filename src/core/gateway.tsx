@@ -62,9 +62,21 @@ const MAX_CONNECTOR_TARGET_PAGES = 101;
 
 async function* emptyBody(): AsyncGenerator<Uint8Array> {}
 
+function decodeQueryComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function toQuery(url: URL): Record<string, string | string[]> {
-  const query: Record<string, string | string[]> = {};
-  for (const [name, value] of url.searchParams) {
+  const query = Object.create(null) as Record<string, string | string[]>;
+  for (const field of url.search.slice(1).split("&")) {
+    if (!field) continue;
+    const separator = field.indexOf("=");
+    const name = decodeQueryComponent(separator < 0 ? field : field.slice(0, separator));
+    const value = decodeQueryComponent(separator < 0 ? "" : field.slice(separator + 1));
     const previous = query[name];
     if (previous === undefined) query[name] = value;
     else if (Array.isArray(previous)) previous.push(value);
