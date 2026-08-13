@@ -1,15 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import type {
+  ActorSummary,
   Event,
   EventMetadataFilterExpression,
   GetEventOutput,
   GetMemoryRecordOutput,
+  ListActorsOutput,
   ListEventsOutput,
   ListMemoryRecordsOutput,
+  ListSessionsOutput,
   MemoryMetadataFilterExpression,
   MemoryRecord,
   MemoryRecordSummary,
+  SessionSummary,
 } from "@aws-sdk/client-bedrock-agentcore";
 import { CoreClient } from "../../core";
 import {
@@ -38,6 +42,16 @@ const ACTOR_ID = "actor-1";
 const SESSION_ID = "session-1";
 const EVENT_ID = "event-1";
 const RECORD_ID = "record-1";
+
+const actorSummary: ActorSummary = {
+  actorId: ACTOR_ID,
+};
+
+const sessionSummary: SessionSummary = {
+  actorId: ACTOR_ID,
+  sessionId: SESSION_ID,
+  createdAt: new Date("2026-08-03T12:00:00.000Z"),
+};
 
 const event: Event = {
   memoryId: EVENT_MEMORY_ID,
@@ -107,6 +121,8 @@ describe("memory command hierarchy", () => {
     const memory = root.children().find((child) => child.name() === "memory");
     const event = memory?.children().find((child) => child.name() === "event");
     const record = memory?.children().find((child) => child.name() === "record");
+    const actor = memory?.children().find((child) => child.name() === "actor");
+    const session = memory?.children().find((child) => child.name() === "session");
 
     expect(memory?.flags().map((flag) => flag.name)).not.toContain("interactive");
     expect(memory?.children().map((child) => child.name())).toEqual([
@@ -114,9 +130,13 @@ describe("memory command hierarchy", () => {
       "list",
       "event",
       "record",
+      "actor",
+      "session",
     ]);
     expect(event?.children().map((child) => child.name())).toEqual(["get", "list"]);
     expect(record?.children().map((child) => child.name())).toEqual(["get", "list"]);
+    expect(actor?.children().map((child) => child.name())).toEqual(["list"]);
+    expect(session?.children().map((child) => child.name())).toEqual(["list"]);
   });
 
   test("keeps an omitted get view undefined for empty-flag routing", () => {
@@ -142,6 +162,8 @@ describe("memory TUI dispatch", () => {
     ["event list", ["memory", "event", "list"]],
     ["record get", ["memory", "record", "get"]],
     ["record list", ["memory", "record", "list"]],
+    ["actor list", ["memory", "actor", "list"]],
+    ["session list", ["memory", "session", "list"]],
   ] as const)("opens the TUI for a bare Memory %s leaf", async (_label, args) => {
     const { core, route } = testMemoryCommand();
 
@@ -418,6 +440,106 @@ describe("memory event commands", () => {
         metadataFilters,
       ]),
     ).rejects.toThrow("Invalid value for option '--metadata-filters'");
+    expect(command.core.memory.calls).toEqual([]);
+  });
+});
+
+describe("memory actor commands", () => {
+  test("lists actors with pagination options", async () => {
+    const response: ListActorsOutput = {
+      actorSummaries: [actorSummary],
+      nextToken: "page-3",
+    };
+    const core = new TestCoreClient();
+    core.memory.setListActorsResponse(response, "page-2");
+    const command = testMemoryCommand(core);
+
+    await command.route([
+      "memory",
+      "actor",
+      "list",
+      "--memory",
+      EVENT_MEMORY_ID,
+      "--max-results",
+      "1",
+      "--next-token",
+      "page-2",
+    ]);
+
+    expect(core.memory.calls).toEqual([
+      {
+        method: "listActors",
+        args: [
+          {
+            memoryId: EVENT_MEMORY_ID,
+            maxResults: 1,
+            nextToken: "page-2",
+          },
+          { region: REGION },
+        ],
+      },
+    ]);
+    expect(JSON.parse(command.stdout())).toEqual(JSON.parse(JSON.stringify(response)));
+  });
+
+  test("rejects a missing Memory selector for actor list", async () => {
+    const command = testMemoryCommand();
+
+    await expect(command.route(["memory", "actor", "list", "--json"])).rejects.toThrow(
+      "--memory <memory>",
+    );
+    expect(command.core.memory.calls).toEqual([]);
+  });
+});
+
+describe("memory session commands", () => {
+  test("lists an actor's sessions with pagination options", async () => {
+    const response: ListSessionsOutput = {
+      sessionSummaries: [sessionSummary],
+      nextToken: "page-3",
+    };
+    const core = new TestCoreClient();
+    core.memory.setListSessionsResponse(response, "page-2");
+    const command = testMemoryCommand(core);
+
+    await command.route([
+      "memory",
+      "session",
+      "list",
+      "--memory",
+      EVENT_MEMORY_ID,
+      "--actor-id",
+      ACTOR_ID,
+      "--max-results",
+      "1",
+      "--next-token",
+      "page-2",
+    ]);
+
+    expect(core.memory.calls).toEqual([
+      {
+        method: "listSessions",
+        args: [
+          {
+            memoryId: EVENT_MEMORY_ID,
+            actorId: ACTOR_ID,
+            maxResults: 1,
+            nextToken: "page-2",
+          },
+          { region: REGION },
+        ],
+      },
+    ]);
+    expect(JSON.parse(command.stdout())).toEqual(JSON.parse(JSON.stringify(response)));
+  });
+
+  test.each([
+    ["memory", ["--json"], "--memory <memory>"],
+    ["actor", ["--memory", EVENT_MEMORY_ID, "--json"], "--actor-id <actor-id>"],
+  ] as const)("rejects a missing %s selector for session list", async (_name, flags, expected) => {
+    const command = testMemoryCommand();
+
+    await expect(command.route(["memory", "session", "list", ...flags])).rejects.toThrow(expected);
     expect(command.core.memory.calls).toEqual([]);
   });
 });

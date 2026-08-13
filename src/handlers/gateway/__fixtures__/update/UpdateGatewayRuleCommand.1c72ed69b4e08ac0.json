@@ -1,0 +1,22 @@
+{
+  "ruleId": "46a7a8f4-91f9-4d17-b200-d1aea6825711",
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:603141041947:gateway/agentcore-cli-gateway-update-fixture-f4dbqmv0kb",
+  "priority": 20,
+  "actions": [
+    {
+      "routeToTarget": {
+        "staticRoute": {
+          "targetName": "http-update-fixture"
+        }
+      }
+    }
+  ],
+  "createdAt": {
+    "$date": "2026-08-06T21:00:21.789Z"
+  },
+  "status": "UPDATING",
+  "description": "Rule after update",
+  "updatedAt": {
+    "$date": "2026-08-06T21:00:29.214Z"
+  }
+}

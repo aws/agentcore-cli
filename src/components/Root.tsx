@@ -48,12 +48,19 @@ import {
 import { BatchEvaluationScreen } from "../handlers/eval/batch-evaluation/screen.tsx";
 import { BatchEvaluationListScreen } from "../handlers/eval/batch-evaluation/list/screen.tsx";
 import { BatchEvaluationGetJsonScreen } from "../handlers/eval/batch-evaluation/get/screen.tsx";
+import { DatasetScreen } from "../handlers/eval/dataset/screen.tsx";
+import { DatasetListScreen } from "../handlers/eval/dataset/list/screen.tsx";
+import { DatasetGetScreen, DatasetGetJsonScreen } from "../handlers/eval/dataset/get/screen.tsx";
 import { MemoryEventScreen } from "../handlers/memory/event/screen.tsx";
 import { MemoryEventGetScreen } from "../handlers/memory/event/get/screen.tsx";
 import { MemoryEventListScreen } from "../handlers/memory/event/list/screen.tsx";
 import { MemoryRecordScreen } from "../handlers/memory/record/screen.tsx";
 import { MemoryRecordGetScreen } from "../handlers/memory/record/get/screen.tsx";
 import { MemoryRecordListScreen } from "../handlers/memory/record/list/screen.tsx";
+import { MemoryActorScreen } from "../handlers/memory/actor/screen.tsx";
+import { MemoryActorListScreen } from "../handlers/memory/actor/list/screen.tsx";
+import { MemorySessionScreen } from "../handlers/memory/session/screen.tsx";
+import { MemorySessionListScreen } from "../handlers/memory/session/list/screen.tsx";
 import { IdentityScreen } from "../handlers/identity/screen.tsx";
 import { ApiKeyCredentialProviderScreen } from "../handlers/identity/api-key-credential-provider/screen.tsx";
 import { ApiKeyCredentialProviderListScreen } from "../handlers/identity/api-key-credential-provider/list/screen.tsx";
@@ -454,6 +461,23 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
             path="agentcore/eval/online-eval/get/:configId/json"
             element={<OnlineEvalGetJsonScreen ctx={ctx} core={core} />}
           />
+          <Route path="agentcore/eval/dataset" element={<DatasetScreen ctx={ctx} core={core} />} />
+          <Route
+            path="agentcore/eval/dataset/list"
+            element={<DatasetListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/dataset/get"
+            element={<Navigate to="/agentcore/eval/dataset/list" replace />}
+          />
+          <Route
+            path="agentcore/eval/dataset/get/:datasetId"
+            element={<DatasetGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/dataset/get/:datasetId/json"
+            element={<DatasetGetJsonScreen ctx={ctx} core={core} />}
+          />
           <Route
             path="agentcore/eval/batch-evaluation"
             element={<BatchEvaluationScreen ctx={ctx} core={core} />}
@@ -523,6 +547,34 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/memory/record/list/:memoryId/:scopeKind/:scope"
             element={<MemoryRecordListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/actor"
+            element={<MemoryActorScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/actor/list"
+            element={<MemoryActorListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/actor/list/:memoryId"
+            element={<MemoryActorListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/session"
+            element={<MemorySessionScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/session/list"
+            element={<MemorySessionListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/session/list/:memoryId"
+            element={<MemorySessionListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/memory/session/list/:memoryId/:actorId"
+            element={<MemorySessionListScreen ctx={ctx} core={core} />}
           />
           <Route path="agentcore/identity" element={<IdentityScreen ctx={ctx} core={core} />} />
           <Route

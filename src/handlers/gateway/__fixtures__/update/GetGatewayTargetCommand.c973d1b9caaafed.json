@@ -1,0 +1,35 @@
+{
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:603141041947:gateway/agentcore-cli-gateway-update-fixture-f4dbqmv0kb",
+  "targetId": "LN3LFG8R6V",
+  "createdAt": {
+    "$date": "2026-08-06T21:00:19.464Z"
+  },
+  "updatedAt": {
+    "$date": "2026-08-06T21:00:20.415Z"
+  },
+  "status": "READY",
+  "name": "web-search-update-fixture",
+  "targetConfiguration": {
+    "mcp": {
+      "connector": {
+        "source": {
+          "connectorId": "web-search"
+        },
+        "configurations": [
+          {
+            "name": "WebSearch",
+            "parameterValues": {
+              "maxResults": 10
+            }
+          }
+        ]
+      }
+    }
+  },
+  "credentialProviderConfigurations": [
+    {
+      "credentialProviderType": "GATEWAY_IAM_ROLE"
+    }
+  ],
+  "description": "Connector before update"
+}

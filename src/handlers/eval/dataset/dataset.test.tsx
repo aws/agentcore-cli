@@ -49,6 +49,7 @@ function testDatasetCommand(stdin?: string) {
   return {
     core,
     stdout: io.stdout,
+    stderr: io.stderr,
     route: (args: string[]) => root.route(["node", "agentcore", ...args, "--region", REGION]),
   };
 }
@@ -79,6 +80,7 @@ describe("eval dataset command hierarchy", () => {
       "get",
       "list",
       "delete",
+      "update",
       "publish",
     ]);
   });
@@ -90,6 +92,25 @@ describe("eval dataset command hierarchy", () => {
 
     expect(stdout()).toContain("Usage: agentcore eval dataset");
     expect(core.eval.calls).toHaveLength(0);
+  });
+
+  test.each([["get"], ["list"]] as const)(
+    "opens the TUI for a bare `eval dataset %s` leaf",
+    async (command) => {
+      const { route } = testDatasetCommand();
+
+      await expect(route(["eval", "dataset", command])).rejects.toThrow(
+        "interactive mode requires a TTY on stdin and stdout",
+      );
+    },
+  );
+
+  test("runs normal validation for a bare CLI-only dataset command", async () => {
+    const { route } = testDatasetCommand();
+
+    await expect(route(["eval", "dataset", "update"])).rejects.toThrow(
+      "required option '--id <id>' not specified",
+    );
   });
 });
 
@@ -556,6 +577,81 @@ describe("dataset publish", () => {
     const { core, route } = testDatasetCommand();
 
     await expect(route(["eval", "dataset", "publish", "--json"])).rejects.toThrow(/--id/);
+    expect(core.eval.calls).toHaveLength(0);
+  });
+});
+
+describe("dataset update", () => {
+  test("updates the DRAFT from a local JSONL file", async () => {
+    const path = writeTempJsonl(EXAMPLE_A);
+    const { core, stdout, stderr, route } = testDatasetCommand();
+    core.eval.setUpdateDatasetResult({
+      datasetId: "dataset-orders-abc123",
+      added: 1,
+      updated: 2,
+      deleted: 3,
+      unchanged: 4,
+    });
+
+    await route([
+      "eval",
+      "dataset",
+      "update",
+      "--id",
+      "dataset-orders-abc123",
+      "--file-path",
+      path,
+    ]);
+
+    const call = core.eval.calls.find((c) => c.method === "updateDatasetExamples");
+    expect(call?.args.slice(0, 3)).toEqual([
+      "dataset-orders-abc123",
+      path,
+      { region: REGION, endpointUrl: undefined },
+    ]);
+    const onProgress = call?.args[4] as ((event: { message: string }) => void) | undefined;
+    onProgress?.({ message: "Applying update (batch 1 of 2)..." });
+    expect(stderr()).toBe("Applying update (batch 1 of 2)...");
+    expect(JSON.parse(stdout())).toEqual({
+      datasetId: "dataset-orders-abc123",
+      added: 1,
+      updated: 2,
+      deleted: 3,
+      unchanged: 4,
+    });
+  });
+
+  test("takes only --id and --file-path", async () => {
+    const root = createRootHandler(new TestCoreClient(), {
+      io: testIO().io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    const update = root
+      .children()
+      .find((c) => c.name() === "eval")
+      ?.children()
+      .find((c) => c.name() === "dataset")
+      ?.children()
+      .find((c) => c.name() === "update");
+
+    expect(update?.flags().map((f) => f.name)).toEqual(["id", "file-path"]);
+  });
+
+  test("requires --id", async () => {
+    const path = writeTempJsonl(EXAMPLE_A);
+    const { core, route } = testDatasetCommand();
+
+    await expect(route(["eval", "dataset", "update", "--file-path", path])).rejects.toThrow(/--id/);
+    expect(core.eval.calls).toHaveLength(0);
+  });
+
+  test("requires --file-path", async () => {
+    const { core, route } = testDatasetCommand();
+
+    await expect(
+      route(["eval", "dataset", "update", "--id", "dataset-orders-abc123"]),
+    ).rejects.toThrow(/--file-path/);
     expect(core.eval.calls).toHaveLength(0);
   });
 });

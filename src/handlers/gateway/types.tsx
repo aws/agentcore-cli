@@ -1,16 +1,26 @@
 import type {
+  AuthorizerType,
   CreateGatewayRequest,
   CreateGatewayResponse,
   CreateGatewayRuleRequest,
   CreateGatewayRuleResponse,
   CreateGatewayTargetRequest,
   CreateGatewayTargetResponse,
+  DeleteGatewayResponse,
+  DeleteGatewayRuleResponse,
+  DeleteGatewayTargetResponse,
   GetGatewayResponse,
   GetGatewayRuleResponse,
   GetGatewayTargetResponse,
   ListGatewayRulesResponse,
   ListGatewaysResponse,
   ListGatewayTargetsResponse,
+  UpdateGatewayRequest,
+  UpdateGatewayResponse,
+  UpdateGatewayRuleRequest,
+  UpdateGatewayRuleResponse,
+  UpdateGatewayTargetRequest,
+  UpdateGatewayTargetResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { CoreOptions } from "../../core/types";
 
@@ -24,14 +34,79 @@ export type CreateGatewayTargetInput = CreateGatewayTargetRequest;
 
 export type CreateGatewayRuleInput = CreateGatewayRuleRequest;
 
+export type GatewayUpdatePatch = {
+  id: string;
+  roleArn?: UpdateGatewayRequest["roleArn"];
+  clearProtocol?: boolean;
+  description?: UpdateGatewayRequest["description"] | null;
+  protocolConfiguration?: UpdateGatewayRequest["protocolConfiguration"] | null;
+  authorizerConfiguration?: UpdateGatewayRequest["authorizerConfiguration"];
+  customTransformConfiguration?: UpdateGatewayRequest["customTransformConfiguration"] | null;
+  interceptorConfigurations?: UpdateGatewayRequest["interceptorConfigurations"] | null;
+  policyEngineConfiguration?: Partial<
+    NonNullable<UpdateGatewayRequest["policyEngineConfiguration"]>
+  > | null;
+  exceptionLevel?: UpdateGatewayRequest["exceptionLevel"] | null;
+  wafConfiguration?: UpdateGatewayRequest["wafConfiguration"] | null;
+};
+
+export type GatewayTargetUpdatePatch = {
+  gatewayId: string;
+  targetId: string;
+  name?: UpdateGatewayTargetRequest["name"];
+  description?: UpdateGatewayTargetRequest["description"] | null;
+  endpoint?: string;
+  targetConfiguration?: UpdateGatewayTargetRequest["targetConfiguration"];
+  credentialProviderConfigurations?:
+    UpdateGatewayTargetRequest["credentialProviderConfigurations"] | null;
+  metadataConfiguration?: UpdateGatewayTargetRequest["metadataConfiguration"] | null;
+  privateEndpoint?: UpdateGatewayTargetRequest["privateEndpoint"] | null;
+};
+
+export type GatewayRuleUpdateInput = UpdateGatewayRuleRequest;
+
+export type GatewayInvokeMethod = "GET" | "POST" | "DELETE";
+
+export type GatewayInvokeRequest = {
+  gatewayId: string;
+  url: string;
+  method: GatewayInvokeMethod;
+  authorizerType: AuthorizerType;
+  payload?: Uint8Array;
+  contentType?: string;
+  accept?: string;
+  applicationHeaders?: [string, string][];
+  bearerToken?: string;
+  runtimeSessionId?: string;
+  mcpSessionId?: string;
+  mcpProtocolVersion?: string;
+};
+
+export type GatewayInvokeResponse = {
+  statusCode: number;
+  contentType: string;
+  runtimeSessionId?: string;
+  mcpSessionId?: string;
+  mcpProtocolVersion?: string;
+  requestId?: string;
+  body: AsyncIterable<Uint8Array>;
+};
+
 export interface CoreGatewayClient {
   createGateway(input: CreateGatewayInput, options: CoreOptions): Promise<CreateGatewayResponse>;
-  getGateway(id: string, options: CoreOptions): Promise<GetGatewayResponse>;
+  updateGateway(patch: GatewayUpdatePatch, options: CoreOptions): Promise<UpdateGatewayResponse>;
+  invokeGateway(
+    request: GatewayInvokeRequest,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<GatewayInvokeResponse>;
+  getGateway(id: string, options: CoreOptions, signal?: AbortSignal): Promise<GetGatewayResponse>;
   listGateways(
     nextToken: string | undefined,
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListGatewaysResponse>;
+  deleteGateway(id: string, options: CoreOptions): Promise<DeleteGatewayResponse>;
   getGatewayTarget(
     gatewayId: string,
     targetId: string,
@@ -58,6 +133,19 @@ export interface CoreGatewayClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListGatewayTargetsResponse>;
+  updateGatewayTarget(
+    patch: GatewayTargetUpdatePatch,
+    options: CoreOptions,
+  ): Promise<UpdateGatewayTargetResponse>;
+  updateGatewayConnector(
+    patch: GatewayTargetUpdatePatch,
+    options: CoreOptions,
+  ): Promise<UpdateGatewayTargetResponse>;
+  deleteGatewayTarget(
+    gatewayId: string,
+    targetId: string,
+    options: CoreOptions,
+  ): Promise<DeleteGatewayTargetResponse>;
   getGatewayRule(
     gatewayId: string,
     ruleId: string,
@@ -73,4 +161,13 @@ export interface CoreGatewayClient {
     input: CreateGatewayRuleInput,
     options: CoreOptions,
   ): Promise<CreateGatewayRuleResponse>;
+  updateGatewayRule(
+    input: GatewayRuleUpdateInput,
+    options: CoreOptions,
+  ): Promise<UpdateGatewayRuleResponse>;
+  deleteGatewayRule(
+    gatewayId: string,
+    ruleId: string,
+    options: CoreOptions,
+  ): Promise<DeleteGatewayRuleResponse>;
 }

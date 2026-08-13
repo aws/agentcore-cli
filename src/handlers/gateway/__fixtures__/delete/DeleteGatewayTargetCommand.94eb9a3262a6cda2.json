@@ -1,0 +1,5 @@
+{
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:685197708687:gateway/agentcore-cli-gateway-delete-fixture-oiemu02wfc",
+  "targetId": "U9OM2R9I8Q",
+  "status": "DELETING"
+}

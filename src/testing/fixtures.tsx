@@ -11,6 +11,7 @@ import type {
   CreateDataClient,
   CreateIamClient,
   CreateLogsClient,
+  CoreFetch,
 } from "../core/types";
 import {
   createControlClient,
@@ -62,8 +63,51 @@ interface SdkCommand {
 // staying deterministic and offline-stable across runs.
 function fixturePath(dir: string, command: SdkCommand): string {
   const op = command.constructor.name;
-  const hash = Bun.hash(stringify(command.input ?? {})).toString(16);
+  const hash = Bun.hash(stringify(normalizeFixtureInput(command.input ?? {}))).toString(16);
   return join(dir, `${op}.${hash}.json`);
+}
+
+// The top-level clientToken is intentionally nondeterministic for idempotent
+// mutations. Nested fields belong to the command payload and remain part of the
+// fixture key.
+function normalizeFixtureInput(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const { clientToken: _clientToken, ...input } = value as Record<string, unknown>;
+  return input;
+}
+
+const PRESIGNED_QUERY_KEYS = [
+  "X-Amz-Credential",
+  "X-Amz-Security-Token",
+  "X-Amz-Signature",
+] as const;
+
+// Recording continues with the original response so live downloads work. Only
+// the persisted fixture or golden copy has presigned credentials removed.
+export function sanitizePresignedUrls<T>(value: T): T {
+  if (typeof value === "string") {
+    try {
+      const url = new URL(value);
+      if (PRESIGNED_QUERY_KEYS.some((key) => url.searchParams.has(key))) {
+        url.search = "";
+        return url.toString() as T;
+      }
+    } catch {
+      // Most strings are not URLs.
+    }
+    return value;
+  }
+  if (value instanceof Date) return value;
+  if (Array.isArray(value)) return value.map(sanitizePresignedUrls) as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+        key,
+        sanitizePresignedUrls(entry),
+      ]),
+    ) as T;
+  }
+  return value;
 }
 
 // normalizeResponse strips volatile transport metadata from a recorded SDK
@@ -121,10 +165,10 @@ function makeRecordingSend<C extends { send: (command: any) => Promise<any> }>(
         const tagged: TaggedError = {
           [ERROR_TAG]: { name: (error as Error).name, message: (error as Error).message },
         };
-        writeFileSync(path, stringify(tagged));
+        writeFileSync(path, stringify(sanitizePresignedUrls(tagged)));
         throw error;
       }
-      writeFileSync(path, stringify(response));
+      writeFileSync(path, stringify(sanitizePresignedUrls(response)));
       return response;
     }
 
@@ -180,6 +224,57 @@ export function fixtureFactories(dir: string): {
   };
 }
 
+type FetchFixture = {
+  status: number;
+  statusText?: string;
+  body: string;
+};
+
+function fetchFixturePath(
+  dir: string,
+  input: Parameters<CoreFetch>[0],
+  init: Parameters<CoreFetch>[1],
+): string {
+  const url = input instanceof Request ? input.url : String(input);
+  const parsed = new URL(url);
+  const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+  const hash = Bun.hash(stringify({ method, path: parsed.pathname })).toString(16);
+  return join(dir, `Fetch.${hash}.json`);
+}
+
+// fixtureFetch records/replays presigned content downloads, which sit outside
+// the AWS SDK `.send()` seam. The fixture key ignores volatile query params on
+// presigned URLs and keys on the stable object path instead.
+export function fixtureFetch(dir: string): CoreFetch {
+  return (async (input, init) => {
+    const path = fetchFixturePath(dir, input, init);
+
+    if (isRecording()) {
+      mkdirSync(dir, { recursive: true });
+      const response = await globalThis.fetch(input, init);
+      const fixture: FetchFixture = {
+        status: response.status,
+        statusText: response.statusText,
+        body: await response.text(),
+      };
+      writeFileSync(path, stringify(fixture));
+      return new Response(fixture.body, {
+        status: fixture.status,
+        statusText: fixture.statusText,
+      });
+    }
+
+    if (!existsSync(path)) {
+      throw new Error(`Missing fetch fixture ${path}. Re-run with RECORD=1 to record it.`);
+    }
+    const fixture = parse<FetchFixture>(readFileSync(path, "utf8"));
+    return new Response(fixture.body, {
+      status: fixture.status,
+      statusText: fixture.statusText,
+    });
+  }) as CoreFetch;
+}
+
 // matchGolden compares `actual` against the golden file `<dir>/<name>`. In record
 // mode it (re)writes the file; otherwise it asserts equality, so a behavior change
 // surfaces as a reviewable golden diff. Use for asserting a command's rendered
@@ -190,10 +285,11 @@ export function fixtureFactories(dir: string): {
 // behavior difference worth failing on.
 export function matchGolden(dir: string, name: string, actual: string): void {
   const path = join(dir, name);
+  const sanitizedActual = sanitizeGoldenOutput(actual);
 
   if (isRecording()) {
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path, actual);
+    writeFileSync(path, sanitizedActual);
     return;
   }
 
@@ -201,5 +297,15 @@ export function matchGolden(dir: string, name: string, actual: string): void {
     throw new Error(`Missing golden file ${path}. Re-run with RECORD=1 to record expected output.`);
   }
   const expected = readFileSync(path, "utf8");
-  expect(actual.replace(/\s+$/, "")).toBe(expected.replace(/\s+$/, ""));
+  expect(sanitizedActual.replace(/\s+$/, "")).toBe(
+    sanitizeGoldenOutput(expected).replace(/\s+$/, ""),
+  );
+}
+
+function sanitizeGoldenOutput(output: string): string {
+  try {
+    return JSON.stringify(sanitizePresignedUrls(JSON.parse(output)), null, 2);
+  } catch {
+    return output;
+  }
 }

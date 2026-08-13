@@ -72,6 +72,21 @@ export function parseJsonArrayFlag<T>(name: string, raw: string | undefined): T[
   return parsed as T[];
 }
 
+export function assertMutuallyExclusiveInputs(
+  pairs: readonly (readonly [
+    leftName: string,
+    leftValue: unknown,
+    rightName: string,
+    rightValue: unknown,
+  ])[],
+): void {
+  for (const [leftName, leftValue, rightName, rightValue] of pairs) {
+    if (leftValue !== undefined && rightValue !== undefined) {
+      throw new InputValidationError(`--${leftName} and --${rightName} are mutually exclusive`);
+    }
+  }
+}
+
 // parseTags parses a tags flag that accepts two mutually exclusive forms:
 //   - Repeated key=value shorthand: ["env=prod", "team=foo"]
 //   - A single JSON object: ['{"env":"prod","team":"foo"}']

@@ -153,10 +153,35 @@ export class RuntimeInvokeResponseError extends AgentCoreCLIError {
   }
 }
 
+export class GatewayInvokeInterruptedError extends AgentCoreCLIError {
+  readonly reported: boolean;
+
+  constructor(cause?: unknown, reported = false) {
+    super("The operation was aborted", { cause, exitCode: 130 });
+    this.name = "AbortError";
+    this.reported = reported;
+  }
+}
+
+export class GatewayInvokeResponseError extends AgentCoreCLIError {
+  readonly reported = true;
+
+  constructor(message: string, cause?: unknown) {
+    super(message, { cause });
+  }
+}
+
 /** Remote content could not be fetched, or is not available yet. */
 export class NetworkingError extends AgentCoreCLIError {
   constructor(message: string, options?: AgentCoreCLIErrorOptions) {
     super(message, { source: ERROR_SOURCE.SERVICE, ...options });
+  }
+}
+
+/** Service data was returned successfully, but did not match the expected contract. */
+export class MalformedServiceResponseError extends AgentCoreCLIError {
+  constructor(message: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
+    super(message, { ...options, source: ERROR_SOURCE.SERVICE });
   }
 }
 

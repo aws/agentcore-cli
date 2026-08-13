@@ -8,6 +8,9 @@ import type {
   CreateHarnessEndpointResponse,
   CreateHarnessResponse,
   DeleteApiKeyCredentialProviderResponse,
+  DeleteGatewayResponse,
+  DeleteGatewayRuleResponse,
+  DeleteGatewayTargetResponse,
   DeleteOauth2CredentialProviderResponse,
   DeleteHarnessEndpointRequest,
   DeleteHarnessEndpointResponse,
@@ -35,25 +38,35 @@ import type {
   ListGatewayRulesResponse,
   ListGatewaysResponse,
   ListGatewayTargetsResponse,
+  CreateConfigurationBundleResponse,
   CreateDatasetResponse,
   CreateDatasetVersionResponse,
   CreateEvaluatorRequest,
   CreateEvaluatorResponse,
   CreateOnlineEvaluationConfigResponse,
+  DeleteConfigurationBundleResponse,
   DeleteDatasetResponse,
   DeleteEvaluatorResponse,
   DeleteOnlineEvaluationConfigResponse,
+  GetConfigurationBundleResponse,
+  GetConfigurationBundleVersionResponse,
   GetDatasetResponse,
+  ListConfigurationBundlesResponse,
+  ListConfigurationBundleVersionsResponse,
   ListDatasetsResponse,
   GetEvaluatorResponse,
   GetOnlineEvaluationConfigResponse,
   ListEvaluatorsResponse,
   ListOnlineEvaluationConfigsResponse,
   MemoryView,
+  UpdateConfigurationBundleResponse,
   UpdateEvaluatorResponse,
   UpdateOnlineEvaluationConfigResponse,
   UpdateApiKeyCredentialProviderResponse,
   UpdateOauth2CredentialProviderResponse,
+  UpdateGatewayResponse,
+  UpdateGatewayRuleResponse,
+  UpdateGatewayTargetResponse,
   UpdateHarnessEndpointRequest,
   UpdateHarnessEndpointResponse,
   UpdateHarnessRequest,
@@ -89,6 +102,11 @@ import type {
   CreateGatewayInput,
   CreateGatewayRuleInput,
   CreateGatewayTargetInput,
+  GatewayRuleUpdateInput,
+  GatewayTargetUpdatePatch,
+  GatewayUpdatePatch,
+  GatewayInvokeRequest,
+  GatewayInvokeResponse,
 } from "../handlers/gateway/types";
 import type {
   CoreIdentityClient,
@@ -108,8 +126,11 @@ import type {
   BatchEvaluationResultEntry,
   CodeBasedUpdate,
   CoreEvalClient,
+  CreateConfigurationBundleInput,
   CreateDatasetInput,
   CreateOnlineEvalInput,
+  DatasetUpdateResult,
+  DatasetUpdateProgressEvent,
   EvaluateInput,
   EvaluateResult,
   GetBatchEvaluationResult,
@@ -117,6 +138,7 @@ import type {
   LlmAsAJudgeUpdate,
   SessionTrace,
   StartBatchEvaluationInput,
+  UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
 } from "../handlers/eval/types";
 import { isTerminalStatus } from "../core/batchEvaluationResults";
@@ -181,14 +203,20 @@ const DEFAULT_LIST_MEMORY_RECORDS_RESPONSE: ListMemoryRecordsOutput = {
   memoryRecordSummaries: [],
 };
 const DEFAULT_CREATE_GATEWAY_RESPONSE = {} as CreateGatewayResponse;
+const DEFAULT_UPDATE_GATEWAY_RESPONSE = {} as UpdateGatewayResponse;
 const DEFAULT_GET_GATEWAY_RESPONSE = {} as GetGatewayResponse;
 const DEFAULT_LIST_GATEWAYS_RESPONSE: ListGatewaysResponse = { items: [] };
+const DEFAULT_DELETE_GATEWAY_RESPONSE = {} as DeleteGatewayResponse;
 const DEFAULT_CREATE_GATEWAY_TARGET_RESPONSE = {} as CreateGatewayTargetResponse;
+const DEFAULT_UPDATE_GATEWAY_TARGET_RESPONSE = {} as UpdateGatewayTargetResponse;
 const DEFAULT_GET_GATEWAY_TARGET_RESPONSE = {} as GetGatewayTargetResponse;
 const DEFAULT_LIST_GATEWAY_TARGETS_RESPONSE: ListGatewayTargetsResponse = { items: [] };
+const DEFAULT_DELETE_GATEWAY_TARGET_RESPONSE = {} as DeleteGatewayTargetResponse;
 const DEFAULT_CREATE_GATEWAY_RULE_RESPONSE = {} as CreateGatewayRuleResponse;
+const DEFAULT_UPDATE_GATEWAY_RULE_RESPONSE = {} as UpdateGatewayRuleResponse;
 const DEFAULT_GET_GATEWAY_RULE_RESPONSE = {} as GetGatewayRuleResponse;
 const DEFAULT_LIST_GATEWAY_RULES_RESPONSE: ListGatewayRulesResponse = { gatewayRules: [] };
+const DEFAULT_DELETE_GATEWAY_RULE_RESPONSE = {} as DeleteGatewayRuleResponse;
 const DEFAULT_CREATE_OAUTH2_RESPONSE = {} as CreateOauth2CredentialProviderResponse;
 const DEFAULT_GET_OAUTH2_RESPONSE = {} as GetOauth2CredentialProviderResponse;
 const DEFAULT_LIST_OAUTH2_RESPONSE: ListOauth2CredentialProvidersResponse = {
@@ -214,6 +242,15 @@ const DEFAULT_CREATE_ONLINE_EVAL_RESPONSE = {} as CreateOnlineEvaluationConfigRe
 const DEFAULT_UPDATE_ONLINE_EVAL_RESPONSE = {} as UpdateOnlineEvaluationConfigResponse;
 const DEFAULT_GET_ONLINE_EVAL_RESPONSE = {} as GetOnlineEvaluationConfigResponse;
 const DEFAULT_DELETE_ONLINE_EVAL_RESPONSE = {} as DeleteOnlineEvaluationConfigResponse;
+const DEFAULT_CREATE_CONFIG_BUNDLE_RESPONSE = {} as CreateConfigurationBundleResponse;
+const DEFAULT_GET_CONFIG_BUNDLE_RESPONSE = {} as GetConfigurationBundleResponse;
+const DEFAULT_GET_CONFIG_BUNDLE_VERSION_RESPONSE = {} as GetConfigurationBundleVersionResponse;
+const DEFAULT_LIST_CONFIG_BUNDLES_RESPONSE: ListConfigurationBundlesResponse = { bundles: [] };
+const DEFAULT_UPDATE_CONFIG_BUNDLE_RESPONSE = {} as UpdateConfigurationBundleResponse;
+const DEFAULT_DELETE_CONFIG_BUNDLE_RESPONSE = {} as DeleteConfigurationBundleResponse;
+const DEFAULT_LIST_CONFIG_BUNDLE_VERSIONS_RESPONSE: ListConfigurationBundleVersionsResponse = {
+  versions: [],
+};
 const DEFAULT_CREATE_DATASET_RESPONSE = {} as CreateDatasetResponse;
 const DEFAULT_GET_DATASET_RESPONSE = {} as GetDatasetResponse;
 const DEFAULT_LIST_DATASETS_RESPONSE: ListDatasetsResponse = { datasets: [] };
@@ -225,6 +262,13 @@ const DEFAULT_START_BATCH_EVAL_RESPONSE = {
   batchEvaluationId: "batch-eval-test",
   status: "RUNNING",
 } as unknown as StartBatchEvaluationResponse;
+const DEFAULT_UPDATE_DATASET_RESULT: DatasetUpdateResult = {
+  datasetId: "dataset-orders-abc123",
+  added: 0,
+  updated: 0,
+  deleted: 0,
+  unchanged: 0,
+};
 
 // events wraps canned events as a one-shot AsyncIterable.
 async function* events<T>(items: T[]): AsyncGenerator<T> {
@@ -232,6 +276,11 @@ async function* events<T>(items: T[]): AsyncGenerator<T> {
 }
 
 const DEFAULT_RUNTIME_INVOKE_RESPONSE: RuntimeInvokeResponse = {
+  statusCode: 200,
+  contentType: "application/json",
+  body: events([]),
+};
+const DEFAULT_GATEWAY_INVOKE_RESPONSE: GatewayInvokeResponse = {
   statusCode: 200,
   contentType: "application/json",
   body: events([]),
@@ -838,12 +887,17 @@ export class TestGatewayClient implements CoreGatewayClient {
 
   private getResponse: GetGatewayResponse = DEFAULT_GET_GATEWAY_RESPONSE;
   private listResponses = new Map<string | undefined, ListGatewaysResponse>();
+  private deleteResponse: DeleteGatewayResponse = DEFAULT_DELETE_GATEWAY_RESPONSE;
   private getTargetResponse: GetGatewayTargetResponse = DEFAULT_GET_GATEWAY_TARGET_RESPONSE;
   private listTargetResponses = new Map<string | undefined, ListGatewayTargetsResponse>();
   private getConnectorResponse: GetGatewayTargetResponse = DEFAULT_GET_GATEWAY_TARGET_RESPONSE;
   private listConnectorResponses = new Map<string | undefined, ListGatewayTargetsResponse>();
+  private deleteTargetResponse: DeleteGatewayTargetResponse =
+    DEFAULT_DELETE_GATEWAY_TARGET_RESPONSE;
   private getRuleResponse: GetGatewayRuleResponse = DEFAULT_GET_GATEWAY_RULE_RESPONSE;
   private listRuleResponses = new Map<string | undefined, ListGatewayRulesResponse>();
+  private deleteRuleResponse: DeleteGatewayRuleResponse = DEFAULT_DELETE_GATEWAY_RULE_RESPONSE;
+  private invokeResponse: GatewayInvokeResponse = DEFAULT_GATEWAY_INVOKE_RESPONSE;
   private error?: Error;
 
   setGetResponse(response: GetGatewayResponse): this {
@@ -853,6 +907,11 @@ export class TestGatewayClient implements CoreGatewayClient {
 
   setListResponse(response: ListGatewaysResponse, forNextToken?: string): this {
     this.listResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setDeleteResponse(response: DeleteGatewayResponse): this {
+    this.deleteResponse = response;
     return this;
   }
 
@@ -876,6 +935,11 @@ export class TestGatewayClient implements CoreGatewayClient {
     return this;
   }
 
+  setDeleteTargetResponse(response: DeleteGatewayTargetResponse): this {
+    this.deleteTargetResponse = response;
+    return this;
+  }
+
   setGetRuleResponse(response: GetGatewayRuleResponse): this {
     this.getRuleResponse = response;
     return this;
@@ -883,6 +947,16 @@ export class TestGatewayClient implements CoreGatewayClient {
 
   setListRulesResponse(response: ListGatewayRulesResponse, forNextToken?: string): this {
     this.listRuleResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setDeleteRuleResponse(response: DeleteGatewayRuleResponse): this {
+    this.deleteRuleResponse = response;
+    return this;
+  }
+
+  setInvokeResponse(response: GatewayInvokeResponse): this {
+    this.invokeResponse = response;
     return this;
   }
 
@@ -900,8 +974,34 @@ export class TestGatewayClient implements CoreGatewayClient {
     return DEFAULT_CREATE_GATEWAY_RESPONSE;
   }
 
-  async getGateway(id: string, options: CoreOptions): Promise<GetGatewayResponse> {
-    this.calls.push({ method: "getGateway", args: [id, options] });
+  async updateGateway(
+    patch: GatewayUpdatePatch,
+    options: CoreOptions,
+  ): Promise<UpdateGatewayResponse> {
+    this.calls.push({ method: "updateGateway", args: [patch, options] });
+    if (this.error) throw this.error;
+    return DEFAULT_UPDATE_GATEWAY_RESPONSE;
+  }
+
+  async invokeGateway(
+    request: GatewayInvokeRequest,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<GatewayInvokeResponse> {
+    this.calls.push({ method: "invokeGateway", args: [request, options, signal] });
+    if (this.error) throw this.error;
+    return this.invokeResponse;
+  }
+
+  async getGateway(
+    id: string,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<GetGatewayResponse> {
+    this.calls.push({
+      method: "getGateway",
+      args: [id, options, ...(signal ? [signal] : [])],
+    });
     if (this.error) throw this.error;
     return this.getResponse;
   }
@@ -920,6 +1020,12 @@ export class TestGatewayClient implements CoreGatewayClient {
     );
   }
 
+  async deleteGateway(id: string, options: CoreOptions): Promise<DeleteGatewayResponse> {
+    this.calls.push({ method: "deleteGateway", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.deleteResponse;
+  }
+
   async createGatewayTarget(
     input: CreateGatewayTargetInput,
     options: CoreOptions,
@@ -927,6 +1033,24 @@ export class TestGatewayClient implements CoreGatewayClient {
     this.calls.push({ method: "createGatewayTarget", args: [input, options] });
     if (this.error) throw this.error;
     return DEFAULT_CREATE_GATEWAY_TARGET_RESPONSE;
+  }
+
+  async updateGatewayTarget(
+    patch: GatewayTargetUpdatePatch,
+    options: CoreOptions,
+  ): Promise<UpdateGatewayTargetResponse> {
+    this.calls.push({ method: "updateGatewayTarget", args: [patch, options] });
+    if (this.error) throw this.error;
+    return DEFAULT_UPDATE_GATEWAY_TARGET_RESPONSE;
+  }
+
+  async updateGatewayConnector(
+    patch: GatewayTargetUpdatePatch,
+    options: CoreOptions,
+  ): Promise<UpdateGatewayTargetResponse> {
+    this.calls.push({ method: "updateGatewayConnector", args: [patch, options] });
+    if (this.error) throw this.error;
+    return DEFAULT_UPDATE_GATEWAY_TARGET_RESPONSE;
   }
 
   async getGatewayTarget(
@@ -985,6 +1109,16 @@ export class TestGatewayClient implements CoreGatewayClient {
     );
   }
 
+  async deleteGatewayTarget(
+    gatewayId: string,
+    targetId: string,
+    options: CoreOptions,
+  ): Promise<DeleteGatewayTargetResponse> {
+    this.calls.push({ method: "deleteGatewayTarget", args: [gatewayId, targetId, options] });
+    if (this.error) throw this.error;
+    return this.deleteTargetResponse;
+  }
+
   async createGatewayRule(
     input: CreateGatewayRuleInput,
     options: CoreOptions,
@@ -992,6 +1126,15 @@ export class TestGatewayClient implements CoreGatewayClient {
     this.calls.push({ method: "createGatewayRule", args: [input, options] });
     if (this.error) throw this.error;
     return DEFAULT_CREATE_GATEWAY_RULE_RESPONSE;
+  }
+
+  async updateGatewayRule(
+    input: GatewayRuleUpdateInput,
+    options: CoreOptions,
+  ): Promise<UpdateGatewayRuleResponse> {
+    this.calls.push({ method: "updateGatewayRule", args: [input, options] });
+    if (this.error) throw this.error;
+    return DEFAULT_UPDATE_GATEWAY_RULE_RESPONSE;
   }
 
   async getGatewayRule(
@@ -1020,6 +1163,15 @@ export class TestGatewayClient implements CoreGatewayClient {
       this.listRuleResponses.get(undefined) ??
       DEFAULT_LIST_GATEWAY_RULES_RESPONSE
     );
+  }
+  async deleteGatewayRule(
+    gatewayId: string,
+    ruleId: string,
+    options: CoreOptions,
+  ): Promise<DeleteGatewayRuleResponse> {
+    this.calls.push({ method: "deleteGatewayRule", args: [gatewayId, ruleId, options] });
+    if (this.error) throw this.error;
+    return this.deleteRuleResponse;
   }
 }
 
@@ -1213,11 +1365,30 @@ export class TestEvalClient implements CoreEvalClient {
     DEFAULT_GET_ONLINE_EVAL_RESPONSE;
   private onlineEvalDeleteResponse: DeleteOnlineEvaluationConfigResponse =
     DEFAULT_DELETE_ONLINE_EVAL_RESPONSE;
+  private createConfigBundleResponse: CreateConfigurationBundleResponse =
+    DEFAULT_CREATE_CONFIG_BUNDLE_RESPONSE;
+  private getConfigBundleResponse: GetConfigurationBundleResponse =
+    DEFAULT_GET_CONFIG_BUNDLE_RESPONSE;
+  private getConfigBundleVersionResponse: GetConfigurationBundleVersionResponse =
+    DEFAULT_GET_CONFIG_BUNDLE_VERSION_RESPONSE;
+  private configBundleListResponses = new Map<
+    string | undefined,
+    ListConfigurationBundlesResponse
+  >();
+  private updateConfigBundleResponse: UpdateConfigurationBundleResponse =
+    DEFAULT_UPDATE_CONFIG_BUNDLE_RESPONSE;
+  private deleteConfigBundleResponse: DeleteConfigurationBundleResponse =
+    DEFAULT_DELETE_CONFIG_BUNDLE_RESPONSE;
+  private configBundleVersionListResponses = new Map<
+    string | undefined,
+    ListConfigurationBundleVersionsResponse
+  >();
   private createDatasetResponse: CreateDatasetResponse = DEFAULT_CREATE_DATASET_RESPONSE;
   private getDatasetResponse: GetDatasetResponse = DEFAULT_GET_DATASET_RESPONSE;
   private datasetListResponses = new Map<string | undefined, ListDatasetsResponse>();
   private deleteDatasetResponse: DeleteDatasetResponse = DEFAULT_DELETE_DATASET_RESPONSE;
   private publishDatasetResponse: CreateDatasetVersionResponse = DEFAULT_PUBLISH_DATASET_RESPONSE;
+  private updateDatasetResult: DatasetUpdateResult = DEFAULT_UPDATE_DATASET_RESULT;
   // Batch-evaluation responses: get returns a canned job, list pages by
   // nextToken, and the CloudWatch results are a canned array. batchEvalResultsError
   // simulates a CloudWatch read failure surfaced as `resultsError`.
@@ -1305,6 +1476,47 @@ export class TestEvalClient implements CoreEvalClient {
     return this;
   }
 
+  setCreateConfigurationBundleResponse(response: CreateConfigurationBundleResponse): this {
+    this.createConfigBundleResponse = response;
+    return this;
+  }
+
+  setGetConfigurationBundleResponse(response: GetConfigurationBundleResponse): this {
+    this.getConfigBundleResponse = response;
+    return this;
+  }
+
+  setGetConfigurationBundleVersionResponse(response: GetConfigurationBundleVersionResponse): this {
+    this.getConfigBundleVersionResponse = response;
+    return this;
+  }
+
+  setListConfigurationBundlesResponse(
+    response: ListConfigurationBundlesResponse,
+    forNextToken?: string,
+  ): this {
+    this.configBundleListResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setUpdateConfigurationBundleResponse(response: UpdateConfigurationBundleResponse): this {
+    this.updateConfigBundleResponse = response;
+    return this;
+  }
+
+  setDeleteConfigurationBundleResponse(response: DeleteConfigurationBundleResponse): this {
+    this.deleteConfigBundleResponse = response;
+    return this;
+  }
+
+  setListConfigurationBundleVersionsResponse(
+    response: ListConfigurationBundleVersionsResponse,
+    forNextToken?: string,
+  ): this {
+    this.configBundleVersionListResponses.set(forNextToken, response);
+    return this;
+  }
+
   // setCreateDatasetResponse sets what createDataset resolves to (when not
   // erroring).
   setCreateDatasetResponse(response: CreateDatasetResponse): this {
@@ -1367,6 +1579,13 @@ export class TestEvalClient implements CoreEvalClient {
   // metadata is still returned.
   setBatchEvalResultsError(error: unknown): this {
     this.batchEvalResultsError = error;
+    return this;
+  }
+
+  // setUpdateDatasetResult sets what updateDatasetExamples resolves to (when not
+  // erroring).
+  setUpdateDatasetResult(result: DatasetUpdateResult): this {
+    this.updateDatasetResult = result;
     return this;
   }
 
@@ -1566,6 +1785,79 @@ export class TestEvalClient implements CoreEvalClient {
     return this.onlineEvalDeleteResponse;
   }
 
+  async createConfigurationBundle(
+    input: CreateConfigurationBundleInput,
+    options: CoreOptions,
+  ): Promise<CreateConfigurationBundleResponse> {
+    this.calls.push({ method: "createConfigurationBundle", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.createConfigBundleResponse;
+  }
+
+  async getConfigurationBundle(
+    id: string,
+    version: string | undefined,
+    branchName: string,
+    options: CoreOptions,
+  ): Promise<GetConfigurationBundleResponse | GetConfigurationBundleVersionResponse> {
+    this.calls.push({ method: "getConfigurationBundle", args: [id, version, branchName, options] });
+    if (this.error) throw this.error;
+    return version === undefined
+      ? this.getConfigBundleResponse
+      : this.getConfigBundleVersionResponse;
+  }
+
+  async listConfigurationBundles(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListConfigurationBundlesResponse> {
+    this.calls.push({ method: "listConfigurationBundles", args: [nextToken, maxResults, options] });
+    if (this.error) throw this.error;
+    return (
+      this.configBundleListResponses.get(nextToken) ??
+      this.configBundleListResponses.get(undefined) ??
+      DEFAULT_LIST_CONFIG_BUNDLES_RESPONSE
+    );
+  }
+
+  async updateConfigurationBundle(
+    id: string,
+    update: UpdateConfigurationBundleInput,
+    options: CoreOptions,
+  ): Promise<UpdateConfigurationBundleResponse> {
+    this.calls.push({ method: "updateConfigurationBundle", args: [id, update, options] });
+    if (this.error) throw this.error;
+    return this.updateConfigBundleResponse;
+  }
+
+  async deleteConfigurationBundle(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteConfigurationBundleResponse> {
+    this.calls.push({ method: "deleteConfigurationBundle", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.deleteConfigBundleResponse;
+  }
+
+  async listConfigurationBundleVersions(
+    id: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListConfigurationBundleVersionsResponse> {
+    this.calls.push({
+      method: "listConfigurationBundleVersions",
+      args: [id, nextToken, maxResults, options],
+    });
+    if (this.error) throw this.error;
+    return (
+      this.configBundleVersionListResponses.get(nextToken) ??
+      this.configBundleVersionListResponses.get(undefined) ??
+      DEFAULT_LIST_CONFIG_BUNDLE_VERSIONS_RESPONSE
+    );
+  }
+
   async createDataset(
     input: CreateDatasetInput,
     options: CoreOptions,
@@ -1621,6 +1913,21 @@ export class TestEvalClient implements CoreEvalClient {
     this.calls.push({ method: "publishDataset", args: [id, options] });
     if (this.error) throw this.error;
     return this.publishDatasetResponse;
+  }
+
+  async updateDatasetExamples(
+    id: string,
+    filePath: string,
+    options: CoreOptions,
+    signal?: AbortSignal,
+    onProgress?: (event: DatasetUpdateProgressEvent) => void,
+  ): Promise<DatasetUpdateResult> {
+    this.calls.push({
+      method: "updateDatasetExamples",
+      args: [id, filePath, options, signal, onProgress],
+    });
+    if (this.error) throw this.error;
+    return this.updateDatasetResult;
   }
 }
 

@@ -1,4 +1,4 @@
-import type { ActorSummary, Event, SessionSummary } from "@aws-sdk/client-bedrock-agentcore";
+import type { Event } from "@aws-sdk/client-bedrock-agentcore";
 import { useNavigate, useParams } from "react-router";
 import { MemoryPicker } from "../../../../components/MemoryPicker";
 import { PaginatedTablePicker } from "../../../../components/PaginatedTablePicker";
@@ -6,41 +6,7 @@ import { formatTimestamp } from "../../../../components/formatTimestamp";
 import type { DataTableColumn } from "../../../../components/ui/data-table";
 import type { ScreenProps } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
-
-interface ActorRow extends Record<string, unknown> {
-  actorId: string;
-}
-
-const actorColumns = [
-  { key: "actorId", header: "actor id", flex: true },
-] satisfies DataTableColumn<ActorRow>[];
-
-function toActorRow(actor: ActorSummary): ActorRow {
-  return { actorId: actor.actorId ?? "" };
-}
-
-interface SessionRow extends Record<string, unknown> {
-  sessionId: string;
-  createdAt: string;
-}
-
-const sessionColumns = [
-  { key: "sessionId", header: "session id", flex: true },
-  {
-    key: "createdAt",
-    header: "created UTC",
-    width: 16,
-    minWidth: 11,
-    render: formatTimestamp,
-  },
-] satisfies DataTableColumn<SessionRow>[];
-
-function toSessionRow(session: SessionSummary): SessionRow {
-  return {
-    sessionId: session.sessionId ?? "",
-    createdAt: session.createdAt?.toISOString() ?? "-",
-  };
-}
+import { MemoryActorPicker, MemorySessionPicker } from "../../listPickers";
 
 interface EventRow extends Record<string, unknown> {
   eventId: string;
@@ -66,87 +32,6 @@ function toEventRow(event: Event): EventRow {
     branch: event.branch?.name ?? "-",
     occurredAt: event.eventTimestamp?.toISOString() ?? "-",
   };
-}
-
-interface ActorPickerProps extends ScreenProps {
-  memoryId: string;
-}
-
-function ActorPicker({ ctx, core, memoryId }: ActorPickerProps) {
-  const opts = coreOptsFromCtx(ctx);
-  const navigate = useNavigate();
-
-  return (
-    <PaginatedTablePicker
-      breadcrumb={["agentcore", "memory", "event", "list", memoryId]}
-      description="choose an actor to list sessions for"
-      queryKey={["memory-actors", opts.region, memoryId]}
-      loadPage={async (token, pageSize) => {
-        const response = await core.memory.listActors(
-          { memoryId, maxResults: pageSize, nextToken: token },
-          opts,
-        );
-        return {
-          items: response.actorSummaries ?? [],
-          nextToken: response.nextToken,
-        };
-      }}
-      toRow={toActorRow}
-      columns={actorColumns}
-      getValue={(row) => row.actorId}
-      onSelect={(actorId) =>
-        navigate(
-          `/agentcore/memory/event/list/${encodeURIComponent(memoryId)}/${encodeURIComponent(actorId)}`,
-        )
-      }
-      onBack={() => navigate(-1)}
-      loadingMessage={`Loading actors for Memory ${memoryId}...`}
-      errorMessage={(error) => `Error loading actors for Memory ${memoryId}: ${error.message}`}
-      emptyMessage={`No actors found for Memory ${memoryId}.`}
-      emptyPageMessage={`No actors on this page for Memory ${memoryId}.`}
-    />
-  );
-}
-
-interface SessionPickerProps extends ScreenProps {
-  memoryId: string;
-  actorId: string;
-}
-
-function SessionPicker({ ctx, core, memoryId, actorId }: SessionPickerProps) {
-  const opts = coreOptsFromCtx(ctx);
-  const navigate = useNavigate();
-
-  return (
-    <PaginatedTablePicker
-      breadcrumb={["agentcore", "memory", "event", "list", memoryId, actorId]}
-      description="choose a session to list events for"
-      queryKey={["memory-sessions", opts.region, memoryId, actorId]}
-      loadPage={async (token, pageSize) => {
-        const response = await core.memory.listSessions(
-          { memoryId, actorId, maxResults: pageSize, nextToken: token },
-          opts,
-        );
-        return {
-          items: response.sessionSummaries ?? [],
-          nextToken: response.nextToken,
-        };
-      }}
-      toRow={toSessionRow}
-      columns={sessionColumns}
-      getValue={(row) => row.sessionId}
-      onSelect={(sessionId) =>
-        navigate(
-          `/agentcore/memory/event/list/${encodeURIComponent(memoryId)}/${encodeURIComponent(actorId)}/${encodeURIComponent(sessionId)}`,
-        )
-      }
-      onBack={() => navigate(-1)}
-      loadingMessage={`Loading sessions for actor ${actorId}...`}
-      errorMessage={(error) => `Error loading sessions for actor ${actorId}: ${error.message}`}
-      emptyMessage={`No sessions found for actor ${actorId}.`}
-      emptyPageMessage={`No sessions on this page for actor ${actorId}.`}
-    />
-  );
 }
 
 interface EventPickerProps extends ScreenProps {
@@ -212,11 +97,38 @@ export function MemoryEventListScreen(props: ScreenProps) {
   }
 
   if (!actorId) {
-    return <ActorPicker {...props} memoryId={memoryId} />;
+    return (
+      <MemoryActorPicker
+        {...props}
+        memoryId={memoryId}
+        breadcrumb={["agentcore", "memory", "event", "list", memoryId]}
+        description="choose an actor to list sessions for"
+        onSelect={(id) =>
+          navigate(
+            `/agentcore/memory/event/list/${encodeURIComponent(memoryId)}/${encodeURIComponent(id)}`,
+          )
+        }
+        onBack={() => navigate(-1)}
+      />
+    );
   }
 
   if (!sessionId) {
-    return <SessionPicker {...props} memoryId={memoryId} actorId={actorId} />;
+    return (
+      <MemorySessionPicker
+        {...props}
+        memoryId={memoryId}
+        actorId={actorId}
+        breadcrumb={["agentcore", "memory", "event", "list", memoryId, actorId]}
+        description="choose a session to list events for"
+        onSelect={(id) =>
+          navigate(
+            `/agentcore/memory/event/list/${encodeURIComponent(memoryId)}/${encodeURIComponent(actorId)}/${encodeURIComponent(id)}`,
+          )
+        }
+        onBack={() => navigate(-1)}
+      />
+    );
   }
 
   return <EventPicker {...props} memoryId={memoryId} actorId={actorId} sessionId={sessionId} />;

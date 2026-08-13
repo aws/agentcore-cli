@@ -1,4 +1,4 @@
-import type { ProjectRuntime } from "../../../core/project/schema";
+import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 
 export type DevEvent =
   | { type: "status"; message: string }

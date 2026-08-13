@@ -1,7 +1,8 @@
 import z from "zod";
 import { createHandler, flag } from "../../../router";
 import type { AppIO } from "../../../io";
-import { PROJECT_TEMPLATES, ProjectNameSchema, type ProjectManager } from "../types";
+import { PROJECT_TEMPLATES, type ProjectManager } from "../types";
+import { ProjectNameSchema } from "../../../projectSchemas/project";
 
 type CreateProjectHandlerConfig = {
   projectManager: ProjectManager;

@@ -1,9 +1,9 @@
 import z from "zod";
+import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
-import { InputValidationError } from "../../../../errors";
 
 export const createGetGatewayConnectorHandler = (core: Core) =>
   createHandler({

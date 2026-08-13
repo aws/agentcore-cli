@@ -61,7 +61,7 @@ export class CoreClient implements AwsClients {
   readonly identity: IdentityClient = new IdentityClient(this);
   readonly memory: MemoryClient = new MemoryClient(this);
   readonly runtime: RuntimeClient;
-  readonly gateway: GatewayClient = new GatewayClient(this);
+  readonly gateway: GatewayClient;
   readonly eval: EvalClient;
 
   readonly projectManager: ProjectManager;
@@ -74,6 +74,7 @@ export class CoreClient implements AwsClients {
     this.logger = config.logger;
     const fetch = config.fetch ?? globalThis.fetch;
     this.runtime = new RuntimeClient(this, fetch, this.logger.child({ module: "runtime" }));
+    this.gateway = new GatewayClient(this, fetch, this.logger.child({ module: "gateway" }));
     // EvalClient shares the injected fetch: dataset content is served from a
     // presigned S3 URL, outside the SDK seam the other operations use. The logger
     // is used for batch-evaluation result-log diagnostics.

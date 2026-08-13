@@ -1,0 +1,19 @@
+{
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:603141041947:gateway/agentcore-cli-gateway-update-fixture-f4dbqmv0kb",
+  "gatewayId": "agentcore-cli-gateway-update-fixture-f4dbqmv0kb",
+  "createdAt": {
+    "$date": "2026-08-06T21:00:16.787Z"
+  },
+  "updatedAt": {
+    "$date": "2026-08-06T21:00:22.046Z"
+  },
+  "status": "UPDATING",
+  "name": "agentcore-cli-gateway-update-fixture",
+  "authorizerType": "NONE",
+  "gatewayUrl": "https://agentcore-cli-gateway-update-fixture-f4dbqmv0kb.gateway.bedrock-agentcore.us-east-1.amazonaws.com",
+  "description": "Gateway after update",
+  "roleArn": "arn:aws:iam::603141041947:role/AgentCoreCliGatewayUpdateFixtureRole",
+  "workloadIdentityDetails": {
+    "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-east-1:603141041947:workload-identity-directory/default/workload-identity/agentcore-cli-gateway-update-fixture-f4dbqmv0kb"
+  }
+}

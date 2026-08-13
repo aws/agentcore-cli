@@ -1,0 +1,34 @@
+{
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:685197708687:gateway/agentcore-cli-gateway-delete-fixture-oiemu02wfc",
+  "targetId": "U9OM2R9I8Q",
+  "createdAt": {
+    "$date": "2026-08-07T17:54:45.522Z"
+  },
+  "updatedAt": {
+    "$date": "2026-08-07T17:54:46.453Z"
+  },
+  "status": "READY",
+  "name": "web-search-delete-fixture",
+  "targetConfiguration": {
+    "mcp": {
+      "connector": {
+        "source": {
+          "connectorId": "web-search"
+        },
+        "configurations": [
+          {
+            "name": "WebSearch",
+            "parameterValues": {
+              "maxResults": 10
+            }
+          }
+        ]
+      }
+    }
+  },
+  "credentialProviderConfigurations": [
+    {
+      "credentialProviderType": "GATEWAY_IAM_ROLE"
+    }
+  ]
+}

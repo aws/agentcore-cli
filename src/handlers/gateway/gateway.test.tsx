@@ -61,15 +61,36 @@ describe("gateway command hierarchy", () => {
     expect(gateway?.flags().map((flag) => flag.name)).not.toContain("interactive");
     expect(gateway?.children().map((child) => child.name())).toEqual([
       "create",
+      "update",
       "get",
       "list",
+      "delete",
+      "invoke",
       "target",
       "connector",
       "rule",
     ]);
-    expect(target?.children().map((child) => child.name())).toEqual(["create", "get", "list"]);
-    expect(connector?.children().map((child) => child.name())).toEqual(["create", "get", "list"]);
-    expect(rule?.children().map((child) => child.name())).toEqual(["create", "get", "list"]);
+    expect(target?.children().map((child) => child.name())).toEqual([
+      "create",
+      "update",
+      "get",
+      "list",
+      "delete",
+    ]);
+    expect(connector?.children().map((child) => child.name())).toEqual([
+      "create",
+      "update",
+      "get",
+      "list",
+      "delete",
+    ]);
+    expect(rule?.children().map((child) => child.name())).toEqual([
+      "create",
+      "update",
+      "get",
+      "list",
+      "delete",
+    ]);
   });
 
   test.each([
