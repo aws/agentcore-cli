@@ -75,19 +75,24 @@ export async function runScenarios<T>(
 
 // toSessionMetadata maps a scenario's ground truth onto the session the replay
 // created — the batch service's per-session ground-truth shape (inline arm).
+// Omit array fields when empty: the service rejects zero-length `turns` /
+// `assertions` (`length >= 1`) rather than treating an empty array as "no data".
 export function toSessionMetadata(scenario: Scenario, sessionId: string): SessionMetadataShape {
+  const turns = scenario.turns
+    .filter((t) => t.expectedResponse !== undefined)
+    .map((t) => ({ expectedResponse: { text: t.expectedResponse! } }));
+  const assertions = scenario.assertions?.map((text) => ({ text }));
   return {
     sessionId,
     testScenarioId: scenario.scenarioId,
     groundTruth: {
       inline: {
-        assertions: scenario.assertions?.map((text) => ({ text })),
-        expectedTrajectory: scenario.expectedTrajectory
-          ? { toolNames: scenario.expectedTrajectory }
-          : undefined,
-        turns: scenario.turns
-          .filter((t) => t.expectedResponse !== undefined)
-          .map((t) => ({ expectedResponse: { text: t.expectedResponse! } })),
+        ...(assertions && assertions.length > 0 && { assertions }),
+        ...(scenario.expectedTrajectory &&
+          scenario.expectedTrajectory.length > 0 && {
+            expectedTrajectory: { toolNames: scenario.expectedTrajectory },
+          }),
+        ...(turns.length > 0 && { turns }),
       },
     },
   };
