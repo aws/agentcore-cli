@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Text, useInput } from "ink";
+import { useLocation, useNavigate } from "react-router";
 import { Layout } from "./Layout";
 import { usePagedList } from "./usePagedList";
 import { darkTheme } from "./ui/_core.js";
@@ -11,6 +12,10 @@ export interface TokenPage<TItem> {
   nextToken?: string;
 }
 
+interface PaginatedTableLocationState extends Record<string, unknown> {
+  paginatedTableSelection?: string;
+}
+
 export interface PaginatedTablePickerProps<TItem, TRow extends Record<string, unknown>> {
   breadcrumb: string[];
   description?: string;
@@ -20,7 +25,6 @@ export interface PaginatedTablePickerProps<TItem, TRow extends Record<string, un
   columns: DataTableColumn<TRow>[];
   sortRows?: (rows: TRow[]) => TRow[];
   getValue: (row: TRow) => string | undefined;
-  initialValue?: string;
   onSelect: (value: string) => void;
   onBack: () => void;
   loadingMessage: string;
@@ -39,7 +43,6 @@ export function PaginatedTablePicker<TItem, TRow extends Record<string, unknown>
   columns,
   sortRows,
   getValue,
-  initialValue,
   onSelect,
   onBack,
   loadingMessage,
@@ -48,6 +51,8 @@ export function PaginatedTablePicker<TItem, TRow extends Record<string, unknown>
   emptyPageMessage,
   maxPageSize,
 }: PaginatedTablePickerProps<TItem, TRow>) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const paging = usePagedList(maxPageSize);
   const list = useQuery({
     queryKey: [...queryKey, paging.pageSize, paging.token],
@@ -59,10 +64,14 @@ export function PaginatedTablePicker<TItem, TRow extends Record<string, unknown>
   const pageTransition = list.isFetching && !list.isPending;
   const mappedRows = (list.data?.items ?? []).map(toRow);
   const rows = sortRows ? sortRows(mappedRows) : mappedRows;
-  const initialSelectedRow = initialValue
+  const locationState =
+    location.state && typeof location.state === "object"
+      ? (location.state as PaginatedTableLocationState)
+      : {};
+  const initialSelectedRow = locationState.paginatedTableSelection
     ? Math.max(
         0,
-        rows.findIndex((row) => getValue(row) === initialValue),
+        rows.findIndex((row) => getValue(row) === locationState.paginatedTableSelection),
       )
     : 0;
 
@@ -122,7 +131,19 @@ export function PaginatedTablePicker<TItem, TRow extends Record<string, unknown>
             emptyMessage={paginated ? emptyPageMessage : emptyMessage}
             onSelect={(row) => {
               const value = getValue(row);
-              if (value) onSelect(value);
+              if (!value) return;
+              navigate(
+                {
+                  pathname: location.pathname,
+                  search: location.search,
+                  hash: location.hash,
+                },
+                {
+                  replace: true,
+                  state: { ...locationState, paginatedTableSelection: value },
+                },
+              );
+              onSelect(value);
             }}
             onEscape={onBack}
             onPrevPage={!pageTransition && paging.pageIndex > 0 ? paging.prev : undefined}

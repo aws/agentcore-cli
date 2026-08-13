@@ -180,6 +180,29 @@ describe("paginated table picker contract", () => {
     ).toBe(false);
   });
 
+  test("restores the selected row after returning from its detail screen", async () => {
+    const selected = harness({ harnessName: "third-harness", harnessId: "third-harness" });
+    const core = coreWith([
+      harness({ harnessName: "first-harness", harnessId: "first-harness" }),
+      harness({ harnessName: "second-harness", harnessId: "second-harness" }),
+      selected,
+    ]);
+    core.harness.setGetResponse(getResponse(selected));
+    const r = renderScreen("/agentcore/harness/list", { core });
+
+    await waitForText(r.lastFrame, "third-harness");
+    await r.press("down");
+    await r.press("down");
+    await waitForText(r.lastFrame, "❯ third-harness");
+    await r.press("return");
+    await waitForText(r.lastFrame, "agentcore → harness → get → third-harness");
+
+    await r.press("escape");
+    await waitForText(r.lastFrame, "updated UTC");
+    expect(r.lastFrame()).toContain("❯ third-harness");
+    expect(r.lastFrame()).not.toContain("❯ first-harness");
+  });
+
   test("retains rows and disables selection and paging during a transition", async () => {
     const core = new TestCoreClient();
     core.harness.setListResponse({

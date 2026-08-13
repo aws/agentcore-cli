@@ -1,5 +1,5 @@
 import type { ActorSummary, Event, SessionSummary } from "@aws-sdk/client-bedrock-agentcore";
-import { useLocation, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { MemoryPicker } from "../../../../components/MemoryPicker";
 import { PaginatedTablePicker } from "../../../../components/PaginatedTablePicker";
 import { formatTimestamp } from "../../../../components/formatTimestamp";
@@ -155,15 +155,9 @@ interface EventPickerProps extends ScreenProps {
   sessionId: string;
 }
 
-interface EventPickerLocationState {
-  selectedEventId?: string;
-}
-
 function EventPicker({ ctx, core, memoryId, actorId, sessionId }: EventPickerProps) {
   const opts = coreOptsFromCtx(ctx);
-  const location = useLocation();
   const navigate = useNavigate();
-  const locationState = (location.state as EventPickerLocationState | null) ?? {};
 
   return (
     <PaginatedTablePicker
@@ -188,16 +182,11 @@ function EventPicker({ ctx, core, memoryId, actorId, sessionId }: EventPickerPro
       toRow={toEventRow}
       columns={eventColumns}
       getValue={(row) => row.eventId}
-      initialValue={locationState.selectedEventId}
-      onSelect={(eventId) => {
-        navigate(location.pathname, {
-          replace: true,
-          state: { ...locationState, selectedEventId: eventId },
-        });
+      onSelect={(eventId) =>
         navigate(
           `/agentcore/memory/event/get/${encodeURIComponent(memoryId)}/${encodeURIComponent(actorId)}/${encodeURIComponent(sessionId)}/${encodeURIComponent(eventId)}`,
-        );
-      }}
+        )
+      }
       onBack={() => navigate(-1)}
       loadingMessage={`Loading events for session ${sessionId}...`}
       errorMessage={(error) => `Error loading events for session ${sessionId}: ${error.message}`}
