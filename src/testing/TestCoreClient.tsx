@@ -105,6 +105,8 @@ import type {
   GatewayRuleUpdateInput,
   GatewayTargetUpdatePatch,
   GatewayUpdatePatch,
+  GatewayInvokeRequest,
+  GatewayInvokeResponse,
 } from "../handlers/gateway/types";
 import type {
   CoreIdentityClient,
@@ -129,8 +131,12 @@ import type {
   CreateOnlineEvalInput,
   DatasetUpdateResult,
   DatasetUpdateProgressEvent,
+  EvaluateInput,
+  EvaluateResult,
   GetBatchEvaluationResult,
+  GetTracesInput,
   LlmAsAJudgeUpdate,
+  SessionTrace,
   StartBatchEvaluationInput,
   UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
@@ -270,6 +276,11 @@ async function* events<T>(items: T[]): AsyncGenerator<T> {
 }
 
 const DEFAULT_RUNTIME_INVOKE_RESPONSE: RuntimeInvokeResponse = {
+  statusCode: 200,
+  contentType: "application/json",
+  body: events([]),
+};
+const DEFAULT_GATEWAY_INVOKE_RESPONSE: GatewayInvokeResponse = {
   statusCode: 200,
   contentType: "application/json",
   body: events([]),
@@ -886,6 +897,7 @@ export class TestGatewayClient implements CoreGatewayClient {
   private getRuleResponse: GetGatewayRuleResponse = DEFAULT_GET_GATEWAY_RULE_RESPONSE;
   private listRuleResponses = new Map<string | undefined, ListGatewayRulesResponse>();
   private deleteRuleResponse: DeleteGatewayRuleResponse = DEFAULT_DELETE_GATEWAY_RULE_RESPONSE;
+  private invokeResponse: GatewayInvokeResponse = DEFAULT_GATEWAY_INVOKE_RESPONSE;
   private error?: Error;
 
   setGetResponse(response: GetGatewayResponse): this {
@@ -943,6 +955,11 @@ export class TestGatewayClient implements CoreGatewayClient {
     return this;
   }
 
+  setInvokeResponse(response: GatewayInvokeResponse): this {
+    this.invokeResponse = response;
+    return this;
+  }
+
   setError(error: Error | undefined): this {
     this.error = error;
     return this;
@@ -966,8 +983,25 @@ export class TestGatewayClient implements CoreGatewayClient {
     return DEFAULT_UPDATE_GATEWAY_RESPONSE;
   }
 
-  async getGateway(id: string, options: CoreOptions): Promise<GetGatewayResponse> {
-    this.calls.push({ method: "getGateway", args: [id, options] });
+  async invokeGateway(
+    request: GatewayInvokeRequest,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<GatewayInvokeResponse> {
+    this.calls.push({ method: "invokeGateway", args: [request, options, signal] });
+    if (this.error) throw this.error;
+    return this.invokeResponse;
+  }
+
+  async getGateway(
+    id: string,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<GetGatewayResponse> {
+    this.calls.push({
+      method: "getGateway",
+      args: [id, options, ...(signal ? [signal] : [])],
+    });
     if (this.error) throw this.error;
     return this.getResponse;
   }
@@ -1363,6 +1397,12 @@ export class TestEvalClient implements CoreEvalClient {
   private batchEvalResults: BatchEvaluationResultEntry[] = [];
   private batchEvalResultsError?: unknown;
   private startBatchEvalResponse: StartBatchEvaluationResponse = DEFAULT_START_BATCH_EVAL_RESPONSE;
+  private getTracesResponse: SessionTrace[] = [];
+  private evaluateResponse: EvaluateResult = {
+    sessionsRequested: 0,
+    sessionsEvaluated: 0,
+    results: [],
+  };
   private error?: Error;
 
   // setListResponse sets what listEvaluators resolves to (when not erroring).
@@ -1655,6 +1695,31 @@ export class TestEvalClient implements CoreEvalClient {
     this.calls.push({ method: "startBatchEvaluation", args: [input, options] });
     if (this.error) throw this.error;
     return this.startBatchEvalResponse;
+  }
+
+  // setGetTracesResponse sets what getTracesForAgent resolves to (when not
+  // erroring).
+  setGetTracesResponse(traces: SessionTrace[]): this {
+    this.getTracesResponse = traces;
+    return this;
+  }
+
+  // setEvaluateResponse sets what evaluate resolves to (when not erroring).
+  setEvaluateResponse(response: EvaluateResult): this {
+    this.evaluateResponse = response;
+    return this;
+  }
+
+  async getTracesForAgent(input: GetTracesInput, options: CoreOptions): Promise<SessionTrace[]> {
+    this.calls.push({ method: "getTracesForAgent", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.getTracesResponse;
+  }
+
+  async evaluate(input: EvaluateInput, options: CoreOptions): Promise<EvaluateResult> {
+    this.calls.push({ method: "evaluate", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.evaluateResponse;
   }
 
   async createOnlineEvaluationConfig(

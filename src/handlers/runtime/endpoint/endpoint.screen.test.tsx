@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type {
   AgentRuntime,
   AgentRuntimeEndpoint,
+  GetAgentRuntimeResponse,
   GetAgentRuntimeEndpointResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
@@ -62,6 +63,25 @@ function getEndpointResponse(
     name: "prod",
     id: "prod",
     ...overrides,
+  };
+}
+
+function getRuntimeResponse(): GetAgentRuntimeResponse {
+  return {
+    agentRuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/runtime-123",
+    agentRuntimeId: "runtime-123",
+    agentRuntimeName: "checkout",
+    agentRuntimeVersion: "3",
+    createdAt: new Date("2026-07-19T01:02:03.000Z"),
+    lastUpdatedAt: new Date("2026-07-20T12:34:56.000Z"),
+    roleArn: "arn:aws:iam::123456789012:role/runtime-role",
+    networkConfiguration: { networkMode: "PUBLIC" },
+    lifecycleConfiguration: {
+      idleRuntimeSessionTimeout: 900,
+      maxLifetime: 28_800,
+    },
+    status: "READY",
+    protocolConfiguration: { serverProtocol: "HTTP" },
   };
 }
 
@@ -187,7 +207,7 @@ describe("Runtime endpoint flow", () => {
     expect(r.lastFrame()).toContain("endpoint access denied");
   });
 
-  test("selecting an encoded qualifier opens complete endpoint JSON with exact selectors", async () => {
+  test("selecting an encoded qualifier opens its summary with exact selectors", async () => {
     const qualifier = "prod/blue one";
     const core = new TestCoreClient();
     core.runtime.setListEndpointsResponse({
@@ -205,7 +225,10 @@ describe("Runtime endpoint flow", () => {
       r.lastFrame,
       `agentcore → runtime → endpoint → get → runtime-123 → ${qualifier}`,
     );
-    await waitForText(r.lastFrame, '"targetVersion"');
+    await waitForText(r.lastFrame, "invoke this Runtime endpoint");
+    expect(r.lastFrame()).toMatch(/liveVersion\s+3/);
+    expect(r.lastFrame()).toMatch(/targetVersion\s+4/);
+    expect(r.lastFrame()).toContain("show the full JSON definition");
     await waitFor(() => core.runtime.calls.some((call) => call.method === "getRuntimeEndpoint"));
     expect(core.runtime.calls.find((call) => call.method === "getRuntimeEndpoint")).toEqual({
       method: "getRuntimeEndpoint",
@@ -218,6 +241,79 @@ describe("Runtime endpoint flow", () => {
         },
       ],
     });
+  });
+
+  test("shows the endpoint failure reason only when the service provides one", async () => {
+    const healthyCore = new TestCoreClient();
+    healthyCore.runtime.setGetEndpointResponse(getEndpointResponse());
+    const healthy = renderScreen("/agentcore/runtime/endpoint/get/runtime-123/prod", {
+      core: healthyCore,
+    });
+
+    await waitForText(healthy.lastFrame, "invoke this Runtime endpoint");
+    expect(healthy.lastFrame()).not.toContain("failureReason");
+    healthy.unmount();
+
+    const failedCore = new TestCoreClient();
+    failedCore.runtime.setGetEndpointResponse(
+      getEndpointResponse({
+        status: "UPDATE_FAILED",
+        failureReason: "Endpoint failed its health check",
+      }),
+    );
+    const failed = renderScreen("/agentcore/runtime/endpoint/get/runtime-123/prod", {
+      core: failedCore,
+    });
+
+    await waitForText(failed.lastFrame, "Endpoint failed its health check");
+    expect(failed.lastFrame()).toMatch(/failureReason\s+Endpoint failed its health check/);
+  });
+
+  test("opens complete endpoint JSON from the detail action and returns to the summary", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setGetEndpointResponse(getEndpointResponse());
+    const r = renderScreen("/agentcore/runtime/endpoint/get/runtime-123/prod", { core });
+
+    await waitForText(r.lastFrame, "invoke this Runtime endpoint");
+    await r.press("down");
+    await r.press("return");
+    await waitForText(
+      r.lastFrame,
+      "agentcore → runtime → endpoint → get → runtime-123 → prod → json",
+    );
+    await waitForText(r.lastFrame, '"targetVersion"');
+
+    await r.press("escape");
+    await waitFor(() => {
+      const frame = r.lastFrame() ?? "";
+      return (
+        frame.includes("agentcore → runtime → endpoint → get → runtime-123 → prod") &&
+        !frame.includes("→ json")
+      );
+    });
+    await waitForText(r.lastFrame, "invoke this Runtime endpoint");
+  });
+
+  test("invokes the selected endpoint directly and Esc returns to its summary", async () => {
+    const core = new TestCoreClient();
+    core.runtime
+      .setListEndpointsResponse({ runtimeEndpoints: [endpoint()] })
+      .setGetEndpointResponse(getEndpointResponse())
+      .setGetResponse(getRuntimeResponse());
+    const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", { core });
+
+    await waitForText(r.lastFrame, "prod");
+    await r.press("return");
+    await waitForText(r.lastFrame, "invoke this Runtime endpoint");
+    await r.press("return");
+    await waitForText(r.lastFrame, "agentcore → runtime → invoke → runtime-123 → prod");
+    await waitForText(r.lastFrame, "Enter JSON payload");
+
+    await r.press("escape");
+    await waitForText(r.lastFrame, "agentcore → runtime → endpoint → get → runtime-123 → prod");
+    await waitForText(r.lastFrame, "invoke this Runtime endpoint");
+    await r.press("escape");
+    await waitForText(r.lastFrame, "agentcore → runtime → endpoint → list → runtime-123");
   });
 
   test("uses a structural parent for the Runtime picker and history below it", async () => {
@@ -254,7 +350,7 @@ describe("Runtime endpoint flow", () => {
     await list.press("return");
     await waitForText(list.lastFrame, "prod");
     await list.press("return");
-    await waitForText(list.lastFrame, '"agentRuntimeEndpointArn"');
+    await waitForText(list.lastFrame, "invoke this Runtime endpoint");
     await list.press("escape");
     await waitForText(list.lastFrame, "agentcore → runtime → endpoint → list → runtime-123");
   });

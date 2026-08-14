@@ -52,19 +52,32 @@ import {
   type DataSourceConfig,
   type ListOnlineEvaluationConfigsResponse,
   type Rule,
+  type EvaluatorLevel,
   type UpdateConfigurationBundleResponse,
   type UpdateEvaluatorResponse,
   type UpdateOnlineEvaluationConfigResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
+  EvaluateCommand,
   GetBatchEvaluationCommand,
   ListBatchEvaluationsCommand,
   StartBatchEvaluationCommand,
+  type EvaluationReferenceInput,
+  type EvaluationResultContent,
+  type EvaluationTarget,
   type ListBatchEvaluationsResponse,
   type StartBatchEvaluationResponse,
   type DataSourceConfig as DataPlaneDataSourceConfig,
   type CloudWatchFilterConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
+import {
+  GetQueryResultsCommand,
+  ResourceNotFoundException,
+  StartQueryCommand,
+  type CloudWatchLogsClient,
+  type ResultField,
+} from "@aws-sdk/client-cloudwatch-logs";
+import type { DocumentType } from "@smithy/types";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, extname, join } from "node:path";
 import { Transform } from "node:stream";
@@ -86,9 +99,14 @@ import type {
   CreateConfigurationBundleInput,
   CreateDatasetInput,
   CreateOnlineEvalInput,
+  EvaluateInput,
+  EvaluateResult,
   GetBatchEvaluationResult,
+  GetTracesInput,
   LlmAsAJudgeUpdate,
   SessionSourceValue,
+  SessionTrace,
+  SpanRecord,
   StartBatchEvaluationInput,
   UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
@@ -121,6 +139,19 @@ const ALLOWED_DATASET_STATUSES: ReadonlySet<DatasetStatus> = new Set([
   "UPDATE_FAILED",
 ]);
 const RETRYABLE_DATASET_STATUSES: ReadonlySet<DatasetStatus> = new Set(["CREATING", "UPDATING"]);
+
+// The shared, account-level OTel span log group.
+const SPANS_LOG_GROUP = "aws/spans";
+
+// Default discovery window when no explicit --start/--end or --lookback-days is
+// given. Mirrors the batch service's now-7d default.
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+// A hard Evaluate limit: at most 10 trace/span ids per request.
+const EVALUATE_TARGET_BATCH = 10;
+
+// CloudWatch Logs Insights hard ceiling: a query returns at most 100k rows.
+const INSIGHTS_MAX_ROWS = 100_000;
 
 // noopLogger is the default for the optional logger arg so callers that don't
 // need batch-evaluation result-log diagnostics (e.g. dataset-only tests) can
@@ -381,6 +412,98 @@ export class EvalClient implements CoreEvalClient {
         serviceNames: [runtimeServiceName(runtimeName, qualifier)],
         filterConfig,
       },
+    };
+  }
+
+  async getTracesForAgent(input: GetTracesInput, options: CoreOptions): Promise<SessionTrace[]> {
+    const qualifier = input.endpoint ?? DEFAULT_ENDPOINT_QUALIFIER;
+
+    const { runtimeId, runtimeName } = await resolveAgentToNameAndId(
+      input.agent,
+      this.clients,
+      options,
+    );
+    const logGroupName = runtimeLogGroup(runtimeId, qualifier);
+    const serviceName = runtimeServiceName(runtimeName, qualifier);
+
+    // CloudWatch Insights takes epoch seconds. Discovery defaults to now-7d when
+    // no explicit window is given (matches the batch service's default).
+    const endMs = input.window ? +input.window.endTime : Date.now();
+    const startMs = input.window ? +input.window.startTime : endMs - SEVEN_DAYS_MS;
+    const startSec = Math.floor(startMs / 1000);
+    const endSec = Math.floor(endMs / 1000);
+
+    const logs = this.clients.logs(toClientConfig(options));
+    const queryString = buildSpanQuery(serviceName, input.sessionIds, input.traceId);
+
+    // Runtime group required (missing = agent has no traces); aws/spans optional now
+    // https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability-configure.html#observability-configure-unified-traces
+    const [runtimeRows, sharedRows] = await Promise.all([
+      runInsightsQuery(logs, [logGroupName], queryString, startSec, endSec).catch((error) => {
+        if (error instanceof ResourceNotFoundException) {
+          throw new InputValidationError(
+            `No telemetry found for agent "${input.agent}": its runtime log group ${logGroupName} ` +
+              `does not exist. Ensure the agent has been invoked and emits traces.`,
+            { meta: { agent: input.agent, logGroupName } },
+          );
+        }
+        throw error;
+      }),
+      runInsightsQuery(logs, [SPANS_LOG_GROUP], queryString, startSec, endSec).catch((error) => {
+        if (error instanceof ResourceNotFoundException) return [];
+        throw error;
+      }),
+    ]);
+    const traces = groupSpansBySession([...sharedRows, ...runtimeRows]);
+
+    // Warn when explicitly requested sessions never showed up in the logs (aged
+    // out, wrong id, or never emitted) so a caller isn't misled by a partial run.
+    if (input.sessionIds?.length) {
+      const found = new Set(traces.map((t) => t.sessionId));
+      const missing = input.sessionIds.filter((id) => !found.has(id));
+      if (missing.length > 0) {
+        this.logger.warn(`requested sessions not found in logs: ${missing.join(", ")}`);
+      }
+    }
+    return traces;
+  }
+
+  async evaluate(input: EvaluateInput, options: CoreOptions): Promise<EvaluateResult> {
+    const data = this.clients.data(toClientConfig(options));
+    const control = this.clients.control(toClientConfig(options));
+    const levels = await resolveEvaluatorLevels(input.evaluatorIds, control, options);
+    const refsBySession = groupRefsBySession(input.groundTruth);
+
+    const results: EvaluationResultContent[] = [];
+    // Sessions that actually produced Evaluate results — distinct from the sessions
+    // handed in, since a TRACE/TOOL_CALL session with no matching ids makes no call.
+    const evaluatedSessions = new Set<string>();
+    for (const evaluatorId of input.evaluatorIds) {
+      const level = levels.get(evaluatorId) ?? "SESSION";
+      for (const trace of input.traces) {
+        // TRACE/TOOL_CALL sessions with no ids at that level contribute no calls
+        // (empty batch list); SESSION always makes one call with no target.
+        for (const target of targetBatches(level, trace)) {
+          const response = await data.send(
+            new EvaluateCommand({
+              evaluatorId,
+              // SpanRecord is Record<string, unknown> for ergonomic reads; the API
+              // wants DocumentType[] (assignable to it, so a single cast suffices).
+              evaluationInput: { sessionSpans: trace.spans as DocumentType[] },
+              evaluationTarget: target,
+              evaluationReferenceInputs: refsBySession.get(trace.sessionId),
+            }),
+          );
+          const evaluationResults = response.evaluationResults ?? [];
+          if (evaluationResults.length > 0) evaluatedSessions.add(trace.sessionId);
+          results.push(...evaluationResults);
+        }
+      }
+    }
+    return {
+      sessionsRequested: input.traces.length,
+      sessionsEvaluated: evaluatedSessions.size,
+      results,
     };
   }
 
@@ -1259,6 +1382,221 @@ async function agentDataSource(
       serviceNames: [runtimeServiceName(runtimeName, qualifier)],
     },
   };
+}
+
+// sanitizeQueryValue strips single quotes so an id can't break out of the quoted
+// Insights filter literal it is interpolated into (matches the old CLI).
+function sanitizeQueryValue(value: string): string {
+  return value.replace(/'/g, "");
+}
+
+// buildSpanQuery is the single-phase Insights query: scope to one runtime by its
+// OTel service.name, optionally narrow to specific sessions and/or one trace, and
+// select the full span JSON (@message) plus the session id to group by. It does
+// NOT over-filter on ispresent(kind) — that span-only predicate is what forced the
+// old CLI's second query for log records; the looser scope returns everything for
+// the session in one pass.
+function buildSpanQuery(serviceName: string, sessionIds?: string[], traceId?: string): string {
+  let query = `fields @message, attributes.session.id as sessionId, traceId, spanId
+     | filter resource.attributes.service.name in ['${sanitizeQueryValue(serviceName)}']`;
+  if (sessionIds && sessionIds.length > 0) {
+    const ids = sessionIds.map((id) => `'${sanitizeQueryValue(id)}'`).join(", ");
+    query += `\n     | filter attributes.session.id in [${ids}]`;
+  }
+  if (traceId) {
+    query += `\n     | filter traceId = '${sanitizeQueryValue(traceId)}'`;
+  }
+  query += `\n     | sort @timestamp asc\n     | limit ${INSIGHTS_MAX_ROWS}`;
+  return query;
+}
+
+// runInsightsQuery starts a CloudWatch Logs Insights query, waits for it to finish,
+// then drains all result pages. GetQueryResults returns <=10k rows per call, so a
+// long session's spans span multiple pages (nextToken); dropping any would score a
+// partial conversation. Fails fast if the ceiling is hit — that belongs in batch.
+async function runInsightsQuery(
+  logs: CloudWatchLogsClient,
+  logGroupNames: string[],
+  queryString: string,
+  startSec: number,
+  endSec: number,
+): Promise<ResultField[][]> {
+  const started = await logs.send(
+    new StartQueryCommand({ logGroupNames, queryString, startTime: startSec, endTime: endSec }),
+  );
+  const queryId = started.queryId;
+
+  // Phase 1: wait for completion. A large scan can take minutes, so the deadline is
+  // generous; each poll costs one cheap GetQueryResults call.
+  let status = "Running";
+  for (let i = 0; i < 300 && status !== "Complete"; i++) {
+    const result = await logs.send(new GetQueryResultsCommand({ queryId }));
+    status = result.status ?? "Unknown";
+    if (status === "Failed" || status === "Cancelled" || status === "Timeout") {
+      throw new NetworkingError(`CloudWatch Logs Insights query ${status.toLowerCase()}`, {
+        meta: { queryId },
+      });
+    }
+    if (status !== "Complete") await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  if (status !== "Complete") {
+    throw new NetworkingError("CloudWatch Logs Insights query did not finish in time", {
+      meta: { queryId },
+    });
+  }
+
+  // Phase 2: drain pages. Terminates on nextToken; total is bounded by the query's
+  // `| limit INSIGHTS_MAX_ROWS`.
+  const rows: ResultField[][] = [];
+  let nextToken: string | undefined;
+  do {
+    const result = await logs.send(new GetQueryResultsCommand({ queryId, nextToken }));
+    rows.push(...(result.results ?? []));
+    nextToken = result.nextToken;
+  } while (nextToken);
+
+  if (rows.length >= INSIGHTS_MAX_ROWS) {
+    throw new InputValidationError(
+      `Too many spans in scope (>= ${INSIGHTS_MAX_ROWS}). Narrow --session-ids or the time ` +
+        `window, or use 'eval batch-evaluation' for large jobs.`,
+    );
+  }
+  return rows;
+}
+
+// Group parsed @message docs by session, keeping only sessions with >=1 span
+// (Evaluate rejects log-only sessions), and derive each session's trace/tool ids.
+function groupSpansBySession(rows: ResultField[][]): SessionTrace[] {
+  const docsBySession = new Map<string, SpanRecord[]>();
+  const sessionsWithSpans = new Set<string>();
+  for (const row of rows) {
+    const message = row.find((f) => f.field === "@message")?.value;
+    const sessionId = row.find((f) => f.field === "sessionId")?.value;
+    // Drop orphan records with no session id (e.g. system logs) — an
+    // unidentifiable session can't be evaluated.
+    if (!message || !sessionId) continue;
+    let doc: SpanRecord;
+    try {
+      doc = JSON.parse(message) as SpanRecord;
+    } catch {
+      continue;
+    }
+    const list = docsBySession.get(sessionId);
+    if (list) list.push(doc);
+    else docsBySession.set(sessionId, [doc]);
+    // distinquish between log record and span (which has "kind")
+    if ("kind" in doc) sessionsWithSpans.add(sessionId);
+  }
+  return [...docsBySession]
+    .filter(([sessionId]) => sessionsWithSpans.has(sessionId))
+    .map(([sessionId, spans]) => ({
+      sessionId,
+      spans,
+      traceIds: extractTraceIds(spans),
+      toolCallSpanIds: extractToolCallSpanIds(spans),
+    }));
+}
+
+// extractTraceIds pulls the distinct trace ids out of a session's spans, preserving
+// first-seen order (ported from the old CLI's span-collector).
+function extractTraceIds(spans: SpanRecord[]): string[] {
+  const seen = new Set<string>();
+  const traceIds: string[] = [];
+  for (const span of spans) {
+    const traceId = span.traceId;
+    // Skip empty ids: log records not tied to a trace carry traceId "", and the
+    // Evaluate API rejects any target id that isn't a 32-char trace id.
+    if (typeof traceId === "string" && traceId.length > 0 && !seen.has(traceId)) {
+      seen.add(traceId);
+      traceIds.push(traceId);
+    }
+  }
+  return traceIds;
+}
+
+// isToolSpan classifies a tool-execution span by the framework markers the AgentCore
+// evaluation SDK uses (Strands / OpenInference / Traceloop). Exact, case-sensitive —
+// OpenInference is "TOOL" (upper), Traceloop is "tool" (lower).
+function isToolSpan(attrs: Record<string, unknown>): boolean {
+  return (
+    attrs["gen_ai.operation.name"] === "execute_tool" ||
+    attrs["openinference.span.kind"] === "TOOL" ||
+    attrs["traceloop.span.kind"] === "tool"
+  );
+}
+
+// extractToolCallSpanIds pulls the span ids of tool-execution spans for TOOL_CALL
+// evaluators. A tool name attribute alone is unreliable (Traceloop names tools via
+// traceloop.entity.name, not tool.name), so classify by span kind instead.
+function extractToolCallSpanIds(spans: SpanRecord[]): string[] {
+  const spanIds: string[] = [];
+  for (const span of spans) {
+    const spanId = span.spanId;
+    if (typeof spanId !== "string" || spanId.length === 0) continue;
+    if (isToolSpan((span.attributes ?? {}) as Record<string, unknown>)) spanIds.push(spanId);
+  }
+  return spanIds;
+}
+
+// resolveEvaluatorLevels maps each evaluator id to its evaluation level via
+// GetEvaluator — authoritative for both builtins (e.g. Builtin.Helpfulness ⇒ TRACE)
+// and custom evaluators, so the level (which decides whether the Evaluate call
+// targets trace ids, tool-call span ids, or the whole session) is never guessed.
+// GetEvaluator errors propagate: a failed lookup (e.g. AccessDenied, not-found)
+// must surface, not silently degrade to SESSION and submit the wrong scope.
+async function resolveEvaluatorLevels(
+  evaluatorIds: string[],
+  control: BedrockAgentCoreControlClient,
+  _options: CoreOptions,
+): Promise<Map<string, EvaluatorLevel>> {
+  const levels = new Map<string, EvaluatorLevel>();
+  for (const id of new Set(evaluatorIds)) {
+    const evaluator = await control.send(new GetEvaluatorCommand({ evaluatorId: id }));
+    // level is a required response field (SDK types it `| undefined` without `?`).
+    levels.set(id, evaluator.level!);
+  }
+  return levels;
+}
+
+// groupRefsBySession indexes ground-truth reference inputs by the session they
+// apply to (context.spanContext.sessionId), so each Evaluate call attaches only its
+// own session's references — the synchronous Evaluate shape, not batch's job-level
+// evaluationMetadata.
+function groupRefsBySession(
+  groundTruth: EvaluationReferenceInput[] | undefined,
+): Map<string, EvaluationReferenceInput[]> {
+  const map = new Map<string, EvaluationReferenceInput[]>();
+  for (const ref of groundTruth ?? []) {
+    const sessionId =
+      ref.context && "spanContext" in ref.context ? ref.context.spanContext?.sessionId : undefined;
+    if (!sessionId) continue;
+    const list = map.get(sessionId);
+    if (list) list.push(ref);
+    else map.set(sessionId, [ref]);
+  }
+  return map;
+}
+
+// targetBatches splits a session's evaluation targets into <=10-id Evaluate calls.
+// SESSION evaluators make a single call with no target; TRACE/TOOL_CALL sessions
+// with no ids at that level make none (the session is skipped for that evaluator).
+function targetBatches(
+  level: EvaluatorLevel,
+  trace: SessionTrace,
+): (EvaluationTarget | undefined)[] {
+  if (level === "TRACE") {
+    return chunk(trace.traceIds, EVALUATE_TARGET_BATCH).map((traceIds) => ({ traceIds }));
+  }
+  if (level === "TOOL_CALL") {
+    return chunk(trace.toolCallSpanIds, EVALUATE_TARGET_BATCH).map((spanIds) => ({ spanIds }));
+  }
+  return [undefined];
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
 }
 
 // A just-written role or inline policy is not visible to the service immediately

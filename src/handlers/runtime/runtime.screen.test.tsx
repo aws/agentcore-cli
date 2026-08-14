@@ -208,16 +208,17 @@ describe("runtime hub", () => {
     expect(failed.lastFrame()).toMatch(/failureReason\s+Image could not be pulled/);
   });
 
-  test("renders exactly the read-only detail, versions, and endpoints actions", async () => {
+  test("renders invoke first with endpoint, version, and detail actions", async () => {
     const core = new TestCoreClient();
     core.runtime.setGetResponse(getRuntimeResponse());
     const r = renderScreen("/agentcore/runtime/get/runtime-123", { core });
 
     await waitForText(r.lastFrame, "show the full JSON definition");
     const frame = r.lastFrame()!;
+    expect(frame).toMatch(/❯ invoke\s+invoke this Runtime/);
     expect(frame).toContain("versions");
     expect(frame).toContain("endpoints");
-    for (const excluded of ["invoke", "exec", "update", "create", "delete"]) {
+    for (const excluded of ["exec", "update", "create", "delete"]) {
       expect(frame).not.toContain(excluded);
     }
   });
@@ -244,8 +245,8 @@ describe("runtime hub", () => {
   });
 
   test.each([
-    ["versions", 1],
-    ["endpoints", 2],
+    ["endpoints", 1],
+    ["versions", 2],
   ] as const)(
     "selecting %s opens its encoded Runtime-scoped route",
     async (action, downPresses) => {
@@ -303,6 +304,7 @@ describe("runtime hub", () => {
     const r = renderScreen("/agentcore/runtime/get/runtime-123", { core });
 
     await waitForText(r.lastFrame, "show the full JSON definition");
+    for (let index = 0; index < 3; index += 1) await r.press("down");
     await r.press("return");
     await waitForText(r.lastFrame, "agentcore → runtime → get → runtime-123 → json");
     const frame = r.lastFrame()!;
@@ -399,6 +401,7 @@ describe("runtime hub", () => {
     await waitForText(r.lastFrame, "checkout");
     await r.press("return");
     await waitForText(r.lastFrame, "show the full JSON definition");
+    for (let index = 0; index < 3; index += 1) await r.press("down");
     await r.press("return");
     await waitForText(r.lastFrame, '"agentRuntimeId"');
     await r.press("escape");
@@ -407,6 +410,45 @@ describe("runtime hub", () => {
       return frame.includes("agentcore → runtime → get → runtime-123") && !frame.includes("→ json");
     });
     await waitForText(r.lastFrame, "show the full JSON definition");
+  });
+
+  test("invoke keeps the selected Runtime and Esc returns from endpoint selection", async () => {
+    const core = coreWithRuntimes([runtime({ agentRuntimeId: "runtime-123" })]);
+    core.runtime.setGetResponse(getRuntimeResponse());
+    core.runtime.setListEndpointsResponse({
+      runtimeEndpoints: [
+        {
+          name: "prod",
+          id: "prod",
+          liveVersion: "7",
+          agentRuntimeEndpointArn: "arn:endpoint",
+          agentRuntimeArn: "arn:runtime",
+          status: "READY",
+          createdAt: new Date("2026-07-19T01:02:03.000Z"),
+          lastUpdatedAt: new Date("2026-07-20T12:34:56.000Z"),
+        },
+      ],
+    });
+    const r = renderScreen("/agentcore/runtime/list", { core });
+
+    await waitForText(r.lastFrame, "checkout");
+    await r.press("return");
+    await waitForText(r.lastFrame, "invoke this Runtime");
+    const listCallsBeforeInvoke = core.runtime.calls.filter(
+      (call) => call.method === "listRuntimes",
+    ).length;
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose an endpoint to invoke");
+    await waitForText(r.lastFrame, "prod");
+    expect(core.runtime.calls.filter((call) => call.method === "listRuntimes")).toHaveLength(
+      listCallsBeforeInvoke,
+    );
+
+    await r.press("escape");
+    await waitForText(r.lastFrame, "agentcore → runtime → get → runtime-123");
+    await waitForText(r.lastFrame, "invoke this Runtime");
+    await r.press("escape");
+    await waitForText(r.lastFrame, "agentcore → runtime → list");
   });
 
   test("Esc remains active while the hub is loading", async () => {

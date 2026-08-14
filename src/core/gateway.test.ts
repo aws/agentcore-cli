@@ -16,6 +16,7 @@ import {
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { ERROR_SOURCE, ResultTruncationError } from "../errors";
 import type { GatewayTargetUpdatePatch, GatewayUpdatePatch } from "../handlers/gateway/types";
+import { createSilentLogger } from "../testing";
 import type { AwsClients } from "./types";
 import { GatewayClient } from "./gateway";
 
@@ -32,9 +33,13 @@ function ordinary(targetId: string): TargetSummary {
 function gatewayClient(
   send: (command: GetGatewayTargetCommand | ListGatewayTargetsCommand) => Promise<unknown>,
 ): GatewayClient {
-  return new GatewayClient({
-    control: () => ({ send: mock(send) }) as never,
-  } as unknown as AwsClients);
+  return new GatewayClient(
+    {
+      control: () => ({ send: mock(send) }) as never,
+    } as unknown as AwsClients,
+    globalThis.fetch,
+    createSilentLogger(),
+  );
 }
 
 describe("GatewayClient Connector facade", () => {
@@ -319,7 +324,10 @@ function recordingGatewayClient(responses: unknown[]): {
       throw new Error("unexpected Logs client");
     },
   };
-  return { client: new GatewayClient(clients), commands };
+  return {
+    client: new GatewayClient(clients, globalThis.fetch, createSilentLogger()),
+    commands,
+  };
 }
 
 async function gatewayUpdateInput(
