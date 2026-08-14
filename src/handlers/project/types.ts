@@ -1,5 +1,7 @@
+import { HarnessSpecSchema } from "../../projectSchemas/harness";
 import type { ManagedBy } from "../../projectSchemas/project";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
+import type z from "zod";
 
 /** Available project templates for scaffolding new AgentCore projects. */
 export const PROJECT_TEMPLATES = {
@@ -8,6 +10,16 @@ export const PROJECT_TEMPLATES = {
 } as const;
 
 export type ProjectTemplate = (typeof PROJECT_TEMPLATES)[keyof typeof PROJECT_TEMPLATES];
+
+/** Resources that may be added to an agentcore project **/
+export const PROJECT_RESOURCE_TYPES = {
+  harness: { schema: HarnessSpecSchema },
+};
+
+export type ProjectResource = keyof typeof PROJECT_RESOURCE_TYPES;
+export type ProjectResourceConfig<TResource extends ProjectResource> = z.input<
+  (typeof PROJECT_RESOURCE_TYPES)[TResource]["schema"]
+>;
 
 export type CreateProjectInput = {
   /** The name of the project; also the directory it is scaffolded into. */
@@ -52,4 +64,11 @@ export interface ProjectManager {
 
   /** Locate an existing AgentCore project. Returns undefined if no project can be found. */
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;
+
+  /** Add a resource to an existing AgentCore project. */
+  addResource<TResource extends ProjectResource>(
+    project: Project,
+    resourceType: TResource,
+    resourceConfig: ProjectResourceConfig<TResource>,
+  ): AsyncGenerator<ProjectEvent, Project>;
 }

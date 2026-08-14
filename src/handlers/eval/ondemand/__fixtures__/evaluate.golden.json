@@ -1,0 +1,44 @@
+{
+  "sessionsRequested": 2,
+  "sessionsEvaluated": 2,
+  "results": [
+    {
+      "evaluatorArn": "arn:aws:bedrock-agentcore:::evaluator/Builtin.Helpfulness",
+      "evaluatorId": "Builtin.Helpfulness",
+      "evaluatorName": "Builtin.Helpfulness",
+      "context": {
+        "spanContext": {
+          "sessionId": "67ebf93b-65e3-4127-9e13-483b239f256a",
+          "traceId": "6a7cabfa3bfe9a7348415c7b507648a8"
+        }
+      },
+      "explanation": "The user asked a simple arithmetic question ('What is 2+2?') and requested a concise answer. The assistant's response '2 + 2 = 4' directly and concisely answers the question. The tool output confirmed the answer is 4, and the assistant correctly relayed this information. The response is brief and to the point, matching the user's request for conciseness. This fully satisfies the user's goal with no unnecessary information.",
+      "value": 0.83,
+      "label": "Very Helpful",
+      "tokenUsage": {
+        "inputTokens": 941,
+        "outputTokens": 118,
+        "totalTokens": 1059
+      }
+    },
+    {
+      "evaluatorArn": "arn:aws:bedrock-agentcore:::evaluator/Builtin.Helpfulness",
+      "evaluatorId": "Builtin.Helpfulness",
+      "evaluatorName": "Builtin.Helpfulness",
+      "context": {
+        "spanContext": {
+          "sessionId": "7f983b9f-9569-4a4d-bdc2-5c997ff346dd",
+          "traceId": "6a7cac0e3fa42bfe5437eef070d1231c"
+        }
+      },
+      "explanation": "The user's goal was simple: to have a primary color named. The assistant directly answered the question by naming 'red' as a primary color. Beyond just answering the question, the assistant also provided additional context about all three primary colors in both traditional color theory and the RGB model. This extra information is relevant and educational without being overwhelming. The response directly fulfills the user's request and goes a step further by providing useful context about primary colors in general, which anticipates potential follow-up questions or curiosity. This qualifies as 'Above And Beyond' since it answers the question completely and proactively addresses related information the user might find useful.",
+      "value": 1,
+      "label": "Above And Beyond",
+      "tokenUsage": {
+        "inputTokens": 859,
+        "outputTokens": 154,
+        "totalTokens": 1013
+      }
+    }
+  ]
+}

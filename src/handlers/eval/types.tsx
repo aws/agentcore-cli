@@ -34,6 +34,8 @@ import type {
   ListBatchEvaluationsResponse,
   StartBatchEvaluationResponse,
   SessionMetadataShape,
+  EvaluationReferenceInput,
+  EvaluationResultContent,
   DataSourceConfig as DataPlaneDataSourceConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { CoreOptions } from "../../core/types";
@@ -203,6 +205,54 @@ export type StartBatchEvaluationInput = {
   kmsKeyArn?: string;
 };
 
+// SpanRecord is one OTel span/log document — the parsed `@message` JSON of a
+// CloudWatch Logs Insights result row. Left open (arbitrary JSON) because it is
+// handed to the Evaluate API's `sessionSpans` verbatim; the CLI only reads a few
+// well-known fields off it (traceId, spanId, attributes) to route evaluators.
+export type SpanRecord = Record<string, unknown>;
+
+// SessionTrace is one session's gathered telemetry, grouped client-side. Neutral
+// by design — no Evaluate coupling — so getTracesForAgent stays reusable and
+// EvalClient.evaluate owns the mapping into the Evaluate request shape.
+export type SessionTrace = {
+  sessionId: string; // read from attributes.session.id
+  spans: SpanRecord[]; // full OTel span JSON (@message)
+  traceIds: string[]; // for TRACE-level evaluators (evaluationTarget.traceIds)
+  toolCallSpanIds: string[]; // for TOOL_CALL-level evaluators (evaluationTarget.spanIds)
+};
+
+// GetTracesInput selects which sessions' traces to read for one agent. `sessionIds`
+// and `traceId` are independent, optional, AND-ed query filters; with neither, the
+// `window` bounds discovery. `window` unset ⇒ the client defaults to now−7d.
+export type GetTracesInput = {
+  agent: string;
+  endpoint?: string;
+  window?: SessionWindow;
+  sessionIds?: string[];
+  traceId?: string;
+};
+
+// EvaluateInput is the CLI-facing shape for the synchronous Evaluate path.
+// `groundTruth` is the SDK-native array, passed verbatim; EvalClient groups it by
+// session (context.spanContext.sessionId) and attaches per session.
+export type EvaluateInput = {
+  traces: SessionTrace[];
+  evaluatorIds: string[];
+  groundTruth?: EvaluationReferenceInput[];
+};
+
+// EvaluateResult returns the raw Evaluate API results across all evaluators and
+// sessions (each carries its own evaluatorId + span context). No aggregation — the
+// caller renders the raw scores. The two counts are distinct on purpose:
+// `sessionsRequested` is how many gathered sessions were handed to Evaluate;
+// `sessionsEvaluated` is how many actually produced results (a TRACE/TOOL_CALL
+// session with no matching ids is requested but not evaluated).
+export type EvaluateResult = {
+  sessionsRequested: number;
+  sessionsEvaluated: number;
+  results: EvaluationResultContent[];
+};
+
 // DatasetUpdateResult reports what reconciling a DRAFT against a local file
 // changed. The counts are examples, not requests: each phase is batched to the
 // service's per-request limit.
@@ -269,6 +319,16 @@ export interface CoreEvalClient {
     input: StartBatchEvaluationInput,
     options: CoreOptions,
   ): Promise<StartBatchEvaluationResponse>;
+
+  // getTracesForAgent resolves the agent to its runtime log group and reads the
+  // target sessions' traces client-side (CloudWatch Logs Insights), grouped by
+  // session. Returns neutral SessionTrace records — the ondemand handler hands
+  // them to evaluate. Kept off the Evaluate path so the same fetch is reusable.
+  getTracesForAgent(input: GetTracesInput, options: CoreOptions): Promise<SessionTrace[]>;
+  // evaluate runs evaluators synchronously over already-gathered traces via the
+  // Evaluate API and returns per-session scores. No job, no CloudWatch — the
+  // trace read happened in getTracesForAgent.
+  evaluate(input: EvaluateInput, options: CoreOptions): Promise<EvaluateResult>;
 
   createOnlineEvaluationConfig(
     input: CreateOnlineEvalInput,

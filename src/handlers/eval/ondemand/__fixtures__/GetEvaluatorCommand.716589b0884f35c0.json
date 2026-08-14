@@ -1,0 +1,51 @@
+{
+  "evaluatorArn": "arn:aws:bedrock-agentcore:::evaluator/Builtin.Helpfulness",
+  "evaluatorId": "Builtin.Helpfulness",
+  "evaluatorName": "Builtin.Helpfulness",
+  "evaluatorConfig": {
+    "llmAsAJudge": {
+      "ratingScale": {
+        "numerical": [
+          {
+            "value": 0,
+            "label": "Not helpful at all"
+          },
+          {
+            "value": 1,
+            "label": "Very unhelpful"
+          },
+          {
+            "value": 2,
+            "label": "Somewhat unhelpful"
+          },
+          {
+            "value": 3,
+            "label": "Neutral/Mixed"
+          },
+          {
+            "value": 4,
+            "label": "Somewhat helpful"
+          },
+          {
+            "value": 5,
+            "label": "Very helpful"
+          },
+          {
+            "value": 6,
+            "label": "Above and beyond"
+          }
+        ]
+      }
+    }
+  },
+  "level": "TRACE",
+  "status": "ACTIVE",
+  "createdAt": {
+    "$date": "2024-10-22T00:00:00.000Z"
+  },
+  "updatedAt": {
+    "$date": "2024-10-22T00:00:00.000Z"
+  },
+  "description": "Response Quality Metric. Evaluates from user's perspective how useful and valuable the agent's response is",
+  "lockedForModification": true
+}

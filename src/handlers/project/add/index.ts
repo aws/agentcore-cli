@@ -1,11 +1,11 @@
-import { createHandler } from "../../../router";
-import { NotImplementedError } from "../../../errors";
+import { withProject } from "../../../middleware/";
+import { Router } from "../../../router";
+import { createAddHarnessHandler } from "./harness";
+import type { AddProjectResourceConfig } from "./types";
 
-export const createAddProjectHandler = () =>
-  createHandler({
-    name: "add",
-    description: "add a resource to the project",
-    handle: async () => {
-      throw new NotImplementedError("agentcore project add is not implemented yet");
-    },
-  });
+export function createAddProjectResourceHandler(config: AddProjectResourceConfig): Router {
+  const projectAdd = new Router("add", "add project resources");
+  projectAdd.use(withProject({ projectManager: config.projectManager, cwd: process.cwd() }));
+  projectAdd.handler(createAddHarnessHandler(config));
+  return projectAdd;
+}

@@ -6,6 +6,8 @@ import type {
   Project,
   ProjectManager,
   ProjectEvent,
+  ProjectResource,
+  ProjectResourceConfig,
 } from "../../handlers/project/types";
 import type { Logger } from "../../logging";
 import {
@@ -19,7 +21,12 @@ import { defaultSource, type AssetSource } from "./source";
 import { createProjectTreeFromTemplate, TEMPLATES } from "./templates";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { enclosingProjectRoot } from "./fsUtils";
-import { DeserializationError, InputValidationError, ProjectStateError } from "../../errors/errors";
+import {
+  DeserializationError,
+  InputValidationError,
+  NotImplementedError,
+  ProjectStateError,
+} from "../../errors/errors";
 
 type ProjectManagerConfig = {
   logger: Logger;
@@ -121,6 +128,15 @@ export class FsProjectManager implements ProjectManager {
       );
     }
     return project;
+  }
+
+  // eslint-disable-next-line require-yield
+  public async *addResource<TResource extends ProjectResource>(
+    _project: Project,
+    _resourceType: TResource,
+    _resourceConfig: ProjectResourceConfig<TResource>,
+  ): AsyncGenerator<ProjectEvent, Project> {
+    throw new NotImplementedError("FsProjectManager.addResource is not yet implemented");
   }
 
   public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {

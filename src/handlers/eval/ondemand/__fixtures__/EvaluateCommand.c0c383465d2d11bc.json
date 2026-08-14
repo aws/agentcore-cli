@@ -1,0 +1,23 @@
+{
+  "evaluationResults": [
+    {
+      "evaluatorArn": "arn:aws:bedrock-agentcore:::evaluator/Builtin.Helpfulness",
+      "evaluatorId": "Builtin.Helpfulness",
+      "evaluatorName": "Builtin.Helpfulness",
+      "context": {
+        "spanContext": {
+          "sessionId": "7f983b9f-9569-4a4d-bdc2-5c997ff346dd",
+          "traceId": "6a7cac0e3fa42bfe5437eef070d1231c"
+        }
+      },
+      "explanation": "The user's goal was simple: to have a primary color named. The assistant directly answered the question by naming 'red' as a primary color. Beyond just answering the question, the assistant also provided additional context about all three primary colors in both traditional color theory and the RGB model. This extra information is relevant and educational without being overwhelming. The response directly fulfills the user's request and goes a step further by providing useful context about primary colors in general, which anticipates potential follow-up questions or curiosity. This qualifies as 'Above And Beyond' since it answers the question completely and proactively addresses related information the user might find useful.",
+      "value": 1,
+      "label": "Above And Beyond",
+      "tokenUsage": {
+        "inputTokens": 859,
+        "outputTokens": 154,
+        "totalTokens": 1013
+      }
+    }
+  ]
+}

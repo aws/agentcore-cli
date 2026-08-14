@@ -1,0 +1,23 @@
+{
+  "evaluationResults": [
+    {
+      "evaluatorArn": "arn:aws:bedrock-agentcore:::evaluator/Builtin.Helpfulness",
+      "evaluatorId": "Builtin.Helpfulness",
+      "evaluatorName": "Builtin.Helpfulness",
+      "context": {
+        "spanContext": {
+          "sessionId": "67ebf93b-65e3-4127-9e13-483b239f256a",
+          "traceId": "6a7cabfa3bfe9a7348415c7b507648a8"
+        }
+      },
+      "explanation": "The user asked a simple arithmetic question ('What is 2+2?') and requested a concise answer. The assistant's response '2 + 2 = 4' directly and concisely answers the question. The tool output confirmed the answer is 4, and the assistant correctly relayed this information. The response is brief and to the point, matching the user's request for conciseness. This fully satisfies the user's goal with no unnecessary information.",
+      "value": 0.83,
+      "label": "Very Helpful",
+      "tokenUsage": {
+        "inputTokens": 941,
+        "outputTokens": 118,
+        "totalTokens": 1059
+      }
+    }
+  ]
+}

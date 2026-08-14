@@ -7,6 +7,7 @@ import { createEvaluatorHandler } from "./evaluator";
 import { createOnlineEvalHandler } from "./online-eval";
 import { createDatasetHandler } from "./dataset";
 import { createBatchEvaluationHandler } from "./batch-evaluation";
+import { createOnDemandHandler } from "./ondemand";
 import { createConfigBundleHandler } from "./config-bundle";
 
 export function createEvalHandler(core: Core, io: AppIO): Router {
@@ -17,6 +18,7 @@ export function createEvalHandler(core: Core, io: AppIO): Router {
     .handler(createOnlineEvalHandler(core, io))
     .handler(createDatasetHandler(core, io))
     .handler(createBatchEvaluationHandler(core, io))
+    .handler(createOnDemandHandler(core, io))
     .handler(createConfigBundleHandler(core, io));
 }
 
