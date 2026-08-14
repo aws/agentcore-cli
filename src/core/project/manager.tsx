@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { copyFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import type {
   AddResourceInput,
@@ -29,7 +30,6 @@ import {
 } from "../../errors/errors";
 import type { HarnessSpecSchema } from "../../projectSchemas/harness";
 import type z from "zod";
-import { copyFile } from "node:fs/promises";
 
 type ProjectManagerConfig = {
   logger: Logger;

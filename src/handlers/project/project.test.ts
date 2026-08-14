@@ -525,6 +525,57 @@ describe("project add harness", () => {
     expect(harnessJson.dockerfile).toBe("Dockerfile");
   });
 
+  test("--dockerfile with VPC mode succeeds when --vpc-id is provided", async () => {
+    const projectRoot = await inProject();
+
+    const dockerfilePath = join(projectRoot, "Dockerfile");
+    await Bun.write(dockerfilePath, "FROM python:3.12-slim\n");
+
+    await run([
+      "add",
+      "harness",
+      "--name",
+      "x",
+      "--dockerfile",
+      dockerfilePath,
+      "--environment",
+      '{"agentCoreRuntimeEnvironment":{"networkConfiguration":{"networkMode":"VPC","networkModeConfig":{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}}}}',
+      "--vpc-id",
+      "vpc-0123456789abcdef0",
+    ]);
+
+    const harnessJson = await Bun.file(join(projectRoot, "app", "x", "harness.json")).json();
+    expect(harnessJson).toMatchObject({
+      dockerfile: "Dockerfile",
+      networkMode: "VPC",
+      networkConfig: {
+        subnets: ["subnet-0123456789abcdef0"],
+        securityGroups: ["sg-0123456789abcdef0"],
+        vpcId: "vpc-0123456789abcdef0",
+      },
+    });
+  });
+
+  test("--dockerfile with VPC mode fails without --vpc-id", async () => {
+    const projectRoot = await inProject();
+
+    const dockerfilePath = join(projectRoot, "Dockerfile");
+    await Bun.write(dockerfilePath, "FROM python:3.12-slim\n");
+
+    await expect(
+      run([
+        "add",
+        "harness",
+        "--name",
+        "x",
+        "--dockerfile",
+        dockerfilePath,
+        "--environment",
+        '{"agentCoreRuntimeEnvironment":{"networkConfiguration":{"networkMode":"VPC","networkModeConfig":{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}}}}',
+      ]),
+    ).rejects.toBeInstanceOf(InputValidationError);
+  });
+
   test.each([
     ["missing --name", ["--model", '{"bedrockModelConfig":{"modelId":"x"}}']],
     ["model without modelId", ["--name", "x", "--model", '{"bedrockModelConfig":{}}']],

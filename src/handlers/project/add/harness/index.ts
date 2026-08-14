@@ -84,6 +84,11 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
         "path to local dockerfile to use as the container image for the harness",
         z.string().optional(),
       ),
+      flag(
+        "vpc-id",
+        "VPC ID for Dockerfile builds in VPC mode (required when combining --dockerfile with VPC networking)",
+        z.string().optional(),
+      ),
     ],
     handle: async (ctx, flags) => {
       if (!flags.name)
@@ -138,7 +143,9 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
         timeoutSeconds: flags["timeout-seconds"],
         tags: parseJsonFlag<Record<string, string>>("tags", flags["tags"]),
         networkMode: env?.networkMode,
-        networkConfig: env?.networkConfig,
+        networkConfig: env?.networkConfig
+          ? { ...env.networkConfig, vpcId: flags["vpc-id"] }
+          : undefined,
         lifecycleConfig: env?.lifecycleConfig,
         sessionStoragePath: env?.sessionStoragePath,
         efsAccessPoints: env?.efsAccessPoints,
