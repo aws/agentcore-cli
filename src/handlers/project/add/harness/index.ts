@@ -302,7 +302,7 @@ function toSkill(skill: SdkHarnessSkill): HarnessSkill {
       path: skill.git.path,
       auth: skill.git.auth
         ? {
-            credentialName: requireField(
+            credentialArn: requireField(
               skill.git.auth.credentialArn,
               "skill.git.auth.credentialArn",
             ),

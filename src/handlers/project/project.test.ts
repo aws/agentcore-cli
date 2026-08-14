@@ -314,7 +314,7 @@ describe("project add harness", () => {
             gitUrl: "https://github.com/org/repo",
             path: "skills/",
             auth: {
-              credentialName: "arn:aws:bedrock-agentcore:us-east-1:123456789012:credential/c",
+              credentialArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:credential/c",
               username: "oauth2",
             },
           },

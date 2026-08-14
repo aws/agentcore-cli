@@ -371,10 +371,16 @@ export const HarnessTruncationConfigSchema = z
     }
   });
 export type HarnessTruncationConfig = z.infer<typeof HarnessTruncationConfigSchema>;
-export const HarnessSkillGitAuthSchema = z.object({
-  credentialName: z.string().min(1),
-  username: z.string().optional(),
-});
+export const HarnessSkillGitAuthSchema = z
+  .object({
+    credentialName: z.string().min(1).optional(),
+    credentialArn: z.string().min(1).optional(),
+    username: z.string().optional(),
+  })
+  .refine((data) => Boolean(data.credentialName) !== Boolean(data.credentialArn), {
+    message: "Exactly one of credentialName or credentialArn must be provided",
+    path: ["credentialName"],
+  });
 export type HarnessSkillGitAuth = z.infer<typeof HarnessSkillGitAuthSchema>;
 export const HarnessSkillS3SourceSchema = z
   .object({
