@@ -3,9 +3,8 @@ import {
   GatewayInvokeInterruptedError,
   GatewayInvokeResponseError,
   InputValidationError,
-  InvalidEnvironmentError,
 } from "../../../errors";
-import type { AppIO } from "../../../io";
+import { SourceResolver, type AppIO } from "../../../io";
 import { ExitCode } from "../../../runnable";
 import { createHandler, flag, PathKey } from "../../../router";
 import { renderTuiAt } from "../../../tui";
@@ -80,7 +79,7 @@ export const createInvokeGatewayHandler = (core: Core, io: AppIO) =>
           const applicationHeaders = parseGatewayInvokeHeaders(flags.header);
           const bearerToken = await resolveGatewayInvokeTuiBearerToken(
             flags["bearer-token"],
-            io.stdin,
+            new SourceResolver({ stdin: io.stdin }),
           );
           const launchContext = {
             gatewayId: flags.id,
@@ -91,22 +90,12 @@ export const createInvokeGatewayHandler = (core: Core, io: AppIO) =>
             applicationHeaders,
             bearerToken,
           };
-          try {
-            await renderTuiAt(
-              `${ctx.require(PathKey)}/${encodeURIComponent(flags.id)}`,
-              ctx.withValue(GatewayInvokeLaunchContextKey, launchContext),
-              core,
-              io,
-            );
-          } catch (error) {
-            if (error instanceof InvalidEnvironmentError) {
-              throw new InputValidationError(error.message, {
-                cause: error,
-                exitCode: ExitCode.USAGE,
-              });
-            }
-            throw error;
-          }
+          await renderTuiAt(
+            `${ctx.require(PathKey)}/${encodeURIComponent(flags.id)}`,
+            ctx.withValue(GatewayInvokeLaunchContextKey, launchContext),
+            core,
+            io,
+          );
           return;
         }
       }

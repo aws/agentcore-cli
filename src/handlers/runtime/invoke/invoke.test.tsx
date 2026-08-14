@@ -12,7 +12,6 @@ import {
   waitFor,
 } from "../../../testing";
 import { ExitCode, runWithExitCode } from "../../../runnable";
-import { InvalidEnvironmentError } from "../../../errors";
 import { createRootHandler } from "../../index";
 import * as tui from "../../../tui";
 import { RuntimeInvokeLaunchContextKey } from "./launchContext";
@@ -404,20 +403,12 @@ describe("runtime invoke", () => {
   test("classifies the TUI requirement as usage at the handler boundary", async () => {
     const core = new TestCoreClient();
     const output = captureIO();
-    const render = spyOn(tui, "renderTuiAt").mockRejectedValue(
-      new InvalidEnvironmentError("interactive mode requires a TTY on stdin and stdout"),
+    const code = await runWithExitCode(async () =>
+      runCommand(core, output.io, ["runtime", "invoke", "--id", RUNTIME_ID]),
     );
 
-    try {
-      const code = await runWithExitCode(async () =>
-        runCommand(core, output.io, ["runtime", "invoke", "--id", RUNTIME_ID]),
-      );
-
-      expect(code).toBe(ExitCode.USAGE);
-      expect(core.runtime.calls).toEqual([]);
-    } finally {
-      render.mockRestore();
-    }
+    expect(code).toBe(ExitCode.USAGE);
+    expect(core.runtime.calls).toEqual([]);
   });
 
   test("preserves unexpected TUI rendering failures", async () => {

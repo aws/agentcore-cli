@@ -1,7 +1,7 @@
-import { describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { PassThrough } from "node:stream";
 import type { GetGatewayResponse } from "@aws-sdk/client-bedrock-agentcore-control";
-import { InputValidationError, SourceResolutionError } from "../../../errors";
+import { SourceResolutionError } from "../../../errors";
 import { SourceResolver } from "../../../io";
 import {
   normalizeGatewayInvokeRequest,
@@ -68,24 +68,13 @@ describe("Gateway invoke sources", () => {
   });
 });
 
-test("brands TUI bearer-token file failures as input errors", async () => {
+test("preserves TUI bearer-token source errors", async () => {
   const missing = `file:///tmp/missing-gateway-token-${process.pid}`;
-  const error = await resolveGatewayInvokeTuiBearerToken(missing, stdin()).catch((error) => error);
+  const resolver = new SourceResolver({ stdin: stdin() });
+  const error = await resolveGatewayInvokeTuiBearerToken(missing, resolver).catch((error) => error);
 
-  expect(error).toBeInstanceOf(InputValidationError);
+  expect(error).toBeInstanceOf(SourceResolutionError);
   expect(error.message).toContain("could not read '--bearer-token' from file");
-  expect(error.cause).toBeInstanceOf(SourceResolutionError);
-});
-
-test("preserves unexpected TUI bearer-token source failures", async () => {
-  const failure = new TypeError("source failed");
-  const resolve = spyOn(SourceResolver.prototype, "resolveText").mockRejectedValue(failure);
-
-  try {
-    await expect(resolveGatewayInvokeTuiBearerToken("token", stdin())).rejects.toBe(failure);
-  } finally {
-    resolve.mockRestore();
-  }
 });
 
 describe("Gateway invoke headers", () => {

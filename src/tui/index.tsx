@@ -13,6 +13,7 @@ import type { AppIO } from "../io";
 import type { Core } from "../handlers/types";
 import { JsonKey } from "../handlers/keys";
 import { InvalidEnvironmentError } from "../errors";
+import { ExitCode } from "../runnable";
 
 // renderJson pretty-prints a value as indented JSON. It is the output
 // counterpart to renderTui: handlers call it to emit machine-readable results
@@ -47,7 +48,9 @@ export async function renderTuiAt(
   ctx.value(CommandRunMetricEventKey)?.setAttributes({ is_tui: true });
 
   if (!io.stdin.isTTY || !io.stdout.isTTY) {
-    throw new InvalidEnvironmentError("interactive mode requires a TTY on stdin and stdout");
+    throw new InvalidEnvironmentError("interactive mode requires a TTY on stdin and stdout", {
+      exitCode: ExitCode.USAGE,
+    });
   }
 
   // alternateScreen switches the terminal to its alternate buffer so the TUI

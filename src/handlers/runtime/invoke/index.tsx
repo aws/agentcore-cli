@@ -1,9 +1,5 @@
 import z from "zod";
-import {
-  InputValidationError,
-  InvalidEnvironmentError,
-  RuntimeInvokeInterruptedError,
-} from "../../../errors";
+import { InputValidationError, RuntimeInvokeInterruptedError } from "../../../errors";
 import { createHandler, flag, PathKey } from "../../../router";
 import type { AppIO } from "../../../io";
 import type { Core } from "../../types";
@@ -95,22 +91,12 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
           applicationHeaders,
           bearerToken,
         };
-        try {
-          await renderTuiAt(
-            path,
-            ctx.withValue(RuntimeInvokeLaunchContextKey, launchContext),
-            core,
-            io,
-          );
-        } catch (error) {
-          if (error instanceof InvalidEnvironmentError) {
-            throw new InputValidationError(error.message, {
-              cause: error,
-              exitCode: ExitCode.USAGE,
-            });
-          }
-          throw error;
-        }
+        await renderTuiAt(
+          path,
+          ctx.withValue(RuntimeInvokeLaunchContextKey, launchContext),
+          core,
+          io,
+        );
         return;
       }
 

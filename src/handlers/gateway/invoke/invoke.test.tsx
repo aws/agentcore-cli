@@ -1,22 +1,20 @@
-import { describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import type { GetGatewayResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { AppIO } from "../../../io";
-import { InvalidEnvironmentError } from "../../../errors";
 import { ExitCode, runWithExitCode } from "../../../runnable";
-import * as tui from "../../../tui";
 import {
   createSilentLogger,
   TestCoreClient,
   TestGlobalConfigAccessor,
+  testIO,
   waitFor,
 } from "../../../testing";
 import { createRootHandler } from "../../index";
 import type { GatewayInvokeRequest } from "../types";
-import { GatewayInvokeLaunchContextKey } from "./launchContext";
 
 const REGION = "us-west-2";
 const GATEWAY_ID = "gateway-123";
@@ -46,6 +44,29 @@ function captureIO(input?: Uint8Array) {
     stdout: () => Buffer.concat(stdoutChunks),
     stderr: () => Buffer.concat(stderrChunks),
   };
+}
+
+interface TtyInput extends NodeJS.ReadStream {
+  write(chunk: string): boolean;
+}
+
+function ttyTestIO() {
+  const streams = testIO({ isTTY: true });
+  const stdin = streams.io.stdin as TtyInput;
+  stdin.setRawMode = function () {
+    return this;
+  };
+  stdin.ref = function () {
+    return this;
+  };
+  stdin.unref = function () {
+    return this;
+  };
+  Object.defineProperties(streams.io.stdout, {
+    columns: { configurable: true, value: 100 },
+    rows: { configurable: true, value: 40 },
+  });
+  return { streams, stdin };
 }
 
 async function runCommand(core: TestCoreClient, io: AppIO, args: string[]): Promise<void> {
@@ -394,43 +415,37 @@ describe("gateway invoke", () => {
 
   test("deep-links an id-only invoke and seeds interactive request context", async () => {
     const core = configuredCore();
-    const output = captureIO();
-    const render = spyOn(tui, "renderTuiAt").mockResolvedValue(undefined);
-
+    const { streams, stdin } = ttyTestIO();
+    const route = runCommand(core, streams.io, [
+      "gateway",
+      "invoke",
+      "--id",
+      "gateway/blue one",
+      "--path",
+      "runtime/invocations?trace=true",
+      "--header",
+      "X-Tenant: retail",
+      "--bearer-token",
+      "secret-token",
+      "--session-id",
+      "runtime-session",
+      "--mcp-session-id",
+      "mcp-session",
+      "--mcp-protocol-version",
+      "2025-06-18",
+    ]);
     try {
-      await runCommand(core, output.io, [
-        "gateway",
-        "invoke",
-        "--id",
-        "gateway/blue one",
-        "--path",
-        "runtime/invocations?trace=true",
-        "--header",
-        "X-Tenant: retail",
-        "--bearer-token",
-        "secret-token",
-        "--session-id",
-        "runtime-session",
-        "--mcp-session-id",
-        "mcp-session",
-        "--mcp-protocol-version",
-        "2025-06-18",
-      ]);
-
-      expect(render).toHaveBeenCalledTimes(1);
-      expect(render.mock.calls[0]![0]).toBe("/agentcore/gateway/invoke/gateway%2Fblue%20one");
-      expect(render.mock.calls[0]![1].value(GatewayInvokeLaunchContextKey)).toEqual({
-        gatewayId: "gateway/blue one",
-        path: "runtime/invocations?trace=true",
-        runtimeSessionId: "runtime-session",
-        mcpSessionId: "mcp-session",
-        mcpProtocolVersion: "2025-06-18",
-        applicationHeaders: [["X-Tenant", "retail"]],
-        bearerToken: "secret-token",
-      });
-      expect(core.gateway.calls).toEqual([]);
+      await waitFor(() => streams.stdout().includes("Path: runtime/invocations?trace=true"));
+      expect(streams.stdout()).toContain("Runtime session ID: runtime-session");
+      expect(streams.stdout()).toContain("MCP session ID: mcp-session");
+      expect(streams.stdout()).toContain("Context: JWT/1h");
+      expect(streams.stdout()).not.toContain("secret-token");
+      expect(streams.stdout()).not.toContain("retail");
+      expect(core.gateway.calls.some((call) => call.method === "getGateway")).toBe(true);
+      expect(core.gateway.calls.some((call) => call.method === "invokeGateway")).toBe(false);
     } finally {
-      render.mockRestore();
+      stdin.write(String.fromCharCode(3));
+      await route;
     }
   });
 
@@ -447,20 +462,12 @@ describe("gateway invoke", () => {
   test("classifies an unavailable interactive environment as usage", async () => {
     const core = configuredCore();
     const output = captureIO();
-    const render = spyOn(tui, "renderTuiAt").mockRejectedValue(
-      new InvalidEnvironmentError("interactive mode requires a TTY on stdin and stdout"),
+    const code = await runWithExitCode(async () =>
+      runCommand(core, output.io, ["gateway", "invoke", "--id", GATEWAY_ID]),
     );
 
-    try {
-      const code = await runWithExitCode(async () =>
-        runCommand(core, output.io, ["gateway", "invoke", "--id", GATEWAY_ID]),
-      );
-
-      expect(code).toBe(ExitCode.USAGE);
-      expect(core.gateway.calls).toEqual([]);
-    } finally {
-      render.mockRestore();
-    }
+    expect(code).toBe(ExitCode.USAGE);
+    expect(core.gateway.calls).toEqual([]);
   });
 
   test("SIGINT aborts lookup and invocation through the same signal", async () => {
