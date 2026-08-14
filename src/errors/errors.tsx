@@ -183,6 +183,13 @@ export class NetworkingError extends AgentCoreCLIError {
   }
 }
 
+/** A CloudWatch Logs Insights query reached a terminal failure state. */
+export class CloudWatchQueryError extends AgentCoreCLIError {
+  constructor(message: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
+    super(message, { ...options, source: ERROR_SOURCE.SERVICE });
+  }
+}
+
 /** Service data was returned successfully, but did not match the expected contract. */
 export class MalformedServiceResponseError extends AgentCoreCLIError {
   constructor(message: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {

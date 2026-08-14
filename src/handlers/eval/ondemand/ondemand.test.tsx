@@ -71,33 +71,21 @@ describe("eval ondemand command hierarchy", () => {
 });
 
 describe("eval ondemand evaluate validation", () => {
-  test("requires --agent", async () => {
-    await expect(
-      run([
-        "eval",
-        "ondemand",
-        "evaluate",
-        "--evaluator",
-        "Builtin.Helpfulness",
-        "--session-ids",
-        "s1",
-      ]),
-    ).rejects.toThrow(/--agent/);
-  });
-
-  test("requires --evaluator", async () => {
-    await expect(
-      run(["eval", "ondemand", "evaluate", "--agent", "a-1", "--session-ids", "s1"]),
-    ).rejects.toThrow(/--evaluator/);
-  });
-
-  test("rejects an empty session source", async () => {
-    await expect(run(BASE)).rejects.toThrow(/session source/);
-  });
-
-  test("rejects --lookback-days combined with an explicit window", async () => {
-    await expect(
-      run([
+  test.each<[string, string[], RegExp]>([
+    [
+      "requires --agent",
+      ["eval", "ondemand", "evaluate", "--evaluator", "Builtin.Helpfulness", "--session-ids", "s1"],
+      /--agent/,
+    ],
+    [
+      "requires --evaluator",
+      ["eval", "ondemand", "evaluate", "--agent", "a-1", "--session-ids", "s1"],
+      /--evaluator/,
+    ],
+    ["rejects an empty session source", BASE, /session source/],
+    [
+      "rejects --lookback-days combined with an explicit window",
+      [
         ...BASE,
         "--lookback-days",
         "7",
@@ -105,20 +93,21 @@ describe("eval ondemand evaluate validation", () => {
         "2026-01-01T00:00:00Z",
         "--end-time",
         "2026-01-02T00:00:00Z",
-      ]),
-    ).rejects.toThrow(/cannot be combined/);
-  });
-
-  test("rejects a half-open explicit window", async () => {
-    await expect(run([...BASE, "--start-time", "2026-01-01T00:00:00Z"])).rejects.toThrow(
+      ],
+      /cannot be combined/,
+    ],
+    [
+      "rejects a half-open explicit window",
+      [...BASE, "--start-time", "2026-01-01T00:00:00Z"],
       /together/,
-    );
-  });
-
-  test("rejects start-time not before end-time", async () => {
-    await expect(
-      run([...BASE, "--start-time", "2026-01-02T00:00:00Z", "--end-time", "2026-01-01T00:00:00Z"]),
-    ).rejects.toThrow(/before/);
+    ],
+    [
+      "rejects start-time not before end-time",
+      [...BASE, "--start-time", "2026-01-02T00:00:00Z", "--end-time", "2026-01-01T00:00:00Z"],
+      /before/,
+    ],
+  ])("%s", async (_name, args, expectedError) => {
+    await expect(run(args)).rejects.toThrow(expectedError);
   });
 });
 
