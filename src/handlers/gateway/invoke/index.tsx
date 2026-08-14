@@ -22,7 +22,11 @@ import {
 import { writeGatewayInvokeResponse } from "./response";
 import { GatewayInvokeLaunchContextKey } from "./launchContext";
 
-export const createInvokeGatewayHandler = (core: Core, io: AppIO) =>
+export const createInvokeGatewayHandler = (
+  core: Core,
+  io: AppIO,
+  renderInvokeTui: typeof renderTuiAt = renderTuiAt,
+) =>
   createHandler({
     name: "invoke",
     description: "invoke an AgentCore Gateway",
@@ -90,7 +94,7 @@ export const createInvokeGatewayHandler = (core: Core, io: AppIO) =>
             applicationHeaders,
             bearerToken,
           };
-          await renderTuiAt(
+          await renderInvokeTui(
             `${ctx.require(PathKey)}/${encodeURIComponent(flags.id)}`,
             ctx.withValue(GatewayInvokeLaunchContextKey, launchContext),
             core,

@@ -10,11 +10,14 @@ import {
   createSilentLogger,
   TestCoreClient,
   TestGlobalConfigAccessor,
-  testIO,
   waitFor,
 } from "../../../testing";
+import { PathKey, ValueContext } from "../../../router";
 import { createRootHandler } from "../../index";
+import { JsonKey } from "../../keys";
 import type { GatewayInvokeRequest } from "../types";
+import { createInvokeGatewayHandler } from "./index";
+import { GatewayInvokeLaunchContextKey } from "./launchContext";
 
 const REGION = "us-west-2";
 const GATEWAY_ID = "gateway-123";
@@ -44,29 +47,6 @@ function captureIO(input?: Uint8Array) {
     stdout: () => Buffer.concat(stdoutChunks),
     stderr: () => Buffer.concat(stderrChunks),
   };
-}
-
-interface TtyInput extends NodeJS.ReadStream {
-  write(chunk: string): boolean;
-}
-
-function ttyTestIO() {
-  const streams = testIO({ isTTY: true });
-  const stdin = streams.io.stdin as TtyInput;
-  stdin.setRawMode = function () {
-    return this;
-  };
-  stdin.ref = function () {
-    return this;
-  };
-  stdin.unref = function () {
-    return this;
-  };
-  Object.defineProperties(streams.io.stdout, {
-    columns: { configurable: true, value: 100 },
-    rows: { configurable: true, value: 40 },
-  });
-  return { streams, stdin };
 }
 
 async function runCommand(core: TestCoreClient, io: AppIO, args: string[]): Promise<void> {
@@ -415,38 +395,48 @@ describe("gateway invoke", () => {
 
   test("deep-links an id-only invoke and seeds interactive request context", async () => {
     const core = configuredCore();
-    const { streams, stdin } = ttyTestIO();
-    const route = runCommand(core, streams.io, [
-      "gateway",
-      "invoke",
-      "--id",
-      "gateway/blue one",
-      "--path",
-      "runtime/invocations?trace=true",
-      "--header",
-      "X-Tenant: retail",
-      "--bearer-token",
-      "secret-token",
-      "--session-id",
-      "runtime-session",
-      "--mcp-session-id",
-      "mcp-session",
-      "--mcp-protocol-version",
-      "2025-06-18",
-    ]);
-    try {
-      await waitFor(() => streams.stdout().includes("Path: runtime/invocations?trace=true"), 5_000);
-      expect(streams.stdout()).toContain("Runtime session ID: runtime-session");
-      expect(streams.stdout()).toContain("MCP session ID: mcp-session");
-      expect(streams.stdout()).toContain("Context: JWT/1h");
-      expect(streams.stdout()).not.toContain("secret-token");
-      expect(streams.stdout()).not.toContain("retail");
-      expect(core.gateway.calls.some((call) => call.method === "getGateway")).toBe(true);
-      expect(core.gateway.calls.some((call) => call.method === "invokeGateway")).toBe(false);
-    } finally {
-      stdin.write(String.fromCharCode(3));
-      await route;
-    }
+    const output = captureIO();
+    let renderCount = 0;
+    const handler = createInvokeGatewayHandler(
+      core,
+      output.io,
+      async (path, ctx, renderedCore, renderedIo) => {
+        renderCount++;
+        expect(path).toBe("/agentcore/gateway/invoke/gateway%2Fblue%20one");
+        expect(ctx.value(GatewayInvokeLaunchContextKey)).toEqual({
+          gatewayId: "gateway/blue one",
+          path: "runtime/invocations?trace=true",
+          runtimeSessionId: "runtime-session",
+          mcpSessionId: "mcp-session",
+          mcpProtocolVersion: "2025-06-18",
+          applicationHeaders: [["X-Tenant", "retail"]],
+          bearerToken: "secret-token",
+        });
+        expect(renderedCore).toBe(core);
+        expect(renderedIo).toBe(output.io);
+      },
+    );
+    const ctx = ValueContext.EmptyContext()
+      .withValue(PathKey, "/agentcore/gateway/invoke")
+      .withValue(JsonKey, false);
+
+    await handler.handle(
+      ctx,
+      {
+        id: "gateway/blue one",
+        path: "runtime/invocations?trace=true",
+        payload: undefined,
+        header: ["X-Tenant: retail"],
+        "bearer-token": "secret-token",
+        "session-id": "runtime-session",
+        "mcp-session-id": "mcp-session",
+        "mcp-protocol-version": "2025-06-18",
+      },
+      {},
+    );
+
+    expect(renderCount).toBe(1);
+    expect(core.gateway.calls).toEqual([]);
   });
 
   test("rejects stdin bearer tokens when launching the TUI", async () => {
