@@ -15,7 +15,7 @@ harness/
 
 ## Current: PR Reviewer
 
-Reviews pull requests on open/reopen via `.github/workflows/pr-ai-review.yml`.
+Reviews pull requests on open/reopen via `.github/workflows/pr-automation.yml`.
 
 ### Authentication
 
@@ -23,8 +23,9 @@ The Dockerfile takes one build arg:
 
 - **`CLONE_TOKEN`** — baked into git config for cloning private repos
 
-The shared `agentcore-devx-devtools` workflow reads PR discussion and publishes the Harness result with the workflow
-run's short-lived `GITHUB_TOKEN`. The token is never sent to the Harness runtime or persisted in this image.
+The shared `agentcore-devx-devtools` workflow mints a short-lived token from the existing GitHub App to read PR
+discussion and publish the Harness result as `agentcore-devx-automation[bot]`. The token is never sent to the Harness
+runtime or persisted in this image.
 
 ### Building the container
 
