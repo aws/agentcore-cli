@@ -2,11 +2,11 @@ name: CodeQL
 
 on:
   push:
-    branches: ['main']
+    branches: ['main', 'refactor']
   pull_request:
-    branches: ['main', 'feat/**']
+    branches: ['main', 'refactor', 'feat/**']
   pull_request_target:
-    branches: ['main', 'feat/**']
+    branches: ['main', 'refactor', 'feat/**']
 
 # Cancel in-progress runs for PRs; never cancel runs on main (merges should not abort each other)
 concurrency:

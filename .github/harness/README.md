@@ -18,19 +18,20 @@ harness/
 
 Reviews pull requests on open/reopen via `.github/workflows/pr-ai-review.yml`.
 
-### Dual-token setup
+### Authentication
 
-The Dockerfile takes two build args:
+The Dockerfile takes one build arg:
 
 - **`CLONE_TOKEN`** — baked into git config for cloning private repos
-- **`GITHUB_TOKEN`** — baked into `gh` CLI auth for posting PR comments
+
+The workflow-side review script uses its short-lived **`GITHUB_TOKEN`** to read existing PR discussion and submit the
+Harness result. The token is never sent to the Harness runtime or persisted in the Harness image.
 
 ### Building the container
 
 ```bash
 finch build \
   --build-arg CLONE_TOKEN=<pat-for-cloning> \
-  --build-arg GITHUB_TOKEN=<pat-for-gh-api> \
   -t pr-reviewer .github/harness/
 ```
 

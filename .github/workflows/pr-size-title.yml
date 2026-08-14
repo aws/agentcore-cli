@@ -2,7 +2,7 @@ name: PR Size and Title
 
 on:
   pull_request_target:
-    branches: [main, feat/**]
+    branches: [main, refactor, feat/**]
     types: [opened, edited, synchronize, reopened]
 
 permissions:

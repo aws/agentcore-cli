@@ -5,6 +5,7 @@ on:
     types: [opened, reopened, synchronize, labeled]
     branches:
       - main
+      - refactor
       - feat/summit_release
   workflow_dispatch:
     inputs:
