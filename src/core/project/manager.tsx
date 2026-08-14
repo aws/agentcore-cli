@@ -29,6 +29,7 @@ import {
 } from "../../errors/errors";
 import type { HarnessSpecSchema } from "../../projectSchemas/harness";
 import type z from "zod";
+import { copyFile } from "node:fs/promises";
 
 type ProjectManagerConfig = {
   logger: Logger;
@@ -185,9 +186,22 @@ export class FsProjectManager implements ProjectManager {
     harnessSpec: z.input<typeof HarnessSpecSchema>,
   ): Promise<string> {
     const outputPath = join(projectRoot, "app", harnessSpec.name);
-    const harness = await createHarnessTreeFromSpec(harnessSpec);
+
+    const harness = await createHarnessTreeFromSpec({
+      ...harnessSpec,
+      dockerfile: harnessSpec.dockerfile ? "Dockerfile" : undefined,
+    });
+
+    if (harnessSpec.dockerfile) {
+      if (!existsSync(harnessSpec.dockerfile))
+        throw new InputValidationError(`dockerfile not found: '${harnessSpec.dockerfile}'`);
+    }
 
     await harness.write(outputPath);
+
+    if (harnessSpec.dockerfile) {
+      await copyFile(harnessSpec.dockerfile, join(outputPath, "Dockerfile"));
+    }
     return outputPath;
   }
 

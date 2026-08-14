@@ -481,6 +481,21 @@ describe("project add harness", () => {
     expect(prompt).toBe("You are a pirate.");
   });
 
+  test("--dockerfile copies the file into the harness directory and stores the relative path", async () => {
+    const projectRoot = await inProject();
+
+    const dockerfilePath = join(projectRoot, "Dockerfile");
+    await Bun.write(dockerfilePath, "FROM python:3.12-slim\nCOPY . /app\n");
+
+    await run(["add", "harness", "--name", "x", "--dockerfile", dockerfilePath]);
+
+    const copiedContent = await Bun.file(join(projectRoot, "app", "x", "Dockerfile")).text();
+    expect(copiedContent).toBe("FROM python:3.12-slim\nCOPY . /app\n");
+
+    const harnessJson = await Bun.file(join(projectRoot, "app", "x", "harness.json")).json();
+    expect(harnessJson.dockerfile).toBe("Dockerfile");
+  });
+
   test.each([
     ["missing --name", ["--model", '{"bedrockModelConfig":{"modelId":"x"}}']],
     ["model without modelId", ["--name", "x", "--model", '{"bedrockModelConfig":{}}']],
