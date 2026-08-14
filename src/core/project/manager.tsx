@@ -134,7 +134,7 @@ export class FsProjectManager implements ProjectManager {
     const agentCoreSpecPath = join(project.rootPath, "agentcore", "agentcore.json");
     const projectSpecKey = toProjectSpecKey(resourceType);
 
-    yield { message: `Reading project config file from '${agentCoreSpecPath}'` };
+    yield { message: `Reading project spec file at '${agentCoreSpecPath}'` };
     const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
     const existingResources = existingProjectSpec[projectSpecKey];
@@ -155,7 +155,7 @@ export class FsProjectManager implements ProjectManager {
       // TODO: add limited special casing for runtime and default for other resources that proxy directly to spec changes.
     }
 
-    yield { message: `Updating project config file from '${agentCoreSpecPath}'` };
+    yield { message: `Updating project spec file at '${agentCoreSpecPath}'` };
     const newProjectSpec = await this.json.write(agentCoreSpecPath, {
       ...existingProjectSpec,
       [projectSpecKey]: newResources,
