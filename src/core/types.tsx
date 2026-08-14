@@ -37,7 +37,7 @@ export type CoreFetch = (
 // full ClientConfig so callers can request any client customization (region,
 // endpoint, ...).
 export interface AwsClients {
-  control(config: ClientConfig): BedrockAgentCoreControlClient
+  control(config: ClientConfig): BedrockAgentCoreControlClient;
   data(config: ClientConfig): BedrockAgentCoreClient;
   iam(config: ClientConfig): IAMClient;
   // logs reads the CloudWatch Logs streams AgentCore writes batch-evaluation

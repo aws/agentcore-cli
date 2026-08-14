@@ -26,6 +26,7 @@
     "lint:check": "oxlint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "secrets:check": "secretlint '**/*'",
     "prepublishOnly": "bun run build",
     "prepare": "husky || true"
   },
@@ -37,13 +38,15 @@
     "*.{json,md}": "prettier --write"
   },
   "devDependencies": {
+    "@secretlint/secretlint-rule-preset-recommend": "^12.2.0",
     "@types/bun": "latest",
     "@types/react": "^19.2.17",
     "husky": "^9.1.7",
     "ink-testing-library": "^4.0.0",
     "lint-staged": "^17.0.8",
     "oxlint": "^1.73.0",
-    "prettier": "^3.8.4"
+    "prettier": "^3.8.4",
+    "secretlint": "^12.2.0"
   },
   "peerDependencies": {
     "typescript": "^5"

@@ -1,0 +1,30 @@
+name: Claude Security Review
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, labeled]
+    branches:
+      - main
+      - refactor
+      - feat/summit_release
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number to review (workflow_dispatch will NOT post inline comments - use only for prompt smoke tests)
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  pull-requests: write
+  issues: write
+  contents: read
+
+jobs:
+  call:
+    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-security-review.yml@44e99b13129947c1bcb5fb82ecbbc1208a57d045
+    with:
+      runner: codebuild
+      pr_number: ${{ inputs.pr_number || format('{0}', github.event.pull_request.number) }}
+      allowed_base_branches: '["main","refactor"]'
+    secrets: inherit
