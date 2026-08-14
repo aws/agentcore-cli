@@ -13,145 +13,16 @@ on:
 permissions:
   id-token: write
   pull-requests: write
+  issues: write
   contents: read
 
 jobs:
-  authorize:
-    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
-    # explicitly require the PR to be open to avoid old events triggering a review on closed PRs: https://github.com/aws/agentcore-cli/issues/1463
-    if:
-      github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request_target' &&
-      github.event.pull_request.state == 'open')
-    outputs:
-      authorized: ${{ steps.auth.outputs.authorized }}
-    steps:
-      # Team membership (agentcore-cli-devs) is checked first, then falls back to
-      # repo write access — same two-tier logic as before, now via the shared
-      # composite. With the default GITHUB_TOKEN the team check falls through to
-      # the collaborator-permission check, matching the previous behavior.
-      - name: Check authorization
-        id: authz
-        if: github.event_name == 'pull_request_target'
-        uses: aws/agentcore-devx-devtools/.github/actions/check-collaborator@31aa3b031a86664e29861d68956e44b07cf21a74
-        with:
-          subject: ${{ github.event.pull_request.user.login }}
-          required-permission: write
-          team-slug: agentcore-cli-devs
-      - name: Map authorization result
-        id: auth
-        if: github.event_name == 'pull_request_target'
-        env:
-          IS_AUTHORIZED: ${{ steps.authz.outputs.is-authorized }}
-        run: echo "authorized=$IS_AUTHORIZED" >> "$GITHUB_OUTPUT"
-
-      - name: Auto-authorize workflow_dispatch
-        id: dispatch-auth
-        if: github.event_name == 'workflow_dispatch'
-        run: echo "authorized=true" >> "$GITHUB_OUTPUT"
-
-  ai-review:
-    needs: authorize
-    if: needs.authorize.outputs.authorized == 'true' || github.event_name == 'workflow_dispatch'
-    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
-    steps:
-      - name: Determine PR URL
-        id: pr-url
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          INPUT_PR_URL: ${{ inputs.pr_url }}
-          PR_HTML_URL: ${{ github.event.pull_request.html_url }}
-        run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            echo "url=$INPUT_PR_URL" >> "$GITHUB_OUTPUT"
-          else
-            echo "url=$PR_HTML_URL" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Extract PR number
-        id: pr-number
-        env:
-          PR_URL: ${{ steps.pr-url.outputs.url }}
-        run: |
-          PR_NUM="${PR_URL##*/}"
-          echo "number=$PR_NUM" >> "$GITHUB_OUTPUT"
-
-      - name: Add agentcore-harness-reviewing label
-        uses: actions/github-script@v9
-        env:
-          PR_NUMBER: ${{ steps.pr-number.outputs.number }}
-        with:
-          script: |
-            const prNumber = parseInt(process.env.PR_NUMBER);
-            try {
-              await github.rest.issues.getLabel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                name: 'agentcore-harness-reviewing',
-              });
-            } catch (e) {
-              if (e.status === 404) {
-                await github.rest.issues.createLabel({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  name: 'agentcore-harness-reviewing',
-                  color: '7B61FF',
-                  description: 'AgentCore Harness review in progress',
-                });
-              }
-            }
-            await github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              labels: ['agentcore-harness-reviewing'],
-            });
-
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Fetch secrets from Secrets Manager
-        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
-        with:
-          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
-          repo: HARNESS_AWS_ROLE_ARN, HARNESS_ARN
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ env.HARNESS_AWS_ROLE_ARN }}
-          aws-region: us-east-1
-          unset-current-credentials: true
-
-      - name: Set up Python 3.12 with uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          python-version: '3.12'
-          activate-environment: true
-
-      - name: Install boto3
-        run: uv pip install boto3
-
-      - name: Run AI review
-        env:
-          PR_URL: ${{ steps.pr-url.outputs.url }}
-          HARNESS_ARN: ${{ env.HARNESS_ARN }}
-        run: python .github/harness/harness_review.py
-
-      - name: Remove agentcore-harness-reviewing label
-        if: always()
-        uses: actions/github-script@v9
-        env:
-          PR_NUMBER: ${{ steps.pr-number.outputs.number }}
-        with:
-          script: |
-            const prNumber = parseInt(process.env.PR_NUMBER);
-            try {
-              await github.rest.issues.removeLabel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-                name: 'agentcore-harness-reviewing',
-              });
-            } catch (error) {
-              console.log('Label removal failed (may not exist):', error.message);
-            }
+  call:
+    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-ai-review.yml@44e99b13129947c1bcb5fb82ecbbc1208a57d045
+    with:
+      runner: codebuild
+      pr_url: ${{ inputs.pr_url || github.event.pull_request.html_url }}
+      secret_source: secrets-manager
+      system_prompt_path: .github/harness/prompts/system.md
+      review_prompt_path: .github/harness/prompts/review.md
+    secrets: inherit

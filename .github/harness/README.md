@@ -8,7 +8,6 @@ Container and scripts for AI-powered automation via
 ```
 harness/
 ├── Dockerfile            # Container image for the harness runtime
-├── harness_review.py     # Invokes the harness to review PRs (SigV4 + event stream)
 └── prompts/
     ├── system.md         # System prompt (workspace context)
     └── review.md         # PR review task prompt
@@ -18,19 +17,20 @@ harness/
 
 Reviews pull requests on open/reopen via `.github/workflows/pr-ai-review.yml`.
 
-### Dual-token setup
+### Authentication
 
-The Dockerfile takes two build args:
+The Dockerfile takes one build arg:
 
 - **`CLONE_TOKEN`** — baked into git config for cloning private repos
-- **`GITHUB_TOKEN`** — baked into `gh` CLI auth for posting PR comments
+
+The shared `agentcore-devx-devtools` workflow reads PR discussion and publishes the Harness result with the workflow
+run's short-lived `GITHUB_TOKEN`. The token is never sent to the Harness runtime or persisted in this image.
 
 ### Building the container
 
 ```bash
 finch build \
   --build-arg CLONE_TOKEN=<pat-for-cloning> \
-  --build-arg GITHUB_TOKEN=<pat-for-gh-api> \
   -t pr-reviewer .github/harness/
 ```
 
