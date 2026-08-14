@@ -1,0 +1,21 @@
+# Runs static quality and safety checks independently from build and test.
+name: Quality and Safety Checks
+
+on:
+  push:
+    branches: [main, refactor]
+  pull_request:
+    branches: [main, refactor]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    uses: ./.github/workflows/check.yml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ github.event.pull_request.head.sha || github.sha }}

@@ -1,0 +1,34 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main, refactor]
+  pull_request:
+    branches: [main, refactor, "feat/**"]
+  pull_request_target:
+    branches: [main, refactor, "feat/**"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      security-events: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4

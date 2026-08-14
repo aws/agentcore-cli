@@ -27,3 +27,5 @@ jobs:
         if: always()
       - run: bun audit
         if: always()
+      - run: bun run secrets:check
+        if: always()
