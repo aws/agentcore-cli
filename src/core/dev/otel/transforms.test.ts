@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 import {
   buildTraceDetail,
   extractAnyValue,
-  extractFirstTraceInfo,
   extractTraceMeta,
   flattenAttributes,
   hexFromB64OrString,
   nanoToMs,
+  partitionByTraceId,
 } from "./transforms";
 import type { OtlpResourceLog, OtlpResourceSpan } from "./types";
 
@@ -81,20 +81,46 @@ describe("extractTraceMeta", () => {
   });
 });
 
-describe("extractFirstTraceInfo", () => {
-  test("finds the first span's trace id and service name", () => {
-    const info = extractFirstTraceInfo({
-      resourceSpans: [resourceSpan({ serviceName: "svc", spans: [agentSpan] })],
+describe("partitionByTraceId", () => {
+  const OTHER_TRACE_HEX = "ffffffffffffffffffffffffffffffff";
+
+  test("splits a batch carrying several traces into per-trace payloads", () => {
+    const otherSpan = { ...agentSpan, traceId: OTHER_TRACE_HEX, name: "tool_use" };
+    const partitions = partitionByTraceId({
+      resourceSpans: [resourceSpan({ serviceName: "svc", spans: [agentSpan, otherSpan] })],
     });
-    expect(info).toEqual({ traceId: TRACE_ID_HEX, serviceName: "svc" });
+
+    expect([...partitions.keys()].sort()).toEqual([TRACE_ID_HEX, OTHER_TRACE_HEX]);
+    const first = partitions.get(TRACE_ID_HEX)!.resourceSpans![0] as OtlpResourceSpan;
+    expect(first.scopeSpans![0]!.spans).toEqual([agentSpan]);
+    expect(first.resource).toBeDefined();
+    const second = partitions.get(OTHER_TRACE_HEX)!.resourceSpans![0] as OtlpResourceSpan;
+    expect(second.scopeSpans![0]!.spans).toEqual([otherSpan]);
   });
 
-  test("falls back to log records and returns empty when nothing matches", () => {
-    expect(extractFirstTraceInfo({})).toEqual({});
-    const info = extractFirstTraceInfo({
-      resourceLogs: [{ scopeLogs: [{ logRecords: [{ traceId: TRACE_ID_HEX }] }] }],
+  test("partitions log records by trace id and keys base64 ids as hex", () => {
+    const partitions = partitionByTraceId({
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              scope: {},
+              logRecords: [{ traceId: TRACE_ID_B64 }, { traceId: OTHER_TRACE_HEX }],
+            },
+          ],
+        },
+      ],
     });
-    expect(info.traceId).toBe(TRACE_ID_HEX);
+
+    expect([...partitions.keys()].sort()).toEqual([TRACE_ID_HEX, OTHER_TRACE_HEX]);
+  });
+
+  test("drops spans without a trace id and returns empty for empty payloads", () => {
+    expect(partitionByTraceId({}).size).toBe(0);
+    const partitions = partitionByTraceId({
+      resourceSpans: [resourceSpan({ spans: [{ name: "orphan" }] })],
+    });
+    expect(partitions.size).toBe(0);
   });
 });
 

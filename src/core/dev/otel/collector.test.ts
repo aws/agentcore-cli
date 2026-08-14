@@ -146,12 +146,17 @@ describe("startOtelCollector", () => {
     ).toBe(404);
   });
 
-  test("envVars point the SDK at the collector", () => {
-    expect(collector.envVars.OTEL_EXPORTER_OTLP_ENDPOINT).toBe(
-      `http://127.0.0.1:${collector.port}`,
-    );
-    expect(collector.envVars.OTEL_EXPORTER_OTLP_PROTOCOL).toBe("http/protobuf");
-    expect(collector.envVars.OTEL_METRICS_EXPORTER).toBe("none");
+  test("envVars point the SDK at the collector, including signal-specific overrides", () => {
+    const endpoint = `http://127.0.0.1:${collector.port}`;
+    expect(collector.envVars).toMatchObject({
+      OTEL_EXPORTER_OTLP_ENDPOINT: endpoint,
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: `${endpoint}/v1/traces`,
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: `${endpoint}/v1/logs`,
+      OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
+      OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "http/protobuf",
+      OTEL_EXPORTER_OTLP_LOGS_PROTOCOL: "http/protobuf",
+      OTEL_METRICS_EXPORTER: "none",
+    });
   });
 
   test("abort signal closes the receiver", async () => {

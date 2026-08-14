@@ -1,6 +1,6 @@
 import { appendFile, mkdir, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { buildTraceDetail, extractFirstTraceInfo, extractTraceMeta } from "./transforms";
+import { buildTraceDetail, extractTraceMeta, partitionByTraceId } from "./transforms";
 import type { OtlpPayload, OtlpResourceLog, OtlpResourceSpan } from "./types";
 
 const OTLP_EXT = ".otlp.jsonl";
@@ -27,22 +27,32 @@ export interface ListTracesOptions {
 }
 
 /**
- * Append-only local trace storage: one JSON Lines file per trace under the store
- * directory, each line a raw OTLP export payload. No in-memory state — reads go
- * to disk on demand, which is fine because the inspector only fetches traces on
- * user actions. Malformed files and lines are skipped, never fatal.
+ * Append-only local trace storage: one JSON Lines file per trace (named by its
+ * trace id), each line a per-trace slice of an OTLP export payload. No in-memory
+ * state — reads go to disk on demand, which is fine because the inspector only
+ * fetches traces on user actions. Malformed files and lines are skipped, never fatal.
  */
 export class TraceStore {
   constructor(private readonly directory: string) {}
 
-  /** Append one OTLP export payload to its trace's file. Payloads without a trace id are dropped. */
+  /**
+   * Persist one OTLP export payload, partitioned by trace id so a batch that
+   * carries several traces lands in each trace's own file. Spans and log
+   * records without a trace id are dropped.
+   */
   public async append(payload: OtlpPayload): Promise<void> {
-    const { traceId, serviceName } = extractFirstTraceInfo(payload);
-    if (!traceId) return;
+    const partitions = partitionByTraceId(payload);
+    if (partitions.size === 0) return;
 
     await mkdir(this.directory, { recursive: true });
-    const fileName = `${sanitize(serviceName ?? "dev")}-${sanitize(traceId)}${OTLP_EXT}`;
-    await appendFile(join(this.directory, fileName), JSON.stringify(payload) + "\n");
+    await Promise.all(
+      [...partitions].map(([traceId, partition]) =>
+        appendFile(
+          join(this.directory, `${sanitize(traceId)}${OTLP_EXT}`),
+          JSON.stringify(partition) + "\n",
+        ),
+      ),
+    );
   }
 
   /** List traces newest-first, filtered by service name and time range (default: last 12 hours). */
@@ -75,10 +85,7 @@ export class TraceStore {
 
   /** All spans and logs for one trace, or undefined when the trace is unknown. */
   public async get(traceId: string): Promise<TraceDetail | undefined> {
-    const match = (await this.traceFiles()).find((file) => file.includes(sanitize(traceId)));
-    if (!match) return undefined;
-
-    const trace = await this.readTraceFile(match);
+    const trace = await this.readTraceFile(`${sanitize(traceId)}${OTLP_EXT}`);
     if (!trace) return undefined;
     return buildTraceDetail(trace.resourceSpans, trace.resourceLogs);
   }

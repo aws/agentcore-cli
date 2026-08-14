@@ -75,6 +75,21 @@ describe("TraceStore", () => {
     expect(await store.list()).toEqual([]);
   });
 
+  test("a batch carrying several traces lands in each trace's own file", async () => {
+    const batch = payload(TRACE_A);
+    batch.resourceSpans![0]!.scopeSpans![0]!.spans!.push({
+      ...batch.resourceSpans![0]!.scopeSpans![0]!.spans![0]!,
+      traceId: TRACE_B,
+      name: "tool_use",
+    });
+    await store.append(batch);
+
+    const traces = await store.list();
+    expect(traces.map((trace) => trace.traceId).sort()).toEqual([TRACE_A, TRACE_B]);
+    expect(traces.every((trace) => trace.spanCount === "1")).toBe(true);
+    expect(await store.get(TRACE_B)).toBeDefined();
+  });
+
   test("list filters by service name", async () => {
     await store.append(payload(TRACE_A, { serviceName: "agent-1" }));
     await store.append(payload(TRACE_B, { serviceName: "agent-2" }));
@@ -102,7 +117,7 @@ describe("TraceStore", () => {
 
   test("skips malformed lines and files without failing", async () => {
     await store.append(payload(TRACE_A));
-    await writeFile(join(directory, `agent-1-${TRACE_A}.otlp.jsonl`), "{not json}\n", {
+    await writeFile(join(directory, `${TRACE_A}.otlp.jsonl`), "{not json}\n", {
       flag: "a",
     });
     await writeFile(join(directory, "garbage.otlp.jsonl"), "also not json\n");

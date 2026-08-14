@@ -105,11 +105,23 @@ function decodePayload(body: Buffer, contentType: string, decoder: OtlpDecoder):
   return JSON.parse(JSON.stringify(decoder.decode(new Uint8Array(body)))) as OtlpPayload;
 }
 
-/** Environment for a spawned agent so its OTEL SDK exports to the collector at `port`. */
+/**
+ * Environment for a spawned agent so its OTEL SDK exports to the collector at
+ * `port`. Signal-specific variables are set alongside the generic ones because
+ * they take precedence in the SDK — a stray OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+ * from the shell or .env.local must not silently redirect traces elsewhere.
+ * Per the OTEL spec, signal-specific endpoints are full URLs (the signal path
+ * is only appended to the generic endpoint).
+ */
 export function otelEnvVars(port: number): Record<string, string> {
+  const endpoint = `http://127.0.0.1:${port}`;
   return {
-    OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${port}`,
+    OTEL_EXPORTER_OTLP_ENDPOINT: endpoint,
+    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: `${endpoint}/v1/traces`,
+    OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: `${endpoint}/v1/logs`,
     OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
+    OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "http/protobuf",
+    OTEL_EXPORTER_OTLP_LOGS_PROTOCOL: "http/protobuf",
     OTEL_METRICS_EXPORTER: "none",
     AGENT_OBSERVABILITY_ENABLED: "true",
     OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: "true",
@@ -118,7 +130,7 @@ export function otelEnvVars(port: number): Record<string, string> {
 }
 
 /**
- * Rewrite a loopback OTLP endpoint so a containerized agent can reach the
+ * Rewrite loopback OTLP endpoints so a containerized agent can reach the
  * collector on the host. host.docker.internal resolves on Docker Desktop,
  * Finch, and Podman; bare-metal Linux Docker would additionally need
  * `--add-host=host.docker.internal:host-gateway` (matches the reference CLI).
@@ -126,12 +138,13 @@ export function otelEnvVars(port: number): Record<string, string> {
 export function rewriteOtelEndpointForContainer(
   env: Record<string, string>,
 ): Record<string, string> {
-  const endpoint = env.OTEL_EXPORTER_OTLP_ENDPOINT;
-  if (!endpoint) return env;
-  return {
-    ...env,
-    OTEL_EXPORTER_OTLP_ENDPOINT: endpoint.replace(/127\.0\.0\.1|localhost/, "host.docker.internal"),
-  };
+  const rewritten = { ...env };
+  for (const [key, value] of Object.entries(rewritten)) {
+    if (key.startsWith("OTEL_EXPORTER_OTLP") && key.endsWith("_ENDPOINT")) {
+      rewritten[key] = value.replace(/127\.0\.0\.1|localhost/, "host.docker.internal");
+    }
+  }
+  return rewritten;
 }
 
 function json(status: number, body: unknown): HttpResponse {

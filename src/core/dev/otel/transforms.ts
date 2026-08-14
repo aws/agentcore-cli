@@ -58,28 +58,63 @@ export function extractTraceMeta(
   return meta;
 }
 
-/** Extract the traceId and serviceName of the first span or log record in a payload. */
-export function extractFirstTraceInfo(payload: OtlpPayload): {
-  traceId?: string;
-  serviceName?: string;
-} {
+/**
+ * Split one OTLP export payload into per-trace payloads, keyed by hex trace id.
+ * A single export batch routinely carries spans from several traces (SDKs batch
+ * by time, not by trace), so persistence must not attribute a whole batch to
+ * the first trace id it sees. Spans and log records without a trace id are dropped.
+ * Resource and scope structure is preserved within each partition.
+ */
+export function partitionByTraceId(payload: OtlpPayload): Map<string, OtlpPayload> {
+  const partitions = new Map<string, OtlpPayload>();
+  const partition = (traceId: string): OtlpPayload => {
+    let entry = partitions.get(traceId);
+    if (!entry) {
+      entry = {};
+      partitions.set(traceId, entry);
+    }
+    return entry;
+  };
+
   for (const resourceSpan of payload.resourceSpans ?? []) {
-    const serviceName = getResourceAttribute(resourceSpan.resource, "service.name");
     for (const scopeSpan of resourceSpan.scopeSpans ?? []) {
-      for (const span of scopeSpan.spans ?? []) {
-        if (span.traceId) return { traceId: hexFromB64OrString(span.traceId), serviceName };
+      const byTrace = groupBy(scopeSpan.spans ?? [], (span) => hexFromB64OrString(span.traceId));
+      for (const [traceId, spans] of byTrace) {
+        (partition(traceId).resourceSpans ??= []).push({
+          resource: resourceSpan.resource,
+          scopeSpans: [{ scope: scopeSpan.scope, spans }],
+        });
       }
     }
   }
+
   for (const resourceLog of payload.resourceLogs ?? []) {
-    const serviceName = getResourceAttribute(resourceLog.resource, "service.name");
     for (const scopeLog of resourceLog.scopeLogs ?? []) {
-      for (const record of scopeLog.logRecords ?? []) {
-        if (record.traceId) return { traceId: hexFromB64OrString(record.traceId), serviceName };
+      const byTrace = groupBy(scopeLog.logRecords ?? [], (record) =>
+        hexFromB64OrString(record.traceId),
+      );
+      for (const [traceId, logRecords] of byTrace) {
+        (partition(traceId).resourceLogs ??= []).push({
+          resource: resourceLog.resource,
+          scopeLogs: [{ scope: scopeLog.scope, logRecords }],
+        });
       }
     }
   }
-  return {};
+
+  return partitions;
+}
+
+function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const groupKey = key(item);
+    if (!groupKey) continue;
+    const group = groups.get(groupKey);
+    if (group) group.push(item);
+    else groups.set(groupKey, [item]);
+  }
+  return groups;
 }
 
 /**

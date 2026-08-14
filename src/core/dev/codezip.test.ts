@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { delimiter, join, relative } from "node:path";
 import { InputValidationError } from "../../errors";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import type { DevEvent, DevServerInput } from "../../handlers/project/dev/types";
@@ -235,7 +235,7 @@ describe("CodeZipDevRunner OTEL instrumentation", () => {
 
     await collect(runner.run(otelInput(root, { PYTHONPATH: "/existing" })));
 
-    expect(calls[0]?.options.env?.PYTHONPATH).toBe(`${directory}:/existing`);
+    expect(calls[0]?.options.env?.PYTHONPATH).toBe(`${directory}${delimiter}/existing`);
   });
 
   test("does not probe without an OTEL endpoint or for Node entrypoints", async () => {

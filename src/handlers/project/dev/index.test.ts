@@ -47,6 +47,7 @@ function fakeCollector() {
     port: 43180,
     envVars: {
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:43180",
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://127.0.0.1:43180/v1/traces",
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
     },
     close: async () => {
@@ -151,6 +152,7 @@ describe("project dev selection and dispatch", () => {
       env: {
         FROM_LOADER: "yes",
         OTEL_EXPORTER_OTLP_ENDPOINT: "http://host.docker.internal:43180",
+        OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://host.docker.internal:43180/v1/traces",
         OTEL_SERVICE_NAME: "support",
       },
       runtime: { name: "support", build: "Container" },
