@@ -1,0 +1,74 @@
+name: PR Automation
+
+on:
+  pull_request_target:
+    branches: [main, refactor, "feat/**"]
+    types: [opened, reopened, edited, synchronize, labeled]
+  workflow_dispatch:
+    inputs:
+      automation:
+        description: Automation to run
+        required: true
+        type: choice
+        options: [harness-review, security-review]
+      pr_number:
+        description: Pull request number
+        required: true
+        type: string
+
+jobs:
+  size-title:
+    if: |
+      github.event_name == 'pull_request_target' &&
+      contains(fromJSON('["opened","reopened","edited","synchronize"]'), github.event.action)
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
+    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-size-title.yml@458c0a684af0f9e3a013ec05cd23851def4f9cab
+    with:
+      runner: codebuild
+    secrets: inherit
+
+  security-review:
+    if: |
+      (github.event_name == 'workflow_dispatch' && inputs.automation == 'security-review') ||
+      (
+        github.event_name == 'pull_request_target' &&
+        contains(fromJSON('["opened","reopened","synchronize","labeled"]'), github.event.action)
+      )
+    permissions:
+      id-token: write
+      pull-requests: write
+      issues: write
+      contents: read
+    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-security-review.yml@4b3972e790e4cc312ddf6f1909a0b6ca8a749506
+    with:
+      runner: codebuild
+      pr_number: ${{ inputs.pr_number || format('{0}', github.event.pull_request.number) }}
+      allowed_base_branches: '["main","refactor"]'
+    secrets: inherit
+
+  harness-review:
+    if: |
+      (github.event_name == 'workflow_dispatch' && inputs.automation == 'harness-review') ||
+      (
+        github.event_name == 'pull_request_target' &&
+        contains(fromJSON('["opened","reopened"]'), github.event.action)
+      )
+    permissions:
+      id-token: write
+      pull-requests: write
+      issues: write
+      contents: read
+    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-ai-review.yml@4b3972e790e4cc312ddf6f1909a0b6ca8a749506
+    with:
+      runner: codebuild
+      pr_url: >-
+        ${{ github.event_name == 'workflow_dispatch' &&
+        format('{0}/{1}/pull/{2}', github.server_url, github.repository, inputs.pr_number) ||
+        github.event.pull_request.html_url }}
+      secret_source: secrets-manager
+      system_prompt_path: .github/harness/prompts/system.md
+      review_prompt_path: .github/harness/prompts/review.md
+    secrets: inherit

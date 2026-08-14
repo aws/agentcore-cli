@@ -35,5 +35,3 @@ all issues have already been flagged.
 - **Excessive mocking** - Avoid excessive mocking; it couples tests to implementation details, provides weaker
   guarantees, and often points to mismanaged dependencies. Prefer real dependencies (e.g. temp directories over fs
   mocks) and only mock at true I/O boundaries (e.g. network calls, AWS SDK clients, HTTP requests).
-- **Missing telemetry** - New features should include telemetry instrumentation. See `src/cli/telemetry/README.md` for
-  guidance on what and how to instrument.

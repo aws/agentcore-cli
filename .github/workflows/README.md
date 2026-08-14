@@ -23,11 +23,9 @@ An orchestrator calls jobs via `workflow_call`.
 
 ```
 ci.yml
+  |-- check.yml      (lint, format, typecheck, audit, secret scan)
   |-- build.yml      (bundle, package, compile, smoke test)
   `-- unit-test.yml  (tests on Linux, Windows, macOS)
-
-quality-and-safety.yml
-  `-- check.yml      (lint, format, typecheck, audit, secret scan)
 ```
 
 ### Future examples

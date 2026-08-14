@@ -17,9 +17,3 @@ when users run `agentcore create`.
 ## How they relate
 
 `agentcore-cli` is the main product. It vends CDK projects using constructs from `agentcore-l3-cdk-constructs`.
-
-## Testing with a bundled distribution
-
-Run `npm run bundle` in `agentcore-cli/` to create a tar distribution that includes the packaged
-`agentcore-l3-cdk-constructs`. You can then install it globally with `npm install -g <path-to-tar>` to test the CLI
-end-to-end.
