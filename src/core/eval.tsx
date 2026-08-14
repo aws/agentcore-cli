@@ -79,6 +79,7 @@ import {
 } from "@aws-sdk/client-cloudwatch-logs";
 import type { DocumentType } from "@smithy/types";
 import { randomUUID } from "node:crypto";
+import { unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
 import { Transform } from "node:stream";
@@ -519,98 +520,108 @@ export class EvalClient implements CoreEvalClient {
     signal?: AbortSignal,
   ): Promise<SimulateResult> {
     // Load scenarios: a local JSONL path directly, else download the dataset id.
+    let tempDatasetPath: string | undefined;
     const path = (await Bun.file(input.dataset).exists())
       ? input.dataset
-      : await this.downloadDatasetToTemp(input.dataset, input.datasetVersion, options, signal);
-    const scenarios = await loadDatasetFile(path);
-    const byId = new Map(scenarios.map((s) => [s.scenarioId, s]));
+      : (tempDatasetPath = await this.downloadDatasetToTemp(
+          input.dataset,
+          input.datasetVersion,
+          options,
+          signal,
+        ));
+    try {
+      const scenarios = await loadDatasetFile(path);
+      const byId = new Map(scenarios.map((s) => [s.scenarioId, s]));
 
-    // Resolve the runtime once; normalizeRuntimeInvokeRequest validates auth + fills
-    // accountId. Invoke is the extracted free fn — no RuntimeClient dependency.
-    const runtime = await this.clients
-      .control(toClientConfig(options))
-      .send(new GetAgentRuntimeCommand({ agentRuntimeId: input.runtimeId }));
-    const deps = { clients: this.clients, fetch: this.fetch, logger: this.logger };
+      // Resolve the runtime once; normalizeRuntimeInvokeRequest validates auth + fills
+      // accountId. Invoke is the extracted free fn — no RuntimeClient dependency.
+      const runtime = await this.clients
+        .control(toClientConfig(options))
+        .send(new GetAgentRuntimeCommand({ agentRuntimeId: input.runtimeId }));
+      const deps = { clients: this.clients, fetch: this.fetch, logger: this.logger };
 
-    const { ok, failed, firstError } = await runScenarios(scenarios, async (scenario) => {
-      // One session per scenario; the id is generated client-side (session id is a
-      // client-owned input per the AgentCore docs, needed on the request before any
-      // response and reused across turns). Turns run sequentially against the SAME
-      // session so the conversation — and its per-turn traces — accumulate in order,
-      // matching the per-turn ground truth in toSessionMetadata.
-      const runtimeSessionId = randomUUID();
-      try {
-        for (const turn of scenario.turns) {
-          const request = normalizeRuntimeInvokeRequest(runtime, {
-            runtimeId: input.runtimeId,
-            qualifier: input.qualifier,
-            payload: renderJsonTemplate(input.payloadTemplate, { input: turn.input }),
-            contentType: "application/json",
-            accept: "application/json",
-            applicationHeaders: input.headers,
-            bearerToken: input.bearerToken,
-            runtimeSessionId,
-            runtimeUserId: input.userId,
-          });
-          const response = await invokeRuntime(deps, request, options, signal);
-          for await (const _chunk of response.body) {
-            // Drain each turn's stream so it completes before the next turn.
+      const { ok, failed, firstError } = await runScenarios(scenarios, async (scenario) => {
+        // One session per scenario; the id is generated client-side (session id is a
+        // client-owned input per the AgentCore docs, needed on the request before any
+        // response and reused across turns). Turns run sequentially against the SAME
+        // session so the conversation — and its per-turn traces — accumulate in order,
+        // matching the per-turn ground truth in toSessionMetadata.
+        const runtimeSessionId = randomUUID();
+        try {
+          for (const turn of scenario.turns) {
+            const request = normalizeRuntimeInvokeRequest(runtime, {
+              runtimeId: input.runtimeId,
+              qualifier: input.qualifier,
+              payload: renderJsonTemplate(input.payloadTemplate, { input: turn.input }),
+              contentType: "application/json",
+              accept: "application/json",
+              applicationHeaders: input.headers,
+              bearerToken: input.bearerToken,
+              runtimeSessionId,
+              runtimeUserId: input.userId,
+            });
+            const response = await invokeRuntime(deps, request, options, signal);
+            for await (const _chunk of response.body) {
+              // Drain each turn's stream so it completes before the next turn.
+            }
           }
+        } catch (error) {
+          this.logger.debug(
+            `simulate: invoke failed for scenario "${scenario.scenarioId}": ${(error as Error).message}`,
+          );
+          throw error;
         }
-      } catch (error) {
-        this.logger.debug(
-          `simulate: invoke failed for scenario "${scenario.scenarioId}": ${(error as Error).message}`,
+        return { scenarioId: scenario.scenarioId, sessionId: runtimeSessionId };
+      });
+
+      if (ok.length === 0) {
+        const detail = firstError ? `; first error: ${firstError.message}` : "";
+        throw new InputValidationError(
+          `no scenarios could be invoked (${failed} failed) — nothing to evaluate${detail}`,
         );
-        throw error;
       }
-      return { scenarioId: scenario.scenarioId, sessionId: runtimeSessionId };
-    });
+      if (failed > 0) {
+        this.logger.warn(`simulate: ${failed} scenario(s) failed to invoke and were dropped`);
+      }
 
-    if (ok.length === 0) {
-      const detail = firstError ? `; first error: ${firstError.message}` : "";
-      throw new InputValidationError(
-        `no scenarios could be invoked (${failed} failed) — nothing to evaluate${detail}`,
-      );
-    }
-    if (failed > 0) {
-      this.logger.warn(`simulate: ${failed} scenario(s) failed to invoke and were dropped`);
-    }
+      // AgentCore takes ~30s-3min to emit spans for a freshly invoked session; submit
+      // too early and the service reads an empty log group and marks every session
+      // failed. Wait once for the batch to be safely ingestible (matches the old CLI's
+      // 180s wait). Skipped when disabled via `SIMULATE_INGESTION_WAIT_MS=0` (tests).
+      const waitMs = Number(process.env.SIMULATE_INGESTION_WAIT_MS ?? 180_000);
+      if (waitMs > 0) {
+        this.logger.info(
+          `waiting ${Math.round(waitMs / 1000)}s for span ingestion before submitting`,
+        );
+        await sleep(waitMs, undefined, { signal });
+      }
 
-    // AgentCore takes ~30s-3min to emit spans for a freshly invoked session; submit
-    // too early and the service reads an empty log group and marks every session
-    // failed. Wait once for the batch to be safely ingestible (matches the old CLI's
-    // 180s wait). Skipped when disabled via `SIMULATE_INGESTION_WAIT_MS=0` (tests).
-    const waitMs = Number(process.env.SIMULATE_INGESTION_WAIT_MS ?? 180_000);
-    if (waitMs > 0) {
-      this.logger.info(
-        `waiting ${Math.round(waitMs / 1000)}s for span ingestion before submitting`,
-      );
-      await sleep(waitMs, undefined, { signal });
-    }
-
-    const job = await this.startBatchEvaluation(
-      {
-        name: input.name,
-        description: input.description,
-        evaluatorIds: input.evaluatorIds,
-        source: {
-          origin: "agent",
-          agent: input.runtimeId,
-          endpoint: input.qualifier,
-          sessionIds: ok.map((r) => r.sessionId),
+      const job = await this.startBatchEvaluation(
+        {
+          name: input.name,
+          description: input.description,
+          evaluatorIds: input.evaluatorIds,
+          source: {
+            origin: "agent",
+            agent: input.runtimeId,
+            endpoint: input.qualifier,
+            sessionIds: ok.map((r) => r.sessionId),
+          },
+          groundTruth: ok.map((r) => toSessionMetadata(byId.get(r.scenarioId)!, r.sessionId)),
+          kmsKeyArn: input.kmsKeyArn,
         },
-        groundTruth: ok.map((r) => toSessionMetadata(byId.get(r.scenarioId)!, r.sessionId)),
-        kmsKeyArn: input.kmsKeyArn,
-      },
-      options,
-    );
+        options,
+      );
 
-    return {
-      batchEvaluationId: job.batchEvaluationId,
-      status: job.status,
-      scenariosInvoked: ok.length,
-      scenariosFailed: failed,
-    };
+      return {
+        batchEvaluationId: job.batchEvaluationId,
+        status: job.status,
+        scenariosInvoked: ok.length,
+        scenariosFailed: failed,
+      };
+    } finally {
+      if (tempDatasetPath) await unlink(tempDatasetPath).catch(() => {});
+    }
   }
 
   // downloadDatasetToTemp streams a dataset version's JSONL to a temp file so
