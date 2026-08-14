@@ -7,6 +7,7 @@ import type {
   AuthorizerConfiguration as SdkAuthorizerConfiguration,
   HarnessEnvironmentArtifact,
   HarnessEnvironmentProviderRequest,
+  HarnessGatewayOutboundAuth as SdkHarnessGatewayOutboundAuth,
   HarnessMemoryConfiguration as SdkMemoryConfiguration,
   HarnessModelConfiguration,
   HarnessSkill as SdkHarnessSkill,
@@ -14,6 +15,7 @@ import type {
   HarnessTruncationConfiguration as SdkTruncationConfiguration,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
+  HarnessGatewayOutboundAuth,
   HarnessMemoryRef,
   HarnessModel,
   HarnessSkill,
@@ -232,6 +234,9 @@ function toTool(tool: SdkHarnessTool): HarnessTool {
       config: {
         agentCoreGateway: {
           gatewayArn: requireField(c.agentCoreGateway.gatewayArn, "agentCoreGateway.gatewayArn"),
+          outboundAuth: c.agentCoreGateway.outboundAuth
+            ? toOutboundAuth(c.agentCoreGateway.outboundAuth)
+            : undefined,
         },
       },
     };
@@ -260,6 +265,27 @@ function toTool(tool: SdkHarnessTool): HarnessTool {
     };
   }
   return { type: tool.type, name: tool.name };
+}
+
+/** Converts an SDK HarnessGatewayOutboundAuth tagged union into the project-schema shape. */
+function toOutboundAuth(auth: SdkHarnessGatewayOutboundAuth): HarnessGatewayOutboundAuth {
+  if ("awsIam" in auth && auth.awsIam) return { awsIam: {} };
+  if ("none" in auth && auth.none) return { none: {} };
+  if ("oauth" in auth && auth.oauth) {
+    return {
+      oauth: {
+        providerArn: requireField(auth.oauth.providerArn, "outboundAuth.oauth.providerArn"),
+        scopes: requireField(auth.oauth.scopes, "outboundAuth.oauth.scopes"),
+        // SDK does not expose this type directly.
+        grantType: auth.oauth.grantType as Extract<
+          HarnessGatewayOutboundAuth,
+          { oauth: unknown }
+        >["oauth"]["grantType"],
+        customParameters: auth.oauth.customParameters,
+      },
+    };
+  }
+  throw new InputValidationError("unrecognized outboundAuth variant");
 }
 
 /** Converts an SDK HarnessSkill tagged union into the project-schema shape. */

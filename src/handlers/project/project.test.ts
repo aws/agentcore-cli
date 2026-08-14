@@ -201,6 +201,35 @@ describe("project add harness", () => {
       },
     ],
     [
+      "tools — agentcore_gateway with outboundAuth",
+      [
+        "--name",
+        "x",
+        "--tools",
+        '[{"type":"agentcore_gateway","name":"gw1","config":{"agentCoreGateway":{"gatewayArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/g","outboundAuth":{"oauth":{"providerArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:oauth2-credential-provider/p","scopes":["read","write"]}}}}}]',
+      ],
+      {
+        tools: [
+          {
+            type: "agentcore_gateway",
+            name: "gw1",
+            config: {
+              agentCoreGateway: {
+                gatewayArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/g",
+                outboundAuth: {
+                  oauth: {
+                    providerArn:
+                      "arn:aws:bedrock-agentcore:us-east-1:123456789012:oauth2-credential-provider/p",
+                    scopes: ["read", "write"],
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+    ],
+    [
       "tools — agentcore_browser",
       [
         "--name",
