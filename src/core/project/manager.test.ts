@@ -180,7 +180,7 @@ describe("FsProjectManager.create", () => {
     ]);
     expect(project.name).toBe("example");
     expect(project.rootPath).toContain("example");
-    expect(project.runtimes).toHaveLength(1);
+    expect(project.spec.runtimes).toHaveLength(1);
   });
 
   test("a failed step propagates and leaves the scaffolded files in place", async () => {
@@ -280,7 +280,10 @@ describe("FsProjectManager.build", () => {
     commands.length = 0;
 
     // CDK is the only backend today; the cast stands in for a future one.
-    const foreign = { ...project, managedBy: "Terraform" as Project["managedBy"] };
+    const foreign = {
+      ...project,
+      spec: { ...project.spec, managedBy: "Terraform" as Project["spec"]["managedBy"] },
+    };
     await expect(drain(subject.build(foreign))).rejects.toThrow(/unsupported backend: Terraform/);
     expect(commands).toEqual([]);
   });
@@ -312,8 +315,8 @@ describe("FsProjectManager.resolve", () => {
 
     expect(resolved?.name).toBe("example");
     expect(resolved?.rootPath).toBe(join(root, "example"));
-    expect(resolved?.managedBy).toBe("CDK");
-    expect(resolved?.runtimes).toHaveLength(1);
+    expect(resolved?.spec.managedBy).toBe("CDK");
+    expect(resolved?.spec.runtimes).toHaveLength(1);
   });
 
   test("returns undefined when no project encloses the path", async () => {

@@ -146,11 +146,10 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
       };
 
       const project = ctx.require(ProjectKey);
-      for await (const event of config.projectManager.addResource(
-        project,
-        "harness",
-        harnessConfig,
-      )) {
+      for await (const event of config.projectManager.addResource(project, {
+        resourceType: "harness",
+        resourceConfig: harnessConfig,
+      })) {
         config.io.stderr.write(`${event.message}\n`);
       }
 

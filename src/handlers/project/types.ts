@@ -1,7 +1,7 @@
 import { HarnessSpecSchema } from "../../projectSchemas/harness";
-import type { ManagedBy } from "../../projectSchemas/project";
-import type { ProjectRuntime } from "../../projectSchemas/runtime";
+import type { ProjectSpecSchema } from "../../projectSchemas/project";
 import type z from "zod";
+import type { ProjectRuntimeSchema } from "../../projectSchemas/runtime";
 
 /** Available project templates for scaffolding new AgentCore projects. */
 export const PROJECT_TEMPLATES = {
@@ -10,16 +10,6 @@ export const PROJECT_TEMPLATES = {
 } as const;
 
 export type ProjectTemplate = (typeof PROJECT_TEMPLATES)[keyof typeof PROJECT_TEMPLATES];
-
-/** Resources that may be added to an agentcore project **/
-export const PROJECT_RESOURCE_TYPES = {
-  harness: { schema: HarnessSpecSchema },
-};
-
-export type ProjectResource = keyof typeof PROJECT_RESOURCE_TYPES;
-export type ProjectResourceConfig<TResource extends ProjectResource> = z.input<
-  (typeof PROJECT_RESOURCE_TYPES)[TResource]["schema"]
->;
 
 export type CreateProjectInput = {
   /** The name of the project; also the directory it is scaffolded into. */
@@ -46,11 +36,22 @@ export type Project = {
   name: string;
   /** Absolute path to the project root (the parent of agentcore/). */
   rootPath: string;
-  /** The infrastructure backend that owns the project's deployable artifacts. */
-  managedBy: ManagedBy;
-  /** The runtimes registered in agentcore.json. */
-  runtimes: ProjectRuntime[];
+  /** The spec of the project (agentcore.json loaded into memory) */
+  spec: z.infer<typeof ProjectSpecSchema>;
 };
+
+/** Discriminated union input for {@link ProjectManager.addResource}. */
+export type AddResourceInput =
+  | {
+      resourceType: "harness";
+      resourceConfig: z.input<typeof HarnessSpecSchema>;
+    }
+  | {
+      resourceType: "runtime";
+      resourceConfig: z.input<typeof ProjectRuntimeSchema>;
+    };
+
+export type ProjectResource = AddResourceInput["resourceType"];
 
 /**
  * The primary interface for interacting with projects
@@ -66,9 +67,5 @@ export interface ProjectManager {
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;
 
   /** Add a resource to an existing AgentCore project. */
-  addResource<TResource extends ProjectResource>(
-    project: Project,
-    resourceType: TResource,
-    resourceConfig: ProjectResourceConfig<TResource>,
-  ): AsyncGenerator<ProjectEvent, Project>;
+  addResource(project: Project, input: AddResourceInput): AsyncGenerator<ProjectEvent, Project>;
 }

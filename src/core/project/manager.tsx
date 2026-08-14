@@ -1,13 +1,13 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type {
+  AddResourceInput,
   CreateProjectInput,
   ResolveProjectInput,
   Project,
   ProjectManager,
   ProjectEvent,
   ProjectResource,
-  ProjectResourceConfig,
 } from "../../handlers/project/types";
 import type { Logger } from "../../logging";
 import {
@@ -18,15 +18,12 @@ import {
   type ReadWriteJson,
 } from "../../io";
 import { defaultSource, type AssetSource } from "./source";
-import { createProjectTreeFromTemplate, TEMPLATES } from "./templates";
+import { createHarnessTreeFromSpec, createProjectTreeFromTemplate, TEMPLATES } from "./templates";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { enclosingProjectRoot } from "./fsUtils";
-import {
-  DeserializationError,
-  InputValidationError,
-  NotImplementedError,
-  ProjectStateError,
-} from "../../errors/errors";
+import { DeserializationError, InputValidationError, ProjectStateError } from "../../errors/errors";
+import type { HarnessSpec, HarnessSpecSchema } from "../../projectSchemas/harness";
+import type z from "zod";
 
 type ProjectManagerConfig = {
   logger: Logger;
@@ -64,8 +61,7 @@ export class FsProjectManager implements ProjectManager {
       return {
         name: spec.name,
         rootPath,
-        managedBy: spec.managedBy,
-        runtimes: spec.runtimes,
+        spec,
       };
     } catch (error) {
       // A malformed agentcore.json is a user-correctable problem, not a crash.
@@ -130,26 +126,69 @@ export class FsProjectManager implements ProjectManager {
     return project;
   }
 
-  // eslint-disable-next-line require-yield
-  public async *addResource<TResource extends ProjectResource>(
-    _project: Project,
-    _resourceType: TResource,
-    _resourceConfig: ProjectResourceConfig<TResource>,
+  public async *addResource(
+    project: Project,
+    input: AddResourceInput,
   ): AsyncGenerator<ProjectEvent, Project> {
-    throw new NotImplementedError("FsProjectManager.addResource is not yet implemented");
+    const { resourceType, resourceConfig } = input;
+    const agentCoreSpecPath = join(project.rootPath, "agentcore", "agentcore.json");
+    const projectSpecKey = toProjectSpecKey(resourceType);
+
+    yield { message: `Reading project config file from '${agentCoreSpecPath}'` };
+    const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
+
+    const existingResources = existingProjectSpec[projectSpecKey];
+    if (existingResources.find((r) => r.name === resourceConfig.name))
+      throw new InputValidationError(
+        `a ${projectSpecKey} with name '${resourceConfig.name}' already exists`,
+      );
+
+    const newResources = [...existingResources];
+
+    switch (resourceType) {
+      case "harness": {
+        yield { message: `Scaffolding harness in project` };
+        const harnessPath = await this.scaffoldHarness(project.rootPath, input.resourceConfig);
+        newResources.push({ name: input.resourceConfig.name, path: harnessPath });
+        break;
+      }
+      // TODO: add a default case to push the resource config. Only runtime/harness and other resources that require non-spec changes should need special casing.
+    }
+
+    yield { message: `Updating project config file from '${agentCoreSpecPath}'` };
+    const newProjectSpec = await this.json.write(agentCoreSpecPath, {
+      ...existingProjectSpec,
+      [projectSpecKey]: newResources,
+    });
+
+    return {
+      ...project,
+      spec: newProjectSpec,
+    };
+  }
+
+  private async scaffoldHarness(
+    projectRoot: string,
+    harnessSpec: z.input<typeof HarnessSpecSchema>,
+  ): Promise<string> {
+    const outputPath = join(projectRoot, "app", harnessSpec.name);
+    const harness = await createHarnessTreeFromSpec(harnessSpec as HarnessSpec);
+
+    await harness.write(outputPath);
+    return outputPath;
   }
 
   public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
     // agentcore.json records which backend owns the project's artifacts. CDK is the
     // only one today; a terraform or no-IaC backend adds an arm here rather than
     // editing the CDK path.
-    switch (project.managedBy) {
+    switch (project.spec.managedBy) {
       case "CDK":
         yield* this.buildWithCdk(project);
         break;
       default: {
         // Exhaustiveness: a new ManagedBy member fails to compile until it is handled.
-        const unsupported: never = project.managedBy;
+        const unsupported: never = project.spec.managedBy;
         throw new ProjectStateError(
           `project '${project.name}' declares an unsupported backend: ${String(unsupported)}`,
         );
@@ -181,5 +220,14 @@ export class FsProjectManager implements ProjectManager {
   // Runs a command with its output streamed to the file logger.
   private run(command: string[], cwd: string): Promise<void> {
     return this.runner(command, { cwd, onOutput: (chunk) => this.logger.debug(chunk) });
+  }
+}
+
+function toProjectSpecKey(resourceType: ProjectResource) {
+  switch (resourceType) {
+    case "harness":
+      return "harnesses";
+    case "runtime":
+      return "runtimes";
   }
 }

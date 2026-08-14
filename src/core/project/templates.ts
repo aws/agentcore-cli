@@ -1,4 +1,5 @@
 import { PROJECT_TEMPLATES, type ProjectTemplate } from "../../handlers/project/types";
+import { HarnessSpecSchema, type HarnessSpec } from "../../projectSchemas/harness";
 import { FsTreeNode } from "./fsTree";
 import type { AssetSource } from "./source";
 
@@ -88,5 +89,17 @@ export async function createProjectTreeFromTemplate(
       FsTreeNode.createFile(".env.local", () => src.read("templates/shared/env.local.template")),
     ]),
     FsTreeNode.createDirectory("app", [await FsTreeNode.fromAssetSource(src, assetDir, appDir)]),
+  ]);
+}
+
+const DEFAULT_HARNESS_SYSTEM_PROMPT = "You are a helpful assistant";
+
+export async function createHarnessTreeFromSpec(spec: HarnessSpec): Promise<FsTreeNode> {
+  return FsTreeNode.createDirectory(".", [
+    FsTreeNode.createFile("harness.json", async () => json(HarnessSpecSchema.parse(spec))),
+    FsTreeNode.createFile(
+      "system-prompt.md",
+      async () => spec.systemPrompt ?? DEFAULT_HARNESS_SYSTEM_PROMPT,
+    ),
   ]);
 }

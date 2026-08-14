@@ -109,8 +109,10 @@ describe("project create", () => {
 });
 
 describe("project add harness", () => {
-  test.each([
-    ["minimal — name only", ["--name", "my-agent"]],
+  const defaultModel = { provider: "bedrock", modelId: "global.anthropic.claude-sonnet-4-6" };
+
+  test.each<[string, string[], Record<string, unknown>]>([
+    ["minimal — name only", ["--name", "x"], { model: defaultModel }],
     [
       "model — bedrock",
       [
@@ -119,6 +121,7 @@ describe("project add harness", () => {
         "--model",
         '{"bedrockModelConfig":{"modelId":"us.anthropic.claude-sonnet-4-5-20250929-v1:0"}}',
       ],
+      { model: { provider: "bedrock", modelId: "us.anthropic.claude-sonnet-4-5-20250929-v1:0" } },
     ],
     [
       "model — openai",
@@ -128,6 +131,13 @@ describe("project add harness", () => {
         "--model",
         '{"openAiModelConfig":{"modelId":"gpt-4","apiKeyArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:api-key/k"}}',
       ],
+      {
+        model: {
+          provider: "open_ai",
+          modelId: "gpt-4",
+          apiKeyArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:api-key/k",
+        },
+      },
     ],
     [
       "model — gemini",
@@ -137,10 +147,18 @@ describe("project add harness", () => {
         "--model",
         '{"geminiModelConfig":{"modelId":"gemini-pro","apiKeyArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:api-key/k"}}',
       ],
+      {
+        model: {
+          provider: "gemini",
+          modelId: "gemini-pro",
+          apiKeyArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:api-key/k",
+        },
+      },
     ],
     [
       "model — litellm",
       ["--name", "x", "--model", '{"liteLlmModelConfig":{"modelId":"anthropic/claude-3"}}'],
+      { model: { provider: "lite_llm", modelId: "anthropic/claude-3" } },
     ],
     [
       "tools — remote_mcp",
@@ -150,6 +168,15 @@ describe("project add harness", () => {
         "--tools",
         '[{"type":"remote_mcp","name":"mcp1","config":{"remoteMcp":{"url":"https://mcp.example.com"}}}]',
       ],
+      {
+        tools: [
+          {
+            type: "remote_mcp",
+            name: "mcp1",
+            config: { remoteMcp: { url: "https://mcp.example.com" } },
+          },
+        ],
+      },
     ],
     [
       "tools — agentcore_gateway",
@@ -159,6 +186,19 @@ describe("project add harness", () => {
         "--tools",
         '[{"type":"agentcore_gateway","name":"gw1","config":{"agentCoreGateway":{"gatewayArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/g"}}}]',
       ],
+      {
+        tools: [
+          {
+            type: "agentcore_gateway",
+            name: "gw1",
+            config: {
+              agentCoreGateway: {
+                gatewayArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/g",
+              },
+            },
+          },
+        ],
+      },
     ],
     [
       "tools — agentcore_browser",
@@ -168,6 +208,7 @@ describe("project add harness", () => {
         "--tools",
         '[{"type":"agentcore_browser","name":"br1","config":{"agentCoreBrowser":{}}}]',
       ],
+      { tools: [{ type: "agentcore_browser", name: "br1", config: { agentCoreBrowser: {} } }] },
     ],
     [
       "tools — inline_function",
@@ -177,6 +218,15 @@ describe("project add harness", () => {
         "--tools",
         '[{"type":"inline_function","name":"fn1","config":{"inlineFunction":{"description":"test","inputSchema":{"type":"object"}}}}]',
       ],
+      {
+        tools: [
+          {
+            type: "inline_function",
+            name: "fn1",
+            config: { inlineFunction: { description: "test", inputSchema: { type: "object" } } },
+          },
+        ],
+      },
     ],
     [
       "tools — agentcore_code_interpreter",
@@ -186,10 +236,20 @@ describe("project add harness", () => {
         "--tools",
         '[{"type":"agentcore_code_interpreter","name":"ci1","config":{"agentCoreCodeInterpreter":{}}}]',
       ],
+      {
+        tools: [
+          {
+            type: "agentcore_code_interpreter",
+            name: "ci1",
+            config: { agentCoreCodeInterpreter: {} },
+          },
+        ],
+      },
     ],
     [
       "tools — no config",
       ["--name", "x", "--tools", '[{"type":"agentcore_browser","name":"br1"}]'],
+      { tools: [{ type: "agentcore_browser", name: "br1" }] },
     ],
     [
       "tools — unrecognized config variant (passes through without config)",
@@ -199,9 +259,18 @@ describe("project add harness", () => {
         "--tools",
         '[{"type":"agentcore_browser","name":"br1","config":{"someFutureConfig":{}}}]',
       ],
+      { tools: [{ type: "agentcore_browser", name: "br1" }] },
     ],
-    ["skills — path", ["--name", "x", "--skills", '[{"path":"./my-skill"}]']],
-    ["skills — s3", ["--name", "x", "--skills", '[{"s3":{"uri":"s3://bucket/skill/"}}]']],
+    [
+      "skills — path",
+      ["--name", "x", "--skills", '[{"path":"./my-skill"}]'],
+      { skills: [{ path: "./my-skill" }] },
+    ],
+    [
+      "skills — s3",
+      ["--name", "x", "--skills", '[{"s3":{"uri":"s3://bucket/skill/"}}]'],
+      { skills: [{ s3Uri: "s3://bucket/skill/" }] },
+    ],
     [
       "skills — git",
       [
@@ -210,10 +279,23 @@ describe("project add harness", () => {
         "--skills",
         '[{"git":{"url":"https://github.com/org/repo","path":"skills/","auth":{"credentialArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:credential/c","username":"oauth2"}}}]',
       ],
+      {
+        skills: [
+          {
+            gitUrl: "https://github.com/org/repo",
+            path: "skills/",
+            auth: {
+              credentialName: "arn:aws:bedrock-agentcore:us-east-1:123456789012:credential/c",
+              username: "oauth2",
+            },
+          },
+        ],
+      },
     ],
     [
       "skills — awsSkills",
       ["--name", "x", "--skills", '[{"awsSkills":{"paths":["core-skills/*"]}}]'],
+      { skills: [{ awsSkills: { paths: ["core-skills/*"] } }] },
     ],
     [
       "memory — managed",
@@ -223,6 +305,7 @@ describe("project add harness", () => {
         "--memory",
         '{"managedMemoryConfiguration":{"strategies":["SEMANTIC"],"eventExpiryDuration":30}}',
       ],
+      { memory: { mode: "managed", strategies: ["SEMANTIC"], eventExpiryDuration: 30 } },
     ],
     [
       "memory — existing",
@@ -232,8 +315,18 @@ describe("project add harness", () => {
         "--memory",
         '{"agentCoreMemoryConfiguration":{"arn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/m"}}',
       ],
+      {
+        memory: {
+          mode: "existing",
+          arn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/m",
+        },
+      },
     ],
-    ["memory — disabled", ["--name", "x", "--memory", '{"disabled":{}}']],
+    [
+      "memory — disabled",
+      ["--name", "x", "--memory", '{"disabled":{}}'],
+      { memory: { mode: "disabled" } },
+    ],
     [
       "truncation — sliding_window",
       [
@@ -242,6 +335,12 @@ describe("project add harness", () => {
         "--truncation",
         '{"strategy":"sliding_window","config":{"slidingWindow":{"messagesCount":40}}}',
       ],
+      {
+        truncation: {
+          strategy: "sliding_window",
+          config: { slidingWindow: { messagesCount: 40 } },
+        },
+      },
     ],
     [
       "truncation — summarization",
@@ -251,11 +350,22 @@ describe("project add harness", () => {
         "--truncation",
         '{"strategy":"summarization","config":{"summarization":{"summaryRatio":0.5,"preserveRecentMessages":5}}}',
       ],
+      {
+        truncation: {
+          strategy: "summarization",
+          config: { summarization: { summaryRatio: 0.5, preserveRecentMessages: 5 } },
+        },
+      },
     ],
-    ["truncation — none", ["--name", "x", "--truncation", '{"strategy":"none"}']],
+    [
+      "truncation — none",
+      ["--name", "x", "--truncation", '{"strategy":"none"}'],
+      { truncation: { strategy: "none" } },
+    ],
     [
       "truncation — unrecognized config variant (passes through strategy only)",
       ["--name", "x", "--truncation", '{"strategy":"none","config":{"someFutureStrategy":{}}}'],
+      { truncation: { strategy: "none" } },
     ],
     [
       "authorizer — customJWT",
@@ -265,6 +375,15 @@ describe("project add harness", () => {
         "--authorizer-configuration",
         '{"customJWTAuthorizer":{"discoveryUrl":"https://idp.example.com/.well-known/openid-configuration","allowedAudience":["my-app"]}}',
       ],
+      {
+        authorizerType: "CUSTOM_JWT",
+        authorizerConfiguration: {
+          customJwtAuthorizer: {
+            discoveryUrl: "https://idp.example.com/.well-known/openid-configuration",
+            allowedAudience: ["my-app"],
+          },
+        },
+      },
     ],
     [
       "environment — VPC + lifecycle",
@@ -272,8 +391,16 @@ describe("project add harness", () => {
         "--name",
         "x",
         "--environment",
-        '{"agentCoreRuntimeEnvironment":{"networkConfiguration":{"networkMode":"VPC","networkModeConfig":{"subnets":["subnet-abc"],"securityGroups":["sg-abc"]}},"lifecycleConfiguration":{"idleRuntimeSessionTimeout":900,"maxLifetime":28800}}}',
+        '{"agentCoreRuntimeEnvironment":{"networkConfiguration":{"networkMode":"VPC","networkModeConfig":{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}},"lifecycleConfiguration":{"idleRuntimeSessionTimeout":900,"maxLifetime":28800}}}',
       ],
+      {
+        networkMode: "VPC",
+        networkConfig: {
+          subnets: ["subnet-0123456789abcdef0"],
+          securityGroups: ["sg-0123456789abcdef0"],
+        },
+        lifecycleConfig: { idleRuntimeSessionTimeout: 900, maxLifetime: 28800 },
+      },
     ],
     [
       "environment — with filesystem mounts",
@@ -281,8 +408,30 @@ describe("project add harness", () => {
         "--name",
         "x",
         "--environment",
-        '{"agentCoreRuntimeEnvironment":{"networkConfiguration":{"networkMode":"VPC","networkModeConfig":{"subnets":["subnet-abc"],"securityGroups":["sg-abc"]}},"filesystemConfigurations":[{"sessionStorage":{"mountPath":"/mnt/data"}},{"efsAccessPoint":{"accessPointArn":"arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-abc","mountPath":"/mnt/efs"}},{"s3FilesAccessPoint":{"accessPointArn":"arn:aws:s3files:us-east-1:123456789012:file-system/fs-abc/access-point/fsap-abc","mountPath":"/mnt/s3"}}]}}',
+        '{"agentCoreRuntimeEnvironment":{"networkConfiguration":{"networkMode":"VPC","networkModeConfig":{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}},"filesystemConfigurations":[{"sessionStorage":{"mountPath":"/mnt/data"}},{"efsAccessPoint":{"accessPointArn":"arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0","mountPath":"/mnt/efs"}},{"s3FilesAccessPoint":{"accessPointArn":"arn:aws:s3files:us-east-1:123456789012:file-system/fs-0123456789abcdef01/access-point/fsap-0123456789abcdef01","mountPath":"/mnt/s3"}}]}}',
       ],
+      {
+        networkMode: "VPC",
+        networkConfig: {
+          subnets: ["subnet-0123456789abcdef0"],
+          securityGroups: ["sg-0123456789abcdef0"],
+        },
+        sessionStoragePath: "/mnt/data",
+        efsAccessPoints: [
+          {
+            accessPointArn:
+              "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0",
+            mountPath: "/mnt/efs",
+          },
+        ],
+        s3AccessPoints: [
+          {
+            accessPointArn:
+              "arn:aws:s3files:us-east-1:123456789012:file-system/fs-0123456789abcdef01/access-point/fsap-0123456789abcdef01",
+            mountPath: "/mnt/s3",
+          },
+        ],
+      },
     ],
     [
       "environment-artifact — containerUri",
@@ -292,18 +441,44 @@ describe("project add harness", () => {
         "--environment-artifact",
         '{"containerConfiguration":{"containerUri":"123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:latest"}}',
       ],
+      { containerUri: "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:latest" },
     ],
-    ["environment-variables", ["--name", "x", "--environment-variables", '{"LOG_LEVEL":"debug"}']],
-    ["tags", ["--name", "x", "--tags", '{"team":"ml"}']],
-    ["allowed-tools", ["--name", "x", "--allowed-tools", "*", "@builtin"]],
+    [
+      "environment-variables",
+      ["--name", "x", "--environment-variables", '{"LOG_LEVEL":"debug"}'],
+      { environmentVariables: { LOG_LEVEL: "debug" } },
+    ],
+    ["tags", ["--name", "x", "--tags", '{"team":"ml"}'], { tags: { team: "ml" } }],
+    [
+      "allowed-tools",
+      ["--name", "x", "--allowed-tools", "*", "@builtin"],
+      { allowedTools: ["*", "@builtin"] },
+    ],
     [
       "max-iterations, max-tokens, timeout-seconds",
       ["--name", "x", "--max-iterations", "10", "--max-tokens", "4096", "--timeout-seconds", "60"],
+      { maxIterations: 10, maxTokens: 4096, timeoutSeconds: 60 },
     ],
-  ])("%s", async (_label, flags) => {
-    await inProject();
-    // TODO: update to verify that the project updates.
-    await expect(run(["add", "harness", ...flags])).rejects.toThrow("not yet implemented");
+  ])("%s", async (_label, flags, expected) => {
+    const projectRoot = await inProject();
+    await run(["add", "harness", ...flags]);
+
+    const harnessJson = await Bun.file(join(projectRoot, "app", "x", "harness.json")).json();
+    expect(harnessJson).toMatchObject(expected);
+
+    const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(agentcoreJson.harnesses).toContainEqual({
+      name: "x",
+      path: join(projectRoot, "app", "x"),
+    });
+  });
+
+  test("--system-prompt overrides the default system-prompt.md", async () => {
+    const projectRoot = await inProject();
+    await run(["add", "harness", "--name", "x", "--system-prompt", "You are a pirate."]);
+
+    const prompt = await Bun.file(join(projectRoot, "app", "x", "system-prompt.md")).text();
+    expect(prompt).toBe("You are a pirate.");
   });
 
   test.each([
