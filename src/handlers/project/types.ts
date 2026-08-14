@@ -33,14 +33,17 @@ export type CreateProjectInput = {
 };
 
 /**
- * A progress step reported while a long-running project operation runs, or a line
- * of output from the tool it drives. One of the two is set per event: a step is
- * this CLI's own wording, while output is forwarded as the tool phrased it.
+ * Something worth showing the user while a long-running project operation runs.
+ *
+ * A union rather than two optional fields, so an event is always exactly one of the
+ * two and a consumer that only writes text can read `message` without checking
+ * which it got.
  */
-export type ProjectEvent = {
-  message?: string;
-  output?: string;
-};
+export type ProjectEvent =
+  /** A progress step, in this CLI's own wording. */
+  | { kind: "step"; message: string }
+  /** A line of output, forwarded as the tool that produced it phrased it. */
+  | { kind: "output"; message: string };
 
 export type DeployProjectOptions = {
   /** The resolved AWS region, forwarded to the CDK subprocesses. */

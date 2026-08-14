@@ -103,7 +103,7 @@ export class FsProjectManager implements ProjectManager {
     const destination = join(process.cwd(), input.name);
     this.logger.debug(`scaffolding project "${input.name}" from template "${input.template}"`);
 
-    yield { message: "Creating project tree" };
+    yield { kind: "step", message: "Creating project tree" };
     const tree = await createProjectTreeFromTemplate(input.name, input.template, this.source);
     await tree.write(destination);
 
@@ -111,7 +111,7 @@ export class FsProjectManager implements ProjectManager {
     // user how to rerun the step by hand.
     if (!input.skipInstall) {
       await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
-      yield { message: "Installing CDK dependencies with npm" };
+      yield { kind: "step", message: "Installing CDK dependencies with npm" };
       await this.run(["npm", "install"], join(destination, "agentcore", "cdk"));
 
       const appDir = join(destination, "app", TEMPLATES[input.template].appDir);
@@ -120,14 +120,14 @@ export class FsProjectManager implements ProjectManager {
           "uv",
           "Install uv: https://docs.astral.sh/uv/getting-started/installation/",
         );
-        yield { message: "Syncing Python dependencies with uv" };
+        yield { kind: "step", message: "Syncing Python dependencies with uv" };
         await this.run(["uv", "sync"], appDir);
       }
     }
 
     if (!input.skipGit) {
       await this.checkTool("git", "Install git: https://git-scm.com/downloads");
-      yield { message: "Initializing git repository" };
+      yield { kind: "step", message: "Initializing git repository" };
       await this.run(["git", "init"], destination);
     }
 
@@ -192,7 +192,7 @@ export class FsProjectManager implements ProjectManager {
     // reads this directory back. A project that sets cdk.json's `output` would
     // otherwise send synth somewhere deploy never looks, and deploy would ship
     // whatever stale assembly it found there while reporting success.
-    yield { message: "Synthesizing CloudFormation templates" };
+    yield { kind: "step", message: "Synthesizing CloudFormation templates" };
     await this.run(
       ["npm", "run", "cdk", "--", "synth", "--quiet", "--output", this.assemblyPath(project)],
       cdkDir,
@@ -279,11 +279,11 @@ export class FsProjectManager implements ProjectManager {
       // environment, so it runs every deploy rather than probing CloudFormation
       // first.
       const environment = `aws://${target.account}/${target.region}`;
-      yield { message: `Bootstrapping ${environment}` };
+      yield { kind: "step", message: `Bootstrapping ${environment}` };
       yield* this.streamCdk({ kind: "bootstrap", environments: [environment] }, run);
     }
 
-    yield { message: `Deploying ${stackName}` };
+    yield { kind: "step", message: `Deploying ${stackName}` };
     yield* this.streamCdk({ kind: "deploy", stackName }, run);
   }
 
@@ -296,7 +296,7 @@ export class FsProjectManager implements ProjectManager {
     for await (const event of this.cdk(operation, options)) {
       this.logger.debug(event.message);
       if (event.level === "debug" || event.level === "trace") continue;
-      yield { output: event.message };
+      yield { kind: "output", message: event.message };
     }
   }
 

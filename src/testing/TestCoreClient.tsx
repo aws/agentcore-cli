@@ -1182,6 +1182,10 @@ type TestCoreClientOptions = {
    * Called in place of driving the CDK toolkit, so a test can stand in for it:
    * `emit` yields a toolkit message to the operation's consumer, and throwing
    * fails the operation.
+   *
+   * Emitted messages are collected and then yielded, rather than delivered while
+   * the operation is still running as the real runner does. That the real one
+   * delivers them as they arrive is covered directly, in `src/io/cdk.test.ts`.
    */
   onCdkOperation?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void;
 };

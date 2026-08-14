@@ -36,12 +36,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         skipBootstrap: flags["skip-bootstrap"],
         target: flags.target,
       })) {
-        if (event.message) {
-          config.io.stderr.write(`${event.message}\n`);
-        }
-        if (event.output) {
-          config.io.stderr.write(`${event.output}\n`);
-        }
+        config.io.stderr.write(`${event.message}\n`);
       }
 
       config.io.stderr.write(`Deployed project '${project.name}'\n`);

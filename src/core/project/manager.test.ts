@@ -273,7 +273,7 @@ describe("FsProjectManager.build", () => {
         cwd: cdkDir,
       },
     ]);
-    expect(events).toEqual([{ message: "Synthesizing CloudFormation templates" }]);
+    expect(events).toEqual([{ kind: "step", message: "Synthesizing CloudFormation templates" }]);
   });
 
   test("fails actionably when the CDK dependencies are missing", async () => {
@@ -444,6 +444,11 @@ describe("FsProjectManager.deploy", () => {
     return events;
   }
 
+  // The toolkit's own messages, as opposed to the steps this CLI words itself.
+  function forwarded(events: ProjectEvent[]): string[] {
+    return events.filter((event) => event.kind === "output").map((event) => event.message);
+  }
+
   test("synthesizes, bootstraps the target environment, then deploys its stack", async () => {
     const directory = await inTempDirectory();
     const { manager: subject, commands, runs } = deployManager();
@@ -463,9 +468,9 @@ describe("FsProjectManager.deploy", () => {
       { operation: { kind: "deploy", stackName: stackName("default") }, options },
     ]);
     expect(events).toEqual([
-      { message: "Synthesizing CloudFormation templates" },
-      { message: "Bootstrapping aws://111122223333/us-east-1" },
-      { message: `Deploying ${stackName("default")}` },
+      { kind: "step", message: "Synthesizing CloudFormation templates" },
+      { kind: "step", message: "Bootstrapping aws://111122223333/us-east-1" },
+      { kind: "step", message: `Deploying ${stackName("default")}` },
     ]);
   });
 
@@ -554,6 +559,20 @@ describe("FsProjectManager.deploy", () => {
     expect(runs).toEqual([]);
   });
 
+  test("names the path it looked in when synthesis wrote no assembly", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, runs } = deployManager();
+    const project = await scaffolded(subject, directory);
+    // Synthesis is stubbed in these tests, so removing the stand-in manifest is what
+    // a real synth writing somewhere else entirely would leave behind.
+    await rm(join(assemblyDirectory(directory), "manifest.json"));
+
+    await expect(
+      drain(subject.deploy(project, { region: REGION, skipBootstrap: false, target: "default" })),
+    ).rejects.toThrow(/No synthesized cloud assembly was found at .*manifest\.json/);
+    expect(runs).toEqual([]);
+  });
+
   test("skips bootstrapping when asked, and still deploys", async () => {
     const directory = await inTempDirectory();
     const { manager: subject, commands, runs } = deployManager();
@@ -569,7 +588,10 @@ describe("FsProjectManager.deploy", () => {
     expect(runs.map(({ operation }) => operation)).toEqual([
       { kind: "deploy", stackName: stackName("default") },
     ]);
-    expect(events).not.toContainEqual({ message: "Bootstrapping aws://111122223333/us-east-1" });
+    expect(events).not.toContainEqual({
+      kind: "step",
+      message: "Bootstrapping aws://111122223333/us-east-1",
+    });
   });
 
   test("names the file to fix when no deployment targets are configured", async () => {
@@ -622,7 +644,7 @@ describe("FsProjectManager.deploy", () => {
       subject.deploy(project, { region: REGION, skipBootstrap: true, target: "default" }),
     );
 
-    expect(events.map((event) => event.output).filter(Boolean)).toEqual([
+    expect(forwarded(events)).toEqual([
       "example-stack: creating CloudFormation changeset...",
       "example-stack: deployed",
     ]);
@@ -643,9 +665,7 @@ describe("FsProjectManager.deploy", () => {
     );
 
     // The suppressed ones are still in the debug log; only the warning is surfaced.
-    expect(events.map((event) => event.output).filter(Boolean)).toEqual([
-      "example-stack: no changes",
-    ]);
+    expect(forwarded(events)).toEqual(["example-stack: no changes"]);
   });
 
   test("yields the output that explains a failure before propagating it", async () => {
@@ -668,7 +688,7 @@ describe("FsProjectManager.deploy", () => {
         for await (const event of generator) events.push(event);
       })(),
     ).rejects.toThrow("cdk deploy exploded");
-    expect(events).toContainEqual({ output: "example-stack: CREATE_FAILED" });
+    expect(events).toContainEqual({ kind: "output", message: "example-stack: CREATE_FAILED" });
   });
 
   test("refuses a project managed by a backend it cannot deploy", async () => {

@@ -18,9 +18,7 @@ export const createBuildProjectHandler = (config: BuildProjectHandlerConfig) =>
       // Progress goes to stderr, keeping stdout for machine output. Subprocess
       // output goes to the debug log; on failure ProcessFailedError carries it.
       for await (const event of config.projectManager.build(project)) {
-        if (event.message) {
-          config.io.stderr.write(`${event.message}\n`);
-        }
+        config.io.stderr.write(`${event.message}\n`);
       }
 
       config.io.stderr.write(`Built project '${project.name}'\n`);
