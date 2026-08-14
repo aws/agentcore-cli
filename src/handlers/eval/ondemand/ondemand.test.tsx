@@ -1,4 +1,21 @@
 import { test, expect, describe } from "bun:test";
+import {
+  GetAgentRuntimeCommand,
+  GetEvaluatorCommand,
+  type BedrockAgentCoreControlClient,
+} from "@aws-sdk/client-bedrock-agentcore-control";
+import { EvaluateCommand, type BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
+import {
+  GetQueryResultsCommand,
+  ResourceNotFoundException,
+  StartQueryCommand,
+  type CloudWatchLogsClient,
+  type ResultField,
+} from "@aws-sdk/client-cloudwatch-logs";
+import type { IAMClient } from "@aws-sdk/client-iam";
+import { CoreClient } from "../../../core";
+import { CloudWatchQueryError, ResourceNotFoundError } from "../../../errors";
+import type { Logger } from "../../../logging";
 import { createRootHandler } from "../../index";
 import {
   createSilentLogger,
@@ -29,6 +46,17 @@ const RESULT: EvaluateResult = {
   ],
 };
 
+const RUNTIME_ID = "runtime-1";
+const RUNTIME_LOG_GROUP = "/aws/bedrock-agentcore/runtimes/runtime-1-DEFAULT";
+
+type QueryFailureStatus = "Failed" | "Cancelled" | "Timeout";
+
+type LogsOptions = {
+  malformedRows?: ResultField[][];
+  missingRuntimeLogGroup?: boolean;
+  status?: QueryFailureStatus;
+};
+
 async function run(args: string[], configure?: (core: TestCoreClient) => void) {
   const core = new TestCoreClient();
   core.eval.setGetTracesResponse([TRACE]).setEvaluateResponse(RESULT);
@@ -41,6 +69,85 @@ async function run(args: string[], configure?: (core: TestCoreClient) => void) {
   });
   await root.route(["node", "agentcore", ...args, "--region", "us-west-2"]);
   return { core, stdout: io.stdout(), stderr: io.stderr() };
+}
+
+async function runWithRealCore(options: LogsOptions, logger = createSilentLogger()) {
+  const control = {
+    send: async (command: unknown) => {
+      if (command instanceof GetAgentRuntimeCommand) {
+        return { agentRuntimeId: RUNTIME_ID, agentRuntimeName: "agent-1" };
+      }
+      if (command instanceof GetEvaluatorCommand) {
+        return { evaluatorId: "Builtin.Helpfulness", level: "SESSION" };
+      }
+      throw new Error(`unexpected control command: ${(command as object).constructor.name}`);
+    },
+  } as unknown as BedrockAgentCoreControlClient;
+
+  const data = {
+    send: async (command: unknown) => {
+      if (command instanceof EvaluateCommand) return { evaluationResults: [] };
+      throw new Error(`unexpected data command: ${(command as object).constructor.name}`);
+    },
+  } as unknown as BedrockAgentCoreClient;
+
+  const logs = {
+    send: async (command: unknown) => {
+      if (command instanceof StartQueryCommand) {
+        const logGroup = command.input.logGroupNames?.[0];
+        if (options.missingRuntimeLogGroup && logGroup !== "aws/spans") {
+          throw new ResourceNotFoundException({
+            $metadata: {},
+            message: "log group does not exist",
+          });
+        }
+        return { queryId: logGroup === "aws/spans" ? "shared-query" : "runtime-query" };
+      }
+      if (command instanceof GetQueryResultsCommand) {
+        return {
+          status: options.status ?? "Complete",
+          results: command.input.queryId === "runtime-query" ? (options.malformedRows ?? []) : [],
+        };
+      }
+      throw new Error(`unexpected logs command: ${(command as object).constructor.name}`);
+    },
+  } as unknown as CloudWatchLogsClient;
+
+  const core = new CoreClient({
+    createControlClient: () => control,
+    createDataClient: () => data,
+    createIamClient: () => ({}) as IAMClient,
+    createLogsClient: () => logs,
+    logger,
+  });
+  const io = testIO();
+  const root = createRootHandler(core, {
+    io: io.io,
+    logger,
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
+  });
+  await root.route([
+    "node",
+    "agentcore",
+    "eval",
+    "ondemand",
+    "evaluate",
+    "--agent",
+    RUNTIME_ID,
+    "--evaluator",
+    "Builtin.Helpfulness",
+    "--session-ids",
+    "session-1",
+    "--region",
+    "us-west-2",
+  ]);
+}
+
+function telemetryRow(sessionId: string, message: string): ResultField[] {
+  return [
+    { field: "@message", value: message },
+    { field: "sessionId", value: sessionId },
+  ];
 }
 
 const BASE = [
@@ -165,5 +272,59 @@ describe("eval ondemand evaluate orchestration", () => {
     ]);
     const evaluate = core.eval.calls.find((c) => c.method === "evaluate");
     expect(evaluate?.args[0]).toMatchObject({ groundTruth });
+  });
+});
+
+describe("eval ondemand evaluate telemetry failures", () => {
+  test("reports a missing runtime log group as ResourceNotFoundError", async () => {
+    const error = await runWithRealCore({ missingRuntimeLogGroup: true }).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(ResourceNotFoundError);
+    expect(error).toMatchObject({
+      source: "user",
+      meta: {
+        agent: RUNTIME_ID,
+        logGroupName: RUNTIME_LOG_GROUP,
+      },
+    });
+    expect((error as Error).cause).toBeInstanceOf(ResourceNotFoundException);
+  });
+
+  test.each(["Failed", "Cancelled", "Timeout"] as const)(
+    "reports CloudWatch query status %s as CloudWatchQueryError",
+    async (status) => {
+      const error = await runWithRealCore({ status }).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(CloudWatchQueryError);
+      expect(error).toMatchObject({
+        source: "service",
+        meta: { status },
+      });
+    },
+  );
+
+  test("warns once when malformed telemetry records are skipped", async () => {
+    const warnings: string[] = [];
+    const logger: Logger = {
+      debug: () => {},
+      info: () => {},
+      warn: (...messages) => warnings.push(messages.join(" ")),
+      error: () => {},
+      child: () => logger,
+    };
+    const rows = [
+      telemetryRow(
+        "session-1",
+        JSON.stringify({ kind: "SERVER", traceId: "trace-1", spanId: "span-1" }),
+      ),
+      telemetryRow("session-1", "{"),
+      telemetryRow("session-1", "not-json"),
+    ];
+
+    await runWithRealCore({ malformedRows: rows }, logger);
+
+    expect(warnings).toEqual(["skipping malformed telemetry records"]);
   });
 });
