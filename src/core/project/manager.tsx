@@ -22,7 +22,7 @@ import { createHarnessTreeFromSpec, createProjectTreeFromTemplate, TEMPLATES } f
 import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { enclosingProjectRoot } from "./fsUtils";
 import { DeserializationError, InputValidationError, ProjectStateError } from "../../errors/errors";
-import type { HarnessSpec, HarnessSpecSchema } from "../../projectSchemas/harness";
+import type { HarnessSpecSchema } from "../../projectSchemas/harness";
 import type z from "zod";
 
 type ProjectManagerConfig = {
@@ -140,7 +140,7 @@ export class FsProjectManager implements ProjectManager {
     const existingResources = existingProjectSpec[projectSpecKey];
     if (existingResources.find((r) => r.name === resourceConfig.name))
       throw new InputValidationError(
-        `a ${projectSpecKey} with name '${resourceConfig.name}' already exists`,
+        `a ${resourceType} with name '${resourceConfig.name}' already exists`,
       );
 
     const newResources = [...existingResources];
@@ -152,7 +152,7 @@ export class FsProjectManager implements ProjectManager {
         newResources.push({ name: input.resourceConfig.name, path: harnessPath });
         break;
       }
-      // TODO: add a default case to push the resource config. Only runtime/harness and other resources that require non-spec changes should need special casing.
+      // TODO: add limited special casing for runtime and default for other resources that proxy directly to spec changes.
     }
 
     yield { message: `Updating project config file from '${agentCoreSpecPath}'` };
@@ -172,7 +172,7 @@ export class FsProjectManager implements ProjectManager {
     harnessSpec: z.input<typeof HarnessSpecSchema>,
   ): Promise<string> {
     const outputPath = join(projectRoot, "app", harnessSpec.name);
-    const harness = await createHarnessTreeFromSpec(harnessSpec as HarnessSpec);
+    const harness = await createHarnessTreeFromSpec(harnessSpec);
 
     await harness.write(outputPath);
     return outputPath;
@@ -223,6 +223,9 @@ export class FsProjectManager implements ProjectManager {
   }
 }
 
+/** Map {@link ProjectResource} to keys in the project spec.
+ * Note: we let TS infer the return type to avoid pulling in keys that do not correspond to resources (ex. name, managedBy, etc.)
+ */
 function toProjectSpecKey(resourceType: ProjectResource) {
   switch (resourceType) {
     case "harness":
