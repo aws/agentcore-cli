@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import type {
   AddResourceInput,
   CreateProjectInput,
@@ -154,7 +154,10 @@ export class FsProjectManager implements ProjectManager {
       case "harness": {
         yield { message: `Scaffolding harness in project` };
         const harnessPath = await this.scaffoldHarness(project.rootPath, input.resourceConfig);
-        newResources.push({ name: input.resourceConfig.name, path: harnessPath });
+        newResources.push({
+          name: input.resourceConfig.name,
+          path: relative(project.rootPath, harnessPath),
+        });
         break;
       }
       case "runtime": {
