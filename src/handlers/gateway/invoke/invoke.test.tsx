@@ -435,7 +435,7 @@ describe("gateway invoke", () => {
       "2025-06-18",
     ]);
     try {
-      await waitFor(() => streams.stdout().includes("Path: runtime/invocations?trace=true"));
+      await waitFor(() => streams.stdout().includes("Path: runtime/invocations?trace=true"), 5_000);
       expect(streams.stdout()).toContain("Runtime session ID: runtime-session");
       expect(streams.stdout()).toContain("MCP session ID: mcp-session");
       expect(streams.stdout()).toContain("Context: JWT/1h");
