@@ -126,5 +126,7 @@ describe("eval batch-evaluation simulate", () => {
       evaluatorIds: ["Builtin.Helpfulness"],
       name: "sim-1",
     });
+    // Handler wires an AbortSignal (Ctrl-C) through to Core.
+    expect(call?.args[2]).toBeInstanceOf(AbortSignal);
   });
 });

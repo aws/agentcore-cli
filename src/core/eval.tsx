@@ -513,11 +513,15 @@ export class EvalClient implements CoreEvalClient {
     };
   }
 
-  async simulate(input: SimulateInput, options: CoreOptions): Promise<SimulateResult> {
+  async simulate(
+    input: SimulateInput,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<SimulateResult> {
     // Load scenarios: a local JSONL path directly, else download the dataset id.
     const path = (await Bun.file(input.dataset).exists())
       ? input.dataset
-      : await this.downloadDatasetToTemp(input.dataset, input.datasetVersion, options);
+      : await this.downloadDatasetToTemp(input.dataset, input.datasetVersion, options, signal);
     const scenarios = await loadDatasetFile(path);
     const byId = new Map(scenarios.map((s) => [s.scenarioId, s]));
 
@@ -548,7 +552,7 @@ export class EvalClient implements CoreEvalClient {
             runtimeSessionId,
             runtimeUserId: input.userId,
           });
-          const response = await invokeRuntime(deps, request, options);
+          const response = await invokeRuntime(deps, request, options, signal);
           for await (const _chunk of response.body) {
             // Drain each turn's stream so it completes before the next turn.
           }
@@ -581,7 +585,7 @@ export class EvalClient implements CoreEvalClient {
       this.logger.info(
         `waiting ${Math.round(waitMs / 1000)}s for span ingestion before submitting`,
       );
-      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      await sleep(waitMs, undefined, { signal });
     }
 
     const job = await this.startBatchEvaluation(
@@ -615,9 +619,10 @@ export class EvalClient implements CoreEvalClient {
     id: string,
     version: string | undefined,
     options: CoreOptions,
+    signal?: AbortSignal,
   ): Promise<string> {
     const path = join(tmpdir(), `agentcore-dataset-${randomUUID()}.jsonl`);
-    await this.downloadDataset(id, version, path, options);
+    await this.downloadDataset(id, version, path, options, signal);
     return path;
   }
 

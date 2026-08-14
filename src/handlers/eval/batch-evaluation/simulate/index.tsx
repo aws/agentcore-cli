@@ -52,23 +52,36 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
       if (!flags["name"])
         throw new InputValidationError("required option '--name <name>' not specified");
 
-      const result = await core.eval.simulate(
-        {
-          runtimeId: flags["runtime-id"],
-          qualifier: flags["qualifier"],
-          payloadTemplate: flags["payload-template"],
-          headers: parseRuntimeInvokeHeaders(flags["header"]),
-          bearerToken: flags["bearer-token"],
-          userId: flags["user-id"],
-          dataset: flags["dataset"],
-          datasetVersion: flags["dataset-version"],
-          evaluatorIds: flags["evaluator"],
-          name: flags["name"],
-          description: flags["description"],
-          kmsKeyArn: flags["kms-key-arn"],
-        },
-        coreOptsFromCtx(ctx),
-      );
-      ctx.require(JsonRendererKey).renderJson(result);
+      // Ctrl-C aborts the run (invokes, the ingestion wait, the dataset download).
+      const controller = new AbortController();
+      const interrupt = () => controller.abort();
+      process.once("SIGINT", interrupt);
+      try {
+        const result = await core.eval.simulate(
+          {
+            runtimeId: flags["runtime-id"],
+            qualifier: flags["qualifier"],
+            payloadTemplate: flags["payload-template"],
+            headers: parseRuntimeInvokeHeaders(flags["header"]),
+            bearerToken: flags["bearer-token"],
+            userId: flags["user-id"],
+            dataset: flags["dataset"],
+            datasetVersion: flags["dataset-version"],
+            evaluatorIds: flags["evaluator"],
+            name: flags["name"],
+            description: flags["description"],
+            kmsKeyArn: flags["kms-key-arn"],
+          },
+          coreOptsFromCtx(ctx),
+          controller.signal,
+        );
+        ctx.require(JsonRendererKey).renderJson(result);
+      } catch (error) {
+        // A Ctrl-C exits quietly; the half-created sessions grade nothing.
+        if (controller.signal.aborted) return;
+        throw error;
+      } finally {
+        process.off("SIGINT", interrupt);
+      }
     },
   });

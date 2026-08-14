@@ -362,7 +362,11 @@ export interface CoreEvalClient {
   // simulate replays a dataset against the runtime (invoke per scenario, client-side)
   // then submits a batch evaluation over the sessions it created. No dataset API
   // exists service-side, so the CLI creates the sessions and the service grades them.
-  simulate(input: SimulateInput, options: CoreOptions): Promise<SimulateResult>;
+  simulate(
+    input: SimulateInput,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<SimulateResult>;
 
   createOnlineEvaluationConfig(
     input: CreateOnlineEvalInput,

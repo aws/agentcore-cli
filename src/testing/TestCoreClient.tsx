@@ -1736,8 +1736,12 @@ export class TestEvalClient implements CoreEvalClient {
     return this;
   }
 
-  async simulate(input: SimulateInput, options: CoreOptions): Promise<SimulateResult> {
-    this.calls.push({ method: "simulate", args: [input, options] });
+  async simulate(
+    input: SimulateInput,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<SimulateResult> {
+    this.calls.push({ method: "simulate", args: [input, options, signal] });
     if (this.error) throw this.error;
     return this.simulateResponse;
   }
