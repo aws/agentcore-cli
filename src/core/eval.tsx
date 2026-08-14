@@ -529,26 +529,29 @@ export class EvalClient implements CoreEvalClient {
     const deps = { clients: this.clients, fetch: this.fetch, logger: this.logger };
 
     const { ok, failed, firstError } = await runScenarios(scenarios, async (scenario) => {
-      // Generate the session id client-side. The CUSTOM_JWT invoke path relies on
-      // the server echoing back x-amzn-bedrock-agentcore-runtime-session-id, which
-      // is not guaranteed; picking the id here means we know it regardless of the
-      // auth mode. Also keeps IAM-path ids deterministic per scenario.
+      // One session per scenario; the id is generated client-side (session id is a
+      // client-owned input per the AgentCore docs, needed on the request before any
+      // response and reused across turns). Turns run sequentially against the SAME
+      // session so the conversation — and its per-turn traces — accumulate in order,
+      // matching the per-turn ground truth in toSessionMetadata.
       const runtimeSessionId = randomUUID();
-      const request = normalizeRuntimeInvokeRequest(runtime, {
-        runtimeId: input.runtimeId,
-        qualifier: input.qualifier,
-        payload: renderJsonTemplate(input.payloadTemplate, { input: scenario.turns[0]!.input }),
-        contentType: "application/json",
-        accept: "application/json",
-        applicationHeaders: input.headers,
-        bearerToken: input.bearerToken,
-        runtimeSessionId,
-        runtimeUserId: input.userId,
-      });
       try {
-        const response = await invokeRuntime(deps, request, options);
-        for await (const _chunk of response.body) {
-          // Drain the stream so the turn completes; only the session id is needed.
+        for (const turn of scenario.turns) {
+          const request = normalizeRuntimeInvokeRequest(runtime, {
+            runtimeId: input.runtimeId,
+            qualifier: input.qualifier,
+            payload: renderJsonTemplate(input.payloadTemplate, { input: turn.input }),
+            contentType: "application/json",
+            accept: "application/json",
+            applicationHeaders: input.headers,
+            bearerToken: input.bearerToken,
+            runtimeSessionId,
+            runtimeUserId: input.userId,
+          });
+          const response = await invokeRuntime(deps, request, options);
+          for await (const _chunk of response.body) {
+            // Drain each turn's stream so it completes before the next turn.
+          }
         }
       } catch (error) {
         this.logger.debug(
@@ -575,7 +578,9 @@ export class EvalClient implements CoreEvalClient {
     // 180s wait). Skipped when disabled via `SIMULATE_INGESTION_WAIT_MS=0` (tests).
     const waitMs = Number(process.env.SIMULATE_INGESTION_WAIT_MS ?? 180_000);
     if (waitMs > 0) {
-      this.logger.info(`waiting ${Math.round(waitMs / 1000)}s for span ingestion before submitting`);
+      this.logger.info(
+        `waiting ${Math.round(waitMs / 1000)}s for span ingestion before submitting`,
+      );
       await new Promise((resolve) => setTimeout(resolve, waitMs));
     }
 

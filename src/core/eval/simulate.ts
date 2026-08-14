@@ -32,15 +32,12 @@ export function parseScenarios(text: string): Scenario[] {
       throw new InputValidationError("dataset scenario is missing 'scenario_id'");
     }
     if (seen.has(scenario.scenarioId)) {
-      throw new InputValidationError(`dataset has a duplicate scenario_id: "${scenario.scenarioId}"`);
-    }
-    if (scenario.turns.length !== 1) {
-      // Multi-turn replay isn't implemented yet; the ground-truth mapper emits
-      // per-turn entries but simulate only invokes turn[0]. Reject rather than
-      // silently misalign turns[i] to a single-turn session.
       throw new InputValidationError(
-        `scenario "${scenario.scenarioId}" has ${scenario.turns.length} turns; simulate v1 supports single-turn scenarios only`,
+        `dataset has a duplicate scenario_id: "${scenario.scenarioId}"`,
       );
+    }
+    if (scenario.turns.length === 0) {
+      throw new InputValidationError(`scenario "${scenario.scenarioId}" has no turns`);
     }
     seen.add(scenario.scenarioId);
     scenarios.push(scenario);
