@@ -21,7 +21,12 @@ import { defaultSource, type AssetSource } from "./source";
 import { createHarnessTreeFromSpec, createProjectTreeFromTemplate, TEMPLATES } from "./templates";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { enclosingProjectRoot } from "./fsUtils";
-import { DeserializationError, InputValidationError, ProjectStateError } from "../../errors/errors";
+import {
+  DeserializationError,
+  InputValidationError,
+  NotImplementedError,
+  ProjectStateError,
+} from "../../errors/errors";
 import type { HarnessSpecSchema } from "../../projectSchemas/harness";
 import type z from "zod";
 
@@ -151,6 +156,11 @@ export class FsProjectManager implements ProjectManager {
         const harnessPath = await this.scaffoldHarness(project.rootPath, input.resourceConfig);
         newResources.push({ name: input.resourceConfig.name, path: harnessPath });
         break;
+      }
+      case "runtime": {
+        throw new NotImplementedError(
+          "runtime case not yet implemented in FsProjectManager.addResource",
+        );
       }
       // TODO: add limited special casing for runtime and default for other resources that proxy directly to spec changes.
     }
