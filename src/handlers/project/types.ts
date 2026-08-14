@@ -45,8 +45,10 @@ export type ProjectEvent = {
 export type DeployProjectOptions = {
   /** The resolved AWS region, forwarded to the CDK subprocesses. */
   region: string;
-  /** Skip bootstrapping the target environments before deploying. */
+  /** Skip bootstrapping the target environment before deploying. */
   skipBootstrap: boolean;
+  /** Name of the aws-targets.json entry to deploy. */
+  target: string;
 };
 
 export type ResolveProjectInput = {

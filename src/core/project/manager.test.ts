@@ -372,10 +372,43 @@ describe("FsProjectManager.deploy", () => {
     return join(directory, "example", "agentcore", "cdk", "cdk.out");
   }
 
+  // How the generated CDK app names the stack it synthesizes for a target.
+  function stackName(target: string): string {
+    return `AgentCore-example-${target}`;
+  }
+
+  // Stands in for what synth leaves behind: a manifest with one stack per target,
+  // each tagged with the target it belongs to. deploy reads it to find the stack to
+  // ship, and the stubbed runner never writes one.
+  async function synthesized(directory: string, targetNames: string[]): Promise<void> {
+    const assembly = assemblyDirectory(directory);
+    await mkdir(assembly, { recursive: true });
+    await writeFile(
+      join(assembly, "manifest.json"),
+      JSON.stringify({
+        version: "36.0.0",
+        artifacts: {
+          // A non-stack artifact, as a real assembly has: only stacks are candidates.
+          Tree: { type: "cdk:tree" },
+          ...Object.fromEntries(
+            targetNames.map((target) => [
+              stackName(target),
+              {
+                type: "aws:cloudformation:stack",
+                properties: { tags: { "agentcore:target-name": target } },
+              },
+            ]),
+          ),
+        },
+      }),
+    );
+  }
+
   // deploy() builds first, so the CDK app's node_modules must exist; create() with
   // skipInstall never produces them. Targets overwrite the empty list create()
   // scaffolds; null leaves that empty list in place, and a string is written verbatim
-  // so a test can supply invalid JSON.
+  // so a test can supply invalid JSON. A well-formed list also gets the assembly
+  // synth would have produced for it.
   async function scaffolded(
     subject: FsProjectManager,
     directory: string,
@@ -396,6 +429,12 @@ describe("FsProjectManager.deploy", () => {
         typeof targets === "string" ? targets : JSON.stringify(targets),
       );
     }
+    if (Array.isArray(targets)) {
+      await synthesized(
+        directory,
+        (targets as { name?: string }[]).flatMap(({ name }) => (name ? [name] : [])),
+      );
+    }
     return project;
   }
 
@@ -405,7 +444,7 @@ describe("FsProjectManager.deploy", () => {
     return events;
   }
 
-  test("synthesizes, bootstraps the target environment, then deploys every stack", async () => {
+  test("synthesizes, bootstraps the target environment, then deploys its stack", async () => {
     const directory = await inTempDirectory();
     const { manager: subject, commands, runs } = deployManager();
     const project = await scaffolded(subject, directory);
@@ -413,18 +452,20 @@ describe("FsProjectManager.deploy", () => {
     const cdkDir = join(directory, "example", "agentcore", "cdk");
     const options = { assemblyDirectory: assemblyDirectory(directory), region: REGION };
 
-    const events = await drain(subject.deploy(project, { region: REGION, skipBootstrap: false }));
+    const events = await drain(
+      subject.deploy(project, { region: REGION, skipBootstrap: false, target: "default" }),
+    );
 
     // Only synthesis shells out; everything that reaches AWS goes through the toolkit.
     expect(commands).toEqual([{ command: synthCommand(directory), cwd: cdkDir }]);
     expect(runs).toEqual([
       { operation: { kind: "bootstrap", environments: ["aws://111122223333/us-east-1"] }, options },
-      { operation: { kind: "deploy" }, options },
+      { operation: { kind: "deploy", stackName: stackName("default") }, options },
     ]);
     expect(events).toEqual([
       { message: "Synthesizing CloudFormation templates" },
       { message: "Bootstrapping aws://111122223333/us-east-1" },
-      { message: "Deploying stacks" },
+      { message: `Deploying ${stackName("default")}` },
     ]);
   });
 
@@ -434,7 +475,9 @@ describe("FsProjectManager.deploy", () => {
     const project = await scaffolded(subject, directory);
     commands.length = 0;
 
-    await drain(subject.deploy(project, { region: REGION, skipBootstrap: true }));
+    await drain(
+      subject.deploy(project, { region: REGION, skipBootstrap: true, target: "default" }),
+    );
 
     // The invariant behind passing --output at all: whatever synth was told to write
     // is exactly what the toolkit is handed. Left to cdk.json's `output`, synth could
@@ -444,22 +487,71 @@ describe("FsProjectManager.deploy", () => {
     expect(runs.map(({ options }) => options.assemblyDirectory)).toEqual([assembly]);
   });
 
-  test("bootstraps each distinct environment once, however many targets share it", async () => {
+  // The three-target project the target-selection tests share.
+  const TARGETS = [
+    { name: "staging", account: "111122223333", region: "us-east-1" },
+    { name: "prod", account: "444455556666", region: "eu-west-1" },
+    { name: "default", account: "777788889999", region: "us-west-2" },
+  ];
+
+  test("deploys only the requested target's stack, into only its environment", async () => {
     const directory = await inTempDirectory();
     const { manager: subject, runs } = deployManager();
-    const project = await scaffolded(subject, directory, [
-      { name: "alpha", account: "111122223333", region: "us-east-1" },
-      { name: "beta", account: "111122223333", region: "us-east-1" }, // same environment
-      { name: "gamma", account: "444455556666", region: "eu-west-1" },
+    const project = await scaffolded(subject, directory, TARGETS);
+
+    await drain(subject.deploy(project, { region: REGION, skipBootstrap: false, target: "prod" }));
+
+    // A project with a staging and a prod target cannot reach the others by
+    // accident: one deploy bootstraps one environment and ships one stack.
+    expect(runs.map(({ operation }) => operation)).toEqual([
+      { kind: "bootstrap", environments: ["aws://444455556666/eu-west-1"] },
+      { kind: "deploy", stackName: stackName("prod") },
     ]);
+  });
 
-    await drain(subject.deploy(project, { region: REGION, skipBootstrap: false }));
+  test("deploys the target named 'default' when none is requested", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, runs } = deployManager();
+    const project = await scaffolded(subject, directory, TARGETS);
 
-    expect(
-      runs.flatMap(({ operation }) =>
-        operation.kind === "bootstrap" ? operation.environments : [],
-      ),
-    ).toEqual(["aws://111122223333/us-east-1", "aws://444455556666/eu-west-1"]);
+    // What the handler passes when --target is omitted, and the name the example in
+    // the empty-targets error uses.
+    await drain(
+      subject.deploy(project, { region: REGION, skipBootstrap: true, target: "default" }),
+    );
+
+    expect(runs.map(({ operation }) => operation)).toEqual([
+      { kind: "deploy", stackName: stackName("default") },
+    ]);
+  });
+
+  test("names the configured targets when the requested one is not among them", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands, runs } = deployManager();
+    const project = await scaffolded(subject, directory, TARGETS);
+    commands.length = 0;
+
+    await expect(
+      drain(subject.deploy(project, { region: REGION, skipBootstrap: false, target: "prd" })),
+    ).rejects.toThrow(/no deployment target named 'prd'.*staging, prod, default/s);
+    // Resolved before synthesizing, so a misspelled --target costs no build.
+    expect(commands).toEqual([]);
+    expect(runs).toEqual([]);
+  });
+
+  test("fails when the synthesized assembly has no stack for the target", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, runs } = deployManager();
+    const project = await scaffolded(subject, directory);
+    // An assembly synthesized from a different target list than the one on disk —
+    // what a hand-edited CDK app that stops tagging its stacks would leave behind.
+    await synthesized(directory, ["other"]);
+
+    await expect(
+      drain(subject.deploy(project, { region: REGION, skipBootstrap: false, target: "default" })),
+    ).rejects.toThrow(/no stack for deployment target 'default'/);
+    // Resolved before bootstrapping, so nothing reached AWS.
+    expect(runs).toEqual([]);
   });
 
   test("skips bootstrapping when asked, and still deploys", async () => {
@@ -469,10 +561,14 @@ describe("FsProjectManager.deploy", () => {
     commands.length = 0;
     const cdkDir = join(directory, "example", "agentcore", "cdk");
 
-    const events = await drain(subject.deploy(project, { region: REGION, skipBootstrap: true }));
+    const events = await drain(
+      subject.deploy(project, { region: REGION, skipBootstrap: true, target: "default" }),
+    );
 
     expect(commands).toEqual([{ command: synthCommand(directory), cwd: cdkDir }]);
-    expect(runs.map(({ operation }) => operation)).toEqual([{ kind: "deploy" }]);
+    expect(runs.map(({ operation }) => operation)).toEqual([
+      { kind: "deploy", stackName: stackName("default") },
+    ]);
     expect(events).not.toContainEqual({ message: "Bootstrapping aws://111122223333/us-east-1" });
   });
 
@@ -484,7 +580,7 @@ describe("FsProjectManager.deploy", () => {
     commands.length = 0;
 
     await expect(
-      drain(subject.deploy(project, { region: REGION, skipBootstrap: false })),
+      drain(subject.deploy(project, { region: REGION, skipBootstrap: false, target: "default" })),
     ).rejects.toThrow(/aws-targets\.json/);
     // Nothing ran at all: a deploy with nowhere to go does not even synthesize.
     expect(commands).toEqual([]);
@@ -497,7 +593,7 @@ describe("FsProjectManager.deploy", () => {
     const project = await scaffolded(subject, directory, "{ not a target list");
 
     await expect(
-      drain(subject.deploy(project, { region: REGION, skipBootstrap: false })),
+      drain(subject.deploy(project, { region: REGION, skipBootstrap: false, target: "default" })),
     ).rejects.toThrow(/is not a valid list of deployment targets/);
   });
 
@@ -509,7 +605,7 @@ describe("FsProjectManager.deploy", () => {
     ]);
 
     await expect(
-      drain(subject.deploy(project, { region: REGION, skipBootstrap: false })),
+      drain(subject.deploy(project, { region: REGION, skipBootstrap: false, target: "default" })),
     ).rejects.toThrow(/is not a valid list of deployment targets/);
   });
 
@@ -522,7 +618,9 @@ describe("FsProjectManager.deploy", () => {
     });
     const project = await scaffolded(subject, directory);
 
-    const events = await drain(subject.deploy(project, { region: REGION, skipBootstrap: true }));
+    const events = await drain(
+      subject.deploy(project, { region: REGION, skipBootstrap: true, target: "default" }),
+    );
 
     expect(events.map((event) => event.output).filter(Boolean)).toEqual([
       "example-stack: creating CloudFormation changeset...",
@@ -540,7 +638,9 @@ describe("FsProjectManager.deploy", () => {
     });
     const project = await scaffolded(subject, directory);
 
-    const events = await drain(subject.deploy(project, { region: REGION, skipBootstrap: true }));
+    const events = await drain(
+      subject.deploy(project, { region: REGION, skipBootstrap: true, target: "default" }),
+    );
 
     // The suppressed ones are still in the debug log; only the warning is surfaced.
     expect(events.map((event) => event.output).filter(Boolean)).toEqual([
@@ -558,7 +658,11 @@ describe("FsProjectManager.deploy", () => {
     const project = await scaffolded(subject, directory);
 
     const events: ProjectEvent[] = [];
-    const generator = subject.deploy(project, { region: REGION, skipBootstrap: true });
+    const generator = subject.deploy(project, {
+      region: REGION,
+      skipBootstrap: true,
+      target: "default",
+    });
     await expect(
       (async () => {
         for await (const event of generator) events.push(event);
@@ -576,7 +680,7 @@ describe("FsProjectManager.deploy", () => {
     // CDK is the only backend today; the cast stands in for a future one.
     const foreign = { ...project, managedBy: "Terraform" as Project["managedBy"] };
     await expect(
-      drain(subject.deploy(foreign, { region: REGION, skipBootstrap: false })),
+      drain(subject.deploy(foreign, { region: REGION, skipBootstrap: false, target: "default" })),
     ).rejects.toThrow(/unsupported backend: Terraform/);
     expect(commands).toEqual([]);
     expect(runs).toEqual([]);
@@ -590,7 +694,7 @@ describe("FsProjectManager.deploy", () => {
     commands.length = 0;
 
     await expect(
-      drain(subject.deploy(project, { region: REGION, skipBootstrap: false })),
+      drain(subject.deploy(project, { region: REGION, skipBootstrap: false, target: "default" })),
     ).rejects.toThrow(/npm install/);
     expect(commands).toEqual([]);
     expect(runs).toEqual([]);

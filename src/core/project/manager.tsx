@@ -22,6 +22,7 @@ import {
   type ProcessRunner,
   type ReadWriteJson,
 } from "../../io";
+import { stackForTarget } from "./assembly";
 import { defaultSource, type AssetSource } from "./source";
 import { createProjectTreeFromTemplate, TEMPLATES } from "./templates";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
@@ -224,7 +225,7 @@ export class FsProjectManager implements ProjectManager {
     }
   }
 
-  // Synthesizes, bootstraps each target environment, then deploys every stack.
+  // Synthesizes, bootstraps the target's environment, then deploys its stack.
   private async *deployWithCdk(
     project: Project,
     options: DeployProjectOptions,
@@ -245,6 +246,19 @@ export class FsProjectManager implements ProjectManager {
       );
     }
 
+    // One deploy ships one target, so a project with a staging and a prod target
+    // cannot reach prod by accident. Resolved before synthesizing so a misspelled
+    // --target costs nothing, and because bootstrap needs the target's environment.
+    const target = targets.find((candidate) => candidate.name === options.target);
+    if (!target) {
+      throw new ProjectStateError(
+        `Project '${project.name}' has no deployment target named '${options.target}'. ` +
+          `${this.targetsPath(project.rootPath)} defines: ${targets
+            .map((candidate) => candidate.name)
+            .join(", ")}.`,
+      );
+    }
+
     // Deploying exactly what was just synthesized keeps the two from drifting, and
     // build's dependency check runs before anything touches AWS.
     yield* this.buildWithCdk(project);
@@ -256,19 +270,21 @@ export class FsProjectManager implements ProjectManager {
       region: options.region,
     };
 
+    // Resolved before bootstrapping so an assembly without a stack for this target
+    // fails immediately rather than after minutes of bootstrapping.
+    const stackName = await stackForTarget(this.json, run.assemblyDirectory, target.name);
+
     if (!options.skipBootstrap) {
       // Bootstrap is idempotent and no-ops quickly on an already-current
       // environment, so it runs every deploy rather than probing CloudFormation
-      // first. Targets often share an environment, so deduplicate first.
-      const environments = [
-        ...new Set(targets.map((target) => `aws://${target.account}/${target.region}`)),
-      ];
-      yield { message: `Bootstrapping ${environments.join(", ")}` };
-      yield* this.streamCdk({ kind: "bootstrap", environments }, run);
+      // first.
+      const environment = `aws://${target.account}/${target.region}`;
+      yield { message: `Bootstrapping ${environment}` };
+      yield* this.streamCdk({ kind: "bootstrap", environments: [environment] }, run);
     }
 
-    yield { message: "Deploying stacks" };
-    yield* this.streamCdk({ kind: "deploy" }, run);
+    yield { message: `Deploying ${stackName}` };
+    yield* this.streamCdk({ kind: "deploy", stackName }, run);
   }
 
   // Drives a CDK operation, surfacing the toolkit's messages as project events and

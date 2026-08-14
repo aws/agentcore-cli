@@ -5,6 +5,7 @@ import {
   BaseCredentials,
   BootstrapEnvironments,
   BootstrapStackParameters,
+  StackSelectionStrategy,
   Toolkit,
   type IIoHost,
   type IoMessageLevel,
@@ -19,8 +20,8 @@ export type CdkEvent = {
 export type CdkOperation =
   /** Prepare each environment (`aws://account/region`) to receive stacks. */
   | { kind: "bootstrap"; environments: string[] }
-  /** Deploy every stack in the synthesized assembly. */
-  | { kind: "deploy" };
+  /** Deploy one stack of the synthesized assembly, named as the assembly names it. */
+  | { kind: "deploy"; stackName: string };
 
 export type CdkRunOptions = {
   /**
@@ -86,7 +87,15 @@ export const runCdk: CdkRunner = async function* (operation, options) {
       return;
     }
     const source = await toolkit.fromAssemblyDirectory(options.assemblyDirectory);
-    await toolkit.deploy(source);
+    // The assembly holds one stack per deployment target, and a deploy ships one
+    // target. MUST_MATCH so a name the assembly does not contain fails loudly
+    // instead of quietly deploying nothing.
+    await toolkit.deploy(source, {
+      stacks: {
+        strategy: StackSelectionStrategy.PATTERN_MUST_MATCH,
+        patterns: [operation.stackName],
+      },
+    });
   })()
     .catch((error: unknown) => {
       failure = error;

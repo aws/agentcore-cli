@@ -15,8 +15,13 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
     description: "deploy the project to AWS",
     flags: [
       flag(
+        "target",
+        "name of the aws-targets.json entry to deploy to",
+        z.string().default("default"),
+      ),
+      flag(
         "skip-bootstrap",
-        "skip bootstrapping the target environments before deploying",
+        "skip bootstrapping the target environment before deploying",
         z.boolean().default(false),
       ),
     ],
@@ -29,6 +34,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       for await (const event of config.projectManager.deploy(project, {
         region: ctx.require(RegionKey),
         skipBootstrap: flags["skip-bootstrap"],
+        target: flags.target,
       })) {
         if (event.message) {
           config.io.stderr.write(`${event.message}\n`);

@@ -18,6 +18,11 @@ function SYNTH(cdkDir: string): string[] {
   return ["npm", "run", "cdk", "--", "synth", "--quiet", "--output", join(cdkDir, "cdk.out")];
 }
 
+// How the generated CDK app names the stack it synthesizes for a target.
+function STACK(target: string): string {
+  return `AgentCore-MyAgent-${target}`;
+}
+
 async function run(
   args: string[],
   onCdkOperation?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void,
@@ -409,16 +414,33 @@ describe("project deploy", () => {
   // Scaffolds a project with one deployment target, then runs from inside it so
   // withProject resolves it. create() scaffolds an empty target list, which deploy
   // refuses, so the file is filled in here.
-  async function inProject(): Promise<string> {
+  async function inProject(
+    targets = [{ name: "default", account: "111122223333", region: "us-east-1" }],
+  ): Promise<string> {
     const directory = await inTempDirectory();
     await run(["create", "--name", "MyAgent", "--skip-install", "--skip-git"]);
 
     const projectRoot = join(directory, "MyAgent");
     // create --skip-install leaves no node_modules, which the build step requires.
     await mkdir(join(projectRoot, "agentcore", "cdk", "node_modules"), { recursive: true });
+    await writeFile(join(projectRoot, "agentcore", "aws-targets.json"), JSON.stringify(targets));
+    // Synthesis is stubbed here, so stand in for the assembly it would have written:
+    // deploy reads the manifest to find the stack belonging to the target.
+    const assembly = join(projectRoot, "agentcore", "cdk", "cdk.out");
+    await mkdir(assembly, { recursive: true });
     await writeFile(
-      join(projectRoot, "agentcore", "aws-targets.json"),
-      JSON.stringify([{ name: "default", account: "111122223333", region: "us-east-1" }]),
+      join(assembly, "manifest.json"),
+      JSON.stringify({
+        artifacts: Object.fromEntries(
+          targets.map(({ name }) => [
+            STACK(name),
+            {
+              type: "aws:cloudformation:stack",
+              properties: { tags: { "agentcore:target-name": name } },
+            },
+          ]),
+        ),
+      }),
     );
     process.chdir(projectRoot);
     return projectRoot;
@@ -435,11 +457,35 @@ describe("project deploy", () => {
     const options = { assemblyDirectory: join(cdkDir, "cdk.out"), region: "us-east-1" };
     expect(core.cdkRuns).toEqual([
       { operation: { kind: "bootstrap", environments: ["aws://111122223333/us-east-1"] }, options },
-      { operation: { kind: "deploy" }, options },
+      { operation: { kind: "deploy", stackName: STACK("default") }, options },
     ]);
     expect(io.stderr()).toContain("Bootstrapping aws://111122223333/us-east-1");
-    expect(io.stderr()).toContain("Deploying stacks");
+    expect(io.stderr()).toContain(`Deploying ${STACK("default")}`);
     expect(io.stderr()).toContain("Deployed project 'MyAgent'");
+  });
+
+  test("--target selects which configured target to deploy to", async () => {
+    const projectRoot = await inProject([
+      { name: "default", account: "111122223333", region: "us-east-1" },
+      { name: "prod", account: "444455556666", region: "eu-west-1" },
+    ]);
+    const { io, core } = await run(["deploy", "--target", "prod"]);
+
+    const cdkDir = join(projectRoot, "agentcore", "cdk");
+    expect(core.projectCommands).toEqual([{ command: SYNTH(cdkDir), cwd: cdkDir }]);
+    expect(core.cdkRuns.map(({ operation }) => operation)).toEqual([
+      { kind: "bootstrap", environments: ["aws://444455556666/eu-west-1"] },
+      { kind: "deploy", stackName: STACK("prod") },
+    ]);
+    expect(io.stderr()).toContain("Deployed project 'MyAgent'");
+  });
+
+  test("fails with actionable guidance when --target names no configured target", async () => {
+    await inProject();
+
+    await expect(run(["deploy", "--target", "prod"])).rejects.toThrow(
+      /no deployment target named 'prod'/,
+    );
   });
 
   test("--skip-bootstrap deploys without bootstrapping", async () => {
@@ -448,7 +494,9 @@ describe("project deploy", () => {
 
     const cdkDir = join(projectRoot, "agentcore", "cdk");
     expect(core.projectCommands).toEqual([{ command: SYNTH(cdkDir), cwd: cdkDir }]);
-    expect(core.cdkRuns.map(({ operation }) => operation)).toEqual([{ kind: "deploy" }]);
+    expect(core.cdkRuns.map(({ operation }) => operation)).toEqual([
+      { kind: "deploy", stackName: STACK("default") },
+    ]);
     expect(io.stderr()).not.toContain("Bootstrapping");
     expect(io.stderr()).toContain("Deployed project 'MyAgent'");
   });
