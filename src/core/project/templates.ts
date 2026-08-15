@@ -99,7 +99,10 @@ const DEFAULT_HARNESS_SYSTEM_PROMPT = "You are a helpful assistant";
 export async function createHarnessTreeFromSpec(
   spec: z.input<typeof HarnessSpecSchema>,
 ): Promise<FsTreeNode> {
-  const parsed = parseHarnessSpec(spec);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { systemPrompt, ...rest } = spec;
+  // strip system prompt such that markdown file is source of truth.
+  const parsed = parseHarnessSpec(rest);
   return FsTreeNode.createDirectory(".", [
     FsTreeNode.createFile("harness.json", async () => json(parsed)),
     FsTreeNode.createFile(

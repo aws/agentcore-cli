@@ -510,6 +510,9 @@ describe("project add harness", () => {
 
     const prompt = await Bun.file(join(projectRoot, "app", "x", "system-prompt.md")).text();
     expect(prompt).toBe("You are a pirate.");
+
+    const harnessJson = await Bun.file(join(projectRoot, "app", "x", "harness.json")).json();
+    expect(harnessJson).not.toHaveProperty("systemPrompt");
   });
 
   test("--dockerfile copies the file into the harness directory and stores the relative path", async () => {
