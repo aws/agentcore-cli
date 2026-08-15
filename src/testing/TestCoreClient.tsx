@@ -146,6 +146,7 @@ import { abortable } from "../core/abortable";
 import type { CoreOptions } from "../core/types";
 import type { ProjectManager } from "../handlers/project/types";
 import type { Logger } from "../logging";
+import type { ReadWriteJson } from "../io";
 import { createSilentLogger } from "./logging";
 import { FsProjectManager } from "../core/project";
 
@@ -1177,6 +1178,7 @@ export class TestGatewayClient implements CoreGatewayClient {
 
 type TestCoreClientOptions = {
   logger?: Logger;
+  json?: ReadWriteJson;
 };
 
 export class TestIdentityClient implements CoreIdentityClient {
@@ -1948,6 +1950,7 @@ export class TestCoreClient implements Core {
   constructor(options?: TestCoreClientOptions) {
     this.projectManager = new FsProjectManager({
       logger: options?.logger ?? createSilentLogger(),
+      json: options?.json,
       runner: async (command, { cwd }) => {
         this.projectCommands.push({ command, cwd });
       },

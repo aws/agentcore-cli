@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { copyFile } from "node:fs/promises";
+import { copyFile, rm } from "node:fs/promises";
 import { join, relative } from "node:path";
 import type {
   AddResourceInput,
@@ -150,11 +150,13 @@ export class FsProjectManager implements ProjectManager {
       );
 
     const newResources = [...existingResources];
+    const scaffoldedPaths: string[] = [];
 
     switch (resourceType) {
       case "harness": {
         yield { message: `Scaffolding harness in project` };
         const harnessPath = await this.scaffoldHarness(project.rootPath, input.resourceConfig);
+        scaffoldedPaths.push(harnessPath);
         newResources.push({
           name: input.resourceConfig.name,
           path: relative(project.rootPath, harnessPath),
@@ -170,15 +172,27 @@ export class FsProjectManager implements ProjectManager {
     }
 
     yield { message: `Updating project spec file at '${agentCoreSpecPath}'` };
-    const newProjectSpec = await this.json.write(agentCoreSpecPath, {
-      ...existingProjectSpec,
-      [projectSpecKey]: newResources,
-    });
 
-    return {
-      ...project,
-      spec: newProjectSpec,
-    };
+    // rollback scaffolding changes on failed config writes to prevent bad state.
+    try {
+      const newProjectSpec = await this.json.write(agentCoreSpecPath, {
+        ...existingProjectSpec,
+        [projectSpecKey]: newResources,
+      });
+
+      return {
+        ...project,
+        spec: newProjectSpec,
+      };
+    } catch (err) {
+      this.logger.warn(
+        `Failed to update ${agentCoreSpecPath}; attempting best-effort cleanup of scaffolded files`,
+      );
+      await Promise.all(
+        scaffoldedPaths.map((p) => rm(p, { recursive: true, force: true }).catch(() => {})),
+      );
+      throw err;
+    }
   }
 
   private async scaffoldHarness(

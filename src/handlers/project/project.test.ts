@@ -1,4 +1,5 @@
 import { afterEach, test, expect, describe } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -10,10 +11,11 @@ import {
   testIO,
 } from "../../testing";
 import { InputValidationError } from "../../errors";
+import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 
-async function run(args: string[]) {
+async function run(args: string[], opts?: { core?: TestCoreClient }) {
   const io = testIO();
-  const core = new TestCoreClient();
+  const core = opts?.core ?? new TestCoreClient();
   const root = createRootHandler(core, {
     io: io.io,
     globalConfigAccessor: new TestGlobalConfigAccessor(),
@@ -574,6 +576,27 @@ describe("project add harness", () => {
         '{"agentCoreRuntimeEnvironment":{"networkConfiguration":{"networkMode":"VPC","networkModeConfig":{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}}}}',
       ]),
     ).rejects.toBeInstanceOf(InputValidationError);
+  });
+
+  test("cleans up scaffolded files when the spec write fails", async () => {
+    const projectRoot = await inProject();
+    const logger = createSilentLogger();
+    const realJson = new FsReadWriteJson({ logger });
+
+    // A json adapter that delegates reads but always fails on write.
+    const failingJson: ReadWriteJson = {
+      read: (path, schema) => realJson.read(path, schema),
+      write: () => {
+        throw new Error("simulated write failure");
+      },
+    };
+
+    const core = new TestCoreClient({ json: failingJson });
+
+    await expect(run(["add", "harness", "--name", "x"], { core })).rejects.toThrow();
+
+    // The scaffolded harness directory should have been cleaned up.
+    expect(existsSync(join(projectRoot, "app", "x"))).toBe(false);
   });
 
   test.each([
