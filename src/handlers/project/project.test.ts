@@ -633,6 +633,15 @@ describe("project add harness", () => {
       ["--name", "x", "--environment-artifact", '{"unknownArtifact":{}}'],
     ],
     [
+      "unrecognized outboundAuth variant",
+      [
+        "--name",
+        "x",
+        "--tools",
+        '[{"type":"agentcore_gateway","name":"gw1","config":{"agentCoreGateway":{"gatewayArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/g","outboundAuth":{"unknownAuth":{}}}}}]',
+      ],
+    ],
+    [
       "containerUri and dockerfile are mutually exclusive",
       [
         "--name",
