@@ -500,7 +500,7 @@ describe("project add harness", () => {
     const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
     expect(agentcoreJson.harnesses).toContainEqual({
       name: "x",
-      path: "app/x",
+      path: join("app", "x"),
     });
   });
 
