@@ -25,6 +25,10 @@ function discoverAssets(): string[] {
  * Stage the prebuilt Agent Inspector SPA into the asset tree (gitignored) so
  * both distribution paths ship it through the ordinary asset machinery:
  * `bundle` mirrors it into dist/assets/, `compile` embeds it in the binary.
+ * Every file gains a neutral `.asset` suffix — compile passes assets as
+ * Bun.build entrypoints, and a bare .html entrypoint would be bundled through
+ * Bun's HTML-imports pipeline instead of embedded verbatim. InspectorAssets
+ * strips the suffix when reading.
  */
 async function stageInspectorAssets(): Promise<void> {
   const source = join(REPO_ROOT, "node_modules", "@aws", "agent-inspector", "dist-assets");
@@ -33,7 +37,11 @@ async function stageInspectorAssets(): Promise<void> {
   }
   const target = join(ASSETS_DIR, "agent-inspector");
   await $`rm -rf ${target}`;
-  await $`cp -R ${source} ${target}`;
+  await $`mkdir -p ${target}`;
+  const files = [...new Bun.Glob("**/*").scanSync({ cwd: source, onlyFiles: true })];
+  for (const file of files) {
+    await $`cp ${join(source, file)} ${join(target, `${file}.asset`)}`;
+  }
 }
 
 /** Force asset files through the file loader so template .ts/.js are embedded as bytes, not compiled. */

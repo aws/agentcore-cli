@@ -50,7 +50,8 @@ export class InspectorAssets {
     }
 
     try {
-      const text = await this.source.read(`agent-inspector/${relative}`);
+      // Staged files carry a neutral `.asset` suffix (see scripts/build.ts).
+      const text = await this.source.read(`agent-inspector/${relative}.asset`);
       return { body: new TextEncoder().encode(text), contentType };
     } catch {
       // Not staged (running from source before a build) — fall through.

@@ -30,9 +30,9 @@ describe("InspectorAssets", () => {
   test("serves staged assets with MIME by extension", async () => {
     const assets = new InspectorAssets({
       source: fakeSource({
-        "agent-inspector/index.html": "<html></html>",
-        "agent-inspector/index.js": "app()",
-        "agent-inspector/favicon.svg": "<svg/>",
+        "agent-inspector/index.html.asset": "<html></html>",
+        "agent-inspector/index.js.asset": "app()",
+        "agent-inspector/favicon.svg.asset": "<svg/>",
       }),
       overrideDir: "",
     });
@@ -63,7 +63,7 @@ describe("InspectorAssets", () => {
 
   test("rejects path traversal and empty paths", async () => {
     const assets = new InspectorAssets({
-      source: fakeSource({ "agent-inspector/index.html": "x" }),
+      source: fakeSource({ "agent-inspector/index.html.asset": "x" }),
       overrideDir: "",
     });
     expect(await assets.read("../secrets.txt")).toBeUndefined();
