@@ -1,6 +1,5 @@
-// Programmatic CDK operations via @aws-cdk/toolkit-lib. Deploy drives the toolkit
-// in-process rather than shelling out to `npx cdk`, so its progress arrives as
-// structured messages and its failures as typed errors instead of scraped stdout.
+// CDK operations driven in-process via @aws-cdk/toolkit-lib rather than by shelling out
+// to `npx cdk`, so progress arrives as structured messages instead of scraped stdout.
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -19,32 +18,19 @@ export type CdkOperation =
   | { kind: "deploy"; stackName: string };
 
 export type CdkRunOptions = {
-  /**
-   * Directory holding the synthesized cloud assembly. Deploy reads the assembly
-   * `build` produced rather than re-synthesizing, so what reaches AWS is exactly
-   * what was synthesized. Unused by bootstrap, which needs no assembly.
-   */
+  /** The synthesized cloud assembly to deploy from. Unused by bootstrap. */
   assemblyDirectory: string;
-  /**
-   * Region for the toolkit's own SDK calls. Each stack's account and region come
-   * from the assembly, which the CDK app derives from aws-targets.json.
-   */
+  /** Region for the toolkit's own SDK calls; each stack's environment comes from the assembly. */
   region: string;
 };
 
-/**
- * Runs a CDK operation, yielding the toolkit's messages as they arrive.
- * Injectable so tests exercise deploy without reaching AWS.
- */
+/** Yields the toolkit's messages as they arrive. Injectable so tests never reach AWS. */
 export type CdkRunner = (
   operation: CdkOperation,
   options: CdkRunOptions,
 ) => AsyncGenerator<CdkEvent, void>;
 
-/**
- * The toolkit methods an operation drives, narrowed to those actually called so a
- * test can stand in for the toolkit without reaching AWS.
- */
+/** Narrowed to the methods actually called, so a test can stand in for the toolkit. */
 export type CdkToolkit = Pick<Toolkit, "bootstrap" | "fromAssemblyDirectory" | "deploy">;
 
 /** The parts of the toolkit package an operation needs, loaded on demand. */
@@ -70,11 +56,9 @@ function embeddedFiles(): readonly NamedBlob[] {
  * Writes the embedded bootstrap template to a file the toolkit can read, or returns
  * undefined when it should read its own.
  *
- * Bootstrap uploads a CloudFormation template that the toolkit ships as a file in its
- * package directory, found at runtime relative to where that package sits on disk. A
- * compiled executable has no node_modules, and the path it was compiled with belongs
- * to the build machine, so the build embeds the template and bootstrap is pointed at
- * a copy of it. Everywhere else the package is a real directory and finds its own.
+ * The toolkit finds its bootstrap template relative to its own package directory. A
+ * compiled executable has no node_modules, so the build embeds the template and points
+ * bootstrap at a copy; everywhere else the package finds its own.
  */
 export async function loadBootstrapTemplate(
   files: readonly NamedBlob[] = embeddedFiles(),
@@ -91,11 +75,9 @@ export async function loadBootstrapTemplate(
 /**
  * Loads the toolkit package and builds a toolkit that reports to `ioHost`.
  *
- * Loaded here rather than imported at module scope: the toolkit is the heaviest
- * dependency in the CLI and `src/io` is reachable from every command, so a static
- * import would make even `agentcore --help` pay to load a deploy it is not doing.
- * The bundle keeps the package external, so a command that never deploys never
- * reads it; a compiled executable has it inlined and pays only to parse it.
+ * Imported here rather than at module scope: it is the CLI's heaviest dependency and
+ * `src/io` is reachable from every command, so a static import would make even
+ * `agentcore --help` pay to load a deploy it is not doing.
  */
 export async function loadCdkToolkit(
   ioHost: IIoHost,
@@ -113,10 +95,8 @@ export async function loadCdkToolkit(
 }
 
 /**
- * Performs one operation, awaiting the toolkit call it maps to.
- *
- * `files` is what this executable has embedded, taken as an argument so a test can
- * exercise the compiled executable's bootstrap path without being one.
+ * Performs one operation, awaiting the toolkit call it maps to. `files` is taken as an
+ * argument so a test can exercise the compiled executable's bootstrap path.
  */
 export async function performCdkOperation(
   { lib, toolkit }: { lib: CdkToolkitLib; toolkit: CdkToolkit },
@@ -152,12 +132,9 @@ export async function performCdkOperation(
 }
 
 /**
- * Bridges the toolkit's push-based reporting to a pull-based generator.
- *
- * `drive` receives the `IIoHost` to report to and runs to completion while the
- * caller pulls: messages land in a queue this drains, so they are yielded as they
- * arrive rather than after the operation ends. A failure propagates only once the
- * queue is empty, so the error arrives after the output that explains it.
+ * Bridges the toolkit's push-based reporting to a pull-based generator: `drive` runs to
+ * completion while the caller drains the queue its messages land in. A failure
+ * propagates only once that queue is empty, so the output explaining it comes first.
  */
 export async function* streamCdkOperation(
   drive: (ioHost: IIoHost) => Promise<void>,
