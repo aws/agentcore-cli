@@ -119,7 +119,15 @@ async function compile(target: string): Promise<void> {
   const assets = discoverAssets();
   await assertAssetsAreText(assets);
 
-  const outfile = join(DIST, "bin", `agentcore-${target.replace(/^bun-/, "")}`);
+  // Bun appends .exe to a Windows executable whatever it is asked for, so the extension
+  // is asked for: the name below is also the one this script then reads back and the one
+  // the build workflow smoke tests.
+  const platform = target.replace(/^bun-/, "");
+  const outfile = join(
+    DIST,
+    "bin",
+    `agentcore-${platform}${platform.startsWith("windows") ? ".exe" : ""}`,
+  );
   await $`mkdir -p ${join(DIST, "bin")}`;
 
   const template = bootstrapTemplate();
