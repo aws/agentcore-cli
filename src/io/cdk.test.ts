@@ -14,6 +14,7 @@ import {
   runCdk,
   streamCdkOperation,
   type CdkEvent,
+  type CdkOutputs,
   type CdkToolkit,
   type CdkToolkitLib,
 } from "./cdk";
@@ -34,7 +35,7 @@ function embedded(text: string): (Blob & { name: string })[] {
   ];
 }
 
-async function collect(generator: AsyncGenerator<CdkEvent, void>): Promise<CdkEvent[]> {
+async function collect(generator: AsyncGenerator<CdkEvent, CdkOutputs>): Promise<CdkEvent[]> {
   const events: CdkEvent[] = [];
   for await (const event of generator) events.push(event);
   return events;
@@ -46,6 +47,7 @@ describe("streamCdkOperation", () => {
       streamCdkOperation(async (ioHost) => {
         await ioHost.notify(message("info", "first"));
         await ioHost.notify(message("warn", "second"));
+        return {};
       }),
     );
 
@@ -65,6 +67,7 @@ describe("streamCdkOperation", () => {
       await new Promise<void>((resolve) => setTimeout(resolve, 1));
       released = true;
       await ioHost.notify(message("info", "created"));
+      return {};
     });
 
     const first = await generator.next();
@@ -99,6 +102,7 @@ describe("streamCdkOperation", () => {
         answer = await ioHost.requestResponse({
           defaultResponse: true,
         } as unknown as IoRequest<unknown, boolean>);
+        return {};
       }),
     );
 
@@ -106,7 +110,22 @@ describe("streamCdkOperation", () => {
   });
 
   test("reports nothing for an operation that reports nothing", async () => {
-    expect(await collect(streamCdkOperation(async () => {}))).toEqual([]);
+    expect(await collect(streamCdkOperation(async () => ({})))).toEqual([]);
+  });
+
+  test("returns what the operation produced once its messages are drained", async () => {
+    const generator = streamCdkOperation(async (ioHost) => {
+      await ioHost.notify(message("info", "creating"));
+      return { RuntimeArn: "arn:example" };
+    });
+
+    // The messages are progress; the outputs are the result, so they reach the caller as
+    // the generator's return value rather than as one more message to be filtered out.
+    expect(await generator.next()).toEqual({
+      done: false,
+      value: { level: "info", message: "creating" },
+    });
+    expect(await generator.next()).toEqual({ done: true, value: { RuntimeArn: "arn:example" } });
   });
 });
 
@@ -124,6 +143,7 @@ describe("performCdkOperation", () => {
       },
       deploy: async (...args: unknown[]) => {
         calls.push({ method: "deploy", args });
+        return { stacks: [{ outputs: { RuntimeArn: "arn:example" } }] };
       },
     } as unknown as CdkToolkit;
     return { toolkit, calls };
@@ -220,6 +240,33 @@ describe("performCdkOperation", () => {
       strategy: lib.StackSelectionStrategy.PATTERN_MUST_MATCH,
       patterns: ["AgentCore-MyAgent-default"],
     });
+  });
+
+  test("returns the outputs of the stack it deployed", async () => {
+    const { toolkit } = stubToolkit();
+
+    const outputs = await performCdkOperation(
+      { lib, toolkit },
+      { kind: "deploy", stackName: "AgentCore-MyAgent-default" },
+      { assemblyDirectory: "/tmp/example/cdk.out", region: "us-east-1" },
+    );
+
+    // The toolkit is the only thing that knows them, and a caller that never sees them
+    // can only tell the user that something was deployed.
+    expect(outputs).toEqual({ RuntimeArn: "arn:example" });
+  });
+
+  test("returns no outputs for a bootstrap", async () => {
+    const { toolkit } = stubToolkit();
+
+    // Bootstrapping deploys the toolkit's own stack, whose outputs are not the user's.
+    expect(
+      await performCdkOperation(
+        { lib, toolkit },
+        { kind: "bootstrap", environments: ["aws://111122223333/us-east-1"] },
+        { assemblyDirectory: "/unused", region: "us-east-1" },
+      ),
+    ).toEqual({});
   });
 
   test("does not bootstrap while deploying", async () => {

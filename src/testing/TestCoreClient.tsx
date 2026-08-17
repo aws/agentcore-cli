@@ -144,7 +144,7 @@ import type {
 import { isTerminalStatus } from "../core/batchEvaluationResults";
 import { abortable } from "../core/abortable";
 import type { CoreOptions } from "../core/types";
-import type { CdkEvent, CdkOperation, CdkRunOptions, ProcessRunner } from "../io";
+import type { CdkEvent, CdkOperation, CdkOutputs, CdkRunOptions, ProcessRunner } from "../io";
 import type { ProjectManager } from "../handlers/project/types";
 import type { Logger } from "../logging";
 import type { ReadWriteJson } from "../io";
@@ -1189,6 +1189,8 @@ type TestCoreClientOptions = {
    * delivers them as they arrive is covered directly, in `src/io/cdk.test.ts`.
    */
   onCdkOperation?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void;
+  /** The outputs a deploy produces, as the real toolkit reports a deployed stack's. */
+  cdkOutputs?: CdkOutputs;
   json?: ReadWriteJson;
 };
 
@@ -1994,6 +1996,8 @@ export class TestCoreClient implements Core {
             // failure is only useful if the consumer sees it.
             yield* emitted;
             if (failure) throw failure;
+            // Only a deploy produces outputs, as with the real runner.
+            return operation.kind === "deploy" ? (options?.cdkOutputs ?? {}) : {};
           },
         }),
       },

@@ -23,11 +23,19 @@ export type CreateProjectInput = {
 };
 
 /** Progress worth showing while a long-running project operation runs. */
-export type ProjectEvent = {
-  /** Discriminated so a later variant can carry fields a step has no use for. */
+export type ProjectStep = {
   kind: "step";
   message: string;
 };
+
+/** What a deploy left behind: the deployed stack's outputs, keyed as the stack names them. */
+export type ProjectOutputs = {
+  kind: "outputs";
+  outputs: Record<string, string>;
+};
+
+/** Anything a project operation reports as it runs. Only deploy has outputs to report. */
+export type ProjectEvent = ProjectStep | ProjectOutputs;
 
 export type DeployProjectInput = {
   /** The resolved AWS region the deployment tooling makes its own calls in. */
@@ -67,10 +75,10 @@ export type ProjectResource = AddResourceInput["resourceType"];
  */
 export interface ProjectManager {
   /** Scaffold a new AgentCore project from the given template. */
-  create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project>;
+  create(input: CreateProjectInput): AsyncGenerator<ProjectStep, Project>;
 
   /** Build the project's deployable artifacts with whatever backend owns them. */
-  build(project: Project): AsyncGenerator<ProjectEvent, void>;
+  build(project: Project): AsyncGenerator<ProjectStep, void>;
 
   /** Build the project, then deploy it to one of its deployment targets. */
   deploy(project: Project, input: DeployProjectInput): AsyncGenerator<ProjectEvent, void>;
@@ -79,5 +87,5 @@ export interface ProjectManager {
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;
 
   /** Add a resource to an existing AgentCore project. */
-  addResource(project: Project, input: AddResourceInput): AsyncGenerator<ProjectEvent, Project>;
+  addResource(project: Project, input: AddResourceInput): AsyncGenerator<ProjectStep, Project>;
 }

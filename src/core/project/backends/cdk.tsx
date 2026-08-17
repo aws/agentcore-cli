@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { Project, ProjectEvent } from "../../../handlers/project/types";
+import type { Project, ProjectEvent, ProjectStep } from "../../../handlers/project/types";
 import type { Logger } from "../../../logging";
 import {
   FsReadWriteJson,
@@ -9,6 +9,7 @@ import {
   runProcess,
   type CdkEvent,
   type CdkOperation,
+  type CdkOutputs,
   type CdkRunner,
   type CdkRunOptions,
   type ProcessRunner,
@@ -56,7 +57,7 @@ export class CdkBackend implements ProjectBackend {
     this.json = config.json ?? new FsReadWriteJson({ logger: config.logger });
   }
 
-  public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
+  public async *build(project: Project): AsyncGenerator<ProjectStep, void> {
     const cdkDir = this.cdkPath(project);
 
     // The generated CDK app is built from its own node_modules; without them the
@@ -108,7 +109,12 @@ export class CdkBackend implements ProjectBackend {
     await this.runCdkOperation({ kind: "bootstrap", environments: [environment] }, run);
 
     yield { kind: "step", message: `Deploying ${stackName}` };
-    await this.runCdkOperation({ kind: "deploy", stackName }, run);
+    const outputs = await this.runCdkOperation({ kind: "deploy", stackName }, run);
+
+    // The stack's outputs are the endpoints and ARNs the deploy just created, so they are
+    // reported rather than left in the log. Withheld when the stack declares none, so
+    // nothing above has to decide what an empty set of outputs looks like.
+    if (Object.keys(outputs).length > 0) yield { kind: "outputs", outputs };
   }
 
   private cdkPath(project: Project): string {
@@ -121,11 +127,18 @@ export class CdkBackend implements ProjectBackend {
   }
 
   // The toolkit narrates a deploy in hundreds of lines, so all of it goes to the log at
-  // the severity the toolkit gave it, and the steps above are what a deploy shows.
-  private async runCdkOperation(operation: CdkOperation, options: CdkRunOptions): Promise<void> {
+  // the severity the toolkit gave it, and the steps above are what a deploy shows. What
+  // the operation produced is its return value, which `for await` would discard, so the
+  // messages are drained by hand.
+  private async runCdkOperation(
+    operation: CdkOperation,
+    options: CdkRunOptions,
+  ): Promise<CdkOutputs> {
     const logger = this.logger.child({ cdk: operation.kind });
-    for await (const event of this.cdk(operation, options)) {
-      logger[CDK_LOG_LEVELS[event.level]](event.message.replace(ANSI_ESCAPES, ""));
+    const events = this.cdk(operation, options);
+    for (let next = await events.next(); ; next = await events.next()) {
+      if (next.done) return next.value;
+      logger[CDK_LOG_LEVELS[next.value.level]](next.value.message.replace(ANSI_ESCAPES, ""));
     }
   }
 

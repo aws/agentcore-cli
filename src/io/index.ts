@@ -8,6 +8,7 @@ export {
   runCdk,
   type CdkEvent,
   type CdkOperation,
+  type CdkOutputs,
   type CdkRunner,
   type CdkRunOptions,
 } from "./cdk";

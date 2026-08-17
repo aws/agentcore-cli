@@ -9,6 +9,7 @@ import {
   type CreateProjectInput,
   type Project,
   type ProjectEvent,
+  type ProjectStep,
 } from "../../handlers/project/types";
 import { createSilentLogger } from "../../testing";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
@@ -109,9 +110,9 @@ async function drain(generator: AsyncGenerator<ProjectEvent, void>): Promise<Pro
 async function runCreate(
   subject: FsProjectManager,
   input: CreateProjectInput,
-): Promise<{ events: ProjectEvent[]; project: Project }> {
+): Promise<{ events: ProjectStep[]; project: Project }> {
   const iterator = subject.create(input);
-  const events: ProjectEvent[] = [];
+  const events: ProjectStep[] = [];
 
   while (true) {
     const next = await iterator.next();

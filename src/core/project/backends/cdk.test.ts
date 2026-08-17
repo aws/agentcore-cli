@@ -6,7 +6,7 @@ import { CdkBackend } from "./cdk";
 import type { Project, ProjectEvent } from "../../../handlers/project/types";
 import { createRecordingLogger, type RecordedLog } from "../../../testing";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
-import type { CdkEvent, CdkOperation, CdkRunOptions } from "../../../io";
+import type { CdkEvent, CdkOperation, CdkOutputs, CdkRunOptions } from "../../../io";
 
 const tempDirectories: string[] = [];
 
@@ -92,10 +92,11 @@ type RecordedCdkRun = { operation: CdkOperation; options: CdkRunOptions };
 
 // A backend whose runner records commands instead of spawning them and whose toolkit
 // records operations instead of reaching AWS. `onCdk` supplies the events one operation
-// emits, and the failure it ends with.
+// emits, and the failure it ends with; `outputs` what its deploy produced.
 function backend(
   onCdk?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void,
   runner?: () => Promise<void>,
+  outputs: CdkOutputs = {},
 ): {
   backend: CdkBackend;
   commands: RecordedCommand[];
@@ -125,6 +126,8 @@ function backend(
         // failure is only useful if the consumer sees it.
         yield* events;
         if (failure) throw failure;
+        // Bootstrap produces no outputs of the project's own, as with the real runner.
+        return operation.kind === "deploy" ? outputs : {};
       },
       checkTool: async () => {},
     }),
@@ -285,6 +288,40 @@ describe("CdkBackend.deploy", () => {
     );
     expect(commands).toEqual([]);
     expect(runs).toEqual([]);
+  });
+
+  test("reports the deployed stack's outputs", async () => {
+    const root = await inTempDirectory();
+    const { backend: subject } = backend(undefined, undefined, {
+      RuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:111122223333:runtime/example",
+      StackNameOutput: stackName("default"),
+    });
+    const built = await project(root);
+    await synthesized(root, [TARGET.name]);
+
+    const events = await drain(subject.deploy(built, { target: TARGET, region: REGION }));
+
+    // The endpoints and ARNs the deploy just created: the toolkit is the only thing that
+    // knows them, so a deploy that keeps them to itself leaves the user nothing to call.
+    expect(events.at(-1)).toEqual({
+      kind: "outputs",
+      outputs: {
+        RuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:111122223333:runtime/example",
+        StackNameOutput: stackName("default"),
+      },
+    });
+  });
+
+  test("reports no outputs for a stack that declares none", async () => {
+    const root = await inTempDirectory();
+    const { backend: subject } = backend();
+    const built = await project(root);
+    await synthesized(root, [TARGET.name]);
+
+    const events = await drain(subject.deploy(built, { target: TARGET, region: REGION }));
+
+    // Nothing above has to render an empty set of outputs, so nothing is told about one.
+    expect(events.map((event) => event.kind)).toEqual(["step", "step", "step"]);
   });
 
   test("logs the toolkit's messages instead of reporting them as events", async () => {

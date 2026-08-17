@@ -30,13 +30,20 @@ type CliOptions = {
   onCdkOperation?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void;
   /** An already-wired client, for a test that needs one of its doubles to fail. */
   core?: TestCoreClient;
+  /** The outputs the deployed stack reports; see {@link TestCoreClient}. */
+  cdkOutputs?: Record<string, string>;
 };
 
 // A CLI wired to test doubles, whose route() a test drives directly when it needs
 // what was written after a command failed.
 function cli(options?: CliOptions) {
   const io = testIO();
-  const core = options?.core ?? new TestCoreClient({ onCdkOperation: options?.onCdkOperation });
+  const core =
+    options?.core ??
+    new TestCoreClient({
+      onCdkOperation: options?.onCdkOperation,
+      cdkOutputs: options?.cdkOutputs,
+    });
   const root = createRootHandler(core, {
     io: io.io,
     globalConfigAccessor: new TestGlobalConfigAccessor(),
@@ -822,6 +829,34 @@ describe("project deploy", () => {
 
     await expect(run(["deploy", "--target", "prod"])).rejects.toThrow(
       /no deployment target named 'prod'/,
+    );
+  });
+
+  test("prints the deployed stack's outputs with the result", async () => {
+    await inProject();
+    const { io } = await run(["deploy"], {
+      cdkOutputs: {
+        RuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:111122223333:runtime/MyAgent",
+        GatewayUrl: "https://example.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp",
+      },
+    });
+
+    // What the deploy created is the reason to read the end of one: the ARNs and URLs
+    // the user's next command needs, listed after the line saying it worked.
+    expect(io.stderr()).toContain(
+      "Deployed project 'MyAgent'\n" +
+        "  GatewayUrl: https://example.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp\n" +
+        "  RuntimeArn: arn:aws:bedrock-agentcore:us-east-1:111122223333:runtime/MyAgent\n",
+    );
+  });
+
+  test("prints no outputs for a stack that declares none", async () => {
+    await inProject();
+    const { io } = await run(["deploy"]);
+
+    // Nothing between the result and the log location, rather than an empty heading.
+    expect(io.stderr()).toContain(
+      `Deployed project 'MyAgent'\nDetailed logs: ${detailedLogLocation()}`,
     );
   });
 

@@ -24,11 +24,20 @@ export type CdkRunOptions = {
   region: string;
 };
 
-/** Yields the toolkit's messages as they arrive. Injectable so tests never reach AWS. */
+/**
+ * A deployed stack's CloudFormation outputs, keyed as the stack names them. Empty for
+ * every operation that deploys nothing.
+ */
+export type CdkOutputs = Record<string, string>;
+
+/**
+ * Yields the toolkit's messages as they arrive and returns what the operation produced.
+ * Injectable so tests never reach AWS.
+ */
 export type CdkRunner = (
   operation: CdkOperation,
   options: CdkRunOptions,
-) => AsyncGenerator<CdkEvent, void>;
+) => AsyncGenerator<CdkEvent, CdkOutputs>;
 
 /** Narrowed to the methods actually called, so a test can stand in for the toolkit. */
 export type CdkToolkit = Pick<Toolkit, "bootstrap" | "fromAssemblyDirectory" | "deploy">;
@@ -95,15 +104,16 @@ export async function loadCdkToolkit(
 }
 
 /**
- * Performs one operation, awaiting the toolkit call it maps to. `files` is taken as an
- * argument so a test can exercise the compiled executable's bootstrap path.
+ * Performs one operation, awaiting the toolkit call it maps to, and returns the outputs
+ * of whatever it deployed. `files` is taken as an argument so a test can exercise the
+ * compiled executable's bootstrap path.
  */
 export async function performCdkOperation(
   { lib, toolkit }: { lib: CdkToolkitLib; toolkit: CdkToolkit },
   operation: CdkOperation,
   options: CdkRunOptions,
   files: readonly NamedBlob[] = embeddedFiles(),
-): Promise<void> {
+): Promise<CdkOutputs> {
   if (operation.kind === "bootstrap") {
     const template = await loadBootstrapTemplate(files);
     try {
@@ -116,33 +126,41 @@ export async function performCdkOperation(
     } finally {
       if (template) await rm(dirname(template), { recursive: true, force: true });
     }
-    return;
+    // Bootstrapping deploys none of the project's own stacks, so it has no outputs to
+    // report: what its own stack holds is the toolkit's business, not the user's.
+    return {};
   }
 
   const source = await toolkit.fromAssemblyDirectory(options.assemblyDirectory);
   // The assembly holds one stack per deployment target, and a deploy ships one
   // target. MUST_MATCH so a name the assembly does not contain fails loudly
   // instead of quietly deploying nothing.
-  await toolkit.deploy(source, {
+  const result = await toolkit.deploy(source, {
     stacks: {
       strategy: lib.StackSelectionStrategy.PATTERN_MUST_MATCH,
       patterns: [operation.stackName],
     },
   });
+
+  // One stack, by the selection above — merged rather than indexed so a future deploy of
+  // several stacks reports all of their outputs instead of silently the first one's.
+  return Object.assign({}, ...result.stacks.map((stack) => stack.outputs)) as CdkOutputs;
 }
 
 /**
  * Bridges the toolkit's push-based reporting to a pull-based generator: `drive` runs to
- * completion while the caller drains the queue its messages land in. A failure
- * propagates only once that queue is empty, so the output explaining it comes first.
+ * completion while the caller drains the queue its messages land in, and what it produced
+ * is the generator's return value. A failure propagates only once that queue is empty, so
+ * the output explaining it comes first.
  */
 export async function* streamCdkOperation(
-  drive: (ioHost: IIoHost) => Promise<void>,
-): AsyncGenerator<CdkEvent, void> {
+  drive: (ioHost: IIoHost) => Promise<CdkOutputs>,
+): AsyncGenerator<CdkEvent, CdkOutputs> {
   const queue: CdkEvent[] = [];
   let wake = () => {};
   let settled = false;
   let failure: unknown;
+  let outputs: CdkOutputs = {};
 
   const ioHost: IIoHost = {
     notify: async (message) => {
@@ -156,6 +174,9 @@ export async function* streamCdkOperation(
   };
 
   void drive(ioHost)
+    .then((result) => {
+      outputs = result;
+    })
     .catch((error: unknown) => {
       failure = error;
     })
@@ -174,11 +195,12 @@ export async function* streamCdkOperation(
     yield queue.shift()!;
   }
   if (failure) throw failure;
+  return outputs;
 }
 
 /** The real runner: loads the toolkit, then streams the operation it performs. */
 export const runCdk: CdkRunner = (operation, options) =>
   streamCdkOperation(async (ioHost) => {
     const loaded = await loadCdkToolkit(ioHost, options.region);
-    await performCdkOperation(loaded, operation, options);
+    return performCdkOperation(loaded, operation, options);
   });

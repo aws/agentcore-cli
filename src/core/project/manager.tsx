@@ -9,6 +9,7 @@ import type {
   Project,
   ProjectManager,
   ProjectEvent,
+  ProjectStep,
   ProjectResource,
 } from "../../handlers/project/types";
 import type { Logger } from "../../logging";
@@ -98,7 +99,7 @@ export class FsProjectManager implements ProjectManager {
     }
   }
 
-  public async *create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project> {
+  public async *create(input: CreateProjectInput): AsyncGenerator<ProjectStep, Project> {
     const enclosing = enclosingProjectRoot(process.cwd());
     if (enclosing) {
       throw new ProjectStateError(
@@ -151,7 +152,7 @@ export class FsProjectManager implements ProjectManager {
   public async *addResource(
     project: Project,
     input: AddResourceInput,
-  ): AsyncGenerator<ProjectEvent, Project> {
+  ): AsyncGenerator<ProjectStep, Project> {
     const { resourceType, resourceConfig } = input;
     const agentCoreSpecPath = join(project.rootPath, "agentcore", "agentcore.json");
     const projectSpecKey = toProjectSpecKey(resourceType);
@@ -242,7 +243,7 @@ export class FsProjectManager implements ProjectManager {
     return outputPath;
   }
 
-  public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
+  public async *build(project: Project): AsyncGenerator<ProjectStep, void> {
     yield* this.backendFor(project).build(project);
   }
 
