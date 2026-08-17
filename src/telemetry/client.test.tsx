@@ -18,7 +18,7 @@ describe("DefaultTelemetryClient", () => {
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), "telemetry-client-test-"));
     logger = createFileLogger({
-      filePath: join(tempDir, "output"),
+      filePath: join(tempDir, "output.log"),
       logLevel: LOG_LEVEL.DEBUG,
     });
   });

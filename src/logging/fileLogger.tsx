@@ -1,18 +1,16 @@
 import winston from "winston";
-import DailyRotateFile from "winston-daily-rotate-file";
 import { type AsyncLogger, type LoggerBindings, type LogLevel } from "./types";
 
 export interface FileLoggerConfig {
+  /** The exact file to write. Its directory is created if it does not exist yet. */
   filePath: string;
-  maxSizeInMB?: number;
-  maxFileCount?: number;
   bindings?: LoggerBindings;
   logLevel: LogLevel;
 }
 
 function wrapWinstonLogger(
   winstonLogger: winston.Logger,
-  transport: DailyRotateFile,
+  transport: winston.transports.FileTransportInstance,
   bindings: LoggerBindings,
 ): AsyncLogger {
   const log =
@@ -29,32 +27,29 @@ function wrapWinstonLogger(
       wrapWinstonLogger(winstonLogger, transport, { ...bindings, ...childBindings }),
     end: () =>
       new Promise<void>((resolve) => {
-        transport.on("finish", resolve);
-        // note: we prefer close over end since close calls end on the stream internally: https://github.com/winstonjs/winston-daily-rotate-file/blob/a1a4668cfea77476cd6a4a11f038c2aac9d10741/daily-rotate-file.js#L201-L207
-        if (transport.close) transport.close();
+        // Ending the transport flushes what it has buffered and closes the file stream;
+        // `finish` is what it emits once that has happened.
+        transport.once("finish", resolve);
+        transport.end();
       }),
   };
 }
 
 /**
- * Creates a logger that writes structured JSON to a rotating file.
+ * Creates a logger that writes structured JSON to one file per run.
  *
- * @param config - Logger configuration (file path, rotation limits, level).
- * @returns A {@link AsyncLogger} that writes to a rotating file via winston.
+ * A run's log is a whole run and only that run, so nothing rotates and nothing is
+ * appended to by a later run; {@link logFilePath} names the file for the run.
+ *
+ * @param config - Logger configuration (file path, level, bindings).
+ * @returns A {@link AsyncLogger} that writes to `config.filePath` via winston.
  */
 export function createFileLogger(config: FileLoggerConfig): AsyncLogger {
-  const maxSizeInMB = config.maxSizeInMB ?? 5;
-  const maxFileCount = config.maxFileCount ?? 10;
   const bindings = config.bindings ?? {};
 
-  const transport = new DailyRotateFile({
-    filename: `${config.filePath}-%DATE%`,
-    extension: ".log",
-    datePattern: "YYYY-MM-DD",
-    maxSize: `${maxSizeInMB}m`,
-    maxFiles: maxFileCount,
-    createSymlink: false,
-  });
+  // The transport creates the file's directory itself, so a command's first ever run
+  // needs no separate mkdir.
+  const transport = new winston.transports.File({ filename: config.filePath });
 
   const jsonFormat = winston.format.printf((info) => {
     const { level, message, ...rest } = info;

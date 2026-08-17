@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFileLogger } from "./fileLogger";
 import { LOG_LEVEL } from "./types";
-import { detailedLogLocation, logFilePrefix, rotatedLogFile } from "./location";
+import { detailedLogLocation, logFilePath } from "./location";
 
 const tempDirectories: string[] = [];
 
@@ -23,46 +23,38 @@ async function project(): Promise<string> {
   return root;
 }
 
-// argv as the CLI is handed it: the executable and the script, then the user's tokens.
-function argv(...tokens: string[]): string[] {
-  return ["node", "agentcore", ...tokens];
+async function outsideAnyProject(): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), "agentcore-elsewhere-"));
+  tempDirectories.push(directory);
+  return directory;
 }
 
-describe("rotatedLogFile", () => {
-  test("names the file the rotating logger writes", async () => {
-    // The point of the function: it predicts a name winston chooses, so it is
-    // checked against the file a real logger leaves behind rather than against the
-    // pattern it was written from.
-    const directory = await mkdtemp(join(tmpdir(), "agentcore-logs-"));
-    tempDirectories.push(directory);
-    // Nested under a command as the real prefix is, which also covers the transport
-    // creating that directory rather than failing on a path that does not exist yet.
-    const commandDirectory = join(directory, "deploy");
+const AT = new Date(2026, 7, 17, 13, 45, 6);
+const RUN_LOG = "agentcore-20260817-134506.log";
 
-    const logger = createFileLogger({
-      filePath: join(commandDirectory, "deploy"),
-      logLevel: LOG_LEVEL.DEBUG,
-    });
-    logger.info("example");
-    await logger.end();
-
-    // The transport also writes a hidden audit file beside the log.
-    const written = (await readdir(commandDirectory)).filter((name) => name.endsWith(".log"));
-    expect(written).toEqual([rotatedLogFile("deploy", new Date())]);
-  });
-
-  test("pads a single-digit month and day, as the date pattern does", () => {
-    expect(rotatedLogFile("deploy", new Date(2026, 0, 5))).toBe("deploy-2026-01-05.log");
-  });
-});
-
-describe("logFilePrefix", () => {
-  test("writes into the project the command was run from, filed under the command", async () => {
+describe("logFilePath", () => {
+  test("names one file per run, in the project the command was run in", async () => {
     const root = await project();
 
-    expect(logFilePrefix({ cwd: root, argv: argv("project", "deploy") })).toBe(
-      join(root, "agentcore", ".cli", "logs", "deploy", "deploy"),
+    expect(logFilePath({ cwd: root, at: AT })).toBe(
+      join(root, "agentcore", ".cli", "logs", RUN_LOG),
     );
+  });
+
+  test("pads every single-digit part of the timestamp", async () => {
+    const root = await project();
+
+    expect(logFilePath({ cwd: root, at: new Date(2026, 0, 5, 9, 8, 7) })).toBe(
+      join(root, "agentcore", ".cli", "logs", "agentcore-20260105-090807.log"),
+    );
+  });
+
+  test("names the same file however long the run takes", async () => {
+    const root = await project();
+
+    // The run's log is decided once: a command that prints where its log is has to name
+    // the file the logger opened, not one named for the moment it printed.
+    expect(logFilePath({ cwd: root })).toBe(logFilePath({ cwd: root }));
   });
 
   test("finds the project from a directory inside it", async () => {
@@ -70,87 +62,96 @@ describe("logFilePrefix", () => {
     const inside = join(root, "app", "src");
     await mkdir(inside, { recursive: true });
 
-    expect(logFilePrefix({ cwd: inside, argv: argv("project", "deploy") })).toBe(
-      join(root, "agentcore", ".cli", "logs", "deploy", "deploy"),
+    expect(logFilePath({ cwd: inside, at: AT })).toBe(
+      join(root, "agentcore", ".cli", "logs", RUN_LOG),
     );
   });
 
   test("falls back to the home directory outside a project", async () => {
-    const elsewhere = await mkdtemp(join(tmpdir(), "agentcore-elsewhere-"));
-    tempDirectories.push(elsewhere);
     const home = join(tmpdir(), "example-home");
 
-    expect(logFilePrefix({ cwd: elsewhere, home, argv: argv("project", "deploy") })).toBe(
-      join(home, ".agentcore", "logs", "deploy", "deploy"),
+    expect(logFilePath({ cwd: await outsideAnyProject(), home, at: AT })).toBe(
+      join(home, ".agentcore", "logs", RUN_LOG),
     );
   });
 
-  test("names the command whatever surrounds it on the command line", async () => {
+  test("is decided by where the command ran, not by what was typed", async () => {
     const root = await project();
-    const deploy = join(root, "agentcore", ".cli", "logs", "deploy", "deploy");
+    const expected = join(root, "agentcore", ".cli", "logs", RUN_LOG);
+    const argv = process.argv;
 
-    // A global flag's value is not a command, and neither is a flag after one.
-    expect(logFilePrefix({ cwd: root, argv: argv("project", "deploy", "--target", "prod") })).toBe(
-      deploy,
-    );
-    expect(
-      logFilePrefix({ cwd: root, argv: argv("--region", "us-east-1", "project", "deploy") }),
-    ).toBe(deploy);
-    expect(logFilePrefix({ cwd: root, argv: argv("--verbose", "project", "deploy") })).toBe(deploy);
+    // Naming the log after the command means parsing argv, and a token taken for a
+    // command is as likely to be a positional argument: `config endpoint ../../../tmp`
+    // once put the log wherever that resolved to. Nothing here reads argv at all.
+    try {
+      process.argv = ["node", "agentcore", "config", "endpoint", "../../../../../../tmp/pwn"];
+      expect(logFilePath({ cwd: root, at: AT })).toBe(expected);
+      process.argv = ["node", "agentcore", "config", "telemetry.enabled", "false"];
+      expect(logFilePath({ cwd: root, at: AT })).toBe(expected);
+    } finally {
+      process.argv = argv;
+    }
   });
 
-  test("files a run with no command of its own under the CLI itself", async () => {
+  test("is the file a real logger writes, and one file per run", async () => {
+    // The point of the function: it names the file winston is handed, so it is checked
+    // against what a real logger leaves behind — including the logs directory, which no
+    // run has created yet.
     const root = await project();
-    const bare = join(root, "agentcore", ".cli", "logs", "agentcore", "agentcore");
+    const first = logFilePath({ cwd: root, at: AT });
+    const second = logFilePath({ cwd: root, at: new Date(2026, 7, 17, 13, 45, 7) });
 
-    // The TUI, and the TUI with a global flag that could be mistaken for a command.
-    expect(logFilePrefix({ cwd: root, argv: argv() })).toBe(bare);
-    expect(logFilePrefix({ cwd: root, argv: argv("--region", "us-east-1") })).toBe(bare);
+    for (const [filePath, message] of [
+      [first, "first run"],
+      [second, "second run"],
+    ] as const) {
+      const logger = createFileLogger({ filePath, logLevel: LOG_LEVEL.DEBUG });
+      logger.info(message);
+      await logger.end();
+    }
+
+    expect((await readdir(join(root, "agentcore", ".cli", "logs"))).sort()).toEqual([
+      "agentcore-20260817-134506.log",
+      "agentcore-20260817-134507.log",
+    ]);
+    // A later run writes its own file rather than appending to the run before it.
+    expect(await readFile(first, "utf8")).toContain("first run");
+    expect(await readFile(first, "utf8")).not.toContain("second run");
   });
 });
 
 describe("detailedLogLocation", () => {
-  const DEPLOY = argv("project", "deploy");
-
   test("names a project's log relative to where the command ran", async () => {
     const root = await project();
-    const at = new Date(2026, 7, 17, 13, 45);
 
-    expect(detailedLogLocation({ at, cwd: root, argv: DEPLOY })).toBe(
-      join("agentcore", ".cli", "logs", "deploy", "deploy-2026-08-17.log"),
+    expect(detailedLogLocation({ at: AT, cwd: root })).toBe(
+      join("agentcore", ".cli", "logs", RUN_LOG),
     );
     // Run from a subdirectory, the same file is named relative to that.
     const inside = join(root, "agentcore");
-    expect(detailedLogLocation({ at, cwd: inside, argv: DEPLOY })).toBe(
-      join(".cli", "logs", "deploy", "deploy-2026-08-17.log"),
-    );
+    expect(detailedLogLocation({ at: AT, cwd: inside })).toBe(join(".cli", "logs", RUN_LOG));
     // Both spell the file the logger actually writes.
-    expect(rotatedLogFile(logFilePrefix({ cwd: inside, argv: DEPLOY }), at)).toBe(
-      join(root, "agentcore", ".cli", "logs", "deploy", "deploy-2026-08-17.log"),
+    expect(logFilePath({ cwd: inside, at: AT })).toBe(
+      join(root, "agentcore", ".cli", "logs", RUN_LOG),
     );
   });
 
   test("shortens the fallback log to `~` rather than making it relative", async () => {
-    const elsewhere = await mkdtemp(join(tmpdir(), "agentcore-elsewhere-"));
-    tempDirectories.push(elsewhere);
+    const elsewhere = await outsideAnyProject();
     const home = join(tmpdir(), "example-home");
-    const at = new Date(2026, 7, 17, 13, 45);
 
-    expect(detailedLogLocation({ at, cwd: elsewhere, home, argv: DEPLOY })).toBe(
-      join("~", ".agentcore", "logs", "deploy", "deploy-2026-08-17.log"),
+    expect(detailedLogLocation({ at: AT, cwd: elsewhere, home })).toBe(
+      join("~", ".agentcore", "logs", RUN_LOG),
     );
-    expect(rotatedLogFile(logFilePrefix({ cwd: elsewhere, home, argv: DEPLOY }), at)).toBe(
-      join(home, ".agentcore", "logs", "deploy", "deploy-2026-08-17.log"),
+    expect(logFilePath({ cwd: elsewhere, home, at: AT })).toBe(
+      join(home, ".agentcore", "logs", RUN_LOG),
     );
   });
 
   test("stays absolute for a log that does not sit under the home directory", async () => {
-    const elsewhere = await mkdtemp(join(tmpdir(), "agentcore-elsewhere-"));
-    tempDirectories.push(elsewhere);
-
     // Nothing shortens to a bare `~`, so a home of `/` is spelled out instead.
-    expect(
-      detailedLogLocation({ at: new Date(2026, 7, 17), cwd: elsewhere, home: "/", argv: DEPLOY }),
-    ).toBe(join("/", ".agentcore", "logs", "deploy", "deploy-2026-08-17.log"));
+    expect(detailedLogLocation({ at: AT, cwd: await outsideAnyProject(), home: "/" })).toBe(
+      join("/", ".agentcore", "logs", RUN_LOG),
+    );
   });
 });

@@ -16,7 +16,7 @@ import {
 } from "./core/factories";
 import { createRootHandler } from "./handlers";
 import { FsReadWriteJson } from "./io";
-import { createFileLogger, logFilePrefix, LOG_LEVEL } from "./logging";
+import { createFileLogger, logFilePath, LOG_LEVEL } from "./logging";
 import { runWithExitCode } from "./runnable";
 import { DefaultGlobalConfigAccessor } from "./globalConfig";
 import { DefaultTelemetryClient } from "./telemetry";
@@ -31,10 +31,9 @@ process.exit(
     const cliSessionId = crypto.randomUUID();
 
     const rootLogger = createFileLogger({
-      // The standard location, shared with the commands that print where it is. The log
-      // is filed under the command being run, which is read from the argv the router is
-      // about to parse: the logger has to exist before there is a router to ask.
-      filePath: logFilePrefix({ argv }),
+      // The standard location, shared with the commands that print where it is: one file
+      // for this run, in the project it was run in or beside the CLI's global state.
+      filePath: logFilePath(),
       logLevel: LOG_LEVEL.DEBUG,
       bindings: { cliSessionId, version: PACKAGE_VERSION },
     });
