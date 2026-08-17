@@ -11,6 +11,7 @@ import {
 } from "../../testing";
 import { InputValidationError } from "../../errors";
 import type { CdkEvent, CdkOperation } from "../../io";
+import { detailedLogLocation } from "../../logging";
 
 // The synth command build and deploy both issue. --output pins the assembly to the
 // directory deploy reads, so cdk.json's own `output` cannot send the two apart.
@@ -23,10 +24,9 @@ function STACK(target: string): string {
   return `AgentCore-MyAgent-${target}`;
 }
 
-async function run(
-  args: string[],
-  onCdkOperation?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void,
-) {
+// A CLI wired to test doubles, whose route() a test drives directly when it needs
+// what was written after a command failed.
+function cli(onCdkOperation?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void) {
   const io = testIO();
   const core = new TestCoreClient({ onCdkOperation });
   const root = createRootHandler(core, {
@@ -34,7 +34,19 @@ async function run(
     globalConfigAccessor: new TestGlobalConfigAccessor(),
     logger: createSilentLogger(),
   });
-  await root.route(["node", "agentcore", "project", ...args]);
+  return {
+    io,
+    core,
+    route: (args: string[]) => root.route(["node", "agentcore", "project", ...args]),
+  };
+}
+
+async function run(
+  args: string[],
+  onCdkOperation?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void,
+) {
+  const { io, core, route } = cli(onCdkOperation);
+  await route(args);
   return { io, core };
 }
 
@@ -501,7 +513,7 @@ describe("project deploy", () => {
     expect(io.stderr()).toContain("Deployed project 'MyAgent'");
   });
 
-  test("writes the CDK toolkit's own messages to stderr", async () => {
+  test("keeps the CDK toolkit's own messages off screen, naming the log instead", async () => {
     await inProject();
     const { io } = await run(["deploy", "--skip-bootstrap"], (operation, emit) => {
       if (operation.kind === "deploy") {
@@ -509,7 +521,23 @@ describe("project deploy", () => {
       }
     });
 
-    expect(io.stderr()).toContain("example-stack | 1/2 | CREATE_IN_PROGRESS\n");
+    // A deploy shows its steps; the toolkit's narration is in the log, so the
+    // location is the last thing printed.
+    expect(io.stderr()).not.toContain("CREATE_IN_PROGRESS");
+    expect(io.stderr()).toEndWith(`Detailed logs: ${detailedLogLocation()}`);
+  });
+
+  test("names the log even when the deploy fails", async () => {
+    await inProject();
+    const { io, route } = cli((operation) => {
+      if (operation.kind === "deploy") throw new Error("cdk deploy exploded");
+    });
+
+    await expect(route(["deploy", "--skip-bootstrap"])).rejects.toThrow("cdk deploy exploded");
+
+    // The failure is when the log matters most: it holds the toolkit's account of
+    // what went wrong, which the error itself does not carry.
+    expect(io.stderr()).toContain(`Detailed logs: ${detailedLogLocation()}`);
   });
 
   test("fails with actionable guidance when no targets are configured", async () => {

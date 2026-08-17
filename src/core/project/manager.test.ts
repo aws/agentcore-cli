@@ -10,7 +10,7 @@ import {
   type Project,
   type ProjectEvent,
 } from "../../handlers/project/types";
-import { createSilentLogger } from "../../testing";
+import { createRecordingLogger, createSilentLogger, type RecordedLog } from "../../testing";
 import type { CdkEvent, CdkOperation, CdkRunOptions } from "../../io";
 
 const originalCwd = process.cwd();
@@ -337,12 +337,18 @@ describe("FsProjectManager.deploy", () => {
   // a test supply the events one of them emits (and the failure it ends with).
   function deployManager(
     onCdk?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void,
-  ): { manager: FsProjectManager; commands: RecordedCommand[]; runs: RecordedCdkRun[] } {
+  ): {
+    manager: FsProjectManager;
+    commands: RecordedCommand[];
+    runs: RecordedCdkRun[];
+    logs: RecordedLog[];
+  } {
     const commands: RecordedCommand[] = [];
     const runs: RecordedCdkRun[] = [];
+    const { logger, logs } = createRecordingLogger();
     return {
       manager: new FsProjectManager({
-        logger: createSilentLogger(),
+        logger,
         runner: async (command, { cwd }) => {
           commands.push({ command, cwd });
         },
@@ -364,6 +370,7 @@ describe("FsProjectManager.deploy", () => {
       }),
       commands,
       runs,
+      logs,
     };
   }
 
@@ -444,9 +451,12 @@ describe("FsProjectManager.deploy", () => {
     return events;
   }
 
-  // The toolkit's own messages, as opposed to the steps this CLI words itself.
-  function forwarded(events: ProjectEvent[]): string[] {
-    return events.filter((event) => event.kind === "output").map((event) => event.message);
+  // The toolkit's own messages, as they landed in the log: tagged with the operation
+  // that reported them, unlike the manager's own lines.
+  function logged(logs: RecordedLog[]): { level: string; message: string }[] {
+    return logs
+      .filter((line) => line.bindings.cdk !== undefined)
+      .map(({ level, message }) => ({ level, message }));
   }
 
   test("synthesizes, bootstraps the target environment, then deploys its stack", async () => {
@@ -631,9 +641,9 @@ describe("FsProjectManager.deploy", () => {
     ).rejects.toThrow(/is not a valid list of deployment targets/);
   });
 
-  test("streams the CDK toolkit's messages as they arrive", async () => {
+  test("logs the toolkit's messages instead of reporting them as events", async () => {
     const directory = await inTempDirectory();
-    const { manager: subject } = deployManager((operation, emit) => {
+    const { manager: subject, logs } = deployManager((operation, emit) => {
       if (operation.kind !== "deploy") return;
       emit({ level: "info", message: "example-stack: creating CloudFormation changeset..." });
       emit({ level: "result", message: "example-stack: deployed" });
@@ -644,51 +654,64 @@ describe("FsProjectManager.deploy", () => {
       subject.deploy(project, { region: REGION, skipBootstrap: true, target: "default" }),
     );
 
-    expect(forwarded(events)).toEqual([
-      "example-stack: creating CloudFormation changeset...",
-      "example-stack: deployed",
+    // A deploy reports its own steps and nothing the toolkit said, so what reaches
+    // the screen stays the same length however talkative a deploy turns out to be.
+    expect(events).toEqual([
+      { kind: "step", message: "Synthesizing CloudFormation templates" },
+      { kind: "step", message: `Deploying ${stackName("default")}` },
+    ]);
+    // `result` reports an outcome rather than a severity, so it lands as info.
+    expect(logged(logs)).toEqual([
+      { level: "info", message: "example-stack: creating CloudFormation changeset..." },
+      { level: "info", message: "example-stack: deployed" },
     ]);
   });
 
-  test("keeps the toolkit's debug and trace messages off screen", async () => {
+  test("logs each toolkit message at the severity the toolkit gave it", async () => {
     const directory = await inTempDirectory();
-    const { manager: subject } = deployManager((operation, emit) => {
+    const { manager: subject, logs } = deployManager((operation, emit) => {
       if (operation.kind !== "deploy") return;
       emit({ level: "debug", message: "resolved 3 environments" });
       emit({ level: "trace", message: "sdk call: DescribeStacks" });
       emit({ level: "warn", message: "example-stack: no changes" });
+      emit({ level: "error", message: "example-stack: UPDATE_ROLLBACK_COMPLETE" });
     });
     const project = await scaffolded(subject, directory);
 
-    const events = await drain(
+    await drain(
       subject.deploy(project, { region: REGION, skipBootstrap: true, target: "default" }),
     );
 
-    // The suppressed ones are still in the debug log; only the warning is surfaced.
-    expect(forwarded(events)).toEqual(["example-stack: no changes"]);
+    // Severity is what makes the log readable once a deploy has written thousands of
+    // lines to it: a failure is greppable rather than buried among the trace, which
+    // is finer than any level this CLI logs at and so joins debug.
+    expect(logged(logs)).toEqual([
+      { level: "debug", message: "resolved 3 environments" },
+      { level: "debug", message: "sdk call: DescribeStacks" },
+      { level: "warn", message: "example-stack: no changes" },
+      { level: "error", message: "example-stack: UPDATE_ROLLBACK_COMPLETE" },
+    ]);
   });
 
-  test("yields the output that explains a failure before propagating it", async () => {
+  test("logs the output that explains a failure before propagating it", async () => {
     const directory = await inTempDirectory();
-    const { manager: subject } = deployManager((operation, emit) => {
+    const { manager: subject, logs } = deployManager((operation, emit) => {
       if (operation.kind !== "deploy") return;
       emit({ level: "error", message: "example-stack: CREATE_FAILED" });
       throw new Error("cdk deploy exploded");
     });
     const project = await scaffolded(subject, directory);
 
-    const events: ProjectEvent[] = [];
-    const generator = subject.deploy(project, {
-      region: REGION,
-      skipBootstrap: true,
-      target: "default",
-    });
     await expect(
-      (async () => {
-        for await (const event of generator) events.push(event);
-      })(),
+      drain(subject.deploy(project, { region: REGION, skipBootstrap: true, target: "default" })),
     ).rejects.toThrow("cdk deploy exploded");
-    expect(events).toContainEqual({ kind: "output", message: "example-stack: CREATE_FAILED" });
+
+    // The failure reaches the caller, but only the log says what went wrong, which is
+    // why deploy prints where the log is.
+    expect(logged(logs)).toContainEqual({
+      level: "error",
+      message: "example-stack: CREATE_FAILED",
+    });
   });
 
   test("refuses a project managed by a backend it cannot deploy", async () => {

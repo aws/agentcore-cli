@@ -20,5 +20,11 @@ export {
   type RenderScreenOptions,
   type RenderScreenResult,
 } from "./renderScreen";
-export { createSilentLogger, assertLogsMatch, type LogQuery } from "./logging";
+export {
+  createSilentLogger,
+  createRecordingLogger,
+  assertLogsMatch,
+  type LogQuery,
+  type RecordedLog,
+} from "./logging";
 export { TestGlobalConfigAccessor } from "./globalConfig";

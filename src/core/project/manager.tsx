@@ -16,6 +16,7 @@ import {
   requireTool,
   runCdk,
   runProcess,
+  type CdkEvent,
   type CdkOperation,
   type CdkRunner,
   type CdkRunOptions,
@@ -37,6 +38,18 @@ import {
 
 // Shown when aws-targets.json names no usable target, so the fix is on screen.
 const TARGETS_EXAMPLE = `[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]`;
+
+// How the CDK toolkit's message levels land in the log. Its `result` reports an
+// operation's outcome rather than a severity, and nothing this CLI logs is finer
+// than debug, so `trace` joins it there.
+const CDK_LOG_LEVELS: Record<CdkEvent["level"], "debug" | "info" | "warn" | "error"> = {
+  error: "error",
+  warn: "warn",
+  info: "info",
+  result: "info",
+  debug: "debug",
+  trace: "debug",
+};
 
 type ProjectManagerConfig = {
   logger: Logger;
@@ -280,23 +293,23 @@ export class FsProjectManager implements ProjectManager {
       // first.
       const environment = `aws://${target.account}/${target.region}`;
       yield { kind: "step", message: `Bootstrapping ${environment}` };
-      yield* this.streamCdk({ kind: "bootstrap", environments: [environment] }, run);
+      await this.runCdkOperation({ kind: "bootstrap", environments: [environment] }, run);
     }
 
     yield { kind: "step", message: `Deploying ${stackName}` };
-    yield* this.streamCdk({ kind: "deploy", stackName }, run);
+    await this.runCdkOperation({ kind: "deploy", stackName }, run);
   }
 
-  // Drives a CDK operation, surfacing the toolkit's messages as project events and
-  // logging them. Anything below info stays in the debug log rather than on screen.
-  private async *streamCdk(
-    operation: CdkOperation,
-    options: CdkRunOptions,
-  ): AsyncGenerator<ProjectEvent, void> {
+  // Drives a CDK operation, recording everything it reports in the log file.
+  //
+  // The toolkit narrates a deploy in hundreds of lines, so none of it reaches the
+  // screen: the steps above are what a deploy shows, and the command points at the
+  // log for the detail. Each message keeps the toolkit's own severity, so a failure
+  // reads as an error in the log rather than as one debug line among thousands.
+  private async runCdkOperation(operation: CdkOperation, options: CdkRunOptions): Promise<void> {
+    const logger = this.logger.child({ cdk: operation.kind });
     for await (const event of this.cdk(operation, options)) {
-      this.logger.debug(event.message);
-      if (event.level === "debug" || event.level === "trace") continue;
-      yield { kind: "output", message: event.message };
+      logger[CDK_LOG_LEVELS[event.level]](event.message);
     }
   }
 

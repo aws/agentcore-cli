@@ -1,4 +1,4 @@
-import { type Logger } from "../logging";
+import { type Logger, type LoggerBindings } from "../logging";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { waitFor } from "./timing";
@@ -36,6 +36,40 @@ export function createSilentLogger(): Logger {
     child: () => silent,
   };
   return silent;
+}
+
+/** A line as a recording logger captured it. */
+export interface RecordedLog {
+  level: "debug" | "info" | "warn" | "error";
+  message: string;
+  /** The bindings in effect on the child it was logged through. */
+  bindings: LoggerBindings;
+}
+
+/**
+ * Create a logger that records what was logged instead of writing it anywhere, so a
+ * test can assert on the level and bindings a line carries rather than only its text.
+ */
+export function createRecordingLogger(): { logger: Logger; logs: RecordedLog[] } {
+  const logs: RecordedLog[] = [];
+
+  const at = (bindings: LoggerBindings): Logger => {
+    // Joined with a space, as the file logger joins the arguments it is given.
+    const record =
+      (level: RecordedLog["level"]) =>
+      (...messages: string[]) =>
+        logs.push({ level, message: messages.join(" "), bindings });
+
+    return {
+      debug: record("debug"),
+      info: record("info"),
+      warn: record("warn"),
+      error: record("error"),
+      child: (childBindings) => at({ ...bindings, ...childBindings }),
+    };
+  };
+
+  return { logger: at({}), logs };
 }
 
 /** A predicate over parsed log lines with an optional exact match count. */

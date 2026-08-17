@@ -1,6 +1,7 @@
 import z from "zod";
 import { createHandler, flag, ProjectKey } from "../../../router";
 import type { AppIO } from "../../../io";
+import { detailedLogLocation } from "../../../logging";
 import { RegionKey } from "../../keys";
 import type { ProjectManager } from "../types";
 
@@ -29,16 +30,23 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       // withProject has already resolved the enclosing project.
       const project = ctx.require(ProjectKey);
 
-      // Progress and the CDK toolkit's own output both go to stderr, keeping stdout
-      // for machine output.
-      for await (const event of config.projectManager.deploy(project, {
-        region: ctx.require(RegionKey),
-        skipBootstrap: flags["skip-bootstrap"],
-        target: flags.target,
-      })) {
-        config.io.stderr.write(`${event.message}\n`);
-      }
+      // Progress goes to stderr, keeping stdout for machine output. The CDK toolkit's
+      // own narration goes to the log instead, so a deploy shows its steps and
+      // nothing else.
+      try {
+        for await (const event of config.projectManager.deploy(project, {
+          region: ctx.require(RegionKey),
+          skipBootstrap: flags["skip-bootstrap"],
+          target: flags.target,
+        })) {
+          config.io.stderr.write(`${event.message}\n`);
+        }
 
-      config.io.stderr.write(`Deployed project '${project.name}'\n`);
+        config.io.stderr.write(`Deployed project '${project.name}'\n`);
+      } finally {
+        // Printed however the deploy ended: a failed one is when the detail the log
+        // holds matters most, and the error itself surfaces after this line.
+        config.io.stderr.write(`Detailed logs: ${detailedLogLocation()}\n`);
+      }
     },
   });

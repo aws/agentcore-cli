@@ -35,15 +35,16 @@ export type CreateProjectInput = {
 /**
  * Something worth showing the user while a long-running project operation runs.
  *
- * A union rather than two optional fields, so an event is always exactly one of the
- * two and a consumer that only writes text can read `message` without checking
- * which it got.
+ * Discriminated on `kind`, of which there is one today: the tools an operation
+ * drives report to the log rather than to the screen, so what a command shows is
+ * its own steps. A later variant can carry fields a step has no use for without
+ * changing what a consumer of `step` reads.
  */
-export type ProjectEvent =
+export type ProjectEvent = {
   /** A progress step, in this CLI's own wording. */
-  | { kind: "step"; message: string }
-  /** A line of output, forwarded as the tool that produced it phrased it. */
-  | { kind: "output"; message: string };
+  kind: "step";
+  message: string;
+};
 
 export type DeployProjectOptions = {
   /** The resolved AWS region, forwarded to the CDK subprocesses. */

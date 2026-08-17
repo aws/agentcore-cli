@@ -16,7 +16,7 @@ import {
 } from "./core/factories";
 import { createRootHandler } from "./handlers";
 import { FsReadWriteJson } from "./io";
-import { createFileLogger, LOG_LEVEL } from "./logging";
+import { createFileLogger, logFilePrefix, LOG_LEVEL } from "./logging";
 import { runWithExitCode } from "./runnable";
 import { DefaultGlobalConfigAccessor } from "./globalConfig";
 import { DefaultTelemetryClient } from "./telemetry";
@@ -31,7 +31,8 @@ process.exit(
     const cliSessionId = crypto.randomUUID();
 
     const rootLogger = createFileLogger({
-      filePath: join(homedir(), ".agentcore", "logs", "output"),
+      // The standard location, shared with the commands that print where it is.
+      filePath: logFilePrefix(),
       logLevel: LOG_LEVEL.DEBUG,
       bindings: { cliSessionId, version: PACKAGE_VERSION },
     });
