@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { parseEnv } from "node:util";
 import { InputValidationError, InvalidEnvironmentError } from "../../errors";
 import type { DevEvent, DevServerInput } from "../../handlers/project/dev/types";
 import {
@@ -17,6 +18,7 @@ import { ContainerDevRunner } from "./container";
 type ProcessCall = {
   command: string[];
   options: StreamProcessOptions;
+  envFile?: { path: string; contents: string; mode: number };
 };
 
 type StreamBehavior = (
@@ -67,7 +69,14 @@ function harness(
 ) {
   const calls: ProcessCall[] = [];
   const fakeStreamProcess: ProcessStreamer = async function* (command, options) {
-    calls.push({ command, options });
+    const call: ProcessCall = { command, options };
+    calls.push(call);
+    const envFileFlag = command.indexOf("--env-file");
+    if (envFileFlag >= 0) {
+      const path = command[envFileFlag + 1]!;
+      const [contents, metadata] = await Promise.all([readFile(path, "utf8"), stat(path)]);
+      call.envFile = { path, contents, mode: metadata.mode & 0o777 };
+    }
     if (config.stream) yield* config.stream(command, options);
   };
   return {
@@ -161,7 +170,10 @@ describe("ContainerDevRunner", () => {
       ".",
     ]);
     expect(build.options.cwd).toBe(root);
-    expect(build.options.env).toBe(process.env);
+    expect(build.options.env).toEqual({
+      AWS_ACCESS_KEY_ID: "test-access-key",
+      AWS_SECRET_ACCESS_KEY: "test-secret-key",
+    });
     expect(build.options.redactedCommand).toContain("AGENT_NAME=<redacted>");
     expect(build.options.redactedCommand).toContain("TARGET=<redacted>");
     expect(build.options.redactedCommand?.join(" ")).not.toContain("hello-world");
@@ -195,20 +207,15 @@ describe("ContainerDevRunner", () => {
       containerName(root),
       "-p",
       `127.0.0.1:3000:${containerPort}`,
-      "-e",
-      "AWS_ACCESS_KEY_ID",
-      "-e",
-      "AWS_SECRET_ACCESS_KEY",
-      "-e",
-      "API_KEY",
-      "-e",
-      "PORT",
-      "-e",
-      "LOCAL_DEV",
-      ...(protocol === "MCP" ? ["-e", "FASTMCP_PORT"] : []),
+      "--env-file",
+      run.envFile!.path,
       imageTag(root),
     ]);
-    expect(run.options.env).toMatchObject({
+    expect(run.options.env).toEqual({
+      AWS_ACCESS_KEY_ID: "test-access-key",
+      AWS_SECRET_ACCESS_KEY: "test-secret-key",
+    });
+    expect(parseEnv(run.envFile!.contents)).toEqual({
       AWS_ACCESS_KEY_ID: "test-access-key",
       AWS_SECRET_ACCESS_KEY: "test-secret-key",
       API_KEY: "super-secret",
@@ -216,6 +223,8 @@ describe("ContainerDevRunner", () => {
       LOCAL_DEV: "1",
       ...(protocol === "MCP" ? { FASTMCP_PORT: "8000" } : {}),
     });
+    if (process.platform !== "win32") expect(run.envFile!.mode).toBe(0o600);
+    await expect(readFile(run.envFile!.path, "utf8")).rejects.toThrow();
     expect(run.command.join(" ")).not.toContain("super-secret");
     expect(run.command.join(" ")).not.toContain("test-secret-key");
   });
@@ -235,9 +244,9 @@ describe("ContainerDevRunner", () => {
 
     const run = commandCall(calls, "run");
     expect(run.command).toContain(`${awsDirectory}:/aws-config:ro`);
-    expect(run.command).toContain("AWS_PROFILE");
-    expect(run.command).toContain("AWS_CONFIG_FILE");
-    expect(run.options.env).toMatchObject({
+    expect(run.command).not.toContain("AWS_PROFILE");
+    expect(run.command).not.toContain("AWS_CONFIG_FILE");
+    expect(parseEnv(run.envFile!.contents)).toMatchObject({
       AWS_PROFILE: "sandbox",
       AWS_REGION: "us-east-1",
       AWS_CONFIG_FILE: "/aws-config/config",
@@ -299,7 +308,7 @@ describe("ContainerDevRunner", () => {
     );
   });
 
-  test("supplies app variable values through the container CLI environment", async () => {
+  test("keeps app variables out of the container CLI control environment", async () => {
     const projectRuntime = runtime();
     const root = await projectRoot(projectRuntime);
     const { calls, runner } = harness();
@@ -309,9 +318,10 @@ describe("ContainerDevRunner", () => {
     await collect(runner.run(runInput));
 
     const run = commandCall(calls, "run");
-    expect(run.command).toContain("DOCKER_HOST");
+    expect(run.command).not.toContain("DOCKER_HOST");
     expect(run.command.join(" ")).not.toContain("tcp://application-value");
-    expect(run.options.env?.DOCKER_HOST).toBe("tcp://application-value");
+    expect(run.options.env?.DOCKER_HOST).toBeUndefined();
+    expect(parseEnv(run.envFile!.contents).DOCKER_HOST).toBe("tcp://application-value");
   });
 
   test("selects the first tool that supports container builds", async () => {

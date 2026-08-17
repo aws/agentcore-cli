@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
+import { InputValidationError } from "../../errors";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import type { DevEvent, DevServerInput } from "../../handlers/project/dev/types";
 import type { ProcessEvent, ProcessStreamer, StreamProcessOptions } from "../../io";
@@ -21,7 +22,11 @@ afterEach(async () => {
 });
 
 function runtime(
-  overrides: { entrypoint?: string; protocol?: ProjectRuntime["protocol"] } = {},
+  overrides: {
+    codeLocation?: string;
+    entrypoint?: string;
+    protocol?: ProjectRuntime["protocol"];
+  } = {},
 ): ProjectRuntime {
   return {
     name: "hello_world",
@@ -37,6 +42,12 @@ async function projectRoot(withNodeModules = false): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "agentcore-codezip-"));
   tempDirectories.push(root);
   await mkdir(join(root, "app", "hello-world"), { recursive: true });
+  await mkdir(join(root, "app", "hello-world", "src"));
+  await Promise.all(
+    ["main.py", "index.js", "src/main.py", "src/index.ts"].map((path) =>
+      writeFile(join(root, "app", "hello-world", path), ""),
+    ),
+  );
   if (withNodeModules) {
     await mkdir(join(root, "app", "hello-world", "node_modules"));
   }
@@ -79,6 +90,35 @@ describe("CodeZipDevRunner", () => {
     await expect(collect(harness().runner.run(input(root, runtime())))).rejects.toThrow(
       /runtime code directory not found/,
     );
+  });
+
+  test("rejects code and entrypoint paths outside the project root", async () => {
+    const root = await projectRoot();
+    const outside = await mkdtemp(join(tmpdir(), "agentcore-codezip-outside-"));
+    tempDirectories.push(outside);
+    await writeFile(join(outside, "main.py"), "");
+    await symlink(outside, join(root, "linked"), process.platform === "win32" ? "junction" : "dir");
+    await symlink(
+      outside,
+      join(root, "app", "hello-world", "linked"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const directory = join(root, "app", "hello-world");
+
+    const unsafeRuntimes = [
+      runtime({ codeLocation: relative(root, outside) }),
+      runtime({ codeLocation: "linked" }),
+      runtime({ entrypoint: relative(directory, join(outside, "main.py")) }),
+      runtime({ entrypoint: join("linked", "main.py") }),
+    ];
+
+    for (const projectRuntime of unsafeRuntimes) {
+      const { calls, runner } = harness();
+      const result = collect(runner.run(input(root, projectRuntime)));
+      await expect(result).rejects.toBeInstanceOf(InputValidationError);
+      await expect(result).rejects.toThrow("must be within the project root");
+      expect(calls).toHaveLength(0);
+    }
   });
 
   test("runs HTTP Python entrypoints with uvicorn", async () => {

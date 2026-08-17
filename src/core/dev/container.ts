@@ -1,7 +1,8 @@
-import { createHash } from "node:crypto";
-import { existsSync, realpathSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, writeFileSync } from "node:fs";
+import { rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { InputValidationError, InvalidEnvironmentError } from "../../errors";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import {
@@ -11,6 +12,7 @@ import {
   type ProcessStreamer,
   type StreamProcessOptions,
 } from "../../io";
+import { isDirectory, isFile, resolvePathWithinProject } from "./path";
 import { DEV_PORTS } from "./port";
 
 const CONTAINER_TOOLS = ["docker", "podman", "finch"] as const;
@@ -81,17 +83,7 @@ export class ContainerDevRunner implements DevRunner {
       throw new InputValidationError(`container build context directory not found: ${context}`);
     }
 
-    const canonicalContext = realpathSync(context);
-    const relativeContext = relative(realpathSync(input.projectRoot), canonicalContext);
-    if (
-      relativeContext === ".." ||
-      relativeContext.startsWith(`..${sep}`) ||
-      isAbsolute(relativeContext)
-    ) {
-      throw new InputValidationError(
-        `container build context must be within the project root: ${canonicalContext}`,
-      );
-    }
+    resolvePathWithinProject(input.projectRoot, context, "container build context");
 
     const dockerfile = input.runtime.dockerfile ?? DOCKERFILE_NAME;
     const dockerfilePath = join(context, dockerfile);
@@ -139,7 +131,7 @@ export class ContainerDevRunner implements DevRunner {
     const buildCommand = [tool, "build", "-f", dockerfile, "-t", imageTag, ...buildArgFlags, "."];
     const buildOptions: StreamProcessOptions = {
       cwd: context,
-      env: process.env,
+      env: this.processEnv,
       redactedCommand: [
         tool,
         "build",
@@ -173,7 +165,16 @@ export class ContainerDevRunner implements DevRunner {
       forwardedEnv.AWS_CONFIG_FILE = "/aws-config/config";
       forwardedEnv.AWS_SHARED_CREDENTIALS_FILE = "/aws-config/credentials";
     }
-    const envFlags = Object.keys(forwardedEnv).flatMap((key) => ["-e", key]);
+    const envFile = join(tmpdir(), `agentcore-dev-${randomUUID()}.env`);
+    try {
+      await writeFile(envFile, serializeEnvironment(forwardedEnv), {
+        flag: "wx",
+        mode: 0o600,
+      });
+    } catch (error) {
+      await rm(envFile, { force: true });
+      throw error;
+    }
     const runCommand = [
       tool,
       "run",
@@ -183,7 +184,8 @@ export class ContainerDevRunner implements DevRunner {
       "-p",
       `127.0.0.1:${input.port}:${containerPort}`,
       ...awsMount,
-      ...envFlags,
+      "--env-file",
+      envFile,
       imageTag,
     ];
 
@@ -191,11 +193,15 @@ export class ContainerDevRunner implements DevRunner {
     try {
       yield* this.streamProcess(runCommand, {
         cwd: context,
-        env: { ...this.processEnv, ...forwardedEnv },
+        env: this.processEnv,
         signal: input.signal,
       });
     } finally {
-      await this.removeContainer(tool, containerName, context);
+      try {
+        await this.removeContainer(tool, containerName, context);
+      } finally {
+        await rm(envFile, { force: true });
+      }
     }
   }
 
@@ -225,6 +231,7 @@ export class ContainerDevRunner implements DevRunner {
     try {
       for await (const _event of this.streamProcess([tool, "rm", "-f", containerName], {
         cwd,
+        env: this.processEnv,
         signal: AbortSignal.timeout(CLEANUP_TIMEOUT_MS),
       })) {
         // Best-effort cleanup intentionally discards command output.
@@ -235,27 +242,26 @@ export class ContainerDevRunner implements DevRunner {
   }
 }
 
-function isDirectory(path: string): boolean {
-  try {
-    return statSync(path).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-function isFile(path: string): boolean {
-  try {
-    return statSync(path).isFile();
-  } catch {
-    return false;
-  }
-}
-
 function ensureBuildContextDockerignore(context: string): string | undefined {
   const dockerignore = join(context, ".dockerignore");
   if (existsSync(dockerignore)) return undefined;
   writeFileSync(dockerignore, BUILD_CONTEXT_DOCKERIGNORE);
   return dockerignore;
+}
+
+function serializeEnvironment(env: Record<string, string>): string {
+  return (
+    Object.entries(env)
+      .map(([key, value]) => {
+        if (/[\r\n]/.test(value)) {
+          throw new InputValidationError(
+            `container environment variable '${key}' cannot contain a newline`,
+          );
+        }
+        return `${key}=${value}`;
+      })
+      .join("\n") + "\n"
+  );
 }
 
 function hashString(value: string): string {
