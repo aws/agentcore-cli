@@ -117,8 +117,16 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
       const env = inputEnvironment ? toEnvironment(inputEnvironment) : undefined;
       const artifact = inputArtifact ? toEnvironmentArtifact(inputArtifact) : undefined;
 
+      const inputVpcId = flags["vpc-id"];
+
       if (inputArtifact?.containerConfiguration?.containerUri && flags.dockerfile)
         throw new InputValidationError(`containerUri and dockerfile are mutually exclusive`);
+
+      if (inputVpcId && !env?.networkConfig) {
+        throw new InputValidationError(
+          "--vpc-id requires --environment with VPC network configuration",
+        );
+      }
 
       const harnessConfig = {
         name: flags.name,
@@ -144,7 +152,7 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
         tags: parseJsonFlag<Record<string, string>>("tags", flags["tags"]),
         networkMode: env?.networkMode,
         networkConfig: env?.networkConfig
-          ? { ...env.networkConfig, vpcId: flags["vpc-id"] }
+          ? { ...env.networkConfig, ...(inputVpcId ? { vpcId: inputVpcId } : {}) }
           : undefined,
         lifecycleConfig: env?.lifecycleConfig,
         sessionStoragePath: env?.sessionStoragePath,

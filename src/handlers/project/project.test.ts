@@ -652,6 +652,10 @@ describe("project add harness", () => {
         "Dockerfile",
       ],
     ],
+    [
+      "--vpc-id requires --environment with VPC network configuration",
+      ["--name", "x", "--vpc-id", "vpc-0123456789abcdef0"],
+    ],
   ])("%s", async (_label, flags) => {
     await inProject();
     await expect(run(["add", "harness", ...flags])).rejects.toBeInstanceOf(InputValidationError);
