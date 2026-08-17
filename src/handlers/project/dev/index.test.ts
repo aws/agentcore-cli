@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { InputValidationError, ResourceNotFoundError } from "../../../errors";
-import type { PortChecker } from "../../../io";
+import type { HttpRequestHandler, PortChecker } from "../../../io";
 import { ProjectKey, ValueContext } from "../../../router";
 import { testIO } from "../../../testing";
 import { JsonRendererKey } from "../../../tui";
@@ -51,6 +51,7 @@ function fakeCollector() {
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://127.0.0.1:43180/v1/traces",
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
     },
+    traces: { list: async () => [], get: async () => undefined },
     close: async () => {
       state.closed++;
     },
@@ -64,6 +65,7 @@ function fakeCollector() {
 
 type HarnessOptions = {
   project?: Project;
+  tty?: boolean;
   codeZip?: ReturnType<typeof captureRunner>;
   container?: ReturnType<typeof captureRunner>;
   checkPort?: PortChecker;
@@ -73,6 +75,8 @@ type HarnessOptions = {
 
 function harness(options: HarnessOptions = {}) {
   const io = testIO();
+  const ui = { starts: [] as { port?: number }[], opened: [] as string[], closed: 0 };
+  let capturedHandler: HttpRequestHandler | undefined;
   const codeZip = options.codeZip ?? captureRunner();
   const container = options.container ?? captureRunner();
   const collector = fakeCollector();
@@ -88,6 +92,21 @@ function harness(options: HarnessOptions = {}) {
       }),
     checkPort: options.checkPort ?? (async () => true),
     startTraceCollector: collector.start,
+    startServer: async (handler, serverOptions) => {
+      capturedHandler = handler;
+      ui.starts.push({ port: serverOptions?.port });
+      return {
+        port: serverOptions?.port ?? 8081,
+        close: async () => {
+          ui.closed++;
+        },
+      };
+    },
+    openBrowser: async (url) => {
+      ui.opened.push(url);
+    },
+    inspectorAssets: { read: async () => undefined },
+    isInteractive: () => options.tty ?? false,
   });
   const ctx = ValueContext.EmptyContext()
     .withValue(ProjectKey, options.project ?? project(runtime()))
@@ -104,8 +123,10 @@ function harness(options: HarnessOptions = {}) {
     collector,
     environmentInputs,
     io,
-    run: (flags: { agent?: string; port?: number; traces?: boolean } = {}) =>
-      handler.handle(ctx, { traces: true, ...flags }, {}),
+    ui,
+    inspectorHandler: () => capturedHandler,
+    run: (flags: { agent?: string; port?: number; traces?: boolean; ui?: boolean } = {}) =>
+      handler.handle(ctx, { traces: true, ui: false, ...flags }, {}),
   };
 }
 
@@ -222,6 +243,90 @@ describe("project dev trace collection", () => {
 
     await expect(subject.run()).rejects.toThrow("runner failed");
     expect(subject.collector.state.closed).toBe(1);
+  });
+});
+
+describe("project dev Inspector UI mode", () => {
+  // Wraps the run promise in an object so awaiting this helper does not
+  // flatten it into "wait for the whole dev command to exit".
+  async function runUi(subject: ReturnType<typeof harness>, flags: Record<string, unknown> = {}) {
+    const pending = subject.run({ ui: true, ...flags } as Parameters<typeof subject.run>[0]);
+    pending.catch(() => undefined);
+    await Bun.sleep(5); // let the handler start the UI server and block on events
+    return { pending };
+  }
+
+  test("starts the Inspector, prints the URL, and opens the browser on a TTY", async () => {
+    const subject = harness({ tty: true });
+    const { pending } = await runUi(subject);
+
+    expect(subject.ui.starts).toEqual([{ port: 8081 }]);
+    expect(subject.io.stderr()).toContain("Agent Inspector running at http://127.0.0.1:8081");
+    expect(subject.ui.opened).toEqual(["http://127.0.0.1:8081"]);
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+    expect(subject.collector.state.closed).toBe(1);
+  });
+
+  test("never opens a browser without a TTY or in JSON mode", async () => {
+    for (const options of [{}, { tty: true, json: true }] as const) {
+      const subject = harness(options);
+      const { pending } = await runUi(subject);
+      expect(subject.ui.opened).toEqual([]);
+      process.emit("SIGINT", "SIGINT");
+      await pending.catch(() => undefined);
+    }
+  });
+
+  test("serves the Inspector API: status lists every runtime, none started", async () => {
+    const subject = harness({
+      project: project(runtime("orders"), runtime("support", "Container")),
+    });
+    const { pending } = await runUi(subject);
+
+    const response = await subject.inspectorHandler()!({
+      method: "GET",
+      url: "/api/status",
+      headers: { host: "127.0.0.1:8081" },
+      body: Buffer.alloc(0),
+    });
+    const status = JSON.parse(String(response.body)) as {
+      agents: { name: string }[];
+      running: unknown[];
+    };
+    expect(status.agents.map((agent) => agent.name)).toEqual(["orders", "support"]);
+    expect(status.running).toEqual([]);
+    expect(subject.codeZip.inputs).toHaveLength(0);
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
+  test("an explicit --ui-port that is taken fails fast", async () => {
+    const subject = harness({ checkPort: async () => false });
+    await expect(subject.run({ ui: true, "ui-port": 9999 } as never)).rejects.toThrow(
+      "Port 9999 is already in use",
+    );
+  });
+
+  test("--agent narrows the supervised set", async () => {
+    const subject = harness({
+      project: project(runtime("orders"), runtime("support", "Container")),
+    });
+    const { pending } = await runUi(subject, { agent: "support" });
+
+    const response = await subject.inspectorHandler()!({
+      method: "GET",
+      url: "/api/status",
+      headers: { host: "127.0.0.1:8081" },
+      body: Buffer.alloc(0),
+    });
+    const status = JSON.parse(String(response.body)) as { agents: { name: string }[] };
+    expect(status.agents.map((agent) => agent.name)).toEqual(["support"]);
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
   });
 });
 

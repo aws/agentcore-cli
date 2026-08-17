@@ -1,8 +1,9 @@
 import { Router } from "../../router";
-import { checkPort, type AppIO } from "../../io";
+import { checkPort, openBrowser, startHttpServer, type AppIO } from "../../io";
 import { CodeZipDevRunner } from "../../core/dev/codezip";
 import { ContainerDevRunner } from "../../core/dev/container";
 import { startOtelCollector } from "../../core/dev/otel/collector";
+import { InspectorAssets } from "../../core/dev/inspectorAssets";
 import { withProject } from "../../middleware";
 import { createCreateProjectHandler } from "./create";
 import { createRemoveProjectHandler } from "./remove";
@@ -38,6 +39,10 @@ export function createProjectHandler(config: ProjectHandlerConfig): Router {
         loadDevEnvironment,
         checkPort,
         startTraceCollector: startOtelCollector,
+        startServer: startHttpServer,
+        openBrowser,
+        inspectorAssets: new InspectorAssets(),
+        isInteractive: () => process.stdout.isTTY === true,
       }),
     ),
   );

@@ -3,6 +3,7 @@
 // The version is pinned: newer releases dropped the generated request decoders.
 import root from "@opentelemetry/otlp-transformer/build/src/generated/root";
 import { type HttpRequest, type HttpResponse, startHttpServer } from "../../../io";
+import { InspectorTraceSource } from "../inspector/traces";
 import { TraceStore } from "./store";
 import type { OtlpPayload } from "./types";
 
@@ -37,6 +38,8 @@ export interface OtelCollector {
   port: number;
   /** Reads the traces this collector persists. */
   store: TraceStore;
+  /** Inspector-shaped reads over the same store. */
+  traces: InspectorTraceSource;
   /** Environment variables that point an agent's OTEL SDK at this collector. */
   envVars: Record<string, string>;
   /** Stops the receiver. Also invoked by the start signal, if one was given. */
@@ -63,7 +66,13 @@ export async function startOtelCollector(
     signal: options.signal,
   });
 
-  return { port: server.port, store, envVars: otelEnvVars(server.port), close: server.close };
+  return {
+    port: server.port,
+    store,
+    traces: new InspectorTraceSource(store),
+    envVars: otelEnvVars(server.port),
+    close: server.close,
+  };
 }
 
 async function route(request: HttpRequest, store: TraceStore): Promise<HttpResponse> {

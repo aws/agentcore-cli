@@ -22,6 +22,17 @@ export interface DevTraceCollector {
   port: number;
   /** Environment variables that point an agent's OTEL SDK at the receiver. */
   envVars: Record<string, string>;
+  /** Reads the collected traces, shaped for the Inspector frontend. */
+  traces: {
+    list(options?: {
+      serviceName?: string;
+      startTime?: number;
+      endTime?: number;
+    }): Promise<unknown[]>;
+    get(
+      traceId: string,
+    ): Promise<{ resourceSpans?: unknown[]; resourceLogs?: unknown[] } | undefined>;
+  };
   close(): Promise<void>;
 }
 
