@@ -86,6 +86,31 @@ export const LlmAsAJudgeConfigSchema = z.object({
 export type LlmAsAJudgeConfig = z.infer<typeof LlmAsAJudgeConfigSchema>;
 
 // ============================================================================
+// Derived Evaluator Config
+// ============================================================================
+
+// A derived evaluator reuses a managed base evaluator's logic (prompt + scoring)
+// and runs it on the customer's own model. The base is a managed metric — a
+// third-party library metric (ThirdParty.<Provider>.<Metric>) or a built-in
+// (Builtin.<Metric>). The base owns the prompt and scoring; the customer supplies
+// only the model. The evaluator's `level` must match the base's level (resolved at
+// add time via GetEvaluator), so it lives on the top-level Evaluator, not here.
+export const BASE_EVALUATOR_ID_PATTERN = /^(ThirdParty|Builtin)\.[A-Za-z0-9._-]+$/;
+
+export const DerivedEvaluatorConfigSchema = z.object({
+  baseEvaluatorId: z
+    .string()
+    .min(1)
+    .regex(
+      BASE_EVALUATOR_ID_PATTERN,
+      'Must be a managed base id: "ThirdParty.<Provider>.<Metric>" or "Builtin.<Metric>"'
+    ),
+  model: BedrockModelIdSchema,
+});
+
+export type DerivedEvaluatorConfig = z.infer<typeof DerivedEvaluatorConfigSchema>;
+
+// ============================================================================
 // Code-Based Evaluator Config
 // ============================================================================
 
@@ -125,9 +150,16 @@ export const EvaluatorConfigSchema = z
   .object({
     llmAsAJudge: LlmAsAJudgeConfigSchema.optional(),
     codeBased: CodeBasedConfigSchema.optional(),
+    derived: DerivedEvaluatorConfigSchema.optional(),
   })
-  .refine(config => Boolean(config.llmAsAJudge) !== Boolean(config.codeBased), {
-    message: 'Config must have either llmAsAJudge or codeBased, not both',
+  .superRefine((config, ctx) => {
+    const arms = [config.llmAsAJudge, config.codeBased, config.derived].filter(Boolean).length;
+    if (arms !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Config must have exactly one of llmAsAJudge, codeBased, or derived',
+      });
+    }
   });
 
 export type EvaluatorConfig = z.infer<typeof EvaluatorConfigSchema>;
