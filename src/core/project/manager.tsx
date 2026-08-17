@@ -262,6 +262,11 @@ export class FsProjectManager implements ProjectManager {
     // The generated package.json defines `cdk` as "npm run build && cdk", so this
     // single command compiles the app and then synthesizes it. Synthesis needs no
     // AWS credentials: each stack's environment comes from aws-targets.json.
+    //
+    // Build deliberately does not require a deployment target. A freshly created
+    // project has none, and building is how the user first typechecks their agent, so
+    // the generated app synthesizes one environment-agnostic stack when the list is
+    // empty. Only deploying somewhere needs a real target.
     yield { message: "Synthesizing CloudFormation templates" };
     await this.run(["npm", "run", "cdk", "--", "synth", "--quiet"], cdkDir);
   }
