@@ -500,22 +500,9 @@ describe("project deploy", () => {
     );
   });
 
-  test("--skip-bootstrap deploys without bootstrapping", async () => {
-    const projectRoot = await inProject();
-    const { io, core } = await run(["deploy", "--skip-bootstrap"]);
-
-    const cdkDir = join(projectRoot, "agentcore", "cdk");
-    expect(core.projectCommands).toEqual([{ command: SYNTH(cdkDir), cwd: cdkDir }]);
-    expect(core.cdkRuns.map(({ operation }) => operation)).toEqual([
-      { kind: "deploy", stackName: STACK("default") },
-    ]);
-    expect(io.stderr()).not.toContain("Bootstrapping");
-    expect(io.stderr()).toContain("Deployed project 'MyAgent'");
-  });
-
   test("keeps the CDK toolkit's own messages off screen, naming the log instead", async () => {
     await inProject();
-    const { io } = await run(["deploy", "--skip-bootstrap"], (operation, emit) => {
+    const { io } = await run(["deploy"], (operation, emit) => {
       if (operation.kind === "deploy") {
         emit({ level: "info", message: "example-stack | 1/2 | CREATE_IN_PROGRESS" });
       }
@@ -533,7 +520,7 @@ describe("project deploy", () => {
       if (operation.kind === "deploy") throw new Error("cdk deploy exploded");
     });
 
-    await expect(route(["deploy", "--skip-bootstrap"])).rejects.toThrow("cdk deploy exploded");
+    await expect(route(["deploy"])).rejects.toThrow("cdk deploy exploded");
 
     // The failure is when the log matters most: it holds the toolkit's account of
     // what went wrong, which the error itself does not carry.

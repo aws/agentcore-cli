@@ -32,25 +32,16 @@ export type CreateProjectInput = {
   skipGit?: boolean;
 };
 
-/**
- * Something worth showing the user while a long-running project operation runs.
- *
- * Discriminated on `kind`, of which there is one today: the tools an operation
- * drives report to the log rather than to the screen, so what a command shows is
- * its own steps. A later variant can carry fields a step has no use for without
- * changing what a consumer of `step` reads.
- */
+/** Progress worth showing while a long-running project operation runs. */
 export type ProjectEvent = {
-  /** A progress step, in this CLI's own wording. */
+  /** Discriminated so a later variant can carry fields a step has no use for. */
   kind: "step";
   message: string;
 };
 
-export type DeployProjectOptions = {
-  /** The resolved AWS region, forwarded to the CDK subprocesses. */
+export type DeployProjectInput = {
+  /** The resolved AWS region the deployment tooling makes its own calls in. */
   region: string;
-  /** Skip bootstrapping the target environment before deploying. */
-  skipBootstrap: boolean;
   /** Name of the aws-targets.json entry to deploy. */
   target: string;
 };
@@ -77,11 +68,11 @@ export interface ProjectManager {
   /** Scaffold a new AgentCore project from the given template. */
   create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project>;
 
-  /** Compile the project's CDK app and synthesize its CloudFormation templates. */
+  /** Build the project's deployable artifacts with whatever backend owns them. */
   build(project: Project): AsyncGenerator<ProjectEvent, void>;
 
-  /** Build the project, then deploy the synthesized stacks to its deployment targets. */
-  deploy(project: Project, options: DeployProjectOptions): AsyncGenerator<ProjectEvent, void>;
+  /** Build the project, then deploy it to one of its deployment targets. */
+  deploy(project: Project, input: DeployProjectInput): AsyncGenerator<ProjectEvent, void>;
 
   /** Locate an existing AgentCore project. Returns undefined if no project can be found. */
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;

@@ -144,11 +144,11 @@ import type {
 import { isTerminalStatus } from "../core/batchEvaluationResults";
 import { abortable } from "../core/abortable";
 import type { CoreOptions } from "../core/types";
-import type { CdkEvent, CdkOperation, CdkRunOptions } from "../io";
+import type { CdkEvent, CdkOperation, CdkRunOptions, ProcessRunner } from "../io";
 import type { ProjectManager } from "../handlers/project/types";
 import type { Logger } from "../logging";
 import { createSilentLogger } from "./logging";
-import { FsProjectManager } from "../core/project";
+import { CdkBackend, FsProjectManager } from "../core/project";
 
 // TestCoreClient is a hand-controllable `Core` for tests. It implements the same
 // interface the real CoreClient satisfies, so it drops straight into
@@ -1964,26 +1964,36 @@ export class TestCoreClient implements Core {
     // A generator cannot be an arrow function, so close over the array instead of
     // reaching for `this` inside it.
     const cdkRuns = this.cdkRuns;
+    const logger = options?.logger ?? createSilentLogger();
+    const runner: ProcessRunner = async (command, { cwd }) => {
+      this.projectCommands.push({ command, cwd });
+    };
+    const checkTool = async () => {}; // CI hosts don't have uv installed
     this.projectManager = new FsProjectManager({
-      logger: options?.logger ?? createSilentLogger(),
-      runner: async (command, { cwd }) => {
-        this.projectCommands.push({ command, cwd });
+      logger,
+      runner,
+      checkTool,
+      backends: {
+        CDK: new CdkBackend({
+          logger,
+          runner,
+          checkTool,
+          cdk: async function* (operation, runOptions) {
+            cdkRuns.push({ operation, options: runOptions });
+            const emitted: CdkEvent[] = [];
+            let failure: unknown;
+            try {
+              options?.onCdkOperation?.(operation, (event) => emitted.push(event));
+            } catch (error) {
+              failure = error;
+            }
+            // Emit before throwing, as the real runner does: the output explaining a
+            // failure is only useful if the consumer sees it.
+            yield* emitted;
+            if (failure) throw failure;
+          },
+        }),
       },
-      cdk: async function* (operation, runOptions) {
-        cdkRuns.push({ operation, options: runOptions });
-        const emitted: CdkEvent[] = [];
-        let failure: unknown;
-        try {
-          options?.onCdkOperation?.(operation, (event) => emitted.push(event));
-        } catch (error) {
-          failure = error;
-        }
-        // Emit before throwing, as the real runner does: the output explaining a
-        // failure is only useful if the consumer sees it.
-        yield* emitted;
-        if (failure) throw failure;
-      },
-      checkTool: async () => {}, // CI hosts don't have uv installed
     });
   }
 }
