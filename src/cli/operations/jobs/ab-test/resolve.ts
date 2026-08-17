@@ -8,6 +8,7 @@
 import type { AgentCoreProjectSpec, DeployedResourceState } from '../../../../schema';
 import { getCredentialProvider } from '../../../aws/account';
 import type { ABTestEvaluationConfig, ABTestVariant } from '../../../aws/agentcore-ab-tests';
+import { validateIamRoleTrustPolicy } from '../../../aws/iam';
 import { arnPrefix } from '../../../aws/partition';
 import {
   CreateRoleCommand,
@@ -61,7 +62,7 @@ export async function getOrCreateABTestRole(options: CreateABTestRoleOptions): P
   const accountId = gatewayArn.split(':')[4] ?? '*';
   const roleName = generateRoleName(projectName, testName);
 
-  const trustPolicy = JSON.stringify({
+  const trustPolicyDocument = {
     Version: '2012-10-17',
     Statement: [
       {
@@ -74,7 +75,8 @@ export async function getOrCreateABTestRole(options: CreateABTestRoleOptions): P
         },
       },
     ],
-  });
+  };
+  const trustPolicy = JSON.stringify(trustPolicyDocument);
 
   let roleArn: string;
   try {
@@ -102,6 +104,12 @@ export async function getOrCreateABTestRole(options: CreateABTestRoleOptions): P
       if (!roleArn) {
         throw new Error(`Role "${roleName}" already exists but ARN could not be retrieved`);
       }
+      validateIamRoleTrustPolicy(
+        existing.Role?.AssumeRolePolicyDocument,
+        trustPolicyDocument,
+        roleName,
+        'Delete the conflicting role or provide a customer-managed role with --role-arn.'
+      );
     } else {
       throw err;
     }
