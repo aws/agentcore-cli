@@ -22,7 +22,11 @@ function runtime(name = "orders", build: ProjectRuntime["build"] = "CodeZip"): P
 }
 
 function project(...runtimes: ProjectRuntime[]): Project {
-  return { name: "test-project", rootPath: "/workspace/project", managedBy: "CDK", runtimes };
+  return {
+    name: "test-project",
+    rootPath: "/workspace/project",
+    spec: { runtimes } as Project["spec"],
+  };
 }
 
 function captureRunner(events: DevEvent[] = []) {

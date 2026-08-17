@@ -22,22 +22,22 @@ export type DevProjectHandlerConfig = {
 };
 
 function selectRuntime(project: Project, name?: string): ProjectRuntime {
-  if (project.runtimes.length === 0) {
+  if (project.spec.runtimes.length === 0) {
     throw new InputValidationError(
       "This project has no runtimes. Add a runtime to agentcore/agentcore.json and retry.",
     );
   }
-  const available = project.runtimes.map(({ name }) => name).join(", ");
+  const available = project.spec.runtimes.map(({ name }) => name).join(", ");
 
   if (name) {
-    const runtime = project.runtimes.find((candidate) => candidate.name === name);
+    const runtime = project.spec.runtimes.find((candidate) => candidate.name === name);
     if (runtime) return runtime;
     throw new ResourceNotFoundError(
       `Runtime '${name}' was not found. Available runtimes: ${available}.`,
     );
   }
 
-  if (project.runtimes.length === 1) return project.runtimes[0]!;
+  if (project.spec.runtimes.length === 1) return project.spec.runtimes[0]!;
   throw new InputValidationError(
     `Multiple runtimes found. Use --agent to select one. Available runtimes: ${available}.`,
   );
