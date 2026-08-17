@@ -156,8 +156,10 @@ export class FsProjectManager implements ProjectManager {
     switch (resourceType) {
       case "harness": {
         yield { message: `Scaffolding harness in project` };
-        const harnessPath = await this.scaffoldHarness(project.rootPath, input.resourceConfig);
-        scaffoldedPaths.push(harnessPath);
+        const outputPath = join(project.rootPath, "app", resourceConfig.name);
+        scaffoldedPaths.push(outputPath);
+        const harnessPath = await this.scaffoldHarness(outputPath, input.resourceConfig);
+
         newResources.push({
           name: input.resourceConfig.name,
           path: relative(project.rootPath, harnessPath),
@@ -204,11 +206,9 @@ export class FsProjectManager implements ProjectManager {
   }
 
   private async scaffoldHarness(
-    projectRoot: string,
+    outputPath: string,
     harnessSpec: z.input<typeof HarnessSpecSchema>,
   ): Promise<string> {
-    const outputPath = join(projectRoot, "app", harnessSpec.name);
-
     const harness = await createHarnessTreeFromSpec({
       ...harnessSpec,
       dockerfile: harnessSpec.dockerfile ? "Dockerfile" : undefined,
