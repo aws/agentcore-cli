@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { IIoHost, IoMessage, IoRequest } from "@aws-cdk/toolkit-lib";
 // The real toolkit package, so the arguments these tests assert on are the values
@@ -8,6 +8,7 @@ import type { IIoHost, IoMessage, IoRequest } from "@aws-cdk/toolkit-lib";
 // here, unlike in cdk.ts, because a test file pays no startup cost.
 import * as toolkit from "@aws-cdk/toolkit-lib";
 import {
+  loadBootstrapTemplate,
   loadCdkToolkit,
   performCdkOperation,
   runCdk,
@@ -23,6 +24,15 @@ function message(level: string, text: string): IoMessage<unknown> {
 }
 
 const lib: CdkToolkitLib = toolkit;
+
+// What a compiled executable holds: the toolkit's template, under the name the
+// build's asset naming gives it, beside the assets it also embeds.
+function embedded(text: string): (Blob & { name: string })[] {
+  return [
+    new File(["unrelated"], "agentcore-assets/src/assets/cdk/cdk.json"),
+    new File([text], "agentcore-assets/lib/api/bootstrap/bootstrap-template.yaml"),
+  ];
+}
 
 async function collect(generator: AsyncGenerator<CdkEvent, void>): Promise<CdkEvent[]> {
   const events: CdkEvent[] = [];
@@ -128,6 +138,10 @@ describe("performCdkOperation", () => {
       { assemblyDirectory: "/unused", region: "us-east-1" },
     );
 
+    // Nothing is embedded when running from source, so the toolkit reads its own
+    // template rather than one written out for it.
+    expect(calls[0]!.args[1]).not.toHaveProperty("source");
+
     expect(calls.map(({ method }) => method)).toEqual(["bootstrap"]);
     const [environments, options] = calls[0]!.args as [
       { getEnvironments: () => Promise<{ name: string; account: string; region: string }[]> },
@@ -139,6 +153,52 @@ describe("performCdkOperation", () => {
     // The parameter the original CLI bootstraps with. Dropping it would silently
     // change what a default deploy provisions, so it is asserted rather than assumed.
     expect(options.parameters.parameters).toEqual({ createCustomerMasterKey: true });
+  });
+
+  test("bootstraps a compiled executable from the template it has embedded", async () => {
+    // The released-binary path: no node_modules, so the toolkit cannot find its own
+    // template and is handed the embedded copy instead.
+    let templateFile: string | undefined;
+    let uploaded: string | undefined;
+    const toolkit = {
+      bootstrap: async (_environments: unknown, options: { source?: { templateFile: string } }) => {
+        templateFile = options.source?.templateFile;
+        // Read here rather than after: the file lives only for the operation.
+        uploaded = await Bun.file(templateFile!).text();
+      },
+    } as unknown as CdkToolkit;
+
+    await performCdkOperation(
+      { lib, toolkit },
+      { kind: "bootstrap", environments: ["aws://111122223333/us-east-1"] },
+      { assemblyDirectory: "/unused", region: "us-east-1" },
+      embedded("Resources: {}"),
+    );
+
+    expect(uploaded).toBe("Resources: {}");
+    // Cleaned up, so a long-lived process bootstrapping repeatedly leaves nothing behind.
+    expect(await Bun.file(templateFile!).exists()).toBe(false);
+  });
+
+  test("removes the template it wrote out even when bootstrap fails", async () => {
+    let templateFile: string | undefined;
+    const toolkit = {
+      bootstrap: async (_environments: unknown, options: { source?: { templateFile: string } }) => {
+        templateFile = options.source?.templateFile;
+        throw new Error("bootstrap stack rollback complete");
+      },
+    } as unknown as CdkToolkit;
+
+    await expect(
+      performCdkOperation(
+        { lib, toolkit },
+        { kind: "bootstrap", environments: ["aws://111122223333/us-east-1"] },
+        { assemblyDirectory: "/unused", region: "us-east-1" },
+        embedded("Resources: {}"),
+      ),
+    ).rejects.toThrow(/rollback complete/);
+
+    expect(await Bun.file(templateFile!).exists()).toBe(false);
   });
 
   test("deploys only the named stack, from the assembly build synthesized", async () => {
@@ -172,6 +232,23 @@ describe("performCdkOperation", () => {
     );
 
     expect(calls.map(({ method }) => method)).not.toContain("bootstrap");
+  });
+});
+
+describe("loadBootstrapTemplate", () => {
+  test("writes the embedded template where the toolkit can read it", async () => {
+    const path = await loadBootstrapTemplate(embedded("Resources: {}"));
+
+    // A path, not bytes: the toolkit takes a template file to upload.
+    expect(path).toBeString();
+    expect(await Bun.file(path!).text()).toBe("Resources: {}");
+    await rm(dirname(path!), { recursive: true, force: true });
+  });
+
+  test("reports no template when nothing is embedded", async () => {
+    // Running from source or the bundle, where the toolkit package is a real
+    // directory on disk and finds its own template.
+    expect(await loadBootstrapTemplate([])).toBeUndefined();
   });
 });
 

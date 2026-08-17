@@ -1,6 +1,9 @@
 // Programmatic CDK operations via @aws-cdk/toolkit-lib. Deploy drives the toolkit
 // in-process rather than shelling out to `npx cdk`, so its progress arrives as
 // structured messages and its failures as typed errors instead of scraped stdout.
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 import type { IIoHost, IoMessageLevel, Toolkit } from "@aws-cdk/toolkit-lib";
 
 /** A message emitted by the toolkit while an operation runs. */
@@ -47,8 +50,43 @@ export type CdkToolkit = Pick<Toolkit, "bootstrap" | "fromAssemblyDirectory" | "
 /** The parts of the toolkit package an operation needs, loaded on demand. */
 export type CdkToolkitLib = Pick<
   typeof import("@aws-cdk/toolkit-lib"),
-  "BootstrapEnvironments" | "BootstrapStackParameters" | "StackSelectionStrategy"
+  | "BootstrapEnvironments"
+  | "BootstrapSource"
+  | "BootstrapStackParameters"
+  | "StackSelectionStrategy"
 >;
+
+/** An embedded file, whose name Bun's types widen away on Bun.embeddedFiles. */
+type NamedBlob = Blob & { readonly name: string };
+
+const BOOTSTRAP_TEMPLATE = "bootstrap-template.yaml";
+
+/** The files compiled into this executable, or none when running from source or a bundle. */
+function embeddedFiles(): readonly NamedBlob[] {
+  return typeof Bun === "undefined" ? [] : (Bun.embeddedFiles as readonly NamedBlob[]);
+}
+
+/**
+ * Writes the embedded bootstrap template to a file the toolkit can read, or returns
+ * undefined when it should read its own.
+ *
+ * Bootstrap uploads a CloudFormation template that the toolkit ships as a file in its
+ * package directory, found at runtime relative to where that package sits on disk. A
+ * compiled executable has no node_modules, and the path it was compiled with belongs
+ * to the build machine, so the build embeds the template and bootstrap is pointed at
+ * a copy of it. Everywhere else the package is a real directory and finds its own.
+ */
+export async function loadBootstrapTemplate(
+  files: readonly NamedBlob[] = embeddedFiles(),
+): Promise<string | undefined> {
+  const template = files.find((file) => file.name.endsWith(BOOTSTRAP_TEMPLATE));
+  if (!template) return undefined;
+
+  const directory = await mkdtemp(join(tmpdir(), "agentcore-bootstrap-"));
+  const path = join(directory, BOOTSTRAP_TEMPLATE);
+  await writeFile(path, await template.text());
+  return path;
+}
 
 /**
  * Loads the toolkit package and builds a toolkit that reports to `ioHost`.
@@ -56,6 +94,8 @@ export type CdkToolkitLib = Pick<
  * Loaded here rather than imported at module scope: the toolkit is the heaviest
  * dependency in the CLI and `src/io` is reachable from every command, so a static
  * import would make even `agentcore --help` pay to load a deploy it is not doing.
+ * The bundle keeps the package external, so a command that never deploys never
+ * reads it; a compiled executable has it inlined and pays only to parse it.
  */
 export async function loadCdkToolkit(
   ioHost: IIoHost,
@@ -72,18 +112,30 @@ export async function loadCdkToolkit(
   return { lib, toolkit };
 }
 
-/** Performs one operation, awaiting the toolkit call it maps to. */
+/**
+ * Performs one operation, awaiting the toolkit call it maps to.
+ *
+ * `files` is what this executable has embedded, taken as an argument so a test can
+ * exercise the compiled executable's bootstrap path without being one.
+ */
 export async function performCdkOperation(
   { lib, toolkit }: { lib: CdkToolkitLib; toolkit: CdkToolkit },
   operation: CdkOperation,
   options: CdkRunOptions,
+  files: readonly NamedBlob[] = embeddedFiles(),
 ): Promise<void> {
   if (operation.kind === "bootstrap") {
-    await toolkit.bootstrap(lib.BootstrapEnvironments.fromList(operation.environments), {
-      // Provisions a customer-managed KMS key for the staging bucket, matching
-      // the parameters the original CLI bootstraps with.
-      parameters: lib.BootstrapStackParameters.withExisting({ createCustomerMasterKey: true }),
-    });
+    const template = await loadBootstrapTemplate(files);
+    try {
+      await toolkit.bootstrap(lib.BootstrapEnvironments.fromList(operation.environments), {
+        // Provisions a customer-managed KMS key for the staging bucket, matching
+        // the parameters the original CLI bootstraps with.
+        parameters: lib.BootstrapStackParameters.withExisting({ createCustomerMasterKey: true }),
+        ...(template && { source: lib.BootstrapSource.customTemplate(template) }),
+      });
+    } finally {
+      if (template) await rm(dirname(template), { recursive: true, force: true });
+    }
     return;
   }
 
