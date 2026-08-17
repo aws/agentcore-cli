@@ -14,81 +14,59 @@ afterEach(async () => {
   );
 });
 
-// A directory the location functions read as a project: the marker they walk up to.
+async function inTempDirectory(prefix: string): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), prefix));
+  tempDirectories.push(directory);
+  return directory;
+}
+
+// A directory the CLI reads as a project: the marker it walks up to. The log is written
+// outside it regardless, which is what the test below is for.
 async function project(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "agentcore-project-"));
-  tempDirectories.push(root);
+  const root = await inTempDirectory("agentcore-project-");
   await mkdir(join(root, "agentcore"), { recursive: true });
   await writeFile(join(root, "agentcore", "agentcore.json"), "{}");
   return root;
 }
 
-async function outsideAnyProject(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "agentcore-elsewhere-"));
-  tempDirectories.push(directory);
-  return directory;
-}
-
 const AT = new Date(2026, 7, 17, 13, 45, 6);
 const RUN_LOG = "agentcore-20260817-134506.log";
+const HOME = join(tmpdir(), "example-home");
 
 describe("logFilePath", () => {
-  test("names one file per run, in the project the command was run in", async () => {
-    const root = await project();
+  test("names one file per run, under the CLI's own state", () => {
+    expect(logFilePath({ home: HOME, at: AT })).toBe(join(HOME, ".agentcore", "logs", RUN_LOG));
+  });
 
-    expect(logFilePath({ cwd: root, at: AT })).toBe(
-      join(root, "agentcore", ".cli", "logs", RUN_LOG),
+  test("pads every single-digit part of the timestamp", () => {
+    expect(logFilePath({ home: HOME, at: new Date(2026, 0, 5, 9, 8, 7) })).toBe(
+      join(HOME, ".agentcore", "logs", "agentcore-20260105-090807.log"),
     );
   });
 
-  test("pads every single-digit part of the timestamp", async () => {
-    const root = await project();
-
-    expect(logFilePath({ cwd: root, at: new Date(2026, 0, 5, 9, 8, 7) })).toBe(
-      join(root, "agentcore", ".cli", "logs", "agentcore-20260105-090807.log"),
-    );
-  });
-
-  test("names the same file however long the run takes", async () => {
-    const root = await project();
-
+  test("names the same file however long the run takes", () => {
     // The run's log is decided once: a command that prints where its log is has to name
     // the file the logger opened, not one named for the moment it printed.
-    expect(logFilePath({ cwd: root })).toBe(logFilePath({ cwd: root }));
+    expect(logFilePath({ home: HOME })).toBe(logFilePath({ home: HOME }));
   });
 
-  test("finds the project from a directory inside it", async () => {
-    const root = await project();
-    const inside = join(root, "app", "src");
-    await mkdir(inside, { recursive: true });
-
-    expect(logFilePath({ cwd: inside, at: AT })).toBe(
-      join(root, "agentcore", ".cli", "logs", RUN_LOG),
-    );
-  });
-
-  test("falls back to the home directory outside a project", async () => {
-    const home = join(tmpdir(), "example-home");
-
-    expect(logFilePath({ cwd: await outsideAnyProject(), home, at: AT })).toBe(
-      join(home, ".agentcore", "logs", RUN_LOG),
-    );
-  });
-
-  test("is decided by where the command ran, not by what was typed", async () => {
-    const root = await project();
-    const expected = join(root, "agentcore", ".cli", "logs", RUN_LOG);
+  test("is the same file wherever the command ran and whatever was typed", async () => {
+    const expected = join(HOME, ".agentcore", "logs", RUN_LOG);
+    const cwd = process.cwd();
     const argv = process.argv;
 
-    // Naming the log after the command means parsing argv, and a token taken for a
-    // command is as likely to be a positional argument: `config endpoint ../../../tmp`
-    // once put the log wherever that resolved to. Nothing here reads argv at all.
+    // Neither input a user controls reaches the path. Being inside a project does not move
+    // the log into it, and nothing is read from argv: a token taken for a command name is
+    // as likely to be a positional argument, and `config endpoint ../../../tmp/pwn` once
+    // put the log wherever that resolved to.
     try {
+      process.chdir(await project());
       process.argv = ["node", "agentcore", "config", "endpoint", "../../../../../../tmp/pwn"];
-      expect(logFilePath({ cwd: root, at: AT })).toBe(expected);
+      expect(logFilePath({ home: HOME, at: AT })).toBe(expected);
       process.argv = ["node", "agentcore", "config", "telemetry.enabled", "false"];
-      expect(logFilePath({ cwd: root, at: AT })).toBe(expected);
+      expect(logFilePath({ home: HOME, at: AT })).toBe(expected);
     } finally {
+      process.chdir(cwd);
       process.argv = argv;
     }
   });
@@ -97,9 +75,9 @@ describe("logFilePath", () => {
     // The point of the function: it names the file winston is handed, so it is checked
     // against what a real logger leaves behind — including the logs directory, which no
     // run has created yet.
-    const root = await project();
-    const first = logFilePath({ cwd: root, at: AT });
-    const second = logFilePath({ cwd: root, at: new Date(2026, 7, 17, 13, 45, 7) });
+    const home = await inTempDirectory("agentcore-home-");
+    const first = logFilePath({ home, at: AT });
+    const second = logFilePath({ home, at: new Date(2026, 7, 17, 13, 45, 7) });
 
     for (const [filePath, message] of [
       [first, "first run"],
@@ -110,7 +88,7 @@ describe("logFilePath", () => {
       await logger.end();
     }
 
-    expect((await readdir(join(root, "agentcore", ".cli", "logs"))).sort()).toEqual([
+    expect((await readdir(join(home, ".agentcore", "logs"))).sort()).toEqual([
       "agentcore-20260817-134506.log",
       "agentcore-20260817-134507.log",
     ]);
@@ -121,36 +99,17 @@ describe("logFilePath", () => {
 });
 
 describe("detailedLogLocation", () => {
-  test("names a project's log relative to where the command ran", async () => {
-    const root = await project();
-
-    expect(detailedLogLocation({ at: AT, cwd: root })).toBe(
-      join("agentcore", ".cli", "logs", RUN_LOG),
-    );
-    // Run from a subdirectory, the same file is named relative to that.
-    const inside = join(root, "agentcore");
-    expect(detailedLogLocation({ at: AT, cwd: inside })).toBe(join(".cli", "logs", RUN_LOG));
-    // Both spell the file the logger actually writes.
-    expect(logFilePath({ cwd: inside, at: AT })).toBe(
-      join(root, "agentcore", ".cli", "logs", RUN_LOG),
-    );
-  });
-
-  test("shortens the fallback log to `~` rather than making it relative", async () => {
-    const elsewhere = await outsideAnyProject();
-    const home = join(tmpdir(), "example-home");
-
-    expect(detailedLogLocation({ at: AT, cwd: elsewhere, home })).toBe(
+  test("shortens the home directory it sits under to `~`", () => {
+    expect(detailedLogLocation({ home: HOME, at: AT })).toBe(
       join("~", ".agentcore", "logs", RUN_LOG),
     );
-    expect(logFilePath({ cwd: elsewhere, home, at: AT })).toBe(
-      join(home, ".agentcore", "logs", RUN_LOG),
-    );
+    // Spells the file the logger actually writes, just more briefly.
+    expect(logFilePath({ home: HOME, at: AT })).toBe(join(HOME, ".agentcore", "logs", RUN_LOG));
   });
 
-  test("stays absolute for a log that does not sit under the home directory", async () => {
+  test("stays absolute for a log that does not sit under the home directory", () => {
     // Nothing shortens to a bare `~`, so a home of `/` is spelled out instead.
-    expect(detailedLogLocation({ at: AT, cwd: await outsideAnyProject(), home: "/" })).toBe(
+    expect(detailedLogLocation({ home: "/", at: AT })).toBe(
       join("/", ".agentcore", "logs", RUN_LOG),
     );
   });

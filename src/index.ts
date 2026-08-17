@@ -32,7 +32,7 @@ process.exit(
 
     const rootLogger = createFileLogger({
       // The standard location, shared with the commands that print where it is: one file
-      // for this run, in the project it was run in or beside the CLI's global state.
+      // for this run, beside the rest of the CLI's own state.
       filePath: logFilePath(),
       logLevel: LOG_LEVEL.DEBUG,
       bindings: { cliSessionId, version: PACKAGE_VERSION },
