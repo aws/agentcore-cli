@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { InputValidationError, ResourceNotFoundError } from "../../../errors";
 import type { PortChecker } from "../../../io";
@@ -182,7 +183,7 @@ describe("project dev trace collection", () => {
 
     expect(subject.collector.starts).toEqual([
       {
-        tracesDirectory: "/workspace/project/agentcore/.cli/traces/otlp",
+        tracesDirectory: join("/workspace/project", "agentcore", ".cli", "traces", "otlp"),
         signal: expect.any(AbortSignal),
       },
     ]);
