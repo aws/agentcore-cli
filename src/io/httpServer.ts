@@ -21,7 +21,8 @@ export interface HttpRequest {
 export interface HttpResponse {
   status: number;
   headers?: Record<string, string>;
-  body?: string | Buffer;
+  /** An AsyncIterable body streams chunks to the client as they are produced (e.g. SSE). */
+  body?: string | Buffer | AsyncIterable<Uint8Array>;
 }
 
 export type HttpRequestHandler = (request: HttpRequest) => HttpResponse | Promise<HttpResponse>;
@@ -82,11 +83,38 @@ async function respond(
       body,
     });
     response.writeHead(result.status, result.headers);
-    response.end(result.body);
+    if (
+      result.body === undefined ||
+      typeof result.body === "string" ||
+      Buffer.isBuffer(result.body)
+    ) {
+      response.end(result.body);
+      return;
+    }
+    await streamBody(result.body, response);
   } catch {
+    if (response.headersSent) {
+      // Mid-stream failure: the status line is gone, so cut the connection to
+      // signal an incomplete response instead of ending it as if successful.
+      response.destroy();
+      return;
+    }
     response.writeHead(500, { "Content-Type": "application/json" });
     response.end(JSON.stringify({ error: "internal error" }));
   }
+}
+
+async function streamBody(
+  body: AsyncIterable<Uint8Array>,
+  response: ServerResponse,
+): Promise<void> {
+  for await (const chunk of body) {
+    if (response.destroyed) return;
+    if (!response.write(chunk)) {
+      await new Promise<void>((resolve) => response.once("drain", resolve));
+    }
+  }
+  response.end();
 }
 
 class BodyTooLargeError extends Error {}

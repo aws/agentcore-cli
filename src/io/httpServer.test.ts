@@ -29,6 +29,33 @@ describe("startHttpServer", () => {
     expect(await response.json()).toEqual({ method: "POST", url: "/v1/traces", body: "ping" });
   });
 
+  test("an AsyncIterable body streams chunks to the client", async () => {
+    async function* chunks(): AsyncGenerator<Uint8Array> {
+      yield new TextEncoder().encode("data: one\n\n");
+      await Bun.sleep(5);
+      yield new TextEncoder().encode("data: two\n\n");
+    }
+    handle = await startHttpServer(() => ({
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+      body: chunks(),
+    }));
+
+    const response = await fetch(`http://127.0.0.1:${handle.port}/events`);
+    expect(response.headers.get("content-type")).toBe("text/event-stream");
+    expect(await response.text()).toBe("data: one\n\ndata: two\n\n");
+  });
+
+  test("a mid-stream failure cuts the connection instead of ending cleanly", async () => {
+    async function* broken(): AsyncGenerator<Uint8Array> {
+      yield new TextEncoder().encode("partial");
+      throw new Error("stream died");
+    }
+    handle = await startHttpServer(() => ({ status: 200, body: broken() }));
+
+    expect(fetch(`http://127.0.0.1:${handle.port}/`).then((r) => r.text())).rejects.toThrow();
+  });
+
   test("handler errors become 500s without crashing the server", async () => {
     handle = await startHttpServer(() => {
       throw new Error("boom");

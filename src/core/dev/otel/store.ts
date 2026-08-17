@@ -1,36 +1,21 @@
 import { appendFile, mkdir, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { buildTraceDetail, extractTraceMeta, partitionByTraceId } from "./transforms";
+import { partitionByTraceId } from "./transforms";
 import type { OtlpPayload, OtlpResourceLog, OtlpResourceSpan } from "./types";
 
 const OTLP_EXT = ".otlp.jsonl";
-const DEFAULT_LIST_WINDOW_MS = 12 * 60 * 60 * 1000;
 
-export interface TraceSummary {
-  traceId: string;
-  timestamp: string;
-  sessionId?: string;
-  spanCount: string;
-  resourceSpans?: unknown[];
-  resourceLogs?: unknown[];
-}
-
-export interface TraceDetail {
-  resourceSpans?: unknown[];
-  resourceLogs?: unknown[];
-}
-
-export interface ListTracesOptions {
-  serviceName?: string;
-  startTime?: number;
-  endTime?: number;
+/** All raw OTLP data persisted for one trace. */
+export interface RawTrace {
+  resourceSpans: OtlpResourceSpan[];
+  resourceLogs: OtlpResourceLog[];
 }
 
 /**
  * Append-only local trace storage: one JSON Lines file per trace (named by its
- * trace id), each line a per-trace slice of an OTLP export payload. No in-memory
- * state — reads go to disk on demand, which is fine because the inspector only
- * fetches traces on user actions. Malformed files and lines are skipped, never fatal.
+ * trace id), each line a per-trace slice of an OTLP export payload. Raw storage
+ * only — presentation shaping lives in core/dev/inspector. No in-memory state;
+ * reads go to disk on demand. Malformed files and lines are skipped, never fatal.
  */
 export class TraceStore {
   constructor(private readonly directory: string) {}
@@ -55,39 +40,19 @@ export class TraceStore {
     );
   }
 
-  /** List traces newest-first, filtered by service name and time range (default: last 12 hours). */
-  public async list(options: ListTracesOptions = {}): Promise<TraceSummary[]> {
-    const now = Date.now();
-    const start = options.startTime ?? now - DEFAULT_LIST_WINDOW_MS;
-    const end = options.endTime ?? now;
-
-    const summaries: TraceSummary[] = [];
-    for (const file of await this.traceFiles()) {
-      const trace = await this.readTraceFile(file);
-      if (!trace) continue;
-
-      const meta = extractTraceMeta(trace.resourceSpans, trace.resourceLogs);
-      if (!meta.traceId) continue;
-      if (meta.lastSeen < start || meta.firstSeen > end) continue;
-      if (options.serviceName && meta.serviceName !== options.serviceName) continue;
-
-      summaries.push({
-        traceId: meta.traceId,
-        timestamp: new Date(meta.lastSeen).toISOString(),
-        sessionId: meta.sessionId,
-        spanCount: String(meta.spanCount),
-        ...buildTraceDetail(trace.resourceSpans, trace.resourceLogs),
-      });
-    }
-
-    return summaries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  /** The raw persisted data for one trace, or undefined when the trace is unknown. */
+  public async read(traceId: string): Promise<RawTrace | undefined> {
+    return this.readTraceFile(`${sanitize(traceId)}${OTLP_EXT}`);
   }
 
-  /** All spans and logs for one trace, or undefined when the trace is unknown. */
-  public async get(traceId: string): Promise<TraceDetail | undefined> {
-    const trace = await this.readTraceFile(`${sanitize(traceId)}${OTLP_EXT}`);
-    if (!trace) return undefined;
-    return buildTraceDetail(trace.resourceSpans, trace.resourceLogs);
+  /** The raw persisted data of every stored trace. */
+  public async readAll(): Promise<RawTrace[]> {
+    const traces: RawTrace[] = [];
+    for (const file of await this.traceFiles()) {
+      const trace = await this.readTraceFile(file);
+      if (trace) traces.push(trace);
+    }
+    return traces;
   }
 
   private async traceFiles(): Promise<string[]> {
@@ -98,9 +63,7 @@ export class TraceStore {
     }
   }
 
-  private async readTraceFile(
-    fileName: string,
-  ): Promise<{ resourceSpans: OtlpResourceSpan[]; resourceLogs: OtlpResourceLog[] } | undefined> {
+  private async readTraceFile(fileName: string): Promise<RawTrace | undefined> {
     let content: string;
     try {
       content = await readFile(join(this.directory, fileName), "utf8");

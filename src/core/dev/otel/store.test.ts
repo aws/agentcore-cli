@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TraceStore } from "./store";
@@ -8,7 +8,7 @@ import type { OtlpPayload } from "./types";
 const TRACE_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const TRACE_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
-function payload(
+export function payload(
   traceId: string,
   options: { serviceName?: string; startNano?: string; name?: string } = {},
 ): OtlpPayload {
@@ -53,26 +53,23 @@ afterEach(async () => {
 });
 
 describe("TraceStore", () => {
-  test("append then list returns the trace with metadata", async () => {
+  test("append then read returns the raw trace", async () => {
     await store.append(payload(TRACE_A));
-    const traces = await store.list();
-    expect(traces).toHaveLength(1);
-    expect(traces[0]!.traceId).toBe(TRACE_A);
-    expect(traces[0]!.spanCount).toBe("1");
-    expect(traces[0]!.resourceSpans).toBeDefined();
+    const trace = await store.read(TRACE_A);
+    expect(trace?.resourceSpans).toHaveLength(1);
+    expect(trace?.resourceLogs).toEqual([]);
   });
 
-  test("appends to the same trace accumulate spans", async () => {
+  test("appends to the same trace accumulate", async () => {
     await store.append(payload(TRACE_A));
     await store.append(payload(TRACE_A, { name: "tool_use" }));
-    const traces = await store.list();
-    expect(traces).toHaveLength(1);
-    expect(traces[0]!.spanCount).toBe("2");
+    const trace = await store.read(TRACE_A);
+    expect(trace?.resourceSpans).toHaveLength(2);
   });
 
   test("payloads without a trace id are dropped", async () => {
     await store.append({ resourceSpans: [] });
-    expect(await store.list()).toEqual([]);
+    expect(await store.readAll()).toEqual([]);
   });
 
   test("a batch carrying several traces lands in each trace's own file", async () => {
@@ -84,52 +81,28 @@ describe("TraceStore", () => {
     });
     await store.append(batch);
 
-    const traces = await store.list();
-    expect(traces.map((trace) => trace.traceId).sort()).toEqual([TRACE_A, TRACE_B]);
-    expect(traces.every((trace) => trace.spanCount === "1")).toBe(true);
-    expect(await store.get(TRACE_B)).toBeDefined();
+    expect((await readdir(directory)).sort()).toEqual([
+      `${TRACE_A}.otlp.jsonl`,
+      `${TRACE_B}.otlp.jsonl`,
+    ]);
+    expect((await store.read(TRACE_B))?.resourceSpans).toHaveLength(1);
+    expect(await store.readAll()).toHaveLength(2);
   });
 
-  test("list filters by service name", async () => {
-    await store.append(payload(TRACE_A, { serviceName: "agent-1" }));
-    await store.append(payload(TRACE_B, { serviceName: "agent-2" }));
-    const traces = await store.list({ serviceName: "agent-2" });
-    expect(traces.map((trace) => trace.traceId)).toEqual([TRACE_B]);
+  test("read of an unknown trace returns undefined", async () => {
+    expect(await store.read(TRACE_A)).toBeUndefined();
   });
 
-  test("list filters by time window and sorts newest first", async () => {
-    const oldNano = `${BigInt(Date.now() - 24 * 60 * 60 * 1000) * 1_000_000n}`;
-    await store.append(payload(TRACE_A, { startNano: oldNano }));
-    await store.append(payload(TRACE_B));
-
-    expect((await store.list()).map((trace) => trace.traceId)).toEqual([TRACE_B]);
-
-    const all = await store.list({ startTime: 0 });
-    expect(all.map((trace) => trace.traceId)).toEqual([TRACE_B, TRACE_A]);
-  });
-
-  test("get returns the trace detail or undefined for unknown ids", async () => {
+  test("skips malformed lines without failing", async () => {
     await store.append(payload(TRACE_A));
-    const detail = await store.get(TRACE_A);
-    expect(detail?.resourceSpans).toBeDefined();
-    expect(await store.get(TRACE_B)).toBeUndefined();
+    await writeFile(join(directory, `${TRACE_A}.otlp.jsonl`), "{not json}\n", { flag: "a" });
+
+    const trace = await store.read(TRACE_A);
+    expect(trace?.resourceSpans).toHaveLength(1);
   });
 
-  test("skips malformed lines and files without failing", async () => {
-    await store.append(payload(TRACE_A));
-    await writeFile(join(directory, `${TRACE_A}.otlp.jsonl`), "{not json}\n", {
-      flag: "a",
-    });
-    await writeFile(join(directory, "garbage.otlp.jsonl"), "also not json\n");
-
-    const traces = await store.list();
-    expect(traces).toHaveLength(1);
-    expect(traces[0]!.spanCount).toBe("1");
-  });
-
-  test("list on a directory that does not exist returns empty", async () => {
+  test("readAll on a directory that does not exist returns empty", async () => {
     const empty = new TraceStore(join(directory, "missing"));
-    expect(await empty.list()).toEqual([]);
-    expect(await empty.get(TRACE_A)).toBeUndefined();
+    expect(await empty.readAll()).toEqual([]);
   });
 });
