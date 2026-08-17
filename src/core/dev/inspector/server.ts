@@ -8,13 +8,6 @@
 import { ResourceNotFoundError } from "../../../errors";
 import type { HttpRequest, HttpRequestHandler, HttpResponse } from "../../../io/httpServer";
 import type { StatusResponse } from "./api";
-import {
-  handleGetCloudWatchTrace,
-  handleListCloudWatchTraces,
-  handleListMemoryRecords,
-  handleRetrieveMemoryRecords,
-} from "./aws";
-import { handleHarnessToolResponse } from "./harness";
 import { asString, handleInvocations } from "./invocations";
 import { handleA2aAgentCard, handleMcpProxy } from "./proxies";
 import { handleResources } from "./resources";
@@ -76,28 +69,13 @@ async function route(
   if (method === "GET" && pathname === "/api/resources") return handleResources(deps);
   if (method === "GET" && pathname.startsWith("/api/traces/")) return handleGetTrace(deps, url);
   if (method === "GET" && pathname.startsWith("/api/traces")) return handleListTraces(deps, url);
-  if (method === "GET" && pathname.startsWith("/api/cloudwatch-traces/")) {
-    return handleGetCloudWatchTrace(deps, url);
-  }
-  if (method === "GET" && pathname.startsWith("/api/cloudwatch-traces")) {
-    return handleListCloudWatchTraces(deps, url);
-  }
   if (method === "POST" && pathname === "/api/start") return handleStart(deps, request);
-  if (method === "POST" && pathname === "/api/harness/tool-response") {
-    return handleHarnessToolResponse(deps, request);
-  }
   if (method === "POST" && pathname === "/invocations") {
-    return handleInvocations(deps, request, url, nextA2aId);
+    return handleInvocations(deps, request, nextA2aId);
   }
-  if (method === "POST" && pathname === "/api/mcp") return handleMcpProxy(deps, request, url);
+  if (method === "POST" && pathname === "/api/mcp") return handleMcpProxy(deps, request);
   if (method === "GET" && pathname.startsWith("/api/a2a/agent-card")) {
     return handleA2aAgentCard(deps, url);
-  }
-  if (method === "POST" && pathname === "/api/memory/search") {
-    return handleRetrieveMemoryRecords(deps, request);
-  }
-  if (method === "GET" && pathname.startsWith("/api/memory")) {
-    return handleListMemoryRecords(deps, url);
   }
   if (method === "GET" && !pathname.startsWith("/api/")) {
     const asset = await serveAsset(deps, pathname);

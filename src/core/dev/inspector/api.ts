@@ -61,7 +61,6 @@ export interface StartResponse {
 
 export interface InvocationRequest {
   agentName?: string;
-  targetName?: string;
   prompt?: string;
   sessionId?: string;
   userId?: string;
@@ -85,76 +84,11 @@ export interface GetTraceResponse {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/cloudwatch-traces[/:traceId]?agentName=xxx|harnessName=xxx
-// ---------------------------------------------------------------------------
-
-export interface CloudWatchTraceEntry {
-  traceId: string;
-  timestamp: string;
-  sessionId?: string;
-  spanCount?: string;
-}
-
-export interface ListCloudWatchTracesResponse {
-  success: boolean;
-  traces?: CloudWatchTraceEntry[];
-  error?: string;
-}
-
-export interface GetCloudWatchTraceResponse {
-  success: boolean;
-  records?: unknown[];
-  spans?: unknown[];
-  error?: string;
-}
-
-// ---------------------------------------------------------------------------
-// GET /api/memory + POST /api/memory/search
-// ---------------------------------------------------------------------------
-
-/**
- * Namespace selector shared by memory list and search. Exactly one of
- * `namespace` (exact match) or `namespacePath` (hierarchical path prefix)
- * must be provided.
- */
-export type MemoryNamespaceSelector =
-  { namespace: string; namespacePath?: never } | { namespace?: never; namespacePath: string };
-
-export type ListMemoryRecordsQuery = {
-  memoryName: string;
-  strategyId?: string;
-} & MemoryNamespaceSelector;
-
-export type RetrieveMemoryRecordsRequest = {
-  memoryName: string;
-  searchQuery: string;
-  strategyId?: string;
-} & MemoryNamespaceSelector;
-
-export interface MemoryRecordResponse {
-  memoryRecordId: string;
-  content: string | undefined;
-  memoryStrategyId: string;
-  namespaces: string[];
-  createdAt: string;
-  score: number | undefined;
-  metadata: Record<string, string>;
-}
-
-export interface MemoryRecordsResponse {
-  success: boolean;
-  records?: MemoryRecordResponse[];
-  nextToken?: string;
-  error?: string;
-}
-
-// ---------------------------------------------------------------------------
 // POST /api/mcp
 // ---------------------------------------------------------------------------
 
 export interface McpProxyRequest {
   agentName?: string;
-  targetName?: string;
   body?: Record<string, unknown>;
   sessionId?: string;
 }
@@ -175,72 +109,8 @@ export interface A2AAgentCardResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Harness invocation (POST /invocations with harnessName) +
-// POST /api/harness/tool-response
-// ---------------------------------------------------------------------------
-
-/**
- * Overrides forwarded verbatim to the harness invocation. The reference typed
- * `model`, `skills`, and `tools` with AWS SDK shapes; the inspector only passes
- * them through, so they stay opaque here.
- */
-export interface HarnessInvocationOverrides {
-  model?: unknown;
-  systemPrompt?: string;
-  skills?: unknown[];
-  actorId?: string;
-  maxIterations?: number;
-  maxTokens?: number;
-  timeoutSeconds?: number;
-  allowedTools?: string[];
-  tools?: unknown[];
-}
-
-export interface HarnessMessage {
-  role: string;
-  content: Record<string, unknown>[];
-}
-
-export interface HarnessToolResponseRequest {
-  harnessName: string;
-  sessionId: string;
-  messages: HarnessMessage[];
-  harnessOverrides?: HarnessInvocationOverrides;
-}
-
-// ---------------------------------------------------------------------------
 // GET /api/resources
 // ---------------------------------------------------------------------------
-
-export type ResourceDeploymentStatus = "deployed" | "local-only" | "pending-removal";
-
-export interface DeployedAgentState {
-  runtimeId: string;
-  runtimeArn: string;
-  roleArn: string;
-}
-
-export interface DeployedMemoryState {
-  memoryId: string;
-  memoryArn: string;
-}
-
-export interface DeployedCredentialState {
-  credentialProviderArn: string;
-  clientSecretArn?: string;
-  callbackUrl?: string;
-}
-
-export interface DeployedGatewayState {
-  gatewayId: string;
-  gatewayArn: string;
-  gatewayUrl?: string;
-}
-
-export interface DeployedHarnessState {
-  harnessId: string;
-  harnessArn: string;
-}
 
 export interface ResourcesResponse {
   success: true;
@@ -273,9 +143,6 @@ export interface ResourceAgent {
   networkMode: string;
   protocol: string;
   envVars: string[];
-  deploymentStatus?: ResourceDeploymentStatus;
-  deployed?: DeployedAgentState;
-  invocationUrl?: string;
 }
 
 export interface ResourceHarness {
@@ -283,16 +150,12 @@ export interface ResourceHarness {
   /** @deprecated The reference derived this from the harness spec's model. */
   model: string;
   tools: string[];
-  deploymentStatus?: ResourceDeploymentStatus;
-  deployed?: DeployedHarnessState;
 }
 
 export interface ResourceMemory {
   name: string;
   strategies: ResourceMemoryStrategy[];
   expiryDays: number | undefined;
-  deploymentStatus?: ResourceDeploymentStatus;
-  deployed?: DeployedMemoryState;
 }
 
 export interface ResourceMemoryStrategy {
@@ -304,15 +167,11 @@ export interface ResourceMemoryStrategy {
 export interface ResourceCredential {
   name: string;
   type: string;
-  deploymentStatus?: ResourceDeploymentStatus;
-  deployed?: DeployedCredentialState;
 }
 
 export interface ResourceGateway {
   name: string;
   targets: ResourceGatewayTarget[];
-  deploymentStatus?: ResourceDeploymentStatus;
-  deployed?: DeployedGatewayState;
 }
 
 export interface ResourceGatewayTarget {
@@ -323,7 +182,6 @@ export interface ResourceGatewayTarget {
 export interface ResourceMcpTool {
   name: string;
   bindings: ResourceMcpToolBinding[];
-  deploymentStatus?: ResourceDeploymentStatus;
 }
 
 export interface ResourceMcpToolBinding {
@@ -336,7 +194,6 @@ export interface ResourceEvaluator {
   level: string;
   description?: string;
   configType: "llm-as-a-judge" | "code-based";
-  deploymentStatus?: ResourceDeploymentStatus;
 }
 
 export interface ResourceOnlineEvalConfig {
@@ -348,20 +205,17 @@ export interface ResourceOnlineEvalConfig {
   description?: string;
   logGroupNames?: string[];
   serviceNames?: string[];
-  deploymentStatus?: ResourceDeploymentStatus;
 }
 
 export interface ResourcePolicyEngine {
   name: string;
   description?: string;
   policies: ResourcePolicy[];
-  deploymentStatus?: ResourceDeploymentStatus;
 }
 
 export interface ResourcePolicy {
   name: string;
   description?: string;
-  deploymentStatus?: ResourceDeploymentStatus;
 }
 
 export interface ResourceUnassignedTarget {

@@ -259,32 +259,6 @@ describe("GET /api/resources", () => {
     });
   });
 
-  test("merges deployed state and reports pending removals", async () => {
-    const { url } = await farm.inspector(
-      deps({
-        project: project(),
-        aws: {
-          deployedState: async () => ({
-            runtimes: {
-              orders: { runtimeId: "r-1", runtimeArn: "arn:r-1", roleArn: "arn:role" },
-              legacy: { runtimeId: "r-9", runtimeArn: "arn:r-9", roleArn: "arn:role" },
-            },
-          }),
-        },
-      }),
-    );
-
-    const body = (await (await get(url, "/api/resources")).json()) as {
-      agents: { name: string; deploymentStatus?: string; deployed?: { runtimeId: string } }[];
-      memories: { deploymentStatus?: string }[];
-    };
-    expect(body.agents).toMatchObject([
-      { name: "orders", deploymentStatus: "deployed", deployed: { runtimeId: "r-1" } },
-      { name: "legacy", deploymentStatus: "pending-removal", deployed: { runtimeId: "r-9" } },
-    ]);
-    expect(body.memories[0]?.deploymentStatus).toBe("local-only");
-  });
-
   test("answers 404 outside a project", async () => {
     const { url } = await farm.inspector(deps());
     const response = await get(url, "/api/resources");

@@ -1,12 +1,10 @@
 /**
- * POST /invocations — the protocol-aware proxy to a locally running agent, a
- * deployed runtime (?target=deployed), or a deployed harness (harnessName in
- * the body). Ported from the reference web-ui/handlers/invocations.ts; the SSE
- * framing (`data: <json>\n\n`) is part of the SPA wire contract.
+ * POST /invocations — the protocol-aware proxy to a locally running agent.
+ * Ported from the reference web-ui/handlers/invocations.ts; the SSE framing
+ * (`data: <json>\n\n`) is part of the SPA wire contract.
  */
 import { randomUUID } from "node:crypto";
 import type { HttpRequest, HttpResponse } from "../../../io/httpServer";
-import { handleHarnessInvocation } from "./harness";
 import {
   apiError,
   errorMessage,
@@ -16,21 +14,14 @@ import {
   sse,
   sseEvent,
 } from "./respond";
-import type { DeployedInvocation, InspectorDeps } from "./types";
+import type { InspectorDeps } from "./types";
 
 export async function handleInvocations(
   deps: InspectorDeps,
   request: HttpRequest,
-  url: URL,
   nextA2aId: () => number,
 ): Promise<HttpResponse> {
-  if (url.searchParams.get("target") === "deployed") {
-    return handleDeployedInvocation(deps, request);
-  }
-
   const parsed = parseJsonBody(request.body);
-  if (parsed?.harnessName) return handleHarnessInvocation(deps, parsed);
-
   const agentName = asString(parsed?.agentName);
   const sessionId = parsed ? (asString(parsed.sessionId) ?? randomUUID()) : undefined;
   const userId = asString(parsed?.userId);
@@ -324,46 +315,6 @@ async function invokeAguiAgent(
     },
     body: iterateBody(agentResponse.body),
   };
-}
-
-/** Invoke a deployed runtime via the injected AWS capability, SSE-framing its stream. */
-async function handleDeployedInvocation(
-  deps: InspectorDeps,
-  request: HttpRequest,
-): Promise<HttpResponse> {
-  const aws = deps.aws;
-  if (!aws?.invokeDeployed) return apiError(404, "Deployed invocation is not available");
-
-  const parsed = parseJsonBody(request.body);
-  if (!parsed) return apiError(400, "Invalid JSON body");
-  const prompt = asString(parsed.prompt);
-  if (!prompt) return apiError(400, "prompt is required");
-
-  const sessionId = asString(parsed.sessionId) ?? randomUUID();
-  let invocation: DeployedInvocation;
-  try {
-    invocation = await aws.invokeDeployed({
-      agentName: asString(parsed.agentName),
-      targetName: asString(parsed.targetName),
-      prompt,
-      sessionId,
-      userId: asString(parsed.userId),
-    });
-  } catch (error) {
-    return apiError(502, `Invoke failed: ${errorMessage(error)}`);
-  }
-
-  return sse(frameDeployedStream(invocation.stream), invocation.sessionId ?? sessionId);
-}
-
-async function* frameDeployedStream(
-  stream: AsyncIterable<unknown>,
-): AsyncGenerator<Uint8Array, void> {
-  try {
-    for await (const chunk of stream) yield sseEvent(chunk);
-  } catch (error) {
-    yield sseEvent({ error: errorMessage(error) });
-  }
 }
 
 export function asString(value: unknown): string | undefined {
