@@ -56,6 +56,7 @@
     "@aws-sdk/client-bedrock-agentcore-control": "^3.1102.0",
     "@aws-sdk/client-cloudwatch-logs": "^3.1092.0",
     "@aws-sdk/client-iam": "^3.1080.0",
+    "@aws/agent-inspector": "0.6.1",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.221.0",
     "@opentelemetry/otlp-transformer": "0.213.0",
