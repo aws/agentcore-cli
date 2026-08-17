@@ -38,7 +38,7 @@ export const CredentialType = z.enum(['api-key', 'oauth']);
 // Mirrors DependencySyncOutcome in src/lib/dependency-management/types.ts.
 export const DepSyncOutcome = z.enum(['synced', 'check-only', 'opted-out', 'skipped', 'failure-suppressed', 'failed']);
 export const SkillSourceType = z.enum(['path', 's3', 'git', 'aws_skills']);
-export const EvaluatorType = z.enum(['llm-as-a-judge', 'code-based']);
+export const EvaluatorType = z.enum(['llm-as-a-judge', 'code-based', 'derived']);
 export const EvaluatorModelProvider = z.enum(['bedrock', 'openresponses']);
 export const ExitReason = z.enum(['success', 'failure']);
 export const FilterState = z.enum(['deployed', 'local-only', 'pending-removal', 'none']);

@@ -1082,15 +1082,9 @@
               "llmAsAJudge": {
                 "type": "object",
                 "properties": {
-                  "modelProvider": {
-                    "type": "string",
-                    "enum": ["Bedrock", "OpenResponses"]
-                  },
                   "model": {
                     "type": "string",
-                    "minLength": 1,
-                    "maxLength": 2048,
-                    "pattern": "^[\\x21-\\x7e]+$"
+                    "minLength": 1
                   },
                   "instructions": {
                     "type": "string",
@@ -1192,6 +1186,22 @@
                     "additionalProperties": false
                   }
                 },
+                "additionalProperties": false
+              },
+              "derived": {
+                "type": "object",
+                "properties": {
+                  "baseEvaluatorId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^(ThirdParty|Builtin)\\.[A-Za-z0-9._-]+$"
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["baseEvaluatorId", "model"],
                 "additionalProperties": false
               }
             },
