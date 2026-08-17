@@ -602,6 +602,14 @@ describe("project add harness", () => {
     expect(existsSync(join(projectRoot, "app", "x"))).toBe(false);
   });
 
+  test("rejects a duplicate harness name", async () => {
+    await inProject();
+    await run(["add", "harness", "--name", "x"]);
+    await expect(run(["add", "harness", "--name", "x"])).rejects.toBeInstanceOf(
+      InputValidationError,
+    );
+  });
+
   test.each([
     ["missing --name", ["--model", '{"bedrockModelConfig":{"modelId":"x"}}']],
     ["model without modelId", ["--name", "x", "--model", '{"bedrockModelConfig":{}}']],
