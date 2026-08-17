@@ -112,7 +112,7 @@ describe("project create", () => {
 
 describe("project add harness", () => {
   const defaultModel = { provider: "bedrock", modelId: "global.anthropic.claude-sonnet-4-6" };
-
+  /** Verify error case for different flags **/
   test.each<[string, string[], Record<string, unknown>]>([
     ["minimal — name only", ["--name", "x"], { model: defaultModel }],
     [
