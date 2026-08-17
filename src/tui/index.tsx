@@ -30,6 +30,7 @@ export function renderJson(data: unknown, writer: (line: string) => void = conso
 // of any direct dependency on a global output stream.
 export interface JsonRenderer {
   renderJson(data: unknown): void;
+  renderJsonLine(data: unknown): void;
 }
 
 // JsonRendererKey exposes the prewired JsonRenderer on the context. Installed by

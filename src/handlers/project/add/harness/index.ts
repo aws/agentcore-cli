@@ -7,6 +7,7 @@ import type {
   AuthorizerConfiguration as SdkAuthorizerConfiguration,
   HarnessEnvironmentArtifact,
   HarnessEnvironmentProviderRequest,
+  HarnessGatewayOutboundAuth as SdkHarnessGatewayOutboundAuth,
   HarnessMemoryConfiguration as SdkMemoryConfiguration,
   HarnessModelConfiguration,
   HarnessSkill as SdkHarnessSkill,
@@ -14,6 +15,7 @@ import type {
   HarnessTruncationConfiguration as SdkTruncationConfiguration,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
+  HarnessGatewayOutboundAuth,
   HarnessMemoryRef,
   HarnessModel,
   HarnessSkill,
@@ -82,6 +84,11 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
         "path to local dockerfile to use as the container image for the harness",
         z.string().optional(),
       ),
+      flag(
+        "vpc-id",
+        "VPC ID for Dockerfile builds in VPC mode (required when combining --dockerfile with VPC networking)",
+        z.string().optional(),
+      ),
     ],
     handle: async (ctx, flags) => {
       if (!flags.name)
@@ -110,8 +117,16 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
       const env = inputEnvironment ? toEnvironment(inputEnvironment) : undefined;
       const artifact = inputArtifact ? toEnvironmentArtifact(inputArtifact) : undefined;
 
+      const inputVpcId = flags["vpc-id"];
+
       if (inputArtifact?.containerConfiguration?.containerUri && flags.dockerfile)
         throw new InputValidationError(`containerUri and dockerfile are mutually exclusive`);
+
+      if (inputVpcId && !env?.networkConfig) {
+        throw new InputValidationError(
+          "--vpc-id requires --environment with VPC network configuration",
+        );
+      }
 
       const harnessConfig = {
         name: flags.name,
@@ -136,7 +151,9 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
         timeoutSeconds: flags["timeout-seconds"],
         tags: parseJsonFlag<Record<string, string>>("tags", flags["tags"]),
         networkMode: env?.networkMode,
-        networkConfig: env?.networkConfig,
+        networkConfig: env?.networkConfig
+          ? { ...env.networkConfig, ...(inputVpcId ? { vpcId: inputVpcId } : {}) }
+          : undefined,
         lifecycleConfig: env?.lifecycleConfig,
         sessionStoragePath: env?.sessionStoragePath,
         efsAccessPoints: env?.efsAccessPoints,
@@ -146,11 +163,10 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
       };
 
       const project = ctx.require(ProjectKey);
-      for await (const event of config.projectManager.addResource(
-        project,
-        "harness",
-        harnessConfig,
-      )) {
+      for await (const event of config.projectManager.addResource(project, {
+        resourceType: "harness",
+        resourceConfig: harnessConfig,
+      })) {
         config.io.stderr.write(`${event.message}\n`);
       }
 
@@ -233,6 +249,9 @@ function toTool(tool: SdkHarnessTool): HarnessTool {
       config: {
         agentCoreGateway: {
           gatewayArn: requireField(c.agentCoreGateway.gatewayArn, "agentCoreGateway.gatewayArn"),
+          outboundAuth: c.agentCoreGateway.outboundAuth
+            ? toOutboundAuth(c.agentCoreGateway.outboundAuth)
+            : undefined,
         },
       },
     };
@@ -263,6 +282,27 @@ function toTool(tool: SdkHarnessTool): HarnessTool {
   return { type: tool.type, name: tool.name };
 }
 
+/** Converts an SDK HarnessGatewayOutboundAuth tagged union into the project-schema shape. */
+function toOutboundAuth(auth: SdkHarnessGatewayOutboundAuth): HarnessGatewayOutboundAuth {
+  if ("awsIam" in auth && auth.awsIam) return { awsIam: {} };
+  if ("none" in auth && auth.none) return { none: {} };
+  if ("oauth" in auth && auth.oauth) {
+    return {
+      oauth: {
+        providerArn: requireField(auth.oauth.providerArn, "outboundAuth.oauth.providerArn"),
+        scopes: requireField(auth.oauth.scopes, "outboundAuth.oauth.scopes"),
+        // SDK does not expose this type directly.
+        grantType: auth.oauth.grantType as Extract<
+          HarnessGatewayOutboundAuth,
+          { oauth: unknown }
+        >["oauth"]["grantType"],
+        customParameters: auth.oauth.customParameters,
+      },
+    };
+  }
+  throw new InputValidationError("unrecognized outboundAuth variant");
+}
+
 /** Converts an SDK HarnessSkill tagged union into the project-schema shape. */
 function toSkill(skill: SdkHarnessSkill): HarnessSkill {
   if ("path" in skill && skill.path) {
@@ -277,7 +317,7 @@ function toSkill(skill: SdkHarnessSkill): HarnessSkill {
       path: skill.git.path,
       auth: skill.git.auth
         ? {
-            credentialName: requireField(
+            credentialArn: requireField(
               skill.git.auth.credentialArn,
               "skill.git.auth.credentialArn",
             ),

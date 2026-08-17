@@ -147,6 +147,7 @@ import type { CoreOptions } from "../core/types";
 import type { CdkEvent, CdkOperation, CdkRunOptions, ProcessRunner } from "../io";
 import type { ProjectManager } from "../handlers/project/types";
 import type { Logger } from "../logging";
+import type { ReadWriteJson } from "../io";
 import { createSilentLogger } from "./logging";
 import { CdkBackend, FsProjectManager } from "../core/project";
 
@@ -1188,6 +1189,7 @@ type TestCoreClientOptions = {
    * delivers them as they arrive is covered directly, in `src/io/cdk.test.ts`.
    */
   onCdkOperation?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void;
+  json?: ReadWriteJson;
 };
 
 export class TestIdentityClient implements CoreIdentityClient {
@@ -1971,6 +1973,7 @@ export class TestCoreClient implements Core {
     const checkTool = async () => {}; // CI hosts don't have uv installed
     this.projectManager = new FsProjectManager({
       logger,
+      json: options?.json,
       runner,
       checkTool,
       backends: {

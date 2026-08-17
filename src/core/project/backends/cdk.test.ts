@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { CdkBackend } from "./cdk";
 import type { Project, ProjectEvent } from "../../../handlers/project/types";
 import { createRecordingLogger, type RecordedLog } from "../../../testing";
+import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import type { CdkEvent, CdkOperation, CdkRunOptions } from "../../../io";
 
 const tempDirectories: string[] = [];
@@ -27,6 +28,10 @@ const ESC = "\u001b";
 // The region the toolkit makes its own calls in, which is not a target's region.
 const REGION = "us-west-2";
 const TARGET = { name: "default", account: "111122223333", region: "us-east-1" };
+
+// The least a spec can say and still be one: everything else, `managedBy` included,
+// comes from the schema's own defaults.
+const SPEC = { name: "example", version: 1 };
 
 function cdkDirectory(root: string): string {
   return join(root, "agentcore", "cdk");
@@ -52,7 +57,7 @@ function stackName(target: string): string {
 async function project(root: string, withDependencies = true): Promise<Project> {
   const directory = cdkDirectory(root);
   await mkdir(withDependencies ? join(directory, "node_modules") : directory, { recursive: true });
-  return { name: "example", rootPath: root, managedBy: "CDK", runtimes: [] };
+  return { name: "example", rootPath: root, spec: ProjectSpecSchema.parse(SPEC) };
 }
 
 // Stands in for what synth leaves behind: a manifest with one stack per target, each

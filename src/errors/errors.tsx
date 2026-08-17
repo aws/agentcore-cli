@@ -69,6 +69,9 @@ export class InputValidationError extends AgentCoreCLIError {
   }
 }
 
+/** Error raised when valid user input references a resource that does not exist. */
+export class ResourceNotFoundError extends InputValidationError {}
+
 /** Error raised when a command or operation has not been implemented yet. */
 export class NotImplementedError extends AgentCoreCLIError {
   constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
@@ -135,7 +138,7 @@ export class EmbeddedAssetNotFoundError extends AgentCoreCLIError {
   }
 }
 
-export class RuntimeInvokeInterruptedError extends AgentCoreCLIError {
+export class CommandInterruptedError extends AgentCoreCLIError {
   readonly reported: boolean;
 
   constructor(cause?: unknown, reported = false) {
@@ -144,6 +147,8 @@ export class RuntimeInvokeInterruptedError extends AgentCoreCLIError {
     this.reported = reported;
   }
 }
+
+export class RuntimeInvokeInterruptedError extends CommandInterruptedError {}
 
 export class RuntimeInvokeResponseError extends AgentCoreCLIError {
   readonly reported = true;

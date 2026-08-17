@@ -43,3 +43,4 @@ export {
 } from "./streamingResponse";
 export type { AppIO, ReadWriteJson } from "./types";
 export { warn } from "./warn";
+export { checkPort, type PortChecker } from "./port";

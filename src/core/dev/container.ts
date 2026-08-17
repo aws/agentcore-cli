@@ -1,5 +1,7 @@
-import { createHash } from "node:crypto";
-import { existsSync, statSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, writeFileSync } from "node:fs";
+import { rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { InputValidationError, InvalidEnvironmentError } from "../../errors";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
@@ -10,8 +12,18 @@ import {
   type ProcessStreamer,
   type StreamProcessOptions,
 } from "../../io";
+import { isDirectory, isFile, resolvePathWithinProject } from "./path";
+import { DEV_PORTS } from "./port";
 
 const CONTAINER_TOOLS = ["docker", "podman", "finch"] as const;
+const AWS_ENV_KEYS = [
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
+  "AWS_SESSION_TOKEN",
+  "AWS_REGION",
+  "AWS_DEFAULT_REGION",
+  "AWS_PROFILE",
+] as const;
 const CLEANUP_TIMEOUT_MS = 2_000;
 const DOCKERFILE_NAME = "Dockerfile";
 const CONTAINER_RUNTIME_INSTALL_HINT =
@@ -44,15 +56,21 @@ type ToolAvailable = typeof toolAvailable;
 type ContainerDevRunnerConfig = {
   streamProcess?: ProcessStreamer;
   toolAvailable?: ToolAvailable;
+  awsDirectory?: string;
+  processEnv?: NodeJS.ProcessEnv;
 };
 
 export class ContainerDevRunner implements DevRunner {
   private readonly streamProcess: ProcessStreamer;
   private readonly toolAvailable: ToolAvailable;
+  private readonly awsDirectory: string;
+  private readonly processEnv: NodeJS.ProcessEnv;
 
   constructor(config: ContainerDevRunnerConfig = {}) {
     this.streamProcess = config.streamProcess ?? streamProcess;
     this.toolAvailable = config.toolAvailable ?? toolAvailable;
+    this.awsDirectory = config.awsDirectory ?? join(homedir(), ".aws");
+    this.processEnv = config.processEnv ?? process.env;
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
@@ -65,10 +83,24 @@ export class ContainerDevRunner implements DevRunner {
       throw new InputValidationError(`container build context directory not found: ${context}`);
     }
 
+    resolvePathWithinProject(input.projectRoot, context, "container build context");
+
     const dockerfile = input.runtime.dockerfile ?? DOCKERFILE_NAME;
     const dockerfilePath = join(context, dockerfile);
     if (!isFile(dockerfilePath)) {
       throw new InputValidationError(`container Dockerfile not found: ${dockerfilePath}`);
+    }
+
+    const hasAwsCredentials = Boolean(
+      (input.env?.AWS_ACCESS_KEY_ID ?? this.processEnv.AWS_ACCESS_KEY_ID) &&
+      (input.env?.AWS_SECRET_ACCESS_KEY ?? this.processEnv.AWS_SECRET_ACCESS_KEY),
+    );
+    const hasAwsConfig = existsSync(this.awsDirectory);
+    if (!hasAwsCredentials && !hasAwsConfig) {
+      throw new InvalidEnvironmentError(
+        "Unable to resolve AWS credentials for the container. Configure AWS credentials " +
+          "or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, then retry.",
+      );
     }
 
     const tool = await this.resolveContainerTool(input.signal);
@@ -99,7 +131,7 @@ export class ContainerDevRunner implements DevRunner {
     const buildCommand = [tool, "build", "-f", dockerfile, "-t", imageTag, ...buildArgFlags, "."];
     const buildOptions: StreamProcessOptions = {
       cwd: context,
-      env: process.env,
+      env: this.processEnv,
       redactedCommand: [
         tool,
         "build",
@@ -116,23 +148,33 @@ export class ContainerDevRunner implements DevRunner {
     yield { type: "status", message: `Building image with ${tool}` };
     yield* this.streamProcess(buildCommand, buildOptions);
 
-    const containerPort = portForProtocol(input.runtime.protocol);
-    const forwardedEnv: Record<string, string> = {
-      ...input.env,
+    const containerPort = DEV_PORTS[input.runtime.protocol ?? "HTTP"];
+    const forwardedEnv: Record<string, string> = {};
+    for (const key of AWS_ENV_KEYS) {
+      if (this.processEnv[key]) forwardedEnv[key] = this.processEnv[key];
+    }
+    Object.assign(forwardedEnv, input.env, {
       PORT: String(containerPort),
       LOCAL_DEV: "1",
-    };
+    });
     if (input.runtime.protocol === "MCP") {
       forwardedEnv.FASTMCP_PORT = String(containerPort);
     }
-    const envFlags = Object.entries(forwardedEnv).flatMap(([key, value]) => [
-      "-e",
-      `${key}=${value}`,
-    ]);
-    const redactedEnvFlags = Object.keys(forwardedEnv).flatMap((key) => [
-      "-e",
-      `${key}=<redacted>`,
-    ]);
+    const awsMount = hasAwsConfig ? ["-v", `${this.awsDirectory}:/aws-config:ro`] : [];
+    if (awsMount.length) {
+      forwardedEnv.AWS_CONFIG_FILE = "/aws-config/config";
+      forwardedEnv.AWS_SHARED_CREDENTIALS_FILE = "/aws-config/credentials";
+    }
+    const envFile = join(tmpdir(), `agentcore-dev-${randomUUID()}.env`);
+    try {
+      await writeFile(envFile, serializeEnvironment(forwardedEnv), {
+        flag: "wx",
+        mode: 0o600,
+      });
+    } catch (error) {
+      await rm(envFile, { force: true });
+      throw error;
+    }
     const runCommand = [
       tool,
       "run",
@@ -141,7 +183,9 @@ export class ContainerDevRunner implements DevRunner {
       containerName,
       "-p",
       `127.0.0.1:${input.port}:${containerPort}`,
-      ...envFlags,
+      ...awsMount,
+      "--env-file",
+      envFile,
       imageTag,
     ];
 
@@ -149,22 +193,15 @@ export class ContainerDevRunner implements DevRunner {
     try {
       yield* this.streamProcess(runCommand, {
         cwd: context,
-        env: process.env,
-        redactedCommand: [
-          tool,
-          "run",
-          "--rm",
-          "--name",
-          containerName,
-          "-p",
-          `127.0.0.1:${input.port}:${containerPort}`,
-          ...redactedEnvFlags,
-          imageTag,
-        ],
+        env: this.processEnv,
         signal: input.signal,
       });
     } finally {
-      await this.removeContainer(tool, containerName, context);
+      try {
+        await this.removeContainer(tool, containerName, context);
+      } finally {
+        await rm(envFile, { force: true });
+      }
     }
   }
 
@@ -194,6 +231,7 @@ export class ContainerDevRunner implements DevRunner {
     try {
       for await (const _event of this.streamProcess([tool, "rm", "-f", containerName], {
         cwd,
+        env: this.processEnv,
         signal: AbortSignal.timeout(CLEANUP_TIMEOUT_MS),
       })) {
         // Best-effort cleanup intentionally discards command output.
@@ -204,33 +242,26 @@ export class ContainerDevRunner implements DevRunner {
   }
 }
 
-function portForProtocol(protocol: DevServerInput["runtime"]["protocol"]): number {
-  if (protocol === "MCP") return 8000;
-  if (protocol === "A2A") return 9000;
-  return 8080;
-}
-
-function isDirectory(path: string): boolean {
-  try {
-    return statSync(path).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-function isFile(path: string): boolean {
-  try {
-    return statSync(path).isFile();
-  } catch {
-    return false;
-  }
-}
-
 function ensureBuildContextDockerignore(context: string): string | undefined {
   const dockerignore = join(context, ".dockerignore");
   if (existsSync(dockerignore)) return undefined;
   writeFileSync(dockerignore, BUILD_CONTEXT_DOCKERIGNORE);
   return dockerignore;
+}
+
+function serializeEnvironment(env: Record<string, string>): string {
+  return (
+    Object.entries(env)
+      .map(([key, value]) => {
+        if (/[\r\n]/.test(value)) {
+          throw new InputValidationError(
+            `container environment variable '${key}' cannot contain a newline`,
+          );
+        }
+        return `${key}=${value}`;
+      })
+      .join("\n") + "\n"
+  );
 }
 
 function hashString(value: string): string {

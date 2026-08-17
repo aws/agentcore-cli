@@ -11,6 +11,7 @@ import {
   type ProjectEvent,
 } from "../../handlers/project/types";
 import { createSilentLogger } from "../../testing";
+import { ProjectSpecSchema } from "../../projectSchemas/project";
 import type { BackendDeployInput, ProjectBackend } from "./backends/types";
 
 const originalCwd = process.cwd();
@@ -82,6 +83,10 @@ function delegating(): {
 
 const TARGET = { name: "default", account: "111122223333", region: "us-east-1" };
 
+// The least a spec can say and still be one: everything else, `managedBy` included,
+// comes from the schema's own defaults.
+const SPEC = { name: "example", version: 1 };
+
 // Only what the manager itself reads: a project, and the target list beside it. A string
 // is written verbatim so a test can supply invalid JSON, and null writes no file at all.
 async function withTargets(root: string, targets: unknown = [TARGET]): Promise<Project> {
@@ -92,7 +97,7 @@ async function withTargets(root: string, targets: unknown = [TARGET]): Promise<P
       typeof targets === "string" ? targets : JSON.stringify(targets),
     );
   }
-  return { name: "example", rootPath: root, managedBy: "CDK", runtimes: [] };
+  return { name: "example", rootPath: root, spec: ProjectSpecSchema.parse(SPEC) };
 }
 
 async function drain(generator: AsyncGenerator<ProjectEvent, void>): Promise<ProjectEvent[]> {
@@ -235,7 +240,7 @@ describe("FsProjectManager.create", () => {
     ]);
     expect(project.name).toBe("example");
     expect(project.rootPath).toContain("example");
-    expect(project.runtimes).toHaveLength(1);
+    expect(project.spec.runtimes).toHaveLength(1);
   });
 
   test("a failed step propagates and leaves the scaffolded files in place", async () => {
@@ -290,7 +295,10 @@ describe("FsProjectManager.build", () => {
     const project = await withTargets(root);
 
     // CDK is the only backend today; the cast stands in for a future one.
-    const foreign = { ...project, managedBy: "Terraform" as Project["managedBy"] };
+    const foreign = {
+      ...project,
+      spec: { ...project.spec, managedBy: "Terraform" as Project["spec"]["managedBy"] },
+    };
     await expect(drain(subject.build(foreign))).rejects.toThrow(/unsupported backend: Terraform/);
     expect(builds).toEqual([]);
   });
@@ -398,7 +406,10 @@ describe("FsProjectManager.deploy", () => {
     const project = await withTargets(root);
 
     // CDK is the only backend today; the cast stands in for a future one.
-    const foreign = { ...project, managedBy: "Terraform" as Project["managedBy"] };
+    const foreign = {
+      ...project,
+      spec: { ...project.spec, managedBy: "Terraform" as Project["spec"]["managedBy"] },
+    };
     await expect(
       drain(subject.deploy(foreign, { region: REGION, target: "default" })),
     ).rejects.toThrow(/unsupported backend: Terraform/);
@@ -417,8 +428,8 @@ describe("FsProjectManager.resolve", () => {
 
     expect(resolved?.name).toBe("example");
     expect(resolved?.rootPath).toBe(join(root, "example"));
-    expect(resolved?.managedBy).toBe("CDK");
-    expect(resolved?.runtimes).toHaveLength(1);
+    expect(resolved?.spec.managedBy).toBe("CDK");
+    expect(resolved?.spec.runtimes).toHaveLength(1);
   });
 
   test("returns undefined when no project encloses the path", async () => {

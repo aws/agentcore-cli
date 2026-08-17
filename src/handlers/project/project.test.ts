@@ -1,4 +1,5 @@
 import { afterEach, test, expect, describe } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -10,7 +11,7 @@ import {
   testIO,
 } from "../../testing";
 import { InputValidationError } from "../../errors";
-import type { CdkEvent, CdkOperation } from "../../io";
+import { FsReadWriteJson, type CdkEvent, type CdkOperation, type ReadWriteJson } from "../../io";
 import { detailedLogLocation } from "../../logging";
 
 // The synth command build and deploy both issue. --output pins the assembly to the
@@ -24,11 +25,18 @@ function STACK(target: string): string {
   return `AgentCore-MyAgent-${target}`;
 }
 
+type CliOptions = {
+  /** Stands in for driving the CDK toolkit; see {@link TestCoreClient}. */
+  onCdkOperation?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void;
+  /** An already-wired client, for a test that needs one of its doubles to fail. */
+  core?: TestCoreClient;
+};
+
 // A CLI wired to test doubles, whose route() a test drives directly when it needs
 // what was written after a command failed.
-function cli(onCdkOperation?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void) {
+function cli(options?: CliOptions) {
   const io = testIO();
-  const core = new TestCoreClient({ onCdkOperation });
+  const core = options?.core ?? new TestCoreClient({ onCdkOperation: options?.onCdkOperation });
   const root = createRootHandler(core, {
     io: io.io,
     globalConfigAccessor: new TestGlobalConfigAccessor(),
@@ -41,19 +49,21 @@ function cli(onCdkOperation?: (operation: CdkOperation, emit: (event: CdkEvent) 
   };
 }
 
-async function run(
-  args: string[],
-  onCdkOperation?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void,
-) {
-  const { io, core, route } = cli(onCdkOperation);
+async function run(args: string[], options?: CliOptions) {
+  const { io, core, route } = cli(options);
   await route(args);
   return { io, core };
 }
 
-describe.each(["remove", "dev", "status"])("project %s", (command) => {
+describe.each(["remove", "status"])("project %s", (command) => {
   test("throws because it is not implemented yet", async () => {
     await expect(run([command])).rejects.toThrow(/not implemented/);
   });
+});
+
+test("project dev requires an AgentCore project", async () => {
+  await inTempDirectory();
+  await expect(run(["dev"])).rejects.toThrow(/No AgentCore project found/);
 });
 
 const originalCwd = process.cwd();
@@ -136,8 +146,10 @@ describe("project create", () => {
 });
 
 describe("project add harness", () => {
-  test.each([
-    ["minimal — name only", ["--name", "my-agent"]],
+  const defaultModel = { provider: "bedrock", modelId: "global.anthropic.claude-sonnet-4-6" };
+  /** Verify error case for different flags **/
+  test.each<[string, string[], Record<string, unknown>]>([
+    ["minimal — name only", ["--name", "x"], { model: defaultModel }],
     [
       "model — bedrock",
       [
@@ -146,6 +158,7 @@ describe("project add harness", () => {
         "--model",
         '{"bedrockModelConfig":{"modelId":"us.anthropic.claude-sonnet-4-5-20250929-v1:0"}}',
       ],
+      { model: { provider: "bedrock", modelId: "us.anthropic.claude-sonnet-4-5-20250929-v1:0" } },
     ],
     [
       "model — openai",
@@ -155,6 +168,13 @@ describe("project add harness", () => {
         "--model",
         '{"openAiModelConfig":{"modelId":"gpt-4","apiKeyArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:api-key/k"}}',
       ],
+      {
+        model: {
+          provider: "open_ai",
+          modelId: "gpt-4",
+          apiKeyArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:api-key/k",
+        },
+      },
     ],
     [
       "model — gemini",
@@ -164,10 +184,18 @@ describe("project add harness", () => {
         "--model",
         '{"geminiModelConfig":{"modelId":"gemini-pro","apiKeyArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:api-key/k"}}',
       ],
+      {
+        model: {
+          provider: "gemini",
+          modelId: "gemini-pro",
+          apiKeyArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:api-key/k",
+        },
+      },
     ],
     [
       "model — litellm",
       ["--name", "x", "--model", '{"liteLlmModelConfig":{"modelId":"anthropic/claude-3"}}'],
+      { model: { provider: "lite_llm", modelId: "anthropic/claude-3" } },
     ],
     [
       "tools — remote_mcp",
@@ -177,6 +205,15 @@ describe("project add harness", () => {
         "--tools",
         '[{"type":"remote_mcp","name":"mcp1","config":{"remoteMcp":{"url":"https://mcp.example.com"}}}]',
       ],
+      {
+        tools: [
+          {
+            type: "remote_mcp",
+            name: "mcp1",
+            config: { remoteMcp: { url: "https://mcp.example.com" } },
+          },
+        ],
+      },
     ],
     [
       "tools — agentcore_gateway",
@@ -186,6 +223,48 @@ describe("project add harness", () => {
         "--tools",
         '[{"type":"agentcore_gateway","name":"gw1","config":{"agentCoreGateway":{"gatewayArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/g"}}}]',
       ],
+      {
+        tools: [
+          {
+            type: "agentcore_gateway",
+            name: "gw1",
+            config: {
+              agentCoreGateway: {
+                gatewayArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/g",
+              },
+            },
+          },
+        ],
+      },
+    ],
+    [
+      "tools — agentcore_gateway with outboundAuth",
+      [
+        "--name",
+        "x",
+        "--tools",
+        '[{"type":"agentcore_gateway","name":"gw1","config":{"agentCoreGateway":{"gatewayArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/g","outboundAuth":{"oauth":{"providerArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:oauth2-credential-provider/p","scopes":["read","write"]}}}}}]',
+      ],
+      {
+        tools: [
+          {
+            type: "agentcore_gateway",
+            name: "gw1",
+            config: {
+              agentCoreGateway: {
+                gatewayArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/g",
+                outboundAuth: {
+                  oauth: {
+                    providerArn:
+                      "arn:aws:bedrock-agentcore:us-east-1:123456789012:oauth2-credential-provider/p",
+                    scopes: ["read", "write"],
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
     ],
     [
       "tools — agentcore_browser",
@@ -195,6 +274,7 @@ describe("project add harness", () => {
         "--tools",
         '[{"type":"agentcore_browser","name":"br1","config":{"agentCoreBrowser":{}}}]',
       ],
+      { tools: [{ type: "agentcore_browser", name: "br1", config: { agentCoreBrowser: {} } }] },
     ],
     [
       "tools — inline_function",
@@ -204,6 +284,15 @@ describe("project add harness", () => {
         "--tools",
         '[{"type":"inline_function","name":"fn1","config":{"inlineFunction":{"description":"test","inputSchema":{"type":"object"}}}}]',
       ],
+      {
+        tools: [
+          {
+            type: "inline_function",
+            name: "fn1",
+            config: { inlineFunction: { description: "test", inputSchema: { type: "object" } } },
+          },
+        ],
+      },
     ],
     [
       "tools — agentcore_code_interpreter",
@@ -213,10 +302,20 @@ describe("project add harness", () => {
         "--tools",
         '[{"type":"agentcore_code_interpreter","name":"ci1","config":{"agentCoreCodeInterpreter":{}}}]',
       ],
+      {
+        tools: [
+          {
+            type: "agentcore_code_interpreter",
+            name: "ci1",
+            config: { agentCoreCodeInterpreter: {} },
+          },
+        ],
+      },
     ],
     [
       "tools — no config",
       ["--name", "x", "--tools", '[{"type":"agentcore_browser","name":"br1"}]'],
+      { tools: [{ type: "agentcore_browser", name: "br1" }] },
     ],
     [
       "tools — unrecognized config variant (passes through without config)",
@@ -226,9 +325,18 @@ describe("project add harness", () => {
         "--tools",
         '[{"type":"agentcore_browser","name":"br1","config":{"someFutureConfig":{}}}]',
       ],
+      { tools: [{ type: "agentcore_browser", name: "br1" }] },
     ],
-    ["skills — path", ["--name", "x", "--skills", '[{"path":"./my-skill"}]']],
-    ["skills — s3", ["--name", "x", "--skills", '[{"s3":{"uri":"s3://bucket/skill/"}}]']],
+    [
+      "skills — path",
+      ["--name", "x", "--skills", '[{"path":"./my-skill"}]'],
+      { skills: [{ path: "./my-skill" }] },
+    ],
+    [
+      "skills — s3",
+      ["--name", "x", "--skills", '[{"s3":{"uri":"s3://bucket/skill/"}}]'],
+      { skills: [{ s3Uri: "s3://bucket/skill/" }] },
+    ],
     [
       "skills — git",
       [
@@ -237,10 +345,23 @@ describe("project add harness", () => {
         "--skills",
         '[{"git":{"url":"https://github.com/org/repo","path":"skills/","auth":{"credentialArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:credential/c","username":"oauth2"}}}]',
       ],
+      {
+        skills: [
+          {
+            gitUrl: "https://github.com/org/repo",
+            path: "skills/",
+            auth: {
+              credentialArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:credential/c",
+              username: "oauth2",
+            },
+          },
+        ],
+      },
     ],
     [
       "skills — awsSkills",
       ["--name", "x", "--skills", '[{"awsSkills":{"paths":["core-skills/*"]}}]'],
+      { skills: [{ awsSkills: { paths: ["core-skills/*"] } }] },
     ],
     [
       "memory — managed",
@@ -250,6 +371,7 @@ describe("project add harness", () => {
         "--memory",
         '{"managedMemoryConfiguration":{"strategies":["SEMANTIC"],"eventExpiryDuration":30}}',
       ],
+      { memory: { mode: "managed", strategies: ["SEMANTIC"], eventExpiryDuration: 30 } },
     ],
     [
       "memory — existing",
@@ -259,8 +381,18 @@ describe("project add harness", () => {
         "--memory",
         '{"agentCoreMemoryConfiguration":{"arn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/m"}}',
       ],
+      {
+        memory: {
+          mode: "existing",
+          arn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/m",
+        },
+      },
     ],
-    ["memory — disabled", ["--name", "x", "--memory", '{"disabled":{}}']],
+    [
+      "memory — disabled",
+      ["--name", "x", "--memory", '{"disabled":{}}'],
+      { memory: { mode: "disabled" } },
+    ],
     [
       "truncation — sliding_window",
       [
@@ -269,6 +401,12 @@ describe("project add harness", () => {
         "--truncation",
         '{"strategy":"sliding_window","config":{"slidingWindow":{"messagesCount":40}}}',
       ],
+      {
+        truncation: {
+          strategy: "sliding_window",
+          config: { slidingWindow: { messagesCount: 40 } },
+        },
+      },
     ],
     [
       "truncation — summarization",
@@ -278,11 +416,22 @@ describe("project add harness", () => {
         "--truncation",
         '{"strategy":"summarization","config":{"summarization":{"summaryRatio":0.5,"preserveRecentMessages":5}}}',
       ],
+      {
+        truncation: {
+          strategy: "summarization",
+          config: { summarization: { summaryRatio: 0.5, preserveRecentMessages: 5 } },
+        },
+      },
     ],
-    ["truncation — none", ["--name", "x", "--truncation", '{"strategy":"none"}']],
+    [
+      "truncation — none",
+      ["--name", "x", "--truncation", '{"strategy":"none"}'],
+      { truncation: { strategy: "none" } },
+    ],
     [
       "truncation — unrecognized config variant (passes through strategy only)",
       ["--name", "x", "--truncation", '{"strategy":"none","config":{"someFutureStrategy":{}}}'],
+      { truncation: { strategy: "none" } },
     ],
     [
       "authorizer — customJWT",
@@ -292,6 +441,15 @@ describe("project add harness", () => {
         "--authorizer-configuration",
         '{"customJWTAuthorizer":{"discoveryUrl":"https://idp.example.com/.well-known/openid-configuration","allowedAudience":["my-app"]}}',
       ],
+      {
+        authorizerType: "CUSTOM_JWT",
+        authorizerConfiguration: {
+          customJwtAuthorizer: {
+            discoveryUrl: "https://idp.example.com/.well-known/openid-configuration",
+            allowedAudience: ["my-app"],
+          },
+        },
+      },
     ],
     [
       "environment — VPC + lifecycle",
@@ -299,8 +457,16 @@ describe("project add harness", () => {
         "--name",
         "x",
         "--environment",
-        '{"agentCoreRuntimeEnvironment":{"networkConfiguration":{"networkMode":"VPC","networkModeConfig":{"subnets":["subnet-abc"],"securityGroups":["sg-abc"]}},"lifecycleConfiguration":{"idleRuntimeSessionTimeout":900,"maxLifetime":28800}}}',
+        '{"agentCoreRuntimeEnvironment":{"networkConfiguration":{"networkMode":"VPC","networkModeConfig":{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}},"lifecycleConfiguration":{"idleRuntimeSessionTimeout":900,"maxLifetime":28800}}}',
       ],
+      {
+        networkMode: "VPC",
+        networkConfig: {
+          subnets: ["subnet-0123456789abcdef0"],
+          securityGroups: ["sg-0123456789abcdef0"],
+        },
+        lifecycleConfig: { idleRuntimeSessionTimeout: 900, maxLifetime: 28800 },
+      },
     ],
     [
       "environment — with filesystem mounts",
@@ -308,8 +474,30 @@ describe("project add harness", () => {
         "--name",
         "x",
         "--environment",
-        '{"agentCoreRuntimeEnvironment":{"networkConfiguration":{"networkMode":"VPC","networkModeConfig":{"subnets":["subnet-abc"],"securityGroups":["sg-abc"]}},"filesystemConfigurations":[{"sessionStorage":{"mountPath":"/mnt/data"}},{"efsAccessPoint":{"accessPointArn":"arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-abc","mountPath":"/mnt/efs"}},{"s3FilesAccessPoint":{"accessPointArn":"arn:aws:s3files:us-east-1:123456789012:file-system/fs-abc/access-point/fsap-abc","mountPath":"/mnt/s3"}}]}}',
+        '{"agentCoreRuntimeEnvironment":{"networkConfiguration":{"networkMode":"VPC","networkModeConfig":{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}},"filesystemConfigurations":[{"sessionStorage":{"mountPath":"/mnt/data"}},{"efsAccessPoint":{"accessPointArn":"arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0","mountPath":"/mnt/efs"}},{"s3FilesAccessPoint":{"accessPointArn":"arn:aws:s3files:us-east-1:123456789012:file-system/fs-0123456789abcdef01/access-point/fsap-0123456789abcdef01","mountPath":"/mnt/s3"}}]}}',
       ],
+      {
+        networkMode: "VPC",
+        networkConfig: {
+          subnets: ["subnet-0123456789abcdef0"],
+          securityGroups: ["sg-0123456789abcdef0"],
+        },
+        sessionStoragePath: "/mnt/data",
+        efsAccessPoints: [
+          {
+            accessPointArn:
+              "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0",
+            mountPath: "/mnt/efs",
+          },
+        ],
+        s3AccessPoints: [
+          {
+            accessPointArn:
+              "arn:aws:s3files:us-east-1:123456789012:file-system/fs-0123456789abcdef01/access-point/fsap-0123456789abcdef01",
+            mountPath: "/mnt/s3",
+          },
+        ],
+      },
     ],
     [
       "environment-artifact — containerUri",
@@ -319,18 +507,142 @@ describe("project add harness", () => {
         "--environment-artifact",
         '{"containerConfiguration":{"containerUri":"123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:latest"}}',
       ],
+      { containerUri: "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:latest" },
     ],
-    ["environment-variables", ["--name", "x", "--environment-variables", '{"LOG_LEVEL":"debug"}']],
-    ["tags", ["--name", "x", "--tags", '{"team":"ml"}']],
-    ["allowed-tools", ["--name", "x", "--allowed-tools", "*", "@builtin"]],
+    [
+      "environment-variables",
+      ["--name", "x", "--environment-variables", '{"LOG_LEVEL":"debug"}'],
+      { environmentVariables: { LOG_LEVEL: "debug" } },
+    ],
+    ["tags", ["--name", "x", "--tags", '{"team":"ml"}'], { tags: { team: "ml" } }],
+    [
+      "allowed-tools",
+      ["--name", "x", "--allowed-tools", "*", "@builtin"],
+      { allowedTools: ["*", "@builtin"] },
+    ],
     [
       "max-iterations, max-tokens, timeout-seconds",
       ["--name", "x", "--max-iterations", "10", "--max-tokens", "4096", "--timeout-seconds", "60"],
+      { maxIterations: 10, maxTokens: 4096, timeoutSeconds: 60 },
     ],
-  ])("%s", async (_label, flags) => {
+  ])("%s", async (_label, flags, expected) => {
+    const projectRoot = await inProject();
+    await run(["add", "harness", ...flags]);
+
+    const harnessJson = await Bun.file(join(projectRoot, "app", "x", "harness.json")).json();
+    expect(harnessJson).toMatchObject(expected);
+
+    const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(agentcoreJson.harnesses).toContainEqual({
+      name: "x",
+      path: join("app", "x"),
+    });
+  });
+
+  test("--system-prompt overrides the default system-prompt.md", async () => {
+    const projectRoot = await inProject();
+    await run(["add", "harness", "--name", "x", "--system-prompt", "You are a pirate."]);
+
+    const prompt = await Bun.file(join(projectRoot, "app", "x", "system-prompt.md")).text();
+    expect(prompt).toBe("You are a pirate.");
+
+    const harnessJson = await Bun.file(join(projectRoot, "app", "x", "harness.json")).json();
+    expect(harnessJson).not.toHaveProperty("systemPrompt");
+  });
+
+  test("--dockerfile copies the file into the harness directory and stores the relative path", async () => {
+    const projectRoot = await inProject();
+
+    const dockerfilePath = join(projectRoot, "Dockerfile");
+    await Bun.write(dockerfilePath, "FROM python:3.12-slim\nCOPY . /app\n");
+
+    await run(["add", "harness", "--name", "x", "--dockerfile", dockerfilePath]);
+
+    const copiedContent = await Bun.file(join(projectRoot, "app", "x", "Dockerfile")).text();
+    expect(copiedContent).toBe("FROM python:3.12-slim\nCOPY . /app\n");
+
+    const harnessJson = await Bun.file(join(projectRoot, "app", "x", "harness.json")).json();
+    expect(harnessJson.dockerfile).toBe("Dockerfile");
+  });
+
+  test("--dockerfile with VPC mode succeeds when --vpc-id is provided", async () => {
+    const projectRoot = await inProject();
+
+    const dockerfilePath = join(projectRoot, "Dockerfile");
+    await Bun.write(dockerfilePath, "FROM python:3.12-slim\n");
+
+    await run([
+      "add",
+      "harness",
+      "--name",
+      "x",
+      "--dockerfile",
+      dockerfilePath,
+      "--environment",
+      '{"agentCoreRuntimeEnvironment":{"networkConfiguration":{"networkMode":"VPC","networkModeConfig":{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}}}}',
+      "--vpc-id",
+      "vpc-0123456789abcdef0",
+    ]);
+
+    const harnessJson = await Bun.file(join(projectRoot, "app", "x", "harness.json")).json();
+    expect(harnessJson).toMatchObject({
+      dockerfile: "Dockerfile",
+      networkMode: "VPC",
+      networkConfig: {
+        subnets: ["subnet-0123456789abcdef0"],
+        securityGroups: ["sg-0123456789abcdef0"],
+        vpcId: "vpc-0123456789abcdef0",
+      },
+    });
+  });
+
+  test("--dockerfile with VPC mode fails without --vpc-id", async () => {
+    const projectRoot = await inProject();
+
+    const dockerfilePath = join(projectRoot, "Dockerfile");
+    await Bun.write(dockerfilePath, "FROM python:3.12-slim\n");
+
+    await expect(
+      run([
+        "add",
+        "harness",
+        "--name",
+        "x",
+        "--dockerfile",
+        dockerfilePath,
+        "--environment",
+        '{"agentCoreRuntimeEnvironment":{"networkConfiguration":{"networkMode":"VPC","networkModeConfig":{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}}}}',
+      ]),
+    ).rejects.toBeInstanceOf(InputValidationError);
+  });
+
+  test("cleans up scaffolded files when the spec write fails", async () => {
+    const projectRoot = await inProject();
+    const logger = createSilentLogger();
+    const realJson = new FsReadWriteJson({ logger });
+
+    // A json adapter that delegates reads but always fails on write.
+    const failingJson: ReadWriteJson = {
+      read: (path, schema) => realJson.read(path, schema),
+      write: () => {
+        throw new Error("simulated write failure");
+      },
+    };
+
+    const core = new TestCoreClient({ json: failingJson });
+
+    await expect(run(["add", "harness", "--name", "x"], { core })).rejects.toThrow();
+
+    // The scaffolded harness directory should have been cleaned up.
+    expect(existsSync(join(projectRoot, "app", "x"))).toBe(false);
+  });
+
+  test("rejects a duplicate harness name", async () => {
     await inProject();
-    // TODO: update to verify that the project updates.
-    await expect(run(["add", "harness", ...flags])).rejects.toThrow("not yet implemented");
+    await run(["add", "harness", "--name", "x"]);
+    await expect(run(["add", "harness", "--name", "x"])).rejects.toBeInstanceOf(
+      InputValidationError,
+    );
   });
 
   test.each([
@@ -364,6 +676,15 @@ describe("project add harness", () => {
       ["--name", "x", "--environment-artifact", '{"unknownArtifact":{}}'],
     ],
     [
+      "unrecognized outboundAuth variant",
+      [
+        "--name",
+        "x",
+        "--tools",
+        '[{"type":"agentcore_gateway","name":"gw1","config":{"agentCoreGateway":{"gatewayArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/g","outboundAuth":{"unknownAuth":{}}}}}]',
+      ],
+    ],
+    [
       "containerUri and dockerfile are mutually exclusive",
       [
         "--name",
@@ -373,6 +694,10 @@ describe("project add harness", () => {
         "--dockerfile",
         "Dockerfile",
       ],
+    ],
+    [
+      "--vpc-id requires --environment with VPC network configuration",
+      ["--name", "x", "--vpc-id", "vpc-0123456789abcdef0"],
     ],
   ])("%s", async (_label, flags) => {
     await inProject();
@@ -502,10 +827,12 @@ describe("project deploy", () => {
 
   test("keeps the CDK toolkit's own messages off screen, naming the log instead", async () => {
     await inProject();
-    const { io } = await run(["deploy"], (operation, emit) => {
-      if (operation.kind === "deploy") {
-        emit({ level: "info", message: "example-stack | 1/2 | CREATE_IN_PROGRESS" });
-      }
+    const { io } = await run(["deploy"], {
+      onCdkOperation: (operation, emit) => {
+        if (operation.kind === "deploy") {
+          emit({ level: "info", message: "example-stack | 1/2 | CREATE_IN_PROGRESS" });
+        }
+      },
     });
 
     // A deploy shows its steps; the toolkit's narration is in the log, so the
@@ -516,8 +843,10 @@ describe("project deploy", () => {
 
   test("names the log even when the deploy fails", async () => {
     await inProject();
-    const { io, route } = cli((operation) => {
-      if (operation.kind === "deploy") throw new Error("cdk deploy exploded");
+    const { io, route } = cli({
+      onCdkOperation: (operation) => {
+        if (operation.kind === "deploy") throw new Error("cdk deploy exploded");
+      },
     });
 
     await expect(route(["deploy"])).rejects.toThrow("cdk deploy exploded");

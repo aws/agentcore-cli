@@ -24,7 +24,9 @@ const TRACE: SessionTrace = {
 const RESULT: EvaluateResult = {
   sessionsRequested: 1,
   sessionsEvaluated: 1,
-  results: [{ evaluatorId: "Builtin.Helpfulness", value: 0.9 } as EvaluateResult["results"][number]],
+  results: [
+    { evaluatorId: "Builtin.Helpfulness", value: 0.9 } as EvaluateResult["results"][number],
+  ],
 };
 
 async function run(args: string[], configure?: (core: TestCoreClient) => void) {
