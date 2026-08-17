@@ -39,7 +39,6 @@ type AgentEntry = {
   port?: number;
   error?: string;
   starting?: Promise<{ name: string; port: number }>;
-  controller?: AbortController;
 };
 
 /**
@@ -139,7 +138,6 @@ export class DevSupervisor {
     // Ctrl-C must tear down every running child. The pump removes it on exit.
     this.config.signal.addEventListener("abort", onParentAbort, { once: true });
     const unchain = () => this.config.signal.removeEventListener("abort", onParentAbort);
-    entry.controller = controller;
 
     try {
       const port = await this.config.resolvePort(entry.runtime);
