@@ -30,6 +30,7 @@ export type InspectorAssetReader = (assetPath: string) => Promise<InspectorAsset
 export class InspectorAssets {
   private readonly source: AssetSource;
   private readonly overrideDir: string | undefined;
+  private readonly cache = new Map<string, InspectorAsset>();
 
   constructor(options: { source?: AssetSource; overrideDir?: string } = {}) {
     this.source = options.source ?? defaultSource();
@@ -42,6 +43,7 @@ export class InspectorAssets {
     const contentType = CONTENT_TYPES[extname(relative)] ?? "text/plain; charset=utf-8";
 
     if (this.overrideDir) {
+      // SPA development iterates on these files — never cache.
       try {
         return { body: await readFile(join(this.overrideDir, relative)), contentType };
       } catch {
@@ -49,10 +51,15 @@ export class InspectorAssets {
       }
     }
 
+    const cached = this.cache.get(relative);
+    if (cached) return cached;
+
     try {
       // Staged files carry a neutral `.asset` suffix (see scripts/build.ts).
       const text = await this.source.read(`agent-inspector/${relative}.asset`);
-      return { body: new TextEncoder().encode(text), contentType };
+      const asset = { body: new TextEncoder().encode(text), contentType };
+      this.cache.set(relative, asset);
+      return asset;
     } catch {
       // Not staged (running from source before a build) — fall through.
     }
@@ -60,7 +67,9 @@ export class InspectorAssets {
     const packaged = packagedAssetsDir();
     if (!packaged) return undefined;
     try {
-      return { body: await readFile(join(packaged, relative)), contentType };
+      const asset = { body: await readFile(join(packaged, relative)), contentType };
+      this.cache.set(relative, asset);
+      return asset;
     } catch {
       return undefined;
     }

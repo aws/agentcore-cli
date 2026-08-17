@@ -204,6 +204,22 @@ describe("DevSupervisor", () => {
     });
   });
 
+  test("setRuntimes adds, updates, and drops agents without touching running ones", async () => {
+    const { supervisor, controller } = harness();
+    await supervisor.start("orders");
+
+    supervisor.setRuntimes([runtime("orders"), runtime("payments")]);
+    expect(supervisor.snapshot().map(({ name, phase }) => ({ name, phase }))).toEqual([
+      { name: "orders", phase: "running" },
+      { name: "payments", phase: "idle" },
+    ]);
+
+    // A running agent survives removal from the config until it stops.
+    supervisor.setRuntimes([runtime("payments")]);
+    expect(supervisor.snapshot().map(({ name }) => name)).toEqual(["orders", "payments"]);
+    controller.abort();
+  });
+
   test("aborting the parent signal stops running agents and ends the stream", async () => {
     const codeZip = serverRunner();
     const { supervisor, controller } = harness({ codeZip });

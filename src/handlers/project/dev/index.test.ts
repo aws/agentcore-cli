@@ -66,6 +66,7 @@ function fakeCollector() {
 type HarnessOptions = {
   project?: Project;
   tty?: boolean;
+  reloadedRuntimes?: ProjectRuntime[];
   codeZip?: ReturnType<typeof captureRunner>;
   container?: ReturnType<typeof captureRunner>;
   checkPort?: PortChecker;
@@ -76,6 +77,7 @@ type HarnessOptions = {
 function harness(options: HarnessOptions = {}) {
   const io = testIO();
   const ui = { starts: [] as { port?: number }[], opened: [] as string[], closed: 0 };
+  const watchers: { path: string; onChange: () => void }[] = [];
   let capturedHandler: HttpRequestHandler | undefined;
   const codeZip = options.codeZip ?? captureRunner();
   const container = options.container ?? captureRunner();
@@ -107,6 +109,10 @@ function harness(options: HarnessOptions = {}) {
     },
     inspectorAssets: { read: async () => undefined },
     isInteractive: () => options.tty ?? false,
+    watchFile: (path, onChange) => {
+      watchers.push({ path, onChange });
+    },
+    reloadRuntimes: async () => options.reloadedRuntimes ?? [],
   });
   const ctx = ValueContext.EmptyContext()
     .withValue(ProjectKey, options.project ?? project(runtime()))
@@ -124,6 +130,7 @@ function harness(options: HarnessOptions = {}) {
     environmentInputs,
     io,
     ui,
+    watchers,
     inspectorHandler: () => capturedHandler,
     run: (flags: { agent?: string; port?: number; traces?: boolean; ui?: boolean } = {}) =>
       handler.handle(ctx, { traces: true, ui: false, ...flags }, {}),
@@ -298,6 +305,30 @@ describe("project dev Inspector UI mode", () => {
     expect(status.agents.map((agent) => agent.name)).toEqual(["orders", "support"]);
     expect(status.running).toEqual([]);
     expect(subject.codeZip.inputs).toHaveLength(0);
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
+  test("agentcore.json edits reload the supervised agents", async () => {
+    const subject = harness({ reloadedRuntimes: [runtime("orders"), runtime("payments")] });
+    const { pending } = await runUi(subject);
+
+    expect(subject.watchers[0]?.path).toBe(
+      join("/workspace/project", "agentcore", "agentcore.json"),
+    );
+    subject.watchers[0]!.onChange();
+    await Bun.sleep(5);
+
+    const response = await subject.inspectorHandler()!({
+      method: "GET",
+      url: "/api/status",
+      headers: { host: "127.0.0.1:8081" },
+      body: Buffer.alloc(0),
+    });
+    const status = JSON.parse(String(response.body)) as { agents: { name: string }[] };
+    expect(status.agents.map((agent) => agent.name)).toEqual(["orders", "payments"]);
+    expect(subject.io.stderr()).toContain("Reloaded agents from agentcore.json.");
 
     process.emit("SIGINT", "SIGINT");
     await pending.catch(() => undefined);

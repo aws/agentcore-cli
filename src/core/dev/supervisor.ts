@@ -62,6 +62,25 @@ export class DevSupervisor {
     config.signal.addEventListener("abort", () => this.wake?.(), { once: true });
   }
 
+  /**
+   * Replace the managed runtime set after a config change: new runtimes join
+   * idle, edited definitions apply on the next start, and removed runtimes
+   * drop unless they are currently starting or running.
+   */
+  public setRuntimes(runtimes: ProjectRuntime[]): void {
+    const names = new Set(runtimes.map((runtime) => runtime.name));
+    for (const runtime of runtimes) {
+      const existing = this.agents.get(runtime.name);
+      if (existing) existing.runtime = runtime;
+      else this.agents.set(runtime.name, { runtime, phase: "idle" });
+    }
+    for (const [name, entry] of this.agents) {
+      if (!names.has(name) && entry.phase !== "running" && entry.phase !== "starting") {
+        this.agents.delete(name);
+      }
+    }
+  }
+
   /** Current phase, port, and last error of every managed agent. */
   public snapshot(): AgentStatus[] {
     return [...this.agents.values()].map(({ runtime, phase, port, error }) => ({
@@ -113,7 +132,7 @@ export class DevSupervisor {
    */
   public async *events(): AsyncGenerator<SupervisedEvent, void> {
     while (true) {
-      while (this.queue.length > 0) yield this.queue.shift()!;
+      for (const event of this.queue.splice(0)) yield event;
       if (this.config.signal.aborted) return;
       await new Promise<void>((resolve) => {
         this.wake = resolve;

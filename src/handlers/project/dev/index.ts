@@ -11,7 +11,7 @@ import {
   InputValidationError,
   ResourceNotFoundError,
 } from "../../../errors";
-import type { AppIO, BrowserOpener, PortChecker, startHttpServer } from "../../../io";
+import type { AppIO, BrowserOpener, FileWatcher, PortChecker, startHttpServer } from "../../../io";
 import { createHandler, flag, ProjectKey } from "../../../router";
 import { JsonRendererKey, type JsonRenderer } from "../../../tui";
 import { JsonKey, RegionKey } from "../../keys";
@@ -33,6 +33,10 @@ export type DevProjectHandlerConfig = {
   inspectorAssets: InspectorDeps["assets"];
   /** Whether the command runs on an interactive terminal (gates browser auto-open). */
   isInteractive: () => boolean;
+  /** Watches agentcore.json so the Inspector reflects config edits live. */
+  watchFile: FileWatcher;
+  /** Re-reads the project's runtime definitions after a config change. */
+  reloadRuntimes: (projectRoot: string) => Promise<ProjectRuntime[]>;
 };
 
 /** Env for a spawned agent so its OTEL SDK reports to the collector as this runtime. */
@@ -192,6 +196,30 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
             selectedAgent: flags.agent,
           }),
           { port: uiPort, signal: controller.signal },
+        );
+
+        const configPath = join(project.rootPath, "agentcore", "agentcore.json");
+        config.watchFile(
+          configPath,
+          () =>
+            void config
+              .reloadRuntimes(project.rootPath)
+              .then((reloaded) => {
+                supervisor.setRuntimes(
+                  flags.agent
+                    ? reloaded.filter((runtime) => runtime.name === flags.agent)
+                    : reloaded,
+                );
+                renderEvent(
+                  config.io,
+                  { type: "status", message: "Reloaded agents from agentcore.json." },
+                  json,
+                );
+              })
+              .catch(() => {
+                // A half-saved config parses on the next change event.
+              }),
+          controller.signal,
         );
 
         const url = `http://127.0.0.1:${server.port}`;

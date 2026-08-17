@@ -1,5 +1,5 @@
 import { Router } from "../../router";
-import { checkPort, openBrowser, startHttpServer, type AppIO } from "../../io";
+import { checkPort, openBrowser, startHttpServer, watchFile, type AppIO } from "../../io";
 import { CodeZipDevRunner } from "../../core/dev/codezip";
 import { ContainerDevRunner } from "../../core/dev/container";
 import { startOtelCollector } from "../../core/dev/otel/collector";
@@ -43,6 +43,12 @@ export function createProjectHandler(config: ProjectHandlerConfig): Router {
         openBrowser,
         inspectorAssets: new InspectorAssets(),
         isInteractive: () => process.stdout.isTTY === true,
+        watchFile,
+        reloadRuntimes: async (projectRoot) => {
+          const project = await config.projectManager.resolve({ filePath: projectRoot });
+          if (!project) throw new Error("project configuration is currently unreadable");
+          return project.spec.runtimes;
+        },
       }),
     ),
   );

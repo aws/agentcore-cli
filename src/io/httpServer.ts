@@ -68,7 +68,10 @@ async function respond(
 ): Promise<void> {
   let body: Buffer;
   try {
-    body = await readBody(request);
+    body =
+      request.method === "GET" || request.method === "HEAD"
+        ? Buffer.alloc(0)
+        : await readBody(request);
   } catch (error) {
     const status = error instanceof BodyTooLargeError ? 413 : 400;
     response.writeHead(status).end();
