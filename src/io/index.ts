@@ -37,6 +37,7 @@ export {
 export type { AppIO, ReadWriteJson } from "./types";
 export { warn } from "./warn";
 export { checkPort, type PortChecker } from "./port";
+export { openBrowser, type BrowserOpener } from "./openBrowser";
 export {
   startHttpServer,
   type HttpRequest,
