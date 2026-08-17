@@ -31,8 +31,10 @@ process.exit(
     const cliSessionId = crypto.randomUUID();
 
     const rootLogger = createFileLogger({
-      // The standard location, shared with the commands that print where it is.
-      filePath: logFilePrefix(),
+      // The standard location, shared with the commands that print where it is. The log
+      // is filed under the command being run, which is read from the argv the router is
+      // about to parse: the logger has to exist before there is a router to ask.
+      filePath: logFilePrefix({ argv }),
       logLevel: LOG_LEVEL.DEBUG,
       bindings: { cliSessionId, version: PACKAGE_VERSION },
     });

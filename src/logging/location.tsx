@@ -1,26 +1,56 @@
 import { homedir } from "node:os";
-import { join, sep } from "node:path";
+import { join, relative, sep } from "node:path";
+import { enclosingProjectRoot } from "../core/project/fsUtils";
 
-// The CLI keeps its log beside the rest of its state, under the user's home.
-const LOG_DIRECTORY = [".agentcore", "logs"];
+// A project's log joins the rest of its CLI state under agentcore/.cli, which the
+// scaffolded .gitignore excludes. Outside a project there is nothing to write into, so
+// the log falls back beside the CLI's global state.
+const PROJECT_LOG_DIRECTORY = ["agentcore", ".cli", "logs"];
+const HOME_LOG_DIRECTORY = [".agentcore", "logs"];
+
+// What a run with no command to name it after — a bare `agentcore` — is filed under.
+const CLI_NAME = "agentcore";
+
+type Location = {
+  /** Where the command was run from; decides whether a project owns the log. */
+  cwd?: string;
+  home?: string;
+  /** `process.argv`, as the router is handed it; names the command the log belongs to. */
+  argv?: string[];
+};
 
 /**
- * The file path prefix the CLI's log rotates on.
+ * The command a log belongs to: `deploy`, for `agentcore project deploy --target prod`.
  *
- * Everything that needs the log's location reads it from here — the entrypoint that
- * creates the logger, and the commands that tell the user where to look — so the
- * location printed is always the one being written to.
+ * Only the last segment of the command path is wanted, so this needs no knowledge of any
+ * flag: the path is the first unbroken run of non-flag tokens, less its first token when
+ * a flag precedes the run, since that token may be the flag's value.
  */
-export function logFilePrefix(home: string = homedir()): string {
-  return join(home, ...LOG_DIRECTORY, "output");
+function commandName(argv: string[]): string {
+  const tokens = argv.slice(2);
+  const first = tokens.findIndex((token) => !token.startsWith("-"));
+  if (first === -1) return CLI_NAME;
+  const flagged = tokens.findIndex((token, index) => index > first && token.startsWith("-"));
+  const path = tokens.slice(first === 0 ? 0 : first + 1, flagged === -1 ? undefined : flagged);
+  return path.at(-1) ?? CLI_NAME;
 }
 
 /**
- * The file a logger rotating on `prefix` writes `at`'s messages to.
- *
- * Mirrors what {@link createFileLogger} configures its transport with:
- * `${prefix}-%DATE%` plus a `.log` extension, with `YYYY-MM-DD` in local time.
+ * The prefix the rotating log file is named from: a directory per command holding that
+ * command's runs, so reading a deploy's log means reading only deploys.
  */
+export function logFilePrefix({
+  cwd = process.cwd(),
+  home = homedir(),
+  argv = process.argv,
+}: Location = {}): string {
+  const command = commandName(argv);
+  const projectRoot = enclosingProjectRoot(cwd);
+  return projectRoot
+    ? join(projectRoot, ...PROJECT_LOG_DIRECTORY, command, command)
+    : join(home, ...HOME_LOG_DIRECTORY, command, command);
+}
+
 export function rotatedLogFile(prefix: string, at: Date): string {
   const month = String(at.getMonth() + 1).padStart(2, "0");
   const day = String(at.getDate()).padStart(2, "0");
@@ -28,13 +58,17 @@ export function rotatedLogFile(prefix: string, at: Date): string {
 }
 
 /**
- * Where to tell the user their detailed logs are, written as they would type it.
- *
- * Shortened to `~` rather than made relative to the working directory: the log lives
- * under the user's home, so a path relative to a project directory is a run of `../`
- * that stops being correct as soon as they cd.
+ * The log file, spelled the shortest way that stays correct: relative for a project's
+ * log, and `~`-shortened for the fallback, where relative would be a run of `../` that
+ * breaks on the next cd.
  */
-export function detailedLogLocation(at: Date = new Date(), home: string = homedir()): string {
-  const path = rotatedLogFile(logFilePrefix(home), at);
+export function detailedLogLocation({
+  at = new Date(),
+  cwd = process.cwd(),
+  home = homedir(),
+  argv = process.argv,
+}: Location & { at?: Date } = {}): string {
+  const path = rotatedLogFile(logFilePrefix({ cwd, home, argv }), at);
+  if (enclosingProjectRoot(cwd)) return relative(cwd, path);
   return path.startsWith(`${home}${sep}`) ? `~${path.slice(home.length)}` : path;
 }
