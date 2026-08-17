@@ -23,6 +23,7 @@ import { createHarnessTreeFromSpec, createProjectTreeFromTemplate, TEMPLATES } f
 import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { enclosingProjectRoot } from "./fsUtils";
 import {
+  AgentCoreCLIError,
   DeserializationError,
   InputValidationError,
   NotImplementedError,
@@ -186,10 +187,17 @@ export class FsProjectManager implements ProjectManager {
       };
     } catch (err) {
       this.logger.warn(
-        `Failed to update ${agentCoreSpecPath}; attempting best-effort cleanup of scaffolded files`,
+        `failed to update ${agentCoreSpecPath}; attempting best-effort cleanup of scaffolded files`,
       );
       await Promise.all(
-        scaffoldedPaths.map((p) => rm(p, { recursive: true, force: true }).catch(() => {})),
+        scaffoldedPaths.map((p) =>
+          rm(p, { recursive: true, force: true }).catch((e) => {
+            const error = AgentCoreCLIError.fromError(e);
+            this.logger
+              .child({ errorName: error.name, errorMessage: error.message })
+              .warn(`failed to clean up ${p}`);
+          }),
+        ),
       );
       throw err;
     }
