@@ -521,14 +521,11 @@ export class EvalClient implements CoreEvalClient {
     options: CoreOptions,
     signal?: AbortSignal,
   ): Promise<InvokeDatasetResult> {
-    // readDatasetText owns the local-vs-id fetch + temp cleanup; DatasetLoader is the
-    // pure parse into Example instances (each dispatches its own replay via run()).
     const examples = DatasetLoader.load(
       await this.readDatasetText(input.dataset, input.datasetVersion, options, signal),
     );
 
-    // Resolve the runtime once; normalizeRuntimeInvokeRequest validates auth + fills
-    // accountId. Invoke is the extracted free fn — no RuntimeClient dependency.
+    // Resolve the runtime once, reused for every session.
     const runtime = await this.clients
       .control(toClientConfig(options))
       .send(new GetAgentRuntimeCommand({ agentRuntimeId: input.runtimeId }), {
@@ -537,9 +534,8 @@ export class EvalClient implements CoreEvalClient {
     const deps = { clients: this.clients, fetch: this.fetch, logger: this.logger };
 
     const { ok, failed, firstError } = await runExamples(examples, async (example) => {
-      // One session per example; the id is client-generated (a client-owned input per
-      // the AgentCore docs, needed before any response) and reused across turns so the
-      // conversation and its per-turn traces accumulate in order.
+      // One session per example; the id is a client-owned input per the AgentCore docs,
+      // reused across turns so the conversation and its per-turn traces stay in order.
       const sessionId = randomUUID();
       const ctx: RunContext = {
         invokeOnce: async (payload) => {
@@ -555,8 +551,7 @@ export class EvalClient implements CoreEvalClient {
             runtimeUserId: input.userId,
           });
           const response = await invokeRuntime(deps, request, options, signal);
-          // Read the body to completion (frees the socket, feeds an actor loop later);
-          // a scripted example ignores the returned text.
+          // Read to completion to free the socket; a scripted example ignores the text.
           let text = "";
           const decoder = new TextDecoder();
           for await (const chunk of response.body) text += decoder.decode(chunk, { stream: true });
@@ -579,9 +574,8 @@ export class EvalClient implements CoreEvalClient {
       this.logger.warn(`invokeDataset: ${failed} example(s) failed to invoke and were dropped`);
     }
 
-    // AgentCore takes ~30s-3min to emit spans for a freshly invoked session; grade too
-    // early and the service reads an empty log group and marks every session failed. Wait
-    // once. Skipped when disabled via `SIMULATE_INGESTION_WAIT_MS=0` (tests).
+    // AgentCore emits spans ~30s-3min after invoke; grade too early and it reads an empty
+    // log group and fails every session. Disabled via SIMULATE_INGESTION_WAIT_MS=0 (tests).
     const waitMs = Number(process.env.SIMULATE_INGESTION_WAIT_MS ?? 180_000);
     if (ok.length > 0 && waitMs > 0) {
       this.logger.info(
@@ -593,9 +587,8 @@ export class EvalClient implements CoreEvalClient {
     return { sessions: ok, invoked: ok.length, failed, firstError };
   }
 
-  // readDatasetText resolves a dataset ref to its JSONL text: a local path directly, else
-  // download the dataset id to a temp file (cleaned up here). Both funnel through the
-  // shared readLocalDatasetFile so replay and updateDatasetExamples read files the same way.
+  // Resolve a dataset ref to JSONL text: a local path directly, else download the id to a
+  // temp file (cleaned up here). Reuses readLocalDatasetFile so replay reads like update.
   private async readDatasetText(
     ref: string,
     version: string | undefined,

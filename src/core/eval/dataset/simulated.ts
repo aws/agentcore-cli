@@ -2,10 +2,8 @@ import type { InlineGroundTruth } from "@aws-sdk/client-bedrock-agentcore";
 import { NotImplementedError } from "../../../errors";
 import type { Example, RunContext } from "./types";
 
-// A simulated example carries an actor profile instead of scripted turns: replaying it
-// needs an LLM "user" to generate each next message from the agent's reply, which this
-// command does not run yet. Throw at construction (= load time) so the user fails early
-// with a clear message rather than a per-row "has no turns" misdiagnosis mid-run.
+// Not shipped: replaying a simulated example needs an LLM actor we don't run yet. Throw
+// at construction (= load time) so the user fails early, not with a per-row misdiagnosis.
 export class SimulatedExample implements Example {
   readonly schemaType = "AGENTCORE_EVALUATION_SIMULATED_V1" as const;
 
@@ -19,8 +17,6 @@ export class SimulatedExample implements Example {
     );
   }
 
-  // Unreachable today (the constructor throws). Implements the interface; the actor loop
-  // lands here when simulated ships.
   run(_ctx: RunContext): Promise<InlineGroundTruth | undefined> {
     throw new NotImplementedError("simulated example replay is not implemented");
   }

@@ -4,9 +4,7 @@ import type { Example } from "./types";
 import { PredefinedExample } from "./predefined";
 import { SimulatedExample } from "./simulated";
 
-// DatasetLoader parses dataset JSONL into Example instances. Pure — no I/O, no AWS — so
-// it's unit-testable with a plain string; fetching the text (local file or dataset id) is
-// the caller's job.
+// Pure parse (no I/O) so it's testable with a plain string; the caller fetches the text.
 export class DatasetLoader {
   static load(text: string): Example[] {
     const examples: Example[] = [];
@@ -20,15 +18,13 @@ export class DatasetLoader {
       } catch {
         throw new InputValidationError("dataset contains a line that is not valid JSON");
       }
-      // Reject non-object rows before dereferencing: `null` (valid JSON) would throw a
-      // raw TypeError, and an array/primitive can never carry the fields a row needs.
+      // Reject non-object rows before dereferencing — `null` is valid JSON and would throw.
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
         throw new InputValidationError("dataset contains a line that is not a JSON object");
       }
       const row = parsed as Record<string, unknown>;
 
-      // The id is the join key between a session and its ground truth, so a missing or
-      // duplicate id silently misassigns ground truth to the wrong session.
+      // The id joins a session to its ground truth — a missing/duplicate one misassigns it.
       const exampleId = String(row.example_id ?? row.scenario_id ?? "");
       if (!exampleId) {
         throw new InputValidationError("dataset example is missing 'example_id'");
@@ -45,9 +41,7 @@ export class DatasetLoader {
   }
 
   // Classify by row shape — a local JSONL carries no schemaType, and AWS's own SDK
-  // dispatches this way, so a file the SDK accepts this CLI must accept too. Refuse a
-  // both-row: AWS's `if "turns" in raw` silently drops the actor profile, which reads as
-  // a passing run of the wrong test.
+  // dispatches this way. Refuse a both-row rather than silently dropping the actor profile.
   private static build(row: Record<string, unknown>, exampleId: string): Example {
     const hasTurns = Array.isArray(row.turns);
     const hasActor = row.actor_profile != null;
@@ -62,10 +56,8 @@ export class DatasetLoader {
       );
     }
 
-    // `: DatasetSchemaType` types the scrutinee as the full SDK enum, so when a member is
-    // added the switch stops being exhaustive, build can reach its end without returning,
-    // and the compiler flags it (TS2366). The `new X(exampleId, row)` sites enforce the
-    // constructor shape — no map, no assertNever.
+    // Typed as the full SDK enum so a new member makes the switch non-exhaustive and
+    // build fails to compile (TS2366) — the build guard, no map or assertNever needed.
     const schemaType: DatasetSchemaType = hasTurns
       ? "AGENTCORE_EVALUATION_PREDEFINED_V1"
       : "AGENTCORE_EVALUATION_SIMULATED_V1";

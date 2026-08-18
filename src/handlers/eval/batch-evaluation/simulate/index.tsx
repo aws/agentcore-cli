@@ -7,9 +7,8 @@ import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 import { parseRuntimeInvokeHeaders } from "../../../runtime/invoke/request";
 
-// batch-evaluation simulate replays a dataset against a runtime (invoke per scenario)
-// then submits a batch evaluation over the sessions it created. Invoke flags mirror
-// `runtime invoke`; content-type/accept are fixed to application/json.
+// Composes invokeDataset (replay) → startBatchEvaluation (grade). Invoke flags mirror
+// `runtime invoke`.
 export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
   createHandler({
     name: "simulate",
@@ -59,7 +58,6 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
       try {
         const opts = coreOptsFromCtx(ctx);
 
-        // (1) Replay the dataset → one graded-ready session per example.
         const r = await core.eval.invokeDataset(
           {
             runtimeId: flags["runtime-id"],
@@ -81,8 +79,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
           );
         }
 
-        // (2) Grade via the batch service — the example's neutral ground truth crosses
-        // over as sessionMetadata (inline arm).
+        // The example's neutral ground truth crosses over as sessionMetadata (inline arm).
         const job = await core.eval.startBatchEvaluation(
           {
             name: flags["name"],

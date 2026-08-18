@@ -1,7 +1,5 @@
-// runExamples runs `worker` over every item with bounded concurrency. A failed worker
-// doesn't sink the run — the failure is counted (so the caller can report on all-failed)
-// and its item dropped. Returns ok results + the first error, which the caller surfaces
-// to explain a total failure. Generic in the item type; not eval-specific.
+// A failed worker is counted and dropped, not thrown — the caller reports all-failed via
+// firstError. Bounded concurrency because each item invokes a live runtime.
 export type ExampleRun<Result> = { ok: Result[]; failed: number; firstError?: Error };
 
 export async function runExamples<Item, Result>(
