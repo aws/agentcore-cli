@@ -14,12 +14,18 @@ export class DatasetLoader {
     for (const line of text.split("\n")) {
       const trimmed = line.trim();
       if (!trimmed) continue;
-      let row: Record<string, unknown>;
+      let parsed: unknown;
       try {
-        row = JSON.parse(trimmed) as Record<string, unknown>;
+        parsed = JSON.parse(trimmed);
       } catch {
         throw new InputValidationError("dataset contains a line that is not valid JSON");
       }
+      // Reject non-object rows before dereferencing: `null` (valid JSON) would throw a
+      // raw TypeError, and an array/primitive can never carry the fields a row needs.
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        throw new InputValidationError("dataset contains a line that is not a JSON object");
+      }
+      const row = parsed as Record<string, unknown>;
 
       // The id is the join key between a session and its ground truth, so a missing or
       // duplicate id silently misassigns ground truth to the wrong session.

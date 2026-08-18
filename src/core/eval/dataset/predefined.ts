@@ -19,10 +19,18 @@ export class PredefinedExample implements Example {
     readonly exampleId: string,
     row: Record<string, unknown>,
   ) {
-    const turns = (Array.isArray(row.turns) ? row.turns : []).map((t: Record<string, unknown>) => ({
-      input: String(t.input ?? ""),
-      expectedResponse: t.expected_response as string | undefined,
-    }));
+    const turns = (Array.isArray(row.turns) ? row.turns : []).map((t: unknown, i: number) => {
+      // A non-object entry (e.g. `null`) has no fields to read; dereferencing it would
+      // throw a raw TypeError, so reject it here with the same boundary-validation intent.
+      if (typeof t !== "object" || t === null) {
+        throw new InputValidationError(`example "${exampleId}" turn ${i + 1} is not an object`);
+      }
+      const turn = t as Record<string, unknown>;
+      return {
+        input: String(turn.input ?? ""),
+        expectedResponse: turn.expected_response as string | undefined,
+      };
+    });
     if (turns.length === 0) {
       throw new InputValidationError(`example "${exampleId}" has no turns`);
     }

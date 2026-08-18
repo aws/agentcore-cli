@@ -81,6 +81,29 @@ describe("DatasetLoader.load", () => {
     );
     expect(examples.map((e) => e.exampleId)).toEqual(["a", "b"]);
   });
+
+  // `null` is valid JSON but has no fields; dereferencing it once threw a raw TypeError
+  // instead of a clean validation error.
+  test.each([["null"], ["[1,2,3]"], ["42"], ['"hi"'], ["true"]])(
+    "rejects a non-object row (%s) with a clear error",
+    (line) => {
+      expect(() => DatasetLoader.load(line)).toThrow(/not a JSON object/);
+    },
+  );
+
+  test("handles CRLF line endings", () => {
+    const crlf =
+      row({ example_id: "a", turns: [{ input: "1" }] }) +
+      "\r\n" +
+      row({ example_id: "b", turns: [{ input: "2" }] }) +
+      "\r\n";
+    expect(DatasetLoader.load(crlf).map((e) => e.exampleId)).toEqual(["a", "b"]);
+  });
+
+  test("preserves unicode example ids", () => {
+    const [e] = DatasetLoader.load(row({ example_id: "café-日本-🎉", turns: [{ input: "1" }] }));
+    expect(e!.exampleId).toBe("café-日本-🎉");
+  });
 });
 
 describe("SimulatedExample", () => {
@@ -92,6 +115,37 @@ describe("SimulatedExample", () => {
 describe("PredefinedExample", () => {
   test("constructor rejects a row with no turns", () => {
     expect(() => new PredefinedExample("x", { turns: [] })).toThrow(/has no turns/);
+  });
+
+  test("constructor rejects a non-object turn entry", () => {
+    expect(() => new PredefinedExample("x", { turns: [null] })).toThrow(/turn 1 is not an object/);
+  });
+
+  test("omits empty assertions and expected_trajectory arrays", async () => {
+    const { ctx } = recordingCtx();
+    // Only the expectation-bearing turn should survive to ground truth; the empty
+    // assertions/trajectory arrays are dropped (the service rejects zero-length ones).
+    const gt = await new PredefinedExample("x", {
+      turns: [{ input: "t1", expected_response: "r1" }],
+      assertions: [],
+      expected_trajectory: [],
+    }).run(ctx);
+    expect(gt).toBeDefined();
+    expect(gt!.assertions).toBeUndefined();
+    expect(gt!.expectedTrajectory).toBeUndefined();
+    expect(gt!.turns).toHaveLength(1);
+  });
+
+  // A deliberate `expected_response: ""` means "expect an empty reply" — distinct from
+  // omitting the field. The `!== undefined` guard honors it: the turn carries
+  // expectedResponse { text: "" } rather than being treated as expectation-less.
+  test('treats expected_response "" as a real expectation', async () => {
+    const { ctx } = recordingCtx();
+    const gt = await new PredefinedExample("x", {
+      turns: [{ input: "t1", expected_response: "" }],
+    }).run(ctx);
+    expect(gt!.turns).toHaveLength(1);
+    expect(gt!.turns![0]!.expectedResponse).toEqual({ text: "" });
   });
 
   test("run replays every turn in order, on one session", async () => {
