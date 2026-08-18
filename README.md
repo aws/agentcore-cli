@@ -152,10 +152,10 @@ agentcore runtime endpoint list --id <runtimeId> --max-results 20
 agentcore memory get --id <memoryId>
 agentcore memory get --id <memoryId> --view without_decryption
 agentcore memory list --max-results 20
-agentcore memory event get --memory <memoryId> --actor-id <actorId> --session-id <sessionId> --event-id <eventId>
-agentcore memory event list --memory <memoryId> --actor-id <actorId> --session-id <sessionId> --max-results 20
-agentcore memory record get --memory <memoryId> --record-id <recordId>
-agentcore memory record list --memory <memoryId> --namespace <namespace> --max-results 20
+agentcore memory event get --id <memoryId> --actor-id <actorId> --session-id <sessionId> --event-id <eventId>
+agentcore memory event list --id <memoryId> --actor-id <actorId> --session-id <sessionId> --max-results 20
+agentcore memory record get --id <memoryId> --record-id <recordId>
+agentcore memory record list --id <memoryId> --namespace <namespace> --max-results 20
 
 # Inspect Gateway resources without project configuration or deployment
 agentcore gateway get --id <gatewayId>

@@ -10,18 +10,18 @@ export const createListMemoryActorsHandler = (core: Core) =>
     name: "list",
     description: "list actors in an AgentCore Memory",
     flags: [
-      flag("memory", "the ID of the Memory", z.string().optional()),
+      flag("id", "the ID of the Memory", z.string().optional()),
       flag("max-results", "maximum number of actors to return", z.number().optional()),
       flag("next-token", "pagination token returned by a previous request", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.memory) {
-        throw new InputValidationError("required option '--memory <memory>' not specified");
+      if (!flags.id) {
+        throw new InputValidationError("required option '--id <id>' not specified");
       }
 
       const response = await core.memory.listActors(
         {
-          memoryId: flags.memory,
+          memoryId: flags.id,
           maxResults: flags["max-results"],
           nextToken: flags["next-token"],
         },
