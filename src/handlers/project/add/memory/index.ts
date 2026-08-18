@@ -19,8 +19,7 @@ import {
   type StreamDeliveryResources,
 } from "../../../../projectSchemas/memory";
 
-// The service default for raw event retention, applied when --event-expiry-duration
-// is omitted so the common case is a single --name.
+// The service default for raw event retention
 const DEFAULT_EVENT_EXPIRY_DURATION = 30;
 
 const strategiesHelp = `(comma-separated list of strategy types, or JSON MemoryStrategyInput[])
@@ -197,12 +196,7 @@ function toStrategy(strategy: MemoryStrategyInput): MemoryStrategy {
       reflectionNamespaces: c.reflectionConfiguration?.namespaces,
     };
   }
-  // CUSTOM is left out on purpose. Its point is the extraction configuration --
-  // prompt and model overrides, or a self-managed pipeline -- and neither the
-  // project spec nor the CDK's memory schema can carry one. Offering the type
-  // without it produced aws/agentcore-cli#241 ("select custom memory strategy,
-  // note there is no option to add prompts"), so it was removed in #266 and again
-  // in #713. Re-enable it alongside the configuration, not before: #676 tracks it.
+  /** Custom & Self-managed memory are not supported at this point. */
   if ("customMemoryStrategy" in strategy && strategy.customMemoryStrategy)
     throw new InputValidationError(
       `customMemoryStrategy is not supported: a custom strategy's extraction configuration cannot be expressed yet (see aws/agentcore-cli#676). Expected one of ${MemoryStrategyTypeSchema.options.join(", ")}`,
