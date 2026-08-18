@@ -5,11 +5,13 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createRootHandler } from "../index";
 import {
+  createRecordingLogger,
   createSilentLogger,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../testing";
+import type { Logger } from "../../logging";
 import { InputValidationError } from "../../errors";
 import { FsReadWriteJson, type CdkEvent, type CdkOperation, type ReadWriteJson } from "../../io";
 import { detailedLogLocation } from "../../logging";
@@ -32,6 +34,8 @@ type CliOptions = {
   core?: TestCoreClient;
   /** The outputs the deployed stack reports; see {@link TestCoreClient}. */
   cdkOutputs?: Record<string, string>;
+  /** The log every command writes to, for a test that asserts on what was logged. */
+  logger?: Logger;
 };
 
 // A CLI wired to test doubles, whose route() a test drives directly when it needs
@@ -47,7 +51,7 @@ function cli(options?: CliOptions) {
   const root = createRootHandler(core, {
     io: io.io,
     globalConfigAccessor: new TestGlobalConfigAccessor(),
-    logger: createSilentLogger(),
+    logger: options?.logger ?? createSilentLogger(),
   });
   return {
     io,
@@ -874,6 +878,43 @@ describe("project deploy", () => {
     // location is the last thing printed.
     expect(io.stderr()).not.toContain("CREATE_IN_PROGRESS");
     expect(io.stderr()).toEndWith(`Detailed logs: ${detailedLogLocation()}`);
+  });
+
+  test("writes what it shows to the log, beside the toolkit's narration", async () => {
+    await inProject();
+    const { logger, logs } = createRecordingLogger();
+    // The one logger the commands and the deployment tooling both write to, as the CLI
+    // wires it, so a deploy's steps and the toolkit's narration land in the same file.
+    const { route } = cli({
+      logger,
+      core: new TestCoreClient({
+        logger,
+        cdkOutputs: {
+          RuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:111122223333:runtime/MyAgent",
+        },
+        onCdkOperation: (operation, emit) => {
+          if (operation.kind === "deploy") {
+            emit({ level: "info", message: "example-stack | 1/2 | CREATE_IN_PROGRESS" });
+          }
+        },
+      }),
+    });
+
+    await route(["deploy"]);
+
+    // The steps a deploy printed are in the log as well, so the hundreds of toolkit lines
+    // between two of them can be read against the step they belong to.
+    const messages = logs.map(({ message }) => message);
+    expect(messages).toContain(`Deploying ${STACK("default")}`);
+    expect(messages).toContain("example-stack | 1/2 | CREATE_IN_PROGRESS");
+
+    // The result carries what the deploy created as data rather than as the lines printed
+    // for it, along with which project and target it was.
+    expect(logs.find(({ message }) => message === "deployed project")?.bindings).toMatchObject({
+      project: "MyAgent",
+      target: "default",
+      outputs: { RuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:111122223333:runtime/MyAgent" },
+    });
   });
 
   test("names the log even when the deploy fails", async () => {

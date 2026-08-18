@@ -1,5 +1,5 @@
 import z from "zod";
-import { createHandler, flag, ProjectKey } from "../../../router";
+import { createHandler, flag, LoggerKey, ProjectKey } from "../../../router";
 import type { AppIO } from "../../../io";
 import { detailedLogLocation } from "../../../logging";
 import { RegionKey } from "../../keys";
@@ -24,6 +24,11 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
     handle: async (ctx, flags) => {
       const project = ctx.require(ProjectKey);
 
+      // The log is the record of a deploy, so what the deploy shows is written there too,
+      // interleaved with the deployment tooling's own narration: reading the log alone is
+      // then enough to see which step the hundreds of lines under it belong to.
+      const logger = ctx.require(LoggerKey).child({ project: project.name, target: flags.target });
+
       // Progress goes to stderr, keeping stdout for machine output. The deployment
       // tooling's own narration goes to the log, so a deploy shows only its steps.
       try {
@@ -38,9 +43,13 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
             outputs = event.outputs;
             continue;
           }
+          logger.info(event.message);
           config.io.stderr.write(`${event.message}\n`);
         }
 
+        // The outputs are logged as they are reported rather than as the lines below print
+        // them, so a later run can be compared against this one.
+        logger.child({ outputs }).info("deployed project");
         config.io.stderr.write(`Deployed project '${project.name}'\n`);
 
         // The stack's outputs are what the deploy created — endpoints, ARNs, ids — and
