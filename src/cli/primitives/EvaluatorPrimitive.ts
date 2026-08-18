@@ -1,4 +1,11 @@
-import { ConflictError, ResourceNotFoundError, createConfigIO, findConfigRoot, serializeResult, toError } from '../../lib';
+import {
+  ConflictError,
+  ResourceNotFoundError,
+  createConfigIO,
+  findConfigRoot,
+  serializeResult,
+  toError,
+} from '../../lib';
 import type { Result } from '../../lib/result';
 import type { EvaluationLevel, Evaluator, EvaluatorConfig } from '../../schema';
 import {
@@ -553,6 +560,12 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
               let resolvedLevel: EvaluationLevel | undefined = levelResult?.data;
 
               if (evalType === 'derived') {
+                // --config carries a full evaluator config for other types; a derived
+                // evaluator is built from --base-evaluator-id + --model, so reject
+                // --config here rather than silently ignoring it.
+                if (cliOptions.config) {
+                  fail('--config is not supported with --type derived; use --base-evaluator-id and --model');
+                }
                 if (!cliOptions.baseEvaluatorId) {
                   fail('--base-evaluator-id is required for --type derived');
                 }
@@ -796,16 +809,14 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
    * GetEvaluator instead of asking the customer to know it.
    */
   private async resolveBaseEvaluatorLevel(baseEvaluatorId: string): Promise<EvaluationLevel> {
-    // The deploy target region is preferred, but the file may not exist yet
-    // (evaluators can be added before any deploy), so fall back to the environment.
-    let savedRegion: string | undefined;
+    // A fresh project has no saved deploy targets, so resolve the region directly
+    // from the environment/profile fallback (env vars, then the AWS profile's region).
+    let region: string | undefined;
     try {
-      const targets = await createConfigIO().resolveAWSDeploymentTargets();
-      savedRegion = targets[0]?.region;
+      region = await createConfigIO().resolveRegionFallback();
     } catch {
-      savedRegion = undefined;
+      region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
     }
-    const region = savedRegion ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
     if (!region) {
       throw new Error(
         `Could not resolve an AWS region to look up "${baseEvaluatorId}". Set AWS_REGION or pass --level explicitly.`
