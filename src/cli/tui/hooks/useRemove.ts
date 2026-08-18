@@ -9,6 +9,7 @@ import type { RemovablePolicyResource } from '../../primitives/PolicyPrimitive';
 import type { RemovableRuntimeEndpoint } from '../../primitives/RuntimeEndpointPrimitive';
 import {
   agentPrimitive,
+  capacityProviderPrimitive,
   configBundlePrimitive,
   credentialPrimitive,
   datasetPrimitive,
@@ -162,6 +163,11 @@ export function useRemovableDatasets() {
   return { datasets, ...rest };
 }
 
+export function useRemovableCapacityProviders() {
+  const { items: capacityProviders, ...rest } = useRemovableResources(() => capacityProviderPrimitive.getRemovable());
+  return { capacityProviders, ...rest };
+}
+
 export function useRemovableKnowledgeBases() {
   const { items: knowledgeBases, ...rest } = useRemovableResources(() => knowledgeBasePrimitive.getRemovable());
   return { knowledgeBases, ...rest };
@@ -297,6 +303,11 @@ export function useRemovalPreview() {
     [loadPreview]
   );
 
+  const loadCapacityProviderPreview = useCallback(
+    (name: string) => loadPreview(n => capacityProviderPrimitive.previewRemove(n), name),
+    [loadPreview]
+  );
+
   const reset = useCallback(() => {
     setState({ isLoading: false, preview: null, error: null });
   }, []);
@@ -317,6 +328,7 @@ export function useRemovalPreview() {
     loadPolicyPreview,
     loadConfigBundlePreview,
     loadRuntimeEndpointPreview,
+    loadCapacityProviderPreview,
     reset,
   };
 }
@@ -392,6 +404,14 @@ export function useRemoveDataset() {
   return useRemoveResource(
     (name: string) => datasetPrimitive.remove(name),
     'dataset',
+    name => name
+  );
+}
+
+export function useRemoveCapacityProvider() {
+  return useRemoveResource(
+    (name: string) => capacityProviderPrimitive.remove(name),
+    'capacity-provider',
     name => name
   );
 }

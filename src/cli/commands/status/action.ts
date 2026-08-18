@@ -33,7 +33,8 @@ export interface ResourceStatusEntry {
     | 'harness'
     | 'runtime-endpoint'
     | 'knowledge-base'
-    | 'payment';
+    | 'payment'
+    | 'capacity-provider';
   name: string;
   deploymentState: ResourceDeploymentState;
   identifier?: string;
@@ -352,6 +353,15 @@ export function computeResourceStatuses(
       `${item.authorizerType} — auto-pay ${item.autoPayment ? 'on' : 'off'} (${item.connectors.length} connector(s))`,
   });
 
+  const capacityProviders = diffResourceSet({
+    resourceType: 'capacity-provider',
+    localItems: project.capacityProviders ?? [],
+    deployedRecord: resources?.capacityProviders ?? {},
+    getIdentifier: deployed => deployed.capacityProviderArn,
+    getLocalDetail: item =>
+      item.computeConfiguration.ec2Configuration.launchTemplateSource.launchParameters.operatingSystem,
+  });
+
   return [
     ...agents,
     ...runtimeEndpoints,
@@ -367,6 +377,7 @@ export function computeResourceStatuses(
     ...configBundles,
     ...harnesses,
     ...payments,
+    ...capacityProviders,
   ];
 }
 

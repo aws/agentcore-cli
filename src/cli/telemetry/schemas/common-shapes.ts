@@ -55,6 +55,7 @@ export const FilterType = z.enum([
   'config-bundle',
   'dataset',
   'harness',
+  'capacity-provider',
   'none',
 ]);
 export const AgentEnvironment = z.enum(['harness', 'runtime']);
@@ -89,6 +90,7 @@ export const MemoryType = z.enum(['none', 'shortterm', 'longandshortterm']);
 export const Mode = z.enum(['cli', 'tui']);
 export const ModelProvider = z.enum(['bedrock', 'anthropic', 'openai', 'gemini', 'lite_llm']);
 export const NetworkMode = z.enum(['public', 'vpc']);
+export const OperatingSystem = z.enum(['linux_x86_64', 'linux_arm64']);
 export const OutboundAuthType = z.enum(['oauth', 'api-key', 'none']);
 export const PolicyEngineMode = z.enum(['log_only', 'enforce']);
 export const AgentProtocol = z.enum(['http', 'mcp', 'a2a', 'agui']);

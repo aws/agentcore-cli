@@ -112,6 +112,7 @@ export async function validateProject(selectedTarget?: AwsDeploymentTarget): Pro
   // Check for gateways in agentcore.json
   const hasGateways = projectSpec.agentCoreGateways && projectSpec.agentCoreGateways.length > 0;
   const hasPayments = projectSpec.payments && projectSpec.payments.length > 0;
+  const hasCapacityProviders = projectSpec.capacityProviders && projectSpec.capacityProviders.length > 0;
 
   if (
     !hasAgents &&
@@ -122,7 +123,8 @@ export async function validateProject(selectedTarget?: AwsDeploymentTarget): Pro
     !hasPolicyEngines &&
     !hasHarnesses &&
     !hasDatasets &&
-    !hasPayments
+    !hasPayments &&
+    !hasCapacityProviders
   ) {
     if (!hasExistingStack) {
       throw new ValidationError(

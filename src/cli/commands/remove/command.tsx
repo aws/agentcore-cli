@@ -27,6 +27,7 @@ async function handleRemoveAll(options: RemoveAllOptions): Promise<RemoveResult>
       for (const e of current.evaluators ?? []) items.push(`evaluator: ${e.name}`);
       for (const g of current.agentCoreGateways ?? []) items.push(`gateway: ${g.name}`);
       for (const pe of current.policyEngines ?? []) items.push(`policy-engine: ${pe.name}`);
+      for (const cp of current.capacityProviders ?? []) items.push(`capacity-provider: ${cp.name}`);
       return {
         success: true,
         message: items.length > 0 ? `Would remove: ${items.join(', ')}` : 'Nothing to remove',
@@ -84,6 +85,7 @@ async function handleRemoveAll(options: RemoveAllOptions): Promise<RemoveResult>
       harnesses: [],
       datasets: [],
       payments: [],
+      capacityProviders: [],
     });
 
     // Preserve aws-targets.json and deployed-state.json so that

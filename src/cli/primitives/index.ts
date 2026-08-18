@@ -10,6 +10,8 @@ export { EvaluatorPrimitive } from './EvaluatorPrimitive';
 export { OnlineEvalConfigPrimitive } from './OnlineEvalConfigPrimitive';
 export { GatewayPrimitive } from './GatewayPrimitive';
 export { GatewayTargetPrimitive } from './GatewayTargetPrimitive';
+export { CapacityProviderPrimitive } from './CapacityProviderPrimitive';
+export type { AddCapacityProviderOptions } from './CapacityProviderPrimitive';
 export { RuntimeEndpointPrimitive } from './RuntimeEndpointPrimitive';
 export type { AddRuntimeEndpointOptions, RemovableRuntimeEndpoint } from './RuntimeEndpointPrimitive';
 export {
@@ -23,6 +25,7 @@ export {
   onlineEvalConfigPrimitive,
   gatewayPrimitive,
   gatewayTargetPrimitive,
+  capacityProviderPrimitive,
   configBundlePrimitive,
   runtimeEndpointPrimitive,
   getPrimitive,

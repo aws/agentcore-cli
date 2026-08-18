@@ -27,6 +27,7 @@ describe('RemoveScreen', () => {
         datasetCount={0}
         knowledgeBaseCount={0}
         paymentCount={1}
+        capacityProviderCount={0}
       />
     );
 
@@ -63,6 +64,7 @@ describe('RemoveScreen', () => {
         datasetCount={0}
         knowledgeBaseCount={0}
         paymentCount={0}
+        capacityProviderCount={0}
       />
     );
 
@@ -95,6 +97,7 @@ describe('RemoveScreen', () => {
         datasetCount={0}
         knowledgeBaseCount={3}
         paymentCount={0}
+        capacityProviderCount={0}
       />
     );
 
@@ -125,9 +128,65 @@ describe('RemoveScreen', () => {
         datasetCount={0}
         knowledgeBaseCount={0}
         paymentCount={0}
+        capacityProviderCount={0}
       />
     );
 
     expect(lastFrame()).toContain('No knowledge bases to remove');
+  });
+
+  it('Capacity Provider option enabled when capacityProviderCount > 0', () => {
+    const { lastFrame } = render(
+      <RemoveScreen
+        onSelect={vi.fn()}
+        onExit={vi.fn()}
+        agentCount={0}
+        harnessCount={0}
+        gatewayCount={0}
+        mcpToolCount={0}
+        memoryCount={0}
+        credentialCount={0}
+        evaluatorCount={0}
+        onlineEvalCount={0}
+        policyEngineCount={0}
+        policyCount={0}
+        configBundleCount={0}
+        runtimeEndpointCount={0}
+        datasetCount={0}
+        knowledgeBaseCount={0}
+        paymentCount={0}
+        capacityProviderCount={2}
+      />
+    );
+
+    expect(lastFrame()).toContain('Capacity Provider');
+    expect(lastFrame()).not.toContain('No capacity providers to remove');
+  });
+
+  it('Capacity Provider option disabled when capacityProviderCount = 0', () => {
+    const { lastFrame } = render(
+      <RemoveScreen
+        onSelect={vi.fn()}
+        onExit={vi.fn()}
+        agentCount={0}
+        harnessCount={0}
+        gatewayCount={0}
+        mcpToolCount={0}
+        memoryCount={0}
+        credentialCount={0}
+        evaluatorCount={0}
+        onlineEvalCount={0}
+        policyEngineCount={0}
+        policyCount={0}
+        configBundleCount={0}
+        runtimeEndpointCount={0}
+        datasetCount={0}
+        knowledgeBaseCount={0}
+        paymentCount={0}
+        capacityProviderCount={0}
+      />
+    );
+
+    expect(lastFrame()).toContain('No capacity providers to remove');
   });
 });

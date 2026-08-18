@@ -778,6 +778,50 @@ agentcore add config-bundle \
 | `--commit-message <text>`  | Commit message for this version                                                                                               |
 | `--json`                   | JSON output                                                                                                                   |
 
+### add capacity-provider
+
+Add a capacity provider — a customer-managed pool of AWS-managed EC2 compute that agent runtimes can run on instead of
+the default managed fleet. Everything except the description and tags is immutable after creation.
+
+```bash
+# Minimal
+agentcore add capacity-provider \
+  --name MyCapacityProvider \
+  --operator-role-arn arn:aws:iam::123456789012:role/MyOperatorRole \
+  --subnets subnet-0123456789abcdef0 \
+  --security-groups sg-0123456789abcdef0 \
+  --instance-types c6a.large
+
+# With a named EBS volume, lifecycle limits, and ARM64
+agentcore add capacity-provider \
+  --name MyCapacityProvider \
+  --operator-role-arn arn:aws:iam::123456789012:role/MyOperatorRole \
+  --subnets subnet-0123456789abcdef0,subnet-0fedcba9876543210 \
+  --security-groups sg-0123456789abcdef0 \
+  --os LINUX_ARM64 \
+  --instance-types c7g.large,c7g.xlarge \
+  --volume data:20 --volume-encrypted \
+  --idle-instance-timeout 3600 \
+  --max-lifetime 28800
+```
+
+| Flag                             | Description                                                                      |
+| -------------------------------- | -------------------------------------------------------------------------------- |
+| `--name <name>`                  | Capacity provider name (required); immutable after creation                      |
+| `--operator-role-arn <arn>`      | IAM role ARN operators use to manage the capacity provider (required); immutable |
+| `--description <desc>`           | Description (the only mutable field besides tags)                                |
+| `--subnets <subnets>`            | Comma-separated subnet IDs, 1–16 (required)                                      |
+| `--security-groups <groups>`     | Comma-separated security group IDs, 1–16 (required)                              |
+| `--os <os>`                      | `LINUX_X86_64` (default) or `LINUX_ARM64`                                        |
+| `--instance-types <types>`       | Comma-separated allowed EC2 instance types, 1–30 (required)                      |
+| `--volume <name:sizeGiB>`        | Named EBS volume as `name:sizeGiB` (repeatable, max 5)                           |
+| `--volume-encrypted`             | Encrypt EBS volumes                                                              |
+| `--volume-kms-key <arn>`         | KMS key ARN for EBS volume encryption                                            |
+| `--instance-profile-arn <arn>`   | IAM instance profile ARN for launched instances                                  |
+| `--idle-instance-timeout <secs>` | Idle instance timeout in seconds (60–1209600)                                    |
+| `--max-lifetime <secs>`          | Maximum instance lifetime in seconds (60–1209600)                                |
+| `--json`                         | JSON output                                                                      |
+
 ### remove
 
 Remove resources from project.
@@ -797,6 +841,7 @@ agentcore remove dataset --name MyDataset
 agentcore remove config-bundle --name MyBundle
 agentcore remove payment-manager --name MyManager -y
 agentcore remove payment-connector --name MyCDPConnector --manager MyManager -y
+agentcore remove capacity-provider --name MyCapacityProvider -y
 
 # Reset everything
 agentcore remove all -y

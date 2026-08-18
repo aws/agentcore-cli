@@ -26,6 +26,7 @@ interface AgentCoreProjectSpec {
   abTests: ABTest[]; // default [], unique by name
   harnesses: HarnessRegistryEntry[]; // default [], unique by name
   datasets?: Dataset[]; // unique by name
+  capacityProviders?: CapacityProvider[]; // unique by name
   payments?: PaymentManager[]; // unique by name
 }
 
@@ -579,6 +580,57 @@ interface Dataset {
   description?: string; // @max 200
   config: { managed: { location: string } };
   kmsKeyArn?: string;
+}
+
+// CAPACITY PROVIDER
+
+interface CapacityProvider {
+  name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @min 1 @max 48; immutable after creation
+  description?: string; // @min 1 @max 4096; mutable (the only mutable field besides tags)
+  operatorRoleArn: string; // IAM role ARN @regex ^arn:aws(-[^:]+)?:iam::([0-9]{12})?:role/.+$ @max 2048; immutable
+  computeConfiguration: ComputeConfiguration; // immutable after creation
+  tags?: Tags;
+}
+
+interface ComputeConfiguration {
+  ec2Configuration: Ec2Configuration;
+}
+
+interface Ec2Configuration {
+  launchTemplateSource: { launchParameters: LaunchParameters };
+  vpcConfiguration: CapacityProviderVpcConfiguration;
+  volumes?: VolumeConfiguration[]; // @max 5
+  lifecycleConfiguration?: InstanceLifecycleConfiguration;
+  // long tail (rootVolume, etc.) accepted via passthrough and validated by CFN
+}
+
+interface LaunchParameters {
+  operatingSystem: 'LINUX_X86_64' | 'LINUX_ARM64';
+  instanceRequirements: { allowedInstanceTypes: string[] }; // @min 1 @max 30; each @min 1 @max 255
+  instanceProfileArn?: string; // @regex ^arn:aws(-[^:]+)?:iam::[0-9]{12}:instance-profile/.+$
+  // long tail (sshKeyName, monitoring, licenseSpecifications, capacityReservationSpecification,
+  // ephemeralVolumes, propagatedTags) accepted via passthrough and validated by CFN
+}
+
+interface CapacityProviderVpcConfiguration {
+  subnets: string[]; // @min 1 @max 16; each @regex ^subnet-[0-9a-zA-Z]{8,17}$
+  securityGroups: string[]; // @min 1 @max 16; each @regex ^sg-[0-9a-zA-Z]{8,17}$
+}
+
+interface VolumeConfiguration {
+  ebsConfiguration: {
+    name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_-]{0,47}$ @min 1 @max 48
+    sizeGiB: number; // integer @min 1 @max 65536
+    volumeType?: 'standard' | 'io1' | 'io2' | 'gp2' | 'sc1' | 'st1' | 'gp3';
+    encrypted?: boolean;
+    kmsKeyId?: string; // KMS key ARN
+    // long tail (iops, throughput, snapshotId) accepted via passthrough
+  };
+}
+
+interface InstanceLifecycleConfiguration {
+  idleInstanceTimeout?: number; // integer seconds @min 60 @max 1209600
+  maxLifetime?: number; // integer seconds @min 60 @max 1209600
 }
 
 // PAYMENTS

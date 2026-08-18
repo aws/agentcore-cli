@@ -1338,4 +1338,58 @@ describe('handleProjectStatus — invocation URL enrichment', () => {
     expect(agentEntry!.deploymentState).toBe('pending-removal');
     expect(agentEntry!.invocationUrl).toBeUndefined();
   });
+
+  it('marks capacity provider deployed / local-only / pending-removal correctly', () => {
+    const project = {
+      ...baseProject,
+      capacityProviders: [
+        {
+          name: 'my-cp',
+          operatorRoleArn: 'arn:aws:iam::123456789012:role/Op',
+          computeConfiguration: {
+            ec2Configuration: {
+              launchTemplateSource: {
+                launchParameters: {
+                  operatingSystem: 'LINUX_X86_64',
+                  instanceRequirements: { allowedInstanceTypes: ['c6a.large'] },
+                },
+              },
+              vpcConfiguration: { subnets: ['subnet-0123456789abcdef0'], securityGroups: ['sg-0123456789abcdef0'] },
+            },
+          },
+        },
+      ],
+    } as unknown as AgentCoreProjectSpec;
+
+    // Deployed
+    const deployed = computeResourceStatuses(project, {
+      capacityProviders: {
+        'my-cp': {
+          capacityProviderId: 'my-cp-abc1234567',
+          capacityProviderArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:capacity-provider/my-cp-abc1234567',
+        },
+      },
+    });
+    const deployedEntry = deployed.find(r => r.resourceType === 'capacity-provider' && r.name === 'my-cp');
+    expect(deployedEntry).toBeDefined();
+    expect(deployedEntry!.deploymentState).toBe('deployed');
+    expect(deployedEntry!.identifier).toContain('capacity-provider/my-cp-abc1234567');
+
+    // Local-only
+    const local = computeResourceStatuses(project, undefined);
+    const localEntry = local.find(r => r.resourceType === 'capacity-provider' && r.name === 'my-cp');
+    expect(localEntry!.deploymentState).toBe('local-only');
+
+    // Pending removal: deployed but not in local spec
+    const pending = computeResourceStatuses(baseProject, {
+      capacityProviders: {
+        'gone-cp': {
+          capacityProviderId: 'gone-cp-abc1234567',
+          capacityProviderArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789012:capacity-provider/gone-cp-abc1234567',
+        },
+      },
+    });
+    const pendingEntry = pending.find(r => r.resourceType === 'capacity-provider' && r.name === 'gone-cp');
+    expect(pendingEntry!.deploymentState).toBe('pending-removal');
+  });
 });

@@ -23,4 +23,10 @@ describe('AddScreen', () => {
     expect(lastFrame()).toContain('Payment Manager');
     expect(lastFrame()).toContain('Payment Connector');
   });
+
+  it('capacity provider is a top-level option', () => {
+    const { lastFrame } = render(<AddScreen onSelect={vi.fn()} onExit={vi.fn()} />);
+
+    expect(lastFrame()).toContain('Capacity Provider');
+  });
 });
