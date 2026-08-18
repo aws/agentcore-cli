@@ -21,7 +21,6 @@ import {
 } from "../../io";
 import { defaultSource, type AssetSource } from "./source";
 import { createHarnessTreeFromSpec, createProjectTreeFromTemplate, TEMPLATES } from "./templates";
-import { MemorySchema } from "../../projectSchemas/memory";
 import { ProjectSpecSchema, type ManagedBy } from "../../projectSchemas/project";
 import { enclosingProjectRoot } from "./fsUtils";
 import {
@@ -168,21 +167,6 @@ export class FsProjectManager implements ProjectManager {
         });
         break;
       }
-      case "memory": {
-        // A memory scaffolds no files: the spec entry is the whole resource. Validate
-        // it here so a malformed entry fails before the spec file is rewritten.
-        const memory = MemorySchema.safeParse(input.resourceConfig);
-        if (!memory.success)
-          throw new InputValidationError(
-            `invalid memory configuration: ${memory.error.issues
-              .map((issue) =>
-                issue.path.length > 0 ? `${issue.path.join(".")}: ${issue.message}` : issue.message,
-              )
-              .join("; ")}`,
-          );
-        newResources.push(memory.data);
-        break;
-      }
       case "runtime": {
         throw new NotImplementedError(
           "runtime case not yet implemented in FsProjectManager.addResource",
@@ -191,6 +175,7 @@ export class FsProjectManager implements ProjectManager {
       case "config-bundle":
       case "online-eval":
       case "online-insight":
+      case "memory":
         newResources.push(resourceConfig);
         break;
 
