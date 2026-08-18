@@ -560,6 +560,15 @@ describe("project add memory", () => {
         '{"resources":[{"kinesis":{"dataStreamArn":"arn:aws:kinesis:us-east-1:123456789012:stream/s","contentConfigurations":[{"type":"MEMORY_RECORDS"}]}}]}',
       ],
     ],
+    [
+      "stream delivery content configuration with an unsupported type",
+      [
+        "--name",
+        "x",
+        "--stream-delivery-resources",
+        '{"resources":[{"kinesis":{"dataStreamArn":"arn:aws:kinesis:us-east-1:123456789012:stream/s","contentConfigurations":[{"type":"EVENTS","level":"FULL_CONTENT"}]}}]}',
+      ],
+    ],
     ["malformed --strategies JSON", ["--name", "x", "--strategies", "[{"]],
   ])("%s", async (_label, flags) => {
     await inProject();
