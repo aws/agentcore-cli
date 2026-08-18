@@ -143,6 +143,24 @@ describe("eval config-bundle command hierarchy", () => {
     expect(stdout()).toContain("Usage: agentcore eval config-bundle");
     expect(core.eval.calls).toHaveLength(0);
   });
+
+  for (const command of [["get"], ["list"], ["version", "list"]] as const) {
+    test(`opens the TUI for a bare ${command.join(" ")} leaf`, async () => {
+      const { route } = testConfigBundleCommand();
+
+      await expect(route(["eval", "config-bundle", ...command])).rejects.toThrow(
+        "interactive mode requires a TTY on stdin and stdout",
+      );
+    });
+  }
+
+  test("runs normal validation for a bare CLI-only command", async () => {
+    const { route } = testConfigBundleCommand();
+
+    await expect(route(["eval", "config-bundle", "create"])).rejects.toThrow(
+      "required option '--name <name>' not specified",
+    );
+  });
 });
 
 describe("config-bundle create", () => {
