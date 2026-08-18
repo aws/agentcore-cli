@@ -280,9 +280,23 @@ interface Evaluator {
   name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @min 1 @max 48
   level: 'SESSION' | 'TRACE' | 'TOOL_CALL';
   description?: string;
-  config: { llmAsAJudge: LlmAsAJudgeConfig; codeBased?: never } | { llmAsAJudge?: never; codeBased: CodeBasedConfig };
+  config: EvaluatorConfig; // exactly one of llmAsAJudge | codeBased | derived
   kmsKeyArn?: string;
   tags?: Tags;
+}
+
+// Exactly one arm present.
+type EvaluatorConfig =
+  | { llmAsAJudge: LlmAsAJudgeConfig; codeBased?: never; derived?: never }
+  | { llmAsAJudge?: never; codeBased: CodeBasedConfig; derived?: never }
+  | { llmAsAJudge?: never; codeBased?: never; derived: DerivedEvaluatorConfig };
+
+// A derived evaluator reuses a managed base evaluator's logic (a Builtin.* or
+// ThirdParty.<Provider>.<Metric> metric) on the customer's own model. The base
+// owns the prompt + scoring; level must match the base's (resolved at add time).
+interface DerivedEvaluatorConfig {
+  baseEvaluatorId: string; // "Builtin.<Metric>" or "ThirdParty.<Provider>.<Metric>"
+  model: string; // Bedrock inference profile ID
 }
 
 interface LlmAsAJudgeConfig {

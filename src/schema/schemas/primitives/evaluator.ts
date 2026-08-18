@@ -95,7 +95,10 @@ export type LlmAsAJudgeConfig = z.infer<typeof LlmAsAJudgeConfigSchema>;
 // (Builtin.<Metric>). The base owns the prompt and scoring; the customer supplies
 // only the model. The evaluator's `level` must match the base's level (resolved at
 // add time via GetEvaluator), so it lives on the top-level Evaluator, not here.
-export const BASE_EVALUATOR_ID_PATTERN = /^(ThirdParty|Builtin)\.[A-Za-z0-9._-]+$/;
+// Builtin.<Metric> or ThirdParty.<Provider>.<Metric>. Each segment must be
+// non-empty alphanumeric — rejects malformed ids like "ThirdParty.DeepEval",
+// "ThirdParty..ToolUse", or "ThirdParty.DeepEval.".
+export const BASE_EVALUATOR_ID_PATTERN = /^(Builtin\.[A-Za-z0-9]+|ThirdParty\.[A-Za-z0-9]+\.[A-Za-z0-9]+)$/;
 
 export const DerivedEvaluatorConfigSchema = z.object({
   baseEvaluatorId: z
