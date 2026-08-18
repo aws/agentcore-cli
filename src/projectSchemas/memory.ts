@@ -5,23 +5,10 @@ export const MemoryStrategyTypeSchema = z.enum([
   "SEMANTIC",
   "SUMMARIZATION",
   "USER_PREFERENCE",
-  "CUSTOM",
   "EPISODIC",
 ]);
 export type MemoryStrategyType = z.infer<typeof MemoryStrategyTypeSchema>;
-/**
- * The strategy types the service extracts with a built-in prompt. Each has a
- * default namespace, so naming the type is enough to configure one — unlike
- * CUSTOM, whose namespaces the caller supplies.
- */
-export const ManagedMemoryStrategyTypeSchema = z.enum([
-  "SEMANTIC",
-  "SUMMARIZATION",
-  "USER_PREFERENCE",
-  "EPISODIC",
-]);
-export type ManagedMemoryStrategyType = z.infer<typeof ManagedMemoryStrategyTypeSchema>;
-export const DEFAULT_STRATEGY_NAMESPACE_TEMPLATES: Record<ManagedMemoryStrategyType, string[]> = {
+export const DEFAULT_STRATEGY_NAMESPACE_TEMPLATES: Partial<Record<MemoryStrategyType, string[]>> = {
   SEMANTIC: ["/users/{actorId}/facts"],
   USER_PREFERENCE: ["/users/{actorId}/preferences"],
   SUMMARIZATION: ["/summaries/{actorId}/{sessionId}"],
