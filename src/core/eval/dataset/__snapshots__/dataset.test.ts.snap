@@ -1,0 +1,35 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`PredefinedExample ground truth maps to the expected inline shape [golden] 1`] = `
+{
+  "assertions": [
+    {
+      "text": "stays polite",
+    },
+    {
+      "text": "does not promise a date",
+    },
+  ],
+  "expectedTrajectory": {
+    "toolNames": [
+      "refund_lookup",
+      "refund_create",
+    ],
+  },
+  "turns": [
+    {
+      "input": {
+        "prompt": "I want a refund",
+      },
+    },
+    {
+      "expectedResponse": {
+        "text": "Refund started",
+      },
+      "input": {
+        "prompt": "order 123",
+      },
+    },
+  ],
+}
+`;

@@ -133,8 +133,8 @@ import type {
   DatasetUpdateProgressEvent,
   EvaluateInput,
   EvaluateResult,
-  SimulateInput,
-  SimulateResult,
+  InvokeDatasetInput,
+  InvokeDatasetResult,
   GetBatchEvaluationResult,
   GetTracesInput,
   LlmAsAJudgeUpdate,
@@ -1405,11 +1405,10 @@ export class TestEvalClient implements CoreEvalClient {
     sessionsEvaluated: 0,
     results: [],
   };
-  private simulateResponse: SimulateResult = {
-    batchEvaluationId: "batch-eval-test",
-    status: "RUNNING",
-    scenariosInvoked: 0,
-    scenariosFailed: 0,
+  private invokeDatasetResponse: InvokeDatasetResult = {
+    sessions: [],
+    invoked: 0,
+    failed: 0,
   };
   private error?: Error;
 
@@ -1730,20 +1729,20 @@ export class TestEvalClient implements CoreEvalClient {
     return this.evaluateResponse;
   }
 
-  // setSimulateResponse sets what simulate resolves to (when not erroring).
-  setSimulateResponse(response: SimulateResult): this {
-    this.simulateResponse = response;
+  // setInvokeDatasetResponse sets what invokeDataset resolves to (when not erroring).
+  setInvokeDatasetResponse(response: InvokeDatasetResult): this {
+    this.invokeDatasetResponse = response;
     return this;
   }
 
-  async simulate(
-    input: SimulateInput,
+  async invokeDataset(
+    input: InvokeDatasetInput,
     options: CoreOptions,
     signal?: AbortSignal,
-  ): Promise<SimulateResult> {
-    this.calls.push({ method: "simulate", args: [input, options, signal] });
+  ): Promise<InvokeDatasetResult> {
+    this.calls.push({ method: "invokeDataset", args: [input, options, signal] });
     if (this.error) throw this.error;
-    return this.simulateResponse;
+    return this.invokeDatasetResponse;
   }
 
   async createOnlineEvaluationConfig(
