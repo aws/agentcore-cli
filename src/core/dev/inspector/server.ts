@@ -7,7 +7,6 @@
  */
 import { ResourceNotFoundError } from "../../../errors";
 import type { HttpRequest, HttpRequestHandler, HttpResponse } from "../../../io/httpServer";
-import type { StatusResponse } from "./api";
 import { asString, handleInvocations } from "./invocations";
 import { handleA2aAgentCard, handleMcpProxy } from "./proxies";
 import { handleResources } from "./resources";
@@ -87,7 +86,8 @@ async function route(
 /** GET /api/status — available agents, running ports, and per-agent errors. */
 function handleStatus(deps: InspectorDeps): HttpResponse {
   const snapshot = deps.supervisor.snapshot();
-  const status: StatusResponse = {
+  // The literal is the wire contract — the SPA depends on these exact field names.
+  const status = {
     mode: "dev",
     agents: snapshot.map(({ name, buildType, protocol }) => ({ name, buildType, protocol })),
     harnesses: (deps.project?.spec.harnesses ?? []).map(({ name }) => ({ name })),

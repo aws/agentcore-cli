@@ -7,7 +7,6 @@
  * with real deploy wiring.
  */
 import type { HttpResponse } from "../../../io/httpServer";
-import type { ResourcesResponse } from "./api";
 import { apiError, json } from "./respond";
 import type { InspectorDeps } from "./types";
 
@@ -16,7 +15,8 @@ export function handleResources(deps: InspectorDeps): HttpResponse {
   if (!project) return apiError(404, "No agentcore project found");
 
   const spec = project.spec;
-  const resources: ResourcesResponse = {
+  // The literal is the wire contract — the SPA depends on these exact field names.
+  const resources = {
     success: true,
     project: project.name,
     agents: spec.runtimes.map((runtime) => ({
