@@ -10,7 +10,9 @@ import {
   TestGlobalConfigAccessor,
   testIO,
 } from "../../testing";
-import { InputValidationError } from "../../errors";
+import { DeserializationError, InputValidationError } from "../../errors";
+import { FsReadWriteJson, type ReadWriteJson } from "../../io";
+import { MEMORY_DESCRIPTION_MAX_LENGTH } from "../../projectSchemas/memory";
 
 async function run(args: string[], opts?: { core?: TestCoreClient }) {
   const io = testIO();
@@ -310,6 +312,16 @@ describe("project add memory", () => {
       { name: "x", eventExpiryDuration: 30, strategies: [] },
     ],
     [
+      "description",
+      ["--name", "x", "--description", "Durable facts and preferences for each end user."],
+      { description: "Durable facts and preferences for each end user." },
+    ],
+    [
+      "description — at the maximum length",
+      ["--name", "x", "--description", "a".repeat(MEMORY_DESCRIPTION_MAX_LENGTH)],
+      { description: "a".repeat(MEMORY_DESCRIPTION_MAX_LENGTH) },
+    ],
+    [
       "event-expiry-duration",
       ["--name", "x", "--event-expiry-duration", "7"],
       { eventExpiryDuration: 7 },
@@ -477,6 +489,11 @@ describe("project add memory", () => {
   test.each([
     ["missing --name", ["--event-expiry-duration", "30"]],
     ["invalid name", ["--name", "1bad"]],
+    ["empty description", ["--name", "x", "--description", ""]],
+    [
+      "description above the maximum length",
+      ["--name", "x", "--description", "a".repeat(MEMORY_DESCRIPTION_MAX_LENGTH + 1)],
+    ],
     ["event-expiry-duration below the minimum", ["--name", "x", "--event-expiry-duration", "2"]],
     ["event-expiry-duration above the maximum", ["--name", "x", "--event-expiry-duration", "400"]],
     ["unrecognized shorthand strategy", ["--name", "x", "--strategies", "NONSENSE"]],

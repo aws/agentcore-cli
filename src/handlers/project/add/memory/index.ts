@@ -23,6 +23,20 @@ import {
 // is omitted so the common case is a single --name.
 const DEFAULT_EVENT_EXPIRY_DURATION = 30;
 
+// TODO: drop the deploy-time caveat once the generated CDK app pins an
+// @aws/agentcore-cdk release containing the memory `description` field
+// (aws/agentcore-l3-cdk-constructs#325). Its MemorySchema is non-strict, so
+// until then the field is stripped at synth rather than rejected.
+const descriptionHelp = `(string)
+A description of what the memory stores, carried on the memory resource. Up to
+4096 characters.
+
+Until the generated CDK app's @aws/agentcore-cdk dependency supports this
+field, it is stored in agentcore.json but not applied at deploy.
+
+Example:
+  --description 'Durable facts and preferences for each end user.'`;
+
 const strategiesHelp = `(comma-separated list of strategy types, or JSON MemoryStrategyInput[])
 The long-term memory strategies to extract from raw events. Accepts two forms.
 
@@ -65,6 +79,9 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
     description: "adds a memory to the current project",
     flags: [
       flag("name", "the name of the memory", z.string().optional()),
+      flag("description", "a description of what the memory stores", z.string().optional(), {
+        help: descriptionHelp,
+      }),
       flag(
         "event-expiry-duration",
         "how long raw events are retained, in days (3-365)",
@@ -113,6 +130,7 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
 
       const memoryConfig = {
         name: flags.name,
+        description: flags["description"],
         eventExpiryDuration: flags["event-expiry-duration"],
         strategies: flags["strategies"] ? toStrategies(flags["strategies"]) : undefined,
         indexedKeys: inputIndexedKeys?.map(toIndexedKey),

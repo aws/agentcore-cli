@@ -142,9 +142,11 @@ export const IndexedKeySchema = z.object({
   type: IndexedKeyTypeSchema,
 });
 export type IndexedKey = z.infer<typeof IndexedKeySchema>;
+export const MEMORY_DESCRIPTION_MAX_LENGTH = 4096;
 export const MemorySchema = z
   .object({
     name: MemoryNameSchema,
+    description: z.string().min(1).max(MEMORY_DESCRIPTION_MAX_LENGTH).optional(),
     eventExpiryDuration: z.number().int().min(3).max(365),
     strategies: z
       .array(MemoryStrategySchema)
