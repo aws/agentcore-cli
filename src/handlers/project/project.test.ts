@@ -11,7 +11,6 @@ import {
   testIO,
 } from "../../testing";
 import { InputValidationError } from "../../errors";
-import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 
 async function run(args: string[], opts?: { core?: TestCoreClient }) {
   const io = testIO();
@@ -586,33 +585,28 @@ describe("project add harness", () => {
     ).rejects.toBeInstanceOf(InputValidationError);
   });
 
-  test("cleans up scaffolded files when the spec write fails", async () => {
-    const projectRoot = await inProject();
-    const logger = createSilentLogger();
-    const realJson = new FsReadWriteJson({ logger });
-
-    // A json adapter that delegates reads but always fails on write.
-    const failingJson: ReadWriteJson = {
-      read: (path, schema) => realJson.read(path, schema),
-      write: () => {
-        throw new Error("simulated write failure");
-      },
-    };
-
-    const core = new TestCoreClient({ json: failingJson });
-
-    await expect(run(["add", "harness", "--name", "x"], { core })).rejects.toThrow();
-
-    // The scaffolded harness directory should have been cleaned up.
-    expect(existsSync(join(projectRoot, "app", "x"))).toBe(false);
-  });
-
   test("rejects a duplicate harness name", async () => {
     await inProject();
     await run(["add", "harness", "--name", "x"]);
     await expect(run(["add", "harness", "--name", "x"])).rejects.toBeInstanceOf(
       InputValidationError,
     );
+  });
+
+  test("rejects when the resulting spec would be invalid and rolls back scaffolding", async () => {
+    const projectRoot = await inProject();
+
+    // create a corrupted agentcore.json
+    const specPath = join(projectRoot, "agentcore", "agentcore.json");
+    const spec = await Bun.file(specPath).json();
+    spec.unknownField = "bad";
+    await Bun.write(specPath, JSON.stringify(spec));
+
+    await expect(run(["add", "harness", "--name", "x"])).rejects.toBeInstanceOf(
+      InputValidationError,
+    );
+
+    expect(existsSync(join(projectRoot, "app", "x"))).toBe(false);
   });
 
   test.each([

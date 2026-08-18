@@ -30,7 +30,7 @@ import {
   ProjectStateError,
 } from "../../errors/errors";
 import type { HarnessSpecSchema } from "../../projectSchemas/harness";
-import type z from "zod";
+import z from "zod";
 
 type ProjectManagerConfig = {
   logger: Logger;
@@ -176,12 +176,17 @@ export class FsProjectManager implements ProjectManager {
 
     yield { message: `Updating project spec file at '${agentCoreSpecPath}'` };
 
+    const newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
+    const newSpecParseResult = ProjectSpecSchema.safeParse(newSpec);
+
+    if (!newSpecParseResult.success)
+      throw new InputValidationError(z.prettifyError(newSpecParseResult.error), {
+        cause: newSpecParseResult.error,
+      });
+
     // rollback scaffolding changes on failed config writes to prevent bad state.
     try {
-      const newProjectSpec = await this.json.write(agentCoreSpecPath, {
-        ...existingProjectSpec,
-        [projectSpecKey]: newResources,
-      });
+      const newProjectSpec = await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
 
       return {
         ...project,
