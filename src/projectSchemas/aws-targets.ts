@@ -8,8 +8,9 @@ import z from "zod";
 export const AwsTargetsSchema = z.array(
   z.object({
     name: z.string(),
-    // Checked here because a deploy turns this straight into `aws://<account>/<region>`:
-    // a typo would otherwise surface minutes later, from inside the CDK toolkit.
+    // Checked here because a deploy turns this straight into `aws://<account>/<region>`: a
+    // typo fails while reading the file, alongside the example of a valid one the reader
+    // prints, rather than minutes later from inside the CDK toolkit.
     account: z.string().regex(/^\d{12}$/, "must be a 12-digit AWS account ID"),
     region: z.string(),
   }),

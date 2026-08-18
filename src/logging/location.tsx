@@ -10,8 +10,10 @@ const LOG_DIRECTORY = [".agentcore", "logs"];
 // the prefix is not a file: `logFilePath` spells the file that prefix produces.
 const LOG_PREFIX = "output";
 
-// The day the rotating transport is writing under, read once at startup so a command that
-// prints where its log is names the file the logger opened, even across midnight.
+// The day the rotating transport opened a file for, read once at startup so every mention
+// of the log within one run names the same file. A run that crosses midnight rotates into
+// the next day's file, so this names where the run started writing rather than where it
+// finished — the directory is right either way, and the run's first lines are here.
 const RUN_STARTED_AT = new Date();
 
 type Location = {

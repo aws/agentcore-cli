@@ -4,6 +4,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { IIoHost, IoMessageLevel, Toolkit } from "@aws-cdk/toolkit-lib";
+// Type-only, so it is erased rather than loading the client every command pays for.
+import type { Stack } from "@aws-sdk/client-cloudformation";
 
 /** A message emitted by the toolkit while an operation runs. */
 export type CdkEvent = {
@@ -211,24 +213,56 @@ export const runCdk: CdkRunner = (operation, options) =>
 const BOOTSTRAP_STACK = "CDKToolkit";
 const BOOTSTRAP_VERSION_OUTPUT = "BootstrapVersion";
 
-/** The oldest bootstrap our deploys work against, as the original CLI requires. */
+/**
+ * The oldest bootstrap our deploys work against: the floor the published CLI applies in
+ * `operations/deploy/preflight.ts` as `MINIMUM_CDK_BOOTSTRAP_VERSION`, kept the same here
+ * so both CLIs re-bootstrap the same environments. It is only a floor — each stack in the
+ * assembly declares the version it needs and the toolkit enforces that when it deploys, so
+ * a stack wanting more than its region has fails rather than deploying against too little.
+ */
 const MINIMUM_BOOTSTRAP_VERSION = 30;
+
+/**
+ * The statuses a bootstrap stack can be deployed against, as the published CLI's own check
+ * uses. One that is rolled back, mid-delete, or mid-update is bootstrapped again instead:
+ * its version output says what the stack was meant to be, not whether the roles and bucket
+ * a deploy needs are there.
+ */
+const USABLE_BOOTSTRAP_STATUSES = new Set([
+  "CREATE_COMPLETE",
+  "UPDATE_COMPLETE",
+  "UPDATE_ROLLBACK_COMPLETE",
+]);
+
+/** A region's bootstrap stack. An absent or unreadable one reads as version 0, unusable. */
+export type BootstrapStack = { version: number; usable: boolean };
 
 /** Whether an environment is bootstrapped. Injectable so tests never reach AWS. */
 export type BootstrapProbe = (region: string) => Promise<boolean>;
 
-/** The version of a region's bootstrap stack, or 0 where it has none. */
-type ReadBootstrapVersion = (region: string) => Promise<number>;
+/** What DescribeStacks said about the bootstrap stack. Pure, so it is testable offline. */
+export function readBootstrapStack(stacks?: Stack[]): BootstrapStack {
+  const stack = stacks?.[0];
+  const version = stack?.Outputs?.find(
+    (output) => output.OutputKey === BOOTSTRAP_VERSION_OUTPUT,
+  )?.OutputValue;
+  return {
+    // A version that is missing or unparseable reads as 0, so the stack is bootstrapped again.
+    version: Number.parseInt(version ?? "", 10) || 0,
+    usable: USABLE_BOOTSTRAP_STATUSES.has(stack?.StackStatus ?? ""),
+  };
+}
 
-const readBootstrapVersion: ReadBootstrapVersion = async (region) => {
+const describeBootstrapStack = async (region: string): Promise<BootstrapStack> => {
   // Imported on demand for the same reason the toolkit is: src/io is reachable from every
-  // command, and only a deploy needs an AWS client.
+  // command, and only a deploy needs an AWS client. The default credential chain is the one
+  // the toolkit resolves through as well, so the probe reads the bootstrap stack of the
+  // account a bootstrap would have written to.
   const { CloudFormationClient, DescribeStacksCommand } =
     await import("@aws-sdk/client-cloudformation");
   const client = new CloudFormationClient({ region });
   const { Stacks } = await client.send(new DescribeStacksCommand({ StackName: BOOTSTRAP_STACK }));
-  const output = Stacks?.[0]?.Outputs?.find((o) => o.OutputKey === BOOTSTRAP_VERSION_OUTPUT);
-  return Number(output?.OutputValue ?? 0);
+  return readBootstrapStack(Stacks);
 };
 
 /**
@@ -239,10 +273,10 @@ const readBootstrapVersion: ReadBootstrapVersion = async (region) => {
  */
 export const isBootstrapCurrent = async (
   region: string,
-  read: ReadBootstrapVersion = readBootstrapVersion,
+  read: (region: string) => Promise<BootstrapStack> = describeBootstrapStack,
 ): Promise<boolean> => {
-  // A version that cannot be read counts as absent: bootstrap then reports the real
+  // A stack that cannot be read counts as absent: bootstrap then reports the real
   // problem — no such stack, no permission — better than a probe could.
-  const version = await read(region).catch(() => 0);
-  return version >= MINIMUM_BOOTSTRAP_VERSION;
+  const { version, usable } = await read(region).catch(() => ({ version: 0, usable: false }));
+  return usable && version >= MINIMUM_BOOTSTRAP_VERSION;
 };

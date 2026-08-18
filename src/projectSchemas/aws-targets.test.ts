@@ -16,7 +16,7 @@ describe("AwsTargetsSchema", () => {
     ["empty", ""],
   ])("rejects an account that is %s", (_, account) => {
     // Deploy turns this straight into `aws://<account>/<region>`, so catching a typo here
-    // names the field that is wrong instead of failing inside the CDK toolkit minutes in.
+    // fails the file that holds it instead of failing inside the CDK toolkit minutes in.
     expect(() =>
       AwsTargetsSchema.parse([{ name: "default", account, region: "us-east-1" }]),
     ).toThrow(/12-digit AWS account ID/);

@@ -7,8 +7,10 @@ import type { IIoHost, IoMessage, IoRequest } from "@aws-cdk/toolkit-lib";
 // the toolkit itself defines rather than ones the tests made up. Imported statically
 // here, unlike in cdk.ts, because a test file pays no startup cost.
 import * as toolkit from "@aws-cdk/toolkit-lib";
+import type { Stack } from "@aws-sdk/client-cloudformation";
 import {
   isBootstrapCurrent,
+  readBootstrapStack,
   loadBootstrapTemplate,
   loadCdkToolkit,
   performCdkOperation,
@@ -339,16 +341,75 @@ describe("runCdk", () => {
   });
 });
 
+describe("readBootstrapStack", () => {
+  // What DescribeStacks returns for a bootstrap stack in the given state.
+  function described(status: Stack["StackStatus"], version?: string): Stack[] {
+    return [
+      {
+        StackName: "CDKToolkit",
+        CreationTime: new Date(0),
+        StackStatus: status,
+        Outputs: [
+          { OutputKey: "BucketName", OutputValue: "cdk-hnb659fds-assets-111122223333-us-east-1" },
+          ...(version ? [{ OutputKey: "BootstrapVersion", OutputValue: version }] : []),
+        ],
+      },
+    ];
+  }
+
+  test("reads the version a healthy bootstrap stack reports", () => {
+    expect(readBootstrapStack(described("CREATE_COMPLETE", "32"))).toEqual({
+      version: 32,
+      usable: true,
+    });
+    // Bootstrapping over a stack that had rolled back leaves it here, and it works.
+    expect(readBootstrapStack(described("UPDATE_ROLLBACK_COMPLETE", "30"))).toEqual({
+      version: 30,
+      usable: true,
+    });
+  });
+
+  test("reads a stack that is not in a state to deploy against as unusable", () => {
+    // The version output says what the stack was meant to be; these say whether the roles
+    // and bucket a deploy needs are actually there.
+    expect(readBootstrapStack(described("ROLLBACK_COMPLETE", "32")).usable).toBe(false);
+    expect(readBootstrapStack(described("DELETE_IN_PROGRESS", "32")).usable).toBe(false);
+    expect(readBootstrapStack(described("UPDATE_ROLLBACK_FAILED", "32")).usable).toBe(false);
+  });
+
+  test("reads a missing or unparseable version as none at all", () => {
+    // Rather than NaN, which would compare false against every threshold silently.
+    expect(readBootstrapStack(described("CREATE_COMPLETE"))).toEqual({ version: 0, usable: true });
+    expect(readBootstrapStack(described("CREATE_COMPLETE", "v32")).version).toBe(0);
+  });
+
+  test("reads an empty response as no bootstrap stack", () => {
+    expect(readBootstrapStack([])).toEqual({ version: 0, usable: false });
+    expect(readBootstrapStack()).toEqual({ version: 0, usable: false });
+  });
+});
+
 describe("isBootstrapCurrent", () => {
+  // A probe answer, as DescribeStacks would have produced it.
+  const stack =
+    (version: number, usable = true) =>
+    async () => ({ version, usable });
+
   test("is current for a bootstrap new enough to deploy against", async () => {
-    expect(await isBootstrapCurrent("us-east-1", async () => 30)).toBe(true);
-    expect(await isBootstrapCurrent("us-east-1", async () => 99)).toBe(true);
+    expect(await isBootstrapCurrent("us-east-1", stack(30))).toBe(true);
+    expect(await isBootstrapCurrent("us-east-1", stack(99))).toBe(true);
   });
 
   test("is not current for a bootstrap older than we deploy against", async () => {
     // An old bootstrap is bootstrapped again, which is what upgrades it.
-    expect(await isBootstrapCurrent("us-east-1", async () => 29)).toBe(false);
-    expect(await isBootstrapCurrent("us-east-1", async () => 0)).toBe(false);
+    expect(await isBootstrapCurrent("us-east-1", stack(29))).toBe(false);
+    expect(await isBootstrapCurrent("us-east-1", stack(0))).toBe(false);
+  });
+
+  test("is not current for a new enough bootstrap that is not in a usable state", async () => {
+    // Deploying against a rolled-back or half-deleted CDKToolkit fails confusingly; it is
+    // bootstrapped again instead, which is what repairs it.
+    expect(await isBootstrapCurrent("us-east-1", stack(32, false))).toBe(false);
   });
 
   test("is not current when the stack cannot be read", async () => {

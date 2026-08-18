@@ -111,7 +111,11 @@ export class CdkBackend implements ProjectBackend {
     // and the parameters we bootstrap with would put a customer-managed key on a staging
     // bucket that had none — so an environment somebody has already prepared is left alone.
     const environment = `aws://${input.target.account}/${input.target.region}`;
-    if (!(await this.bootstrapped(input.target.region))) {
+    const bootstrapped = await this.bootstrapped(input.target.region);
+    // Logged because it decides whether the step below runs at all: a deploy that then
+    // fails on the bootstrap it skipped is otherwise unexplainable from the log alone.
+    this.logger.child({ environment, bootstrapped }).debug("checked bootstrap");
+    if (!bootstrapped) {
       yield { kind: "step", message: `Bootstrapping ${environment}` };
       await this.runCdkOperation({ kind: "bootstrap", environments: [environment] }, run);
     }
