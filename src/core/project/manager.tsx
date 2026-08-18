@@ -24,7 +24,6 @@ import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { enclosingProjectRoot } from "./fsUtils";
 import {
   AgentCoreCLIError,
-  DeserializationError,
   InputValidationError,
   NotImplementedError,
   ProjectStateError,
@@ -63,22 +62,12 @@ export class FsProjectManager implements ProjectManager {
     if (!rootPath) return undefined;
 
     const configPath = join(rootPath, "agentcore", "agentcore.json");
-    try {
-      const spec = await this.json.read(configPath, ProjectSpecSchema);
-      return {
-        name: spec.name,
-        rootPath,
-        spec,
-      };
-    } catch (error) {
-      // A malformed agentcore.json is a user-correctable problem, not a crash.
-      if (error instanceof DeserializationError) {
-        throw new InputValidationError(`invalid project configuration at ${configPath}`, {
-          cause: error,
-        });
-      }
-      throw error;
-    }
+    const spec = await this.json.read(configPath, ProjectSpecSchema);
+    return {
+      name: spec.name,
+      rootPath,
+      spec,
+    };
   }
 
   public async *create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project> {

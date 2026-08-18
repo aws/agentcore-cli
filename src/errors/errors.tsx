@@ -93,10 +93,9 @@ export class SourceResolutionError extends InputValidationError {
   }
 }
 
-// TODO: attach telemetry metadata to this error class.
-export class DeserializationError extends Error {
-  constructor(path: string, options?: { cause?: unknown }) {
-    super(`Failed to deserialize JSON at "${path}"`, options);
+export class DeserializationError extends AgentCoreCLIError {
+  constructor(path: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
+    super(`Failed to deserialize file at "${path}"`, { ...options, source: ERROR_SOURCE.USER });
     this.name = "DeserializationError";
   }
 }
