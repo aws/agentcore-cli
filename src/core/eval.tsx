@@ -108,8 +108,8 @@ import type {
   LlmAsAJudgeUpdate,
   SessionSourceValue,
   SessionTrace,
-  SimulateInput,
-  SimulateResult,
+  InvokeDatasetInput,
+  InvokeDatasetResult,
   SpanRecord,
   StartBatchEvaluationInput,
   UpdateConfigurationBundleInput,
@@ -117,7 +117,9 @@ import type {
 } from "../handlers/eval/types";
 import { atomicWrite, atomicWriteStream, readTextFile, renderJsonTemplate } from "../io";
 import { invokeRuntime } from "./invokeRuntime";
-import { loadDatasetFile, runScenarios, toSessionMetadata } from "./eval/simulate";
+import { DatasetLoader } from "./eval/dataset/load";
+import { runExamples } from "./eval/dataset/run";
+import type { RunContext } from "./eval/dataset/types";
 import { normalizeRuntimeInvokeRequest } from "../handlers/runtime/invoke/request";
 import { isTerminalStatus, readEvaluationResults } from "./batchEvaluationResults";
 import { applyExampleIds, diffExamples, indexRemoteById, parseJsonl } from "./datasetDiff";
@@ -514,118 +516,96 @@ export class EvalClient implements CoreEvalClient {
     };
   }
 
-  async simulate(
-    input: SimulateInput,
+  async invokeDataset(
+    input: InvokeDatasetInput,
     options: CoreOptions,
     signal?: AbortSignal,
-  ): Promise<SimulateResult> {
-    // Load scenarios: a local JSONL path directly, else download the dataset id.
-    let tempDatasetPath: string | undefined;
-    const path = (await Bun.file(input.dataset).exists())
-      ? input.dataset
-      : (tempDatasetPath = await this.downloadDatasetToTemp(
-          input.dataset,
-          input.datasetVersion,
-          options,
-          signal,
-        ));
-    try {
-      const scenarios = await loadDatasetFile(path);
-      const byId = new Map(scenarios.map((s) => [s.scenarioId, s]));
+  ): Promise<InvokeDatasetResult> {
+    const examples = DatasetLoader.load(
+      await this.readDatasetText(input.dataset, input.datasetVersion, options, signal),
+    );
 
-      // Resolve the runtime once; normalizeRuntimeInvokeRequest validates auth + fills
-      // accountId. Invoke is the extracted free fn — no RuntimeClient dependency.
-      const runtime = await this.clients
-        .control(toClientConfig(options))
-        .send(new GetAgentRuntimeCommand({ agentRuntimeId: input.runtimeId }));
-      const deps = { clients: this.clients, fetch: this.fetch, logger: this.logger };
-
-      const { ok, failed, firstError } = await runScenarios(scenarios, async (scenario) => {
-        // One session per scenario; the id is generated client-side (session id is a
-        // client-owned input per the AgentCore docs, needed on the request before any
-        // response and reused across turns). Turns run sequentially against the SAME
-        // session so the conversation — and its per-turn traces — accumulate in order,
-        // matching the per-turn ground truth in toSessionMetadata.
-        const runtimeSessionId = randomUUID();
-        try {
-          for (const turn of scenario.turns) {
-            const request = normalizeRuntimeInvokeRequest(runtime, {
-              runtimeId: input.runtimeId,
-              qualifier: input.qualifier,
-              payload: renderJsonTemplate(input.payloadTemplate, { input: turn.input }),
-              contentType: "application/json",
-              accept: "application/json",
-              applicationHeaders: input.headers,
-              bearerToken: input.bearerToken,
-              runtimeSessionId,
-              runtimeUserId: input.userId,
-            });
-            const response = await invokeRuntime(deps, request, options, signal);
-            for await (const _chunk of response.body) {
-              // Drain each turn's stream so it completes before the next turn.
-            }
-          }
-        } catch (error) {
-          this.logger.debug(
-            `simulate: invoke failed for scenario "${scenario.scenarioId}": ${(error as Error).message}`,
-          );
-          throw error;
-        }
-        return { scenarioId: scenario.scenarioId, sessionId: runtimeSessionId };
+    // Resolve the runtime once, reused for every session.
+    const runtime = await this.clients
+      .control(toClientConfig(options))
+      .send(new GetAgentRuntimeCommand({ agentRuntimeId: input.runtimeId }), {
+        abortSignal: signal,
       });
+    const deps = { clients: this.clients, fetch: this.fetch, logger: this.logger };
 
-      if (ok.length === 0) {
-        const detail = firstError ? `; first error: ${firstError.message}` : "";
-        throw new InputValidationError(
-          `no scenarios could be invoked (${failed} failed) — nothing to evaluate${detail}`,
-        );
-      }
-      if (failed > 0) {
-        this.logger.warn(`simulate: ${failed} scenario(s) failed to invoke and were dropped`);
-      }
-
-      // AgentCore takes ~30s-3min to emit spans for a freshly invoked session; submit
-      // too early and the service reads an empty log group and marks every session
-      // failed. Wait once for the batch to be safely ingestible (matches the old CLI's
-      // 180s wait). Skipped when disabled via `SIMULATE_INGESTION_WAIT_MS=0` (tests).
-      const waitMs = Number(process.env.SIMULATE_INGESTION_WAIT_MS ?? 180_000);
-      if (waitMs > 0) {
-        this.logger.info(
-          `waiting ${Math.round(waitMs / 1000)}s for span ingestion before submitting`,
-        );
-        await sleep(waitMs, undefined, { signal });
-      }
-
-      const job = await this.startBatchEvaluation(
-        {
-          name: input.name,
-          description: input.description,
-          evaluatorIds: input.evaluatorIds,
-          source: {
-            origin: "agent",
-            agent: input.runtimeId,
-            endpoint: input.qualifier,
-            sessionIds: ok.map((r) => r.sessionId),
-          },
-          groundTruth: ok.map((r) => toSessionMetadata(byId.get(r.scenarioId)!, r.sessionId)),
-          kmsKeyArn: input.kmsKeyArn,
+    const { ok, failed, firstError } = await runExamples(examples, async (example) => {
+      // One session per example; the id is a client-owned input per the AgentCore docs,
+      // reused across turns so the conversation and its per-turn traces stay in order.
+      const sessionId = randomUUID();
+      const ctx: RunContext = {
+        invokeOnce: async (payload) => {
+          const request = normalizeRuntimeInvokeRequest(runtime, {
+            runtimeId: input.runtimeId,
+            qualifier: input.qualifier,
+            payload: renderJsonTemplate(input.payloadTemplate, { input: payload }),
+            contentType: "application/json",
+            accept: "application/json",
+            applicationHeaders: input.headers,
+            bearerToken: input.bearerToken,
+            runtimeSessionId: sessionId,
+            runtimeUserId: input.userId,
+          });
+          const response = await invokeRuntime(deps, request, options, signal);
+          // Read to completion to free the socket; a scripted example ignores the text.
+          let text = "";
+          const decoder = new TextDecoder();
+          for await (const chunk of response.body) text += decoder.decode(chunk, { stream: true });
+          text += decoder.decode();
+          return { text };
         },
-        options,
-      );
-
-      return {
-        batchEvaluationId: job.batchEvaluationId,
-        status: job.status,
-        scenariosInvoked: ok.length,
-        scenariosFailed: failed,
       };
+      try {
+        const groundTruth = await example.run(ctx);
+        return { exampleId: example.exampleId, sessionId, groundTruth };
+      } catch (error) {
+        this.logger.debug(
+          `invokeDataset: invoke failed for example "${example.exampleId}" (${example.schemaType}): ${(error as Error).message}`,
+        );
+        throw error;
+      }
+    });
+
+    if (failed > 0) {
+      this.logger.warn(`invokeDataset: ${failed} example(s) failed to invoke and were dropped`);
+    }
+
+    // AgentCore emits spans ~30s-3min after invoke; grade too early and it reads an empty
+    // log group and fails every session. Disabled via SIMULATE_INGESTION_WAIT_MS=0 (tests).
+    const waitMs = Number(process.env.SIMULATE_INGESTION_WAIT_MS ?? 180_000);
+    if (ok.length > 0 && waitMs > 0) {
+      this.logger.info(
+        `waiting ${Math.round(waitMs / 1000)}s for span ingestion before evaluating`,
+      );
+      await sleep(waitMs, undefined, { signal });
+    }
+
+    return { sessions: ok, invoked: ok.length, failed, firstError };
+  }
+
+  // Resolve a dataset ref to JSONL text: a local path directly, else download the id to a
+  // temp file (cleaned up here). Reuses readLocalDatasetFile so replay reads like update.
+  private async readDatasetText(
+    ref: string,
+    version: string | undefined,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    if (await Bun.file(ref).exists()) return readLocalDatasetFile(ref, signal);
+    const path = await this.downloadDatasetToTemp(ref, version, options, signal);
+    try {
+      return await readLocalDatasetFile(path, signal);
     } finally {
-      if (tempDatasetPath) await unlink(tempDatasetPath).catch(() => {});
+      await unlink(path).catch(() => {});
     }
   }
 
   // downloadDatasetToTemp streams a dataset version's JSONL to a temp file so
-  // loadDatasetFile can read it — reuses downloadDataset rather than re-fetching.
+  // readDatasetText can read it — reuses downloadDataset rather than re-fetching.
   private async downloadDatasetToTemp(
     id: string,
     version: string | undefined,

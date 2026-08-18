@@ -7,9 +7,8 @@ import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 import { parseRuntimeInvokeHeaders } from "../../../runtime/invoke/request";
 
-// batch-evaluation simulate replays a dataset against a runtime (invoke per scenario)
-// then submits a batch evaluation over the sessions it created. Invoke flags mirror
-// `runtime invoke`; content-type/accept are fixed to application/json.
+// Composes invokeDataset (replay) → startBatchEvaluation (grade). Invoke flags mirror
+// `runtime invoke`.
 export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
   createHandler({
     name: "simulate",
@@ -57,7 +56,9 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
       const interrupt = () => controller.abort();
       process.once("SIGINT", interrupt);
       try {
-        const result = await core.eval.simulate(
+        const opts = coreOptsFromCtx(ctx);
+
+        const r = await core.eval.invokeDataset(
           {
             runtimeId: flags["runtime-id"],
             qualifier: flags["qualifier"],
@@ -67,15 +68,45 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
             userId: flags["user-id"],
             dataset: flags["dataset"],
             datasetVersion: flags["dataset-version"],
-            evaluatorIds: flags["evaluator"],
-            name: flags["name"],
-            description: flags["description"],
-            kmsKeyArn: flags["kms-key-arn"],
           },
-          coreOptsFromCtx(ctx),
+          opts,
           controller.signal,
         );
-        ctx.require(JsonRendererKey).renderJson(result);
+        if (r.invoked === 0) {
+          const detail = r.firstError ? `; first error: ${r.firstError.message}` : "";
+          throw new InputValidationError(
+            `no examples could be invoked (${r.failed} failed) — nothing to evaluate${detail}`,
+          );
+        }
+
+        // The example's neutral ground truth crosses over as sessionMetadata (inline arm).
+        const job = await core.eval.startBatchEvaluation(
+          {
+            name: flags["name"],
+            description: flags["description"],
+            evaluatorIds: flags["evaluator"],
+            source: {
+              origin: "agent",
+              agent: flags["runtime-id"],
+              endpoint: flags["qualifier"],
+              sessionIds: r.sessions.map((s) => s.sessionId),
+            },
+            groundTruth: r.sessions.map((s) => ({
+              sessionId: s.sessionId,
+              testScenarioId: s.exampleId,
+              ...(s.groundTruth && { groundTruth: { inline: s.groundTruth } }),
+            })),
+            kmsKeyArn: flags["kms-key-arn"],
+          },
+          opts,
+        );
+
+        ctx.require(JsonRendererKey).renderJson({
+          batchEvaluationId: job.batchEvaluationId,
+          status: job.status,
+          examplesInvoked: r.invoked,
+          examplesFailed: r.failed,
+        });
       } catch (error) {
         // A Ctrl-C exits quietly; the half-created sessions grade nothing.
         if (controller.signal.aborted) return;

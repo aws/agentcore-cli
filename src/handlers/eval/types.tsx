@@ -34,6 +34,7 @@ import type {
   ListBatchEvaluationsResponse,
   StartBatchEvaluationResponse,
   SessionMetadataShape,
+  InlineGroundTruth,
   EvaluationReferenceInput,
   EvaluationResultContent,
   DataSourceConfig as DataPlaneDataSourceConfig,
@@ -205,34 +206,37 @@ export type StartBatchEvaluationInput = {
   kmsKeyArn?: string;
 };
 
-// SimulateInput is the CLI-facing shape for `batch-evaluation simulate` — dataset
-// replay + batch grade. SDK-native fields only (no RuntimeInvokeRequest/EvaluateInput
-// leak): Core invokes each scenario against the runtime, then submits a batch
-// evaluation scoped to the sessions it created. Invoke fields mirror `runtime invoke`.
-export type SimulateInput = {
+// InvokeDatasetInput is the runtime-level shape for replaying a dataset: invoke each
+// example against the runtime, one client-generated session per example. Runtime fields
+// only — no evaluator/name/kms (those belong to the grader the handler composes on top,
+// e.g. startBatchEvaluation). Invoke fields mirror `runtime invoke`.
+export type InvokeDatasetInput = {
   runtimeId: string;
   qualifier?: string;
-  payloadTemplate: string; // e.g. {"prompt":"{input}"} — {input} is the scenario's turn input
+  payloadTemplate: string; // e.g. {"prompt":"{input}"} — {input} is the example's turn input
   headers?: [string, string][];
   bearerToken?: string;
-  // simulate always creates a fresh session per scenario. Reusing one session
-  // across scenarios interleaves unrelated turns and collides ground-truth keys.
   userId?: string;
   dataset: string; // local JSONL path or a dataset id
   datasetVersion?: string;
-  evaluatorIds: string[];
-  name: string;
-  description?: string;
-  kmsKeyArn?: string;
 };
 
-// SimulateResult reports the submitted job plus how many scenarios were actually
-// invoked vs dropped (a failed invoke is skipped, not fatal, unless all fail).
-export type SimulateResult = {
-  batchEvaluationId?: string;
-  status?: string;
-  scenariosInvoked: number;
-  scenariosFailed: number;
+// InvokedSession is one replayed example: the session created for it plus its neutral
+// ground truth. Grader-agnostic — the batch handler wraps `groundTruth` as
+// SessionMetadataShape; a future ondemand handler adapts it to EvaluationReferenceInput.
+export type InvokedSession = {
+  exampleId: string;
+  sessionId: string;
+  groundTruth?: InlineGroundTruth;
+};
+
+// InvokeDatasetResult reports the created sessions plus how many examples were invoked
+// vs dropped (a failed invoke is skipped, not fatal). firstError explains a total failure.
+export type InvokeDatasetResult = {
+  sessions: InvokedSession[];
+  invoked: number;
+  failed: number;
+  firstError?: Error;
 };
 
 // SpanRecord is one OTel span/log document — the parsed `@message` JSON of a
@@ -359,14 +363,14 @@ export interface CoreEvalClient {
   // Evaluate API and returns per-session scores. No job, no CloudWatch — the
   // trace read happened in getTracesForAgent.
   evaluate(input: EvaluateInput, options: CoreOptions): Promise<EvaluateResult>;
-  // simulate replays a dataset against the runtime (invoke per scenario, client-side)
-  // then submits a batch evaluation over the sessions it created. No dataset API
-  // exists service-side, so the CLI creates the sessions and the service grades them.
-  simulate(
-    input: SimulateInput,
+  // invokeDataset replays a dataset against the runtime (invoke per example, client-side,
+  // one session each) and returns the created sessions + neutral ground truth. Grader-
+  // agnostic: the handler composes it with startBatchEvaluation (or, later, evaluate).
+  invokeDataset(
+    input: InvokeDatasetInput,
     options: CoreOptions,
     signal?: AbortSignal,
-  ): Promise<SimulateResult>;
+  ): Promise<InvokeDatasetResult>;
 
   createOnlineEvaluationConfig(
     input: CreateOnlineEvalInput,

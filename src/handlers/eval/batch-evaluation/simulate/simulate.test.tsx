@@ -6,18 +6,22 @@ import {
   testIO,
   TestGlobalConfigAccessor,
 } from "../../../../testing";
-import type { SimulateResult } from "../../types";
+import type { InvokeDatasetResult } from "../../types";
 
-const RESULT: SimulateResult = {
-  batchEvaluationId: "batch-eval-sim",
-  status: "RUNNING",
-  scenariosInvoked: 3,
-  scenariosFailed: 0,
+// Two invoked sessions; the handler feeds these into startBatchEvaluation and renders
+// the job it returns (DEFAULT_START_BATCH_EVAL_RESPONSE: batch-eval-test / RUNNING).
+const INVOKE_RESULT: InvokeDatasetResult = {
+  sessions: [
+    { exampleId: "e1", sessionId: "s1", groundTruth: { assertions: [{ text: "polite" }] } },
+    { exampleId: "e2", sessionId: "s2" },
+  ],
+  invoked: 2,
+  failed: 0,
 };
 
 async function run(args: string[], configure?: (core: TestCoreClient) => void) {
   const core = new TestCoreClient();
-  core.eval.setSimulateResponse(RESULT);
+  core.eval.setInvokeDatasetResponse(INVOKE_RESULT);
   configure?.(core);
   const io = testIO();
   const root = createRootHandler(core, {
@@ -113,20 +117,66 @@ describe("eval batch-evaluation simulate", () => {
     await expect(run(["eval", "batch-evaluation", "simulate", ...args])).rejects.toThrow(expected);
   });
 
-  test("maps flags to the simulate input and renders the result", async () => {
-    const { core, stdout } = await run([...BASE, "--qualifier", "PROD", "--header", "x-a:1"]);
-    expect(JSON.parse(stdout)).toEqual(RESULT);
-    const call = core.eval.calls.find((c) => c.method === "simulate");
+  test("passes runtime-level flags to invokeDataset (no evaluator/name leak)", async () => {
+    const { core } = await run([...BASE, "--qualifier", "PROD", "--header", "x-a:1"]);
+    const call = core.eval.calls.find((c) => c.method === "invokeDataset");
     expect(call?.args[0]).toMatchObject({
       runtimeId: "r-1",
       qualifier: "PROD",
       payloadTemplate: '{"prompt":"{input}"}',
       headers: [["x-a", "1"]],
       dataset: "/tmp/ds.jsonl",
-      evaluatorIds: ["Builtin.Helpfulness"],
-      name: "sim-1",
     });
+    // Grader-only flags are NOT part of the invokeDataset (runtime-level) input.
+    expect(call?.args[0]).not.toHaveProperty("evaluatorIds");
+    expect(call?.args[0]).not.toHaveProperty("name");
     // Handler wires an AbortSignal (Ctrl-C) through to Core.
     expect(call?.args[2]).toBeInstanceOf(AbortSignal);
+  });
+
+  test("composes startBatchEvaluation over the created sessions + wrapped ground truth", async () => {
+    const { core, stdout } = await run(BASE);
+
+    // Rendered output is the batch job + invoked/failed counts.
+    expect(JSON.parse(stdout)).toEqual({
+      batchEvaluationId: "batch-eval-test",
+      status: "RUNNING",
+      examplesInvoked: 2,
+      examplesFailed: 0,
+    });
+
+    const start = core.eval.calls.find((c) => c.method === "startBatchEvaluation");
+    expect(start?.args[0]).toMatchObject({
+      name: "sim-1",
+      evaluatorIds: ["Builtin.Helpfulness"],
+      source: { origin: "agent", agent: "r-1", sessionIds: ["s1", "s2"] },
+      // e1's inline GT is wrapped; e2 (no GT) omits the member.
+      groundTruth: [
+        {
+          sessionId: "s1",
+          testScenarioId: "e1",
+          groundTruth: { inline: { assertions: [{ text: "polite" }] } },
+        },
+        { sessionId: "s2", testScenarioId: "e2" },
+      ],
+    });
+  });
+
+  // Golden: the exact evaluationMetadata (sessionMetadata) the handler builds from the
+  // invoked sessions. Locks the `{ inline: gt }` wrapping and the omitted-member case for
+  // a session with no ground truth — the wire shape the batch service reads.
+  test("builds the sessionMetadata ground-truth shape [golden]", async () => {
+    const { core } = await run(BASE);
+    const start = core.eval.calls.find((c) => c.method === "startBatchEvaluation");
+    const input = start!.args[0] as { groundTruth: unknown };
+    expect(input.groundTruth).toMatchSnapshot();
+  });
+
+  test("refuses to grade when nothing was invoked", async () => {
+    await expect(
+      run(BASE, (core) =>
+        core.eval.setInvokeDatasetResponse({ sessions: [], invoked: 0, failed: 3 }),
+      ),
+    ).rejects.toThrow(/no examples could be invoked \(3 failed\)/);
   });
 });
