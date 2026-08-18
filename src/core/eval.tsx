@@ -79,6 +79,8 @@ import {
 } from "@aws-sdk/client-cloudwatch-logs";
 import type { DocumentType } from "@smithy/types";
 import { randomUUID } from "node:crypto";
+import { unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
 import { Transform } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -108,13 +110,19 @@ import type {
   LlmAsAJudgeUpdate,
   SessionSourceValue,
   SessionTrace,
+  InvokeDatasetInput,
+  InvokeDatasetResult,
   SpanRecord,
   StartBatchInsightsInput,
   StartBatchEvaluationInput,
   UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
 } from "../handlers/eval/types";
-import { atomicWrite, atomicWriteStream, readTextFile } from "../io";
+import { atomicWrite, atomicWriteStream, readTextFile, renderJsonTemplate } from "../io";
+import { accountIdFromRuntimeArn, invokeRuntime } from "./invokeRuntime";
+import { DatasetLoader } from "./eval/invokeDataset/load";
+import { runExamples } from "./eval/invokeDataset/run";
+import type { RunContext } from "./eval/invokeDataset/example/types";
 import { isTerminalStatus, readEvaluationResults } from "./batchEvaluationResults";
 import { applyExampleIds, diffExamples, indexRemoteById, parseJsonl } from "./datasetDiff";
 import type { Addition } from "./datasetDiff";
@@ -523,6 +531,113 @@ export class EvalClient implements CoreEvalClient {
       sessionsEvaluated: evaluatedSessions.size,
       results,
     };
+  }
+
+  async invokeDataset(
+    input: InvokeDatasetInput,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<InvokeDatasetResult> {
+    const examples = DatasetLoader.load(
+      await this.readDatasetText(input.dataset, input.datasetVersion, options, signal),
+    );
+
+    // Resolve the runtime once, reused for every session.
+    const runtime = await this.clients
+      .control(toClientConfig(options))
+      .send(new GetAgentRuntimeCommand({ agentRuntimeId: input.runtimeId }), {
+        abortSignal: signal,
+      });
+    const deps = { clients: this.clients, fetch: this.fetch, logger: this.logger };
+    const accountId = accountIdFromRuntimeArn(runtime.agentRuntimeArn);
+
+    const { ok, failed, firstError } = await runExamples(examples, async (example) => {
+      // One session per example; the id is a client-owned input per the AgentCore docs,
+      // reused across turns so the conversation and its per-turn traces stay in order.
+      const sessionId = randomUUID();
+      const ctx: RunContext = {
+        invokeOnce: async (payload) => {
+          const response = await invokeRuntime(
+            deps,
+            {
+              runtimeId: input.runtimeId,
+              accountId,
+              qualifier: input.qualifier ?? DEFAULT_ENDPOINT_QUALIFIER,
+              payload: renderJsonTemplate(input.payloadTemplate, { input: payload }),
+              contentType: "application/json",
+              accept: "application/json",
+              ...(input.headers?.length ? { applicationHeaders: input.headers } : {}),
+              ...(input.bearerToken !== undefined ? { bearerToken: input.bearerToken } : {}),
+              runtimeSessionId: sessionId,
+              runtimeUserId: input.userId,
+            },
+            options,
+            signal,
+          );
+          // Read to completion to free the socket; a scripted example ignores the text.
+          let text = "";
+          const decoder = new TextDecoder();
+          for await (const chunk of response.body) text += decoder.decode(chunk, { stream: true });
+          text += decoder.decode();
+          return { text };
+        },
+      };
+      try {
+        const groundTruth = await example.run(ctx);
+        return { exampleId: example.exampleId, sessionId, groundTruth };
+      } catch (error) {
+        this.logger.debug(
+          `invokeDataset: invoke failed for example "${example.exampleId}" (${example.schemaType}): ${(error as Error).message}`,
+        );
+        throw error;
+      }
+    });
+
+    if (failed > 0) {
+      this.logger.warn(`invokeDataset: ${failed} example(s) failed to invoke and were dropped`);
+    }
+
+    // AgentCore emits spans ~30s-3min after invoke; grade too early and it reads an empty
+    // log group and fails every session. Disabled via SIMULATE_INGESTION_WAIT_MS=0 (tests).
+    const waitMs = Number(process.env.SIMULATE_INGESTION_WAIT_MS ?? 180_000);
+    if (ok.length > 0 && waitMs > 0) {
+      this.logger.info(
+        `waiting ${Math.round(waitMs / 1000)}s for span ingestion before evaluating`,
+      );
+      await sleep(waitMs, undefined, { signal });
+    }
+
+    return { sessions: ok, invoked: ok.length, failed, firstError };
+  }
+
+  // Resolve a dataset ref to JSONL text: a local path directly, else download the id to a
+  // temp file (cleaned up here). Reuses readLocalDatasetFile so replay reads like update.
+  private async readDatasetText(
+    ref: string,
+    version: string | undefined,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    if (await Bun.file(ref).exists()) return readLocalDatasetFile(ref, signal);
+    const path = await this.downloadDatasetToTemp(ref, version, options, signal);
+    try {
+      return await readLocalDatasetFile(path, signal);
+    } finally {
+      await unlink(path).catch(() => {});
+    }
+  }
+
+  // downloadDatasetToTemp streams a dataset version's JSONL to a temp file so
+  // readDatasetText can read it — reuses downloadDataset rather than re-fetching.
+  private async downloadDatasetToTemp(
+    id: string,
+    version: string | undefined,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    const path = join(tmpdir(), `agentcore-dataset-${randomUUID()}.jsonl`);
+    await this.downloadDataset(id, version, path, options, signal);
+    return path;
   }
 
   async createOnlineEvaluationConfig(

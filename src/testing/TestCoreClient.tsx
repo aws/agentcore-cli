@@ -133,6 +133,8 @@ import type {
   DatasetUpdateProgressEvent,
   EvaluateInput,
   EvaluateResult,
+  InvokeDatasetInput,
+  InvokeDatasetResult,
   GetBatchEvaluationResult,
   GetTracesInput,
   LlmAsAJudgeUpdate,
@@ -1408,6 +1410,11 @@ export class TestEvalClient implements CoreEvalClient {
     sessionsEvaluated: 0,
     results: [],
   };
+  private invokeDatasetResponse: InvokeDatasetResult = {
+    sessions: [],
+    invoked: 0,
+    failed: 0,
+  };
   private error?: Error;
 
   // setListResponse sets what listEvaluators resolves to (when not erroring).
@@ -1734,6 +1741,22 @@ export class TestEvalClient implements CoreEvalClient {
     this.calls.push({ method: "evaluate", args: [input, options] });
     if (this.error) throw this.error;
     return this.evaluateResponse;
+  }
+
+  // setInvokeDatasetResponse sets what invokeDataset resolves to (when not erroring).
+  setInvokeDatasetResponse(response: InvokeDatasetResult): this {
+    this.invokeDatasetResponse = response;
+    return this;
+  }
+
+  async invokeDataset(
+    input: InvokeDatasetInput,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<InvokeDatasetResult> {
+    this.calls.push({ method: "invokeDataset", args: [input, options, signal] });
+    if (this.error) throw this.error;
+    return this.invokeDatasetResponse;
   }
 
   async createOnlineEvaluationConfig(

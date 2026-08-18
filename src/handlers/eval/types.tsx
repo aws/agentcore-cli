@@ -34,6 +34,7 @@ import type {
   ListBatchEvaluationsResponse,
   StartBatchEvaluationResponse,
   SessionMetadataShape,
+  InlineGroundTruth,
   EvaluationReferenceInput,
   EvaluationResultContent,
   DataSourceConfig as DataPlaneDataSourceConfig,
@@ -216,6 +217,39 @@ export type StartBatchInsightsInput = {
   kmsKeyArn?: string;
 };
 
+// InvokeDatasetInput is the runtime-level shape for replaying a dataset: invoke each
+// example against the runtime, one client-generated session per example. Runtime fields
+// only — no evaluator/name/kms (those belong to the grader the handler composes on top,
+// e.g. startBatchEvaluation). Invoke fields mirror `runtime invoke`.
+export type InvokeDatasetInput = {
+  runtimeId: string;
+  qualifier?: string;
+  payloadTemplate: string; // e.g. {"prompt":"{input}"} — {input} is the example's turn input
+  headers?: [string, string][];
+  bearerToken?: string;
+  userId?: string;
+  dataset: string; // local JSONL path or a dataset id
+  datasetVersion?: string;
+};
+
+// InvokedSession is one replayed example: the session created for it plus its neutral
+// ground truth. Grader-agnostic — the batch handler wraps `groundTruth` as
+// SessionMetadataShape; a future ondemand handler adapts it to EvaluationReferenceInput.
+export type InvokedSession = {
+  exampleId: string;
+  sessionId: string;
+  groundTruth?: InlineGroundTruth;
+};
+
+// InvokeDatasetResult reports the created sessions plus how many examples were invoked
+// vs dropped (a failed invoke is skipped, not fatal). firstError explains a total failure.
+export type InvokeDatasetResult = {
+  sessions: InvokedSession[];
+  invoked: number;
+  failed: number;
+  firstError?: Error;
+};
+
 export type SpanRecord = Record<string, unknown>;
 
 export type SessionTrace = {
@@ -325,6 +359,14 @@ export interface CoreEvalClient {
   // Evaluate API and returns per-session scores. No job, no CloudWatch — the
   // trace read happened in getTracesForAgent.
   evaluate(input: EvaluateInput, options: CoreOptions): Promise<EvaluateResult>;
+  // invokeDataset replays a dataset against the runtime (invoke per example, client-side,
+  // one session each) and returns the created sessions + neutral ground truth. Grader-
+  // agnostic: the handler composes it with startBatchEvaluation (or, later, evaluate).
+  invokeDataset(
+    input: InvokeDatasetInput,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<InvokeDatasetResult>;
 
   createOnlineEvaluationConfig(
     input: CreateOnlineEvalInput,
