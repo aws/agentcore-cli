@@ -827,6 +827,25 @@ describe("project deploy", () => {
     expect(io.stderr()).toContain("Deployed project 'MyAgent'");
   });
 
+  test("reads the assembly through the json adapter it was given", async () => {
+    const projectRoot = await inProject();
+    const real = new FsReadWriteJson({ logger: createSilentLogger() });
+    const read: string[] = [];
+    const recordingJson: ReadWriteJson = {
+      read: (path, schema) => {
+        read.push(path);
+        return real.read(path, schema);
+      },
+      write: (path, data) => real.write(path, data),
+    };
+
+    await run(["deploy"], { core: new TestCoreClient({ json: recordingJson }) });
+
+    // Every file a deploy reads goes through the injected adapter, the backend's own reads
+    // included, so a test can stand a project's files up however it likes.
+    expect(read).toContain(join(projectRoot, "agentcore", "cdk", "cdk.out", "manifest.json"));
+  });
+
   test("--target selects which configured target to deploy to", async () => {
     const projectRoot = await inProject([
       { name: "default", account: "111122223333", region: "us-east-1" },

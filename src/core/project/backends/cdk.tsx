@@ -146,7 +146,11 @@ export class CdkBackend implements ProjectBackend {
     const events = this.cdk(operation, options);
     for (let next = await events.next(); ; next = await events.next()) {
       if (next.done) return next.value;
-      logger[CDK_LOG_LEVELS[next.value.level]](next.value.message.replace(ANSI_ESCAPES, ""));
+      // A level this build has no mapping for still gets logged: the toolkit is resolved
+      // at the user's install rather than bundled, so a newer one can report a level that
+      // did not exist when this was compiled, and a deploy must not die over a log line.
+      const level = CDK_LOG_LEVELS[next.value.level] ?? "info";
+      logger[level](next.value.message.replace(ANSI_ESCAPES, ""));
     }
   }
 

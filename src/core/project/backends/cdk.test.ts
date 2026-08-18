@@ -397,6 +397,27 @@ describe("CdkBackend.deploy", () => {
     ]);
   });
 
+  test("logs a message whose level this build has no mapping for", async () => {
+    const root = await inTempDirectory();
+    const { backend: subject, logs } = backend((operation, emit) => {
+      if (operation.kind !== "deploy") return;
+      // The toolkit is resolved at the user's install rather than bundled, so it can
+      // report a level that did not exist when this was compiled.
+      emit({
+        level: "success" as unknown as CdkEvent["level"],
+        message: "example-stack: deployed",
+      });
+    });
+    const built = await project(root);
+    await synthesized(root, [TARGET.name]);
+
+    await drain(subject.deploy(built, { target: TARGET, region: REGION }));
+
+    // Written at info, since losing the deploy over an unrecognized log line would be a
+    // far worse outcome than logging one at the wrong severity.
+    expect(logged(logs)).toEqual([{ level: "info", message: "example-stack: deployed" }]);
+  });
+
   test("strips the colours the toolkit writes for the terminal it assumes", async () => {
     const root = await inTempDirectory();
     const { backend: subject, logs } = backend((operation, emit) => {

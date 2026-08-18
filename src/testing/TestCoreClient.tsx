@@ -1983,6 +1983,7 @@ export class TestCoreClient implements Core {
       backends: {
         CDK: new CdkBackend({
           logger,
+          json: options?.json,
           runner,
           checkTool,
           bootstrapped: async () => options?.alreadyBootstrapped ?? false,

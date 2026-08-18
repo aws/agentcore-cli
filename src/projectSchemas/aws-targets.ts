@@ -6,7 +6,13 @@ import z from "zod";
  * empty list, so a project has no targets until the user fills them in.
  */
 export const AwsTargetsSchema = z.array(
-  z.object({ name: z.string(), account: z.string(), region: z.string() }),
+  z.object({
+    name: z.string(),
+    // Checked here because a deploy turns this straight into `aws://<account>/<region>`:
+    // a typo would otherwise surface minutes later, from inside the CDK toolkit.
+    account: z.string().regex(/^\d{12}$/, "must be a 12-digit AWS account ID"),
+    region: z.string(),
+  }),
 );
 
 export type AwsTarget = z.infer<typeof AwsTargetsSchema>[number];
