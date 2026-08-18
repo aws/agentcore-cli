@@ -404,6 +404,40 @@ describe("project add memory", () => {
       },
     ],
     [
+      "strategies — JSON customMemoryStrategy maps to CUSTOM",
+      [
+        "--name",
+        "x",
+        "--strategies",
+        '[{"customMemoryStrategy":{"name":"tickets","description":"support tickets","namespaceTemplates":["/tickets/{actorId}"]}}]',
+      ],
+      {
+        strategies: [
+          {
+            type: "CUSTOM",
+            name: "tickets",
+            description: "support tickets",
+            namespaceTemplates: ["/tickets/{actorId}"],
+          },
+        ],
+      },
+    ],
+    [
+      "strategies — JSON customMemoryStrategy alongside a managed strategy",
+      [
+        "--name",
+        "x",
+        "--strategies",
+        '[{"semanticMemoryStrategy":{"name":"facts"}},{"customMemoryStrategy":{"name":"tickets"}}]',
+      ],
+      {
+        strategies: [
+          { type: "SEMANTIC", name: "facts" },
+          { type: "CUSTOM", name: "tickets" },
+        ],
+      },
+    ],
+    [
       "strategies — JSON deprecated namespaces are preserved",
       ["--name", "x", "--strategies", '[{"semanticMemoryStrategy":{"namespaces":["/legacy"]}}]'],
       { strategies: [{ type: "SEMANTIC", namespaces: ["/legacy"] }] },
@@ -499,9 +533,24 @@ describe("project add memory", () => {
     ["unrecognized shorthand strategy", ["--name", "x", "--strategies", "NONSENSE"]],
     ["duplicate shorthand strategy", ["--name", "x", "--strategies", "SEMANTIC,SEMANTIC"]],
     ["unrecognized JSON strategy variant", ["--name", "x", "--strategies", '[{"unknown":{}}]']],
+    ["CUSTOM has no shorthand form", ["--name", "x", "--strategies", "CUSTOM"]],
     [
-      "customMemoryStrategy has no project-spec representation",
-      ["--name", "x", "--strategies", '[{"customMemoryStrategy":{"name":"c"}}]'],
+      "customMemoryStrategy with an extraction configuration",
+      [
+        "--name",
+        "x",
+        "--strategies",
+        '[{"customMemoryStrategy":{"name":"c","configuration":{"semanticOverride":{"extraction":{"appendToPrompt":"p","modelId":"m"}}}}}]',
+      ],
+    ],
+    [
+      "customMemoryStrategy with a memory record schema",
+      [
+        "--name",
+        "x",
+        "--strategies",
+        '[{"customMemoryStrategy":{"name":"c","memoryRecordSchema":{"definition":{}}}}]',
+      ],
     ],
     [
       "episodic strategy without reflection namespaces",

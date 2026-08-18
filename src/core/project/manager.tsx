@@ -174,7 +174,11 @@ export class FsProjectManager implements ProjectManager {
         const memory = MemorySchema.safeParse(input.resourceConfig);
         if (!memory.success)
           throw new InputValidationError(
-            `invalid memory configuration: ${memory.error.issues.map((issue) => issue.message).join("; ")}`,
+            `invalid memory configuration: ${memory.error.issues
+              .map((issue) =>
+                issue.path.length > 0 ? `${issue.path.join(".")}: ${issue.message}` : issue.message,
+              )
+              .join("; ")}`,
           );
         newResources.push(memory.data);
         break;

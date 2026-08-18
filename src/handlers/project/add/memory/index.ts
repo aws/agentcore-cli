@@ -12,7 +12,7 @@ import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
   DEFAULT_STRATEGY_NAMESPACE_TEMPLATES,
   IndexedKeyTypeSchema,
-  MemoryStrategyTypeSchema,
+  ManagedMemoryStrategyTypeSchema,
   StreamContentLevelSchema,
   type IndexedKey,
   type MemoryStrategy,
@@ -40,20 +40,30 @@ Example:
 const strategiesHelp = `(comma-separated list of strategy types, or JSON MemoryStrategyInput[])
 The long-term memory strategies to extract from raw events. Accepts two forms.
 
-Shorthand — a comma-separated list of strategy types, each expanded with its
-default namespace templates:
+Shorthand — a comma-separated list of managed strategy types, each expanded with
+its default namespace templates:
   --strategies SEMANTIC,SUMMARIZATION
 
 JSON — a MemoryStrategyInput[] mirroring the CreateMemory API, for strategies
-that need explicit names, descriptions, or namespaces. Exactly one of the
-following keys can be set per entry: semanticMemoryStrategy,
-summaryMemoryStrategy, userPreferenceMemoryStrategy, episodicMemoryStrategy.
+that need explicit names, descriptions, or namespaces, and for custom
+strategies, which have no defaults to expand. Exactly one of the following keys
+can be set per entry: semanticMemoryStrategy, summaryMemoryStrategy,
+userPreferenceMemoryStrategy, episodicMemoryStrategy, customMemoryStrategy.
+
+A memory holds at most one strategy of each type.
 
 JSON syntax:
   [
     {
       "semanticMemoryStrategy": {
         "name": "string",
+        "description": "string",
+        "namespaceTemplates": ["string", ...]
+      }
+    },
+    {
+      "customMemoryStrategy": {
+        "name": "string",   // [required]
         "description": "string",
         "namespaceTemplates": ["string", ...]
       }
@@ -174,12 +184,17 @@ function toStrategies(raw: string): MemoryStrategy[] {
     .map(toDefaultStrategy);
 }
 
-/** Expands a bare strategy type into a strategy carrying its default namespaces. */
+/**
+ * Expands a bare strategy type into a strategy carrying its default namespaces.
+ * Only the managed types are accepted here: CUSTOM has no default namespaces to
+ * expand, so it has to come through the JSON form.
+ */
 function toDefaultStrategy(type: string): MemoryStrategy {
-  const parsed = MemoryStrategyTypeSchema.safeParse(type);
+  const parsed = ManagedMemoryStrategyTypeSchema.safeParse(type);
   if (!parsed.success)
     throw new InputValidationError(
-      `unrecognized memory strategy '${type}'; expected one of ${MemoryStrategyTypeSchema.options.join(", ")}`,
+      `unrecognized memory strategy '${type}'; expected one of ${ManagedMemoryStrategyTypeSchema.options.join(", ")}` +
+        ` (a CUSTOM strategy has no defaults to expand; pass it as JSON instead)`,
     );
 
   return {
@@ -213,12 +228,20 @@ function toStrategy(strategy: MemoryStrategyInput): MemoryStrategy {
       reflectionNamespaces: c.reflectionConfiguration?.namespaces,
     };
   }
-  // The project spec models the four managed strategy types; a custom strategy has
-  // no representation in it (and no L3 construct to synthesize from).
-  if ("customMemoryStrategy" in strategy && strategy.customMemoryStrategy)
-    throw new InputValidationError(
-      `customMemoryStrategy is not supported in a project spec; expected one of ${MemoryStrategyTypeSchema.options.join(", ")}`,
-    );
+  if ("customMemoryStrategy" in strategy && strategy.customMemoryStrategy) {
+    const c = strategy.customMemoryStrategy;
+    // A strategy in the project spec carries a name, a description and namespaces,
+    // which is all the CDK's memory schema models. An extraction override or record
+    // schema would be dropped on the way to CloudFormation, so reject it here
+    // instead of reporting a memory the service did not configure that way.
+    for (const unsupported of ["configuration", "memoryRecordSchema"] as const) {
+      if (c[unsupported])
+        throw new InputValidationError(
+          `customMemoryStrategy.${unsupported} is not supported yet; a CUSTOM strategy carries only name, description and namespaceTemplates`,
+        );
+    }
+    return { type: "CUSTOM", ...commonStrategyFields(c) };
+  }
   throw new InputValidationError("Unrecognized memory strategy variant");
 }
 
