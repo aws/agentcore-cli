@@ -1,5 +1,6 @@
 import { HarnessSpecSchema } from "../../projectSchemas/harness";
 import type { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
+import type { MemorySchema } from "../../projectSchemas/memory";
 import type { ProjectSpecSchema } from "../../projectSchemas/project";
 import type z from "zod";
 import type { ProjectRuntimeSchema } from "../../projectSchemas/runtime";
@@ -63,6 +64,10 @@ export type AddResourceInput =
   | {
       resourceType: "online-insight";
       resourceConfig: z.input<typeof OnlineEvalConfigSchema>;
+    }
+  | {
+      resourceType: "memory";
+      resourceConfig: z.input<typeof MemorySchema>;
     };
 
 export type ProjectResource = AddResourceInput["resourceType"];

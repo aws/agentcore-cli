@@ -301,6 +301,252 @@ describe("project add config-bundle", () => {
   });
 });
 
+describe("project add memory", () => {
+  /** Verify the flag -> agentcore.json memories[] entry for each flag. */
+  test.each<[string, string[], Record<string, unknown>]>([
+    [
+      "minimal — name only",
+      ["--name", "x"],
+      { name: "x", eventExpiryDuration: 30, strategies: [] },
+    ],
+    [
+      "event-expiry-duration",
+      ["--name", "x", "--event-expiry-duration", "7"],
+      { eventExpiryDuration: 7 },
+    ],
+    [
+      "strategies — shorthand, one type",
+      ["--name", "x", "--strategies", "SEMANTIC"],
+      { strategies: [{ type: "SEMANTIC", namespaceTemplates: ["/users/{actorId}/facts"] }] },
+    ],
+    [
+      "strategies — shorthand, several types with surrounding whitespace",
+      ["--name", "x", "--strategies", "SEMANTIC, SUMMARIZATION ,USER_PREFERENCE"],
+      {
+        strategies: [
+          { type: "SEMANTIC", namespaceTemplates: ["/users/{actorId}/facts"] },
+          { type: "SUMMARIZATION", namespaceTemplates: ["/summaries/{actorId}/{sessionId}"] },
+          { type: "USER_PREFERENCE", namespaceTemplates: ["/users/{actorId}/preferences"] },
+        ],
+      },
+    ],
+    [
+      "strategies — shorthand EPISODIC also gets the default reflection namespaces",
+      ["--name", "x", "--strategies", "EPISODIC"],
+      {
+        strategies: [
+          {
+            type: "EPISODIC",
+            namespaceTemplates: ["/episodes/{actorId}/{sessionId}"],
+            reflectionNamespaceTemplates: ["/episodes/{actorId}"],
+          },
+        ],
+      },
+    ],
+    [
+      "strategies — JSON semanticMemoryStrategy",
+      [
+        "--name",
+        "x",
+        "--strategies",
+        '[{"semanticMemoryStrategy":{"name":"facts","description":"durable facts","namespaceTemplates":["/orgs/{actorId}"]}}]',
+      ],
+      {
+        strategies: [
+          {
+            type: "SEMANTIC",
+            name: "facts",
+            description: "durable facts",
+            namespaceTemplates: ["/orgs/{actorId}"],
+          },
+        ],
+      },
+    ],
+    [
+      "strategies — JSON summaryMemoryStrategy maps to SUMMARIZATION",
+      ["--name", "x", "--strategies", '[{"summaryMemoryStrategy":{"name":"summaries"}}]'],
+      { strategies: [{ type: "SUMMARIZATION", name: "summaries" }] },
+    ],
+    [
+      "strategies — JSON userPreferenceMemoryStrategy maps to USER_PREFERENCE",
+      ["--name", "x", "--strategies", '[{"userPreferenceMemoryStrategy":{"name":"prefs"}}]'],
+      { strategies: [{ type: "USER_PREFERENCE", name: "prefs" }] },
+    ],
+    [
+      "strategies — JSON episodicMemoryStrategy hoists reflectionConfiguration",
+      [
+        "--name",
+        "x",
+        "--strategies",
+        '[{"episodicMemoryStrategy":{"name":"episodes","namespaceTemplates":["/episodes/{actorId}/{sessionId}"],"reflectionConfiguration":{"namespaceTemplates":["/episodes/{actorId}"]}}}]',
+      ],
+      {
+        strategies: [
+          {
+            type: "EPISODIC",
+            name: "episodes",
+            namespaceTemplates: ["/episodes/{actorId}/{sessionId}"],
+            reflectionNamespaceTemplates: ["/episodes/{actorId}"],
+          },
+        ],
+      },
+    ],
+    [
+      "strategies — JSON deprecated namespaces are preserved",
+      ["--name", "x", "--strategies", '[{"semanticMemoryStrategy":{"namespaces":["/legacy"]}}]'],
+      { strategies: [{ type: "SEMANTIC", namespaces: ["/legacy"] }] },
+    ],
+    [
+      "indexed-keys",
+      [
+        "--name",
+        "x",
+        "--strategies",
+        "SEMANTIC",
+        "--indexed-keys",
+        '[{"key":"tenant","type":"STRING"},{"key":"score","type":"NUMBER"}]',
+      ],
+      {
+        indexedKeys: [
+          { key: "tenant", type: "STRING" },
+          { key: "score", type: "NUMBER" },
+        ],
+      },
+    ],
+    [
+      "stream-delivery-resources",
+      [
+        "--name",
+        "x",
+        "--stream-delivery-resources",
+        '{"resources":[{"kinesis":{"dataStreamArn":"arn:aws:kinesis:us-east-1:123456789012:stream/s","contentConfigurations":[{"type":"MEMORY_RECORDS","level":"FULL_CONTENT"}]}}]}',
+      ],
+      {
+        streamDeliveryResources: {
+          resources: [
+            {
+              kinesis: {
+                dataStreamArn: "arn:aws:kinesis:us-east-1:123456789012:stream/s",
+                contentConfigurations: [{ type: "MEMORY_RECORDS", level: "FULL_CONTENT" }],
+              },
+            },
+          ],
+        },
+      },
+    ],
+    [
+      "encryption-key-arn and execution-role-arn",
+      [
+        "--name",
+        "x",
+        "--encryption-key-arn",
+        "arn:aws:kms:us-east-1:123456789012:key/abc",
+        "--execution-role-arn",
+        "arn:aws:iam::123456789012:role/MyMemoryRole",
+      ],
+      {
+        encryptionKeyArn: "arn:aws:kms:us-east-1:123456789012:key/abc",
+        executionRoleArn: "arn:aws:iam::123456789012:role/MyMemoryRole",
+      },
+    ],
+    ["tags", ["--name", "x", "--tags", '{"team":"ml"}'], { tags: { team: "ml" } }],
+  ])("%s", async (_label, flags, expected) => {
+    const projectRoot = await inProject();
+    await run(["add", "memory", ...flags]);
+
+    const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(agentcoreJson.memories).toHaveLength(1);
+    expect(agentcoreJson.memories[0]).toMatchObject(expected);
+  });
+
+  test("adds no files under app/", async () => {
+    const projectRoot = await inProject();
+    await run(["add", "memory", "--name", "x"]);
+
+    expect(existsSync(join(projectRoot, "app", "x"))).toBe(false);
+  });
+
+  test("rejects a duplicate memory name", async () => {
+    await inProject();
+    await run(["add", "memory", "--name", "x"]);
+    await expect(run(["add", "memory", "--name", "x"])).rejects.toBeInstanceOf(
+      InputValidationError,
+    );
+  });
+
+  test.each([
+    ["missing --name", ["--event-expiry-duration", "30"]],
+    ["invalid name", ["--name", "1bad"]],
+    ["event-expiry-duration below the minimum", ["--name", "x", "--event-expiry-duration", "2"]],
+    ["event-expiry-duration above the maximum", ["--name", "x", "--event-expiry-duration", "400"]],
+    ["unrecognized shorthand strategy", ["--name", "x", "--strategies", "NONSENSE"]],
+    ["duplicate shorthand strategy", ["--name", "x", "--strategies", "SEMANTIC,SEMANTIC"]],
+    ["unrecognized JSON strategy variant", ["--name", "x", "--strategies", '[{"unknown":{}}]']],
+    [
+      "customMemoryStrategy has no project-spec representation",
+      ["--name", "x", "--strategies", '[{"customMemoryStrategy":{"name":"c"}}]'],
+    ],
+    [
+      "episodic strategy without reflection namespaces",
+      ["--name", "x", "--strategies", '[{"episodicMemoryStrategy":{"name":"episodes"}}]'],
+    ],
+    [
+      "namespaces and namespaceTemplates are mutually exclusive",
+      [
+        "--name",
+        "x",
+        "--strategies",
+        '[{"semanticMemoryStrategy":{"namespaces":["/a"],"namespaceTemplates":["/b"]}}]',
+      ],
+    ],
+    [
+      "indexed-keys without a strategy",
+      ["--name", "x", "--indexed-keys", '[{"key":"tenant","type":"STRING"}]'],
+    ],
+    [
+      "indexed-keys with an unsupported type",
+      [
+        "--name",
+        "x",
+        "--strategies",
+        "SEMANTIC",
+        "--indexed-keys",
+        '[{"key":"tenant","type":"BOOLEAN"}]',
+      ],
+    ],
+    [
+      "indexed-keys without a key",
+      ["--name", "x", "--strategies", "SEMANTIC", "--indexed-keys", '[{"type":"STRING"}]'],
+    ],
+    [
+      "unrecognized stream delivery resource variant",
+      ["--name", "x", "--stream-delivery-resources", '{"resources":[{"firehose":{}}]}'],
+    ],
+    [
+      "stream delivery resource without a dataStreamArn",
+      [
+        "--name",
+        "x",
+        "--stream-delivery-resources",
+        '{"resources":[{"kinesis":{"contentConfigurations":[{"type":"MEMORY_RECORDS","level":"FULL_CONTENT"}]}}]}',
+      ],
+    ],
+    [
+      "stream delivery content configuration without a level",
+      [
+        "--name",
+        "x",
+        "--stream-delivery-resources",
+        '{"resources":[{"kinesis":{"dataStreamArn":"arn:aws:kinesis:us-east-1:123456789012:stream/s","contentConfigurations":[{"type":"MEMORY_RECORDS"}]}}]}',
+      ],
+    ],
+    ["malformed --strategies JSON", ["--name", "x", "--strategies", "[{"]],
+  ])("%s", async (_label, flags) => {
+    await inProject();
+    await expect(run(["add", "memory", ...flags])).rejects.toBeInstanceOf(InputValidationError);
+  });
+});
+
 describe("project build", () => {
   async function inBuildableProject(): Promise<string> {
     const projectRoot = await inProject("MyAgent");
