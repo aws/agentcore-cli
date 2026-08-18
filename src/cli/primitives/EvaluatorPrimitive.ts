@@ -811,12 +811,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
   private async resolveBaseEvaluatorLevel(baseEvaluatorId: string): Promise<EvaluationLevel> {
     // A fresh project has no saved deploy targets, so resolve the region directly
     // from the environment/profile fallback (env vars, then the AWS profile's region).
-    let region: string | undefined;
-    try {
-      region = await createConfigIO().resolveRegionFallback();
-    } catch {
-      region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
-    }
+    const region = await createConfigIO().resolveRegionFallback();
     if (!region) {
       throw new Error(
         `Could not resolve an AWS region to look up "${baseEvaluatorId}". Set AWS_REGION or pass --level explicitly.`
