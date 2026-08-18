@@ -162,6 +162,16 @@ describe("eval batch-evaluation simulate", () => {
     });
   });
 
+  // Golden: the exact evaluationMetadata (sessionMetadata) the handler builds from the
+  // invoked sessions. Locks the `{ inline: gt }` wrapping and the omitted-member case for
+  // a session with no ground truth — the wire shape the batch service reads.
+  test("builds the sessionMetadata ground-truth shape [golden]", async () => {
+    const { core } = await run(BASE);
+    const start = core.eval.calls.find((c) => c.method === "startBatchEvaluation");
+    const input = start!.args[0] as { groundTruth: unknown };
+    expect(input.groundTruth).toMatchSnapshot();
+  });
+
   test("refuses to grade when nothing was invoked", async () => {
     await expect(
       run(BASE, (core) =>

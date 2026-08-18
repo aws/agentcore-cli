@@ -1,0 +1,23 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`eval batch-evaluation simulate builds the sessionMetadata ground-truth shape [golden] 1`] = `
+[
+  {
+    "groundTruth": {
+      "inline": {
+        "assertions": [
+          {
+            "text": "polite",
+          },
+        ],
+      },
+    },
+    "sessionId": "s1",
+    "testScenarioId": "e1",
+  },
+  {
+    "sessionId": "s2",
+    "testScenarioId": "e2",
+  },
+]
+`;
