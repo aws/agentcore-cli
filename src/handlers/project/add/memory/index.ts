@@ -34,29 +34,25 @@ that need explicit names, descriptions, or namespaces. Exactly one of the
 following keys can be set per entry: semanticMemoryStrategy,
 summaryMemoryStrategy, userPreferenceMemoryStrategy, episodicMemoryStrategy.
 
-JSON syntax:
+JSON example:
   [
     {
       "semanticMemoryStrategy": {
-        "name": "string",
-        "description": "string",
-        "namespaceTemplates": ["string", ...]
+        "name": "facts",
+        "description": "Durable user facts",
+        "namespaceTemplates": ["/users/{actorId}/facts"]
       }
     },
     {
       "episodicMemoryStrategy": {
-        "name": "string",
-        "namespaceTemplates": ["string", ...],
+        "name": "episodes",
+        "namespaceTemplates": ["/episodes/{actorId}/{sessionId}"],
         "reflectionConfiguration": {
-          "namespaceTemplates": ["string", ...]  // [required] for EPISODIC; each
-                                                 // must prefix a namespaceTemplate
+          "namespaceTemplates": ["/episodes/{actorId}"]
         }
       }
     }
-  ]
-
-Example:
-  --strategies '[{"semanticMemoryStrategy":{"name":"facts","namespaceTemplates":["/users/{actorId}/facts"]}}]'`;
+  ]`;
 
 export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
   createHandler({
