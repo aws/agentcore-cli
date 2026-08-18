@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFileLogger } from "./fileLogger";
 import { LOG_LEVEL } from "./types";
-import { detailedLogLocation, logFilePath } from "./location";
+import { detailedLogLocation, logFilePath, logFilePrefix } from "./location";
 
 const tempDirectories: string[] = [];
 
@@ -30,28 +30,28 @@ async function project(): Promise<string> {
 }
 
 const AT = new Date(2026, 7, 17, 13, 45, 6);
-const RUN_LOG = "agentcore-20260817-134506.log";
+const DAY_LOG = "output-2026-08-17.log";
 const HOME = join(tmpdir(), "example-home");
 
 describe("logFilePath", () => {
-  test("names one file per run, under the CLI's own state", () => {
-    expect(logFilePath({ home: HOME, at: AT })).toBe(join(HOME, ".agentcore", "logs", RUN_LOG));
+  test("names the day's file, under the CLI's own state", () => {
+    expect(logFilePath({ home: HOME, at: AT })).toBe(join(HOME, ".agentcore", "logs", DAY_LOG));
   });
 
-  test("pads every single-digit part of the timestamp", () => {
+  test("pads a single-digit month and day", () => {
     expect(logFilePath({ home: HOME, at: new Date(2026, 0, 5, 9, 8, 7) })).toBe(
-      join(HOME, ".agentcore", "logs", "agentcore-20260105-090807.log"),
+      join(HOME, ".agentcore", "logs", "output-2026-01-05.log"),
     );
   });
 
   test("names the same file however long the run takes", () => {
-    // The run's log is decided once: a command that prints where its log is has to name
+    // The run's day is decided once: a command that prints where its log is has to name
     // the file the logger opened, not one named for the moment it printed.
     expect(logFilePath({ home: HOME })).toBe(logFilePath({ home: HOME }));
   });
 
   test("is the same file wherever the command ran and whatever was typed", async () => {
-    const expected = join(HOME, ".agentcore", "logs", RUN_LOG);
+    const expected = join(HOME, ".agentcore", "logs", DAY_LOG);
     const cwd = process.cwd();
     const argv = process.argv;
 
@@ -71,46 +71,47 @@ describe("logFilePath", () => {
     }
   });
 
-  test("is the file a real logger writes, and one file per run", async () => {
-    // The point of the function: it names the file winston is handed, so it is checked
-    // against what a real logger leaves behind — including the logs directory, which no
-    // run has created yet.
+  test("is the file a real logger writes", async () => {
+    // The point of the function: it spells the file the rotating transport produces from
+    // the prefix it is handed, so it is checked against what a real logger leaves behind —
+    // including the logs directory, which no run has created yet.
     const home = await inTempDirectory("agentcore-home-");
-    const first = logFilePath({ home, at: AT });
-    const second = logFilePath({ home, at: new Date(2026, 7, 17, 13, 45, 7) });
 
-    for (const [filePath, message] of [
-      [first, "first run"],
-      [second, "second run"],
-    ] as const) {
-      const logger = createFileLogger({ filePath, logLevel: LOG_LEVEL.DEBUG });
-      logger.info(message);
-      await logger.end();
-    }
+    const logger = createFileLogger({
+      filePath: logFilePrefix({ home }),
+      logLevel: LOG_LEVEL.DEBUG,
+    });
+    logger.info("a run");
+    await logger.end();
 
-    expect((await readdir(join(home, ".agentcore", "logs"))).sort()).toEqual([
-      "agentcore-20260817-134506.log",
-      "agentcore-20260817-134507.log",
-    ]);
-    // A later run writes its own file rather than appending to the run before it.
-    expect(await readFile(first, "utf8")).toContain("first run");
-    expect(await readFile(first, "utf8")).not.toContain("second run");
+    expect(await readFile(logFilePath({ home }), "utf8")).toContain("a run");
+  });
+});
+
+describe("logFilePrefix", () => {
+  test("is what the rotating transport is handed rather than a file", () => {
+    // The transport appends the date and the extension, so the prefix is the same for
+    // every day and the file is not.
+    expect(logFilePrefix({ home: HOME })).toBe(join(HOME, ".agentcore", "logs", "output"));
+    expect(logFilePath({ home: HOME, at: AT }).startsWith(logFilePrefix({ home: HOME }))).toBe(
+      true,
+    );
   });
 });
 
 describe("detailedLogLocation", () => {
   test("shortens the home directory it sits under to `~`", () => {
     expect(detailedLogLocation({ home: HOME, at: AT })).toBe(
-      join("~", ".agentcore", "logs", RUN_LOG),
+      join("~", ".agentcore", "logs", DAY_LOG),
     );
     // Spells the file the logger actually writes, just more briefly.
-    expect(logFilePath({ home: HOME, at: AT })).toBe(join(HOME, ".agentcore", "logs", RUN_LOG));
+    expect(logFilePath({ home: HOME, at: AT })).toBe(join(HOME, ".agentcore", "logs", DAY_LOG));
   });
 
   test("stays absolute for a log that does not sit under the home directory", () => {
     // Nothing shortens to a bare `~`, so a home of `/` is spelled out instead.
     expect(detailedLogLocation({ home: "/", at: AT })).toBe(
-      join("/", ".agentcore", "logs", RUN_LOG),
+      join("/", ".agentcore", "logs", DAY_LOG),
     );
   });
 });

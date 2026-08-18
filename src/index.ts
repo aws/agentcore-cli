@@ -16,7 +16,7 @@ import {
 } from "./core/factories";
 import { createRootHandler } from "./handlers";
 import { FsReadWriteJson } from "./io";
-import { createFileLogger, logFilePath, LOG_LEVEL, pruneOldLogs } from "./logging";
+import { createFileLogger, logFilePrefix, LOG_LEVEL } from "./logging";
 import { runWithExitCode } from "./runnable";
 import { DefaultGlobalConfigAccessor } from "./globalConfig";
 import { DefaultTelemetryClient } from "./telemetry";
@@ -30,17 +30,13 @@ process.exit(
     // generate a unique identifier corresponding to this process of this CLI. (ex. one command invoke, one TUI session)
     const cliSessionId = crypto.randomUUID();
 
-    // The standard location, shared with the commands that print where it is: one file
-    // for this run, beside the rest of the CLI's own state.
-    const logFile = logFilePath();
+    // The rotating log every command writes to, shared with the commands that print where
+    // it is so the path shown is the file the transport opened.
     const rootLogger = createFileLogger({
-      filePath: logFile,
+      filePath: logFilePrefix(),
       logLevel: LOG_LEVEL.DEBUG,
       bindings: { cliSessionId, version: PACKAGE_VERSION },
     });
-    // One file per run only bounds a run's log, not the directory of them, so each run
-    // clears the ones it has made redundant before writing its own.
-    const prunedLogs = await pruneOldLogs(logFile);
 
     const io = {
       stdin: process.stdin,
@@ -68,7 +64,6 @@ process.exit(
 
     try {
       rootLogger.info(`running CLI`);
-      if (prunedLogs > 0) rootLogger.debug(`pruned ${prunedLogs} log(s) of earlier runs`);
 
       // factories (rather than instances) lets CoreClient build one client per
       // region on demand.
