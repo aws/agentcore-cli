@@ -4,9 +4,11 @@ import type { Project, ProjectEvent, ProjectStep } from "../../../handlers/proje
 import type { Logger } from "../../../logging";
 import {
   FsReadWriteJson,
+  isBootstrapCurrent,
   requireTool,
   runCdk,
   runProcess,
+  type BootstrapProbe,
   type CdkEvent,
   type CdkOperation,
   type CdkOutputs,
@@ -37,6 +39,7 @@ export type CdkBackendConfig = {
   logger: Logger;
   runner?: ProcessRunner; // injectable so tests never spawn real processes
   cdk?: CdkRunner; // injectable so tests never reach AWS
+  bootstrapped?: BootstrapProbe; // injectable so tests never reach AWS
   checkTool?: typeof requireTool; // injectable so tests don't depend on the host's PATH
   json?: ReadWriteJson; // injectable so tests read fixtures instead of disk
 };
@@ -46,6 +49,7 @@ export class CdkBackend implements ProjectBackend {
   private readonly logger: Logger;
   private readonly runner: ProcessRunner;
   private readonly cdk: CdkRunner;
+  private readonly bootstrapped: BootstrapProbe;
   private readonly checkTool: typeof requireTool;
   private readonly json: ReadWriteJson;
 
@@ -53,6 +57,7 @@ export class CdkBackend implements ProjectBackend {
     this.logger = config.logger;
     this.runner = config.runner ?? runProcess;
     this.cdk = config.cdk ?? runCdk;
+    this.bootstrapped = config.bootstrapped ?? isBootstrapCurrent;
     this.checkTool = config.checkTool ?? requireTool;
     this.json = config.json ?? new FsReadWriteJson({ logger: config.logger });
   }
@@ -102,11 +107,14 @@ export class CdkBackend implements ProjectBackend {
     // immediately rather than after minutes of bootstrapping.
     const stackName = await stackForTarget(this.json, run.assemblyDirectory, input.target.name);
 
-    // Bootstrap is idempotent and quick on an already-current environment, so it runs
-    // every deploy rather than probing CloudFormation first.
+    // Bootstrapping updates a CloudFormation stack every deploy in the account shares —
+    // and the parameters we bootstrap with would put a customer-managed key on a staging
+    // bucket that had none — so an environment somebody has already prepared is left alone.
     const environment = `aws://${input.target.account}/${input.target.region}`;
-    yield { kind: "step", message: `Bootstrapping ${environment}` };
-    await this.runCdkOperation({ kind: "bootstrap", environments: [environment] }, run);
+    if (!(await this.bootstrapped(input.target.region))) {
+      yield { kind: "step", message: `Bootstrapping ${environment}` };
+      await this.runCdkOperation({ kind: "bootstrap", environments: [environment] }, run);
+    }
 
     yield { kind: "step", message: `Deploying ${stackName}` };
     const outputs = await this.runCdkOperation({ kind: "deploy", stackName }, run);

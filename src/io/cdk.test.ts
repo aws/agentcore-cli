@@ -8,6 +8,7 @@ import type { IIoHost, IoMessage, IoRequest } from "@aws-cdk/toolkit-lib";
 // here, unlike in cdk.ts, because a test file pays no startup cost.
 import * as toolkit from "@aws-cdk/toolkit-lib";
 import {
+  isBootstrapCurrent,
   loadBootstrapTemplate,
   loadCdkToolkit,
   performCdkOperation,
@@ -335,5 +336,27 @@ describe("runCdk", () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe("isBootstrapCurrent", () => {
+  test("is current for a bootstrap new enough to deploy against", async () => {
+    expect(await isBootstrapCurrent("us-east-1", async () => 30)).toBe(true);
+    expect(await isBootstrapCurrent("us-east-1", async () => 99)).toBe(true);
+  });
+
+  test("is not current for a bootstrap older than we deploy against", async () => {
+    // An old bootstrap is bootstrapped again, which is what upgrades it.
+    expect(await isBootstrapCurrent("us-east-1", async () => 29)).toBe(false);
+    expect(await isBootstrapCurrent("us-east-1", async () => 0)).toBe(false);
+  });
+
+  test("is not current when the stack cannot be read", async () => {
+    // No such stack, or no permission to look: bootstrap runs and reports the real
+    // problem, rather than the probe guessing at it.
+    const unreadable = async () => {
+      throw new Error("AccessDenied");
+    };
+    expect(await isBootstrapCurrent("us-east-1", unreadable)).toBe(false);
   });
 });

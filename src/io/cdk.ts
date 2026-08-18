@@ -118,8 +118,10 @@ export async function performCdkOperation(
     const template = await loadBootstrapTemplate(files);
     try {
       await toolkit.bootstrap(lib.BootstrapEnvironments.fromList(operation.environments), {
-        // Provisions a customer-managed KMS key for the staging bucket, matching
-        // the parameters the original CLI bootstraps with.
+        // Provisions a customer-managed KMS key for the staging bucket, matching the
+        // parameters the original CLI bootstraps with. It overrides whatever the stack
+        // was bootstrapped with, so callers only bootstrap environments that need it
+        // (see {@link isBootstrapCurrent}).
         parameters: lib.BootstrapStackParameters.withExisting({ createCustomerMasterKey: true }),
         ...(template && { source: lib.BootstrapSource.customTemplate(template) }),
       });
@@ -204,3 +206,43 @@ export const runCdk: CdkRunner = (operation, options) =>
     const loaded = await loadCdkToolkit(ioHost, options.region);
     return performCdkOperation(loaded, operation, options);
   });
+
+/** The stack `cdk bootstrap` creates, and the output it records its version in. */
+const BOOTSTRAP_STACK = "CDKToolkit";
+const BOOTSTRAP_VERSION_OUTPUT = "BootstrapVersion";
+
+/** The oldest bootstrap our deploys work against, as the original CLI requires. */
+const MINIMUM_BOOTSTRAP_VERSION = 30;
+
+/** Whether an environment is bootstrapped. Injectable so tests never reach AWS. */
+export type BootstrapProbe = (region: string) => Promise<boolean>;
+
+/** The version of a region's bootstrap stack, or 0 where it has none. */
+type ReadBootstrapVersion = (region: string) => Promise<number>;
+
+const readBootstrapVersion: ReadBootstrapVersion = async (region) => {
+  // Imported on demand for the same reason the toolkit is: src/io is reachable from every
+  // command, and only a deploy needs an AWS client.
+  const { CloudFormationClient, DescribeStacksCommand } =
+    await import("@aws-sdk/client-cloudformation");
+  const client = new CloudFormationClient({ region });
+  const { Stacks } = await client.send(new DescribeStacksCommand({ StackName: BOOTSTRAP_STACK }));
+  const output = Stacks?.[0]?.Outputs?.find((o) => o.OutputKey === BOOTSTRAP_VERSION_OUTPUT);
+  return Number(output?.OutputValue ?? 0);
+};
+
+/**
+ * Whether `region` already has a bootstrap stack new enough to deploy against.
+ *
+ * Worth one read: bootstrapping updates a CloudFormation stack every deploy in the account
+ * shares, so an environment somebody has already prepared is left exactly as they left it.
+ */
+export const isBootstrapCurrent = async (
+  region: string,
+  read: ReadBootstrapVersion = readBootstrapVersion,
+): Promise<boolean> => {
+  // A version that cannot be read counts as absent: bootstrap then reports the real
+  // problem — no such stack, no permission — better than a probe could.
+  const version = await read(region).catch(() => 0);
+  return version >= MINIMUM_BOOTSTRAP_VERSION;
+};

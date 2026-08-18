@@ -1191,6 +1191,8 @@ type TestCoreClientOptions = {
   onCdkOperation?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void;
   /** The outputs a deploy produces, as the real toolkit reports a deployed stack's. */
   cdkOutputs?: CdkOutputs;
+  /** Whether the target environment already has a bootstrap stack a deploy can use. */
+  alreadyBootstrapped?: boolean;
   json?: ReadWriteJson;
 };
 
@@ -1983,6 +1985,7 @@ export class TestCoreClient implements Core {
           logger,
           runner,
           checkTool,
+          bootstrapped: async () => options?.alreadyBootstrapped ?? false,
           cdk: async function* (operation, runOptions) {
             cdkRuns.push({ operation, options: runOptions });
             const emitted: CdkEvent[] = [];

@@ -5,7 +5,9 @@ export {
   type AtomicWriteStreamSource,
 } from "./atomicWrite";
 export {
+  isBootstrapCurrent,
   runCdk,
+  type BootstrapProbe,
   type CdkEvent,
   type CdkOperation,
   type CdkOutputs,

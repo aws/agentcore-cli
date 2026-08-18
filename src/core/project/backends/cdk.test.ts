@@ -92,11 +92,13 @@ type RecordedCdkRun = { operation: CdkOperation; options: CdkRunOptions };
 
 // A backend whose runner records commands instead of spawning them and whose toolkit
 // records operations instead of reaching AWS. `onCdk` supplies the events one operation
-// emits, and the failure it ends with; `outputs` what its deploy produced.
+// emits, and the failure it ends with; `outputs` what its deploy produced;
+// `bootstrapped` whether the environment already has a bootstrap stack.
 function backend(
   onCdk?: (operation: CdkOperation, emit: (event: CdkEvent) => void) => void,
   runner?: () => Promise<void>,
   outputs: CdkOutputs = {},
+  bootstrapped = false,
 ): {
   backend: CdkBackend;
   commands: RecordedCommand[];
@@ -129,6 +131,7 @@ function backend(
         // Bootstrap produces no outputs of the project's own, as with the real runner.
         return operation.kind === "deploy" ? outputs : {};
       },
+      bootstrapped: async () => bootstrapped,
       checkTool: async () => {},
     }),
     commands,
@@ -206,6 +209,25 @@ describe("CdkBackend.deploy", () => {
     expect(events).toEqual([
       { kind: "step", message: "Synthesizing CloudFormation templates" },
       { kind: "step", message: "Bootstrapping aws://111122223333/us-east-1" },
+      { kind: "step", message: `Deploying ${stackName("default")}` },
+    ]);
+  });
+
+  test("leaves an environment that is already bootstrapped alone", async () => {
+    const root = await inTempDirectory();
+    const { backend: subject, runs } = backend(undefined, undefined, {}, true);
+    const built = await project(root);
+    await synthesized(root, [TARGET.name]);
+
+    const events = await drain(subject.deploy(built, { target: TARGET, region: REGION }));
+
+    // Bootstrapping again would rewrite a stack the whole account shares, so a deploy
+    // neither does it nor claims to.
+    expect(runs.map(({ operation }) => operation)).toEqual([
+      { kind: "deploy", stackName: stackName("default") },
+    ]);
+    expect(events).toEqual([
+      { kind: "step", message: "Synthesizing CloudFormation templates" },
       { kind: "step", message: `Deploying ${stackName("default")}` },
     ]);
   });

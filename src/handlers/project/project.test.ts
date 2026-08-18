@@ -812,6 +812,21 @@ describe("project deploy", () => {
     expect(io.stderr()).toContain("Deployed project 'MyAgent'");
   });
 
+  test("deploys straight away into an environment that is already bootstrapped", async () => {
+    await inProject();
+    const { io, core } = await run(["deploy"], {
+      core: new TestCoreClient({ alreadyBootstrapped: true }),
+    });
+
+    // Nothing touches the CDKToolkit stack the account shares, and the deploy does not
+    // report a step it skipped.
+    expect(core.cdkRuns.map(({ operation }) => operation)).toEqual([
+      { kind: "deploy", stackName: STACK("default") },
+    ]);
+    expect(io.stderr()).not.toContain("Bootstrapping");
+    expect(io.stderr()).toContain("Deployed project 'MyAgent'");
+  });
+
   test("--target selects which configured target to deploy to", async () => {
     const projectRoot = await inProject([
       { name: "default", account: "111122223333", region: "us-east-1" },
