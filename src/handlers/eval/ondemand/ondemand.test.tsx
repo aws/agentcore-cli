@@ -71,6 +71,13 @@ async function run(args: string[], configure?: (core: TestCoreClient) => void) {
   return { core, stdout: io.stdout(), stderr: io.stderr() };
 }
 
+// Drives the real CoreClient (not TestCoreClient) so the failure paths below run
+// through the actual Insights→Evaluate SDK translation, stubbing the `.send()` seam
+// inline rather than via the golden fixture harness. The fixture harness records
+// against a live account, and these are conditions it can't provoke there: a query
+// that resolves Failed/Cancelled/Timeout, a runtime log group missing while
+// aws/spans exists, and malformed telemetry rows (whose test also needs a capturing
+// logger the fixture `run()` helper doesn't expose). Inline stubs make them deterministic.
 async function runWithRealCore(options: LogsOptions, logger = createSilentLogger()) {
   const control = {
     send: async (command: unknown) => {
