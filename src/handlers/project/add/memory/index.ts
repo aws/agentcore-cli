@@ -179,19 +179,19 @@ function toDefaultStrategy(type: string): MemoryStrategy {
 /** Converts an SDK MemoryStrategyInput tagged union into the flat project-schema shape. */
 function toStrategy(strategy: MemoryStrategyInput): MemoryStrategy {
   if ("semanticMemoryStrategy" in strategy && strategy.semanticMemoryStrategy)
-    return { type: "SEMANTIC", ...commonStrategyFields(strategy.semanticMemoryStrategy) };
+    return { type: "SEMANTIC", ...toProjectStrategyFields(strategy.semanticMemoryStrategy) };
   if ("summaryMemoryStrategy" in strategy && strategy.summaryMemoryStrategy)
-    return { type: "SUMMARIZATION", ...commonStrategyFields(strategy.summaryMemoryStrategy) };
+    return { type: "SUMMARIZATION", ...toProjectStrategyFields(strategy.summaryMemoryStrategy) };
   if ("userPreferenceMemoryStrategy" in strategy && strategy.userPreferenceMemoryStrategy)
     return {
       type: "USER_PREFERENCE",
-      ...commonStrategyFields(strategy.userPreferenceMemoryStrategy),
+      ...toProjectStrategyFields(strategy.userPreferenceMemoryStrategy),
     };
   if ("episodicMemoryStrategy" in strategy && strategy.episodicMemoryStrategy) {
     const c = strategy.episodicMemoryStrategy;
     return {
       type: "EPISODIC",
-      ...commonStrategyFields(c),
+      ...toProjectStrategyFields(c),
       reflectionNamespaceTemplates: c.reflectionConfiguration?.namespaceTemplates,
       reflectionNamespaces: c.reflectionConfiguration?.namespaces,
     };
@@ -199,13 +199,17 @@ function toStrategy(strategy: MemoryStrategyInput): MemoryStrategy {
   /** Custom & Self-managed memory are not supported at this point. */
   if ("customMemoryStrategy" in strategy && strategy.customMemoryStrategy)
     throw new InputValidationError(
-      `customMemoryStrategy is not supported: a custom strategy's extraction configuration cannot be expressed yet (see aws/agentcore-cli#676). Expected one of ${MemoryStrategyTypeSchema.options.join(", ")}`,
+      `customMemoryStrategy is not supported. Expected one of ${MemoryStrategyTypeSchema.options.join(", ")}`,
     );
   throw new InputValidationError("Unrecognized memory strategy variant");
 }
 
-/** The fields every SDK memory strategy variant shares, in project-schema terms. */
-function commonStrategyFields(strategy: {
+/**
+ * Picks only the fields the project schema supports from an SDK strategy variant.
+ * Avoids spreading to keep unsupported SDK fields (e.g. memoryRecordSchema,
+ * reflectionConfiguration, configuration) out of the stored spec.
+ */
+function toProjectStrategyFields(strategy: {
   name?: string;
   description?: string;
   namespaces?: string[];
