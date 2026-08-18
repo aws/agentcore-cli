@@ -179,6 +179,10 @@ const BUILTIN_EVALUATOR_LEVELS: Record<string, EvaluatorLevel> = {
   'Builtin.InstructionFollowing': 'TRACE',
   'Builtin.Refusal': 'TRACE',
   'Builtin.ToolSelectionAccuracy': 'TOOL_CALL',
+  // Skill evaluators judge the span that carries a skill invocation, so they are TOOL_CALL —
+  // not the SESSION default an unmapped Builtin.* falls through to, which would score wrong spans.
+  'Builtin.SkillSelectionAccuracy': 'TOOL_CALL',
+  'Builtin.SkillInstructionFollowing': 'TOOL_CALL',
 };
 
 /**

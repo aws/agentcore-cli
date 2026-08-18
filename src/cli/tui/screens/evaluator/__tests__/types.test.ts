@@ -34,6 +34,12 @@ describe('LEVEL_PLACEHOLDERS', () => {
     expect(LEVEL_PLACEHOLDERS.TOOL_CALL).toContain('context');
     expect(LEVEL_PLACEHOLDERS.TOOL_CALL).toContain('tool_turn');
   });
+
+  it('TOOL_CALL exposes skill placeholders for skill evaluators', () => {
+    expect(LEVEL_PLACEHOLDERS.TOOL_CALL).toContain('available_skills');
+    expect(LEVEL_PLACEHOLDERS.TOOL_CALL).toContain('invoked_skill');
+    expect(LEVEL_PLACEHOLDERS.TOOL_CALL).toContain('skill_content');
+  });
 });
 
 describe('DEFAULT_INSTRUCTIONS', () => {
