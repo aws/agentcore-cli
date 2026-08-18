@@ -39,7 +39,9 @@ function wrapWinstonLogger(
  * Creates a logger that writes structured JSON to one file per run.
  *
  * A run's log is a whole run and only that run, so nothing rotates and nothing is
- * appended to by a later run; {@link logFilePath} names the file for the run.
+ * appended to by a later run; {@link logFilePath} names the file for the run. Bounding
+ * the directory of them is {@link pruneOldLogs}, since it is the run that knows which
+ * file is its own and must be kept.
  *
  * @param config - Logger configuration (file path, level, bindings).
  * @returns A {@link AsyncLogger} that writes to `config.filePath` via winston.
