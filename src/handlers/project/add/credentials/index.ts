@@ -2,7 +2,7 @@ import z from "zod";
 import type { CredentialProviderVendorType } from "@aws-sdk/client-bedrock-agentcore-control";
 import { createHandler, flag, ProjectKey, Router, type Context } from "../../../../router";
 import { InputValidationError } from "../../../../errors";
-import { SourceResolver, type AppIO } from "../../../../io";
+import { SourceResolver } from "../../../../io";
 import { parseSecretReference } from "../../../identity/parser";
 import {
   parseProviderConfigFlags,
@@ -24,6 +24,20 @@ export function createAddCredentialsHandler(config: AddProjectResourceConfig): R
 /** Derives the .env.local variable name a credential's secret is stored under. */
 function credentialEnvVarName(credentialName: string, suffix = ""): string {
   return `AGENTCORE_CREDENTIAL_${credentialName.replace(/-/g, "_").toUpperCase()}${suffix}`;
+}
+
+/** Parses a secret-reference flag, rejecting a directly supplied secret alongside it. */
+function parseExclusiveSecretRef(
+  refFlag: string,
+  refValue: string | undefined,
+  secretFlag: string,
+  secretValue: string | undefined,
+) {
+  if (!refValue) return undefined;
+  if (secretValue !== undefined) {
+    throw new InputValidationError(`--${secretFlag} and --${refFlag} are mutually exclusive`);
+  }
+  return parseSecretReference(refFlag, refValue);
 }
 
 /**
@@ -73,14 +87,12 @@ const createAddApiKeyCredentialHandler = (config: AddProjectResourceConfig) =>
       if (!flags.name)
         throw new InputValidationError("required option '--name <name>' not specified");
 
-      const secretRef = flags["api-key-secret-reference"]
-        ? parseSecretReference("api-key-secret-reference", flags["api-key-secret-reference"])
-        : undefined;
-      if (secretRef && flags["api-key"] !== undefined) {
-        throw new InputValidationError(
-          "--api-key and --api-key-secret-reference are mutually exclusive",
-        );
-      }
+      const secretRef = parseExclusiveSecretRef(
+        "api-key-secret-reference",
+        flags["api-key-secret-reference"],
+        "api-key",
+        flags["api-key"],
+      );
 
       const resolver = new SourceResolver({ stdin: config.io.stdin });
       const apiKey = await resolveSecretFlag(resolver, "api-key", flags["api-key"]);
@@ -141,14 +153,12 @@ const createAddOauthCredentialHandler = (config: AddProjectResourceConfig) =>
       if (!flags.name)
         throw new InputValidationError("required option '--name <name>' not specified");
 
-      const secretRef = flags["client-secret-reference"]
-        ? parseSecretReference("client-secret-reference", flags["client-secret-reference"])
-        : undefined;
-      if (secretRef && flags["client-secret"] !== undefined) {
-        throw new InputValidationError(
-          "--client-secret and --client-secret-reference are mutually exclusive",
-        );
-      }
+      const secretRef = parseExclusiveSecretRef(
+        "client-secret-reference",
+        flags["client-secret-reference"],
+        "client-secret",
+        flags["client-secret"],
+      );
 
       const mode = parseProviderConfigFlags({
         clientId: flags["client-id"],
@@ -217,13 +227,7 @@ async function addCredentialToProject(
   }
 
   config.io.stderr.write(`added credential '${input.resourceConfig.name}' to '${project.name}'\n`);
-  notifyPlaceholders(config.io, input.envEntries ?? []);
-}
-
-/** Tells the user which .env.local keys still need a value before deploy. */
-function notifyPlaceholders(io: AppIO, envEntries: EnvLocalEntry[]): void {
-  const placeholders = envEntries.filter((entry) => entry.value === undefined);
-  for (const entry of placeholders) {
-    io.stderr.write(`Set ${entry.key} in agentcore/.env.local before you deploy.\n`);
+  for (const entry of (input.envEntries ?? []).filter((e) => e.value === undefined)) {
+    config.io.stderr.write(`Set ${entry.key} in agentcore/.env.local before you deploy.\n`);
   }
 }

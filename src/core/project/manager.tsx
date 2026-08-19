@@ -205,7 +205,7 @@ export class FsProjectManager implements ProjectManager {
       throw err;
     }
 
-    if (input.resourceType === "credential" && input.envEntries && input.envEntries.length > 0) {
+    if (input.resourceType === "credential" && input.envEntries?.length) {
       const envPath = join(project.rootPath, ENV_LOCAL_RELATIVE_PATH);
       yield { message: `Updating secrets file at '${envPath}'` };
       const { skipped } = await upsertEnvLocalEntries(envPath, input.envEntries);
