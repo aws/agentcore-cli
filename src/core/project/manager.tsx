@@ -160,8 +160,14 @@ export class FsProjectManager implements ProjectManager {
           "runtime case not yet implemented in FsProjectManager.addResource",
         );
       }
-      default:
+      case "config-bundle":
         newResources.push(resourceConfig);
+        break;
+
+      default: {
+        const unhandled: never = input;
+        throw new NotImplementedError(`unsupported project resource: ${String(unhandled)}`);
+      }
     }
 
     yield { message: `Updating project spec file at '${agentCoreSpecPath}'` };
