@@ -1,8 +1,11 @@
 import z from "zod";
 import { PaymentProviderSchema } from "./payment";
+// Min 3 keeps names inside what @aws/agentcore-cdk's ConfigIO accepts (3-255)
+// so `add` never produces a spec that `build` rejects; max 128 and the character
+// set are the Identity service's own limits.
 export const CredentialNameSchema = z
   .string()
-  .min(1, "Credential name is required")
+  .min(3, "Credential name must be at least 3 characters")
   .max(128, "Credential name must be 128 characters or less")
   .regex(
     /^[a-zA-Z0-9\-_]+$/,

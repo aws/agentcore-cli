@@ -858,9 +858,9 @@ describe("project add credentials", () => {
 
   test("rejects a duplicate credential name across credential types", async () => {
     await inProject();
-    await run(["add", "credentials", "api-key", "--name", "x"]);
+    await run(["add", "credentials", "api-key", "--name", "dup"]);
     await expect(
-      run(["add", "credentials", "oauth", "--name", "x", "--discovery-url", discoveryUrl]),
+      run(["add", "credentials", "oauth", "--name", "dup", "--discovery-url", discoveryUrl]),
     ).rejects.toThrow(/already exists/);
   });
 

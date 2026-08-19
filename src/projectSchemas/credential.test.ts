@@ -124,6 +124,11 @@ describe("credential schema", () => {
       { authorizerType: "ApiKeyCredentialProvider", name: "bad name!" },
       /alphanumeric/,
     ],
+    [
+      "a credential name shorter than 3 characters",
+      { authorizerType: "ApiKeyCredentialProvider", name: "ab" },
+      /3 characters/,
+    ],
   ])("rejects %s", (_label, value, message) => {
     const result = CredentialSchema.safeParse(value);
     expect(result.success).toBe(false);
