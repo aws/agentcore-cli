@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
-import { InputValidationError, ProjectStateError } from "../../errors/errors";
+import { DeserializationError, ProjectStateError } from "../../errors/errors";
 import { FsProjectManager } from "./manager";
 import {
   PROJECT_TEMPLATES,
@@ -324,13 +324,13 @@ describe("FsProjectManager.resolve", () => {
     expect(await manager().manager.resolve({ filePath: root })).toBeUndefined();
   });
 
-  test("throws InputValidationError on a malformed agentcore.json", async () => {
+  test("throws on a malformed agentcore.json", async () => {
     const root = await inTempDirectory();
     await mkdir(join(root, "agentcore"), { recursive: true });
     await writeFile(join(root, "agentcore", "agentcore.json"), "{ not valid json");
 
     await expect(manager().manager.resolve({ filePath: root })).rejects.toBeInstanceOf(
-      InputValidationError,
+      DeserializationError,
     );
   });
 });

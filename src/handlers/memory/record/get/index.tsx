@@ -10,12 +10,12 @@ export const createGetMemoryRecordHandler = (core: Core) =>
     name: "get",
     description: "get an AgentCore Memory record",
     flags: [
-      flag("memory", "the ID of the Memory", z.string().optional()),
+      flag("id", "the ID of the Memory", z.string().optional()),
       flag("record-id", "the ID of the Memory record", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.memory) {
-        throw new InputValidationError("required option '--memory <memory>' not specified");
+      if (!flags.id) {
+        throw new InputValidationError("required option '--id <id>' not specified");
       }
       if (!flags["record-id"]) {
         throw new InputValidationError("required option '--record-id <record-id>' not specified");
@@ -23,7 +23,7 @@ export const createGetMemoryRecordHandler = (core: Core) =>
 
       const response = await core.memory.getMemoryRecord(
         {
-          memoryId: flags.memory,
+          memoryId: flags.id,
           memoryRecordId: flags["record-id"],
         },
         coreOptsFromCtx(ctx),

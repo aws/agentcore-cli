@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { InputValidationError } from "../../errors";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import { streamProcess, type ProcessStreamer, type StreamProcessOptions } from "../../io";
+import { isDirectory, isFile, resolvePathWithinProject } from "./path";
 
 type CodeZipDevRunnerConfig = {
   streamProcess?: ProcessStreamer;
@@ -16,12 +17,19 @@ export class CodeZipDevRunner implements DevRunner {
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
-    const directory = join(input.projectRoot, input.runtime.codeLocation);
-    if (!existsSync(directory)) {
+    const directory = resolve(input.projectRoot, input.runtime.codeLocation);
+    if (!isDirectory(directory)) {
       throw new InputValidationError(`runtime code directory not found: ${directory}`);
     }
+    resolvePathWithinProject(input.projectRoot, directory, "runtime code directory");
 
     const [entrypoint] = input.runtime.entrypoint.split(":");
+    const entrypointPath = resolve(directory, entrypoint!);
+    if (!isFile(entrypointPath)) {
+      throw new InputValidationError(`runtime entrypoint not found: ${entrypointPath}`);
+    }
+    resolvePathWithinProject(input.projectRoot, entrypointPath, "runtime entrypoint");
+
     if (!entrypoint!.endsWith(".py") && !existsSync(join(directory, "node_modules"))) {
       yield { type: "status", message: "Installing Node dependencies with npm" };
       yield* this.streamProcess(["npm", "install"], {

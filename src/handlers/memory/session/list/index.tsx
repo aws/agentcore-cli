@@ -10,14 +10,14 @@ export const createListMemorySessionsHandler = (core: Core) =>
     name: "list",
     description: "list sessions in an AgentCore Memory",
     flags: [
-      flag("memory", "the ID of the Memory", z.string().optional()),
+      flag("id", "the ID of the Memory", z.string().optional()),
       flag("actor-id", "the ID of the actor", z.string().optional()),
       flag("max-results", "maximum number of sessions to return", z.number().optional()),
       flag("next-token", "pagination token returned by a previous request", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.memory) {
-        throw new InputValidationError("required option '--memory <memory>' not specified");
+      if (!flags.id) {
+        throw new InputValidationError("required option '--id <id>' not specified");
       }
       if (!flags["actor-id"]) {
         throw new InputValidationError("required option '--actor-id <actor-id>' not specified");
@@ -25,7 +25,7 @@ export const createListMemorySessionsHandler = (core: Core) =>
 
       const response = await core.memory.listSessions(
         {
-          memoryId: flags.memory,
+          memoryId: flags.id,
           actorId: flags["actor-id"],
           maxResults: flags["max-results"],
           nextToken: flags["next-token"],

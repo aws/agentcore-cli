@@ -54,6 +54,11 @@ import { BatchEvaluationGetJsonScreen } from "../handlers/eval/batch-evaluation/
 import { DatasetScreen } from "../handlers/eval/dataset/screen.tsx";
 import { DatasetListScreen } from "../handlers/eval/dataset/list/screen.tsx";
 import { DatasetGetScreen, DatasetGetJsonScreen } from "../handlers/eval/dataset/get/screen.tsx";
+import { ConfigBundleScreen } from "../handlers/eval/config-bundle/screen.tsx";
+import { ConfigBundleListScreen } from "../handlers/eval/config-bundle/list/screen.tsx";
+import { ConfigBundleGetScreen } from "../handlers/eval/config-bundle/get/screen.tsx";
+import { ConfigBundleVersionScreen } from "../handlers/eval/config-bundle/version/screen.tsx";
+import { ConfigBundleVersionListScreen } from "../handlers/eval/config-bundle/version/list/screen.tsx";
 import { MemoryEventScreen } from "../handlers/memory/event/screen.tsx";
 import { MemoryEventGetScreen } from "../handlers/memory/event/get/screen.tsx";
 import { MemoryEventListScreen } from "../handlers/memory/event/list/screen.tsx";
@@ -493,6 +498,38 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/eval/dataset/get/:datasetId/json"
             element={<DatasetGetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/config-bundle"
+            element={<ConfigBundleScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/config-bundle/list"
+            element={<ConfigBundleListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/config-bundle/get"
+            element={<Navigate to="/agentcore/eval/config-bundle/list" replace />}
+          />
+          <Route
+            path="agentcore/eval/config-bundle/get/:bundleId"
+            element={<ConfigBundleGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/config-bundle/get/:bundleId/:versionId"
+            element={<ConfigBundleGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/config-bundle/version"
+            element={<ConfigBundleVersionScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/config-bundle/version/list"
+            element={<ConfigBundleVersionListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/config-bundle/version/list/:bundleId"
+            element={<ConfigBundleVersionListScreen ctx={ctx} core={core} />}
           />
           <Route
             path="agentcore/eval/batch-evaluation"

@@ -69,6 +69,9 @@ export class InputValidationError extends AgentCoreCLIError {
   }
 }
 
+/** Error raised when valid user input references a resource that does not exist. */
+export class ResourceNotFoundError extends InputValidationError {}
+
 /** Error raised when a command or operation has not been implemented yet. */
 export class NotImplementedError extends AgentCoreCLIError {
   constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
@@ -90,10 +93,9 @@ export class SourceResolutionError extends InputValidationError {
   }
 }
 
-// TODO: attach telemetry metadata to this error class.
-export class DeserializationError extends Error {
-  constructor(path: string, options?: { cause?: unknown }) {
-    super(`Failed to deserialize JSON at "${path}"`, options);
+export class DeserializationError extends AgentCoreCLIError {
+  constructor(path: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
+    super(`Failed to deserialize file at "${path}"`, { ...options, source: ERROR_SOURCE.USER });
     this.name = "DeserializationError";
   }
 }
@@ -135,7 +137,7 @@ export class EmbeddedAssetNotFoundError extends AgentCoreCLIError {
   }
 }
 
-export class RuntimeInvokeInterruptedError extends AgentCoreCLIError {
+export class CommandInterruptedError extends AgentCoreCLIError {
   readonly reported: boolean;
 
   constructor(cause?: unknown, reported = false) {
@@ -144,6 +146,8 @@ export class RuntimeInvokeInterruptedError extends AgentCoreCLIError {
     this.reported = reported;
   }
 }
+
+export class RuntimeInvokeInterruptedError extends CommandInterruptedError {}
 
 export class RuntimeInvokeResponseError extends AgentCoreCLIError {
   readonly reported = true;
@@ -175,6 +179,13 @@ export class GatewayInvokeResponseError extends AgentCoreCLIError {
 export class NetworkingError extends AgentCoreCLIError {
   constructor(message: string, options?: AgentCoreCLIErrorOptions) {
     super(message, { source: ERROR_SOURCE.SERVICE, ...options });
+  }
+}
+
+/** A CloudWatch Logs Insights query reached a terminal failure state. */
+export class CloudWatchQueryError extends AgentCoreCLIError {
+  constructor(message: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
+    super(message, { ...options, source: ERROR_SOURCE.SERVICE });
   }
 }
 

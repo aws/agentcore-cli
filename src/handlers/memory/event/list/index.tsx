@@ -11,7 +11,7 @@ export const createListMemoryEventsHandler = (core: Core) =>
     name: "list",
     description: "list AgentCore Memory events",
     flags: [
-      flag("memory", "the ID of the Memory", z.string().optional()),
+      flag("id", "the ID of the Memory", z.string().optional()),
       flag("actor-id", "the ID of the actor", z.string().optional()),
       flag("session-id", "the session ID", z.string().optional()),
       flag("include-payloads", "includes event payloads in the response", z.boolean().optional()),
@@ -27,8 +27,8 @@ export const createListMemoryEventsHandler = (core: Core) =>
     ],
 
     handle: async (ctx, flags) => {
-      if (!flags.memory) {
-        throw new InputValidationError("required option '--memory <memory>' not specified");
+      if (!flags.id) {
+        throw new InputValidationError("required option '--id <id>' not specified");
       }
       if (!flags["actor-id"]) {
         throw new InputValidationError("required option '--actor-id <actor-id>' not specified");
@@ -57,7 +57,7 @@ export const createListMemoryEventsHandler = (core: Core) =>
 
       const response = await core.memory.listEvents(
         {
-          memoryId: flags.memory,
+          memoryId: flags.id,
           actorId: flags["actor-id"],
           sessionId: flags["session-id"],
           includePayloads: flags["include-payloads"],

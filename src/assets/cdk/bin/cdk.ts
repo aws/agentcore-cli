@@ -110,9 +110,12 @@ async function main() {
 
   const spec = await configIO.readProjectSpec();
   const targets = await configIO.readAWSDeploymentTargets();
-  if (targets.length === 0) {
-    throw new Error('No deployment targets configured. Please define targets in agentcore/aws-targets.json');
-  }
+
+  // `project build` runs before a project has anywhere to deploy, so an empty target
+  // list is not an error: it synthesizes a single environment-agnostic stack, which is
+  // enough to typecheck the app and produce a template. Only a stack synthesized for a
+  // real target is a deploy candidate; the target tag below is what marks one.
+  const stackTargets: (AwsDeploymentTarget | undefined)[] = targets.length > 0 ? targets : [undefined];
 
   const specAny: SpecWithLatestFields = spec;
   const projectRoot = path.resolve(configRoot, '..');
@@ -131,15 +134,19 @@ async function main() {
 
   const app = new App();
 
-  for (const target of targets) {
-    const env = toEnvironment(target);
-    const stackName = toStackName(spec.name, target.name);
+  for (const target of stackTargets) {
+    // An environment-agnostic stack resolves its account and region from CloudFormation
+    // pseudo-parameters at deploy time instead of pinning them at synth time.
+    const env = target ? toEnvironment(target) : undefined;
+    const stackName = target ? toStackName(spec.name, target.name) : `AgentCore-${sanitize(spec.name)}`;
 
     // Extract credentials from deployed state for this target
     const targetState = (deployedState as Record<string, unknown>)?.targets as
       | Record<string, Record<string, unknown>>
       | undefined;
-    const targetResources = targetState?.[target.name]?.resources as Record<string, unknown> | undefined;
+    const targetResources = target
+      ? (targetState?.[target.name]?.resources as Record<string, unknown> | undefined)
+      : undefined;
     const credentials = targetResources?.credentials as
       | Record<string, { credentialProviderArn: string; clientSecretArn?: string }>
       | undefined;
@@ -191,10 +198,14 @@ async function main() {
       harnesses: harnessConfigs.length > 0 ? harnessConfigs : undefined,
       paymentSpec,
       env,
-      description: `AgentCore stack for ${spec.name} deployed to ${target.name} (${target.region})`,
+      description: target
+        ? `AgentCore stack for ${spec.name} deployed to ${target.name} (${target.region})`
+        : `AgentCore stack for ${spec.name} (no deployment target configured)`,
+      // Only a stack synthesized for a real target carries the target tag, which is
+      // how deploy selects the stack to ship.
       tags: {
         'agentcore:project-name': spec.name,
-        'agentcore:target-name': target.name,
+        ...(target ? { 'agentcore:target-name': target.name } : {}),
       },
     });
   }

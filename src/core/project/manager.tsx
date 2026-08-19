@@ -24,13 +24,12 @@ import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { enclosingProjectRoot } from "./fsUtils";
 import {
   AgentCoreCLIError,
-  DeserializationError,
   InputValidationError,
   NotImplementedError,
   ProjectStateError,
 } from "../../errors/errors";
 import type { HarnessSpecSchema } from "../../projectSchemas/harness";
-import type z from "zod";
+import z from "zod";
 
 type ProjectManagerConfig = {
   logger: Logger;
@@ -63,22 +62,12 @@ export class FsProjectManager implements ProjectManager {
     if (!rootPath) return undefined;
 
     const configPath = join(rootPath, "agentcore", "agentcore.json");
-    try {
-      const spec = await this.json.read(configPath, ProjectSpecSchema);
-      return {
-        name: spec.name,
-        rootPath,
-        spec,
-      };
-    } catch (error) {
-      // A malformed agentcore.json is a user-correctable problem, not a crash.
-      if (error instanceof DeserializationError) {
-        throw new InputValidationError(`invalid project configuration at ${configPath}`, {
-          cause: error,
-        });
-      }
-      throw error;
-    }
+    const spec = await this.json.read(configPath, ProjectSpecSchema);
+    return {
+      name: spec.name,
+      rootPath,
+      spec,
+    };
   }
 
   public async *create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project> {
@@ -150,7 +139,7 @@ export class FsProjectManager implements ProjectManager {
         `a ${resourceType} with name '${resourceConfig.name}' already exists`,
       );
 
-    const newResources = [...existingResources];
+    const newResources: unknown[] = [...existingResources];
     const scaffoldedPaths: string[] = [];
 
     switch (resourceType) {
@@ -171,17 +160,29 @@ export class FsProjectManager implements ProjectManager {
           "runtime case not yet implemented in FsProjectManager.addResource",
         );
       }
-      // TODO: add limited special casing for runtime and default for other resources that proxy directly to spec changes.
+      case "config-bundle":
+        newResources.push(resourceConfig);
+        break;
+
+      default: {
+        const unhandled: never = input;
+        throw new NotImplementedError(`unsupported project resource: ${String(unhandled)}`);
+      }
     }
 
     yield { message: `Updating project spec file at '${agentCoreSpecPath}'` };
 
+    const newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
+    const newSpecParseResult = ProjectSpecSchema.safeParse(newSpec);
+
+    if (!newSpecParseResult.success)
+      throw new InputValidationError(z.prettifyError(newSpecParseResult.error), {
+        cause: newSpecParseResult.error,
+      });
+
     // rollback scaffolding changes on failed config writes to prevent bad state.
     try {
-      const newProjectSpec = await this.json.write(agentCoreSpecPath, {
-        ...existingProjectSpec,
-        [projectSpecKey]: newResources,
-      });
+      const newProjectSpec = await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
 
       return {
         ...project,
@@ -262,6 +263,11 @@ export class FsProjectManager implements ProjectManager {
     // The generated package.json defines `cdk` as "npm run build && cdk", so this
     // single command compiles the app and then synthesizes it. Synthesis needs no
     // AWS credentials: each stack's environment comes from aws-targets.json.
+    //
+    // Build deliberately does not require a deployment target. A freshly created
+    // project has none, and building is how the user first typechecks their agent, so
+    // the generated app synthesizes one environment-agnostic stack when the list is
+    // empty. Only deploying somewhere needs a real target.
     yield { message: "Synthesizing CloudFormation templates" };
     await this.run(["npm", "run", "cdk", "--", "synth", "--quiet"], cdkDir);
   }
@@ -281,5 +287,7 @@ function toProjectSpecKey(resourceType: ProjectResource) {
       return "harnesses";
     case "runtime":
       return "runtimes";
+    case "config-bundle":
+      return "configBundles";
   }
 }

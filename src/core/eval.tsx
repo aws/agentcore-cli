@@ -84,10 +84,12 @@ import { Transform } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
   AgentCoreCLIError,
+  CloudWatchQueryError,
   ERROR_SOURCE,
   FileWriteError,
   InputValidationError,
   NetworkingError,
+  ResourceNotFoundError,
 } from "../errors";
 import type {
   BatchEvaluationDetail,
@@ -426,8 +428,6 @@ export class EvalClient implements CoreEvalClient {
     const logGroupName = runtimeLogGroup(runtimeId, qualifier);
     const serviceName = runtimeServiceName(runtimeName, qualifier);
 
-    // CloudWatch Insights takes epoch seconds. Discovery defaults to now-7d when
-    // no explicit window is given (matches the batch service's default).
     const endMs = input.window ? +input.window.endTime : Date.now();
     const startMs = input.window ? +input.window.startTime : endMs - SEVEN_DAYS_MS;
     const startSec = Math.floor(startMs / 1000);
@@ -441,10 +441,10 @@ export class EvalClient implements CoreEvalClient {
     const [runtimeRows, sharedRows] = await Promise.all([
       runInsightsQuery(logs, [logGroupName], queryString, startSec, endSec).catch((error) => {
         if (error instanceof ResourceNotFoundException) {
-          throw new InputValidationError(
+          throw new ResourceNotFoundError(
             `No telemetry found for agent "${input.agent}": its runtime log group ${logGroupName} ` +
               `does not exist. Ensure the agent has been invoked and emits traces.`,
-            { meta: { agent: input.agent, logGroupName } },
+            { cause: error, meta: { agent: input.agent, logGroupName } },
           );
         }
         throw error;
@@ -454,7 +454,7 @@ export class EvalClient implements CoreEvalClient {
         throw error;
       }),
     ]);
-    const traces = groupSpansBySession([...sharedRows, ...runtimeRows]);
+    const traces = groupSpansBySession([...sharedRows, ...runtimeRows], this.logger);
 
     // Warn when explicitly requested sessions never showed up in the logs (aged
     // out, wrong id, or never emitted) so a caller isn't misled by a partial run.
@@ -1390,12 +1390,6 @@ function sanitizeQueryValue(value: string): string {
   return value.replace(/'/g, "");
 }
 
-// buildSpanQuery is the single-phase Insights query: scope to one runtime by its
-// OTel service.name, optionally narrow to specific sessions and/or one trace, and
-// select the full span JSON (@message) plus the session id to group by. It does
-// NOT over-filter on ispresent(kind) — that span-only predicate is what forced the
-// old CLI's second query for log records; the looser scope returns everything for
-// the session in one pass.
 function buildSpanQuery(serviceName: string, sessionIds?: string[], traceId?: string): string {
   let query = `fields @message, attributes.session.id as sessionId, traceId, spanId
      | filter resource.attributes.service.name in ['${sanitizeQueryValue(serviceName)}']`;
@@ -1433,15 +1427,15 @@ async function runInsightsQuery(
     const result = await logs.send(new GetQueryResultsCommand({ queryId }));
     status = result.status ?? "Unknown";
     if (status === "Failed" || status === "Cancelled" || status === "Timeout") {
-      throw new NetworkingError(`CloudWatch Logs Insights query ${status.toLowerCase()}`, {
-        meta: { queryId },
+      throw new CloudWatchQueryError(`CloudWatch Logs Insights query ${status.toLowerCase()}`, {
+        meta: { queryId, status },
       });
     }
     if (status !== "Complete") await new Promise((resolve) => setTimeout(resolve, 1000));
   }
   if (status !== "Complete") {
-    throw new NetworkingError("CloudWatch Logs Insights query did not finish in time", {
-      meta: { queryId },
+    throw new CloudWatchQueryError("CloudWatch Logs Insights query did not finish in time", {
+      meta: { queryId, status },
     });
   }
 
@@ -1466,9 +1460,10 @@ async function runInsightsQuery(
 
 // Group parsed @message docs by session, keeping only sessions with >=1 span
 // (Evaluate rejects log-only sessions), and derive each session's trace/tool ids.
-function groupSpansBySession(rows: ResultField[][]): SessionTrace[] {
+function groupSpansBySession(rows: ResultField[][], logger: Logger): SessionTrace[] {
   const docsBySession = new Map<string, SpanRecord[]>();
   const sessionsWithSpans = new Set<string>();
+  let warnedAboutMalformedTelemetry = false;
   for (const row of rows) {
     const message = row.find((f) => f.field === "@message")?.value;
     const sessionId = row.find((f) => f.field === "sessionId")?.value;
@@ -1479,6 +1474,10 @@ function groupSpansBySession(rows: ResultField[][]): SessionTrace[] {
     try {
       doc = JSON.parse(message) as SpanRecord;
     } catch {
+      if (!warnedAboutMalformedTelemetry) {
+        logger.warn("skipping malformed telemetry records");
+        warnedAboutMalformedTelemetry = true;
+      }
       continue;
     }
     const list = docsBySession.get(sessionId);

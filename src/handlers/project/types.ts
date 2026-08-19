@@ -1,4 +1,5 @@
 import { HarnessSpecSchema } from "../../projectSchemas/harness";
+import type { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import type { ProjectSpecSchema } from "../../projectSchemas/project";
 import z from "zod";
 import type { RuntimeResourceConfig } from "./add/runtime/types";
@@ -56,6 +57,10 @@ export type AddResourceInput =
   | {
       resourceType: "runtime";
       resourceConfig: RuntimeResourceConfig;
+    }
+  | {
+      resourceType: "config-bundle";
+      resourceConfig: z.input<typeof ConfigBundleSchema>;
     };
 
 export type ProjectResource = AddResourceInput["resourceType"];

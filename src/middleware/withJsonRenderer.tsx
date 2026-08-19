@@ -11,6 +11,7 @@ import type { AppIO } from "../io";
 export function withJsonRenderer(io: AppIO): Middleware {
   const renderer = {
     renderJson: (data: unknown) => renderJson(data, (line) => io.stdout.write(line + "\n")),
+    renderJsonLine: (data: unknown) => io.stdout.write(JSON.stringify(data) + "\n"),
   };
 
   return (h) => ({

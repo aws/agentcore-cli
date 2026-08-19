@@ -1,5 +1,7 @@
 export {
   AgentCoreCLIError,
+  CloudWatchQueryError,
+  CommandInterruptedError,
   DeserializationError,
   EmbeddedAssetNotFoundError,
   FileWriteError,
@@ -12,6 +14,7 @@ export {
   NetworkingError,
   NotImplementedError,
   ProjectFileExistsError,
+  ResourceNotFoundError,
   ResultTruncationError,
   RuntimeInvokeInterruptedError,
   RuntimeInvokeResponseError,
