@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
-import { DevSupervisor, type SupervisedEvent } from "./supervisor";
+import { DevSupervisor, waitForPort, type SupervisedEvent } from "./supervisor";
+import { createServer } from "node:net";
 
 function runtime(name: string, build: ProjectRuntime["build"] = "CodeZip"): ProjectRuntime {
   return {
@@ -217,6 +218,56 @@ describe("DevSupervisor", () => {
     // A running agent survives removal from the config until it stops.
     supervisor.setRuntimes([runtime("payments")]);
     expect(supervisor.snapshot().map(({ name }) => name)).toEqual(["orders", "payments"]);
+    controller.abort();
+  });
+
+  test("readiness polling gives up at its deadline instead of blocking forever", async () => {
+    const signal = new AbortController().signal;
+    // Nothing listens on this port; a bounded poll must reject, not hang.
+    await expect(waitForPort(1, signal, 10, 100)).rejects.toThrow(
+      "did not accept connections on port 1 within 0.1s",
+    );
+
+    const server = createServer();
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as { port: number }).port;
+    await waitForPort(port, signal, 10, 1000); // resolves against a live listener
+    server.close();
+  });
+
+  test("failed setup does not leak parent abort listeners across retries", async () => {
+    const adds: string[] = [];
+    const removes: string[] = [];
+    const controller = new AbortController();
+    const countingSignal = {
+      aborted: false,
+      addEventListener: (type: string, listener: () => void, options?: unknown) => {
+        adds.push(type);
+        controller.signal.addEventListener(type as "abort", listener, options as undefined);
+      },
+      removeEventListener: (type: string, listener: () => void) => {
+        removes.push(type);
+        controller.signal.removeEventListener(type as "abort", listener);
+      },
+    } as unknown as AbortSignal;
+
+    const supervisor = new DevSupervisor({
+      runtimes: [runtime("orders")],
+      projectRoot: "/workspace/project",
+      runners: { CodeZip: serverRunner().runner, Container: serverRunner().runner },
+      environment: async () => ({}),
+      resolvePort: async () => {
+        throw new Error("no ports for you");
+      },
+      waitReady: async () => {},
+      signal: countingSignal,
+    });
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await supervisor.start("orders").catch(() => {});
+    }
+    // One constructor wake listener stays; every per-launch listener must be removed.
+    expect(adds.length - removes.length).toBe(1);
     controller.abort();
   });
 

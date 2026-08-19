@@ -185,6 +185,7 @@ export class DevSupervisor {
       return { name, port };
     } catch (error) {
       controller.abort();
+      unchain(); // idempotent alongside the pump's cleanup; covers setup failures before the pump exists
       entry.phase = "failed";
       entry.error = error instanceof Error ? error.message : String(error);
       this.push(name, {
@@ -229,12 +230,33 @@ export class DevSupervisor {
   }
 }
 
-/** Poll until a loopback TCP connection to `port` succeeds, or the signal aborts. */
-function waitForPort(port: number, signal: AbortSignal, intervalMs = 250): Promise<void> {
+/** Generous enough for a cold dependency install before the server first binds. */
+const READY_TIMEOUT_MS = 120_000;
+
+/**
+ * Poll until a loopback TCP connection to `port` succeeds, the signal aborts,
+ * or the deadline passes — a child that stays alive without ever binding must
+ * fail its start instead of blocking every later runtime.
+ */
+export function waitForPort(
+  port: number,
+  signal: AbortSignal,
+  intervalMs = 250,
+  timeoutMs = READY_TIMEOUT_MS,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
     const attempt = () => {
       if (signal.aborted) {
         reject(new Error("Aborted while waiting for the agent to become ready."));
+        return;
+      }
+      if (Date.now() > deadline) {
+        reject(
+          new Error(
+            `Agent did not accept connections on port ${port} within ${timeoutMs / 1000}s.`,
+          ),
+        );
         return;
       }
       const socket = connect({ port, host: "127.0.0.1" }, () => {
