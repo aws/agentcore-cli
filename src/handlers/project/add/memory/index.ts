@@ -1,26 +1,96 @@
 import z from "zod";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
-import { parseJsonFlag } from "../../../utils";
+import { parseJsonFlagWithSchema } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
-import type {
-  IndexedKey as SdkIndexedKey,
-  MemoryStrategyInput,
-  StreamDeliveryResources as SdkStreamDeliveryResources,
-} from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
   DEFAULT_STRATEGY_NAMESPACE_TEMPLATES,
-  IndexedKeyTypeSchema,
+  IndexedKeySchema,
+  MemoryStrategyNameSchema,
   MemoryStrategyTypeSchema,
-  StreamContentLevelSchema,
-  type IndexedKey,
+  StreamDeliveryResourcesSchema,
   type MemoryStrategy,
-  type StreamDeliveryResources,
 } from "../../../../projectSchemas/memory";
+import { TagsSchema } from "../../../../projectSchemas/tags";
 
 // The service default for raw event retention
 const DEFAULT_EVENT_EXPIRY_DURATION = 30;
+
+const strategyFields = {
+  name: MemoryStrategyNameSchema.optional(),
+  description: z.string().optional(),
+  namespaces: z.array(z.string()).optional(),
+  namespaceTemplates: z.array(z.string()).optional(),
+};
+
+function projectMemoryObject<T extends z.ZodRawShape>(shape: T, label: string) {
+  const supportedFields = new Set(Object.keys(shape));
+  return z
+    .object(shape)
+    .passthrough()
+    .superRefine((value, ctx) => {
+      for (const field of Object.keys(value)) {
+        if (!supportedFields.has(field)) {
+          ctx.addIssue({
+            code: "custom",
+            path: [field],
+            message: `${label} field '${field}' is not supported by project memory resources`,
+          });
+        }
+      }
+    });
+}
+
+const StandardStrategyInputSchema = projectMemoryObject(strategyFields, "memory strategy");
+const EpisodicStrategyInputSchema = projectMemoryObject(
+  {
+    ...strategyFields,
+    reflectionConfiguration: projectMemoryObject(
+      {
+        namespaces: z.array(z.string()).optional(),
+        namespaceTemplates: z.array(z.string()).optional(),
+      },
+      "episodic reflection configuration",
+    ).optional(),
+  },
+  "episodic memory strategy",
+);
+
+const STRATEGY_MEMBER_KEYS = [
+  "semanticMemoryStrategy",
+  "summaryMemoryStrategy",
+  "userPreferenceMemoryStrategy",
+  "episodicMemoryStrategy",
+  "customMemoryStrategy",
+] as const;
+
+const MemoryStrategyInputSchema = projectMemoryObject(
+  {
+    semanticMemoryStrategy: StandardStrategyInputSchema.optional(),
+    summaryMemoryStrategy: StandardStrategyInputSchema.optional(),
+    userPreferenceMemoryStrategy: StandardStrategyInputSchema.optional(),
+    episodicMemoryStrategy: EpisodicStrategyInputSchema.optional(),
+    customMemoryStrategy: z.unknown().optional(),
+  },
+  "memory strategy input",
+).superRefine((strategy, ctx) => {
+  const members = STRATEGY_MEMBER_KEYS.filter((key) => strategy[key] !== undefined);
+  if (members.length !== 1) {
+    ctx.addIssue({
+      code: "custom",
+      message: `Exactly one memory strategy member must be specified; received ${members.length}`,
+    });
+  }
+  if (members[0] === "customMemoryStrategy") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["customMemoryStrategy"],
+      message: "customMemoryStrategy is not supported by project memory resources",
+    });
+  }
+});
+type ProjectMemoryStrategyInput = z.infer<typeof MemoryStrategyInputSchema>;
 
 const strategiesHelp = `(comma-separated list of strategy types, or JSON MemoryStrategyInput[])
 The long-term memory strategies to extract from raw events. Accepts two forms.
@@ -98,13 +168,15 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
       if (!flags.name)
         throw new InputValidationError("required option '--name <name>' not specified");
 
-      const inputIndexedKeys = parseJsonFlag<SdkIndexedKey[]>(
+      const inputIndexedKeys = parseJsonFlagWithSchema(
         "indexed-keys",
         flags["indexed-keys"],
+        z.array(IndexedKeySchema),
       );
-      const inputStreamDelivery = parseJsonFlag<SdkStreamDeliveryResources>(
+      const inputStreamDelivery = parseJsonFlagWithSchema(
         "stream-delivery-resources",
         flags["stream-delivery-resources"],
+        StreamDeliveryResourcesSchema,
       );
 
       const memoryConfig = {
@@ -112,13 +184,11 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
         description: flags["description"],
         eventExpiryDuration: flags["event-expiry-duration"],
         strategies: flags["strategies"] ? toStrategies(flags["strategies"]) : undefined,
-        indexedKeys: inputIndexedKeys?.map(toIndexedKey),
+        indexedKeys: inputIndexedKeys,
         encryptionKeyArn: flags["encryption-key-arn"],
         executionRoleArn: flags["execution-role-arn"],
-        streamDeliveryResources: inputStreamDelivery
-          ? toStreamDeliveryResources(inputStreamDelivery)
-          : undefined,
-        tags: parseJsonFlag<Record<string, string>>("tags", flags["tags"]),
+        streamDeliveryResources: inputStreamDelivery,
+        tags: parseJsonFlagWithSchema("tags", flags["tags"], TagsSchema),
       };
 
       const project = ctx.require(ProjectKey);
@@ -141,9 +211,8 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
  */
 function toStrategies(raw: string): MemoryStrategy[] {
   if (raw.trimStart().startsWith("[")) {
-    const inputs = parseJsonFlag<MemoryStrategyInput[]>("strategies", raw) ?? [];
-    if (!Array.isArray(inputs))
-      throw new InputValidationError("Option '--strategies' JSON must be an array");
+    const inputs =
+      parseJsonFlagWithSchema("strategies", raw, z.array(MemoryStrategyInputSchema)) ?? [];
     return inputs.map(toStrategy);
   }
   return raw
@@ -173,17 +242,17 @@ function toDefaultStrategy(type: string): MemoryStrategy {
 }
 
 /** Converts an SDK MemoryStrategyInput tagged union into the flat project-schema shape. */
-function toStrategy(strategy: MemoryStrategyInput): MemoryStrategy {
-  if ("semanticMemoryStrategy" in strategy && strategy.semanticMemoryStrategy)
+function toStrategy(strategy: ProjectMemoryStrategyInput): MemoryStrategy {
+  if (strategy.semanticMemoryStrategy)
     return { type: "SEMANTIC", ...toProjectStrategyFields(strategy.semanticMemoryStrategy) };
-  if ("summaryMemoryStrategy" in strategy && strategy.summaryMemoryStrategy)
+  if (strategy.summaryMemoryStrategy)
     return { type: "SUMMARIZATION", ...toProjectStrategyFields(strategy.summaryMemoryStrategy) };
-  if ("userPreferenceMemoryStrategy" in strategy && strategy.userPreferenceMemoryStrategy)
+  if (strategy.userPreferenceMemoryStrategy)
     return {
       type: "USER_PREFERENCE",
       ...toProjectStrategyFields(strategy.userPreferenceMemoryStrategy),
     };
-  if ("episodicMemoryStrategy" in strategy && strategy.episodicMemoryStrategy) {
+  if (strategy.episodicMemoryStrategy) {
     const c = strategy.episodicMemoryStrategy;
     return {
       type: "EPISODIC",
@@ -192,18 +261,12 @@ function toStrategy(strategy: MemoryStrategyInput): MemoryStrategy {
       reflectionNamespaces: c.reflectionConfiguration?.namespaces,
     };
   }
-  /** Custom & Self-managed memory are not supported at this point. */
-  if ("customMemoryStrategy" in strategy && strategy.customMemoryStrategy)
-    throw new InputValidationError(
-      `customMemoryStrategy is not supported. Expected one of ${MemoryStrategyTypeSchema.options.join(", ")}`,
-    );
   throw new InputValidationError("Unrecognized memory strategy variant");
 }
 
 /**
  * Picks only the fields the project schema supports from an SDK strategy variant.
- * Avoids spreading to keep unsupported SDK fields (e.g. memoryRecordSchema,
- * reflectionConfiguration, configuration) out of the stored spec.
+ * The JSON input schema rejects unsupported fields before this conversion.
  */
 function toProjectStrategyFields(strategy: {
   name?: string;
@@ -217,55 +280,4 @@ function toProjectStrategyFields(strategy: {
     namespaceTemplates: strategy.namespaceTemplates,
     namespaces: strategy.namespaces,
   };
-}
-
-/** Converts an SDK IndexedKey into the project-schema shape. */
-function toIndexedKey(indexedKey: SdkIndexedKey): IndexedKey {
-  const type = IndexedKeyTypeSchema.safeParse(indexedKey.type);
-  if (!type.success)
-    throw new InputValidationError(
-      `indexedKeys[].type must be one of ${IndexedKeyTypeSchema.options.join(", ")}`,
-    );
-  return { key: requireField(indexedKey.key, "indexedKeys[].key"), type: type.data };
-}
-
-/** Converts an SDK StreamDeliveryResources into the project-schema shape. */
-function toStreamDeliveryResources(
-  streamDelivery: SdkStreamDeliveryResources,
-): StreamDeliveryResources {
-  const resources = requireField(streamDelivery.resources, "streamDeliveryResources.resources").map(
-    (resource) => {
-      if (!("kinesis" in resource) || !resource.kinesis)
-        throw new InputValidationError("Unrecognized stream delivery resource variant");
-      const kinesis = resource.kinesis;
-      return {
-        kinesis: {
-          dataStreamArn: requireField(kinesis.dataStreamArn, "kinesis.dataStreamArn"),
-          contentConfigurations: requireField(
-            kinesis.contentConfigurations,
-            "kinesis.contentConfigurations",
-          ).map((content) => {
-            if (content.type !== "MEMORY_RECORDS")
-              throw new InputValidationError(
-                `contentConfigurations[].type must be MEMORY_RECORDS, got '${String(content.type)}'`,
-              );
-            const level = StreamContentLevelSchema.safeParse(content.level);
-            if (!level.success)
-              throw new InputValidationError(
-                `contentConfigurations[].level must be one of ${StreamContentLevelSchema.options.join(", ")}`,
-              );
-            return { type: "MEMORY_RECORDS" as const, level: level.data };
-          }),
-        },
-      };
-    },
-  );
-
-  return { resources };
-}
-
-/** Validates a required field is present, throwing with context instead of crashing opaquely. */
-function requireField<T>(value: T | undefined | null, field: string): T {
-  if (value == null) throw new InputValidationError(`${field} is required`);
-  return value;
 }

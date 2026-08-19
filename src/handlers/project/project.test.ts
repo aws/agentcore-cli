@@ -574,6 +574,57 @@ describe("project add memory", () => {
     await inProject();
     await expect(run(["add", "memory", ...flags])).rejects.toBeInstanceOf(InputValidationError);
   });
+
+  test.each<[string, string[], RegExp]>([
+    [
+      "rejects multiple strategy union members",
+      [
+        "--name",
+        "x",
+        "--strategies",
+        '[{"semanticMemoryStrategy":{"name":"facts"},"summaryMemoryStrategy":{"name":"summaries"}}]',
+      ],
+      /Exactly one memory strategy member must be specified; received 2/,
+    ],
+    [
+      "rejects unsupported strategy fields",
+      [
+        "--name",
+        "x",
+        "--strategies",
+        '[{"semanticMemoryStrategy":{"name":"facts","memoryRecordSchema":{}}}]',
+      ],
+      /memory strategy field 'memoryRecordSchema' is not supported by project memory resources/,
+    ],
+    [
+      "rejects unsupported episodic reflection fields",
+      [
+        "--name",
+        "x",
+        "--strategies",
+        '[{"episodicMemoryStrategy":{"name":"episodes","namespaceTemplates":["/episodes/{actorId}/{sessionId}"],"reflectionConfiguration":{"namespaceTemplates":["/episodes/{actorId}"],"memoryRecordSchema":{}}}}]',
+      ],
+      /episodic reflection configuration field 'memoryRecordSchema' is not supported by project memory resources/,
+    ],
+    [
+      "validates indexed-keys as an array",
+      ["--name", "x", "--indexed-keys", '{"key":"tenant","type":"STRING"}'],
+      /Invalid value for option '--indexed-keys'/,
+    ],
+    [
+      "validates stream delivery resources as an array",
+      ["--name", "x", "--stream-delivery-resources", '{"resources":{}}'],
+      /Invalid value for option '--stream-delivery-resources'/,
+    ],
+    [
+      "validates tags as a string map",
+      ["--name", "x", "--tags", '["team=ml"]'],
+      /Invalid value for option '--tags'/,
+    ],
+  ])("%s", async (_label, flags, error) => {
+    await inProject();
+    await expect(run(["add", "memory", ...flags])).rejects.toThrow(error);
+  });
 });
 
 describe("project build", () => {
