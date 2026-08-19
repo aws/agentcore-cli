@@ -10,13 +10,13 @@ import {
   ProtocolModeSchema,
   RuntimeVersionSchema,
 } from "../../../../projectSchemas/constants";
+import { SourceResolver } from "../../../../io";
+import { RUNTIME_TEMPLATES } from "../../types";
 import {
+  runtimeMemoryConfigSchema,
   runtimeModelProviderSchema,
   RuntimeResourceConfigSchema,
-  RUNTIME_TEMPLATES,
-  runtimeMemoryConfigSchema,
-} from "../../types";
-import { SourceResolver } from "../../../../io";
+} from "./types";
 
 export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
   createHandler({
