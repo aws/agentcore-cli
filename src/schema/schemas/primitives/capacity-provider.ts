@@ -1,3 +1,4 @@
+import { TagsSchema } from './tags';
 import { z } from 'zod';
 
 // ============================================================================
@@ -35,7 +36,7 @@ export const CapacityProviderNameSchema = z
  * accepts role ARNs without an account id, so we must not force 12 digits.
  */
 // eslint-disable-next-line security/detect-unsafe-regex -- anchored ARN pattern, no backtracking risk
-export const CAPACITY_PROVIDER_OPERATOR_ROLE_ARN_PATTERN = /^arn:aws(-[^:]+)?:iam::([0-9]{12})?:role\/.+$/;
+export const CAPACITY_PROVIDER_OPERATOR_ROLE_ARN_PATTERN = /^arn:[^:]+:iam::([0-9]{12})?:role\/.+$/;
 
 export const OperatorRoleArnSchema = z
   .string()
@@ -103,11 +104,7 @@ export const LaunchParametersSchema = z
     instanceRequirements: InstanceRequirementsSchema,
     instanceProfileArn: z
       .string()
-      .regex(
-        // eslint-disable-next-line security/detect-unsafe-regex -- anchored ARN pattern, no backtracking risk
-        /^arn:aws(-[^:]+)?:iam::[0-9]{12}:instance-profile\/.+$/,
-        'Must be a valid IAM instance profile ARN'
-      )
+      .regex(/^arn:[^:]+:iam::[0-9]{12}:instance-profile\/.+$/, 'Must be a valid IAM instance profile ARN')
       .optional(),
   })
   .passthrough();
@@ -137,8 +134,7 @@ export const EbsVolumeConfigurationSchema = z
     kmsKeyId: z
       .string()
       .regex(
-        // eslint-disable-next-line security/detect-unsafe-regex -- anchored ARN pattern, no backtracking risk
-        /^arn:aws(-[^:]+)?:kms:[a-z0-9-]+:[0-9]{12}:key\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/,
+        /^arn:[^:]+:kms:[a-z0-9-]+:[0-9]{12}:key\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/,
         'Must be a valid KMS key ARN'
       )
       .optional(),
@@ -202,12 +198,16 @@ export const CapacityProviderSchema = z.object({
   name: CapacityProviderNameSchema,
   /** Optional description (max 4096 chars). The only mutable field besides tags. */
   description: z.string().min(1).max(4096).optional(),
-  /** ARN of the IAM role operators use to manage the capacity provider (immutable). */
-  operatorRoleArn: OperatorRoleArnSchema,
+  /**
+   * ARN of the IAM role AgentCore assumes to manage the capacity provider (immutable). Optional:
+   * when omitted, an operator role with the required trust policy and managed permissions is
+   * created automatically at deploy time.
+   */
+  operatorRoleArn: OperatorRoleArnSchema.optional(),
   /** Compute resources for the capacity provider (immutable after creation). */
   computeConfiguration: ComputeConfigurationSchema,
   /** Optional resource tags. */
-  tags: z.record(z.string(), z.string()).optional(),
+  tags: TagsSchema.optional(),
 });
 
 export type CapacityProvider = z.infer<typeof CapacityProviderSchema>;

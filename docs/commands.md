@@ -783,16 +783,23 @@ agentcore add config-bundle \
 Add a capacity provider — a customer-managed pool of AWS-managed EC2 compute that agent runtimes can run on instead of
 the default managed fleet. Everything except the description and tags is immutable after creation.
 
+**Operator role.** AgentCore assumes an IAM _operator role_ to create and manage the EC2 compute on your behalf. Omit
+`--operator-role-arn` and the CLI provisions one for you at deploy time — a role that trusts
+`bedrock-agentcore.amazonaws.com` (scoped to your account and region) and carries the AWS managed policy
+`BedrockAgentCoreRuntimeInstancesOperatorRolePolicy` (EC2/Auto Scaling/fleet management plus the
+`agentcore-lifecycle-events-*` EventBridge permissions the service needs). Pass `--operator-role-arn` only when you want
+to bring your own role; it must grant those same permissions, or capacity provider creation fails asynchronously
+(surfaced by CloudFormation as `NotStabilized`).
+
 ```bash
-# Minimal
+# Minimal — operator role is created automatically
 agentcore add capacity-provider \
   --name MyCapacityProvider \
-  --operator-role-arn arn:aws:iam::123456789012:role/MyOperatorRole \
   --subnets subnet-0123456789abcdef0 \
   --security-groups sg-0123456789abcdef0 \
   --instance-types c6a.large
 
-# With a named EBS volume, lifecycle limits, and ARM64
+# With a named EBS volume, lifecycle limits, and ARM64 (and a bring-your-own operator role)
 agentcore add capacity-provider \
   --name MyCapacityProvider \
   --operator-role-arn arn:aws:iam::123456789012:role/MyOperatorRole \
@@ -805,22 +812,22 @@ agentcore add capacity-provider \
   --max-lifetime 28800
 ```
 
-| Flag                             | Description                                                                      |
-| -------------------------------- | -------------------------------------------------------------------------------- |
-| `--name <name>`                  | Capacity provider name (required); immutable after creation                      |
-| `--operator-role-arn <arn>`      | IAM role ARN operators use to manage the capacity provider (required); immutable |
-| `--description <desc>`           | Description (the only mutable field besides tags)                                |
-| `--subnets <subnets>`            | Comma-separated subnet IDs, 1–16 (required)                                      |
-| `--security-groups <groups>`     | Comma-separated security group IDs, 1–16 (required)                              |
-| `--os <os>`                      | `LINUX_X86_64` (default) or `LINUX_ARM64`                                        |
-| `--instance-types <types>`       | Comma-separated allowed EC2 instance types, 1–30 (required)                      |
-| `--volume <name:sizeGiB>`        | Named EBS volume as `name:sizeGiB` (repeatable, max 5)                           |
-| `--volume-encrypted`             | Encrypt EBS volumes                                                              |
-| `--volume-kms-key <arn>`         | KMS key ARN for EBS volume encryption                                            |
-| `--instance-profile-arn <arn>`   | IAM instance profile ARN for launched instances                                  |
-| `--idle-instance-timeout <secs>` | Idle instance timeout in seconds (60–1209600)                                    |
-| `--max-lifetime <secs>`          | Maximum instance lifetime in seconds (60–1209600)                                |
-| `--json`                         | JSON output                                                                      |
+| Flag                             | Description                                                                                                    |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `--name <name>`                  | Capacity provider name (required); immutable after creation                                                    |
+| `--operator-role-arn <arn>`      | IAM role ARN AgentCore assumes to manage the capacity provider (optional — auto-created if omitted); immutable |
+| `--description <desc>`           | Description (the only mutable field besides tags)                                                              |
+| `--subnets <subnets>`            | Comma-separated subnet IDs, 1–16 (required)                                                                    |
+| `--security-groups <groups>`     | Comma-separated security group IDs, 1–16 (required)                                                            |
+| `--os <os>`                      | `LINUX_X86_64` (default) or `LINUX_ARM64`                                                                      |
+| `--instance-types <types>`       | Comma-separated allowed EC2 instance types, 1–30 (required)                                                    |
+| `--volume <name:sizeGiB>`        | Named EBS volume as `name:sizeGiB` (repeatable, max 5)                                                         |
+| `--volume-encrypted`             | Encrypt EBS volumes                                                                                            |
+| `--volume-kms-key <arn>`         | KMS key ARN for EBS volume encryption                                                                          |
+| `--instance-profile-arn <arn>`   | IAM instance profile ARN for launched instances                                                                |
+| `--idle-instance-timeout <secs>` | Idle instance timeout in seconds (60–1209600)                                                                  |
+| `--max-lifetime <secs>`          | Maximum instance lifetime in seconds (60–1209600)                                                              |
+| `--json`                         | JSON output                                                                                                    |
 
 ### remove
 

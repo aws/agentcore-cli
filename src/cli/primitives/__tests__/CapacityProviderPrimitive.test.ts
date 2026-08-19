@@ -101,6 +101,19 @@ describe('CapacityProviderPrimitive', () => {
       expect(ec2.vpcConfiguration.securityGroups).toEqual(['sg-0123456789abcdef0']);
     });
 
+    it('omitting the operator role ARN succeeds — the role is created at deploy time', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      const result = await primitive.add(baseOptions({ operatorRoleArn: undefined }));
+
+      expect(result.success).toBe(true);
+      const written = mockWriteProjectSpec.mock.calls[0]![0] as AgentCoreProjectSpec;
+      const cp = written.capacityProviders![0]!;
+      // The field is omitted entirely (not written as undefined) so the construct auto-creates the role.
+      expect(cp).not.toHaveProperty('operatorRoleArn');
+    });
+
     it('parses multi-value flags, volumes, and lifecycle', async () => {
       mockReadProjectSpec.mockResolvedValue(makeProject());
       mockWriteProjectSpec.mockResolvedValue(undefined);
@@ -176,6 +189,26 @@ describe('CapacityProviderPrimitive', () => {
       mockReadProjectSpec.mockResolvedValue(makeProject());
 
       const result = await primitive.add(baseOptions({ volume: ['data-no-size'] }));
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.message).toContain('name:sizeGiB');
+      }
+      expect(mockWriteProjectSpec).not.toHaveBeenCalled();
+    });
+
+    // A plain split(':') + Number() silently accepted all of these before the fix:
+    // extra segments were dropped, and hex/exponent notation coerced to a number.
+    it.each([
+      ['extra segment', 'data:20:gp3'],
+      ['hex size', 'data:0x14'],
+      ['exponent size', 'data:2e1'],
+      ['decimal size', 'data:20.5'],
+      ['empty size', 'data:'],
+    ])('rejects a --volume with %s (%s)', async (_label, value) => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+
+      const result = await primitive.add(baseOptions({ volume: [value] }));
 
       expect(result.success).toBe(false);
       if (!result.success) {

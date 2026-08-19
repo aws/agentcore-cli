@@ -42,7 +42,7 @@ const BASE_ADD_RESOURCES: { id: AddResourceType; title: string; description: str
   },
   {
     id: 'capacity-provider',
-    title: 'Capacity Provider',
+    title: 'Capacity Provider [preview]',
     description: 'Customer-managed EC2 compute pool for runtimes',
   },
 ];

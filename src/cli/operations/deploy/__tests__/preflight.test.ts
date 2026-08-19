@@ -162,6 +162,76 @@ describe('validateProject', () => {
     expect(result.isTeardownDeploy).toBe(false);
   });
 
+  it('allows deploy when only config bundles are defined (regression: previously misclassified as empty)', async () => {
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'test-project',
+      runtimes: [],
+      agentCoreGateways: [],
+      configBundles: [{ name: 'bundle1' }],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([]);
+    mockValidateAwsCredentials.mockResolvedValue(undefined);
+
+    const result = await validateProject();
+
+    expect(result.projectSpec.name).toBe('test-project');
+    expect(result.isTeardownDeploy).toBe(false);
+  });
+
+  it('allows deploy when only online eval configs are defined (regression: previously misclassified as empty)', async () => {
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'test-project',
+      runtimes: [],
+      agentCoreGateways: [],
+      onlineEvalConfigs: [{ name: 'oec1' }],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([]);
+    mockValidateAwsCredentials.mockResolvedValue(undefined);
+
+    const result = await validateProject();
+
+    expect(result.projectSpec.name).toBe('test-project');
+    expect(result.isTeardownDeploy).toBe(false);
+  });
+
+  it('allows deploy when only capacity providers are defined', async () => {
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'test-project',
+      runtimes: [],
+      agentCoreGateways: [],
+      capacityProviders: [{ name: 'cp1' }],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([]);
+    mockValidateAwsCredentials.mockResolvedValue(undefined);
+
+    const result = await validateProject();
+
+    expect(result.projectSpec.name).toBe('test-project');
+    expect(result.isTeardownDeploy).toBe(false);
+  });
+
+  it('treats an empty project as teardown when a deployed stack exists', async () => {
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    mockReadProjectSpec.mockResolvedValue({
+      name: 'test-project',
+      runtimes: [],
+      agentCoreGateways: [],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([]);
+    mockReadDeployedState.mockResolvedValue({ targets: { default: {} } });
+
+    const result = await validateProject();
+
+    expect(result.isTeardownDeploy).toBe(true);
+  });
+
   it('allows deploy when both agents and gateways exist', async () => {
     mockRequireConfigRoot.mockReturnValue('/project/agentcore');
     mockValidate.mockReturnValue(undefined);

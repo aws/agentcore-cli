@@ -14,7 +14,7 @@ const OS_OPTIONS: SelectableItem[] = [
 
 export interface AddCapacityProviderConfig {
   name: string;
-  operatorRoleArn: string;
+  operatorRoleArn?: string;
   description?: string;
   subnets: string;
   securityGroups: string;
@@ -104,7 +104,7 @@ export function AddCapacityProviderScreen({ onComplete, onExit, existingNames }:
     onSelect: () =>
       onComplete({
         name,
-        operatorRoleArn,
+        operatorRoleArn: operatorRoleArn || undefined,
         subnets,
         securityGroups,
         os,
@@ -126,7 +126,7 @@ export function AddCapacityProviderScreen({ onComplete, onExit, existingNames }:
   const confirmFields = useMemo(
     () => [
       { label: 'Name', value: name },
-      { label: 'Operator Role ARN', value: operatorRoleArn },
+      { label: 'Operator Role ARN', value: operatorRoleArn || '(auto-created)' },
       { label: 'Subnets', value: splitList(subnets).join(', ') },
       { label: 'Security Groups', value: splitList(securityGroups).join(', ') },
       { label: 'OS', value: os },
@@ -163,14 +163,17 @@ export function AddCapacityProviderScreen({ onComplete, onExit, existingNames }:
         {isOperatorRoleStep && (
           <TextInput
             key="operator-role"
-            prompt="Operator role ARN (arn:aws:iam::<account>:role/<name>)"
+            prompt="Operator role ARN (optional, press Enter to auto-create)"
             initialValue={operatorRoleArn}
             onSubmit={(value: string) => {
               setOperatorRoleArn(value);
               setStep('subnets');
             }}
             onCancel={() => setStep('name')}
-            customValidation={value => isValidOperatorRoleArn(value) || 'Must be a valid IAM role ARN'}
+            allowEmpty
+            customValidation={value =>
+              value.trim() === '' || isValidOperatorRoleArn(value) || 'Must be a valid IAM role ARN'
+            }
           />
         )}
 

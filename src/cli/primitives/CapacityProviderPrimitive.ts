@@ -14,7 +14,7 @@ import type { Command } from '@commander-js/extra-typings';
  */
 export interface AddCapacityProviderOptions {
   name: string;
-  operatorRoleArn: string;
+  operatorRoleArn?: string;
   description?: string;
   subnets: string;
   securityGroups: string;
@@ -136,7 +136,7 @@ export class CapacityProviderPrimitive extends BasePrimitive<AddCapacityProvider
       .option('--name <name>', 'Capacity provider name [non-interactive]')
       .option(
         '--operator-role-arn <arn>',
-        'IAM role ARN operators use to manage the capacity provider [non-interactive]'
+        'IAM role ARN AgentCore assumes to manage the capacity provider. Optional — omit to have one created automatically [non-interactive]'
       )
       .option('--description <desc>', 'Capacity provider description [non-interactive]')
       .option('--subnets <subnets>', 'Comma-separated subnet IDs (1-16) [non-interactive]')
@@ -202,7 +202,6 @@ export class CapacityProviderPrimitive extends BasePrimitive<AddCapacityProvider
   private validateRequiredOptions(options: AddCapacityProviderOptions): void {
     const missing: string[] = [];
     if (!options.name) missing.push('--name');
-    if (!options.operatorRoleArn) missing.push('--operator-role-arn');
     if (!options.subnets) missing.push('--subnets');
     if (!options.securityGroups) missing.push('--security-groups');
     if (!options.instanceTypes) missing.push('--instance-types');
@@ -218,11 +217,15 @@ export class CapacityProviderPrimitive extends BasePrimitive<AddCapacityProvider
    */
   private buildCapacityProvider(options: AddCapacityProviderOptions): CapacityProvider {
     const volumes = (options.volume ?? []).map(entry => {
-      const [volName, sizeRaw] = entry.split(':');
-      const sizeGiB = Number(sizeRaw);
-      if (!volName || !Number.isInteger(sizeGiB)) {
+      // Require exactly `name:sizeGiB`. Splitting without a segment count lets `data:20:gp3`
+      // silently drop the trailing segment, and Number() accepts hex/exponent (`0x14`, `2e1`)
+      // as 20 — so validate the size as literal digits instead of trusting Number().
+      const segments = entry.split(':');
+      const [volName, sizeRaw] = segments;
+      if (segments.length !== 2 || !volName || !sizeRaw || !/^[0-9]+$/.test(sizeRaw)) {
         throw new ValidationError(`Invalid --volume "${entry}". Expected format name:sizeGiB (e.g. data:20).`);
       }
+      const sizeGiB = Number(sizeRaw);
       return {
         ebsConfiguration: {
           name: volName,
@@ -244,7 +247,7 @@ export class CapacityProviderPrimitive extends BasePrimitive<AddCapacityProvider
     const candidate = {
       name: options.name,
       ...(options.description && { description: options.description }),
-      operatorRoleArn: options.operatorRoleArn,
+      ...(options.operatorRoleArn && { operatorRoleArn: options.operatorRoleArn }),
       computeConfiguration: {
         ec2Configuration: {
           launchTemplateSource: {
