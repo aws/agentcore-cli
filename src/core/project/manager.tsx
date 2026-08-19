@@ -139,7 +139,7 @@ export class FsProjectManager implements ProjectManager {
         `a ${resourceType} with name '${resourceConfig.name}' already exists`,
       );
 
-    const newResources = [...existingResources];
+    const newResources: unknown[] = [...existingResources];
     const scaffoldedPaths: string[] = [];
 
     switch (resourceType) {
@@ -160,7 +160,8 @@ export class FsProjectManager implements ProjectManager {
           "runtime case not yet implemented in FsProjectManager.addResource",
         );
       }
-      // TODO: add limited special casing for runtime and default for other resources that proxy directly to spec changes.
+      default:
+        newResources.push(resourceConfig);
     }
 
     yield { message: `Updating project spec file at '${agentCoreSpecPath}'` };
@@ -280,5 +281,7 @@ function toProjectSpecKey(resourceType: ProjectResource) {
       return "harnesses";
     case "runtime":
       return "runtimes";
+    case "config-bundle":
+      return "configBundles";
   }
 }

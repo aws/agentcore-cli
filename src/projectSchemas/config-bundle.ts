@@ -15,13 +15,15 @@ export const ComponentConfigurationSchema = z.object({
 export type ComponentConfiguration = z.infer<typeof ComponentConfigurationSchema>;
 export const ComponentConfigurationMapSchema = z.record(z.string(), ComponentConfigurationSchema);
 export type ComponentConfigurationMap = z.infer<typeof ComponentConfigurationMapSchema>;
+export const ConfigBundleBranchNameSchema = z.string().max(128);
+export const ConfigBundleCommitMessageSchema = z.string().max(500);
 export const ConfigBundleSchema = z.object({
   name: ConfigBundleNameSchema,
   type: z.literal("ConfigurationBundle").default("ConfigurationBundle"),
   description: ConfigBundleDescriptionSchema,
   components: ComponentConfigurationMapSchema,
-  branchName: z.string().max(128).optional(),
-  commitMessage: z.string().max(500).optional(),
+  branchName: ConfigBundleBranchNameSchema.optional(),
+  commitMessage: ConfigBundleCommitMessageSchema.optional(),
   kmsKeyArn: KmsKeyArnSchema.optional(),
 });
 export type ConfigBundle = z.infer<typeof ConfigBundleSchema>;

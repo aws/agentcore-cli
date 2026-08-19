@@ -689,6 +689,193 @@ describe("project add harness", () => {
   });
 });
 
+describe("project add config-bundle", () => {
+  const components = {
+    "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/orders-agent": {
+      configuration: {
+        systemPrompt: "Help customers with their orders.",
+        temperature: 0.2,
+      },
+    },
+  };
+
+  test("adds a configuration bundle to agentcore.json", async () => {
+    const projectRoot = await inProject();
+    const { io } = await run([
+      "add",
+      "config-bundle",
+      "--name",
+      "OrdersConfig",
+      "--components",
+      JSON.stringify(components),
+    ]);
+
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.configBundles).toEqual([
+      {
+        name: "OrdersConfig",
+        type: "ConfigurationBundle",
+        components,
+        branchName: "mainline",
+      },
+    ]);
+    expect(io.stderr()).toContain("added configuration bundle 'OrdersConfig' to 'TestProject'");
+  });
+
+  test("stores optional configuration bundle fields", async () => {
+    const projectRoot = await inProject();
+    const kmsKeyArn = "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012";
+
+    await run([
+      "add",
+      "config-bundle",
+      "--name",
+      "OrdersConfig",
+      "--description",
+      "Configuration for the order support runtime",
+      "--components",
+      JSON.stringify(components),
+      "--branch-name",
+      "production",
+      "--commit-message",
+      "Add the initial order support configuration",
+      "--kms-key-arn",
+      kmsKeyArn,
+    ]);
+
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.configBundles[0]).toEqual({
+      name: "OrdersConfig",
+      type: "ConfigurationBundle",
+      description: "Configuration for the order support runtime",
+      components,
+      branchName: "production",
+      commitMessage: "Add the initial order support configuration",
+      kmsKeyArn,
+    });
+  });
+
+  test("reads components from a file", async () => {
+    const projectRoot = await inProject();
+    const componentsPath = join(projectRoot, "components.json");
+    await Bun.write(componentsPath, JSON.stringify(components));
+
+    await run([
+      "add",
+      "config-bundle",
+      "--name",
+      "OrdersConfig",
+      "--components",
+      `file://${componentsPath}`,
+    ]);
+
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.configBundles[0].components).toEqual(components);
+  });
+
+  test("adds no files under app", async () => {
+    const projectRoot = await inProject();
+
+    await run([
+      "add",
+      "config-bundle",
+      "--name",
+      "OrdersConfig",
+      "--components",
+      JSON.stringify(components),
+    ]);
+
+    expect(existsSync(join(projectRoot, "app", "OrdersConfig"))).toBe(false);
+  });
+
+  test("rejects a duplicate configuration bundle name", async () => {
+    await inProject();
+    const args = [
+      "add",
+      "config-bundle",
+      "--name",
+      "OrdersConfig",
+      "--components",
+      JSON.stringify(components),
+    ];
+
+    await run(args);
+    await expect(run(args)).rejects.toBeInstanceOf(InputValidationError);
+  });
+
+  test.each([
+    ["missing name", ["--components", JSON.stringify(components)]],
+    ["missing components", ["--name", "OrdersConfig"]],
+    ["invalid name", ["--name", "orders-config", "--components", JSON.stringify(components)]],
+    ["empty components", ["--name", "OrdersConfig", "--components", "{}"]],
+    [
+      "component without configuration",
+      ["--name", "OrdersConfig", "--components", '{"arn:component":{}}'],
+    ],
+    [
+      "non-object component configuration",
+      [
+        "--name",
+        "OrdersConfig",
+        "--components",
+        '{"arn:component":{"configuration":"not-an-object"}}',
+      ],
+    ],
+    [
+      "unexpected component field",
+      [
+        "--name",
+        "OrdersConfig",
+        "--components",
+        '{"arn:component":{"configuration":{},"unexpected":true}}',
+      ],
+    ],
+    ["malformed components", ["--name", "OrdersConfig", "--components", "{not-json"]],
+    [
+      "empty description",
+      ["--name", "OrdersConfig", "--description", "", "--components", JSON.stringify(components)],
+    ],
+    [
+      "branch name above maximum length",
+      [
+        "--name",
+        "OrdersConfig",
+        "--components",
+        JSON.stringify(components),
+        "--branch-name",
+        "b".repeat(129),
+      ],
+    ],
+    [
+      "commit message above maximum length",
+      [
+        "--name",
+        "OrdersConfig",
+        "--components",
+        JSON.stringify(components),
+        "--commit-message",
+        "m".repeat(501),
+      ],
+    ],
+    [
+      "invalid KMS key ARN",
+      [
+        "--name",
+        "OrdersConfig",
+        "--components",
+        JSON.stringify(components),
+        "--kms-key-arn",
+        "not-an-arn",
+      ],
+    ],
+  ])("rejects %s", async (_label, flags) => {
+    await inProject();
+    await expect(run(["add", "config-bundle", ...flags])).rejects.toBeInstanceOf(
+      InputValidationError,
+    );
+  });
+});
+
 describe("project build", () => {
   async function inBuildableProject(): Promise<string> {
     const projectRoot = await inProject("MyAgent");
