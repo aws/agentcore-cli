@@ -3,23 +3,19 @@ import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
 import { parseJsonFlag } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
-import type {
-  AuthorizerConfiguration,
-  FilesystemConfiguration,
-  LifecycleConfiguration,
-  NetworkConfiguration,
-  ProtocolConfiguration,
-  RequestHeaderConfiguration,
-} from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   type EnvVar,
-  type FilesystemConfiguration as ProjectFilesystemConfiguration,
+  type FilesystemConfiguration,
+  type LifecycleConfiguration,
   type NetworkConfig,
   BuildTypeSchema,
 } from "../../../../projectSchemas/runtime";
-import type { AuthorizerConfig, RuntimeAuthorizerType } from "../../../../projectSchemas/auth";
 import {
-  type NetworkMode,
+  RuntimeAuthorizerTypeSchema,
+  type AuthorizerConfig,
+} from "../../../../projectSchemas/auth";
+import {
+  NetworkModeSchema,
   ProtocolModeSchema,
   RuntimeVersionSchema,
 } from "../../../../projectSchemas/constants";
@@ -47,7 +43,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       flag("code-location", "path to existing agent source code (BYO path)", z.string().optional()),
       flag("build", "build type: CodeZip or Container", BuildTypeSchema.optional()),
       flag("entrypoint", "entrypoint file, e.g. main.py:handler (BYO only)", z.string().optional()),
-      flag("protocol", "server protocol ex. HTTP, MCP, A2A, AGUI", ProtocolModeSchema.optional()),
+      flag("protocol", "server protocol: HTTP, MCP, A2A, AGUI", ProtocolModeSchema.optional()),
       flag(
         "api-key",
         "API key source for non-bedrock model providers: '-' for stdin, 'file://path' for file",
@@ -84,35 +80,27 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         z.array(z.string()).optional(),
       ),
       flag(
-        "network-configuration",
-        "network configuration (JSON NetworkConfiguration)",
-        z.string().optional(),
+        "network-mode",
+        "network mode for the runtime environment (PUBLIC or VPC)",
+        NetworkModeSchema.optional(),
       ),
+      flag("network-config", "VPC network configuration (JSON)", z.string().optional()),
       flag(
-        "vpc-id",
-        "VPC ID for Container builds in VPC mode (CodeBuild cannot infer it from subnets)",
-        z.string().optional(),
+        "authorizer-type",
+        "inbound authorizer type (AWS_IAM or CUSTOM_JWT)",
+        RuntimeAuthorizerTypeSchema.optional(),
       ),
       flag(
         "authorizer-configuration",
-        "inbound authorizer configuration (JSON AuthorizerConfiguration)",
+        "inbound authorizer configuration (JSON)",
         z.string().optional(),
       ),
       flag(
-        "protocol-configuration",
-        "protocol configuration (JSON ProtocolConfiguration)",
-        z.string().optional(),
+        "request-header-allowlist",
+        "request headers to pass through to the runtime",
+        z.array(z.string()).optional(),
       ),
-      flag(
-        "request-header-configuration",
-        "request header passthrough configuration (JSON RequestHeaderConfiguration)",
-        z.string().optional(),
-      ),
-      flag(
-        "lifecycle-configuration",
-        "lifecycle configuration (JSON LifecycleConfiguration)",
-        z.string().optional(),
-      ),
+      flag("lifecycle-configuration", "lifecycle configuration (JSON)", z.string().optional()),
       flag(
         "environment-variables",
         "environment variables (JSON object of key/value strings)",
@@ -120,12 +108,12 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       ),
       flag(
         "filesystem-configurations",
-        "filesystem mount configurations (JSON FilesystemConfiguration[])",
+        "filesystem mount configurations (JSON)",
         z.string().optional(),
       ),
       flag(
         "memory",
-        "memory configuration (JSON with mode: none | create | existing ) (template only)",
+        "memory configuration (JSON with mode: disabled | create | existing) (template only)",
         z.string().optional(),
       ),
       flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),
@@ -161,40 +149,13 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
           `--${templateOnlyFlags[0]} is only available on the template path (--template)`,
         );
 
-      const inputNetwork = parseJsonFlag<NetworkConfiguration>(
-        "network-configuration",
-        flags["network-configuration"],
-      );
-      const inputAuthConfig = parseJsonFlag<AuthorizerConfiguration>(
-        "authorizer-configuration",
-        flags["authorizer-configuration"],
-      );
-      const inputProtocol = parseJsonFlag<ProtocolConfiguration>(
-        "protocol-configuration",
-        flags["protocol-configuration"],
-      );
-      const inputRequestHeaders = parseJsonFlag<RequestHeaderConfiguration>(
-        "request-header-configuration",
-        flags["request-header-configuration"],
-      );
-      const inputLifecycle = parseJsonFlag<LifecycleConfiguration>(
-        "lifecycle-configuration",
-        flags["lifecycle-configuration"],
-      );
-      const inputFilesystems = parseJsonFlag<FilesystemConfiguration[]>(
-        "filesystem-configurations",
-        flags["filesystem-configurations"],
-      );
       const inputEnvironmentVariables = parseJsonFlag<Record<string, string>>(
         "environment-variables",
         flags["environment-variables"],
       );
       const memoryConfiguration = parseMemoryConfig(flags["memory"]);
 
-      // TODO: make entrypoint optional since container agents don't need it.
       const entrypoint = flags.entrypoint ?? "main.py";
-
-      const network = toNetwork(inputNetwork);
 
       const source = new SourceResolver({ stdin: config.io.stdin });
       const apiKey = await source.resolveText("api-key", flags["api-key"]);
@@ -204,36 +165,29 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
           "--custom-docker-build-args requires --dockerfile or --build-context-path",
         );
 
-      if (flags["vpc-id"] && !network?.networkConfig)
-        throw new InputValidationError(
-          "--vpc-id requires --network-configuration with VPC network configuration",
-        );
-
-      if (flags["protocol"] && flags["protocol-configuration"])
-        throw new InputValidationError(
-          "--protocol and --protocol-configuration are mutually exclusive",
-        );
-
-      const auth = toAuthorizer(inputAuthConfig);
-      const requestHeaderAllowlist = toRequestHeaderAllowlist(inputRequestHeaders);
-      const filesystemConfigurations = toFilesystems(inputFilesystems);
-
       const infraConfig = {
         name: flags.name,
         description: flags.description,
         executionRoleArn: flags["role-arn"],
         additionalPolicies: flags["additional-policies"],
         envVars: toEnvironmentVariables(inputEnvironmentVariables),
-        networkMode: network?.networkMode,
-        networkConfig: network?.networkConfig
-          ? { ...network.networkConfig, ...(flags["vpc-id"] ? { vpcId: flags["vpc-id"] } : {}) }
-          : undefined,
-        authorizerType: auth?.authorizerType,
-        authorizerConfiguration: auth?.authorizerConfiguration,
-        protocol: flags["protocol"] ?? inputProtocol?.serverProtocol,
-        requestHeaderAllowlist,
-        lifecycleConfiguration: inputLifecycle,
-        filesystemConfigurations,
+        networkMode: flags["network-mode"],
+        networkConfig: parseJsonFlag<NetworkConfig>("network-config", flags["network-config"]),
+        authorizerType: flags["authorizer-type"],
+        authorizerConfiguration: parseJsonFlag<AuthorizerConfig>(
+          "authorizer-configuration",
+          flags["authorizer-configuration"],
+        ),
+        protocol: flags["protocol"],
+        requestHeaderAllowlist: flags["request-header-allowlist"],
+        lifecycleConfiguration: parseJsonFlag<LifecycleConfiguration>(
+          "lifecycle-configuration",
+          flags["lifecycle-configuration"],
+        ),
+        filesystemConfigurations: parseJsonFlag<FilesystemConfiguration[]>(
+          "filesystem-configurations",
+          flags["filesystem-configurations"],
+        ),
         tags: parseJsonFlag<Record<string, string>>("tags", flags["tags"]),
       };
 
@@ -272,7 +226,6 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
     },
   });
 
-/** Parses and validates the --memory JSON flag against the runtime memory config schema. */
 function parseMemoryConfig(
   raw: string | undefined,
 ): z.infer<typeof runtimeMemoryConfigSchema> | undefined {
@@ -283,88 +236,6 @@ function parseMemoryConfig(
   return result.data;
 }
 
-/** Converts API flat {key: value} map to project schema [{name, value}] array. */
 function toEnvironmentVariables(envVars: Record<string, string> | undefined): EnvVar[] {
   return envVars ? Object.entries(envVars).map(([name, value]) => ({ name, value })) : [];
-}
-
-/** Converts API NetworkConfiguration to project schema networkMode + networkConfig fields. */
-function toNetwork(
-  network: NetworkConfiguration | undefined,
-): { networkMode: NetworkMode; networkConfig: NetworkConfig | undefined } | undefined {
-  if (!network) return undefined;
-  return {
-    networkMode: network.networkMode as NetworkMode,
-    networkConfig: network.networkModeConfig
-      ? {
-          subnets: network.networkModeConfig.subnets ?? [],
-          securityGroups: network.networkModeConfig.securityGroups ?? [],
-        }
-      : undefined,
-  };
-}
-
-/** Converts API AuthorizerConfiguration union to project schema authorizerType + authorizerConfiguration. */
-function toAuthorizer(
-  auth: AuthorizerConfiguration | undefined,
-):
-  { authorizerType: RuntimeAuthorizerType; authorizerConfiguration: AuthorizerConfig } | undefined {
-  if (!auth) return undefined;
-  if ("customJWTAuthorizer" in auth && auth.customJWTAuthorizer) {
-    const c = auth.customJWTAuthorizer;
-    if (!c.discoveryUrl)
-      throw new InputValidationError("discoveryUrl is required in authorizer configuration");
-    return {
-      authorizerType: "CUSTOM_JWT",
-      authorizerConfiguration: {
-        customJwtAuthorizer: {
-          discoveryUrl: c.discoveryUrl,
-          allowedAudience: c.allowedAudience,
-          allowedClients: c.allowedClients,
-          allowedScopes: c.allowedScopes,
-        },
-      },
-    };
-  }
-  throw new InputValidationError("Unrecognized authorizer configuration variant");
-}
-
-/** Unwraps API RequestHeaderConfiguration union to project schema string[]. */
-function toRequestHeaderAllowlist(
-  headers: RequestHeaderConfiguration | undefined,
-): string[] | undefined {
-  if (!headers) return undefined;
-  if ("requestHeaderAllowlist" in headers && headers.requestHeaderAllowlist) {
-    return headers.requestHeaderAllowlist;
-  }
-  throw new InputValidationError("Unrecognized request header configuration variant");
-}
-
-/** Converts API FilesystemConfiguration[] tagged unions to project schema format. */
-function toFilesystems(
-  filesystems: FilesystemConfiguration[] | undefined,
-): ProjectFilesystemConfiguration[] | undefined {
-  if (!filesystems || filesystems.length === 0) return undefined;
-  return filesystems.map((fs): ProjectFilesystemConfiguration => {
-    if ("sessionStorage" in fs && fs.sessionStorage) {
-      return { sessionStorage: { mountPath: fs.sessionStorage.mountPath! } };
-    }
-    if ("efsAccessPoint" in fs && fs.efsAccessPoint) {
-      return {
-        efsAccessPoint: {
-          accessPointArn: fs.efsAccessPoint.accessPointArn!,
-          mountPath: fs.efsAccessPoint.mountPath!,
-        },
-      };
-    }
-    if ("s3FilesAccessPoint" in fs && fs.s3FilesAccessPoint) {
-      return {
-        s3FilesAccessPoint: {
-          accessPointArn: fs.s3FilesAccessPoint.accessPointArn!,
-          mountPath: fs.s3FilesAccessPoint.mountPath!,
-        },
-      };
-    }
-    throw new InputValidationError("Unrecognized filesystem configuration variant");
-  });
 }
