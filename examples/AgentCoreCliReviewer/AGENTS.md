@@ -19,8 +19,7 @@ Tags defined in `agentcore.json` flow through to deployed CloudFormation resourc
 2. **Resource Identity:** The `name` field determines the CloudFormation Logical ID.
    - **Renaming** a resource will **destroy and recreate** it.
    - **Modifying** other fields will update the resource **in-place**.
-3. **Schema Validation:** If your JSON conforms to the types in `.llm-context/`, it will deploy successfully. Run
-   `agentcore validate` to check.
+3. **Schema Validation:** Run `agentcore validate` before deploying configuration changes.
 4. **Resource Removal:** Use `agentcore remove` to remove resources. Run `agentcore deploy` after removal to tear down
    deployed infrastructure.
 5. **Invocation Input:** Validate runtime payloads and require text prompts to be strings. If a Strands app accepts a
@@ -35,26 +34,12 @@ myProject/
 │   ├── agentcore.json      # Main project config (AgentCoreProjectSpec)
 │   ├── aws-targets.json    # Deployment targets (account + region)
 │   ├── .env.local          # Secrets — API keys (gitignored)
-│   ├── .llm-context/       # TypeScript type definitions for AI assistants
-│   │   ├── README.md       # Guide to using schema files
-│   │   ├── agentcore.ts    # AgentCoreProjectSpec types
-│   │   └── aws-targets.ts  # AWS deployment target types
 │   └── cdk/                # AWS CDK project (@aws/agentcore-cdk L3 constructs)
 ├── app/                    # Agent application code
 └── evaluators/             # Custom evaluator code (if any)
 ```
 
-## Schema Reference
-
-The `agentcore/.llm-context/` directory contains TypeScript type definitions optimized for AI coding assistants. Each
-file maps to a JSON config file and includes validation constraints as comments (`@regex`, `@min`, `@max`).
-
-| JSON Config                  | Schema File                             | Root Type               |
-| ---------------------------- | --------------------------------------- | ----------------------- |
-| `agentcore/agentcore.json`   | `agentcore/.llm-context/agentcore.ts`   | `AgentCoreProjectSpec`  |
-| `agentcore/aws-targets.json` | `agentcore/.llm-context/aws-targets.ts` | `AwsDeploymentTarget[]` |
-
-### Key Types
+## Configuration Reference
 
 - **AgentCoreProjectSpec**: Root config with runtimes, memories, knowledge bases, credentials, evaluators, online evals
   and insights, gateways, policy engines, config bundles, A/B tests, harness registrations, datasets, and payment
@@ -134,11 +119,9 @@ npx cdk deploy
 
 When modifying JSON config files:
 
-1. Read the corresponding `agentcore/.llm-context/*.ts` file for type definitions
-2. Check validation constraint comments (`@regex`, `@min`, `@max`)
-3. Use exact enum values as string literals
-4. Use CloudFormation-safe names (alphanumeric, start with letter)
-5. Run `agentcore validate` to verify changes
+1. Use exact enum values as string literals
+2. Use CloudFormation-safe names (alphanumeric, start with letter)
+3. Run `agentcore validate` to verify changes
 
 ## Harness Export
 
