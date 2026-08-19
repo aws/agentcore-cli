@@ -1,0 +1,13 @@
+{
+  "name": "PRReviewer",
+  "model": {
+    "provider": "bedrock",
+    "modelId": "us.anthropic.claude-opus-4-7"
+  },
+  "tools": [],
+  "skills": [],
+  "memory": {
+    "mode": "disabled"
+  },
+  "dockerfile": "Dockerfile"
+}

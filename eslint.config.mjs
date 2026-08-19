@@ -167,6 +167,7 @@ export default tseslint.config(
       '.github',
       'src/assets',
       'src/schema/llm-compacted',
+      'examples',
       '.agentcore',
       '**/.agentcore/**',
       '.venv',

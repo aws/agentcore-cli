@@ -36,8 +36,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # Finder (MacOS) folder config
 .DS_Store
 
-# Testing Directory
-examples
+# Testing artifacts
 __pycache__/
 
 # Python build artifacts

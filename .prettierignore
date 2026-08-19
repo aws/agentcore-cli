@@ -5,3 +5,4 @@ src/assets/**/*.md
 src/assets/**/*.ts
 src/assets/**/*.json
 src/assets/**/*.template
+**/cdk.out/

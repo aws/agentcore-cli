@@ -135,7 +135,7 @@ jobs:
         env:
           PR_URL: ${{ steps.pr-url.outputs.url }}
           HARNESS_ARN: ${{ env.HARNESS_ARN }}
-        run: python .github/harness/harness_review.py
+        run: python examples/AgentCoreCliReviewer/app/PRReviewer/harness_review.py
 
       - name: Remove agentcore-harness-reviewing label
         if: always()
