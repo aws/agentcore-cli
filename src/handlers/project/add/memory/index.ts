@@ -9,7 +9,7 @@ import {
   IndexedKeySchema,
   MemoryStrategyNameSchema,
   MemoryStrategyTypeSchema,
-  StreamDeliveryResourcesSchema,
+  StreamContentLevelSchema,
   type MemoryStrategy,
 } from "../../../../projectSchemas/memory";
 import { TagsSchema } from "../../../../projectSchemas/tags";
@@ -18,7 +18,7 @@ import { TagsSchema } from "../../../../projectSchemas/tags";
 const DEFAULT_EVENT_EXPIRY_DURATION = 30;
 
 const strategyFields = {
-  name: MemoryStrategyNameSchema.optional(),
+  name: MemoryStrategyNameSchema,
   description: z.string().optional(),
   namespaces: z.array(z.string()).optional(),
   namespaceTemplates: z.array(z.string()).optional(),
@@ -27,9 +27,9 @@ const strategyFields = {
 function projectMemoryObject<T extends z.ZodRawShape>(shape: T, label: string) {
   const supportedFields = new Set(Object.keys(shape));
   return z
-    .object(shape)
-    .passthrough()
+    .unknown()
     .superRefine((value, ctx) => {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) return;
       for (const field of Object.keys(value)) {
         if (!supportedFields.has(field)) {
           ctx.addIssue({
@@ -39,7 +39,8 @@ function projectMemoryObject<T extends z.ZodRawShape>(shape: T, label: string) {
           });
         }
       }
-    });
+    })
+    .pipe(z.object(shape));
 }
 
 const StandardStrategyInputSchema = projectMemoryObject(strategyFields, "memory strategy");
@@ -91,6 +92,34 @@ const MemoryStrategyInputSchema = projectMemoryObject(
   }
 });
 type ProjectMemoryStrategyInput = z.infer<typeof MemoryStrategyInputSchema>;
+
+const IndexedKeyInputSchema = projectMemoryObject(IndexedKeySchema.shape, "indexed key");
+const StreamContentConfigurationInputSchema = projectMemoryObject(
+  {
+    type: z.literal("MEMORY_RECORDS"),
+    level: StreamContentLevelSchema,
+  },
+  "stream content configuration",
+);
+const KinesisStreamDeliveryInputSchema = projectMemoryObject(
+  {
+    dataStreamArn: z.string().min(1),
+    contentConfigurations: z.array(StreamContentConfigurationInputSchema).min(1),
+  },
+  "Kinesis stream delivery resource",
+);
+const StreamDeliveryResourceInputSchema = projectMemoryObject(
+  {
+    kinesis: KinesisStreamDeliveryInputSchema,
+  },
+  "stream delivery resource",
+);
+const StreamDeliveryResourcesInputSchema = projectMemoryObject(
+  {
+    resources: z.array(StreamDeliveryResourceInputSchema).min(1),
+  },
+  "stream delivery resources",
+);
 
 const strategiesHelp = `(comma-separated list of strategy types, or JSON MemoryStrategyInput[])
 The long-term memory strategies to extract from raw events. Accepts two forms.
@@ -171,12 +200,12 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
       const inputIndexedKeys = parseJsonFlagWithSchema(
         "indexed-keys",
         flags["indexed-keys"],
-        z.array(IndexedKeySchema),
+        z.array(IndexedKeyInputSchema),
       );
       const inputStreamDelivery = parseJsonFlagWithSchema(
         "stream-delivery-resources",
         flags["stream-delivery-resources"],
-        StreamDeliveryResourcesSchema,
+        StreamDeliveryResourcesInputSchema,
       );
 
       const memoryConfig = {
@@ -206,20 +235,20 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
 /**
  * Parses --strategies, which accepts either a comma-separated list of strategy
  * types (expanded with the CLI's default namespaces) or a JSON
- * MemoryStrategyInput[] mirroring the CreateMemory API. A leading '[' selects the
- * JSON form; anything else is read as the shorthand.
+ * MemoryStrategyInput[] mirroring the CreateMemory API. A leading JSON container
+ * selects the JSON form; anything else is read as the shorthand.
  */
 function toStrategies(raw: string): MemoryStrategy[] {
-  if (raw.trimStart().startsWith("[")) {
+  const trimmed = raw.trimStart();
+  if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
     const inputs =
       parseJsonFlagWithSchema("strategies", raw, z.array(MemoryStrategyInputSchema)) ?? [];
     return inputs.map(toStrategy);
   }
-  return raw
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0)
-    .map(toDefaultStrategy);
+  const entries = raw.split(",").map((entry) => entry.trim());
+  if (entries.some((entry) => entry.length === 0))
+    throw new InputValidationError("memory strategy list cannot contain empty entries");
+  return entries.map(toDefaultStrategy);
 }
 
 /** Expands a bare strategy type into a strategy carrying its default namespaces. */

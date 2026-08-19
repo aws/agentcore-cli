@@ -405,8 +405,13 @@ describe("project add memory", () => {
     ],
     [
       "strategies — JSON deprecated namespaces are preserved",
-      ["--name", "x", "--strategies", '[{"semanticMemoryStrategy":{"namespaces":["/legacy"]}}]'],
-      { strategies: [{ type: "SEMANTIC", namespaces: ["/legacy"] }] },
+      [
+        "--name",
+        "x",
+        "--strategies",
+        '[{"semanticMemoryStrategy":{"name":"legacy","namespaces":["/legacy"]}}]',
+      ],
+      { strategies: [{ type: "SEMANTIC", name: "legacy", namespaces: ["/legacy"] }] },
     ],
     [
       "indexed-keys",
@@ -497,8 +502,17 @@ describe("project add memory", () => {
     ["event-expiry-duration below the minimum", ["--name", "x", "--event-expiry-duration", "2"]],
     ["event-expiry-duration above the maximum", ["--name", "x", "--event-expiry-duration", "400"]],
     ["unrecognized shorthand strategy", ["--name", "x", "--strategies", "NONSENSE"]],
+    ["empty shorthand strategy entry", ["--name", "x", "--strategies", "SEMANTIC,"]],
     ["duplicate shorthand strategy", ["--name", "x", "--strategies", "SEMANTIC,SEMANTIC"]],
     ["unrecognized JSON strategy variant", ["--name", "x", "--strategies", '[{"unknown":{}}]']],
+    [
+      "JSON strategy without its required name",
+      ["--name", "x", "--strategies", '[{"semanticMemoryStrategy":{}}]'],
+    ],
+    [
+      "JSON strategy input must be an array",
+      ["--name", "x", "--strategies", '{"semanticMemoryStrategy":{"name":"facts"}}'],
+    ],
     // CUSTOM is rejected in both forms until a custom strategy's extraction
     // configuration can be expressed. See aws/agentcore-cli#241, #266, #713, #676.
     ["CUSTOM shorthand strategy", ["--name", "x", "--strategies", "CUSTOM"]],
@@ -516,7 +530,7 @@ describe("project add memory", () => {
         "--name",
         "x",
         "--strategies",
-        '[{"semanticMemoryStrategy":{"namespaces":["/a"],"namespaceTemplates":["/b"]}}]',
+        '[{"semanticMemoryStrategy":{"name":"facts","namespaces":["/a"],"namespaceTemplates":["/b"]}}]',
       ],
     ],
     [
@@ -607,14 +621,76 @@ describe("project add memory", () => {
       /episodic reflection configuration field 'memoryRecordSchema' is not supported by project memory resources/,
     ],
     [
+      "rejects prototype-named unsupported strategy fields",
+      [
+        "--name",
+        "x",
+        "--strategies",
+        '[{"semanticMemoryStrategy":{"name":"facts","__proto__":{"polluted":true}}}]',
+      ],
+      /memory strategy field '__proto__' is not supported by project memory resources/,
+    ],
+    [
       "validates indexed-keys as an array",
       ["--name", "x", "--indexed-keys", '{"key":"tenant","type":"STRING"}'],
       /Invalid value for option '--indexed-keys'/,
     ],
     [
+      "rejects unsupported indexed-key fields",
+      [
+        "--name",
+        "x",
+        "--strategies",
+        "SEMANTIC",
+        "--indexed-keys",
+        '[{"key":"tenant","type":"STRING","unexpected":true}]',
+      ],
+      /indexed key field 'unexpected' is not supported by project memory resources/,
+    ],
+    [
       "validates stream delivery resources as an array",
       ["--name", "x", "--stream-delivery-resources", '{"resources":{}}'],
       /Invalid value for option '--stream-delivery-resources'/,
+    ],
+    [
+      "rejects unsupported top-level stream delivery fields",
+      [
+        "--name",
+        "x",
+        "--stream-delivery-resources",
+        '{"resources":[{"kinesis":{"dataStreamArn":"arn:aws:kinesis:us-east-1:123456789012:stream/s","contentConfigurations":[{"type":"MEMORY_RECORDS","level":"FULL_CONTENT"}]}}],"unexpected":true}',
+      ],
+      /stream delivery resources field 'unexpected' is not supported by project memory resources/,
+    ],
+    [
+      "rejects unsupported stream delivery resource variants",
+      [
+        "--name",
+        "x",
+        "--stream-delivery-resources",
+        '{"resources":[{"kinesis":{"dataStreamArn":"arn:aws:kinesis:us-east-1:123456789012:stream/s","contentConfigurations":[{"type":"MEMORY_RECORDS","level":"FULL_CONTENT"}]},"firehose":{}}]}',
+      ],
+      /stream delivery resource field 'firehose' is not supported by project memory resources/,
+    ],
+    [
+      "rejects unsupported Kinesis stream delivery fields",
+      [
+        "--name",
+        "x",
+        "--stream-delivery-resources",
+        '{"resources":[{"kinesis":{"dataStreamArn":"arn:aws:kinesis:us-east-1:123456789012:stream/s","contentConfigurations":[{"type":"MEMORY_RECORDS","level":"FULL_CONTENT"}],"unexpected":true}}]}',
+      ],
+      /Kinesis stream delivery resource field 'unexpected' is not supported by project memory resources/,
+    ],
+    [
+      "rejects unsupported nested stream delivery fields",
+      [
+        "--name",
+        "x",
+        "--stream-delivery-resources",
+        '{"resources":[{"kinesis":{"dataStreamArn":"arn:aws:kinesis:us-east-1:123456789012:stream/s","contentConfigurations":[{"type":"MEMORY_RECORDS","level":"FULL_CONTENT","unexpected":true}]}}]}',
+      ],
+      /stream content configuration field 'unexpected' is not supported by project memory resources/,
     ],
     [
       "validates tags as a string map",
