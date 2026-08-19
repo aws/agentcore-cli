@@ -90,11 +90,18 @@ describe("TraceStore", () => {
     expect(await store.get(TRACE_B)).toBeDefined();
   });
 
-  test("list filters by service name", async () => {
+  test("list filters by service name, matching every participant of a distributed trace", async () => {
     await store.append(payload(TRACE_A, { serviceName: "agent-1" }));
+    // agent-2 contributes spans to the SAME trace (distributed) and owns its own trace.
+    await store.append(payload(TRACE_A, { serviceName: "agent-2", name: "tool_use" }));
     await store.append(payload(TRACE_B, { serviceName: "agent-2" }));
-    const traces = await store.list({ serviceName: "agent-2" });
-    expect(traces.map((trace) => trace.traceId)).toEqual([TRACE_B]);
+
+    expect((await store.list({ serviceName: "agent-2" })).map((t) => t.traceId).sort()).toEqual([
+      TRACE_A,
+      TRACE_B,
+    ]);
+    expect((await store.list({ serviceName: "agent-1" })).map((t) => t.traceId)).toEqual([TRACE_A]);
+    expect(await store.list({ serviceName: "agent-3" })).toEqual([]);
   });
 
   test("list filters by time window and sorts newest first", async () => {

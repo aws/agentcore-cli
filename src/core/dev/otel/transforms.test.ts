@@ -47,7 +47,7 @@ describe("extractTraceMeta", () => {
       firstSeen: 1700000000000,
       lastSeen: 1700000001500,
       sessionId: "session-1",
-      serviceName: "my-agent",
+      serviceNames: ["my-agent"],
       spanCount: 1,
     });
   });
@@ -66,7 +66,7 @@ describe("extractTraceMeta", () => {
     ];
     const meta = extractTraceMeta([], logs);
     expect(meta.traceId).toBe(TRACE_ID_HEX);
-    expect(meta.serviceName).toBe("log-agent");
+    expect(meta.serviceNames).toEqual(["log-agent"]);
     expect(meta.spanCount).toBe(1);
     expect(meta.firstSeen).toBe(1700000002000);
     expect(meta.lastSeen).toBe(1700000002000);

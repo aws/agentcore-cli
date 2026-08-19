@@ -69,7 +69,7 @@ export class TraceStore {
       const meta = extractTraceMeta(trace.resourceSpans, trace.resourceLogs);
       if (!meta.traceId) continue;
       if (meta.lastSeen < start || meta.firstSeen > end) continue;
-      if (options.serviceName && meta.serviceName !== options.serviceName) continue;
+      if (options.serviceName && !meta.serviceNames.includes(options.serviceName)) continue;
 
       summaries.push({
         traceId: meta.traceId,

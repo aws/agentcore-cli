@@ -12,7 +12,8 @@ export interface TraceMeta {
   firstSeen: number;
   lastSeen: number;
   sessionId?: string;
-  serviceName?: string;
+  /** Every service participating in the trace — a distributed trace spans several local agents. */
+  serviceNames: string[];
   spanCount: number;
 }
 
@@ -21,10 +22,12 @@ export function extractTraceMeta(
   resourceSpans: OtlpResourceSpan[],
   resourceLogs: OtlpResourceLog[],
 ): TraceMeta {
-  const meta: TraceMeta = { firstSeen: Infinity, lastSeen: 0, spanCount: 0 };
+  const meta: TraceMeta = { firstSeen: Infinity, lastSeen: 0, spanCount: 0, serviceNames: [] };
+  const services = new Set<string>();
 
   for (const resourceSpan of resourceSpans) {
-    meta.serviceName ??= getResourceAttribute(resourceSpan.resource, "service.name");
+    const service = getResourceAttribute(resourceSpan.resource, "service.name");
+    if (service) services.add(service);
     for (const scopeSpan of resourceSpan.scopeSpans ?? []) {
       for (const span of scopeSpan.spans ?? []) {
         meta.spanCount++;
@@ -39,7 +42,8 @@ export function extractTraceMeta(
   }
 
   for (const resourceLog of resourceLogs) {
-    meta.serviceName ??= getResourceAttribute(resourceLog.resource, "service.name");
+    const service = getResourceAttribute(resourceLog.resource, "service.name");
+    if (service) services.add(service);
     for (const scopeLog of resourceLog.scopeLogs ?? []) {
       for (const record of scopeLog.logRecords ?? []) {
         meta.spanCount++;
@@ -55,6 +59,7 @@ export function extractTraceMeta(
   const now = Date.now();
   if (meta.firstSeen === Infinity) meta.firstSeen = now;
   if (meta.lastSeen === 0) meta.lastSeen = now;
+  meta.serviceNames = [...services];
   return meta;
 }
 
