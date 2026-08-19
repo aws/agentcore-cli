@@ -693,10 +693,11 @@ describe("project add harness", () => {
 });
 
 describe("project add credentials", () => {
-  test("api-key with a file:// secret records the spec entry and stores the key in .env.local", async () => {
+  test("api-key with a file:// secret records the spec entry and stores the trailing-newline-stripped key in .env.local", async () => {
     const projectRoot = await inProject();
     const keyPath = join(projectRoot, "key.txt");
-    await Bun.write(keyPath, "sk-123");
+    // The trailing newline mirrors `echo` and editor output; it must not reach the value.
+    await Bun.write(keyPath, "sk-123\n");
 
     await run([
       "add",
@@ -714,7 +715,8 @@ describe("project add credentials", () => {
     ]);
 
     const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-    expect(env).toContain("AGENTCORE_CREDENTIAL_SVC_KEY=sk-123");
+    expect(env).toContain("AGENTCORE_CREDENTIAL_SVC_KEY=sk-123\n");
+    expect(env).not.toContain("AGENTCORE_CREDENTIAL_SVC_KEY=sk-123\n\n");
   });
 
   test("api-key without a secret writes a commented placeholder and tells the user to fill it", async () => {
@@ -852,26 +854,6 @@ describe("project add credentials", () => {
     expect(gitignore).toStartWith("node_modules/\n");
     expect(gitignore).toContain("\n.env.local\n");
     expect(io.stderr()).toContain(".gitignore");
-  });
-
-  test("strips a single trailing newline from a file secret", async () => {
-    const projectRoot = await inProject();
-    const keyPath = join(projectRoot, "key.txt");
-    await Bun.write(keyPath, "sk-123\n");
-
-    await run([
-      "add",
-      "credentials",
-      "api-key",
-      "--name",
-      "svc-key",
-      "--api-key",
-      `file://${keyPath}`,
-    ]);
-
-    const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-    expect(env).toContain("AGENTCORE_CREDENTIAL_SVC_KEY=sk-123\n");
-    expect(env).not.toContain("AGENTCORE_CREDENTIAL_SVC_KEY=sk-123\n\n");
   });
 
   test("rejects a duplicate credential name across credential types", async () => {
