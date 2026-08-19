@@ -19,6 +19,11 @@ import {
   type ReadWriteJson,
 } from "../../io";
 import { defaultSource, type AssetSource } from "./source";
+import {
+  ENV_LOCAL_RELATIVE_PATH,
+  ensureGitignoreCoversEnvLocal,
+  upsertEnvLocalEntries,
+} from "./envLocal";
 import { createHarnessTreeFromSpec, createProjectTreeFromTemplate, TEMPLATES } from "./templates";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { enclosingProjectRoot } from "./fsUtils";
@@ -139,7 +144,8 @@ export class FsProjectManager implements ProjectManager {
         `a ${resourceType} with name '${resourceConfig.name}' already exists`,
       );
 
-    const newResources = [...existingResources];
+    // Widened: arms push their own shapes; the whole-spec safeParse below validates.
+    const newResources: unknown[] = [...existingResources];
     const scaffoldedPaths: string[] = [];
 
     switch (resourceType) {
@@ -160,6 +166,11 @@ export class FsProjectManager implements ProjectManager {
           "runtime case not yet implemented in FsProjectManager.addResource",
         );
       }
+      case "credential": {
+        // Spec-only resource: no scaffolding, secrets go to .env.local below.
+        newResources.push(input.resourceConfig);
+        break;
+      }
       // TODO: add limited special casing for runtime and default for other resources that proxy directly to spec changes.
     }
 
@@ -174,13 +185,9 @@ export class FsProjectManager implements ProjectManager {
       });
 
     // rollback scaffolding changes on failed config writes to prevent bad state.
+    let newProjectSpec: z.infer<typeof ProjectSpecSchema>;
     try {
-      const newProjectSpec = await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
-
-      return {
-        ...project,
-        spec: newProjectSpec,
-      };
+      newProjectSpec = await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
     } catch (err) {
       this.logger.warn(
         `failed to update ${agentCoreSpecPath}; attempting best-effort cleanup of scaffolded files`,
@@ -197,6 +204,23 @@ export class FsProjectManager implements ProjectManager {
       );
       throw err;
     }
+
+    if (input.resourceType === "credential" && input.envEntries && input.envEntries.length > 0) {
+      const envPath = join(project.rootPath, ENV_LOCAL_RELATIVE_PATH);
+      yield { message: `Updating secrets file at '${envPath}'` };
+      const { skipped } = await upsertEnvLocalEntries(envPath, input.envEntries);
+      for (const key of skipped) {
+        yield { message: `'${key}' already exists in ${ENV_LOCAL_RELATIVE_PATH}; left unchanged` };
+      }
+      if (await ensureGitignoreCoversEnvLocal(project.rootPath)) {
+        yield { message: `Added '.env.local' to .gitignore so secrets stay out of git` };
+      }
+    }
+
+    return {
+      ...project,
+      spec: newProjectSpec,
+    };
   }
 
   private async scaffoldHarness(
@@ -280,5 +304,7 @@ function toProjectSpecKey(resourceType: ProjectResource) {
       return "harnesses";
     case "runtime":
       return "runtimes";
+    case "credential":
+      return "credentials";
   }
 }
