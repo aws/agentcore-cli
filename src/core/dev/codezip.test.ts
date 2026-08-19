@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { delimiter, join, relative } from "node:path";
 import { InputValidationError } from "../../errors";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import type { DevEvent, DevServerInput } from "../../handlers/project/dev/types";
-import type { ProcessEvent, ProcessStreamer, StreamProcessOptions } from "../../io";
+import type { ProcessEvent, ProcessRunner, ProcessStreamer, StreamProcessOptions } from "../../io";
 import { CodeZipDevRunner } from "./codezip";
 
 type ProcessCall = {
@@ -54,15 +54,22 @@ async function projectRoot(withNodeModules = false): Promise<string> {
   return root;
 }
 
-function harness(output: ProcessEvent[] = []) {
+function harness(output: ProcessEvent[] = [], probe: { dir?: string; fail?: boolean } = {}) {
   const calls: ProcessCall[] = [];
+  const probeCalls: string[][] = [];
   const fakeStreamProcess: ProcessStreamer = async function* (command, options) {
     calls.push({ command, options });
     yield* output;
   };
+  const fakeRunProcess: ProcessRunner = async (command, options) => {
+    probeCalls.push(command);
+    if (probe.fail) throw new Error("probe failed");
+    options.onOutput?.(`${probe.dir ?? ""}\n`);
+  };
   return {
     calls,
-    runner: new CodeZipDevRunner({ streamProcess: fakeStreamProcess }),
+    probeCalls,
+    runner: new CodeZipDevRunner({ streamProcess: fakeStreamProcess, runProcess: fakeRunProcess }),
   };
 }
 
@@ -191,5 +198,71 @@ describe("CodeZipDevRunner", () => {
     expect(calls.map(({ command }) => command)).toEqual([
       ["npm", "exec", "--", "tsx", "watch", "index.js"],
     ]);
+  });
+});
+
+describe("CodeZipDevRunner OTEL instrumentation", () => {
+  async function sitecustomizeDir(): Promise<string> {
+    const directory = await mkdtemp(join(tmpdir(), "otel-site-"));
+    tempDirectories.push(directory);
+    await writeFile(join(directory, "sitecustomize.py"), "");
+    return directory;
+  }
+
+  function otelInput(root: string, extraEnv: Record<string, string> = {}): DevServerInput {
+    const base = input(root, runtime());
+    return {
+      ...base,
+      env: { ...base.env, OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318", ...extraEnv },
+    };
+  }
+
+  test("prepends the sitecustomize directory to PYTHONPATH when instrumentation is installed", async () => {
+    const root = await projectRoot();
+    const directory = await sitecustomizeDir();
+    const { calls, probeCalls, runner } = harness([], { dir: directory });
+
+    await collect(runner.run(otelInput(root)));
+
+    expect(probeCalls[0]?.slice(0, 4)).toEqual(["uv", "run", "python", "-c"]);
+    expect(calls[0]?.options.env?.PYTHONPATH).toBe(directory);
+  });
+
+  test("preserves an existing PYTHONPATH", async () => {
+    const root = await projectRoot();
+    const directory = await sitecustomizeDir();
+    const { calls, runner } = harness([], { dir: directory });
+
+    await collect(runner.run(otelInput(root, { PYTHONPATH: "/existing" })));
+
+    expect(calls[0]?.options.env?.PYTHONPATH).toBe(`${directory}${delimiter}/existing`);
+  });
+
+  test("does not probe without an OTEL endpoint or for Node entrypoints", async () => {
+    const root = await projectRoot(true);
+    const { probeCalls, runner } = harness();
+
+    await collect(runner.run(input(root, runtime())));
+    await collect(runner.run({ ...otelInput(root), runtime: runtime({ entrypoint: "index.js" }) }));
+
+    expect(probeCalls).toEqual([]);
+  });
+
+  test.each([
+    ["probe failure", { fail: true }],
+    ["missing sitecustomize.py", { dir: "/nonexistent" }],
+  ] as const)("warns and starts untraced on %s", async (_case, probe) => {
+    const root = await projectRoot();
+    const { calls, probeCalls, runner } = harness([], probe);
+
+    const events = await collect(runner.run(otelInput(root)));
+
+    expect(probeCalls).toHaveLength(1);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.options.env?.PYTHONPATH).toBeUndefined();
+    expect(events).toContainEqual({
+      type: "status",
+      message: expect.stringContaining("traces will not be collected"),
+    });
   });
 });
