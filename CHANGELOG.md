@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.27.1] - 2026-08-19
+
+### Added
+- feat(capacity-provider): add capacity-provider resource (Journey 1) (#2030) (72cb257d)
+- feat(evaluator): surface skill evaluators (TOOL_CALL level + skill placeholders) (#2016) (#2042) (88a02ed7)
+
+### Fixed
+- fix: validate existing IAM role trust policies (#2033) (33ceeebc)
+- fix(add): correct gateway-target --help outbound auth per target type (#1915) (b9f57e25)
+- fix(policy): support generated policy definitions (#2021) (85b953ef)
+- fix(exec): derive region from the ARN so --runtime needs no project (#1996) (ba4a1bd8)
+
+### Other Changes
+- revert: remove capacity-provider Journey 1 (#2045) (0cd32ba1)
+
 ## [0.27.0] - 2026-08-12
 
 ### Added
