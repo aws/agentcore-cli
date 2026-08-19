@@ -3,17 +3,8 @@ import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
 import { parseJsonFlag } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
-import {
-  type EnvVar,
-  type FilesystemConfiguration,
-  type LifecycleConfiguration,
-  type NetworkConfig,
-  BuildTypeSchema,
-} from "../../../../projectSchemas/runtime";
-import {
-  RuntimeAuthorizerTypeSchema,
-  type AuthorizerConfig,
-} from "../../../../projectSchemas/auth";
+import { type EnvVar, BuildTypeSchema } from "../../../../projectSchemas/runtime";
+import { RuntimeAuthorizerTypeSchema } from "../../../../projectSchemas/auth";
 import {
   NetworkModeSchema,
   ProtocolModeSchema,
@@ -21,6 +12,7 @@ import {
 } from "../../../../projectSchemas/constants";
 import {
   runtimeModelProviderSchema,
+  RuntimeResourceConfigSchema,
   RUNTIME_TEMPLATES,
   runtimeMemoryConfigSchema,
 } from "../../types";
@@ -172,26 +164,26 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         additionalPolicies: flags["additional-policies"],
         envVars: toEnvironmentVariables(inputEnvironmentVariables),
         networkMode: flags["network-mode"],
-        networkConfig: parseJsonFlag<NetworkConfig>("network-config", flags["network-config"]),
+        networkConfig: parseJsonFlag("network-config", flags["network-config"]),
         authorizerType: flags["authorizer-type"],
-        authorizerConfiguration: parseJsonFlag<AuthorizerConfig>(
+        authorizerConfiguration: parseJsonFlag(
           "authorizer-configuration",
           flags["authorizer-configuration"],
         ),
         protocol: flags["protocol"],
         requestHeaderAllowlist: flags["request-header-allowlist"],
-        lifecycleConfiguration: parseJsonFlag<LifecycleConfiguration>(
+        lifecycleConfiguration: parseJsonFlag(
           "lifecycle-configuration",
           flags["lifecycle-configuration"],
         ),
-        filesystemConfigurations: parseJsonFlag<FilesystemConfiguration[]>(
+        filesystemConfigurations: parseJsonFlag(
           "filesystem-configurations",
           flags["filesystem-configurations"],
         ),
-        tags: parseJsonFlag<Record<string, string>>("tags", flags["tags"]),
+        tags: parseJsonFlag("tags", flags["tags"]),
       };
 
-      const runtimeConfig = isTemplate
+      const runtimeInput = isTemplate
         ? {
             source: "template" as const,
             template,
@@ -207,17 +199,21 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
             runtimeVersion: flags["runtime-version"],
             dockerfile: flags.dockerfile,
             buildContextPath: flags["build-context-path"],
-            customDockerBuildArgs: parseJsonFlag<Record<string, string>>(
+            customDockerBuildArgs: parseJsonFlag(
               "custom-docker-build-args",
               flags["custom-docker-build-args"],
             ),
             ...infraConfig,
           };
 
+      const result = RuntimeResourceConfigSchema.safeParse(runtimeInput);
+      if (!result.success)
+        throw new InputValidationError(z.prettifyError(result.error), { cause: result.error });
+
       const project = ctx.require(ProjectKey);
       for await (const event of config.projectManager.addResource(project, {
         resourceType: "runtime",
-        resourceConfig: runtimeConfig,
+        resourceConfig: result.data,
       })) {
         config.io.stderr.write(`${event.message}\n`);
       }
