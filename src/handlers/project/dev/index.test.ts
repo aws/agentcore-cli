@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createServer, type Server } from "node:net";
 import { join } from "node:path";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
@@ -6,7 +7,7 @@ import {
   ResourceNotFoundError,
   UserCancellationError,
 } from "../../../errors";
-import type { PortChecker } from "../../../io";
+import { checkPort, type PortChecker } from "../../../io";
 import { ProjectKey, ValueContext } from "../../../router";
 import { testIO } from "../../../testing";
 import { JsonRendererKey } from "../../../tui";
@@ -118,12 +119,6 @@ describe("project dev selection and dispatch", () => {
     [project(), {}, "This project has no runtimes", InputValidationError],
     [
       project(runtime("orders"), runtime("support", "Container")),
-      {},
-      "Use --agent to select one. Available runtimes: orders, support",
-      InputValidationError,
-    ],
-    [
-      project(runtime("orders"), runtime("support", "Container")),
       { agent: "missing" },
       "Runtime 'missing' was not found. Available runtimes: orders, support",
       ResourceNotFoundError,
@@ -177,6 +172,93 @@ describe("project dev selection and dispatch", () => {
     expect(checked).toEqual([8080, 8081]);
     expect(subject.codeZip.inputs[0]?.port).toBe(8081);
     expect(subject.io.stderr()).toContain("Port 8080 is in use; using 8081.");
+  });
+});
+
+/**
+ * A runner that binds a real TCP listener on its assigned port (so the
+ * supervisor's genuine readiness probe passes) and stays alive until aborted.
+ */
+function listeningRunner(events: DevEvent[] = []) {
+  const inputs: DevServerInput[] = [];
+  const runner: DevRunner = {
+    run: async function* (input) {
+      inputs.push(input);
+      const server: Server = createServer();
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(input.port, "127.0.0.1", resolve);
+      });
+      try {
+        yield* events;
+        await new Promise<void>((resolve) =>
+          input.signal.addEventListener("abort", () => resolve(), { once: true }),
+        );
+      } finally {
+        server.close();
+      }
+    },
+  };
+  return { runner, inputs };
+}
+
+describe("project dev multi-agent supervision", () => {
+  const twoRuntimes = () => project(runtime("orders"), runtime("support", "Container"));
+
+  test("supervises every runtime with attributed output and per-runtime env", async () => {
+    const codeZip = listeningRunner([{ type: "stdout", line: "orders says hi" }]);
+    const container = listeningRunner();
+    const subject = harness({
+      project: twoRuntimes(),
+      codeZip,
+      container,
+      checkPort, // the real checker: resolved ports reflect this machine
+    });
+    const pending = subject.run();
+    pending.catch(() => undefined);
+    await Bun.sleep(300); // both agents bind and pass the real readiness probe
+
+    expect(codeZip.inputs).toHaveLength(1);
+    expect(container.inputs).toHaveLength(1);
+    expect(codeZip.inputs[0]!.env).toMatchObject({
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:43180",
+      OTEL_SERVICE_NAME: "orders",
+    });
+    expect(container.inputs[0]!.env).toMatchObject({
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://host.docker.internal:43180",
+      OTEL_SERVICE_NAME: "support",
+    });
+    expect(subject.io.stdout()).toContain("[orders] orders says hi");
+    expect(subject.io.stderr()).toContain("Agent 'orders' is running on port");
+
+    process.emit("SIGINT", "SIGINT");
+    await expect(pending).rejects.toMatchObject({ exitCode: 130 });
+    expect(subject.collector.state.closed).toBe(1);
+  });
+
+  test("one agent failing to start does not stop the others", async () => {
+    const container = listeningRunner();
+    const subject = harness({
+      project: twoRuntimes(),
+      codeZip: captureRunner([{ type: "status", message: "dying" }]), // ends immediately: never ready
+      container,
+      checkPort,
+    });
+    const pending = subject.run();
+    pending.catch(() => undefined);
+    await Bun.sleep(300);
+
+    expect(subject.io.stderr()).toContain("[orders] Agent 'orders' failed to start");
+    expect(subject.io.stderr()).toContain("Agent 'support' is running on port");
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
+  test("--port without --agent is rejected when several runtimes exist", async () => {
+    await expect(harness({ project: twoRuntimes() }).run({ port: 4567 })).rejects.toThrow(
+      "--port applies to a single runtime",
+    );
   });
 });
 

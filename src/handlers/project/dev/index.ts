@@ -2,6 +2,7 @@ import { join } from "node:path";
 import z from "zod";
 import { rewriteOtelEndpointForContainer } from "../../../core/dev/otel/collector";
 import { resolveDevPort } from "../../../core/dev/port";
+import { DevSupervisor } from "../../../core/dev/supervisor";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   InputValidationError,
@@ -33,36 +34,31 @@ function otelEnvForRuntime(
   return runtime.build === "Container" ? rewriteOtelEndpointForContainer(env) : env;
 }
 
-function selectRuntime(project: Project, name?: string): ProjectRuntime {
+function selectRuntimes(project: Project, name?: string): ProjectRuntime[] {
   if (project.spec.runtimes.length === 0) {
     throw new InputValidationError(
       "This project has no runtimes. Add a runtime to agentcore/agentcore.json and retry.",
     );
   }
-  const available = project.spec.runtimes.map(({ name }) => name).join(", ");
+  if (!name) return project.spec.runtimes;
 
-  if (name) {
-    const runtime = project.spec.runtimes.find((candidate) => candidate.name === name);
-    if (runtime) return runtime;
-    throw new ResourceNotFoundError(
-      `Runtime '${name}' was not found. Available runtimes: ${available}.`,
-    );
-  }
-
-  if (project.spec.runtimes.length === 1) return project.spec.runtimes[0]!;
-  throw new InputValidationError(
-    `Multiple runtimes found. Use --agent to select one. Available runtimes: ${available}.`,
+  const runtime = project.spec.runtimes.find((candidate) => candidate.name === name);
+  if (runtime) return [runtime];
+  const available = project.spec.runtimes.map((candidate) => candidate.name).join(", ");
+  throw new ResourceNotFoundError(
+    `Runtime '${name}' was not found. Available runtimes: ${available}.`,
   );
 }
 
-function renderEvent(io: AppIO, event: DevEvent, json?: JsonRenderer): void {
+function renderEvent(io: AppIO, event: DevEvent, json?: JsonRenderer, agent?: string): void {
   if (json) {
-    json.renderJsonLine(event);
+    json.renderJsonLine(agent === undefined ? event : { agent, ...event });
     return;
   }
 
   const output = event.type === "stdout" ? io.stdout : io.stderr;
-  output.write(`${event.type === "status" ? event.message : event.line}\n`);
+  const line = event.type === "status" ? event.message : event.line;
+  output.write(agent === undefined ? `${line}\n` : `[${agent}] ${line}\n`);
 }
 
 export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
@@ -92,33 +88,18 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
       let collector: DevTraceCollector | undefined;
       try {
         const project = ctx.require(ProjectKey);
-        const runtime = selectRuntime(project, flags.agent);
-        const devPort = await resolveDevPort(
-          runtime.protocol,
-          flags.port,
-          config.checkPort,
-          controller.signal,
-        );
-        if (devPort.port !== devPort.requestedPort) {
-          renderEvent(
-            config.io,
-            {
-              type: "status",
-              message: `Port ${devPort.requestedPort} is in use; using ${devPort.port}.`,
-            },
-            json,
+        const region = ctx.require(RegionKey);
+        const runtimes = selectRuntimes(project, flags.agent);
+        if (runtimes.length > 1 && flags.port !== undefined) {
+          throw new InputValidationError(
+            "--port applies to a single runtime. Use --agent to select one.",
           );
         }
 
-        const { env } = await config.loadDevEnvironment({
-          projectRoot: project.rootPath,
-          runtime,
-          region: ctx.require(RegionKey),
-        });
-        controller.signal.throwIfAborted();
-
-        let otelEnv: Record<string, string> = {};
-        if (flags.traces && (runtime.instrumentation?.enableOtel ?? true)) {
+        if (
+          flags.traces &&
+          runtimes.some((runtime) => runtime.instrumentation?.enableOtel ?? true)
+        ) {
           const tracesDirectory = join(project.rootPath, "agentcore", ".cli", "traces", "otlp");
           let tracePersistErrorReported = false;
           collector = await config.startTraceCollector({
@@ -142,7 +123,6 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
               );
             },
           });
-          otelEnv = otelEnvForRuntime(collector, runtime);
           renderEvent(
             config.io,
             {
@@ -154,16 +134,54 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
         }
         controller.signal.throwIfAborted();
 
-        const runner = config.runners[runtime.build];
-        for await (const event of runner.run({
-          runtime,
-          projectRoot: project.rootPath,
-          port: devPort.port,
-          env: { ...env, ...otelEnv },
-          signal: controller.signal,
-        })) {
-          renderEvent(config.io, event, json);
+        const environment = async (runtime: ProjectRuntime): Promise<Record<string, string>> => {
+          const { env } = await config.loadDevEnvironment({
+            projectRoot: project.rootPath,
+            runtime,
+            region,
+          });
+          const otel =
+            collector && (runtime.instrumentation?.enableOtel ?? true)
+              ? otelEnvForRuntime(collector, runtime)
+              : {};
+          return { ...env, ...otel };
+        };
+
+        if (runtimes.length === 1) {
+          await runSingleRuntime(
+            config,
+            runtimes[0]!,
+            project,
+            flags.port,
+            environment,
+            controller,
+            json,
+          );
+          return;
         }
+
+        // Several runtimes: supervise them all, streaming agent-attributed output.
+        const supervisor = new DevSupervisor({
+          runtimes,
+          projectRoot: project.rootPath,
+          runners: config.runners,
+          environment,
+          resolvePort: async (runtime) =>
+            (await resolveDevPort(runtime.protocol, undefined, config.checkPort, controller.signal))
+              .port,
+          signal: controller.signal,
+        });
+        // Sequential starts: concurrent port resolution would race two agents
+        // onto the same port. Failed starts surface as attributed status events.
+        for (const runtime of runtimes) {
+          await supervisor.start(runtime.name).catch(() => {});
+        }
+        controller.signal.throwIfAborted();
+
+        for await (const { agent, event } of supervisor.events()) {
+          renderEvent(config.io, event, json, agent);
+        }
+        controller.signal.throwIfAborted();
       } catch (error) {
         controller.signal.throwIfAborted();
         throw error;
@@ -175,3 +193,49 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
       }
     },
   });
+
+/**
+ * Run one runtime directly, streaming its output unattributed. Unlike the
+ * supervised multi-agent path, a crash here fails the command (scripts and CI
+ * rely on the non-zero exit).
+ */
+async function runSingleRuntime(
+  config: DevProjectHandlerConfig,
+  runtime: ProjectRuntime,
+  project: Project,
+  explicitPort: number | undefined,
+  environment: (runtime: ProjectRuntime) => Promise<Record<string, string>>,
+  controller: AbortController,
+  json?: JsonRenderer,
+): Promise<void> {
+  const devPort = await resolveDevPort(
+    runtime.protocol,
+    explicitPort,
+    config.checkPort,
+    controller.signal,
+  );
+  if (devPort.port !== devPort.requestedPort) {
+    renderEvent(
+      config.io,
+      {
+        type: "status",
+        message: `Port ${devPort.requestedPort} is in use; using ${devPort.port}.`,
+      },
+      json,
+    );
+  }
+
+  const env = await environment(runtime);
+  controller.signal.throwIfAborted();
+
+  const runner = config.runners[runtime.build];
+  for await (const event of runner.run({
+    runtime,
+    projectRoot: project.rootPath,
+    port: devPort.port,
+    env,
+    signal: controller.signal,
+  })) {
+    renderEvent(config.io, event, json);
+  }
+}
