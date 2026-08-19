@@ -1,7 +1,7 @@
 import z from "zod";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
-import { parseJsonFlag } from "../../../utils";
+import { parseJsonFlag, parseTags } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
 import { type EnvVar, BuildTypeSchema } from "../../../../projectSchemas/runtime";
 import { RuntimeAuthorizerTypeSchema } from "../../../../projectSchemas/auth";
@@ -108,7 +108,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         "memory configuration (JSON with mode: disabled | create | existing) (template only)",
         z.string().optional(),
       ),
-      flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),
+      flag("tags", "tags as key=value (repeatable) or JSON object", z.array(z.string()).optional()),
     ],
     handle: async (ctx, flags) => {
       if (!flags.name)
@@ -180,7 +180,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
           "filesystem-configurations",
           flags["filesystem-configurations"],
         ),
-        tags: parseJsonFlag("tags", flags["tags"]),
+        tags: parseTags(flags["tags"]),
       };
 
       const runtimeInput = isTemplate
