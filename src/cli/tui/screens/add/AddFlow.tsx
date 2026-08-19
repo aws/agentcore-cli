@@ -7,6 +7,7 @@ import { AddAgentFlow } from '../agent/AddAgentFlow';
 import type { AddAgentConfig } from '../agent/types';
 import { FRAMEWORK_OPTIONS } from '../agent/types';
 import { useAddAgent } from '../agent/useAddAgent';
+import { AddCapacityProviderFlow } from '../capacity-provider';
 import { AddConfigBundleFlow } from '../config-bundle';
 import { AddDatasetFlow } from '../dataset';
 import { AddEvaluatorFlow } from '../evaluator';
@@ -45,6 +46,7 @@ type FlowState =
   | { name: 'runtime-endpoint-wizard' }
   | { name: 'payment-manager-wizard' }
   | { name: 'payment-connector-wizard' }
+  | { name: 'capacity-provider-wizard' }
   | {
       name: 'agent-create-success';
       agentName: string;
@@ -220,6 +222,8 @@ function getInitialFlowState(resource?: AddResourceType): FlowState {
       return { name: 'payment-manager-wizard' };
     case 'payment-connector':
       return { name: 'payment-connector-wizard' };
+    case 'capacity-provider':
+      return { name: 'capacity-provider-wizard' };
     default:
       return { name: 'select' };
   }
@@ -295,6 +299,9 @@ export function AddFlow(props: AddFlowProps) {
         break;
       case 'payment-connector':
         setFlow({ name: 'payment-connector-wizard' });
+        break;
+      case 'capacity-provider':
+        setFlow({ name: 'capacity-provider-wizard' });
         break;
     }
   }, []);
@@ -632,6 +639,19 @@ export function AddFlow(props: AddFlowProps) {
       <AddPaymentFlow
         isInteractive={props.isInteractive}
         initialAction="connector"
+        onExit={props.onExit}
+        onBack={() => setFlow({ name: 'select' })}
+        onDev={props.onDev}
+        onDeploy={props.onDeploy}
+      />
+    );
+  }
+
+  // Capacity provider wizard
+  if (flow.name === 'capacity-provider-wizard') {
+    return (
+      <AddCapacityProviderFlow
+        isInteractive={props.isInteractive}
         onExit={props.onExit}
         onBack={() => setFlow({ name: 'select' })}
         onDev={props.onDev}

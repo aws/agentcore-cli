@@ -1,5 +1,6 @@
 import type {
   AgentCoreDeployedState,
+  CapacityProviderDeployedState,
   ConfigBundleDeployedState,
   DatasetDeployedState,
   DeployedState,
@@ -545,6 +546,37 @@ export function parseDatasetOutputs(
 }
 
 /**
+ * Parse stack outputs into deployed state for capacity providers.
+ *
+ * Output key pattern: ApplicationCapacityProvider{PascalName}(Id|Arn)Output{Hash}
+ */
+export function parseCapacityProviderOutputs(
+  outputs: StackOutputs,
+  capacityProviderNames: string[]
+): Record<string, CapacityProviderDeployedState> {
+  const capacityProviders: Record<string, CapacityProviderDeployedState> = {};
+  const outputKeys = Object.keys(outputs);
+
+  for (const capacityProviderName of capacityProviderNames) {
+    const pascal = toPascalId('CapacityProvider', capacityProviderName);
+    const idPrefix = `Application${pascal}IdOutput`;
+    const arnPrefix = `Application${pascal}ArnOutput`;
+
+    const idKey = outputKeys.find(k => k.startsWith(idPrefix));
+    const arnKey = outputKeys.find(k => k.startsWith(arnPrefix));
+
+    if (idKey && arnKey) {
+      capacityProviders[capacityProviderName] = {
+        capacityProviderId: outputs[idKey]!,
+        capacityProviderArn: outputs[arnKey]!,
+      };
+    }
+  }
+
+  return capacityProviders;
+}
+
+/**
  * Parse CDK stack outputs for CFN-deployed harnesses into deployed-state records.
  *
  * The L3 AgentCoreApplication emits, per harness `${name}` (pascal = toPascalId('Harness', name)):
@@ -742,6 +774,7 @@ export interface BuildDeployedStateOptions {
   configBundles?: Record<string, ConfigBundleDeployedState>;
   knowledgeBases?: Record<string, KnowledgeBaseDeployedState>;
   payments?: Record<string, PaymentDeployedState>;
+  capacityProviders?: Record<string, CapacityProviderDeployedState>;
   /**
    * Names of A/B tests currently declared in the project spec. AB test state is managed
    * post-deploy (not via CFN outputs) and carried forward across deploys; passing the
@@ -776,6 +809,7 @@ export function buildDeployedState(opts: BuildDeployedStateOptions): DeployedSta
     configBundles,
     knowledgeBases,
     payments,
+    capacityProviders,
     abTestNames,
   } = opts;
   const targetState: TargetDeployedState = {
@@ -876,6 +910,11 @@ export function buildDeployedState(opts: BuildDeployedStateOptions): DeployedSta
   // Add payment state from CFN outputs (or preserve credential provider state)
   if (payments && Object.keys(payments).length > 0) {
     targetState.resources!.payments = payments;
+  }
+
+  // Add capacity provider state from CFN outputs
+  if (capacityProviders && Object.keys(capacityProviders).length > 0) {
+    targetState.resources!.capacityProviders = capacityProviders;
   }
 
   return {

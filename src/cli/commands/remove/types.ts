@@ -17,7 +17,8 @@ export type ResourceType =
   | 'dataset'
   | 'knowledge-base'
   | 'payment-manager'
-  | 'payment-connector';
+  | 'payment-connector'
+  | 'capacity-provider';
 
 export interface RemoveOptions {
   resourceType: ResourceType;

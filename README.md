@@ -91,10 +91,10 @@ agentcore invoke
 
 ### Resource Management
 
-| Command  | Description                                                                                                                                                                                                                                             |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `add`    | Add harnesses, agents, memory, credentials, gateways and gateway-targets, evaluators, online evals, online insights, knowledge bases, config bundles, datasets, policy engines and policies, payment managers and payment connectors, runtime endpoints |
-| `remove` | Remove any of the above resources from the project                                                                                                                                                                                                      |
+| Command  | Description                                                                                                                                                                                                                                                                 |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `add`    | Add harnesses, agents, memory, credentials, gateways and gateway-targets, evaluators, online evals, online insights, knowledge bases, config bundles, datasets, policy engines and policies, payment managers and payment connectors, capacity providers, runtime endpoints |
+| `remove` | Remove any of the above resources from the project                                                                                                                                                                                                                          |
 
 > **Note**: Run `agentcore deploy` after `add` or `remove` to update resources in AWS.
 
@@ -264,8 +264,8 @@ my-project/
 Projects use JSON schema files in the `agentcore/` directory:
 
 - `agentcore.json` - Project resources (agents, memory, credentials, gateways, evaluators, online evals/insights,
-  knowledge bases, harnesses, policy engines and policies, payment managers and connectors, config bundles, datasets,
-  runtime endpoints)
+  knowledge bases, harnesses, policy engines and policies, payment managers and connectors, capacity providers, config
+  bundles, datasets, runtime endpoints)
 - `deployed-state.json` - Runtime state in agentcore/.cli/ (auto-managed)
 - `aws-targets.json` - Deployment targets (account, region)
 

@@ -10,6 +10,7 @@ import { isReservedProjectName } from '../constants';
 import { AgentEnvSpecSchema } from './agent-env';
 import { AgentCoreGatewaySchema, AgentCoreGatewayTargetSchema, AgentCoreMcpRuntimeToolSchema } from './mcp';
 import { ABTestSchema } from './primitives/ab-test';
+import { CapacityProviderSchema } from './primitives/capacity-provider';
 import { ConfigBundleSchema } from './primitives/config-bundle';
 import { DatasetSchema } from './primitives/dataset';
 import {
@@ -92,6 +93,15 @@ export type { Tags } from './primitives/tags';
 export { DatasetSchema };
 export { DatasetNameSchema, DatasetSchemaTypeSchema } from './primitives/dataset';
 export type { Dataset, DatasetSchemaType } from './primitives/dataset';
+export { CapacityProviderSchema };
+export {
+  CapacityProviderNameSchema,
+  CAPACITY_PROVIDER_OPERATOR_ROLE_ARN_PATTERN,
+  isValidOperatorRoleArn,
+  OperatingSystemSchema,
+  OperatorRoleArnSchema,
+} from './primitives/capacity-provider';
+export type { CapacityProvider, OperatingSystem } from './primitives/capacity-provider';
 export type { ABTestMode, TargetRef, GatewayFilter, PerVariantOnlineEvaluationConfig } from './primitives/ab-test';
 export { ABTestModeSchema, TargetRefSchema, GatewayFilterSchema } from './primitives/ab-test';
 export type {
@@ -548,6 +558,17 @@ export const AgentCoreProjectSpecSchema = z
           }
           seen.add(dataset.name);
         }
+      }),
+
+    capacityProviders: z
+      .array(CapacityProviderSchema)
+      .optional()
+      .superRefine((items, ctx) => {
+        if (!items) return;
+        uniqueBy(
+          (cp: { name: string }) => cp.name,
+          (name: string) => `Duplicate capacity provider name: ${name}`
+        )(items, ctx);
       }),
 
     httpGateways: z

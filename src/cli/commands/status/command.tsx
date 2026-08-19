@@ -27,6 +27,7 @@ const VALID_RESOURCE_TYPES = [
   'dataset',
   'knowledge-base',
   'harness',
+  'capacity-provider',
 ] as const;
 const VALID_STATES = ['deployed', 'local-only', 'pending-removal'] as const;
 

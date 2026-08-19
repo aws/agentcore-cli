@@ -25,6 +25,7 @@ import {
   Mode,
   ModelProvider,
   NetworkMode,
+  OperatingSystem,
   OutboundAuthType,
   PolicyAttrSourceType,
   PolicyEngineMode,
@@ -112,6 +113,15 @@ const AddPolicyAttrs = safeSchema({
 });
 
 const AddSkillAttrs = safeSchema({ skill_source_type: SkillSourceType });
+
+const AddCapacityProviderAttrs = safeSchema({
+  operating_system: OperatingSystem,
+  instance_type_count: Count,
+  subnet_count: Count,
+  security_group_count: Count,
+  volume_count: Count,
+  has_description: z.boolean(),
+});
 
 const DeployAttrs = safeSchema({
   runtime_count: Count,
@@ -244,6 +254,7 @@ export const COMMAND_SCHEMAS = {
   'add.knowledge-base': AddKnowledgeBaseAttrs,
   'add.payment-manager': NoAttrs,
   'add.payment-connector': NoAttrs,
+  'add.capacity-provider': AddCapacityProviderAttrs,
   'add.skill': AddSkillAttrs,
   deploy: DeployAttrs,
 
@@ -307,6 +318,7 @@ export const COMMAND_SCHEMAS = {
   'dataset.remove-version': NoAttrs,
   'remove.payment-manager': NoAttrs,
   'remove.payment-connector': NoAttrs,
+  'remove.capacity-provider': NoAttrs,
   'remove.skill': NoAttrs,
   'telemetry.disable': NoAttrs,
   'telemetry.enable': NoAttrs,

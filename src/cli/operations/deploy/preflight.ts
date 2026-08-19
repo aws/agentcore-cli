@@ -68,6 +68,43 @@ export function formatError(err: unknown): string {
 }
 
 /**
+ * Spec arrays whose presence means the project has something to deploy to CloudFormation.
+ * Keep in sync with the resource types that emit CFN outputs (see cloudformation/outputs.ts
+ * parse*Outputs). A project with none of these is empty: deploy either errors ("No resources
+ * defined") or, when a stack already exists, tears it down.
+ *
+ * This is the single source of truth for "is the project deployable" — a new deployable primitive
+ * adds its key here and every consumer stays correct. Previously this was a hand-maintained boolean
+ * chain that silently drifted (configBundles and onlineEvalConfigs were both missing from it, so a
+ * project containing only those was misclassified as empty). The `satisfies` clause makes a typo'd
+ * or renamed key a compile error.
+ */
+export const DEPLOYABLE_RESOURCE_KEYS = [
+  'runtimes',
+  'agentCoreGateways',
+  'memories',
+  'knowledgeBases',
+  'evaluators',
+  'onlineEvalConfigs',
+  'policyEngines',
+  'configBundles',
+  'datasets',
+  'capacityProviders',
+  'harnesses',
+  'payments',
+] as const satisfies readonly (keyof AgentCoreProjectSpec)[];
+
+/**
+ * True when the project defines at least one resource that deploys to CloudFormation.
+ */
+export function hasDeployableResources(spec: AgentCoreProjectSpec): boolean {
+  return DEPLOYABLE_RESOURCE_KEYS.some(key => {
+    const value = spec[key];
+    return Array.isArray(value) && value.length > 0;
+  });
+}
+
+/**
  * Validates the CDK project and loads configuration.
  * Also validates AWS credentials are configured before proceeding.
  * Returns the project context needed for subsequent steps.
@@ -98,32 +135,11 @@ export async function validateProject(selectedTarget?: AwsDeploymentTarget): Pro
     // No deployed state file — no existing stack
   }
 
-  // Teardown detection: when agents is empty but deployed-state.json records existing
-  // targets, the user has run `remove all` and wants to tear down AWS resources via deploy.
+  // Teardown detection: when no deployable resources remain but deployed-state.json records
+  // existing targets, the user has run `remove all` and wants to tear down AWS resources via deploy.
   let isTeardownDeploy = false;
-  const hasAgents = projectSpec.runtimes && projectSpec.runtimes.length > 0;
-  const hasMemories = projectSpec.memories && projectSpec.memories.length > 0;
-  const hasKnowledgeBases = projectSpec.knowledgeBases && projectSpec.knowledgeBases.length > 0;
-  const hasEvaluators = projectSpec.evaluators && projectSpec.evaluators.length > 0;
-  const hasPolicyEngines = projectSpec.policyEngines && projectSpec.policyEngines.length > 0;
-  const hasHarnesses = projectSpec.harnesses && projectSpec.harnesses.length > 0;
-  const hasDatasets = projectSpec.datasets && projectSpec.datasets.length > 0;
 
-  // Check for gateways in agentcore.json
-  const hasGateways = projectSpec.agentCoreGateways && projectSpec.agentCoreGateways.length > 0;
-  const hasPayments = projectSpec.payments && projectSpec.payments.length > 0;
-
-  if (
-    !hasAgents &&
-    !hasGateways &&
-    !hasMemories &&
-    !hasKnowledgeBases &&
-    !hasEvaluators &&
-    !hasPolicyEngines &&
-    !hasHarnesses &&
-    !hasDatasets &&
-    !hasPayments
-  ) {
+  if (!hasDeployableResources(projectSpec)) {
     if (!hasExistingStack) {
       throw new ValidationError(
         'No resources defined in project. Add at least one resource (agent, memory, knowledge base, evaluator, or gateway) before deploying.'

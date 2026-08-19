@@ -18,6 +18,7 @@ import {
   getStackOutputs,
   omitPaymentAuthorizationOutputs,
   parseAgentOutputs,
+  parseCapacityProviderOutputs,
   parseConfigBundleOutputs,
   parseDatasetOutputs,
   parseEvaluatorOutputs,
@@ -710,6 +711,10 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const datasetNames = (context.projectSpec.datasets ?? []).map(d => d.name);
     const datasets = parseDatasetOutputs(outputs, datasetNames);
 
+    // Parse capacity provider outputs
+    const capacityProviderNames = (context.projectSpec.capacityProviders ?? []).map(cp => cp.name);
+    const capacityProviders = parseCapacityProviderOutputs(outputs, capacityProviderNames);
+
     // Parse config bundle outputs
     const configBundleNames = (context.projectSpec.configBundles ?? []).map(b => b.name);
     const configBundles = parseConfigBundleOutputs(outputs, configBundleNames);
@@ -799,6 +804,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       configBundles,
       knowledgeBases,
       payments,
+      capacityProviders,
       abTestNames: (context.projectSpec.abTests ?? []).map(t => t.name),
     });
 

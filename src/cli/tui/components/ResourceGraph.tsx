@@ -26,6 +26,7 @@ const ICONS = {
   'runtime-endpoint': '◉',
   'knowledge-base': '✚',
   payment: '₿',
+  'capacity-provider': '▦',
 } as const;
 
 interface ResourceGraphProps {
@@ -138,6 +139,7 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
   const configBundles = project.configBundles ?? [];
   const datasets = project.datasets ?? [];
   const payments = project.payments ?? [];
+  const capacityProviders = project.capacityProviders ?? [];
   const harnesses = project.harnesses ?? [];
 
   // Build lookup map and collect pending-removal resources in a single pass
@@ -432,6 +434,29 @@ export function ResourceGraph({ project, mcp, agentName, resourceStatuses }: Res
                   </Text>
                 ))}
               </Box>
+            );
+          })}
+        </Box>
+      )}
+
+      {/* Capacity Providers */}
+      {capacityProviders.length > 0 && (
+        <Box flexDirection="column">
+          <SectionHeader>Capacity Providers</SectionHeader>
+          {capacityProviders.map(cp => {
+            const rsEntry = statusMap.get(`capacity-provider:${cp.name}`);
+            const localDetail =
+              cp.computeConfiguration.ec2Configuration.launchTemplateSource.launchParameters.operatingSystem;
+            return (
+              <ResourceRow
+                key={cp.name}
+                icon={ICONS['capacity-provider']}
+                color="cyan"
+                name={cp.name}
+                detail={rsEntry?.detail ?? localDetail}
+                deploymentState={rsEntry?.deploymentState}
+                identifier={rsEntry?.identifier}
+              />
             );
           })}
         </Box>

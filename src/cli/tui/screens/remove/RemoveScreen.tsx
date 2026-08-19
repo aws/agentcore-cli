@@ -19,6 +19,7 @@ export type RemoveResourceType =
   | 'runtime-endpoint'
   | 'dataset'
   | 'payment'
+  | 'capacity-provider'
   | 'all';
 
 const REMOVE_RESOURCES: { id: RemoveResourceType; title: string; description: string }[] = [
@@ -41,6 +42,7 @@ const REMOVE_RESOURCES: { id: RemoveResourceType; title: string; description: st
   { id: 'config-bundle', title: 'Configuration Bundle', description: 'Remove a configuration bundle' },
   { id: 'runtime-endpoint', title: 'Runtime Endpoint', description: 'Remove a runtime endpoint' },
   { id: 'dataset', title: 'Dataset', description: 'Remove a dataset' },
+  { id: 'capacity-provider', title: 'Capacity Provider [preview]', description: 'Remove a capacity provider' },
   { id: 'all', title: 'All', description: 'Reset entire agentcore project' },
 ];
 
@@ -77,6 +79,8 @@ interface RemoveScreenProps {
   knowledgeBaseCount: number;
   /** Number of payment managers available for removal */
   paymentCount: number;
+  /** Number of capacity providers available for removal */
+  capacityProviderCount: number;
 }
 
 export function RemoveScreen({
@@ -97,6 +101,7 @@ export function RemoveScreen({
   datasetCount,
   knowledgeBaseCount,
   paymentCount,
+  capacityProviderCount,
 }: RemoveScreenProps) {
   const items: SelectableItem[] = useMemo(() => {
     return REMOVE_RESOURCES.map(r => {
@@ -194,6 +199,12 @@ export function RemoveScreen({
             description = 'No payment managers to remove';
           }
           break;
+        case 'capacity-provider':
+          if (capacityProviderCount === 0) {
+            disabled = true;
+            description = 'No capacity providers to remove';
+          }
+          break;
         case 'all':
           // 'all' is always available
           break;
@@ -217,6 +228,7 @@ export function RemoveScreen({
     datasetCount,
     knowledgeBaseCount,
     paymentCount,
+    capacityProviderCount,
   ]);
 
   const isDisabled = (item: SelectableItem) => item.disabled ?? false;

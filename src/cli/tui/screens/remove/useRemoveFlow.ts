@@ -96,6 +96,11 @@ export function useRemoveFlow({ force, dryRun }: RemoveFlowOptions): RemoveFlowS
             items.push(`${totalConnectors} payment connector${totalConnectors > 1 ? 's' : ''}`);
           }
         }
+        if (projectSpec.capacityProviders && projectSpec.capacityProviders.length > 0) {
+          items.push(
+            `${projectSpec.capacityProviders.length} capacity provider${projectSpec.capacityProviders.length > 1 ? 's' : ''}`
+          );
+        }
       } catch {
         // Project exists but has issues - still allow reset
         items.push('AgentCore project (corrupted or incomplete)');

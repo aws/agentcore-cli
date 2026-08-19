@@ -325,6 +325,17 @@ export const PaymentDeployedStateSchema = z.object({
 export type PaymentDeployedState = z.infer<typeof PaymentDeployedStateSchema>;
 
 // ============================================================================
+// Capacity Provider Deployed State
+// ============================================================================
+
+export const CapacityProviderDeployedStateSchema = z.object({
+  capacityProviderId: z.string().min(1),
+  capacityProviderArn: z.string().min(1),
+});
+
+export type CapacityProviderDeployedState = z.infer<typeof CapacityProviderDeployedStateSchema>;
+
+// ============================================================================
 // Deployed Resource State
 // ============================================================================
 
@@ -346,6 +357,7 @@ export const DeployedResourceStateSchema = z.object({
   harnesses: z.record(z.string(), HarnessDeployedStateSchema).optional(),
   runtimeEndpoints: z.record(z.string(), RuntimeEndpointDeployedStateSchema).optional(),
   payments: z.record(z.string(), PaymentDeployedStateSchema).optional(),
+  capacityProviders: z.record(z.string(), CapacityProviderDeployedStateSchema).optional(),
   stackName: z.string().optional(),
   identityKmsKeyArn: z.string().optional(),
   deployHash: z.string().optional(),

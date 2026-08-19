@@ -1,5 +1,6 @@
 import { AgentPrimitive } from './AgentPrimitive';
 import type { BasePrimitive } from './BasePrimitive';
+import { CapacityProviderPrimitive } from './CapacityProviderPrimitive';
 import { ConfigBundlePrimitive } from './ConfigBundlePrimitive';
 import { CredentialPrimitive } from './CredentialPrimitive';
 import { DatasetPrimitive } from './DatasetPrimitive';
@@ -38,6 +39,7 @@ export const configBundlePrimitive = new ConfigBundlePrimitive();
 export const runtimeEndpointPrimitive = new RuntimeEndpointPrimitive();
 export const paymentManagerPrimitive = new PaymentManagerPrimitive();
 export const paymentConnectorPrimitive = new PaymentConnectorPrimitive();
+export const capacityProviderPrimitive = new CapacityProviderPrimitive();
 
 /**
  * All primitives in display order.
@@ -60,6 +62,7 @@ export const ALL_PRIMITIVES: BasePrimitive<unknown, RemovableResource>[] = [
   runtimeEndpointPrimitive,
   paymentManagerPrimitive,
   paymentConnectorPrimitive,
+  capacityProviderPrimitive,
 ];
 
 /**
