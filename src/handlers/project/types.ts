@@ -3,6 +3,7 @@ import type { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import type { ProjectSpecSchema } from "../../projectSchemas/project";
 import z from "zod";
 import type { RuntimeResourceConfig } from "./add/runtime/types";
+import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
 
 /** Available runtime templates for scaffolding agent code. A subset of {@link PROJECT_TEMPLATES} describing runtimes only */
 export const RUNTIME_TEMPLATES = {
@@ -61,6 +62,10 @@ export type AddResourceInput =
   | {
       resourceType: "config-bundle";
       resourceConfig: z.input<typeof ConfigBundleSchema>;
+    }
+  | {
+      resourceType: "online-eval";
+      resourceConfig: z.input<typeof OnlineEvalConfigSchema>;
     };
 
 export type ProjectResource = AddResourceInput["resourceType"];

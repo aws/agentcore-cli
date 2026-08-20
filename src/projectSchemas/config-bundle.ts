@@ -15,7 +15,11 @@ export const ComponentConfigurationSchema = z.object({
 export type ComponentConfiguration = z.infer<typeof ComponentConfigurationSchema>;
 export const ComponentConfigurationMapSchema = z.record(z.string(), ComponentConfigurationSchema);
 export type ComponentConfigurationMap = z.infer<typeof ComponentConfigurationMapSchema>;
-export const ConfigBundleBranchNameSchema = z.string().max(128);
+export const ConfigBundleBranchNameSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-zA-Z][a-zA-Z0-9_/-]{0,127}$/, "Value must match [a-zA-Z][a-zA-Z0-9_/-]");
 export const ConfigBundleCommitMessageSchema = z.string().max(500);
 export const ConfigBundleSchema = z.object({
   name: ConfigBundleNameSchema,
