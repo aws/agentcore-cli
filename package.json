@@ -52,6 +52,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@aws-cdk/toolkit-lib": "1.38.2",
     "@aws-sdk/client-bedrock-agentcore": "^3.1092.0",
     "@aws-sdk/client-bedrock-agentcore-control": "^3.1102.0",
     "@aws-sdk/client-cloudwatch-logs": "^3.1092.0",

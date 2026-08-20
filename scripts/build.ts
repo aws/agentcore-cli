@@ -11,6 +11,10 @@ const DIST = join(REPO_ROOT, "dist");
 
 const ASSET_NAMING = "agentcore-assets/[dir]/[name].[ext]";
 
+// The Toolkit reads files relative to its package directory at runtime, so keep
+// that package intact when producing the npm bundle.
+const EXTERNAL = ["@aws-cdk/toolkit-lib"];
+
 // Shrink whitespace/syntax but keep identifiers: minified names make stack
 // traces unreadable and erase error names telemetry keys on.
 const MINIFY = { whitespace: true, syntax: true, identifiers: false } as const;
@@ -54,6 +58,7 @@ async function bundle(): Promise<void> {
     outdir: DIST,
     target: "node",
     minify: MINIFY,
+    external: EXTERNAL,
   });
 
   // Mirror assets beside the emitted module for resolveAssetsRoot().
