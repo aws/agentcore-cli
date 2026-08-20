@@ -185,7 +185,7 @@ export type RoleScopeWarning = {
 export type CreateDatasetInput = CreateDatasetRequest;
 export type CreateConfigurationBundleInput = Pick<
   CreateConfigurationBundleRequest,
-  "bundleName" | "components" | "kmsKeyArn"
+  "bundleName" | "components" | "branchName" | "commitMessage" | "kmsKeyArn"
 >;
 export type UpdateConfigurationBundleInput = Required<
   Pick<UpdateConfigurationBundleRequest, "components" | "commitMessage" | "branchName">
