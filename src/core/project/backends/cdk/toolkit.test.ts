@@ -1,4 +1,6 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
+import { rm } from "node:fs/promises";
+import { dirname } from "node:path";
 import type { IoMessage, IoRequest } from "@aws-cdk/toolkit-lib";
 import * as toolkitLib from "@aws-cdk/toolkit-lib";
 import { createSilentLogger } from "../../../../testing";
@@ -6,10 +8,19 @@ import {
   createCdkIoHost,
   createCdkRunner,
   loadCdkToolkit,
+  loadBootstrapTemplate,
   performCdkOperation,
   type CdkToolkit,
   type LoadedCdkToolkit,
 } from "./toolkit";
+
+const temporaryTemplates: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryTemplates.splice(0).map((path) => rm(dirname(path), { recursive: true, force: true })),
+  );
+});
 
 function message(text: string): IoMessage<unknown> {
   return {
@@ -195,5 +206,22 @@ describe("Toolkit loading", () => {
     );
 
     expect(regions).toEqual(["eu-west-1"]);
+  });
+});
+
+describe("bootstrap template loading", () => {
+  test("materializes and cleans up an embedded template", async () => {
+    const template = await loadBootstrapTemplate([
+      new File(["Resources: {}"], "lib/api/bootstrap/bootstrap-template.yaml"),
+    ]);
+    temporaryTemplates.push(template!.path);
+
+    expect(await Bun.file(template!.path).text()).toBe("Resources: {}");
+    await template!.cleanup();
+    expect(await Bun.file(template!.path).exists()).toBe(false);
+  });
+
+  test("uses the installed Toolkit template when no file is embedded", async () => {
+    expect(await loadBootstrapTemplate([])).toBeUndefined();
   });
 });

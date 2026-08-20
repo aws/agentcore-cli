@@ -3,14 +3,18 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { DeserializationError, ProjectStateError } from "../../errors/errors";
+import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
+import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { FsProjectManager } from "./manager";
 import {
   PROJECT_TEMPLATES,
   type CreateProjectInput,
+  type DeployResult,
   type Project,
   type ProjectEvent,
 } from "../../handlers/project/types";
 import { createSilentLogger } from "../../testing";
+import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 
 const originalCwd = process.cwd();
 const tempDirectories: string[] = [];
@@ -256,7 +260,16 @@ describe("FsProjectManager.build", () => {
 
     expect(commands).toEqual([
       {
-        command: ["npm", "run", "cdk", "--", "synth", "--quiet"],
+        command: [
+          "npm",
+          "run",
+          "cdk",
+          "--",
+          "synth",
+          "--quiet",
+          "--output",
+          join(directory, "example", "agentcore", "cdk", "cdk.out"),
+        ],
         cwd: join(directory, "example", "agentcore", "cdk"),
       },
     ]);
@@ -301,6 +314,141 @@ describe("FsProjectManager.build", () => {
     });
 
     await expect(drain(failing.build(project))).rejects.toThrow("cdk synth exploded");
+  });
+});
+
+describe("FsProjectManager.deploy", () => {
+  type DeployCall = { project: Project; input: DeployBackendInput };
+
+  function deployManager() {
+    const calls: DeployCall[] = [];
+    const backend: ProjectBackend = {
+      async *build() {},
+      async *deploy(project, input) {
+        calls.push({ project, input });
+        yield { message: "Backend deployment started" };
+        return { outputs: { RuntimeArn: "arn:runtime" } };
+      },
+    };
+    return {
+      calls,
+      manager: new FsProjectManager({
+        logger: createSilentLogger(),
+        backends: { CDK: backend },
+      }),
+    };
+  }
+
+  async function projectWithTargets(rootPath: string, targets?: unknown): Promise<Project> {
+    await mkdir(join(rootPath, "agentcore"), { recursive: true });
+    if (targets !== undefined) {
+      await writeFile(
+        join(rootPath, "agentcore", "aws-targets.json"),
+        typeof targets === "string" ? targets : JSON.stringify(targets),
+      );
+    }
+    return {
+      name: "example",
+      rootPath,
+      spec: {
+        ...ProjectSpecSchema.parse({ name: "example", version: 1 }),
+      },
+    };
+  }
+
+  async function deploy(
+    manager: FsProjectManager,
+    project: Project,
+    target: string,
+  ): Promise<{ events: ProjectEvent[]; result: DeployResult }> {
+    const generator = manager.deploy(project, { target });
+    const events: ProjectEvent[] = [];
+    while (true) {
+      const next = await generator.next();
+      if (next.done) return { events, result: next.value };
+      events.push(next.value as ProjectEvent);
+    }
+  }
+
+  const targets: AwsDeploymentTarget[] = [
+    {
+      name: "staging",
+      account: "111122223333",
+      region: "us-east-1",
+    },
+    {
+      name: "prod",
+      account: "444455556666",
+      region: "eu-west-1",
+    },
+  ];
+
+  test("resolves one target and returns the backend result", async () => {
+    const root = await inTempDirectory();
+    const subject = deployManager();
+    const project = await projectWithTargets(root, targets);
+
+    const deployed = await deploy(subject.manager, project, "prod");
+
+    expect(subject.calls).toEqual([{ project, input: { target: targets[1]! } }]);
+    expect(deployed.events).toEqual([{ message: "Backend deployment started" }]);
+    expect(deployed.result).toEqual({
+      outputs: { RuntimeArn: "arn:runtime" },
+    });
+  });
+
+  test("rejects an unknown target before invoking the backend", async () => {
+    const root = await inTempDirectory();
+    const subject = deployManager();
+    const project = await projectWithTargets(root, targets);
+
+    await expect(deploy(subject.manager, project, "prd")).rejects.toThrow(
+      /no deployment target named 'prd'.*staging, prod/s,
+    );
+    expect(subject.calls).toEqual([]);
+  });
+
+  test.each([
+    ["a missing file", undefined],
+    ["an empty list", []],
+  ])("rejects %s before invoking the backend", async (_label, configured) => {
+    const root = await inTempDirectory();
+    const subject = deployManager();
+    const project = await projectWithTargets(root, configured);
+
+    await expect(deploy(subject.manager, project, "default")).rejects.toThrow(
+      /No deployment targets are configured/,
+    );
+    expect(subject.calls).toEqual([]);
+  });
+
+  test.each([
+    ["malformed JSON", "{ not-json"],
+    ["an invalid target", [{ name: "default", account: "not-an-account", region: "us-east-1" }]],
+    [
+      "duplicate targets",
+      [
+        {
+          name: "default",
+          account: "111122223333",
+          region: "us-east-1",
+        },
+        {
+          name: "default",
+          account: "444455556666",
+          region: "eu-west-1",
+        },
+      ],
+    ],
+  ])("rejects %s before invoking the backend", async (_label, configured) => {
+    const root = await inTempDirectory();
+    const subject = deployManager();
+    const project = await projectWithTargets(root, configured);
+
+    await expect(deploy(subject.manager, project, "default")).rejects.toThrow(
+      /not a valid list of deployment targets/,
+    );
+    expect(subject.calls).toEqual([]);
   });
 });
 

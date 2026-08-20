@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import type { IIoHost, IoMessage, Toolkit } from "@aws-cdk/toolkit-lib";
 import { AgentCoreCLIError } from "../../../../errors";
 import type { Logger } from "../../../../logging";
@@ -34,6 +37,42 @@ export type LoadedCdkToolkit = {
 };
 
 export type CdkToolkitLoader = (ioHost: IIoHost, region: string) => Promise<LoadedCdkToolkit>;
+
+type NamedBlob = Blob & { readonly name: string };
+
+export type LoadedBootstrapTemplate = {
+  path: string;
+  cleanup(): Promise<void>;
+};
+
+export type BootstrapTemplateLoader = () => Promise<LoadedBootstrapTemplate | undefined>;
+
+const BOOTSTRAP_TEMPLATE = "bootstrap-template.yaml";
+
+function embeddedFiles(): readonly NamedBlob[] {
+  return typeof Bun === "undefined" ? [] : (Bun.embeddedFiles as readonly NamedBlob[]);
+}
+
+/** Materializes the Toolkit template embedded in a standalone executable. */
+export async function loadBootstrapTemplate(
+  files: readonly NamedBlob[] = embeddedFiles(),
+): Promise<LoadedBootstrapTemplate | undefined> {
+  const template = files.find((file) => file.name.endsWith(BOOTSTRAP_TEMPLATE));
+  if (!template) return undefined;
+
+  const directory = await mkdtemp(join(tmpdir(), "agentcore-bootstrap-"));
+  const path = join(directory, BOOTSTRAP_TEMPLATE);
+  try {
+    await writeFile(path, await template.text());
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true });
+    throw error;
+  }
+  return {
+    path,
+    cleanup: () => rm(directory, { recursive: true, force: true }),
+  };
+}
 
 export function createCdkIoHost(logger: Logger): IIoHost {
   const toolkitLogger = logger.child({ component: "cdk-toolkit" });

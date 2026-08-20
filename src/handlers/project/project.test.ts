@@ -1,6 +1,6 @@
 import { afterEach, test, expect, describe } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createRootHandler } from "../index";
@@ -582,7 +582,16 @@ describe("project build", () => {
 
     expect(core.projectCommands).toEqual([
       {
-        command: ["npm", "run", "cdk", "--", "synth", "--quiet"],
+        command: [
+          "npm",
+          "run",
+          "cdk",
+          "--",
+          "synth",
+          "--quiet",
+          "--output",
+          join(projectRoot, "agentcore", "cdk", "cdk.out"),
+        ],
         cwd: join(projectRoot, "agentcore", "cdk"),
       },
     ]);
@@ -620,20 +629,8 @@ describe("project deploy", () => {
     await expect(run(["deploy"])).rejects.toThrow(/No AgentCore project found/);
   });
 
-  test("reports that a freshly scaffolded project has no deployment targets", async () => {
+  test("rejects a project with no deployment targets", async () => {
     await inProject();
     await expect(run(["deploy"])).rejects.toThrow(/No deployment targets are configured/);
-  });
-
-  // Proves the manager reaches CdkBackend.deploy once a target resolves; the
-  // backend is what remains unimplemented until the CDK deployment PR.
-  test("remains nonfunctional until deployment support is implemented", async () => {
-    const projectRoot = await inProject();
-    await writeFile(
-      join(projectRoot, "agentcore", "aws-targets.json"),
-      JSON.stringify([{ name: "default", account: "111122223333", region: "us-east-1" }]),
-    );
-
-    await expect(run(["deploy"])).rejects.toThrow(/not implemented/);
   });
 });

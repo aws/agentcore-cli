@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { $ } from "bun";
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { runWithExitCode } from "../src/runnable";
 
@@ -23,6 +24,8 @@ const ASSET_NAMING = "agentcore-assets/[dir]/[name].[ext]";
 // explicit copy of anything it would otherwise read from its package.
 const EXTERNAL = ["@aws-cdk/toolkit-lib"];
 
+const BOOTSTRAP_TEMPLATE = ["lib", "api", "bootstrap", "bootstrap-template.yaml"];
+
 // Shrink whitespace/syntax but keep identifiers: minified names make stack
 // traces unreadable and erase error names telemetry keys on.
 const MINIFY = { whitespace: true, syntax: true, identifiers: false } as const;
@@ -38,12 +41,37 @@ function assetLoaderPlugin(): Bun.BunPlugin {
   return {
     name: "asset-file-loader",
     setup(build) {
-      build.onLoad({ filter: /src[/\\]assets[/\\]/ }, async ({ path }) => ({
-        contents: await Bun.file(path).bytes(),
-        loader: "file",
-      }));
+      build.onLoad(
+        { filter: /src[/\\]assets[/\\]|bootstrap-template\.yaml$/ },
+        async ({ path }) => ({
+          contents: await Bun.file(path).bytes(),
+          loader: "file",
+        }),
+      );
     },
   };
+}
+
+function bootstrapTemplate(): string {
+  const manifest = Bun.resolveSync("@aws-cdk/toolkit-lib/package.json", REPO_ROOT);
+  const template = join(resolve(manifest, ".."), ...BOOTSTRAP_TEMPLATE);
+  if (!existsSync(template)) {
+    throw new Error(
+      `@aws-cdk/toolkit-lib no longer ships ${BOOTSTRAP_TEMPLATE.join("/")}; ` +
+        `looked in ${template}`,
+    );
+  }
+  return template;
+}
+
+async function assertTemplateIsEmbedded(outfile: string, template: string): Promise<void> {
+  const [executable, contents] = await Promise.all([
+    Bun.file(outfile).bytes(),
+    Bun.file(template).bytes(),
+  ]);
+  if (!Buffer.from(executable).includes(contents)) {
+    throw new Error(`${outfile} does not contain ${BOOTSTRAP_TEMPLATE.join("/")}`);
+  }
 }
 
 /** Fail loudly on a non-UTF-8 asset — the source reads every asset as text. */
@@ -83,15 +111,19 @@ async function compile(target: string): Promise<void> {
   const outfile = join(DIST, "bin", `agentcore-${target.replace(/^bun-/, "")}`);
   await $`mkdir -p ${join(DIST, "bin")}`;
 
+  const template = bootstrapTemplate();
   await Bun.build({
-    entrypoints: [ENTRYPOINT, ...assets],
+    entrypoints: [ENTRYPOINT, ...assets, template],
     compile: { target: target as Bun.Build.CompileTarget, outfile },
     minify: MINIFY,
     root: REPO_ROOT,
     naming: { asset: ASSET_NAMING },
     plugins: [assetLoaderPlugin()],
   });
-  console.log(`Compiled ${target} → ${outfile} (${assets.length} assets embedded)`);
+  await assertTemplateIsEmbedded(outfile, template);
+  console.log(
+    `Compiled ${target} → ${outfile} (${assets.length} assets embedded, plus the bootstrap template)`,
+  );
 }
 
 process.exit(
