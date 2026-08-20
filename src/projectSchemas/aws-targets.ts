@@ -1,15 +1,20 @@
 import { z } from "zod";
 import { uniqueBy } from "./zod-util";
 
+// Keep in sync with https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html
 export const AgentCoreRegionSchema = z.enum([
   "ap-northeast-1",
   "ap-northeast-2",
   "ap-south-1",
   "ap-southeast-1",
   "ap-southeast-2",
+  "ap-southeast-5",
+  "ap-southeast-7",
   "ca-central-1",
   "eu-central-1",
   "eu-north-1",
+  "eu-south-1",
+  "eu-south-2",
   "eu-west-1",
   "eu-west-2",
   "eu-west-3",

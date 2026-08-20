@@ -44,8 +44,14 @@ describe("AWS deployment targets", () => {
     ).toBe(false);
   });
 
-  test("accepts only regions supported by AgentCore", () => {
-    expect(AgentCoreRegionSchema.safeParse("us-gov-west-1").success).toBe(true);
+  test.each(["ap-southeast-5", "ap-southeast-7", "eu-south-1", "eu-south-2", "us-gov-west-1"])(
+    "accepts supported region %s",
+    (region) => {
+      expect(AgentCoreRegionSchema.safeParse(region).success).toBe(true);
+    },
+  );
+
+  test("rejects an AWS region where AgentCore is unavailable", () => {
     expect(AgentCoreRegionSchema.safeParse("us-west-1").success).toBe(false);
   });
 
