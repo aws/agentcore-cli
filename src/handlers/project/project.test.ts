@@ -844,6 +844,17 @@ describe("project add credentials", () => {
     expect(io.stderr()).toContain("already exists");
   });
 
+  test("creates .env.local when the project lacks one", async () => {
+    const projectRoot = await inProject();
+    const envPath = join(projectRoot, "agentcore", ".env.local");
+    await rm(envPath);
+
+    await run(["add", "credentials", "api-key", "--name", "svc-key"]);
+
+    const env = await Bun.file(envPath).text();
+    expect(env).toContain("AGENTCORE_CREDENTIAL_SVC_KEY=\n");
+  });
+
   test("restores the .gitignore .env.local entry when the project lost it", async () => {
     const projectRoot = await inProject();
     await Bun.write(join(projectRoot, ".gitignore"), "node_modules/\n");

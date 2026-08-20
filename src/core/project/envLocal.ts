@@ -1,5 +1,5 @@
-import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { atomicWrite, readTextFile } from "../../io";
 import type { EnvLocalEntry } from "../../handlers/project/types";
 
 /** The project-relative path of the local secrets file (read by `agentcore dev`). */
@@ -36,7 +36,7 @@ export async function upsertEnvLocalEntries(
     written.push(entry.key);
   }
 
-  if (written.length > 0) await writeFile(envPath, content);
+  if (written.length > 0) await atomicWrite(envPath, content);
   return { written, skipped };
 }
 
@@ -47,8 +47,8 @@ export async function upsertEnvLocalEntries(
 export async function ensureGitignoreCoversEnvLocal(rootPath: string): Promise<boolean> {
   const gitignorePath = join(rootPath, ".gitignore");
   const existing = await readOrEmpty(gitignorePath);
-  // ponytail: literal-line match, not full gitignore pattern semantics; a
-  // matcher library is warranted only if projects grow exotic ignore rules.
+  // Literal-line match, not full gitignore pattern semantics; a matcher
+  // library is warranted only if projects grow exotic ignore rules.
   const covered = existing
     .split("\n")
     .map((line) => line.trim())
@@ -56,7 +56,7 @@ export async function ensureGitignoreCoversEnvLocal(rootPath: string): Promise<b
   if (covered) return false;
 
   const separator = existing === "" || existing.endsWith("\n") ? "" : "\n";
-  await writeFile(
+  await atomicWrite(
     gitignorePath,
     `${existing}${separator}# Local secrets (added by agentcore; never commit)\n.env.local\n`,
   );
@@ -65,7 +65,7 @@ export async function ensureGitignoreCoversEnvLocal(rootPath: string): Promise<b
 
 async function readOrEmpty(path: string): Promise<string> {
   try {
-    return await readFile(path, "utf8");
+    return await readTextFile(path);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
     throw error;
