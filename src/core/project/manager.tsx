@@ -28,7 +28,6 @@ import { ProjectSpecSchema, type ManagedBy } from "../../projectSchemas/project"
 import { enclosingProjectRoot } from "./fsUtils";
 import {
   AgentCoreCLIError,
-  DeserializationError,
   InputValidationError,
   NotImplementedError,
   ProjectStateError,
@@ -331,15 +330,7 @@ export class FsProjectManager implements ProjectManager {
       );
     }
 
-    let targets;
-    try {
-      targets = await this.json.read(targetsPath, AwsDeploymentTargetsSchema);
-    } catch (error) {
-      if (!(error instanceof DeserializationError)) throw error;
-      throw new ProjectStateError(`${targetsPath} is not a valid list of deployment targets.`, {
-        cause: error,
-      });
-    }
+    const targets = await this.json.read(targetsPath, AwsDeploymentTargetsSchema);
 
     if (targets.length === 0) {
       throw new ProjectStateError(

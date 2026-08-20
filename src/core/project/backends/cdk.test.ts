@@ -222,7 +222,7 @@ describe("CdkBackend.deploy", () => {
       {
         operation: {
           kind: "deploy",
-          stackName: "AgentCore-example-default-0",
+          stackArtifactId: "AgentCore-example-default-0",
         },
         options: {
           assemblyDirectory: assemblyDirectory(input),
@@ -254,7 +254,7 @@ describe("CdkBackend.deploy", () => {
         kind: "bootstrap",
         environments: [`aws://${TARGET.account}/${TARGET.region}`],
       },
-      { kind: "deploy", stackName: "AgentCore-example-default-0" },
+      { kind: "deploy", stackArtifactId: "AgentCore-example-default-0" },
     ]);
     expect(deployed.events).toContainEqual({
       message: `Bootstrapping aws://${TARGET.account}/${TARGET.region}`,

@@ -11,7 +11,7 @@ import {
 } from "../../../io";
 import type { Logger } from "../../../logging";
 import type { DeployBackendInput, ProjectBackend } from "./types";
-import { stackForTarget } from "./cdk/assembly";
+import { stackArtifactIdForTarget } from "./cdk/assembly";
 import {
   probeBootstrap,
   resolveAwsAccount,
@@ -102,7 +102,11 @@ export class CdkBackend implements ProjectBackend {
 
     yield* this.build(project);
     const assemblyDirectory = this.assemblyDirectory(project);
-    const stackName = await stackForTarget(this.json, assemblyDirectory, target.name);
+    const stackArtifactId = await stackArtifactIdForTarget(
+      this.json,
+      assemblyDirectory,
+      target.name,
+    );
     const options = { assemblyDirectory, credentials, region: target.region };
 
     const bootstrap = await this.bootstrap(target.region, credentials);
@@ -133,8 +137,8 @@ export class CdkBackend implements ProjectBackend {
       }
     }
 
-    yield { message: `Deploying ${stackName}` };
-    const outputs = await this.cdk({ kind: "deploy", stackName }, options);
+    yield { message: `Deploying ${stackArtifactId}` };
+    const outputs = await this.cdk({ kind: "deploy", stackArtifactId }, options);
     return { outputs };
   }
 

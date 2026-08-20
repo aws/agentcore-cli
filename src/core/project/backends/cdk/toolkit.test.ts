@@ -155,7 +155,7 @@ describe("performCdkOperation", () => {
 
     const outputs = await performCdkOperation(
       loaded,
-      { kind: "deploy", stackName: "AgentCore-orders-default" },
+      { kind: "deploy", stackArtifactId: "AgentCore-orders-default" },
       runOptions({ assemblyDirectory: "/workspace/agentcore/cdk/cdk.out" }),
     );
 
@@ -178,8 +178,8 @@ describe("performCdkOperation", () => {
 
     const deploying = performCdkOperation(
       loaded,
-      { kind: "deploy", stackName: "AgentCore-orders-default" },
-      { assemblyDirectory: "/workspace/agentcore/cdk/cdk.out", region: "us-east-1" },
+      { kind: "deploy", stackArtifactId: "AgentCore-orders-default" },
+      runOptions({ assemblyDirectory: "/workspace/agentcore/cdk/cdk.out" }),
     );
 
     await expect(deploying).rejects.toThrow(
@@ -192,8 +192,8 @@ describe("performCdkOperation", () => {
 
     const outputs = await performCdkOperation(
       loaded,
-      { kind: "deploy", stackName: "AgentCore-orders-default" },
-      { assemblyDirectory: "/workspace/agentcore/cdk/cdk.out", region: "us-east-1" },
+      { kind: "deploy", stackArtifactId: "AgentCore-orders-default" },
+      runOptions({ assemblyDirectory: "/workspace/agentcore/cdk/cdk.out" }),
     );
 
     expect(outputs).toEqual({});
@@ -222,7 +222,7 @@ describe("Toolkit loading", () => {
     });
 
     await runner(
-      { kind: "deploy", stackName: "AgentCore-orders-default" },
+      { kind: "deploy", stackArtifactId: "AgentCore-orders-default" },
       runOptions({ assemblyDirectory: "/workspace/cdk.out", region: "eu-west-1" }),
     );
 

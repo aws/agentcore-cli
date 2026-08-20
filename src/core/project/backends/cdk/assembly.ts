@@ -23,8 +23,8 @@ const AssemblyManifestSchema = z.object({
     .default({}),
 });
 
-/** Finds the one synthesized stack tagged for the selected deployment target. */
-export async function stackForTarget(
+/** Finds the one synthesized stack artifact tagged for the selected deployment target. */
+export async function stackArtifactIdForTarget(
   json: ReadWriteJson,
   assemblyDirectory: string,
   target: string,

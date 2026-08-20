@@ -13,7 +13,7 @@ import type { Logger } from "../../../../logging";
 
 export type CdkOperation =
   | { kind: "bootstrap"; environments: string[]; templateFile?: string }
-  | { kind: "deploy"; stackName: string };
+  | { kind: "deploy"; stackArtifactId: string };
 
 export type CdkRunOptions = {
   /** Synthesized cloud assembly used by deploy operations. */
@@ -169,7 +169,7 @@ export async function performCdkOperation(
   const result = await toolkit.deploy(source, {
     stacks: {
       strategy: lib.StackSelectionStrategy.PATTERN_MUST_MATCH_SINGLE,
-      patterns: [operation.stackName],
+      patterns: [operation.stackArtifactId],
     },
   });
 
@@ -180,7 +180,7 @@ export async function performCdkOperation(
   // deletion a successful deploy.
   if (result.stacks.length !== 1) {
     throw new AgentCoreCLIError(
-      `The CDK Toolkit deployed no stack for '${operation.stackName}'. ` +
+      `The CDK Toolkit deployed no stack for '${operation.stackArtifactId}'. ` +
         `This happens when the synthesized stack has no resources, in which case an ` +
         `existing stack of that name is deleted rather than updated.`,
     );

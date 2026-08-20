@@ -445,8 +445,8 @@ describe("FsProjectManager.deploy", () => {
     const subject = deployManager();
     const project = await projectWithTargets(root, configured);
 
-    await expect(deploy(subject.manager, project, "default")).rejects.toThrow(
-      /not a valid list of deployment targets/,
+    await expect(deploy(subject.manager, project, "default")).rejects.toBeInstanceOf(
+      DeserializationError,
     );
     expect(subject.calls).toEqual([]);
   });
