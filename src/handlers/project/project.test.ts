@@ -24,7 +24,7 @@ async function run(args: string[], opts?: { core?: TestCoreClient; stdin?: strin
   return { io, core };
 }
 
-describe.each(["deploy", "status"])("project %s", (command) => {
+describe.each(["status"])("project %s", (command) => {
   test("throws because it is not implemented yet", async () => {
     await expect(run([command])).rejects.toThrow(/not implemented/);
   });
@@ -611,5 +611,17 @@ describe("project build", () => {
     await rm(join(projectRoot, "agentcore", "cdk", "node_modules"), { recursive: true });
 
     await expect(run(["build"])).rejects.toThrow(/npm install/);
+  });
+});
+
+describe("project deploy", () => {
+  test("requires an AgentCore project", async () => {
+    await inTempDirectory();
+    await expect(run(["deploy"])).rejects.toThrow(/No AgentCore project found/);
+  });
+
+  test("remains nonfunctional until deployment support is implemented", async () => {
+    await inProject();
+    await expect(run(["deploy"])).rejects.toThrow(/not implemented/);
   });
 });

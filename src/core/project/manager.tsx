@@ -4,6 +4,8 @@ import { join, relative } from "node:path";
 import type {
   AddResourceInput,
   CreateProjectInput,
+  DeployProjectInput,
+  DeployResult,
   ResolveProjectInput,
   Project,
   ProjectManager,
@@ -307,6 +309,14 @@ export class FsProjectManager implements ProjectManager {
 
   public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
     yield* this.backendFor(project).build(project);
+  }
+
+  public async *deploy(
+    _project: Project,
+    _input: DeployProjectInput,
+  ): AsyncGenerator<ProjectEvent, DeployResult> {
+    yield* [];
+    throw new NotImplementedError("agentcore project deploy is not implemented yet");
   }
 
   private backendFor(project: Project): ProjectBackend {

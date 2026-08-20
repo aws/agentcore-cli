@@ -1,10 +1,10 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { ProjectStateError } from "../../../errors/errors";
-import type { Project, ProjectEvent } from "../../../handlers/project/types";
+import { NotImplementedError, ProjectStateError } from "../../../errors/errors";
+import type { DeployResult, Project, ProjectEvent } from "../../../handlers/project/types";
 import { requireTool, runProcess, type ProcessRunner } from "../../../io";
 import type { Logger } from "../../../logging";
-import type { ProjectBackend } from "./types";
+import type { DeployBackendInput, ProjectBackend } from "./types";
 
 export type CdkBackendConfig = {
   logger: Logger;
@@ -40,5 +40,13 @@ export class CdkBackend implements ProjectBackend {
       cwd: cdkDir,
       onOutput: (chunk) => this.logger.debug(chunk),
     });
+  }
+
+  public async *deploy(
+    _project: Project,
+    _input: DeployBackendInput,
+  ): AsyncGenerator<ProjectEvent, DeployResult> {
+    yield* [];
+    throw new NotImplementedError("CDK project deployment is not implemented yet");
   }
 }

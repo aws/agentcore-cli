@@ -1179,6 +1179,7 @@ export class TestGatewayClient implements CoreGatewayClient {
 type TestCoreClientOptions = {
   logger?: Logger;
   json?: ReadWriteJson;
+  projectManager?: ProjectManager;
 };
 
 export class TestIdentityClient implements CoreIdentityClient {
@@ -1948,13 +1949,15 @@ export class TestCoreClient implements Core {
   readonly projectCommands: { command: string[]; cwd: string }[] = [];
 
   constructor(options?: TestCoreClientOptions) {
-    this.projectManager = new FsProjectManager({
-      logger: options?.logger ?? createSilentLogger(),
-      json: options?.json,
-      runner: async (command, { cwd }) => {
-        this.projectCommands.push({ command, cwd });
-      },
-      checkTool: async () => {}, // CI hosts don't have uv installed
-    });
+    this.projectManager =
+      options?.projectManager ??
+      new FsProjectManager({
+        logger: options?.logger ?? createSilentLogger(),
+        json: options?.json,
+        runner: async (command, { cwd }) => {
+          this.projectCommands.push({ command, cwd });
+        },
+        checkTool: async () => {}, // CI hosts don't have uv installed
+      });
   }
 }

@@ -45,7 +45,11 @@ export function createProjectHandler(config: ProjectHandlerConfig): Router {
       }),
     ),
   );
-  project.handler(createDeployProjectHandler());
+  project.handler(
+    withProject({ projectManager: config.projectManager })(
+      createDeployProjectHandler({ projectManager: config.projectManager, io: config.io }),
+    ),
+  );
   project.handler(createStatusProjectHandler());
   // withProject wraps only the commands that require an existing project, so
   // `create` (which refuses to nest inside one) stays unaffected.

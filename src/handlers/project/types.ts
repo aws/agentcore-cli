@@ -37,6 +37,16 @@ export type ProjectEvent = {
   message: string;
 };
 
+export type DeployProjectInput = {
+  /** Name of the aws-targets.json entry to deploy. */
+  target: string;
+};
+
+export type DeployResult = {
+  /** Outputs returned by the deployed stack, keyed by CloudFormation output name. */
+  outputs: Record<string, string>;
+};
+
 export type ResolveProjectInput = {
   /** A path to search from when locating the project root. */
   filePath: string;
@@ -102,6 +112,9 @@ export interface ProjectManager {
 
   /** Compile the project's CDK app and synthesize its CloudFormation templates. */
   build(project: Project): AsyncGenerator<ProjectEvent, void>;
+
+  /** Deploy the project to one of its configured AWS targets. */
+  deploy(project: Project, input: DeployProjectInput): AsyncGenerator<ProjectEvent, DeployResult>;
 
   /** Locate an existing AgentCore project. Returns undefined if no project can be found. */
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;
