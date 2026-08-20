@@ -3,6 +3,7 @@ import type { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import type { ProjectSpecSchema } from "../../projectSchemas/project";
 import type z from "zod";
 import type { ProjectRuntimeSchema } from "../../projectSchemas/runtime";
+import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
 
 /** Available project templates for scaffolding new AgentCore projects. */
 export const PROJECT_TEMPLATES = {
@@ -54,6 +55,10 @@ export type AddResourceInput =
   | {
       resourceType: "config-bundle";
       resourceConfig: z.input<typeof ConfigBundleSchema>;
+    }
+  | {
+      resourceType: "online-eval";
+      resourceConfig: z.input<typeof OnlineEvalConfigSchema>;
     };
 
 export type ProjectResource = AddResourceInput["resourceType"];
