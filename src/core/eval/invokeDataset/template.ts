@@ -1,4 +1,4 @@
-import { InputValidationError } from "../errors";
+import { InputValidationError } from "../../../errors";
 
 // renderJsonTemplate substitutes `{key}` placeholders inside the string values of a
 // JSON template and returns the encoded bytes. General on purpose: `simulate` uses
@@ -13,8 +13,8 @@ export function renderJsonTemplate(
   let parsed: unknown;
   try {
     parsed = JSON.parse(template);
-  } catch {
-    throw new InputValidationError(`--${flagName} must be valid JSON`);
+  } catch (error) {
+    throw new InputValidationError(`--${flagName} must be valid JSON`, { cause: error });
   }
   return new TextEncoder().encode(JSON.stringify(substitute(parsed, values)));
 }

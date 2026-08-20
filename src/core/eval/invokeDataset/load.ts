@@ -15,8 +15,10 @@ export class DatasetLoader {
       let parsed: unknown;
       try {
         parsed = JSON.parse(trimmed);
-      } catch {
-        throw new InputValidationError("dataset contains a line that is not valid JSON");
+      } catch (error) {
+        throw new InputValidationError("dataset contains a line that is not valid JSON", {
+          cause: error,
+        });
       }
       // Reject non-object rows before dereferencing — `null` is valid JSON and would throw.
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {

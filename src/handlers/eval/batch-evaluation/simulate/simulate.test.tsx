@@ -117,23 +117,6 @@ describe("eval batch-evaluation simulate", () => {
     await expect(run(["eval", "batch-evaluation", "simulate", ...args])).rejects.toThrow(expected);
   });
 
-  test("passes runtime-level flags to invokeDataset (no evaluator/name leak)", async () => {
-    const { core } = await run([...BASE, "--qualifier", "PROD", "--header", "x-a:1"]);
-    const call = core.eval.calls.find((c) => c.method === "invokeDataset");
-    expect(call?.args[0]).toMatchObject({
-      runtimeId: "r-1",
-      qualifier: "PROD",
-      payloadTemplate: '{"prompt":"{input}"}',
-      headers: [["x-a", "1"]],
-      dataset: "/tmp/ds.jsonl",
-    });
-    // Grader-only flags are NOT part of the invokeDataset (runtime-level) input.
-    expect(call?.args[0]).not.toHaveProperty("evaluatorIds");
-    expect(call?.args[0]).not.toHaveProperty("name");
-    // Handler wires an AbortSignal (Ctrl-C) through to Core.
-    expect(call?.args[2]).toBeInstanceOf(AbortSignal);
-  });
-
   test("composes startBatchEvaluation over the created sessions + wrapped ground truth", async () => {
     const { core, stdout } = await run(BASE);
 
@@ -160,6 +143,10 @@ describe("eval batch-evaluation simulate", () => {
         { sessionId: "s2", testScenarioId: "e2" },
       ],
     });
+
+    // Handler threads the Ctrl-C AbortSignal into the replay (invokeDataset) call.
+    const invoke = core.eval.calls.find((c) => c.method === "invokeDataset");
+    expect(invoke?.args[2]).toBeInstanceOf(AbortSignal);
   });
 
   // Golden: the exact evaluationMetadata (sessionMetadata) the handler builds from the

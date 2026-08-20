@@ -1,7 +1,6 @@
 import type { DatasetSchemaType } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { InlineGroundTruth } from "@aws-sdk/client-bedrock-agentcore";
 
-// A record, not a bare string, so a future tool-branching type can widen it by a field.
 export type TurnResult = { text: string };
 
 // The per-session transport handed to run(): one call = one turn. Session id, auth, and

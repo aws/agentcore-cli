@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { InvokeAgentRuntimeCommand } from "@aws-sdk/client-bedrock-agentcore";
-import { InputValidationError } from "../errors";
+import { InputValidationError, RuntimeInvokeResponseError } from "../errors";
 import type { Logger } from "../logging";
 import type { AwsClients, CoreFetch, CoreOptions } from "./types";
 import { abortable } from "./abortable";
 import { toClientConfig } from "./utils";
 
-// Core's own invoke DTOs — duplicated from, not imported out of, the runtime handler so
-// each handler keeps owning its own client-interface types (dependency inversion). Callers
-// in the runtime handler pass their identically-shaped RuntimeInvokeRequest through structurally.
+// The invoke function lives here and is shared (RuntimeClient + EvalClient call it). Only these
+// request/response DTOs are duplicated — not imported from the runtime handler — so each handler
+// keeps owning its client-interface types; RuntimeClient passes its identical type through.
 export type RuntimeInvokeRequest = {
   runtimeId: string;
   accountId: string;
@@ -98,7 +98,7 @@ async function invokeRuntimeWithCustomJwt(
   });
   const url = new URL(endpoint.url);
   if (url.protocol !== "https:") {
-    throw new TypeError("CUSTOM_JWT requires an HTTPS endpoint");
+    throw new InputValidationError("CUSTOM_JWT requires an HTTPS endpoint");
   }
   url.pathname = `${url.pathname.replace(/\/?$/, "/")}runtimes/${encodeURIComponent(request.runtimeId)}/invocations`;
   url.search = new URLSearchParams({
@@ -109,7 +109,7 @@ async function invokeRuntimeWithCustomJwt(
   try {
     headers.set("Authorization", `Bearer ${bearerToken}`);
   } catch {
-    throw new TypeError("Invalid bearer token");
+    throw new InputValidationError("Invalid bearer token");
   }
   try {
     for (const [name, value] of [
@@ -129,7 +129,7 @@ async function invokeRuntimeWithCustomJwt(
       if (value !== undefined) headers.set(name, value);
     }
   } catch {
-    throw new TypeError("Invalid Runtime request header");
+    throw new InputValidationError("Invalid Runtime request header");
   }
   let response: Response;
   try {
@@ -152,14 +152,14 @@ async function invokeRuntimeWithCustomJwt(
               : typeof error,
       })
       .debug("Runtime invocation transport failed");
-    throw new Error("Runtime invocation failed");
+    throw new RuntimeInvokeResponseError("Runtime invocation failed", error);
   }
   if (!response.ok) {
     logger
       .child({ httpStatusCode: response.status })
       .debug("Runtime invocation returned a non-success response");
     await response.body?.cancel().catch(() => undefined);
-    throw new Error(`HTTP ${response.status}`);
+    throw new RuntimeInvokeResponseError(`HTTP ${response.status}`);
   }
   const body = (response.body as AsyncIterable<Uint8Array> | null) ?? emptyBody();
   return {

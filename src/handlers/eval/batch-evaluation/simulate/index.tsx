@@ -32,7 +32,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
       flag("dataset-version", "dataset version (with a dataset id)", z.string().optional()),
       flag("evaluator", "evaluator id(s) to apply", z.array(z.string()).optional()),
       flag("name", "batch evaluation name (unique in the account)", z.string().optional()),
-      flag("description", "optional description", z.string().optional()),
+      flag("description", "description for the batch evaluation", z.string().optional()),
       flag("kms-key-arn", "KMS key to encrypt evaluation data at rest", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
@@ -52,6 +52,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
         throw new InputValidationError("required option '--name <name>' not specified");
 
       // Ctrl-C aborts the run (invokes, the ingestion wait, the dataset download).
+      // TODO(#1986): swap for the shared SIGINT/abort helper once it merges.
       const controller = new AbortController();
       const interrupt = () => controller.abort();
       process.once("SIGINT", interrupt);
@@ -107,10 +108,6 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
           examplesInvoked: r.invoked,
           examplesFailed: r.failed,
         });
-      } catch (error) {
-        // A Ctrl-C exits quietly; the half-created sessions grade nothing.
-        if (controller.signal.aborted) return;
-        throw error;
       } finally {
         process.off("SIGINT", interrupt);
       }

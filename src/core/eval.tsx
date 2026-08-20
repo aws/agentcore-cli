@@ -118,10 +118,11 @@ import type {
   UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
 } from "../handlers/eval/types";
-import { atomicWrite, atomicWriteStream, readTextFile, renderJsonTemplate } from "../io";
+import { atomicWrite, atomicWriteStream, readTextFile } from "../io";
 import { accountIdFromRuntimeArn, invokeRuntime } from "./invokeRuntime";
 import { DatasetLoader } from "./eval/invokeDataset/load";
 import { runExamples } from "./eval/invokeDataset/run";
+import { renderJsonTemplate } from "./eval/invokeDataset/template";
 import type { RunContext } from "./eval/invokeDataset/example/types";
 import { isTerminalStatus, readEvaluationResults } from "./batchEvaluationResults";
 import { applyExampleIds, diffExamples, indexRemoteById, parseJsonl } from "./datasetDiff";
@@ -586,10 +587,13 @@ export class EvalClient implements CoreEvalClient {
         const groundTruth = await example.run(ctx);
         return { exampleId: example.exampleId, sessionId, groundTruth };
       } catch (error) {
-        this.logger.debug(
-          `invokeDataset: invoke failed for example "${example.exampleId}" (${example.schemaType}): ${(error as Error).message}`,
+        // Enrich with the example identity so the dropped-invoke reason is self-describing
+        // in firstError, instead of a bare transport message logged separately.
+        const cause = error instanceof Error ? error : new Error(String(error));
+        throw new Error(
+          `example "${example.exampleId}" (${example.schemaType}) failed to invoke: ${cause.message}`,
+          { cause },
         );
-        throw error;
       }
     });
 

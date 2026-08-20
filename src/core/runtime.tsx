@@ -27,9 +27,6 @@ export class RuntimeClient implements CoreRuntimeClient {
     private readonly logger: Logger,
   ) {}
 
-  // invokeRuntime delegates to the free function so EvalClient.invokeDataset can reuse
-  // the same invoke logic without holding a RuntimeClient (both call it off their
-  // own clients/fetch/logger).
   invokeRuntime(
     request: RuntimeInvokeRequest,
     options: CoreOptions,

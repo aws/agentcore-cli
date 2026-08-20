@@ -26,7 +26,6 @@ export {
   type JsonValue,
 } from "./jsonl";
 export { SourceResolver, type SourceResolverConfig } from "./source";
-export { renderJsonTemplate } from "./template";
 export {
   classifyStreamingResponse,
   writeStreamingResponse,
