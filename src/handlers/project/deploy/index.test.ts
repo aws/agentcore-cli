@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { createRootHandler } from "../../index";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
-import { ProjectKey, Router, ValueContext } from "../../../router";
-import { testIO } from "../../../testing";
-import { JsonRendererKey } from "../../../tui";
-import { JsonKey } from "../../keys";
+import {
+  createSilentLogger,
+  TestCoreClient,
+  TestGlobalConfigAccessor,
+  testIO,
+} from "../../../testing";
 import type {
   AddResourceInput,
   CreateProjectInput,
@@ -13,7 +16,6 @@ import type {
   ProjectEvent,
   ProjectManager,
 } from "../types";
-import { createDeployProjectHandler } from ".";
 
 const project: Project = {
   name: "orders",
@@ -21,6 +23,11 @@ const project: Project = {
   spec: ProjectSpecSchema.parse({ name: "orders", version: 1 }),
 };
 
+/**
+ * A ProjectManager whose deploy() succeeds, which the real one cannot do until
+ * CDK deployment is implemented. resolve() always returns a project, so these
+ * tests need no scaffolding on disk — withProject is satisfied by the manager.
+ */
 function fakeProjectManager(result: DeployResult, events: ProjectEvent[] = []) {
   const calls: { project: Project; input: DeployProjectInput }[] = [];
   const manager: ProjectManager = {
@@ -45,24 +52,23 @@ function fakeProjectManager(result: DeployResult, events: ProjectEvent[] = []) {
   return { calls, manager };
 }
 
-function harness(result: DeployResult, options: { events?: ProjectEvent[]; json?: boolean } = {}) {
+// Routes through createRootHandler rather than mounting the handler directly, so
+// the global --json flag, the real JSON renderer and the withProject wrap are the
+// ones the CLI actually installs instead of a context assembled by hand.
+function harness(result: DeployResult, events: ProjectEvent[] = []) {
   const io = testIO();
-  const fake = fakeProjectManager(result, options.events);
-  const handler = createDeployProjectHandler({ projectManager: fake.manager, io: io.io });
-  const ctx = ValueContext.EmptyContext()
-    .withValue(ProjectKey, project)
-    .withValue(JsonKey, options.json ?? false)
-    .withValue(JsonRendererKey, {
-      renderJson: (data) => io.io.stdout.write(`${JSON.stringify(data, null, 2)}\n`),
-      renderJsonLine: (data) => io.io.stdout.write(`${JSON.stringify(data)}\n`),
-    });
-  const router = new Router("project", "test");
-  router.handler(handler);
+  const fake = fakeProjectManager(result, events);
+  const core = new TestCoreClient({ projectManager: fake.manager });
+  const root = createRootHandler(core, {
+    io: io.io,
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
+    logger: createSilentLogger(),
+  });
 
   return {
     ...fake,
     io,
-    run: (args: string[] = []) => router.route(["node", "project", "deploy", ...args], ctx),
+    run: (args: string[] = []) => root.route(["node", "agentcore", "project", "deploy", ...args]),
   };
 }
 
@@ -70,7 +76,7 @@ describe("project deploy handler", () => {
   test("defaults to the default target and keeps progress off stdout", async () => {
     const subject = harness(
       { outputs: { ZetaUrl: "https://zeta.example", AlphaArn: "arn:alpha" } },
-      { events: [{ message: "Preparing deployment" }, { message: "Deploying stack" }] },
+      [{ message: "Preparing deployment" }, { message: "Deploying stack" }],
     );
 
     await subject.run();
@@ -83,9 +89,9 @@ describe("project deploy handler", () => {
 
   test("passes an explicit target and renders the result as JSON", async () => {
     const result = { outputs: { ServiceUrl: "https://service.example" } };
-    const subject = harness(result, { json: true });
+    const subject = harness(result);
 
-    await subject.run(["--target", "staging"]);
+    await subject.run(["--target", "staging", "--json"]);
 
     expect(subject.calls).toEqual([{ project, input: { target: "staging" } }]);
     expect(JSON.parse(subject.io.stdout())).toEqual(result);

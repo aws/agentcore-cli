@@ -43,7 +43,13 @@ export type DeployProjectInput = {
 };
 
 export type DeployResult = {
-  /** Outputs returned by the deployed stack, keyed by CloudFormation output name. */
+  /**
+   * Named outputs the deployment produced, e.g. a runtime ARN or a gateway URL.
+   * Each backend maps its own notion of outputs into this shape (CDK reads
+   * CloudFormation stack outputs; a terraform backend would read `terraform
+   * output`), so no individual key is part of the contract — callers render the
+   * map rather than indexing into it.
+   */
   outputs: Record<string, string>;
 };
 
