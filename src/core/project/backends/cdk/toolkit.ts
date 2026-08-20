@@ -1,7 +1,13 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import type { IIoHost, IoMessage, Toolkit } from "@aws-cdk/toolkit-lib";
+import type {
+  IActionAwareIoHost,
+  IIoHost,
+  IoMessage,
+  SdkBaseConfig,
+  Toolkit,
+} from "@aws-cdk/toolkit-lib";
 import { AgentCoreCLIError } from "../../../../errors";
 import type { Logger } from "../../../../logging";
 
@@ -12,11 +18,15 @@ export type CdkOperation =
 export type CdkRunOptions = {
   /** Synthesized cloud assembly used by deploy operations. */
   assemblyDirectory: string;
+  /** Credential provider shared with deployment preflight calls. */
+  credentials: CdkCredentialProvider;
   /** Region used for the Toolkit's own AWS SDK calls. */
   region: string;
 };
 
 export type CdkOutputs = Record<string, string>;
+export type CdkCredentialProvider = SdkBaseConfig["credentialProvider"];
+export type CdkCredentialResolver = (region: string) => Promise<CdkCredentialProvider>;
 
 export type CdkRunner = (operation: CdkOperation, options: CdkRunOptions) => Promise<CdkOutputs>;
 
@@ -36,7 +46,11 @@ export type LoadedCdkToolkit = {
   toolkit: CdkToolkit;
 };
 
-export type CdkToolkitLoader = (ioHost: IIoHost, region: string) => Promise<LoadedCdkToolkit>;
+export type CdkToolkitLoader = (
+  ioHost: IIoHost,
+  region: string,
+  credentials: CdkCredentialProvider,
+) => Promise<LoadedCdkToolkit>;
 
 type NamedBlob = Blob & { readonly name: string };
 
@@ -95,8 +109,31 @@ export function createCdkIoHost(logger: Logger): IIoHost {
   };
 }
 
+function forAction(ioHost: IIoHost, action: "deploy"): IActionAwareIoHost {
+  return {
+    notify: (message) => ioHost.notify({ ...message, action }),
+    requestResponse: (request) => ioHost.requestResponse({ ...request, action }),
+  };
+}
+
+export async function resolveCdkCredentials(
+  ioHost: IIoHost,
+  region: string,
+): Promise<CdkCredentialProvider> {
+  const { BaseCredentials } = await import("@aws-cdk/toolkit-lib");
+  const config = await BaseCredentials.awsCliCompatible({
+    defaultRegion: region,
+  }).sdkBaseConfig(forAction(ioHost, "deploy"), {});
+  return config.credentialProvider;
+}
+
+export function createCdkCredentialResolver(logger: Logger): CdkCredentialResolver {
+  const ioHost = createCdkIoHost(logger);
+  return (region) => resolveCdkCredentials(ioHost, region);
+}
+
 /** Loads the Toolkit only when a deploy operation needs it. */
-export const loadCdkToolkit: CdkToolkitLoader = async (ioHost, region) => {
+export const loadCdkToolkit: CdkToolkitLoader = async (ioHost, region, credentials) => {
   const lib = await import("@aws-cdk/toolkit-lib");
   return {
     lib,
@@ -105,7 +142,7 @@ export const loadCdkToolkit: CdkToolkitLoader = async (ioHost, region) => {
       color: false,
       emojis: false,
       sdkConfig: {
-        baseCredentials: lib.BaseCredentials.awsCliCompatible({ defaultRegion: region }),
+        baseCredentials: lib.BaseCredentials.custom({ provider: credentials, region }),
       },
     }),
   };
@@ -159,7 +196,7 @@ export function createCdkRunner(
 ): CdkRunner {
   const ioHost = createCdkIoHost(logger);
   return async (operation, options) => {
-    const loaded = await load(ioHost, options.region);
+    const loaded = await load(ioHost, options.region, options.credentials);
     return performCdkOperation(loaded, operation, options);
   };
 }

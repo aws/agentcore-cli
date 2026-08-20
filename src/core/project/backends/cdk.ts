@@ -19,9 +19,11 @@ import {
   type BootstrapProbe,
 } from "./cdk/environment";
 import {
+  createCdkCredentialResolver,
   createCdkRunner,
   loadBootstrapTemplate,
   type BootstrapTemplateLoader,
+  type CdkCredentialResolver,
   type CdkRunner,
 } from "./cdk/toolkit";
 
@@ -31,6 +33,7 @@ export type CdkBackendConfig = {
   checkTool?: typeof requireTool;
   json?: ReadWriteJson;
   cdk?: CdkRunner;
+  resolveCredentials?: CdkCredentialResolver;
   bootstrap?: BootstrapProbe;
   resolveAccount?: AccountResolver;
   loadBootstrapTemplate?: BootstrapTemplateLoader;
@@ -43,6 +46,7 @@ export class CdkBackend implements ProjectBackend {
   private readonly checkTool: typeof requireTool;
   private readonly json: ReadWriteJson;
   private readonly cdk: CdkRunner;
+  private readonly resolveCredentials: CdkCredentialResolver;
   private readonly bootstrap: BootstrapProbe;
   private readonly resolveAccount: AccountResolver;
   private readonly loadBootstrapTemplate: BootstrapTemplateLoader;
@@ -53,6 +57,8 @@ export class CdkBackend implements ProjectBackend {
     this.checkTool = config.checkTool ?? requireTool;
     this.json = config.json ?? new FsReadWriteJson({ logger: config.logger });
     this.cdk = config.cdk ?? createCdkRunner(config.logger);
+    this.resolveCredentials =
+      config.resolveCredentials ?? createCdkCredentialResolver(config.logger);
     this.bootstrap = config.bootstrap ?? probeBootstrap;
     this.resolveAccount = config.resolveAccount ?? resolveAwsAccount;
     this.loadBootstrapTemplate = config.loadBootstrapTemplate ?? loadBootstrapTemplate;
@@ -85,7 +91,8 @@ export class CdkBackend implements ProjectBackend {
   ): AsyncGenerator<ProjectEvent, DeployResult> {
     const { target } = input;
     yield { message: `Verifying AWS account ${target.account}` };
-    const account = await this.resolveAccount(target.region);
+    const credentials = await this.resolveCredentials(target.region);
+    const account = await this.resolveAccount(target.region, credentials);
     if (account !== target.account) {
       throw new ProjectStateError(
         `Deployment target '${target.name}' expects AWS account ${target.account}, ` +
@@ -96,9 +103,9 @@ export class CdkBackend implements ProjectBackend {
     yield* this.build(project);
     const assemblyDirectory = this.assemblyDirectory(project);
     const stackName = await stackForTarget(this.json, assemblyDirectory, target.name);
-    const options = { assemblyDirectory, region: target.region };
+    const options = { assemblyDirectory, credentials, region: target.region };
 
-    const bootstrap = await this.bootstrap(target.region);
+    const bootstrap = await this.bootstrap(target.region, credentials);
     this.logger
       .child({
         account: target.account,

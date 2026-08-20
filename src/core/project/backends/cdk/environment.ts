@@ -1,5 +1,6 @@
 import type { Stack } from "@aws-sdk/client-cloudformation";
 import { MalformedServiceResponseError, ProjectStateError } from "../../../../errors/errors";
+import type { CdkCredentialProvider } from "./toolkit";
 
 const BOOTSTRAP_STACK_NAME = "CDKToolkit";
 const BOOTSTRAP_VERSION_OUTPUT = "BootstrapVersion";
@@ -14,9 +15,18 @@ const STABLE_BOOTSTRAP_STATUSES = new Set([
 export type BootstrapState =
   { kind: "absent" } | { kind: "current"; version: number } | { kind: "outdated"; version: number };
 
-export type BootstrapStackReader = (region: string) => Promise<Stack[] | undefined>;
-export type BootstrapProbe = (region: string) => Promise<BootstrapState>;
-export type AccountResolver = (region: string) => Promise<string>;
+export type BootstrapStackReader = (
+  region: string,
+  credentials: CdkCredentialProvider,
+) => Promise<Stack[] | undefined>;
+export type BootstrapProbe = (
+  region: string,
+  credentials: CdkCredentialProvider,
+) => Promise<BootstrapState>;
+export type AccountResolver = (
+  region: string,
+  credentials: CdkCredentialProvider,
+) => Promise<string>;
 
 export function readBootstrapState(stacks?: Stack[]): Exclude<BootstrapState, { kind: "absent" }> {
   const stack = stacks?.[0];
@@ -60,10 +70,10 @@ export function isBootstrapStackNotFound(error: unknown): boolean {
   );
 }
 
-const describeBootstrapStack: BootstrapStackReader = async (region) => {
+const describeBootstrapStack: BootstrapStackReader = async (region, credentials) => {
   const { CloudFormationClient, DescribeStacksCommand } =
     await import("@aws-sdk/client-cloudformation");
-  const client = new CloudFormationClient({ region });
+  const client = new CloudFormationClient({ credentials, region });
   try {
     const response = await client.send(
       new DescribeStacksCommand({ StackName: BOOTSTRAP_STACK_NAME }),
@@ -76,19 +86,20 @@ const describeBootstrapStack: BootstrapStackReader = async (region) => {
 
 export async function probeBootstrap(
   region: string,
+  credentials: CdkCredentialProvider,
   read: BootstrapStackReader = describeBootstrapStack,
 ): Promise<BootstrapState> {
   try {
-    return readBootstrapState(await read(region));
+    return readBootstrapState(await read(region, credentials));
   } catch (error) {
     if (isBootstrapStackNotFound(error)) return { kind: "absent" };
     throw error;
   }
 }
 
-export const resolveAwsAccount: AccountResolver = async (region) => {
+export const resolveAwsAccount: AccountResolver = async (region, credentials) => {
   const { GetCallerIdentityCommand, STSClient } = await import("@aws-sdk/client-sts");
-  const client = new STSClient({ region });
+  const client = new STSClient({ credentials, region });
   try {
     const { Account } = await client.send(new GetCallerIdentityCommand({}));
     if (!Account) {

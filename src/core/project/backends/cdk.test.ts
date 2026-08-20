@@ -7,7 +7,7 @@ import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { createSilentLogger } from "../../../testing";
 import { CdkBackend } from "./cdk";
 import type { BootstrapState } from "./cdk/environment";
-import type { CdkOperation, CdkOutputs, CdkRunOptions } from "./cdk/toolkit";
+import type { CdkCredentialProvider, CdkOperation, CdkOutputs, CdkRunOptions } from "./cdk/toolkit";
 
 const TARGET = {
   name: "default",
@@ -86,10 +86,17 @@ type HarnessOptions = {
 function harness(options: HarnessOptions = {}) {
   const commands: { command: string[]; cwd: string }[] = [];
   const runs: { operation: CdkOperation; options: CdkRunOptions }[] = [];
+  const credentialRegions: string[] = [];
+  const accountCredentials: CdkCredentialProvider[] = [];
+  const bootstrapCredentials: CdkCredentialProvider[] = [];
   const accountRegions: string[] = [];
   const bootstrapRegions: string[] = [];
   let templateLoads = 0;
   let templateCleanups = 0;
+  const credentials: CdkCredentialProvider = async () => ({
+    accessKeyId: "access-key",
+    secretAccessKey: "secret-key",
+  });
 
   const backend = new CdkBackend({
     logger: createSilentLogger(),
@@ -97,12 +104,18 @@ function harness(options: HarnessOptions = {}) {
       commands.push({ command, cwd });
     },
     checkTool: async () => {},
-    resolveAccount: async (region) => {
+    resolveCredentials: async (region) => {
+      credentialRegions.push(region);
+      return credentials;
+    },
+    resolveAccount: async (region, provider) => {
       accountRegions.push(region);
+      accountCredentials.push(provider);
       return options.account ?? TARGET.account;
     },
-    bootstrap: async (region) => {
+    bootstrap: async (region, provider) => {
       bootstrapRegions.push(region);
+      bootstrapCredentials.push(provider);
       if (options.bootstrapError) throw options.bootstrapError;
       return options.bootstrap ?? { kind: "current", version: 30 };
     },
@@ -126,10 +139,14 @@ function harness(options: HarnessOptions = {}) {
   });
 
   return {
+    accountCredentials,
     accountRegions,
     backend,
+    bootstrapCredentials,
     bootstrapRegions,
     commands,
+    credentialRegions,
+    credentials,
     runs,
     templateLoads: () => templateLoads,
     templateCleanups: () => templateCleanups,
@@ -209,10 +226,14 @@ describe("CdkBackend.deploy", () => {
         },
         options: {
           assemblyDirectory: assemblyDirectory(input),
+          credentials: subject.credentials,
           region: TARGET.region,
         },
       },
     ]);
+    expect(subject.credentialRegions).toEqual([TARGET.region]);
+    expect(subject.accountCredentials).toEqual([subject.credentials]);
+    expect(subject.bootstrapCredentials).toEqual([subject.credentials]);
     expect(subject.accountRegions).toEqual([TARGET.region]);
     expect(subject.bootstrapRegions).toEqual([TARGET.region]);
     expect(subject.templateLoads()).toBe(0);

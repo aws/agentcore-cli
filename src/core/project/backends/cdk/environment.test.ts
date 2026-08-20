@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { Stack } from "@aws-sdk/client-cloudformation";
 import { isBootstrapStackNotFound, probeBootstrap, readBootstrapState } from "./environment";
+import type { CdkCredentialProvider } from "./toolkit";
+
+const credentials: CdkCredentialProvider = async () => ({
+  accessKeyId: "access-key",
+  secretAccessKey: "secret-key",
+});
 
 function stack(status: Stack["StackStatus"], version?: string): Stack {
   return {
@@ -65,7 +71,7 @@ describe("probeBootstrap", () => {
 
     expect(isBootstrapStackNotFound(notFound)).toBe(true);
     expect(
-      await probeBootstrap("us-east-1", async () => {
+      await probeBootstrap("us-east-1", credentials, async () => {
         throw notFound;
       }),
     ).toEqual({ kind: "absent" });
@@ -84,20 +90,23 @@ describe("probeBootstrap", () => {
     }),
   ])("propagates %s instead of guessing the stack is absent", async (failure) => {
     await expect(
-      probeBootstrap("us-east-1", async () => {
+      probeBootstrap("us-east-1", credentials, async () => {
         throw failure;
       }),
     ).rejects.toBe(failure);
   });
 
-  test("reads the target region", async () => {
+  test("reads the target region with the deployment credentials", async () => {
     const regions: string[] = [];
+    const providers: CdkCredentialProvider[] = [];
 
-    await probeBootstrap("eu-west-1", async (region) => {
+    await probeBootstrap("eu-west-1", credentials, async (region, provider) => {
       regions.push(region);
+      providers.push(provider);
       return [stack("CREATE_COMPLETE", "30")];
     });
 
     expect(regions).toEqual(["eu-west-1"]);
+    expect(providers).toEqual([credentials]);
   });
 });

@@ -10,11 +10,27 @@ import {
   loadCdkToolkit,
   loadBootstrapTemplate,
   performCdkOperation,
+  resolveCdkCredentials,
+  type CdkCredentialProvider,
+  type CdkRunOptions,
   type CdkToolkit,
   type LoadedCdkToolkit,
 } from "./toolkit";
 
 const temporaryTemplates: string[] = [];
+const credentials: CdkCredentialProvider = async () => ({
+  accessKeyId: "access-key",
+  secretAccessKey: "secret-key",
+});
+
+function runOptions(options: Partial<CdkRunOptions> = {}): CdkRunOptions {
+  return {
+    assemblyDirectory: "/unused",
+    credentials,
+    region: "us-east-1",
+    ...options,
+  };
+}
 
 afterEach(async () => {
   await Promise.all(
@@ -96,7 +112,7 @@ describe("performCdkOperation", () => {
       await performCdkOperation(
         loaded,
         { kind: "bootstrap", environments: ["aws://111122223333/us-east-1"] },
-        { assemblyDirectory: "/unused", region: "us-east-1" },
+        runOptions(),
       ),
     ).toEqual({});
 
@@ -126,7 +142,7 @@ describe("performCdkOperation", () => {
         environments: ["aws://111122223333/us-east-1"],
         templateFile: "/tmp/bootstrap-template.yaml",
       },
-      { assemblyDirectory: "/unused", region: "us-east-1" },
+      runOptions(),
     );
 
     expect(calls[0]!.args[1]).toMatchObject({
@@ -140,7 +156,7 @@ describe("performCdkOperation", () => {
     const outputs = await performCdkOperation(
       loaded,
       { kind: "deploy", stackName: "AgentCore-orders-default" },
-      { assemblyDirectory: "/workspace/agentcore/cdk/cdk.out", region: "us-east-1" },
+      runOptions({ assemblyDirectory: "/workspace/agentcore/cdk/cdk.out" }),
     );
 
     expect(outputs).toEqual({ RuntimeArn: "arn:runtime" });
@@ -186,26 +202,32 @@ describe("performCdkOperation", () => {
 
 describe("Toolkit loading", () => {
   test("constructs the real Toolkit without resolving credentials", async () => {
-    const loaded = await loadCdkToolkit(createCdkIoHost(createSilentLogger()), "us-west-2");
+    const ioHost = createCdkIoHost(createSilentLogger());
+    const provider = await resolveCdkCredentials(ioHost, "us-west-2");
+    const loaded = await loadCdkToolkit(ioHost, "us-west-2", provider);
 
+    expect(typeof provider).toBe("function");
     expect(typeof loaded.toolkit.bootstrap).toBe("function");
     expect(typeof loaded.toolkit.deploy).toBe("function");
   });
 
-  test("loads the Toolkit with the target region for each operation", async () => {
+  test("loads the Toolkit with the target region and deployment credentials", async () => {
     const { loaded } = loadedToolkit();
     const regions: string[] = [];
-    const runner = createCdkRunner(createSilentLogger(), async (_ioHost, region) => {
+    const providers: CdkCredentialProvider[] = [];
+    const runner = createCdkRunner(createSilentLogger(), async (_ioHost, region, provider) => {
       regions.push(region);
+      providers.push(provider);
       return loaded;
     });
 
     await runner(
       { kind: "deploy", stackName: "AgentCore-orders-default" },
-      { assemblyDirectory: "/workspace/cdk.out", region: "eu-west-1" },
+      runOptions({ assemblyDirectory: "/workspace/cdk.out", region: "eu-west-1" }),
     );
 
     expect(regions).toEqual(["eu-west-1"]);
+    expect(providers).toEqual([credentials]);
   });
 });
 
