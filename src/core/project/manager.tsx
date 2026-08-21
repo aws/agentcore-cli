@@ -182,7 +182,7 @@ export class FsProjectManager implements ProjectManager {
         if (input.envEntries?.length) {
           envFile = new EnvLocalFile(project.rootPath);
           yield { message: `Updating secrets file at '${envFile.path}'` };
-          const { skipped } = await envFile.upsert(input.envEntries);
+          const { skipped } = await envFile.insertIfNew(input.envEntries);
           for (const key of skipped) {
             yield {
               message: `'${key}' already exists in ${ENV_LOCAL_RELATIVE_PATH}; left unchanged`,
@@ -205,20 +205,20 @@ export class FsProjectManager implements ProjectManager {
     yield { message: `Updating project spec file at '${agentCoreSpecPath}'` };
 
     const newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
-    const newSpecParseResult = ProjectSpecSchema.safeParse(newSpec);
 
-    if (!newSpecParseResult.success)
-      throw new InputValidationError(z.prettifyError(newSpecParseResult.error), {
-        cause: newSpecParseResult.error,
-      });
-
-    // rollback scaffolding changes on failed config writes to prevent bad state.
+    // Validate and write inside the same boundary so a rejected spec rolls back
+    // staged side effects (.env.local, scaffolded files) rather than leaving them.
     let newProjectSpec: z.infer<typeof ProjectSpecSchema>;
     try {
+      const newSpecParseResult = ProjectSpecSchema.safeParse(newSpec);
+      if (!newSpecParseResult.success)
+        throw new InputValidationError(z.prettifyError(newSpecParseResult.error), {
+          cause: newSpecParseResult.error,
+        });
       newProjectSpec = await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
     } catch (err) {
       this.logger.warn(
-        `failed to update ${agentCoreSpecPath}; attempting best-effort cleanup of staged changes`,
+        `could not commit the spec update to ${agentCoreSpecPath}; attempting best-effort cleanup of staged changes`,
       );
       await Promise.all([
         ...scaffoldedPaths.map((p) =>

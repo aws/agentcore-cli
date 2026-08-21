@@ -56,6 +56,22 @@ export async function addCredentialToProject(
   input: Omit<Extract<AddResourceInput, { resourceType: "credential" }>, "resourceType">,
 ): Promise<void> {
   const project = ctx.require(ProjectKey);
+
+  // Two names that differ only by '-' vs '_' derive the same environment
+  // variable, which would silently reuse one secret for both providers.
+  const newName = input.resourceConfig.name;
+  const clash = project.spec.credentials.find(
+    (existing) =>
+      existing.name !== newName &&
+      credentialEnvVarName(existing.name) === credentialEnvVarName(newName),
+  );
+  if (clash) {
+    throw new InputValidationError(
+      `credential '${newName}' and '${clash.name}' derive the same environment variable name; ` +
+        "choose a name that differs by more than '-' and '_'",
+    );
+  }
+
   for await (const event of config.projectManager.addResource(project, {
     resourceType: "credential",
     ...input,

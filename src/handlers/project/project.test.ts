@@ -324,8 +324,8 @@ describe("project add credentials", () => {
     ]);
 
     const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-    expect(env).toContain("AGENTCORE_CREDENTIAL_SVC_KEY=sk-123\n");
-    expect(env).not.toContain("AGENTCORE_CREDENTIAL_SVC_KEY=sk-123\n\n");
+    expect(env).toContain("AGENTCORE_CREDENTIAL_SVC_KEY='sk-123'\n");
+    expect(env).not.toContain("AGENTCORE_CREDENTIAL_SVC_KEY='sk-123'\n\n");
   });
 
   test("api-key without a secret writes a commented placeholder and tells the user to fill it", async () => {
@@ -403,7 +403,7 @@ describe("project add credentials", () => {
     ]);
 
     const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-    expect(env).toContain("AGENTCORE_CREDENTIAL_IDP_CLIENT_SECRET=sssh");
+    expect(env).toContain("AGENTCORE_CREDENTIAL_IDP_CLIENT_SECRET='sssh'");
   });
 
   test("oauth vendored with --provider-configuration records the config and a secret placeholder", async () => {
@@ -470,6 +470,14 @@ describe("project add credentials", () => {
     await expect(
       run(["add", "credentials", "oauth", "--name", "dup", "--discovery-url", discoveryUrl]),
     ).rejects.toThrow(/already exists/);
+  });
+
+  test("rejects two names that derive the same environment variable", async () => {
+    await inProject();
+    await run(["add", "credentials", "api-key", "--name", "svc-key"]);
+    await expect(run(["add", "credentials", "api-key", "--name", "svc_key"])).rejects.toThrow(
+      /same environment variable/,
+    );
   });
 
   test.each<[string, string[], RegExp]>([
