@@ -1,8 +1,19 @@
 import { expect, spyOn, test } from "bun:test";
 import { CommanderError } from "commander";
 
-import { AgentCoreCLIError, CommandInterruptedError, InputValidationError } from "../errors";
-import { ExitCode, runRunnable, runWithExitCode, type Runnable } from "./index.tsx";
+import {
+  AgentCoreCLIError,
+  InputValidationError,
+  SilentCLIError,
+  UserCancellationError,
+} from "../errors";
+import {
+  ExitCode,
+  runRunnable,
+  runWithExitCode,
+  withUserCancellation,
+  type Runnable,
+} from "./index.tsx";
 
 async function captureErrors(run: () => Promise<number>) {
   const errors: string[] = [];
@@ -68,6 +79,49 @@ test("respects custom errors codes from known errors", async () => {
   expect(errors).toEqual(["Error: custom failure"]);
 });
 
+test("withUserCancellation returns the result and removes its SIGINT listener", async () => {
+  const initialListeners = process.listenerCount("SIGINT");
+  let signal: AbortSignal | undefined;
+
+  const result = await withUserCancellation(async (current) => {
+    signal = current;
+    return "done";
+  });
+
+  expect(result).toBe("done");
+  expect(signal?.aborted).toBe(true);
+  expect(process.listenerCount("SIGINT")).toBe(initialListeners);
+});
+
+test("withUserCancellation replaces transport aborts with the shared reason", async () => {
+  const initialListeners = process.listenerCount("SIGINT");
+  let signal: AbortSignal | undefined;
+  const pending = withUserCancellation((current) => {
+    signal = current;
+    return new Promise<never>((_, reject) => {
+      const abort = () => reject(new Error("transport aborted"));
+      if (current.aborted) abort();
+      else current.addEventListener("abort", abort, { once: true });
+    });
+  });
+
+  process.emit("SIGINT", "SIGINT");
+
+  expect(signal?.reason).toBeInstanceOf(UserCancellationError);
+  await expect(pending).rejects.toBe(signal?.reason);
+  expect(process.listenerCount("SIGINT")).toBe(initialListeners);
+});
+
+test("withUserCancellation preserves non-cancellation failures", async () => {
+  const failure = new TypeError("operation failed");
+
+  await expect(
+    withUserCancellation(async () => {
+      throw failure;
+    }),
+  ).rejects.toBe(failure);
+});
+
 test.each([
   [
     "explicit usage",
@@ -75,37 +129,16 @@ test.each([
     ExitCode.USAGE,
     ["Error: bad request"],
   ],
+  ["user cancellation", new UserCancellationError(), ExitCode.INTERRUPTED, []],
   [
-    "interruption",
+    "raw AbortError",
     Object.assign(new Error("The operation was aborted"), { name: "AbortError" }),
-    ExitCode.INTERRUPTED,
-    ["AbortError: The operation was aborted"],
-  ],
-  [
-    "classified interruption",
-    AgentCoreCLIError.fromError(
-      Object.assign(new Error("The operation was aborted"), { name: "AbortError" }),
-    ),
-    ExitCode.INTERRUPTED,
-    ["AbortError: The operation was aborted"],
-  ],
-  [
-    "reported command interruption",
-    new CommandInterruptedError(undefined, true),
-    ExitCode.INTERRUPTED,
-    [],
+    ExitCode.FAILURE,
+    ["Error: The operation was aborted"],
   ],
   [
     "Commander parse failure",
     new CommanderError(1, "commander.invalidArgument", "invalid option"),
-    ExitCode.USAGE,
-    [],
-  ],
-  [
-    "classified Commander parse failure",
-    AgentCoreCLIError.fromError(
-      new CommanderError(1, "commander.invalidArgument", "invalid option"),
-    ),
     ExitCode.USAGE,
     [],
   ],
@@ -115,29 +148,12 @@ test.each([
     ExitCode.SUCCESS,
     [],
   ],
-  [
-    "classified Commander help",
-    AgentCoreCLIError.fromError(new CommanderError(0, "commander.helpDisplayed", "help displayed")),
-    ExitCode.SUCCESS,
-    [],
-  ],
-  [
-    "classified reported failure",
-    AgentCoreCLIError.fromError(Object.assign(new Error("already reported"), { reported: true })),
-    ExitCode.FAILURE,
-    [],
-  ],
-  [
-    "reported failure",
-    Object.assign(new Error("already reported"), { reported: true }),
-    ExitCode.FAILURE,
-    [],
-  ],
+  ["hidden failure", new SilentCLIError("already displayed"), ExitCode.FAILURE, []],
   [
     "arbitrary TypeError",
     new TypeError("transport failed"),
     ExitCode.FAILURE,
-    ["TypeError: transport failed"],
+    ["Error: transport failed"],
   ],
 ])("runWithExitCode maps %s", async (_name, error, expected, expectedErrors) => {
   const result = await captureErrors(() => runWithExitCode(async () => Promise.reject(error)));

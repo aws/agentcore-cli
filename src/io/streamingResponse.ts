@@ -163,7 +163,9 @@ export async function writeStreamingResponse<T extends StreamingResponse>(
         response,
         byteCount,
         false,
-        (error as Error)?.name === "AbortError" ? "interrupted" : "response-stream-failed",
+        output.signal?.aborted || (error as Error)?.name === "AbortError"
+          ? "interrupted"
+          : "response-stream-failed",
       ),
       output.signal,
       writer.fail,

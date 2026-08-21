@@ -7,6 +7,13 @@ import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 import { resolveConfigurationBundleComponents } from "../components";
 
+const BranchNameSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-zA-Z][a-zA-Z0-9_/-]{0,127}$/, "Value must match [a-zA-Z][a-zA-Z0-9_/-]");
+const CommitMessageSchema = z.string().max(500);
+
 export const createCreateConfigBundleHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "create",
@@ -18,6 +25,12 @@ export const createCreateConfigBundleHandler = (core: Core, io: AppIO) =>
         "complete component configuration map (JSON inline, file://<path>, or - for stdin)",
         z.string().optional(),
         { sensitive: true },
+      ),
+      flag("branch-name", "branch name for the initial configuration", BranchNameSchema.optional()),
+      flag(
+        "commit-message",
+        "message describing the initial configuration",
+        CommitMessageSchema.optional(),
       ),
       flag(
         "kms-key-arn",
@@ -42,6 +55,8 @@ export const createCreateConfigBundleHandler = (core: Core, io: AppIO) =>
           {
             bundleName: flags["name"],
             components,
+            branchName: flags["branch-name"],
+            commitMessage: flags["commit-message"],
             kmsKeyArn: flags["kms-key-arn"],
           },
           coreOptsFromCtx(ctx),

@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
-import { InputValidationError, ResourceNotFoundError } from "../../../errors";
+import {
+  InputValidationError,
+  ResourceNotFoundError,
+  UserCancellationError,
+} from "../../../errors";
 import type { PortChecker } from "../../../io";
 import { ProjectKey, ValueContext } from "../../../router";
 import { testIO } from "../../../testing";
@@ -192,11 +196,9 @@ describe("project dev interruption", () => {
       codeZip.release();
 
       expect(input.signal.aborted).toBe(true);
-      await expect(pending).rejects.toMatchObject({
-        name: "AbortError",
-        reported: true,
-        exitCode: 130,
-      });
+      expect(input.signal.reason).toBeInstanceOf(UserCancellationError);
+      await expect(pending).rejects.toBe(input.signal.reason);
+      expect((input.signal.reason as UserCancellationError).exitCode).toBe(130);
       expect(subject.io.stderr()).toBe("Shutting down…");
       expect(process.listenerCount(signal)).toBe(before);
     },

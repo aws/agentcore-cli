@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import type { GetGatewayResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { AppIO } from "../../../io";
+import { UserCancellationError } from "../../../errors";
 import { ExitCode, runWithExitCode } from "../../../runnable";
 import {
   createSilentLogger,
@@ -485,11 +486,12 @@ describe("gateway invoke", () => {
       await waitFor(() => core.gateway.calls.some((call) => call.method === "invokeGateway"));
       process.emit("SIGINT", "SIGINT");
 
-      await expect(pending).rejects.toMatchObject({ name: "AbortError", reported: false });
       const lookupSignal = core.gateway.calls[0]!.args[2] as AbortSignal;
       const invokeSignal = core.gateway.calls[1]!.args[2] as AbortSignal;
       expect(lookupSignal).toBe(invokeSignal);
       expect(invokeSignal.aborted).toBe(true);
+      expect(invokeSignal.reason).toBeInstanceOf(UserCancellationError);
+      await expect(pending).rejects.toBe(invokeSignal.reason);
     } finally {
       await pending.catch(() => undefined);
     }

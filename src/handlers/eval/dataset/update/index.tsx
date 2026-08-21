@@ -3,6 +3,7 @@ import { createHandler, flag } from "../../../../router";
 import { InputValidationError } from "../../../../errors";
 import type { AppIO } from "../../../../io";
 import { JsonRendererKey } from "../../../../tui";
+import { withUserCancellation } from "../../../../runnable";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 
@@ -16,27 +17,24 @@ export const createUpdateDatasetHandler = (core: Core, io: AppIO) =>
     ],
     handle: async (ctx, flags) => {
       if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");
+      const datasetId = flags["id"];
       if (!flags["file-path"]) {
         throw new InputValidationError("required option '--file-path <file-path>' not specified");
       }
+      const filePath = flags["file-path"];
 
-      const controller = new AbortController();
-      const interrupt = () => controller.abort();
-      process.once("SIGINT", interrupt);
-      try {
-        ctx
-          .require(JsonRendererKey)
-          .renderJson(
-            await core.eval.updateDatasetExamples(
-              flags["id"],
-              flags["file-path"],
+      ctx
+        .require(JsonRendererKey)
+        .renderJson(
+          await withUserCancellation((signal) =>
+            core.eval.updateDatasetExamples(
+              datasetId,
+              filePath,
               coreOptsFromCtx(ctx),
-              controller.signal,
+              signal,
               (event) => io.stderr.write(`${event.message}\n`),
             ),
-          );
-      } finally {
-        process.removeListener("SIGINT", interrupt);
-      }
+          ),
+        );
     },
   });

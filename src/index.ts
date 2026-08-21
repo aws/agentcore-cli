@@ -91,12 +91,14 @@ process.exit(
       await rootHandler.route(argv, context);
     } catch (e) {
       const error = AgentCoreCLIError.fromError(e);
-      rootLogger.child({ error: error.json() }).error();
-      commandRunMetricEvent.setAttributes({
-        exit_reason: "failure",
-        error_name: error.name,
-        error_source: error.source,
-      });
+      if (error.exitCode !== 0) {
+        rootLogger.child({ error: error.json() }).error();
+        commandRunMetricEvent.setAttributes({
+          exit_reason: "failure",
+          error_name: error.name,
+          error_source: error.source,
+        });
+      }
       throw error;
     } finally {
       try {

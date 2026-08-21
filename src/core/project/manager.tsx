@@ -21,7 +21,7 @@ import {
 import { defaultSource, type AssetSource } from "./source";
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
 import { createHarnessTreeFromSpec, createProjectTreeFromTemplate, TEMPLATES } from "./templates";
-import { ProjectSpecSchema } from "../../projectSchemas/project";
+import { ProjectSpecSchema, type ManagedBy } from "../../projectSchemas/project";
 import { enclosingProjectRoot } from "./fsUtils";
 import {
   AgentCoreCLIError,
@@ -31,6 +31,8 @@ import {
 } from "../../errors/errors";
 import type { HarnessSpecSchema } from "../../projectSchemas/harness";
 import z from "zod";
+import { CdkBackend } from "./backends/cdk";
+import type { ProjectBackend } from "./backends/types";
 
 type ProjectManagerConfig = {
   logger: Logger;
@@ -38,6 +40,7 @@ type ProjectManagerConfig = {
   runner?: ProcessRunner; // injectable so tests never spawn real processes
   checkTool?: typeof requireTool; // injectable so tests don't depend on the host's PATH
   json?: ReadWriteJson; // injectable so tests read fixtures instead of disk
+  backends?: Partial<Record<ManagedBy, ProjectBackend>>;
 };
 
 /**
@@ -49,6 +52,7 @@ export class FsProjectManager implements ProjectManager {
   private readonly runner: ProcessRunner;
   private readonly checkTool: typeof requireTool;
   private readonly json: ReadWriteJson;
+  private readonly backends: Partial<Record<ManagedBy, ProjectBackend>>;
 
   constructor(config: ProjectManagerConfig) {
     this.logger = config.logger;
@@ -56,6 +60,13 @@ export class FsProjectManager implements ProjectManager {
     this.runner = config.runner ?? runProcess;
     this.checkTool = config.checkTool ?? requireTool;
     this.json = config.json ?? new FsReadWriteJson({ logger: config.logger });
+    this.backends = config.backends ?? {
+      CDK: new CdkBackend({
+        logger: config.logger,
+        runner: config.runner,
+        checkTool: config.checkTool,
+      }),
+    };
   }
 
   public async resolve(input: ResolveProjectInput): Promise<Project | undefined> {
@@ -180,7 +191,15 @@ export class FsProjectManager implements ProjectManager {
         }
         break;
       }
-      // TODO: add limited special casing for runtime and default for other resources that proxy directly to spec changes.
+      case "config-bundle":
+      case "online-eval":
+        newResources.push(resourceConfig);
+        break;
+
+      default: {
+        const unhandled: never = input;
+        throw new NotImplementedError(`unsupported project resource: ${String(unhandled)}`);
+      }
     }
 
     yield { message: `Updating project spec file at '${agentCoreSpecPath}'` };
@@ -249,47 +268,17 @@ export class FsProjectManager implements ProjectManager {
   }
 
   public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
-    // agentcore.json records which backend owns the project's artifacts. CDK is the
-    // only one today; a terraform or no-IaC backend adds an arm here rather than
-    // editing the CDK path.
-    switch (project.spec.managedBy) {
-      case "CDK":
-        yield* this.buildWithCdk(project);
-        break;
-      default: {
-        // Exhaustiveness: a new ManagedBy member fails to compile until it is handled.
-        const unsupported: never = project.spec.managedBy;
-        throw new ProjectStateError(
-          `project '${project.name}' declares an unsupported backend: ${String(unsupported)}`,
-        );
-      }
-    }
+    yield* this.backendFor(project).build(project);
   }
 
-  // Compiles the generated CDK app and synthesizes its CloudFormation templates.
-  private async *buildWithCdk(project: Project): AsyncGenerator<ProjectEvent, void> {
-    const cdkDir = join(project.rootPath, "agentcore", "cdk");
-
-    // The generated CDK app is built from its own node_modules; without them the
-    // failure would otherwise surface as an opaque "cdk: not found".
-    if (!existsSync(join(cdkDir, "node_modules"))) {
+  private backendFor(project: Project): ProjectBackend {
+    const backend = this.backends[project.spec.managedBy];
+    if (!backend) {
       throw new ProjectStateError(
-        `CDK dependencies are missing for project '${project.name}'. ` +
-          `Run 'cd ${cdkDir} && npm install'.`,
+        `project '${project.name}' declares an unsupported backend: ${project.spec.managedBy}`,
       );
     }
-    await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
-
-    // The generated package.json defines `cdk` as "npm run build && cdk", so this
-    // single command compiles the app and then synthesizes it. Synthesis needs no
-    // AWS credentials: each stack's environment comes from aws-targets.json.
-    //
-    // Build deliberately does not require a deployment target. A freshly created
-    // project has none, and building is how the user first typechecks their agent, so
-    // the generated app synthesizes one environment-agnostic stack when the list is
-    // empty. Only deploying somewhere needs a real target.
-    yield { message: "Synthesizing CloudFormation templates" };
-    await this.run(["npm", "run", "cdk", "--", "synth", "--quiet"], cdkDir);
+    return backend;
   }
 
   // Runs a command with its output streamed to the file logger.
@@ -309,5 +298,9 @@ function toProjectSpecKey(resourceType: ProjectResource) {
       return "runtimes";
     case "credential":
       return "credentials";
+    case "config-bundle":
+      return "configBundles";
+    case "online-eval":
+      return "onlineEvalConfigs";
   }
 }

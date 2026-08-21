@@ -2,9 +2,9 @@ import z from "zod";
 import { resolveDevPort } from "../../../core/dev/port";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
-  CommandInterruptedError,
   InputValidationError,
   ResourceNotFoundError,
+  UserCancellationError,
 } from "../../../errors";
 import type { AppIO, PortChecker } from "../../../io";
 import { createHandler, flag, ProjectKey } from "../../../router";
@@ -71,7 +71,7 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
       const interrupt = () => {
         if (controller.signal.aborted) return;
         config.io.stderr.write("Shutting down…\n");
-        controller.abort();
+        controller.abort(new UserCancellationError());
       };
 
       const signals = ["SIGINT", "SIGTERM"] as const;
@@ -114,8 +114,8 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           renderEvent(config.io, event, json);
         }
       } catch (error) {
-        if (!controller.signal.aborted) throw error;
-        throw new CommandInterruptedError(error, true);
+        controller.signal.throwIfAborted();
+        throw error;
       } finally {
         for (const signal of signals) process.removeListener(signal, interrupt);
       }

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { PassThrough } from "node:stream";
+import { SilentCLIError, UserCancellationError } from "../../../errors";
 import type { GatewayInvokeResponse } from "../types";
 import { writeGatewayInvokeResponse } from "./response";
 
@@ -103,22 +104,45 @@ describe("Gateway invoke response output", () => {
     const stderr = capture();
     const upstream = new Error("secret upstream response");
 
-    await expect(
-      writeGatewayInvokeResponse(
-        response({
-          body: (async function* () {
-            yield Buffer.from("partial");
-            throw upstream;
-          })(),
-        }),
-        { stdout: stdout.stream, stderr: stderr.stream },
-      ),
-    ).rejects.toMatchObject({ message: "response stream failed", reported: true });
+    const pending = writeGatewayInvokeResponse(
+      response({
+        body: (async function* () {
+          yield Buffer.from("partial");
+          throw upstream;
+        })(),
+      }),
+      { stdout: stdout.stream, stderr: stderr.stream },
+    );
+
+    await expect(pending).rejects.toBeInstanceOf(SilentCLIError);
+    await expect(pending).rejects.toThrow("response stream failed");
 
     expect(stdout.bytes().toString()).toBe("partial");
     expect(stderr.bytes().toString()).toContain(
       "complete=false bytes=7 error=response-stream-failed",
     );
     expect(stderr.bytes().toString()).not.toContain(upstream.message);
+  });
+
+  test("preserves the shared cancellation reason after reporting an interruption", async () => {
+    const controller = new AbortController();
+    const cancellation = new UserCancellationError();
+    const stdout = capture();
+    const stderr = capture();
+    const source = (async function* () {
+      yield Buffer.from("partial");
+      controller.abort(cancellation);
+      throw Object.assign(new Error("The operation was aborted"), { name: "AbortError" });
+    })();
+
+    await expect(
+      writeGatewayInvokeResponse(response({ body: source }), {
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(cancellation);
+    expect(stdout.bytes().toString()).toBe("partial");
+    expect(stderr.bytes().toString()).toContain("complete=false bytes=7 error=interrupted");
   });
 });

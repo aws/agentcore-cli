@@ -4,7 +4,13 @@ import {
   ValidationException,
   InternalServerException,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import { AgentCoreCLIError, InputValidationError } from "./errors";
+import { CommanderError } from "commander";
+import {
+  AgentCoreCLIError,
+  InputValidationError,
+  SilentCLIError,
+  UserCancellationError,
+} from "./errors";
 
 describe("AgentCoreCLIError", () => {
   test("fromError preserves existing AgentCoreCLIError instances", () => {
@@ -15,6 +21,43 @@ describe("AgentCoreCLIError", () => {
   test("fromError preserves AgentCoreCLIError subclasses", () => {
     const err = new InputValidationError("bad input");
     expect(AgentCoreCLIError.fromError(err)).toBe(err);
+  });
+
+  test.each([
+    ["parse failures", new CommanderError(1, "commander.invalidArgument", "invalid option"), 2],
+    ["help", new CommanderError(0, "commander.helpDisplayed", "help displayed"), 0],
+  ])("fromError classifies Commander %s", (_label, err, exitCode) => {
+    const result = AgentCoreCLIError.fromError(err);
+    expect(result).toBeInstanceOf(SilentCLIError);
+    expect(result.json()).toMatchObject({
+      name: "CommanderError",
+      source: "user",
+      exitCode,
+      meta: { code: err.code },
+    });
+  });
+
+  test("UserCancellationError is a silent user interruption", () => {
+    const error = new UserCancellationError();
+    expect(error).toBeInstanceOf(SilentCLIError);
+    expect(error.json()).toMatchObject({
+      name: "UserCancellationError",
+      message: "Operation cancelled by user",
+      source: "user",
+      exitCode: 130,
+    });
+  });
+
+  test("UserCancellationError resolves direct and signal-propagated cancellation", () => {
+    const cancellation = new UserCancellationError();
+    const controller = new AbortController();
+    controller.abort(cancellation);
+
+    expect(UserCancellationError.resolve(cancellation)).toBe(cancellation);
+    expect(UserCancellationError.resolve(new Error("transport aborted"), controller.signal)).toBe(
+      cancellation,
+    );
+    expect(UserCancellationError.resolve(new Error("failed"))).toBeUndefined();
   });
 
   test.each([

@@ -1,11 +1,11 @@
 import z from "zod";
-import { InputValidationError, RuntimeInvokeInterruptedError } from "../../../errors";
+import { InputValidationError } from "../../../errors";
 import { createHandler, flag, PathKey } from "../../../router";
 import type { AppIO } from "../../../io";
 import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 import { JsonKey } from "../../keys";
-import { ExitCode } from "../../../runnable";
+import { ExitCode, withUserCancellation } from "../../../runnable";
 import { renderTuiAt } from "../../../tui";
 import {
   normalizeRuntimeInvokeRequest,
@@ -104,20 +104,19 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
       if (jsonOutput && flags["output-file"] !== undefined) {
         throw new InputValidationError("--json cannot be used with --output-file");
       }
-      const controller = new AbortController();
-      const interrupt = () => controller.abort();
-      process.once("SIGINT", interrupt);
-      try {
+      const runtimeId = flags.id;
+      const payload = flags.payload;
+      await withUserCancellation(async (signal) => {
         const applicationHeaders = parseRuntimeInvokeHeaders(flags.header);
         const sources = await resolveRuntimeInvokeSources(
-          { payload: flags.payload, bearerToken: flags["bearer-token"] },
+          { payload, bearerToken: flags["bearer-token"] },
           io.stdin,
-          controller.signal,
+          signal,
         );
         const options = coreOptsFromCtx(ctx);
-        const runtime = await core.runtime.getRuntime(flags.id, options, controller.signal);
+        const runtime = await core.runtime.getRuntime(runtimeId, options, signal);
         const request = normalizeRuntimeInvokeRequest(runtime, {
-          runtimeId: flags.id,
+          runtimeId,
           qualifier: flags.qualifier,
           payload: sources.payload,
           contentType: flags["content-type"],
@@ -135,23 +134,14 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
           traceState: flags["trace-state"],
           baggage: flags.baggage,
         });
-        const response = await core.runtime.invokeRuntime(request, options, controller.signal);
+        const response = await core.runtime.invokeRuntime(request, options, signal);
         await writeRuntimeInvokeResponse(response, {
           stdout: io.stdout,
           stderr: io.stderr,
           outputFile: flags["output-file"],
           json: jsonOutput,
-          signal: controller.signal,
+          signal,
         });
-      } catch (error) {
-        if (controller.signal.aborted && (error as Error)?.name === "AbortError") {
-          if (error instanceof RuntimeInvokeInterruptedError) throw error;
-          throw new RuntimeInvokeInterruptedError(error);
-        }
-        throw error;
-      } finally {
-        controller.abort();
-        process.off("SIGINT", interrupt);
-      }
+      });
     },
   });

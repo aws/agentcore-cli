@@ -1,4 +1,5 @@
 import { ServiceException } from "@smithy/core/client";
+import { CommanderError } from "commander";
 import { join } from "node:path";
 import { ERROR_SOURCE, type ErrorSource } from "./types";
 
@@ -41,6 +42,16 @@ export class AgentCoreCLIError extends Error {
   static fromError(error: unknown): AgentCoreCLIError {
     if (error instanceof AgentCoreCLIError) return error;
 
+    if (error instanceof CommanderError) {
+      return new SilentCLIError(error.message, {
+        cause: error,
+        source: ERROR_SOURCE.USER,
+        name: error.name,
+        meta: { code: error.code },
+        exitCode: error.exitCode === 0 ? 0 : 2,
+      });
+    }
+
     if (ServiceException.isInstance(error)) {
       const httpStatusCode = error.$metadata.httpStatusCode;
       const source =
@@ -61,6 +72,9 @@ export class AgentCoreCLIError extends Error {
     return new AgentCoreCLIError(String(error), { cause: error });
   }
 }
+
+/** Base for CLI errors intentionally omitted from root stderr output. */
+export class SilentCLIError extends AgentCoreCLIError {}
 
 /** Error raised for invalid user input. */
 export class InputValidationError extends AgentCoreCLIError {
@@ -137,39 +151,28 @@ export class EmbeddedAssetNotFoundError extends AgentCoreCLIError {
   }
 }
 
-export class CommandInterruptedError extends AgentCoreCLIError {
-  readonly reported: boolean;
+/** Raised when a user intentionally cancels a headless CLI operation. */
+export class UserCancellationError extends SilentCLIError {
+  constructor() {
+    super("Operation cancelled by user", {
+      source: ERROR_SOURCE.USER,
+      exitCode: 130,
+    });
+  }
 
-  constructor(cause?: unknown, reported = false) {
-    super("The operation was aborted", { cause, exitCode: 130 });
-    this.name = "AbortError";
-    this.reported = reported;
+  static resolve(error: unknown, signal?: AbortSignal): UserCancellationError | undefined {
+    if (error instanceof UserCancellationError) return error;
+    return signal?.reason instanceof UserCancellationError ? signal.reason : undefined;
   }
 }
 
-export class RuntimeInvokeInterruptedError extends CommandInterruptedError {}
-
-export class RuntimeInvokeResponseError extends AgentCoreCLIError {
-  readonly reported = true;
-
+export class RuntimeInvokeResponseError extends SilentCLIError {
   constructor(message: string, cause?: unknown) {
     super(message, { cause });
   }
 }
 
-export class GatewayInvokeInterruptedError extends AgentCoreCLIError {
-  readonly reported: boolean;
-
-  constructor(cause?: unknown, reported = false) {
-    super("The operation was aborted", { cause, exitCode: 130 });
-    this.name = "AbortError";
-    this.reported = reported;
-  }
-}
-
-export class GatewayInvokeResponseError extends AgentCoreCLIError {
-  readonly reported = true;
-
+export class GatewayInvokeResponseError extends SilentCLIError {
   constructor(message: string, cause?: unknown) {
     super(message, { cause });
   }

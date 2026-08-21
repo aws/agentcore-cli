@@ -1,8 +1,10 @@
 import { HarnessSpecSchema } from "../../projectSchemas/harness";
 import type { CredentialSchema } from "../../projectSchemas/credential";
+import type { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import type { ProjectSpecSchema } from "../../projectSchemas/project";
 import type z from "zod";
 import type { ProjectRuntimeSchema } from "../../projectSchemas/runtime";
+import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
 
 /** Available project templates for scaffolding new AgentCore projects. */
 export const PROJECT_TEMPLATES = {
@@ -63,6 +65,14 @@ export type AddResourceInput =
       resourceType: "credential";
       resourceConfig: z.input<typeof CredentialSchema>;
       envEntries?: EnvLocalEntry[];
+    }
+  | {
+      resourceType: "config-bundle";
+      resourceConfig: z.input<typeof ConfigBundleSchema>;
+    }
+  | {
+      resourceType: "online-eval";
+      resourceConfig: z.input<typeof OnlineEvalConfigSchema>;
     };
 
 export type ProjectResource = AddResourceInput["resourceType"];

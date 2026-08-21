@@ -1,11 +1,9 @@
 export {
   AgentCoreCLIError,
   CloudWatchQueryError,
-  CommandInterruptedError,
   DeserializationError,
   EmbeddedAssetNotFoundError,
   FileWriteError,
-  GatewayInvokeInterruptedError,
   GatewayInvokeResponseError,
   InputValidationError,
   InvalidEnvironmentError,
@@ -16,9 +14,10 @@ export {
   ProjectFileExistsError,
   ResourceNotFoundError,
   ResultTruncationError,
-  RuntimeInvokeInterruptedError,
   RuntimeInvokeResponseError,
+  SilentCLIError,
   SourceResolutionError,
+  UserCancellationError,
   type AgentCoreCLIErrorOptions,
 } from "./errors";
 export { ERROR_SOURCE } from "./types";
