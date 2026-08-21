@@ -69,8 +69,8 @@ async function respond(
   try {
     body = await readBody(request);
   } catch (error) {
-    // Answer before closing: destroying the socket first would surface as a
-    // connection reset, which OTLP exporters treat as transient and retry.
+    // Answer before closing: destroying the socket first surfaces as a connection
+    // reset, which many clients treat as transient and silently retry.
     const status = error instanceof BodyTooLargeError ? 413 : 400;
     response.writeHead(status, { Connection: "close" }).end(() => request.destroy());
     return;

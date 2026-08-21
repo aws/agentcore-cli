@@ -101,8 +101,8 @@ async function ingest(
     await store.append(payload);
   } catch (error) {
     // A persistence failure (disk full, permissions) is the collector's problem,
-    // not the agent's: ack the export so the SDK exporter stops retrying the batch
-    // forever, and report it once so the user isn't left with silently missing traces.
+    // not the agent's: ack the export anyway so the SDK exporter stops retrying the
+    // batch forever, and hand the error to onError for the caller to surface.
     onError?.(error);
   }
   return json(200, {});
@@ -147,7 +147,7 @@ export function otelEnvVars(port: number): Record<string, string> {
  * Rewrite loopback OTLP endpoints so a containerized agent can reach the
  * collector on the host. host.docker.internal resolves on Docker Desktop,
  * Finch, and Podman; bare-metal Linux Docker would additionally need
- * `--add-host=host.docker.internal:host-gateway` (matches the reference CLI).
+ * `--add-host=host.docker.internal:host-gateway`.
  */
 export function rewriteOtelEndpointForContainer(
   env: Record<string, string>,
