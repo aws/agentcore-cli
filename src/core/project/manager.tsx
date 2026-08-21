@@ -36,6 +36,9 @@ import type { HarnessSpecSchema } from "../../projectSchemas/harness";
 import z from "zod";
 import { CdkBackend } from "./backends/cdk";
 import type { ProjectBackend } from "./backends/types";
+import { AwsDeploymentTargetsSchema } from "../../projectSchemas/aws-targets";
+
+const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
 type ProjectManagerConfig = {
   logger: Logger;
@@ -311,12 +314,39 @@ export class FsProjectManager implements ProjectManager {
     yield* this.backendFor(project).build(project);
   }
 
+  // Resolves the named target from aws-targets.json before handing off, so the
+  // backend receives a fully resolved account and region and never has to know
+  // how targets are stored. The backend owns everything after that point.
   public async *deploy(
-    _project: Project,
-    _input: DeployProjectInput,
+    project: Project,
+    input: DeployProjectInput,
   ): AsyncGenerator<ProjectEvent, DeployResult> {
-    yield* [];
-    throw new NotImplementedError("agentcore project deploy is not implemented yet");
+    const targetsPath = join(project.rootPath, "agentcore", "aws-targets.json");
+    if (!existsSync(targetsPath)) {
+      throw new ProjectStateError(
+        `No deployment targets are configured for project '${project.name}'. ` +
+          `Add ${targetsPath}, for example:\n\n${TARGETS_EXAMPLE}`,
+      );
+    }
+
+    const targets = await this.json.read(targetsPath, AwsDeploymentTargetsSchema);
+
+    if (targets.length === 0) {
+      throw new ProjectStateError(
+        `No deployment targets are configured for project '${project.name}'. ` +
+          `Add at least one to ${targetsPath}, for example:\n\n${TARGETS_EXAMPLE}`,
+      );
+    }
+
+    const target = targets.find((candidate) => candidate.name === input.target);
+    if (!target) {
+      throw new ProjectStateError(
+        `Project '${project.name}' has no deployment target named '${input.target}'. ` +
+          `${targetsPath} defines: ${targets.map(({ name }) => name).join(", ")}.`,
+      );
+    }
+
+    return yield* this.backendFor(project).deploy(project, { target });
   }
 
   private backendFor(project: Project): ProjectBackend {

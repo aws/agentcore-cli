@@ -148,7 +148,8 @@ import type { ProjectManager } from "../handlers/project/types";
 import type { Logger } from "../logging";
 import type { ReadWriteJson } from "../io";
 import { createSilentLogger } from "./logging";
-import { FsProjectManager } from "../core/project";
+import { FsProjectManager, type ProjectBackend } from "../core/project";
+import type { ManagedBy } from "../projectSchemas/project";
 
 // TestCoreClient is a hand-controllable `Core` for tests. It implements the same
 // interface the real CoreClient satisfies, so it drops straight into
@@ -1179,7 +1180,9 @@ export class TestGatewayClient implements CoreGatewayClient {
 type TestCoreClientOptions = {
   logger?: Logger;
   json?: ReadWriteJson;
-  projectManager?: ProjectManager;
+  // Stubs one backend rather than the whole manager, so tests keep the real
+  // FsProjectManager and only the build/deploy boundary is faked.
+  backends?: Partial<Record<ManagedBy, ProjectBackend>>;
 };
 
 export class TestIdentityClient implements CoreIdentityClient {
@@ -1949,15 +1952,14 @@ export class TestCoreClient implements Core {
   readonly projectCommands: { command: string[]; cwd: string }[] = [];
 
   constructor(options?: TestCoreClientOptions) {
-    this.projectManager =
-      options?.projectManager ??
-      new FsProjectManager({
-        logger: options?.logger ?? createSilentLogger(),
-        json: options?.json,
-        runner: async (command, { cwd }) => {
-          this.projectCommands.push({ command, cwd });
-        },
-        checkTool: async () => {}, // CI hosts don't have uv installed
-      });
+    this.projectManager = new FsProjectManager({
+      logger: options?.logger ?? createSilentLogger(),
+      json: options?.json,
+      backends: options?.backends,
+      runner: async (command, { cwd }) => {
+        this.projectCommands.push({ command, cwd });
+      },
+      checkTool: async () => {}, // CI hosts don't have uv installed
+    });
   }
 }

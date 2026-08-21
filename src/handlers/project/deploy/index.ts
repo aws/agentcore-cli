@@ -3,7 +3,7 @@ import type { AppIO } from "../../../io";
 import { createHandler, flag, ProjectKey } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
 import { JsonKey } from "../../keys";
-import type { DeployResult, ProjectEvent, ProjectManager } from "../types";
+import type { DeployResult, ProjectManager } from "../types";
 
 type DeployProjectHandlerConfig = {
   projectManager: ProjectManager;
@@ -16,11 +16,12 @@ async function runDeploy(
   target: string,
 ): Promise<DeployResult> {
   const deployment = config.projectManager.deploy(project, { target });
-  while (true) {
-    const next = await deployment.next();
-    if (next.done) return next.value;
-    config.io.stderr.write(`${(next.value as ProjectEvent).message}\n`);
+  let next = await deployment.next();
+  while (!next.done) {
+    config.io.stderr.write(`${next.value.message}\n`);
+    next = await deployment.next();
   }
+  return next.value;
 }
 
 function renderResult(io: AppIO, result: DeployResult): void {
