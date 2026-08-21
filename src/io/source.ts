@@ -45,6 +45,28 @@ export class SourceResolver {
     }
   }
 
+  /**
+   * Resolves a secret-bearing flag while refusing inline values: an inline
+   * secret leaks into shell history and process listings, so only stdin and
+   * files are allowed. A single trailing newline is stripped (echo and editors
+   * add one) and an embedded newline is rejected.
+   */
+  async resolveSecret(name: string, source: string | undefined): Promise<string | undefined> {
+    if (source !== undefined && source !== STDIN && !source.startsWith(FILE_PREFIX)) {
+      throw new SourceResolutionError(
+        `--${name} must come from stdin ('-') or a file ('file://<path>'); ` +
+          "inline secret values are not accepted",
+      );
+    }
+    const value = await this.resolveText(name, source);
+    if (value === undefined) return undefined;
+    const normalized = value.replace(/\r?\n$/, "");
+    if (normalized.includes("\n")) {
+      throw new SourceResolutionError(`--${name} must be a single-line value`);
+    }
+    return normalized;
+  }
+
   private async readStdin(name: string): Promise<Uint8Array> {
     if (this.stdinClaimedBy !== undefined) {
       throw new SourceResolutionError(

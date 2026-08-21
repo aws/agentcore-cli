@@ -1,6 +1,5 @@
 import { ProjectKey, type Context } from "../../../../router";
 import { InputValidationError } from "../../../../errors";
-import { SourceResolver } from "../../../../io";
 import { parseSecretReference } from "../../../identity/parser";
 import type { AddProjectResourceConfig } from "../types";
 import type { AddResourceInput } from "../../types";
@@ -22,31 +21,6 @@ export function parseExclusiveSecretRef(
     throw new InputValidationError(`--${secretFlag} and --${refFlag} are mutually exclusive`);
   }
   return parseSecretReference(refFlag, refValue);
-}
-
-/**
- * Resolves a secret flag while refusing inline values: an inline secret leaks
- * into shell history and process listings, so only stdin and files are allowed.
- * A single trailing newline is stripped (echo and editors add one).
- */
-export async function resolveSecretFlag(
-  resolver: SourceResolver,
-  name: string,
-  source: string | undefined,
-): Promise<string | undefined> {
-  if (source !== undefined && source !== "-" && !source.startsWith("file://")) {
-    throw new InputValidationError(
-      `--${name} must come from stdin ('-') or a file ('file://<path>'); ` +
-        "inline secret values are not accepted",
-    );
-  }
-  const value = await resolver.resolveText(name, source);
-  if (value === undefined) return undefined;
-  const normalized = value.replace(/\r?\n$/, "");
-  if (normalized.includes("\n")) {
-    throw new InputValidationError(`--${name} must be a single-line value`);
-  }
-  return normalized;
 }
 
 /** Runs the shared add flow: spec update, env entries, progress, and fill-before-deploy notice. */

@@ -4,12 +4,7 @@ import { InputValidationError } from "../../../../../errors";
 import { SourceResolver } from "../../../../../io";
 import type { AddProjectResourceConfig } from "../../types";
 import type { EnvLocalEntry } from "../../../types";
-import {
-  addCredentialToProject,
-  credentialEnvVarName,
-  parseExclusiveSecretRef,
-  resolveSecretFlag,
-} from "../shared";
+import { addCredentialToProject, credentialEnvVarName, parseExclusiveSecretRef } from "../shared";
 
 export const createAddApiKeyCredentialHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -41,7 +36,7 @@ export const createAddApiKeyCredentialHandler = (config: AddProjectResourceConfi
       );
 
       const resolver = new SourceResolver({ stdin: config.io.stdin });
-      const apiKey = await resolveSecretFlag(resolver, "api-key", flags["api-key"]);
+      const apiKey = await resolver.resolveSecret("api-key", flags["api-key"]);
 
       const envEntries: EnvLocalEntry[] = secretRef
         ? []

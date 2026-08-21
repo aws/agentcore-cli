@@ -9,12 +9,7 @@ import {
 } from "../../../../identity/oauth2-credential-provider/config";
 import type { AddProjectResourceConfig } from "../../types";
 import type { EnvLocalEntry } from "../../../types";
-import {
-  addCredentialToProject,
-  credentialEnvVarName,
-  parseExclusiveSecretRef,
-  resolveSecretFlag,
-} from "../shared";
+import { addCredentialToProject, credentialEnvVarName, parseExclusiveSecretRef } from "../shared";
 
 export const createAddOauthCredentialHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -75,11 +70,7 @@ export const createAddOauthCredentialHandler = (config: AddProjectResourceConfig
       }
 
       const resolver = new SourceResolver({ stdin: config.io.stdin });
-      const clientSecret = await resolveSecretFlag(
-        resolver,
-        "client-secret",
-        flags["client-secret"],
-      );
+      const clientSecret = await resolver.resolveSecret("client-secret", flags["client-secret"]);
 
       const resourceConfig =
         mode.kind === "complete"
