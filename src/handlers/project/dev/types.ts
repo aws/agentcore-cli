@@ -28,4 +28,6 @@ export interface DevTraceCollector {
 export type DevTraceCollectorStarter = (options: {
   tracesDirectory: string;
   signal?: AbortSignal;
+  /** Reports a trace-persistence failure (the export is still acked to stop retries). */
+  onError?: (error: unknown) => void;
 }) => Promise<DevTraceCollector>;

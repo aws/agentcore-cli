@@ -120,9 +120,25 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
         let otelEnv: Record<string, string> = {};
         if (flags.traces && (runtime.instrumentation?.enableOtel ?? true)) {
           const tracesDirectory = join(project.rootPath, "agentcore", ".cli", "traces", "otlp");
+          let tracePersistErrorReported = false;
           collector = await config.startTraceCollector({
             tracesDirectory,
             signal: controller.signal,
+            // Persistence can fail after startup (disk, permissions). Warn once —
+            // exports are still acked, so without this the loss would be silent.
+            onError: (error) => {
+              if (tracePersistErrorReported) return;
+              tracePersistErrorReported = true;
+              const detail = error instanceof Error ? error.message : String(error);
+              renderEvent(
+                config.io,
+                {
+                  type: "status",
+                  message: `Warning: failed to persist traces to ${tracesDirectory} (${detail}); collected traces may be incomplete.`,
+                },
+                json,
+              );
+            },
           });
           otelEnv = otelEnvForRuntime(collector, runtime);
           renderEvent(

@@ -46,7 +46,7 @@ function captureRunner(events: DevEvent[] = []) {
 }
 
 function fakeCollector() {
-  const starts: { tracesDirectory: string; signal?: AbortSignal }[] = [];
+  const starts: Parameters<DevProjectHandlerConfig["startTraceCollector"]>[0][] = [];
   const state = { closed: 0 };
   const collector: DevTraceCollector = {
     port: 43180,
@@ -189,6 +189,7 @@ describe("project dev trace collection", () => {
       {
         tracesDirectory: join("/workspace/project", "agentcore", ".cli", "traces", "otlp"),
         signal: expect.any(AbortSignal),
+        onError: expect.any(Function),
       },
     ]);
     expect(subject.io.stderr()).toContain("OTEL collector listening on port 43180");
@@ -197,6 +198,20 @@ describe("project dev trace collection", () => {
       OTEL_SERVICE_NAME: "orders",
     });
     expect(subject.collector.state.closed).toBe(1);
+  });
+
+  test("reports a trace-persistence failure once, not per failed export", async () => {
+    const subject = harness();
+    await subject.run();
+
+    const onError = subject.collector.starts[0]?.onError;
+    onError?.(new Error("disk full"));
+    onError?.(new Error("disk full"));
+
+    const stderr = subject.io.stderr();
+    expect(stderr).toContain("failed to persist traces");
+    expect(stderr).toContain("disk full");
+    expect(stderr.match(/failed to persist traces/g)).toHaveLength(1);
   });
 
   test("--no-traces skips the collector entirely", async () => {

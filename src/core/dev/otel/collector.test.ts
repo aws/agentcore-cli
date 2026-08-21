@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -136,6 +136,31 @@ describe("startOtelCollector", () => {
     expect((await post("/v1/traces", "not json", "application/json")).status).toBe(400);
     expect((await post("/v1/traces", Buffer.from([0xff, 0xff, 0xff]))).status).toBe(400);
     expect(await collector.store.list()).toEqual([]);
+  });
+
+  test("acks with 200 and reports onError when persistence fails", async () => {
+    // A traces dir nested under a regular file makes mkdir (and thus append) fail.
+    const blocker = join(directory, "blocker");
+    await writeFile(blocker, "x");
+    const errors: unknown[] = [];
+    const failing = await startOtelCollector({
+      tracesDirectory: join(blocker, "otlp"),
+      onError: (error) => errors.push(error),
+    });
+    try {
+      const response = await fetch(`http://127.0.0.1:${failing.port}/v1/traces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resourceSpans: [{ scopeSpans: [{ spans: [{ traceId: TRACE_ID_HEX, name: "x" }] }] }],
+        }),
+      });
+      // Exporter must see success so it stops retrying; the failure is reported instead.
+      expect(response.status).toBe(200);
+      expect(errors).toHaveLength(1);
+    } finally {
+      await failing.close();
+    }
   });
 
   test("health check responds ok and unknown routes 404", async () => {

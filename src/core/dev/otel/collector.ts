@@ -48,6 +48,8 @@ export interface StartOtelCollectorOptions {
   tracesDirectory: string;
   /** Closes the collector when aborted. */
   signal?: AbortSignal;
+  /** Called when a batch can't be persisted; the export is still acked to stop retries. */
+  onError?: (error: unknown) => void;
 }
 
 /**
@@ -59,19 +61,23 @@ export async function startOtelCollector(
   options: StartOtelCollectorOptions,
 ): Promise<OtelCollector> {
   const store = new TraceStore(options.tracesDirectory);
-  const server = await startHttpServer((request) => route(request, store), {
+  const server = await startHttpServer((request) => route(request, store, options.onError), {
     signal: options.signal,
   });
 
   return { port: server.port, store, envVars: otelEnvVars(server.port), close: server.close };
 }
 
-async function route(request: HttpRequest, store: TraceStore): Promise<HttpResponse> {
+async function route(
+  request: HttpRequest,
+  store: TraceStore,
+  onError?: (error: unknown) => void,
+): Promise<HttpResponse> {
   if (request.method === "POST" && request.url === "/v1/traces") {
-    return ingest(request, store, ExportTraceServiceRequest);
+    return ingest(request, store, ExportTraceServiceRequest, onError);
   }
   if (request.method === "POST" && request.url === "/v1/logs") {
-    return ingest(request, store, ExportLogsServiceRequest);
+    return ingest(request, store, ExportLogsServiceRequest, onError);
   }
   if (request.method === "GET" && request.url === "/") {
     return json(200, { status: "ok" });
@@ -83,6 +89,7 @@ async function ingest(
   request: HttpRequest,
   store: TraceStore,
   decoder: OtlpDecoder,
+  onError?: (error: unknown) => void,
 ): Promise<HttpResponse> {
   let payload: OtlpPayload;
   try {
@@ -90,7 +97,14 @@ async function ingest(
   } catch {
     return json(400, { error: "Invalid OTLP payload" });
   }
-  await store.append(payload);
+  try {
+    await store.append(payload);
+  } catch (error) {
+    // A persistence failure (disk full, permissions) is the collector's problem,
+    // not the agent's: ack the export so the SDK exporter stops retrying the batch
+    // forever, and report it once so the user isn't left with silently missing traces.
+    onError?.(error);
+  }
   return json(200, {});
 }
 
