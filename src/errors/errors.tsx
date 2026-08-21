@@ -107,17 +107,21 @@ export class SourceResolutionError extends InputValidationError {
   }
 }
 
+type DeserializationErrorOptions = Omit<AgentCoreCLIErrorOptions, "source"> & {
+  /**
+   * Why the file could not be read. Required because the root handler prints
+   * only `error.message`: a detail left in `cause` never reaches the user, and
+   * these files are hand-edited, so naming the file without naming the bad
+   * field leaves them nothing to act on.
+   */
+  details: string;
+};
+
 export class DeserializationError extends AgentCoreCLIError {
-  constructor(
-    path: string,
-    options?: Omit<AgentCoreCLIErrorOptions, "source"> & {
-      /** Rendered reasons the payload was rejected, appended so the user sees which field to fix. */
-      detail?: string;
-    },
-  ) {
-    const detail = options?.detail ? `\n${options.detail}` : "";
-    super(`Failed to deserialize file at "${path}"${detail}`, {
-      ...options,
+  constructor(path: string, options: DeserializationErrorOptions) {
+    const { details, ...errorOptions } = options;
+    super(`Failed to deserialize file at "${path}":\n\n${details}`, {
+      ...errorOptions,
       source: ERROR_SOURCE.USER,
     });
     this.name = "DeserializationError";

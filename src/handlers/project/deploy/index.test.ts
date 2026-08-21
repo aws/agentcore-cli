@@ -81,17 +81,25 @@ afterEach(async () => {
   );
 });
 
-/** Scaffolds a project with deployment targets and cds into it. */
-async function inProjectWithTargets(
+/** Scaffolds a project whose aws-targets.json holds exactly `contents`, and cds into it. */
+async function inProjectWithRawTargets(
   subject: ReturnType<typeof harness>,
-  targets: unknown = TARGETS,
+  contents: string,
 ): Promise<string> {
   const directory = await inTempDirectory();
   await subject.create(["create", "--name", "orders", "--skip-install", "--skip-git"]);
   const projectRoot = join(directory, "orders");
-  await writeFile(join(projectRoot, "agentcore", "aws-targets.json"), JSON.stringify(targets));
+  await writeFile(join(projectRoot, "agentcore", "aws-targets.json"), contents);
   process.chdir(projectRoot);
   return projectRoot;
+}
+
+/** Scaffolds a project with deployment targets and cds into it. */
+function inProjectWithTargets(
+  subject: ReturnType<typeof harness>,
+  targets: unknown = TARGETS,
+): Promise<string> {
+  return inProjectWithRawTargets(subject, JSON.stringify(targets));
 }
 
 describe("project deploy handler", () => {
@@ -136,6 +144,59 @@ describe("project deploy handler", () => {
     await inProjectWithTargets(subject, []);
 
     await expect(subject.run()).rejects.toThrow(/No deployment targets are configured/);
+    expect(subject.calls).toEqual([]);
+  });
+});
+
+// aws-targets.json is hand-edited, so these assert on the message the user
+// actually sees rather than on the schema in isolation: the reporter prints only
+// error.message, so a validation detail left in `cause` may as well not exist.
+/** The message the user would see on stderr, since the reporter prints only that. */
+async function messageFrom(command: Promise<void>): Promise<string> {
+  try {
+    await command;
+  } catch (error) {
+    return (error as Error).message;
+  }
+  throw new Error("expected the command to fail");
+}
+
+describe("project deploy reports which field of aws-targets.json is wrong", () => {
+  test("names the offending field for an unsupported region", async () => {
+    const subject = harness({ outputs: {} });
+    await inProjectWithTargets(subject, [
+      { name: "default", account: "111122223333", region: "us-east-11" },
+    ]);
+
+    const message = await messageFrom(subject.run());
+
+    expect(message).toContain("aws-targets.json");
+    expect(message).toContain("at [0].region");
+    expect(message).toContain('"us-east-1"');
+    expect(subject.calls).toEqual([]);
+  });
+
+  test("surfaces the duplicate target name", async () => {
+    const subject = harness({ outputs: {} });
+    await inProjectWithTargets(subject, [DEFAULT_TARGET, DEFAULT_TARGET]);
+
+    await expect(subject.run()).rejects.toThrow(/Duplicate deployment target name: default/);
+    expect(subject.calls).toEqual([]);
+  });
+
+  test("surfaces the account id rule", async () => {
+    const subject = harness({ outputs: {} });
+    await inProjectWithTargets(subject, [{ name: "default", account: "123", region: "us-east-1" }]);
+
+    await expect(subject.run()).rejects.toThrow(/AWS account ID must be exactly 12 digits/);
+    expect(subject.calls).toEqual([]);
+  });
+
+  test("surfaces the parse error for malformed json", async () => {
+    const subject = harness({ outputs: {} });
+    await inProjectWithRawTargets(subject, '[{ "name": "default", }]');
+
+    await expect(subject.run()).rejects.toThrow(/JSON Parse error/);
     expect(subject.calls).toEqual([]);
   });
 });
