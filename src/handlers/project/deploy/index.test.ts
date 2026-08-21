@@ -44,7 +44,7 @@ function fakeBackend(result: DeployResult, events: ProjectEvent[] = []) {
   return { calls, backend };
 }
 
-function harness(result: DeployResult, events: ProjectEvent[] = []) {
+function testDeployCommand(result: DeployResult, events: ProjectEvent[] = []) {
   const io = testIO();
   const fake = fakeBackend(result, events);
   const core = new TestCoreClient({ backends: { CDK: fake.backend } });
@@ -82,9 +82,9 @@ afterEach(async () => {
 });
 
 /** Scaffolds a project whose aws-targets.json holds exactly `contents`, and cds into it. */
-async function inProjectWithRawTargets(
-  subject: ReturnType<typeof harness>,
-  contents: string,
+async function inProjectWithTargets(
+  subject: ReturnType<typeof testDeployCommand>,
+  contents: string = JSON.stringify(TARGETS),
 ): Promise<string> {
   const directory = await inTempDirectory();
   await subject.create(["create", "--name", "orders", "--skip-install", "--skip-git"]);
@@ -94,17 +94,9 @@ async function inProjectWithRawTargets(
   return projectRoot;
 }
 
-/** Scaffolds a project with deployment targets and cds into it. */
-function inProjectWithTargets(
-  subject: ReturnType<typeof harness>,
-  targets: unknown = TARGETS,
-): Promise<string> {
-  return inProjectWithRawTargets(subject, JSON.stringify(targets));
-}
-
 describe("project deploy handler", () => {
   test("defaults to the default target and keeps progress off stdout", async () => {
-    const subject = harness(
+    const subject = testDeployCommand(
       { outputs: { ZetaUrl: "https://zeta.example", AlphaArn: "arn:alpha" } },
       [{ message: "Preparing deployment" }, { message: "Deploying stack" }],
     );
@@ -120,7 +112,7 @@ describe("project deploy handler", () => {
 
   test("passes an explicit target and renders the result as JSON", async () => {
     const result = { outputs: { ServiceUrl: "https://service.example" } };
-    const subject = harness(result);
+    const subject = testDeployCommand(result);
     await inProjectWithTargets(subject);
 
     await subject.run(["--target", "staging", "--json"]);
@@ -130,7 +122,7 @@ describe("project deploy handler", () => {
   });
 
   test("rejects an unknown target without invoking the backend", async () => {
-    const subject = harness({ outputs: {} });
+    const subject = testDeployCommand({ outputs: {} });
     await inProjectWithTargets(subject);
 
     await expect(subject.run(["--target", "nope"])).rejects.toThrow(
@@ -140,17 +132,14 @@ describe("project deploy handler", () => {
   });
 
   test("requires deployment targets to be configured", async () => {
-    const subject = harness({ outputs: {} });
-    await inProjectWithTargets(subject, []);
+    const subject = testDeployCommand({ outputs: {} });
+    await inProjectWithTargets(subject, JSON.stringify([]));
 
     await expect(subject.run()).rejects.toThrow(/No deployment targets are configured/);
     expect(subject.calls).toEqual([]);
   });
 });
 
-// aws-targets.json is hand-edited, so these assert on the message the user
-// actually sees rather than on the schema in isolation: the reporter prints only
-// error.message, so a validation detail left in `cause` may as well not exist.
 /** The message the user would see on stderr, since the reporter prints only that. */
 async function messageFrom(command: Promise<void>): Promise<string> {
   try {
@@ -163,10 +152,11 @@ async function messageFrom(command: Promise<void>): Promise<string> {
 
 describe("project deploy reports which field of aws-targets.json is wrong", () => {
   test("names the offending field for an unsupported region", async () => {
-    const subject = harness({ outputs: {} });
-    await inProjectWithTargets(subject, [
-      { name: "default", account: "111122223333", region: "us-east-11" },
-    ]);
+    const subject = testDeployCommand({ outputs: {} });
+    await inProjectWithTargets(
+      subject,
+      JSON.stringify([{ name: "default", account: "111122223333", region: "us-east-11" }]),
+    );
 
     const message = await messageFrom(subject.run());
 
@@ -177,24 +167,27 @@ describe("project deploy reports which field of aws-targets.json is wrong", () =
   });
 
   test("surfaces the duplicate target name", async () => {
-    const subject = harness({ outputs: {} });
-    await inProjectWithTargets(subject, [DEFAULT_TARGET, DEFAULT_TARGET]);
+    const subject = testDeployCommand({ outputs: {} });
+    await inProjectWithTargets(subject, JSON.stringify([DEFAULT_TARGET, DEFAULT_TARGET]));
 
     await expect(subject.run()).rejects.toThrow(/Duplicate deployment target name: default/);
     expect(subject.calls).toEqual([]);
   });
 
   test("surfaces the account id rule", async () => {
-    const subject = harness({ outputs: {} });
-    await inProjectWithTargets(subject, [{ name: "default", account: "123", region: "us-east-1" }]);
+    const subject = testDeployCommand({ outputs: {} });
+    await inProjectWithTargets(
+      subject,
+      JSON.stringify([{ name: "default", account: "123", region: "us-east-1" }]),
+    );
 
     await expect(subject.run()).rejects.toThrow(/AWS account ID must be exactly 12 digits/);
     expect(subject.calls).toEqual([]);
   });
 
   test("surfaces the parse error for malformed json", async () => {
-    const subject = harness({ outputs: {} });
-    await inProjectWithRawTargets(subject, '[{ "name": "default", }]');
+    const subject = testDeployCommand({ outputs: {} });
+    await inProjectWithTargets(subject, '[{ "name": "default", }]');
 
     await expect(subject.run()).rejects.toThrow(/JSON Parse error/);
     expect(subject.calls).toEqual([]);

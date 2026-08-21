@@ -1180,8 +1180,6 @@ export class TestGatewayClient implements CoreGatewayClient {
 type TestCoreClientOptions = {
   logger?: Logger;
   json?: ReadWriteJson;
-  // Stubs one backend rather than the whole manager, so tests keep the real
-  // FsProjectManager and only the build/deploy boundary is faked.
   backends?: Partial<Record<ManagedBy, ProjectBackend>>;
 };
 
