@@ -105,8 +105,11 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           collector = await config.startTraceCollector({
             tracesDirectory,
             // A container reaches the collector over the host bridge, which a
-            // 127.0.0.1 bind refuses, so the container path binds all interfaces.
-            host: runtime.build === "Container" ? "0.0.0.0" : "127.0.0.1",
+            // 127.0.0.1 bind refuses, so bind all interfaces when any runtime
+            // is a container.
+            host: runtimes.some((runtime) => runtime.build === "Container")
+              ? "0.0.0.0"
+              : "127.0.0.1",
             // Persistence can fail after startup (disk, permissions). Warn once —
             // exports are still acked, so without this the loss would be silent.
             onError: (error) => {
