@@ -39,6 +39,7 @@ describe('LEVEL_PLACEHOLDERS', () => {
     expect(LEVEL_PLACEHOLDERS.TOOL_CALL).toContain('available_skills');
     expect(LEVEL_PLACEHOLDERS.TOOL_CALL).toContain('invoked_skill');
     expect(LEVEL_PLACEHOLDERS.TOOL_CALL).toContain('skill_content');
+    expect(LEVEL_PLACEHOLDERS.TOOL_CALL).toContain('user_message');
   });
 });
 

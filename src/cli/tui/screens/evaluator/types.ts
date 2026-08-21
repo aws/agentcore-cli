@@ -195,7 +195,15 @@ export function getEvaluatorModelOptions(provider: EvaluatorModelProvider): Eval
 export const LEVEL_PLACEHOLDERS: Record<EvaluationLevel, string[]> = {
   SESSION: ['context', 'available_tools'],
   TRACE: ['context', 'assistant_turn'],
-  TOOL_CALL: ['available_tools', 'context', 'tool_turn', 'available_skills', 'invoked_skill', 'skill_content'],
+  TOOL_CALL: [
+    'available_tools',
+    'context',
+    'tool_turn',
+    'available_skills',
+    'invoked_skill',
+    'skill_content',
+    'user_message',
+  ],
 };
 
 /**
@@ -221,6 +229,7 @@ export const PLACEHOLDER_DESCRIPTIONS: Record<string, string> = {
   available_skills: 'skills offered to the agent (name + description)',
   invoked_skill: 'the skill the agent selected for this span',
   skill_content: "the selected skill's SKILL.md instructions",
+  user_message: 'the user request in the turn that triggered the skill invocation',
 };
 
 /**
