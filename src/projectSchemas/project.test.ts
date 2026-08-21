@@ -8,6 +8,7 @@ const runtime = {
   build: "CodeZip" as const,
   entrypoint: "main.py",
   codeLocation: "./agent",
+  runtimeVersion: "PYTHON_3_12" as const,
   endpoints: { LIVE: { version: 1 } },
 };
 

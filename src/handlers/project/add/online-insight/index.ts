@@ -5,12 +5,15 @@ import { OnlineEvalConfigSchema } from "../../../../projectSchemas/online-eval-c
 import { parseJsonFlag } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
 
-export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
+const BUILTIN_INSIGHT_PREFIX = "Builtin.Insight.";
+const ARN_PREFIX = "arn:";
+
+export const createAddOnlineInsightHandler = (config: AddProjectResourceConfig) =>
   createHandler({
-    name: "online-eval",
-    description: "adds an online evaluation config to the current project",
+    name: "online-insight",
+    description: "adds an online insight config to the current project",
     flags: [
-      flag("name", "the name of the online evaluation config", z.string().optional()),
+      flag("name", "the name of the online insight config", z.string().optional()),
       flag(
         "agent",
         "runtime name whose traffic to sample (mutually exclusive with --log-group-name)",
@@ -32,9 +35,14 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
         z.array(z.string()).optional(),
       ),
       flag(
-        "evaluator",
-        "evaluator name(s), Builtin.* IDs, or ARNs to apply",
+        "insight",
+        "insight ID(s) to apply: Builtin.Insight.* identifiers or full ARNs",
         z.array(z.string()).optional(),
+      ),
+      flag(
+        "clustering-frequency",
+        "insight clustering cadence(s): DAILY, WEEKLY, MONTHLY",
+        z.array(z.enum(["DAILY", "WEEKLY", "MONTHLY"])).optional(),
       ),
       flag(
         "sampling-rate",
@@ -48,7 +56,7 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
       ),
       flag(
         "enable-on-create",
-        "enable evaluation immediately after deploy (default true; pass false to add it paused)",
+        "enable insights immediately after deploy (default true; pass false to add it paused)",
         z.enum(["true", "false"]).optional(),
       ),
       flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),
@@ -61,13 +69,22 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
           "required option '--sampling-rate <sampling-rate>' not specified",
         );
 
+      for (const id of flags["insight"] ?? []) {
+        if (!id.startsWith(BUILTIN_INSIGHT_PREFIX) && !id.startsWith(ARN_PREFIX))
+          throw new InputValidationError(
+            `invalid insight "${id}": must be a ${BUILTIN_INSIGHT_PREFIX}* identifier or a full ARN`,
+          );
+      }
+
+      const frequencies = flags["clustering-frequency"];
       const candidate = {
         name: flags["name"],
         agent: flags["agent"],
         endpoint: flags["endpoint"],
         logGroupNames: flags["log-group-name"],
         serviceNames: flags["service-name"],
-        evaluators: flags["evaluator"],
+        insights: flags["insight"],
+        clusteringConfig: frequencies ? { frequencies } : undefined,
         samplingRate: flags["sampling-rate"],
         description: flags["description"],
         enableOnCreate:
@@ -82,12 +99,14 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
 
       const project = ctx.require(ProjectKey);
       for await (const event of config.projectManager.addResource(project, {
-        resourceType: "online-eval",
+        resourceType: "online-insight",
         resourceConfig: parsed.data,
       })) {
         config.io.stderr.write(`${event.message}\n`);
       }
 
-      config.io.stderr.write(`added online-eval config '${flags["name"]}' to '${project.name}'\n`);
+      config.io.stderr.write(
+        `added online-insight config '${flags["name"]}' to '${project.name}'\n`,
+      );
     },
   });

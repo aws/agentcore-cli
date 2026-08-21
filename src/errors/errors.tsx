@@ -108,8 +108,18 @@ export class SourceResolutionError extends InputValidationError {
 }
 
 export class DeserializationError extends AgentCoreCLIError {
-  constructor(path: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
-    super(`Failed to deserialize file at "${path}"`, { ...options, source: ERROR_SOURCE.USER });
+  constructor(
+    path: string,
+    options?: Omit<AgentCoreCLIErrorOptions, "source"> & {
+      /** Rendered reasons the payload was rejected, appended so the user sees which field to fix. */
+      detail?: string;
+    },
+  ) {
+    const detail = options?.detail ? `\n${options.detail}` : "";
+    super(`Failed to deserialize file at "${path}"${detail}`, {
+      ...options,
+      source: ERROR_SOURCE.USER,
+    });
     this.name = "DeserializationError";
   }
 }

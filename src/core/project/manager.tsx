@@ -9,6 +9,7 @@ import type {
   ProjectManager,
   ProjectEvent,
   ProjectResource,
+  RemoveResourceInput,
 } from "../../handlers/project/types";
 import type { Logger } from "../../logging";
 import {
@@ -139,7 +140,7 @@ export class FsProjectManager implements ProjectManager {
     input: AddResourceInput,
   ): AsyncGenerator<ProjectEvent, Project> {
     const { resourceType, resourceConfig } = input;
-    const agentCoreSpecPath = join(project.rootPath, "agentcore", "agentcore.json");
+    const agentCoreSpecPath = this.getProjectSpecPath(project);
     const projectSpecKey = toProjectSpecKey(resourceType);
 
     yield { message: `Reading project spec file at '${agentCoreSpecPath}'` };
@@ -193,6 +194,7 @@ export class FsProjectManager implements ProjectManager {
       }
       case "config-bundle":
       case "online-eval":
+      case "online-insight":
         newResources.push(resourceConfig);
         break;
 
@@ -238,6 +240,42 @@ export class FsProjectManager implements ProjectManager {
       ]);
       throw err;
     }
+
+    return {
+      ...project,
+      spec: newProjectSpec,
+    };
+  }
+
+  private getProjectSpecPath(project: Project): string {
+    return join(project.rootPath, "agentcore", "agentcore.json");
+  }
+
+  public async removeResource(project: Project, input: RemoveResourceInput): Promise<Project> {
+    const agentCoreSpecPath = this.getProjectSpecPath(project);
+    const projectSpecKey = toProjectSpecKey(input.resourceType);
+
+    const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
+
+    const existingResources = existingProjectSpec[projectSpecKey];
+    const newResources = existingResources.filter((r) => r.name !== input.name);
+
+    if (newResources.length === existingResources.length)
+      this.logger
+        .child({ input })
+        .warn(`unable to remove resource from project that does not exist.`);
+
+    const newSpecParseResult = ProjectSpecSchema.safeParse({
+      ...existingProjectSpec,
+      [projectSpecKey]: newResources,
+    });
+
+    if (!newSpecParseResult.success)
+      throw new InputValidationError(z.prettifyError(newSpecParseResult.error), {
+        cause: newSpecParseResult.error,
+      });
+
+    const newProjectSpec = await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
 
     return {
       ...project,
@@ -301,6 +339,7 @@ function toProjectSpecKey(resourceType: ProjectResource) {
     case "config-bundle":
       return "configBundles";
     case "online-eval":
+    case "online-insight":
       return "onlineEvalConfigs";
   }
 }

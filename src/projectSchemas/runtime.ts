@@ -8,7 +8,7 @@ import {
   VPC_ID_PATTERN,
   isContainerBuild,
 } from "./constants";
-import type { DirectoryPath, FilePath } from "./types";
+import type { DirectoryPath } from "./types";
 import { AuthorizerConfigSchema, RuntimeAuthorizerTypeSchema } from "./auth";
 import { ConnectionSchema } from "./connections";
 import { TagsSchema } from "./tags";
@@ -49,7 +49,7 @@ export const EntrypointSchema = z
   .regex(
     /^[a-zA-Z0-9_][a-zA-Z0-9_/.-]*\.(py|ts|js)(:[a-zA-Z_][a-zA-Z0-9_]*)?$/,
     'Must be a Python (.py) or TypeScript (.ts/.js) file path with optional handler (e.g., "main.py:handler" or "index.ts")',
-  ) as unknown as z.ZodType<FilePath>;
+  );
 const DirectoryPathSchema = z.string().min(1) as unknown as z.ZodType<DirectoryPath>;
 const DOCKERFILE_PATH_ALLOWED_CHARS = /^[A-Za-z0-9._/-]+$/;
 export function isValidDockerfilePath(p: string): boolean {
@@ -306,6 +306,17 @@ export const ProjectRuntimeSchema = z
         code: "custom",
         message: "authorizerConfiguration is only allowed when authorizerType is CUSTOM_JWT",
         path: ["authorizerConfiguration"],
+      });
+    }
+    // Mirrors the CDK construct library, which rejects a CodeZip runtime with no
+    // runtimeVersion: it is the field that selects the packager. Validating it here
+    // means the CLI reports it against agentcore.json instead of letting synthesis
+    // fail later with the same rule.
+    if (data.build !== "Container" && !data.runtimeVersion) {
+      ctx.addIssue({
+        code: "custom",
+        message: "runtimeVersion is required for CodeZip builds",
+        path: ["runtimeVersion"],
       });
     }
     for (const field of ["dockerfile", "buildContextPath", "customDockerBuildArgs"] as const) {
