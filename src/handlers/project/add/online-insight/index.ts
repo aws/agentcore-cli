@@ -16,7 +16,7 @@ export const createAddOnlineInsightHandler = (config: AddProjectResourceConfig) 
       flag("name", "the name of the online insight config", z.string().optional()),
       flag(
         "agent",
-        "harness/runtime name whose traffic to sample (mutually exclusive with --log-group-name)",
+        "runtime name whose traffic to sample (mutually exclusive with --log-group-name)",
         z.string().optional(),
       ),
       flag(
