@@ -33,7 +33,7 @@ export const ExportLogsServiceRequest = logs.v1.ExportLogsServiceRequest;
 type OtlpDecoder = Pick<OtlpMessageType, "decode">;
 
 export interface OtelCollector {
-  /** The loopback port the OTLP/HTTP receiver listens on. */
+  /** The port the OTLP/HTTP receiver listens on. */
   port: number;
   /** Reads the traces this collector persists. */
   store: TraceStore;
@@ -46,6 +46,8 @@ export interface OtelCollector {
 export interface StartOtelCollectorOptions {
   /** Directory to persist OTLP JSON Lines files into. */
   tracesDirectory: string;
+  /** Address to bind. Defaults to 127.0.0.1; use 0.0.0.0 to reach it from a container. */
+  host?: string;
   /** Closes the collector when aborted. */
   signal?: AbortSignal;
   /** Called when a batch can't be persisted; the export is still acked to stop retries. */
@@ -53,15 +55,16 @@ export interface StartOtelCollectorOptions {
 }
 
 /**
- * Starts an in-process OTLP/HTTP receiver for dev mode on an OS-assigned
- * loopback port. Accepts `POST /v1/traces` and `POST /v1/logs` in protobuf or
- * JSON encoding and appends the raw payloads to a TraceStore.
+ * Starts an in-process OTLP/HTTP receiver for dev mode on an OS-assigned port.
+ * Accepts `POST /v1/traces` and `POST /v1/logs` in protobuf or JSON encoding and
+ * appends the raw payloads to a TraceStore.
  */
 export async function startOtelCollector(
   options: StartOtelCollectorOptions,
 ): Promise<OtelCollector> {
   const store = new TraceStore(options.tracesDirectory);
   const server = await startHttpServer((request) => route(request, store, options.onError), {
+    host: options.host,
     signal: options.signal,
   });
 
@@ -74,10 +77,10 @@ async function route(
   onError?: (error: unknown) => void,
 ): Promise<HttpResponse> {
   if (request.method === "POST" && request.url === "/v1/traces") {
-    return ingest(request, store, ExportTraceServiceRequest, onError);
+    return ingest(request, store, ExportTraceServiceRequest, "resourceSpans", onError);
   }
   if (request.method === "POST" && request.url === "/v1/logs") {
-    return ingest(request, store, ExportLogsServiceRequest, onError);
+    return ingest(request, store, ExportLogsServiceRequest, "resourceLogs", onError);
   }
   if (request.method === "GET" && request.url === "/") {
     return json(200, { status: "ok" });
@@ -89,16 +92,20 @@ async function ingest(
   request: HttpRequest,
   store: TraceStore,
   decoder: OtlpDecoder,
+  field: "resourceSpans" | "resourceLogs",
   onError?: (error: unknown) => void,
 ): Promise<HttpResponse> {
-  let payload: OtlpPayload;
+  let decoded: unknown;
   try {
-    payload = decodePayload(request.body, String(request.headers["content-type"] ?? ""), decoder);
+    decoded = decodePayload(request.body, String(request.headers["content-type"] ?? ""), decoder);
   } catch {
     return json(400, { error: "Invalid OTLP payload" });
   }
+  if (!isOtlpPayload(decoded, field)) {
+    return json(400, { error: "Invalid OTLP payload" });
+  }
   try {
-    await store.append(payload);
+    await store.append(decoded);
   } catch (error) {
     // A persistence failure (disk full, permissions) is the collector's problem,
     // not the agent's: ack the export anyway so the SDK exporter stops retrying the
@@ -108,24 +115,44 @@ async function ingest(
   return json(200, {});
 }
 
-/**
- * Decode an OTLP payload. The JSON round-trip on the protobuf path converts the
- * message to plain objects (protobufjs renders Long as string and bytes as base64).
- */
-function decodePayload(body: Buffer, contentType: string, decoder: OtlpDecoder): OtlpPayload {
+/** Decode an OTLP export body by its content type into a plain, unvalidated object. */
+function decodePayload(body: Buffer, contentType: string, decoder: OtlpDecoder): unknown {
   if (contentType.includes("application/json")) {
-    return JSON.parse(body.toString()) as OtlpPayload;
+    return JSON.parse(body.toString());
   }
-  return JSON.parse(JSON.stringify(decoder.decode(new Uint8Array(body)))) as OtlpPayload;
+  return decodeProtobufToPlainObject(body, decoder);
 }
 
 /**
- * Environment for a spawned agent so its OTEL SDK exports to the collector at
- * `port`. Signal-specific variables are set alongside the generic ones because
- * they take precedence in the SDK — a stray OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
- * from the shell or .env.local must not silently redirect traces elsewhere.
- * Per the OTEL spec, signal-specific endpoints are full URLs (the signal path
- * is only appended to the generic endpoint).
+ * Decode a protobuf export and flatten it to plain objects. The JSON round-trip
+ * is what does the flattening: protobufjs renders Long as string and bytes as
+ * base64, which is exactly the wire shape the rest of the code reads.
+ */
+function decodeProtobufToPlainObject(body: Buffer, decoder: OtlpDecoder): unknown {
+  return JSON.parse(JSON.stringify(decoder.decode(new Uint8Array(body))));
+}
+
+/**
+ * A payload is only valid when it is a plain object whose export field, if
+ * present, is an array. This rejects non-objects and shapes like
+ * `{ resourceSpans: 5 }` at the 400 boundary instead of letting them fail later
+ * inside the store as a mislabeled persistence error.
+ */
+function isOtlpPayload(
+  value: unknown,
+  field: "resourceSpans" | "resourceLogs",
+): value is OtlpPayload {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const records = (value as Record<string, unknown>)[field];
+  return records === undefined || Array.isArray(records);
+}
+
+/**
+ * Env that points a spawned agent's OTEL SDK at the collector on `port`. While
+ * tracing is on the CLI owns these settings, so nothing from the shell or
+ * .env.local can turn collection off or break it: compression is off (the
+ * collector reads bodies undecompressed) and the SDK and exporters stay on.
+ * Signal-specific endpoints are full URLs and win over the generic one.
  */
 export function otelEnvVars(port: number): Record<string, string> {
   const endpoint = `http://127.0.0.1:${port}`;
@@ -136,6 +163,12 @@ export function otelEnvVars(port: number): Record<string, string> {
     OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
     OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "http/protobuf",
     OTEL_EXPORTER_OTLP_LOGS_PROTOCOL: "http/protobuf",
+    OTEL_EXPORTER_OTLP_COMPRESSION: "none",
+    OTEL_EXPORTER_OTLP_TRACES_COMPRESSION: "none",
+    OTEL_EXPORTER_OTLP_LOGS_COMPRESSION: "none",
+    OTEL_SDK_DISABLED: "false",
+    OTEL_TRACES_EXPORTER: "otlp",
+    OTEL_LOGS_EXPORTER: "otlp",
     OTEL_METRICS_EXPORTER: "none",
     AGENT_OBSERVABILITY_ENABLED: "true",
     OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: "true",

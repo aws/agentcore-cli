@@ -188,7 +188,7 @@ describe("project dev trace collection", () => {
     expect(subject.collector.starts).toEqual([
       {
         tracesDirectory: join("/workspace/project", "agentcore", ".cli", "traces", "otlp"),
-        signal: expect.any(AbortSignal),
+        host: "127.0.0.1",
         onError: expect.any(Function),
       },
     ]);
@@ -198,6 +198,15 @@ describe("project dev trace collection", () => {
       OTEL_SERVICE_NAME: "orders",
     });
     expect(subject.collector.state.closed).toBe(1);
+  });
+
+  test("binds the collector to all interfaces so a container can reach it", async () => {
+    const subject = harness({
+      project: project(runtime("support", "Container")),
+    });
+    await subject.run();
+
+    expect(subject.collector.starts[0]?.host).toBe("0.0.0.0");
   });
 
   test("reports a trace-persistence failure once, not per failed export", async () => {

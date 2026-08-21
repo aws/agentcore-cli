@@ -16,6 +16,8 @@ type CodeZipDevRunnerConfig = {
   runProcess?: ProcessRunner;
 };
 
+const SITECUSTOMIZE_MARKER = "AGENTCORE_OTEL_SITECUSTOMIZE=";
+
 export class CodeZipDevRunner implements DevRunner {
   private readonly streamProcess: ProcessStreamer;
   private readonly runProcess: ProcessRunner;
@@ -51,7 +53,7 @@ export class CodeZipDevRunner implements DevRunner {
     yield { type: "status", message: "Starting development server" };
     const serverProcess = commandForRuntime(entrypoint!, directory, input);
     if (entrypoint!.endsWith(".py") && input.env?.OTEL_EXPORTER_OTLP_ENDPOINT) {
-      const sitecustomizeDir = await this.findOtelSitecustomizeDir(directory);
+      const sitecustomizeDir = await this.findOtelSitecustomizeDir(directory, input.signal);
       if (sitecustomizeDir) {
         const existing = serverProcess.options.env?.PYTHONPATH;
         serverProcess.options.env = {
@@ -75,19 +77,29 @@ export class CodeZipDevRunner implements DevRunner {
    * an `opentelemetry-instrument` wrapper would only instrument uvicorn's reloader
    * parent, leaving the re-spawned worker processes untraced.
    */
-  private async findOtelSitecustomizeDir(directory: string): Promise<string | undefined> {
+  private async findOtelSitecustomizeDir(
+    directory: string,
+    signal: AbortSignal,
+  ): Promise<string | undefined> {
     const output: string[] = [];
-    const probe =
-      "import opentelemetry.instrumentation.auto_instrumentation as m; import os; print(os.path.dirname(m.__file__))";
+    // uv writes sync progress to stderr, which merges into onOutput, so the path
+    // is printed behind a marker and read from that line rather than the last one.
+    const script = `import opentelemetry.instrumentation.auto_instrumentation as m, os; print("${SITECUSTOMIZE_MARKER}" + os.path.dirname(m.__file__))`;
     try {
-      await this.runProcess(["uv", "run", "python", "-c", probe], {
+      await this.runProcess(["uv", "run", "python", "-c", script], {
         cwd: directory,
         onOutput: (chunk) => output.push(chunk),
+        signal,
       });
     } catch {
       return undefined;
     }
-    const sitecustomizeDir = output.join("").trim().split("\n").at(-1)?.trim();
+    const marked = output
+      .join("")
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.startsWith(SITECUSTOMIZE_MARKER));
+    const sitecustomizeDir = marked?.slice(SITECUSTOMIZE_MARKER.length);
     if (!sitecustomizeDir || !existsSync(join(sitecustomizeDir, "sitecustomize.py")))
       return undefined;
     return sitecustomizeDir;

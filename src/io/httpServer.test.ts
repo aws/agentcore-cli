@@ -51,6 +51,26 @@ describe("startHttpServer", () => {
     expect(response.status).toBe(413);
   });
 
+  test("binds the given host", async () => {
+    handle = await startHttpServer(() => ({ status: 200 }), { host: "0.0.0.0" });
+    expect((await fetch(`http://127.0.0.1:${handle.port}/`)).status).toBe(200);
+  });
+
+  test("a client that disconnects mid-response does not take down the server", async () => {
+    handle = await startHttpServer(async () => {
+      await Bun.sleep(50);
+      return { status: 200, body: "late" };
+    });
+
+    const controller = new AbortController();
+    const aborted = fetch(`http://127.0.0.1:${handle.port}/`, { signal: controller.signal });
+    controller.abort();
+    await expect(aborted).rejects.toThrow();
+    await Bun.sleep(80);
+
+    expect((await fetch(`http://127.0.0.1:${handle.port}/`)).status).toBe(200);
+  });
+
   test("aborting the signal closes the server", async () => {
     const controller = new AbortController();
     const server = await startHttpServer(() => ({ status: 200 }), { signal: controller.signal });

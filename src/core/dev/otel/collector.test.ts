@@ -138,6 +138,29 @@ describe("startOtelCollector", () => {
     expect(await collector.store.list()).toEqual([]);
   });
 
+  test.each(["null", "[]", "42", '{"resourceSpans":5}'])(
+    "rejects structurally invalid JSON %s with 400 instead of a persistence error",
+    async (body) => {
+      const errors: unknown[] = [];
+      const strict = await startOtelCollector({
+        tracesDirectory: directory,
+        onError: (error) => errors.push(error),
+      });
+      try {
+        const response = await fetch(`http://127.0.0.1:${strict.port}/v1/traces`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        });
+        expect(response.status).toBe(400);
+        expect(errors).toEqual([]);
+        expect(await strict.store.list()).toEqual([]);
+      } finally {
+        await strict.close();
+      }
+    },
+  );
+
   test("acks with 200 and reports onError when persistence fails", async () => {
     // A traces dir nested under a regular file makes mkdir (and thus append) fail.
     const blocker = join(directory, "blocker");
@@ -181,6 +204,17 @@ describe("startOtelCollector", () => {
       OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "http/protobuf",
       OTEL_EXPORTER_OTLP_LOGS_PROTOCOL: "http/protobuf",
       OTEL_METRICS_EXPORTER: "none",
+    });
+  });
+
+  test("envVars force the settings that would otherwise break local collection", () => {
+    expect(collector.envVars).toMatchObject({
+      OTEL_SDK_DISABLED: "false",
+      OTEL_TRACES_EXPORTER: "otlp",
+      OTEL_LOGS_EXPORTER: "otlp",
+      OTEL_EXPORTER_OTLP_COMPRESSION: "none",
+      OTEL_EXPORTER_OTLP_TRACES_COMPRESSION: "none",
+      OTEL_EXPORTER_OTLP_LOGS_COMPRESSION: "none",
     });
   });
 

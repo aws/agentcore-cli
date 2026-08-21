@@ -123,7 +123,9 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           let tracePersistErrorReported = false;
           collector = await config.startTraceCollector({
             tracesDirectory,
-            signal: controller.signal,
+            // A container reaches the collector over the host bridge, which a
+            // 127.0.0.1 bind refuses, so the container path binds all interfaces.
+            host: runtime.build === "Container" ? "0.0.0.0" : "127.0.0.1",
             // Persistence can fail after startup (disk, permissions). Warn once —
             // exports are still acked, so without this the loss would be silent.
             onError: (error) => {
@@ -167,6 +169,8 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
         throw error;
       } finally {
         for (const signal of signals) process.removeListener(signal, interrupt);
+        // Close only after the runner returns, which is after the child's own
+        // shutdown grace, so the agent's final spans still reach the collector.
         await collector?.close();
       }
     },

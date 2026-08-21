@@ -27,7 +27,8 @@ export interface DevTraceCollector {
 
 export type DevTraceCollectorStarter = (options: {
   tracesDirectory: string;
-  signal?: AbortSignal;
+  /** Address to bind. Defaults to 127.0.0.1; 0.0.0.0 lets a container reach it. */
+  host?: string;
   /** Reports a trace-persistence failure (the export is still acked to stop retries). */
   onError?: (error: unknown) => void;
 }) => Promise<DevTraceCollector>;

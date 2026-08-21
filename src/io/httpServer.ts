@@ -34,21 +34,24 @@ export interface HttpServerHandle {
 }
 
 /**
- * Starts a loopback-only HTTP server for local dev tooling. Binds 127.0.0.1 on
- * the given port (0 lets the OS assign one). Handler errors become plain 500s;
- * oversized bodies become 413s. Aborting the signal closes the server.
+ * Starts an HTTP server for local dev tooling. Binds `host` (default 127.0.0.1)
+ * on the given port (0 lets the OS assign one). Handler errors become plain 500s;
+ * oversized bodies become 413s. Aborting the signal closes the server. A wider
+ * bind such as 0.0.0.0 is only for reaching the server from a container.
  */
 export async function startHttpServer(
   handler: HttpRequestHandler,
-  options: { port?: number; signal?: AbortSignal } = {},
+  options: { port?: number; host?: string; signal?: AbortSignal } = {},
 ): Promise<HttpServerHandle> {
   const server = createServer((request, response) => {
-    void respond(handler, request, response);
+    // A dropped connection mid-response can reject here; swallow it so a client
+    // that disconnects can never take down the whole dev command.
+    void respond(handler, request, response).catch(() => {});
   });
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(options.port ?? 0, "127.0.0.1", resolve);
+    server.listen(options.port ?? 0, options.host ?? "127.0.0.1", resolve);
   });
 
   const address = server.address();
@@ -86,6 +89,12 @@ async function respond(
     response.writeHead(result.status, result.headers);
     response.end(result.body);
   } catch {
+    // Once any byte is written, writeHead throws, so only send the 500 when the
+    // response has not started; otherwise just close what is already open.
+    if (response.headersSent) {
+      response.end();
+      return;
+    }
     response.writeHead(500, { "Content-Type": "application/json" });
     response.end(JSON.stringify({ error: "internal error" }));
   }
