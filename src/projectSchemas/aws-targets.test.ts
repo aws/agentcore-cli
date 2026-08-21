@@ -29,7 +29,7 @@ describe("AWS deployment targets", () => {
     expect(AwsAccountIdSchema.safeParse(account).success).toBe(false);
   });
 
-  test.each(["", "1default", "-default", "_default", "has spaces", "has.dots"])(
+  test.each(["", "1default", "-default", "_default", "has_underscore", "has spaces", "has.dots"])(
     "rejects invalid target name %j",
     (name) => {
       expect(DeploymentTargetNameSchema.safeParse(name).success).toBe(false);

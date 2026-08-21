@@ -29,9 +29,11 @@ export const DeploymentTargetNameSchema = z
   .string()
   .min(1)
   .max(64)
+  // Underscores are rejected up front even though the CDK normalizes them to
+  // hyphens, so a target name means the same thing everywhere it appears.
   .regex(
-    /^[a-zA-Z][a-zA-Z0-9_-]*$/,
-    "Name must start with a letter and contain only alphanumeric characters, hyphens, and underscores",
+    /^[a-zA-Z][a-zA-Z0-9-]*$/,
+    "Name must start with a letter and contain only alphanumeric characters and hyphens",
   )
   .describe("Unique identifier for the deployment target");
 
