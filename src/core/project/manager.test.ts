@@ -333,4 +333,29 @@ describe("FsProjectManager.resolve", () => {
       DeserializationError,
     );
   });
+
+  test("names the offending field when the spec fails validation", async () => {
+    const root = await inTempDirectory();
+    await mkdir(join(root, "agentcore"), { recursive: true });
+    // Valid JSON, invalid spec: a CodeZip runtime with no runtimeVersion.
+    await writeFile(
+      join(root, "agentcore", "agentcore.json"),
+      JSON.stringify({
+        name: "example",
+        version: 1,
+        runtimes: [
+          {
+            name: "hello_world",
+            build: "CodeZip",
+            entrypoint: "main.py",
+            codeLocation: "app/hello-world",
+          },
+        ],
+      }),
+    );
+
+    await expect(manager().manager.resolve({ filePath: root })).rejects.toThrow(
+      "runtimeVersion is required for CodeZip builds",
+    );
+  });
 });

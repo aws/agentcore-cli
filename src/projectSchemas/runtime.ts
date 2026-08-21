@@ -308,6 +308,17 @@ export const ProjectRuntimeSchema = z
         path: ["authorizerConfiguration"],
       });
     }
+    // Mirrors the CDK construct library, which rejects a CodeZip runtime with no
+    // runtimeVersion: it is the field that selects the packager. Validating it here
+    // means the CLI reports it against agentcore.json instead of letting synthesis
+    // fail later with the same rule.
+    if (data.build !== "Container" && !data.runtimeVersion) {
+      ctx.addIssue({
+        code: "custom",
+        message: "runtimeVersion is required for CodeZip builds",
+        path: ["runtimeVersion"],
+      });
+    }
     for (const field of ["dockerfile", "buildContextPath", "customDockerBuildArgs"] as const) {
       if (data.build !== "Container" && data[field]) {
         ctx.addIssue({
