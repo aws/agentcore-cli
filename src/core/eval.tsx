@@ -109,6 +109,7 @@ import type {
   SessionSourceValue,
   SessionTrace,
   SpanRecord,
+  StartBatchInsightsInput,
   StartBatchEvaluationInput,
   UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
@@ -374,6 +375,23 @@ export class EvalClient implements CoreEvalClient {
         evaluators: input.evaluatorIds.map((evaluatorId) => ({ evaluatorId })),
         dataSourceConfig,
         evaluationMetadata: input.groundTruth ? { sessionMetadata: input.groundTruth } : undefined,
+        kmsKeyArn: input.kmsKeyArn,
+      }),
+    );
+  }
+
+  async startBatchInsights(
+    input: StartBatchInsightsInput,
+    options: CoreOptions,
+  ): Promise<StartBatchEvaluationResponse> {
+    const dataSourceConfig = await this.dataSourceConfigForSource(input.source, options);
+    return this.clients.data(toClientConfig(options)).send(
+      new StartBatchEvaluationCommand({
+        batchEvaluationName: input.name,
+        description: input.description,
+        insights: input.insightIds.map((insightId) => ({ insightId })),
+        evaluators: input.evaluatorIds?.map((evaluatorId) => ({ evaluatorId })),
+        dataSourceConfig,
         kmsKeyArn: input.kmsKeyArn,
       }),
     );

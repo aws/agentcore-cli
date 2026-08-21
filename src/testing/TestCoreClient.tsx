@@ -137,6 +137,7 @@ import type {
   GetTracesInput,
   LlmAsAJudgeUpdate,
   SessionTrace,
+  StartBatchInsightsInput,
   StartBatchEvaluationInput,
   UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
@@ -1697,6 +1698,15 @@ export class TestEvalClient implements CoreEvalClient {
     options: CoreOptions,
   ): Promise<StartBatchEvaluationResponse> {
     this.calls.push({ method: "startBatchEvaluation", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.startBatchEvalResponse;
+  }
+
+  async startBatchInsights(
+    input: StartBatchInsightsInput,
+    options: CoreOptions,
+  ): Promise<StartBatchEvaluationResponse> {
+    this.calls.push({ method: "startBatchInsights", args: [input, options] });
     if (this.error) throw this.error;
     return this.startBatchEvalResponse;
   }

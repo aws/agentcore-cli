@@ -205,6 +205,17 @@ export type StartBatchEvaluationInput = {
   kmsKeyArn?: string;
 };
 
+// Batch insights use the same service job API as batch evaluations, but remain
+// a distinct Core operation so each command keeps its own required fields.
+export type StartBatchInsightsInput = {
+  name: string;
+  description?: string;
+  insightIds: string[];
+  evaluatorIds?: string[];
+  source: SessionSourceValue;
+  kmsKeyArn?: string;
+};
+
 export type SpanRecord = Record<string, unknown>;
 
 export type SessionTrace = {
@@ -298,6 +309,10 @@ export interface CoreEvalClient {
   // + RUNNING status; poll with getBatchEvaluation.
   startBatchEvaluation(
     input: StartBatchEvaluationInput,
+    options: CoreOptions,
+  ): Promise<StartBatchEvaluationResponse>;
+  startBatchInsights(
+    input: StartBatchInsightsInput,
     options: CoreOptions,
   ): Promise<StartBatchEvaluationResponse>;
 
