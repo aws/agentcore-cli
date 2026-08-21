@@ -40,6 +40,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         "api-key",
         "API key source for non-bedrock model providers: '-' for stdin, 'file://path' for file",
         z.string().optional(),
+        { sensitive: true },
       ),
       flag(
         "model-provider",
