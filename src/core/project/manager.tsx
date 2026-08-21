@@ -173,6 +173,7 @@ export class FsProjectManager implements ProjectManager {
       }
       case "config-bundle":
       case "online-eval":
+      case "online-insight":
         newResources.push(resourceConfig);
         break;
 
@@ -272,6 +273,7 @@ function toProjectSpecKey(resourceType: ProjectResource) {
     case "config-bundle":
       return "configBundles";
     case "online-eval":
+    case "online-insight":
       return "onlineEvalConfigs";
   }
 }

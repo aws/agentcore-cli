@@ -59,6 +59,10 @@ export type AddResourceInput =
   | {
       resourceType: "online-eval";
       resourceConfig: z.input<typeof OnlineEvalConfigSchema>;
+    }
+  | {
+      resourceType: "online-insight";
+      resourceConfig: z.input<typeof OnlineEvalConfigSchema>;
     };
 
 export type ProjectResource = AddResourceInput["resourceType"];
