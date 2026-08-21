@@ -24,6 +24,8 @@ export interface ListTracesOptions {
   serviceName?: string;
   startTime?: number;
   endTime?: number;
+  /** Keep only the newest N traces — the inspector re-polls this on every invocation. */
+  limit?: number;
 }
 
 /**
@@ -67,20 +69,24 @@ export class TraceStore {
       if (!trace) continue;
 
       const meta = extractTraceMeta(trace.resourceSpans, trace.resourceLogs);
+      // No id means every line failed to parse (empty/corrupt file), not a real trace.
       if (!meta.traceId) continue;
       if (meta.lastSeen < start || meta.firstSeen > end) continue;
       if (options.serviceName && !meta.serviceNames.includes(options.serviceName)) continue;
 
+      const detail = buildTraceDetail(trace.resourceSpans, trace.resourceLogs);
       summaries.push({
         traceId: meta.traceId,
         timestamp: new Date(meta.lastSeen).toISOString(),
         sessionId: meta.sessionId,
-        spanCount: String(meta.spanCount),
-        ...buildTraceDetail(trace.resourceSpans, trace.resourceLogs),
+        // Count the spans the UI actually renders (post noise-filter), not raw records.
+        spanCount: String(countRenderedSpans(detail.resourceSpans)),
+        ...detail,
       });
     }
 
-    return summaries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    summaries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    return options.limit === undefined ? summaries : summaries.slice(0, options.limit);
   }
 
   /** All spans and logs for one trace, or undefined when the trace is unknown. */
@@ -93,8 +99,9 @@ export class TraceStore {
   private async traceFiles(): Promise<string[]> {
     try {
       return (await readdir(this.directory)).filter((file) => file.endsWith(OTLP_EXT));
-    } catch {
-      return [];
+    } catch (error) {
+      if (isNotFound(error)) return []; // No traces persisted yet — the dir is created on first append.
+      throw error;
     }
   }
 
@@ -104,8 +111,11 @@ export class TraceStore {
     let content: string;
     try {
       content = await readFile(join(this.directory, fileName), "utf8");
-    } catch {
-      return undefined;
+    } catch (error) {
+      // Unknown trace (get) or a file removed between listing and read; any other
+      // fault (permissions, bad path) is real and must not read as "no trace".
+      if (isNotFound(error)) return undefined;
+      throw error;
     }
 
     const resourceSpans: OtlpResourceSpan[] = [];
@@ -126,4 +136,18 @@ export class TraceStore {
 
 function sanitize(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+/** Number of spans in a built trace detail — what the inspector's waterfall shows. */
+function countRenderedSpans(resourceSpans: TraceDetail["resourceSpans"]): number {
+  let count = 0;
+  for (const resourceSpan of (resourceSpans ?? []) as OtlpResourceSpan[]) {
+    for (const scopeSpan of resourceSpan.scopeSpans ?? []) count += scopeSpan.spans?.length ?? 0;
+  }
+  return count;
+}
+
+/** A missing directory or file — the only fs error reads should treat as "empty". */
+function isNotFound(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException | null)?.code === "ENOENT";
 }

@@ -37,7 +37,7 @@ const agentSpan = {
 };
 
 describe("extractTraceMeta", () => {
-  test("collects trace id, time bounds, session, service, and span count", () => {
+  test("collects trace id, time bounds, session, and service", () => {
     const meta = extractTraceMeta(
       [resourceSpan({ serviceName: "my-agent", spans: [agentSpan] })],
       [],
@@ -48,11 +48,10 @@ describe("extractTraceMeta", () => {
       lastSeen: 1700000001500,
       sessionId: "session-1",
       serviceNames: ["my-agent"],
-      spanCount: 1,
     });
   });
 
-  test("counts log records and falls back to observed time", () => {
+  test("reads trace id, service, and observed time from logs alone", () => {
     const logs: OtlpResourceLog[] = [
       {
         resource: { attributes: [{ key: "service.name", value: { stringValue: "log-agent" } }] },
@@ -67,7 +66,6 @@ describe("extractTraceMeta", () => {
     const meta = extractTraceMeta([], logs);
     expect(meta.traceId).toBe(TRACE_ID_HEX);
     expect(meta.serviceNames).toEqual(["log-agent"]);
-    expect(meta.spanCount).toBe(1);
     expect(meta.firstSeen).toBe(1700000002000);
     expect(meta.lastSeen).toBe(1700000002000);
   });
@@ -207,7 +205,7 @@ describe("helpers", () => {
     expect(hexFromB64OrString(undefined)).toBe("");
   });
 
-  test("flattenAttributes handles typed values, arrays, and flat passthrough", () => {
+  test("flattenAttributes handles typed values and arrays, empty for none", () => {
     expect(
       flattenAttributes([
         { key: "s", value: { stringValue: "x" } },
@@ -217,8 +215,7 @@ describe("helpers", () => {
         { key: "a", value: { arrayValue: { values: [{ stringValue: "y" }, { intValue: "7" }] } } },
         { key: "skipped" },
       ]),
-    ).toEqual({ s: "x", i: 42, d: 1.5, b: true, a: ["y", "7"] });
-    expect(flattenAttributes({ already: "flat" })).toEqual({ already: "flat" });
+    ).toEqual({ s: "x", i: 42, d: 1.5, b: true, a: ["y", 7] });
     expect(flattenAttributes([])).toBeUndefined();
     expect(flattenAttributes(undefined)).toBeUndefined();
   });

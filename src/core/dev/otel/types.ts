@@ -1,7 +1,7 @@
 /**
  * Wire shapes for OTLP/HTTP payloads after protobuf JSON conversion or JSON ingest.
- * Attributes appear either as OTLP key/value arrays (from the SDK exporters) or as
- * already-flat records (after our own flattening) — helpers accept both.
+ * Attributes always arrive as OTLP key/value arrays; we flatten them to plain
+ * records only for display output, which is never read back through these types.
  */
 
 export interface OtlpAttributeValue {
@@ -18,7 +18,7 @@ export interface OtlpAttribute {
   value?: OtlpAttributeValue;
 }
 
-export type OtlpAttributes = OtlpAttribute[] | Record<string, unknown>;
+export type OtlpAttributes = OtlpAttribute[];
 
 export interface OtlpResource {
   attributes?: OtlpAttributes;

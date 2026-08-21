@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TraceStore } from "./store";
@@ -104,7 +104,7 @@ describe("TraceStore", () => {
     expect(await store.list({ serviceName: "agent-3" })).toEqual([]);
   });
 
-  test("list filters by time window and sorts newest first", async () => {
+  test("list filters by time window, sorts newest first, and caps to limit", async () => {
     const oldNano = `${BigInt(Date.now() - 24 * 60 * 60 * 1000) * 1_000_000n}`;
     await store.append(payload(TRACE_A, { startNano: oldNano }));
     await store.append(payload(TRACE_B));
@@ -113,12 +113,23 @@ describe("TraceStore", () => {
 
     const all = await store.list({ startTime: 0 });
     expect(all.map((trace) => trace.traceId)).toEqual([TRACE_B, TRACE_A]);
+
+    // limit keeps the newest N after sorting.
+    expect((await store.list({ startTime: 0, limit: 1 })).map((trace) => trace.traceId)).toEqual([
+      TRACE_B,
+    ]);
   });
 
-  test("get returns the trace detail or undefined for unknown ids", async () => {
+  test("get merges spans across appends and is undefined for unknown ids", async () => {
     await store.append(payload(TRACE_A));
+    await store.append(payload(TRACE_A, { name: "tool_use" }));
+
     const detail = await store.get(TRACE_A);
-    expect(detail?.resourceSpans).toBeDefined();
+    const spans = (detail!.resourceSpans as { scopeSpans: { spans: { name: string }[] }[] }[])
+      .flatMap((resourceSpan) => resourceSpan.scopeSpans)
+      .flatMap((scopeSpan) => scopeSpan.spans);
+    expect(spans.map((span) => span.name).sort()).toEqual(["invoke_agent strands", "tool_use"]);
+
     expect(await store.get(TRACE_B)).toBeUndefined();
   });
 
@@ -138,5 +149,16 @@ describe("TraceStore", () => {
     const empty = new TraceStore(join(directory, "missing"));
     expect(await empty.list()).toEqual([]);
     expect(await empty.get(TRACE_A)).toBeUndefined();
+  });
+
+  test("non-ENOENT fs errors bubble up rather than reading as empty", async () => {
+    // readdir on a path that is a file, not a directory -> ENOTDIR must throw.
+    const asFile = join(directory, "file");
+    await writeFile(asFile, "x");
+    expect(new TraceStore(asFile).list()).rejects.toThrow();
+
+    // readFile on a trace path that is a directory -> EISDIR must throw.
+    await mkdir(join(directory, `${TRACE_A}.otlp.jsonl`));
+    expect(store.list()).rejects.toThrow();
   });
 });

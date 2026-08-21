@@ -1,6 +1,5 @@
 import type {
   OtlpAttributes,
-  OtlpAttributeValue,
   OtlpPayload,
   OtlpResource,
   OtlpResourceLog,
@@ -14,15 +13,14 @@ export interface TraceMeta {
   sessionId?: string;
   /** Every service participating in the trace — a distributed trace spans several local agents. */
   serviceNames: string[];
-  spanCount: number;
 }
 
-/** Extract listing metadata (trace id, time bounds, session, service, count) from raw OTLP arrays. */
+/** Extract listing metadata (trace id, time bounds, session, service) from raw OTLP arrays. */
 export function extractTraceMeta(
   resourceSpans: OtlpResourceSpan[],
   resourceLogs: OtlpResourceLog[],
 ): TraceMeta {
-  const meta: TraceMeta = { firstSeen: Infinity, lastSeen: 0, spanCount: 0, serviceNames: [] };
+  const meta: TraceMeta = { firstSeen: Infinity, lastSeen: 0, serviceNames: [] };
   const services = new Set<string>();
 
   for (const resourceSpan of resourceSpans) {
@@ -30,7 +28,6 @@ export function extractTraceMeta(
     if (service) services.add(service);
     for (const scopeSpan of resourceSpan.scopeSpans ?? []) {
       for (const span of scopeSpan.spans ?? []) {
-        meta.spanCount++;
         meta.traceId ??= hexFromB64OrString(span.traceId) || undefined;
         widenTimeBounds(meta, nanoToMs(span.startTimeUnixNano));
         widenTimeBounds(meta, nanoToMs(span.endTimeUnixNano));
@@ -46,7 +43,6 @@ export function extractTraceMeta(
     if (service) services.add(service);
     for (const scopeLog of resourceLog.scopeLogs ?? []) {
       for (const record of scopeLog.logRecords ?? []) {
-        meta.spanCount++;
         meta.traceId ??= hexFromB64OrString(record.traceId) || undefined;
         widenTimeBounds(
           meta,
@@ -239,13 +235,11 @@ export function hexFromB64OrString(value: string | undefined): string {
   }
 }
 
-/** Flatten OTLP attributes into a plain record; passes already-flat records through. */
+/** Flatten an OTLP key/value attribute array into a plain record. */
 export function flattenAttributes(
   attributes: OtlpAttributes | undefined,
 ): Record<string, unknown> | undefined {
-  if (!attributes) return undefined;
-  if (!Array.isArray(attributes)) return attributes;
-  if (attributes.length === 0) return undefined;
+  if (!attributes || attributes.length === 0) return undefined;
 
   const flat: Record<string, unknown> = {};
   for (const attribute of attributes) {
@@ -255,12 +249,9 @@ export function flattenAttributes(
     else if (value.intValue !== undefined) flat[attribute.key] = Number(value.intValue);
     else if (value.doubleValue !== undefined) flat[attribute.key] = value.doubleValue;
     else if (value.boolValue !== undefined) flat[attribute.key] = value.boolValue;
-    else if (value.arrayValue?.values) {
-      flat[attribute.key] = value.arrayValue.values.map(
-        (item: OtlpAttributeValue) =>
-          item.stringValue ?? item.intValue ?? item.doubleValue ?? item.boolValue ?? null,
-      );
-    }
+    // Arrays (and any nested kvlist within them) share the AnyValue unwrapping below.
+    else if (value.arrayValue?.values)
+      flat[attribute.key] = value.arrayValue.values.map(extractAnyValue);
   }
   return flat;
 }
@@ -297,16 +288,12 @@ function getAttributeValue(
   key: string,
 ): string | undefined {
   if (!attributes) return undefined;
-  if (Array.isArray(attributes)) {
-    const attribute = attributes.find((entry) => entry.key === key);
-    if (!attribute?.value) return undefined;
-    return (
-      attribute.value.stringValue ??
-      (attribute.value.intValue != null ? String(attribute.value.intValue) : undefined)
-    );
-  }
-  const value = attributes[key];
-  return typeof value === "string" ? value : undefined;
+  const attribute = attributes.find((entry) => entry.key === key);
+  if (!attribute?.value) return undefined;
+  return (
+    attribute.value.stringValue ??
+    (attribute.value.intValue != null ? String(attribute.value.intValue) : undefined)
+  );
 }
 
 function widenTimeBounds(meta: TraceMeta, timeMs: number): void {
