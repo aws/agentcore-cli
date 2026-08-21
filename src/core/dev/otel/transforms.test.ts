@@ -4,7 +4,7 @@ import {
   extractAnyValue,
   extractTraceMeta,
   flattenAttributes,
-  hexFromB64OrString,
+  hexFromBase64OrHex,
   nanoToMs,
   partitionByTraceId,
 } from "./transforms";
@@ -199,10 +199,10 @@ describe("helpers", () => {
     expect(nanoToMs(undefined)).toBe(0);
   });
 
-  test("hexFromB64OrString accepts hex, base64, and empty", () => {
-    expect(hexFromB64OrString(TRACE_ID_HEX.toUpperCase())).toBe(TRACE_ID_HEX);
-    expect(hexFromB64OrString(TRACE_ID_B64)).toBe(TRACE_ID_HEX);
-    expect(hexFromB64OrString(undefined)).toBe("");
+  test("hexFromBase64OrHex accepts hex, base64, and empty", () => {
+    expect(hexFromBase64OrHex(TRACE_ID_HEX.toUpperCase())).toBe(TRACE_ID_HEX);
+    expect(hexFromBase64OrHex(TRACE_ID_B64)).toBe(TRACE_ID_HEX);
+    expect(hexFromBase64OrHex(undefined)).toBe("");
   });
 
   test("flattenAttributes handles typed values, arrays, and kvlist, empty for none", () => {
