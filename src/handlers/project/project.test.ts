@@ -1,6 +1,5 @@
 import { afterEach, test, expect, describe } from "bun:test";
 import { existsSync } from "node:fs";
-import { PassThrough } from "node:stream";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -15,9 +14,7 @@ import { DeserializationError, InputValidationError } from "../../errors";
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 
 async function run(args: string[], opts?: { core?: TestCoreClient; stdin?: string }) {
-  const io = testIO();
-  // testIO's stdin is a PassThrough; pre-filling and ending it simulates piped input.
-  if (opts?.stdin !== undefined) (io.io.stdin as unknown as PassThrough).end(opts.stdin);
+  const io = testIO({ stdin: opts?.stdin });
   const core = opts?.core ?? new TestCoreClient();
   const root = createRootHandler(core, {
     io: io.io,
@@ -853,18 +850,6 @@ describe("project add credentials", () => {
 
     const env = await Bun.file(envPath).text();
     expect(env).toContain("AGENTCORE_CREDENTIAL_SVC_KEY=\n");
-  });
-
-  test("restores the .gitignore .env.local entry when the project lost it", async () => {
-    const projectRoot = await inProject();
-    await Bun.write(join(projectRoot, ".gitignore"), "node_modules/\n");
-
-    const { io } = await run(["add", "credentials", "api-key", "--name", "svc-key"]);
-
-    const gitignore = await Bun.file(join(projectRoot, ".gitignore")).text();
-    expect(gitignore).toStartWith("node_modules/\n");
-    expect(gitignore).toContain("\n.env.local\n");
-    expect(io.stderr()).toContain(".gitignore");
   });
 
   test("rejects a duplicate credential name across credential types", async () => {

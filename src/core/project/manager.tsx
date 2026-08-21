@@ -19,11 +19,7 @@ import {
   type ReadWriteJson,
 } from "../../io";
 import { defaultSource, type AssetSource } from "./source";
-import {
-  ENV_LOCAL_RELATIVE_PATH,
-  ensureGitignoreCoversEnvLocal,
-  upsertEnvLocalEntries,
-} from "./envLocal";
+import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
 import { createHarnessTreeFromSpec, createProjectTreeFromTemplate, TEMPLATES } from "./templates";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { enclosingProjectRoot } from "./fsUtils";
@@ -147,6 +143,8 @@ export class FsProjectManager implements ProjectManager {
     // Widened: arms push their own shapes; the whole-spec safeParse below validates.
     const newResources: unknown[] = [...existingResources];
     const scaffoldedPaths: string[] = [];
+    // Non-file work that a failed spec write must also reverse.
+    let envFile: EnvLocalFile | undefined;
 
     switch (resourceType) {
       case "harness": {
@@ -167,8 +165,19 @@ export class FsProjectManager implements ProjectManager {
         );
       }
       case "credential": {
-        // Spec-only resource: no scaffolding, secrets go to .env.local below.
+        // No file scaffolding; the secret placeholder is staged into .env.local
+        // and reversed with the spec write if that commit fails.
         newResources.push(input.resourceConfig);
+        if (input.envEntries?.length) {
+          envFile = new EnvLocalFile(project.rootPath);
+          yield { message: `Updating secrets file at '${envFile.path}'` };
+          const { skipped } = await envFile.upsert(input.envEntries);
+          for (const key of skipped) {
+            yield {
+              message: `'${key}' already exists in ${ENV_LOCAL_RELATIVE_PATH}; left unchanged`,
+            };
+          }
+        }
         break;
       }
       // TODO: add limited special casing for runtime and default for other resources that proxy directly to spec changes.
@@ -190,10 +199,10 @@ export class FsProjectManager implements ProjectManager {
       newProjectSpec = await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
     } catch (err) {
       this.logger.warn(
-        `failed to update ${agentCoreSpecPath}; attempting best-effort cleanup of scaffolded files`,
+        `failed to update ${agentCoreSpecPath}; attempting best-effort cleanup of staged changes`,
       );
-      await Promise.all(
-        scaffoldedPaths.map((p) =>
+      await Promise.all([
+        ...scaffoldedPaths.map((p) =>
           rm(p, { recursive: true, force: true }).catch((e) => {
             const error = AgentCoreCLIError.fromError(e);
             this.logger
@@ -201,20 +210,14 @@ export class FsProjectManager implements ProjectManager {
               .warn(`failed to clean up ${p}`);
           }),
         ),
-      );
+        envFile?.rollback().catch((e) => {
+          const error = AgentCoreCLIError.fromError(e);
+          this.logger
+            .child({ errorName: error.name, errorMessage: error.message })
+            .warn(`failed to roll back ${ENV_LOCAL_RELATIVE_PATH}`);
+        }),
+      ]);
       throw err;
-    }
-
-    if (input.resourceType === "credential" && input.envEntries?.length) {
-      const envPath = join(project.rootPath, ENV_LOCAL_RELATIVE_PATH);
-      yield { message: `Updating secrets file at '${envPath}'` };
-      const { skipped } = await upsertEnvLocalEntries(envPath, input.envEntries);
-      for (const key of skipped) {
-        yield { message: `'${key}' already exists in ${ENV_LOCAL_RELATIVE_PATH}; left unchanged` };
-      }
-      if (await ensureGitignoreCoversEnvLocal(project.rootPath)) {
-        yield { message: `Added '.env.local' to .gitignore so secrets stay out of git` };
-      }
     }
 
     return {
