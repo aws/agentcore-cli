@@ -101,6 +101,7 @@ import type {
   CreateConfigurationBundleInput,
   CreateDatasetInput,
   CreateOnlineEvalInput,
+  CreateOnlineInsightInput,
   EvaluateInput,
   EvaluateResult,
   GetBatchEvaluationResult,
@@ -554,6 +555,62 @@ export class EvalClient implements CoreEvalClient {
     return input.evaluationExecutionRoleArn
       ? control.send(command)
       : retryWhileRolePropagates(() => control.send(command));
+  }
+
+  async createOnlineInsight(
+    input: CreateOnlineInsightInput,
+    options: CoreOptions,
+  ): Promise<CreateOnlineEvaluationConfigResponse> {
+    const dataSourceConfig =
+      input.agent !== undefined
+        ? await agentDataSource(input.agent, input.endpoint, this.clients, options)
+        : input.dataSourceConfig;
+    const control = this.clients.control(toClientConfig(options));
+
+    const command = new CreateOnlineEvaluationConfigCommand({
+      onlineEvaluationConfigName: input.name,
+      description: input.description,
+      rule: toRule(input.samplingRate, input.sessionTimeoutMinutes, input.filters),
+      dataSourceConfig,
+      insights: input.insightIds.map((insightId) => ({ insightId })),
+      clusteringConfig: input.clusteringConfig,
+      evaluationExecutionRoleArn: input.evaluationExecutionRoleArn,
+      enableOnCreate: input.enableOnCreate ?? true,
+    });
+
+    // The role is caller-supplied, so one that cannot be assumed is a real
+    // misconfiguration — fail fast rather than retry as we do for a role we just
+    // provisioned ourselves.
+    return control.send(command);
+  }
+
+  // Insight configs are the same resource as eval configs, so reads and lifecycle
+  // reuse the eval methods; only create/update differ (insights vs evaluators).
+  getOnlineInsight(id: string, options: CoreOptions): Promise<GetOnlineEvaluationConfigResponse> {
+    return this.getOnlineEvaluationConfig(id, options);
+  }
+
+  listOnlineInsights(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListOnlineEvaluationConfigsResponse> {
+    return this.listOnlineEvaluationConfigs(nextToken, maxResults, options);
+  }
+
+  setOnlineInsightExecutionStatus(
+    id: string,
+    executionStatus: "ENABLED" | "DISABLED",
+    options: CoreOptions,
+  ): Promise<UpdateOnlineEvaluationConfigResponse> {
+    return this.setOnlineEvaluationExecutionStatus(id, executionStatus, options);
+  }
+
+  deleteOnlineInsight(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteOnlineEvaluationConfigResponse> {
+    return this.deleteOnlineEvaluationConfig(id, options);
   }
 
   // updateOnlineEvaluationConfig fetches the current config and merges the

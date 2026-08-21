@@ -146,6 +146,24 @@ export type CreateOnlineEvalInput = {
   | { agent?: undefined; endpoint?: undefined; dataSourceConfig: DataSourceConfig }
 );
 
+// CreateOnlineInsightInput mirrors CreateOnlineEvalInput but applies insights
+// instead of evaluators and requires a caller-supplied execution role — insight
+// configs are never given an auto-provisioned role.
+export type CreateOnlineInsightInput = {
+  name: string;
+  description?: string;
+  samplingRate: number;
+  sessionTimeoutMinutes?: number;
+  filters?: Rule["filters"];
+  insightIds: string[];
+  clusteringConfig?: { frequencies: ("DAILY" | "WEEKLY" | "MONTHLY")[] };
+  evaluationExecutionRoleArn: string;
+  enableOnCreate?: boolean;
+} & (
+  | { agent: string; endpoint?: string; dataSourceConfig?: undefined }
+  | { agent?: undefined; endpoint?: undefined; dataSourceConfig: DataSourceConfig }
+);
+
 // UpdateOnlineEvalInput carries the fields a caller may change on an online
 // evaluation config. Undefined fields are left untouched by Core (merged over
 // the current config, since UpdateOnlineEvaluationConfig replaces the whole
@@ -340,6 +358,29 @@ export interface CoreEvalClient {
     options: CoreOptions,
   ): Promise<UpdateOnlineEvaluationConfigResponse>;
   deleteOnlineEvaluationConfig(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteOnlineEvaluationConfigResponse>;
+
+  // Online insight configs are the same underlying OnlineEvaluationConfig resource
+  // with insights instead of evaluators, so read/lifecycle share the eval methods;
+  // create applies insights + optional clustering and requires a BYO role.
+  createOnlineInsight(
+    input: CreateOnlineInsightInput,
+    options: CoreOptions,
+  ): Promise<CreateOnlineEvaluationConfigResponse>;
+  getOnlineInsight(id: string, options: CoreOptions): Promise<GetOnlineEvaluationConfigResponse>;
+  listOnlineInsights(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListOnlineEvaluationConfigsResponse>;
+  setOnlineInsightExecutionStatus(
+    id: string,
+    executionStatus: "ENABLED" | "DISABLED",
+    options: CoreOptions,
+  ): Promise<UpdateOnlineEvaluationConfigResponse>;
+  deleteOnlineInsight(
     id: string,
     options: CoreOptions,
   ): Promise<DeleteOnlineEvaluationConfigResponse>;

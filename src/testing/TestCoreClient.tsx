@@ -129,6 +129,7 @@ import type {
   CreateConfigurationBundleInput,
   CreateDatasetInput,
   CreateOnlineEvalInput,
+  CreateOnlineInsightInput,
   DatasetUpdateResult,
   DatasetUpdateProgressEvent,
   EvaluateInput,
@@ -1783,6 +1784,56 @@ export class TestEvalClient implements CoreEvalClient {
     options: CoreOptions,
   ): Promise<DeleteOnlineEvaluationConfigResponse> {
     this.calls.push({ method: "deleteOnlineEvaluationConfig", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.onlineEvalDeleteResponse;
+  }
+
+  async createOnlineInsight(
+    input: CreateOnlineInsightInput,
+    options: CoreOptions,
+  ): Promise<CreateOnlineEvaluationConfigResponse> {
+    this.calls.push({ method: "createOnlineInsight", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.onlineEvalCreateResponse;
+  }
+
+  async getOnlineInsight(
+    id: string,
+    options: CoreOptions,
+  ): Promise<GetOnlineEvaluationConfigResponse> {
+    this.calls.push({ method: "getOnlineInsight", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.onlineEvalGetResponse;
+  }
+
+  async listOnlineInsights(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListOnlineEvaluationConfigsResponse> {
+    this.calls.push({ method: "listOnlineInsights", args: [nextToken, maxResults, options] });
+    if (this.error) throw this.error;
+    return this.onlineEvalListResponses.get(nextToken) ?? { onlineEvaluationConfigs: [] };
+  }
+
+  async setOnlineInsightExecutionStatus(
+    id: string,
+    executionStatus: "ENABLED" | "DISABLED",
+    options: CoreOptions,
+  ): Promise<UpdateOnlineEvaluationConfigResponse> {
+    this.calls.push({
+      method: "setOnlineInsightExecutionStatus",
+      args: [id, executionStatus, options],
+    });
+    if (this.error) throw this.error;
+    return this.onlineEvalUpdateResponse;
+  }
+
+  async deleteOnlineInsight(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteOnlineEvaluationConfigResponse> {
+    this.calls.push({ method: "deleteOnlineInsight", args: [id, options] });
     if (this.error) throw this.error;
     return this.onlineEvalDeleteResponse;
   }
