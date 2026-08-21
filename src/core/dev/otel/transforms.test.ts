@@ -205,7 +205,7 @@ describe("helpers", () => {
     expect(hexFromB64OrString(undefined)).toBe("");
   });
 
-  test("flattenAttributes handles typed values and arrays, empty for none", () => {
+  test("flattenAttributes handles typed values, arrays, and kvlist, empty for none", () => {
     expect(
       flattenAttributes([
         { key: "s", value: { stringValue: "x" } },
@@ -213,9 +213,13 @@ describe("helpers", () => {
         { key: "d", value: { doubleValue: 1.5 } },
         { key: "b", value: { boolValue: true } },
         { key: "a", value: { arrayValue: { values: [{ stringValue: "y" }, { intValue: "7" }] } } },
+        {
+          key: "kv",
+          value: { kvlistValue: { values: [{ key: "inner", value: { intValue: "3" } }] } },
+        },
         { key: "skipped" },
       ]),
-    ).toEqual({ s: "x", i: 42, d: 1.5, b: true, a: ["y", 7] });
+    ).toEqual({ s: "x", i: 42, d: 1.5, b: true, a: ["y", 7], kv: { inner: 3 } });
     expect(flattenAttributes([])).toBeUndefined();
     expect(flattenAttributes(undefined)).toBeUndefined();
   });

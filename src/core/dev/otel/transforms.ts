@@ -244,14 +244,9 @@ export function flattenAttributes(
   const flat: Record<string, unknown> = {};
   for (const attribute of attributes) {
     if (!attribute.value) continue;
-    const value = attribute.value;
-    if (value.stringValue !== undefined) flat[attribute.key] = value.stringValue;
-    else if (value.intValue !== undefined) flat[attribute.key] = Number(value.intValue);
-    else if (value.doubleValue !== undefined) flat[attribute.key] = value.doubleValue;
-    else if (value.boolValue !== undefined) flat[attribute.key] = value.boolValue;
-    // Arrays (and any nested kvlist within them) share the AnyValue unwrapping below.
-    else if (value.arrayValue?.values)
-      flat[attribute.key] = value.arrayValue.values.map(extractAnyValue);
+    // One unwrap for every AnyValue variant — string/int/double/bool/array/kvlist —
+    // so nested and kvlist-valued attributes flatten instead of silently dropping.
+    flat[attribute.key] = extractAnyValue(attribute.value);
   }
   return flat;
 }
