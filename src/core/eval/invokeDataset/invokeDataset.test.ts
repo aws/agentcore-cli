@@ -178,6 +178,16 @@ const THROW_FIXTURES: { name: string; jsonl: string; error: RegExp }[] = [
     jsonl: row({ example_id: "x", turns: [null] }),
     error: /turn 1 is not an object/,
   },
+  {
+    name: "non-array assertions",
+    jsonl: row({ example_id: "x", turns: [{ input: "a" }], assertions: "nope" }),
+    error: /assertions must be an array of strings/,
+  },
+  {
+    name: "non-array expected_trajectory",
+    jsonl: row({ example_id: "x", turns: [{ input: "a" }], expected_trajectory: "nope" }),
+    error: /expected_trajectory must be an array of strings/,
+  },
 ];
 
 describe("EvalClient.invokeDataset", () => {
@@ -190,6 +200,24 @@ describe("EvalClient.invokeDataset", () => {
       results[f.name] = { invoked: r.invoked, failed: r.failed, sessions: normalize(r.sessions) };
     }
     expect(results).toMatchSnapshot();
+  });
+
+  test("rejects a payload-template without the {input} placeholder before invoking", async () => {
+    const { clients, payloads } = fakeClients();
+    const fetch = (() => {
+      throw new Error("unused");
+    }) as unknown as CoreFetch;
+    await expect(
+      new EvalClient(clients, fetch).invokeDataset(
+        {
+          runtimeId: "rt-1",
+          payloadTemplate: '{"prompt":"static"}',
+          dataset: datasetFile(row({ example_id: "x", turns: [{ input: "hi" }] })),
+        },
+        OPTIONS,
+      ),
+    ).rejects.toThrow(/\{input\} placeholder/);
+    expect(payloads).toEqual([]);
   });
 
   test.each(THROW_FIXTURES)("rejects and invokes nothing: $name", async ({ jsonl, error }) => {

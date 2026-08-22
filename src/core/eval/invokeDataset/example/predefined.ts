@@ -4,6 +4,17 @@ import type { Example, RunContext } from "./types";
 
 type Turn = { input: string; expectedResponse?: string };
 
+// Validate an optional string[] field at load time. Without this a malformed value (e.g. a
+// string) blind-casts past the constructor, burns a live invoke, then throws a raw
+// `.map is not a function` mislabeled "failed to invoke" from groundTruth().
+function asStringArray(value: unknown, field: string, exampleId: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
+    throw new InputValidationError(`example "${exampleId}" ${field} must be an array of strings`);
+  }
+  return value;
+}
+
 export class PredefinedExample implements Example {
   readonly schemaType = "AGENTCORE_EVALUATION_PREDEFINED_V1" as const;
   readonly turns: Turn[];
@@ -29,8 +40,12 @@ export class PredefinedExample implements Example {
       throw new InputValidationError(`example "${exampleId}" has no turns`);
     }
     this.turns = turns;
-    this.assertions = row.assertions as string[] | undefined;
-    this.expectedTrajectory = row.expected_trajectory as string[] | undefined;
+    this.assertions = asStringArray(row.assertions, "assertions", exampleId);
+    this.expectedTrajectory = asStringArray(
+      row.expected_trajectory,
+      "expected_trajectory",
+      exampleId,
+    );
   }
 
   // Sequential and awaited: the turns share one session, so racing them would interleave

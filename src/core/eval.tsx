@@ -539,6 +539,11 @@ export class EvalClient implements CoreEvalClient {
     options: CoreOptions,
     signal?: AbortSignal,
   ): Promise<InvokeDatasetResult> {
+    // A template with no {input} sends the same payload for every turn, ignoring the
+    // scenario — always a mistake. Fail before reading the dataset or invoking anything.
+    if (!input.payloadTemplate.includes("{input}")) {
+      throw new InputValidationError("--payload-template must contain the {input} placeholder");
+    }
     const examples = DatasetLoader.load(
       await this.readDatasetText(input.dataset, input.datasetVersion, options, signal),
     );
