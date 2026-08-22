@@ -1,0 +1,18 @@
+{
+  "onlineEvaluationConfigs": [
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/EvoBugBash_abOnlineEval-Q0Iv1k2cdo",
+      "onlineEvaluationConfigId": "EvoBugBash_abOnlineEval-Q0Iv1k2cdo",
+      "onlineEvaluationConfigName": "EvoBugBash_abOnlineEval",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-06-12T22:27:27.466Z"
+      },
+      "updatedAt": {
+        "$date": "2026-06-12T22:27:40.636Z"
+      }
+    }
+  ],
+  "nextToken": "AQICAHg005/7fkIBR7tGFhppNaSDRXSe8ajCw8sa0ZnYTqa1SAG1LELq0bhwWT5zQeCOihe/AAABLTCCASkGCSqGSIb3DQEHBqCCARowggEWAgEAMIIBDwYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAz2xh6WwFAFYi36+EcCARCAgeERnpoaOydfXcqol1MjHcT3S8fJdrFpaxTC9iYLo4xWgXbHXw2txHcPLvd5Uw9XrXQ9U2pgqH6HufnjV3AR64BGXHcii6tIhc7hu0gv8nRU/QZYZcL9q/2LHVhcp1ZHto38eyU1YK2ztxiN6veCGCByRSdDtsi/c6BRpPJ+ko1MGqdhjl4AiQMQnn3eYku0xqfBNgpYg4Oy5JPwSYjDVyedQ2ElS2jBJ3kf0+zgIPn4V2rqgPvEyV8Dz/Rna3/vCT5OGwkwFLNbJ2pwUCosEZfXUb5m61AnuXhhCZ8gUdIsBIg="
+}

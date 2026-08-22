@@ -1,0 +1,18 @@
+{
+  "onlineEvaluationConfigs": [
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/GwFilterVfy_ctrlEval-T97o5LAtRS",
+      "onlineEvaluationConfigId": "GwFilterVfy_ctrlEval-T97o5LAtRS",
+      "onlineEvaluationConfigName": "GwFilterVfy_ctrlEval",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-06-15T18:27:10.496Z"
+      },
+      "updatedAt": {
+        "$date": "2026-06-15T18:27:26.982Z"
+      }
+    }
+  ],
+  "nextToken": "AQICAHg005/7fkIBR7tGFhppNaSDRXSe8ajCw8sa0ZnYTqa1SAHD9wQtDQc57lxtfMUifHe9AAABKjCCASYGCSqGSIb3DQEHBqCCARcwggETAgEAMIIBDAYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAzLm3drRaNWkOsOQWICARCAgd5U1/1ahWcC5syk1q0s8t9BO53j7UMTBYEDl6Rx7W3NVebx4UfVIiXsxUaKYChdovd+gBjYzBlOXWNtjrvhRqhgJiU/AdNdT9wEd++m/6jMbd6KfuGtVYZqBr5LeYcF8AoV7OmhvndEaUtBvMLTo8Hw9d6FiZsj5An3ieF6lljHLAA3HZkYxZ66iFBOgSx1VetQft/IErA9xC4/8gaYrKzP3ekGJYhFKt0Ip3/Oqvqq9RCYQcH7khzpD3FVVv4Tb+C5ELf9eEGADFc/A1+Q4mWmez7o07oKutoyCbuznqc="
+}

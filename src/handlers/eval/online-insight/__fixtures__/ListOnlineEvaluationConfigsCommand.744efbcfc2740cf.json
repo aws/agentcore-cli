@@ -1,0 +1,18 @@
+{
+  "onlineEvaluationConfigs": [
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/bugbashagent_lambda_trtm_eval-IlN5S34Bc5",
+      "onlineEvaluationConfigId": "bugbashagent_lambda_trtm_eval-IlN5S34Bc5",
+      "onlineEvaluationConfigName": "bugbashagent_lambda_trtm_eval",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-06-15T19:41:54.111Z"
+      },
+      "updatedAt": {
+        "$date": "2026-06-15T19:42:10.335Z"
+      }
+    }
+  ],
+  "nextToken": "AQICAHg005/7fkIBR7tGFhppNaSDRXSe8ajCw8sa0ZnYTqa1SAEgZU29GPwTJXsczwD5xMe+AAABMzCCAS8GCSqGSIb3DQEHBqCCASAwggEcAgEAMIIBFQYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAx81Cymeyf/fvWCcTsCARCAgefhaZkUDCwtH6o/EZp5iv4U98DjTGCEkWLX1Sy7shYdCcP2No2fDzS2KNzcdRByEVRIh8PMI2x+nBZIXeiKv9CAlBv+bkwse0y7SDxvVrOomRhsMBkrhCIyPg61hjr4RgQFTBu5Ph66vbbdeWEXdHW8ta3e+gRXLkeWLmkNzQk5BG5iUJoPHVkRwEs3h9ibSm2bFlWnOYBaDPY/Ie/ZNApPDHg8svODeSs4YOtWlmW5RcOUuvZfn/PLtm3maeECnPKHPSmzcBB+XGjPwu7e8N3sWzRQseuB3dBuknXlzZ1Xzy9rF5CC38k="
+}

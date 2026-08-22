@@ -6,8 +6,12 @@
       "onlineEvaluationConfigName": "demoEval_onlineInsights1",
       "status": "ACTIVE",
       "executionStatus": "ENABLED",
-      "createdAt": "2026-07-16T17:26:21.625Z",
-      "updatedAt": "2026-07-16T17:26:37.218Z",
+      "createdAt": {
+        "$date": "2026-07-16T17:26:21.625Z"
+      },
+      "updatedAt": {
+        "$date": "2026-07-16T17:26:37.218Z"
+      },
       "insights": [
         {
           "insightId": "Builtin.Insight.FailureAnalysis"

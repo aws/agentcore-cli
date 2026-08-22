@@ -22,8 +22,12 @@
   },
   "status": "ACTIVE",
   "executionStatus": "DISABLED",
-  "createdAt": "2026-08-25T19:22:09.493Z",
-  "updatedAt": "2026-08-25T19:22:25.112Z",
+  "createdAt": {
+    "$date": "2026-08-25T19:22:09.493Z"
+  },
+  "updatedAt": {
+    "$date": "2026-08-25T19:22:25.112Z"
+  },
   "evaluators": [],
   "insights": [
     {

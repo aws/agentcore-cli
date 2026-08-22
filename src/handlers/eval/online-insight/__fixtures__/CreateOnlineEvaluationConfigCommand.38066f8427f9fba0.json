@@ -1,7 +1,9 @@
 {
   "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_insight_fixture-NPzirZ4e60",
   "onlineEvaluationConfigId": "agentcore_cli_online_insight_fixture-NPzirZ4e60",
-  "createdAt": "2026-08-25T19:22:09.493Z",
+  "createdAt": {
+    "$date": "2026-08-25T19:22:09.493Z"
+  },
   "status": "CREATING",
   "executionStatus": "DISABLED",
   "outputConfig": {

@@ -113,6 +113,8 @@ describe("online-insight CRUDL", () => {
       FIXTURE_INSIGHT_ID,
       "--sampling-rate",
       "10",
+      "--session-timeout-minutes",
+      "30",
       "--enable-on-create",
       "false",
     ]);
@@ -192,27 +194,48 @@ describe("online-insight CRUDL", () => {
     // Extended timeout so the settle() wait fits while recording; it is a no-op on replay.
   }, 60_000);
 
-  // get runs after resume/pause on purpose. Every id-scoped op (get, and the
-  // GET-verify guard in pause/resume/delete) issues GetOnlineEvaluationConfig with
-  // the same id, so they all share one input-keyed fixture. Recording get last —
-  // and settling first so the config has left UPDATING — makes the fixture's final
-  // mutable state (updatedAt/status) the state get.golden captures, so replay, which
-  // serves that final fixture to every GET, matches get.golden.
-  test("gets the config, exposing the insight, no evaluators, and the custom role", async () => {
+  // update runs after resume/pause and folds get in on purpose. Every id-scoped op
+  // (get, and the GET-verify guard in update/pause/resume/delete) issues
+  // GetOnlineEvaluationConfig with the same id, so they all share one input-keyed
+  // fixture. Recording the update+get last — settling before the update so pause has
+  // left UPDATING, and again before the get so the update has — makes the fixture's
+  // final state (sampling 25, settled) the one get.golden captures, so replay, which
+  // serves that final fixture to every GET, matches get.golden. update merges over
+  // the current config because UpdateOnlineEvaluationConfig replaces the whole `rule`;
+  // asserting the unset fields survive proves the merge.
+  test("updates only the sampling rate, preserving the timeout, insight, and role", async () => {
     await settle();
 
-    const stdout = await run(["eval", "online-insight", "get", "--id", configId]);
-    matchGolden(FIXTURES, "get.golden.json", stdout);
+    const stdout = await run([
+      "eval",
+      "online-insight",
+      "update",
+      "--id",
+      configId,
+      "--sampling-rate",
+      "25",
+    ]);
+    matchGolden(FIXTURES, "update.golden.json", stdout);
 
-    const detail = JSON.parse(stdout);
-    expect(detail.onlineEvaluationConfigName).toBe(CONFIG_NAME);
-    expect(detail.insights.map((i: { insightId: string }) => i.insightId)).toContain(
+    await settle();
+
+    const getStdout = await run(["eval", "online-insight", "get", "--id", configId]);
+    matchGolden(FIXTURES, "get.golden.json", getStdout);
+
+    const after = JSON.parse(getStdout);
+    expect(after.onlineEvaluationConfigName).toBe(CONFIG_NAME);
+    expect(after.rule.samplingConfig.samplingPercentage).toBe(25);
+    // --session-timeout-minutes was never passed to update, so the value set at
+    // create must survive the whole-`rule` replacement.
+    expect(after.rule.sessionConfig.sessionTimeoutMinutes).toBe(30);
+    // online-insight carries an insight list, never evaluators; the sampling-only
+    // update must leave both untouched.
+    expect(after.insights.map((i: { insightId: string }) => i.insightId)).toContain(
       FIXTURE_INSIGHT_ID,
     );
-    // create passed --insight, never --evaluator, so the evaluator list stays empty.
-    expect(detail.evaluators ?? []).toEqual([]);
+    expect(after.evaluators ?? []).toEqual([]);
     // --role-arn is used verbatim; online-insight never provisions a role.
-    expect(detail.evaluationExecutionRoleArn).toBe(FIXTURE_ROLE_ARN);
+    expect(after.evaluationExecutionRoleArn).toBe(FIXTURE_ROLE_ARN);
   }, 60_000);
 
   test("deletes the online insight config", async () => {
