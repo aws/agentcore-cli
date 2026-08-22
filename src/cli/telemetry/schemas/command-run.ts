@@ -49,6 +49,9 @@ const CreateAttrs = safeSchema({
   agent_source: AgentSource.optional(),
   network_mode: NetworkMode,
   has_agent: z.boolean(),
+  has_capacity_provider: z.boolean().optional(),
+  capacity_provider_by_arn: z.boolean().optional(),
+  cp_volume_mount_count: Count.optional(),
 });
 
 const AddAgentAttrs = safeSchema({
@@ -63,6 +66,9 @@ const AddAgentAttrs = safeSchema({
   memory_type: MemoryType,
   efs_mount_count: Count,
   s3_mount_count: Count,
+  has_capacity_provider: z.boolean(),
+  capacity_provider_by_arn: z.boolean(),
+  cp_volume_mount_count: Count,
 });
 
 const AddMemoryAttrs = safeSchema({
@@ -121,6 +127,11 @@ const AddCapacityProviderAttrs = safeSchema({
   security_group_count: Count,
   volume_count: Count,
   has_description: z.boolean(),
+});
+
+const DeleteCapacityProviderSessionAttrs = safeSchema({
+  /** Whether the capacity provider was targeted by raw ARN (no project) vs by project name. */
+  target_by_arn: z.boolean(),
 });
 
 const DeployAttrs = safeSchema({
@@ -319,6 +330,7 @@ export const COMMAND_SCHEMAS = {
   'remove.payment-manager': NoAttrs,
   'remove.payment-connector': NoAttrs,
   'remove.capacity-provider': NoAttrs,
+  'capacity-provider.delete-session': DeleteCapacityProviderSessionAttrs,
   'remove.skill': NoAttrs,
   'telemetry.disable': NoAttrs,
   'telemetry.enable': NoAttrs,

@@ -9,6 +9,7 @@ import type {
   TargetLanguage,
 } from '../../../schema';
 import { LIFECYCLE_TIMEOUT_MAX, LIFECYCLE_TIMEOUT_MIN } from '../../../schema';
+import { isCapacityProviderArn } from '../../../schema';
 import { ANSI, COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { ADDITIONAL_PARAMS_JSON_ERROR } from '../../primitives/constants';
@@ -27,7 +28,11 @@ import {
 } from '../../telemetry/schemas/common-shapes.js';
 import { renderTUI } from '../../tui';
 import { requireTTY } from '../../tui/guards';
-import { resolveAndValidateFilesystemMounts } from '../shared/filesystem-utils';
+import {
+  resolveAndValidateFilesystemMounts,
+  validateCapacityProviderVolumeMounts,
+  zipCapacityProviderVolumePairs,
+} from '../shared/filesystem-utils';
 import { parseCommaSeparatedList } from '../shared/vpc-utils';
 import {
   type ProgressCallback,
@@ -104,6 +109,7 @@ const AGENT_PATH_FLAGS = [
   'agentId',
   'agentAliasId',
   'memory',
+  'capacityProvider',
 ] as const;
 
 /** Flags that are harness-only */
@@ -339,6 +345,9 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
     agent_source: standardize(AgentSource, options.type ?? 'create'),
     network_mode: standardize(NetworkModeEnum, options.networkMode ?? 'public'),
     has_agent: options.agent !== false,
+    has_capacity_provider: !!options.capacityProvider,
+    capacity_provider_by_arn: !!options.capacityProvider && isCapacityProviderArn(options.capacityProvider),
+    cp_volume_mount_count: options.cpVolumeName?.length ?? 0,
   };
 
   await runCliCommand(
@@ -373,6 +382,33 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
         parseCommaSeparatedList
       );
 
+      // Capacity provider attach — mirror the `add agent` CLI semantics (name-or-ARN + paired
+      // --cp-volume-* flags). A CP supplies its own network topology, so --network-mode is not
+      // settable alongside it (neither PUBLIC nor VPC).
+      if (options.capacityProvider && options.networkMode !== undefined) {
+        throw new ValidationError(
+          '--network-mode cannot be set when attaching a capacity provider (--capacity-provider) — the capacity provider supplies the network topology. Remove --network-mode.'
+        );
+      }
+      const cpVolumePairs = zipCapacityProviderVolumePairs(options.cpVolumeName ?? [], options.cpVolumeMountPath ?? []);
+      if (!cpVolumePairs.success) {
+        throw new ValidationError(cpVolumePairs.error);
+      }
+      const cpVolumeCheck = validateCapacityProviderVolumeMounts(cpVolumePairs.mounts);
+      if (!cpVolumeCheck.success) {
+        throw new ValidationError(cpVolumeCheck.error);
+      }
+      if (cpVolumePairs.mounts.length > 0 && !options.capacityProvider) {
+        throw new ValidationError(
+          'Capacity provider volume mounts (--cp-volume-name / --cp-volume-mount-path) require attaching the runtime to a capacity provider (--capacity-provider <name-or-arn>).'
+        );
+      }
+      const capacityProviderConfiguration = options.capacityProvider
+        ? isCapacityProviderArn(options.capacityProvider)
+          ? { capacityProviderArn: options.capacityProvider }
+          : { capacityProviderName: options.capacityProvider }
+        : undefined;
+
       const result = skipAgent
         ? await createProject({
             name: projectName!,
@@ -405,6 +441,8 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
             sessionStorageMountPath: options.sessionStorageMountPath,
             efsAccessPoints: efsPairsMounts,
             s3AccessPoints: s3PairsMounts,
+            capacityProviderConfiguration,
+            capacityProviderVolumes: cpVolumePairs.mounts,
             withConfigBundle: options.withConfigBundle,
             skipGit: options.skipGit,
             skipInstall: options.skipInstall,
@@ -498,6 +536,22 @@ export const registerCreate = (program: Command) => {
       (val: string, prev: string[]) => [...prev, val],
       [] as string[]
     )
+    .option(
+      '--capacity-provider <name-or-arn>',
+      'Attach the agent to a capacity provider — an in-project capacity-provider name or an external CP ARN [non-interactive]'
+    )
+    .option(
+      '--cp-volume-name <name>',
+      'Capacity provider volume name to mount (repeatable, paired with --cp-volume-mount-path) [non-interactive]',
+      (val: string, prev: string[]) => [...prev, val],
+      [] as string[]
+    )
+    .option(
+      '--cp-volume-mount-path <path>',
+      'Capacity provider volume mount path (e.g. /mnt/models, paired with --cp-volume-name) [non-interactive]',
+      (val: string, prev: string[]) => [...prev, val],
+      [] as string[]
+    )
     .option('--with-config-bundle', 'Create a config bundle wired into the agent template [non-interactive]')
     .option('--output-dir <dir>', 'Output directory (default: current directory) [non-interactive]')
     .option('--skip-git', 'Skip git repository initialization [non-interactive]')
@@ -548,6 +602,9 @@ export const registerCreate = (program: Command) => {
       idleTimeout?: string;
       maxLifetime?: string;
       sessionStorageMountPath?: string;
+      capacityProvider?: string;
+      cpVolumeName?: string[];
+      cpVolumeMountPath?: string[];
       withConfigBundle?: true;
       outputDir?: string;
       skipGit?: true;
@@ -588,6 +645,9 @@ export const registerCreate = (program: Command) => {
         options.vpcId ??
         options.idleTimeout ??
         options.maxLifetime ??
+        options.capacityProvider ??
+        (options.cpVolumeName?.length ? true : null) ??
+        (options.cpVolumeMountPath?.length ? true : null) ??
         options.outputDir ??
         options.skipGit ??
         options.skipPythonSetup ??
@@ -630,8 +690,11 @@ export const registerCreate = (program: Command) => {
         return;
       }
 
-      // Agent path: any agent-specific flag triggers it
-      if (isAgentPath(opts)) {
+      // Agent path: any agent-specific flag triggers it. CP volume-mount flags also route here
+      // (without them, a lone --cp-volume-* would fall through to the harness path and be dropped
+      // silently instead of hitting the "requires --capacity-provider" validation).
+      const hasCpVolumeFlags = (opts.cpVolumeName?.length ?? 0) > 0 || (opts.cpVolumeMountPath?.length ?? 0) > 0;
+      if (isAgentPath(opts) || hasCpVolumeFlags) {
         opts.language = opts.language ?? 'Python';
         await handleCreateCLI(opts);
         return;

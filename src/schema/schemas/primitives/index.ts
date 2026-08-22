@@ -12,6 +12,7 @@ export { DatasetNameSchema, DatasetSchema, DatasetSchemaTypeSchema } from './dat
 
 export type {
   CapacityProvider,
+  CapacityProviderConfiguration,
   ComputeConfiguration,
   Ec2Configuration,
   EbsVolumeConfiguration,
@@ -23,14 +24,19 @@ export type {
   VpcConfiguration,
 } from './capacity-provider';
 export {
+  CAPACITY_PROVIDER_ARN_PATTERN,
   CAPACITY_PROVIDER_OPERATOR_ROLE_ARN_PATTERN,
+  CapacityProviderArnSchema,
+  CapacityProviderConfigurationSchema,
   CapacityProviderNameSchema,
   CapacityProviderSchema,
+  CapacityProviderVolumeNameSchema,
   ComputeConfigurationSchema,
   Ec2ConfigurationSchema,
   EbsVolumeConfigurationSchema,
   InstanceLifecycleConfigurationSchema,
   InstanceRequirementsSchema,
+  isCapacityProviderArn,
   isValidOperatorRoleArn,
   LaunchParametersSchema,
   OperatingSystemSchema,

@@ -1038,3 +1038,121 @@ describe('AgentEnvSpecSchema — SG≤5 for Container builds in VPC mode', () =>
     expect(result.success).toBe(true);
   });
 });
+
+describe('AgentEnvSpecSchema — capacityProviderConfiguration (J2)', () => {
+  const base = {
+    name: 'CpAgent',
+    build: 'CodeZip',
+    entrypoint: 'main.py:handler',
+    codeLocation: './agents/cp',
+    runtimeVersion: 'PYTHON_3_12',
+    protocol: 'HTTP',
+  };
+  const CP_ARN = 'arn:aws:bedrock-agentcore:us-west-2:123456789012:capacity-provider/my_pool-a1b2c3d4e5';
+
+  it('accepts a sibling capacity provider by name', () => {
+    const r = AgentEnvSpecSchema.safeParse({
+      ...base,
+      capacityProviderConfiguration: { capacityProviderName: 'my_pool' },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts an external capacity provider by ARN', () => {
+    const r = AgentEnvSpecSchema.safeParse({ ...base, capacityProviderConfiguration: { capacityProviderArn: CP_ARN } });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects setting both name and ARN', () => {
+    const r = AgentEnvSpecSchema.safeParse({
+      ...base,
+      capacityProviderConfiguration: { capacityProviderName: 'my_pool', capacityProviderArn: CP_ARN },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects setting neither name nor ARN', () => {
+    const r = AgentEnvSpecSchema.safeParse({ ...base, capacityProviderConfiguration: {} });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects a malformed capacity provider ARN', () => {
+    const r = AgentEnvSpecSchema.safeParse({
+      ...base,
+      capacityProviderConfiguration: { capacityProviderArn: 'arn:aws:bedrock-agentcore:us-west-2:123:runtime/x' },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects capacity provider combined with VPC networkMode', () => {
+    const r = AgentEnvSpecSchema.safeParse({
+      ...base,
+      capacityProviderConfiguration: { capacityProviderName: 'my_pool' },
+      networkMode: 'VPC',
+      networkConfig: { subnets: ['subnet-0123456789abcdef0'], securityGroups: ['sg-0123456789abcdef0'] },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects capacity provider combined with an explicit PUBLIC networkMode', () => {
+    // networkMode is not settable at all on a CP-attached runtime — not even PUBLIC. The CP
+    // supplies the network topology, so the runtime must leave networkMode unset.
+    const r = AgentEnvSpecSchema.safeParse({
+      ...base,
+      capacityProviderConfiguration: { capacityProviderName: 'my_pool' },
+      networkMode: 'PUBLIC',
+    });
+    expect(r.success).toBe(false);
+  });
+});
+
+describe('AgentEnvSpecSchema — capacityProviderVolume filesystem mount (J3)', () => {
+  const base = {
+    name: 'CpVolAgent',
+    build: 'CodeZip',
+    entrypoint: 'main.py:handler',
+    codeLocation: './agents/cpvol',
+    runtimeVersion: 'PYTHON_3_12',
+    protocol: 'HTTP',
+  };
+
+  it('accepts a capacityProviderVolume mount when attached to a capacity provider', () => {
+    const r = AgentEnvSpecSchema.safeParse({
+      ...base,
+      capacityProviderConfiguration: { capacityProviderName: 'my_pool' },
+      filesystemConfigurations: [{ capacityProviderVolume: { volumeName: 'model-weights', mountPath: '/mnt/models' } }],
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects a capacityProviderVolume mount without a capacity provider attachment', () => {
+    const r = AgentEnvSpecSchema.safeParse({
+      ...base,
+      filesystemConfigurations: [{ capacityProviderVolume: { volumeName: 'model-weights', mountPath: '/mnt/models' } }],
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects a bad mount path', () => {
+    const r = AgentEnvSpecSchema.safeParse({
+      ...base,
+      capacityProviderConfiguration: { capacityProviderName: 'my_pool' },
+      filesystemConfigurations: [
+        { capacityProviderVolume: { volumeName: 'model-weights', mountPath: '/data/models' } },
+      ],
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects duplicate mount paths across arms', () => {
+    const r = AgentEnvSpecSchema.safeParse({
+      ...base,
+      capacityProviderConfiguration: { capacityProviderName: 'my_pool' },
+      filesystemConfigurations: [
+        { sessionStorage: { mountPath: '/mnt/models' } },
+        { capacityProviderVolume: { volumeName: 'model-weights', mountPath: '/mnt/models' } },
+      ],
+    });
+    expect(r.success).toBe(false);
+  });
+});

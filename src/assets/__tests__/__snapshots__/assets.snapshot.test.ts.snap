@@ -7679,6 +7679,7 @@ Run \`agentcore --help\` or \`agentcore <command> --help\` for full flags. Commo
 | \`agentcore dev\` | Run agent locally with hot-reload |
 | \`agentcore deploy\` | Deploy to AWS |
 | \`agentcore invoke\` | Invoke agent (local or deployed) |
+| \`agentcore capacity-provider delete-session\` | Delete (deprovision) a live capacity provider session |
 | \`agentcore status\` | Show deployment status |
 | \`agentcore validate\` | Validate configuration |
 | \`agentcore package\` | Package agent artifacts |

@@ -161,3 +161,51 @@ describe('computeByoSteps - filesystem', () => {
     expect(steps).toContain('s3AddAnother');
   });
 });
+
+describe('computeByoSteps - capacity provider (J2/J3)', () => {
+  it('includes the capacityProvider step when the advanced setting is selected', () => {
+    const steps = computeByoSteps(makeInput({ advancedSettings: new Set<AdvancedSettingId>(['capacityProvider']) }));
+    expect(steps).toContain('capacityProvider');
+    // No mode selected yet → no ARN entry, no volume step.
+    expect(steps).not.toContain('capacityProviderArn');
+    expect(steps).not.toContain('cpVolumeMounts');
+  });
+
+  it('adds the ARN entry step and cp-volume step when attaching by ARN', () => {
+    const steps = computeByoSteps(
+      makeInput({ advancedSettings: new Set<AdvancedSettingId>(['capacityProvider']), capacityProviderMode: 'arn' })
+    );
+    const cpIdx = steps.indexOf('capacityProvider');
+    expect(steps.slice(cpIdx, cpIdx + 3)).toEqual(['capacityProvider', 'capacityProviderArn', 'cpVolumeMounts']);
+  });
+
+  it('adds the cp-volume step (no ARN entry) when attaching by sibling name', () => {
+    const steps = computeByoSteps(
+      makeInput({ advancedSettings: new Set<AdvancedSettingId>(['capacityProvider']), capacityProviderMode: 'name' })
+    );
+    expect(steps).not.toContain('capacityProviderArn');
+    const cpIdx = steps.indexOf('capacityProvider');
+    expect(steps[cpIdx + 1]).toBe('cpVolumeMounts');
+  });
+
+  it('omits capacity provider steps entirely when the setting is not selected', () => {
+    const steps = computeByoSteps(makeInput());
+    expect(steps).not.toContain('capacityProvider');
+    expect(steps).not.toContain('cpVolumeMounts');
+  });
+
+  it('skips the network steps when both network and capacityProvider are selected (CP wins)', () => {
+    // A CP supplies its own network topology, so the two are mutually exclusive — when both are
+    // picked in advanced settings the network steps are dropped in favor of the capacity provider.
+    const steps = computeByoSteps(
+      makeInput({
+        networkMode: 'VPC',
+        advancedSettings: new Set<AdvancedSettingId>(['network', 'capacityProvider']),
+      })
+    );
+    expect(steps).not.toContain('networkMode');
+    expect(steps).not.toContain('subnets');
+    expect(steps).not.toContain('securityGroups');
+    expect(steps).toContain('capacityProvider');
+  });
+});

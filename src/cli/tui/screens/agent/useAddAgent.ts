@@ -118,7 +118,15 @@ export function mapByoConfigToAgent(config: AddAgentConfig): AgentEnvSpec {
           },
         }
       : {}),
-    ...buildFilesystemConfigurations(config.sessionStorageMountPath, config.efsAccessPoints, config.s3AccessPoints),
+    ...(config.capacityProviderConfiguration && {
+      capacityProviderConfiguration: config.capacityProviderConfiguration,
+    }),
+    ...buildFilesystemConfigurations(
+      config.sessionStorageMountPath,
+      config.efsAccessPoints,
+      config.s3AccessPoints,
+      config.capacityProviderVolumes
+    ),
   };
 }
 
@@ -151,6 +159,8 @@ export function mapAddAgentConfigToGenerateConfig(config: AddAgentConfig): Gener
     sessionStorageMountPath: config.sessionStorageMountPath,
     efsAccessPoints: config.efsAccessPoints,
     s3AccessPoints: config.s3AccessPoints,
+    capacityProviderConfiguration: config.capacityProviderConfiguration,
+    capacityProviderVolumes: config.capacityProviderVolumes,
     withConfigBundle: config.withConfigBundle,
   };
 }
@@ -183,6 +193,9 @@ export function useAddAgent() {
           memory_type: standardize(MemoryEnum, config.memory ?? 'none'),
           efs_mount_count: (config.efsAccessPoints ?? []).length,
           s3_mount_count: (config.s3AccessPoints ?? []).length,
+          has_capacity_provider: !!config.capacityProviderConfiguration,
+          capacity_provider_by_arn: !!config.capacityProviderConfiguration?.capacityProviderArn,
+          cp_volume_mount_count: (config.capacityProviderVolumes ?? []).length,
         },
         () => addAgentInner(config)
       );

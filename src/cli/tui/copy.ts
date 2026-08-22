@@ -66,6 +66,14 @@ export const COMMAND_DESCRIPTIONS = {
  * These commands must run in the terminal, not in the TUI.
  */
 export const CLI_ONLY_EXAMPLES: Record<string, { description: string; examples: string[] }> = {
+  'capacity-provider': {
+    description:
+      'Manage capacity provider sessions. delete-session tears down a live session (deprovisioning its EC2 instance and persistent EBS volumes). This command runs in the terminal.',
+    examples: [
+      'agentcore capacity-provider delete-session --capacity-provider my-pool --session-id <id>',
+      'agentcore capacity-provider delete-session --capacity-provider <arn> --session-id <id> --region us-west-2 --yes',
+    ],
+  },
   traces: {
     description: 'View and download agent traces. This command runs in the terminal.',
     examples: [

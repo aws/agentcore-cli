@@ -7,6 +7,7 @@ import {
   getStackOutputs,
   omitPaymentAuthorizationOutputs,
   parseAgentOutputs,
+  parseCapacityProviderOutputs,
   parseConfigBundleOutputs,
   parseDatasetOutputs,
   parseEvaluatorOutputs,
@@ -523,6 +524,12 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     const harnessNames = (ctx.projectSpec.harnesses ?? []).map((h: { name: string }) => h.name);
     const deployedHarnesses = parseHarnessOutputs(outputs, harnessNames);
 
+    // Parse capacity provider outputs so deployed-state records the id/ARN. Without this,
+    // by-name resolution (e.g. `capacity-provider delete-session --capacity-provider <name>`)
+    // fails after a TUI deploy even though the CP is live.
+    const capacityProviderNames = (ctx.projectSpec.capacityProviders ?? []).map((cp: { name: string }) => cp.name);
+    const capacityProviders = parseCapacityProviderOutputs(outputs, capacityProviderNames);
+
     let deployedState = buildDeployedState({
       targetName: target.name,
       stackName: currentStackName,
@@ -542,6 +549,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       knowledgeBases,
       harnesses: deployedHarnesses,
       payments,
+      capacityProviders,
       abTestNames: (ctx.projectSpec.abTests ?? []).map((t: { name: string }) => t.name),
     });
 

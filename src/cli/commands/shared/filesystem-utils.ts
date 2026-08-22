@@ -15,6 +15,12 @@ export interface AccessPointMount {
   mountPath: string;
 }
 
+/** Parsed capacity-provider volume mount entry from CLI options. */
+export interface CapacityProviderVolumeMount {
+  volumeName: string;
+  mountPath: string;
+}
+
 /**
  * Validate an EFS access point ARN format.
  * Accepts any partition (arn:aws[-a-z]*) per multi-partition rules.
@@ -71,6 +77,44 @@ export function zipAccessPointPairs(
 }
 
 /**
+ * Zip capacity-provider volume-name and mount-path arrays into CapacityProviderVolumeMount pairs.
+ * Returns { success: false, error } when lengths differ. Mirrors zipAccessPointPairs, but the
+ * reference is a logical volume name (into the CP's volumes[]) rather than an ARN.
+ */
+export function zipCapacityProviderVolumePairs(
+  volumeNames: string[],
+  mountPaths: string[]
+): { success: true; mounts: CapacityProviderVolumeMount[] } | { success: false; error: string } {
+  if (volumeNames.length !== mountPaths.length) {
+    return {
+      success: false,
+      error: `Capacity provider volumes: --cp-volume-name and --cp-volume-mount-path must be provided in matching pairs (got ${volumeNames.length} name(s) and ${mountPaths.length} path(s))`,
+    };
+  }
+  return {
+    success: true,
+    mounts: volumeNames.map((volumeName, i) => ({ volumeName, mountPath: mountPaths[i]! })),
+  };
+}
+
+/**
+ * Validate a set of capacity-provider volume mounts (sync format checks only).
+ * Reuses validateBYOMountPath for the /mnt path rule (shared filesystem framework).
+ */
+export function validateCapacityProviderVolumeMounts(
+  mounts: CapacityProviderVolumeMount[]
+): { success: true } | { success: false; error: string } {
+  for (const { volumeName, mountPath } of mounts) {
+    if (!volumeName || volumeName.trim().length === 0) {
+      return { success: false, error: 'Capacity provider volume name must not be empty' };
+    }
+    const pathResult = validateBYOMountPath(mountPath);
+    if (pathResult !== true) return { success: false, error: pathResult };
+  }
+  return { success: true };
+}
+
+/**
  * Validate a full set of AccessPointMount pairs (sync format checks only).
  * Returns { success: false, error } on first failure.
  */
@@ -94,13 +138,15 @@ export function validateAccessPointMounts(
 export function buildFilesystemConfigurations(
   sessionStorageMountPath?: string,
   efsAccessPoints?: AccessPointMount[],
-  s3AccessPoints?: AccessPointMount[]
+  s3AccessPoints?: AccessPointMount[],
+  capacityProviderVolumes?: CapacityProviderVolumeMount[]
 ):
   | {
       filesystemConfigurations: (
         | { sessionStorage: { mountPath: string } }
         | { efsAccessPoint: AccessPointMount }
         | { s3FilesAccessPoint: AccessPointMount }
+        | { capacityProviderVolume: CapacityProviderVolumeMount }
       )[];
     }
   | Record<string, never> {
@@ -108,11 +154,14 @@ export function buildFilesystemConfigurations(
     | { sessionStorage: { mountPath: string } }
     | { efsAccessPoint: AccessPointMount }
     | { s3FilesAccessPoint: AccessPointMount }
+    | { capacityProviderVolume: CapacityProviderVolumeMount }
   )[] = [];
   const norm = (p: string) => p.replace(/\/$/, '');
   if (sessionStorageMountPath) fcs.push({ sessionStorage: { mountPath: norm(sessionStorageMountPath) } });
   for (const ap of efsAccessPoints ?? []) fcs.push({ efsAccessPoint: { ...ap, mountPath: norm(ap.mountPath) } });
   for (const ap of s3AccessPoints ?? []) fcs.push({ s3FilesAccessPoint: { ...ap, mountPath: norm(ap.mountPath) } });
+  for (const vol of capacityProviderVolumes ?? [])
+    fcs.push({ capacityProviderVolume: { ...vol, mountPath: norm(vol.mountPath) } });
   return fcs.length ? { filesystemConfigurations: fcs } : {};
 }
 

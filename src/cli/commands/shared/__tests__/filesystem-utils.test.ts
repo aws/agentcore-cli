@@ -3,9 +3,11 @@ import {
   resolveAndValidateFilesystemMounts,
   validateAccessPointMounts,
   validateBYOMountPath,
+  validateCapacityProviderVolumeMounts,
   validateEfsAccessPointArn,
   validateS3FilesAccessPointArn,
   zipAccessPointPairs,
+  zipCapacityProviderVolumePairs,
 } from '../filesystem-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -400,5 +402,53 @@ describe('resolveAndValidateFilesystemMounts', () => {
     );
     expect(result.efsMounts).toHaveLength(1);
     expect(result.s3Mounts).toHaveLength(1);
+  });
+});
+
+describe('zipCapacityProviderVolumePairs', () => {
+  it('zips matching name/path pairs', () => {
+    const result = zipCapacityProviderVolumePairs(['v1', 'v2'], ['/mnt/a', '/mnt/b']);
+    expect(result).toEqual({
+      success: true,
+      mounts: [
+        { volumeName: 'v1', mountPath: '/mnt/a' },
+        { volumeName: 'v2', mountPath: '/mnt/b' },
+      ],
+    });
+  });
+
+  it('returns success with no mounts for empty input', () => {
+    const result = zipCapacityProviderVolumePairs([], []);
+    expect(result).toEqual({ success: true, mounts: [] });
+  });
+
+  it('fails on mismatched lengths', () => {
+    const result = zipCapacityProviderVolumePairs(['v1', 'v2'], ['/mnt/a']);
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('validateCapacityProviderVolumeMounts', () => {
+  it('accepts valid volume mounts', () => {
+    expect(validateCapacityProviderVolumeMounts([{ volumeName: 'v1', mountPath: '/mnt/models' }]).success).toBe(true);
+  });
+
+  it('rejects an empty volume name', () => {
+    expect(validateCapacityProviderVolumeMounts([{ volumeName: '', mountPath: '/mnt/models' }]).success).toBe(false);
+  });
+
+  it('rejects a bad mount path', () => {
+    expect(validateCapacityProviderVolumeMounts([{ volumeName: 'v1', mountPath: '/data/models' }]).success).toBe(false);
+  });
+});
+
+describe('buildFilesystemConfigurations — capacity provider volumes', () => {
+  it('emits a capacityProviderVolume entry and normalizes the mount path', () => {
+    const result = buildFilesystemConfigurations(undefined, undefined, undefined, [
+      { volumeName: 'model-weights', mountPath: '/mnt/models/' },
+    ]);
+    expect(result).toEqual({
+      filesystemConfigurations: [{ capacityProviderVolume: { volumeName: 'model-weights', mountPath: '/mnt/models' } }],
+    });
   });
 });

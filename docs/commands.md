@@ -318,6 +318,9 @@ agentcore add agent \
 | `--client-secret <secret>`             | OAuth client secret                                                                                                                                                                                                                                                                                  |
 | `--request-header-allowlist <headers>` | Comma-separated list of inbound header names to forward to the agent. `X-*` names (e.g. `X-Api-Key`, `X-Custom-Signature`) pass through unchanged; bare names without an `X-` prefix are auto-prefixed with the legacy `X-Amzn-Bedrock-AgentCore-Runtime-Custom-` prefix for backward compatibility. |
 | `--session-storage-mount-path <path>`  | Absolute mount path for session filesystem storage (e.g. `/mnt/session-storage`)                                                                                                                                                                                                                     |
+| `--capacity-provider <name-or-arn>`    | Attach the runtime to a capacity provider (customer-managed EC2 compute). Accepts an in-project capacity-provider name or an external CP ARN. Mutually exclusive with `--network-mode VPC`.                                                                                                          |
+| `--cp-volume-name <name>`              | Capacity provider volume name to mount (repeatable, paired by position with `--cp-volume-mount-path`). The name must match a volume defined on the attached capacity provider.                                                                                                                       |
+| `--cp-volume-mount-path <path>`        | Capacity provider volume mount path under `/mnt` (e.g. `/mnt/models`, repeatable, paired with `--cp-volume-name`)                                                                                                                                                                                    |
 | `--with-config-bundle`                 | Wire a config bundle into the generated agent template                                                                                                                                                                                                                                               |
 | `--idle-timeout <seconds>`             | Idle session timeout in seconds                                                                                                                                                                                                                                                                      |
 | `--max-lifetime <seconds>`             | Max instance lifetime in seconds                                                                                                                                                                                                                                                                     |
@@ -814,7 +817,7 @@ agentcore add capacity-provider \
   --security-groups sg-0123456789abcdef0 \
   --os LINUX_ARM64 \
   --instance-types c7g.large,c7g.xlarge \
-  --volume data:20 --volume-encrypted \
+  --volume-name data --volume-size 20 --volume-encrypted \
   --idle-instance-timeout 3600 \
   --max-lifetime 28800
 ```
@@ -828,7 +831,8 @@ agentcore add capacity-provider \
 | `--security-groups <groups>`     | Comma-separated security group IDs, 1–16 (required)                                                            |
 | `--os <os>`                      | `LINUX_X86_64` (default) or `LINUX_ARM64`                                                                      |
 | `--instance-types <types>`       | Comma-separated allowed EC2 instance types, 1–30 (required)                                                    |
-| `--volume <name:sizeGiB>`        | Named EBS volume as `name:sizeGiB` (repeatable, max 5)                                                         |
+| `--volume-name <name>`           | Named EBS volume name (repeatable, max 5; paired with `--volume-size`)                                         |
+| `--volume-size <sizeGiB>`        | EBS volume size in GiB (repeatable; paired with `--volume-name`)                                               |
 | `--volume-encrypted`             | Encrypt EBS volumes                                                                                            |
 | `--volume-kms-key <arn>`         | KMS key ARN for EBS volume encryption                                                                          |
 | `--instance-profile-arn <arn>`   | IAM instance profile ARN for launched instances                                                                |
@@ -904,6 +908,35 @@ agentcore dev call-tool --tool myTool --input '{"arg": "value"}'
 | `--exec`               | Execute a shell command in the running dev container (Container only)                     |
 | `-b, --no-browser`     | Use terminal TUI instead of web-based chat UI                                             |
 | `--no-traces`          | Disable local OTEL trace collection                                                       |
+
+### capacity-provider delete-session
+
+Delete (deprovision) a single live capacity provider session. This is a data-plane operation: it terminates the
+session's EC2 instance and **permanently deletes any persistent EBS volumes** attached to the session (data loss). The
+operation is asynchronous — it returns immediately with status `Deprovisioning`. You get the session id from `invoke`
+(it echoes the session it used); there is no list-sessions API.
+
+```bash
+# By in-project capacity provider name (resolved to its id from deployed state)
+agentcore capacity-provider delete-session --capacity-provider my-pool --session-id <sessionId>
+
+# By capacity provider id, without a project (the data-plane API is keyed on the id)
+agentcore capacity-provider delete-session \
+  --capacity-provider my-pool-a1b2c3d4e5 --session-id <sessionId> --region us-west-2 --yes
+
+# By ARN (the id is extracted from it), without a project (region auto-detected from the ARN)
+agentcore capacity-provider delete-session \
+  --capacity-provider arn:aws:bedrock-agentcore:us-west-2:123456789012:capacity-provider/my-pool-a1b2c3d4e5 \
+  --session-id <sessionId> --yes
+```
+
+| Option                                 | Description                                                                                                                                                                         |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--capacity-provider <name-id-or-arn>` | Capacity provider: an in-project name (resolved to its id via deployed state), a capacity provider id, or an ARN (id extracted from it). The API is keyed on the id. (**required**) |
+| `--session-id <id>`                    | Session id to delete (**required**)                                                                                                                                                 |
+| `--region <region>`                    | AWS region (auto-detected from the ARN / project otherwise; required with a bare id outside a project unless the environment sets one)                                              |
+| `--yes`                                | Skip the destructive confirmation prompt (required for non-interactive use)                                                                                                         |
+| `--json`                               | JSON output                                                                                                                                                                         |
 
 ### invoke
 

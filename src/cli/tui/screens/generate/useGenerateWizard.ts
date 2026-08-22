@@ -37,6 +37,9 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
   // Track if user has selected a framework (moved past sdk step)
   const [sdkSelected, setSdkSelected] = useState(false);
   const [advancedSettings, setAdvancedSettings] = useState<Set<AdvancedSettingId>>(new Set());
+  // How the runtime attaches to a capacity provider: none, an in-project sibling by name, or an
+  // external ARN. Drives which CP sub-steps appear (see the steps memo).
+  const [capacityProviderMode, setCapacityProviderMode] = useState<'none' | 'name' | 'arn'>('none');
 
   const advancedSelected = advancedSettings.size > 0;
 
@@ -67,8 +70,10 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
       if (advancedSettings.has('dockerfile') && config.buildType === 'Container') {
         subSteps.push('dockerfile');
       }
-      // Network — always networkMode, plus subnets/securityGroups for VPC
-      if (advancedSettings.has('network')) {
+      // Network — always networkMode, plus subnets/securityGroups for VPC. A capacity provider
+      // supplies its own network topology, so the network steps are mutually exclusive with it:
+      // when a CP is also selected, CP wins and the network steps are skipped.
+      if (advancedSettings.has('network') && !advancedSettings.has('capacityProvider')) {
         subSteps.push('networkMode');
         if (config.networkMode === 'VPC') {
           subSteps.push('subnets', 'securityGroups');
@@ -103,6 +108,17 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
           's3AddAnother'
         );
       }
+      // Capacity provider — a CP select, an optional ARN entry, and volume mounts (only once attached)
+      if (advancedSettings.has('capacityProvider')) {
+        subSteps.push('capacityProvider');
+        if (capacityProviderMode === 'arn') {
+          subSteps.push('capacityProviderArn');
+        }
+        // CP volumes can only be mounted once the runtime is attached to a capacity provider.
+        if (capacityProviderMode !== 'none') {
+          subSteps.push('cpVolumeMounts');
+        }
+      }
       // Config bundle — no sub-steps needed, uses smart defaults
       filtered = [...filtered.slice(0, afterAdvanced), ...subSteps, ...filtered.slice(afterAdvanced)];
     }
@@ -124,6 +140,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     sdkSelected,
     advancedSelected,
     advancedSettings,
+    capacityProviderMode,
   ]);
 
   const currentIndex = steps.indexOf(step);
@@ -275,8 +292,11 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
           sessionStorageMountPath: undefined,
           efsAccessPoints: undefined,
           s3AccessPoints: undefined,
+          capacityProviderConfiguration: undefined,
+          capacityProviderVolumes: undefined,
           withConfigBundle: undefined,
         }));
+        setCapacityProviderMode('none');
         resetFilesystemState();
         setStep('confirm');
       } else {
@@ -289,6 +309,11 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
             s3AccessPoints: undefined,
           }));
           resetFilesystemState();
+        }
+        // Clear capacity-provider state if it was deselected
+        if (!selected.has('capacityProvider')) {
+          setCapacityProviderMode('none');
+          setConfig(c => ({ ...c, capacityProviderConfiguration: undefined, capacityProviderVolumes: undefined }));
         }
         // Config bundle has no sub-steps — set flag immediately
         setConfig(c => ({
@@ -311,6 +336,8 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
             setStep('idleTimeout');
           } else if (selected.has('filesystem')) {
             setStep('sessionStorageMountPath');
+          } else if (selected.has('capacityProvider')) {
+            setStep('capacityProvider');
           } else {
             setStep('confirm');
           }
@@ -433,6 +460,59 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     setTimeout(() => goToNextStep('sessionStorageMountPath'), 0);
   }, [goToNextStep]);
 
+  const setCapacityProvider = useCallback((id: string) => {
+    if (id === '__none__') {
+      setCapacityProviderMode('none');
+      setConfig(c => ({ ...c, capacityProviderConfiguration: undefined, capacityProviderVolumes: undefined }));
+      // CP is the last advanced sub-step, so None's next step is always confirm. Navigate directly
+      // (not via goToNextStep) to avoid the steps-memo race when re-selecting None after a CP.
+      setStep('confirm');
+    } else if (id === '__arn__') {
+      setCapacityProviderMode('arn');
+      setStep('capacityProviderArn');
+    } else {
+      // In-project sibling by name. A CP supplies its own network topology, so networkMode is not
+      // settable — clear any network selection so the runtime carries no networkMode/networkConfig.
+      setCapacityProviderMode('name');
+      setConfig(c => ({
+        ...c,
+        capacityProviderConfiguration: { capacityProviderName: id },
+        networkMode: undefined,
+        subnets: undefined,
+        securityGroups: undefined,
+        vpcId: undefined,
+      }));
+      // A non-none attachment always has cpVolumeMounts next; navigate directly (steps memo hasn't
+      // recomputed with mode='name' yet, so goToNextStep would skip it).
+      setStep('cpVolumeMounts');
+    }
+  }, []);
+
+  const setCapacityProviderArn = useCallback(
+    (arn: string) => {
+      // A CP supplies its own network topology, so networkMode is not settable — clear any network
+      // selection so the runtime carries no networkMode/networkConfig.
+      setConfig(c => ({
+        ...c,
+        capacityProviderConfiguration: { capacityProviderArn: arn },
+        networkMode: undefined,
+        subnets: undefined,
+        securityGroups: undefined,
+        vpcId: undefined,
+      }));
+      setTimeout(() => goToNextStep('capacityProviderArn'), 0);
+    },
+    [goToNextStep]
+  );
+
+  const setCpVolumeMounts = useCallback(
+    (volumes: NonNullable<GenerateConfig['capacityProviderVolumes']>) => {
+      setConfig(c => ({ ...c, capacityProviderVolumes: volumes.length > 0 ? volumes : undefined }));
+      setTimeout(() => goToNextStep('cpVolumeMounts'), 0);
+    },
+    [goToNextStep]
+  );
+
   const goBack = useCallback(() => {
     setError(null);
     // efsMountPath: editing → review screen, adding → ARN entry
@@ -507,6 +587,7 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     setError(null);
     setSdkSelected(false);
     setAdvancedSettings(new Set());
+    setCapacityProviderMode('none');
     resetFilesystemState();
   }, [resetFilesystemState]);
 
@@ -555,6 +636,10 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
     skipMaxLifetime,
     setSessionStorageMountPath,
     skipSessionStorageMountPath,
+    capacityProviderMode,
+    setCapacityProvider,
+    setCapacityProviderArn,
+    setCpVolumeMounts,
     pendingEfsArn,
     editingEfsIndex,
     submitEfsArn,

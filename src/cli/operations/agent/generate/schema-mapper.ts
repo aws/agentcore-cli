@@ -118,7 +118,9 @@ const ACTOR_ID_HEADER = 'X-Amzn-Bedrock-AgentCore-Runtime-Custom-Actor-Id';
 export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
   const codeLocation = `${APP_DIR}/${config.projectName}/`;
   const protocol = config.protocol ?? 'HTTP';
-  const networkMode = config.networkMode ?? DEFAULT_NETWORK_MODE;
+  // A capacity provider supplies its own network topology, so a CP-attached runtime carries no
+  // networkMode/networkConfig at all (the two are mutually exclusive — see the AgentEnvSpec refine).
+  const networkMode = config.capacityProviderConfiguration ? undefined : (config.networkMode ?? DEFAULT_NETWORK_MODE);
 
   const needsActorHeader =
     config.language === 'TypeScript' && config.sdk === 'Strands' && config.memory === 'longAndShortTerm';
@@ -136,7 +138,7 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
       : DEFAULT_PYTHON_ENTRYPOINT) as FilePath,
     codeLocation: codeLocation as DirectoryPath,
     runtimeVersion: config.language === 'TypeScript' ? DEFAULT_RUNTIME_BY_LANGUAGE.TypeScript : DEFAULT_PYTHON_VERSION,
-    networkMode,
+    ...(networkMode !== undefined && { networkMode }),
     protocol,
     ...(networkMode === 'VPC' &&
       config.subnets &&
@@ -167,7 +169,15 @@ export function mapGenerateConfigToAgent(config: GenerateConfig): AgentEnvSpec {
           },
         }
       : {}),
-    ...buildFilesystemConfigurations(config.sessionStorageMountPath, config.efsAccessPoints, config.s3AccessPoints),
+    ...(config.capacityProviderConfiguration && {
+      capacityProviderConfiguration: config.capacityProviderConfiguration,
+    }),
+    ...buildFilesystemConfigurations(
+      config.sessionStorageMountPath,
+      config.efsAccessPoints,
+      config.s3AccessPoints,
+      config.capacityProviderVolumes
+    ),
     ...(protocol === 'MCP' && { instrumentation: { enableOtel: false } }),
   };
 }

@@ -10,6 +10,8 @@ import {
 } from '../../../lib';
 import type {
   BuildType,
+  CapacityProviderConfiguration,
+  CapacityProviderVolumeConfig,
   DeployedState,
   EfsAccessPointConfig,
   ModelProvider,
@@ -153,6 +155,8 @@ export interface CreateWithAgentOptions {
   sessionStorageMountPath?: string;
   efsAccessPoints?: EfsAccessPointConfig[];
   s3AccessPoints?: S3FilesAccessPointConfig[];
+  capacityProviderConfiguration?: CapacityProviderConfiguration;
+  capacityProviderVolumes?: CapacityProviderVolumeConfig[];
   withConfigBundle?: boolean;
   skipGit?: boolean;
   skipInstall?: boolean;
@@ -182,6 +186,8 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
     sessionStorageMountPath,
     efsAccessPoints,
     s3AccessPoints,
+    capacityProviderConfiguration,
+    capacityProviderVolumes,
     withConfigBundle,
     skipGit,
     skipInstall,
@@ -285,6 +291,8 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
       ...(sessionStorageMountPath && { sessionStorageMountPath }),
       ...(efsAccessPoints?.length && { efsAccessPoints }),
       ...(s3AccessPoints?.length && { s3AccessPoints }),
+      ...(capacityProviderConfiguration && { capacityProviderConfiguration }),
+      ...(capacityProviderVolumes?.length && { capacityProviderVolumes }),
       ...(withConfigBundle && { withConfigBundle }),
     };
 

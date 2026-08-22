@@ -4,6 +4,7 @@ import { registerAddSkill } from './commands/add/skill-command';
 import { registerAddTool } from './commands/add/tool-command';
 import { registerArchive } from './commands/archive';
 import { registerBatchEvaluations } from './commands/batch-evaluations';
+import { registerCapacityProvider } from './commands/capacity-provider';
 import { registerConfig } from './commands/config';
 import { registerConfigBundle } from './commands/config-bundle';
 import { registerCreate } from './commands/create';
@@ -107,6 +108,7 @@ export function registerCommands(program: Command) {
   registerPause(program);
   registerView(program);
   registerBatchEvaluations(program);
+  registerCapacityProvider(program);
   const removeCmd = registerRemove(program);
   registerResume(program);
   registerRun(program);

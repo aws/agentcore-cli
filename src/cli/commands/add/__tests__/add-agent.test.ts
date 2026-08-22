@@ -63,6 +63,69 @@ describe('add agent command', () => {
       expect(agent, 'Agent should be in agentcore.json').toBeTruthy();
     });
 
+    it('attaches an external capacity provider by ARN and carries no networkMode', async () => {
+      const agentName = `CpArnAgent${Date.now().toString().slice(-6)}`;
+      const cpArn = 'arn:aws:bedrock-agentcore:us-west-2:123456789012:capacity-provider/some_pool-a1b2c3d4e5';
+      const result = await runCLI(
+        [
+          'add',
+          'agent',
+          '--name',
+          agentName,
+          '--language',
+          'Python',
+          '--framework',
+          'Strands',
+          '--model-provider',
+          'Bedrock',
+          '--memory',
+          'none',
+          '--capacity-provider',
+          cpArn,
+          '--json',
+        ],
+        projectDir
+      );
+
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+      const agent = projectSpec.runtimes.find((a: { name: string }) => a.name === agentName);
+      expect(agent.capacityProviderConfiguration).toEqual({ capacityProviderArn: cpArn });
+      // A CP supplies its own network topology, so the runtime carries no networkMode/networkConfig.
+      expect(agent.networkMode).toBeUndefined();
+      expect(agent.networkConfig).toBeUndefined();
+    });
+
+    it('rejects --network-mode when a capacity provider is attached', async () => {
+      const result = await runCLI(
+        [
+          'add',
+          'agent',
+          '--name',
+          `CpNmAgent${Date.now().toString().slice(-6)}`,
+          '--language',
+          'Python',
+          '--framework',
+          'Strands',
+          '--model-provider',
+          'Bedrock',
+          '--memory',
+          'none',
+          '--capacity-provider',
+          'arn:aws:bedrock-agentcore:us-west-2:123456789012:capacity-provider/some_pool-a1b2c3d4e5',
+          '--network-mode',
+          'PUBLIC',
+          '--json',
+        ],
+        projectDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('--network-mode cannot be set when attaching a capacity provider');
+    });
+
     it('requires all create path options', async () => {
       const result = await runCLI(['add', 'agent', '--name', 'Incomplete', '--json'], projectDir);
 

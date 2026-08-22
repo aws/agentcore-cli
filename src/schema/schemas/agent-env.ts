@@ -16,6 +16,7 @@ import {
 import type { DirectoryPath, FilePath } from '../types';
 import { AuthorizerConfigSchema, RuntimeAuthorizerTypeSchema } from './auth';
 import { ConnectionSchema } from './connections';
+import { CapacityProviderConfigurationSchema, CapacityProviderVolumeNameSchema } from './primitives/capacity-provider';
 import { TagsSchema } from './primitives/tags';
 import { z } from 'zod';
 
@@ -315,23 +316,38 @@ export const S3FilesAccessPointConfigSchema = z.object({
 });
 export type S3FilesAccessPointConfig = z.infer<typeof S3FilesAccessPointConfigSchema>;
 
+/** Capacity provider volume mount — references a named volume on the attached CP. */
+export const CapacityProviderVolumeConfigSchema = z.object({
+  /** Logical name of a volume defined on the attached capacity provider (CP's volumes[]). */
+  volumeName: CapacityProviderVolumeNameSchema,
+  /** Absolute mount path under /mnt (e.g. /mnt/models). */
+  mountPath: z
+    .string()
+    .min(6)
+    .max(200)
+    .regex(/^\/mnt\/[a-zA-Z0-9._-]+\/?$/, 'Must be a path under /mnt with exactly one subdirectory (e.g. /mnt/models)'),
+});
+export type CapacityProviderVolumeConfig = z.infer<typeof CapacityProviderVolumeConfigSchema>;
+
 /** Maximum number of EFS access point mounts per runtime. */
 export const MAX_EFS_MOUNTS = 2;
 /** Maximum number of S3 Files access point mounts per runtime. */
 export const MAX_S3_MOUNTS = 2;
 
 /**
- * Filesystem configuration — union of three mount types.
+ * Filesystem configuration — union of four mount types.
  * Exactly one key must be present per entry.
  *
  * Service limits per runtime: max 5 total, max 1 sessionStorage,
  * max MAX_EFS_MOUNTS efsAccessPoint, max MAX_S3_MOUNTS s3FilesAccessPoint.
  * efsAccessPoint and s3FilesAccessPoint require networkMode: VPC.
+ * capacityProviderVolume requires the runtime to be attached to a capacity provider.
  */
 export const FilesystemConfigurationSchema = z.union([
   z.strictObject({ sessionStorage: SessionStorageSchema }),
   z.strictObject({ efsAccessPoint: EfsAccessPointConfigSchema }),
   z.strictObject({ s3FilesAccessPoint: S3FilesAccessPointConfigSchema }),
+  z.strictObject({ capacityProviderVolume: CapacityProviderVolumeConfigSchema }),
 ]);
 export type FilesystemConfiguration = z.infer<typeof FilesystemConfigurationSchema>;
 
@@ -460,6 +476,10 @@ export const AgentEnvSpecSchema = z
     /** Connections to external AgentCore resources (memory/gateway/runtime). The construct
      *  generates IAM + discovery env vars onto this runtime's execution role. */
     connections: z.array(ConnectionSchema).optional(),
+    /** Attach the runtime to a capacity provider (customer-managed EC2 compute) — either an
+     *  in-project sibling by name or an external CP by ARN. Mutually exclusive with VPC networking:
+     *  in CP mode the network topology comes from the capacity provider. */
+    capacityProviderConfiguration: CapacityProviderConfigurationSchema.optional(),
   })
   .superRefine((data, ctx) => {
     if (data.networkMode === 'VPC' && !data.networkConfig) {
@@ -474,6 +494,17 @@ export const AgentEnvSpecSchema = z
         code: z.ZodIssueCode.custom,
         message: 'networkConfig is only allowed when networkMode is VPC',
         path: ['networkConfig'],
+      });
+    }
+    // Capacity-provider mode supplies its own network topology, so networkMode is not a settable
+    // property on a CP-attached runtime — neither VPC nor PUBLIC. The service derives networking
+    // from the capacity provider, so any explicit networkMode (or networkConfig) is rejected.
+    if (data.capacityProviderConfiguration && (data.networkMode !== undefined || data.networkConfig)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'capacityProviderConfiguration cannot be combined with a networkMode or VPC networking — a capacity provider supplies its own network topology, so leave networkMode/networkConfig unset',
+        path: ['capacityProviderConfiguration'],
       });
     }
     // NOTE: vpcId is NOT required here at the schema (read/write) level. A Container+VPC agent needs
@@ -533,6 +564,18 @@ export const AgentEnvSpecSchema = z
       const efsCount = fcs.filter(fc => 'efsAccessPoint' in fc).length;
       const s3Count = fcs.filter(fc => 's3FilesAccessPoint' in fc).length;
       const ssCount = fcs.filter(fc => 'sessionStorage' in fc).length;
+      const cpVolCount = fcs.filter(fc => 'capacityProviderVolume' in fc).length;
+
+      // A capacity-provider volume can only be mounted when the runtime is attached to a
+      // capacity provider — the volume is defined on that CP's volumes[].
+      if (cpVolCount > 0 && !data.capacityProviderConfiguration) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'capacityProviderVolume filesystem mounts require the runtime to be attached to a capacity provider (set capacityProviderConfiguration)',
+          path: ['filesystemConfigurations'],
+        });
+      }
 
       if (fcs.length > 5) {
         ctx.addIssue({
@@ -577,7 +620,9 @@ export const AgentEnvSpecSchema = z
           ? fc.sessionStorage.mountPath
           : 'efsAccessPoint' in fc
             ? fc.efsAccessPoint.mountPath
-            : fc.s3FilesAccessPoint.mountPath
+            : 's3FilesAccessPoint' in fc
+              ? fc.s3FilesAccessPoint.mountPath
+              : fc.capacityProviderVolume.mountPath
         ).replace(/\/$/, '')
       );
       if (new Set(mountPaths).size !== mountPaths.length) {
