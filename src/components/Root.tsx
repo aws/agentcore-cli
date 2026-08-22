@@ -48,6 +48,12 @@ import {
   OnlineEvalGetScreen,
   OnlineEvalGetJsonScreen,
 } from "../handlers/eval/online-eval/get/screen.tsx";
+import { OnlineInsightScreen } from "../handlers/eval/online-insight/screen.tsx";
+import { OnlineInsightListScreen } from "../handlers/eval/online-insight/list/screen.tsx";
+import {
+  OnlineInsightGetScreen,
+  OnlineInsightGetJsonScreen,
+} from "../handlers/eval/online-insight/get/screen.tsx";
 import { BatchEvaluationScreen } from "../handlers/eval/batch-evaluation/screen.tsx";
 import { BatchEvaluationListScreen } from "../handlers/eval/batch-evaluation/list/screen.tsx";
 import { BatchEvaluationGetJsonScreen } from "../handlers/eval/batch-evaluation/get/screen.tsx";
@@ -487,6 +493,26 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/eval/online-eval/get/:configId/json"
             element={<OnlineEvalGetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/online-insight"
+            element={<OnlineInsightScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/online-insight/list"
+            element={<OnlineInsightListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/online-insight/get"
+            element={<Navigate to="/agentcore/eval/online-insight/list" replace />}
+          />
+          <Route
+            path="agentcore/eval/online-insight/get/:configId"
+            element={<OnlineInsightGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/online-insight/get/:configId/json"
+            element={<OnlineInsightGetJsonScreen ctx={ctx} core={core} />}
           />
           <Route path="agentcore/eval/dataset" element={<DatasetScreen ctx={ctx} core={core} />} />
           <Route

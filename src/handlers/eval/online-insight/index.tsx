@@ -1,4 +1,6 @@
 import { Router } from "../../../router";
+import { renderTui } from "../../../tui";
+import { withTuiOnEmptyFlagsAndArgs } from "../../../middleware";
 import type { AppIO } from "../../../io";
 import type { Core } from "../../types";
 import { createCreateOnlineInsightHandler } from "./create";
@@ -11,7 +13,9 @@ import { createDeleteOnlineInsightHandler } from "./delete";
 
 export function createOnlineInsightHandler(core: Core, io: AppIO): Router {
   return new Router("online-insight", "manage AgentCore online insight configs")
-    .supportedTuiCommands()
+    .use(withTuiOnEmptyFlagsAndArgs(core, io))
+    .default(renderTui(core, io))
+    .supportedTuiCommands("get", "list")
     .handler(createCreateOnlineInsightHandler(core, io))
     .handler(createGetOnlineInsightHandler(core))
     .handler(createListOnlineInsightHandler(core))
@@ -20,3 +24,5 @@ export function createOnlineInsightHandler(core: Core, io: AppIO): Router {
     .handler(createResumeOnlineInsightHandler(core))
     .handler(createDeleteOnlineInsightHandler(core));
 }
+
+export { OnlineInsightScreen } from "./screen.tsx";

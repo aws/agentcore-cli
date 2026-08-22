@@ -91,6 +91,26 @@ describe("online-eval picker", () => {
     expect(frame).toContain("2026-07-21 02:03");
   });
 
+  test("shows the #2029 insights column: 'yes' when enabled, '-' when not", async () => {
+    const core = coreWithConfigs([
+      configSummary({
+        onlineEvaluationConfigName: "with_insights",
+        insights: [{ insightId: "ins-1" }],
+      }),
+    ]);
+    const screen = renderScreen("/agentcore/eval/online-eval/list", { core });
+
+    await waitForText(screen.lastFrame, "with_insights");
+    expect(screen.lastFrame()).toContain("insights");
+    expect(screen.lastFrame()).toContain("yes");
+
+    const noInsights = renderScreen("/agentcore/eval/online-eval/list", {
+      core: coreWithConfigs([configSummary({ onlineEvaluationConfigName: "no_insights" })]),
+    });
+    await waitForText(noInsights.lastFrame, "no_insights");
+    expect(noInsights.lastFrame()).not.toContain("yes");
+  });
+
   test("calls listOnlineEvaluationConfigs with exact Core options", async () => {
     const core = coreWithConfigs([configSummary()]);
     renderScreen("/agentcore/eval/online-eval/list", { core, endpointUrl: evalEndpointUrl });
