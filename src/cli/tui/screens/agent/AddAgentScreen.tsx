@@ -2,12 +2,14 @@ import { APP_DIR, ConfigIO } from '../../../../lib';
 import type { ModelProvider, NetworkMode, RuntimeAuthorizerType, SDKFramework } from '../../../../schema';
 import {
   AgentNameSchema,
+  CapacityProviderArnSchema,
   DEFAULT_MODEL_IDS,
   LIFECYCLE_TIMEOUT_MAX,
   LIFECYCLE_TIMEOUT_MIN,
   MAX_EFS_MOUNTS,
   MAX_S3_MOUNTS,
   SessionStorageSchema,
+  isCapacityProviderArn,
 } from '../../../../schema';
 import { listBedrockAgentAliases, listBedrockAgents } from '../../../aws/bedrock-import';
 import type { BedrockAgentSummary, BedrockAliasSummary } from '../../../aws/bedrock-import-types';
@@ -49,6 +51,7 @@ import { BUILD_TYPE_OPTIONS, GenerateWizardUI, getWizardHelpText, useGenerateWiz
 import type { BuildType, MemoryOption } from '../generate';
 import type { AdvancedSettingId } from '../generate/types';
 import { ADVANCED_SETTING_OPTIONS, MEMORY_OPTIONS } from '../generate/types';
+import { buildCreateAgentConfig } from './buildCreateAgentConfig';
 import { buildMountListItems } from './buildMountListItems';
 import type { AddAgentConfig, AddAgentStep, AgentType } from './types';
 import {
@@ -98,6 +101,9 @@ type ByoStep =
   | 's3Arn'
   | 's3MountPath'
   | 's3AddAnother'
+  | 'capacityProvider'
+  | 'capacityProviderArn'
+  | 'cpVolumeMounts'
   | 'confirm';
 
 const INITIAL_STEPS: InitialStep[] = ['name', 'agentType'];
@@ -109,6 +115,12 @@ export interface ComputeByoStepsInput {
   networkMode: string;
   authorizerType: string;
   advancedSettings: Set<AdvancedSettingId>;
+  /**
+   * Capacity-provider attachment choice (drives dynamic step insertion, like authorizerType→jwtConfig):
+   * 'none' = not attached, 'name' = an in-project sibling, 'arn' = an external ARN (adds an ARN entry step).
+   * Any non-'none' value adds the CP-volume mounts step.
+   */
+  capacityProviderMode?: 'none' | 'name' | 'arn';
 }
 
 /** Pure function to compute BYO wizard steps from config. Exported for testing. */
@@ -124,7 +136,9 @@ export function computeByoSteps(input: ComputeByoStepsInput): ByoStep[] {
     if (input.advancedSettings.has('dockerfile') && input.buildType === 'Container') {
       subSteps.push('dockerfile');
     }
-    if (input.advancedSettings.has('network')) {
+    // A capacity provider supplies its own network topology, so the network steps are mutually
+    // exclusive with it: when a CP is also selected, CP wins and the network steps are skipped.
+    if (input.advancedSettings.has('network') && !input.advancedSettings.has('capacityProvider')) {
       subSteps.push('networkMode');
       if (input.networkMode === 'VPC') {
         subSteps.push('subnets', 'securityGroups');
@@ -154,6 +168,16 @@ export function computeByoSteps(input: ComputeByoStepsInput): ByoStep[] {
         's3MountPath',
         's3AddAnother'
       );
+    }
+    if (input.advancedSettings.has('capacityProvider')) {
+      subSteps.push('capacityProvider');
+      if (input.capacityProviderMode === 'arn') {
+        subSteps.push('capacityProviderArn');
+      }
+      // CP volumes can only be mounted once the runtime is attached to a capacity provider.
+      if (input.capacityProviderMode && input.capacityProviderMode !== 'none') {
+        subSteps.push('cpVolumeMounts');
+      }
     }
     steps = [...steps.slice(0, afterAdvanced), ...subSteps, ...steps.slice(afterAdvanced)];
   }
@@ -212,8 +236,12 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     sessionStorageMountPath: '' as string,
     efsAccessPoints: [] as { accessPointArn: string; mountPath: string }[],
     s3AccessPoints: [] as { accessPointArn: string; mountPath: string }[],
+    capacityProvider: '' as string,
+    capacityProviderVolumes: [] as { volumeName: string; mountPath: string }[],
     withConfigBundle: undefined as boolean | undefined,
   });
+  // Capacity-provider attachment mode drives dynamic step insertion (mirrors authorizerType→jwtConfig).
+  const [byoCapacityProviderMode, setByoCapacityProviderMode] = useState<'none' | 'name' | 'arn'>('none');
   const [byoAdvancedSettings, setByoAdvancedSettings] = useState<Set<AdvancedSettingId>>(new Set());
   const [byoAuthorizerType, setByoAuthorizerType] = useState<RuntimeAuthorizerType>('AWS_IAM');
   const [byoJwtConfig, setByoJwtConfig] = useState<JwtConfigOptions | undefined>(undefined);
@@ -222,6 +250,8 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
 
   // State for project name (fetched from project spec for credential naming)
   const [projectName, setProjectName] = useState<string>('');
+  // In-project capacity provider names, offered when attaching a runtime to a sibling CP.
+  const [projectCapacityProviderNames, setProjectCapacityProviderNames] = useState<string[]>([]);
 
   // Fetch project name when component mounts
   useEffect(() => {
@@ -230,6 +260,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
         const configIO = new ConfigIO();
         const projectSpec = await configIO.readProjectSpec();
         setProjectName(projectSpec.name);
+        setProjectCapacityProviderNames((projectSpec.capacityProviders ?? []).map(cp => cp.name));
       } catch {
         // Ignore errors - project name will remain empty
       }
@@ -308,47 +339,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
   // ─────────────────────────────────────────────────────────────────────────────
 
   const handleGenerateComplete = useCallback(() => {
-    // Map GenerateConfig to AddAgentConfig
-    const config: AddAgentConfig = {
-      name,
-      agentType: 'create',
-      codeLocation: `${name}/`,
-      entrypoint: 'main.py',
-      language: generateWizard.config.language,
-      buildType: generateWizard.config.buildType,
-      ...(generateWizard.config.buildType === 'Container' &&
-        generateWizard.config.dockerfile && {
-          dockerfile: generateWizard.config.dockerfile,
-        }),
-      protocol: generateWizard.config.protocol,
-      framework: generateWizard.config.sdk,
-      modelProvider: generateWizard.config.modelProvider,
-      apiKey: generateWizard.config.apiKey,
-      networkMode: generateWizard.config.networkMode,
-      subnets: generateWizard.config.networkMode === 'VPC' ? generateWizard.config.subnets : undefined,
-      securityGroups: generateWizard.config.networkMode === 'VPC' ? generateWizard.config.securityGroups : undefined,
-      ...(generateWizard.config.networkMode === 'VPC' &&
-        generateWizard.config.buildType === 'Container' &&
-        generateWizard.config.vpcId && { vpcId: generateWizard.config.vpcId }),
-      requestHeaderAllowlist: generateWizard.config.requestHeaderAllowlist,
-      ...(generateWizard.config.authorizerType &&
-        generateWizard.config.authorizerType !== 'AWS_IAM' && {
-          authorizerType: generateWizard.config.authorizerType,
-        }),
-      ...(generateWizard.config.authorizerType === 'CUSTOM_JWT' &&
-        generateWizard.config.jwtConfig && {
-          jwtConfig: generateWizard.config.jwtConfig,
-        }),
-      idleRuntimeSessionTimeout: generateWizard.config.idleRuntimeSessionTimeout,
-      maxLifetime: generateWizard.config.maxLifetime,
-      sessionStorageMountPath: generateWizard.config.sessionStorageMountPath,
-      ...(generateWizard.config.efsAccessPoints?.length && { efsAccessPoints: generateWizard.config.efsAccessPoints }),
-      ...(generateWizard.config.s3AccessPoints?.length && { s3AccessPoints: generateWizard.config.s3AccessPoints }),
-      withConfigBundle: generateWizard.config.withConfigBundle,
-      pythonVersion: DEFAULT_PYTHON_VERSION,
-      memory: generateWizard.config.memory,
-    };
-    onComplete(config);
+    onComplete(buildCreateAgentConfig(name, generateWizard.config));
   }, [name, generateWizard.config, onComplete]);
 
   const handleGenerateBack = useCallback(() => {
@@ -374,8 +365,16 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
         networkMode: byoConfig.networkMode,
         authorizerType: byoAuthorizerType,
         advancedSettings: byoAdvancedSettings,
+        capacityProviderMode: byoCapacityProviderMode,
       }),
-    [byoConfig.buildType, byoConfig.modelProvider, byoConfig.networkMode, byoAdvancedSettings, byoAuthorizerType]
+    [
+      byoConfig.buildType,
+      byoConfig.modelProvider,
+      byoConfig.networkMode,
+      byoAdvancedSettings,
+      byoAuthorizerType,
+      byoCapacityProviderMode,
+    ]
   );
 
   const byoCurrentIndex = byoSteps.indexOf(byoStep);
@@ -412,16 +411,17 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     setStep: setByoStep as (step: string) => void,
   });
 
-  // Advanced multi-select items — filter out dockerfile when not a Container build
-  const byoAdvancedItems: SelectableItem[] = useMemo(
-    () =>
-      ADVANCED_SETTING_OPTIONS.filter(o => o.id !== 'dockerfile' || byoConfig.buildType === 'Container').map(o => ({
-        id: o.id,
-        title: o.title,
-        description: o.description,
-      })),
-    [byoConfig.buildType]
-  );
+  // Advanced multi-select items — filter out dockerfile when not a Container build. Capacity
+  // provider now lives in the shared ADVANCED_SETTING_OPTIONS (it's offered on the template path
+  // too), so it comes through the loop; do NOT insert it separately or it would appear twice.
+  const byoAdvancedItems: SelectableItem[] = useMemo(() => {
+    const items: SelectableItem[] = [];
+    for (const o of ADVANCED_SETTING_OPTIONS) {
+      if (o.id === 'dockerfile' && byoConfig.buildType !== 'Container') continue;
+      items.push({ id: o.id, title: o.title, description: o.description });
+    }
+    return items;
+  }, [byoConfig.buildType]);
 
   // BYO build type options
   const buildTypeItems: SelectableItem[] = useMemo(
@@ -510,6 +510,16 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     // For BYO, language/framework are not asked - we default to Python/Strands
     // since the actual values don't matter for BYO (code already exists)
     const requestHeaderAllowlist = parseAndNormalizeHeaders(byoConfig.requestHeaderAllowlist);
+    // A capacity provider supplies its own network topology, so networkMode is not settable on a
+    // CP-attached runtime — clear it so the wizard never emits a CP config carrying a networkMode.
+    const capacityProviderConfiguration = byoConfig.capacityProvider
+      ? isCapacityProviderArn(byoConfig.capacityProvider)
+        ? { capacityProviderArn: byoConfig.capacityProvider }
+        : { capacityProviderName: byoConfig.capacityProvider }
+      : undefined;
+    const effectiveNetworkMode: NetworkMode | undefined = capacityProviderConfiguration
+      ? undefined
+      : byoConfig.networkMode;
     const config: AddAgentConfig = {
       name,
       agentType: 'byo',
@@ -522,10 +532,10 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       framework: 'Strands', // Default - not used for BYO agents
       modelProvider: byoConfig.modelProvider,
       apiKey: byoConfig.apiKey,
-      networkMode: byoConfig.networkMode,
-      subnets: byoConfig.networkMode === 'VPC' ? parseCommaSeparatedList(byoConfig.subnets) : undefined,
-      securityGroups: byoConfig.networkMode === 'VPC' ? parseCommaSeparatedList(byoConfig.securityGroups) : undefined,
-      ...(byoConfig.networkMode === 'VPC' &&
+      networkMode: effectiveNetworkMode,
+      subnets: effectiveNetworkMode === 'VPC' ? parseCommaSeparatedList(byoConfig.subnets) : undefined,
+      securityGroups: effectiveNetworkMode === 'VPC' ? parseCommaSeparatedList(byoConfig.securityGroups) : undefined,
+      ...(effectiveNetworkMode === 'VPC' &&
         byoConfig.buildType === 'Container' &&
         byoConfig.vpcId && { vpcId: byoConfig.vpcId }),
       ...(requestHeaderAllowlist.length > 0 && { requestHeaderAllowlist }),
@@ -536,6 +546,10 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
       ...(byoConfig.sessionStorageMountPath && { sessionStorageMountPath: byoConfig.sessionStorageMountPath }),
       ...(byoConfig.efsAccessPoints.length > 0 && { efsAccessPoints: byoConfig.efsAccessPoints }),
       ...(byoConfig.s3AccessPoints.length > 0 && { s3AccessPoints: byoConfig.s3AccessPoints }),
+      ...(capacityProviderConfiguration && { capacityProviderConfiguration }),
+      ...(byoConfig.capacityProviderVolumes.length > 0 && {
+        capacityProviderVolumes: byoConfig.capacityProviderVolumes,
+      }),
       ...(byoConfig.withConfigBundle && { withConfigBundle: true }),
       pythonVersion: DEFAULT_PYTHON_VERSION,
       memory: 'none',
@@ -601,9 +615,12 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
           sessionStorageMountPath: '',
           efsAccessPoints: [],
           s3AccessPoints: [],
+          capacityProvider: '',
+          capacityProviderVolumes: [],
           withConfigBundle: undefined,
         }));
         resetByoFilesystemState();
+        setByoCapacityProviderMode('none');
         setByoAuthorizerType('AWS_IAM');
         setByoJwtConfig(undefined);
         setByoStep('confirm');
@@ -612,6 +629,11 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
         if (!selected.has('filesystem')) {
           setByoConfig(c => ({ ...c, sessionStorageMountPath: '', efsAccessPoints: [], s3AccessPoints: [] }));
           resetByoFilesystemState();
+        }
+        // Clear capacity-provider state if it was deselected
+        if (!selected.has('capacityProvider')) {
+          setByoConfig(c => ({ ...c, capacityProvider: '', capacityProviderVolumes: [] }));
+          setByoCapacityProviderMode('none');
         }
         // Config bundle has no sub-steps — set flag immediately
         setByoConfig(c => ({
@@ -632,6 +654,8 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
             setByoStep('idleTimeout');
           } else if (selected.has('filesystem')) {
             setByoStep('sessionStorageMountPath');
+          } else if (selected.has('capacityProvider')) {
+            setByoStep('capacityProvider');
           } else {
             setByoStep('confirm');
           }
@@ -712,6 +736,49 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
     onSelect: item => submitByoS3AddAnother(item.id),
     onExit: handleByoBack,
     isActive: isByoPath && byoStep === 's3AddAnother',
+  });
+
+  // Capacity provider attach: None / in-project sibling by name / external ARN.
+  const capacityProviderItems: SelectableItem[] = useMemo(
+    () => [
+      { id: '__none__', title: 'None', description: 'Use AgentCore-managed compute (default)' },
+      ...projectCapacityProviderNames.map(cpName => ({
+        id: cpName,
+        title: cpName,
+        description: 'Capacity provider in this project',
+      })),
+      { id: '__arn__', title: 'Enter an ARN…', description: 'Attach to an external capacity provider by ARN' },
+    ],
+    [projectCapacityProviderNames]
+  );
+  const capacityProviderNav = useListNavigation({
+    items: capacityProviderItems,
+    onSelect: item => {
+      if (item.id === '__none__') {
+        setByoConfig(c => ({ ...c, capacityProvider: '', capacityProviderVolumes: [] }));
+        setByoCapacityProviderMode('none');
+        // Navigate directly (like the ARN/name branches) rather than via goToNextByoStep + setTimeout:
+        // when re-selecting None after having chosen a CP (e.g. Esc back-nav), the memoized byoSteps
+        // still includes cpVolumeMounts (mode hasn't recomputed to 'none' yet), so goToNextByoStep
+        // would land on cpVolumeMounts — a step that then disappears, corrupting the breadcrumb and
+        // stranding the flow. capacityProvider is always the last advanced sub-step, so None's next
+        // step is always confirm.
+        setByoStep('confirm');
+      } else if (item.id === '__arn__') {
+        setByoCapacityProviderMode('arn');
+        setByoStep('capacityProviderArn');
+      } else {
+        setByoConfig(c => ({ ...c, capacityProvider: item.id }));
+        setByoCapacityProviderMode('name');
+        // Navigate directly (like the ARN branch) rather than via goToNextByoStep + setTimeout:
+        // the memoized byoSteps hasn't recomputed with mode='name' yet, so goToNextByoStep would
+        // not see the cpVolumeMounts step and would skip straight to confirm. A non-none attachment
+        // always has cpVolumeMounts next.
+        setByoStep('cpVolumeMounts');
+      }
+    },
+    onExit: handleByoBack,
+    isActive: isByoPath && byoStep === 'capacityProvider',
   });
 
   useListNavigation({
@@ -1058,6 +1125,7 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
           onConfirm={handleGenerateComplete}
           isActive={true}
           credentialProjectName={projectName}
+          capacityProviderNames={projectCapacityProviderNames}
         />
       </Screen>
     );
@@ -1523,6 +1591,62 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
 
         {byoStep === 's3AddAnother' && (
           <SelectList items={s3AddAnotherItems} selectedIndex={s3AddAnotherNav.selectedIndex} />
+        )}
+
+        {byoStep === 'capacityProvider' && (
+          <SelectList items={capacityProviderItems} selectedIndex={capacityProviderNav.selectedIndex} />
+        )}
+
+        {byoStep === 'capacityProviderArn' && (
+          <TextInput
+            prompt="Capacity provider ARN (arn:...:capacity-provider/...):"
+            initialValue={
+              byoCapacityProviderMode === 'arn' && byoConfig.capacityProvider.startsWith('arn:')
+                ? byoConfig.capacityProvider
+                : ''
+            }
+            schema={CapacityProviderArnSchema}
+            onSubmit={value => {
+              setByoConfig(c => ({ ...c, capacityProvider: value }));
+              goToNextByoStep('capacityProviderArn');
+            }}
+            onCancel={handleByoBack}
+          />
+        )}
+
+        {byoStep === 'cpVolumeMounts' && (
+          <TextInput
+            prompt="Capacity provider volume mounts as name:path, comma-separated (e.g. model-weights:/mnt/models) — press Enter to skip:"
+            initialValue={byoConfig.capacityProviderVolumes.map(v => `${v.volumeName}:${v.mountPath}`).join(', ')}
+            allowEmpty
+            customValidation={value => {
+              if (!value.trim()) return true;
+              for (const entry of value.split(',')) {
+                const trimmed = entry.trim();
+                if (!trimmed) continue;
+                const sep = trimmed.indexOf(':');
+                if (sep <= 0)
+                  return `Invalid volume mount "${trimmed}". Expected name:path (e.g. model-weights:/mnt/models).`;
+                const mountPath = trimmed.slice(sep + 1);
+                const r = validateBYOMountPath(mountPath);
+                if (r !== true) return r;
+              }
+              return true;
+            }}
+            onSubmit={value => {
+              const volumes = value
+                .split(',')
+                .map(e => e.trim())
+                .filter(Boolean)
+                .map(entry => {
+                  const sep = entry.indexOf(':');
+                  return { volumeName: entry.slice(0, sep), mountPath: entry.slice(sep + 1) };
+                });
+              setByoConfig(c => ({ ...c, capacityProviderVolumes: volumes }));
+              goToNextByoStep('cpVolumeMounts');
+            }}
+            onCancel={handleByoBack}
+          />
         )}
 
         {byoStep === 'confirm' && (

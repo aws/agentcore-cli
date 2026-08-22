@@ -839,3 +839,97 @@ describe('AgentCoreProjectSpec — knowledgeBases', () => {
     ).toThrow(/Duplicate knowledge base name/);
   });
 });
+
+describe('AgentCoreProjectSpecSchema — capacity provider cross-references (J2/J3)', () => {
+  const validCp = {
+    name: 'my_pool',
+    computeConfiguration: {
+      ec2Configuration: {
+        launchTemplateSource: {
+          launchParameters: {
+            operatingSystem: 'LINUX_X86_64',
+            instanceRequirements: { allowedInstanceTypes: ['c5.xlarge'] },
+          },
+        },
+        vpcConfiguration: { subnets: ['subnet-0123456789abcdef0'], securityGroups: ['sg-0123456789abcdef0'] },
+        volumes: [{ ebsConfiguration: { name: 'model-weights', sizeGiB: 100 } }],
+      },
+    },
+  };
+  const runtime = (extra: Record<string, unknown>) => ({
+    name: 'MyAgent',
+    build: 'CodeZip',
+    entrypoint: 'main.py',
+    codeLocation: './agents/my-agent',
+    runtimeVersion: 'PYTHON_3_12',
+    protocol: 'HTTP',
+    ...extra,
+  });
+
+  it('accepts a runtime attached to a sibling capacity provider by name', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      name: 'P',
+      version: 1,
+      capacityProviders: [validCp],
+      runtimes: [runtime({ capacityProviderConfiguration: { capacityProviderName: 'my_pool' } })],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a runtime referencing an unknown capacity provider name', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      name: 'P',
+      version: 1,
+      capacityProviders: [validCp],
+      runtimes: [runtime({ capacityProviderConfiguration: { capacityProviderName: 'nope' } })],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a runtime attached by external ARN without a sibling', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      name: 'P',
+      version: 1,
+      runtimes: [
+        runtime({
+          capacityProviderConfiguration: {
+            capacityProviderArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:capacity-provider/ext-a1b2c3d4e5',
+          },
+        }),
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a cp-volume mount whose volumeName exists on the attached CP', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      name: 'P',
+      version: 1,
+      capacityProviders: [validCp],
+      runtimes: [
+        runtime({
+          capacityProviderConfiguration: { capacityProviderName: 'my_pool' },
+          filesystemConfigurations: [
+            { capacityProviderVolume: { volumeName: 'model-weights', mountPath: '/mnt/models' } },
+          ],
+        }),
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a cp-volume mount whose volumeName is not defined on the attached CP', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse({
+      name: 'P',
+      version: 1,
+      capacityProviders: [validCp],
+      runtimes: [
+        runtime({
+          capacityProviderConfiguration: { capacityProviderName: 'my_pool' },
+          filesystemConfigurations: [{ capacityProviderVolume: { volumeName: 'ghost-vol', mountPath: '/mnt/models' } }],
+        }),
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+});

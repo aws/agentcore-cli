@@ -1,5 +1,7 @@
 import type {
   BuildType,
+  CapacityProviderConfiguration,
+  CapacityProviderVolumeConfig,
   EfsAccessPointConfig,
   ModelProvider,
   NetworkMode,
@@ -65,6 +67,9 @@ export type AddAgentStep =
   | 's3Arn'
   | 's3MountPath'
   | 's3AddAnother'
+  | 'capacityProvider'
+  | 'capacityProviderArn'
+  | 'cpVolumeMounts'
   | 'memory'
   | 'region'
   | 'bedrockAgent'
@@ -112,6 +117,10 @@ export interface AddAgentConfig {
   efsAccessPoints?: EfsAccessPointConfig[];
   /** S3 Files access point mounts configured for this agent */
   s3AccessPoints?: S3FilesAccessPointConfig[];
+  /** Capacity provider the runtime is attached to (in-project sibling name or external ARN) */
+  capacityProviderConfiguration?: CapacityProviderConfiguration;
+  /** Capacity provider volume mounts configured for this agent */
+  capacityProviderVolumes?: CapacityProviderVolumeConfig[];
   /** When true, create a config bundle wired into the agent template */
   withConfigBundle?: boolean;
   /** Python version (only for Python agents) */
@@ -154,6 +163,9 @@ export const ADD_AGENT_STEP_LABELS: Record<AddAgentStep, string> = {
   s3Arn: 'S3 Files ARN',
   s3MountPath: 'S3 Files Path',
   s3AddAnother: 'Add S3 Files',
+  capacityProvider: 'Capacity Provider',
+  capacityProviderArn: 'Capacity Provider ARN',
+  cpVolumeMounts: 'CP Volumes',
   memory: 'Memory',
   region: 'Region',
   bedrockAgent: 'Agent',

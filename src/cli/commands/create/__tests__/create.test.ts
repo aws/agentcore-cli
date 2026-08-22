@@ -240,6 +240,180 @@ describe('create command', () => {
     });
   });
 
+  describe('capacity provider', () => {
+    it('attaches a template agent to an external capacity provider by ARN', async () => {
+      const name = `CpArn${Date.now().toString().slice(-6)}`;
+      const cpArn = 'arn:aws:bedrock-agentcore:us-west-2:123456789012:capacity-provider/some_pool-a1b2c3d4e5';
+      const result = await runCLI(
+        [
+          'create',
+          '--name',
+          name,
+          '--language',
+          'Python',
+          '--framework',
+          'Strands',
+          '--model-provider',
+          'Bedrock',
+          '--memory',
+          'none',
+          '--capacity-provider',
+          cpArn,
+          '--json',
+        ],
+        testDir
+      );
+
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+
+      const projectSpec = JSON.parse(await readFile(join(json.projectPath, 'agentcore/agentcore.json'), 'utf-8'));
+      const runtime = projectSpec.runtimes[0];
+      // ARN form persists as capacityProviderArn; a CP supplies its own network topology, so the
+      // runtime carries no networkMode/networkConfig at all.
+      expect(runtime.capacityProviderConfiguration).toEqual({ capacityProviderArn: cpArn });
+      expect(runtime.networkMode).toBeUndefined();
+      expect(runtime.networkConfig).toBeUndefined();
+    });
+
+    it('mounts capacity provider volumes attached to an ARN CP', async () => {
+      const name = `CpVol${Date.now().toString().slice(-6)}`;
+      const cpArn = 'arn:aws:bedrock-agentcore:us-west-2:123456789012:capacity-provider/some_pool-a1b2c3d4e5';
+      const result = await runCLI(
+        [
+          'create',
+          '--name',
+          name,
+          '--language',
+          'Python',
+          '--framework',
+          'Strands',
+          '--model-provider',
+          'Bedrock',
+          '--memory',
+          'none',
+          '--capacity-provider',
+          cpArn,
+          '--cp-volume-name',
+          'weights',
+          '--cp-volume-mount-path',
+          '/mnt/weights',
+          '--cp-volume-name',
+          'cache',
+          '--cp-volume-mount-path',
+          '/mnt/cache',
+          '--json',
+        ],
+        testDir
+      );
+
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+      const projectSpec = JSON.parse(
+        await readFile(join(JSON.parse(result.stdout).projectPath, 'agentcore/agentcore.json'), 'utf-8')
+      );
+      const fs = projectSpec.runtimes[0].filesystemConfigurations;
+      expect(fs).toEqual([
+        { capacityProviderVolume: { volumeName: 'weights', mountPath: '/mnt/weights' } },
+        { capacityProviderVolume: { volumeName: 'cache', mountPath: '/mnt/cache' } },
+      ]);
+    });
+
+    it('rejects cp-volume flags without --capacity-provider', async () => {
+      const name = `CpBadVol${Date.now().toString().slice(-6)}`;
+      const result = await runCLI(
+        [
+          'create',
+          '--name',
+          name,
+          '--language',
+          'Python',
+          '--framework',
+          'Strands',
+          '--model-provider',
+          'Bedrock',
+          '--memory',
+          'none',
+          '--cp-volume-name',
+          'x',
+          '--cp-volume-mount-path',
+          '/mnt/x',
+          '--json',
+        ],
+        testDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('require attaching the runtime to a capacity provider');
+    });
+
+    it('rejects --network-mode when a capacity provider is attached', async () => {
+      const name = `CpNm${Date.now().toString().slice(-6)}`;
+      const result = await runCLI(
+        [
+          'create',
+          '--name',
+          name,
+          '--language',
+          'Python',
+          '--framework',
+          'Strands',
+          '--model-provider',
+          'Bedrock',
+          '--memory',
+          'none',
+          '--capacity-provider',
+          'arn:aws:bedrock-agentcore:us-west-2:123456789012:capacity-provider/some_pool-a1b2c3d4e5',
+          '--network-mode',
+          'PUBLIC',
+          '--json',
+        ],
+        testDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('--network-mode cannot be set when attaching a capacity provider');
+    });
+
+    it('rejects mismatched --cp-volume-name / --cp-volume-mount-path pairs', async () => {
+      const name = `CpBadPair${Date.now().toString().slice(-6)}`;
+      const result = await runCLI(
+        [
+          'create',
+          '--name',
+          name,
+          '--language',
+          'Python',
+          '--framework',
+          'Strands',
+          '--model-provider',
+          'Bedrock',
+          '--memory',
+          'none',
+          '--capacity-provider',
+          'arn:aws:bedrock-agentcore:us-west-2:123456789012:capacity-provider/some_pool-a1b2c3d4e5',
+          '--cp-volume-name',
+          'a',
+          '--cp-volume-name',
+          'b',
+          '--cp-volume-mount-path',
+          '/mnt/a',
+          '--json',
+        ],
+        testDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('matching pairs');
+    });
+  });
+
   describe('--defaults', () => {
     // --defaults creates a harness project (the default), identical to passing no routing flags.
     // The harness path returns `harnessName` and writes app/<name>/harness.json.

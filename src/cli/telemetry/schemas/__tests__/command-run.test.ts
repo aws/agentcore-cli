@@ -264,6 +264,9 @@ describe('resilientParse', () => {
       agent_source: 'create',
       network_mode: 'public',
       has_agent: true,
+      has_capacity_provider: false,
+      capacity_provider_by_arn: false,
+      cp_volume_mount_count: 0,
     };
     expect(resilientParse(COMMAND_SCHEMAS.create, attrs, TELEMETRY_OPTS)).toEqual(attrs);
   });

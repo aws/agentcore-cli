@@ -1,5 +1,6 @@
 import type { NetworkMode, RuntimeAuthorizerType } from '../../../../schema';
 import {
+  CapacityProviderArnSchema,
   DEFAULT_MODEL_IDS,
   LIFECYCLE_TIMEOUT_MAX,
   LIFECYCLE_TIMEOUT_MIN,
@@ -52,6 +53,8 @@ interface GenerateWizardUIProps {
   onConfirm: () => void;
   isActive: boolean;
   credentialProjectName?: string; // Override for credential naming (add agent flow)
+  /** In-project capacity provider names, offered as by-name attach options (empty for `create`). */
+  capacityProviderNames?: string[];
 }
 
 /**
@@ -64,6 +67,7 @@ export function GenerateWizardUI({
   onConfirm,
   isActive,
   credentialProjectName,
+  capacityProviderNames = [],
 }: GenerateWizardUIProps) {
   const getItems = (): SelectableItem[] => {
     switch (wizard.step) {
@@ -102,6 +106,16 @@ export function GenerateWizardUI({
         return NETWORK_MODE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
       case 'authorizerType':
         return RUNTIME_AUTHORIZER_TYPE_OPTIONS.map(o => ({ id: o.id, title: o.title, description: o.description }));
+      case 'capacityProvider':
+        return [
+          { id: '__none__', title: 'None', description: 'Use AgentCore-managed compute (default)' },
+          ...capacityProviderNames.map(cpName => ({
+            id: cpName,
+            title: cpName,
+            description: 'Capacity provider in this project',
+          })),
+          { id: '__arn__', title: 'Enter an ARN…', description: 'Attach to an external capacity provider by ARN' },
+        ];
       default:
         return [];
     }
@@ -127,6 +141,8 @@ export function GenerateWizardUI({
   const isS3ArnStep = wizard.step === 's3Arn';
   const isS3MountPathStep = wizard.step === 's3MountPath';
   const isS3AddAnotherStep = wizard.step === 's3AddAnother';
+  const isCapacityProviderArnStep = wizard.step === 'capacityProviderArn';
+  const isCpVolumeMountsStep = wizard.step === 'cpVolumeMounts';
   const isConfirmStep = wizard.step === 'confirm';
 
   // Advanced multi-select items — filter out options not applicable to current config
@@ -161,6 +177,9 @@ export function GenerateWizardUI({
         break;
       case 'authorizerType':
         wizard.setAuthorizerType(item.id as RuntimeAuthorizerType);
+        break;
+      case 'capacityProvider':
+        wizard.setCapacityProvider(item.id);
         break;
     }
   };
@@ -558,6 +577,51 @@ export function GenerateWizardUI({
 
       {isS3AddAnotherStep && <SelectList items={s3AddAnotherItems} selectedIndex={s3AddAnotherNav.selectedIndex} />}
 
+      {isCapacityProviderArnStep && (
+        <TextInput
+          prompt="Capacity provider ARN (arn:...:capacity-provider/...):"
+          initialValue={wizard.config.capacityProviderConfiguration?.capacityProviderArn ?? ''}
+          schema={CapacityProviderArnSchema}
+          onSubmit={wizard.setCapacityProviderArn}
+          onCancel={onBack}
+        />
+      )}
+
+      {isCpVolumeMountsStep && (
+        <TextInput
+          prompt="Capacity provider volume mounts as name:path, comma-separated (e.g. model-weights:/mnt/models) — press Enter to skip:"
+          initialValue={(wizard.config.capacityProviderVolumes ?? [])
+            .map(v => `${v.volumeName}:${v.mountPath}`)
+            .join(', ')}
+          allowEmpty
+          customValidation={value => {
+            if (!value.trim()) return true;
+            for (const entry of value.split(',')) {
+              const trimmed = entry.trim();
+              if (!trimmed) continue;
+              const sep = trimmed.indexOf(':');
+              if (sep <= 0)
+                return `Invalid volume mount "${trimmed}". Expected name:path (e.g. model-weights:/mnt/models).`;
+              const r = validateBYOMountPath(trimmed.slice(sep + 1));
+              if (r !== true) return r;
+            }
+            return true;
+          }}
+          onSubmit={value => {
+            const volumes = value
+              .split(',')
+              .map(e => e.trim())
+              .filter(Boolean)
+              .map(entry => {
+                const sep = entry.indexOf(':');
+                return { volumeName: entry.slice(0, sep), mountPath: entry.slice(sep + 1) };
+              });
+            wizard.setCpVolumeMounts(volumes);
+          }}
+          onCancel={onBack}
+        />
+      )}
+
       {isConfirmStep && <ConfirmView config={wizard.config} credentialProjectName={credentialProjectName} />}
     </Panel>
   );
@@ -582,7 +646,9 @@ export function getWizardHelpText(step: GenerateStep): string {
     step === 'efsArn' ||
     step === 'efsMountPath' ||
     step === 's3Arn' ||
-    step === 's3MountPath'
+    step === 's3MountPath' ||
+    step === 'capacityProviderArn' ||
+    step === 'cpVolumeMounts'
   )
     return 'Enter submit · Esc cancel';
   if (step === 'efsAddAnother' || step === 's3AddAnother') return '↑↓ navigate · Enter select · Esc back';
@@ -756,6 +822,23 @@ function ConfirmView({ config, credentialProjectName }: { config: GenerateConfig
             <Text dimColor>S3 Files Mount {i + 1}: </Text>
             <Text>
               {m.accessPointArn.slice(-30)} → {m.mountPath}
+            </Text>
+          </Text>
+        ))}
+        {config.capacityProviderConfiguration && (
+          <Text>
+            <Text dimColor>Capacity Provider: </Text>
+            <Text>
+              {config.capacityProviderConfiguration.capacityProviderName ??
+                config.capacityProviderConfiguration.capacityProviderArn}
+            </Text>
+          </Text>
+        )}
+        {(config.capacityProviderVolumes ?? []).map((v, i) => (
+          <Text key={`cpvol-${i}`}>
+            <Text dimColor>CP Volume {i + 1}: </Text>
+            <Text>
+              {v.volumeName} → {v.mountPath}
             </Text>
           </Text>
         ))}

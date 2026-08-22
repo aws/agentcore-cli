@@ -95,13 +95,18 @@ export { DatasetNameSchema, DatasetSchemaTypeSchema } from './primitives/dataset
 export type { Dataset, DatasetSchemaType } from './primitives/dataset';
 export { CapacityProviderSchema };
 export {
+  CapacityProviderArnSchema,
+  CapacityProviderConfigurationSchema,
   CapacityProviderNameSchema,
+  CapacityProviderVolumeNameSchema,
+  CAPACITY_PROVIDER_ARN_PATTERN,
   CAPACITY_PROVIDER_OPERATOR_ROLE_ARN_PATTERN,
+  isCapacityProviderArn,
   isValidOperatorRoleArn,
   OperatingSystemSchema,
   OperatorRoleArnSchema,
 } from './primitives/capacity-provider';
-export type { CapacityProvider, OperatingSystem } from './primitives/capacity-provider';
+export type { CapacityProvider, CapacityProviderConfiguration, OperatingSystem } from './primitives/capacity-provider';
 export type { ABTestMode, TargetRef, GatewayFilter, PerVariantOnlineEvaluationConfig } from './primitives/ab-test';
 export { ABTestModeSchema, TargetRefSchema, GatewayFilterSchema } from './primitives/ab-test';
 export type {
@@ -636,6 +641,42 @@ export const AgentCoreProjectSpecSchema = z
                   message: `Gateway "${gw.name}" target "${target.name}" references endpoint "${target.httpRuntime.runtimeEndpoint}" which does not exist on runtime "${target.httpRuntime.runtime}".`,
                 });
               }
+            }
+          }
+        }
+      }
+    }
+
+    // Validate runtime -> capacity-provider sibling references. A runtime may attach to a
+    // capacity provider by name (an in-project sibling) or by ARN (external). A name must
+    // resolve to a capacityProviders[] entry; ARNs are accepted as external and not checked here.
+    const capacityProvidersByName = new Map((spec.capacityProviders ?? []).map(cp => [cp.name, cp]));
+    for (const runtime of spec.runtimes) {
+      const cpName = runtime.capacityProviderConfiguration?.capacityProviderName;
+      if (cpName && !capacityProvidersByName.has(cpName)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Runtime "${runtime.name}" references unknown capacity provider "${cpName}". Check spec.capacityProviders.`,
+        });
+      }
+
+      // A capacityProviderVolume mount must reference a volume defined on the attached CP. We can
+      // only introspect an in-project sibling (by name); an external CP referenced by ARN is skipped.
+      const cpVolumeMounts = (runtime.filesystemConfigurations ?? []).filter(fc => 'capacityProviderVolume' in fc);
+      if (cpVolumeMounts.length > 0 && cpName) {
+        const cp = capacityProvidersByName.get(cpName);
+        if (cp) {
+          const definedVolumeNames = new Set(
+            (cp.computeConfiguration.ec2Configuration.volumes ?? []).map(v => v.ebsConfiguration.name)
+          );
+          for (const fc of cpVolumeMounts) {
+            const volumeName = (fc as { capacityProviderVolume: { volumeName: string } }).capacityProviderVolume
+              .volumeName;
+            if (!definedVolumeNames.has(volumeName)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Runtime "${runtime.name}" mounts capacity provider volume "${volumeName}" which is not defined on capacity provider "${cpName}". Check its computeConfiguration.ec2Configuration.volumes.`,
+              });
             }
           }
         }

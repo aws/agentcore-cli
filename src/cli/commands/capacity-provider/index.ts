@@ -1,0 +1,1 @@
+export { registerCapacityProvider } from './command';

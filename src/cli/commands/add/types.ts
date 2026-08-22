@@ -42,6 +42,9 @@ export interface AddAgentOptions extends VpcOptions {
   efsMountPath?: string[];
   s3AccessPointArn?: string[];
   s3MountPath?: string[];
+  capacityProvider?: string;
+  cpVolumeName?: string[];
+  cpVolumeMountPath?: string[];
   withConfigBundle?: boolean;
   json?: boolean;
 }

@@ -51,8 +51,9 @@ interface AgentEnvSpec {
   customDockerBuildArgs?: Record<string, string>; // Container only; keys @regex ^[A-Za-z_][A-Za-z0-9_]*$ @max 255; values @max 4096
   runtimeVersion?: RuntimeVersion;
   envVars?: EnvVar[];
-  networkMode?: NetworkMode; // default 'PUBLIC'
-  networkConfig?: NetworkConfig; // required only when networkMode is 'VPC'
+  networkMode?: NetworkMode; // default 'PUBLIC'; must be unset when capacityProviderConfiguration is set (a CP supplies its own networking)
+  networkConfig?: NetworkConfig; // required only when networkMode is 'VPC'; mutually exclusive with capacityProviderConfiguration
+  capacityProviderConfiguration?: CapacityProviderConfiguration; // attach runtime to a CP; mutually exclusive with networkMode/networkConfig
   instrumentation?: Instrumentation;
   protocol?: ProtocolMode; // default 'HTTP'
   requestHeaderAllowlist?: string[]; // @max 20
@@ -85,7 +86,8 @@ interface Instrumentation {
 type FilesystemConfiguration =
   | { sessionStorage: SessionStorage }
   | { efsAccessPoint: EfsAccessPointConfig }
-  | { s3FilesAccessPoint: S3FilesAccessPointConfig };
+  | { s3FilesAccessPoint: S3FilesAccessPointConfig }
+  | { capacityProviderVolume: CapacityProviderVolumeConfig }; // requires the runtime attached to a capacity provider
 
 interface SessionStorage {
   mountPath: string; // @regex ^/mnt/[a-zA-Z0-9._-]+/?$ @min 6 @max 200
@@ -98,6 +100,17 @@ interface EfsAccessPointConfig {
 
 interface S3FilesAccessPointConfig {
   accessPointArn: string; // S3 Files access point ARN
+  mountPath: string; // @regex ^/mnt/[a-zA-Z0-9._-]+/?$ @min 6 @max 200
+}
+
+// Runtime -> capacity-provider reference. Exactly one of the two must be set.
+interface CapacityProviderConfiguration {
+  capacityProviderArn?: string; // external CP (not defined in this project)
+  capacityProviderName?: string; // in-project CP (a capacityProviders[] sibling)
+}
+
+interface CapacityProviderVolumeConfig {
+  volumeName: string; // @regex ^[a-zA-Z][a-zA-Z0-9_-]{0,47}$ @min 1 @max 48; a volume defined on the attached CP (its volumes[])
   mountPath: string; // @regex ^/mnt/[a-zA-Z0-9._-]+/?$ @min 6 @max 200
 }
 

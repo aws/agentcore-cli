@@ -42,7 +42,7 @@ const REMOVE_RESOURCES: { id: RemoveResourceType; title: string; description: st
   { id: 'config-bundle', title: 'Configuration Bundle', description: 'Remove a configuration bundle' },
   { id: 'runtime-endpoint', title: 'Runtime Endpoint', description: 'Remove a runtime endpoint' },
   { id: 'dataset', title: 'Dataset', description: 'Remove a dataset' },
-  { id: 'capacity-provider', title: 'Capacity Provider [preview]', description: 'Remove a capacity provider' },
+  { id: 'capacity-provider', title: 'Capacity Provider', description: 'Remove a capacity provider' },
   { id: 'all', title: 'All', description: 'Reset entire agentcore project' },
 ];
 

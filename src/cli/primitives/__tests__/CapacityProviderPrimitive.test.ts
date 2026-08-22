@@ -54,6 +54,14 @@ function baseOptions(overrides: Partial<AddCapacityProviderOptions> = {}): AddCa
   };
 }
 
+/** Minimal runtime that attaches to a capacity provider by name (an in-project sibling). */
+function makeRuntimeRefByName(name: string, cpName: string): AgentCoreProjectSpec['runtimes'][number] {
+  return {
+    name,
+    capacityProviderConfiguration: { capacityProviderName: cpName },
+  } as AgentCoreProjectSpec['runtimes'][number];
+}
+
 function makeCapacityProvider(name: string): CapacityProvider {
   return {
     name,
@@ -125,7 +133,8 @@ describe('CapacityProviderPrimitive', () => {
           instanceTypes: 'c7g.large, c7g.xlarge',
           subnets: 'subnet-0123456789abcdef0,subnet-0fedcba9876543210',
           securityGroups: 'sg-0123456789abcdef0',
-          volume: ['data:20'],
+          volumeName: ['data', 'cache'],
+          volumeSize: ['20', '50'],
           volumeEncrypted: true,
           idleInstanceTimeout: '3600',
           maxLifetime: '28800',
@@ -140,7 +149,10 @@ describe('CapacityProviderPrimitive', () => {
         'c7g.xlarge',
       ]);
       expect(ec2.vpcConfiguration.subnets).toHaveLength(2);
-      expect(ec2.volumes).toEqual([{ ebsConfiguration: { name: 'data', sizeGiB: 20, encrypted: true } }]);
+      expect(ec2.volumes).toEqual([
+        { ebsConfiguration: { name: 'data', sizeGiB: 20, encrypted: true } },
+        { ebsConfiguration: { name: 'cache', sizeGiB: 50, encrypted: true } },
+      ]);
       expect(ec2.lifecycleConfiguration).toEqual({ idleInstanceTimeout: 3600, maxLifetime: 28800 });
       expect(written.capacityProviders![0]!.description).toBe('my cp');
     });
@@ -185,35 +197,108 @@ describe('CapacityProviderPrimitive', () => {
       expect(mockWriteProjectSpec).not.toHaveBeenCalled();
     });
 
-    it('rejects a malformed --volume value', async () => {
+    it('rejects mismatched --volume-name / --volume-size pairs', async () => {
       mockReadProjectSpec.mockResolvedValue(makeProject());
 
-      const result = await primitive.add(baseOptions({ volume: ['data-no-size'] }));
+      const result = await primitive.add(baseOptions({ volumeName: ['data', 'cache'], volumeSize: ['20'] }));
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.message).toContain('name:sizeGiB');
+        expect(result.error.message).toContain('matching pairs');
       }
       expect(mockWriteProjectSpec).not.toHaveBeenCalled();
     });
 
-    // A plain split(':') + Number() silently accepted all of these before the fix:
-    // extra segments were dropped, and hex/exponent notation coerced to a number.
+    // Number() would coerce hex/exponent/decimal notation to a valid number — validate the
+    // size as literal digits instead. Empty name is also rejected.
     it.each([
-      ['extra segment', 'data:20:gp3'],
-      ['hex size', 'data:0x14'],
-      ['exponent size', 'data:2e1'],
-      ['decimal size', 'data:20.5'],
-      ['empty size', 'data:'],
-    ])('rejects a --volume with %s (%s)', async (_label, value) => {
+      ['hex size', 'data', '0x14'],
+      ['exponent size', 'data', '2e1'],
+      ['decimal size', 'data', '20.5'],
+      ['empty size', 'data', ''],
+      ['empty name', '', '20'],
+    ])('rejects a volume with %s (name=%s size=%s)', async (_label, volName, size) => {
       mockReadProjectSpec.mockResolvedValue(makeProject());
 
-      const result = await primitive.add(baseOptions({ volume: [value] }));
+      const result = await primitive.add(baseOptions({ volumeName: [volName], volumeSize: [size] }));
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.message).toContain('name:sizeGiB');
+        expect(result.error.message.toLowerCase()).toContain('volume');
       }
+      expect(mockWriteProjectSpec).not.toHaveBeenCalled();
+    });
+  });
+
+  // These flags reach parity with the interactive wizard's Instance Profile / Encryption / KMS /
+  // Lifecycle steps — assert each lands in the right place in the built spec.
+  describe('add() — advanced parity flags', () => {
+    const VALID_INSTANCE_PROFILE = 'arn:aws:iam::123456789012:instance-profile/MyProfile';
+    const VALID_KMS = 'arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012';
+
+    it('maps --instance-profile-arn onto launchParameters', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      const result = await primitive.add(baseOptions({ instanceProfileArn: VALID_INSTANCE_PROFILE }));
+
+      expect(result.success).toBe(true);
+      const written = mockWriteProjectSpec.mock.calls[0]![0] as AgentCoreProjectSpec;
+      expect(
+        written.capacityProviders![0]!.computeConfiguration.ec2Configuration.launchTemplateSource.launchParameters
+          .instanceProfileArn
+      ).toBe(VALID_INSTANCE_PROFILE);
+    });
+
+    it('rejects a malformed instance profile ARN', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      const result = await primitive.add(baseOptions({ instanceProfileArn: 'not-an-arn' }));
+      expect(result.success).toBe(false);
+      expect(mockWriteProjectSpec).not.toHaveBeenCalled();
+    });
+
+    it('maps --volume-encrypted and --volume-kms-key onto each volume', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      const result = await primitive.add(
+        baseOptions({ volumeName: ['data'], volumeSize: ['20'], volumeEncrypted: true, volumeKmsKey: VALID_KMS })
+      );
+
+      expect(result.success).toBe(true);
+      const written = mockWriteProjectSpec.mock.calls[0]![0] as AgentCoreProjectSpec;
+      expect(written.capacityProviders![0]!.computeConfiguration.ec2Configuration.volumes).toEqual([
+        { ebsConfiguration: { name: 'data', sizeGiB: 20, encrypted: true, kmsKeyId: VALID_KMS } },
+      ]);
+    });
+
+    it('rejects a malformed volume KMS key ARN', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      const result = await primitive.add(
+        baseOptions({ volumeName: ['data'], volumeSize: ['20'], volumeEncrypted: true, volumeKmsKey: 'not-an-arn' })
+      );
+      expect(result.success).toBe(false);
+      expect(mockWriteProjectSpec).not.toHaveBeenCalled();
+    });
+
+    it('maps --idle-instance-timeout and --max-lifetime onto lifecycleConfiguration', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      const result = await primitive.add(baseOptions({ idleInstanceTimeout: '900', maxLifetime: '28800' }));
+
+      expect(result.success).toBe(true);
+      const written = mockWriteProjectSpec.mock.calls[0]![0] as AgentCoreProjectSpec;
+      expect(written.capacityProviders![0]!.computeConfiguration.ec2Configuration.lifecycleConfiguration).toEqual({
+        idleInstanceTimeout: 900,
+        maxLifetime: 28800,
+      });
+    });
+
+    it('rejects an out-of-range lifecycle timeout', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeProject());
+      const result = await primitive.add(baseOptions({ idleInstanceTimeout: '30' })); // below the 60s minimum
+      expect(result.success).toBe(false);
       expect(mockWriteProjectSpec).not.toHaveBeenCalled();
     });
   });
@@ -257,6 +342,44 @@ describe('CapacityProviderPrimitive', () => {
       }
       expect(mockWriteProjectSpec).not.toHaveBeenCalled();
     });
+
+    it('blocks removal while a runtime references the CP by name — clear error, no write', async () => {
+      mockReadProjectSpec.mockResolvedValue(
+        makeProject({
+          capacityProviders: [makeCapacityProvider('cpA')],
+          runtimes: [makeRuntimeRefByName('agentX', 'cpA'), makeRuntimeRefByName('agentY', 'cpA')],
+        })
+      );
+
+      const result = await primitive.remove('cpA');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.message).toContain('cpA');
+        expect(result.error.message).toContain('agentX');
+        expect(result.error.message).toContain('agentY');
+        expect(result.error.message).toContain('Remove those references first');
+      }
+      expect(mockWriteProjectSpec).not.toHaveBeenCalled();
+    });
+
+    it('allows removal when a runtime attaches by ARN (external CP, not a sibling)', async () => {
+      const runtime = {
+        name: 'agentZ',
+        capacityProviderConfiguration: {
+          capacityProviderArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:capacity-provider/foo-AbCdEfGhIj',
+        },
+      } as AgentCoreProjectSpec['runtimes'][number];
+      mockReadProjectSpec.mockResolvedValue(
+        makeProject({ capacityProviders: [makeCapacityProvider('cpA')], runtimes: [runtime] })
+      );
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      const result = await primitive.remove('cpA');
+
+      expect(result.success).toBe(true);
+      expect(mockWriteProjectSpec).toHaveBeenCalled();
+    });
   });
 
   describe('getRemovable()', () => {
@@ -291,6 +414,16 @@ describe('CapacityProviderPrimitive', () => {
     it('throws when not found', async () => {
       mockReadProjectSpec.mockResolvedValue(makeProject());
       await expect(primitive.previewRemove('missing')).rejects.toThrow('not found');
+    });
+
+    it('throws when a runtime still references the CP by name', async () => {
+      mockReadProjectSpec.mockResolvedValue(
+        makeProject({
+          capacityProviders: [makeCapacityProvider('cpA')],
+          runtimes: [makeRuntimeRefByName('agentX', 'cpA')],
+        })
+      );
+      await expect(primitive.previewRemove('cpA')).rejects.toThrow('Remove those references first');
     });
   });
 });

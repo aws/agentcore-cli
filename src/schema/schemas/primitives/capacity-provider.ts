@@ -52,6 +52,68 @@ export function isValidOperatorRoleArn(value: string): boolean {
 }
 
 // ============================================================================
+// Capacity Provider Attach (runtime -> capacity provider reference)
+//
+// A runtime attaches to a capacity provider via `capacityProviderConfiguration`.
+// The reference is EITHER an in-project sibling (by name) OR an external CP (by
+// ARN) — exactly one. At synth the CDK app resolves a sibling name to the created
+// CP's ARN, or passes the ARN through, then injects
+// CapacityProviderConfiguration.CapacityProviderArn onto the CfnRuntime.
+//
+// NOTE: This block is duplicated in @aws/agentcore-cdk. Keep the two in sync.
+// ============================================================================
+
+/** Partition-agnostic capacity-provider ARN (arn:[^:]+: per multi-partition rules). */
+export const CAPACITY_PROVIDER_ARN_PATTERN = /^arn:[^:]+:bedrock-agentcore:[a-z0-9-]+:\d{12}:capacity-provider\/.+$/;
+
+export const CapacityProviderArnSchema = z
+  .string()
+  .regex(CAPACITY_PROVIDER_ARN_PATTERN, 'Must be a valid bedrock-agentcore capacity provider ARN');
+
+/**
+ * Route a `--capacity-provider <name-or-arn>` value: an `arn:` prefix means an
+ * external CP referenced by ARN, otherwise it is an in-project sibling name.
+ */
+export function isCapacityProviderArn(value: string): boolean {
+  return value.startsWith('arn:');
+}
+
+/**
+ * Logical name of a capacity-provider volume, referenced by a runtime's
+ * `capacityProviderVolume` filesystem mount. Must match the name of a volume
+ * defined on the capacity provider (EbsVolumeConfiguration.name).
+ */
+export const CapacityProviderVolumeNameSchema = z
+  .string()
+  .min(1, 'Capacity provider volume name is required')
+  .max(48)
+  .regex(
+    /^[a-zA-Z][a-zA-Z0-9_-]{0,47}$/,
+    'Volume name must begin with a letter and contain only alphanumerics, underscores, and hyphens (max 48 chars)'
+  );
+
+/**
+ * Runtime -> capacity-provider reference. Exactly one of `capacityProviderArn`
+ * (external CP) or `capacityProviderName` (in-project sibling) must be set.
+ */
+export const CapacityProviderConfigurationSchema = z
+  .strictObject({
+    /** ARN of an external capacity provider (not defined in this project). */
+    capacityProviderArn: CapacityProviderArnSchema.optional(),
+    /** Name of an in-project capacity provider (a `capacityProviders[]` sibling). */
+    capacityProviderName: CapacityProviderNameSchema.optional(),
+  })
+  .superRefine((data, ctx) => {
+    if ((data.capacityProviderArn !== undefined) === (data.capacityProviderName !== undefined)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'capacityProviderConfiguration must set exactly one of capacityProviderArn or capacityProviderName',
+      });
+    }
+  });
+export type CapacityProviderConfiguration = z.infer<typeof CapacityProviderConfigurationSchema>;
+
+// ============================================================================
 // Operating System
 //
 // The CFN resource enum lists four values (LINUX_X86_64, LINUX_ARM64,

@@ -39,6 +39,7 @@ These options are available on all commands:
 - `status` - Check deployment status
 - `dev` - Local development server (CodeZip: uvicorn with hot-reload; Container: Docker build + run with volume mount)
 - `invoke` - Invoke agents (local or deployed)
+- `capacity-provider delete-session` - Delete (deprovision) a live capacity provider session (data-plane)
 - `run eval` - Run on-demand evaluation against agent sessions
 - `evals history` - View past eval run results
 - `fetch access` - Fetch access info for a deployed gateway or agent

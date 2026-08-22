@@ -1,6 +1,13 @@
-import { ResourceNotFoundError, ValidationError, findConfigRoot, serializeResult, toError } from '../../lib';
+import {
+  ConflictError,
+  ResourceNotFoundError,
+  ValidationError,
+  findConfigRoot,
+  serializeResult,
+  toError,
+} from '../../lib';
 import type { Result } from '../../lib/result';
-import type { CapacityProvider } from '../../schema';
+import type { AgentCoreProjectSpec, CapacityProvider } from '../../schema';
 import { CapacityProviderSchema } from '../../schema';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand } from '../telemetry/cli-command-run.js';
@@ -20,7 +27,8 @@ export interface AddCapacityProviderOptions {
   securityGroups: string;
   os?: string;
   instanceTypes: string;
-  volume?: string[];
+  volumeName?: string[];
+  volumeSize?: string[];
   volumeEncrypted?: boolean;
   volumeKmsKey?: string;
   instanceProfileArn?: string;
@@ -74,6 +82,19 @@ export class CapacityProviderPrimitive extends BasePrimitive<AddCapacityProvider
         return { success: false, error: new ResourceNotFoundError(`Capacity provider "${name}" not found.`) };
       }
 
+      // Block removal while a runtime still attaches to this CP by name. Without this the
+      // dangling reference would only surface as a confusing "unknown capacity provider"
+      // validation error when writeProjectSpec re-validates the project schema.
+      const referencingRuntimes = this.findReferencingRuntimes(project, name);
+      if (referencingRuntimes.length > 0) {
+        return {
+          success: false,
+          error: new ConflictError(
+            `Capacity provider "${name}" is referenced by agent(s): ${referencingRuntimes.join(', ')}. Remove those references first.`
+          ),
+        };
+      }
+
       const remaining = existing.filter(cp => cp.name !== name);
       await this.writeProjectSpec({
         ...project,
@@ -91,7 +112,14 @@ export class CapacityProviderPrimitive extends BasePrimitive<AddCapacityProvider
     const existing = project.capacityProviders ?? [];
 
     if (!existing.some(cp => cp.name === name)) {
-      throw new Error(`Capacity provider "${name}" not found.`);
+      throw new ResourceNotFoundError(`Capacity provider "${name}" not found.`);
+    }
+
+    const referencingRuntimes = this.findReferencingRuntimes(project, name);
+    if (referencingRuntimes.length > 0) {
+      throw new ConflictError(
+        `Capacity provider "${name}" is referenced by agent(s): ${referencingRuntimes.join(', ')}. Remove those references first.`
+      );
     }
 
     const remaining = existing.filter(cp => cp.name !== name);
@@ -144,9 +172,16 @@ export class CapacityProviderPrimitive extends BasePrimitive<AddCapacityProvider
       .option('--os <os>', 'Operating system: LINUX_X86_64 or LINUX_ARM64 (default: LINUX_X86_64) [non-interactive]')
       .option('--instance-types <types>', 'Comma-separated allowed EC2 instance types (1-30) [non-interactive]')
       .option(
-        '--volume <name:sizeGiB>',
-        'Named EBS volume as name:sizeGiB (repeatable, max 5) [non-interactive]',
-        (val: string, prev: string[] = []) => [...prev, val]
+        '--volume-name <name>',
+        'Named EBS volume name (repeatable, max 5, paired with --volume-size) [non-interactive]',
+        (val: string, prev: string[]) => [...prev, val],
+        [] as string[]
+      )
+      .option(
+        '--volume-size <sizeGiB>',
+        'EBS volume size in GiB (repeatable, paired with --volume-name) [non-interactive]',
+        (val: string, prev: string[]) => [...prev, val],
+        [] as string[]
       )
       .option('--volume-encrypted', 'Encrypt EBS volumes [non-interactive]')
       .option('--volume-kms-key <arn>', 'KMS key ARN for EBS volume encryption [non-interactive]')
@@ -196,6 +231,17 @@ export class CapacityProviderPrimitive extends BasePrimitive<AddCapacityProvider
   }
 
   /**
+   * Names of runtimes that attach to the given capacity provider by name (in-project
+   * siblings). Runtimes attached by external ARN are not siblings, so they are not
+   * blockers for removal and are intentionally excluded.
+   */
+  private findReferencingRuntimes(project: AgentCoreProjectSpec, name: string): string[] {
+    return (project.runtimes ?? [])
+      .filter(r => r.capacityProviderConfiguration?.capacityProviderName === name)
+      .map(r => r.name);
+  }
+
+  /**
    * Validate that all required CLI flags are present, throwing ValidationError
    * with an actionable message when they are not.
    */
@@ -216,20 +262,28 @@ export class CapacityProviderPrimitive extends BasePrimitive<AddCapacityProvider
    * at `add` time, rather than late at deploy/CFN time.
    */
   private buildCapacityProvider(options: AddCapacityProviderOptions): CapacityProvider {
-    const volumes = (options.volume ?? []).map(entry => {
-      // Require exactly `name:sizeGiB`. Splitting without a segment count lets `data:20:gp3`
-      // silently drop the trailing segment, and Number() accepts hex/exponent (`0x14`, `2e1`)
-      // as 20 — so validate the size as literal digits instead of trusting Number().
-      const segments = entry.split(':');
-      const [volName, sizeRaw] = segments;
-      if (segments.length !== 2 || !volName || !sizeRaw || !/^[0-9]+$/.test(sizeRaw)) {
-        throw new ValidationError(`Invalid --volume "${entry}". Expected format name:sizeGiB (e.g. data:20).`);
+    // Paired repeatable flags: --volume-name and --volume-size must line up 1:1 (mirrors the
+    // --efs-access-point-arn/--efs-mount-path and --cp-volume-name/--cp-volume-mount-path idiom).
+    const names = options.volumeName ?? [];
+    const sizes = options.volumeSize ?? [];
+    if (names.length !== sizes.length) {
+      throw new ValidationError(
+        `--volume-name and --volume-size must be provided in matching pairs (got ${names.length} name(s) and ${sizes.length} size(s)).`
+      );
+    }
+    const volumes = names.map((volName, i) => {
+      const sizeRaw = sizes[i]!;
+      // Validate the size as literal digits — Number() would accept hex/exponent (`0x14`, `2e1`)
+      // as 20. Zod (CapacityProviderSchema.parse below) enforces the 1–65536 GiB range.
+      if (!volName.trim() || !/^[0-9]+$/.test(sizeRaw)) {
+        throw new ValidationError(
+          `Invalid volume "${volName}:${sizeRaw}". --volume-name must be non-empty and --volume-size a whole number of GiB (e.g. --volume-name data --volume-size 20).`
+        );
       }
-      const sizeGiB = Number(sizeRaw);
       return {
         ebsConfiguration: {
           name: volName,
-          sizeGiB,
+          sizeGiB: Number(sizeRaw),
           ...(options.volumeEncrypted !== undefined && { encrypted: options.volumeEncrypted }),
           ...(options.volumeKmsKey && { kmsKeyId: options.volumeKmsKey }),
         },

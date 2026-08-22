@@ -8,7 +8,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 
 type FlowState =
   | { name: 'create-wizard' }
-  | { name: 'create-success'; capacityProviderName: string; os: string; instanceTypes: string; description?: string }
+  | {
+      name: 'create-success';
+      capacityProviderName: string;
+      os: string;
+      instanceTypes: string;
+      volumes: { name: string; sizeGiB: number }[];
+      description?: string;
+    }
   | { name: 'error'; message: string };
 
 interface AddCapacityProviderFlowProps {
@@ -50,6 +57,13 @@ export function AddCapacityProviderFlow({
         securityGroups: config.securityGroups,
         os: config.os,
         instanceTypes: config.instanceTypes,
+        instanceProfileArn: config.instanceProfileArn,
+        volumeName: config.volumes.map(v => v.name),
+        volumeSize: config.volumes.map(v => String(v.sizeGiB)),
+        volumeEncrypted: config.volumeEncrypted,
+        volumeKmsKey: config.volumeKmsKey,
+        idleInstanceTimeout: config.idleInstanceTimeout,
+        maxLifetime: config.maxLifetime,
       })
       .then(result => {
         if (result.success) {
@@ -58,6 +72,7 @@ export function AddCapacityProviderFlow({
             capacityProviderName: result.capacityProviderName,
             os: config.os,
             instanceTypes: config.instanceTypes,
+            volumes: config.volumes,
             description: config.description,
           });
           return;
@@ -82,6 +97,9 @@ export function AddCapacityProviderFlow({
           <Box flexDirection="column" marginTop={1}>
             <Text dimColor> OS: {flow.os}</Text>
             <Text dimColor> Instance types: {flow.instanceTypes}</Text>
+            {flow.volumes.length > 0 && (
+              <Text dimColor> Volumes: {flow.volumes.map(v => `${v.name} (${v.sizeGiB} GiB)`).join(', ')}</Text>
+            )}
             {flow.description && <Text dimColor> Desc: {flow.description}</Text>}
           </Box>
         }

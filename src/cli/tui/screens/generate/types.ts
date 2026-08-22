@@ -1,5 +1,7 @@
 import type {
   BuildType,
+  CapacityProviderConfiguration,
+  CapacityProviderVolumeConfig,
   EfsAccessPointConfig,
   ModelProvider,
   NetworkMode,
@@ -44,6 +46,9 @@ export type GenerateStep =
   | 's3Arn'
   | 's3MountPath'
   | 's3AddAnother'
+  | 'capacityProvider'
+  | 'capacityProviderArn'
+  | 'cpVolumeMounts'
   | 'confirm';
 
 export type MemoryOption = 'none' | 'shortTerm' | 'longAndShortTerm';
@@ -83,6 +88,10 @@ export interface GenerateConfig {
   efsAccessPoints?: EfsAccessPointConfig[];
   /** S3 Files access point mounts configured for this agent */
   s3AccessPoints?: S3FilesAccessPointConfig[];
+  /** Capacity provider the runtime is attached to (in-project sibling name or external ARN) */
+  capacityProviderConfiguration?: CapacityProviderConfiguration;
+  /** Capacity provider volume mounts configured for this agent */
+  capacityProviderVolumes?: CapacityProviderVolumeConfig[];
   /** When true, create a config bundle wired into the agent template */
   withConfigBundle?: boolean;
 }
@@ -127,6 +136,9 @@ export const STEP_LABELS: Record<GenerateStep, string> = {
   s3Arn: 'S3 Files ARN',
   s3MountPath: 'S3 Files Path',
   s3AddAnother: 'Add S3 Files',
+  capacityProvider: 'Capacity Provider',
+  capacityProviderArn: 'CP ARN',
+  cpVolumeMounts: 'CP Volumes',
   confirm: 'Confirm',
 };
 
@@ -212,6 +224,7 @@ export type AdvancedSettingId =
   | 'auth'
   | 'lifecycle'
   | 'filesystem'
+  | 'capacityProvider'
   | 'configBundle';
 
 export const ADVANCED_SETTING_OPTIONS = [
@@ -221,6 +234,11 @@ export const ADVANCED_SETTING_OPTIONS = [
   { id: 'auth', title: 'Custom auth (JWT)', description: 'OIDC-based token validation for inbound requests' },
   { id: 'lifecycle', title: 'Lifecycle timeouts', description: 'Idle timeout & max instance lifetime' },
   { id: 'filesystem', title: 'Filesystem mounts', description: 'Session storage, EFS, and S3 Files mounts' },
+  {
+    id: 'capacityProvider',
+    title: 'Capacity provider',
+    description: 'Run on a customer-managed EC2 compute pool (+ mount its volumes)',
+  },
   {
     id: 'configBundle',
     title: 'Config bundle',

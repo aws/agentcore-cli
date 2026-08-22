@@ -5,6 +5,7 @@ import { serviceEndpoint } from './partition';
 import { dataPlaneEndpoint } from './stage-endpoint';
 import {
   BedrockAgentCoreClient,
+  DeleteCapacityProviderSessionCommand,
   EvaluateCommand,
   InvokeAgentRuntimeCommand,
   InvokeAgentRuntimeCommandCommand,
@@ -1158,6 +1159,49 @@ export async function stopRuntimeSession(options: StopRuntimeSessionOptions): Pr
   return {
     sessionId: response.runtimeSessionId,
     statusCode: response.statusCode,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Delete Capacity Provider Session (data-plane): deprovision a live CP session
+// ---------------------------------------------------------------------------
+
+export interface DeleteCapacityProviderSessionOptions {
+  region: string;
+  /** Capacity provider id (the `{cpName}-{suffix}` id, NOT the ARN). */
+  capacityProviderId: string;
+  /** Session id to delete. */
+  sessionId: string;
+}
+
+export interface DeleteCapacityProviderSessionResult {
+  capacityProviderArn?: string;
+  sessionId?: string;
+  /** Session status after the (async) delete — typically `Deprovisioning`. */
+  status?: string;
+}
+
+/**
+ * Delete (deprovision) a single capacity provider session. Idempotent + asynchronous: the service
+ * returns 202 with status `Deprovisioning` while it terminates the EC2 instance and deletes any
+ * persistent EBS volumes attached to the session in the background (data loss).
+ */
+export async function deleteCapacityProviderSession(
+  options: DeleteCapacityProviderSessionOptions
+): Promise<DeleteCapacityProviderSessionResult> {
+  const client = createAgentCoreClient(options.region);
+
+  const command = new DeleteCapacityProviderSessionCommand({
+    capacityProviderId: options.capacityProviderId,
+    sessionId: options.sessionId,
+  });
+
+  const response = await client.send(command);
+
+  return {
+    capacityProviderArn: response.capacityProviderArn,
+    sessionId: response.sessionId,
+    status: response.status,
   };
 }
 

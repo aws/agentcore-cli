@@ -531,6 +531,36 @@ describe('mapGenerateConfigToAgent - filesystem configurations', () => {
     });
     expect(result.filesystemConfigurations).toHaveLength(3);
   });
+
+  it('writes capacityProviderConfiguration (J2)', () => {
+    const result = mapGenerateConfigToAgent({
+      ...fsBase,
+      capacityProviderConfiguration: { capacityProviderName: 'my_pool' },
+    });
+    expect(result.capacityProviderConfiguration).toEqual({ capacityProviderName: 'my_pool' });
+  });
+
+  it('drops networkMode/networkConfig for a capacity-provider runtime (CP supplies its own network)', () => {
+    // fsBase requests VPC networking, but a CP is mutually exclusive with any networkMode — the
+    // mapper must emit neither networkMode nor networkConfig so the runtime is CP-only.
+    const result = mapGenerateConfigToAgent({
+      ...fsBase,
+      capacityProviderConfiguration: { capacityProviderName: 'my_pool' },
+    });
+    expect(result.networkMode).toBeUndefined();
+    expect(result.networkConfig).toBeUndefined();
+  });
+
+  it('writes capacityProviderVolume filesystem entry (J3)', () => {
+    const result = mapGenerateConfigToAgent({
+      ...fsBase,
+      capacityProviderConfiguration: { capacityProviderName: 'my_pool' },
+      capacityProviderVolumes: [{ volumeName: 'model-weights', mountPath: '/mnt/models' }],
+    });
+    expect(result.filesystemConfigurations).toContainEqual({
+      capacityProviderVolume: { volumeName: 'model-weights', mountPath: '/mnt/models' },
+    });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

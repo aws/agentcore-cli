@@ -14,6 +14,7 @@ import type { Result } from '../../lib/result';
 import type {
   AgentEnvSpec,
   BuildType,
+  CapacityProviderConfiguration,
   CustomClaimValidation,
   DirectoryPath,
   FilePath,
@@ -30,6 +31,7 @@ import {
   DEFAULT_PYTHON_VERSION,
   LIFECYCLE_TIMEOUT_MAX,
   LIFECYCLE_TIMEOUT_MIN,
+  isCapacityProviderArn,
 } from '../../schema';
 import { getCredentialProvider } from '../aws/account';
 import type { AddAgentOptions as CLIAddAgentOptions } from '../commands/add/types';
@@ -37,10 +39,12 @@ import { validateAddAgentOptions } from '../commands/add/validate';
 import {
   buildFilesystemConfigurations,
   validateAccessPointMounts,
+  validateCapacityProviderVolumeMounts,
   validateEfsAccessPointArn,
   validateFilesystemMountsConfiguration,
   validateS3FilesAccessPointArn,
   zipAccessPointPairs,
+  zipCapacityProviderVolumePairs,
 } from '../commands/shared/filesystem-utils';
 import { parseAndNormalizeHeaders } from '../commands/shared/header-utils';
 import type { VpcOptions } from '../commands/shared/vpc-utils';
@@ -117,6 +121,12 @@ export interface AddAgentOptions extends VpcOptions {
   efsMountPaths?: string[];
   s3AccessPointArns?: string[];
   s3MountPaths?: string[];
+  /** Attach the runtime to a capacity provider — an in-project sibling name or an external CP ARN. */
+  capacityProvider?: string;
+  /** CP volume names to mount (paired by position with cpVolumeMountPaths). */
+  cpVolumeNames?: string[];
+  /** CP volume mount paths (paired by position with cpVolumeNames). */
+  cpVolumeMountPaths?: string[];
   withConfigBundle?: boolean;
 }
 
@@ -132,6 +142,16 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
 
   /** Local instance to avoid circular dependency with registry. */
   private readonly credentialPrimitive = new CredentialPrimitive();
+
+  /**
+   * Build the capacityProviderConfiguration block from the flat `--capacity-provider <name-or-arn>`
+   * value. An `arn:` prefix is treated as an external CP (by ARN); anything else is an in-project
+   * sibling (by name). Returns undefined when the flag was not provided.
+   */
+  private buildCapacityProviderConfiguration(value?: string): CapacityProviderConfiguration | undefined {
+    if (!value) return undefined;
+    return isCapacityProviderArn(value) ? { capacityProviderArn: value } : { capacityProviderName: value };
+  }
 
   /** Build lifecycleConfiguration block from flat options - only if at least one value is set. */
   private buildLifecycleConfig(options: { idleTimeout?: number; maxLifetime?: number }) {
@@ -324,6 +344,22 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
         (val: string, prev: string[]) => [...prev, val],
         [] as string[]
       )
+      .option(
+        '--capacity-provider <name-or-arn>',
+        'Attach to a capacity provider — an in-project capacity-provider name or an external CP ARN [non-interactive]'
+      )
+      .option(
+        '--cp-volume-name <name>',
+        'Capacity provider volume name to mount (repeatable, paired with --cp-volume-mount-path) [non-interactive]',
+        (val: string, prev: string[]) => [...prev, val],
+        [] as string[]
+      )
+      .option(
+        '--cp-volume-mount-path <path>',
+        'Capacity provider volume mount path (e.g. /mnt/models, paired with --cp-volume-name) [non-interactive]',
+        (val: string, prev: string[]) => [...prev, val],
+        [] as string[]
+      )
       .option('--with-config-bundle', 'Create a config bundle wired into the agent template [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(async options => {
@@ -358,6 +394,25 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
 
             const s3Validation = validateAccessPointMounts(s3PairsResult.mounts, validateS3FilesAccessPointArn);
             if (!s3Validation.success) throw new Error(s3Validation.error);
+
+            const cpVolNames = cliOptions.cpVolumeName ?? [];
+            const cpVolPaths = cliOptions.cpVolumeMountPath ?? [];
+            const cpVolPairsResult = zipCapacityProviderVolumePairs(cpVolNames, cpVolPaths);
+            if (!cpVolPairsResult.success) throw new Error(cpVolPairsResult.error);
+            const cpVolValidation = validateCapacityProviderVolumeMounts(cpVolPairsResult.mounts);
+            if (!cpVolValidation.success) throw new Error(cpVolValidation.error);
+            if (cpVolPairsResult.mounts.length > 0 && !cliOptions.capacityProvider) {
+              throw new Error(
+                'Capacity provider volume mounts (--cp-volume-name / --cp-volume-mount-path) require attaching the runtime to a capacity provider (--capacity-provider <name-or-arn>).'
+              );
+            }
+            // A capacity provider supplies its own network topology, so --network-mode is not
+            // settable alongside it (neither PUBLIC nor VPC).
+            if (cliOptions.capacityProvider && cliOptions.networkMode !== undefined) {
+              throw new Error(
+                '--network-mode cannot be set when attaching a capacity provider (--capacity-provider) — the capacity provider supplies the network topology. Remove --network-mode.'
+              );
+            }
 
             const hasByoFs = efsArns.length > 0 || s3Arns.length > 0;
             if (hasByoFs && cliOptions.networkMode !== 'VPC') {
@@ -445,6 +500,9 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
               efsMountPaths: efsPaths,
               s3AccessPointArns: s3Arns,
               s3MountPaths: s3Paths,
+              capacityProvider: cliOptions.capacityProvider,
+              cpVolumeNames: cliOptions.cpVolumeName ?? [],
+              cpVolumeMountPaths: cliOptions.cpVolumeMountPath ?? [],
               withConfigBundle: cliOptions.withConfigBundle,
             });
 
@@ -476,6 +534,10 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
               memory_type: standardize(MemoryType, cliOptions.memory ?? 'none'),
               efs_mount_count: efsArns.length,
               s3_mount_count: s3Arns.length,
+              has_capacity_provider: !!cliOptions.capacityProvider,
+              capacity_provider_by_arn:
+                !!cliOptions.capacityProvider && isCapacityProviderArn(cliOptions.capacityProvider),
+              cp_volume_mount_count: cpVolNames.length,
             };
           });
         } else {
@@ -582,6 +644,11 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
         accessPointArn: arn,
         mountPath: (options.s3MountPaths ?? [])[i] ?? '',
       })),
+      capacityProviderConfiguration: this.buildCapacityProviderConfiguration(options.capacityProvider),
+      capacityProviderVolumes: (options.cpVolumeNames ?? []).map((volumeName, i) => ({
+        volumeName,
+        mountPath: (options.cpVolumeMountPaths ?? [])[i] ?? '',
+      })),
       withConfigBundle: options.withConfigBundle,
     };
 
@@ -687,7 +754,12 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
     const project = await configIO.readProjectSpec();
 
     const protocol = options.protocol ?? 'HTTP';
-    const networkMode = (options.networkMode as NetworkMode | undefined) ?? 'PUBLIC';
+    const capacityProviderConfiguration = this.buildCapacityProviderConfiguration(options.capacityProvider);
+    // A capacity provider supplies its own network topology, so a CP-attached runtime carries no
+    // networkMode/networkConfig at all (they are mutually exclusive — see the AgentEnvSpec refine).
+    const networkMode = capacityProviderConfiguration
+      ? undefined
+      : ((options.networkMode as NetworkMode | undefined) ?? 'PUBLIC');
     const subnets = parseCommaSeparatedList(options.subnets);
     const securityGroups = parseCommaSeparatedList(options.securityGroups);
 
@@ -728,7 +800,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       codeLocation: codeLocation as DirectoryPath,
       runtimeVersion: DEFAULT_PYTHON_VERSION,
       protocol,
-      networkMode,
+      ...(networkMode !== undefined && { networkMode }),
       ...(networkMode === 'VPC' &&
         subnets &&
         securityGroups && {
@@ -746,6 +818,7 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
       ...(authorizerType && { authorizerType }),
       ...(authorizerConfiguration && { authorizerConfiguration }),
       ...(lifecycleConfiguration && { lifecycleConfiguration }),
+      ...(capacityProviderConfiguration && { capacityProviderConfiguration }),
       ...buildFilesystemConfigurations(
         options.sessionStorageMountPath,
         (options.efsAccessPointArns ?? []).map((arn, i) => ({
@@ -755,6 +828,10 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
         (options.s3AccessPointArns ?? []).map((arn, i) => ({
           accessPointArn: arn,
           mountPath: (options.s3MountPaths ?? [])[i] ?? '',
+        })),
+        (options.cpVolumeNames ?? []).map((volumeName, i) => ({
+          volumeName,
+          mountPath: (options.cpVolumeMountPaths ?? [])[i] ?? '',
         }))
       ),
     };

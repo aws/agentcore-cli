@@ -908,3 +908,50 @@ describe('validateDockerfileInput', () => {
     expect(result).not.toBe(true);
   });
 });
+
+describe('useGenerateWizard — capacity provider attach', () => {
+  it('by-name attach sets config, clears networking, and goes to the volume step', () => {
+    const { ref } = setup();
+    act(() => {
+      ref.current!.wizard.setCapacityProvider('MyCp');
+    });
+    expect(ref.current!.wizard.config.capacityProviderConfiguration).toEqual({ capacityProviderName: 'MyCp' });
+    // A CP supplies its own network topology, so networkMode is not settable — it is cleared.
+    expect(ref.current!.wizard.config.networkMode).toBeUndefined();
+    expect(ref.current!.wizard.step).toBe('cpVolumeMounts');
+  });
+
+  it('by-ARN attach records the ARN and clears networking', () => {
+    const arn = 'arn:aws:bedrock-agentcore:us-west-2:123456789012:capacity-provider/foo-AbCdEfGhIj';
+    const { ref } = setup();
+    act(() => {
+      ref.current!.wizard.setCapacityProviderArn(arn);
+    });
+    expect(ref.current!.wizard.config.capacityProviderConfiguration).toEqual({ capacityProviderArn: arn });
+    expect(ref.current!.wizard.config.networkMode).toBeUndefined();
+  });
+
+  it('volume mounts are recorded on the config', () => {
+    const { ref } = setup();
+    act(() => {
+      ref.current!.wizard.setCapacityProvider('MyCp');
+      ref.current!.wizard.setCpVolumeMounts([{ volumeName: 'model-weights', mountPath: '/mnt/models' }]);
+    });
+    expect(ref.current!.wizard.config.capacityProviderVolumes).toEqual([
+      { volumeName: 'model-weights', mountPath: '/mnt/models' },
+    ]);
+  });
+
+  it('selecting None clears any prior attachment and skips to confirm', () => {
+    const { ref } = setup();
+    act(() => {
+      ref.current!.wizard.setCapacityProvider('MyCp');
+    });
+    act(() => {
+      ref.current!.wizard.setCapacityProvider('__none__');
+    });
+    expect(ref.current!.wizard.config.capacityProviderConfiguration).toBeUndefined();
+    expect(ref.current!.wizard.config.capacityProviderVolumes).toBeUndefined();
+    expect(ref.current!.wizard.step).toBe('confirm');
+  });
+});
