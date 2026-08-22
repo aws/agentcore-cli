@@ -1,0 +1,7 @@
+{
+  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_insight_fixture-ybMHPI7ui3",
+  "onlineEvaluationConfigId": "agentcore_cli_online_insight_fixture-ybMHPI7ui3",
+  "updatedAt": "2026-08-22T15:09:12.639Z",
+  "status": "UPDATING",
+  "executionStatus": "ENABLED"
+}
