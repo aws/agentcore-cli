@@ -89,6 +89,7 @@ describe("eval online-insight command hierarchy", () => {
       "create",
       "get",
       "list",
+      "update",
       "pause",
       "resume",
       "delete",

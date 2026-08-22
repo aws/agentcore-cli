@@ -107,6 +107,7 @@ import type {
   CreateOnlineEvalInput,
   CreateOnlineInsightInput,
   CreateOnlineInsightResponse,
+  UpdateOnlineInsightInput,
   GetOnlineInsightResponse,
   ListOnlineInsightsResponse,
   UpdateOnlineInsightResponse,
@@ -797,6 +798,74 @@ export class EvalClient implements CoreEvalClient {
     });
 
     return control.send(command);
+  }
+
+  async updateOnlineInsight(
+    id: string,
+    update: UpdateOnlineInsightInput,
+    options: CoreOptions,
+  ): Promise<UpdateOnlineInsightResponse> {
+    const control = this.clients.control(toClientConfig(options));
+    // This GET is both the merge base (UpdateOnlineEvaluationConfig replaces the
+    // whole rule/insights, so unset fields must be carried over) and the guard
+    // that rejects a plain online-EVAL config, which carries no insights.
+    const current = await control.send(
+      new GetOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }),
+    );
+    if ((current.insights?.length ?? 0) === 0)
+      throw new InputValidationError(`"${id}" is not an online-insight config`, {
+        meta: { onlineEvaluationConfigId: id },
+      });
+
+    const samplingPercentage =
+      update.samplingRate ?? current.rule?.samplingConfig?.samplingPercentage;
+    const sessionTimeoutMinutes =
+      update.sessionTimeoutMinutes ?? current.rule?.sessionConfig?.sessionTimeoutMinutes;
+    const filters = update.filters ?? current.rule?.filters;
+
+    const insights =
+      update.insightIds !== undefined
+        ? update.insightIds.map((insightId) => ({ insightId }))
+        : current.insights;
+    const clusteringConfig = update.clusteringConfig ?? current.clusteringConfig;
+
+    let dataSourceConfig = current.dataSourceConfig;
+    if (update.dataSourceConfig !== undefined) {
+      dataSourceConfig = update.dataSourceConfig;
+    } else if (update.agent !== undefined) {
+      dataSourceConfig = await agentDataSource(
+        update.agent,
+        update.clearEndpoint ? DEFAULT_ENDPOINT_QUALIFIER : update.endpoint,
+        this.clients,
+        options,
+      );
+    } else if (update.clearEndpoint || update.endpoint !== undefined) {
+      const currentLogGroup =
+        current.dataSourceConfig && "cloudWatchLogs" in current.dataSourceConfig
+          ? current.dataSourceConfig.cloudWatchLogs?.logGroupNames?.[0]
+          : undefined;
+      const runtimeId = currentLogGroup ? runtimeIdFromLogGroup(currentLogGroup) : undefined;
+      if (!runtimeId) {
+        throw new InputValidationError(
+          `Online insight config "${id}" was not created from an agent; ` +
+            `pass --agent or --data-source-config to repoint it`,
+          { meta: { onlineEvaluationConfigId: id } },
+        );
+      }
+      const endpoint = update.clearEndpoint ? DEFAULT_ENDPOINT_QUALIFIER : update.endpoint;
+      dataSourceConfig = await agentDataSource(runtimeId, endpoint, this.clients, options);
+    }
+
+    return control.send(
+      new UpdateOnlineEvaluationConfigCommand({
+        onlineEvaluationConfigId: id,
+        rule: toRule(samplingPercentage, sessionTimeoutMinutes, filters),
+        dataSourceConfig,
+        insights,
+        clusteringConfig,
+        evaluationExecutionRoleArn: update.evaluationExecutionRoleArn,
+      }),
+    );
   }
 
   async getOnlineInsight(id: string, options: CoreOptions): Promise<GetOnlineInsightResponse> {

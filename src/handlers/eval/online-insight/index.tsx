@@ -4,6 +4,7 @@ import type { Core } from "../../types";
 import { createCreateOnlineInsightHandler } from "./create";
 import { createGetOnlineInsightHandler } from "./get";
 import { createListOnlineInsightHandler } from "./list";
+import { createUpdateOnlineInsightHandler } from "./update";
 import { createPauseOnlineInsightHandler } from "./pause";
 import { createResumeOnlineInsightHandler } from "./resume";
 import { createDeleteOnlineInsightHandler } from "./delete";
@@ -14,6 +15,7 @@ export function createOnlineInsightHandler(core: Core, io: AppIO): Router {
     .handler(createCreateOnlineInsightHandler(core, io))
     .handler(createGetOnlineInsightHandler(core))
     .handler(createListOnlineInsightHandler(core))
+    .handler(createUpdateOnlineInsightHandler(core, io))
     .handler(createPauseOnlineInsightHandler(core))
     .handler(createResumeOnlineInsightHandler(core))
     .handler(createDeleteOnlineInsightHandler(core));

@@ -162,6 +162,19 @@ export type CreateOnlineInsightInput = {
   | { agent?: undefined; endpoint?: undefined; dataSourceConfig: DataSourceConfig }
 );
 
+export type UpdateOnlineInsightInput = {
+  samplingRate?: number;
+  sessionTimeoutMinutes?: number;
+  filters?: Rule["filters"];
+  insightIds?: string[];
+  clusteringConfig?: { frequencies: ("DAILY" | "WEEKLY" | "MONTHLY")[] };
+  agent?: string;
+  endpoint?: string;
+  clearEndpoint?: boolean;
+  dataSourceConfig?: DataSourceConfig;
+  evaluationExecutionRoleArn?: string;
+};
+
 // Online insight configs are the same OnlineEvaluationConfig resource with insights
 // instead of evaluators, so the responses share the SDK shapes under insight names.
 export type CreateOnlineInsightResponse = CreateOnlineEvaluationConfigResponse;
@@ -434,6 +447,11 @@ export interface CoreEvalClient {
     input: CreateOnlineInsightInput,
     options: CoreOptions,
   ): Promise<CreateOnlineInsightResponse>;
+  updateOnlineInsight(
+    id: string,
+    update: UpdateOnlineInsightInput,
+    options: CoreOptions,
+  ): Promise<UpdateOnlineInsightResponse>;
   getOnlineInsight(id: string, options: CoreOptions): Promise<GetOnlineInsightResponse>;
   listOnlineInsights(
     nextToken: string | undefined,

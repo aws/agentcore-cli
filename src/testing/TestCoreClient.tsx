@@ -130,6 +130,7 @@ import type {
   CreateDatasetInput,
   CreateOnlineEvalInput,
   CreateOnlineInsightInput,
+  UpdateOnlineInsightInput,
   DatasetUpdateResult,
   DatasetUpdateProgressEvent,
   EvaluateInput,
@@ -1867,6 +1868,16 @@ export class TestEvalClient implements CoreEvalClient {
     this.calls.push({ method: "createOnlineInsight", args: [input, options] });
     if (this.error) throw this.error;
     return this.onlineEvalCreateResponse;
+  }
+
+  async updateOnlineInsight(
+    id: string,
+    update: UpdateOnlineInsightInput,
+    options: CoreOptions,
+  ): Promise<UpdateOnlineEvaluationConfigResponse> {
+    this.calls.push({ method: "updateOnlineInsight", args: [id, update, options] });
+    if (this.error) throw this.error;
+    return this.onlineEvalUpdateResponse;
   }
 
   async getOnlineInsight(
