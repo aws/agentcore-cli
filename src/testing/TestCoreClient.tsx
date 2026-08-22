@@ -1810,10 +1810,10 @@ export class TestEvalClient implements CoreEvalClient {
     id: string,
     update: UpdateOnlineEvalInput,
     options: CoreOptions,
-  ): Promise<{ response: UpdateOnlineEvaluationConfigResponse }> {
+  ): Promise<UpdateOnlineEvaluationConfigResponse> {
     this.calls.push({ method: "updateOnlineEvaluationConfig", args: [id, update, options] });
     if (this.error) throw this.error;
-    return { response: this.onlineEvalUpdateResponse };
+    return this.onlineEvalUpdateResponse;
   }
 
   async getOnlineEvaluationConfig(

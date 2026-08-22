@@ -40,11 +40,7 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
         "trace filters (JSON Filter[]; inline, file://<path>, or - for stdin)",
         z.string().optional(),
       ),
-      flag(
-        "role-arn",
-        "IAM role the online evaluation assumes (default: auto-provisioned)",
-        z.string().optional(),
-      ),
+      flag("role-arn", "IAM role the online evaluation assumes (required)", z.string().optional()),
       flag(
         "enable-on-create",
         "whether to enable evaluation immediately (default true; pass false to create it paused)",
@@ -68,6 +64,9 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
         throw new InputValidationError(
           "required option '--evaluator <evaluator...>' not specified",
         );
+      }
+      if (!flags["role-arn"]) {
+        throw new InputValidationError("required option '--role-arn <role-arn>' not specified");
       }
 
       const hasAgent = flags["agent"] !== undefined;

@@ -100,7 +100,6 @@ import type {
   CodeBasedUpdate,
   DatasetUpdateProgressEvent,
   DatasetUpdateResult,
-  RoleScopeWarning,
   CoreEvalClient,
   CreateConfigurationBundleInput,
   CreateDatasetInput,
@@ -138,14 +137,6 @@ import type { Addition } from "./datasetDiff";
 import type { AwsClients, CoreFetch, CoreOptions } from "./types";
 import type { Logger } from "../logging";
 import { toClientConfig } from "./utils";
-import {
-  accountIdFromRoleArn,
-  executionPolicy,
-  grantOnlineEvalScope,
-  onlineEvalExecutionRoleName,
-  revokeOnlineEvalScope,
-  scopePolicyName,
-} from "./onlineEvalExecutionRole";
 
 const DEFAULT_ENDPOINT_QUALIFIER = "DEFAULT";
 const DATASET_EXAMPLES_BATCH_LIMIT = 1000;
@@ -739,40 +730,17 @@ export class EvalClient implements CoreEvalClient {
         : input.dataSourceConfig;
     const control = this.clients.control(toClientConfig(options));
 
-    // The service validates at create time that the role can query the log groups
-    // it was pointed at, and the required policy is not obvious, so provision a
-    // default role scoped to them unless the caller brought their own.
-    const evaluationExecutionRoleArn =
-      input.evaluationExecutionRoleArn ??
-      (
-        await grantOnlineEvalScope(
-          // IAM is a global service; the region only selects the endpoint, and the
-          // agentcore endpoint override must not leak onto it.
-          this.clients.iam({ region: options.region }),
-          input.name,
-          options.region,
-          logGroupNamesOf(dataSourceConfig),
-          await evaluatorKmsKeys(input.evaluatorIds ?? [], control),
-        )
-      ).roleArn;
-
-    const command = new CreateOnlineEvaluationConfigCommand({
-      onlineEvaluationConfigName: input.name,
-      description: input.description,
-      rule: toRule(input.samplingRate, input.sessionTimeoutMinutes, input.filters),
-      dataSourceConfig,
-      evaluators: input.evaluatorIds?.map((evaluatorId) => ({ evaluatorId })),
-      evaluationExecutionRoleArn,
-      enableOnCreate: input.enableOnCreate ?? true,
-    });
-
-    // A role provisioned moments ago may not be assumable yet (IAM is eventually
-    // consistent), and the service rejects the create rather than retrying. Only
-    // worth retrying when we just created the role; a caller-supplied one that
-    // cannot be assumed is a real misconfiguration and fails immediately.
-    return input.evaluationExecutionRoleArn
-      ? control.send(command)
-      : retryWhileRolePropagates(() => control.send(command));
+    return control.send(
+      new CreateOnlineEvaluationConfigCommand({
+        onlineEvaluationConfigName: input.name,
+        description: input.description,
+        rule: toRule(input.samplingRate, input.sessionTimeoutMinutes, input.filters),
+        dataSourceConfig,
+        evaluators: input.evaluatorIds?.map((evaluatorId) => ({ evaluatorId })),
+        evaluationExecutionRoleArn: input.evaluationExecutionRoleArn,
+        enableOnCreate: input.enableOnCreate ?? true,
+      }),
+    );
   }
 
   async createOnlineInsight(
@@ -886,10 +854,7 @@ export class EvalClient implements CoreEvalClient {
     id: string,
     update: UpdateOnlineEvalInput,
     options: CoreOptions,
-  ): Promise<{
-    response: UpdateOnlineEvaluationConfigResponse;
-    roleScopeWarning?: RoleScopeWarning;
-  }> {
+  ): Promise<UpdateOnlineEvaluationConfigResponse> {
     const control = this.clients.control(toClientConfig(options));
     const current = await control.send(
       new GetOnlineEvaluationConfigCommand({
@@ -941,105 +906,7 @@ export class EvalClient implements CoreEvalClient {
       dataSourceConfig = await agentDataSource(runtimeId, endpoint, this.clients, options);
     }
 
-    // Moving the data source invalidates the execution role's scope: its policy
-    // grants query access to the previous log groups only. A role the caller named
-    // via --role-arn is theirs to manage and is never edited; a CLI-provisioned one
-    // (identified by its derived name) is re-scoped unless the caller declines.
-    // Either way, skipping the refresh is reported so the caller can be told.
-    let roleScopeWarning: RoleScopeWarning | undefined;
-    const movedTo =
-      dataSourceConfig !== undefined && dataSourceConfig !== current.dataSourceConfig
-        ? dataSourceConfig
-        : undefined;
-
-    const configName = current.onlineEvaluationConfigName;
-    const roleArn = update.evaluationExecutionRoleArn ?? current.evaluationExecutionRoleArn;
-    const managedRoleName =
-      configName !== undefined &&
-      update.evaluationExecutionRoleArn === undefined &&
-      roleArn?.endsWith(`/${onlineEvalExecutionRoleName(configName)}`) === true
-        ? configName
-        : undefined;
-    const refreshManagedRole = movedTo !== undefined && managedRoleName !== undefined;
-
-    if (movedTo !== undefined && managedRoleName === undefined && roleArn) {
-      roleScopeWarning = {
-        reason: "custom-role",
-        roleArn,
-        logGroupNames: logGroupNamesOf(movedTo),
-      };
-    } else if (movedTo !== undefined && !refreshManagedRole && roleArn) {
-      // managed role, but the caller declined the refresh
-      roleScopeWarning = {
-        reason: "update-declined",
-        roleArn,
-        logGroupNames: logGroupNamesOf(movedTo),
-      };
-    }
-
-    if (refreshManagedRole && update.updateRole !== false) {
-      const iam = this.clients.iam({ region: options.region });
-      const newLogGroups = logGroupNamesOf(movedTo);
-      const oldLogGroups = current.dataSourceConfig
-        ? logGroupNamesOf(current.dataSourceConfig)
-        : [];
-      // The evaluator list may have changed alongside the data source, so
-      // re-resolve the keys rather than reusing the ones from create.
-      const kmsKeys = await evaluatorKmsKeys(
-        update.evaluatorIds ??
-          (current.evaluators ?? [])
-            .map((e) => ("evaluatorId" in e ? e.evaluatorId : undefined))
-            .filter((id): id is string => id !== undefined),
-        control,
-      );
-
-      // Grant the new scope as its own inline policy before the update, then
-      // revoke the superseded one only once the update has landed. IAM unions
-      // Allows across a role's inline policies, so both scopes are granted in
-      // between — and because each scope is a separate policy, a failed update
-      // leaves the one backing the current data source exactly as it was.
-      const { roleArn: managedRoleArn, policyName: newPolicyName } = await grantOnlineEvalScope(
-        iam,
-        managedRoleName,
-        options.region,
-        newLogGroups,
-        kmsKeys,
-      );
-      const oldPolicyName = scopePolicyName(
-        executionPolicy(
-          options.region,
-          accountIdFromRoleArn(managedRoleArn),
-          oldLogGroups,
-          kmsKeys,
-        ),
-      );
-
-      const response = await control.send(
-        new UpdateOnlineEvaluationConfigCommand({
-          onlineEvaluationConfigId: id,
-          rule: toRule(samplingPercentage, sessionTimeoutMinutes, filters),
-          dataSourceConfig,
-          evaluators,
-        }),
-      );
-
-      if (newPolicyName !== oldPolicyName) {
-        try {
-          await revokeOnlineEvalScope(iam, managedRoleName, oldPolicyName);
-        } catch {
-          // The config is already correct; the role just still grants a data
-          // source it no longer uses.
-          roleScopeWarning = {
-            reason: "stale-scope",
-            roleArn: roleArn!,
-            logGroupNames: oldLogGroups,
-          };
-        }
-      }
-      return { response, roleScopeWarning };
-    }
-
-    const response = await control.send(
+    return control.send(
       new UpdateOnlineEvaluationConfigCommand({
         onlineEvaluationConfigId: id,
         rule: toRule(samplingPercentage, sessionTimeoutMinutes, filters),
@@ -1048,7 +915,6 @@ export class EvalClient implements CoreEvalClient {
         evaluationExecutionRoleArn: update.evaluationExecutionRoleArn,
       }),
     );
-    return { response, roleScopeWarning };
   }
 
   async getOnlineEvaluationConfig(
@@ -1918,59 +1784,6 @@ function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
-}
-
-// A just-written role or inline policy is not visible to the service immediately
-// (IAM is eventually consistent), and the service validates both when the config
-// is created. It surfaces as one of two messages depending on which part has not
-// propagated yet.
-const ROLE_NOT_PROPAGATED =
-  /role cannot be assumed|does not have permissions to (create log group|access the specified log groups)/i;
-
-// retryWhileRolePropagates retries `send` while the service reports the execution
-// role as unusable, which is how a not-yet-propagated role or policy surfaces.
-// Bounded and short: propagation is normally a few seconds, and a role that is
-// genuinely misconfigured should fail fast rather than hang.
-async function retryWhileRolePropagates<T>(send: () => Promise<T>): Promise<T> {
-  const delaysMs = [1_000, 2_000, 4_000, 8_000];
-  for (const delay of delaysMs) {
-    try {
-      return await send();
-    } catch (error) {
-      if (!ROLE_NOT_PROPAGATED.test((error as Error).message)) throw error;
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-  }
-  return send();
-}
-
-// evaluatorKmsKeys collects the customer managed KMS keys of the referenced
-// evaluators. The service validates that the execution role can decrypt them when
-// the config is created, so a provisioned role has to grant kms:Decrypt on exactly
-// these keys. Builtins carry no key, so the common case resolves to nothing. A
-// GetEvaluator failure propagates as-is: the SDK's error already names the
-// operation and the evaluator, and it is not the caller's input at fault.
-async function evaluatorKmsKeys(
-  evaluatorIds: string[],
-  control: BedrockAgentCoreControlClient,
-): Promise<string[]> {
-  const keys = await Promise.all(
-    evaluatorIds.map(async (evaluatorId) => {
-      const evaluator = await control.send(new GetEvaluatorCommand({ evaluatorId }));
-      return evaluator.kmsKeyArn;
-    }),
-  );
-  return [...new Set(keys.filter((key): key is string => key !== undefined))];
-}
-
-// logGroupNamesOf reads the log groups out of a resolved dataSourceConfig, for
-// scoping the default execution role. cloudWatchLogs is the only arm the API
-// defines today; an unrecognized one yields no groups rather than throwing, so a
-// future arm degrades to a role the caller can still override with --role-arn.
-function logGroupNamesOf(dataSourceConfig: DataSourceConfig): string[] {
-  return "cloudWatchLogs" in dataSourceConfig
-    ? (dataSourceConfig.cloudWatchLogs?.logGroupNames ?? [])
-    : [];
 }
 
 // runtimeIdFromLogGroup recovers the runtime id embedded in a log group path

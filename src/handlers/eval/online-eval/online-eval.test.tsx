@@ -32,8 +32,8 @@ const FIXTURE_EVALUATOR_ID = "Builtin.Helpfulness";
 const FIXTURE_AGENT_ID = "testAgent_Agent-wm9hYBD93Y";
 const FIXTURE_AGENT_NAME = "testAgent_Agent";
 
-// An explicit execution role, to record the --role-arn override path. Omitting
-// the flag provisions a default role instead, which the create test below covers.
+// The execution role every create supplies. --role-arn is required now; the CLI
+// no longer provisions a role, so this must be an assumable role in the account.
 const FIXTURE_ROLE_ARN = "arn:aws:iam::725476964917:role/AgentCoreEvalsSDK-us-west-2-a6864eb339";
 
 // Online evaluation config ids match `[a-zA-Z][a-zA-Z0-9-_]{0,99}-[a-zA-Z0-9]{10}`.
@@ -137,6 +137,8 @@ describe("online-eval CRUDL", () => {
       "10",
       "--session-timeout-minutes",
       "30",
+      "--role-arn",
+      FIXTURE_ROLE_ARN,
       "--enable-on-create",
       "false",
     ]);
@@ -231,9 +233,12 @@ describe("online-eval CRUDL", () => {
   }, 60_000);
 
   test("deletes the online evaluation config", async () => {
+    // The preceding pause leaves the config UPDATING, and the service rejects a
+    // delete in that state. Wait it out while recording; a no-op on replay.
+    await settle();
     const stdout = await run(["eval", "online-eval", "delete", "--id", configId]);
     matchGolden(FIXTURES, "delete.golden.json", stdout);
-  });
+  }, 30_000);
 
   test("propagates ResourceNotFoundException from get", async () => {
     await expect(
@@ -326,6 +331,24 @@ describe("flag validation", () => {
     ).rejects.toThrow(/Invalid JSON for option '--data-source-config'/);
   });
 
+  test("create requires --role-arn", async () => {
+    await expect(
+      run([
+        "eval",
+        "online-eval",
+        "create",
+        "--name",
+        CONFIG_NAME,
+        "--agent",
+        FIXTURE_AGENT_ID,
+        "--evaluator",
+        FIXTURE_EVALUATOR_ID,
+        "--sampling-rate",
+        "10",
+      ]),
+    ).rejects.toThrow(/required option '--role-arn <role-arn>' not specified/);
+  });
+
   test("update rejects --endpoint together with --clear-endpoint", async () => {
     await expect(
       run([
@@ -381,133 +404,4 @@ describe("flag validation", () => {
       /required option '--id <id>' not specified/,
     );
   });
-});
-
-// A separate config, so this never perturbs the CRUDL sequence above: inserting an
-// extra update there shifts which recording each of its calls keys to.
-// Provisioning has to grant kms:Decrypt on the keys of any customer-managed-key
-// evaluator the config references, because the service validates that permission
-// when the config is created. Resolution reads GetEvaluator.kmsKeyArn, which the
-// service currently only reports for ~2 minutes after an evaluator is created
-// (P484740478), so the encrypted evaluator here is backed by a hand-authored
-// fixture representing the documented behavior rather than a live recording.
-describe("execution role KMS scoping", () => {
-  const KMS_CONFIG_NAME = "agentcore_cli_online_eval_kms";
-
-  test("provisions a role for a config referencing an encrypted evaluator", async () => {
-    const stdout = await run([
-      "eval",
-      "online-eval",
-      "create",
-      "--name",
-      KMS_CONFIG_NAME,
-      "--agent",
-      FIXTURE_AGENT_ID,
-      // Builtin.Correctness is backed by the hand-authored fixture carrying a
-      // kmsKeyArn; Builtin.Helpfulness carries none, so this covers both arms of
-      // the resolution in one create.
-      "--evaluator",
-      FIXTURE_EVALUATOR_ID,
-      "--evaluator",
-      "Builtin.Correctness",
-      "--sampling-rate",
-      "10",
-      "--enable-on-create",
-      "false",
-    ]);
-
-    const created = JSON.parse(stdout);
-    expect(created.onlineEvaluationConfigId).toBeString();
-    // No --role-arn, so the role is the provisioned one named after the config.
-    // Asserting the ARN mirrors how harness covers its default role.
-    const detail = JSON.parse(
-      await run(["eval", "online-eval", "get", "--id", created.onlineEvaluationConfigId]),
-    );
-    expect(detail.evaluationExecutionRoleArn).toContain(`AgentCoreOnlineEval-${KMS_CONFIG_NAME}`);
-
-    await settle();
-    await run(["eval", "online-eval", "delete", "--id", created.onlineEvaluationConfigId]);
-  }, 90_000);
-});
-
-describe("execution role scoping on update", () => {
-  const WARN_CONFIG_NAME = "agentcore_cli_online_eval_role_warn";
-
-  test("warns when a custom role is left scoped to the old log groups", async () => {
-    const created = await run([
-      "eval",
-      "online-eval",
-      "create",
-      "--name",
-      WARN_CONFIG_NAME,
-      "--agent",
-      FIXTURE_AGENT_ID,
-      "--evaluator",
-      FIXTURE_EVALUATOR_ID,
-      "--sampling-rate",
-      "10",
-      "--role-arn",
-      FIXTURE_ROLE_ARN,
-      "--enable-on-create",
-      "false",
-    ]);
-    const warnConfigId = JSON.parse(created).onlineEvaluationConfigId;
-    await settle();
-
-    // Repointing at a different agent moves the log groups, but the role came from
-    // --role-arn, so the CLI must not touch its permissions — only report it.
-    const io = testIO();
-    const root = createRootHandler(createFixtureCore(), {
-      io: io.io,
-      logger: createSilentLogger(),
-      globalConfigAccessor: new TestGlobalConfigAccessor(),
-    });
-    await root.route([
-      "node",
-      "agentcore",
-      "eval",
-      "online-eval",
-      "update",
-      "--id",
-      warnConfigId,
-      "--agent",
-      "ABVfyLatest_ABVfyLatest-PFLr353QVA",
-      "--region",
-      REGION,
-    ]);
-
-    // Human-readable mode: the advisory goes to stderr, leaving stdout alone.
-    expect(io.stderr()).toContain("not managed by the CLI");
-    expect(io.stderr()).toContain(FIXTURE_ROLE_ARN);
-
-    await settle();
-
-    // --json suppresses the advisory, matching runtime/invoke's summary: a scripted
-    // caller gets machine-readable stdout and an empty stderr.
-    const jsonIo = testIO();
-    const jsonRoot = createRootHandler(createFixtureCore(), {
-      io: jsonIo.io,
-      logger: createSilentLogger(),
-      globalConfigAccessor: new TestGlobalConfigAccessor(),
-    });
-    await jsonRoot.route([
-      "node",
-      "agentcore",
-      "eval",
-      "online-eval",
-      "update",
-      "--id",
-      warnConfigId,
-      "--agent",
-      FIXTURE_AGENT_ID,
-      "--region",
-      REGION,
-      "--json",
-    ]);
-    expect(jsonIo.stderr()).toBe("");
-    expect(JSON.parse(jsonIo.stdout()).onlineEvaluationConfigId).toBe(warnConfigId);
-
-    await settle();
-    await run(["eval", "online-eval", "delete", "--id", warnConfigId]);
-  }, 90_000);
 });

@@ -274,16 +274,16 @@
       }
     },
     {
-      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_fixture-vYkaD93sFk",
-      "onlineEvaluationConfigId": "agentcore_cli_online_eval_fixture-vYkaD93sFk",
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_fixture-t4iCZO7igg",
+      "onlineEvaluationConfigId": "agentcore_cli_online_eval_fixture-t4iCZO7igg",
       "onlineEvaluationConfigName": "agentcore_cli_online_eval_fixture",
-      "status": "CREATING",
+      "status": "ACTIVE",
       "executionStatus": "DISABLED",
       "createdAt": {
-        "$date": "2026-08-03T21:29:43.069Z"
+        "$date": "2026-08-25T19:14:01.393Z"
       },
       "updatedAt": {
-        "$date": "2026-08-03T21:29:43.069Z"
+        "$date": "2026-08-25T19:14:01.595Z"
       }
     },
     {
@@ -411,6 +411,24 @@
       "updatedAt": {
         "$date": "2026-04-21T22:47:52.237Z"
       }
+    },
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/oiVerify1_prodInsights-rPYFuF2WsE",
+      "onlineEvaluationConfigId": "oiVerify1_prodInsights-rPYFuF2WsE",
+      "onlineEvaluationConfigName": "oiVerify1_prodInsights",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-08-21T16:49:04.244Z"
+      },
+      "updatedAt": {
+        "$date": "2026-08-21T16:49:04.485Z"
+      },
+      "insights": [
+        {
+          "insightId": "Builtin.Insight.FailureAnalysis"
+        }
+      ]
     },
     {
       "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/temp-5Dz9Ox6yMC",

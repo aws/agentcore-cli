@@ -4,7 +4,7 @@ import type { BatchEvaluationResultEntry } from "../handlers/eval/types";
 import type { Logger } from "../logging";
 
 // Per-session batch-evaluation result retrieval, mirroring
-// core/onlineEvalExecutionRole.tsx's pattern: a self-contained module that takes
+// core/executionRole.tsx's pattern: a self-contained module that takes
 // an injected AWS client (here CloudWatchLogsClient) and owns one slice of Core's
 // behavior. A completed batch evaluation writes each score as an OTel-shaped log
 // record to a per-job CloudWatch stream; this module reads that stream and parses
