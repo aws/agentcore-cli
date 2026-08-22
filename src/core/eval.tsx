@@ -578,14 +578,9 @@ export class EvalClient implements CoreEvalClient {
       enableOnCreate: input.enableOnCreate ?? true,
     });
 
-    // The role is caller-supplied, so one that cannot be assumed is a real
-    // misconfiguration — fail fast rather than retry as we do for a role we just
-    // provisioned ourselves.
     return control.send(command);
   }
 
-  // Insight configs are the same resource as eval configs, so reads and lifecycle
-  // reuse the eval methods; only create/update differ (insights vs evaluators).
   getOnlineInsight(id: string, options: CoreOptions): Promise<GetOnlineEvaluationConfigResponse> {
     return this.getOnlineEvaluationConfig(id, options);
   }

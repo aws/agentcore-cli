@@ -146,9 +146,6 @@ export type CreateOnlineEvalInput = {
   | { agent?: undefined; endpoint?: undefined; dataSourceConfig: DataSourceConfig }
 );
 
-// CreateOnlineInsightInput mirrors CreateOnlineEvalInput but applies insights
-// instead of evaluators and requires a caller-supplied execution role — insight
-// configs are never given an auto-provisioned role.
 export type CreateOnlineInsightInput = {
   name: string;
   description?: string;
@@ -362,9 +359,6 @@ export interface CoreEvalClient {
     options: CoreOptions,
   ): Promise<DeleteOnlineEvaluationConfigResponse>;
 
-  // Online insight configs are the same underlying OnlineEvaluationConfig resource
-  // with insights instead of evaluators, so read/lifecycle share the eval methods;
-  // create applies insights + optional clustering and requires a BYO role.
   createOnlineInsight(
     input: CreateOnlineInsightInput,
     options: CoreOptions,
