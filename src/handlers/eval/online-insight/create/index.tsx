@@ -16,12 +16,8 @@ export const createCreateOnlineInsightHandler = (core: Core, io: AppIO) =>
     description: "create an online insight config",
     flags: [
       flag("name", "the name of the online insight config", z.string().optional()),
-      flag(
-        "execution-role-arn",
-        "IAM role the online insight assumes (required; not auto-provisioned)",
-        z.string().optional(),
-      ),
-      flag("agent", "harness ID or runtime ID whose traffic to sample", z.string().optional()),
+      flag("role-arn", "IAM role the online insight assumes", z.string().optional()),
+      flag("agent", "runtime ID whose traffic to sample", z.string().optional()),
       flag(
         "endpoint",
         "the agent endpoint qualifier to scope monitoring to (default DEFAULT)",
@@ -71,10 +67,8 @@ export const createCreateOnlineInsightHandler = (core: Core, io: AppIO) =>
     handle: async (ctx, flags) => {
       if (!flags["name"])
         throw new InputValidationError("required option '--name <name>' not specified");
-      if (!flags["execution-role-arn"])
-        throw new InputValidationError(
-          "required option '--execution-role-arn <execution-role-arn>' not specified",
-        );
+      if (!flags["role-arn"])
+        throw new InputValidationError("required option '--role-arn <role-arn>' not specified");
       if (!flags["sampling-rate"])
         throw new InputValidationError(
           "required option '--sampling-rate <sampling-rate>' not specified",
@@ -111,7 +105,7 @@ export const createCreateOnlineInsightHandler = (core: Core, io: AppIO) =>
         ),
         insightIds: flags["insight"],
         clusteringConfig: frequencies ? { frequencies } : undefined,
-        evaluationExecutionRoleArn: flags["execution-role-arn"],
+        evaluationExecutionRoleArn: flags["role-arn"],
         enableOnCreate:
           flags["enable-on-create"] === undefined
             ? undefined
