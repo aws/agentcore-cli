@@ -941,6 +941,36 @@ describe('handleProjectStatus — live enrichment', () => {
   });
 });
 
+describe('handleProjectStatus — target resolution', () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it('returns undefined targetName when no targets are configured', async () => {
+    const ctx = {
+      project: baseProject,
+      awsTargets: [],
+      deployedState: { targets: {} },
+    } as unknown as StatusContext;
+
+    const result = await handleProjectStatus(ctx);
+
+    assert(result.success);
+    expect(result.targetName).toBeUndefined();
+  });
+
+  it('returns the configured target name when a target exists', async () => {
+    const ctx = {
+      project: baseProject,
+      awsTargets: [{ name: 'dev', region: 'us-east-1', account: '123456789' }],
+      deployedState: { targets: {} },
+    } as unknown as StatusContext;
+
+    const result = await handleProjectStatus(ctx);
+
+    assert(result.success);
+    expect(result.targetName).toBe('dev');
+  });
+});
+
 describe('handleProjectStatus — knowledge base enrichment', () => {
   beforeEach(() => {
     mockGetKnowledgeBase.mockReset();
