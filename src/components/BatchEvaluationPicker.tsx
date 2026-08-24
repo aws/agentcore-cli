@@ -41,6 +41,11 @@ function toRow(summary: BatchEvaluationSummary): BatchEvaluationRow {
 export interface BatchEvaluationPickerProps extends ScreenProps {
   breadcrumb: string[];
   description?: string;
+  queryKeyPrefix?: string;
+  include?: (summary: BatchEvaluationSummary) => boolean;
+  loadingMessage?: string;
+  emptyMessage?: string;
+  emptyPageMessage?: string;
   onSelect: (batchEvaluationId: string) => void;
   onEscape?: () => void;
 }
@@ -55,6 +60,11 @@ export function BatchEvaluationPicker({
   core,
   breadcrumb,
   description,
+  queryKeyPrefix = "batch-evaluations",
+  include,
+  loadingMessage = "Loading batch evaluations…",
+  emptyMessage = "No batch evaluations found in this Region.",
+  emptyPageMessage = "No batch evaluations on this page.",
   onSelect,
   onEscape,
 }: BatchEvaluationPickerProps) {
@@ -66,11 +76,11 @@ export function BatchEvaluationPicker({
     <PaginatedTablePicker
       breadcrumb={breadcrumb}
       description={description}
-      queryKey={["batch-evaluations", opts.region]}
+      queryKey={[queryKeyPrefix, opts.region]}
       loadPage={async (token, pageSize) => {
         const response = await core.eval.listBatchEvaluations(token, pageSize, opts);
         return {
-          items: response.batchEvaluations ?? [],
+          items: (response.batchEvaluations ?? []).filter((summary) => include?.(summary) ?? true),
           nextToken: response.nextToken,
         };
       }}
@@ -79,10 +89,10 @@ export function BatchEvaluationPicker({
       getValue={(row) => row.batchEvaluationId}
       onSelect={onSelect}
       onBack={goBack}
-      loadingMessage="Loading batch evaluations…"
+      loadingMessage={loadingMessage}
       errorMessage={(error) => `Error: ${error.message}`}
-      emptyMessage="No batch evaluations found in this Region."
-      emptyPageMessage="No batch evaluations on this page."
+      emptyMessage={emptyMessage}
+      emptyPageMessage={emptyPageMessage}
     />
   );
 }

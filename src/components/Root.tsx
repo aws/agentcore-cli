@@ -51,6 +51,9 @@ import {
 import { BatchEvaluationScreen } from "../handlers/eval/batch-evaluation/screen.tsx";
 import { BatchEvaluationListScreen } from "../handlers/eval/batch-evaluation/list/screen.tsx";
 import { BatchEvaluationGetJsonScreen } from "../handlers/eval/batch-evaluation/get/screen.tsx";
+import { BatchInsightsScreen } from "../handlers/eval/batch-insights/screen.tsx";
+import { BatchInsightsListScreen } from "../handlers/eval/batch-insights/list/screen.tsx";
+import { BatchInsightsGetJsonScreen } from "../handlers/eval/batch-insights/get/screen.tsx";
 import { DatasetScreen } from "../handlers/eval/dataset/screen.tsx";
 import { DatasetListScreen } from "../handlers/eval/dataset/list/screen.tsx";
 import { DatasetGetScreen, DatasetGetJsonScreen } from "../handlers/eval/dataset/get/screen.tsx";
@@ -548,6 +551,22 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/eval/batch-evaluation/get/:batchEvaluationId"
             element={<BatchEvaluationGetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/batch-insights"
+            element={<BatchInsightsScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/batch-insights/list"
+            element={<BatchInsightsListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/batch-insights/get"
+            element={<Navigate to="/agentcore/eval/batch-insights/list" replace />}
+          />
+          <Route
+            path="agentcore/eval/batch-insights/get/:batchEvaluationId"
+            element={<BatchInsightsGetJsonScreen ctx={ctx} core={core} />}
           />
           <Route
             path="agentcore/memory/event"

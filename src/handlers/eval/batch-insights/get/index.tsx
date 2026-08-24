@@ -4,6 +4,7 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
+import { InsightsJob } from "../insightsJob";
 
 export const createGetBatchInsightsHandler = (core: Core) =>
   createHandler({
@@ -18,10 +19,10 @@ export const createGetBatchInsightsHandler = (core: Core) =>
       const { detail } = await core.eval.getBatchEvaluation(id, opts, {
         includeResults: false,
       });
-      if (!detail.insights?.length) {
-        throw new InputValidationError(`batch evaluation "${id}" is not a batch insights run`);
-      }
+      InsightsJob.assert(detail, id);
 
       ctx.require(JsonRendererKey).renderJson(detail);
     },
   });
+
+export { BatchInsightsGetJsonScreen } from "./screen.tsx";

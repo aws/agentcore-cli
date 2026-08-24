@@ -3,6 +3,7 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
+import { InsightsJob } from "../insightsJob";
 
 export const createListBatchInsightsHandler = (core: Core) =>
   createHandler({
@@ -22,9 +23,9 @@ export const createListBatchInsightsHandler = (core: Core) =>
 
       ctx.require(JsonRendererKey).renderJson({
         ...response,
-        batchEvaluations: (response.batchEvaluations ?? []).filter(
-          (evaluation) => evaluation.insights?.length,
-        ),
+        batchEvaluations: (response.batchEvaluations ?? []).filter(InsightsJob.is),
       });
     },
   });
+
+export { BatchInsightsListScreen } from "./screen.tsx";
