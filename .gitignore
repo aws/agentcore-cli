@@ -7,6 +7,9 @@ dist
 *.tgz
 *.bun-build
 
+# staged Agent Inspector SPA (copied from @aws/agent-inspector at build time)
+src/assets/agent-inspector/
+
 # code coverage
 coverage
 *.lcov

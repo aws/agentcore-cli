@@ -19,6 +19,7 @@ export {
 } from "./exec";
 export { FsReadWriteJson } from "./json";
 export { readTextFile, type ReadTextFileOptions } from "./fileRead";
+export { readOptionalBytes, resolvePackageFileDir } from "./packagedAssets";
 export {
   parseJsonObjectLines,
   type JsonObject,
