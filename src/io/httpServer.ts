@@ -16,12 +16,15 @@ export interface HttpRequest {
   url: string;
   headers: IncomingHttpHeaders;
   body: Buffer;
+  /** Aborts when the client disconnects, so a handler can cancel upstream work. */
+  signal: AbortSignal;
 }
 
 export interface HttpResponse {
   status: number;
   headers?: Record<string, string>;
-  body?: string | Buffer;
+  /** A string/Buffer sends one response; an async iterable streams chunks (SSE). */
+  body?: string | Buffer | AsyncIterable<Uint8Array>;
 }
 
 export type HttpRequestHandler = (request: HttpRequest) => HttpResponse | Promise<HttpResponse>;
@@ -68,6 +71,14 @@ async function respond(
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<void> {
+  // On Node (the runtime the published bundle targets) the response emits
+  // "close" when the client disconnects, aborting the signal so a proxied agent
+  // request tears down with it. Under Bun's node:http a mid-stream disconnect is
+  // not surfaced, so this teardown is a no-op there, which only leaks a local
+  // dev fetch until it finishes on its own.
+  const controller = new AbortController();
+  response.on("close", () => controller.abort());
+
   let body: Buffer;
   try {
     body = await readBody(request);
@@ -85,9 +96,14 @@ async function respond(
       url: request.url ?? "/",
       headers: request.headers,
       body,
+      signal: controller.signal,
     });
     response.writeHead(result.status, result.headers);
-    response.end(result.body);
+    if (isAsyncIterable(result.body)) {
+      await stream(result.body, response, controller.signal);
+    } else {
+      response.end(result.body);
+    }
   } catch {
     // Once any byte is written, writeHead throws, so only send the 500 when the
     // response has not started; otherwise just close what is already open.
@@ -98,6 +114,37 @@ async function respond(
     response.writeHead(500, { "Content-Type": "application/json" });
     response.end(JSON.stringify({ error: "internal error" }));
   }
+}
+
+function isAsyncIterable(body: HttpResponse["body"]): body is AsyncIterable<Uint8Array> {
+  return typeof body === "object" && body !== null && Symbol.asyncIterator in body;
+}
+
+/** Pump an async iterable to the response, honoring backpressure and disconnects. */
+export async function stream(
+  body: AsyncIterable<Uint8Array>,
+  response: ServerResponse,
+  signal: AbortSignal,
+): Promise<void> {
+  for await (const chunk of body) {
+    if (signal.aborted) break;
+    if (!response.write(chunk)) await drain(response, signal);
+  }
+  if (!signal.aborted) response.end();
+}
+
+/** Resolve when the write buffer flushes or the connection closes. */
+function drain(response: ServerResponse, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      response.off("drain", done);
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    response.once("drain", done);
+    signal.addEventListener("abort", done, { once: true });
+  });
 }
 
 class BodyTooLargeError extends Error {}

@@ -2,12 +2,15 @@
  * The Agent Inspector request handler: a pure request → response function the
  * dev command composes with io/startHttpServer. It ports the reference
  * WebUIServer's security model (DNS-rebinding Host check, server-side origin
- * allowlist, X-Agentcore-Local on POSTs, CORS preflight) and the routes the SPA
- * calls this layer: status, on-demand start, trace reads, and the static SPA.
- * Agent-proxy routes (invocations, MCP, A2A, resources) register in a later PR.
+ * allowlist, X-Agentcore-Local on POSTs, CORS preflight) and the SPA routes this
+ * layer answers: status, on-demand start, trace reads, agent invocation, the MCP
+ * and A2A proxies, the project resource graph, and the static SPA.
  */
 import { ResourceNotFoundError } from "../../../errors";
 import type { HttpRequest, HttpRequestHandler, HttpResponse } from "../../../io/httpServer";
+import { handleInvocations } from "./invocations";
+import { handleMcpProxy, handleA2aAgentCard } from "./proxies";
+import { handleResources } from "./resources";
 import { apiError, asString, errorMessage, json, parseJsonBody, parseTimeParam } from "./respond";
 import type { InspectorDeps } from "./types";
 
@@ -33,6 +36,10 @@ const STATIC_CORS_HEADERS = {
 } as const;
 
 export function createInspectorHandler(deps: InspectorDeps): HttpRequestHandler {
+  // A2A message ids must be unique per JSON-RPC call across the handler's life.
+  let a2aId = 0;
+  const nextA2aId = () => ++a2aId;
+
   return async (request) => {
     // DNS rebinding protection — a custom domain resolving to 127.0.0.1 would
     // bypass origin checks, so only loopback Host headers are accepted.
@@ -56,12 +63,16 @@ export function createInspectorHandler(deps: InspectorDeps): HttpRequestHandler 
       return withHeaders(forbidden("Forbidden: missing X-Agentcore-Local header"), cors);
     }
 
-    const response = await route(deps, request);
+    const response = await route(deps, request, nextA2aId);
     return withHeaders(response, cors);
   };
 }
 
-async function route(deps: InspectorDeps, request: HttpRequest): Promise<HttpResponse> {
+async function route(
+  deps: InspectorDeps,
+  request: HttpRequest,
+  nextA2aId: () => number,
+): Promise<HttpResponse> {
   const url = new URL(request.url, "http://localhost");
   const { pathname } = url;
   const { method } = request;
@@ -70,6 +81,14 @@ async function route(deps: InspectorDeps, request: HttpRequest): Promise<HttpRes
   if (method === "GET" && pathname === "/api/traces") return handleListTraces(deps, url);
   if (method === "GET" && pathname.startsWith("/api/traces/")) return handleGetTrace(deps, url);
   if (method === "POST" && pathname === "/api/start") return handleStart(deps, request);
+  if (method === "POST" && pathname === "/invocations") {
+    return handleInvocations(deps, request, nextA2aId);
+  }
+  if (method === "POST" && pathname === "/api/mcp") return handleMcpProxy(deps, request);
+  if (method === "GET" && pathname === "/api/a2a/agent-card") {
+    return handleA2aAgentCard(deps, url, request.signal);
+  }
+  if (method === "GET" && pathname === "/api/resources") return handleResources(deps);
   if (method === "GET" && !pathname.startsWith("/api/")) {
     const asset = await serveAsset(deps, pathname);
     if (asset) return asset;
