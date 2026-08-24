@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { parseEnv } from "node:util";
-import { EnvLocalFile } from "./envLocal";
+import { CLIENT_SECRET_SUFFIX, credentialEnvVarName, EnvLocalFile } from "./envLocal";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -66,6 +66,30 @@ test.each([
 
   const parsed = parseEnv(await Bun.file(file.path).text()) as Record<string, string>;
   expect(parsed.SECRET).toBe(expected);
+});
+
+test("read returns an empty record when the file does not exist", async () => {
+  const root = await tempRoot();
+  expect(await new EnvLocalFile(root).read()).toEqual({});
+});
+
+test("read parses back exactly what insertIfNew wrote", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+  await file.insertIfNew([
+    { key: "SECRET", value: "  spaced # value  ", comment: "c" },
+    { key: "EMPTY", comment: "c" },
+  ]);
+
+  expect(await file.read()).toEqual({ SECRET: "  spaced # value  ", EMPTY: "" });
+});
+
+test.each([
+  ["openai-key", "AGENTCORE_CREDENTIAL_OPENAI_KEY"],
+  ["mixed_Case-name", "AGENTCORE_CREDENTIAL_MIXED_CASE_NAME"],
+])("credentialEnvVarName maps %p to %p", (name, expected) => {
+  expect(credentialEnvVarName(name)).toBe(expected);
+  expect(credentialEnvVarName(name, CLIENT_SECRET_SUFFIX)).toBe(`${expected}_CLIENT_SECRET`);
 });
 
 test("rejects a value that contains a single quote", async () => {

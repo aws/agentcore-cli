@@ -1,5 +1,6 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
+import { parseEnv } from "node:util";
 import { atomicWrite, readTextFile } from "../../io";
 import { InputValidationError } from "../../errors";
 import type { EnvLocalEntry } from "../../handlers/project/types";
@@ -8,6 +9,19 @@ import type { EnvLocalEntry } from "../../handlers/project/types";
 export const ENV_LOCAL_RELATIVE_PATH = join("agentcore", ".env.local");
 
 const KEY_LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
+
+/** Suffix distinguishing an OAuth credential's client secret from an API key. */
+export const CLIENT_SECRET_SUFFIX = "_CLIENT_SECRET";
+
+/**
+ * Derives the variable name a credential's secret is stored under. This is the
+ * only contract between `project add credentials` (which writes the entry) and
+ * `project deploy` (which reads it back to create the provider), so both sides
+ * derive the name here rather than formatting it themselves.
+ */
+export function credentialEnvVarName(credentialName: string, suffix = ""): string {
+  return `AGENTCORE_CREDENTIAL_${credentialName.replace(/-/g, "_").toUpperCase()}${suffix}`;
+}
 
 /**
  * The project's `.env.local` secrets file, edited transactionally. `insertIfNew`
@@ -61,6 +75,19 @@ export class EnvLocalFile {
       await atomicWrite(this.path, content);
     }
     return { written, skipped };
+  }
+
+  /**
+   * Parses the file into its variables, returning an empty record when the file
+   * does not exist. Values are read back with the same parser `agentcore dev`
+   * uses, so quoting written by {@link insertIfNew} round-trips.
+   */
+  async read(): Promise<Record<string, string>> {
+    const content = await this.readOrNull();
+    if (content === null) return {};
+    // parseEnv types values as string | undefined for repeated keys; the last
+    // assignment wins and only string values are ever produced.
+    return parseEnv(content) as Record<string, string>;
   }
 
   /** Restores the file to its pre-write state; a no-op when nothing was written. */

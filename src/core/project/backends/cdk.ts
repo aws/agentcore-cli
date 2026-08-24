@@ -12,6 +12,8 @@ import {
 import type { Logger } from "../../../logging";
 import type { DeployBackendInput, ProjectBackend } from "./types";
 import { stackArtifactIdForTarget } from "./cdk/assembly";
+import { createCredentialProvisioner, type CredentialProvisioner } from "./cdk/credentials";
+import { writeDeployedCredentials } from "./cdk/deployedState";
 import {
   probeBootstrap,
   resolveAwsAccount,
@@ -37,6 +39,7 @@ export type CdkBackendConfig = {
   bootstrap?: BootstrapProbe;
   resolveAccount?: AccountResolver;
   loadBootstrapTemplate?: BootstrapTemplateLoader;
+  provisionCredentials?: CredentialProvisioner;
 };
 
 /** Builds and deploys projects through the scaffolded CDK app. */
@@ -50,6 +53,7 @@ export class CdkBackend implements ProjectBackend {
   private readonly bootstrap: BootstrapProbe;
   private readonly resolveAccount: AccountResolver;
   private readonly loadBootstrapTemplate: BootstrapTemplateLoader;
+  private readonly provisionCredentials: CredentialProvisioner;
 
   constructor(config: CdkBackendConfig) {
     this.logger = config.logger;
@@ -62,6 +66,7 @@ export class CdkBackend implements ProjectBackend {
     this.bootstrap = config.bootstrap ?? probeBootstrap;
     this.resolveAccount = config.resolveAccount ?? resolveAwsAccount;
     this.loadBootstrapTemplate = config.loadBootstrapTemplate ?? loadBootstrapTemplate;
+    this.provisionCredentials = config.provisionCredentials ?? createCredentialProvisioner();
   }
 
   public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
@@ -99,6 +104,15 @@ export class CdkBackend implements ProjectBackend {
           `but the active credentials belong to ${account}.`,
       );
     }
+
+    // Credential providers exist before synthesis, not as part of the stack: the
+    // synthesized app reads their ARNs out of deployed-state.json, so a project
+    // declaring credentials cannot synthesize until they have been recorded.
+    const provisioned = yield* this.provisionCredentials(project, {
+      credentials,
+      region: target.region,
+    });
+    await writeDeployedCredentials(this.json, project, target.name, provisioned);
 
     yield* this.build(project);
     const assemblyDirectory = this.assemblyDirectory(project);

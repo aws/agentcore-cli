@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -6,6 +7,7 @@ import type { DeployResult, Project, ProjectEvent } from "../../../handlers/proj
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { createSilentLogger } from "../../../testing";
 import { CdkBackend } from "./cdk";
+import type { CredentialProvisionInput, DeployedCredentials } from "./cdk/credentials";
 import type { BootstrapState } from "./cdk/environment";
 import type { CdkCredentialProvider, CdkOperation, CdkOutputs, CdkRunOptions } from "./cdk/toolkit";
 
@@ -81,10 +83,16 @@ type HarnessOptions = {
   template?: boolean;
   failOperation?: CdkOperation["kind"];
   bootstrapError?: Error;
+  provisioned?: DeployedCredentials;
+  provisionError?: Error;
 };
 
 function harness(options: HarnessOptions = {}) {
   const commands: { command: string[]; cwd: string }[] = [];
+  const provisionInputs: CredentialProvisionInput[] = [];
+  // The state file as the synth step sees it, which is the contract deploy owes
+  // the synthesized app: credential ARNs on disk before templates are built.
+  const stateAtSynth: (string | null)[] = [];
   const runs: { operation: CdkOperation; options: CdkRunOptions }[] = [];
   const credentialRegions: string[] = [];
   const accountCredentials: CdkCredentialProvider[] = [];
@@ -102,6 +110,8 @@ function harness(options: HarnessOptions = {}) {
     logger: createSilentLogger(),
     runner: async (command, { cwd }) => {
       commands.push({ command, cwd });
+      const state = join(cwd, "..", ".cli", "deployed-state.json");
+      stateAtSynth.push(existsSync(state) ? await Bun.file(state).text() : null);
     },
     checkTool: async () => {},
     resolveCredentials: async (region) => {
@@ -126,6 +136,14 @@ function harness(options: HarnessOptions = {}) {
       }
       return operation.kind === "deploy" ? (options.outputs ?? {}) : {};
     },
+    provisionCredentials: async function* (_project, input) {
+      provisionInputs.push(input);
+      if (options.provisionError) throw options.provisionError;
+      for (const name of Object.keys(options.provisioned ?? {})) {
+        yield { message: `Preparing credential provider '${name}'` };
+      }
+      return options.provisioned ?? {};
+    },
     loadBootstrapTemplate: async () => {
       templateLoads++;
       if (!options.template) return undefined;
@@ -147,7 +165,9 @@ function harness(options: HarnessOptions = {}) {
     commands,
     credentialRegions,
     credentials,
+    provisionInputs,
     runs,
+    stateAtSynth,
     templateLoads: () => templateLoads,
     templateCleanups: () => templateCleanups,
   };
@@ -231,6 +251,9 @@ describe("CdkBackend.deploy", () => {
         },
       },
     ]);
+    expect(subject.provisionInputs).toEqual([
+      { credentials: subject.credentials, region: TARGET.region },
+    ]);
     expect(subject.credentialRegions).toEqual([TARGET.region]);
     expect(subject.accountCredentials).toEqual([subject.credentials]);
     expect(subject.bootstrapCredentials).toEqual([subject.credentials]);
@@ -259,6 +282,47 @@ describe("CdkBackend.deploy", () => {
     expect(deployed.events).toContainEqual({
       message: `Bootstrapping aws://${TARGET.account}/${TARGET.region}`,
     });
+  });
+
+  test("records provisioned credential ARNs before synthesizing", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const provisioned = { "openai-key": { credentialProviderArn: "arn:apikey:openai-key" } };
+    const subject = harness({ provisioned });
+
+    const deployed = await collectDeploy(subject.backend.deploy(input, { target: TARGET }));
+
+    expect(deployed.events).toEqual([
+      { message: `Verifying AWS account ${TARGET.account}` },
+      { message: "Preparing credential provider 'openai-key'" },
+      { message: "Synthesizing CloudFormation templates" },
+      { message: "Deploying AgentCore-example-default-0" },
+    ]);
+    expect(subject.stateAtSynth.map((state) => state && JSON.parse(state))).toEqual([
+      { targets: { default: { resources: { credentials: provisioned } } } },
+    ]);
+  });
+
+  test("leaves no state file for a project that declares no credentials", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const subject = harness();
+
+    await collectDeploy(subject.backend.deploy(input, { target: TARGET }));
+
+    expect(subject.stateAtSynth).toEqual([null]);
+  });
+
+  test("does not synthesize when credential provisioning fails", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const subject = harness({ provisionError: new Error("no secret for 'openai-key'") });
+
+    await expect(collectDeploy(subject.backend.deploy(input, { target: TARGET }))).rejects.toThrow(
+      "no secret for 'openai-key'",
+    );
+    expect(subject.commands).toEqual([]);
+    expect(subject.runs).toEqual([]);
   });
 
   test("rejects credentials for a different account before build or mutation", async () => {
