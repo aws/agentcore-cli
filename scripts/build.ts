@@ -108,7 +108,11 @@ async function compile(target: string): Promise<void> {
   const assets = discoverAssets();
   await assertAssetsAreText(assets);
 
-  const outfile = join(DIST, "bin", `agentcore-${target.replace(/^bun-/, "")}`);
+  // Bun appends .exe to a Windows executable whose outfile has no extension, so
+  // the emitted path is not the one we asked for. Name it in full instead: the
+  // embed assertion below and the CI smoke test both read this exact path.
+  const extension = target.includes("windows") ? ".exe" : "";
+  const outfile = join(DIST, "bin", `agentcore-${target.replace(/^bun-/, "")}${extension}`);
   await $`mkdir -p ${join(DIST, "bin")}`;
 
   const template = bootstrapTemplate();
