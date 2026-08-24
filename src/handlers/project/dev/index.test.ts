@@ -4,10 +4,9 @@ import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   InputValidationError,
   ResourceNotFoundError,
-  SilentCLIError,
   UserCancellationError,
 } from "../../../errors";
-import type { PortChecker } from "../../../io";
+import type { HttpRequestHandler, PortChecker } from "../../../io";
 import { ProjectKey, ValueContext } from "../../../router";
 import { testIO } from "../../../testing";
 import { JsonRendererKey } from "../../../tui";
@@ -35,28 +34,12 @@ function project(...runtimes: ProjectRuntime[]): Project {
   };
 }
 
-/** A runner that emits `events` then exits, so the supervisor marks it failed to start. */
 function captureRunner(events: DevEvent[] = []) {
   const inputs: DevServerInput[] = [];
   const runner: DevRunner = {
     run: async function* (input) {
       inputs.push(input);
       yield* events;
-    },
-  };
-  return { runner, inputs };
-}
-
-/** A runner that emits `events` then stays alive until aborted, like a real dev server. */
-function stayingRunner(events: DevEvent[] = []) {
-  const inputs: DevServerInput[] = [];
-  const runner: DevRunner = {
-    run: async function* (input) {
-      inputs.push(input);
-      yield* events;
-      await new Promise<void>((resolve) =>
-        input.signal.addEventListener("abort", () => resolve(), { once: true }),
-      );
     },
   };
   return { runner, inputs };
@@ -72,6 +55,7 @@ function fakeCollector() {
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://127.0.0.1:43180/v1/traces",
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
     },
+    traces: { list: async () => [], get: async () => undefined },
     close: async () => {
       state.closed++;
     },
@@ -85,6 +69,8 @@ function fakeCollector() {
 
 type HarnessOptions = {
   project?: Project;
+  tty?: boolean;
+  reloadedRuntimes?: ProjectRuntime[];
   codeZip?: ReturnType<typeof captureRunner>;
   container?: ReturnType<typeof captureRunner>;
   checkPort?: PortChecker;
@@ -94,8 +80,11 @@ type HarnessOptions = {
 
 function harness(options: HarnessOptions = {}) {
   const io = testIO();
-  const codeZip = options.codeZip ?? stayingRunner();
-  const container = options.container ?? stayingRunner();
+  const ui = { starts: [] as { port?: number }[], opened: [] as string[], closed: 0 };
+  const watchers: { path: string; onChange: () => void }[] = [];
+  let capturedHandler: HttpRequestHandler | undefined;
+  const codeZip = options.codeZip ?? captureRunner();
+  const container = options.container ?? captureRunner();
   const collector = fakeCollector();
   const environmentInputs: DevEnvironmentInput[] = [];
   const handler = createDevProjectHandler({
@@ -109,11 +98,25 @@ function harness(options: HarnessOptions = {}) {
       }),
     checkPort: options.checkPort ?? (async () => true),
     startTraceCollector: collector.start,
-    // A staying agent is ready after this delay; one that exits sooner loses the
-    // race and is reported failed, so tests never bind a real port.
-    waitReady: async () => {
-      await Bun.sleep(20);
+    startServer: async (requestHandler, serverOptions) => {
+      capturedHandler = requestHandler;
+      ui.starts.push({ port: serverOptions?.port });
+      return {
+        port: serverOptions?.port ?? 8081,
+        close: async () => {
+          ui.closed++;
+        },
+      };
     },
+    openBrowser: async (url) => {
+      ui.opened.push(url);
+    },
+    inspectorAssets: { read: async () => undefined },
+    isInteractive: () => options.tty ?? false,
+    watchFile: (path, onChange) => {
+      watchers.push({ path, onChange });
+    },
+    reloadRuntimes: async () => options.reloadedRuntimes ?? [],
   });
   const ctx = ValueContext.EmptyContext()
     .withValue(ProjectKey, options.project ?? project(runtime()))
@@ -130,33 +133,43 @@ function harness(options: HarnessOptions = {}) {
     collector,
     environmentInputs,
     io,
-    run: (flags: { agent?: string; port?: number; traces?: boolean } = {}) =>
-      handler.handle(ctx, { traces: true, ...flags }, {}),
+    ui,
+    watchers,
+    inspectorHandler: () => capturedHandler,
+    run: (
+      flags: {
+        agent?: string;
+        port?: number;
+        traces?: boolean;
+        ui?: boolean;
+        "ui-port"?: number;
+      } = {},
+    ) => handler.handle(ctx, { traces: true, ui: false, ...flags }, {}),
   };
 }
 
-/**
- * Start a supervised run and let its agents reach "running". Returns the pending
- * promise wrapped, so awaiting this helper does not flatten into the run itself.
- */
-async function supervised(
-  subject: ReturnType<typeof harness>,
-  flags = {},
-): Promise<{ pending: Promise<void> }> {
-  const pending = subject.run(flags);
-  pending.catch(() => undefined);
-  await Bun.sleep(50);
-  return { pending };
-}
-
-async function interrupt(pending: Promise<unknown>): Promise<void> {
-  process.emit("SIGINT", "SIGINT");
-  await pending.catch(() => undefined);
+/** Ask the captured Inspector handler for the current agent status. */
+async function inspectorStatus(subject: ReturnType<typeof harness>): Promise<{ name: string }[]> {
+  const response = await subject.inspectorHandler()!({
+    method: "GET",
+    url: "/api/status",
+    headers: { host: "127.0.0.1:8081" },
+    body: Buffer.alloc(0),
+    signal: new AbortController().signal,
+  });
+  const status = JSON.parse(String(response.body)) as { agents: { name: string }[] };
+  return status.agents;
 }
 
 describe("project dev selection and dispatch", () => {
   test.each([
     [project(), {}, "This project has no runtimes", InputValidationError],
+    [
+      project(runtime("orders"), runtime("support", "Container")),
+      {},
+      "Use --agent to select one. Available runtimes: orders, support",
+      InputValidationError,
+    ],
     [
       project(runtime("orders"), runtime("support", "Container")),
       { agent: "missing" },
@@ -176,7 +189,7 @@ describe("project dev selection and dispatch", () => {
     const subject = harness({
       project: project(runtime("orders"), runtime("support", "Container")),
     });
-    const { pending } = await supervised(subject, { agent: "support", port: 4567 });
+    await subject.run({ agent: "support", port: 4567 });
 
     expect(subject.codeZip.inputs).toHaveLength(0);
     expect(subject.environmentInputs).toEqual([
@@ -197,10 +210,9 @@ describe("project dev selection and dispatch", () => {
       },
       runtime: { name: "support", build: "Container" },
     });
-    await interrupt(pending);
   });
 
-  test("resolves and announces an automatically selected port", async () => {
+  test("announces an automatically selected port", async () => {
     const checked: number[] = [];
     const subject = harness({
       checkPort: async (port) => {
@@ -208,66 +220,18 @@ describe("project dev selection and dispatch", () => {
         return port === 8081;
       },
     });
-    const { pending } = await supervised(subject);
+    await subject.run();
 
     expect(checked).toEqual([8080, 8081]);
     expect(subject.codeZip.inputs[0]?.port).toBe(8081);
-    expect(subject.io.stderr()).toContain("Agent 'orders' is running on port 8081");
-    await interrupt(pending);
-  });
-});
-
-describe("project dev multi-agent supervision", () => {
-  const twoRuntimes = () => project(runtime("orders"), runtime("support", "Container"));
-
-  test("supervises every runtime with attributed output and per-runtime env", async () => {
-    const codeZip = stayingRunner([{ type: "stdout", line: "orders says hi" }]);
-    const container = stayingRunner();
-    const subject = harness({ project: twoRuntimes(), codeZip, container });
-    const { pending } = await supervised(subject);
-
-    expect(codeZip.inputs).toHaveLength(1);
-    expect(container.inputs).toHaveLength(1);
-    expect(codeZip.inputs[0]!.env).toMatchObject({
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:43180",
-      OTEL_SERVICE_NAME: "orders",
-    });
-    expect(container.inputs[0]!.env).toMatchObject({
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://host.docker.internal:43180",
-      OTEL_SERVICE_NAME: "support",
-    });
-    expect(subject.io.stdout()).toContain("[orders] orders says hi");
-    expect(subject.io.stderr()).toContain("Agent 'orders' is running on port");
-
-    process.emit("SIGINT", "SIGINT");
-    await expect(pending).rejects.toMatchObject({ exitCode: 130 });
-    expect(subject.collector.state.closed).toBe(1);
-  });
-
-  test("one agent failing to start does not stop the others", async () => {
-    const subject = harness({
-      project: twoRuntimes(),
-      codeZip: captureRunner([{ type: "status", message: "dying" }]), // exits: never ready
-      container: stayingRunner(),
-    });
-    const { pending } = await supervised(subject);
-
-    expect(subject.io.stderr()).toContain("[orders] Agent 'orders' failed to start");
-    expect(subject.io.stderr()).toContain("Agent 'support' is running on port");
-    await interrupt(pending);
-  });
-
-  test("--port without --agent is rejected when several runtimes exist", async () => {
-    await expect(harness({ project: twoRuntimes() }).run({ port: 4567 })).rejects.toThrow(
-      "--port applies to a single runtime",
-    );
+    expect(subject.io.stderr()).toContain("Port 8080 is in use; using 8081.");
   });
 });
 
 describe("project dev trace collection", () => {
   test("starts the collector, announces it, and points a CodeZip agent at loopback", async () => {
     const subject = harness();
-    const { pending } = await supervised(subject);
+    await subject.run();
 
     expect(subject.collector.starts).toEqual([
       {
@@ -281,21 +245,19 @@ describe("project dev trace collection", () => {
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:43180",
       OTEL_SERVICE_NAME: "orders",
     });
-    await interrupt(pending);
     expect(subject.collector.state.closed).toBe(1);
   });
 
   test("binds the collector to all interfaces so a container can reach it", async () => {
     const subject = harness({ project: project(runtime("support", "Container")) });
-    const { pending } = await supervised(subject);
+    await subject.run();
 
     expect(subject.collector.starts[0]?.host).toBe("0.0.0.0");
-    await interrupt(pending);
   });
 
   test("reports a trace-persistence failure once, not per failed export", async () => {
     const subject = harness();
-    const { pending } = await supervised(subject);
+    await subject.run();
 
     const onError = subject.collector.starts[0]?.onError;
     onError?.(new Error("disk full"));
@@ -305,29 +267,26 @@ describe("project dev trace collection", () => {
     expect(stderr).toContain("failed to persist traces");
     expect(stderr).toContain("disk full");
     expect(stderr.match(/failed to persist traces/g)).toHaveLength(1);
-    await interrupt(pending);
   });
 
   test("--no-traces skips the collector entirely", async () => {
     const subject = harness();
-    const { pending } = await supervised(subject, { traces: false });
+    await subject.run({ traces: false });
 
     expect(subject.collector.starts).toHaveLength(0);
     expect(subject.codeZip.inputs[0]?.env).toEqual({ FROM_LOADER: "yes" });
-    await interrupt(pending);
   });
 
   test("a runtime with instrumentation disabled skips the collector", async () => {
     const disabled = { ...runtime(), instrumentation: { enableOtel: false } } as ProjectRuntime;
     const subject = harness({ project: project(disabled) });
-    const { pending } = await supervised(subject);
+    await subject.run();
 
     expect(subject.collector.starts).toHaveLength(0);
     expect(subject.codeZip.inputs[0]?.env).toEqual({ FROM_LOADER: "yes" });
-    await interrupt(pending);
   });
 
-  test("a failed agent exits non-zero and still closes the collector", async () => {
+  test("the collector is closed when the runner fails", async () => {
     const codeZip = captureRunner();
     codeZip.runner.run = async function* () {
       yield* [];
@@ -335,8 +294,106 @@ describe("project dev trace collection", () => {
     };
     const subject = harness({ codeZip });
 
-    await expect(subject.run()).rejects.toBeInstanceOf(SilentCLIError);
+    await expect(subject.run()).rejects.toThrow("runner failed");
     expect(subject.collector.state.closed).toBe(1);
+  });
+});
+
+describe("project dev Inspector UI mode", () => {
+  // Wraps the run promise so awaiting this helper does not flatten it into
+  // "wait for the whole dev command to exit".
+  async function runUi(subject: ReturnType<typeof harness>, flags: Record<string, unknown> = {}) {
+    const pending = subject.run({ ui: true, ...flags });
+    pending.catch(() => undefined);
+    await Bun.sleep(5); // let the handler start the UI server and block on events
+    return { pending };
+  }
+
+  test("starts the Inspector, prints the URL, and opens the browser on a TTY", async () => {
+    const subject = harness({ tty: true });
+    const { pending } = await runUi(subject);
+
+    expect(subject.ui.starts).toEqual([{ port: 8081 }]);
+    expect(subject.io.stderr()).toContain("Agent Inspector running at http://127.0.0.1:8081");
+    expect(subject.ui.opened).toEqual(["http://127.0.0.1:8081"]);
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+    expect(subject.collector.state.closed).toBe(1);
+  });
+
+  test("never opens a browser without a TTY or in JSON mode", async () => {
+    for (const options of [{}, { tty: true, json: true }] as const) {
+      const subject = harness(options);
+      const { pending } = await runUi(subject);
+      expect(subject.ui.opened).toEqual([]);
+      process.emit("SIGINT", "SIGINT");
+      await pending.catch(() => undefined);
+    }
+  });
+
+  test("serves the Inspector API: status lists every runtime, none started", async () => {
+    const subject = harness({
+      project: project(runtime("orders"), runtime("support", "Container")),
+    });
+    const { pending } = await runUi(subject);
+
+    expect((await inspectorStatus(subject)).map((agent) => agent.name)).toEqual([
+      "orders",
+      "support",
+    ]);
+    expect(subject.codeZip.inputs).toHaveLength(0);
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
+  test("agentcore.json edits reload the supervised agents", async () => {
+    const subject = harness({ reloadedRuntimes: [runtime("orders"), runtime("payments")] });
+    const { pending } = await runUi(subject);
+
+    expect(subject.watchers[0]?.path).toBe(
+      join("/workspace/project", "agentcore", "agentcore.json"),
+    );
+    subject.watchers[0]!.onChange();
+    await Bun.sleep(5);
+
+    expect((await inspectorStatus(subject)).map((agent) => agent.name)).toEqual([
+      "orders",
+      "payments",
+    ]);
+    expect(subject.io.stderr()).toContain("Reloaded agents from agentcore.json.");
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
+  test("--agent narrows the supervised set", async () => {
+    const subject = harness({
+      project: project(runtime("orders"), runtime("support", "Container")),
+    });
+    const { pending } = await runUi(subject, { agent: "support" });
+
+    expect((await inspectorStatus(subject)).map((agent) => agent.name)).toEqual(["support"]);
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
+  test("an explicit --ui-port that is taken fails fast", async () => {
+    const subject = harness({ checkPort: async () => false });
+    await expect(subject.run({ ui: true, "ui-port": 9999 })).rejects.toThrow(
+      "Port 9999 is already in use",
+    );
+  });
+
+  test("--port with several runtimes is rejected", async () => {
+    const subject = harness({
+      project: project(runtime("orders"), runtime("support", "Container")),
+    });
+    await expect(subject.run({ ui: true, port: 4567 })).rejects.toThrow(
+      "--port applies to a single runtime",
+    );
   });
 });
 
@@ -349,16 +406,13 @@ test("project dev renders attributed human and NDJSON output", async () => {
 
   for (const json of [false, true]) {
     const subject = harness({ codeZip: captureRunner(events), json });
-    await subject.run({ traces: false }).catch(() => undefined);
-    if (json) {
-      expect(subject.io.stdout()).toContain(
-        JSON.stringify({ agent: "orders", type: "stdout", line: "agent output" }),
-      );
-    } else {
-      expect(subject.io.stdout()).toContain("[orders] agent output");
-      expect(subject.io.stderr()).toContain("[orders] Starting");
-      expect(subject.io.stderr()).toContain("[orders] agent warning");
-    }
+    await subject.run({ traces: false });
+    expect(subject.io.stdout()).toBe(
+      json
+        ? events.map((event) => JSON.stringify({ agent: "orders", ...event })).join("\n")
+        : "[orders] agent output",
+    );
+    expect(subject.io.stderr()).toBe(json ? "" : "[orders] Starting\n[orders] agent warning");
   }
 });
 
@@ -401,4 +455,15 @@ describe("project dev interruption", () => {
       expect(process.listenerCount(signal)).toBe(before);
     },
   );
+
+  test("preserves an ordinary runner failure", async () => {
+    const failure = new InputValidationError("runner failed");
+    const codeZip = captureRunner();
+    codeZip.runner.run = async function* () {
+      yield* [];
+      throw failure;
+    };
+
+    await expect(harness({ codeZip }).run()).rejects.toBe(failure);
+  });
 });

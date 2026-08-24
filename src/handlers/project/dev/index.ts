@@ -1,16 +1,17 @@
 import { join } from "node:path";
 import z from "zod";
+import { createInspectorHandler } from "../../../core/dev/inspector/server";
+import type { InspectorDeps } from "../../../core/dev/inspector/types";
 import { rewriteOtelEndpointForContainer } from "../../../core/dev/otel/collector";
-import { resolveDevPort } from "../../../core/dev/port";
+import { PortInUseError, resolveDevPort } from "../../../core/dev/port";
 import { DevSupervisor, type SupervisorConfig } from "../../../core/dev/supervisor";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   InputValidationError,
   ResourceNotFoundError,
-  SilentCLIError,
   UserCancellationError,
 } from "../../../errors";
-import type { AppIO, PortChecker } from "../../../io";
+import type { AppIO, BrowserOpener, FileWatcher, PortChecker, startHttpServer } from "../../../io";
 import { createHandler, flag, ProjectKey } from "../../../router";
 import { JsonRendererKey, type JsonRenderer } from "../../../tui";
 import { JsonKey, RegionKey } from "../../keys";
@@ -18,12 +19,25 @@ import type { Project } from "../types";
 import type { DevEnvironmentLoader } from "./environment";
 import type { DevEvent, DevRunner, DevTraceCollector, DevTraceCollectorStarter } from "./types";
 
+/** The Inspector UI binds 8081 or, when that is taken, the next free port. */
+const UI_DEFAULT_PORT = 8081;
+const UI_PORT_ATTEMPTS = 100;
+
 export type DevProjectHandlerConfig = {
   io: AppIO;
   runners: { CodeZip: DevRunner; Container: DevRunner };
   loadDevEnvironment: DevEnvironmentLoader;
   checkPort: PortChecker;
   startTraceCollector: DevTraceCollectorStarter;
+  startServer: typeof startHttpServer;
+  openBrowser: BrowserOpener;
+  inspectorAssets: InspectorDeps["assets"];
+  /** Whether the command runs on an interactive terminal (gates browser auto-open). */
+  isInteractive: () => boolean;
+  /** Watches agentcore.json so the Inspector reflects config edits live. */
+  watchFile: FileWatcher;
+  /** Re-reads the project's runtime definitions after a config change. */
+  reloadRuntimes: (projectRoot: string) => Promise<ProjectRuntime[]>;
   /** Overrides how the supervisor decides an agent is ready (defaults to a real TCP poll). */
   waitReady?: SupervisorConfig["waitReady"];
 };
@@ -86,6 +100,12 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
         z.coerce.number().int().min(1).max(65535).optional(),
       ),
       flag("traces", "disable local OTEL trace collection", z.boolean().default(true)),
+      flag("ui", "run without the Agent Inspector web UI", z.boolean().default(true)),
+      flag(
+        "ui-port",
+        "port for the Agent Inspector web UI",
+        z.coerce.number().int().min(1).max(65535).optional(),
+      ),
     ],
     handle: async (ctx, flags) => {
       const controller = new AbortController();
@@ -102,7 +122,9 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
       try {
         const project = ctx.require(ProjectKey);
         const region = ctx.require(RegionKey);
-        const runtimes = selectRuntimes(project, flags.agent);
+        const runtimes = flags.ui
+          ? selectRuntimes(project, flags.agent)
+          : [selectSingleRuntime(project, flags.agent)];
         if (runtimes.length > 1 && flags.port !== undefined) {
           throw new InputValidationError(
             "--port applies to a single runtime. Use --agent to select one.",
@@ -159,6 +181,19 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           return { ...env, ...otel };
         };
 
+        if (!flags.ui) {
+          await runWithoutUi(
+            config,
+            runtimes[0]!,
+            project,
+            flags.port,
+            getDevEnvVarsForRuntime,
+            controller,
+            json,
+          );
+          return;
+        }
+
         const supervisor = new DevSupervisor({
           runtimes,
           projectRoot: project.rootPath,
@@ -168,7 +203,7 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
             (
               await resolveDevPort(
                 runtime.protocol,
-                flags.port,
+                runtimes.length === 1 ? flags.port : undefined,
                 config.checkPort,
                 controller.signal,
               )
@@ -177,21 +212,46 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           signal: controller.signal,
         });
 
-        const starts = Promise.allSettled(
-          runtimes.map((runtime) => supervisor.start(runtime.name)),
+        const uiPort = await resolveUiPort(flags["ui-port"], config.checkPort, controller.signal);
+        const server = await config.startServer(
+          createInspectorHandler({
+            supervisor,
+            traces: collector?.traces,
+            assets: config.inspectorAssets,
+            project,
+            selectedAgent: flags.agent,
+          }),
+          { port: uiPort, signal: controller.signal },
         );
+
+        const configPath = join(project.rootPath, "agentcore", "agentcore.json");
+        config.watchFile(
+          configPath,
+          () =>
+            void config
+              .reloadRuntimes(project.rootPath)
+              .then((reloaded) => {
+                supervisor.setRuntimes(
+                  flags.agent
+                    ? reloaded.filter((runtime) => runtime.name === flags.agent)
+                    : reloaded,
+                );
+                renderStatus(config.io, "Reloaded agents from agentcore.json.", json);
+              })
+              .catch(() => {
+                // A half-saved config parses on the next change event.
+              }),
+          controller.signal,
+        );
+
+        const url = `http://127.0.0.1:${server.port}`;
+        renderStatus(config.io, `Agent Inspector running at ${url}`, json);
+        if (config.isInteractive() && !json) await config.openBrowser(url);
 
         for await (const { agentName, event } of supervisor.events()) {
           renderAgentEvent(config.io, event, agentName, json);
-          if (controller.signal.aborted) break;
-          const phases = supervisor.snapshot();
-          if (phases.every(({ phase }) => phase !== "starting" && phase !== "running")) {
-            if (phases.some(({ phase }) => phase === "failed")) throw new SilentCLIError();
-            break;
-          }
         }
         controller.signal.throwIfAborted();
-        await starts;
       } catch (error) {
         controller.signal.throwIfAborted();
         throw error;
@@ -203,3 +263,71 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
       }
     },
   });
+
+/** In --no-ui mode exactly one runtime streams to the terminal, as before. */
+function selectSingleRuntime(project: Project, name?: string): ProjectRuntime {
+  const runtimes = selectRuntimes(project, name);
+  if (runtimes.length === 1) return runtimes[0]!;
+  const available = runtimes.map(({ name: runtimeName }) => runtimeName).join(", ");
+  throw new InputValidationError(
+    `Multiple runtimes found. Use --agent to select one. Available runtimes: ${available}.`,
+  );
+}
+
+/** The Inspector UI binds 8081 or the next free port; an explicit port must be free. */
+async function resolveUiPort(
+  explicitPort: number | undefined,
+  checkPort: PortChecker,
+  signal: AbortSignal,
+): Promise<number> {
+  if (explicitPort !== undefined) {
+    if (await checkPort(explicitPort, signal)) return explicitPort;
+    throw new PortInUseError(explicitPort);
+  }
+  for (let port = UI_DEFAULT_PORT; port < UI_DEFAULT_PORT + UI_PORT_ATTEMPTS; port++) {
+    if (await checkPort(port, signal)) return port;
+  }
+  throw new PortInUseError(UI_DEFAULT_PORT);
+}
+
+/**
+ * Run one runtime directly. Unlike the supervised Inspector path, a crash here
+ * fails the command (scripts and CI rely on the non-zero exit).
+ */
+async function runWithoutUi(
+  config: DevProjectHandlerConfig,
+  runtime: ProjectRuntime,
+  project: Project,
+  explicitPort: number | undefined,
+  environment: (runtime: ProjectRuntime) => Promise<Record<string, string>>,
+  controller: AbortController,
+  json?: JsonRenderer,
+): Promise<void> {
+  const devPort = await resolveDevPort(
+    runtime.protocol,
+    explicitPort,
+    config.checkPort,
+    controller.signal,
+  );
+  if (devPort.port !== devPort.requestedPort) {
+    renderStatus(
+      config.io,
+      `Port ${devPort.requestedPort} is in use; using ${devPort.port}.`,
+      json,
+    );
+  }
+
+  const env = await environment(runtime);
+  controller.signal.throwIfAborted();
+
+  const runner = config.runners[runtime.build];
+  for await (const event of runner.run({
+    runtime,
+    projectRoot: project.rootPath,
+    port: devPort.port,
+    env,
+    signal: controller.signal,
+  })) {
+    renderAgentEvent(config.io, event, runtime.name, json);
+  }
+}
