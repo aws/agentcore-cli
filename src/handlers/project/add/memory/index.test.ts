@@ -106,12 +106,12 @@ describe("project add memory", () => {
       },
     ],
     [
-      "strategies — JSON semanticMemoryStrategy",
+      "strategies — JSON is stored verbatim",
       [
         "--name",
         "x",
         "--strategies",
-        '[{"semanticMemoryStrategy":{"name":"facts","description":"durable facts","namespaceTemplates":["/orgs/{actorId}"]}}]',
+        '[{"type":"SEMANTIC","name":"facts","description":"durable facts","namespaceTemplates":["/orgs/{actorId}"]}]',
       ],
       {
         strategies: [
@@ -125,22 +125,32 @@ describe("project add memory", () => {
       },
     ],
     [
-      "strategies — JSON summaryMemoryStrategy maps to SUMMARIZATION",
-      ["--name", "x", "--strategies", '[{"summaryMemoryStrategy":{"name":"summaries"}}]'],
-      { strategies: [{ type: "SUMMARIZATION", name: "summaries" }] },
+      "strategies — JSON entry without a name, as the schema allows",
+      ["--name", "x", "--strategies", '[{"type":"SUMMARIZATION"}]'],
+      { strategies: [{ type: "SUMMARIZATION" }] },
     ],
     [
-      "strategies — JSON userPreferenceMemoryStrategy maps to USER_PREFERENCE",
-      ["--name", "x", "--strategies", '[{"userPreferenceMemoryStrategy":{"name":"prefs"}}]'],
-      { strategies: [{ type: "USER_PREFERENCE", name: "prefs" }] },
-    ],
-    [
-      "strategies — JSON episodicMemoryStrategy hoists reflectionConfiguration",
+      "strategies — several JSON entries",
       [
         "--name",
         "x",
         "--strategies",
-        '[{"episodicMemoryStrategy":{"name":"episodes","namespaceTemplates":["/episodes/{actorId}/{sessionId}"],"reflectionConfiguration":{"namespaceTemplates":["/episodes/{actorId}"]}}}]',
+        '[{"type":"SUMMARIZATION","name":"summaries"},{"type":"USER_PREFERENCE","name":"prefs"}]',
+      ],
+      {
+        strategies: [
+          { type: "SUMMARIZATION", name: "summaries" },
+          { type: "USER_PREFERENCE", name: "prefs" },
+        ],
+      },
+    ],
+    [
+      "strategies — JSON EPISODIC with reflection namespace templates",
+      [
+        "--name",
+        "x",
+        "--strategies",
+        '[{"type":"EPISODIC","name":"episodes","namespaceTemplates":["/episodes/{actorId}/{sessionId}"],"reflectionNamespaceTemplates":["/episodes/{actorId}"]}]',
       ],
       {
         strategies: [
@@ -159,7 +169,7 @@ describe("project add memory", () => {
         "--name",
         "x",
         "--strategies",
-        '[{"semanticMemoryStrategy":{"name":"legacy","namespaces":["/legacy"]}}]',
+        '[{"type":"SEMANTIC","name":"legacy","namespaces":["/legacy"]}]',
       ],
       { strategies: [{ type: "SEMANTIC", name: "legacy", namespaces: ["/legacy"] }] },
     ],
@@ -254,25 +264,35 @@ describe("project add memory", () => {
     ["unrecognized shorthand strategy", ["--name", "x", "--strategies", "NONSENSE"]],
     ["empty shorthand strategy entry", ["--name", "x", "--strategies", "SEMANTIC,"]],
     ["duplicate shorthand strategy", ["--name", "x", "--strategies", "SEMANTIC,SEMANTIC"]],
-    ["unrecognized JSON strategy variant", ["--name", "x", "--strategies", '[{"unknown":{}}]']],
+    ["JSON strategy without a type", ["--name", "x", "--strategies", '[{"name":"facts"}]']],
     [
-      "JSON strategy without its required name",
-      ["--name", "x", "--strategies", '[{"semanticMemoryStrategy":{}}]'],
+      "JSON strategy with an invalid name",
+      ["--name", "x", "--strategies", '[{"type":"SEMANTIC","name":"1bad"}]'],
+    ],
+    [
+      "duplicate JSON strategy type",
+      ["--name", "x", "--strategies", '[{"type":"SEMANTIC"},{"type":"SEMANTIC"}]'],
     ],
     [
       "JSON strategy input must be an array",
-      ["--name", "x", "--strategies", '{"semanticMemoryStrategy":{"name":"facts"}}'],
+      ["--name", "x", "--strategies", '{"type":"SEMANTIC","name":"facts"}'],
     ],
     // CUSTOM is rejected in both forms until a custom strategy's extraction
     // configuration can be expressed. See aws/agentcore-cli#241, #266, #713, #676.
     ["CUSTOM shorthand strategy", ["--name", "x", "--strategies", "CUSTOM"]],
-    [
-      "customMemoryStrategy JSON variant",
-      ["--name", "x", "--strategies", '[{"customMemoryStrategy":{"name":"c"}}]'],
-    ],
+    ["CUSTOM JSON strategy", ["--name", "x", "--strategies", '[{"type":"CUSTOM","name":"c"}]']],
     [
       "episodic strategy without reflection namespaces",
-      ["--name", "x", "--strategies", '[{"episodicMemoryStrategy":{"name":"episodes"}}]'],
+      ["--name", "x", "--strategies", '[{"type":"EPISODIC","name":"episodes"}]'],
+    ],
+    [
+      "reflection namespaces on a non-episodic strategy",
+      [
+        "--name",
+        "x",
+        "--strategies",
+        '[{"type":"SEMANTIC","name":"facts","reflectionNamespaceTemplates":["/a"]}]',
+      ],
     ],
     [
       "namespaces and namespaceTemplates are mutually exclusive",
@@ -280,7 +300,7 @@ describe("project add memory", () => {
         "--name",
         "x",
         "--strategies",
-        '[{"semanticMemoryStrategy":{"name":"facts","namespaces":["/a"],"namespaceTemplates":["/b"]}}]',
+        '[{"type":"SEMANTIC","name":"facts","namespaces":["/a"],"namespaceTemplates":["/b"]}]',
       ],
     ],
     [
@@ -341,34 +361,31 @@ describe("project add memory", () => {
 
   test.each<[string, string[], RegExp]>([
     [
-      "rejects multiple strategy union members",
-      [
-        "--name",
-        "x",
-        "--strategies",
-        '[{"semanticMemoryStrategy":{"name":"facts"},"summaryMemoryStrategy":{"name":"summaries"}}]',
-      ],
-      /Exactly one memory strategy member must be specified; received 2/,
-    ],
-    [
       "rejects unsupported strategy fields",
       [
         "--name",
         "x",
         "--strategies",
-        '[{"semanticMemoryStrategy":{"name":"facts","memoryRecordSchema":{}}}]',
+        '[{"type":"SEMANTIC","name":"facts","memoryRecordSchema":{}}]',
       ],
       /memory strategy field 'memoryRecordSchema' is not supported by project memory resources/,
     ],
+    // The CreateMemory API nests each strategy under a member key; agentcore.json
+    // stores it flat, so the API shape is reported field by field.
     [
-      "rejects unsupported episodic reflection fields",
+      "rejects the CreateMemory MemoryStrategyInput shape",
+      ["--name", "x", "--strategies", '[{"semanticMemoryStrategy":{"name":"facts"}}]'],
+      /memory strategy field 'semanticMemoryStrategy' is not supported by project memory resources/,
+    ],
+    [
+      "rejects the CreateMemory episodic reflectionConfiguration shape",
       [
         "--name",
         "x",
         "--strategies",
-        '[{"episodicMemoryStrategy":{"name":"episodes","namespaceTemplates":["/episodes/{actorId}/{sessionId}"],"reflectionConfiguration":{"namespaceTemplates":["/episodes/{actorId}"],"memoryRecordSchema":{}}}}]',
+        '[{"type":"EPISODIC","name":"episodes","reflectionConfiguration":{"namespaceTemplates":["/episodes/{actorId}"]}}]',
       ],
-      /episodic reflection configuration field 'memoryRecordSchema' is not supported by project memory resources/,
+      /memory strategy field 'reflectionConfiguration' is not supported by project memory resources/,
     ],
     [
       "rejects prototype-named unsupported strategy fields",
@@ -376,7 +393,7 @@ describe("project add memory", () => {
         "--name",
         "x",
         "--strategies",
-        '[{"semanticMemoryStrategy":{"name":"facts","__proto__":{"polluted":true}}}]',
+        '[{"type":"SEMANTIC","name":"facts","__proto__":{"polluted":true}}]',
       ],
       /memory strategy field '__proto__' is not supported by project memory resources/,
     ],

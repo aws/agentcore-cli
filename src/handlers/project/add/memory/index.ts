@@ -7,7 +7,7 @@ import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
   DEFAULT_STRATEGY_NAMESPACE_TEMPLATES,
   IndexedKeySchema,
-  MemoryStrategyNameSchema,
+  MemoryStrategySchema,
   MemoryStrategyTypeSchema,
   StreamContentLevelSchema,
   type MemoryStrategy,
@@ -16,13 +16,6 @@ import { TagsSchema } from "../../../../projectSchemas/tags";
 
 // The service default for raw event retention
 const DEFAULT_EVENT_EXPIRY_DURATION = 30;
-
-const strategyFields = {
-  name: MemoryStrategyNameSchema,
-  description: z.string().optional(),
-  namespaces: z.array(z.string()).optional(),
-  namespaceTemplates: z.array(z.string()).optional(),
-};
 
 function projectMemoryObject<T extends z.ZodRawShape>(shape: T, label: string) {
   const supportedFields = new Set(Object.keys(shape));
@@ -43,55 +36,15 @@ function projectMemoryObject<T extends z.ZodRawShape>(shape: T, label: string) {
     .pipe(z.object(shape));
 }
 
-const StandardStrategyInputSchema = projectMemoryObject(strategyFields, "memory strategy");
-const EpisodicStrategyInputSchema = projectMemoryObject(
-  {
-    ...strategyFields,
-    reflectionConfiguration: projectMemoryObject(
-      {
-        namespaces: z.array(z.string()).optional(),
-        namespaceTemplates: z.array(z.string()).optional(),
-      },
-      "episodic reflection configuration",
-    ).optional(),
-  },
-  "episodic memory strategy",
-);
-
-const STRATEGY_MEMBER_KEYS = [
-  "semanticMemoryStrategy",
-  "summaryMemoryStrategy",
-  "userPreferenceMemoryStrategy",
-  "episodicMemoryStrategy",
-  "customMemoryStrategy",
-] as const;
-
+/**
+ * A --strategies JSON entry is an `agentcore.json` strategies entry verbatim, so
+ * the project schema itself decides which fields and values are accepted and the
+ * two cannot drift. The wrapper only adds the unsupported-field diagnostics.
+ */
 const MemoryStrategyInputSchema = projectMemoryObject(
-  {
-    semanticMemoryStrategy: StandardStrategyInputSchema.optional(),
-    summaryMemoryStrategy: StandardStrategyInputSchema.optional(),
-    userPreferenceMemoryStrategy: StandardStrategyInputSchema.optional(),
-    episodicMemoryStrategy: EpisodicStrategyInputSchema.optional(),
-    customMemoryStrategy: z.unknown().optional(),
-  },
-  "memory strategy input",
-).superRefine((strategy, ctx) => {
-  const members = STRATEGY_MEMBER_KEYS.filter((key) => strategy[key] !== undefined);
-  if (members.length !== 1) {
-    ctx.addIssue({
-      code: "custom",
-      message: `Exactly one memory strategy member must be specified; received ${members.length}`,
-    });
-  }
-  if (members[0] === "customMemoryStrategy") {
-    ctx.addIssue({
-      code: "custom",
-      path: ["customMemoryStrategy"],
-      message: "customMemoryStrategy is not supported by project memory resources",
-    });
-  }
-});
-type ProjectMemoryStrategyInput = z.infer<typeof MemoryStrategyInputSchema>;
+  MemoryStrategySchema.shape,
+  "memory strategy",
+).pipe(MemoryStrategySchema);
 
 const IndexedKeyInputSchema = projectMemoryObject(IndexedKeySchema.shape, "indexed key");
 const StreamContentConfigurationInputSchema = projectMemoryObject(
@@ -121,35 +74,33 @@ const StreamDeliveryResourcesInputSchema = projectMemoryObject(
   "stream delivery resources",
 );
 
-const strategiesHelp = `(comma-separated list of strategy types, or JSON MemoryStrategyInput[])
+const strategiesHelp = `(comma-separated list of strategy types, or JSON strategies[])
 The long-term memory strategies to extract from raw events. Accepts two forms.
 
 Shorthand — a comma-separated list of strategy types, each expanded with its
 default namespace templates:
   --strategies SEMANTIC,SUMMARIZATION
 
-JSON — a MemoryStrategyInput[] mirroring the CreateMemory API, for strategies
-that need explicit names, descriptions, or namespaces. Exactly one of the
-following keys can be set per entry: semanticMemoryStrategy,
-summaryMemoryStrategy, userPreferenceMemoryStrategy, episodicMemoryStrategy.
+JSON — the memory's \`strategies\` array exactly as it is stored in
+agentcore.json, for strategies that need explicit names, descriptions, or
+namespaces. Per entry: \`type\` is required; \`name\`, \`description\` and
+\`namespaceTemplates\` are optional; EPISODIC also takes
+\`reflectionNamespaceTemplates\`, each of which must be a prefix of one of its
+\`namespaceTemplates\`.
 
 JSON example:
   [
     {
-      "semanticMemoryStrategy": {
-        "name": "facts",
-        "description": "Durable user facts",
-        "namespaceTemplates": ["/users/{actorId}/facts"]
-      }
+      "type": "SEMANTIC",
+      "name": "facts",
+      "description": "Durable user facts",
+      "namespaceTemplates": ["/users/{actorId}/facts"]
     },
     {
-      "episodicMemoryStrategy": {
-        "name": "episodes",
-        "namespaceTemplates": ["/episodes/{actorId}/{sessionId}"],
-        "reflectionConfiguration": {
-          "namespaceTemplates": ["/episodes/{actorId}"]
-        }
-      }
+      "type": "EPISODIC",
+      "name": "episodes",
+      "namespaceTemplates": ["/episodes/{actorId}/{sessionId}"],
+      "reflectionNamespaceTemplates": ["/episodes/{actorId}"]
     }
   ]`;
 
@@ -167,7 +118,7 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
       ),
       flag(
         "strategies",
-        "long-term memory strategies: comma-separated types, or JSON MemoryStrategyInput[]",
+        "long-term memory strategies: comma-separated types, or the JSON strategies[] as stored in agentcore.json",
         z.string().optional(),
         { help: strategiesHelp },
       ),
@@ -234,17 +185,15 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
 
 /**
  * Parses --strategies, which accepts either a comma-separated list of strategy
- * types (expanded with the CLI's default namespaces) or a JSON
- * MemoryStrategyInput[] mirroring the CreateMemory API. A leading JSON container
- * selects the JSON form; anything else is read as the shorthand.
+ * types (expanded with the CLI's default namespaces) or the project schema's
+ * `strategies` array as JSON. A leading JSON container selects the JSON form;
+ * anything else is read as the shorthand.
  */
 function toStrategies(raw: string): MemoryStrategy[] {
   const trimmed = raw.trimStart();
-  if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
-    const inputs =
-      parseJsonFlagWithSchema("strategies", raw, z.array(MemoryStrategyInputSchema)) ?? [];
-    return inputs.map(toStrategy);
-  }
+  if (trimmed.startsWith("[") || trimmed.startsWith("{"))
+    return parseJsonFlagWithSchema("strategies", raw, z.array(MemoryStrategyInputSchema)) ?? [];
+
   const entries = raw.split(",").map((entry) => entry.trim());
   if (entries.some((entry) => entry.length === 0))
     throw new InputValidationError("memory strategy list cannot contain empty entries");
@@ -267,46 +216,5 @@ function toDefaultStrategy(type: string): MemoryStrategy {
     ...(parsed.data === "EPISODIC" && {
       reflectionNamespaceTemplates: DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
     }),
-  };
-}
-
-/** Converts an SDK MemoryStrategyInput tagged union into the flat project-schema shape. */
-function toStrategy(strategy: ProjectMemoryStrategyInput): MemoryStrategy {
-  if (strategy.semanticMemoryStrategy)
-    return { type: "SEMANTIC", ...toProjectStrategyFields(strategy.semanticMemoryStrategy) };
-  if (strategy.summaryMemoryStrategy)
-    return { type: "SUMMARIZATION", ...toProjectStrategyFields(strategy.summaryMemoryStrategy) };
-  if (strategy.userPreferenceMemoryStrategy)
-    return {
-      type: "USER_PREFERENCE",
-      ...toProjectStrategyFields(strategy.userPreferenceMemoryStrategy),
-    };
-  if (strategy.episodicMemoryStrategy) {
-    const c = strategy.episodicMemoryStrategy;
-    return {
-      type: "EPISODIC",
-      ...toProjectStrategyFields(c),
-      reflectionNamespaceTemplates: c.reflectionConfiguration?.namespaceTemplates,
-      reflectionNamespaces: c.reflectionConfiguration?.namespaces,
-    };
-  }
-  throw new InputValidationError("Unrecognized memory strategy variant");
-}
-
-/**
- * Picks only the fields the project schema supports from an SDK strategy variant.
- * The JSON input schema rejects unsupported fields before this conversion.
- */
-function toProjectStrategyFields(strategy: {
-  name?: string;
-  description?: string;
-  namespaces?: string[];
-  namespaceTemplates?: string[];
-}) {
-  return {
-    name: strategy.name,
-    description: strategy.description,
-    namespaceTemplates: strategy.namespaceTemplates,
-    namespaces: strategy.namespaces,
   };
 }
