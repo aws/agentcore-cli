@@ -38,6 +38,11 @@ const FIXTURE_ROLE_ARN = "arn:aws:iam::725476964917:role/AgentCoreEvalsSDK-us-we
 // service and comes back not-found, rather than failing local validation first.
 const MISSING_CONFIG_ID = "missing-online-0000000000";
 
+// A plain online-EVAL config (no insights) that pre-exists in the fixture account.
+// The insight id-guards GET-verify it, see no insights, and reject before touching
+// it — so pointing get/delete at it is a safe negative test that mutates nothing.
+const EVAL_ONLY_CONFIG_ID = "ABVfyLatest_ProdEval-2vqlCb2UiG";
+
 function createFixtureCore(): CoreClient {
   const { createControlClient, createDataClient, createIamClient, createLogsClient } =
     fixtureFactories(FIXTURES);
@@ -122,15 +127,28 @@ describe("online-insight CRUDL", () => {
     const stdout = await run(["eval", "online-insight", "list", "--json"]);
 
     matchGolden(FIXTURES, "list.golden.json", stdout);
-    expect(JSON.parse(stdout).onlineEvaluationConfigs).toBeArray();
+    const configs = JSON.parse(stdout).onlineEvaluationConfigs;
+    expect(configs).toBeArray();
+    // list is insight-only now: the client filters the online-eval list down to
+    // configs that carry insights, so every returned row must have a non-empty one.
+    expect(configs.length).toBeGreaterThan(0);
+    for (const c of configs) expect(c.insights?.length ?? 0).toBeGreaterThan(0);
   });
 
+  // Filtering to insight configs happens client-side, after the service has already
+  // counted a page against --max-results. So a page can come back with 0 or 1 rows
+  // yet still carry a nextToken (the single row it held was a plain eval config and
+  // got filtered out). We assert that the list paginates — rows, if any, are insight
+  // configs and the next page is fetchable — not an exact per-page row count.
   test("paginates the list with --max-results and --next-token", async () => {
     const firstPage = await run(["eval", "online-insight", "list", "--max-results", "1"]);
     matchGolden(FIXTURES, "list-page-1.golden.json", firstPage);
 
     const first = JSON.parse(firstPage);
-    expect(first.onlineEvaluationConfigs).toHaveLength(1);
+    expect(first.onlineEvaluationConfigs).toBeArray();
+    expect(first.onlineEvaluationConfigs.length).toBeLessThanOrEqual(1);
+    for (const c of first.onlineEvaluationConfigs)
+      expect(c.insights?.length ?? 0).toBeGreaterThan(0);
     expect(first.nextToken).toBeString();
 
     const secondPage = await run([
@@ -143,22 +161,10 @@ describe("online-insight CRUDL", () => {
       first.nextToken,
     ]);
     matchGolden(FIXTURES, "list-page-2.golden.json", secondPage);
-    expect(JSON.parse(secondPage).onlineEvaluationConfigs).toHaveLength(1);
-  });
-
-  test("gets the config, exposing the insight, no evaluators, and the custom role", async () => {
-    const stdout = await run(["eval", "online-insight", "get", "--id", configId]);
-    matchGolden(FIXTURES, "get.golden.json", stdout);
-
-    const detail = JSON.parse(stdout);
-    expect(detail.onlineEvaluationConfigName).toBe(CONFIG_NAME);
-    expect(detail.insights.map((i: { insightId: string }) => i.insightId)).toContain(
-      FIXTURE_INSIGHT_ID,
-    );
-    // create passed --insight, never --evaluator, so the evaluator list stays empty.
-    expect(detail.evaluators ?? []).toEqual([]);
-    // --role-arn is used verbatim; online-insight never provisions a role.
-    expect(detail.evaluationExecutionRoleArn).toBe(FIXTURE_ROLE_ARN);
+    const second = JSON.parse(secondPage);
+    expect(second.onlineEvaluationConfigs).toBeArray();
+    for (const c of second.onlineEvaluationConfigs)
+      expect(c.insights?.length ?? 0).toBeGreaterThan(0);
   });
 
   // resume and pause are asserted in one test because the service rejects an
@@ -179,9 +185,46 @@ describe("online-insight CRUDL", () => {
     // Extended timeout so the settle() wait fits while recording; it is a no-op on replay.
   }, 60_000);
 
+  // get runs after resume/pause on purpose. Every id-scoped op (get, and the
+  // GET-verify guard in pause/resume/delete) issues GetOnlineEvaluationConfig with
+  // the same id, so they all share one input-keyed fixture. Recording get last —
+  // and settling first so the config has left UPDATING — makes the fixture's final
+  // mutable state (updatedAt/status) the state get.golden captures, so replay, which
+  // serves that final fixture to every GET, matches get.golden.
+  test("gets the config, exposing the insight, no evaluators, and the custom role", async () => {
+    await settle();
+
+    const stdout = await run(["eval", "online-insight", "get", "--id", configId]);
+    matchGolden(FIXTURES, "get.golden.json", stdout);
+
+    const detail = JSON.parse(stdout);
+    expect(detail.onlineEvaluationConfigName).toBe(CONFIG_NAME);
+    expect(detail.insights.map((i: { insightId: string }) => i.insightId)).toContain(
+      FIXTURE_INSIGHT_ID,
+    );
+    // create passed --insight, never --evaluator, so the evaluator list stays empty.
+    expect(detail.evaluators ?? []).toEqual([]);
+    // --role-arn is used verbatim; online-insight never provisions a role.
+    expect(detail.evaluationExecutionRoleArn).toBe(FIXTURE_ROLE_ARN);
+  }, 60_000);
+
   test("deletes the online insight config", async () => {
     const stdout = await run(["eval", "online-insight", "delete", "--id", configId]);
     matchGolden(FIXTURES, "delete.golden.json", stdout);
+  });
+
+  // Guard (Nico's fix): the id-scoped ops model online-insight as a distinct
+  // resource, so they GET-verify and reject a plain online-EVAL config instead of
+  // silently operating on it. delete rejects at the guard, before any delete call,
+  // so aiming it at a real eval config mutates nothing.
+  test("rejects a plain online-eval config that has no insights", async () => {
+    await expect(
+      run(["eval", "online-insight", "get", "--id", EVAL_ONLY_CONFIG_ID, "--json"]),
+    ).rejects.toThrow(/is not an online-insight config/);
+
+    await expect(
+      run(["eval", "online-insight", "delete", "--id", EVAL_ONLY_CONFIG_ID, "--json"]),
+    ).rejects.toThrow(/is not an online-insight config/);
   });
 
   test("propagates ResourceNotFoundException from get", async () => {

@@ -10,6 +10,7 @@ import { createDeleteOnlineInsightHandler } from "./delete";
 
 export function createOnlineInsightHandler(core: Core, io: AppIO): Router {
   return new Router("online-insight", "manage AgentCore online insight configs")
+    .supportedTuiCommands()
     .handler(createCreateOnlineInsightHandler(core, io))
     .handler(createGetOnlineInsightHandler(core))
     .handler(createListOnlineInsightHandler(core))

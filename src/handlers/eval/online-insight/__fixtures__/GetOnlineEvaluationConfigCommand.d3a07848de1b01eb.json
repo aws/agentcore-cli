@@ -1,0 +1,42 @@
+{
+  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/ABVfyLatest_ProdEval-2vqlCb2UiG",
+  "onlineEvaluationConfigId": "ABVfyLatest_ProdEval-2vqlCb2UiG",
+  "onlineEvaluationConfigName": "ABVfyLatest_ProdEval",
+  "rule": {
+    "samplingConfig": {
+      "samplingPercentage": 100
+    },
+    "sessionConfig": {
+      "sessionTimeoutMinutes": 5
+    }
+  },
+  "dataSourceConfig": {
+    "cloudWatchLogs": {
+      "logGroupNames": [
+        "/aws/bedrock-agentcore/runtimes/ABVfyLatest_ABVfyLatest-PFLr353QVA-prod"
+      ],
+      "serviceNames": [
+        "ABVfyLatest_ABVfyLatest.prod"
+      ]
+    }
+  },
+  "status": "ACTIVE",
+  "executionStatus": "ENABLED",
+  "createdAt": {
+    "$date": "2026-06-17T22:09:59.115Z"
+  },
+  "updatedAt": {
+    "$date": "2026-06-17T22:10:11.792Z"
+  },
+  "evaluators": [
+    {
+      "evaluatorId": "Builtin.Helpfulness"
+    }
+  ],
+  "outputConfig": {
+    "cloudWatchConfig": {
+      "logGroupName": "/aws/bedrock-agentcore/evaluations/results/ABVfyLatest_ProdEval-2vqlCb2UiG"
+    }
+  },
+  "evaluationExecutionRoleArn": "arn:aws:iam::725476964917:role/AgentCore-ABVfyLatest-def-ApplicationOnlineEvalProd-EllKhDcWAWG4"
+}

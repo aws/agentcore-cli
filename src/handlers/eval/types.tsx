@@ -161,6 +161,14 @@ export type CreateOnlineInsightInput = {
   | { agent?: undefined; endpoint?: undefined; dataSourceConfig: DataSourceConfig }
 );
 
+// Online insight configs are the same OnlineEvaluationConfig resource with insights
+// instead of evaluators, so the responses share the SDK shapes under insight names.
+export type CreateOnlineInsightResponse = CreateOnlineEvaluationConfigResponse;
+export type GetOnlineInsightResponse = GetOnlineEvaluationConfigResponse;
+export type UpdateOnlineInsightResponse = UpdateOnlineEvaluationConfigResponse;
+export type ListOnlineInsightsResponse = ListOnlineEvaluationConfigsResponse;
+export type DeleteOnlineInsightResponse = DeleteOnlineEvaluationConfigResponse;
+
 // UpdateOnlineEvalInput carries the fields a caller may change on an online
 // evaluation config. Undefined fields are left untouched by Core (merged over
 // the current config, since UpdateOnlineEvaluationConfig replaces the whole
@@ -362,22 +370,19 @@ export interface CoreEvalClient {
   createOnlineInsight(
     input: CreateOnlineInsightInput,
     options: CoreOptions,
-  ): Promise<CreateOnlineEvaluationConfigResponse>;
-  getOnlineInsight(id: string, options: CoreOptions): Promise<GetOnlineEvaluationConfigResponse>;
+  ): Promise<CreateOnlineInsightResponse>;
+  getOnlineInsight(id: string, options: CoreOptions): Promise<GetOnlineInsightResponse>;
   listOnlineInsights(
     nextToken: string | undefined,
     maxResults: number | undefined,
     options: CoreOptions,
-  ): Promise<ListOnlineEvaluationConfigsResponse>;
+  ): Promise<ListOnlineInsightsResponse>;
   setOnlineInsightExecutionStatus(
     id: string,
     executionStatus: "ENABLED" | "DISABLED",
     options: CoreOptions,
-  ): Promise<UpdateOnlineEvaluationConfigResponse>;
-  deleteOnlineInsight(
-    id: string,
-    options: CoreOptions,
-  ): Promise<DeleteOnlineEvaluationConfigResponse>;
+  ): Promise<UpdateOnlineInsightResponse>;
+  deleteOnlineInsight(id: string, options: CoreOptions): Promise<DeleteOnlineInsightResponse>;
 
   createConfigurationBundle(
     input: CreateConfigurationBundleInput,

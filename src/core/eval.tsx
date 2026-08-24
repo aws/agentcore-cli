@@ -102,6 +102,11 @@ import type {
   CreateDatasetInput,
   CreateOnlineEvalInput,
   CreateOnlineInsightInput,
+  CreateOnlineInsightResponse,
+  GetOnlineInsightResponse,
+  ListOnlineInsightsResponse,
+  UpdateOnlineInsightResponse,
+  DeleteOnlineInsightResponse,
   EvaluateInput,
   EvaluateResult,
   GetBatchEvaluationResult,
@@ -560,7 +565,7 @@ export class EvalClient implements CoreEvalClient {
   async createOnlineInsight(
     input: CreateOnlineInsightInput,
     options: CoreOptions,
-  ): Promise<CreateOnlineEvaluationConfigResponse> {
+  ): Promise<CreateOnlineInsightResponse> {
     const dataSourceConfig =
       input.agent !== undefined
         ? await agentDataSource(input.agent, input.endpoint, this.clients, options)
@@ -581,30 +586,58 @@ export class EvalClient implements CoreEvalClient {
     return control.send(command);
   }
 
-  getOnlineInsight(id: string, options: CoreOptions): Promise<GetOnlineEvaluationConfigResponse> {
-    return this.getOnlineEvaluationConfig(id, options);
+  async getOnlineInsight(id: string, options: CoreOptions): Promise<GetOnlineInsightResponse> {
+    const control = this.clients.control(toClientConfig(options));
+    const config = await control.send(
+      new GetOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }),
+    );
+    if ((config.insights?.length ?? 0) === 0)
+      throw new InputValidationError(`"${id}" is not an online-insight config`, {
+        meta: { onlineEvaluationConfigId: id },
+      });
+    return config;
   }
 
-  listOnlineInsights(
+  async listOnlineInsights(
     nextToken: string | undefined,
     maxResults: number | undefined,
     options: CoreOptions,
-  ): Promise<ListOnlineEvaluationConfigsResponse> {
-    return this.listOnlineEvaluationConfigs(nextToken, maxResults, options);
+  ): Promise<ListOnlineInsightsResponse> {
+    const response = await this.listOnlineEvaluationConfigs(nextToken, maxResults, options);
+    return {
+      ...response,
+      onlineEvaluationConfigs: (response.onlineEvaluationConfigs ?? []).filter(
+        (c) => (c.insights?.length ?? 0) > 0,
+      ),
+    };
   }
 
-  setOnlineInsightExecutionStatus(
+  async setOnlineInsightExecutionStatus(
     id: string,
     executionStatus: "ENABLED" | "DISABLED",
     options: CoreOptions,
-  ): Promise<UpdateOnlineEvaluationConfigResponse> {
+  ): Promise<UpdateOnlineInsightResponse> {
+    const config = await this.clients
+      .control(toClientConfig(options))
+      .send(new GetOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }));
+    if ((config.insights?.length ?? 0) === 0)
+      throw new InputValidationError(`"${id}" is not an online-insight config`, {
+        meta: { onlineEvaluationConfigId: id },
+      });
     return this.setOnlineEvaluationExecutionStatus(id, executionStatus, options);
   }
 
-  deleteOnlineInsight(
+  async deleteOnlineInsight(
     id: string,
     options: CoreOptions,
-  ): Promise<DeleteOnlineEvaluationConfigResponse> {
+  ): Promise<DeleteOnlineInsightResponse> {
+    const config = await this.clients
+      .control(toClientConfig(options))
+      .send(new GetOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }));
+    if ((config.insights?.length ?? 0) === 0)
+      throw new InputValidationError(`"${id}" is not an online-insight config`, {
+        meta: { onlineEvaluationConfigId: id },
+      });
     return this.deleteOnlineEvaluationConfig(id, options);
   }
 
