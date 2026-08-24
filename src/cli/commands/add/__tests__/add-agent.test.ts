@@ -272,6 +272,74 @@ describe('add agent command', () => {
       const agent = projectSpec.runtimes.find((a: { name: string }) => a.name === agentName);
       expect(agent, 'Agent should be in agentcore.json').toBeTruthy();
       expect(agent.codeLocation.includes(codeDir), `codeLocation should reference ${codeDir}`).toBeTruthy();
+      expect(agent.entrypoint).toBe('main.py');
+      expect(agent.runtimeVersion).toBe('PYTHON_3_14');
+    });
+
+    it('uses TypeScript defaults for BYO agents', async () => {
+      const agentName = `ByoTypeScriptAgent${Date.now()}`;
+      const codeDir = 'existing-typescript-agent';
+
+      const result = await runCLI(
+        [
+          'add',
+          'agent',
+          '--name',
+          agentName,
+          '--type',
+          'byo',
+          '--code-location',
+          codeDir,
+          '--language',
+          'TypeScript',
+          '--framework',
+          'Strands',
+          '--model-provider',
+          'Bedrock',
+          '--json',
+        ],
+        projectDir
+      );
+
+      expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
+
+      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+      const agent = projectSpec.runtimes.find((a: { name: string }) => a.name === agentName);
+      expect(agent.entrypoint).toBe('main.js');
+      expect(agent.runtimeVersion).toBe('NODE_22');
+    });
+
+    it('preserves Python defaults for BYO agents with Other language', async () => {
+      const agentName = `ByoOtherAgent${Date.now()}`;
+      const codeDir = 'existing-other-agent';
+
+      const result = await runCLI(
+        [
+          'add',
+          'agent',
+          '--name',
+          agentName,
+          '--type',
+          'byo',
+          '--code-location',
+          codeDir,
+          '--language',
+          'Other',
+          '--framework',
+          'Strands',
+          '--model-provider',
+          'Bedrock',
+          '--json',
+        ],
+        projectDir
+      );
+
+      expect(result.exitCode, `stdout: ${result.stdout}`).toBe(0);
+
+      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+      const agent = projectSpec.runtimes.find((a: { name: string }) => a.name === agentName);
+      expect(agent.entrypoint).toBe('main.py');
+      expect(agent.runtimeVersion).toBe('PYTHON_3_14');
     });
 
     it('requires code-location for BYO path', async () => {
