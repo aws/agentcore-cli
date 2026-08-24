@@ -10,6 +10,8 @@ const mockGetEvaluator = vi.fn();
 const mockGetOnlineEvaluationConfig = vi.fn();
 const mockGetKnowledgeBase = vi.fn();
 const mockGetLatestIngestionJob = vi.fn();
+const mockGetPaymentManager = vi.fn();
+const mockGetPaymentConnector = vi.fn();
 
 vi.mock('../../../aws', () => ({
   getAgentRuntimeStatus: (...args: unknown[]) => mockGetAgentRuntimeStatus(...args),
@@ -23,6 +25,11 @@ vi.mock('../../../aws/agentcore-control', () => ({
 vi.mock('../../../aws/bedrock-agent', () => ({
   getKnowledgeBase: (...args: unknown[]) => mockGetKnowledgeBase(...args),
   getLatestIngestionJob: (...args: unknown[]) => mockGetLatestIngestionJob(...args),
+}));
+
+vi.mock('../../../aws/agentcore-payments', () => ({
+  getPaymentManager: (...args: unknown[]) => mockGetPaymentManager(...args),
+  getPaymentConnector: (...args: unknown[]) => mockGetPaymentConnector(...args),
 }));
 
 const loggedLines: string[] = [];
@@ -754,6 +761,8 @@ describe('handleProjectStatus — live enrichment', () => {
     mockGetAgentRuntimeStatus.mockReset();
     mockGetEvaluator.mockReset();
     mockGetOnlineEvaluationConfig.mockReset();
+    mockGetPaymentManager.mockReset();
+    mockGetPaymentConnector.mockReset();
   });
 
   afterEach(() => vi.clearAllMocks());
@@ -915,6 +924,100 @@ describe('handleProjectStatus — live enrichment', () => {
     expect(result.success).toBe(true);
     expect(mockGetEvaluator).not.toHaveBeenCalled();
     expect(mockGetOnlineEvaluationConfig).not.toHaveBeenCalled();
+  });
+
+  function makePaymentContext(): StatusContext {
+    return makeContext({
+      project: {
+        ...baseProject,
+        payments: [
+          {
+            name: 'PayManager',
+            authorizerType: 'AWS_IAM',
+            connectors: [
+              {
+                name: 'QuickConnector',
+                provider: 'CoinbaseCDP',
+                provisionMode: 'QUICK_CREATE',
+              },
+            ],
+            autoPayment: false,
+            defaultSpendLimit: '10.00',
+          },
+        ],
+      } as unknown as AgentCoreProjectSpec,
+      deployedState: {
+        targets: {
+          dev: {
+            resources: {
+              payments: {
+                PayManager: {
+                  managerId: 'manager-123',
+                  managerArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789:payment-manager/manager-123',
+                  connectors: {
+                    QuickConnector: {
+                      connectorId: 'connector-123',
+                      provisionMode: 'QUICK_CREATE',
+                    },
+                  },
+                  processPaymentRoleArn: 'arn:aws:iam::123456789:role/process',
+                  resourceRetrievalRoleArn: 'arn:aws:iam::123456789:role/retrieval',
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  it('omits a retained authorization URL when the connector is READY', async () => {
+    mockGetPaymentManager.mockResolvedValue({ status: 'READY' });
+    mockGetPaymentConnector.mockResolvedValue({
+      paymentConnectorId: 'connector-123',
+      name: 'QuickConnector',
+      type: 'CoinbaseCDP',
+      status: 'READY',
+      authorizationUrl: 'https://stale.example.com/authorize',
+      credentialProviderConfigurations: [
+        {
+          coinbaseCDP: {
+            credentialProviderArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789:payment-provider/generated',
+          },
+        },
+      ],
+    });
+
+    const result = await handleProjectStatus(makePaymentContext());
+
+    assert(result.success);
+    const payment = result.resources.find(resource => resource.resourceType === 'payment');
+    expect(payment?.paymentConnectors).toEqual([
+      {
+        name: 'QuickConnector',
+        connectorId: 'connector-123',
+        status: 'READY',
+        credentialProviderArn: 'arn:aws:bedrock-agentcore:us-east-1:123456789:payment-provider/generated',
+      },
+    ]);
+  });
+
+  it('includes the authorization URL while the connector is PENDING_AUTHENTICATION', async () => {
+    mockGetPaymentManager.mockResolvedValue({ status: 'READY' });
+    mockGetPaymentConnector.mockResolvedValue({
+      paymentConnectorId: 'connector-123',
+      name: 'QuickConnector',
+      type: 'CoinbaseCDP',
+      status: 'PENDING_AUTHENTICATION',
+      authorizationUrl: 'https://current.example.com/authorize',
+      credentialProviderConfigurations: [],
+    });
+
+    const result = await handleProjectStatus(makePaymentContext());
+
+    assert(result.success);
+    const payment = result.resources.find(resource => resource.resourceType === 'payment');
+    expect(payment?.paymentConnectors?.[0]?.authorizationUrl).toBe('https://current.example.com/authorize');
   });
 
   it('does not enrich local-only evaluators', async () => {

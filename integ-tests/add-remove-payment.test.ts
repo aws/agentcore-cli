@@ -317,6 +317,125 @@ describe('integration: add and remove payment managers and connectors', () => {
     });
   });
 
+  describe('Quick Create connector lifecycle', () => {
+    const managerName = `IntegQuickMgr${Date.now().toString().slice(-6)}`;
+    const connectorName = `IntegQuick${Date.now().toString().slice(-6)}`;
+    let envBefore = '';
+
+    beforeAll(async () => {
+      await runCLI(['add', 'payment-manager', '--name', managerName], project.projectPath);
+      envBefore = await readFile(join(project.projectPath, 'agentcore', '.env.local'), 'utf-8').catch(() => '');
+    });
+
+    it('adds Quick Create without provider or credential flags', async () => {
+      const result = await runCLI(
+        [
+          'add',
+          'payment-connector',
+          '--manager',
+          managerName,
+          '--name',
+          connectorName,
+          '--provision-mode',
+          'QUICK_CREATE',
+          '--json',
+        ],
+        project.projectPath
+      );
+
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual(
+        expect.objectContaining({
+          success: true,
+          managerName,
+          connectorName,
+        })
+      );
+
+      const config = await readProjectConfig(project.projectPath);
+      const manager = config.payments?.find((p: Record<string, unknown>) => p.name === managerName);
+      expect(manager?.connectors).toEqual([
+        {
+          name: connectorName,
+          provider: 'CoinbaseCDP',
+          provisionMode: 'QUICK_CREATE',
+        },
+      ]);
+      expect(
+        config.credentials?.some((c: Record<string, unknown>) => c.authorizerType === 'PaymentCredentialProvider')
+      ).toBe(false);
+    });
+
+    it('does not write payment secrets to .env.local', async () => {
+      const envAfter = await readFile(join(project.projectPath, 'agentcore', '.env.local'), 'utf-8').catch(() => '');
+      expect(envAfter).toBe(envBefore);
+    });
+
+    it('rejects credential flags with Quick Create', async () => {
+      const result = await runCLI(
+        [
+          'add',
+          'payment-connector',
+          '--manager',
+          managerName,
+          '--name',
+          `${connectorName}Secret`,
+          '--provision-mode',
+          'QUICK_CREATE',
+          '--api-key-id',
+          'must-not-be-used',
+          '--json',
+        ],
+        project.projectPath
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(JSON.parse(result.stdout).error).toContain('Credential options cannot be used with QUICK_CREATE');
+    });
+
+    it('rejects StripePrivy with Quick Create', async () => {
+      const result = await runCLI(
+        [
+          'add',
+          'payment-connector',
+          '--manager',
+          managerName,
+          '--name',
+          `${connectorName}Stripe`,
+          '--provision-mode',
+          'QUICK_CREATE',
+          '--provider',
+          'StripePrivy',
+          '--json',
+        ],
+        project.projectPath
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(JSON.parse(result.stdout).error).toContain('QUICK_CREATE only supports the CoinbaseCDP provider');
+    });
+
+    it('validates a Quick Create connector without local credentials', async () => {
+      const result = await runCLI(['validate'], project.projectPath);
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+    });
+
+    it('removes Quick Create without credential cleanup', async () => {
+      const result = await runCLI(
+        ['remove', 'payment-connector', '--manager', managerName, '--name', connectorName, '--yes', '--json'],
+        project.projectPath
+      );
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+
+      const envAfter = await readFile(join(project.projectPath, 'agentcore', '.env.local'), 'utf-8').catch(() => '');
+      expect(envAfter).toBe(envBefore);
+    });
+
+    afterAll(async () => {
+      await runCLI(['remove', 'payment-manager', '--name', managerName, '--yes'], project.projectPath);
+    });
+  });
+
   describe('StripePrivy connector lifecycle', () => {
     const managerName = `IntegSpMgr${Date.now().toString().slice(-6)}`;
     const connectorName = `IntegSpConn${Date.now().toString().slice(-6)}`;

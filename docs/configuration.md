@@ -526,6 +526,11 @@ wallet credentials. See [Payments](payments.md) for the full usage guide.
         {
           "name": "MyCDPConnector",
           "provider": "CoinbaseCDP",
+          "provisionMode": "QUICK_CREATE"
+        },
+        {
+          "name": "MyManualConnector",
+          "provider": "CoinbaseCDP",
           "credentialName": "my-cdp-creds"
         }
       ]
@@ -572,17 +577,18 @@ wallet credentials. See [Payments](payments.md) for the full usage guide.
 
 ### Payment Connector
 
-| Field            | Required | Description                                        |
-| ---------------- | -------- | -------------------------------------------------- |
-| `name`           | Yes      | Connector name (alphanumeric + underscore, max 48) |
-| `provider`       | No       | `"CoinbaseCDP"` (default) or `"StripePrivy"`       |
-| `credentialName` | Yes      | Name of the credential (maps to `.env.local` vars) |
+| Field            | Required | Description                                                       |
+| ---------------- | -------- | ----------------------------------------------------------------- |
+| `name`           | Yes      | Connector name (alphanumeric + underscore, max 48)                |
+| `provider`       | Yes      | `"CoinbaseCDP"` for Quick Create; either provider for manual mode |
+| `provisionMode`  | Cond.    | `"QUICK_CREATE"` for Quick Create; omit or use `"MANUAL"`         |
+| `credentialName` | Cond.    | Required for manual mode; forbidden for Quick Create              |
 
 ### Payment Credential Provider
 
-Payment connectors use a `PaymentCredentialProvider` credential type, distinct from `ApiKeyCredentialProvider` and
-`OAuthCredentialProvider`. The credential is automatically created during `agentcore deploy` from values in
-`.env.local`. You do not need to add it to the `credentials` array manually.
+Manual payment connectors use a `PaymentCredentialProvider` credential type, distinct from `ApiKeyCredentialProvider`
+and `OAuthCredentialProvider`. The credential is automatically created during `agentcore deploy` from values in
+`.env.local`. Quick Create provisions its provider through the service and does not add a local credential entry.
 
 ---
 

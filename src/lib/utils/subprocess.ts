@@ -113,8 +113,8 @@ export async function runSubprocessCapture(
       resolve({ stdout, stderr, code, signal });
     });
 
-    child.on('error', () => {
-      resolve({ stdout, stderr, code: -1, signal: null });
+    child.on('error', error => {
+      resolve({ stdout, stderr: stderr || error.message, code: -1, signal: null });
     });
   });
 }

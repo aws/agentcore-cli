@@ -19,11 +19,23 @@ import { Construct } from 'constructs';
  */
 export type HarnessConfig = HarnessDeploymentConfig;
 
-export interface PaymentConnectorSpec {
+export interface ManualPaymentConnectorSpec {
   name: string;
   provider: 'CoinbaseCDP' | 'StripePrivy';
+  provisionMode?: 'MANUAL';
+  credentialName: string;
   credentialProviderArn: string;
 }
+
+export interface QuickCreatePaymentConnectorSpec {
+  name: string;
+  provider: 'CoinbaseCDP';
+  provisionMode: 'QUICK_CREATE';
+  credentialName?: never;
+  credentialProviderArn?: never;
+}
+
+export type PaymentConnectorSpec = ManualPaymentConnectorSpec | QuickCreatePaymentConnectorSpec;
 
 export interface PaymentSpec {
   name: string;
@@ -203,13 +215,31 @@ export class AgentCoreStack extends Stack {
         // Create connectors for this manager
         for (const connector of payment.connectors) {
           const connId = toCdkId(connector.name);
-          const conn = new AgentCorePaymentConnector(this, `Payment${mgrId}${connId}`, {
+          const schemaConnector =
+            connector.provisionMode === 'QUICK_CREATE'
+              ? connector
+              : {
+                  name: connector.name,
+                  provider: connector.provider,
+                  ...(connector.provisionMode && { provisionMode: connector.provisionMode }),
+                  credentialName: connector.credentialName,
+                };
+          const compatibilityProps = {
             projectName: spec.name,
             paymentManager: manager,
+            connector: schemaConnector,
+            // Remove these legacy manual fields after the new L3 release is pinned.
             connectorName: connector.name,
             connectorType: connector.provider,
-            credentialProviderArn: connector.credentialProviderArn,
-          });
+            ...(connector.provisionMode !== 'QUICK_CREATE' && {
+              credentialProviderArn: connector.credentialProviderArn,
+            }),
+          };
+          const conn = new AgentCorePaymentConnector(
+            this,
+            `Payment${mgrId}${connId}`,
+            compatibilityProps as unknown as ConstructorParameters<typeof AgentCorePaymentConnector>[2]
+          );
 
           // Wire first connector's ID as env var (eligible agents only)
           if (connector === payment.connectors[0]) {
@@ -222,6 +252,18 @@ export class AgentCoreStack extends Stack {
           new CfnOutput(this, `Payment${mgrId}${connId}ConnectorId`, {
             value: conn.paymentConnectorId,
           });
+          if (connector.provisionMode === 'QUICK_CREATE') {
+            const quickCreateConnector = conn as AgentCorePaymentConnector & {
+              paymentConnectorStatus: string;
+              authorizationUrl: string;
+            };
+            new CfnOutput(this, `Payment${mgrId}${connId}ConnectorStatus`, {
+              value: quickCreateConnector.paymentConnectorStatus,
+            });
+            new CfnOutput(this, `Payment${mgrId}${connId}AuthorizationUrl`, {
+              value: quickCreateConnector.authorizationUrl,
+            });
+          }
         }
 
         // CFN Outputs for post-deploy state parsing

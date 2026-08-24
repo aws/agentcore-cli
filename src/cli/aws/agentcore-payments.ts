@@ -78,6 +78,45 @@ interface PaymentManagerDetail {
   roleArn?: string;
 }
 
+// ── Get Payment Connector ─────────────────────────────────────────────────
+
+export interface GetPaymentConnectorOptions {
+  region: string;
+  paymentManagerId: string;
+  paymentConnectorId: string;
+}
+
+export type PaymentConnectorStatus =
+  | 'CREATING'
+  | 'UPDATING'
+  | 'DELETING'
+  | 'READY'
+  | 'CREATE_FAILED'
+  | 'UPDATE_FAILED'
+  | 'DELETE_FAILED'
+  | 'AWS_MARKETPLACE_SUBSCRIPTION_REQUIRED'
+  | 'PENDING_AUTHENTICATION'
+  | 'PROVISIONING'
+  | 'AUTHENTICATION_EXPIRED'
+  | 'AUTHENTICATION_FAILED';
+
+export interface PaymentCredentialProviderConfiguration {
+  coinbaseCDP?: { credentialProviderArn: string };
+  stripePrivy?: { credentialProviderArn: string };
+}
+
+export interface PaymentConnectorDetail {
+  paymentConnectorId: string;
+  name: string;
+  description?: string;
+  type: 'CoinbaseCDP' | 'StripePrivy';
+  credentialProviderConfigurations: PaymentCredentialProviderConfiguration[];
+  createdAt: number | string;
+  lastUpdatedAt: number | string;
+  status: PaymentConnectorStatus;
+  authorizationUrl?: string;
+}
+
 // ============================================================================
 // HTTP signing helper
 // ============================================================================
@@ -356,6 +395,23 @@ export async function getPaymentManager(options: GetPaymentManagerOptions): Prom
     const code = (err as { code?: unknown }).code;
     if (code === 'ResourceNotFoundException' || msg.includes('(404)')) return null;
     throw rethrowWithContext(`Failed to get payment manager "${options.paymentManagerId}"`, err);
+  }
+}
+
+export async function getPaymentConnector(options: GetPaymentConnectorOptions): Promise<PaymentConnectorDetail | null> {
+  try {
+    return (await signedRequest({
+      region: options.region,
+      method: 'GET',
+      path:
+        `/payments/managers/${encodeURIComponent(options.paymentManagerId)}/connectors/` +
+        encodeURIComponent(options.paymentConnectorId),
+    })) as PaymentConnectorDetail;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const code = (err as { code?: unknown }).code;
+    if (code === 'ResourceNotFoundException' || msg.includes('(404)')) return null;
+    throw rethrowWithContext(`Failed to get payment connector "${options.paymentConnectorId}"`, err);
   }
 }
 

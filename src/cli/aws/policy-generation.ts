@@ -102,16 +102,22 @@ export async function getPolicyGeneration(options: GetPolicyGenerationOptions): 
     throw new Error('Policy generation completed but no assets were returned');
   }
 
-  // Get the Cedar statement from the first asset
   const firstAsset = assets[0]!;
-  const cedarStatement = firstAsset.definition?.cedar?.statement;
+  const statement = firstAsset.definition?.cedar?.statement ?? firstAsset.definition?.policy?.statement;
 
-  if (!cedarStatement) {
-    throw new Error('Policy generation completed but no Cedar policy statement was found in the assets');
+  if (!statement) {
+    const findingDetails =
+      firstAsset.findings
+        ?.map(finding => finding.description ?? finding.type)
+        .filter((finding): finding is string => !!finding)
+        .join(', ') ?? '';
+    throw new Error(
+      `Policy generation completed but no policy statement was found in the assets${findingDetails ? `: ${findingDetails}` : ''}`
+    );
   }
 
   return {
     status: statusResponse.status ?? 'GENERATED',
-    statement: cedarStatement,
+    statement,
   };
 }

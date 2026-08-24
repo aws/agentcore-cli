@@ -3188,26 +3188,58 @@
             "default": [],
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 48,
-                  "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 48,
+                      "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+                    },
+                    "provider": {
+                      "type": "string",
+                      "const": "CoinbaseCDP"
+                    },
+                    "provisionMode": {
+                      "type": "string",
+                      "const": "QUICK_CREATE"
+                    },
+                    "credentialName": {
+                      "not": {}
+                    }
+                  },
+                  "required": ["name", "provider", "provisionMode"],
+                  "additionalProperties": false
                 },
-                "provider": {
-                  "default": "CoinbaseCDP",
-                  "type": "string",
-                  "enum": ["CoinbaseCDP", "StripePrivy"]
-                },
-                "credentialName": {
-                  "type": "string",
-                  "minLength": 1
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 48,
+                      "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+                    },
+                    "provider": {
+                      "default": "CoinbaseCDP",
+                      "type": "string",
+                      "enum": ["CoinbaseCDP", "StripePrivy"]
+                    },
+                    "provisionMode": {
+                      "type": "string",
+                      "const": "MANUAL"
+                    },
+                    "credentialName": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": ["name", "credentialName"],
+                  "additionalProperties": false
                 }
-              },
-              "required": ["name", "credentialName"],
-              "additionalProperties": false
+              ]
             }
           },
           "description": {

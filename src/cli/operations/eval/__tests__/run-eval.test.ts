@@ -847,6 +847,42 @@ describe('handleRunEval', () => {
     );
   });
 
+  it('resolves Builtin skill evaluators to TOOL_CALL level', async () => {
+    const ctx = makeDeployedContext();
+    mockLoadDeployedProjectConfig.mockResolvedValue(ctx);
+    mockResolveAgent.mockReturnValue({
+      success: true,
+      agent: {
+        agentName: 'my-agent',
+        targetName: 'dev',
+        region: 'us-east-1',
+        accountId: '111222333444',
+        runtimeId: 'rt-123',
+      },
+    });
+
+    const spanRows = [makeToolCallSpanRow('session-1', 'trace-1', 'span-tool-1', 'calculator')];
+    setupCloudWatchToReturn(spanRows);
+
+    mockEvaluate.mockResolvedValue({
+      evaluationResults: [{ value: 1.0, context: { spanContext: { sessionId: 'session-1', spanId: 'span-tool-1' } } }],
+    });
+
+    // Builtin.SkillSelectionAccuracy / SkillInstructionFollowing are TOOL_CALL-level — they must
+    // target spans, not default to SESSION (which would send no targetSpanIds).
+    const result = await handleRunEval({
+      evaluator: ['Builtin.SkillSelectionAccuracy', 'Builtin.SkillInstructionFollowing'],
+      days: 7,
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockEvaluate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetSpanIds: ['span-tool-1'],
+      })
+    );
+  });
+
   it('batches targetSpanIds into chunks of 10 for TOOL_CALL evaluators', async () => {
     const ctx = makeDeployedContext();
     mockLoadDeployedProjectConfig.mockResolvedValue(ctx);

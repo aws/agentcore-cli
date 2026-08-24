@@ -1,6 +1,11 @@
 import { findConfigRoot, removeEnvVars, setEnvVar, toError } from '../../lib';
 import type { AgentCoreProjectSpec, PaymentProvider } from '../../schema';
-import { PaymentConnectorNameSchema, PaymentConnectorSchema, PaymentProviderSchema } from '../../schema';
+import {
+  PaymentConnectorNameSchema,
+  PaymentConnectorSchema,
+  PaymentProviderSchema,
+  PaymentProvisionModeSchema,
+} from '../../schema';
 import type { RemoveResult } from '../commands/remove/types';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
@@ -25,6 +30,7 @@ export interface AddCoinbaseCdpConnectorOptions {
   manager: string;
   name: string;
   provider: 'CoinbaseCDP';
+  provisionMode?: 'MANUAL';
   apiKeyId: string;
   apiKeySecret: string;
   walletSecret: string;
@@ -37,13 +43,24 @@ export interface AddStripePrivyConnectorOptions {
   manager: string;
   name: string;
   provider: 'StripePrivy';
+  provisionMode?: 'MANUAL';
   appId: string;
   appSecret: string;
   authorizationPrivateKey: string;
   authorizationId: string;
 }
 
-export type AddPaymentConnectorOptions = AddCoinbaseCdpConnectorOptions | AddStripePrivyConnectorOptions;
+export interface AddQuickCreateConnectorOptions {
+  manager: string;
+  name: string;
+  provider: 'CoinbaseCDP';
+  provisionMode: 'QUICK_CREATE';
+}
+
+export type AddPaymentConnectorOptions =
+  | AddCoinbaseCdpConnectorOptions
+  | AddStripePrivyConnectorOptions
+  | AddQuickCreateConnectorOptions;
 
 /**
  * Removable connector resource with parent manager context.
@@ -64,7 +81,7 @@ export class PaymentConnectorPrimitive extends BasePrimitive<AddPaymentConnector
 
   async add(
     options: AddPaymentConnectorOptions
-  ): Promise<AddResult<{ connectorName: string; managerName: string; credentialName: string }>> {
+  ): Promise<AddResult<{ connectorName: string; managerName: string; credentialName?: string }>> {
     try {
       const project = await this.readProjectSpec();
       // payments is optional in the schema; a connector can only attach to an
@@ -81,6 +98,22 @@ export class PaymentConnectorPrimitive extends BasePrimitive<AddPaymentConnector
         return {
           success: false,
           error: new Error(`Payment connector "${options.name}" already exists in manager "${options.manager}".`),
+        };
+      }
+
+      if (options.provisionMode === 'QUICK_CREATE') {
+        manager.connectors.push({
+          name: options.name,
+          provider: 'CoinbaseCDP',
+          provisionMode: 'QUICK_CREATE',
+        });
+
+        await this.writeProjectSpec(project);
+
+        return {
+          success: true,
+          connectorName: options.name,
+          managerName: options.manager,
         };
       }
 
@@ -172,42 +205,44 @@ export class PaymentConnectorPrimitive extends BasePrimitive<AddPaymentConnector
         const connIndex = manager.connectors.findIndex(c => c.name === resolvedConnector);
         if (connIndex !== -1) {
           const connector = manager.connectors[connIndex]!;
-          const credentialName = connector.credentialName;
 
           // Remove connector
           manager.connectors.splice(connIndex, 1);
 
-          // Remove associated credential if no longer referenced
-          const stillReferenced = project.payments.some(m =>
-            m.connectors.some(c => c.credentialName === credentialName)
-          );
-          if (!stillReferenced) {
-            const credIndex = project.credentials.findIndex(c => c.name === credentialName);
-            if (credIndex !== -1) {
-              project.credentials.splice(credIndex, 1);
-            }
-          }
-
-          await this.writeProjectSpec(project);
-
-          // Clean up .env.local secrets (provider-specific)
-          if (!stillReferenced) {
-            try {
-              if (connector.provider === 'StripePrivy') {
-                const envVarNames = computeStripePrivyCredentialEnvVarNames(credentialName);
-                await removeEnvVars([
-                  envVarNames.appId,
-                  envVarNames.appSecret,
-                  envVarNames.authorizationPrivateKey,
-                  envVarNames.authorizationId,
-                ]);
-              } else {
-                const envVarNames = computePaymentCredentialEnvVarNames(credentialName);
-                await removeEnvVars([envVarNames.apiKeyId, envVarNames.apiKeySecret, envVarNames.walletSecret]);
+          if (connector.provisionMode !== 'QUICK_CREATE') {
+            const credentialName = connector.credentialName;
+            const stillReferenced = project.payments.some(m =>
+              m.connectors.some(c => c.provisionMode !== 'QUICK_CREATE' && c.credentialName === credentialName)
+            );
+            if (!stillReferenced) {
+              const credIndex = project.credentials.findIndex(c => c.name === credentialName);
+              if (credIndex !== -1) {
+                project.credentials.splice(credIndex, 1);
               }
-            } catch {
-              // Best-effort cleanup
             }
+
+            await this.writeProjectSpec(project);
+
+            if (!stillReferenced) {
+              try {
+                if (connector.provider === 'StripePrivy') {
+                  const envVarNames = computeStripePrivyCredentialEnvVarNames(credentialName);
+                  await removeEnvVars([
+                    envVarNames.appId,
+                    envVarNames.appSecret,
+                    envVarNames.authorizationPrivateKey,
+                    envVarNames.authorizationId,
+                  ]);
+                } else {
+                  const envVarNames = computePaymentCredentialEnvVarNames(credentialName);
+                  await removeEnvVars([envVarNames.apiKeyId, envVarNames.apiKeySecret, envVarNames.walletSecret]);
+                }
+              } catch {
+                // Best-effort cleanup
+              }
+            }
+          } else {
+            await this.writeProjectSpec(project);
           }
 
           return { success: true };
@@ -257,15 +292,17 @@ export class PaymentConnectorPrimitive extends BasePrimitive<AddPaymentConnector
       if (connector) {
         const summary = [`Removing payment connector: ${targetConnector} (from manager ${manager.name})`];
 
-        const stillReferenced = project.payments.some(m =>
-          m.connectors
-            .filter(c => !(m.name === manager.name && c.name === targetConnector))
-            .some(c => c.credentialName === connector.credentialName)
-        );
-        if (!stillReferenced) {
-          summary.push(`Associated credential "${connector.credentialName}" will also be removed`);
-        } else {
-          summary.push(`Credential "${connector.credentialName}" is shared and will be kept`);
+        if (connector.provisionMode !== 'QUICK_CREATE') {
+          const stillReferenced = project.payments.some(m =>
+            m.connectors
+              .filter(c => !(m.name === manager.name && c.name === targetConnector))
+              .some(c => c.provisionMode !== 'QUICK_CREATE' && c.credentialName === connector.credentialName)
+          );
+          if (!stillReferenced) {
+            summary.push(`Associated credential "${connector.credentialName}" will also be removed`);
+          } else {
+            summary.push(`Credential "${connector.credentialName}" is shared and will be kept`);
+          }
         }
 
         const schemaChanges: SchemaChange[] = [];
@@ -321,10 +358,11 @@ export class PaymentConnectorPrimitive extends BasePrimitive<AddPaymentConnector
   registerCommands(addCmd: Command, removeCmd: Command): void {
     addCmd
       .command('payment-connector')
-      .description('[preview] Add a payment connector to a payment manager')
+      .description('Add a payment connector to a payment manager')
       .option('--manager <name>', 'Payment manager name [non-interactive]')
       .option('--name <name>', 'Payment connector name [non-interactive]')
       .option('--provider <provider>', 'Payment provider: CoinbaseCDP, StripePrivy [non-interactive]')
+      .option('--provision-mode <mode>', 'Provisioning mode: MANUAL, QUICK_CREATE [non-interactive]')
       .option('--api-key-id <id>', 'CDP API Key ID (CoinbaseCDP) [non-interactive]')
       .option('--api-key-secret <secret>', 'CDP API Key Secret (CoinbaseCDP) [non-interactive]')
       .option('--wallet-secret <secret>', 'CDP Wallet Secret (CoinbaseCDP) [non-interactive]')
@@ -338,6 +376,7 @@ export class PaymentConnectorPrimitive extends BasePrimitive<AddPaymentConnector
           manager?: string;
           name?: string;
           provider?: string;
+          provisionMode?: string;
           apiKeyId?: string;
           apiKeySecret?: string;
           walletSecret?: string;
@@ -357,6 +396,7 @@ export class PaymentConnectorPrimitive extends BasePrimitive<AddPaymentConnector
               cliOptions.manager ??
               cliOptions.name ??
               cliOptions.provider ??
+              cliOptions.provisionMode ??
               cliOptions.apiKeyId ??
               cliOptions.apiKeySecret ??
               cliOptions.walletSecret ??
@@ -367,33 +407,58 @@ export class PaymentConnectorPrimitive extends BasePrimitive<AddPaymentConnector
               cliOptions.json;
 
             if (hasAnyOption) {
-              if (!cliOptions.provider) {
-                const error = '--provider is required. Valid: CoinbaseCDP, StripePrivy';
+              const failValidation = (error: string): never => {
                 if (cliOptions.json) {
                   console.log(JSON.stringify({ success: false, error }));
                 } else {
                   console.error(error);
                 }
                 process.exit(1);
+              };
+
+              const provisionModeResult = PaymentProvisionModeSchema.safeParse(cliOptions.provisionMode ?? 'MANUAL');
+              if (!provisionModeResult.success) {
+                failValidation(`Invalid provision mode "${cliOptions.provisionMode}". Valid: MANUAL, QUICK_CREATE`);
               }
-              let provider: PaymentProvider;
-              try {
-                provider = PaymentProviderSchema.parse(cliOptions.provider);
-              } catch {
-                const error = `Invalid provider "${cliOptions.provider}". Valid: CoinbaseCDP, StripePrivy`;
-                if (cliOptions.json) {
-                  console.log(JSON.stringify({ success: false, error }));
-                } else {
-                  console.error(error);
+              const provisionMode = provisionModeResult.data;
+
+              let provider: PaymentProvider = 'CoinbaseCDP';
+              if (provisionMode === 'QUICK_CREATE') {
+                if (cliOptions.provider && cliOptions.provider !== 'CoinbaseCDP') {
+                  failValidation('QUICK_CREATE only supports the CoinbaseCDP provider');
                 }
-                process.exit(1);
+                provider = 'CoinbaseCDP';
+              } else {
+                if (!cliOptions.provider) {
+                  failValidation('--provider is required. Valid: CoinbaseCDP, StripePrivy');
+                }
+                try {
+                  provider = PaymentProviderSchema.parse(cliOptions.provider);
+                } catch {
+                  failValidation(`Invalid provider "${cliOptions.provider}". Valid: CoinbaseCDP, StripePrivy`);
+                }
               }
 
               const missing: string[] = [];
               if (!cliOptions.manager) missing.push('--manager');
               if (!cliOptions.name) missing.push('--name');
 
-              if (provider === 'StripePrivy') {
+              if (provisionMode === 'QUICK_CREATE') {
+                const suppliedCredentialOptions = [
+                  cliOptions.apiKeyId !== undefined && '--api-key-id',
+                  cliOptions.apiKeySecret !== undefined && '--api-key-secret',
+                  cliOptions.walletSecret !== undefined && '--wallet-secret',
+                  cliOptions.appId !== undefined && '--app-id',
+                  cliOptions.appSecret !== undefined && '--app-secret',
+                  cliOptions.authorizationPrivateKey !== undefined && '--authorization-private-key',
+                  cliOptions.authorizationId !== undefined && '--authorization-id',
+                ].filter((option): option is string => Boolean(option));
+                if (suppliedCredentialOptions.length > 0) {
+                  failValidation(
+                    `Credential options cannot be used with QUICK_CREATE: ${suppliedCredentialOptions.join(', ')}`
+                  );
+                }
+              } else if (provider === 'StripePrivy') {
                 if (!cliOptions.appId?.trim()) missing.push('--app-id');
                 if (!cliOptions.appSecret?.trim()) missing.push('--app-secret');
                 if (!cliOptions.authorizationPrivateKey?.trim()) missing.push('--authorization-private-key');
@@ -425,47 +490,45 @@ export class PaymentConnectorPrimitive extends BasePrimitive<AddPaymentConnector
                 process.exit(1);
               }
 
-              // Validate the cryptographic secret fields client-side so a
-              // wrong-format key is caught here instead of failing at deploy.
-              const failValidation = (error: string): never => {
-                if (cliOptions.json) {
-                  console.log(JSON.stringify({ success: false, error }));
+              if (provisionMode === 'MANUAL') {
+                // Emit the leak warning BEFORE format validation: a literal secret
+                // is already exposed to shell history / the process table the moment
+                // the command is typed, regardless of whether the value is well-formed.
+                // Warning after validation would silently skip the malformed-secret
+                // case — exactly where the leak still happened.
+                warnOnLiteralSecretFlag(
+                  [
+                    cliOptions.apiKeySecret,
+                    cliOptions.walletSecret,
+                    cliOptions.appSecret,
+                    cliOptions.authorizationPrivateKey,
+                  ],
+                  cliOptions.json,
+                  'add payment-connector'
+                );
+
+                if (provider === 'StripePrivy') {
+                  // AWS docs ship the key with a `wallet-auth:` prefix — strip it transparently.
+                  cliOptions.authorizationPrivateKey = stripWalletAuthPrefix(cliOptions.authorizationPrivateKey!);
+                  const keyResult = validateAuthorizationPrivateKey(cliOptions.authorizationPrivateKey);
+                  if (keyResult !== true) failValidation(keyResult);
                 } else {
-                  console.error(error);
+                  const apiKeySecretResult = validateApiKeySecret(cliOptions.apiKeySecret!);
+                  if (apiKeySecretResult !== true) failValidation(apiKeySecretResult);
+                  const walletSecretResult = validateWalletSecret(cliOptions.walletSecret!);
+                  if (walletSecretResult !== true) failValidation(walletSecretResult);
                 }
-                process.exit(1);
-              };
-
-              // Emit the leak warning BEFORE format validation: a literal secret
-              // is already exposed to shell history / the process table the moment
-              // the command is typed, regardless of whether the value is well-formed.
-              // Warning after validation would silently skip the malformed-secret
-              // case — exactly where the leak still happened.
-              warnOnLiteralSecretFlag(
-                [
-                  cliOptions.apiKeySecret,
-                  cliOptions.walletSecret,
-                  cliOptions.appSecret,
-                  cliOptions.authorizationPrivateKey,
-                ],
-                cliOptions.json,
-                'add payment-connector'
-              );
-
-              if (provider === 'StripePrivy') {
-                // AWS docs ship the key with a `wallet-auth:` prefix — strip it transparently.
-                cliOptions.authorizationPrivateKey = stripWalletAuthPrefix(cliOptions.authorizationPrivateKey!);
-                const keyResult = validateAuthorizationPrivateKey(cliOptions.authorizationPrivateKey);
-                if (keyResult !== true) failValidation(keyResult);
-              } else {
-                const apiKeySecretResult = validateApiKeySecret(cliOptions.apiKeySecret!);
-                if (apiKeySecretResult !== true) failValidation(apiKeySecretResult);
-                const walletSecretResult = validateWalletSecret(cliOptions.walletSecret!);
-                if (walletSecretResult !== true) failValidation(walletSecretResult);
               }
 
               let result: Awaited<ReturnType<typeof this.add>>;
-              if (provider === 'StripePrivy') {
+              if (provisionMode === 'QUICK_CREATE') {
+                result = await this.add({
+                  manager: cliOptions.manager!,
+                  name: cliOptions.name!,
+                  provider: 'CoinbaseCDP',
+                  provisionMode: 'QUICK_CREATE',
+                });
+              } else if (provider === 'StripePrivy') {
                 result = await this.add({
                   manager: cliOptions.manager!,
                   name: cliOptions.name!,
@@ -499,8 +562,12 @@ export class PaymentConnectorPrimitive extends BasePrimitive<AddPaymentConnector
                 );
               } else if (result.success) {
                 console.log(`Added payment connector '${result.connectorName}' to manager '${result.managerName}'`);
-                console.log(`Credential '${result.credentialName}' created and secrets stored in .env.local`);
-                console.log(`Run \`agentcore deploy\` to create payment infrastructure on AWS.`);
+                if (provisionMode === 'QUICK_CREATE') {
+                  console.log('Run `agentcore deploy` to create the connector and receive its authorization URL.');
+                } else {
+                  console.log(`Credential '${result.credentialName}' created and secrets stored in .env.local`);
+                  console.log(`Run \`agentcore deploy\` to create payment infrastructure on AWS.`);
+                }
               } else {
                 console.error(result.error.message);
               }
@@ -537,7 +604,7 @@ export class PaymentConnectorPrimitive extends BasePrimitive<AddPaymentConnector
 
     removeCmd
       .command('payment-connector')
-      .description('[preview] Remove a payment connector from a payment manager')
+      .description('Remove a payment connector from a payment manager')
       .option('--name <name>', 'Name of connector to remove [non-interactive]')
       .option('--manager <manager>', 'Payment manager name [non-interactive]')
       .option('-y, --yes', 'Skip confirmation prompt [non-interactive]')

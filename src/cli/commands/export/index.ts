@@ -1,3 +1,4 @@
+import { findConfigRoot } from '../../../lib';
 import { serializeResult } from '../../../lib/result';
 import { ANSI, COMMAND_DESCRIPTIONS } from '../../constants';
 import { renderTUI } from '../../tui/render';
@@ -26,6 +27,11 @@ export function registerExport(program: Command): void {
     .option('--build <type>', 'Build type: CodeZip or Container [non-interactive]')
     .option('--json', 'Output results as JSON')
     .action(async options => {
+      if (!findConfigRoot()) {
+        console.error('No agentcore project found. Run `agentcore create` first.');
+        process.exit(1);
+      }
+
       if (!options.name && !options.arn) {
         if (options.json) {
           console.log(JSON.stringify({ success: false, error: '--name or --arn is required in non-interactive mode' }));

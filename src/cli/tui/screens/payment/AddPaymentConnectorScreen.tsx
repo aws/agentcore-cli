@@ -1,4 +1,3 @@
-import type { PaymentProvider } from '../../../../schema';
 import { PaymentConnectorNameSchema } from '../../../../schema';
 import {
   validateApiKeySecret,
@@ -10,8 +9,8 @@ import type { SelectableItem } from '../../components';
 import { HELP_TEXT } from '../../constants';
 import { useListNavigation } from '../../hooks';
 import { generateUniqueName } from '../../utils';
-import type { AddPaymentConnectorConfig } from './types';
-import { CONNECTOR_STEP_LABELS, PAYMENT_PROVIDER_OPTIONS } from './types';
+import type { AddPaymentConnectorConfig, PaymentConnectorSetup } from './types';
+import { CONNECTOR_STEP_LABELS, PAYMENT_CONNECTOR_SETUP_OPTIONS } from './types';
 import { useAddPaymentConnectorWizard } from './useAddPaymentWizard';
 import React, { useMemo } from 'react';
 
@@ -50,13 +49,13 @@ export function AddPaymentConnectorScreen({
     [existingManagerNames]
   );
 
-  const providerItems: SelectableItem[] = useMemo(
-    () => PAYMENT_PROVIDER_OPTIONS.map(opt => ({ id: opt.id, title: opt.title, description: opt.description })),
+  const setupItems: SelectableItem[] = useMemo(
+    () => PAYMENT_CONNECTOR_SETUP_OPTIONS.map(opt => ({ id: opt.id, title: opt.title, description: opt.description })),
     []
   );
 
   const isManagerSelectStep = wizard.step === 'manager-select';
-  const isProviderStep = wizard.step === 'provider-select';
+  const isSetupStep = wizard.step === 'setup-select';
   const isApiKeyIdStep = wizard.step === 'api-key-id';
   const isApiKeySecretStep = wizard.step === 'api-key-secret';
   const isWalletSecretStep = wizard.step === 'wallet-secret';
@@ -77,9 +76,9 @@ export function AddPaymentConnectorScreen({
     isActive: isManagerSelectStep,
   });
 
-  const providerNav = useListNavigation({
-    items: providerItems,
-    onSelect: item => wizard.setProvider(item.id as PaymentProvider),
+  const setupNav = useListNavigation({
+    items: setupItems,
+    onSelect: item => wizard.setSetup(item.id as PaymentConnectorSetup),
     onExit: () => {
       if (wizard.currentIndex === 0) {
         onExit();
@@ -87,7 +86,7 @@ export function AddPaymentConnectorScreen({
         wizard.goBack();
       }
     },
-    isActive: isProviderStep,
+    isActive: isSetupStep,
   });
 
   useListNavigation({
@@ -98,7 +97,7 @@ export function AddPaymentConnectorScreen({
   });
 
   const helpText =
-    isManagerSelectStep || isProviderStep
+    isManagerSelectStep || isSetupStep
       ? HELP_TEXT.NAVIGATE_SELECT
       : isConfirmStep
         ? HELP_TEXT.CONFIRM_CANCEL
@@ -128,12 +127,12 @@ export function AddPaymentConnectorScreen({
           />
         )}
 
-        {isProviderStep && (
+        {isSetupStep && (
           <WizardSelect
-            title="Select payment provider"
-            description="Choose the payment credential provider"
-            items={providerItems}
-            selectedIndex={providerNav.selectedIndex}
+            title="Choose connector setup"
+            description="Select how the connector should obtain credentials"
+            items={setupItems}
+            selectedIndex={setupNav.selectedIndex}
           />
         )}
 
@@ -238,69 +237,78 @@ export function AddPaymentConnectorScreen({
           <ConfirmReview
             fields={[
               { label: 'Manager', value: wizard.config.managerName },
-              { label: 'Provider', value: wizard.config.provider },
+              {
+                label: 'Provisioning',
+                value: wizard.config.provisionMode === 'QUICK_CREATE' ? 'Quick Create' : 'Manual',
+              },
+              {
+                label: 'Provider',
+                value: wizard.config.provider === 'StripePrivy' ? 'Stripe + Privy' : 'Coinbase CDP',
+              },
               { label: 'Connector Name', value: wizard.config.connectorName },
-              ...(wizard.config.provider === 'StripePrivy'
-                ? [
-                    {
-                      label: 'App ID',
-                      value: wizard.config.appId
-                        ? wizard.config.appId.length > 8
-                          ? '****' + wizard.config.appId.slice(-4)
-                          : '••••••••'
-                        : '',
-                    },
-                    {
-                      label: 'App Secret',
-                      value: wizard.config.appSecret
-                        ? wizard.config.appSecret.length > 8
-                          ? '****' + wizard.config.appSecret.slice(-4)
-                          : '••••••••'
-                        : '',
-                    },
-                    {
-                      label: 'Authorization Private Key',
-                      value: wizard.config.authorizationPrivateKey
-                        ? wizard.config.authorizationPrivateKey.length > 8
-                          ? '****' + wizard.config.authorizationPrivateKey.slice(-4)
-                          : '••••••••'
-                        : '',
-                    },
-                    {
-                      label: 'Authorization ID',
-                      value: wizard.config.authorizationId
-                        ? wizard.config.authorizationId.length > 8
-                          ? '****' + wizard.config.authorizationId.slice(-4)
-                          : '••••••••'
-                        : '',
-                    },
-                  ]
-                : [
-                    {
-                      label: 'API Key ID',
-                      value: wizard.config.apiKeyId
-                        ? wizard.config.apiKeyId.length > 8
-                          ? '****' + wizard.config.apiKeyId.slice(-4)
-                          : '••••••••'
-                        : '',
-                    },
-                    {
-                      label: 'API Key Secret',
-                      value: wizard.config.apiKeySecret
-                        ? wizard.config.apiKeySecret.length > 8
-                          ? '****' + wizard.config.apiKeySecret.slice(-4)
-                          : '••••••••'
-                        : '',
-                    },
-                    {
-                      label: 'Wallet Secret',
-                      value: wizard.config.walletSecret
-                        ? wizard.config.walletSecret.length > 8
-                          ? '****' + wizard.config.walletSecret.slice(-4)
-                          : '••••••••'
-                        : '',
-                    },
-                  ]),
+              ...(wizard.config.provisionMode === 'QUICK_CREATE'
+                ? []
+                : wizard.config.provider === 'StripePrivy'
+                  ? [
+                      {
+                        label: 'App ID',
+                        value: wizard.config.appId
+                          ? wizard.config.appId.length > 8
+                            ? '****' + wizard.config.appId.slice(-4)
+                            : '••••••••'
+                          : '',
+                      },
+                      {
+                        label: 'App Secret',
+                        value: wizard.config.appSecret
+                          ? wizard.config.appSecret.length > 8
+                            ? '****' + wizard.config.appSecret.slice(-4)
+                            : '••••••••'
+                          : '',
+                      },
+                      {
+                        label: 'Authorization Private Key',
+                        value: wizard.config.authorizationPrivateKey
+                          ? wizard.config.authorizationPrivateKey.length > 8
+                            ? '****' + wizard.config.authorizationPrivateKey.slice(-4)
+                            : '••••••••'
+                          : '',
+                      },
+                      {
+                        label: 'Authorization ID',
+                        value: wizard.config.authorizationId
+                          ? wizard.config.authorizationId.length > 8
+                            ? '****' + wizard.config.authorizationId.slice(-4)
+                            : '••••••••'
+                          : '',
+                      },
+                    ]
+                  : [
+                      {
+                        label: 'API Key ID',
+                        value: wizard.config.apiKeyId
+                          ? wizard.config.apiKeyId.length > 8
+                            ? '****' + wizard.config.apiKeyId.slice(-4)
+                            : '••••••••'
+                          : '',
+                      },
+                      {
+                        label: 'API Key Secret',
+                        value: wizard.config.apiKeySecret
+                          ? wizard.config.apiKeySecret.length > 8
+                            ? '****' + wizard.config.apiKeySecret.slice(-4)
+                            : '••••••••'
+                          : '',
+                      },
+                      {
+                        label: 'Wallet Secret',
+                        value: wizard.config.walletSecret
+                          ? wizard.config.walletSecret.length > 8
+                            ? '****' + wizard.config.walletSecret.slice(-4)
+                            : '••••••••'
+                          : '',
+                      },
+                    ]),
             ]}
           />
         )}

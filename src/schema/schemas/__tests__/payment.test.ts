@@ -1,4 +1,9 @@
-import { PaymentConnectorNameSchema, PaymentManagerNameSchema, PaymentManagerSchema } from '../primitives/payment';
+import {
+  PaymentConnectorNameSchema,
+  PaymentConnectorSchema,
+  PaymentManagerNameSchema,
+  PaymentManagerSchema,
+} from '../primitives/payment';
 import { describe, expect, it } from 'vitest';
 
 describe('PaymentManagerNameSchema', () => {
@@ -72,6 +77,64 @@ describe('PaymentConnectorNameSchema', () => {
 
   it('rejects name starting with digit', () => {
     expect(PaymentConnectorNameSchema.safeParse('9connector').success).toBe(false);
+  });
+});
+
+describe('PaymentConnectorSchema', () => {
+  it('preserves existing manual connectors without materializing provisionMode', () => {
+    const result = PaymentConnectorSchema.parse({
+      name: 'ManualConnector',
+      provider: 'CoinbaseCDP',
+      credentialName: 'manual-credential',
+    });
+
+    expect(result).toEqual({
+      name: 'ManualConnector',
+      provider: 'CoinbaseCDP',
+      credentialName: 'manual-credential',
+    });
+    expect('provisionMode' in result).toBe(false);
+  });
+
+  it('accepts a Coinbase Quick Create connector without credentialName', () => {
+    const result = PaymentConnectorSchema.safeParse({
+      name: 'QuickConnector',
+      provider: 'CoinbaseCDP',
+      provisionMode: 'QUICK_CREATE',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects credentialName for Quick Create', () => {
+    const result = PaymentConnectorSchema.safeParse({
+      name: 'QuickConnector',
+      provider: 'CoinbaseCDP',
+      provisionMode: 'QUICK_CREATE',
+      credentialName: 'not-allowed',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects StripePrivy for Quick Create', () => {
+    const result = PaymentConnectorSchema.safeParse({
+      name: 'QuickConnector',
+      provider: 'StripePrivy',
+      provisionMode: 'QUICK_CREATE',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('requires credentialName for explicit manual mode', () => {
+    const result = PaymentConnectorSchema.safeParse({
+      name: 'ManualConnector',
+      provider: 'CoinbaseCDP',
+      provisionMode: 'MANUAL',
+    });
+
+    expect(result.success).toBe(false);
   });
 });
 

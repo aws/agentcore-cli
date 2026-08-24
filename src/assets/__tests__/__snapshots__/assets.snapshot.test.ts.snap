@@ -186,7 +186,12 @@ async function main() {
             autoPayment?: boolean;
             paymentToolAllowlist?: string[];
             networkPreferences?: string[];
-            connectors: { name: string; provider?: string; credentialName: string }[];
+            connectors: {
+              name: string;
+              provider?: string;
+              provisionMode?: 'MANUAL' | 'QUICK_CREATE';
+              credentialName?: string;
+            }[];
           }) => ({
             name: p.name,
             description: p.description,
@@ -196,6 +201,19 @@ async function main() {
             paymentToolAllowlist: p.paymentToolAllowlist,
             networkPreferences: p.networkPreferences,
             connectors: p.connectors.map(c => {
+              if (c.provisionMode === 'QUICK_CREATE') {
+                return {
+                  name: c.name,
+                  provider: 'CoinbaseCDP' as const,
+                  provisionMode: 'QUICK_CREATE' as const,
+                };
+              }
+
+              if (!c.credentialName) {
+                throw new Error(
+                  \`Manual payment connector "\${c.name}" on manager "\${p.name}" is missing its credential name.\`
+                );
+              }
               const credentialProviderArn = paymentCredentials?.[c.credentialName]?.credentialProviderArn;
               if (!credentialProviderArn) {
                 // Fail fast with an actionable message rather than passing an empty
@@ -206,7 +224,13 @@ async function main() {
                     \`Run \\\`agentcore deploy\\\` so the credential provider is created first.\`
                 );
               }
-              return { name: c.name, provider: c.provider, credentialProviderArn };
+              return {
+                name: c.name,
+                provider: c.provider,
+                ...(c.provisionMode && { provisionMode: c.provisionMode }),
+                credentialName: c.credentialName,
+                credentialProviderArn,
+              };
             }),
           })
         )
@@ -378,11 +402,23 @@ import { Construct } from 'constructs';
  */
 export type HarnessConfig = HarnessDeploymentConfig;
 
-export interface PaymentConnectorSpec {
+export interface ManualPaymentConnectorSpec {
   name: string;
   provider: 'CoinbaseCDP' | 'StripePrivy';
+  provisionMode?: 'MANUAL';
+  credentialName: string;
   credentialProviderArn: string;
 }
+
+export interface QuickCreatePaymentConnectorSpec {
+  name: string;
+  provider: 'CoinbaseCDP';
+  provisionMode: 'QUICK_CREATE';
+  credentialName?: never;
+  credentialProviderArn?: never;
+}
+
+export type PaymentConnectorSpec = ManualPaymentConnectorSpec | QuickCreatePaymentConnectorSpec;
 
 export interface PaymentSpec {
   name: string;
@@ -562,13 +598,31 @@ export class AgentCoreStack extends Stack {
         // Create connectors for this manager
         for (const connector of payment.connectors) {
           const connId = toCdkId(connector.name);
-          const conn = new AgentCorePaymentConnector(this, \`Payment\${mgrId}\${connId}\`, {
+          const schemaConnector =
+            connector.provisionMode === 'QUICK_CREATE'
+              ? connector
+              : {
+                  name: connector.name,
+                  provider: connector.provider,
+                  ...(connector.provisionMode && { provisionMode: connector.provisionMode }),
+                  credentialName: connector.credentialName,
+                };
+          const compatibilityProps = {
             projectName: spec.name,
             paymentManager: manager,
+            connector: schemaConnector,
+            // Remove these legacy manual fields after the new L3 release is pinned.
             connectorName: connector.name,
             connectorType: connector.provider,
-            credentialProviderArn: connector.credentialProviderArn,
-          });
+            ...(connector.provisionMode !== 'QUICK_CREATE' && {
+              credentialProviderArn: connector.credentialProviderArn,
+            }),
+          };
+          const conn = new AgentCorePaymentConnector(
+            this,
+            \`Payment\${mgrId}\${connId}\`,
+            compatibilityProps as unknown as ConstructorParameters<typeof AgentCorePaymentConnector>[2]
+          );
 
           // Wire first connector's ID as env var (eligible agents only)
           if (connector === payment.connectors[0]) {
@@ -581,6 +635,18 @@ export class AgentCoreStack extends Stack {
           new CfnOutput(this, \`Payment\${mgrId}\${connId}ConnectorId\`, {
             value: conn.paymentConnectorId,
           });
+          if (connector.provisionMode === 'QUICK_CREATE') {
+            const quickCreateConnector = conn as AgentCorePaymentConnector & {
+              paymentConnectorStatus: string;
+              authorizationUrl: string;
+            };
+            new CfnOutput(this, \`Payment\${mgrId}\${connId}ConnectorStatus\`, {
+              value: quickCreateConnector.paymentConnectorStatus,
+            });
+            new CfnOutput(this, \`Payment\${mgrId}\${connId}AuthorizationUrl\`, {
+              value: quickCreateConnector.authorizationUrl,
+            });
+          }
         }
 
         // CFN Outputs for post-deploy state parsing
@@ -645,7 +711,7 @@ exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/package.json should m
     "typescript": "~5.9.3"
   },
   "dependencies": {
-    "@aws/agentcore-cdk": "0.1.0-alpha.45",
+    "@aws/agentcore-cdk": "0.1.0-alpha.49",
     "aws-cdk-lib": "~2.261.0",
     "constructs": "~10.7.0"
   }

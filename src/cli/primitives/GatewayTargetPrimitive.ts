@@ -313,7 +313,10 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
       .option('--endpoint <endpoint>', 'Server endpoint URL (for mcp-server type) [non-interactive]')
       .option('--language <lang>', 'Language of target code: Python, TypeScript, Other [non-interactive]')
       .option('--host <host>', 'Where to run the target: Lambda or AgentCoreRuntime [non-interactive]')
-      .option('--outbound-auth <type>', 'Outbound auth type: oauth, api-key, or none [non-interactive]')
+      .option(
+        '--outbound-auth <type>',
+        'Outbound auth type; valid values depend on --type (see "Auth" below) [non-interactive]'
+      )
       .option('--credential-name <name>', 'Existing credential name for outbound auth [non-interactive]')
       .option(
         '--oauth-client-id <id>',
@@ -415,9 +418,14 @@ Target types and their options:
     --stickiness-identifier <expr> Session routing expression (optional)
     --stickiness-timeout <seconds> Sticky session timeout in seconds (optional)
 
-  Auth (mcp-server, open-api-schema, smithy-model, lambda-function-arn, passthrough):
-    --outbound-auth <type>         oauth, api-key, or none
-    --credential-name <name>       Existing credential name
+  Auth (--outbound-auth <type>, --credential-name <name>) — valid types per target:
+    mcp-server                     oauth or none
+    lambda-function-arn            oauth or none
+    http-runtime                   oauth or none
+    open-api-schema                oauth or api-key (required)
+    api-gateway                    api-key or none
+    smithy-model                   none (uses gateway IAM role)
+    passthrough                    gateway-iam-role, oauth, or jwt-passthrough
 `
       )
       .action(async (rawOptions: Record<string, string | string[] | boolean | undefined>) => {

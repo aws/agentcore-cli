@@ -1,4 +1,5 @@
-import { getVenvExecutable } from '../../../lib/utils/platform';
+import { getShellArgs, getShellCommand, getVenvExecutable, isWindows } from '../../../lib/utils/platform';
+import { runSubprocessCapture } from '../../../lib/utils/subprocess';
 import type { ProtocolMode } from '../../../schema';
 import { A2A_PORT_ENV } from './constants';
 import { DevServer, type LogLevel, type SpawnConfig } from './dev-server';
@@ -72,7 +73,7 @@ function ensurePythonVenv(
  * Ensures Node dependencies are installed. Runs the appropriate package manager
  * install if `node_modules` is missing. Detects pnpm/yarn via lockfile, else npm.
  */
-function ensureNodeDeps(cwd: string, onLog: (level: LogLevel, message: string) => void): boolean {
+async function ensureNodeDeps(cwd: string, onLog: (level: LogLevel, message: string) => void): Promise<boolean> {
   if (existsSync(join(cwd, 'node_modules'))) {
     return true;
   }
@@ -88,9 +89,10 @@ function ensureNodeDeps(cwd: string, onLog: (level: LogLevel, message: string) =
   }
 
   onLog('system', 'Installing Node dependencies...');
-  const result = spawnSync(cmd, args, { cwd, stdio: 'pipe' });
-  if (result.status !== 0) {
-    onLog('error', `Failed to install Node dependencies: ${result.stderr?.toString() || 'unknown error'}`);
+  const result = await runSubprocessCapture(cmd, args, { cwd });
+  if (result.code !== 0) {
+    const detail = result.stderr || result.stdout || `${cmd} exited with code ${String(result.code)}`;
+    onLog('error', `Failed to install Node dependencies: ${detail}`);
     return false;
   }
   onLog('system', 'Node dependencies ready');
@@ -125,12 +127,11 @@ function findOtelSitecustomizeDir(venvPath: string): string | undefined {
 
 /** Dev server for CodeZip agents. Runs uvicorn (Python) or npx tsx (Node.js) locally. */
 export class CodeZipDevServer extends DevServer {
-  protected prepare(): Promise<boolean> {
-    return Promise.resolve(
-      this.config.isPython
-        ? ensurePythonVenv(this.config.directory, this.options.callbacks.onLog, this.config.protocol)
-        : ensureNodeDeps(this.config.directory, this.options.callbacks.onLog)
-    );
+  protected async prepare(): Promise<boolean> {
+    if (this.config.isPython) {
+      return ensurePythonVenv(this.config.directory, this.options.callbacks.onLog, this.config.protocol);
+    }
+    return ensureNodeDeps(this.config.directory, this.options.callbacks.onLog);
   }
 
   protected getSpawnConfig(): SpawnConfig {
@@ -155,6 +156,14 @@ export class CodeZipDevServer extends DevServer {
     if (!isPython) {
       // TS entrypoint is already a file path like "main.ts" — pass it straight to tsx.
       const entryFile = module.split(':')[0] ?? module;
+      if (isWindows) {
+        return {
+          cmd: getShellCommand(),
+          args: getShellArgs(`npx tsx watch ${entryFile}`),
+          cwd: directory,
+          env,
+        };
+      }
       return {
         cmd: 'npx',
         args: ['tsx', 'watch', entryFile],

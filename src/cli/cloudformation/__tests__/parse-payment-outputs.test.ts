@@ -1,4 +1,4 @@
-import { parsePaymentOutputs } from '../outputs.js';
+import { omitPaymentAuthorizationOutputs, parsePaymentOutputs } from '../outputs.js';
 import type { StackOutputs } from '../outputs.js';
 import { describe, expect, it } from 'vitest';
 
@@ -59,6 +59,44 @@ describe('parsePaymentOutputs', () => {
         credentialProviderArn: COINBASE_CREDENTIAL_ARN,
         credentialProviderName: 'coinbase-cdp',
       });
+    });
+
+    it('stores a Quick Create connector without credential provider state', () => {
+      const outputs: StackOutputs = {
+        ...makeOutputs('MyManager'),
+        PaymentMyManagerQuickConnectorId: 'conn-quick-001',
+        PaymentMyManagerQuickConnectorStatus: 'PENDING_AUTHENTICATION',
+        PaymentMyManagerQuickAuthorizationUrl: 'https://example.com/authorize',
+      };
+
+      const result = parsePaymentOutputs(outputs, [
+        {
+          name: 'MyManager',
+          connectors: [{ name: 'Quick', provisionMode: 'QUICK_CREATE' }],
+        },
+      ]);
+
+      expect(result.MyManager!.connectors.Quick).toEqual({
+        connectorId: 'conn-quick-001',
+        provisionMode: 'QUICK_CREATE',
+      });
+      expect(JSON.stringify(result)).not.toContain('example.com/authorize');
+    });
+
+    it('does not store an invalid manual connector without a credential provider ARN', () => {
+      const outputs: StackOutputs = {
+        ...makeOutputs('MyManager'),
+        PaymentMyManagerManualConnectorId: 'conn-manual-001',
+      };
+
+      const result = parsePaymentOutputs(outputs, [
+        {
+          name: 'MyManager',
+          connectors: [{ name: 'Manual', provisionMode: 'MANUAL' }],
+        },
+      ]);
+
+      expect(result.MyManager!.connectors).toEqual({});
     });
   });
 
@@ -345,6 +383,21 @@ describe('parsePaymentOutputs', () => {
 
       expect(Object.keys(result)).toHaveLength(1);
       expect(result.MyManager).toBeDefined();
+    });
+  });
+});
+
+describe('omitPaymentAuthorizationOutputs', () => {
+  it('removes stale payment authorization URLs but preserves other outputs', () => {
+    expect(
+      omitPaymentAuthorizationOutputs({
+        PaymentManagerConnectorAuthorizationUrl: 'https://stale.example.com',
+        PaymentManagerConnectorConnectorId: 'connector-123',
+        GatewayAuthorizationUrl: 'https://gateway.example.com',
+      })
+    ).toEqual({
+      PaymentManagerConnectorConnectorId: 'connector-123',
+      GatewayAuthorizationUrl: 'https://gateway.example.com',
     });
   });
 });

@@ -104,6 +104,8 @@ describe('assertEnvFileExists', () => {
         {
           name: 'PayMgr',
           authorizerType: 'AWS_IAM',
+          autoPayment: true,
+          defaultSpendLimit: '10.00',
           connectors: [
             { name: 'stripeconn', provider: 'StripePrivy', credentialName: 'PayMgr-stripeconn-stripe-privy' },
           ],
@@ -118,6 +120,30 @@ describe('assertEnvFileExists', () => {
       expect(result.error.message).toContain('AUTHORIZATION_PRIVATE_KEY');
       expect(result.error.message).toContain('AUTHORIZATION_ID');
     }
+  });
+
+  it('does not require an env file for a Quick Create connector', () => {
+    mockExistsSync.mockReturnValue(false);
+    const spec = makeSpec({
+      payments: [
+        {
+          name: 'PayMgr',
+          authorizerType: 'AWS_IAM',
+          autoPayment: true,
+          defaultSpendLimit: '10.00',
+          connectors: [
+            {
+              name: 'quickconn',
+              provider: 'CoinbaseCDP',
+              provisionMode: 'QUICK_CREATE',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(assertEnvFileExists(spec, BASE_DIR).success).toBe(true);
+    expect(mockExistsSync).not.toHaveBeenCalled();
   });
 
   it('combines all credential types in a single error', () => {
@@ -163,5 +189,27 @@ describe('getAllCredentials', () => {
     const result = getAllCredentials(spec);
     expect(result.length).toBe(3);
     expect(result.every(c => c.providerName === 'PayMgr-cdpconn-cdp')).toBe(true);
+  });
+
+  it('skips Quick Create connectors', () => {
+    const spec = makeSpec({
+      payments: [
+        {
+          name: 'PayMgr',
+          authorizerType: 'AWS_IAM',
+          autoPayment: true,
+          defaultSpendLimit: '10.00',
+          connectors: [
+            {
+              name: 'quickconn',
+              provider: 'CoinbaseCDP',
+              provisionMode: 'QUICK_CREATE',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(getAllCredentials(spec)).toEqual([]);
   });
 });

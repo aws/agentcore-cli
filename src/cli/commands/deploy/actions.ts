@@ -16,6 +16,7 @@ import type { DeployMessage, SwitchableIoHost } from '../../cdk/toolkit-lib';
 import {
   buildDeployedState,
   getStackOutputs,
+  omitPaymentAuthorizationOutputs,
   parseAgentOutputs,
   parseConfigBundleOutputs,
   parseDatasetOutputs,
@@ -44,7 +45,9 @@ import {
   ensureDefaultDeploymentTarget,
   ensureManagedDependencies,
   failedSyncResult,
+  formatQuickCreateConnectorAuthorization,
   getAllCredentials,
+  getQuickCreateConnectorAuthorizations,
   hasIdentityApiProviders,
   hasIdentityOAuthProviders,
   hasManagedMemoryHarness,
@@ -746,11 +749,17 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       autoPayment: p.autoPayment,
       paymentToolAllowlist: p.paymentToolAllowlist,
       networkPreferences: p.networkPreferences,
-      connectors: p.connectors.map(c => ({
-        name: c.name,
-        credentialProviderArn: deployedCredentials[c.credentialName]?.credentialProviderArn ?? '',
-        credentialProviderName: c.credentialName,
-      })),
+      connectors: p.connectors.map(c => {
+        if (c.provisionMode === 'QUICK_CREATE') {
+          return { name: c.name, provisionMode: 'QUICK_CREATE' as const };
+        }
+        return {
+          name: c.name,
+          ...(c.provisionMode && { provisionMode: c.provisionMode }),
+          credentialProviderArn: deployedCredentials[c.credentialName]?.credentialProviderArn,
+          credentialProviderName: c.credentialName,
+        };
+      }),
     }));
     const payments = paymentSpecs.length > 0 ? parsePaymentOutputs(outputs, paymentSpecs) : undefined;
 
@@ -978,6 +987,12 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const hasInvokable = agentNames.length > 0 || hasHarnesses;
     const nextSteps = hasInvokable ? [...AGENT_NEXT_STEPS] : [...MEMORY_ONLY_NEXT_STEPS];
     const notes: string[] = [...autoPaymentNotices];
+    const quickCreateAuthorizations = await getQuickCreateConnectorAuthorizations({
+      region: target.region,
+      projectSpec: context.projectSpec,
+      payments,
+    });
+    notes.push(...quickCreateAuthorizations.map(formatQuickCreateConnectorAuthorization));
     const hasPythonAgent =
       context.projectSpec.runtimes?.some(a => a.entrypoint?.endsWith('.py') || a.entrypoint?.includes('.py:')) ?? false;
     if ((agentNames.length > 0 || hasGateways) && hasPythonAgent) {
@@ -1014,7 +1029,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       success: true,
       targetName: target.name,
       stackName,
-      outputs,
+      outputs: omitPaymentAuthorizationOutputs(outputs),
       logPath: logger.getRelativeLogPath(),
       nextSteps,
       notes,

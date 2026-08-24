@@ -111,7 +111,13 @@ export {
   ManagedMemoryStrategySchema,
 } from './harness';
 
-export type { PaymentManager, PaymentConnector, PaymentProvider, PaymentAuthorizerType } from './payment';
+export type {
+  PaymentManager,
+  PaymentConnector,
+  PaymentProvider,
+  PaymentProvisionMode,
+  PaymentAuthorizerType,
+} from './payment';
 export {
   DEFAULT_AUTO_PAYMENT,
   DEFAULT_SPEND_LIMIT,
@@ -119,6 +125,9 @@ export {
   PaymentManagerNameSchema,
   PaymentConnectorSchema,
   PaymentConnectorNameSchema,
+  ManualPaymentConnectorSchema,
+  QuickCreatePaymentConnectorSchema,
+  PaymentProvisionModeSchema,
   PaymentProviderSchema,
   PaymentAuthorizerTypeSchema,
 } from './payment';

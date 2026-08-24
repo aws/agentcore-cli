@@ -47,11 +47,24 @@ export const PaymentConnectorNameSchema = z
 // Payment Connector Schema
 // ============================================================================
 
-export const PaymentConnectorSchema = z.object({
+export const PaymentProvisionModeSchema = z.enum(['MANUAL', 'QUICK_CREATE']);
+export type PaymentProvisionMode = z.infer<typeof PaymentProvisionModeSchema>;
+
+export const ManualPaymentConnectorSchema = z.object({
   name: PaymentConnectorNameSchema,
   provider: PaymentProviderSchema.default('CoinbaseCDP'),
+  provisionMode: z.literal('MANUAL').optional(),
   credentialName: z.string().min(1),
 });
+
+export const QuickCreatePaymentConnectorSchema = z.object({
+  name: PaymentConnectorNameSchema,
+  provider: z.literal('CoinbaseCDP'),
+  provisionMode: z.literal('QUICK_CREATE'),
+  credentialName: z.never().optional(),
+});
+
+export const PaymentConnectorSchema = z.union([QuickCreatePaymentConnectorSchema, ManualPaymentConnectorSchema]);
 
 export type PaymentConnector = z.infer<typeof PaymentConnectorSchema>;
 

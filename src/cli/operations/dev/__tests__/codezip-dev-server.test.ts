@@ -7,9 +7,14 @@ import { existsSync } from 'fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockSpawn = vi.fn();
+const mockRunSubprocessCapture = vi.fn();
+const platformState = vi.hoisted(() => ({ isWindows: false }));
 vi.mock('child_process', () => ({
   spawn: (...args: unknown[]) => mockSpawn(...args),
   spawnSync: vi.fn(() => ({ status: 0, stdout: Buffer.from(''), stderr: Buffer.from('') })),
+}));
+vi.mock('../../../../lib/utils/subprocess', () => ({
+  runSubprocessCapture: (...args: unknown[]) => mockRunSubprocessCapture(...args),
 }));
 
 vi.mock('fs', () => ({
@@ -21,7 +26,11 @@ const mockExistsSync = vi.mocked(existsSync);
 
 vi.mock('../../../../lib/utils/platform', () => ({
   getVenvExecutable: (venvPath: string, executable: string) => `${venvPath}/bin/${executable}`,
-  isWindows: false,
+  getShellCommand: () => 'cmd',
+  getShellArgs: (command: string) => ['/c', command],
+  get isWindows() {
+    return platformState.isWindows;
+  },
 }));
 
 function createMockChildProcess() {
@@ -38,8 +47,13 @@ const defaultOptions: DevServerOptions = { port: 8080, envVars: { MY_KEY: 'secre
 
 describe('CodeZipDevServer spawn config', () => {
   beforeEach(() => {
+    platformState.isWindows = false;
     mockSpawn.mockClear();
     mockSpawn.mockReturnValue(createMockChildProcess());
+    mockRunSubprocessCapture.mockReset();
+    mockRunSubprocessCapture.mockResolvedValue({ code: 0, stdout: '', stderr: '', signal: null });
+    vi.mocked(mockCallbacks.onLog).mockClear();
+    vi.mocked(mockCallbacks.onExit).mockClear();
   });
 
   afterEach(() => vi.restoreAllMocks());
@@ -155,6 +169,28 @@ describe('CodeZipDevServer spawn config', () => {
     expect(env.LOCAL_DEV).toBe('1');
   });
 
+  it('TypeScript HTTP: runs npx through cmd on Windows', async () => {
+    platformState.isWindows = true;
+    const config: DevConfig = {
+      agentName: 'TsAgent',
+      module: 'src/main.ts',
+      directory: 'C:\\project\\app',
+      hasConfig: true,
+      isPython: false,
+      buildType: 'CodeZip',
+      protocol: 'HTTP',
+    };
+
+    const server = new CodeZipDevServer(config, defaultOptions);
+    await server.start();
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      'cmd',
+      ['/c', 'npx tsx watch src/main.ts'],
+      expect.objectContaining({ cwd: 'C:\\project\\app', detached: false })
+    );
+  });
+
   it('TypeScript: installs node dependencies when node_modules missing', async () => {
     mockExistsSync.mockImplementation((p: unknown) => {
       const s = String(p);
@@ -163,13 +199,6 @@ describe('CodeZipDevServer spawn config', () => {
       if (s.endsWith('yarn.lock')) return false;
       return true;
     });
-    mockSpawnSync.mockClear();
-    mockSpawnSync.mockReturnValue({
-      status: 0,
-      stdout: Buffer.from(''),
-      stderr: Buffer.from(''),
-    } as any);
-
     const config: DevConfig = {
       agentName: 'TsAgent',
       module: 'main.ts',
@@ -183,8 +212,35 @@ describe('CodeZipDevServer spawn config', () => {
     const server = new CodeZipDevServer(config, defaultOptions);
     await server.start();
 
-    expect(mockSpawnSync).toHaveBeenCalledWith('npm', ['install'], expect.objectContaining({ cwd: '/project/app' }));
+    expect(mockRunSubprocessCapture).toHaveBeenCalledWith('npm', ['install'], { cwd: '/project/app' });
     mockExistsSync.mockImplementation(() => true);
+  });
+
+  it('TypeScript: reports the process creation error when dependency installation cannot start', async () => {
+    mockExistsSync.mockImplementation((p: unknown) => !String(p).endsWith('node_modules'));
+    mockRunSubprocessCapture.mockResolvedValue({
+      status: null,
+      code: -1,
+      stdout: '',
+      stderr: 'spawn npm ENOENT',
+      signal: null,
+    });
+    const config: DevConfig = {
+      agentName: 'TsAgent',
+      module: 'main.ts',
+      directory: '/project/app',
+      hasConfig: true,
+      isPython: false,
+      buildType: 'CodeZip',
+      protocol: 'HTTP',
+    };
+
+    const server = new CodeZipDevServer(config, defaultOptions);
+    const child = await server.start();
+
+    expect(child).toBeNull();
+    expect(mockCallbacks.onLog).toHaveBeenCalledWith('error', 'Failed to install Node dependencies: spawn npm ENOENT');
+    expect(mockSpawn).not.toHaveBeenCalled();
   });
 
   it('TypeScript: skips install when node_modules exists', async () => {
@@ -204,7 +260,7 @@ describe('CodeZipDevServer spawn config', () => {
     const server = new CodeZipDevServer(config, defaultOptions);
     await server.start();
 
-    expect(mockSpawnSync).not.toHaveBeenCalledWith('npm', ['install'], expect.anything());
+    expect(mockRunSubprocessCapture).not.toHaveBeenCalled();
   });
 
   it('MCP: extracts file from module:function entrypoint', async () => {

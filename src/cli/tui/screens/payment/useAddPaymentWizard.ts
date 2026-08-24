@@ -5,6 +5,7 @@ import type {
   AddPaymentConnectorStep,
   AddPaymentManagerConfig,
   AddPaymentManagerStep,
+  PaymentConnectorSetup,
 } from './types';
 import { useCallback, useMemo, useState } from 'react';
 
@@ -168,17 +169,16 @@ const STRIPE_PRIVY_CREDENTIAL_STEPS: AddPaymentConnectorStep[] = [
   'authorization-id',
 ];
 
-function getConnectorStepsForProvider(
+function getConnectorSteps(
+  provisionMode: 'MANUAL' | 'QUICK_CREATE',
   provider: PaymentProvider,
   needsManagerSelect: boolean
 ): AddPaymentConnectorStep[] {
   const steps: AddPaymentConnectorStep[] = [];
   if (needsManagerSelect) steps.push('manager-select');
-  steps.push('provider-select');
-  if (provider === 'StripePrivy') {
-    steps.push(...STRIPE_PRIVY_CREDENTIAL_STEPS);
-  } else {
-    steps.push(...CDP_CREDENTIAL_STEPS);
+  steps.push('setup-select');
+  if (provisionMode !== 'QUICK_CREATE') {
+    steps.push(...(provider === 'StripePrivy' ? STRIPE_PRIVY_CREDENTIAL_STEPS : CDP_CREDENTIAL_STEPS));
   }
   steps.push('connector-name', 'confirm');
   return steps;
@@ -187,6 +187,7 @@ function getConnectorStepsForProvider(
 function getDefaultConnectorConfig(preSelectedManager?: string): AddPaymentConnectorConfig {
   return {
     managerName: preSelectedManager ?? '',
+    provisionMode: 'QUICK_CREATE',
     provider: 'CoinbaseCDP',
     apiKeyId: '',
     apiKeySecret: '',
@@ -204,8 +205,8 @@ export function useAddPaymentConnectorWizard(preSelectedManager?: string) {
   const [config, setConfig] = useState<AddPaymentConnectorConfig>(() => getDefaultConnectorConfig(preSelectedManager));
 
   const steps = useMemo(
-    () => getConnectorStepsForProvider(config.provider, needsManagerSelect),
-    [config.provider, needsManagerSelect]
+    () => getConnectorSteps(config.provisionMode, config.provider, needsManagerSelect),
+    [config.provisionMode, config.provider, needsManagerSelect]
   );
   const [step, setStep] = useState<AddPaymentConnectorStep>(steps[0]!);
 
@@ -233,13 +234,27 @@ export function useAddPaymentConnectorWizard(preSelectedManager?: string) {
     [advanceFrom]
   );
 
-  const setProvider = useCallback((provider: PaymentProvider) => {
-    setConfig(c => ({ ...c, provider }));
-    // After selecting provider, advance to the first credential step
-    // The steps list will recompute via useMemo on next render
-    if (provider === 'StripePrivy') {
+  const setSetup = useCallback((setup: PaymentConnectorSetup) => {
+    if (setup === 'quick-create') {
+      setConfig(c => ({
+        ...c,
+        provisionMode: 'QUICK_CREATE',
+        provider: 'CoinbaseCDP',
+      }));
+      setStep('connector-name');
+    } else if (setup === 'stripe-privy-manual') {
+      setConfig(c => ({
+        ...c,
+        provisionMode: 'MANUAL',
+        provider: 'StripePrivy',
+      }));
       setStep('app-id');
     } else {
+      setConfig(c => ({
+        ...c,
+        provisionMode: 'MANUAL',
+        provider: 'CoinbaseCDP',
+      }));
       setStep('api-key-id');
     }
   }, []);
@@ -322,7 +337,7 @@ export function useAddPaymentConnectorWizard(preSelectedManager?: string) {
     currentIndex,
     goBack,
     setManagerName,
-    setProvider,
+    setSetup,
     setApiKeyId,
     setApiKeySecret,
     setWalletSecret,

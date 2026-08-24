@@ -8,9 +8,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Ink renderer, telemetry, and post-command notices. The guard runs first in
 // renderTUI, so a non-TTY context exits before any of these are reached.
 const mockRender = vi.fn((..._args: unknown[]) => ({ waitUntilExit: () => Promise.resolve() }));
+const mockFindConfigRoot = vi.fn<() => string | undefined>(() => '/fake/project/agentcore');
+const mockHandleExportHarness = vi.fn();
 
 vi.mock('ink', () => ({
   render: (...args: unknown[]) => mockRender(...args),
+}));
+
+vi.mock('../../../../lib', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../../../lib')>()),
+  findConfigRoot: () => mockFindConfigRoot(),
+}));
+
+vi.mock('../harness-action', () => ({
+  handleExportHarness: (...args: unknown[]) => mockHandleExportHarness(...args),
 }));
 
 vi.mock('../../../telemetry', () => ({
@@ -43,6 +54,7 @@ describe('export harness TTY guard', () => {
       throw new Error(`process.exit(${code})`);
     });
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockFindConfigRoot.mockReturnValue('/fake/project/agentcore');
   });
 
   afterEach(() => {
@@ -83,5 +95,30 @@ describe('export harness TTY guard', () => {
 
     expect(exitSpy).not.toHaveBeenCalled();
     expect(mockRender).toHaveBeenCalled();
+  });
+
+  it('rejects ARN export before entering the export routine when no project exists', async () => {
+    mockFindConfigRoot.mockReturnValue(undefined);
+
+    await expect(
+      program.parseAsync(
+        ['export', 'harness', '--arn', 'arn:aws:bedrock-agentcore:us-east-1:111122223333:harness/example'],
+        { from: 'user' }
+      )
+    ).rejects.toThrow('process.exit(1)');
+
+    expect(errorSpy).toHaveBeenCalledWith('No agentcore project found. Run `agentcore create` first.');
+    expect(mockHandleExportHarness).not.toHaveBeenCalled();
+  });
+
+  it('rejects interactive export before rendering the TUI when no project exists', async () => {
+    process.stdin.isTTY = true;
+    process.stdout.isTTY = true;
+    mockFindConfigRoot.mockReturnValue(undefined);
+
+    await expect(program.parseAsync(['export', 'harness'], { from: 'user' })).rejects.toThrow('process.exit(1)');
+
+    expect(errorSpy).toHaveBeenCalledWith('No agentcore project found. Run `agentcore create` first.');
+    expect(mockRender).not.toHaveBeenCalled();
   });
 });

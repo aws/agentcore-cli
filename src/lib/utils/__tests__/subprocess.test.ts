@@ -55,6 +55,7 @@ describe('runSubprocessCapture', () => {
   it('returns code -1 for unknown command', async () => {
     const result = await runSubprocessCapture('__nonexistent_command_xyz__', []);
     expect(result.code).toBe(-1);
+    expect(result.stderr).toContain('__nonexistent_command_xyz__');
   });
 
   it('respects cwd option', async () => {

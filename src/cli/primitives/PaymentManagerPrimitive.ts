@@ -222,10 +222,12 @@ export class PaymentManagerPrimitive extends BasePrimitive<AddPaymentManagerOpti
       const manager = project.payments[index]!;
 
       // Collect connector info before removal for cleanup
-      const connectorInfo = manager.connectors.map(c => ({
-        credentialName: c.credentialName,
-        provider: c.provider,
-      }));
+      const connectorInfo = manager.connectors
+        .filter(c => c.provisionMode !== 'QUICK_CREATE')
+        .map(c => ({
+          credentialName: c.credentialName,
+          provider: c.provider,
+        }));
 
       // Remove the manager (which removes all its nested connectors)
       project.payments.splice(index, 1);
@@ -285,14 +287,24 @@ export class PaymentManagerPrimitive extends BasePrimitive<AddPaymentManagerOpti
     if (manager.connectors.length > 0) {
       summary.push(`Note: ${manager.connectors.length} connector(s) within this manager will also be removed`);
       for (const conn of manager.connectors) {
-        summary.push(`  - Connector: ${conn.name} (credential: ${conn.credentialName})`);
+        summary.push(
+          conn.provisionMode === 'QUICK_CREATE'
+            ? `  - Connector: ${conn.name} (Quick Create)`
+            : `  - Connector: ${conn.name} (credential: ${conn.credentialName})`
+        );
       }
     }
 
-    const credentialNames = manager.connectors.map(c => c.credentialName);
+    const credentialNames = manager.connectors
+      .filter(connector => connector.provisionMode !== 'QUICK_CREATE')
+      .map(connector => connector.credentialName);
     for (const credName of credentialNames) {
       const otherReferences = project.payments.some(
-        m => m.name !== name && m.connectors.some(c => c.credentialName === credName)
+        manager =>
+          manager.name !== name &&
+          manager.connectors.some(
+            connector => connector.provisionMode !== 'QUICK_CREATE' && connector.credentialName === credName
+          )
       );
       if (!otherReferences) {
         summary.push(`Associated credential "${credName}" will also be removed`);
@@ -336,7 +348,7 @@ export class PaymentManagerPrimitive extends BasePrimitive<AddPaymentManagerOpti
   registerCommands(addCmd: Command, removeCmd: Command): void {
     addCmd
       .command('payment-manager')
-      .description('[preview] Add a payment manager to the project')
+      .description('Add a payment manager to the project')
       .option('--name <name>', 'Payment manager name [non-interactive]')
       .option('--authorizer-type <type>', 'Authorizer type: AWS_IAM or CUSTOM_JWT (default: AWS_IAM) [non-interactive]')
       .option('--discovery-url <url>', 'OIDC discovery URL (required for CUSTOM_JWT) [non-interactive]')
@@ -519,7 +531,7 @@ export class PaymentManagerPrimitive extends BasePrimitive<AddPaymentManagerOpti
 
     removeCmd
       .command('payment-manager')
-      .description('[preview] Remove a payment manager from the project')
+      .description('Remove a payment manager from the project')
       .option('--name <name>', 'Name of resource to remove [non-interactive]')
       .option('-y, --yes', 'Skip confirmation prompt [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')

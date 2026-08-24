@@ -18,7 +18,7 @@ type FlowState =
   | { name: 'connector-wizard-unified'; managerConfig: AddPaymentManagerConfig }
   | { name: 'confirm'; managerConfig: AddPaymentManagerConfig; connectorConfig?: AddPaymentConnectorConfig }
   | { name: 'connector-wizard'; preSelectedManager?: string }
-  | { name: 'success'; message: string }
+  | { name: 'success'; message: string; detail?: string }
   | { name: 'error'; message: string };
 
 interface AddPaymentFlowProps {
@@ -159,28 +159,41 @@ export function AddPaymentFlow({
       } as const;
 
       const connectorOptions =
-        config.provider === 'StripePrivy'
+        config.provisionMode === 'QUICK_CREATE'
           ? {
               ...baseOptions,
-              provider: 'StripePrivy' as const,
-              appId: config.appId,
-              appSecret: config.appSecret,
-              authorizationPrivateKey: config.authorizationPrivateKey,
-              authorizationId: config.authorizationId,
-            }
-          : {
-              ...baseOptions,
               provider: 'CoinbaseCDP' as const,
-              apiKeyId: config.apiKeyId,
-              apiKeySecret: config.apiKeySecret,
-              walletSecret: config.walletSecret,
-            };
+              provisionMode: 'QUICK_CREATE' as const,
+            }
+          : config.provider === 'StripePrivy'
+            ? {
+                ...baseOptions,
+                provider: 'StripePrivy' as const,
+                appId: config.appId,
+                appSecret: config.appSecret,
+                authorizationPrivateKey: config.authorizationPrivateKey,
+                authorizationId: config.authorizationId,
+              }
+            : {
+                ...baseOptions,
+                provider: 'CoinbaseCDP' as const,
+                apiKeyId: config.apiKeyId,
+                apiKeySecret: config.apiKeySecret,
+                walletSecret: config.walletSecret,
+              };
 
       setFlow({ name: 'loading' });
       void createConnector(connectorOptions)
         .then(result => {
           if (result.ok) {
-            setFlow({ name: 'success', message: `Added payment connector: ${result.connectorName}` });
+            setFlow({
+              name: 'success',
+              message: `Added payment connector: ${result.connectorName}`,
+              detail:
+                config.provisionMode === 'QUICK_CREATE'
+                  ? 'Run `agentcore deploy` to create the connector and receive its authorization URL.'
+                  : undefined,
+            });
           } else {
             setFlow({ name: 'error', message: result.error });
           }
@@ -293,59 +306,70 @@ export function AddPaymentFlow({
     const connectorFields = flow.connectorConfig
       ? [
           { label: 'Connector Name', value: flow.connectorConfig.connectorName },
-          { label: 'Provider', value: flow.connectorConfig.provider },
-          ...(flow.connectorConfig.provider === 'StripePrivy'
-            ? [
-                {
-                  label: 'App ID',
-                  value:
-                    flow.connectorConfig.appId.length > 8 ? '****' + flow.connectorConfig.appId.slice(-4) : '••••••••',
-                },
-                {
-                  label: 'App Secret',
-                  value:
-                    flow.connectorConfig.appSecret.length > 8
-                      ? '****' + flow.connectorConfig.appSecret.slice(-4)
-                      : '••••••••',
-                },
-                {
-                  label: 'Auth Key',
-                  value:
-                    flow.connectorConfig.authorizationPrivateKey.length > 8
-                      ? '****' + flow.connectorConfig.authorizationPrivateKey.slice(-4)
-                      : '••••••••',
-                },
-                {
-                  label: 'Auth ID',
-                  value:
-                    flow.connectorConfig.authorizationId.length > 8
-                      ? '****' + flow.connectorConfig.authorizationId.slice(-4)
-                      : '••••••••',
-                },
-              ]
-            : [
-                {
-                  label: 'API Key ID',
-                  value:
-                    flow.connectorConfig.apiKeyId.length > 8
-                      ? '****' + flow.connectorConfig.apiKeyId.slice(-4)
-                      : '••••••••',
-                },
-                {
-                  label: 'API Key Secret',
-                  value:
-                    flow.connectorConfig.apiKeySecret.length > 8
-                      ? '****' + flow.connectorConfig.apiKeySecret.slice(-4)
-                      : '••••••••',
-                },
-                {
-                  label: 'Wallet Secret',
-                  value:
-                    flow.connectorConfig.walletSecret.length > 8
-                      ? '****' + flow.connectorConfig.walletSecret.slice(-4)
-                      : '••••••••',
-                },
-              ]),
+          {
+            label: 'Provisioning',
+            value: flow.connectorConfig.provisionMode === 'QUICK_CREATE' ? 'Quick Create' : 'Manual',
+          },
+          {
+            label: 'Provider',
+            value: flow.connectorConfig.provider === 'StripePrivy' ? 'Stripe + Privy' : 'Coinbase CDP',
+          },
+          ...(flow.connectorConfig.provisionMode === 'QUICK_CREATE'
+            ? []
+            : flow.connectorConfig.provider === 'StripePrivy'
+              ? [
+                  {
+                    label: 'App ID',
+                    value:
+                      flow.connectorConfig.appId.length > 8
+                        ? '****' + flow.connectorConfig.appId.slice(-4)
+                        : '••••••••',
+                  },
+                  {
+                    label: 'App Secret',
+                    value:
+                      flow.connectorConfig.appSecret.length > 8
+                        ? '****' + flow.connectorConfig.appSecret.slice(-4)
+                        : '••••••••',
+                  },
+                  {
+                    label: 'Auth Key',
+                    value:
+                      flow.connectorConfig.authorizationPrivateKey.length > 8
+                        ? '****' + flow.connectorConfig.authorizationPrivateKey.slice(-4)
+                        : '••••••••',
+                  },
+                  {
+                    label: 'Auth ID',
+                    value:
+                      flow.connectorConfig.authorizationId.length > 8
+                        ? '****' + flow.connectorConfig.authorizationId.slice(-4)
+                        : '••••••••',
+                  },
+                ]
+              : [
+                  {
+                    label: 'API Key ID',
+                    value:
+                      flow.connectorConfig.apiKeyId.length > 8
+                        ? '****' + flow.connectorConfig.apiKeyId.slice(-4)
+                        : '••••••••',
+                  },
+                  {
+                    label: 'API Key Secret',
+                    value:
+                      flow.connectorConfig.apiKeySecret.length > 8
+                        ? '****' + flow.connectorConfig.apiKeySecret.slice(-4)
+                        : '••••••••',
+                  },
+                  {
+                    label: 'Wallet Secret',
+                    value:
+                      flow.connectorConfig.walletSecret.length > 8
+                        ? '****' + flow.connectorConfig.walletSecret.slice(-4)
+                        : '••••••••',
+                  },
+                ]),
         ]
       : [];
 
@@ -406,22 +430,28 @@ export function AddPaymentFlow({
           provider: connConfig.provider,
         } as const;
         const connectorOptions =
-          connConfig.provider === 'StripePrivy'
+          connConfig.provisionMode === 'QUICK_CREATE'
             ? {
                 ...baseOptions,
-                provider: 'StripePrivy' as const,
-                appId: connConfig.appId,
-                appSecret: connConfig.appSecret,
-                authorizationPrivateKey: connConfig.authorizationPrivateKey,
-                authorizationId: connConfig.authorizationId,
-              }
-            : {
-                ...baseOptions,
                 provider: 'CoinbaseCDP' as const,
-                apiKeyId: connConfig.apiKeyId,
-                apiKeySecret: connConfig.apiKeySecret,
-                walletSecret: connConfig.walletSecret,
-              };
+                provisionMode: 'QUICK_CREATE' as const,
+              }
+            : connConfig.provider === 'StripePrivy'
+              ? {
+                  ...baseOptions,
+                  provider: 'StripePrivy' as const,
+                  appId: connConfig.appId,
+                  appSecret: connConfig.appSecret,
+                  authorizationPrivateKey: connConfig.authorizationPrivateKey,
+                  authorizationId: connConfig.authorizationId,
+                }
+              : {
+                  ...baseOptions,
+                  provider: 'CoinbaseCDP' as const,
+                  apiKeyId: connConfig.apiKeyId,
+                  apiKeySecret: connConfig.apiKeySecret,
+                  walletSecret: connConfig.walletSecret,
+                };
 
         const connResult = await createConnector(connectorOptions);
         if (!connResult.ok) {
@@ -438,10 +468,16 @@ export function AddPaymentFlow({
       const msg = flow.connectorConfig
         ? `Payment manager "${mgrConfig.managerName}" and connector "${flow.connectorConfig.connectorName}" created`
         : `Payment manager "${mgrConfig.managerName}" created`;
-      setFlow({ name: 'success', message: msg });
+      setFlow({
+        name: 'success',
+        message: msg,
+        detail:
+          flow.connectorConfig?.provisionMode === 'QUICK_CREATE'
+            ? 'Run `agentcore deploy` to create the connector and receive its authorization URL.'
+            : undefined,
+      });
     };
 
-    // eslint-disable-next-line react-hooks/refs -- intentional: handler must close over current flow state
     confirmHandlerRef.current = () => void handleConfirmSubmit();
 
     return (
@@ -489,7 +525,7 @@ export function AddPaymentFlow({
       <AddSuccessScreen
         isInteractive={isInteractive}
         message={flow.message}
-        detail="Run `agentcore deploy` to create payment infrastructure on AWS."
+        detail={flow.detail ?? 'Run `agentcore deploy` to create payment infrastructure on AWS.'}
         showDevOption={true}
         onAddAnother={onBack}
         onDev={onDev}

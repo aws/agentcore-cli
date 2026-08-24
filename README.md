@@ -197,10 +197,10 @@ Policy engines apply Cedar-based pre/post-call policies to agent invocations —
 Pay-per-call agent transactions via the [x402 protocol](https://www.x402.org/). When a tool call returns
 `402 Payment Required`, the payments system signs and submits payment then retries automatically.
 
-| Command                 | Description                                                                  |
-| ----------------------- | ---------------------------------------------------------------------------- |
-| `add payment-manager`   | Add a payment manager (orchestrates payment sessions for the agent)          |
-| `add payment-connector` | Add a payment connector with provider credentials (CoinbaseCDP, StripePrivy) |
+| Command                 | Description                                                               |
+| ----------------------- | ------------------------------------------------------------------------- |
+| `add payment-manager`   | Add a payment manager (orchestrates payment sessions for the agent)       |
+| `add payment-connector` | Add a Quick Create or manual payment connector (CoinbaseCDP, StripePrivy) |
 
 > See [Payments](docs/payments.md) for the full setup including instrument creation and tool allowlists.
 

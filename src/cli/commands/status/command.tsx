@@ -392,9 +392,29 @@ export const registerStatus = (program: Command) => {
             {payments.length > 0 && (
               <Box flexDirection="column" marginTop={1}>
                 <Text bold>Payments</Text>
-                {payments.map(entry => (
-                  <ResourceEntry key={`${entry.resourceType}-${entry.name}`} entry={entry} />
-                ))}
+                {payments.map(entry => {
+                  return (
+                    <Box key={`${entry.resourceType}-${entry.name}`} flexDirection="column">
+                      <ResourceEntry entry={entry} />
+                      {entry.paymentConnectors?.map(connector => (
+                        <Box key={connector.connectorId} flexDirection="column" marginLeft={4}>
+                          <Text>
+                            {connector.name}: {connector.status} ({connector.connectorId})
+                          </Text>
+                          {connector.authorizationUrl && (
+                            <Text>
+                              Authorization: <Text color="cyan">{connector.authorizationUrl}</Text>
+                            </Text>
+                          )}
+                          {connector.credentialProviderArn && (
+                            <Text dimColor>Credential provider: {connector.credentialProviderArn}</Text>
+                          )}
+                          {connector.error && <Text color="red">{connector.error}</Text>}
+                        </Box>
+                      ))}
+                    </Box>
+                  );
+                })}
               </Box>
             )}
 

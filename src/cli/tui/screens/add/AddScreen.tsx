@@ -33,10 +33,10 @@ const BASE_ADD_RESOURCES: { id: AddResourceType; title: string; description: str
   { id: 'policy', title: 'Policy', description: 'Cedar policies for gateway tools' },
   { id: 'dataset', title: 'Dataset', description: 'Evaluation dataset for testing agents' },
   { id: 'config-bundle', title: 'Configuration Bundle', description: 'Versioned component configurations' },
-  { id: 'payment-manager', title: 'Payment Manager [preview]', description: 'x402 crypto microtransactions config' },
+  { id: 'payment-manager', title: 'Payment Manager', description: 'x402 crypto microtransactions config' },
   {
     id: 'payment-connector',
-    title: 'Payment Connector [preview]',
+    title: 'Payment Connector',
     description: 'Link payment provider credentials to a manager',
   },
 ];

@@ -281,6 +281,7 @@ export function getAllCredentials(projectSpec: AgentCoreProjectSpec): MissingCre
 
   for (const payment of projectSpec.payments ?? []) {
     for (const connector of payment.connectors) {
+      if (connector.provisionMode === 'QUICK_CREATE') continue;
       if (connector.provider === 'StripePrivy') {
         const vars = computeStripePrivyCredentialEnvVarNames(connector.credentialName);
         credentials.push(
@@ -492,7 +493,9 @@ export interface SetupPaymentCredentialProvidersOptions {
 }
 
 export function hasPaymentCredentialProviders(projectSpec: AgentCoreProjectSpec): boolean {
-  return (projectSpec.payments ?? []).length > 0;
+  return (projectSpec.payments ?? []).some(payment =>
+    payment.connectors.some(connector => connector.provisionMode !== 'QUICK_CREATE')
+  );
 }
 
 export async function setupPaymentCredentialProviders(
@@ -506,7 +509,7 @@ export async function setupPaymentCredentialProviders(
     errors: [],
   };
 
-  if ((projectSpec.payments ?? []).length === 0) {
+  if (!hasPaymentCredentialProviders(projectSpec)) {
     return result;
   }
 
@@ -519,6 +522,7 @@ export async function setupPaymentCredentialProviders(
 
   for (const payment of projectSpec.payments ?? []) {
     for (const connector of payment.connectors) {
+      if (connector.provisionMode === 'QUICK_CREATE') continue;
       try {
         const credentialName = connector.credentialName;
         const credential = projectSpec.credentials.find(
@@ -572,12 +576,24 @@ export async function setupPaymentCredentialProviders(
 
 export async function cleanupPaymentCredentialProviders(options: {
   region: string;
-  payments: Record<string, { connectors?: Record<string, { credentialProviderArn: string }> }>;
+  payments: Record<
+    string,
+    {
+      connectors?: Record<
+        string,
+        {
+          provisionMode?: 'MANUAL' | 'QUICK_CREATE';
+          credentialProviderArn?: string;
+        }
+      >;
+    }
+  >;
 }): Promise<void> {
   const { region, payments } = options;
 
   for (const [name, state] of Object.entries(payments)) {
     for (const [connName, conn] of Object.entries(state.connectors ?? {})) {
+      if (conn.provisionMode === 'QUICK_CREATE' || !conn.credentialProviderArn) continue;
       const credName = conn.credentialProviderArn.split('/').pop() ?? '';
       if (credName) {
         try {

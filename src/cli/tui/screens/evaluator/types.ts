@@ -195,7 +195,15 @@ export function getEvaluatorModelOptions(provider: EvaluatorModelProvider): Eval
 export const LEVEL_PLACEHOLDERS: Record<EvaluationLevel, string[]> = {
   SESSION: ['context', 'available_tools'],
   TRACE: ['context', 'assistant_turn'],
-  TOOL_CALL: ['available_tools', 'context', 'tool_turn'],
+  TOOL_CALL: [
+    'available_tools',
+    'context',
+    'tool_turn',
+    'available_skills',
+    'invoked_skill',
+    'skill_content',
+    'user_message',
+  ],
 };
 
 /**
@@ -218,6 +226,10 @@ export const PLACEHOLDER_DESCRIPTIONS: Record<string, string> = {
   expected_tool_trajectory: 'caller-provided expected sequence of tool calls',
   actual_tool_trajectory: 'actual sequence of tool calls from the session',
   expected_response: 'caller-provided expected agent response',
+  available_skills: 'skills offered to the agent (name + description)',
+  invoked_skill: 'the skill the agent selected for this span',
+  skill_content: "the selected skill's SKILL.md instructions",
+  user_message: 'the user request in the turn that triggered the skill invocation',
 };
 
 /**

@@ -426,15 +426,16 @@ Required only when the project defines payment managers and connectors (the `pay
 CLI calls the Payment control-plane and data-plane APIs directly with the developer's credentials; both are signed under
 the `bedrock-agentcore` service.
 
-| Action                                              | CLI Commands | Purpose                                                              |
-| --------------------------------------------------- | ------------ | -------------------------------------------------------------------- |
-| `bedrock-agentcore:GetPaymentCredentialProvider`    | `deploy`     | Check if a payment credential provider already exists                |
-| `bedrock-agentcore:CreatePaymentCredentialProvider` | `deploy`     | Create a payment credential provider from connector secrets          |
-| `bedrock-agentcore:UpdatePaymentCredentialProvider` | `deploy`     | Update a payment credential provider with new secret values          |
-| `bedrock-agentcore:DeletePaymentCredentialProvider` | `deploy`     | Remove a payment credential provider when a connector is removed     |
-| `bedrock-agentcore:GetPaymentManager`               | `status`     | Look up payment manager status                                       |
-| `bedrock-agentcore:ListPaymentSessions`             | `invoke`     | Find an existing active payment session before creating a new one    |
-| `bedrock-agentcore:CreatePaymentSession`            | `invoke`     | Create a payment session with a default budget for `invoke` auto-pay |
+| Action                                              | CLI Commands       | Purpose                                                              |
+| --------------------------------------------------- | ------------------ | -------------------------------------------------------------------- |
+| `bedrock-agentcore:GetPaymentCredentialProvider`    | `deploy`           | Check if a payment credential provider already exists                |
+| `bedrock-agentcore:CreatePaymentCredentialProvider` | `deploy`           | Create a payment credential provider from connector secrets          |
+| `bedrock-agentcore:UpdatePaymentCredentialProvider` | `deploy`           | Update a payment credential provider with new secret values          |
+| `bedrock-agentcore:DeletePaymentCredentialProvider` | `deploy`           | Remove a payment credential provider when a connector is removed     |
+| `bedrock-agentcore:GetPaymentManager`               | `status`           | Look up payment manager status                                       |
+| `bedrock-agentcore:GetPaymentConnector`             | `deploy`, `status` | Retrieve connector status and a pending authorization URL            |
+| `bedrock-agentcore:ListPaymentSessions`             | `invoke`           | Find an existing active payment session before creating a new one    |
+| `bedrock-agentcore:CreatePaymentSession`            | `invoke`           | Create a payment session with a default budget for `invoke` auto-pay |
 
 Creating or updating a payment credential provider also writes the connector secrets into a service-managed Secrets
 Manager secret (named `bedrock-agentcore-identity!default/payment/*`). Unlike API key and OAuth2 providers, the Payment

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const VENDED: PackageManifest = {
   dependencies: {
-    '@aws/agentcore-cdk': '0.1.0-alpha.45',
+    '@aws/agentcore-cdk': '0.1.0-alpha.49',
     'aws-cdk-lib': '~2.261.0',
     constructs: '~10.7.0',
   },
@@ -42,7 +42,7 @@ describe('computeSyncPlan', () => {
     expect(plan.migratedFromCaret).toBe(true);
     expect(plan.skew).toEqual([]);
     expect(plan.changes).toEqual([
-      { name: '@aws/agentcore-cdk', section: 'dependencies', from: '^0.1.0-alpha.19', to: '0.1.0-alpha.45' },
+      { name: '@aws/agentcore-cdk', section: 'dependencies', from: '^0.1.0-alpha.19', to: '0.1.0-alpha.49' },
       { name: 'aws-cdk-lib', section: 'dependencies', from: '^2.248.0', to: '~2.261.0' },
       { name: 'constructs', section: 'dependencies', from: '^10.0.0', to: '~10.7.0' },
     ]);
@@ -83,12 +83,12 @@ describe('computeSyncPlan', () => {
     expect(plan.changes).toEqual([{ name: 'aws-cdk-lib', section: 'dependencies', from: '~2.261.5', to: '~2.261.0' }]);
   });
 
-  it('detects prerelease skew on the exact-pinned construct (alpha.50 > alpha.45)', () => {
+  it('detects prerelease skew on the exact-pinned construct (alpha.51 > alpha.49)', () => {
     const plan = computeSyncPlan(
       VENDED,
-      project({ dependencies: { ...VENDED.dependencies, '@aws/agentcore-cdk': '0.1.0-alpha.50' } })
+      project({ dependencies: { ...VENDED.dependencies, '@aws/agentcore-cdk': '0.1.0-alpha.51' } })
     );
-    expect(plan.skew).toEqual([{ name: '@aws/agentcore-cdk', declared: '0.1.0-alpha.50', expected: '0.1.0-alpha.45' }]);
+    expect(plan.skew).toEqual([{ name: '@aws/agentcore-cdk', declared: '0.1.0-alpha.51', expected: '0.1.0-alpha.49' }]);
   });
 
   it('upgrades an older exact-pinned prerelease', () => {
@@ -98,7 +98,7 @@ describe('computeSyncPlan', () => {
     );
     expect(plan.skew).toEqual([]);
     expect(plan.changes).toEqual([
-      { name: '@aws/agentcore-cdk', section: 'dependencies', from: '0.1.0-alpha.19', to: '0.1.0-alpha.45' },
+      { name: '@aws/agentcore-cdk', section: 'dependencies', from: '0.1.0-alpha.19', to: '0.1.0-alpha.49' },
     ]);
   });
 

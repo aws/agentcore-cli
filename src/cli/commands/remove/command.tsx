@@ -47,6 +47,7 @@ async function handleRemoveAll(options: RemoveAllOptions): Promise<RemoveResult>
       const current = await configIO.readProjectSpec();
       for (const payment of current.payments ?? []) {
         for (const connector of payment.connectors) {
+          if (connector.provisionMode === 'QUICK_CREATE') continue;
           const provider = connector.provider ?? 'CoinbaseCDP';
           if (provider === 'StripePrivy') {
             const vars = computeStripePrivyCredentialEnvVarNames(connector.credentialName);

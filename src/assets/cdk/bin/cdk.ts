@@ -141,7 +141,12 @@ async function main() {
             autoPayment?: boolean;
             paymentToolAllowlist?: string[];
             networkPreferences?: string[];
-            connectors: { name: string; provider?: string; credentialName: string }[];
+            connectors: {
+              name: string;
+              provider?: string;
+              provisionMode?: 'MANUAL' | 'QUICK_CREATE';
+              credentialName?: string;
+            }[];
           }) => ({
             name: p.name,
             description: p.description,
@@ -151,6 +156,19 @@ async function main() {
             paymentToolAllowlist: p.paymentToolAllowlist,
             networkPreferences: p.networkPreferences,
             connectors: p.connectors.map(c => {
+              if (c.provisionMode === 'QUICK_CREATE') {
+                return {
+                  name: c.name,
+                  provider: 'CoinbaseCDP' as const,
+                  provisionMode: 'QUICK_CREATE' as const,
+                };
+              }
+
+              if (!c.credentialName) {
+                throw new Error(
+                  `Manual payment connector "${c.name}" on manager "${p.name}" is missing its credential name.`
+                );
+              }
               const credentialProviderArn = paymentCredentials?.[c.credentialName]?.credentialProviderArn;
               if (!credentialProviderArn) {
                 // Fail fast with an actionable message rather than passing an empty
@@ -161,7 +179,13 @@ async function main() {
                     `Run \`agentcore deploy\` so the credential provider is created first.`
                 );
               }
-              return { name: c.name, provider: c.provider, credentialProviderArn };
+              return {
+                name: c.name,
+                provider: c.provider,
+                ...(c.provisionMode && { provisionMode: c.provisionMode }),
+                credentialName: c.credentialName,
+                credentialProviderArn,
+              };
             }),
           })
         )

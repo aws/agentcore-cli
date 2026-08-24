@@ -38,6 +38,7 @@ import {
   PaymentManagerNameSchema,
   PaymentManagerSchema,
   PaymentProviderSchema,
+  PaymentProvisionModeSchema,
 } from './primitives/payment';
 import { PolicyEngineSchema } from './primitives/policy';
 import { TagsSchema } from './primitives/tags';
@@ -140,9 +141,16 @@ export {
   PaymentConnectorSchema,
   PaymentConnectorNameSchema,
   PaymentProviderSchema,
+  PaymentProvisionModeSchema,
   PaymentAuthorizerTypeSchema,
 };
-export type { PaymentManager, PaymentConnector, PaymentProvider, PaymentAuthorizerType } from './primitives/payment';
+export type {
+  PaymentManager,
+  PaymentConnector,
+  PaymentProvider,
+  PaymentProvisionMode,
+  PaymentAuthorizerType,
+} from './primitives/payment';
 
 // ============================================================================
 // ManagedBy Schema
@@ -705,6 +713,7 @@ export const AgentCoreProjectSpecSchema = z
       const paymentIndex = (spec.payments ?? []).indexOf(payment);
       for (const connector of payment.connectors) {
         const connectorIndex = payment.connectors.indexOf(connector);
+        if (connector.provisionMode === 'QUICK_CREATE') continue;
         const credential = spec.credentials.find(c => c.name === connector.credentialName);
         if (!credential) {
           ctx.addIssue({

@@ -3,7 +3,7 @@ import type { Result } from '../../../lib/result';
 import type { AgentCoreProjectSpec, AwsDeploymentTargets, DeployedResourceState, DeployedState } from '../../../schema';
 import { getAgentRuntimeStatus } from '../../aws';
 import { getEvaluator, getOnlineEvaluationConfig } from '../../aws/agentcore-control';
-import { getPaymentManager } from '../../aws/agentcore-payments';
+import { getPaymentConnector, getPaymentManager } from '../../aws/agentcore-payments';
 import { getKnowledgeBase, getLatestIngestionJob } from '../../aws/bedrock-agent';
 import { getErrorMessage } from '../../errors';
 import { ExecLogger } from '../../logging';
@@ -17,6 +17,15 @@ import {
 } from './format-knowledge-base';
 
 export type { ResourceDeploymentState };
+
+export interface PaymentConnectorStatusEntry {
+  name: string;
+  connectorId: string;
+  status: string;
+  authorizationUrl?: string;
+  credentialProviderArn?: string;
+  error?: string;
+}
 
 export interface ResourceStatusEntry {
   resourceType:
@@ -41,6 +50,7 @@ export interface ResourceStatusEntry {
   parentName?: string;
   error?: string;
   invocationUrl?: string;
+  paymentConnectors?: PaymentConnectorStatusEntry[];
 }
 
 export type ProjectStatusResult = Result<{
@@ -713,6 +723,58 @@ export async function handleProjectStatus(
             const errorMsg = getErrorMessage(error);
             resources[i] = { ...entry, detail: `unknown — ${connectorCount} connector(s)`, error: errorMsg };
             logger.log(`  ${entry.name}: unknown (fetch failed) - ${errorMsg}`, 'error');
+          }
+
+          const paymentConnectors = await Promise.all(
+            Object.entries(paymentState.connectors ?? {}).map(
+              async ([connectorName, connectorState]): Promise<PaymentConnectorStatusEntry> => {
+                try {
+                  const detail = await getPaymentConnector({
+                    region: targetConfig.region,
+                    paymentManagerId: paymentState.managerId,
+                    paymentConnectorId: connectorState.connectorId,
+                  });
+                  if (!detail) {
+                    return {
+                      name: connectorName,
+                      connectorId: connectorState.connectorId,
+                      status: 'NOT_FOUND',
+                      error: 'Connector was not found by the Payments service',
+                    };
+                  }
+                  const credentialProviderArn = detail.credentialProviderConfigurations
+                    .map(
+                      configuration =>
+                        configuration.coinbaseCDP?.credentialProviderArn ??
+                        configuration.stripePrivy?.credentialProviderArn
+                    )
+                    .find((arn): arn is string => Boolean(arn));
+                  return {
+                    name: connectorName,
+                    connectorId: connectorState.connectorId,
+                    status: detail.status,
+                    ...(detail.status === 'PENDING_AUTHENTICATION' &&
+                      detail.authorizationUrl && { authorizationUrl: detail.authorizationUrl }),
+                    ...(credentialProviderArn && { credentialProviderArn }),
+                  };
+                } catch (error) {
+                  return {
+                    name: connectorName,
+                    connectorId: connectorState.connectorId,
+                    status: 'UNKNOWN',
+                    error: getErrorMessage(error),
+                  };
+                }
+              }
+            )
+          );
+          resources[i] = { ...resources[i], paymentConnectors };
+          for (const connector of paymentConnectors) {
+            logger.log(
+              `    ${connector.name}: ${connector.status} (${connector.connectorId})` +
+                (connector.error ? ` - ${connector.error}` : ''),
+              connector.error ? 'error' : undefined
+            );
           }
         })
       );

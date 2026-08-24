@@ -8,6 +8,7 @@ import type {
   KnowledgeBaseDeployedState,
   MemoryDeployedState,
   OnlineEvalDeployedState,
+  PaymentConnectorDeployedState,
   PaymentDeployedState,
   PolicyDeployedState,
   PolicyEngineDeployedState,
@@ -20,6 +21,12 @@ import { getStackName } from './stack-discovery';
 import { CloudFormationClient, DescribeStacksCommand } from '@aws-sdk/client-cloudformation';
 
 export type StackOutputs = Record<string, string>;
+
+export function omitPaymentAuthorizationOutputs(outputs: StackOutputs): StackOutputs {
+  return Object.fromEntries(
+    Object.entries(outputs).filter(([key]) => !key.startsWith('Payment') || !key.endsWith('AuthorizationUrl'))
+  );
+}
 
 /**
  * Fetch CloudFormation stack outputs.
@@ -655,7 +662,12 @@ export function parsePaymentOutputs(
     autoPayment?: boolean;
     paymentToolAllowlist?: string[];
     networkPreferences?: string[];
-    connectors: { name: string; credentialProviderArn: string; credentialProviderName?: string }[];
+    connectors: {
+      name: string;
+      provisionMode?: 'MANUAL' | 'QUICK_CREATE';
+      credentialProviderArn?: string;
+      credentialProviderName?: string;
+    }[];
   }[]
 ): Record<string, PaymentDeployedState> {
   const payments: Record<string, PaymentDeployedState> = {};
@@ -669,19 +681,25 @@ export function parsePaymentOutputs(
 
     if (!managerArn || !managerId || !processPaymentRoleArn || !resourceRetrievalRoleArn) continue;
 
-    const connectors: Record<
-      string,
-      { connectorId: string; credentialProviderArn: string; credentialProviderName?: string }
-    > = {};
+    const connectors: Record<string, PaymentConnectorDeployedState> = {};
     for (const conn of spec.connectors) {
       const connId = toPaymentCdkId(conn.name);
       const connectorId = outputs[`Payment${mgrId}${connId}ConnectorId`];
       if (connectorId) {
-        connectors[conn.name] = {
-          connectorId,
-          credentialProviderArn: conn.credentialProviderArn,
-          credentialProviderName: conn.credentialProviderName,
-        };
+        if (conn.provisionMode === 'QUICK_CREATE') {
+          connectors[conn.name] = {
+            connectorId,
+            provisionMode: 'QUICK_CREATE',
+            ...(conn.credentialProviderName && { credentialProviderName: conn.credentialProviderName }),
+          };
+        } else if (conn.credentialProviderArn) {
+          connectors[conn.name] = {
+            connectorId,
+            ...(conn.provisionMode && { provisionMode: conn.provisionMode }),
+            credentialProviderArn: conn.credentialProviderArn,
+            ...(conn.credentialProviderName && { credentialProviderName: conn.credentialProviderName }),
+          };
+        }
       }
     }
 

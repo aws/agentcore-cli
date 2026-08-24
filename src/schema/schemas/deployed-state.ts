@@ -288,11 +288,21 @@ export type RuntimeEndpointDeployedState = z.infer<typeof RuntimeEndpointDeploye
 // Payment Connector Deployed State
 // ============================================================================
 
-export const PaymentConnectorDeployedStateSchema = z.object({
+const PaymentConnectorDeployedStateBaseSchema = z.object({
   connectorId: z.string().min(1),
-  credentialProviderArn: z.string().min(1),
   credentialProviderName: z.string().optional(),
 });
+
+export const PaymentConnectorDeployedStateSchema = z.union([
+  PaymentConnectorDeployedStateBaseSchema.extend({
+    provisionMode: z.literal('QUICK_CREATE'),
+    credentialProviderArn: z.never().optional(),
+  }),
+  PaymentConnectorDeployedStateBaseSchema.extend({
+    provisionMode: z.literal('MANUAL').optional(),
+    credentialProviderArn: z.string().min(1),
+  }),
+]);
 
 export type PaymentConnectorDeployedState = z.infer<typeof PaymentConnectorDeployedStateSchema>;
 

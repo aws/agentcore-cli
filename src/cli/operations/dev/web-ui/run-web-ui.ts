@@ -29,11 +29,15 @@ export async function runWebUI(opts: RunWebUIOptions): Promise<void> {
   console.log(`Starting web UI...`);
   console.log(`Log: ${logger.getRelativeLogPath()}`);
 
-  const onLog =
+  const displayLog =
     opts.onLog ??
     ((level: 'info' | 'warn' | 'error', msg: string) => {
       if (level === 'error') console.error(`Web UI: ${msg}`);
     });
+  const onLog = (level: 'info' | 'warn' | 'error', msg: string) => {
+    logger.log(msg, level);
+    displayLog(level, msg);
+  };
 
   const webUI = new WebUIServer({
     ...serverOptions,
@@ -52,6 +56,7 @@ export async function runWebUI(opts: RunWebUIOptions): Promise<void> {
   onShutdownSignal(() => {
     console.log('\nStopping servers...');
     webUI.stop();
+    logger.finalize(true);
   });
 
   // Keep process alive

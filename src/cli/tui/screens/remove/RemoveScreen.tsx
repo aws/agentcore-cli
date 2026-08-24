@@ -30,7 +30,7 @@ const REMOVE_RESOURCES: { id: RemoveResourceType; title: string; description: st
   { id: 'online-eval', title: 'Online Eval Config', description: 'Remove an online eval config' },
   { id: 'policy-engine', title: 'Policy Engine', description: 'Remove a policy engine' },
   { id: 'policy', title: 'Policy', description: 'Remove a policy from a policy engine' },
-  { id: 'payment', title: 'Payment [preview]', description: 'Remove a payment manager' },
+  { id: 'payment', title: 'Payment', description: 'Remove a payment manager' },
   { id: 'gateway', title: 'Gateway', description: 'Remove a gateway' },
   { id: 'gateway-target', title: 'Gateway Target', description: 'Remove a gateway target' },
   {

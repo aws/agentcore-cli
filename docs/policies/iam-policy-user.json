@@ -102,6 +102,7 @@
         "bedrock-agentcore:UpdatePaymentCredentialProvider",
         "bedrock-agentcore:DeletePaymentCredentialProvider",
         "bedrock-agentcore:GetPaymentManager",
+        "bedrock-agentcore:GetPaymentConnector",
         "bedrock-agentcore:ListPaymentSessions",
         "bedrock-agentcore:CreatePaymentSession"
       ],

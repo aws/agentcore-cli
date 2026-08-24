@@ -5,6 +5,7 @@ import type { CdkToolkitWrapper, DeployMessage, SwitchableIoHost } from '../../.
 import {
   buildDeployedState,
   getStackOutputs,
+  omitPaymentAuthorizationOutputs,
   parseAgentOutputs,
   parseConfigBundleOutputs,
   parseDatasetOutputs,
@@ -26,6 +27,8 @@ import { ExecLogger } from '../../../logging';
 import {
   MANAGED_MEMORY_DEPLOY_NOTICE,
   cleanupPaymentCredentialProviders,
+  formatQuickCreateConnectorAuthorization,
+  getQuickCreateConnectorAuthorizations,
   hasManagedMemoryHarness,
   performStackTeardown,
   setupTransactionSearch,
@@ -491,30 +494,27 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     }
 
     // Expose outputs to UI
-    setStackOutputs(outputs);
+    setStackOutputs(omitPaymentAuthorizationOutputs(outputs));
 
     // Parse payment outputs from CFN stack
-    const paymentSpecs = (ctx.projectSpec.payments ?? []).map(
-      (p: {
-        name: string;
-        authorizerType?: 'AWS_IAM' | 'CUSTOM_JWT';
-        autoPayment?: boolean;
-        paymentToolAllowlist?: string[];
-        networkPreferences?: string[];
-        connectors: { name: string; credentialName: string }[];
-      }) => ({
-        name: p.name,
-        authorizerType: p.authorizerType,
-        autoPayment: p.autoPayment,
-        paymentToolAllowlist: p.paymentToolAllowlist,
-        networkPreferences: p.networkPreferences,
-        connectors: p.connectors.map(c => ({
+    const paymentSpecs = (ctx.projectSpec.payments ?? []).map(p => ({
+      name: p.name,
+      authorizerType: p.authorizerType,
+      autoPayment: p.autoPayment,
+      paymentToolAllowlist: p.paymentToolAllowlist,
+      networkPreferences: p.networkPreferences,
+      connectors: p.connectors.map(c => {
+        if (c.provisionMode === 'QUICK_CREATE') {
+          return { name: c.name, provisionMode: 'QUICK_CREATE' as const };
+        }
+        return {
           name: c.name,
-          credentialProviderArn: allCredentials[c.credentialName]?.credentialProviderArn ?? '',
+          ...(c.provisionMode && { provisionMode: c.provisionMode }),
+          credentialProviderArn: allCredentials[c.credentialName]?.credentialProviderArn,
           credentialProviderName: c.credentialName,
-        })),
-      })
-    );
+        };
+      }),
+    }));
     const payments = paymentSpecs.length > 0 ? parsePaymentOutputs(outputs, paymentSpecs) : undefined;
 
     const existingState = await configIO.readDeployedState().catch(() => undefined);
@@ -559,6 +559,13 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
 
     logger.endStep('success');
     setPersistStateStep(prev => ({ ...prev, status: 'success' }));
+
+    const quickCreateAuthorizations = await getQuickCreateConnectorAuthorizations({
+      region: target.region,
+      projectSpec: ctx.projectSpec,
+      payments,
+    });
+    setDeployNotes(prev => [...prev, ...quickCreateAuthorizations.map(formatQuickCreateConnectorAuthorization)]);
 
     // Post-deploy: auto-trigger ingestion for any KB whose data-source URIs
     // changed since the last deploy (or has never been ingested before).

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
+  "name": "AgentCoreCliReviewer",
+  "version": 1,
+  "managedBy": "CDK",
+  "tags": {
+    "agentcore:created-by": "agentcore-cli",
+    "agentcore:project-name": "AgentCoreCliReviewer"
+  },
+  "runtimes": [],
+  "memories": [],
+  "knowledgeBases": [],
+  "credentials": [],
+  "evaluators": [],
+  "onlineEvalConfigs": [],
+  "agentCoreGateways": [],
+  "policyEngines": [],
+  "configBundles": [],
+  "abTests": [],
+  "harnesses": [
+    {
+      "name": "PRReviewer",
+      "path": "app/PRReviewer"
+    }
+  ],
+  "datasets": [],
+  "payments": []
+}

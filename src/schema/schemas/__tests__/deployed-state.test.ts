@@ -11,6 +11,7 @@ import {
   McpLambdaDeployedStateSchema,
   McpRuntimeDeployedStateSchema,
   MemoryDeployedStateSchema,
+  PaymentConnectorDeployedStateSchema,
   VpcConfigSchema,
   createValidatedDeployedStateSchema,
 } from '../deployed-state.js';
@@ -253,6 +254,35 @@ describe('CredentialDeployedStateSchema', () => {
         clientSecretArn: 'arn:aws:secretsmanager:us-east-1:123:secret:my-secret',
       }).success
     ).toBe(false);
+  });
+});
+
+describe('PaymentConnectorDeployedStateSchema', () => {
+  it.each([
+    ['legacy manual state', { connectorId: 'connector-123', credentialProviderArn: 'arn:credential-provider' }, true],
+    [
+      'explicit manual state',
+      {
+        connectorId: 'connector-123',
+        provisionMode: 'MANUAL',
+        credentialProviderArn: 'arn:credential-provider',
+      },
+      true,
+    ],
+    ['Quick Create state', { connectorId: 'connector-123', provisionMode: 'QUICK_CREATE' }, true],
+    ['legacy manual state without an ARN', { connectorId: 'connector-123' }, false],
+    ['explicit manual state without an ARN', { connectorId: 'connector-123', provisionMode: 'MANUAL' }, false],
+    [
+      'Quick Create state with an ARN',
+      {
+        connectorId: 'connector-123',
+        provisionMode: 'QUICK_CREATE',
+        credentialProviderArn: 'arn:credential-provider',
+      },
+      false,
+    ],
+  ])('%s parses as expected', (_name, state, expected) => {
+    expect(PaymentConnectorDeployedStateSchema.safeParse(state).success).toBe(expected);
   });
 });
 

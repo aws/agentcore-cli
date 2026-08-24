@@ -60,6 +60,7 @@ export async function handleValidate(options: ValidateOptions): Promise<Result> 
         };
       }
       for (const connector of payment.connectors) {
+        if (connector.provisionMode === 'QUICK_CREATE') continue;
         const credential = projectSpec.credentials?.find(c => c.name === connector.credentialName);
         if (!credential) {
           return {
@@ -91,12 +92,13 @@ export async function handleValidate(options: ValidateOptions): Promise<Result> 
     }
 
     // Check .env.local has required variables
-    const hasConnectors = projectSpec.payments.some(p => p.connectors.length > 0);
+    const hasConnectors = projectSpec.payments.some(p => p.connectors.some(c => c.provisionMode !== 'QUICK_CREATE'));
     const envFilePath = join(configRoot, '.env.local');
     if (hasConnectors && !existsSync(envFilePath)) {
       const expectedVars: string[] = [];
       for (const payment of projectSpec.payments) {
         for (const connector of payment.connectors) {
+          if (connector.provisionMode === 'QUICK_CREATE') continue;
           const provider = connector.provider ?? 'CoinbaseCDP';
           if (provider === 'StripePrivy') {
             const vars = computeStripePrivyCredentialEnvVarNames(connector.credentialName);
@@ -120,6 +122,7 @@ export async function handleValidate(options: ValidateOptions): Promise<Result> 
         const credentials = SecureCredentials.fromEnvVars(envVars);
         for (const payment of projectSpec.payments) {
           for (const connector of payment.connectors) {
+            if (connector.provisionMode === 'QUICK_CREATE') continue;
             const provider = connector.provider ?? 'CoinbaseCDP';
             if (provider === 'StripePrivy') {
               const vars = computeStripePrivyCredentialEnvVarNames(connector.credentialName);

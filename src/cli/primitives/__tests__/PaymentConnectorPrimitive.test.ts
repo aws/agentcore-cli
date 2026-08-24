@@ -59,7 +59,7 @@ function makeProject(overrides: Partial<AgentCoreProjectSpec> = {}): AgentCorePr
 
 function makeManager(
   name: string,
-  connectors: { name: string; provider: 'CoinbaseCDP' | 'StripePrivy'; credentialName: string }[] = []
+  connectors: NonNullable<AgentCoreProjectSpec['payments']>[number]['connectors'] = []
 ) {
   return {
     name,
@@ -224,6 +224,55 @@ describe('PaymentConnectorPrimitive', () => {
       });
     });
 
+    describe('Quick Create happy path', () => {
+      it('writes a Quick Create connector without credentials or env vars', async () => {
+        mockReadProjectSpec.mockResolvedValue(makeProject({ payments: [makeManager('mgr1')] }));
+
+        const result = await primitive.add({
+          manager: 'mgr1',
+          name: 'quickConn',
+          provider: 'CoinbaseCDP',
+          provisionMode: 'QUICK_CREATE',
+        });
+
+        expect(result.success).toBe(true);
+        if (!result.success) throw new Error('expected success');
+        expect(result.credentialName).toBeUndefined();
+        expect(mockSetEnvVar).not.toHaveBeenCalled();
+        expect(mockWriteProjectSpec).toHaveBeenCalledTimes(1);
+
+        const writtenSpec = mockWriteProjectSpec.mock.calls[0]![0] as AgentCoreProjectSpec;
+        expect(writtenSpec.credentials).toEqual([]);
+        expect(writtenSpec.payments?.[0]?.connectors).toEqual([
+          {
+            name: 'quickConn',
+            provider: 'CoinbaseCDP',
+            provisionMode: 'QUICK_CREATE',
+          },
+        ]);
+      });
+
+      it('still rejects duplicate connector names', async () => {
+        mockReadProjectSpec.mockResolvedValue(
+          makeProject({
+            payments: [
+              makeManager('mgr1', [{ name: 'quickConn', provider: 'CoinbaseCDP', provisionMode: 'QUICK_CREATE' }]),
+            ],
+          })
+        );
+
+        const result = await primitive.add({
+          manager: 'mgr1',
+          name: 'quickConn',
+          provider: 'CoinbaseCDP',
+          provisionMode: 'QUICK_CREATE',
+        });
+
+        expect(result.success).toBe(false);
+        expect(mockWriteProjectSpec).not.toHaveBeenCalled();
+      });
+    });
+
     describe('error cases', () => {
       it('returns error when manager does not exist', async () => {
         mockReadProjectSpec.mockResolvedValue(makeProject({ payments: [] }));
@@ -352,6 +401,9 @@ describe('PaymentConnectorPrimitive', () => {
           'AGENTCORE_CREDENTIAL_MGR1_CONN1_CDP_WALLET_SECRET',
         ])
       );
+      expect(mockWriteProjectSpec.mock.invocationCallOrder[0]).toBeLessThan(
+        mockRemoveEnvVars.mock.invocationCallOrder[0]!
+      );
     });
 
     it('keeps shared credential in spec when still referenced by another connector', async () => {
@@ -376,6 +428,24 @@ describe('PaymentConnectorPrimitive', () => {
       expect(written.credentials).toHaveLength(1);
       expect(written.credentials[0]!.name).toBe(sharedCred);
       // No env var cleanup
+      expect(mockRemoveEnvVars).not.toHaveBeenCalled();
+    });
+
+    it('removes a Quick Create connector without touching credentials or env vars', async () => {
+      mockReadProjectSpec.mockResolvedValue(
+        makeProject({
+          payments: [
+            makeManager('mgr1', [{ name: 'quickConn', provider: 'CoinbaseCDP', provisionMode: 'QUICK_CREATE' }]),
+          ],
+        })
+      );
+
+      const result = await primitive.remove('mgr1/quickConn');
+
+      expect(result.success).toBe(true);
+      const written = mockWriteProjectSpec.mock.calls[0]![0] as AgentCoreProjectSpec;
+      expect(written.payments?.[0]?.connectors).toEqual([]);
+      expect(written.credentials).toEqual([]);
       expect(mockRemoveEnvVars).not.toHaveBeenCalled();
     });
   });
@@ -421,6 +491,20 @@ describe('PaymentConnectorPrimitive', () => {
 
       const sharedMsg = preview.summary.find(s => s.includes('shared') && s.includes('kept'));
       expect(sharedMsg).toBeDefined();
+    });
+
+    it('does not describe credential cleanup for a Quick Create connector', async () => {
+      mockReadProjectSpec.mockResolvedValue(
+        makeProject({
+          payments: [
+            makeManager('mgr1', [{ name: 'quickConn', provider: 'CoinbaseCDP', provisionMode: 'QUICK_CREATE' }]),
+          ],
+        })
+      );
+
+      const preview = await primitive.previewRemove('mgr1/quickConn');
+
+      expect(preview.summary).toEqual(['Removing payment connector: quickConn (from manager mgr1)']);
     });
 
     it('includes the target connector in the summary', async () => {

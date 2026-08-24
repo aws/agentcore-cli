@@ -604,8 +604,17 @@ interface PaymentManager {
   networkPreferences?: string[];
 }
 
-interface PaymentConnector {
+type PaymentConnector = ManualPaymentConnector | QuickCreatePaymentConnector;
+
+interface ManualPaymentConnector {
   name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @min 1 @max 48
   provider: PaymentProvider; // default 'CoinbaseCDP'
+  provisionMode?: 'MANUAL';
   credentialName: string;
+}
+
+interface QuickCreatePaymentConnector {
+  name: string; // @regex ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ @min 1 @max 48
+  provider: 'CoinbaseCDP';
+  provisionMode: 'QUICK_CREATE';
 }

@@ -521,6 +521,12 @@ agentcore add payment-manager \
 Add a payment connector to an existing payment manager. See [Payments](payments.md) for credential details.
 
 ```bash
+# Quick Create (recommended)
+agentcore add payment-connector \
+  --manager MyManager \
+  --name MyCDPConnector \
+  --provision-mode QUICK_CREATE
+
 # CoinbaseCDP provider
 agentcore add payment-connector \
   --manager MyManager \
@@ -541,19 +547,20 @@ agentcore add payment-connector \
   --authorization-id your-auth-id
 ```
 
-| Flag                                | Description                                |
-| ----------------------------------- | ------------------------------------------ |
-| `--manager <name>`                  | Parent payment manager (required)          |
-| `--name <name>`                     | Connector name (required)                  |
-| `--provider <provider>`             | `CoinbaseCDP` (default) or `StripePrivy`   |
-| `--api-key-id <id>`                 | Coinbase CDP API Key ID                    |
-| `--api-key-secret <secret>`         | Coinbase CDP API Key Secret                |
-| `--wallet-secret <secret>`          | Coinbase CDP Wallet Secret                 |
-| `--app-id <id>`                     | Privy App ID (StripePrivy)                 |
-| `--app-secret <secret>`             | Privy App Secret (StripePrivy)             |
-| `--authorization-private-key <key>` | ECDSA P-256 private key (StripePrivy)      |
-| `--authorization-id <id>`           | Authorization key identifier (StripePrivy) |
-| `--json`                            | JSON output                                |
+| Flag                                | Description                                            |
+| ----------------------------------- | ------------------------------------------------------ |
+| `--manager <name>`                  | Parent payment manager (required)                      |
+| `--name <name>`                     | Connector name (required)                              |
+| `--provision-mode <mode>`           | `QUICK_CREATE` or `MANUAL` (default)                   |
+| `--provider <provider>`             | `CoinbaseCDP` or `StripePrivy` (manual mode only)      |
+| `--api-key-id <id>`                 | Coinbase CDP API Key ID (manual mode)                  |
+| `--api-key-secret <secret>`         | Coinbase CDP API Key Secret (manual mode)              |
+| `--wallet-secret <secret>`          | Coinbase CDP Wallet Secret (manual mode)               |
+| `--app-id <id>`                     | Privy App ID (StripePrivy manual mode)                 |
+| `--app-secret <secret>`             | Privy App Secret (StripePrivy manual mode)             |
+| `--authorization-private-key <key>` | ECDSA P-256 private key (StripePrivy manual mode)      |
+| `--authorization-id <id>`           | Authorization key identifier (StripePrivy manual mode) |
+| `--json`                            | JSON output                                            |
 
 ### add credential
 

@@ -121,6 +121,26 @@ function makeStripePrivySpec(credentialName = 'my-stripe-cred') {
   };
 }
 
+function makeQuickCreateSpec() {
+  return {
+    name: 'test-project',
+    payments: [
+      {
+        name: 'my-payment-manager',
+        connectors: [
+          {
+            name: 'quick-connector',
+            provider: 'CoinbaseCDP' as const,
+            provisionMode: 'QUICK_CREATE' as const,
+          },
+        ],
+      },
+    ],
+    credentials: [],
+    runtimes: [],
+  };
+}
+
 // ============================================================================
 // setupPaymentCredentialProviders
 // ============================================================================
@@ -147,6 +167,24 @@ describe('setupPaymentCredentialProviders', () => {
     expect(result.credentialProviders).toEqual({});
     expect(mockGetPaymentCredentialProvider).not.toHaveBeenCalled();
     expect(mockCreatePaymentCredentialProvider).not.toHaveBeenCalled();
+  });
+
+  it('does not read credentials or call provider APIs for a Quick Create-only project', async () => {
+    const result = await setupPaymentCredentialProviders({
+      projectSpec: makeQuickCreateSpec() as any,
+      configBaseDir: BASE_DIR,
+      region: REGION,
+    });
+
+    expect(result).toEqual({
+      credentialProviders: {},
+      hasErrors: false,
+      errors: [],
+    });
+    expect(mockReadEnvFile).not.toHaveBeenCalled();
+    expect(mockGetPaymentCredentialProvider).not.toHaveBeenCalled();
+    expect(mockCreatePaymentCredentialProvider).not.toHaveBeenCalled();
+    expect(mockUpdatePaymentCredentialProvider).not.toHaveBeenCalled();
   });
 
   it('creates a new credential provider when none exists', async () => {
@@ -383,6 +421,25 @@ describe('cleanupPaymentCredentialProviders', () => {
     expect(mockDeletePaymentCredentialProvider).toHaveBeenCalledWith({ region: REGION, name: 'cred-one' });
     expect(mockDeletePaymentCredentialProvider).toHaveBeenCalledWith({ region: REGION, name: 'cred-two' });
     expect(mockDeletePaymentCredentialProvider).toHaveBeenCalledWith({ region: REGION, name: 'cred-three' });
+  });
+
+  it('never deletes a Quick Create provider', async () => {
+    await cleanupPaymentCredentialProviders({
+      region: REGION,
+      payments: {
+        'my-payment-manager': {
+          connectors: {
+            quick: {
+              provisionMode: 'QUICK_CREATE',
+              credentialProviderArn:
+                'arn:aws:bedrock-agentcore:us-east-1:123456789:payment-credential-provider/generated',
+            },
+          },
+        },
+      },
+    });
+
+    expect(mockDeletePaymentCredentialProvider).not.toHaveBeenCalled();
   });
 
   it('ignores 404 errors gracefully without throwing', async () => {

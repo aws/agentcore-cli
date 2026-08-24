@@ -65,6 +65,12 @@ export {
 
 export { ensureDefaultDeploymentTarget } from './ensure-target';
 
+export {
+  formatQuickCreateConnectorAuthorization,
+  getQuickCreateConnectorAuthorizations,
+  type QuickCreateConnectorAuthorization,
+} from './payment-connector-authorization';
+
 // Pre-synth backfill of vpcId for pre-existing Container+VPC configs written before vpcId was added
 export { backfillContainerVpcIds, type BackfillVpcIdResult } from './backfill-vpc-id';
 

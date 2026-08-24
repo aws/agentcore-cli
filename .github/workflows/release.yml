@@ -29,7 +29,7 @@ permissions:
 jobs:
   prepare-release:
     name: Prepare Release
-    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    runs-on: aws-release-4-core
     outputs:
       version: ${{ steps.bump.outputs.version }}
       branch: ${{ steps.bump.outputs.branch }}
@@ -211,7 +211,7 @@ jobs:
   test-and-build:
     name: Test and Build
     needs: prepare-release
-    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    runs-on: aws-release-4-core
 
     steps:
       - uses: actions/checkout@v7
@@ -276,7 +276,7 @@ jobs:
   release-approval:
     name: Release Approval
     needs: test-and-build
-    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    runs-on: aws-release-4-core
     environment:
       name: npm-publish-approval
 
@@ -298,7 +298,7 @@ jobs:
   publish-npm:
     name: Publish to npm
     needs: [prepare-release, release-approval]
-    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    runs-on: aws-release-4-core
     environment:
       name: npm-publish
       url: https://www.npmjs.com/package/@aws/agentcore

@@ -47,7 +47,7 @@ export const MANAGER_STEP_LABELS: Record<AddPaymentManagerStep, string> = {
 
 export type AddPaymentConnectorStep =
   | 'manager-select'
-  | 'provider-select'
+  | 'setup-select'
   // CoinbaseCDP credentials
   | 'api-key-id'
   | 'api-key-secret'
@@ -62,6 +62,7 @@ export type AddPaymentConnectorStep =
 
 export interface AddPaymentConnectorConfig {
   managerName: string;
+  provisionMode: 'MANUAL' | 'QUICK_CREATE';
   provider: PaymentProvider;
   // CoinbaseCDP
   apiKeyId: string;
@@ -77,7 +78,7 @@ export interface AddPaymentConnectorConfig {
 
 export const CONNECTOR_STEP_LABELS: Record<AddPaymentConnectorStep, string> = {
   'manager-select': 'Manager',
-  'provider-select': 'Provider',
+  'setup-select': 'Setup',
   'api-key-id': 'API Key ID',
   'api-key-secret': 'API Key Secret',
   'wallet-secret': 'Wallet Secret',
@@ -106,9 +107,24 @@ export const AUTH_TYPE_OPTIONS = [
   },
 ] as const;
 
-export const PAYMENT_PROVIDER_OPTIONS = [
-  { id: 'CoinbaseCDP' as const, title: 'Coinbase CDP', description: 'Coinbase Developer Platform wallet credentials' },
-  { id: 'StripePrivy' as const, title: 'Stripe + Privy', description: 'Stripe payments via Privy embedded wallets' },
+export type PaymentConnectorSetup = 'quick-create' | 'coinbase-manual' | 'stripe-privy-manual';
+
+export const PAYMENT_CONNECTOR_SETUP_OPTIONS = [
+  {
+    id: 'quick-create' as const,
+    title: 'Quick Create with Coinbase',
+    description: 'Recommended - connect Coinbase after deployment',
+  },
+  {
+    id: 'coinbase-manual' as const,
+    title: 'Coinbase CDP credentials',
+    description: 'Use existing Coinbase Developer Platform credentials',
+  },
+  {
+    id: 'stripe-privy-manual' as const,
+    title: 'Stripe + Privy credentials',
+    description: 'Use existing Stripe and Privy credentials',
+  },
 ] as const;
 
 /** Item ID for the auto payment toggle in the advanced config pane. */

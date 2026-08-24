@@ -2,8 +2,11 @@ import type { AgentCoreProjectSpec } from '../../../schema';
 import { PaymentManagerPrimitive } from '../PaymentManagerPrimitive';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const mockReadProjectSpec = vi.fn();
-const mockWriteProjectSpec = vi.fn();
+const { mockReadProjectSpec, mockWriteProjectSpec, mockRemoveEnvVars } = vi.hoisted(() => ({
+  mockReadProjectSpec: vi.fn(),
+  mockWriteProjectSpec: vi.fn(),
+  mockRemoveEnvVars: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock('../../../lib', () => ({
   ConfigIO: class {
@@ -11,7 +14,7 @@ vi.mock('../../../lib', () => ({
     writeProjectSpec = mockWriteProjectSpec;
   },
   findConfigRoot: vi.fn().mockReturnValue(null),
-  removeEnvVars: vi.fn().mockResolvedValue(undefined),
+  removeEnvVars: mockRemoveEnvVars,
   toError: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),
   serializeResult: (r: unknown) => r,
 }));
@@ -274,6 +277,39 @@ describe('PaymentManagerPrimitive', () => {
       expect(written.credentials).toHaveLength(0);
     });
 
+    it('removes a mixed manual and Quick Create manager without cleaning generated credentials', async () => {
+      const project = makeProject({
+        payments: [
+          {
+            ...makePaymentManager('mixedManager'),
+            connectors: [
+              {
+                name: 'manual',
+                provider: 'CoinbaseCDP',
+                credentialName: 'manualCred',
+              },
+              {
+                name: 'quick',
+                provider: 'CoinbaseCDP',
+                provisionMode: 'QUICK_CREATE',
+              },
+            ],
+          },
+        ],
+        credentials: [makePaymentCredential('manualCred')],
+      });
+      mockReadProjectSpec.mockResolvedValue(project);
+      mockWriteProjectSpec.mockResolvedValue(undefined);
+
+      const result = await primitive.remove('mixedManager');
+
+      expect(result.success).toBe(true);
+      const written = mockWriteProjectSpec.mock.calls[0]![0] as AgentCoreProjectSpec;
+      expect(written.payments).toHaveLength(0);
+      expect(written.credentials).toHaveLength(0);
+      expect(mockRemoveEnvVars).toHaveBeenCalledTimes(1);
+    });
+
     it('non-existent name — returns error without writing', async () => {
       mockReadProjectSpec.mockResolvedValue(makeProject());
 
@@ -415,6 +451,38 @@ describe('PaymentManagerPrimitive', () => {
       const preview = await primitive.previewRemove('mgr1');
 
       expect(preview.summary.some(s => s.includes('kept'))).toBe(true);
+    });
+
+    it('describes Quick Create connectors without undefined credential cleanup', async () => {
+      const project = makeProject({
+        payments: [
+          {
+            ...makePaymentManager('mixedManager'),
+            connectors: [
+              {
+                name: 'manual',
+                provider: 'CoinbaseCDP',
+                credentialName: 'manualCred',
+              },
+              {
+                name: 'quick',
+                provider: 'CoinbaseCDP',
+                provisionMode: 'QUICK_CREATE',
+              },
+            ],
+          },
+        ],
+        credentials: [makePaymentCredential('manualCred')],
+      });
+      mockReadProjectSpec.mockResolvedValue(project);
+
+      const preview = await primitive.previewRemove('mixedManager');
+      const summary = preview.summary.join('\n');
+
+      expect(summary).toContain('Connector: manual (credential: manualCred)');
+      expect(summary).toContain('Connector: quick (Quick Create)');
+      expect(summary).toContain('Associated credential "manualCred" will also be removed');
+      expect(summary).not.toContain('undefined');
     });
 
     it('throws when manager not found', async () => {
