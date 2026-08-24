@@ -326,6 +326,10 @@ describe("project add runtime", () => {
       ["--name", "my_agent", ...byo, "--api-key", "-"],
     ],
     [
+      "--api-key rejects an inline secret value",
+      ["--name", "my_agent", ...template, "--api-key", "sk-inline"],
+    ],
+    [
       "invalid memory JSON schema",
       ["--name", "my_agent", ...template, "--memory", '{"mode":"invalid"}'],
     ],

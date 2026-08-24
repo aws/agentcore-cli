@@ -151,7 +151,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       const entrypoint = flags.entrypoint ?? "main.py";
 
       const source = new SourceResolver({ stdin: config.io.stdin });
-      const apiKey = await source.resolveText("api-key", flags["api-key"]);
+      const apiKey = await source.resolveSecret("api-key", flags["api-key"]);
 
       if (flags["custom-docker-build-args"] && !flags.dockerfile && !flags["build-context-path"])
         throw new InputValidationError(
