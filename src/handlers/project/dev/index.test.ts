@@ -322,15 +322,16 @@ describe("project dev Inspector UI mode", () => {
     expect(subject.collector.state.closed).toBe(1);
   });
 
-  test("never opens a browser without a TTY or in JSON mode", async () => {
-    for (const options of [{}, { tty: true, json: true }] as const) {
+  test.each([{}, { tty: true, json: true }] as const)(
+    "never opens a browser without a TTY or in JSON mode (%o)",
+    async (options) => {
       const subject = harness(options);
       const { pending } = await runUi(subject);
       expect(subject.ui.opened).toEqual([]);
       process.emit("SIGINT", "SIGINT");
       await pending.catch(() => undefined);
-    }
-  });
+    },
+  );
 
   test("serves the Inspector API: status lists every runtime, none started", async () => {
     const subject = harness({

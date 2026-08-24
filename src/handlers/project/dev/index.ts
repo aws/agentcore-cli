@@ -3,7 +3,8 @@ import z from "zod";
 import { createInspectorHandler } from "../../../core/dev/inspector/server";
 import type { InspectorDeps } from "../../../core/dev/inspector/types";
 import { rewriteOtelEndpointForContainer } from "../../../core/dev/otel/collector";
-import { PortInUseError, resolveDevPort } from "../../../core/dev/port";
+import { findFreePort, resolveDevPort } from "../../../core/dev/port";
+import { projectSpecPath } from "../../../core/project/fsUtils";
 import { DevSupervisor, type SupervisorConfig } from "../../../core/dev/supervisor";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
@@ -21,7 +22,6 @@ import type { DevEvent, DevRunner, DevTraceCollector, DevTraceCollectorStarter }
 
 /** The Inspector UI binds 8081 or, when that is taken, the next free port. */
 const UI_DEFAULT_PORT = 8081;
-const UI_PORT_ATTEMPTS = 100;
 
 export type DevProjectHandlerConfig = {
   io: AppIO;
@@ -199,11 +199,13 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           projectRoot: project.rootPath,
           runners: config.runners,
           getDevEnvVarsForRuntime,
+          // The --port guard above rejects an explicit port with more than one
+          // runtime, so passing flags.port here only ever applies to a lone one.
           resolvePort: async (runtime) =>
             (
               await resolveDevPort(
                 runtime.protocol,
-                runtimes.length === 1 ? flags.port : undefined,
+                flags.port,
                 config.checkPort,
                 controller.signal,
               )
@@ -212,7 +214,9 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           signal: controller.signal,
         });
 
-        const uiPort = await resolveUiPort(flags["ui-port"], config.checkPort, controller.signal);
+        const uiPort = (
+          await findFreePort(UI_DEFAULT_PORT, flags["ui-port"], config.checkPort, controller.signal)
+        ).port;
         const server = await config.startServer(
           createInspectorHandler({
             supervisor,
@@ -224,23 +228,20 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           { port: uiPort, signal: controller.signal },
         );
 
-        const configPath = join(project.rootPath, "agentcore", "agentcore.json");
+        const onConfigChange = async () => {
+          try {
+            const reloaded = await config.reloadRuntimes(project.rootPath);
+            supervisor.setRuntimes(
+              flags.agent ? reloaded.filter((runtime) => runtime.name === flags.agent) : reloaded,
+            );
+            renderStatus(config.io, "Reloaded agents from agentcore.json.", json);
+          } catch {
+            // A half-saved config parses on the next change event.
+          }
+        };
         config.watchFile(
-          configPath,
-          () =>
-            void config
-              .reloadRuntimes(project.rootPath)
-              .then((reloaded) => {
-                supervisor.setRuntimes(
-                  flags.agent
-                    ? reloaded.filter((runtime) => runtime.name === flags.agent)
-                    : reloaded,
-                );
-                renderStatus(config.io, "Reloaded agents from agentcore.json.", json);
-              })
-              .catch(() => {
-                // A half-saved config parses on the next change event.
-              }),
+          projectSpecPath(project.rootPath),
+          () => void onConfigChange(),
           controller.signal,
         );
 
@@ -272,22 +273,6 @@ function selectSingleRuntime(project: Project, name?: string): ProjectRuntime {
   throw new InputValidationError(
     `Multiple runtimes found. Use --agent to select one. Available runtimes: ${available}.`,
   );
-}
-
-/** The Inspector UI binds 8081 or the next free port; an explicit port must be free. */
-async function resolveUiPort(
-  explicitPort: number | undefined,
-  checkPort: PortChecker,
-  signal: AbortSignal,
-): Promise<number> {
-  if (explicitPort !== undefined) {
-    if (await checkPort(explicitPort, signal)) return explicitPort;
-    throw new PortInUseError(explicitPort);
-  }
-  for (let port = UI_DEFAULT_PORT; port < UI_DEFAULT_PORT + UI_PORT_ATTEMPTS; port++) {
-    if (await checkPort(port, signal)) return port;
-  }
-  throw new PortInUseError(UI_DEFAULT_PORT);
 }
 
 /**
