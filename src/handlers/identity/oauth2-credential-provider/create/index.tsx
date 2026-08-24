@@ -23,11 +23,9 @@ export const createCreateOauth2CredentialProviderHandler = (core: Core, io: AppI
       flag("vendor", "the OAuth2 vendor (e.g. CustomOauth2, GithubOauth2)", z.string().optional()),
       flag(
         "client-secret",
-        "the client secret (inline, file://path, or -)",
+        "the client secret (file://path or - for stdin; inline values are rejected)",
         z.string().optional(),
-        {
-          sensitive: true,
-        },
+        { sensitive: true },
       ),
       flag(
         "client-secret-reference",
@@ -81,7 +79,7 @@ export const createCreateOauth2CredentialProviderHandler = (core: Core, io: AppI
       validateProviderConfigMode(providerConfigMode, vendor);
 
       const resolver = new SourceResolver({ stdin: io.stdin });
-      const clientSecret = await resolver.resolveText("client-secret", flags["client-secret"]);
+      const clientSecret = await resolver.resolveSecret("client-secret", flags["client-secret"]);
 
       const clientSecretConfig = hasSecretRef
         ? parseSecretReference("client-secret-reference", flags["client-secret-reference"]!)
