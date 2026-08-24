@@ -6,14 +6,14 @@ import { SourceResolver, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
 import type { SessionMetadataShape } from "@aws-sdk/client-bedrock-agentcore";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../utils";
-import { resolveSessionSource, sessionSourceFlags } from "../../sessionSource";
+import { SessionSource } from "../../sessionSource";
 
 export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "evaluate",
     description: "evaluate existing sessions service-side (async; returns a job id)",
     flags: [
-      ...sessionSourceFlags,
+      ...SessionSource.flags,
       flag("evaluator", "evaluator id(s) to apply", z.array(z.string()).optional()),
       flag(
         "ground-truth",
@@ -34,7 +34,7 @@ export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
         );
       }
 
-      const source = await resolveSessionSource(flags, io);
+      const source = await SessionSource.resolve(flags, io);
 
       const resolver = new SourceResolver({ stdin: io.stdin });
       const groundTruth = parseJsonFlag<SessionMetadataShape[]>(
