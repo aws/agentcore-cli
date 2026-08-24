@@ -51,9 +51,37 @@ async function project(withDependencies = true): Promise<Project> {
   };
 }
 
-async function writeAssembly(project: Project, targetNames: string[]): Promise<void> {
+type AssemblyOptions = {
+  /** Overrides the environment every stack artifact is synthesized for. */
+  environment?: string;
+  /** Overrides the resources every stack's template declares. */
+  resources?: Record<string, unknown>;
+};
+
+async function writeAssembly(
+  project: Project,
+  targetNames: string[],
+  options: AssemblyOptions = {},
+): Promise<void> {
   const directory = assemblyDirectory(project);
   await mkdir(directory, { recursive: true });
+  const stacks = targetNames.map((target, index) => ({
+    target,
+    id: `AgentCore-example-${target}-${index}`,
+    templateFile: `AgentCore-example-${target}-${index}.template.json`,
+  }));
+
+  await Promise.all(
+    stacks.map((stack) =>
+      writeFile(
+        join(directory, stack.templateFile),
+        JSON.stringify({
+          Resources: options.resources ?? { Runtime: { Type: "AWS::BedrockAgentCore::Runtime" } },
+        }),
+      ),
+    ),
+  );
+
   await writeFile(
     join(directory, "manifest.json"),
     JSON.stringify({
@@ -61,14 +89,16 @@ async function writeAssembly(project: Project, targetNames: string[]): Promise<v
       artifacts: {
         Tree: { type: "cdk:tree" },
         ...Object.fromEntries(
-          targetNames.flatMap((target, index) => [
-            [
-              `AgentCore-example-${target}-${index}`,
-              {
-                type: "aws:cloudformation:stack",
-                properties: { tags: { "agentcore:target-name": target } },
+          stacks.map((stack) => [
+            stack.id,
+            {
+              type: "aws:cloudformation:stack",
+              environment: options.environment ?? `aws://${TARGET.account}/${TARGET.region}`,
+              properties: {
+                templateFile: stack.templateFile,
+                tags: { "agentcore:target-name": stack.target },
               },
-            ],
+            },
           ]),
         ),
       },
@@ -260,6 +290,32 @@ describe("CdkBackend.deploy", () => {
     expect(subject.accountRegions).toEqual([TARGET.region]);
     expect(subject.bootstrapRegions).toEqual([TARGET.region]);
     expect(subject.templateLoads()).toBe(0);
+  });
+
+  test("refuses a resource-less stack before the Toolkit can delete it", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name], { resources: {} });
+    const subject = harness();
+
+    await expect(
+      collectDeploy(subject.backend.deploy(input, { target: TARGET })),
+    ).rejects.toThrow(/declares no resources/);
+    // Nothing reached the Toolkit, so no stack was deleted and none bootstrapped.
+    expect(subject.runs).toEqual([]);
+    expect(subject.bootstrapRegions).toEqual([]);
+  });
+
+  test("refuses a stack synthesized for a different region than the target", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name], {
+      environment: `aws://${TARGET.account}/us-west-2`,
+    });
+    const subject = harness();
+
+    await expect(collectDeploy(subject.backend.deploy(input, { target: TARGET }))).rejects.toThrow(
+      /built for region us-west-2 \(target expects us-east-1\)/,
+    );
+    expect(subject.runs).toEqual([]);
   });
 
   test.each([

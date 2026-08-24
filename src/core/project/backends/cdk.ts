@@ -11,7 +11,7 @@ import {
 } from "../../../io";
 import type { Logger } from "../../../logging";
 import type { DeployBackendInput, ProjectBackend } from "./types";
-import { stackArtifactIdForTarget } from "./cdk/assembly";
+import { assertStackHasResources, stackArtifactForTarget } from "./cdk/assembly";
 import { createCredentialProvisioner, type CredentialProvisioner } from "./cdk/credentials";
 import { writeDeployedCredentials } from "./cdk/deployedState";
 import {
@@ -116,11 +116,13 @@ export class CdkBackend implements ProjectBackend {
 
     yield* this.build(project);
     const assemblyDirectory = this.assemblyDirectory(project);
-    const stackArtifactId = await stackArtifactIdForTarget(
-      this.json,
-      assemblyDirectory,
-      target.name,
-    );
+    const artifact = await stackArtifactForTarget(this.json, assemblyDirectory, target.name, {
+      account: target.account,
+      region: target.region,
+    });
+    // Checked here rather than after the fact: the Toolkit deletes an existing
+    // stack whose new template has no resources, and returns as if it deployed.
+    await assertStackHasResources(this.json, assemblyDirectory, artifact);
     const options = { assemblyDirectory, credentials, region: target.region };
 
     const bootstrap = await this.bootstrap(target.region, credentials);
@@ -151,8 +153,8 @@ export class CdkBackend implements ProjectBackend {
       }
     }
 
-    yield { message: `Deploying ${stackArtifactId}` };
-    const outputs = await this.cdk({ kind: "deploy", stackArtifactId }, options);
+    yield { message: `Deploying ${artifact.id}` };
+    const outputs = await this.cdk({ kind: "deploy", stackArtifactId: artifact.id }, options);
     return { outputs };
   }
 
