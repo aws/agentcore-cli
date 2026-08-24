@@ -72,7 +72,22 @@ export async function loadBootstrapTemplate(
   files: readonly NamedBlob[] = embeddedFiles(),
 ): Promise<LoadedBootstrapTemplate | undefined> {
   const template = files.find((file) => file.name.endsWith(BOOTSTRAP_TEMPLATE));
-  if (!template) return undefined;
+  if (!template) {
+    // No embedded files at all means a script or npm bundle, where node_modules
+    // exists and the Toolkit reads the template from its own package. Embedded
+    // files *without* the template means a standalone binary whose embed went
+    // missing; returning undefined there sends the Toolkit looking for a package
+    // directory relative to a build-time __dirname that does not exist on this
+    // machine, so the user gets "Unable to find package manifest" instead.
+    if (files.length > 0) {
+      throw new AgentCoreCLIError(
+        `This build of the CLI is missing its copy of ${BOOTSTRAP_TEMPLATE}, so it cannot ` +
+          `bootstrap an AWS environment. Reinstall the CLI, or report this at ` +
+          `https://github.com/aws/agentcore-cli/issues.`,
+      );
+    }
+    return undefined;
+  }
 
   const directory = await mkdtemp(join(tmpdir(), "agentcore-bootstrap-"));
   const path = join(directory, BOOTSTRAP_TEMPLATE);

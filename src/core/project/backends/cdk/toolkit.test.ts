@@ -246,4 +246,17 @@ describe("bootstrap template loading", () => {
   test("uses the installed Toolkit template when no file is embedded", async () => {
     expect(await loadBootstrapTemplate([])).toBeUndefined();
   });
+
+  // Other embedded files prove this is a standalone binary, where falling back to
+  // the installed Toolkit is not an option: it would resolve its own package from
+  // a build-time path and report a missing package manifest instead.
+  test("fails when a binary embeds assets but not the bootstrap template", async () => {
+    const loading = loadBootstrapTemplate([
+      new File(["{}"], "agentcore-assets/src/assets/cdk/package.json"),
+    ]);
+
+    await expect(loading).rejects.toThrow(
+      /missing its copy of bootstrap-template\.yaml.*Reinstall the CLI/s,
+    );
+  });
 });
