@@ -136,6 +136,10 @@ export class DevSupervisor {
       if (this.config.signal.aborted) return;
       await new Promise<void>((resolve) => {
         this.wake = resolve;
+        // A push during the yields above ran while wake was undefined, so its
+        // wake was a no-op. Re-check now that wake is installed, so a queued
+        // event resolves immediately instead of waiting for the next push.
+        if (this.queue.length > 0) resolve();
       });
       this.wake = undefined;
     }

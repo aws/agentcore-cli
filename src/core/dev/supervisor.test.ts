@@ -40,6 +40,41 @@ function dyingRunner(failure?: Error) {
   return { runner };
 }
 
+/** A runner that stays alive and emits events on demand via `emit`, until its signal aborts. */
+function pushableRunner() {
+  const buffer: DevEvent[] = [];
+  let wake: (() => void) | undefined;
+  let done = false;
+  const runner: DevRunner = {
+    run: async function* (input) {
+      input.signal.addEventListener(
+        "abort",
+        () => {
+          done = true;
+          wake?.();
+        },
+        { once: true },
+      );
+      while (!done) {
+        while (buffer.length) yield buffer.shift()!;
+        if (done) break;
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
+        wake = undefined;
+      }
+    },
+  };
+  const emit = (event: DevEvent) => {
+    buffer.push(event);
+    wake?.();
+  };
+  return { runner, emit };
+}
+
+/** Let a runner emission propagate through the pump into the supervisor queue. */
+const flush = () => Bun.sleep(1);
+
 type HarnessOptions = {
   runtimes?: ProjectRuntime[];
   codeZip?: { runner: DevRunner };
@@ -175,6 +210,34 @@ describe("DevSupervisor", () => {
       agent: "orders",
       event: { type: "status", message: "Agent 'orders' is running on port 9100." },
     });
+  });
+
+  test("delivers an event queued while the consumer is draining a batch", async () => {
+    const orders = pushableRunner();
+    const { supervisor, controller } = harness({
+      runtimes: [runtime("orders")],
+      codeZip: { runner: orders.runner },
+    });
+    const events = supervisor.events();
+    await supervisor.start("orders");
+
+    orders.emit({ type: "stdout", line: "one" });
+    await flush();
+    // Park the generator mid-batch (at a yield, so `wake` is unset), then queue
+    // another event into that window. A lost-wakeup would strand it.
+    await events.next();
+    orders.emit({ type: "stdout", line: "two" });
+    await flush();
+    await events.next();
+
+    const next = await Promise.race([events.next(), Bun.sleep(200).then(() => "stalled" as const)]);
+    expect(next).not.toBe("stalled");
+    expect((next as IteratorResult<SupervisedEvent>).value).toMatchObject({
+      agent: "orders",
+      event: { type: "stdout", line: "two" },
+    });
+    controller.abort();
+    await events.next();
   });
 
   test("a running agent that crashes reports failed and leaves the stream alive", async () => {
