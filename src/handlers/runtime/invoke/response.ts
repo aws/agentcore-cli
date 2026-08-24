@@ -1,4 +1,4 @@
-import { RuntimeInvokeInterruptedError, RuntimeInvokeResponseError } from "../../../errors";
+import { RuntimeInvokeResponseError, UserCancellationError } from "../../../errors";
 import {
   classifyStreamingResponse,
   writeStreamingResponse,
@@ -22,9 +22,9 @@ export async function writeRuntimeInvokeFile(
   await writeStreamingResponseFile(response, path, signal, onBytes);
 }
 
-function failure(error: unknown): never {
-  const interrupted = (error as Error)?.name === "AbortError";
-  if (interrupted) throw new RuntimeInvokeInterruptedError(error, true);
+function failure(error: unknown, signal?: AbortSignal): never {
+  const cancellation = UserCancellationError.resolve(error, signal);
+  if (cancellation) throw cancellation;
   throw new RuntimeInvokeResponseError(RESPONSE_STREAM_FAILED, error);
 }
 
@@ -53,7 +53,7 @@ export async function writeRuntimeInvokeResponse(
   await writeStreamingResponse(response, output, {
     metadata: ({ body: _body, ...metadata }) => metadata,
     summary,
-    fail: failure,
+    fail: (error) => failure(error, output.signal),
     binaryTtyError: "Binary or unknown response content requires --output-file or --json",
   });
 }

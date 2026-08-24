@@ -9,6 +9,7 @@ import cliTruncate from "cli-truncate";
 import type { ScreenProps } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 import { Layout } from "../../../components/Layout";
+import { MultilineInput } from "../../../components/MultilineInput";
 import { RuntimeEndpointPicker } from "../../../components/RuntimeEndpointPicker";
 import { RuntimePicker } from "../../../components/RuntimePicker";
 import { darkTheme } from "../../../components/ui/_core.js";
@@ -16,7 +17,6 @@ import { Divider } from "../../../components/ui/divider";
 import { Spinner } from "../../../components/ui/spinner";
 import type { RuntimeInvokeResponse } from "../types";
 import { normalizeRuntimeInvokeRequest } from "./request";
-import { RuntimePayloadInput } from "./RuntimePayloadInput";
 import { classifyRuntimeResponse } from "./response";
 import { RuntimeInvokeLaunchContextKey, type RuntimeInvokeLaunchContext } from "./launchContext";
 
@@ -435,13 +435,14 @@ function RuntimeInvokeConsole({
               </ScrollView>
             </Box>
             <Divider />
-            <RuntimePayloadInput
+            <MultilineInput
               value={payload}
               onChange={(value) => {
                 setPayload(value);
                 setInputError(undefined);
               }}
               onSubmit={() => void send()}
+              placeholder="Enter JSON payload"
               submitDisabled={busy}
             />
             <Divider />

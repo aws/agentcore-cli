@@ -76,6 +76,25 @@ describe("runProcess", () => {
       runProcess(["definitely-not-a-real-tool-xyz"], { cwd: process.cwd() }),
     ).rejects.toBeInstanceOf(ProcessFailedError);
   });
+
+  test("terminates and rejects when the signal aborts", async () => {
+    const waiting = await script("wait.js", "setTimeout(() => {}, 60_000)");
+    const controller = new AbortController();
+    const promise = runProcess(["node", waiting], {
+      cwd: process.cwd(),
+      signal: controller.signal,
+    });
+    controller.abort(new Error("cancelled"));
+
+    await expect(promise).rejects.toThrow("cancelled");
+  });
+
+  test("rejects immediately when the signal is already aborted", async () => {
+    const succeeding = await script("noop.js", "");
+    await expect(
+      runProcess(["node", succeeding], { cwd: process.cwd(), signal: AbortSignal.abort() }),
+    ).rejects.toThrow();
+  });
 });
 
 async function collect(events: AsyncIterable<ProcessEvent>): Promise<ProcessEvent[]> {

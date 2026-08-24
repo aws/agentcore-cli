@@ -1,7 +1,8 @@
 import { Router } from "../../../router";
+import { renderTui } from "../../../tui";
+import { withTuiOnEmptyFlagsAndArgs } from "../../../middleware";
 import type { AppIO } from "../../../io";
 import type { Core } from "../../types";
-import { createHelpDefault } from "../../help";
 import { createCreateConfigBundleHandler } from "./create";
 import { createDeleteConfigBundleHandler } from "./delete";
 import { createGetConfigBundleHandler } from "./get";
@@ -11,7 +12,9 @@ import { createConfigBundleVersionHandler } from "./version";
 
 export function createConfigBundleHandler(core: Core, io: AppIO): Router {
   return new Router("config-bundle", "manage AgentCore configuration bundles")
-    .default(createHelpDefault(io))
+    .use(withTuiOnEmptyFlagsAndArgs(core, io))
+    .default(renderTui(core, io))
+    .supportedTuiCommands("get", "list", "version")
     .handler(createCreateConfigBundleHandler(core, io))
     .handler(createGetConfigBundleHandler(core))
     .handler(createListConfigBundlesHandler(core))
@@ -19,3 +22,5 @@ export function createConfigBundleHandler(core: Core, io: AppIO): Router {
     .handler(createDeleteConfigBundleHandler(core))
     .handler(createConfigBundleVersionHandler(core, io));
 }
+
+export { ConfigBundleScreen } from "./screen.tsx";

@@ -32,8 +32,8 @@ function createFixtureCore(): CoreClient {
   });
 }
 
-async function run(args: string[]): Promise<string> {
-  const io = testIO();
+async function run(args: string[], stdin?: string): Promise<string> {
+  const io = testIO({ stdin });
   const root = createRootHandler(createFixtureCore(), {
     io: io.io,
     logger: createSilentLogger(),
@@ -101,29 +101,35 @@ describe("api-key-credential-provider TUI dispatch", () => {
 
 describe("api-key-credential-provider CRUDL", () => {
   test("creates an API key credential provider", async () => {
-    const stdout = await run([
-      "identity",
-      "api-key-credential-provider",
-      "create",
-      "--name",
-      FIXTURE_PROVIDER_NAME,
-      "--api-key",
+    const stdout = await run(
+      [
+        "identity",
+        "api-key-credential-provider",
+        "create",
+        "--name",
+        FIXTURE_PROVIDER_NAME,
+        "--api-key",
+        "-",
+      ],
       "test-api-key-value",
-    ]);
+    );
 
     matchGolden(FIXTURES, "create.golden.json", stdout);
   });
 
   test("creates a second API key credential provider for pagination", async () => {
-    const stdout = await run([
-      "identity",
-      "api-key-credential-provider",
-      "create",
-      "--name",
-      FIXTURE_PROVIDER_NAME_2,
-      "--api-key",
+    const stdout = await run(
+      [
+        "identity",
+        "api-key-credential-provider",
+        "create",
+        "--name",
+        FIXTURE_PROVIDER_NAME_2,
+        "--api-key",
+        "-",
+      ],
       "test-api-key-value-2",
-    ]);
+    );
 
     matchGolden(FIXTURES, "create-2.golden.json", stdout);
   });
@@ -176,15 +182,18 @@ describe("api-key-credential-provider CRUDL", () => {
   });
 
   test("updates an API key credential provider", async () => {
-    const stdout = await run([
-      "identity",
-      "api-key-credential-provider",
-      "update",
-      "--name",
-      FIXTURE_PROVIDER_NAME,
-      "--api-key",
+    const stdout = await run(
+      [
+        "identity",
+        "api-key-credential-provider",
+        "update",
+        "--name",
+        FIXTURE_PROVIDER_NAME,
+        "--api-key",
+        "-",
+      ],
       "updated-api-key-value",
-    ]);
+    );
 
     matchGolden(FIXTURES, "update.golden.json", stdout);
     expect(JSON.parse(stdout).name).toBe(FIXTURE_PROVIDER_NAME);
@@ -300,6 +309,19 @@ describe("api-key-credential-provider CRUDL", () => {
         '{"secretId":"arn:aws:secretsmanager:us-west-2:123:secret:s","jsonKey":"apiKey"}',
       ],
       /mutually exclusive/,
+    ],
+    [
+      "create: --api-key with an inline value",
+      [
+        "identity",
+        "api-key-credential-provider",
+        "create",
+        "--name",
+        "x",
+        "--api-key",
+        "sk-inline",
+      ],
+      /file:\/\//,
     ],
   ] as const)("rejects invalid secret input for `%s`", async (_label, args, message) => {
     expect(run([...args])).rejects.toThrow(message);

@@ -1,0 +1,21 @@
+{
+  "batchEvaluationId": "golden_batch_insights_fixture-cd634815b4",
+  "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:batch-evaluate/golden_batch_insights_fixture-cd634815b4",
+  "batchEvaluationName": "golden_batch_insights_fixture",
+  "status": "PENDING",
+  "createdAt": {
+    "$date": "2026-08-21T19:27:51.136Z"
+  },
+  "insights": [
+    {
+      "insightId": "Builtin.Insight.FailureAnalysis"
+    }
+  ],
+  "outputConfig": {
+    "cloudWatchConfig": {
+      "logGroupName": "/aws/bedrock-agentcore/evaluations/batch-evaluations/results/default",
+      "logStreamName": "run-golden_batch_insights_fixture-cd634815b4"
+    }
+  },
+  "description": "Golden batch insights fixture"
+}

@@ -10,6 +10,7 @@ import {
   tick,
   waitFor,
 } from "../testing";
+import { ExitCode } from "../runnable";
 
 interface TtyInput extends NodeJS.ReadStream {
   write(chunk: string): boolean;
@@ -90,7 +91,9 @@ describe("TUI stream boundary", () => {
         globalConfigAccessor: new TestGlobalConfigAccessor(),
       });
 
-      await expect(root.route(["node", "agentcore"])).rejects.toThrow(InvalidEnvironmentError);
+      const error = await root.route(["node", "agentcore"]).catch((error) => error);
+      expect(error).toBeInstanceOf(InvalidEnvironmentError);
+      expect(error.exitCode).toBe(ExitCode.USAGE);
     },
   );
 

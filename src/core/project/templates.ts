@@ -1,6 +1,9 @@
+import { ZodError, z } from "zod";
 import { PROJECT_TEMPLATES, type ProjectTemplate } from "../../handlers/project/types";
+import { HarnessSpecSchema } from "../../projectSchemas/harness";
 import { FsTreeNode } from "./fsTree";
 import type { AssetSource } from "./source";
+import { InputValidationError } from "../../errors/errors";
 
 type TemplateSpec = {
   runtimes?: unknown[];
@@ -89,4 +92,31 @@ export async function createProjectTreeFromTemplate(
     ]),
     FsTreeNode.createDirectory("app", [await FsTreeNode.fromAssetSource(src, assetDir, appDir)]),
   ]);
+}
+
+const DEFAULT_HARNESS_SYSTEM_PROMPT = "You are a helpful assistant";
+
+export async function createHarnessTreeFromSpec(
+  spec: z.input<typeof HarnessSpecSchema>,
+): Promise<FsTreeNode> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { systemPrompt, ...rest } = spec;
+  // strip system prompt such that markdown file is source of truth.
+  const parsed = parseHarnessSpec(rest);
+  return FsTreeNode.createDirectory(".", [
+    FsTreeNode.createFile("harness.json", async () => json(parsed)),
+    FsTreeNode.createFile(
+      "system-prompt.md",
+      async () => spec.systemPrompt ?? DEFAULT_HARNESS_SYSTEM_PROMPT,
+    ),
+  ]);
+}
+
+function parseHarnessSpec(spec: z.input<typeof HarnessSpecSchema>) {
+  try {
+    return HarnessSpecSchema.parse(spec);
+  } catch (err) {
+    if (err instanceof ZodError) throw new InputValidationError(z.prettifyError(err));
+    throw err;
+  }
 }

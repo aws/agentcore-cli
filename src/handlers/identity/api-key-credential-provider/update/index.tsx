@@ -14,9 +14,12 @@ export const createUpdateApiKeyCredentialProviderHandler = (core: Core, io: AppI
     description: "update an API key credential provider",
     flags: [
       flag("name", "the name of the API key credential provider", z.string().optional()),
-      flag("api-key", "the new API key value (inline, file://path, or -)", z.string().optional(), {
-        sensitive: true,
-      }),
+      flag(
+        "api-key",
+        "the new API key (file://path or - for stdin; inline values are rejected)",
+        z.string().optional(),
+        { sensitive: true },
+      ),
       flag(
         "api-key-secret-reference",
         'external secret reference JSON: {"secretId":"<arn>","jsonKey":"<key>"}',
@@ -57,7 +60,7 @@ export const createUpdateApiKeyCredentialProviderHandler = (core: Core, io: AppI
       }
 
       const resolver = new SourceResolver({ stdin: io.stdin });
-      const apiKey = await resolver.resolveText("api-key", flags["api-key"]);
+      const apiKey = await resolver.resolveSecret("api-key", flags["api-key"]);
       const apiKeySecretConfig = hasSecretRef
         ? parseSecretReference("api-key-secret-reference", flags["api-key-secret-reference"]!)
         : undefined;

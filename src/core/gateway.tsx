@@ -58,7 +58,8 @@ import type { AwsClients, CoreFetch, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
 
 const DEFAULT_CONNECTOR_PAGE_SIZE = 100;
-const MAX_CONNECTOR_TARGET_PAGES = 101;
+const CONNECTOR_TARGET_SCAN_PAGE_SIZE = 1000;
+const MAX_CONNECTOR_TARGET_SCAN_REQUESTS = 101;
 
 async function* emptyBody(): AsyncGenerator<Uint8Array> {}
 
@@ -367,22 +368,38 @@ export class GatewayClient implements CoreGatewayClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListGatewayTargetsResponse> {
-    const pageSize = maxResults ?? DEFAULT_CONNECTOR_PAGE_SIZE;
+    const connectorPageSize = maxResults ?? DEFAULT_CONNECTOR_PAGE_SIZE;
     const items: TargetSummary[] = [];
-    let token = nextToken;
-    let filling = true;
+    let targetToken = nextToken;
 
-    for (let page = 0; page < MAX_CONNECTOR_TARGET_PAGES; page++) {
-      const requestToken = token;
-      const requestSize = filling ? pageSize - items.length : DEFAULT_CONNECTOR_PAGE_SIZE;
-      const response = await this.listGatewayTargets(gatewayId, token, requestSize, options);
-      const connectors = (response.items ?? []).filter(
-        (target) => target.targetType === TargetType.CONNECTOR,
+    for (let request = 0; request < MAX_CONNECTOR_TARGET_SCAN_REQUESTS; request++) {
+      const requestToken = targetToken;
+      const response = await this.listGatewayTargets(
+        gatewayId,
+        targetToken,
+        CONNECTOR_TARGET_SCAN_PAGE_SIZE,
+        options,
       );
+      const targets = response.items ?? [];
+      const connectors = targets.filter((target) => target.targetType === TargetType.CONNECTOR);
 
-      if (filling) {
+      if (items.length < connectorPageSize) {
+        const remaining = connectorPageSize - items.length;
+        if (connectors.length > remaining) {
+          const boundaryTarget = connectors[remaining - 1]!;
+          const boundarySize = targets.indexOf(boundaryTarget) + 1;
+          // Re-read only through the last returned Connector so the AWS token cannot skip matches.
+          const boundaryResponse = await this.listGatewayTargets(
+            gatewayId,
+            requestToken,
+            boundarySize,
+            options,
+          );
+
+          items.push(...connectors.slice(0, remaining));
+          return { ...boundaryResponse, items };
+        }
         items.push(...connectors);
-        filling = items.length < pageSize;
       } else if (connectors.length > 0) {
         return { ...response, items, nextToken: requestToken };
       }
@@ -390,11 +407,11 @@ export class GatewayClient implements CoreGatewayClient {
       if (response.nextToken === undefined) {
         return { ...response, items, nextToken: undefined };
       }
-      token = response.nextToken;
+      targetToken = response.nextToken;
     }
 
     throw new ResultTruncationError(
-      `Gateway Connector discovery exceeded ${MAX_CONNECTOR_TARGET_PAGES} Target pages; results are incomplete`,
+      `Gateway Connector discovery exceeded ${MAX_CONNECTOR_TARGET_SCAN_REQUESTS} Target scan requests; results are incomplete`,
     );
   }
 

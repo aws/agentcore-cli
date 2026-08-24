@@ -137,6 +137,16 @@ describe("memory command hierarchy", () => {
     expect(record?.children().map((child) => child.name())).toEqual(["get", "list"]);
     expect(actor?.children().map((child) => child.name())).toEqual(["list"]);
     expect(session?.children().map((child) => child.name())).toEqual(["list"]);
+
+    const memorySelectors = [
+      memory?.children().find((child) => child.name() === "get"),
+      ...[event, record, actor, session].flatMap((group) => group?.children() ?? []),
+    ];
+    for (const command of memorySelectors) {
+      const flags = command?.flags().map((flag) => flag.name);
+      expect(flags).toContain("id");
+      expect(flags).not.toContain("memory");
+    }
   });
 
   test("keeps an omitted get view undefined for empty-flag routing", () => {
@@ -243,7 +253,7 @@ describe("memory event commands", () => {
       "memory",
       "event",
       "get",
-      "--memory",
+      "--id",
       EVENT_MEMORY_ID,
       "--actor-id",
       ACTOR_ID,
@@ -290,7 +300,7 @@ describe("memory event commands", () => {
       "memory",
       "event",
       "list",
-      "--memory",
+      "--id",
       EVENT_MEMORY_ID,
       "--actor-id",
       ACTOR_ID,
@@ -342,7 +352,7 @@ describe("memory event commands", () => {
         "memory",
         "event",
         "list",
-        "--memory",
+        "--id",
         EVENT_MEMORY_ID,
         "--actor-id",
         ACTOR_ID,
@@ -362,7 +372,7 @@ describe("memory event commands", () => {
         "memory",
         "event",
         "list",
-        "--memory",
+        "--id",
         EVENT_MEMORY_ID,
         "--actor-id",
         ACTOR_ID,
@@ -376,16 +386,16 @@ describe("memory event commands", () => {
   });
 
   test.each([
-    ["memory", ["--json"], "--memory <memory>"],
-    ["actor", ["--memory", EVENT_MEMORY_ID, "--json"], "--actor-id <actor-id>"],
+    ["memory", ["--json"], "--id <id>"],
+    ["actor", ["--id", EVENT_MEMORY_ID, "--json"], "--actor-id <actor-id>"],
     [
       "session",
-      ["--memory", EVENT_MEMORY_ID, "--actor-id", ACTOR_ID, "--json"],
+      ["--id", EVENT_MEMORY_ID, "--actor-id", ACTOR_ID, "--json"],
       "--session-id <session-id>",
     ],
     [
       "event",
-      ["--memory", EVENT_MEMORY_ID, "--actor-id", ACTOR_ID, "--session-id", SESSION_ID, "--json"],
+      ["--id", EVENT_MEMORY_ID, "--actor-id", ACTOR_ID, "--session-id", SESSION_ID, "--json"],
       "--event-id <event-id>",
     ],
   ] as const)("rejects a missing %s selector for event get", async (_name, flags, expected) => {
@@ -396,11 +406,11 @@ describe("memory event commands", () => {
   });
 
   test.each([
-    ["memory", ["--json"], "--memory <memory>"],
-    ["actor", ["--memory", EVENT_MEMORY_ID, "--json"], "--actor-id <actor-id>"],
+    ["memory", ["--json"], "--id <id>"],
+    ["actor", ["--id", EVENT_MEMORY_ID, "--json"], "--actor-id <actor-id>"],
     [
       "session",
-      ["--memory", EVENT_MEMORY_ID, "--actor-id", ACTOR_ID, "--json"],
+      ["--id", EVENT_MEMORY_ID, "--actor-id", ACTOR_ID, "--json"],
       "--session-id <session-id>",
     ],
   ] as const)("rejects a missing %s selector for event list", async (_name, flags, expected) => {
@@ -430,7 +440,7 @@ describe("memory event commands", () => {
         "memory",
         "event",
         "list",
-        "--memory",
+        "--id",
         EVENT_MEMORY_ID,
         "--actor-id",
         ACTOR_ID,
@@ -458,7 +468,7 @@ describe("memory actor commands", () => {
       "memory",
       "actor",
       "list",
-      "--memory",
+      "--id",
       EVENT_MEMORY_ID,
       "--max-results",
       "1",
@@ -485,9 +495,7 @@ describe("memory actor commands", () => {
   test("rejects a missing Memory selector for actor list", async () => {
     const command = testMemoryCommand();
 
-    await expect(command.route(["memory", "actor", "list", "--json"])).rejects.toThrow(
-      "--memory <memory>",
-    );
+    await expect(command.route(["memory", "actor", "list", "--json"])).rejects.toThrow("--id <id>");
     expect(command.core.memory.calls).toEqual([]);
   });
 });
@@ -506,7 +514,7 @@ describe("memory session commands", () => {
       "memory",
       "session",
       "list",
-      "--memory",
+      "--id",
       EVENT_MEMORY_ID,
       "--actor-id",
       ACTOR_ID,
@@ -534,8 +542,8 @@ describe("memory session commands", () => {
   });
 
   test.each([
-    ["memory", ["--json"], "--memory <memory>"],
-    ["actor", ["--memory", EVENT_MEMORY_ID, "--json"], "--actor-id <actor-id>"],
+    ["memory", ["--json"], "--id <id>"],
+    ["actor", ["--id", EVENT_MEMORY_ID, "--json"], "--actor-id <actor-id>"],
   ] as const)("rejects a missing %s selector for session list", async (_name, flags, expected) => {
     const command = testMemoryCommand();
 
@@ -555,7 +563,7 @@ describe("memory record commands", () => {
       "memory",
       "record",
       "get",
-      "--memory",
+      "--id",
       EVENT_MEMORY_ID,
       "--record-id",
       RECORD_ID,
@@ -577,8 +585,8 @@ describe("memory record commands", () => {
   });
 
   test.each([
-    ["memory", ["--json"], "--memory <memory>"],
-    ["record", ["--memory", EVENT_MEMORY_ID, "--json"], "--record-id <record-id>"],
+    ["memory", ["--json"], "--id <id>"],
+    ["record", ["--id", EVENT_MEMORY_ID, "--json"], "--record-id <record-id>"],
   ] as const)("rejects a missing %s selector for record get", async (_name, flags, expected) => {
     const command = testMemoryCommand();
 
@@ -604,7 +612,7 @@ describe("memory record commands", () => {
       "memory",
       "record",
       "list",
-      "--memory",
+      "--id",
       EVENT_MEMORY_ID,
       "--namespace",
       "/customers/acme",
@@ -650,7 +658,7 @@ describe("memory record commands", () => {
       "memory",
       "record",
       "list",
-      "--memory",
+      "--id",
       EVENT_MEMORY_ID,
       "--namespace-path",
       "/customers/acme/*",
@@ -685,7 +693,7 @@ describe("memory record commands", () => {
       "memory",
       "record",
       "list",
-      "--memory",
+      "--id",
       EVENT_MEMORY_ID,
       "--namespace",
       "/customers/acme",
@@ -729,7 +737,7 @@ describe("memory record commands", () => {
 
     await expect(
       command.route(["memory", "record", "list", "--namespace", "/customers/acme", "--json"]),
-    ).rejects.toThrow("--memory <memory>");
+    ).rejects.toThrow("--id <id>");
     expect(command.core.memory.calls).toEqual([]);
   });
 
@@ -740,7 +748,7 @@ describe("memory record commands", () => {
     const command = testMemoryCommand();
 
     await expect(
-      command.route(["memory", "record", "list", "--memory", EVENT_MEMORY_ID, ...selectors]),
+      command.route(["memory", "record", "list", "--id", EVENT_MEMORY_ID, ...selectors]),
     ).rejects.toThrow("exactly one of '--namespace' or '--namespace-path' must be specified");
     expect(command.core.memory.calls).toEqual([]);
   });
@@ -753,7 +761,7 @@ describe("memory record commands", () => {
         "memory",
         "record",
         "list",
-        "--memory",
+        "--id",
         EVENT_MEMORY_ID,
         "--namespace",
         "/customers/acme",
@@ -814,7 +822,7 @@ describe("memory record commands", () => {
         "memory",
         "record",
         "list",
-        "--memory",
+        "--id",
         EVENT_MEMORY_ID,
         "--namespace",
         "/customers/acme",

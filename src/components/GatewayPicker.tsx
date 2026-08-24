@@ -43,6 +43,7 @@ export interface GatewayPickerProps extends ScreenProps {
   breadcrumb: string[];
   description?: string;
   onSelect: (gatewayId: string) => void;
+  onEscape?: () => void;
 }
 
 export function GatewayPicker({
@@ -51,6 +52,7 @@ export function GatewayPicker({
   breadcrumb,
   description,
   onSelect,
+  onEscape,
 }: GatewayPickerProps) {
   const opts = coreOptsFromCtx(ctx);
   const navigate = useNavigate();
@@ -71,7 +73,7 @@ export function GatewayPicker({
       columns={gatewayColumns}
       getValue={(row) => row.gatewayId}
       onSelect={onSelect}
-      onBack={() => navigate("/" + breadcrumb.slice(0, -1).join("/"))}
+      onBack={onEscape ?? (() => navigate("/" + breadcrumb.slice(0, -1).join("/")))}
       loadingMessage="Loading Gateways…"
       errorMessage={(error) => `Error: ${error.message}`}
       emptyMessage="No Gateways found in this Region."

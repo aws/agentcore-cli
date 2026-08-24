@@ -50,7 +50,7 @@ describe("GatewayClient Connector facade", () => {
       expect(command.input).toEqual({
         gatewayIdentifier: "gateway-1",
         nextToken: "page-2",
-        maxResults: 10,
+        maxResults: 1000,
       });
       return { items: [connectorTarget, ordinary("target-1")] };
     });
@@ -101,10 +101,10 @@ describe("GatewayClient Connector facade", () => {
       },
     );
     expect(requests).toEqual([
-      { gatewayIdentifier: "gateway-1", nextToken: undefined, maxResults: 3 },
-      { gatewayIdentifier: "gateway-1", nextToken: "page-2", maxResults: 2 },
-      { gatewayIdentifier: "gateway-1", nextToken: "page-3", maxResults: 1 },
-      { gatewayIdentifier: "gateway-1", nextToken: "page-4", maxResults: 100 },
+      { gatewayIdentifier: "gateway-1", nextToken: undefined, maxResults: 1000 },
+      { gatewayIdentifier: "gateway-1", nextToken: "page-2", maxResults: 1000 },
+      { gatewayIdentifier: "gateway-1", nextToken: "page-3", maxResults: 1000 },
+      { gatewayIdentifier: "gateway-1", nextToken: "page-4", maxResults: 1000 },
     ]);
   });
 
@@ -128,8 +128,8 @@ describe("GatewayClient Connector facade", () => {
       },
     );
     expect(requests).toEqual([
-      { gatewayIdentifier: "gateway-1", nextToken: undefined, maxResults: 1 },
-      { gatewayIdentifier: "gateway-1", nextToken: "page-2", maxResults: 100 },
+      { gatewayIdentifier: "gateway-1", nextToken: undefined, maxResults: 1000 },
+      { gatewayIdentifier: "gateway-1", nextToken: "page-2", maxResults: 1000 },
     ]);
   });
 
@@ -152,8 +152,8 @@ describe("GatewayClient Connector facade", () => {
       },
     );
     expect(requests).toEqual([
-      { gatewayIdentifier: "gateway-1", nextToken: undefined, maxResults: 3 },
-      { gatewayIdentifier: "gateway-1", nextToken: "page-2", maxResults: 2 },
+      { gatewayIdentifier: "gateway-1", nextToken: undefined, maxResults: 1000 },
+      { gatewayIdentifier: "gateway-1", nextToken: "page-2", maxResults: 1000 },
     ]);
   });
 
@@ -176,17 +176,85 @@ describe("GatewayClient Connector facade", () => {
       items: connectors,
     });
     expect(requests).toEqual([
-      { gatewayIdentifier: "gateway-1", nextToken: undefined, maxResults: 100 },
-      { gatewayIdentifier: "gateway-1", nextToken: "page-2", maxResults: 99 },
+      { gatewayIdentifier: "gateway-1", nextToken: undefined, maxResults: 1000 },
+      { gatewayIdentifier: "gateway-1", nextToken: "page-2", maxResults: 1000 },
     ]);
   });
 
-  test("throws when Connector discovery exceeds the Target page cap", async () => {
+  test("scans more than the default Target quota in one request", async () => {
+    const connectorTarget = connector("connector-1");
+    const targets = [
+      ...Array.from({ length: 150 }, (_, index) => ordinary(`target-${index + 1}`)),
+      connectorTarget,
+    ];
+    const requests: unknown[] = [];
+    const client = gatewayClient(async (command) => {
+      if (!(command instanceof ListGatewayTargetsCommand)) {
+        throw new Error("expected ListGatewayTargetsCommand");
+      }
+      requests.push(command.input);
+      return { items: targets };
+    });
+
+    await expect(client.listGatewayConnectors("gateway-1", undefined, 1, options)).resolves.toEqual(
+      {
+        items: [connectorTarget],
+      },
+    );
+    expect(requests).toEqual([
+      { gatewayIdentifier: "gateway-1", nextToken: undefined, maxResults: 1000 },
+    ]);
+  });
+
+  test("replays the exact Target prefix when a scan finds extra Connectors", async () => {
+    const firstConnector = connector("connector-1");
+    const secondConnector = connector("connector-2");
+    const requests: unknown[] = [];
+    const client = gatewayClient(async (command) => {
+      if (!(command instanceof ListGatewayTargetsCommand)) {
+        throw new Error("expected ListGatewayTargetsCommand");
+      }
+      requests.push(command.input);
+
+      if (command.input.nextToken === "after-connector-1") {
+        return { items: [ordinary("target-2"), secondConnector, ordinary("target-3")] };
+      }
+      if (command.input.maxResults === 2) {
+        return {
+          items: [ordinary("target-1"), firstConnector],
+          nextToken: "after-connector-1",
+        };
+      }
+      return {
+        items: [
+          ordinary("target-1"),
+          firstConnector,
+          ordinary("target-2"),
+          secondConnector,
+          ordinary("target-3"),
+        ],
+      };
+    });
+
+    const first = await client.listGatewayConnectors("gateway-1", undefined, 1, options);
+    const second = await client.listGatewayConnectors("gateway-1", first.nextToken, 1, options);
+
+    expect(first).toEqual({ items: [firstConnector], nextToken: "after-connector-1" });
+    expect(second).toEqual({ items: [secondConnector] });
+    expect(requests).toEqual([
+      { gatewayIdentifier: "gateway-1", nextToken: undefined, maxResults: 1000 },
+      { gatewayIdentifier: "gateway-1", nextToken: undefined, maxResults: 2 },
+      { gatewayIdentifier: "gateway-1", nextToken: "after-connector-1", maxResults: 1000 },
+    ]);
+  });
+
+  test("throws when Connector discovery exceeds the Target scan request cap", async () => {
     let calls = 0;
     const client = gatewayClient(async (command) => {
       if (!(command instanceof ListGatewayTargetsCommand)) {
         throw new Error("expected ListGatewayTargetsCommand");
       }
+      expect(command.input.maxResults).toBe(1000);
       calls += 1;
       return { items: [], nextToken: `page-${calls}` };
     });

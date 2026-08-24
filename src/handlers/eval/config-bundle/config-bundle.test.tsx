@@ -10,7 +10,7 @@ import {
   testIO,
 } from "../../../testing";
 import { createRootHandler } from "../../index";
-import type { UpdateConfigurationBundleInput } from "../types";
+import type { CreateConfigurationBundleInput, UpdateConfigurationBundleInput } from "../types";
 
 const REGION = "us-west-2";
 const COMPONENT_ARN =
@@ -97,7 +97,7 @@ describe("eval config-bundle command hierarchy", () => {
         .find((child) => child.name() === "create")
         ?.flags()
         .map((candidate) => candidate.name),
-    ).toEqual(["name", "components", "kms-key-arn"]);
+    ).toEqual(["name", "components", "branch-name", "commit-message", "kms-key-arn"]);
     expect(
       configBundle
         ?.children()
@@ -143,9 +143,55 @@ describe("eval config-bundle command hierarchy", () => {
     expect(stdout()).toContain("Usage: agentcore eval config-bundle");
     expect(core.eval.calls).toHaveLength(0);
   });
+
+  for (const command of [["get"], ["list"], ["version", "list"]] as const) {
+    test(`opens the TUI for a bare ${command.join(" ")} leaf`, async () => {
+      const { route } = testConfigBundleCommand();
+
+      await expect(route(["eval", "config-bundle", ...command])).rejects.toThrow(
+        "interactive mode requires a TTY on stdin and stdout",
+      );
+    });
+  }
+
+  test("runs normal validation for a bare CLI-only command", async () => {
+    const { route } = testConfigBundleCommand();
+
+    await expect(route(["eval", "config-bundle", "create"])).rejects.toThrow(
+      "required option '--name <name>' not specified",
+    );
+  });
 });
 
 describe("config-bundle create", () => {
+  test("passes branch name, commit message, and KMS key", async () => {
+    const { core, route } = testConfigBundleCommand();
+
+    await route([
+      "eval",
+      "config-bundle",
+      "create",
+      "--name",
+      "orders-prompt",
+      "--components",
+      JSON.stringify(COMPONENTS),
+      "--branch-name",
+      "feature/order-routing",
+      "--commit-message",
+      "Add order routing configuration",
+      "--kms-key-arn",
+      "arn:aws:kms:us-west-2:123456789012:key/initial",
+    ]);
+
+    expect(callArgs(core, "createConfigurationBundle")[0]).toEqual({
+      bundleName: "orders-prompt",
+      components: COMPONENTS,
+      branchName: "feature/order-routing",
+      commitMessage: "Add order routing configuration",
+      kmsKeyArn: "arn:aws:kms:us-west-2:123456789012:key/initial",
+    } satisfies CreateConfigurationBundleInput);
+  });
+
   test("reads components from stdin", async () => {
     const { core, route } = testConfigBundleCommand(JSON.stringify(COMPONENTS));
 
@@ -162,6 +208,25 @@ describe("config-bundle create", () => {
     expect(callArgs(core, "createConfigurationBundle")[0]).toMatchObject({
       components: COMPONENTS,
     });
+  });
+
+  test("rejects a branch name that does not match service constraints", async () => {
+    const { core, route } = testConfigBundleCommand();
+
+    await expect(
+      route([
+        "eval",
+        "config-bundle",
+        "create",
+        "--name",
+        "orders-prompt",
+        "--components",
+        JSON.stringify(COMPONENTS),
+        "--branch-name",
+        "1-invalid",
+      ]),
+    ).rejects.toThrow(/Invalid value for option '--branch-name'/);
+    expect(core.eval.calls).toHaveLength(0);
   });
 
   test.each([

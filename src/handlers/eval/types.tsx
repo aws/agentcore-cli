@@ -185,7 +185,7 @@ export type RoleScopeWarning = {
 export type CreateDatasetInput = CreateDatasetRequest;
 export type CreateConfigurationBundleInput = Pick<
   CreateConfigurationBundleRequest,
-  "bundleName" | "components" | "kmsKeyArn"
+  "bundleName" | "components" | "branchName" | "commitMessage" | "kmsKeyArn"
 >;
 export type UpdateConfigurationBundleInput = Required<
   Pick<UpdateConfigurationBundleRequest, "components" | "commitMessage" | "branchName">
@@ -205,25 +205,26 @@ export type StartBatchEvaluationInput = {
   kmsKeyArn?: string;
 };
 
-// SpanRecord is one OTel span/log document — the parsed `@message` JSON of a
-// CloudWatch Logs Insights result row. Left open (arbitrary JSON) because it is
-// handed to the Evaluate API's `sessionSpans` verbatim; the CLI only reads a few
-// well-known fields off it (traceId, spanId, attributes) to route evaluators.
-export type SpanRecord = Record<string, unknown>;
-
-// SessionTrace is one session's gathered telemetry, grouped client-side. Neutral
-// by design — no Evaluate coupling — so getTracesForAgent stays reusable and
-// EvalClient.evaluate owns the mapping into the Evaluate request shape.
-export type SessionTrace = {
-  sessionId: string; // read from attributes.session.id
-  spans: SpanRecord[]; // full OTel span JSON (@message)
-  traceIds: string[]; // for TRACE-level evaluators (evaluationTarget.traceIds)
-  toolCallSpanIds: string[]; // for TOOL_CALL-level evaluators (evaluationTarget.spanIds)
+// Batch insights use the same service job API as batch evaluations, but remain
+// a distinct Core operation so each command keeps its own required fields.
+export type StartBatchInsightsInput = {
+  name: string;
+  description?: string;
+  insightIds: string[];
+  evaluatorIds?: string[];
+  source: SessionSourceValue;
+  kmsKeyArn?: string;
 };
 
-// GetTracesInput selects which sessions' traces to read for one agent. `sessionIds`
-// and `traceId` are independent, optional, AND-ed query filters; with neither, the
-// `window` bounds discovery. `window` unset ⇒ the client defaults to now−7d.
+export type SpanRecord = Record<string, unknown>;
+
+export type SessionTrace = {
+  sessionId: string;
+  spans: SpanRecord[];
+  traceIds: string[];
+  toolCallSpanIds: string[];
+};
+
 export type GetTracesInput = {
   agent: string;
   endpoint?: string;
@@ -232,21 +233,12 @@ export type GetTracesInput = {
   traceId?: string;
 };
 
-// EvaluateInput is the CLI-facing shape for the synchronous Evaluate path.
-// `groundTruth` is the SDK-native array, passed verbatim; EvalClient groups it by
-// session (context.spanContext.sessionId) and attaches per session.
 export type EvaluateInput = {
   traces: SessionTrace[];
   evaluatorIds: string[];
   groundTruth?: EvaluationReferenceInput[];
 };
 
-// EvaluateResult returns the raw Evaluate API results across all evaluators and
-// sessions (each carries its own evaluatorId + span context). No aggregation — the
-// caller renders the raw scores. The two counts are distinct on purpose:
-// `sessionsRequested` is how many gathered sessions were handed to Evaluate;
-// `sessionsEvaluated` is how many actually produced results (a TRACE/TOOL_CALL
-// session with no matching ids is requested but not evaluated).
 export type EvaluateResult = {
   sessionsRequested: number;
   sessionsEvaluated: number;
@@ -317,6 +309,10 @@ export interface CoreEvalClient {
   // + RUNNING status; poll with getBatchEvaluation.
   startBatchEvaluation(
     input: StartBatchEvaluationInput,
+    options: CoreOptions,
+  ): Promise<StartBatchEvaluationResponse>;
+  startBatchInsights(
+    input: StartBatchInsightsInput,
     options: CoreOptions,
   ): Promise<StartBatchEvaluationResponse>;
 

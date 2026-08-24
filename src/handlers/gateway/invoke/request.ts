@@ -62,6 +62,18 @@ export async function resolveGatewayInvokeSources(
   }
 }
 
+export async function resolveGatewayInvokeTuiBearerToken(
+  source: string | undefined,
+  resolver: SourceResolver,
+): Promise<string | undefined> {
+  if (source === "-") {
+    throw new InputValidationError(
+      "stdin bearer tokens are not available when launching the interactive console",
+    );
+  }
+  return resolver.resolveText("bearer-token", source);
+}
+
 export function parseGatewayInvokeHeaders(values: string[] = []): [string, string][] {
   const seen = new Set<string>();
 

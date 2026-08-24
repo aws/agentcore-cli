@@ -3,6 +3,7 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Writable } from "node:stream";
+import { SilentCLIError, UserCancellationError } from "../../../errors";
 import { waitFor } from "../../../testing";
 import type { RuntimeInvokeResponse } from "../types";
 import { writeRuntimeInvokeResponse } from "./response";
@@ -121,15 +122,13 @@ describe("Runtime invoke response output", () => {
       },
     }) as unknown as NodeJS.WriteStream;
 
-    await expect(
-      writeRuntimeInvokeResponse(response(), {
-        stdout: stdout.stream,
-        stderr,
-      }),
-    ).rejects.toMatchObject({
-      message: "response stream failed",
-      reported: true,
+    const pending = writeRuntimeInvokeResponse(response(), {
+      stdout: stdout.stream,
+      stderr,
     });
+
+    await expect(pending).rejects.toBeInstanceOf(SilentCLIError);
+    await expect(pending).rejects.toThrow("response stream failed");
   });
 
   test("streams exact bytes to a file and leaves stdout empty", async () => {
@@ -266,11 +265,12 @@ describe("Runtime invoke response output", () => {
 
   test("writes an interruption summary after the output signal is aborted", async () => {
     const controller = new AbortController();
+    const cancellation = new UserCancellationError();
     const stdout = capture();
     const stderr = capture();
     const source = (async function* () {
       yield Buffer.from("partial");
-      controller.abort();
+      controller.abort(cancellation);
       throw Object.assign(new Error("The operation was aborted"), { name: "AbortError" });
     })();
 
@@ -280,10 +280,37 @@ describe("Runtime invoke response output", () => {
         stderr: stderr.stream,
         signal: controller.signal,
       }),
-    ).rejects.toMatchObject({ name: "AbortError" });
+    ).rejects.toBe(cancellation);
     expect(stdout.bytes().toString()).toBe("partial");
     expect(stderr.bytes().toString()).toBe(
       "status=200 content-type=text/event-stream runtime-session-id=- mcp-session-id=- " +
+        "mcp-protocol-version=- trace-id=- trace-parent=- trace-state=- baggage=- " +
+        "complete=false bytes=7 error=interrupted\n",
+    );
+  });
+
+  test("JSON cancellation emits no partial envelope and preserves the typed reason", async () => {
+    const controller = new AbortController();
+    const cancellation = new UserCancellationError();
+    const stdout = capture();
+    const stderr = capture();
+    const source = (async function* () {
+      yield Buffer.from("partial");
+      controller.abort(cancellation);
+      throw Object.assign(new Error("The operation was aborted"), { name: "AbortError" });
+    })();
+
+    await expect(
+      writeRuntimeInvokeResponse(response({ body: source }), {
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        json: true,
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(cancellation);
+    expect(stdout.bytes()).toHaveLength(0);
+    expect(stderr.bytes().toString()).toBe(
+      "status=200 content-type=text/plain runtime-session-id=- mcp-session-id=- " +
         "mcp-protocol-version=- trace-id=- trace-parent=- trace-state=- baggage=- " +
         "complete=false bytes=7 error=interrupted\n",
     );

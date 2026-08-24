@@ -34,4 +34,6 @@ USER bedrock_agentcore
 # 9000: A2A Mode
 EXPOSE 8080 8000 9000
 
-CMD ["python", "-m", "main"]
+# opentelemetry-instrument (from aws-opentelemetry-distro) starts a real
+# TracerProvider; plain `python -m main` would export nothing.
+CMD ["opentelemetry-instrument", "python", "-m", "main"]

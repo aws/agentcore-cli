@@ -2,6 +2,7 @@ import z from "zod";
 import { createHandler, flag } from "../../../../router";
 import { InputValidationError } from "../../../../errors";
 import { JsonRendererKey } from "../../../../tui";
+import { withUserCancellation } from "../../../../runnable";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 
@@ -24,33 +25,29 @@ export const createGetDatasetHandler = (core: Core) =>
     ],
     handle: async (ctx, flags) => {
       if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");
+      const datasetId = flags["id"];
 
       const filePath = flags["file-path"];
       if (!filePath) {
         ctx
           .require(JsonRendererKey)
           .renderJson(
-            await core.eval.getDataset(flags["id"], flags["version"], coreOptsFromCtx(ctx)),
+            await core.eval.getDataset(datasetId, flags["version"], coreOptsFromCtx(ctx)),
           );
         return;
       }
 
       // --file-path downloads the contents via the presigned download URL in metadata
-      const controller = new AbortController();
-      const interrupt = () => controller.abort();
-      process.once("SIGINT", interrupt);
-      try {
-        const response = await core.eval.downloadDataset(
-          flags["id"],
+      const response = await withUserCancellation((signal) =>
+        core.eval.downloadDataset(
+          datasetId,
           flags["version"],
           filePath,
           coreOptsFromCtx(ctx),
-          controller.signal,
-        );
-        // file is written in addition to the normal metadata output
-        ctx.require(JsonRendererKey).renderJson({ ...response, filePath });
-      } finally {
-        process.removeListener("SIGINT", interrupt);
-      }
+          signal,
+        ),
+      );
+      // file is written in addition to the normal metadata output
+      ctx.require(JsonRendererKey).renderJson({ ...response, filePath });
     },
   });

@@ -137,6 +137,7 @@ import type {
   GetTracesInput,
   LlmAsAJudgeUpdate,
   SessionTrace,
+  StartBatchInsightsInput,
   StartBatchEvaluationInput,
   UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
@@ -146,8 +147,10 @@ import { abortable } from "../core/abortable";
 import type { CoreOptions } from "../core/types";
 import type { ProjectManager } from "../handlers/project/types";
 import type { Logger } from "../logging";
+import type { ReadWriteJson } from "../io";
 import { createSilentLogger } from "./logging";
-import { FsProjectManager } from "../core/project";
+import { FsProjectManager, type ProjectBackend } from "../core/project";
+import type { ManagedBy } from "../projectSchemas/project";
 
 // TestCoreClient is a hand-controllable `Core` for tests. It implements the same
 // interface the real CoreClient satisfies, so it drops straight into
@@ -1177,6 +1180,8 @@ export class TestGatewayClient implements CoreGatewayClient {
 
 type TestCoreClientOptions = {
   logger?: Logger;
+  json?: ReadWriteJson;
+  backends?: Partial<Record<ManagedBy, ProjectBackend>>;
 };
 
 export class TestIdentityClient implements CoreIdentityClient {
@@ -1697,6 +1702,15 @@ export class TestEvalClient implements CoreEvalClient {
     return this.startBatchEvalResponse;
   }
 
+  async startBatchInsights(
+    input: StartBatchInsightsInput,
+    options: CoreOptions,
+  ): Promise<StartBatchEvaluationResponse> {
+    this.calls.push({ method: "startBatchInsights", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.startBatchEvalResponse;
+  }
+
   // setGetTracesResponse sets what getTracesForAgent resolves to (when not
   // erroring).
   setGetTracesResponse(traces: SessionTrace[]): this {
@@ -1948,6 +1962,8 @@ export class TestCoreClient implements Core {
   constructor(options?: TestCoreClientOptions) {
     this.projectManager = new FsProjectManager({
       logger: options?.logger ?? createSilentLogger(),
+      json: options?.json,
+      backends: options?.backends,
       runner: async (command, { cwd }) => {
         this.projectCommands.push({ command, cwd });
       },

@@ -1,13 +1,17 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { copyFile, rm } from "node:fs/promises";
+import { join, relative } from "node:path";
 import type {
+  AddResourceInput,
   CreateProjectInput,
+  DeployProjectInput,
+  DeployResult,
   ResolveProjectInput,
   Project,
   ProjectManager,
   ProjectEvent,
   ProjectResource,
-  ProjectResourceConfig,
+  RemoveResourceInput,
 } from "../../handlers/project/types";
 import type { Logger } from "../../logging";
 import {
@@ -18,15 +22,23 @@ import {
   type ReadWriteJson,
 } from "../../io";
 import { defaultSource, type AssetSource } from "./source";
-import { createProjectTreeFromTemplate, TEMPLATES } from "./templates";
-import { ProjectSpecSchema } from "../../projectSchemas/project";
+import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
+import { createHarnessTreeFromSpec, createProjectTreeFromTemplate, TEMPLATES } from "./templates";
+import { ProjectSpecSchema, type ManagedBy } from "../../projectSchemas/project";
 import { enclosingProjectRoot } from "./fsUtils";
 import {
-  DeserializationError,
+  AgentCoreCLIError,
   InputValidationError,
   NotImplementedError,
   ProjectStateError,
 } from "../../errors/errors";
+import type { HarnessSpecSchema } from "../../projectSchemas/harness";
+import z from "zod";
+import { CdkBackend } from "./backends/cdk";
+import type { ProjectBackend } from "./backends/types";
+import { AwsDeploymentTargetsSchema } from "../../projectSchemas/aws-targets";
+
+const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
 type ProjectManagerConfig = {
   logger: Logger;
@@ -34,6 +46,7 @@ type ProjectManagerConfig = {
   runner?: ProcessRunner; // injectable so tests never spawn real processes
   checkTool?: typeof requireTool; // injectable so tests don't depend on the host's PATH
   json?: ReadWriteJson; // injectable so tests read fixtures instead of disk
+  backends?: Partial<Record<ManagedBy, ProjectBackend>>;
 };
 
 /**
@@ -45,6 +58,7 @@ export class FsProjectManager implements ProjectManager {
   private readonly runner: ProcessRunner;
   private readonly checkTool: typeof requireTool;
   private readonly json: ReadWriteJson;
+  private readonly backends: Partial<Record<ManagedBy, ProjectBackend>>;
 
   constructor(config: ProjectManagerConfig) {
     this.logger = config.logger;
@@ -52,6 +66,14 @@ export class FsProjectManager implements ProjectManager {
     this.runner = config.runner ?? runProcess;
     this.checkTool = config.checkTool ?? requireTool;
     this.json = config.json ?? new FsReadWriteJson({ logger: config.logger });
+    this.backends = config.backends ?? {
+      CDK: new CdkBackend({
+        logger: config.logger,
+        runner: config.runner,
+        checkTool: config.checkTool,
+        json: config.json,
+      }),
+    };
   }
 
   public async resolve(input: ResolveProjectInput): Promise<Project | undefined> {
@@ -59,23 +81,12 @@ export class FsProjectManager implements ProjectManager {
     if (!rootPath) return undefined;
 
     const configPath = join(rootPath, "agentcore", "agentcore.json");
-    try {
-      const spec = await this.json.read(configPath, ProjectSpecSchema);
-      return {
-        name: spec.name,
-        rootPath,
-        managedBy: spec.managedBy,
-        runtimes: spec.runtimes,
-      };
-    } catch (error) {
-      // A malformed agentcore.json is a user-correctable problem, not a crash.
-      if (error instanceof DeserializationError) {
-        throw new InputValidationError(`invalid project configuration at ${configPath}`, {
-          cause: error,
-        });
-      }
-      throw error;
-    }
+    const spec = await this.json.read(configPath, ProjectSpecSchema);
+    return {
+      name: spec.name,
+      rootPath,
+      spec,
+    };
   }
 
   public async *create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project> {
@@ -130,56 +141,249 @@ export class FsProjectManager implements ProjectManager {
     return project;
   }
 
-  // eslint-disable-next-line require-yield
-  public async *addResource<TResource extends ProjectResource>(
-    _project: Project,
-    _resourceType: TResource,
-    _resourceConfig: ProjectResourceConfig<TResource>,
+  public async *addResource(
+    project: Project,
+    input: AddResourceInput,
   ): AsyncGenerator<ProjectEvent, Project> {
-    throw new NotImplementedError("FsProjectManager.addResource is not yet implemented");
+    const { resourceType, resourceConfig } = input;
+    const agentCoreSpecPath = this.getProjectSpecPath(project);
+    const projectSpecKey = toProjectSpecKey(resourceType);
+
+    yield { message: `Reading project spec file at '${agentCoreSpecPath}'` };
+    const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
+
+    const existingResources = existingProjectSpec[projectSpecKey];
+    if (existingResources.find((r) => r.name === resourceConfig.name))
+      throw new InputValidationError(
+        `a ${resourceType} with name '${resourceConfig.name}' already exists`,
+      );
+
+    // Widened: arms push their own shapes; the whole-spec safeParse below validates.
+    const newResources: unknown[] = [...existingResources];
+    const scaffoldedPaths: string[] = [];
+    // Non-file work that a failed spec write must also reverse.
+    let envFile: EnvLocalFile | undefined;
+
+    switch (resourceType) {
+      case "harness": {
+        yield { message: `Scaffolding harness in project` };
+        const outputPath = join(project.rootPath, "app", resourceConfig.name);
+        scaffoldedPaths.push(outputPath);
+        const harnessPath = await this.scaffoldHarness(outputPath, input.resourceConfig);
+
+        newResources.push({
+          name: input.resourceConfig.name,
+          path: relative(project.rootPath, harnessPath),
+        });
+        break;
+      }
+      case "runtime": {
+        throw new NotImplementedError(
+          "runtime case not yet implemented in FsProjectManager.addResource",
+        );
+      }
+      case "credential": {
+        // No file scaffolding; the secret placeholder is staged into .env.local
+        // and reversed with the spec write if that commit fails.
+        newResources.push(input.resourceConfig);
+        if (input.envEntries?.length) {
+          envFile = new EnvLocalFile(project.rootPath);
+          yield { message: `Updating secrets file at '${envFile.path}'` };
+          const { skipped } = await envFile.insertIfNew(input.envEntries);
+          for (const key of skipped) {
+            yield {
+              message: `'${key}' already exists in ${ENV_LOCAL_RELATIVE_PATH}; left unchanged`,
+            };
+          }
+        }
+        break;
+      }
+      case "config-bundle":
+      case "online-eval":
+      case "online-insight":
+      case "memory":
+        newResources.push(resourceConfig);
+        break;
+
+      default: {
+        const unhandled: never = input;
+        throw new NotImplementedError(`unsupported project resource: ${String(unhandled)}`);
+      }
+    }
+
+    yield { message: `Updating project spec file at '${agentCoreSpecPath}'` };
+
+    const newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
+
+    // Validate and write inside the same boundary so a rejected spec rolls back
+    // staged side effects (.env.local, scaffolded files) rather than leaving them.
+    let newProjectSpec: z.infer<typeof ProjectSpecSchema>;
+    try {
+      const newSpecParseResult = ProjectSpecSchema.safeParse(newSpec);
+      if (!newSpecParseResult.success)
+        throw new InputValidationError(z.prettifyError(newSpecParseResult.error), {
+          cause: newSpecParseResult.error,
+        });
+      newProjectSpec = await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
+    } catch (err) {
+      this.logger.warn(
+        `could not commit the spec update to ${agentCoreSpecPath}; attempting best-effort cleanup of staged changes`,
+      );
+      await Promise.all([
+        ...scaffoldedPaths.map((p) =>
+          rm(p, { recursive: true, force: true }).catch((e) => {
+            const error = AgentCoreCLIError.fromError(e);
+            this.logger
+              .child({ errorName: error.name, errorMessage: error.message })
+              .warn(`failed to clean up ${p}`);
+          }),
+        ),
+        envFile?.rollback().catch((e) => {
+          const error = AgentCoreCLIError.fromError(e);
+          this.logger
+            .child({ errorName: error.name, errorMessage: error.message })
+            .warn(`failed to roll back ${ENV_LOCAL_RELATIVE_PATH}`);
+        }),
+      ]);
+      throw err;
+    }
+
+    return {
+      ...project,
+      spec: newProjectSpec,
+    };
+  }
+
+  private getProjectSpecPath(project: Project): string {
+    return join(project.rootPath, "agentcore", "agentcore.json");
+  }
+
+  public async removeResource(project: Project, input: RemoveResourceInput): Promise<Project> {
+    const agentCoreSpecPath = this.getProjectSpecPath(project);
+    const projectSpecKey = toProjectSpecKey(input.resourceType);
+
+    const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
+
+    const existingResources = existingProjectSpec[projectSpecKey];
+    const newResources = existingResources.filter((r) => r.name !== input.name);
+
+    if (newResources.length === existingResources.length)
+      this.logger
+        .child({ input })
+        .warn(`unable to remove resource from project that does not exist.`);
+
+    const newSpecParseResult = ProjectSpecSchema.safeParse({
+      ...existingProjectSpec,
+      [projectSpecKey]: newResources,
+    });
+
+    if (!newSpecParseResult.success)
+      throw new InputValidationError(z.prettifyError(newSpecParseResult.error), {
+        cause: newSpecParseResult.error,
+      });
+
+    const newProjectSpec = await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
+
+    return {
+      ...project,
+      spec: newProjectSpec,
+    };
+  }
+
+  private async scaffoldHarness(
+    outputPath: string,
+    harnessSpec: z.input<typeof HarnessSpecSchema>,
+  ): Promise<string> {
+    const harness = await createHarnessTreeFromSpec({
+      ...harnessSpec,
+      dockerfile: harnessSpec.dockerfile ? "Dockerfile" : undefined,
+    });
+
+    if (harnessSpec.dockerfile) {
+      if (!existsSync(harnessSpec.dockerfile))
+        throw new InputValidationError(`dockerfile not found: '${harnessSpec.dockerfile}'`);
+    }
+
+    await harness.write(outputPath);
+
+    if (harnessSpec.dockerfile) {
+      await copyFile(harnessSpec.dockerfile, join(outputPath, "Dockerfile"));
+    }
+    return outputPath;
   }
 
   public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
-    // agentcore.json records which backend owns the project's artifacts. CDK is the
-    // only one today; a terraform or no-IaC backend adds an arm here rather than
-    // editing the CDK path.
-    switch (project.managedBy) {
-      case "CDK":
-        yield* this.buildWithCdk(project);
-        break;
-      default: {
-        // Exhaustiveness: a new ManagedBy member fails to compile until it is handled.
-        const unsupported: never = project.managedBy;
-        throw new ProjectStateError(
-          `project '${project.name}' declares an unsupported backend: ${String(unsupported)}`,
-        );
-      }
-    }
+    yield* this.backendFor(project).build(project);
   }
 
-  // Compiles the generated CDK app and synthesizes its CloudFormation templates.
-  private async *buildWithCdk(project: Project): AsyncGenerator<ProjectEvent, void> {
-    const cdkDir = join(project.rootPath, "agentcore", "cdk");
-
-    // The generated CDK app is built from its own node_modules; without them the
-    // failure would otherwise surface as an opaque "cdk: not found".
-    if (!existsSync(join(cdkDir, "node_modules"))) {
+  // Resolves the named target from aws-targets.json before handing off, so the
+  // backend receives a fully resolved account and region and never has to know
+  // how targets are stored. The backend owns everything after that point.
+  public async *deploy(
+    project: Project,
+    input: DeployProjectInput,
+  ): AsyncGenerator<ProjectEvent, DeployResult> {
+    const targetsPath = join(project.rootPath, "agentcore", "aws-targets.json");
+    if (!existsSync(targetsPath)) {
       throw new ProjectStateError(
-        `CDK dependencies are missing for project '${project.name}'. ` +
-          `Run 'cd ${cdkDir} && npm install'.`,
+        `No deployment targets are configured for project '${project.name}'. ` +
+          `Add ${targetsPath}, for example:\n\n${TARGETS_EXAMPLE}`,
       );
     }
-    await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
 
-    // The generated package.json defines `cdk` as "npm run build && cdk", so this
-    // single command compiles the app and then synthesizes it. Synthesis needs no
-    // AWS credentials: each stack's environment comes from aws-targets.json.
-    yield { message: "Synthesizing CloudFormation templates" };
-    await this.run(["npm", "run", "cdk", "--", "synth", "--quiet"], cdkDir);
+    const targets = await this.json.read(targetsPath, AwsDeploymentTargetsSchema);
+
+    if (targets.length === 0) {
+      throw new ProjectStateError(
+        `No deployment targets are configured for project '${project.name}'. ` +
+          `Add at least one to ${targetsPath}, for example:\n\n${TARGETS_EXAMPLE}`,
+      );
+    }
+
+    const target = targets.find((candidate) => candidate.name === input.target);
+    if (!target) {
+      throw new ProjectStateError(
+        `Project '${project.name}' has no deployment target named '${input.target}'. ` +
+          `${targetsPath} defines: ${targets.map(({ name }) => name).join(", ")}.`,
+      );
+    }
+
+    return yield* this.backendFor(project).deploy(project, { target });
+  }
+
+  private backendFor(project: Project): ProjectBackend {
+    const backend = this.backends[project.spec.managedBy];
+    if (!backend) {
+      throw new ProjectStateError(
+        `project '${project.name}' declares an unsupported backend: ${project.spec.managedBy}`,
+      );
+    }
+    return backend;
   }
 
   // Runs a command with its output streamed to the file logger.
   private run(command: string[], cwd: string): Promise<void> {
     return this.runner(command, { cwd, onOutput: (chunk) => this.logger.debug(chunk) });
+  }
+}
+
+/** Map {@link ProjectResource} to keys in the project spec.
+ * Note: we let TS infer the return type to avoid pulling in keys that do not correspond to resources (ex. name, managedBy, etc.)
+ */
+function toProjectSpecKey(resourceType: ProjectResource) {
+  switch (resourceType) {
+    case "harness":
+      return "harnesses";
+    case "runtime":
+      return "runtimes";
+    case "credential":
+      return "credentials";
+    case "config-bundle":
+      return "configBundles";
+    case "online-eval":
+    case "online-insight":
+      return "onlineEvalConfigs";
+    case "memory":
+      return "memories";
   }
 }

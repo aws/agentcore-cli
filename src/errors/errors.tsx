@@ -1,4 +1,5 @@
 import { ServiceException } from "@smithy/core/client";
+import { CommanderError } from "commander";
 import { join } from "node:path";
 import { ERROR_SOURCE, type ErrorSource } from "./types";
 
@@ -41,6 +42,16 @@ export class AgentCoreCLIError extends Error {
   static fromError(error: unknown): AgentCoreCLIError {
     if (error instanceof AgentCoreCLIError) return error;
 
+    if (error instanceof CommanderError) {
+      return new SilentCLIError(error.message, {
+        cause: error,
+        source: ERROR_SOURCE.USER,
+        name: error.name,
+        meta: { code: error.code },
+        exitCode: error.exitCode === 0 ? 0 : 2,
+      });
+    }
+
     if (ServiceException.isInstance(error)) {
       const httpStatusCode = error.$metadata.httpStatusCode;
       const source =
@@ -62,12 +73,18 @@ export class AgentCoreCLIError extends Error {
   }
 }
 
+/** Base for CLI errors intentionally omitted from root stderr output. */
+export class SilentCLIError extends AgentCoreCLIError {}
+
 /** Error raised for invalid user input. */
 export class InputValidationError extends AgentCoreCLIError {
   constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
     super(message, { ...options, source: ERROR_SOURCE.USER });
   }
 }
+
+/** Error raised when valid user input references a resource that does not exist. */
+export class ResourceNotFoundError extends InputValidationError {}
 
 /** Error raised when a command or operation has not been implemented yet. */
 export class NotImplementedError extends AgentCoreCLIError {
@@ -90,10 +107,23 @@ export class SourceResolutionError extends InputValidationError {
   }
 }
 
-// TODO: attach telemetry metadata to this error class.
-export class DeserializationError extends Error {
-  constructor(path: string, options?: { cause?: unknown }) {
-    super(`Failed to deserialize JSON at "${path}"`, options);
+type DeserializationErrorOptions = Omit<AgentCoreCLIErrorOptions, "source"> & {
+  /**
+   * Why the file could not be read. Required because the root handler prints
+   * only `error.message`: a detail left in `cause` never reaches the user, and
+   * these files are hand-edited, so naming the file without naming the bad
+   * field leaves them nothing to act on.
+   */
+  details: string;
+};
+
+export class DeserializationError extends AgentCoreCLIError {
+  constructor(path: string, options: DeserializationErrorOptions) {
+    const { details, ...errorOptions } = options;
+    super(`Failed to deserialize file at "${path}":\n\n${details}`, {
+      ...errorOptions,
+      source: ERROR_SOURCE.USER,
+    });
     this.name = "DeserializationError";
   }
 }
@@ -135,37 +165,28 @@ export class EmbeddedAssetNotFoundError extends AgentCoreCLIError {
   }
 }
 
-export class RuntimeInvokeInterruptedError extends AgentCoreCLIError {
-  readonly reported: boolean;
+/** Raised when a user intentionally cancels a headless CLI operation. */
+export class UserCancellationError extends SilentCLIError {
+  constructor() {
+    super("Operation cancelled by user", {
+      source: ERROR_SOURCE.USER,
+      exitCode: 130,
+    });
+  }
 
-  constructor(cause?: unknown, reported = false) {
-    super("The operation was aborted", { cause, exitCode: 130 });
-    this.name = "AbortError";
-    this.reported = reported;
+  static resolve(error: unknown, signal?: AbortSignal): UserCancellationError | undefined {
+    if (error instanceof UserCancellationError) return error;
+    return signal?.reason instanceof UserCancellationError ? signal.reason : undefined;
   }
 }
 
-export class RuntimeInvokeResponseError extends AgentCoreCLIError {
-  readonly reported = true;
-
+export class RuntimeInvokeResponseError extends SilentCLIError {
   constructor(message: string, cause?: unknown) {
     super(message, { cause });
   }
 }
 
-export class GatewayInvokeInterruptedError extends AgentCoreCLIError {
-  readonly reported: boolean;
-
-  constructor(cause?: unknown, reported = false) {
-    super("The operation was aborted", { cause, exitCode: 130 });
-    this.name = "AbortError";
-    this.reported = reported;
-  }
-}
-
-export class GatewayInvokeResponseError extends AgentCoreCLIError {
-  readonly reported = true;
-
+export class GatewayInvokeResponseError extends SilentCLIError {
   constructor(message: string, cause?: unknown) {
     super(message, { cause });
   }
@@ -175,6 +196,13 @@ export class GatewayInvokeResponseError extends AgentCoreCLIError {
 export class NetworkingError extends AgentCoreCLIError {
   constructor(message: string, options?: AgentCoreCLIErrorOptions) {
     super(message, { source: ERROR_SOURCE.SERVICE, ...options });
+  }
+}
+
+/** A CloudWatch Logs Insights query reached a terminal failure state. */
+export class CloudWatchQueryError extends AgentCoreCLIError {
+  constructor(message: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
+    super(message, { ...options, source: ERROR_SOURCE.SERVICE });
   }
 }
 

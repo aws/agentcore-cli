@@ -83,7 +83,7 @@ agentcore                          # interactive TUI
 ├── gateway                        # inspect AgentCore Gateways
 │   ├── get                        # get a Gateway by id
 │   ├── list                       # list Gateways (server-side paginated)
-│   ├── invoke                     # send a headless request through a Gateway
+│   ├── invoke                     # invoke a Gateway headlessly or in a persistent console
 │   ├── target
 │   │   ├── get                    # get a Target under a Gateway
 │   │   └── list                   # list Targets under a Gateway
@@ -152,15 +152,16 @@ agentcore runtime endpoint list --id <runtimeId> --max-results 20
 agentcore memory get --id <memoryId>
 agentcore memory get --id <memoryId> --view without_decryption
 agentcore memory list --max-results 20
-agentcore memory event get --memory <memoryId> --actor-id <actorId> --session-id <sessionId> --event-id <eventId>
-agentcore memory event list --memory <memoryId> --actor-id <actorId> --session-id <sessionId> --max-results 20
-agentcore memory record get --memory <memoryId> --record-id <recordId>
-agentcore memory record list --memory <memoryId> --namespace <namespace> --max-results 20
+agentcore memory event get --id <memoryId> --actor-id <actorId> --session-id <sessionId> --event-id <eventId>
+agentcore memory event list --id <memoryId> --actor-id <actorId> --session-id <sessionId> --max-results 20
+agentcore memory record get --id <memoryId> --record-id <recordId>
+agentcore memory record list --id <memoryId> --namespace <namespace> --max-results 20
 
 # Inspect Gateway resources without project configuration or deployment
 agentcore gateway get --id <gatewayId>
 agentcore gateway list --max-results 20
 agentcore gateway invoke --id <gatewayId> --payload file://request.json
+agentcore gateway invoke --id <gatewayId> # open the persistent JSON console
 agentcore gateway target get --gateway-id <gatewayId> --target-id <targetId>
 agentcore gateway target list --gateway-id <gatewayId> --max-results 20
 agentcore gateway connector get --gateway-id <gatewayId> --id <targetId>
@@ -216,9 +217,10 @@ Source-aware values: any field flag documented as such accepts the value inline,
 
 ### Invoke a Gateway
 
-Gateway Invoke is a headless, project-independent HTTP request command. It gets
-the Gateway by ID, uses the returned HTTPS origin, selects authentication from
-the Gateway's authorizer, and preserves the request and response bodies.
+Gateway Invoke is a project-independent HTTP request command with headless and
+interactive modes. It gets the Gateway by ID, uses the returned HTTPS origin,
+selects authentication from the Gateway's authorizer, and preserves the request
+and response bodies.
 
 ```bash
 # MCP Gateway: use the exact gatewayUrl returned by GetGateway.
@@ -268,9 +270,35 @@ stderr in raw and file modes. Redirects are returned without being followed.
 Non-2xx response bodies use the selected output mode before the command exits
 with a failure status.
 
-Gateway Invoke V1 has no TUI, required request-type selector, tool/model
-discovery command, or protocol-specific payload builder. Callers provide the
-Gateway-relative route and protocol payload directly.
+Without `--payload`, Gateway Invoke opens a persistent POST JSON console. Bare
+invoke opens the Gateway picker, while `--id` opens the selected Gateway
+directly. `--path`, `--session-id`, MCP session flags, `--header`, and
+`--bearer-token` seed the console. Interactive bearer tokens may be inline or
+`file://` sources, but not stdin. Explicit headless-only flags such as
+`--method`, `--accept`, `--content-type`, `--output-file`, or `--json` keep the
+command headless.
+
+The console generates and displays a Runtime session ID, adopts returned Runtime
+and MCP sessions, and streams textual responses as they arrive. An empty path
+uses the exact `gatewayUrl`; `Ctrl+P` edits the raw Gateway-relative path and
+`Ctrl+T` switches Gateways. Switching Gateways clears request context, while
+changing paths preserves the draft and Gateway authentication but starts fresh
+sessions.
+
+| Shortcut      | Action                                       |
+| ------------- | -------------------------------------------- |
+| `Enter`       | Send the JSON request                        |
+| `Shift+Enter` | Insert a newline                             |
+| `Ctrl+P`      | Edit the Gateway-relative path               |
+| `Ctrl+T`      | Change Gateway                               |
+| `Ctrl+V`      | Toggle raw and pretty completed JSON         |
+| `Esc`         | Interrupt an active request or navigate back |
+| `↑`/`↓`       | Scroll response history                      |
+
+Gateway Invoke V1 has no request-type selector, target/path discovery,
+tool/model discovery command, authentication editor, or protocol-specific
+payload builder. Callers provide the Gateway-relative route and protocol payload
+directly. GET and DELETE remain available through headless invoke.
 
 ### Invoke a Runtime
 

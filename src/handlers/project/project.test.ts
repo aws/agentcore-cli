@@ -1,4 +1,5 @@
 import { afterEach, test, expect, describe } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -11,9 +12,9 @@ import {
 } from "../../testing";
 import { InputValidationError } from "../../errors";
 
-async function run(args: string[]) {
-  const io = testIO();
-  const core = new TestCoreClient();
+async function run(args: string[], opts?: { core?: TestCoreClient; stdin?: string }) {
+  const io = testIO({ stdin: opts?.stdin });
+  const core = opts?.core ?? new TestCoreClient();
   const root = createRootHandler(core, {
     io: io.io,
     globalConfigAccessor: new TestGlobalConfigAccessor(),
@@ -23,10 +24,15 @@ async function run(args: string[]) {
   return { io, core };
 }
 
-describe.each(["remove", "dev", "deploy", "status"])("project %s", (command) => {
+describe.each(["status"])("project %s", (command) => {
   test("throws because it is not implemented yet", async () => {
     await expect(run([command])).rejects.toThrow(/not implemented/);
   });
+});
+
+test("project dev requires an AgentCore project", async () => {
+  await inTempDirectory();
+  await expect(run(["dev"])).rejects.toThrow(/No AgentCore project found/);
 });
 
 const originalCwd = process.cwd();
@@ -108,248 +114,457 @@ describe("project create", () => {
   });
 });
 
-describe("project add harness", () => {
-  test.each([
-    ["minimal — name only", ["--name", "my-agent"]],
-    [
-      "model — bedrock",
-      [
-        "--name",
-        "x",
-        "--model",
-        '{"bedrockModelConfig":{"modelId":"us.anthropic.claude-sonnet-4-5-20250929-v1:0"}}',
-      ],
-    ],
-    [
-      "model — openai",
-      [
-        "--name",
-        "x",
-        "--model",
-        '{"openAiModelConfig":{"modelId":"gpt-4","apiKeyArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:api-key/k"}}',
-      ],
-    ],
-    [
-      "model — gemini",
-      [
-        "--name",
-        "x",
-        "--model",
-        '{"geminiModelConfig":{"modelId":"gemini-pro","apiKeyArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:api-key/k"}}',
-      ],
-    ],
-    [
-      "model — litellm",
-      ["--name", "x", "--model", '{"liteLlmModelConfig":{"modelId":"anthropic/claude-3"}}'],
-    ],
-    [
-      "tools — remote_mcp",
-      [
-        "--name",
-        "x",
-        "--tools",
-        '[{"type":"remote_mcp","name":"mcp1","config":{"remoteMcp":{"url":"https://mcp.example.com"}}}]',
-      ],
-    ],
-    [
-      "tools — agentcore_gateway",
-      [
-        "--name",
-        "x",
-        "--tools",
-        '[{"type":"agentcore_gateway","name":"gw1","config":{"agentCoreGateway":{"gatewayArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/g"}}}]',
-      ],
-    ],
-    [
-      "tools — agentcore_browser",
-      [
-        "--name",
-        "x",
-        "--tools",
-        '[{"type":"agentcore_browser","name":"br1","config":{"agentCoreBrowser":{}}}]',
-      ],
-    ],
-    [
-      "tools — inline_function",
-      [
-        "--name",
-        "x",
-        "--tools",
-        '[{"type":"inline_function","name":"fn1","config":{"inlineFunction":{"description":"test","inputSchema":{"type":"object"}}}}]',
-      ],
-    ],
-    [
-      "tools — agentcore_code_interpreter",
-      [
-        "--name",
-        "x",
-        "--tools",
-        '[{"type":"agentcore_code_interpreter","name":"ci1","config":{"agentCoreCodeInterpreter":{}}}]',
-      ],
-    ],
-    [
-      "tools — no config",
-      ["--name", "x", "--tools", '[{"type":"agentcore_browser","name":"br1"}]'],
-    ],
-    [
-      "tools — unrecognized config variant (passes through without config)",
-      [
-        "--name",
-        "x",
-        "--tools",
-        '[{"type":"agentcore_browser","name":"br1","config":{"someFutureConfig":{}}}]',
-      ],
-    ],
-    ["skills — path", ["--name", "x", "--skills", '[{"path":"./my-skill"}]']],
-    ["skills — s3", ["--name", "x", "--skills", '[{"s3":{"uri":"s3://bucket/skill/"}}]']],
-    [
-      "skills — git",
-      [
-        "--name",
-        "x",
-        "--skills",
-        '[{"git":{"url":"https://github.com/org/repo","path":"skills/","auth":{"credentialArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:credential/c","username":"oauth2"}}}]',
-      ],
-    ],
-    [
-      "skills — awsSkills",
-      ["--name", "x", "--skills", '[{"awsSkills":{"paths":["core-skills/*"]}}]'],
-    ],
-    [
-      "memory — managed",
-      [
-        "--name",
-        "x",
-        "--memory",
-        '{"managedMemoryConfiguration":{"strategies":["SEMANTIC"],"eventExpiryDuration":30}}',
-      ],
-    ],
-    [
-      "memory — existing",
-      [
-        "--name",
-        "x",
-        "--memory",
-        '{"agentCoreMemoryConfiguration":{"arn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/m"}}',
-      ],
-    ],
-    ["memory — disabled", ["--name", "x", "--memory", '{"disabled":{}}']],
-    [
-      "truncation — sliding_window",
-      [
-        "--name",
-        "x",
-        "--truncation",
-        '{"strategy":"sliding_window","config":{"slidingWindow":{"messagesCount":40}}}',
-      ],
-    ],
-    [
-      "truncation — summarization",
-      [
-        "--name",
-        "x",
-        "--truncation",
-        '{"strategy":"summarization","config":{"summarization":{"summaryRatio":0.5,"preserveRecentMessages":5}}}',
-      ],
-    ],
-    ["truncation — none", ["--name", "x", "--truncation", '{"strategy":"none"}']],
-    [
-      "truncation — unrecognized config variant (passes through strategy only)",
-      ["--name", "x", "--truncation", '{"strategy":"none","config":{"someFutureStrategy":{}}}'],
-    ],
-    [
-      "authorizer — customJWT",
-      [
-        "--name",
-        "x",
-        "--authorizer-configuration",
-        '{"customJWTAuthorizer":{"discoveryUrl":"https://idp.example.com/.well-known/openid-configuration","allowedAudience":["my-app"]}}',
-      ],
-    ],
-    [
-      "environment — VPC + lifecycle",
-      [
-        "--name",
-        "x",
-        "--environment",
-        '{"agentCoreRuntimeEnvironment":{"networkConfiguration":{"networkMode":"VPC","networkModeConfig":{"subnets":["subnet-abc"],"securityGroups":["sg-abc"]}},"lifecycleConfiguration":{"idleRuntimeSessionTimeout":900,"maxLifetime":28800}}}',
-      ],
-    ],
-    [
-      "environment — with filesystem mounts",
-      [
-        "--name",
-        "x",
-        "--environment",
-        '{"agentCoreRuntimeEnvironment":{"networkConfiguration":{"networkMode":"VPC","networkModeConfig":{"subnets":["subnet-abc"],"securityGroups":["sg-abc"]}},"filesystemConfigurations":[{"sessionStorage":{"mountPath":"/mnt/data"}},{"efsAccessPoint":{"accessPointArn":"arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-abc","mountPath":"/mnt/efs"}},{"s3FilesAccessPoint":{"accessPointArn":"arn:aws:s3files:us-east-1:123456789012:file-system/fs-abc/access-point/fsap-abc","mountPath":"/mnt/s3"}}]}}',
-      ],
-    ],
-    [
-      "environment-artifact — containerUri",
-      [
-        "--name",
-        "x",
-        "--environment-artifact",
-        '{"containerConfiguration":{"containerUri":"123456789012.dkr.ecr.us-east-1.amazonaws.com/my-agent:latest"}}',
-      ],
-    ],
-    ["environment-variables", ["--name", "x", "--environment-variables", '{"LOG_LEVEL":"debug"}']],
-    ["tags", ["--name", "x", "--tags", '{"team":"ml"}']],
-    ["allowed-tools", ["--name", "x", "--allowed-tools", "*", "@builtin"]],
-    [
-      "max-iterations, max-tokens, timeout-seconds",
-      ["--name", "x", "--max-iterations", "10", "--max-tokens", "4096", "--timeout-seconds", "60"],
-    ],
-  ])("%s", async (_label, flags) => {
+describe("project add config-bundle", () => {
+  const components = {
+    "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/orders-agent": {
+      configuration: {
+        systemPrompt: "Help customers with their orders.",
+        temperature: 0.2,
+      },
+    },
+  };
+
+  test("adds a configuration bundle to agentcore.json", async () => {
+    const projectRoot = await inProject();
+    const { io } = await run([
+      "add",
+      "config-bundle",
+      "--name",
+      "OrdersConfig",
+      "--components",
+      JSON.stringify(components),
+    ]);
+
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.configBundles).toEqual([
+      {
+        name: "OrdersConfig",
+        type: "ConfigurationBundle",
+        components,
+        branchName: "mainline",
+      },
+    ]);
+    expect(io.stderr()).toContain("added configuration bundle 'OrdersConfig' to 'TestProject'");
+  });
+
+  test("stores optional configuration bundle fields", async () => {
+    const projectRoot = await inProject();
+    const kmsKeyArn = "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012";
+
+    await run([
+      "add",
+      "config-bundle",
+      "--name",
+      "OrdersConfig",
+      "--description",
+      "Configuration for the order support runtime",
+      "--components",
+      JSON.stringify(components),
+      "--branch-name",
+      "production",
+      "--commit-message",
+      "Add the initial order support configuration",
+      "--kms-key-arn",
+      kmsKeyArn,
+    ]);
+
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.configBundles[0]).toEqual({
+      name: "OrdersConfig",
+      type: "ConfigurationBundle",
+      description: "Configuration for the order support runtime",
+      components,
+      branchName: "production",
+      commitMessage: "Add the initial order support configuration",
+      kmsKeyArn,
+    });
+  });
+
+  test("reads components from a file", async () => {
+    const projectRoot = await inProject();
+    const componentsPath = join(projectRoot, "components.json");
+    await Bun.write(componentsPath, JSON.stringify(components));
+
+    await run([
+      "add",
+      "config-bundle",
+      "--name",
+      "OrdersConfig",
+      "--components",
+      `file://${componentsPath}`,
+    ]);
+
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.configBundles[0].components).toEqual(components);
+  });
+
+  test("adds no files under app", async () => {
+    const projectRoot = await inProject();
+
+    await run([
+      "add",
+      "config-bundle",
+      "--name",
+      "OrdersConfig",
+      "--components",
+      JSON.stringify(components),
+    ]);
+
+    expect(existsSync(join(projectRoot, "app", "OrdersConfig"))).toBe(false);
+  });
+
+  test("rejects a duplicate configuration bundle name", async () => {
     await inProject();
-    // TODO: update to verify that the project updates.
-    await expect(run(["add", "harness", ...flags])).rejects.toThrow("not yet implemented");
+    const args = [
+      "add",
+      "config-bundle",
+      "--name",
+      "OrdersConfig",
+      "--components",
+      JSON.stringify(components),
+    ];
+
+    await run(args);
+    await expect(run(args)).rejects.toBeInstanceOf(InputValidationError);
   });
 
   test.each([
-    ["missing --name", ["--model", '{"bedrockModelConfig":{"modelId":"x"}}']],
-    ["model without modelId", ["--name", "x", "--model", '{"bedrockModelConfig":{}}']],
-    ["unrecognized model variant", ["--name", "x", "--model", '{"unknownConfig":{"modelId":"x"}}']],
-    ["tool without type", ["--name", "x", "--tools", '[{"name":"t1"}]']],
-    ["tool without name", ["--name", "x", "--tools", '[{"type":"remote_mcp"}]']],
-    ["unrecognized skill variant", ["--name", "x", "--skills", '[{"unknown":true}]']],
-    ["unrecognized memory variant", ["--name", "x", "--memory", '{"unknownMemory":{}}']],
+    ["missing name", ["--components", JSON.stringify(components)]],
+    ["missing components", ["--name", "OrdersConfig"]],
+    ["invalid name", ["--name", "orders-config", "--components", JSON.stringify(components)]],
+    ["empty components", ["--name", "OrdersConfig", "--components", "{}"]],
     [
-      "missing truncation strategy",
-      ["--name", "x", "--truncation", '{"config":{"slidingWindow":{"messagesCount":10}}}'],
+      "component without configuration",
+      ["--name", "OrdersConfig", "--components", '{"arn:component":{}}'],
     ],
     [
-      "unrecognized authorizer variant",
-      ["--name", "x", "--authorizer-configuration", '{"unknownAuth":{}}'],
-    ],
-    [
-      "missing discoveryUrl in authorizer",
+      "non-object component configuration",
       [
         "--name",
-        "x",
-        "--authorizer-configuration",
-        '{"customJWTAuthorizer":{"allowedAudience":["a"]}}',
+        "OrdersConfig",
+        "--components",
+        '{"arn:component":{"configuration":"not-an-object"}}',
       ],
     ],
-    ["unrecognized environment variant", ["--name", "x", "--environment", '{"unknownEnv":{}}']],
     [
-      "unrecognized environment-artifact variant",
-      ["--name", "x", "--environment-artifact", '{"unknownArtifact":{}}'],
-    ],
-    [
-      "containerUri and dockerfile are mutually exclusive",
+      "unexpected component field",
       [
         "--name",
-        "x",
-        "--environment-artifact",
-        '{"containerConfiguration":{"containerUri":"123456789012.dkr.ecr.us-east-1.amazonaws.com/img:v1"}}',
-        "--dockerfile",
-        "Dockerfile",
+        "OrdersConfig",
+        "--components",
+        '{"arn:component":{"configuration":{},"unexpected":true}}',
       ],
     ],
-  ])("%s", async (_label, flags) => {
+    ["malformed components", ["--name", "OrdersConfig", "--components", "{not-json"]],
+    [
+      "empty description",
+      ["--name", "OrdersConfig", "--description", "", "--components", JSON.stringify(components)],
+    ],
+    [
+      "branch name above maximum length",
+      [
+        "--name",
+        "OrdersConfig",
+        "--components",
+        JSON.stringify(components),
+        "--branch-name",
+        "b".repeat(129),
+      ],
+    ],
+    [
+      "commit message above maximum length",
+      [
+        "--name",
+        "OrdersConfig",
+        "--components",
+        JSON.stringify(components),
+        "--commit-message",
+        "m".repeat(501),
+      ],
+    ],
+    [
+      "invalid KMS key ARN",
+      [
+        "--name",
+        "OrdersConfig",
+        "--components",
+        JSON.stringify(components),
+        "--kms-key-arn",
+        "not-an-arn",
+      ],
+    ],
+  ])("rejects %s", async (_label, flags) => {
     await inProject();
-    await expect(run(["add", "harness", ...flags])).rejects.toBeInstanceOf(InputValidationError);
+    await expect(run(["add", "config-bundle", ...flags])).rejects.toBeInstanceOf(
+      InputValidationError,
+    );
+  });
+});
+
+describe("project add credentials", () => {
+  test("api-key with a file:// secret records the spec entry and stores the trailing-newline-stripped key in .env.local", async () => {
+    const projectRoot = await inProject();
+    const keyPath = join(projectRoot, "key.txt");
+    // The trailing newline mirrors `echo` and editor output; it must not reach the value.
+    await Bun.write(keyPath, "sk-123\n");
+
+    await run([
+      "add",
+      "credentials",
+      "api-key",
+      "--name",
+      "svc-key",
+      "--api-key",
+      `file://${keyPath}`,
+    ]);
+
+    const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(agentcoreJson.credentials).toEqual([
+      { authorizerType: "ApiKeyCredentialProvider", name: "svc-key" },
+    ]);
+
+    const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
+    expect(env).toContain("AGENTCORE_CREDENTIAL_SVC_KEY='sk-123'\n");
+    expect(env).not.toContain("AGENTCORE_CREDENTIAL_SVC_KEY='sk-123'\n\n");
+  });
+
+  test("api-key without a secret writes a commented placeholder and tells the user to fill it", async () => {
+    const projectRoot = await inProject();
+    const { io } = await run(["add", "credentials", "api-key", "--name", "svc-key"]);
+
+    const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
+    expect(env).toContain("# API key for credential provider 'svc-key' (set before deploy)");
+    expect(env).toContain("AGENTCORE_CREDENTIAL_SVC_KEY=\n");
+    expect(io.stderr()).toContain(
+      "Set AGENTCORE_CREDENTIAL_SVC_KEY in agentcore/.env.local before you deploy",
+    );
+  });
+
+  test("api-key with an external secret reference records it in the spec and skips .env.local", async () => {
+    const projectRoot = await inProject();
+    const secretRef = {
+      secretId: "arn:aws:secretsmanager:us-west-2:123456789012:secret:s",
+      jsonKey: "apiKey",
+    };
+
+    await run([
+      "add",
+      "credentials",
+      "api-key",
+      "--name",
+      "svc-key",
+      "--api-key-secret-reference",
+      JSON.stringify(secretRef),
+    ]);
+
+    const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(agentcoreJson.credentials).toEqual([
+      { authorizerType: "ApiKeyCredentialProvider", name: "svc-key", secretRef },
+    ]);
+    const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
+    expect(env).not.toContain("AGENTCORE_CREDENTIAL_SVC_KEY");
+  });
+
+  const discoveryUrl = "https://idp.example.com/.well-known/openid-configuration";
+
+  test("oauth custom with guided flags and a stdin secret records the spec entry and the secret", async () => {
+    const projectRoot = await inProject();
+
+    await run(
+      [
+        "add",
+        "credentials",
+        "oauth",
+        "--name",
+        "idp",
+        "--discovery-url",
+        discoveryUrl,
+        "--client-id",
+        "client-1",
+        "--scopes",
+        "openid",
+        "email",
+        "--client-secret",
+        "-",
+      ],
+      { stdin: "sssh" },
+    );
+
+    const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(agentcoreJson.credentials).toEqual([
+      {
+        authorizerType: "OAuthCredentialProvider",
+        name: "idp",
+        vendor: "CustomOauth2",
+        clientId: "client-1",
+        discoveryUrl,
+        scopes: ["openid", "email"],
+      },
+    ]);
+
+    const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
+    expect(env).toContain("AGENTCORE_CREDENTIAL_IDP_CLIENT_SECRET='sssh'");
+  });
+
+  test("oauth vendored with --provider-configuration records the config and a secret placeholder", async () => {
+    const projectRoot = await inProject();
+
+    const { io } = await run([
+      "add",
+      "credentials",
+      "oauth",
+      "--name",
+      "github",
+      "--vendor",
+      "GithubOauth2",
+      "--provider-configuration",
+      '{"githubOauth2ProviderConfig":{"clientId":"client-1"}}',
+    ]);
+
+    const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(agentcoreJson.credentials).toEqual([
+      {
+        authorizerType: "OAuthCredentialProvider",
+        name: "github",
+        vendor: "GithubOauth2",
+        providerConfig: { githubOauth2ProviderConfig: { clientId: "client-1" } },
+      },
+    ]);
+
+    const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
+    expect(env).toContain("AGENTCORE_CREDENTIAL_GITHUB_CLIENT_SECRET=\n");
+    expect(io.stderr()).toContain(
+      "Set AGENTCORE_CREDENTIAL_GITHUB_CLIENT_SECRET in agentcore/.env.local before you deploy",
+    );
+  });
+
+  test("preserves existing .env.local content and never overwrites an existing key", async () => {
+    const projectRoot = await inProject();
+    const envPath = join(projectRoot, "agentcore", ".env.local");
+    const original = await Bun.file(envPath).text();
+    await Bun.write(envPath, `${original}AGENTCORE_CREDENTIAL_SVC_KEY=user-managed\n`);
+
+    const { io } = await run(["add", "credentials", "api-key", "--name", "svc-key"]);
+
+    const env = await Bun.file(envPath).text();
+    expect(env).toStartWith(original);
+    expect(env.match(/AGENTCORE_CREDENTIAL_SVC_KEY=/g)).toHaveLength(1);
+    expect(env).toContain("AGENTCORE_CREDENTIAL_SVC_KEY=user-managed");
+    expect(io.stderr()).toContain("already exists");
+  });
+
+  test("creates .env.local when the project lacks one", async () => {
+    const projectRoot = await inProject();
+    const envPath = join(projectRoot, "agentcore", ".env.local");
+    await rm(envPath);
+
+    await run(["add", "credentials", "api-key", "--name", "svc-key"]);
+
+    const env = await Bun.file(envPath).text();
+    expect(env).toContain("AGENTCORE_CREDENTIAL_SVC_KEY=\n");
+  });
+
+  test("rejects a duplicate credential name across credential types", async () => {
+    await inProject();
+    await run(["add", "credentials", "api-key", "--name", "dup"]);
+    await expect(
+      run(["add", "credentials", "oauth", "--name", "dup", "--discovery-url", discoveryUrl]),
+    ).rejects.toThrow(/already exists/);
+  });
+
+  test("rejects two names that derive the same environment variable", async () => {
+    await inProject();
+    await run(["add", "credentials", "api-key", "--name", "svc-key"]);
+    await expect(run(["add", "credentials", "api-key", "--name", "svc_key"])).rejects.toThrow(
+      /same environment variable/,
+    );
+  });
+
+  test.each<[string, string[], RegExp]>([
+    [
+      "api-key: an inline secret value",
+      ["api-key", "--name", "x", "--api-key", "sk-inline"],
+      /file:\/\//,
+    ],
+    ["api-key: a multi-line secret", ["api-key", "--name", "x", "--api-key", "-"], /single-line/],
+    [
+      "oauth: an inline secret value",
+      ["oauth", "--name", "x", "--discovery-url", discoveryUrl, "--client-secret", "sssh"],
+      /file:\/\//,
+    ],
+    [
+      "api-key: a secret combined with a secret reference",
+      [
+        "api-key",
+        "--name",
+        "x",
+        "--api-key",
+        "-",
+        "--api-key-secret-reference",
+        '{"secretId":"arn:aws:secretsmanager:us-west-2:123:secret:s","jsonKey":"apiKey"}',
+      ],
+      /mutually exclusive/,
+    ],
+    [
+      "oauth: a secret combined with a secret reference",
+      [
+        "oauth",
+        "--name",
+        "x",
+        "--discovery-url",
+        discoveryUrl,
+        "--client-secret",
+        "-",
+        "--client-secret-reference",
+        '{"secretId":"arn:aws:secretsmanager:us-west-2:123:secret:s","jsonKey":"clientSecret"}',
+      ],
+      /mutually exclusive/,
+    ],
+    ["api-key: a missing --name", ["api-key"], /--name/],
+    ["oauth: a missing --name", ["oauth"], /--name/],
+    [
+      "oauth: a vendored provider without --provider-configuration",
+      ["oauth", "--name", "x", "--vendor", "GithubOauth2"],
+      /--provider-configuration/,
+    ],
+    [
+      "oauth: a guided custom provider without --discovery-url",
+      ["oauth", "--name", "x", "--client-id", "c"],
+      /--discovery-url/,
+    ],
+    [
+      "oauth: --provider-configuration combined with --scopes",
+      [
+        "oauth",
+        "--name",
+        "x",
+        "--vendor",
+        "GithubOauth2",
+        "--provider-configuration",
+        '{"githubOauth2ProviderConfig":{"clientId":"c"}}',
+        "--scopes",
+        "repo",
+      ],
+      /mutually exclusive/,
+    ],
+    [
+      "oauth: secret material inside --provider-configuration",
+      [
+        "oauth",
+        "--name",
+        "x",
+        "--vendor",
+        "GithubOauth2",
+        "--provider-configuration",
+        '{"githubOauth2ProviderConfig":{"clientId":"c","clientSecret":"sssh"}}',
+      ],
+      /secret material/,
+    ],
+  ])("rejects %s", async (_label, args, message) => {
+    await inProject();
+    await expect(run(["add", "credentials", ...args], { stdin: "line1\nline2" })).rejects.toThrow(
+      message,
+    );
   });
 });
 
@@ -367,7 +582,16 @@ describe("project build", () => {
 
     expect(core.projectCommands).toEqual([
       {
-        command: ["npm", "run", "cdk", "--", "synth", "--quiet"],
+        command: [
+          "npm",
+          "run",
+          "cdk",
+          "--",
+          "synth",
+          "--quiet",
+          "--output",
+          join(projectRoot, "agentcore", "cdk", "cdk.out"),
+        ],
         cwd: join(projectRoot, "agentcore", "cdk"),
       },
     ]);
@@ -396,5 +620,17 @@ describe("project build", () => {
     await rm(join(projectRoot, "agentcore", "cdk", "node_modules"), { recursive: true });
 
     await expect(run(["build"])).rejects.toThrow(/npm install/);
+  });
+});
+
+describe("project deploy", () => {
+  test("requires an AgentCore project", async () => {
+    await inTempDirectory();
+    await expect(run(["deploy"])).rejects.toThrow(/No AgentCore project found/);
+  });
+
+  test("rejects a project with no deployment targets", async () => {
+    await inProject();
+    await expect(run(["deploy"])).rejects.toThrow(/No deployment targets are configured/);
   });
 });

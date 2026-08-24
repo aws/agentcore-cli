@@ -51,9 +51,17 @@ import {
 import { BatchEvaluationScreen } from "../handlers/eval/batch-evaluation/screen.tsx";
 import { BatchEvaluationListScreen } from "../handlers/eval/batch-evaluation/list/screen.tsx";
 import { BatchEvaluationGetJsonScreen } from "../handlers/eval/batch-evaluation/get/screen.tsx";
+import { BatchInsightsScreen } from "../handlers/eval/batch-insights/screen.tsx";
+import { BatchInsightsListScreen } from "../handlers/eval/batch-insights/list/screen.tsx";
+import { BatchInsightsGetJsonScreen } from "../handlers/eval/batch-insights/get/screen.tsx";
 import { DatasetScreen } from "../handlers/eval/dataset/screen.tsx";
 import { DatasetListScreen } from "../handlers/eval/dataset/list/screen.tsx";
 import { DatasetGetScreen, DatasetGetJsonScreen } from "../handlers/eval/dataset/get/screen.tsx";
+import { ConfigBundleScreen } from "../handlers/eval/config-bundle/screen.tsx";
+import { ConfigBundleListScreen } from "../handlers/eval/config-bundle/list/screen.tsx";
+import { ConfigBundleGetScreen } from "../handlers/eval/config-bundle/get/screen.tsx";
+import { ConfigBundleVersionScreen } from "../handlers/eval/config-bundle/version/screen.tsx";
+import { ConfigBundleVersionListScreen } from "../handlers/eval/config-bundle/version/list/screen.tsx";
 import { MemoryEventScreen } from "../handlers/memory/event/screen.tsx";
 import { MemoryEventGetScreen } from "../handlers/memory/event/get/screen.tsx";
 import { MemoryEventListScreen } from "../handlers/memory/event/list/screen.tsx";
@@ -89,6 +97,7 @@ import { GatewayConnectorGetScreen } from "../handlers/gateway/connector/get/scr
 import { GatewayRuleScreen } from "../handlers/gateway/rule/screen.tsx";
 import { GatewayRuleListScreen } from "../handlers/gateway/rule/list/screen.tsx";
 import { GatewayRuleGetScreen } from "../handlers/gateway/rule/get/screen.tsx";
+import { GatewayInvokeScreen } from "../handlers/gateway/invoke/screen.tsx";
 import { RootScreen, HelpScreen } from "../handlers/screen.tsx";
 import type { Context } from "../router";
 
@@ -367,6 +376,14 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
             element={<GatewayGetJsonScreen ctx={ctx} core={core} />}
           />
           <Route
+            path="agentcore/gateway/invoke"
+            element={<GatewayInvokeScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/gateway/invoke/:gatewayId"
+            element={<GatewayInvokeScreen ctx={ctx} core={core} />}
+          />
+          <Route
             path="agentcore/gateway/target"
             element={<GatewayTargetScreen ctx={ctx} core={core} />}
           />
@@ -486,6 +503,38 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
             element={<DatasetGetJsonScreen ctx={ctx} core={core} />}
           />
           <Route
+            path="agentcore/eval/config-bundle"
+            element={<ConfigBundleScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/config-bundle/list"
+            element={<ConfigBundleListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/config-bundle/get"
+            element={<Navigate to="/agentcore/eval/config-bundle/list" replace />}
+          />
+          <Route
+            path="agentcore/eval/config-bundle/get/:bundleId"
+            element={<ConfigBundleGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/config-bundle/get/:bundleId/:versionId"
+            element={<ConfigBundleGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/config-bundle/version"
+            element={<ConfigBundleVersionScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/config-bundle/version/list"
+            element={<ConfigBundleVersionListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/config-bundle/version/list/:bundleId"
+            element={<ConfigBundleVersionListScreen ctx={ctx} core={core} />}
+          />
+          <Route
             path="agentcore/eval/batch-evaluation"
             element={<BatchEvaluationScreen ctx={ctx} core={core} />}
           />
@@ -502,6 +551,22 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/eval/batch-evaluation/get/:batchEvaluationId"
             element={<BatchEvaluationGetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/batch-insights"
+            element={<BatchInsightsScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/batch-insights/list"
+            element={<BatchInsightsListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/batch-insights/get"
+            element={<Navigate to="/agentcore/eval/batch-insights/list" replace />}
+          />
+          <Route
+            path="agentcore/eval/batch-insights/get/:batchEvaluationId"
+            element={<BatchInsightsGetJsonScreen ctx={ctx} core={core} />}
           />
           <Route
             path="agentcore/memory/event"

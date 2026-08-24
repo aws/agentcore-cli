@@ -1,12 +1,9 @@
 import z from "zod";
-import {
-  GatewayInvokeInterruptedError,
-  GatewayInvokeResponseError,
-  InputValidationError,
-} from "../../../errors";
-import type { AppIO } from "../../../io";
-import { ExitCode } from "../../../runnable";
-import { createHandler, flag } from "../../../router";
+import { GatewayInvokeResponseError, InputValidationError } from "../../../errors";
+import { SourceResolver, type AppIO } from "../../../io";
+import { ExitCode, withUserCancellation } from "../../../runnable";
+import { createHandler, flag, PathKey } from "../../../router";
+import { renderTuiAt } from "../../../tui";
 import { JsonKey } from "../../keys";
 import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
@@ -16,10 +13,16 @@ import {
   normalizeGatewayInvokeRequest,
   parseGatewayInvokeHeaders,
   resolveGatewayInvokeSources,
+  resolveGatewayInvokeTuiBearerToken,
 } from "./request";
 import { writeGatewayInvokeResponse } from "./response";
+import { GatewayInvokeLaunchContextKey } from "./launchContext";
 
-export const createInvokeGatewayHandler = (core: Core, io: AppIO) =>
+export const createInvokeGatewayHandler = (
+  core: Core,
+  io: AppIO,
+  renderInvokeTui: typeof renderTuiAt = renderTuiAt,
+) =>
   createHandler({
     name: "invoke",
     description: "invoke an AgentCore Gateway",
@@ -58,24 +61,62 @@ export const createInvokeGatewayHandler = (core: Core, io: AppIO) =>
       }
 
       const jsonOutput = ctx.require(JsonKey);
+      if (flags.payload === undefined) {
+        const hasHeadlessOnlyFlag = Object.entries(flags).some(
+          ([name, value]) =>
+            ![
+              "id",
+              "path",
+              "payload",
+              "header",
+              "bearer-token",
+              "session-id",
+              "mcp-session-id",
+              "mcp-protocol-version",
+            ].includes(name) && value !== undefined,
+        );
+        if (!jsonOutput && !hasHeadlessOnlyFlag) {
+          const applicationHeaders = parseGatewayInvokeHeaders(flags.header);
+          const bearerToken = await resolveGatewayInvokeTuiBearerToken(
+            flags["bearer-token"],
+            new SourceResolver({ stdin: io.stdin }),
+          );
+          const launchContext = {
+            gatewayId: flags.id,
+            path: flags.path,
+            runtimeSessionId: flags["session-id"],
+            mcpSessionId: flags["mcp-session-id"],
+            mcpProtocolVersion: flags["mcp-protocol-version"],
+            applicationHeaders,
+            bearerToken,
+          };
+          await renderInvokeTui(
+            `${ctx.require(PathKey)}/${encodeURIComponent(flags.id)}`,
+            ctx.withValue(GatewayInvokeLaunchContextKey, launchContext),
+            core,
+            io,
+          );
+          return;
+        }
+      }
+
       if (jsonOutput && flags["output-file"] !== undefined) {
         throw new InputValidationError("--json cannot be used with --output-file");
       }
+      const gatewayId = flags.id;
+      const payload = flags.payload;
 
-      const controller = new AbortController();
-      const interrupt = () => controller.abort();
-      process.once("SIGINT", interrupt);
-      try {
+      await withUserCancellation(async (signal) => {
         const applicationHeaders = parseGatewayInvokeHeaders(flags.header);
         const sources = await resolveGatewayInvokeSources(
-          { payload: flags.payload, bearerToken: flags["bearer-token"] },
+          { payload, bearerToken: flags["bearer-token"] },
           io.stdin,
-          controller.signal,
+          signal,
         );
         const options = coreOptsFromCtx(ctx);
-        const gateway = await core.gateway.getGateway(flags.id, options, controller.signal);
+        const gateway = await core.gateway.getGateway(gatewayId, options, signal);
         const request = normalizeGatewayInvokeRequest(gateway, {
-          gatewayId: flags.id,
+          gatewayId,
           path: flags.path,
           method: flags.method as GatewayInvokeMethod | undefined,
           payload: sources.payload,
@@ -87,26 +128,17 @@ export const createInvokeGatewayHandler = (core: Core, io: AppIO) =>
           mcpSessionId: flags["mcp-session-id"],
           mcpProtocolVersion: flags["mcp-protocol-version"],
         });
-        const response = await core.gateway.invokeGateway(request, options, controller.signal);
+        const response = await core.gateway.invokeGateway(request, options, signal);
         await writeGatewayInvokeResponse(response, {
           stdout: io.stdout,
           stderr: io.stderr,
           outputFile: flags["output-file"],
           json: jsonOutput,
-          signal: controller.signal,
+          signal,
         });
         if (response.statusCode < 200 || response.statusCode >= 300) {
           throw new GatewayInvokeResponseError(`HTTP ${response.statusCode}`);
         }
-      } catch (error) {
-        if (controller.signal.aborted && (error as Error)?.name === "AbortError") {
-          if (error instanceof GatewayInvokeInterruptedError) throw error;
-          throw new GatewayInvokeInterruptedError(error);
-        }
-        throw error;
-      } finally {
-        controller.abort();
-        process.off("SIGINT", interrupt);
-      }
+      });
     },
   });
