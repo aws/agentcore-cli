@@ -1401,6 +1401,7 @@ export class TestEvalClient implements CoreEvalClient {
   // simulates a CloudWatch read failure surfaced as `resultsError`.
   private batchEvalGetResponse: GetBatchEvaluationResponse = DEFAULT_GET_BATCH_EVAL_RESPONSE;
   private batchEvalListResponses = new Map<string | undefined, ListBatchEvaluationsResponse>();
+  private batchInsightsListResponses = new Map<string | undefined, ListBatchEvaluationsResponse>();
   private batchEvalResults: BatchEvaluationResultEntry[] = [];
   private batchEvalResultsError?: unknown;
   private startBatchEvalResponse: StartBatchEvaluationResponse = DEFAULT_START_BATCH_EVAL_RESPONSE;
@@ -1578,6 +1579,16 @@ export class TestEvalClient implements CoreEvalClient {
     return this;
   }
 
+  // setBatchInsightsListResponse sets what listBatchInsights resolves to (when
+  // not erroring). Pass `forNextToken` to serve a later logical Insights page.
+  setBatchInsightsListResponse(
+    response: ListBatchEvaluationsResponse,
+    forNextToken?: string,
+  ): this {
+    this.batchInsightsListResponses.set(forNextToken, response);
+    return this;
+  }
+
   // setBatchEvalResults sets the per-session results getBatchEvaluation merges in
   // (when results are requested, the job is terminal, and it has a CloudWatch
   // output config).
@@ -1698,6 +1709,20 @@ export class TestEvalClient implements CoreEvalClient {
       this.batchEvalListResponses.get(undefined) ??
       DEFAULT_LIST_BATCH_EVALS_RESPONSE
     );
+  }
+
+  async listBatchInsights(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListBatchEvaluationsResponse> {
+    this.calls.push({ method: "listBatchInsights", args: [nextToken, maxResults, options] });
+    if (this.error) throw this.error;
+    const response =
+      this.batchInsightsListResponses.get(nextToken) ??
+      this.batchInsightsListResponses.get(undefined) ??
+      DEFAULT_LIST_BATCH_EVALS_RESPONSE;
+    return { ...response, batchEvaluations: response.batchEvaluations ?? [] };
   }
 
   async startBatchEvaluation(

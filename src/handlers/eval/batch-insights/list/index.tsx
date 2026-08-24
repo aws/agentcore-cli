@@ -3,7 +3,6 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
-import { InsightsJob } from "../insightsJob";
 
 export const createListBatchInsightsHandler = (core: Core) =>
   createHandler({
@@ -11,20 +10,16 @@ export const createListBatchInsightsHandler = (core: Core) =>
     description: "list batch insights runs",
     flags: [
       flag("next-token", "pagination token returned by a previous request", z.string().optional()),
-      flag("max-results", "maximum number of service items to inspect", z.number().optional()),
+      flag("max-results", "maximum number of batch insights runs to return", z.number().optional()),
     ],
     handle: async (ctx, flags) => {
-      const opts = coreOptsFromCtx(ctx);
-      const response = await core.eval.listBatchEvaluations(
+      const response = await core.eval.listBatchInsights(
         flags["next-token"],
         flags["max-results"],
-        opts,
+        coreOptsFromCtx(ctx),
       );
 
-      ctx.require(JsonRendererKey).renderJson({
-        ...response,
-        batchEvaluations: (response.batchEvaluations ?? []).filter(InsightsJob.is),
-      });
+      ctx.require(JsonRendererKey).renderJson(response);
     },
   });
 

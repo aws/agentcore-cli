@@ -338,6 +338,11 @@ export interface CoreEvalClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListBatchEvaluationsResponse>;
+  listBatchInsights(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListBatchEvaluationsResponse>;
   // startBatchEvaluation submits an async, service-side evaluation over sessions
   // the service gathers from the resolved data source. Returns the durable job id
   // + RUNNING status; poll with getBatchEvaluation.

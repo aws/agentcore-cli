@@ -65,6 +65,7 @@ import {
   type EvaluationReferenceInput,
   type EvaluationResultContent,
   type EvaluationTarget,
+  type BatchEvaluationSummary,
   type ListBatchEvaluationsResponse,
   type StartBatchEvaluationResponse,
   type DataSourceConfig as DataPlaneDataSourceConfig,
@@ -92,6 +93,7 @@ import {
   InputValidationError,
   NetworkingError,
   ResourceNotFoundError,
+  ResultTruncationError,
 } from "../errors";
 import type {
   BatchEvaluationDetail,
@@ -164,6 +166,9 @@ const EVALUATE_TARGET_BATCH = 10;
 
 // CloudWatch Logs Insights hard ceiling: a query returns at most 100k rows.
 const INSIGHTS_MAX_ROWS = 100_000;
+
+const DEFAULT_BATCH_INSIGHTS_PAGE_SIZE = 50;
+const MAX_BATCH_INSIGHTS_SCAN_REQUESTS = 101;
 
 // noopLogger is the default for the optional logger arg so callers that don't
 // need batch-evaluation result-log diagnostics (e.g. dataset-only tests) can
@@ -372,6 +377,56 @@ export class EvalClient implements CoreEvalClient {
       .send(new ListBatchEvaluationsCommand({ nextToken, maxResults }));
   }
 
+  async listBatchInsights(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListBatchEvaluationsResponse> {
+    const insightsPageSize = maxResults ?? DEFAULT_BATCH_INSIGHTS_PAGE_SIZE;
+    if (!Number.isInteger(insightsPageSize) || insightsPageSize < 1) {
+      throw new InputValidationError("maxResults must be a positive integer");
+    }
+    const batchEvaluations: BatchEvaluationSummary[] = [];
+    let batchEvaluationToken = nextToken;
+
+    for (let request = 0; request < MAX_BATCH_INSIGHTS_SCAN_REQUESTS; request++) {
+      const requestToken = batchEvaluationToken;
+      const response = await this.listBatchEvaluations(requestToken, undefined, options);
+      const serviceItems = response.batchEvaluations ?? [];
+      const insights = serviceItems.filter(EvalClient.isBatchInsights);
+
+      if (batchEvaluations.length < insightsPageSize) {
+        const remaining = insightsPageSize - batchEvaluations.length;
+        if (insights.length > remaining) {
+          const boundaryInsight = insights[remaining - 1]!;
+          const boundarySize = serviceItems.indexOf(boundaryInsight) + 1;
+          // Re-read through the last returned Insights job so the service token
+          // cannot skip later matches from this Batch Evaluation page.
+          const boundaryResponse = await this.listBatchEvaluations(
+            requestToken,
+            boundarySize,
+            options,
+          );
+
+          batchEvaluations.push(...insights.slice(0, remaining));
+          return { ...boundaryResponse, batchEvaluations };
+        }
+        batchEvaluations.push(...insights);
+      } else if (insights.length > 0) {
+        return { ...response, batchEvaluations, nextToken: requestToken };
+      }
+
+      if (response.nextToken === undefined) {
+        return { ...response, batchEvaluations, nextToken: undefined };
+      }
+      batchEvaluationToken = response.nextToken;
+    }
+
+    throw new ResultTruncationError(
+      `Batch Insights discovery exceeded ${MAX_BATCH_INSIGHTS_SCAN_REQUESTS} Batch Evaluation scan requests; results are incomplete`,
+    );
+  }
+
   async startBatchEvaluation(
     input: StartBatchEvaluationInput,
     options: CoreOptions,
@@ -442,6 +497,10 @@ export class EvalClient implements CoreEvalClient {
         filterConfig,
       },
     };
+  }
+
+  private static isBatchInsights(job: BatchEvaluationSummary): boolean {
+    return Boolean(job.insights?.length);
   }
 
   async getTracesForAgent(input: GetTracesInput, options: CoreOptions): Promise<SessionTrace[]> {
