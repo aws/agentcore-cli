@@ -22,7 +22,21 @@ function message(text: string): IoMessage<unknown> {
   };
 }
 
-function loadedToolkit() {
+const DEPLOYED_STACK = {
+  stackName: "AgentCore-orders-default",
+  environment: { account: "111122223333", region: "us-east-1" },
+  stackArn: "arn:aws:cloudformation:us-east-1:111122223333:stack/example/id",
+  hierarchicalId: "AgentCore-orders-default",
+  outputs: { RuntimeArn: "arn:runtime" },
+  deleteFailures: [],
+};
+
+/**
+ * @param stacks - what the Toolkit's deploy reports. Defaults to one stack; pass
+ * `[]` for the resource-less path, where the Toolkit skips or deletes the stack
+ * and still returns normally.
+ */
+function loadedToolkit(stacks: unknown[] = [DEPLOYED_STACK]) {
   const calls: { method: string; args: unknown[] }[] = [];
   const toolkit: CdkToolkit = {
     bootstrap: async (...args: Parameters<CdkToolkit["bootstrap"]>) => {
@@ -35,18 +49,7 @@ function loadedToolkit() {
     },
     deploy: async (...args: Parameters<CdkToolkit["deploy"]>) => {
       calls.push({ method: "deploy", args });
-      return {
-        stacks: [
-          {
-            stackName: "AgentCore-orders-default",
-            environment: { account: "111122223333", region: "us-east-1" },
-            stackArn: "arn:aws:cloudformation:us-east-1:111122223333:stack/example/id",
-            hierarchicalId: "AgentCore-orders-default",
-            outputs: { RuntimeArn: "arn:runtime" },
-            deleteFailures: [],
-          },
-        ],
-      };
+      return { stacks } as never;
     },
   };
   return { calls, loaded: { lib: toolkitLib, toolkit } as LoadedCdkToolkit };
@@ -138,6 +141,35 @@ describe("performCdkOperation", () => {
         patterns: ["AgentCore-orders-default"],
       },
     });
+  });
+
+  // The Toolkit returns normally after skipping *or deleting* a resource-less
+  // stack, so treating an absent stack as empty outputs would report a deletion
+  // as a successful deploy.
+  test("fails instead of reporting empty outputs when no stack was deployed", async () => {
+    const { loaded } = loadedToolkit([]);
+
+    const deploying = performCdkOperation(
+      loaded,
+      { kind: "deploy", stackName: "AgentCore-orders-default" },
+      { assemblyDirectory: "/workspace/agentcore/cdk/cdk.out", region: "us-east-1" },
+    );
+
+    await expect(deploying).rejects.toThrow(
+      /deployed no stack for 'AgentCore-orders-default'.*no resources.*deleted rather than updated/s,
+    );
+  });
+
+  test("accepts a deployed stack that declares no outputs", async () => {
+    const { loaded } = loadedToolkit([{ ...DEPLOYED_STACK, outputs: {} }]);
+
+    const outputs = await performCdkOperation(
+      loaded,
+      { kind: "deploy", stackName: "AgentCore-orders-default" },
+      { assemblyDirectory: "/workspace/agentcore/cdk/cdk.out", region: "us-east-1" },
+    );
+
+    expect(outputs).toEqual({});
   });
 });
 

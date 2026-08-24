@@ -1,4 +1,5 @@
 import type { IIoHost, IoMessage, Toolkit } from "@aws-cdk/toolkit-lib";
+import { AgentCoreCLIError } from "../../../../errors";
 import type { Logger } from "../../../../logging";
 
 export type CdkOperation =
@@ -95,6 +96,21 @@ export async function performCdkOperation(
       patterns: [operation.stackName],
     },
   });
+
+  // PATTERN_MUST_MATCH_SINGLE throws when the pattern matches anything other
+  // than one stack, so a missing result is not "no match": the Toolkit skips a
+  // stack whose template has no resources, and *deletes* it if it already
+  // exists. Both return normally, so reporting empty outputs here would call a
+  // deletion a successful deploy.
+  if (result.stacks.length !== 1) {
+    throw new AgentCoreCLIError(
+      `The CDK Toolkit deployed no stack for '${operation.stackName}'. ` +
+        `This happens when the synthesized stack has no resources, in which case an ` +
+        `existing stack of that name is deleted rather than updated.`,
+    );
+  }
+
+  // A stack that deployed but declares no outputs is legitimate.
   return result.stacks[0]?.outputs ?? {};
 }
 
