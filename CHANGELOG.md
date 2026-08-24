@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.28.0] - 2026-08-24
+
+### Added
+- feat(payments): add Quick Create connector flow (#2017) (5c0c744b)
+- feat: add AgentCore PR reviewer example (#2040) (aa855edf)
+
+### Fixed
+- fix(deps): consume agentcore-cdk alpha.49 (#2087) (ddb32a24)
+- fix(evaluator): include user_message placeholder for TOOL_CALL evaluators (#2064) (c4d178c3)
+- fix(dev): support Node tool shims on Windows (#2054) (6a288f97)
+- fix(deps): consume agentcore-cdk alpha.48 (#2053) (3f527541)
+
+### Other Changes
+- ci: use dedicated release runners (#2052) (e4d5c6ec)
+
 ## [0.27.1] - 2026-08-19
 
 ### Added
