@@ -16,7 +16,7 @@ const CONTENT_TYPES: Record<string, string> = {
   ".svg": "image/svg+xml",
 };
 
-export type InspectorAssetReader = (assetPath: string) => Promise<InspectorAsset | undefined>;
+const textEncoder = new TextEncoder();
 
 /**
  * Reads the prebuilt Agent Inspector SPA. Resolution order:
@@ -36,7 +36,7 @@ export class InspectorAssets {
     this.overrideDir = options.overrideDir ?? process.env.AGENT_INSPECTOR_PATH;
   }
 
-  public read: InspectorAssetReader = async (assetPath) => {
+  public read = async (assetPath: string): Promise<InspectorAsset | undefined> => {
     const relative = assetPath.replace(/^\/+/, "");
     if (!relative || relative.split("/").some((part) => part === "..")) return undefined;
     const contentType = CONTENT_TYPES[extname(relative)] ?? "text/plain; charset=utf-8";
@@ -53,7 +53,7 @@ export class InspectorAssets {
     try {
       // Staged files carry a neutral `.asset` suffix (see scripts/build.ts).
       const text = await this.source.read(`agent-inspector/${relative}.asset`);
-      const asset = { body: new TextEncoder().encode(text), contentType };
+      const asset = { body: textEncoder.encode(text), contentType };
       this.cache.set(relative, asset);
       return asset;
     } catch {

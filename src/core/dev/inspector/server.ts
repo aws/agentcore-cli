@@ -24,6 +24,14 @@ const TRACE_LIST_LIMIT = 200;
 const CSP_HEADER =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self' data:";
 
+/** CORS headers that never vary; only Access-Control-Allow-Origin is per-request. */
+const STATIC_CORS_HEADERS = {
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, X-Agentcore-Local, Mcp-Session-Id",
+  "Access-Control-Expose-Headers": "Mcp-Session-Id, x-session-id",
+  Vary: "Origin",
+} as const;
+
 export function createInspectorHandler(deps: InspectorDeps): HttpRequestHandler {
   return async (request) => {
     // DNS rebinding protection — a custom domain resolving to 127.0.0.1 would
@@ -154,7 +162,8 @@ async function serveAsset(
       "Content-Type": asset.contentType,
       ...(asset.contentType.includes("text/html") && { "Content-Security-Policy": CSP_HEADER }),
     },
-    body: Buffer.from(asset.body),
+    // A view over the cached bytes, not a copy — the server only reads it.
+    body: Buffer.from(asset.body.buffer, asset.body.byteOffset, asset.body.byteLength),
   };
 }
 
@@ -163,14 +172,9 @@ function forbidden(message: string): HttpResponse {
 }
 
 function corsHeaders(origin: string | undefined, allowedOrigins: string[]): Record<string, string> {
-  const allowedOrigin = origin && allowedOrigins.includes(origin) ? origin : allowedOrigins[0]!;
-  return {
-    "Access-Control-Allow-Origin": allowedOrigin,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-Agentcore-Local, Mcp-Session-Id",
-    "Access-Control-Expose-Headers": "Mcp-Session-Id, x-session-id",
-    Vary: "Origin",
-  };
+  // A present origin already passed the allowlist check above, so echo it back;
+  // otherwise fall back to the primary allowed origin.
+  return { "Access-Control-Allow-Origin": origin || allowedOrigins[0]!, ...STATIC_CORS_HEADERS };
 }
 
 function withHeaders(response: HttpResponse, headers: Record<string, string>): HttpResponse {
