@@ -198,7 +198,8 @@ export async function performCdkOperation(
   // than one stack, so a missing result is not "no match": the Toolkit skips a
   // stack whose template has no resources, and *deletes* it if it already
   // exists. Both return normally, so reporting empty outputs here would call a
-  // deletion a successful deploy.
+  // deletion a successful deploy. assertStackHasResources rejects the known way
+  // into that state before we get here; this stays as the backstop for any other.
   if (result.stacks.length !== 1) {
     throw new AgentCoreCLIError(
       `The CDK Toolkit deployed no stack for '${operation.stackArtifactId}'. ` +

@@ -11,7 +11,7 @@ import {
 } from "../../../io";
 import type { Logger } from "../../../logging";
 import type { DeployBackendInput, ProjectBackend } from "./types";
-import { stackArtifactIdForTarget } from "./cdk/assembly";
+import { assertStackHasResources, stackArtifactForTarget } from "./cdk/assembly";
 import { readDeployedState, updateTargetState } from "./cdk/deployedState";
 import {
   probeBootstrap,
@@ -108,11 +108,13 @@ export class CdkBackend implements ProjectBackend {
 
     yield* this.build(project);
     const assemblyDirectory = this.assemblyDirectory(project);
-    const stackArtifactId = await stackArtifactIdForTarget(
-      this.json,
-      assemblyDirectory,
-      target.name,
-    );
+    const artifact = await stackArtifactForTarget(this.json, assemblyDirectory, target.name, {
+      account: target.account,
+      region: target.region,
+    });
+    // Checked here rather than after the fact: the Toolkit deletes an existing
+    // stack whose new template has no resources, and returns as if it deployed.
+    await assertStackHasResources(this.json, assemblyDirectory, artifact);
     const options = { assemblyDirectory, credentials, region: target.region };
 
     const bootstrap = await this.bootstrap(target.region, credentials);
@@ -143,15 +145,18 @@ export class CdkBackend implements ProjectBackend {
       }
     }
 
-    yield { message: `Deploying ${stackArtifactId}` };
-    const { outputs, stackArn } = await this.cdk({ kind: "deploy", stackArtifactId }, options);
+    yield { message: `Deploying ${artifact.id}` };
+    const { outputs, stackArn } = await this.cdk(
+      { kind: "deploy", stackArtifactId: artifact.id },
+      options,
+    );
 
     // A successful deploy always has a stack ARN (CDK's DeployedStack requires
     // it). Its absence means a malformed result; fail loudly rather than return
     // success without recording the binding later commands need.
     if (!stackArn) {
       throw new MalformedServiceResponseError(
-        `The CDK Toolkit reported a successful deploy of '${stackArtifactId}' without a stack ARN.`,
+        `The CDK Toolkit reported a successful deploy of '${artifact.id}' without a stack ARN.`,
       );
     }
 
