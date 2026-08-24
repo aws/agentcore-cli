@@ -2,6 +2,7 @@ import { Router } from "../../router";
 import { checkPort, type AppIO } from "../../io";
 import { CodeZipDevRunner } from "../../core/dev/codezip";
 import { ContainerDevRunner } from "../../core/dev/container";
+import { startOtelCollector } from "../../core/dev/otel/collector";
 import { withProject } from "../../middleware";
 import { createCreateProjectHandler } from "./create";
 import { createRemoveProjectHandler } from "./remove";
@@ -40,10 +41,15 @@ export function createProjectHandler(config: ProjectHandlerConfig): Router {
         },
         loadDevEnvironment,
         checkPort,
+        startTraceCollector: startOtelCollector,
       }),
     ),
   );
-  project.handler(createDeployProjectHandler());
+  project.handler(
+    withProject({ projectManager: config.projectManager })(
+      createDeployProjectHandler({ projectManager: config.projectManager, io: config.io }),
+    ),
+  );
   project.handler(createStatusProjectHandler());
   // withProject wraps only the commands that require an existing project, so
   // `create` (which refuses to nest inside one) stays unaffected.

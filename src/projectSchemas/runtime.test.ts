@@ -11,6 +11,7 @@ const codeZipAgent = {
   build: "CodeZip" as const,
   entrypoint: "main.py",
   codeLocation: "./agent",
+  runtimeVersion: "PYTHON_3_12" as const,
 };
 const containerAgent = {
   name: "agent",
@@ -71,6 +72,15 @@ describe("runtime custom validation", () => {
         },
       }).success,
     ).toBe(false);
+  });
+  it("requires runtimeVersion for CodeZip builds only", () => {
+    const { runtimeVersion: _omitted, ...withoutVersion } = codeZipAgent;
+    const result = ProjectRuntimeSchema.safeParse(withoutVersion);
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(["runtimeVersion"]);
+
+    // Container builds take their version from the image.
+    expect(ProjectRuntimeSchema.safeParse(containerAgent).success).toBe(true);
   });
   it("restricts container-only fields to container builds", () => {
     for (const field of [

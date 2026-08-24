@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { delimiter, join, relative } from "node:path";
 import { InputValidationError } from "../../errors";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import type { DevEvent, DevServerInput } from "../../handlers/project/dev/types";
-import type { ProcessEvent, ProcessStreamer, StreamProcessOptions } from "../../io";
+import type { ProcessEvent, ProcessRunner, ProcessStreamer, StreamProcessOptions } from "../../io";
 import { CodeZipDevRunner } from "./codezip";
 
 type ProcessCall = {
@@ -54,15 +54,26 @@ async function projectRoot(withNodeModules = false): Promise<string> {
   return root;
 }
 
-function harness(output: ProcessEvent[] = []) {
+function harness(
+  output: ProcessEvent[] = [],
+  site: { dir?: string; fail?: boolean; noise?: string[] } = {},
+) {
   const calls: ProcessCall[] = [];
+  const discoverCalls: string[][] = [];
   const fakeStreamProcess: ProcessStreamer = async function* (command, options) {
     calls.push({ command, options });
     yield* output;
   };
+  const fakeRunProcess: ProcessRunner = async (command, options) => {
+    discoverCalls.push(command);
+    if (site.fail) throw new Error("discovery failed");
+    for (const line of site.noise ?? []) options.onOutput?.(`${line}\n`);
+    if (site.dir !== undefined) options.onOutput?.(`AGENTCORE_OTEL_SITECUSTOMIZE=${site.dir}\n`);
+  };
   return {
     calls,
-    runner: new CodeZipDevRunner({ streamProcess: fakeStreamProcess }),
+    discoverCalls,
+    runner: new CodeZipDevRunner({ streamProcess: fakeStreamProcess, runProcess: fakeRunProcess }),
   };
 }
 
@@ -191,5 +202,84 @@ describe("CodeZipDevRunner", () => {
     expect(calls.map(({ command }) => command)).toEqual([
       ["npm", "exec", "--", "tsx", "watch", "index.js"],
     ]);
+  });
+});
+
+describe("CodeZipDevRunner OTEL instrumentation", () => {
+  async function sitecustomizeDir(): Promise<string> {
+    const directory = await mkdtemp(join(tmpdir(), "otel-site-"));
+    tempDirectories.push(directory);
+    await writeFile(join(directory, "sitecustomize.py"), "");
+    return directory;
+  }
+
+  function otelInput(root: string, extraEnv: Record<string, string> = {}): DevServerInput {
+    const base = input(root, runtime());
+    return {
+      ...base,
+      env: { ...base.env, OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318", ...extraEnv },
+    };
+  }
+
+  test("prepends the sitecustomize directory to PYTHONPATH when instrumentation is installed", async () => {
+    const root = await projectRoot();
+    const directory = await sitecustomizeDir();
+    const { calls, discoverCalls, runner } = harness([], { dir: directory });
+
+    await collect(runner.run(otelInput(root)));
+
+    expect(discoverCalls[0]?.slice(0, 4)).toEqual(["uv", "run", "python", "-c"]);
+    expect(calls[0]?.options.env?.PYTHONPATH).toBe(directory);
+  });
+
+  test("reads the marked path even when uv writes progress to the merged output", async () => {
+    const root = await projectRoot();
+    const directory = await sitecustomizeDir();
+    const { calls, runner } = harness([], {
+      dir: directory,
+      noise: ["Resolved 12 packages", "Installed 12 packages"],
+    });
+
+    await collect(runner.run(otelInput(root)));
+
+    expect(calls[0]?.options.env?.PYTHONPATH).toBe(directory);
+  });
+
+  test("preserves an existing PYTHONPATH", async () => {
+    const root = await projectRoot();
+    const directory = await sitecustomizeDir();
+    const { calls, runner } = harness([], { dir: directory });
+
+    await collect(runner.run(otelInput(root, { PYTHONPATH: "/existing" })));
+
+    expect(calls[0]?.options.env?.PYTHONPATH).toBe(`${directory}${delimiter}/existing`);
+  });
+
+  test("does not run discovery without an OTEL endpoint or for Node entrypoints", async () => {
+    const root = await projectRoot(true);
+    const { discoverCalls, runner } = harness();
+
+    await collect(runner.run(input(root, runtime())));
+    await collect(runner.run({ ...otelInput(root), runtime: runtime({ entrypoint: "index.js" }) }));
+
+    expect(discoverCalls).toEqual([]);
+  });
+
+  test.each([
+    ["discovery failure", { fail: true }],
+    ["missing sitecustomize.py", { dir: "/nonexistent" }],
+  ] as const)("warns and starts untraced on %s", async (_case, site) => {
+    const root = await projectRoot();
+    const { calls, discoverCalls, runner } = harness([], site);
+
+    const events = await collect(runner.run(otelInput(root)));
+
+    expect(discoverCalls).toHaveLength(1);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.options.env?.PYTHONPATH).toBeUndefined();
+    expect(events).toContainEqual({
+      type: "status",
+      message: expect.stringContaining("traces will not be collected"),
+    });
   });
 });

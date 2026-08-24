@@ -55,6 +55,8 @@ export type RunProcessOptions = {
   cwd: string;
   /** Receives each chunk of combined stdout/stderr as it streams (e.g. into a logger). */
   onOutput?: (chunk: string) => void;
+  /** Terminates the process and rejects when aborted, so callers can cancel a slow run. */
+  signal?: AbortSignal;
 };
 
 /** Runs a subprocess to completion. Injectable so tests never spawn real processes. */
@@ -81,8 +83,12 @@ export type ProcessStreamer = (
  * Runs a subprocess, streaming combined stdout/stderr to `onOutput` while also
  * capturing it; rejects with {@link ProcessFailedError} on a non-zero exit.
  */
-export const runProcess: ProcessRunner = ([executable, ...args], { cwd, onOutput }) => {
+export const runProcess: ProcessRunner = ([executable, ...args], { cwd, onOutput, signal }) => {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortReason(signal));
+      return;
+    }
     const child = spawn(executable!, args, {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
@@ -98,11 +104,17 @@ export const runProcess: ProcessRunner = ([executable, ...args], { cwd, onOutput
     child.stdout.on("data", collect);
     child.stderr.on("data", collect);
 
+    const onAbort = () => killTree(child, "SIGTERM");
+    signal?.addEventListener("abort", onAbort, { once: true });
+
     child.on("error", (error) => {
+      signal?.removeEventListener("abort", onAbort);
       reject(new ProcessFailedError([executable!, ...args], cwd, null, String(error)));
     });
     child.on("close", (exitCode) => {
-      if (exitCode === 0) resolve();
+      signal?.removeEventListener("abort", onAbort);
+      if (signal?.aborted) reject(abortReason(signal));
+      else if (exitCode === 0) resolve();
       else reject(new ProcessFailedError([executable!, ...args], cwd, exitCode, output));
     });
   });

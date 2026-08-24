@@ -1,4 +1,6 @@
+import { join } from "node:path";
 import z from "zod";
+import { rewriteOtelEndpointForContainer } from "../../../core/dev/otel/collector";
 import { resolveDevPort } from "../../../core/dev/port";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
@@ -12,14 +14,24 @@ import { JsonRendererKey, type JsonRenderer } from "../../../tui";
 import { JsonKey, RegionKey } from "../../keys";
 import type { Project } from "../types";
 import type { DevEnvironmentLoader } from "./environment";
-import type { DevEvent, DevRunner } from "./types";
+import type { DevEvent, DevRunner, DevTraceCollector, DevTraceCollectorStarter } from "./types";
 
 export type DevProjectHandlerConfig = {
   io: AppIO;
   runners: { CodeZip: DevRunner; Container: DevRunner };
   loadDevEnvironment: DevEnvironmentLoader;
   checkPort: PortChecker;
+  startTraceCollector: DevTraceCollectorStarter;
 };
+
+/** Env for a spawned agent so its OTEL SDK reports to the collector as this runtime. */
+function otelEnvForRuntime(
+  collector: DevTraceCollector,
+  runtime: ProjectRuntime,
+): Record<string, string> {
+  const env = { ...collector.envVars, OTEL_SERVICE_NAME: runtime.name };
+  return runtime.build === "Container" ? rewriteOtelEndpointForContainer(env) : env;
+}
 
 function selectRuntime(project: Project, name?: string): ProjectRuntime {
   if (project.spec.runtimes.length === 0) {
@@ -64,6 +76,7 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
         "port for the development server",
         z.coerce.number().int().min(1).max(65535).optional(),
       ),
+      flag("traces", "disable local OTEL trace collection", z.boolean().default(true)),
     ],
     handle: async (ctx, flags) => {
       const controller = new AbortController();
@@ -76,6 +89,7 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
 
       const signals = ["SIGINT", "SIGTERM"] as const;
       for (const signal of signals) process.on(signal, interrupt);
+      let collector: DevTraceCollector | undefined;
       try {
         const project = ctx.require(ProjectKey);
         const runtime = selectRuntime(project, flags.agent);
@@ -103,12 +117,49 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
         });
         controller.signal.throwIfAborted();
 
+        let otelEnv: Record<string, string> = {};
+        if (flags.traces && (runtime.instrumentation?.enableOtel ?? true)) {
+          const tracesDirectory = join(project.rootPath, "agentcore", ".cli", "traces", "otlp");
+          let tracePersistErrorReported = false;
+          collector = await config.startTraceCollector({
+            tracesDirectory,
+            // A container reaches the collector over the host bridge, which a
+            // 127.0.0.1 bind refuses, so the container path binds all interfaces.
+            host: runtime.build === "Container" ? "0.0.0.0" : "127.0.0.1",
+            // Persistence can fail after startup (disk, permissions). Warn once —
+            // exports are still acked, so without this the loss would be silent.
+            onError: (error) => {
+              if (tracePersistErrorReported) return;
+              tracePersistErrorReported = true;
+              const detail = error instanceof Error ? error.message : String(error);
+              renderEvent(
+                config.io,
+                {
+                  type: "status",
+                  message: `Warning: failed to persist traces to ${tracesDirectory} (${detail}); collected traces may be incomplete.`,
+                },
+                json,
+              );
+            },
+          });
+          otelEnv = otelEnvForRuntime(collector, runtime);
+          renderEvent(
+            config.io,
+            {
+              type: "status",
+              message: `OTEL collector listening on port ${collector.port}; traces persist to ${tracesDirectory}.`,
+            },
+            json,
+          );
+        }
+        controller.signal.throwIfAborted();
+
         const runner = config.runners[runtime.build];
         for await (const event of runner.run({
           runtime,
           projectRoot: project.rootPath,
           port: devPort.port,
-          env,
+          env: { ...env, ...otelEnv },
           signal: controller.signal,
         })) {
           renderEvent(config.io, event, json);
@@ -118,6 +169,9 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
         throw error;
       } finally {
         for (const signal of signals) process.removeListener(signal, interrupt);
+        // Close only after the runner returns, which is after the child's own
+        // shutdown grace, so the agent's final spans still reach the collector.
+        await collector?.close();
       }
     },
   });

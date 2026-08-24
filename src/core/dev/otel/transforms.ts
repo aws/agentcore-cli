@@ -28,7 +28,7 @@ export function extractTraceMeta(
     if (service) services.add(service);
     for (const scopeSpan of resourceSpan.scopeSpans ?? []) {
       for (const span of scopeSpan.spans ?? []) {
-        meta.traceId ??= hexFromB64OrString(span.traceId) || undefined;
+        meta.traceId ??= hexFromBase64OrHex(span.traceId) || undefined;
         widenTimeBounds(meta, nanoToMs(span.startTimeUnixNano));
         widenTimeBounds(meta, nanoToMs(span.endTimeUnixNano));
         meta.sessionId ??=
@@ -43,7 +43,7 @@ export function extractTraceMeta(
     if (service) services.add(service);
     for (const scopeLog of resourceLog.scopeLogs ?? []) {
       for (const record of scopeLog.logRecords ?? []) {
-        meta.traceId ??= hexFromB64OrString(record.traceId) || undefined;
+        meta.traceId ??= hexFromBase64OrHex(record.traceId) || undefined;
         widenTimeBounds(
           meta,
           nanoToMs(record.timeUnixNano) || nanoToMs(record.observedTimeUnixNano),
@@ -79,7 +79,7 @@ export function partitionByTraceId(payload: OtlpPayload): Map<string, OtlpPayloa
 
   for (const resourceSpan of payload.resourceSpans ?? []) {
     for (const scopeSpan of resourceSpan.scopeSpans ?? []) {
-      const byTrace = groupBy(scopeSpan.spans ?? [], (span) => hexFromB64OrString(span.traceId));
+      const byTrace = groupBy(scopeSpan.spans ?? [], (span) => hexFromBase64OrHex(span.traceId));
       for (const [traceId, spans] of byTrace) {
         (partition(traceId).resourceSpans ??= []).push({
           resource: resourceSpan.resource,
@@ -92,7 +92,7 @@ export function partitionByTraceId(payload: OtlpPayload): Map<string, OtlpPayloa
   for (const resourceLog of payload.resourceLogs ?? []) {
     for (const scopeLog of resourceLog.scopeLogs ?? []) {
       const byTrace = groupBy(scopeLog.logRecords ?? [], (record) =>
-        hexFromB64OrString(record.traceId),
+        hexFromBase64OrHex(record.traceId),
       );
       for (const [traceId, logRecords] of byTrace) {
         (partition(traceId).resourceLogs ??= []).push({
@@ -137,9 +137,9 @@ export function buildTraceDetail(
           spans: scopeSpan.spans
             ?.map((span) => ({
               ...span,
-              traceId: hexFromB64OrString(span.traceId),
-              spanId: hexFromB64OrString(span.spanId),
-              parentSpanId: hexFromB64OrString(span.parentSpanId),
+              traceId: hexFromBase64OrHex(span.traceId),
+              spanId: hexFromBase64OrHex(span.spanId),
+              parentSpanId: hexFromBase64OrHex(span.parentSpanId),
               attributes: flattenAttributes(span.attributes),
             }))
             .filter((span) => isMeaningfulSpan(span)),
@@ -157,8 +157,8 @@ export function buildTraceDetail(
         scope: scopeLog.scope,
         logRecords: scopeLog.logRecords?.map((record) => ({
           ...record,
-          traceId: hexFromB64OrString(record.traceId),
-          spanId: hexFromB64OrString(record.spanId),
+          traceId: hexFromBase64OrHex(record.traceId),
+          spanId: hexFromBase64OrHex(record.spanId),
           body: record.body === undefined ? undefined : extractAnyValue(record.body),
           attributes: flattenAttributes(record.attributes),
         })),
@@ -224,7 +224,7 @@ export function nanoToMs(nano: string | undefined): number {
  * Normalize a trace/span id that may be base64 (protobuf JSON conversion) or
  * already hex (JSON ingest) into lowercase hex.
  */
-export function hexFromB64OrString(value: string | undefined): string {
+export function hexFromBase64OrHex(value: string | undefined): string {
   if (!value) return "";
   if (/^[0-9a-f]+$/i.test(value) && (value.length === 32 || value.length === 16))
     return value.toLowerCase();

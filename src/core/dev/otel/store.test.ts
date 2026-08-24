@@ -70,6 +70,16 @@ describe("TraceStore", () => {
     expect(traces[0]!.spanCount).toBe("2");
   });
 
+  test("spanCount reflects the rendered waterfall, not filtered transport noise", async () => {
+    const trace = payload(TRACE_A);
+    const spans = trace.resourceSpans![0]!.scopeSpans![0]!.spans!;
+    // 1 meaningful agent span + 4 "http send" spans the inspector filters out.
+    for (let i = 0; i < 4; i++) spans.push({ ...spans[0]!, name: "GET / http send" });
+    await store.append(trace);
+
+    expect((await store.list())[0]!.spanCount).toBe("1");
+  });
+
   test("payloads without a trace id are dropped", async () => {
     await store.append({ resourceSpans: [] });
     expect(await store.list()).toEqual([]);

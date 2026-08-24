@@ -67,8 +67,9 @@ const UPDATE_RESPONSE = {
 async function run(
   args: string[],
   core = new TestCoreClient(),
+  stdin?: string,
 ): Promise<{ core: TestCoreClient; stdout: string }> {
-  const io = testIO();
+  const io = testIO({ stdin });
   const root = createRootHandler(core, {
     io: io.io,
     logger: createSilentLogger(),
@@ -287,6 +288,23 @@ describe("oauth2-credential-provider flag validation", () => {
       ],
       /requires one of --discovery-url or --authorization-server-metadata/,
     ],
+    [
+      "create: --client-secret with an inline value",
+      [
+        "identity",
+        "oauth2-credential-provider",
+        "create",
+        "--name",
+        "x",
+        "--vendor",
+        "CustomOauth2",
+        "--discovery-url",
+        "https://example.com",
+        "--client-secret",
+        "s-inline",
+      ],
+      /file:\/\//,
+    ],
   ] as const)("enforces vendor/config-mode rules for `%s`", async (_label, args, message) => {
     expect(run([...args])).rejects.toThrow(message);
   });
@@ -477,9 +495,10 @@ describe("OAuth2 update handler", () => {
         PROVIDER_NAME,
         ...vendorArgs,
         "--client-secret",
-        "updated-secret",
+        "-",
       ],
       core,
+      "updated-secret",
     );
 
     const updateCall = core.identity.calls[1];

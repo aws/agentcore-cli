@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import type z from "zod";
+import z from "zod";
 
 import { DeserializationError } from "../errors";
 import type { Logger } from "../logging";
@@ -33,7 +33,7 @@ export class FsReadWriteJson implements ReadWriteJson {
       this.logger
         .child({ filePath, errorName: error.name, errorMessage: error.message })
         .error(`failed to parse json file`);
-      throw new DeserializationError(filePath, { cause: e });
+      throw new DeserializationError(filePath, { cause: e, details: error.message });
     }
   }
 
@@ -52,7 +52,10 @@ export class FsReadWriteJson implements ReadWriteJson {
           errorMessage: parseResult.error.message,
         })
         .error(`failed to validate parsed json file`);
-      throw new DeserializationError(filePath, { cause: parseResult.error });
+      throw new DeserializationError(filePath, {
+        cause: parseResult.error,
+        details: z.prettifyError(parseResult.error),
+      });
     }
 
     return parseResult.data;

@@ -4,16 +4,19 @@ import type { Context } from "./context";
 import type { Flag, GlobalFlag } from "./handler";
 import { coerce, formatZodError, inspect } from "./schema";
 
-// toOption builds a Commander Option from a flag's schema. Booleans become value-less
-// toggles; everything else takes a value (`<name>` / variadic `<name...>`). A
-// required, non-boolean flag is made mandatory; defaults are forwarded.
+// toOption builds a Commander Option from a flag's schema. A boolean that defaults
+// to true is exposed as `--no-<name>`: the behavior is already on, so the only useful
+// action is turning it off, which Commander stores under the positive name (e.g.
+// `--no-traces` sets `traces=false`). A boolean that defaults off stays `--<name>`.
+// Everything else takes a value (`<name>` / variadic `<name...>`); a required
+// non-boolean flag is made mandatory; defaults are forwarded.
 export function toOption(flag: Flag): Option {
   const info = inspect(flag.schema);
   const long = `--${flag.name}`;
 
   let token: string;
   if (info.boolean) {
-    token = long;
+    token = info.hasDefault && info.defaultValue === true ? `--no-${flag.name}` : long;
   } else if (info.variadic) {
     token = `${long} <${flag.name}...>`;
   } else {

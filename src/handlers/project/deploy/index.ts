@@ -1,11 +1,46 @@
-import { createHandler } from "../../../router";
-import { NotImplementedError } from "../../../errors";
+import z from "zod";
+import type { AppIO } from "../../../io";
+import { createHandler, flag, ProjectKey } from "../../../router";
+import { JsonRendererKey } from "../../../tui";
+import { JsonKey } from "../../keys";
+import type { ProjectManager } from "../types";
 
-export const createDeployProjectHandler = () =>
+type DeployProjectHandlerConfig = {
+  projectManager: ProjectManager;
+  io: AppIO;
+};
+
+export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =>
   createHandler({
     name: "deploy",
     description: "deploy the project to AWS",
-    handle: async () => {
-      throw new NotImplementedError("agentcore project deploy is not implemented yet");
+    flags: [
+      flag("target", "name of the aws-targets.json entry to deploy", z.string().default("default")),
+    ],
+    handle: async (ctx, flags) => {
+      // withProject has already resolved the enclosing project.
+      const project = ctx.require(ProjectKey);
+
+      // Progress goes to stderr, keeping stdout for machine output. Driven by
+      // hand rather than `for await` because the outputs we render below are the
+      // generator's return value, which `for await` discards.
+      const deployment = config.projectManager.deploy(project, { target: flags.target });
+      let next = await deployment.next();
+      while (!next.done) {
+        config.io.stderr.write(`${next.value.message}\n`);
+        next = await deployment.next();
+      }
+      const result = next.value;
+
+      config.io.stderr.write(`Deployed project '${project.name}' to target '${flags.target}'\n`);
+      if (ctx.require(JsonKey)) {
+        ctx.require(JsonRendererKey).renderJson(result);
+        return;
+      }
+      for (const [key, value] of Object.entries(result.outputs).sort(([a], [b]) =>
+        a.localeCompare(b),
+      )) {
+        config.io.stdout.write(`${key}: ${value}\n`);
+      }
     },
   });

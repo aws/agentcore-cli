@@ -207,6 +207,8 @@ describe("ContainerDevRunner", () => {
       containerName(root),
       "-p",
       `127.0.0.1:3000:${containerPort}`,
+      "--add-host",
+      "host.docker.internal:host-gateway",
       "--env-file",
       run.envFile!.path,
       imageTag(root),

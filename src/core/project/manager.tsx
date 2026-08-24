@@ -4,6 +4,8 @@ import { join, relative } from "node:path";
 import type {
   AddResourceInput,
   CreateProjectInput,
+  DeployProjectInput,
+  DeployResult,
   ResolveProjectInput,
   Project,
   ProjectManager,
@@ -20,6 +22,7 @@ import {
   type ReadWriteJson,
 } from "../../io";
 import { defaultSource, type AssetSource } from "./source";
+import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
 import { createHarnessTreeFromSpec, createProjectTreeFromTemplate, TEMPLATES } from "./templates";
 import { ProjectSpecSchema, type ManagedBy } from "../../projectSchemas/project";
 import { enclosingProjectRoot } from "./fsUtils";
@@ -33,6 +36,9 @@ import type { HarnessSpecSchema } from "../../projectSchemas/harness";
 import z from "zod";
 import { CdkBackend } from "./backends/cdk";
 import type { ProjectBackend } from "./backends/types";
+import { AwsDeploymentTargetsSchema } from "../../projectSchemas/aws-targets";
+
+const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
 type ProjectManagerConfig = {
   logger: Logger;
@@ -151,8 +157,11 @@ export class FsProjectManager implements ProjectManager {
         `a ${resourceType} with name '${resourceConfig.name}' already exists`,
       );
 
+    // Widened: arms push their own shapes; the whole-spec safeParse below validates.
     const newResources: unknown[] = [...existingResources];
     const scaffoldedPaths: string[] = [];
+    // Non-file work that a failed spec write must also reverse.
+    let envFile: EnvLocalFile | undefined;
 
     switch (resourceType) {
       case "harness": {
@@ -172,6 +181,22 @@ export class FsProjectManager implements ProjectManager {
           "runtime case not yet implemented in FsProjectManager.addResource",
         );
       }
+      case "credential": {
+        // No file scaffolding; the secret placeholder is staged into .env.local
+        // and reversed with the spec write if that commit fails.
+        newResources.push(input.resourceConfig);
+        if (input.envEntries?.length) {
+          envFile = new EnvLocalFile(project.rootPath);
+          yield { message: `Updating secrets file at '${envFile.path}'` };
+          const { skipped } = await envFile.insertIfNew(input.envEntries);
+          for (const key of skipped) {
+            yield {
+              message: `'${key}' already exists in ${ENV_LOCAL_RELATIVE_PATH}; left unchanged`,
+            };
+          }
+        }
+        break;
+      }
       case "config-bundle":
       case "online-eval":
       case "online-insight":
@@ -188,27 +213,23 @@ export class FsProjectManager implements ProjectManager {
     yield { message: `Updating project spec file at '${agentCoreSpecPath}'` };
 
     const newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
-    const newSpecParseResult = ProjectSpecSchema.safeParse(newSpec);
 
-    if (!newSpecParseResult.success)
-      throw new InputValidationError(z.prettifyError(newSpecParseResult.error), {
-        cause: newSpecParseResult.error,
-      });
-
-    // rollback scaffolding changes on failed config writes to prevent bad state.
+    // Validate and write inside the same boundary so a rejected spec rolls back
+    // staged side effects (.env.local, scaffolded files) rather than leaving them.
+    let newProjectSpec: z.infer<typeof ProjectSpecSchema>;
     try {
-      const newProjectSpec = await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
-
-      return {
-        ...project,
-        spec: newProjectSpec,
-      };
+      const newSpecParseResult = ProjectSpecSchema.safeParse(newSpec);
+      if (!newSpecParseResult.success)
+        throw new InputValidationError(z.prettifyError(newSpecParseResult.error), {
+          cause: newSpecParseResult.error,
+        });
+      newProjectSpec = await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
     } catch (err) {
       this.logger.warn(
-        `failed to update ${agentCoreSpecPath}; attempting best-effort cleanup of scaffolded files`,
+        `could not commit the spec update to ${agentCoreSpecPath}; attempting best-effort cleanup of staged changes`,
       );
-      await Promise.all(
-        scaffoldedPaths.map((p) =>
+      await Promise.all([
+        ...scaffoldedPaths.map((p) =>
           rm(p, { recursive: true, force: true }).catch((e) => {
             const error = AgentCoreCLIError.fromError(e);
             this.logger
@@ -216,9 +237,20 @@ export class FsProjectManager implements ProjectManager {
               .warn(`failed to clean up ${p}`);
           }),
         ),
-      );
+        envFile?.rollback().catch((e) => {
+          const error = AgentCoreCLIError.fromError(e);
+          this.logger
+            .child({ errorName: error.name, errorMessage: error.message })
+            .warn(`failed to roll back ${ENV_LOCAL_RELATIVE_PATH}`);
+        }),
+      ]);
       throw err;
     }
+
+    return {
+      ...project,
+      spec: newProjectSpec,
+    };
   }
 
   private getProjectSpecPath(project: Project): string {
@@ -283,6 +315,41 @@ export class FsProjectManager implements ProjectManager {
     yield* this.backendFor(project).build(project);
   }
 
+  // Resolves the named target from aws-targets.json before handing off, so the
+  // backend receives a fully resolved account and region and never has to know
+  // how targets are stored. The backend owns everything after that point.
+  public async *deploy(
+    project: Project,
+    input: DeployProjectInput,
+  ): AsyncGenerator<ProjectEvent, DeployResult> {
+    const targetsPath = join(project.rootPath, "agentcore", "aws-targets.json");
+    if (!existsSync(targetsPath)) {
+      throw new ProjectStateError(
+        `No deployment targets are configured for project '${project.name}'. ` +
+          `Add ${targetsPath}, for example:\n\n${TARGETS_EXAMPLE}`,
+      );
+    }
+
+    const targets = await this.json.read(targetsPath, AwsDeploymentTargetsSchema);
+
+    if (targets.length === 0) {
+      throw new ProjectStateError(
+        `No deployment targets are configured for project '${project.name}'. ` +
+          `Add at least one to ${targetsPath}, for example:\n\n${TARGETS_EXAMPLE}`,
+      );
+    }
+
+    const target = targets.find((candidate) => candidate.name === input.target);
+    if (!target) {
+      throw new ProjectStateError(
+        `Project '${project.name}' has no deployment target named '${input.target}'. ` +
+          `${targetsPath} defines: ${targets.map(({ name }) => name).join(", ")}.`,
+      );
+    }
+
+    return yield* this.backendFor(project).deploy(project, { target });
+  }
+
   private backendFor(project: Project): ProjectBackend {
     const backend = this.backends[project.spec.managedBy];
     if (!backend) {
@@ -308,6 +375,8 @@ function toProjectSpecKey(resourceType: ProjectResource) {
       return "harnesses";
     case "runtime":
       return "runtimes";
+    case "credential":
+      return "credentials";
     case "config-bundle":
       return "configBundles";
     case "online-eval":

@@ -32,8 +32,8 @@ function createFixtureCore(): CoreClient {
   });
 }
 
-async function run(args: string[]): Promise<string> {
-  const io = testIO();
+async function run(args: string[], stdin?: string): Promise<string> {
+  const io = testIO({ stdin });
   const root = createRootHandler(createFixtureCore(), {
     io: io.io,
     logger: createSilentLogger(),
@@ -46,41 +46,47 @@ async function run(args: string[]): Promise<string> {
 
 describe("oauth2-credential-provider CRUDL", () => {
   test("creates an OAuth2 credential provider", async () => {
-    const stdout = await run([
-      "identity",
-      "oauth2-credential-provider",
-      "create",
-      "--name",
-      FIXTURE_PROVIDER_NAME,
-      "--vendor",
-      "CustomOauth2",
-      "--client-id",
-      "fixture-client-id",
-      "--discovery-url",
-      "https://example.com/.well-known/openid-configuration",
-      "--client-secret",
+    const stdout = await run(
+      [
+        "identity",
+        "oauth2-credential-provider",
+        "create",
+        "--name",
+        FIXTURE_PROVIDER_NAME,
+        "--vendor",
+        "CustomOauth2",
+        "--client-id",
+        "fixture-client-id",
+        "--discovery-url",
+        "https://example.com/.well-known/openid-configuration",
+        "--client-secret",
+        "-",
+      ],
       "fixture-secret",
-    ]);
+    );
 
     matchGolden(FIXTURES, "create.golden.json", stdout);
   });
 
   test("creates a second OAuth2 credential provider for pagination", async () => {
-    const stdout = await run([
-      "identity",
-      "oauth2-credential-provider",
-      "create",
-      "--name",
-      FIXTURE_PROVIDER_NAME_2,
-      "--vendor",
-      "CustomOauth2",
-      "--client-id",
-      "fixture-client-id-2",
-      "--discovery-url",
-      "https://example.com/.well-known/openid-configuration",
-      "--client-secret",
+    const stdout = await run(
+      [
+        "identity",
+        "oauth2-credential-provider",
+        "create",
+        "--name",
+        FIXTURE_PROVIDER_NAME_2,
+        "--vendor",
+        "CustomOauth2",
+        "--client-id",
+        "fixture-client-id-2",
+        "--discovery-url",
+        "https://example.com/.well-known/openid-configuration",
+        "--client-secret",
+        "-",
+      ],
       "fixture-secret-2",
-    ]);
+    );
 
     matchGolden(FIXTURES, "create-2.golden.json", stdout);
   });
@@ -133,21 +139,24 @@ describe("oauth2-credential-provider CRUDL", () => {
   });
 
   test("updates an OAuth2 credential provider", async () => {
-    const stdout = await run([
-      "identity",
-      "oauth2-credential-provider",
-      "update",
-      "--name",
-      FIXTURE_PROVIDER_NAME,
-      "--vendor",
-      "CustomOauth2",
-      "--client-id",
-      "updated-client-id",
-      "--discovery-url",
-      "https://example.com/.well-known/openid-configuration",
-      "--client-secret",
+    const stdout = await run(
+      [
+        "identity",
+        "oauth2-credential-provider",
+        "update",
+        "--name",
+        FIXTURE_PROVIDER_NAME,
+        "--vendor",
+        "CustomOauth2",
+        "--client-id",
+        "updated-client-id",
+        "--discovery-url",
+        "https://example.com/.well-known/openid-configuration",
+        "--client-secret",
+        "-",
+      ],
       "updated-secret",
-    ]);
+    );
 
     matchGolden(FIXTURES, "update.golden.json", stdout);
     expect(JSON.parse(stdout).name).toBe(FIXTURE_PROVIDER_NAME);

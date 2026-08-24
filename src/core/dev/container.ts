@@ -183,6 +183,11 @@ export class ContainerDevRunner implements DevRunner {
       containerName,
       "-p",
       `127.0.0.1:${input.port}:${containerPort}`,
+      // Docker Engine on Linux does not define host.docker.internal (Desktop,
+      // Podman, and Finch do); the mapping makes the OTLP endpoint rewrite
+      // resolve everywhere and is harmless where the name already exists.
+      "--add-host",
+      "host.docker.internal:host-gateway",
       ...awsMount,
       "--env-file",
       envFile,
