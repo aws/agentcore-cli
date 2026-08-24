@@ -5,66 +5,53 @@ import { parseJsonFlag, parseTags } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
 import { type EnvVar, BuildTypeSchema } from "../../../../projectSchemas/runtime";
 import { RuntimeAuthorizerTypeSchema } from "../../../../projectSchemas/auth";
-import {
-  NetworkModeSchema,
-  ProtocolModeSchema,
-  RuntimeVersionSchema,
-} from "../../../../projectSchemas/constants";
+import { NetworkModeSchema, ProtocolModeSchema } from "../../../../projectSchemas/constants";
 import { SourceResolver } from "../../../../io";
-import { RUNTIME_TEMPLATES } from "../../types";
 import {
-  runtimeMemoryConfigSchema,
-  runtimeModelProviderSchema,
-  RuntimeResourceConfigSchema,
-} from "./types";
+  RUNTIME_TEMPLATE_SHORTCUT_NAMES,
+  RUNTIME_TEMPLATE_SHORTCUTS,
+  ScaffoldRuntimeInputSchema,
+} from "../../types";
+import { RuntimeResourceConfigSchema } from "./types";
 
 export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "runtime",
-    description:
-      "adds a runtime to the current project either from a template or from existing local code",
+    description: "adds a runtime to the current project",
     flags: [
       flag("name", "the name of the runtime", z.string().optional()),
       flag("description", "an optional description of the runtime", z.string().optional()),
-      flag("template", "template to scaffold from", z.enum(RUNTIME_TEMPLATES).optional()),
       flag(
-        "role-arn",
-        "IAM role ARN that provides permissions for the runtime",
-        z.string().optional(),
+        "template",
+        "a preset of flags to be leveraged in scaffolding the runtime. mutually exclusive with all runtime scaffolding flags",
+        z.enum(RUNTIME_TEMPLATE_SHORTCUT_NAMES).optional(),
       ),
-      flag("code-location", "path to existing agent source code (BYO path)", z.string().optional()),
       flag("build", "build type: CodeZip or Container", BuildTypeSchema.optional()),
-      flag("entrypoint", "entrypoint file, e.g. main.py:handler (BYO only)", z.string().optional()),
-      flag("protocol", "server protocol: HTTP, MCP, A2A, AGUI", ProtocolModeSchema.optional()),
       flag(
-        "api-key",
-        "API key source for non-bedrock model providers: '-' for stdin, 'file://path' for file",
-        z.string().optional(),
-        { sensitive: true },
+        "language",
+        "target language for the scaffolded runtime code",
+        z.enum(["Python"]).optional(),
+      ),
+      flag(
+        "framework",
+        "agent framework for the scaffolded runtime code",
+        z.enum(["none"]).optional(),
       ),
       flag(
         "model-provider",
-        "model provider (template only)",
-        runtimeModelProviderSchema.optional(),
+        "model provider for the scaffolded runtime code",
+        z.enum(["Bedrock"]).optional(),
       ),
       flag(
-        "runtime-version",
-        "language runtime, e.g. PYTHON_3_13, NODE_22 (BYO CodeZip only)",
-        RuntimeVersionSchema.optional(),
-      ),
-      flag(
-        "dockerfile",
-        "dockerfile path for the container build (BYO Container only)",
+        "api-key",
+        "API key for non-Bedrock providers: '-' for stdin, 'file://path' for file",
         z.string().optional(),
+        { sensitive: true },
       ),
+      flag("memory", "memory option for the scaffolded runtime", z.enum(["none"]).optional()),
       flag(
-        "build-context-path",
-        "docker build context directory relative to project root (BYO Container only)",
-        z.string().optional(),
-      ),
-      flag(
-        "custom-docker-build-args",
-        "docker build args as JSON key/value object (BYO Container only)",
+        "role-arn",
+        "IAM role ARN that provides permissions for the runtime",
         z.string().optional(),
       ),
       flag(
@@ -72,6 +59,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         "additional IAM policy ARNs or policy document paths for the execution role",
         z.array(z.string()).optional(),
       ),
+      flag("protocol", "server protocol: HTTP, MCP, A2A, AGUI", ProtocolModeSchema.optional()),
       flag(
         "network-mode",
         "network mode for the runtime environment (PUBLIC or VPC)",
@@ -104,61 +92,53 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         "filesystem mount configurations (JSON)",
         z.string().optional(),
       ),
-      flag(
-        "memory",
-        "memory configuration (JSON with mode: disabled | create | existing) (template only)",
-        z.string().optional(),
-      ),
       flag("tags", "tags as key=value (repeatable) or JSON object", z.array(z.string()).optional()),
     ],
     handle: async (ctx, flags) => {
       if (!flags.name)
         throw new InputValidationError("required option '--name <name>' not specified");
 
-      if (flags.template && flags["code-location"])
-        throw new InputValidationError("--template and --code-location are mutually exclusive");
+      const scaffoldingFlags = [
+        "build",
+        "language",
+        "framework",
+        "model-provider",
+        "api-key",
+        "memory",
+      ] as const;
+      const presentScaffoldingFlags = scaffoldingFlags.filter((f) => flags[f] !== undefined);
+      const isTemplate = flags["template"] !== undefined;
 
-      const isTemplate = !flags["code-location"];
-      const template = flags.template ?? RUNTIME_TEMPLATES.HELLO_WORLD_PYTHON;
-      const templateOnlyFlags = (["memory", "model-provider", "api-key"] as const).filter(
-        (f) => flags[f],
-      );
-      const byoOnlyFlags = (
-        [
-          "entrypoint",
-          "runtime-version",
-          "dockerfile",
-          "build-context-path",
-          "custom-docker-build-args",
-        ] as const
-      ).filter((f) => flags[f]);
+      if (isTemplate && presentScaffoldingFlags.length > 0)
+        throw new InputValidationError(
+          `--template and --${presentScaffoldingFlags[0]} are mutually exclusive`,
+        );
 
-      if (isTemplate && byoOnlyFlags.length > 0)
-        throw new InputValidationError(
-          `--${byoOnlyFlags[0]} is only available on the BYO path (--code-location)`,
-        );
-      if (!isTemplate && templateOnlyFlags.length > 0)
-        throw new InputValidationError(
-          `--${templateOnlyFlags[0]} is only available on the template path (--template)`,
-        );
+      const isCustom = presentScaffoldingFlags.length > 0;
+
+      const source = new SourceResolver({ stdin: config.io.stdin });
+      const apiKey = await source.resolveSecret("api-key", flags["api-key"]);
+
+      const scaffoldRuntimeInput = isTemplate
+        ? RUNTIME_TEMPLATE_SHORTCUTS[flags.template!]
+        : isCustom
+          ? parseScaffoldRuntimeInput({
+              runtimeName: flags.name,
+              build: flags.build,
+              language: flags.language,
+              framework: flags.framework,
+              modelProvider: flags["model-provider"],
+              apiKey,
+              memory: flags.memory,
+            })
+          : RUNTIME_TEMPLATE_SHORTCUTS["hello-world-python"];
 
       const inputEnvironmentVariables = parseJsonFlag<Record<string, string>>(
         "environment-variables",
         flags["environment-variables"],
       );
-      const memoryConfiguration = parseMemoryConfig(flags["memory"]);
 
-      const entrypoint = flags.entrypoint ?? "main.py";
-
-      const source = new SourceResolver({ stdin: config.io.stdin });
-      const apiKey = await source.resolveSecret("api-key", flags["api-key"]);
-
-      if (flags["custom-docker-build-args"] && !flags.dockerfile && !flags["build-context-path"])
-        throw new InputValidationError(
-          "--custom-docker-build-args requires --dockerfile or --build-context-path",
-        );
-
-      const infraConfig = {
+      const runtimeInput = {
         name: flags.name,
         description: flags.description,
         executionRoleArn: flags["role-arn"],
@@ -182,30 +162,8 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
           flags["filesystem-configurations"],
         ),
         tags: parseTags(flags["tags"]),
+        scaffoldRuntimeInput,
       };
-
-      const runtimeInput = isTemplate
-        ? {
-            source: "template" as const,
-            template,
-            memory: memoryConfiguration,
-            modelProvider: { apiKey, provider: flags["model-provider"] },
-            ...infraConfig,
-          }
-        : {
-            source: "byo" as const,
-            codeLocation: flags["code-location"]!,
-            build: flags.build,
-            entrypoint,
-            runtimeVersion: flags["runtime-version"],
-            dockerfile: flags.dockerfile,
-            buildContextPath: flags["build-context-path"],
-            customDockerBuildArgs: parseJsonFlag(
-              "custom-docker-build-args",
-              flags["custom-docker-build-args"],
-            ),
-            ...infraConfig,
-          };
 
       const result = RuntimeResourceConfigSchema.safeParse(runtimeInput);
       if (!result.success)
@@ -223,16 +181,12 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
     },
   });
 
-function parseMemoryConfig(
-  raw: string | undefined,
-): z.infer<typeof runtimeMemoryConfigSchema> | undefined {
-  if (!raw) return undefined;
-  const parsed = parseJsonFlag<Record<string, unknown>>("memory", raw);
-  const result = runtimeMemoryConfigSchema.safeParse(parsed);
-  if (!result.success) throw new InputValidationError(z.prettifyError(result.error));
-  return result.data;
-}
-
 function toEnvironmentVariables(envVars: Record<string, string> | undefined): EnvVar[] {
   return envVars ? Object.entries(envVars).map(([name, value]) => ({ name, value })) : [];
+}
+
+function parseScaffoldRuntimeInput(input: Record<string, unknown>) {
+  const result = ScaffoldRuntimeInputSchema.safeParse(input);
+  if (!result.success) throw new InputValidationError(z.prettifyError(result.error));
+  return result.data;
 }

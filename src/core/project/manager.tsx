@@ -23,7 +23,7 @@ import {
 } from "../../io";
 import { defaultSource, type AssetSource } from "./source";
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
-import { createHarnessTreeFromSpec, createProjectTreeFromTemplate, TEMPLATES } from "./templates";
+import { createHarnessTreeFromSpec, createProjectTree } from "./templates";
 import { ProjectSpecSchema, type ManagedBy } from "../../projectSchemas/project";
 import { enclosingProjectRoot } from "./fsUtils";
 import {
@@ -98,11 +98,11 @@ export class FsProjectManager implements ProjectManager {
       );
     }
 
+    const scaffoldRuntimeInput = input.scaffoldRuntimeInput;
     const destination = join(process.cwd(), input.name);
-    this.logger.debug(`scaffolding project "${input.name}" from template "${input.template}"`);
 
     yield { message: "Creating project tree" };
-    const tree = await createProjectTreeFromTemplate(input.name, input.template, this.source);
+    const tree = await createProjectTree(input.name, scaffoldRuntimeInput, this.source);
     await tree.write(destination);
 
     // A failed step leaves the scaffolded files in place; the error tells the
@@ -112,7 +112,7 @@ export class FsProjectManager implements ProjectManager {
       yield { message: "Installing CDK dependencies with npm" };
       await this.run(["npm", "install"], join(destination, "agentcore", "cdk"));
 
-      const appDir = join(destination, "app", TEMPLATES[input.template].appDir);
+      const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
       if (existsSync(join(appDir, "pyproject.toml"))) {
         await this.checkTool(
           "uv",

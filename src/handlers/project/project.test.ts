@@ -86,7 +86,13 @@ describe("project create", () => {
 
   test("runs the post-scaffold steps and reports progress on stderr", async () => {
     const directory = await inTempDirectory();
-    const { io, core } = await run(["create", "--name", "MyAgent"]);
+    const { io, core } = await run([
+      "create",
+      "--name",
+      "MyAgent",
+      "--template",
+      "hello-world-python",
+    ]);
 
     const projectRoot = join(directory, "MyAgent");
     expect(core.projectCommands).toEqual([
@@ -106,6 +112,52 @@ describe("project create", () => {
     const { core } = await run(["create", "--name", "MyAgent", "--skip-install", "--skip-git"]);
 
     expect(core.projectCommands).toEqual([]);
+  });
+
+  test("rejects --template combined with scaffolding flags", async () => {
+    await inTempDirectory();
+    await expect(
+      run([
+        "create",
+        "--name",
+        "MyAgent",
+        "--template",
+        "hello-world-python",
+        "--build",
+        "Container",
+      ]),
+    ).rejects.toThrow(/--template and --build are mutually exclusive/);
+  });
+
+  test("scaffolds from explicit custom flags", async () => {
+    const directory = await inTempDirectory();
+    await run([
+      "create",
+      "--name",
+      "MyAgent",
+      "--build",
+      "CodeZip",
+      "--language",
+      "Python",
+      "--framework",
+      "none",
+      "--model-provider",
+      "Bedrock",
+      "--memory",
+      "none",
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    const projectRoot = join(directory, "MyAgent");
+    expect(await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).exists()).toBe(true);
+  });
+
+  test("rejects incomplete custom flags", async () => {
+    await inTempDirectory();
+    await expect(
+      run(["create", "--name", "MyAgent", "--build", "CodeZip", "--language", "Python"]),
+    ).rejects.toThrow();
   });
 
   test("rejects an unknown --template value", async () => {

@@ -7,7 +7,7 @@ import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { FsProjectManager } from "./manager";
 import {
-  PROJECT_TEMPLATES,
+  RUNTIME_TEMPLATE_SHORTCUTS,
   type CreateProjectInput,
   type DeployResult,
   type Project,
@@ -15,6 +15,9 @@ import {
 } from "../../handlers/project/types";
 import { createSilentLogger } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
+
+const HELLO_WORLD_PYTHON = RUNTIME_TEMPLATE_SHORTCUTS["hello-world-python"];
+const HELLO_WORLD_PYTHON_CONTAINER = RUNTIME_TEMPLATE_SHORTCUTS["hello-world-python-container"];
 
 const originalCwd = process.cwd();
 const tempDirectories: string[] = [];
@@ -71,7 +74,7 @@ describe("FsProjectManager.create", () => {
     const directory = await inTempDirectory();
     await runCreate(manager().manager, {
       name: "example",
-      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      scaffoldRuntimeInput: HELLO_WORLD_PYTHON,
     });
 
     const projectRoot = join(directory, "example");
@@ -89,7 +92,7 @@ describe("FsProjectManager.create", () => {
     const directory = await inTempDirectory();
     await runCreate(manager().manager, {
       name: "example",
-      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      scaffoldRuntimeInput: HELLO_WORLD_PYTHON,
     });
 
     const configDir = join(directory, "example", "agentcore");
@@ -111,7 +114,7 @@ describe("FsProjectManager.create", () => {
     const directory = await inTempDirectory();
     await runCreate(manager().manager, {
       name: "example",
-      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON_CONTAINER,
+      scaffoldRuntimeInput: HELLO_WORLD_PYTHON_CONTAINER,
     });
 
     const appDir = join(directory, "example", "app", "hello-world");
@@ -126,7 +129,10 @@ describe("FsProjectManager.create", () => {
 
   test("refuses to overwrite an existing project", async () => {
     await inTempDirectory();
-    const input = { name: "example", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON };
+    const input: CreateProjectInput = {
+      name: "example",
+      scaffoldRuntimeInput: HELLO_WORLD_PYTHON,
+    };
 
     await runCreate(manager().manager, input);
     await expect(runCreate(manager().manager, input)).rejects.toBeInstanceOf(ProjectStateError);
@@ -135,7 +141,10 @@ describe("FsProjectManager.create", () => {
   test("runs npm install, uv sync, and git init after scaffolding", async () => {
     const directory = await inTempDirectory();
     const { manager: subject, commands } = manager();
-    await runCreate(subject, { name: "example", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON });
+    await runCreate(subject, {
+      name: "example",
+      scaffoldRuntimeInput: HELLO_WORLD_PYTHON,
+    });
 
     const projectRoot = join(directory, "example");
     expect(commands).toEqual([
@@ -150,7 +159,7 @@ describe("FsProjectManager.create", () => {
     const { manager: subject, commands } = manager();
     await runCreate(subject, {
       name: "example",
-      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      scaffoldRuntimeInput: HELLO_WORLD_PYTHON,
       skipInstall: true,
     });
 
@@ -162,7 +171,7 @@ describe("FsProjectManager.create", () => {
     const { manager: subject, commands } = manager();
     await runCreate(subject, {
       name: "example",
-      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      scaffoldRuntimeInput: HELLO_WORLD_PYTHON,
       skipGit: true,
     });
 
@@ -173,7 +182,7 @@ describe("FsProjectManager.create", () => {
     await inTempDirectory();
     const { events, project } = await runCreate(manager().manager, {
       name: "example",
-      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      scaffoldRuntimeInput: HELLO_WORLD_PYTHON,
     });
 
     expect(events.map((event) => event.message)).toEqual([
@@ -198,7 +207,7 @@ describe("FsProjectManager.create", () => {
     });
 
     await expect(
-      runCreate(failing, { name: "example", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON }),
+      runCreate(failing, { name: "example", scaffoldRuntimeInput: HELLO_WORLD_PYTHON }),
     ).rejects.toThrow("npm exploded");
     expect(await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).exists()).toBe(
       true,
@@ -209,14 +218,14 @@ describe("FsProjectManager.create", () => {
     const directory = await inTempDirectory();
     await runCreate(manager().manager, {
       name: "root",
-      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      scaffoldRuntimeInput: HELLO_WORLD_PYTHON,
     });
 
     process.chdir(join(directory, "root"));
     await expect(
       runCreate(manager().manager, {
         name: "child",
-        template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+        scaffoldRuntimeInput: HELLO_WORLD_PYTHON,
       }),
     ).rejects.toBeInstanceOf(ProjectStateError);
   });
@@ -232,7 +241,7 @@ describe("FsProjectManager.build", () => {
   ): Promise<Project> {
     const { project } = await runCreate(subject, {
       name: "example",
-      template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON,
+      scaffoldRuntimeInput: HELLO_WORLD_PYTHON,
       skipInstall: true,
       skipGit: true,
     });
@@ -456,7 +465,10 @@ describe("FsProjectManager.resolve", () => {
   test("round-trips a project it just created", async () => {
     const root = await inTempDirectory();
     const subject = manager().manager;
-    await runCreate(subject, { name: "example", template: PROJECT_TEMPLATES.HELLO_WORLD_PYTHON });
+    await runCreate(subject, {
+      name: "example",
+      scaffoldRuntimeInput: HELLO_WORLD_PYTHON,
+    });
 
     // Resolve from a nested path to prove the walk-up to the project root.
     const resolved = await subject.resolve({ filePath: join(root, "example", "app") });

@@ -1,9 +1,12 @@
 import { ZodError, z } from "zod";
-import { PROJECT_TEMPLATES, type ProjectTemplate } from "../../handlers/project/types";
 import { HarnessSpecSchema } from "../../projectSchemas/harness";
 import { FsTreeNode } from "./fsTree";
 import type { AssetSource } from "./source";
 import { InputValidationError } from "../../errors/errors";
+import {
+  RUNTIME_TEMPLATE_SHORTCUTS,
+  type ScaffoldRuntimeInput,
+} from "../../handlers/project/types";
 
 type TemplateSpec = {
   runtimes?: unknown[];
@@ -16,17 +19,14 @@ type TemplateSpec = {
  * sections it registers in agentcore.json. Adding a template is one entry here plus its assets.
  */
 type Template = {
-  /** Directory under app/ the template code is written to. */
-  appDir: string;
   /** Asset directory relative to the asset root, expanded into the app directory. */
   assetDir: string;
   /** Resource sections this template contributes to agentcore.json. */
   spec: TemplateSpec;
 };
 
-export const TEMPLATES: Record<ProjectTemplate, Template> = {
-  [PROJECT_TEMPLATES.HELLO_WORLD_PYTHON]: {
-    appDir: "hello-world",
+const TEMPLATES: Record<string, Template> = {
+  [buildRuntimeTemplateKey(RUNTIME_TEMPLATE_SHORTCUTS["hello-world-python"])]: {
     assetDir: "templates/hello-world-python",
     spec: {
       runtimes: [
@@ -43,8 +43,7 @@ export const TEMPLATES: Record<ProjectTemplate, Template> = {
       ],
     },
   },
-  [PROJECT_TEMPLATES.HELLO_WORLD_PYTHON_CONTAINER]: {
-    appDir: "hello-world",
+  [buildRuntimeTemplateKey(RUNTIME_TEMPLATE_SHORTCUTS["hello-world-python-container"])]: {
     assetDir: "templates/hello-world-python-container",
     spec: {
       runtimes: [
@@ -60,6 +59,14 @@ export const TEMPLATES: Record<ProjectTemplate, Template> = {
   },
 };
 
+function buildRuntimeTemplateKey(input: ScaffoldRuntimeInput): string {
+  return `runtime_${input.build}_${input.framework}_${input.language}_${input.memory}_${input.modelProvider}`;
+}
+
+function resolveTemplate(input: ScaffoldRuntimeInput): Template | undefined {
+  return TEMPLATES[buildRuntimeTemplateKey(input)];
+}
+
 /** Serializes a value as pretty-printed JSON with a trailing newline. */
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 
@@ -67,21 +74,23 @@ const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
  * Builds the agentcore.json spec by adding the template's resource sections to the shared base.
  * The base fields and template sections never overlap so this is a plain spread.
  */
-function agentcoreSpec(name: string, template: ProjectTemplate): unknown {
+function agentcoreSpec(name: string, template: Template): unknown {
   return {
     name,
     version: 1,
     managedBy: "CDK",
-    ...TEMPLATES[template].spec,
+    ...template.spec,
   };
 }
 
-export async function createProjectTreeFromTemplate(
+export async function createProjectTree(
   name: string,
-  template: ProjectTemplate,
+  input: ScaffoldRuntimeInput,
   src: AssetSource,
 ): Promise<FsTreeNode> {
-  const { appDir, assetDir } = TEMPLATES[template];
+  const template = resolveTemplate(input);
+  if (!template)
+    throw new InputValidationError(`unable to find template that matches given parameters`);
   return FsTreeNode.createDirectory(".", [
     FsTreeNode.createFile(".gitignore", () => src.read("templates/shared/gitignore.template")),
     FsTreeNode.createDirectory("agentcore", [
@@ -90,7 +99,9 @@ export async function createProjectTreeFromTemplate(
       FsTreeNode.createFile("aws-targets.json", async () => json([])),
       FsTreeNode.createFile(".env.local", () => src.read("templates/shared/env.local.template")),
     ]),
-    FsTreeNode.createDirectory("app", [await FsTreeNode.fromAssetSource(src, assetDir, appDir)]),
+    FsTreeNode.createDirectory("app", [
+      await FsTreeNode.fromAssetSource(src, template.assetDir, input.runtimeName),
+    ]),
   ]);
 }
 

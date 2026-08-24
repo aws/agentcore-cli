@@ -51,29 +51,39 @@ async function inProject(name = "TestProject"): Promise<string> {
 // TODO: Replace NotImplementedError assertions with output assertions once
 // FsProjectManager.addResource supports the "runtime" resource type.
 describe("project add runtime", () => {
-  const byo = ["--code-location", "app/my_agent"];
   const template = ["--template", "hello-world-python"];
 
+  const allScaffoldingFlags = [
+    "--build",
+    "CodeZip",
+    "--language",
+    "Python",
+    "--framework",
+    "none",
+    "--model-provider",
+    "Bedrock",
+    "--memory",
+    "none",
+  ];
+
   test.each<[string, string[]]>([
-    ["minimal — name only (defaults to template)", ["--name", "my_agent"]],
-    ["explicit template path", ["--name", "my_agent", ...template]],
-    ["minimal — BYO path with build", ["--name", "my_agent", ...byo, "--build", "CodeZip"]],
+    ["template preset", ["--name", "my_agent", ...template]],
+    ["custom — all scaffolding flags", ["--name", "my_agent", ...allScaffoldingFlags]],
     [
-      "BYO container with dockerfile",
-      ["--name", "my_agent", ...byo, "--build", "Container", "--dockerfile", "Dockerfile"],
-    ],
-    [
-      "entrypoint + runtime-version for CodeZip",
+      "custom — container build",
       [
         "--name",
         "my_agent",
-        ...byo,
         "--build",
-        "CodeZip",
-        "--entrypoint",
-        "app.py:main",
-        "--runtime-version",
-        "PYTHON_3_13",
+        "Container",
+        "--language",
+        "Python",
+        "--framework",
+        "none",
+        "--model-provider",
+        "Bedrock",
+        "--memory",
+        "none",
       ],
     ],
     ["description", ["--name", "my_agent", ...template, "--description", "A test agent"]],
@@ -172,48 +182,6 @@ describe("project add runtime", () => {
     ],
     ["tags", ["--name", "my_agent", ...template, "--tags", '{"team":"ml","env":"prod"}']],
     [
-      "dockerfile + build-context-path",
-      [
-        "--name",
-        "my_agent",
-        ...byo,
-        "--build",
-        "Container",
-        "--dockerfile",
-        "docker/Dockerfile.gpu",
-        "--build-context-path",
-        ".",
-      ],
-    ],
-    [
-      "custom-docker-build-args with dockerfile",
-      [
-        "--name",
-        "my_agent",
-        ...byo,
-        "--build",
-        "Container",
-        "--dockerfile",
-        "Dockerfile",
-        "--custom-docker-build-args",
-        '{"AGENT_NAME":"my_agent","VERSION":"1.0"}',
-      ],
-    ],
-    [
-      "custom-docker-build-args with build-context-path",
-      [
-        "--name",
-        "my_agent",
-        ...byo,
-        "--build",
-        "Container",
-        "--build-context-path",
-        ".",
-        "--custom-docker-build-args",
-        '{"AGENT_NAME":"my_agent"}',
-      ],
-    ],
-    [
       "additional-policies",
       [
         "--name",
@@ -221,49 +189,6 @@ describe("project add runtime", () => {
         ...template,
         "--additional-policies",
         "arn:aws:iam::123456789012:policy/MyPolicy",
-      ],
-    ],
-    ["protocol shortcut", ["--name", "my_agent", ...template, "--protocol", "MCP"]],
-    [
-      "memory — create with strategies",
-      [
-        "--name",
-        "my_agent",
-        ...template,
-        "--memory",
-        '{"mode":"create","strategies":["SEMANTIC","EPISODIC"]}',
-      ],
-    ],
-    [
-      "memory — existing by ARN",
-      [
-        "--name",
-        "my_agent",
-        ...template,
-        "--memory",
-        '{"mode":"existing","arn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/MyMem"}',
-      ],
-    ],
-    ["memory — disabled", ["--name", "my_agent", ...template, "--memory", '{"mode":"disabled"}']],
-    ["model-provider — openai", ["--name", "my_agent", ...template, "--model-provider", "openai"]],
-    [
-      "build on template path (overlay)",
-      ["--name", "my_agent", ...template, "--build", "Container"],
-    ],
-    [
-      "network-config with vpcId",
-      [
-        "--name",
-        "my_agent",
-        ...byo,
-        "--build",
-        "Container",
-        "--dockerfile",
-        "Dockerfile",
-        "--network-mode",
-        "VPC",
-        "--network-config",
-        '{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"],"vpcId":"vpc-0123456789abcdef0"}',
       ],
     ],
   ])("%s — accepts flags", async (_label, flags) => {
@@ -274,64 +199,43 @@ describe("project add runtime", () => {
   test.each<[string, string[]]>([
     ["missing --name", ["--template", "hello-world-python"]],
     [
-      "--template and --code-location are mutually exclusive",
-      ["--name", "my_agent", "--template", "hello-world-python", "--code-location", "app/agent"],
-    ],
-    [
-      "--custom-docker-build-args requires --dockerfile or --build-context-path",
+      "missing --build without --template",
       [
         "--name",
         "my_agent",
-        ...byo,
-        "--build",
-        "Container",
-        "--custom-docker-build-args",
-        '{"KEY":"value"}',
+        "--language",
+        "Python",
+        "--framework",
+        "none",
+        "--model-provider",
+        "Bedrock",
+        "--memory",
+        "none",
       ],
+    ],
+    [
+      "--template and --build are mutually exclusive",
+      ["--name", "my_agent", "--template", "hello-world-python", "--build", "Container"],
+    ],
+    [
+      "--template and --language are mutually exclusive",
+      ["--name", "my_agent", "--template", "hello-world-python", "--language", "Python"],
+    ],
+    [
+      "--template and --framework are mutually exclusive",
+      ["--name", "my_agent", "--template", "hello-world-python", "--framework", "none"],
+    ],
+    [
+      "--template and --model-provider are mutually exclusive",
+      ["--name", "my_agent", "--template", "hello-world-python", "--model-provider", "Bedrock"],
+    ],
+    [
+      "--template and --memory are mutually exclusive",
+      ["--name", "my_agent", "--template", "hello-world-python", "--memory", "none"],
     ],
     [
       "invalid JSON in --network-config",
       ["--name", "my_agent", ...template, "--network-config", "{bad}"],
-    ],
-    [
-      "--entrypoint is only available on BYO path",
-      ["--name", "my_agent", ...template, "--entrypoint", "main.py"],
-    ],
-    [
-      "--runtime-version is only available on BYO path",
-      ["--name", "my_agent", ...template, "--runtime-version", "PYTHON_3_13"],
-    ],
-    [
-      "--dockerfile is only available on BYO path",
-      ["--name", "my_agent", ...template, "--dockerfile", "Dockerfile"],
-    ],
-    [
-      "--build-context-path is only available on BYO path",
-      ["--name", "my_agent", ...template, "--build-context-path", "."],
-    ],
-    [
-      "--custom-docker-build-args is only available on BYO path",
-      ["--name", "my_agent", ...template, "--custom-docker-build-args", '{"KEY":"val"}'],
-    ],
-    [
-      "--memory is only available on template path",
-      ["--name", "my_agent", ...byo, "--memory", '{"mode":"disabled"}'],
-    ],
-    [
-      "--model-provider is only available on template path",
-      ["--name", "my_agent", ...byo, "--model-provider", "openai"],
-    ],
-    [
-      "--api-key is only available on template path",
-      ["--name", "my_agent", ...byo, "--api-key", "-"],
-    ],
-    [
-      "--api-key rejects an inline secret value",
-      ["--name", "my_agent", ...template, "--api-key", "sk-inline"],
-    ],
-    [
-      "invalid memory JSON schema",
-      ["--name", "my_agent", ...template, "--memory", '{"mode":"invalid"}'],
     ],
   ])("%s", async (_label, flags) => {
     await inProject();
