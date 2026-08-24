@@ -5,7 +5,7 @@
  * the upstream request.
  */
 import type { HttpRequest, HttpResponse } from "../../../io/httpServer";
-import { apiError, asString, errorMessage, json, parseJsonBody } from "./respond";
+import { apiError, asString, errorMessage, iterateBody, json, parseJsonBody } from "./respond";
 import type { InspectorDeps } from "./types";
 
 /** Cap the buffered MCP response so a runaway agent cannot exhaust memory. */
@@ -89,20 +89,12 @@ export async function handleA2aAgentCard(
 
 /** Read a response body as text, or undefined when it exceeds `maxBytes`. */
 async function readCapped(response: Response, maxBytes: number): Promise<string | undefined> {
-  const reader = response.body?.getReader();
-  if (!reader) return "";
   const chunks: Uint8Array[] = [];
   let size = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.length;
-      if (size > maxBytes) return undefined;
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
+  for await (const value of iterateBody(response.body)) {
+    size += value.length;
+    if (size > maxBytes) return undefined;
+    chunks.push(value);
   }
   return Buffer.concat(chunks).toString("utf8");
 }

@@ -22,7 +22,6 @@ import type { InspectorDeps } from "./types";
 export async function handleInvocations(
   deps: InspectorDeps,
   request: HttpRequest,
-  nextA2aId: () => number,
 ): Promise<HttpResponse> {
   const parsed = parseJsonBody(request.body);
   const agentName = asString(parsed?.agentName);
@@ -44,7 +43,7 @@ export async function handleInvocations(
     return apiError(400, "MCP agents are invoked through POST /api/mcp, not /invocations.");
   }
   if (running.protocol === "A2A") {
-    return invokeA2aAgent(running.port, parsed, sessionId, nextA2aId, signal);
+    return invokeA2aAgent(running.port, parsed, sessionId, signal);
   }
   if (running.protocol === "AGUI") {
     return invokeAguiAgent(running.port, parsed, sessionId, userId, signal);
@@ -52,17 +51,22 @@ export async function handleInvocations(
   return invokeHttpAgent(running.port, request.body, sessionId, userId, signal);
 }
 
-/** Forward to the agent's /invocations route, normalizing SSE events to plain text. */
-async function invokeHttpAgent(
+/**
+ * POST to an agent's /invocations route with the shared session/user headers.
+ * `normalizeSse` re-frames an event stream through {@link parseAgentEvent}; a
+ * non-event-stream response, or a typed stream (AGUI), passes through untouched.
+ */
+async function forwardInvocation(
   port: number,
-  body: Buffer,
+  body: Buffer | string,
   sessionId: string,
   userId: string | undefined,
   signal: AbortSignal,
+  options: { accept: string; normalizeSse: boolean },
 ): Promise<HttpResponse> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    Accept: "text/event-stream, */*",
+    Accept: options.accept,
     "x-amzn-bedrock-agentcore-runtime-session-id": sessionId,
   };
   if (userId) headers["x-amzn-bedrock-agentcore-runtime-user-id"] = userId;
@@ -72,7 +76,7 @@ async function invokeHttpAgent(
     agentResponse = await fetch(`http://127.0.0.1:${port}/invocations`, {
       method: "POST",
       headers,
-      body: body.toString(),
+      body,
       signal,
     });
   } catch (error) {
@@ -84,8 +88,25 @@ async function invokeHttpAgent(
   return {
     status: agentResponse.status,
     headers: { "Content-Type": contentType, "x-session-id": sessionId },
-    body: contentType.includes("text/event-stream") ? transformAgentSse(stream) : stream,
+    body:
+      options.normalizeSse && contentType.includes("text/event-stream")
+        ? transformAgentSse(stream)
+        : stream,
   };
+}
+
+/** Forward an HTTP agent's raw body, normalizing SSE events to plain text. */
+function invokeHttpAgent(
+  port: number,
+  body: Buffer,
+  sessionId: string,
+  userId: string | undefined,
+  signal: AbortSignal,
+): Promise<HttpResponse> {
+  return forwardInvocation(port, body, sessionId, userId, signal, {
+    accept: "text/event-stream, */*",
+    normalizeSse: true,
+  });
 }
 
 /** Re-frame each agent SSE event through {@link parseAgentEvent}. */
@@ -93,38 +114,36 @@ async function* transformAgentSse(
   stream: AsyncIterable<Uint8Array>,
 ): AsyncGenerator<Uint8Array, void> {
   for await (const data of sseData(stream)) {
-    const { content, error } = parseAgentEvent(data);
-    if (error) yield sseEvent({ error });
-    else if (content) yield sseEvent(content);
+    const payload = parseAgentEvent(data);
+    if (payload !== null) yield sseEvent(payload);
   }
 }
 
 /**
- * Extract displayable text from one agent SSE `data` payload. Handles plain
- * strings, `{"text": ...}` events from the bedrock-agentcore runtime,
- * `{"error": ...}` events, and ConverseStream-shaped content deltas. A payload
- * that is not JSON is a plain-text token, forwarded unchanged.
+ * Extract the payload to emit from one agent SSE `data` frame: a plain text
+ * token, an `{ error }` object, or null when the frame carries no displayable
+ * content. Handles `{"text": ...}` events from the bedrock-agentcore runtime,
+ * `{"error": ...}` events, and ConverseStream-shaped content deltas; a frame
+ * that is not JSON is itself a plain-text token.
  */
-export function parseAgentEvent(data: string): { content: string | null; error: string | null } {
+export function parseAgentEvent(data: string): string | { error: string } | null {
   try {
     const parsed: unknown = JSON.parse(data);
-    if (typeof parsed === "string") return { content: parsed, error: null };
+    if (typeof parsed === "string") return parsed || null;
     if (parsed && typeof parsed === "object") {
       if ("error" in parsed) {
-        return { content: null, error: String((parsed as { error: unknown }).error) };
+        const error = String((parsed as { error: unknown }).error);
+        return error ? { error } : null;
       }
-      if ("text" in parsed) {
-        return { content: String((parsed as { text: unknown }).text), error: null };
-      }
+      if ("text" in parsed) return String((parsed as { text: unknown }).text) || null;
       const event = (parsed as { event?: { contentBlockDelta?: { delta?: { text?: string } } } })
         .event;
-      const text = event?.contentBlockDelta?.delta?.text;
-      if (typeof text === "string") return { content: text, error: null };
+      return event?.contentBlockDelta?.delta?.text || null;
     }
   } catch {
-    return { content: data, error: null };
+    return data || null;
   }
-  return { content: null, error: null };
+  return null;
 }
 
 /**
@@ -136,7 +155,6 @@ async function invokeA2aAgent(
   port: number,
   body: Record<string, unknown> | undefined,
   sessionId: string,
-  nextA2aId: () => number,
   signal: AbortSignal,
 ): Promise<HttpResponse> {
   const prompt = asString(body?.prompt);
@@ -144,7 +162,7 @@ async function invokeA2aAgent(
 
   const a2aBody = {
     jsonrpc: "2.0",
-    id: nextA2aId(),
+    id: randomUUID(),
     method: "message/stream",
     params: {
       message: {
@@ -275,7 +293,7 @@ function extractPartsText(parts: A2aPart[] | undefined): string | null {
  * AGUI agents expect a RunAgentInput body; translate the SPA's `{ prompt }`
  * payload and pass the typed AG-UI SSE response through untouched.
  */
-async function invokeAguiAgent(
+function invokeAguiAgent(
   port: number,
   body: Record<string, unknown> | undefined,
   sessionId: string,
@@ -283,7 +301,7 @@ async function invokeAguiAgent(
   signal: AbortSignal,
 ): Promise<HttpResponse> {
   const prompt = asString(body?.prompt);
-  if (!prompt) return apiError(400, "prompt is required");
+  if (!prompt) return Promise.resolve(apiError(400, "prompt is required"));
 
   const aguiBody = JSON.stringify({
     threadId: sessionId,
@@ -295,31 +313,8 @@ async function invokeAguiAgent(
     forwardedProps: {},
   });
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "text/event-stream",
-    "x-amzn-bedrock-agentcore-runtime-session-id": sessionId,
-  };
-  if (userId) headers["x-amzn-bedrock-agentcore-runtime-user-id"] = userId;
-
-  let agentResponse: Response;
-  try {
-    agentResponse = await fetch(`http://127.0.0.1:${port}/invocations`, {
-      method: "POST",
-      headers,
-      body: aguiBody,
-      signal,
-    });
-  } catch (error) {
-    return apiError(502, `AGUI agent error: ${errorMessage(error)}`);
-  }
-
-  return {
-    status: agentResponse.status,
-    headers: {
-      "Content-Type": agentResponse.headers.get("content-type") ?? "text/plain",
-      "x-session-id": sessionId,
-    },
-    body: iterateBody(agentResponse.body),
-  };
+  return forwardInvocation(port, aguiBody, sessionId, userId, signal, {
+    accept: "text/event-stream",
+    normalizeSse: false,
+  });
 }

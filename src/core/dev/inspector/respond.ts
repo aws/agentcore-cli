@@ -1,6 +1,8 @@
 /** Small response and parsing helpers shared by the Inspector route modules. */
 import type { HttpResponse } from "../../../io/httpServer";
 
+const encoder = new TextEncoder();
+
 export function json(status: number, body: unknown): HttpResponse {
   return {
     status,
@@ -68,7 +70,7 @@ export function sse(body: AsyncIterable<Uint8Array>, sessionId?: string): HttpRe
 
 /** One SSE event in the `data: <json>\n\n` framing every Inspector stream uses. */
 export function sseEvent(payload: unknown): Uint8Array {
-  return new TextEncoder().encode(`data: ${JSON.stringify(payload)}\n\n`);
+  return encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
 /** Iterate a fetch response body; a null body yields nothing. */

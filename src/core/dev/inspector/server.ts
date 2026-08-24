@@ -36,10 +36,6 @@ const STATIC_CORS_HEADERS = {
 } as const;
 
 export function createInspectorHandler(deps: InspectorDeps): HttpRequestHandler {
-  // A2A message ids must be unique per JSON-RPC call across the handler's life.
-  let a2aId = 0;
-  const nextA2aId = () => ++a2aId;
-
   return async (request) => {
     // DNS rebinding protection — a custom domain resolving to 127.0.0.1 would
     // bypass origin checks, so only loopback Host headers are accepted.
@@ -63,16 +59,12 @@ export function createInspectorHandler(deps: InspectorDeps): HttpRequestHandler 
       return withHeaders(forbidden("Forbidden: missing X-Agentcore-Local header"), cors);
     }
 
-    const response = await route(deps, request, nextA2aId);
+    const response = await route(deps, request);
     return withHeaders(response, cors);
   };
 }
 
-async function route(
-  deps: InspectorDeps,
-  request: HttpRequest,
-  nextA2aId: () => number,
-): Promise<HttpResponse> {
+async function route(deps: InspectorDeps, request: HttpRequest): Promise<HttpResponse> {
   const url = new URL(request.url, "http://localhost");
   const { pathname } = url;
   const { method } = request;
@@ -81,9 +73,7 @@ async function route(
   if (method === "GET" && pathname === "/api/traces") return handleListTraces(deps, url);
   if (method === "GET" && pathname.startsWith("/api/traces/")) return handleGetTrace(deps, url);
   if (method === "POST" && pathname === "/api/start") return handleStart(deps, request);
-  if (method === "POST" && pathname === "/invocations") {
-    return handleInvocations(deps, request, nextA2aId);
-  }
+  if (method === "POST" && pathname === "/invocations") return handleInvocations(deps, request);
   if (method === "POST" && pathname === "/api/mcp") return handleMcpProxy(deps, request);
   if (method === "GET" && pathname === "/api/a2a/agent-card") {
     return handleA2aAgentCard(deps, url, request.signal);

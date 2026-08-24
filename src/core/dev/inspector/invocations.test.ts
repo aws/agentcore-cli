@@ -167,4 +167,11 @@ describe("AGUI agent invocation", () => {
     expect(body).toMatchObject({ messages: [{ role: "user", content: "hi" }] });
     expect(await response.text()).toBe("data: passthrough\n\n");
   });
+
+  test("requires a prompt", async () => {
+    const { url } = await inspectorFor(sseAgent([]), "AGUI");
+    const response = await post(url, "/invocations", { agentName: "orders" });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ success: false, error: "prompt is required" });
+  });
 });
