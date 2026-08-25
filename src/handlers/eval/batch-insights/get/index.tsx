@@ -4,7 +4,6 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
-import { InsightsJob } from "../insightsJob";
 
 export const createGetBatchInsightsHandler = (core: Core) =>
   createHandler({
@@ -15,11 +14,7 @@ export const createGetBatchInsightsHandler = (core: Core) =>
       const id = flags["id"];
       if (!id) throw new InputValidationError("required option '--id <id>' not specified");
 
-      const opts = coreOptsFromCtx(ctx);
-      const { detail } = await core.eval.getBatchEvaluation(id, opts, {
-        includeResults: false,
-      });
-      InsightsJob.assert(detail, id);
+      const detail = await core.eval.getBatchInsights(id, coreOptsFromCtx(ctx));
 
       ctx.require(JsonRendererKey).renderJson(detail);
     },

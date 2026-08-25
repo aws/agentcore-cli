@@ -367,6 +367,14 @@ export class EvalClient implements CoreEvalClient {
     }
   }
 
+  async getBatchInsights(id: string, options: CoreOptions): Promise<BatchEvaluationDetail> {
+    const { detail } = await this.getBatchEvaluation(id, options, { includeResults: false });
+    if (!EvalClient.isBatchInsights(detail)) {
+      throw new InputValidationError(`batch evaluation "${id}" is not a batch insights run`);
+    }
+    return detail;
+  }
+
   async listBatchEvaluations(
     nextToken: string | undefined,
     maxResults: number | undefined,
@@ -499,7 +507,7 @@ export class EvalClient implements CoreEvalClient {
     };
   }
 
-  private static isBatchInsights(job: BatchEvaluationSummary): boolean {
+  private static isBatchInsights(job: { insights?: unknown[] }): boolean {
     return Boolean(job.insights?.length);
   }
 

@@ -89,7 +89,7 @@ describe("batch-insights picker", () => {
     await waitForText(screen.lastFrame, "agentcore → eval → batch-insights → get → insights-1");
     await waitFor(() =>
       core.eval.calls.some(
-        (call) => call.method === "getBatchEvaluation" && call.args[0] === "insights-1",
+        (call) => call.method === "getBatchInsights" && call.args[0] === "insights-1",
       ),
     );
   });
@@ -111,9 +111,9 @@ describe("batch-insights detail", () => {
     await waitForText(screen.lastFrame, "failure_analysis");
     const frame = screen.lastFrame()!;
     expect(frame).toContain('"failureAnalysisResult"');
-    expect(core.eval.calls.find((call) => call.method === "getBatchEvaluation")).toEqual({
-      method: "getBatchEvaluation",
-      args: ["insights-1", { region: "us-east-1" }, { includeResults: false }],
+    expect(core.eval.calls.find((call) => call.method === "getBatchInsights")).toEqual({
+      method: "getBatchInsights",
+      args: ["insights-1", { region: "us-east-1" }],
     });
   });
 

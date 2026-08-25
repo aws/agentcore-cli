@@ -153,6 +153,7 @@ import type { ReadWriteJson } from "../io";
 import { createSilentLogger } from "./logging";
 import { FsProjectManager, type ProjectBackend } from "../core/project";
 import type { ManagedBy } from "../projectSchemas/project";
+import { InputValidationError } from "../errors";
 
 // TestCoreClient is a hand-controllable `Core` for tests. It implements the same
 // interface the real CoreClient satisfies, so it drops straight into
@@ -1695,6 +1696,17 @@ export class TestEvalClient implements CoreEvalClient {
     }
     detail.results = this.batchEvalResults;
     return { detail };
+  }
+
+  async getBatchInsights(id: string, options: CoreOptions): Promise<BatchEvaluationDetail> {
+    this.calls.push({ method: "getBatchInsights", args: [id, options] });
+    if (this.error) throw this.error;
+
+    const detail: BatchEvaluationDetail = { ...this.batchEvalGetResponse };
+    if (!detail.insights?.length) {
+      throw new InputValidationError(`batch evaluation "${id}" is not a batch insights run`);
+    }
+    return detail;
   }
 
   async listBatchEvaluations(

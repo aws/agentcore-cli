@@ -172,7 +172,10 @@ describe("eval batch-insights get", () => {
       failureAnalysisResult: { failures: [] },
     });
     expect(JSON.parse(stdout).consoleUrl).toBeUndefined();
-    expect(core.eval.calls[0]?.args[2]).toEqual({ includeResults: false });
+    expect(core.eval.calls[0]).toEqual({
+      method: "getBatchInsights",
+      args: ["bi-1", { region: REGION }],
+    });
   });
 
   test("rejects an evaluator-only batch evaluation", async () => {
