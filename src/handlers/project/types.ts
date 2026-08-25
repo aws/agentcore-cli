@@ -6,7 +6,7 @@ import type { ProjectSpecSchema } from "../../projectSchemas/project";
 import z from "zod";
 import type { RuntimeResourceConfig } from "./add/runtime/types";
 import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
-import { BuildTypeSchema } from "../../projectSchemas/runtime";
+import { AgentNameSchema, BuildTypeSchema } from "../../projectSchemas/runtime";
 
 export const RUNTIME_TEMPLATE_SHORTCUTS = {
   "hello-world-python": {
@@ -44,7 +44,7 @@ type CreateProjectInputBase = {
 
 /** Set of flags needed to scaffold a new Runtime-based agent **/
 export const ScaffoldRuntimeInputSchema = z.object({
-  runtimeName: z.string().min(1),
+  runtimeName: AgentNameSchema,
   build: BuildTypeSchema,
   language: z.enum(["Python"]),
   framework: z.enum(["none"]),

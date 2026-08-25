@@ -153,6 +153,33 @@ describe("project create", () => {
     expect(await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).exists()).toBe(true);
   });
 
+  test("rejects an invalid --runtime-name before scaffolding", async () => {
+    const directory = await inTempDirectory();
+    await expect(
+      run([
+        "create",
+        "--name",
+        "MyProject",
+        "--runtime-name",
+        "../MyAgent",
+        "--build",
+        "CodeZip",
+        "--language",
+        "Python",
+        "--framework",
+        "none",
+        "--model-provider",
+        "Bedrock",
+        "--memory",
+        "none",
+        "--skip-install",
+        "--skip-git",
+      ]),
+    ).rejects.toThrow(/Must begin with a letter/);
+
+    expect(existsSync(join(directory, "MyProject"))).toBe(false);
+  });
+
   test("rejects incomplete custom flags", async () => {
     await inTempDirectory();
     await expect(
