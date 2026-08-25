@@ -32,6 +32,9 @@ import type {
 import type {
   GetABTestResponse,
   ListABTestsResponse,
+  ABTestExecutionStatus,
+  UpdateABTestResponse,
+  DeleteABTestResponse,
   GetBatchEvaluationResponse,
   ListBatchEvaluationsResponse,
   StartBatchEvaluationResponse,
@@ -353,6 +356,12 @@ export interface CoreEvalClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListABTestsResponse>;
+  setABTestExecutionStatus(
+    id: string,
+    executionStatus: ABTestExecutionStatus,
+    options: CoreOptions,
+  ): Promise<UpdateABTestResponse>;
+  deleteABTest(id: string, options: CoreOptions): Promise<DeleteABTestResponse>;
   // startBatchEvaluation submits an async, service-side evaluation over sessions
   // the service gathers from the resolved data source. Returns the durable job id
   // + RUNNING status; poll with getBatchEvaluation.

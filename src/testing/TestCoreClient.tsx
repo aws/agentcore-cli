@@ -75,6 +75,9 @@ import type {
 import type {
   GetABTestResponse,
   ListABTestsResponse,
+  ABTestExecutionStatus,
+  UpdateABTestResponse,
+  DeleteABTestResponse,
   GetBatchEvaluationResponse,
   GetEventInput,
   GetEventOutput,
@@ -268,6 +271,8 @@ const DEFAULT_GET_BATCH_EVAL_RESPONSE = {} as GetBatchEvaluationResponse;
 const DEFAULT_LIST_BATCH_EVALS_RESPONSE: ListBatchEvaluationsResponse = { batchEvaluations: [] };
 const DEFAULT_GET_ABTEST_RESPONSE = {} as GetABTestResponse;
 const DEFAULT_LIST_ABTESTS_RESPONSE: ListABTestsResponse = { abTests: [] };
+const DEFAULT_UPDATE_ABTEST_RESPONSE = {} as UpdateABTestResponse;
+const DEFAULT_DELETE_ABTEST_RESPONSE = {} as DeleteABTestResponse;
 const DEFAULT_START_BATCH_EVAL_RESPONSE = {
   batchEvaluationId: "batch-eval-test",
   status: "RUNNING",
@@ -1409,6 +1414,8 @@ export class TestEvalClient implements CoreEvalClient {
   private batchInsightsListResponses = new Map<string | undefined, ListBatchEvaluationsResponse>();
   private abTestGetResponse: GetABTestResponse = DEFAULT_GET_ABTEST_RESPONSE;
   private abTestListResponses = new Map<string | undefined, ListABTestsResponse>();
+  private abTestUpdateResponse: UpdateABTestResponse = DEFAULT_UPDATE_ABTEST_RESPONSE;
+  private abTestDeleteResponse: DeleteABTestResponse = DEFAULT_DELETE_ABTEST_RESPONSE;
   private batchEvalResults: BatchEvaluationResultEntry[] = [];
   private batchEvalResultsError?: unknown;
   private startBatchEvalResponse: StartBatchEvaluationResponse = DEFAULT_START_BATCH_EVAL_RESPONSE;
@@ -1622,6 +1629,16 @@ export class TestEvalClient implements CoreEvalClient {
     return this;
   }
 
+  setAbTestUpdateResponse(response: UpdateABTestResponse): this {
+    this.abTestUpdateResponse = response;
+    return this;
+  }
+
+  setAbTestDeleteResponse(response: DeleteABTestResponse): this {
+    this.abTestDeleteResponse = response;
+    return this;
+  }
+
   // setUpdateDatasetResult sets what updateDatasetExamples resolves to (when not
   // erroring).
   setUpdateDatasetResult(result: DatasetUpdateResult): this {
@@ -1771,6 +1788,22 @@ export class TestEvalClient implements CoreEvalClient {
       this.abTestListResponses.get(undefined) ??
       DEFAULT_LIST_ABTESTS_RESPONSE
     );
+  }
+
+  async setABTestExecutionStatus(
+    id: string,
+    executionStatus: ABTestExecutionStatus,
+    options: CoreOptions,
+  ): Promise<UpdateABTestResponse> {
+    this.calls.push({ method: "setABTestExecutionStatus", args: [id, executionStatus, options] });
+    if (this.error) throw this.error;
+    return this.abTestUpdateResponse;
+  }
+
+  async deleteABTest(id: string, options: CoreOptions): Promise<DeleteABTestResponse> {
+    this.calls.push({ method: "deleteABTest", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.abTestDeleteResponse;
   }
 
   async startBatchEvaluation(
