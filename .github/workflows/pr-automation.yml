@@ -73,3 +73,112 @@ jobs:
       system_prompt_path: .github/harness/prompts/system.md
       review_prompt_path: .github/harness/prompts/review.md
     secrets: inherit
+
+  tarball-authorize:
+    if: |
+      github.event_name == 'pull_request_target' &&
+      contains(fromJSON('["opened","reopened","synchronize"]'), github.event.action)
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      is_authorized: ${{ steps.check.outputs.is_authorized }}
+    steps:
+      - name: Fetch secrets from Secrets Manager
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          repo: AUTHORIZED_USERS
+      - name: Check authorization
+        id: authz
+        uses: aws/agentcore-devx-devtools/.github/actions/check-authorized-user@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          subject: ${{ github.event.pull_request.user.login }}
+          authorized-users: ${{ env.AUTHORIZED_USERS }}
+      - name: Determine authorization
+        id: check
+        env:
+          IS_AUTHORIZED: ${{ steps.authz.outputs.is-authorized }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          if [[ "$IS_AUTHORIZED" == "true" ]]; then
+            echo "PR author ${PR_AUTHOR} is authorized"
+            echo "is_authorized=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "PR author ${PR_AUTHOR} is not in AUTHORIZED_USERS, skipping"
+            echo "is_authorized=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  pr-tarball:
+    needs: tarball-authorize
+    if: needs.tarball-authorize.outputs.is_authorized == 'true'
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          allow-unsafe-pr-checkout: true
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+
+      - name: Pack CLI
+        id: tarball
+        run: |
+          bun pm pack --destination "$RUNNER_TEMP"
+          tarball="$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name 'agentcore-*.tgz' -print -quit)"
+          test -f "$tarball"
+          echo "name=$(basename "$tarball")" >> "$GITHUB_OUTPUT"
+          echo "path=$tarball" >> "$GITHUB_OUTPUT"
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Create or update PR release
+        id: release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TARBALL_NAME: ${{ steps.tarball.outputs.name }}
+          TARBALL_PATH: ${{ steps.tarball.outputs.path }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          tag="pr-${PR_NUMBER}-tarball"
+          gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$tag" \
+            "$TARBALL_PATH" \
+            --title "PR #${PR_NUMBER} Tarball" \
+            --notes "Auto-generated tarball for PR #${PR_NUMBER}." \
+            --draft \
+            --target "$HEAD_SHA"
+
+          download_url="https://github.com/${REPOSITORY}/releases/download/${tag}/${TARBALL_NAME}"
+          echo "url=$download_url" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR
+        uses: marocchino/sticky-pull-request-comment@v3
+        with:
+          header: tarball
+          message: |
+            ## Package Tarball
+
+            **[${{ steps.tarball.outputs.name }}](${{ steps.release.outputs.url }})**
+
+            ### How to install
+
+            ```bash
+            gh release download pr-${{ github.event.pull_request.number }}-tarball --repo ${{ github.repository }} --pattern "*.tgz" --dir /tmp/pr-tarball
+            bun add --global /tmp/pr-tarball/${{ steps.tarball.outputs.name }}
+            ```
