@@ -135,18 +135,18 @@ describe("online-insight CRUDL", () => {
     for (const c of configs) expect(c.insights?.length ?? 0).toBeGreaterThan(0);
   });
 
-  // Filtering to insight configs happens client-side, after the service has already
-  // counted a page against --max-results. So a page can come back with 0 or 1 rows
-  // yet still carry a nextToken (the single row it held was a plain eval config and
-  // got filtered out). We assert that the list paginates — rows, if any, are insight
-  // configs and the next page is fetchable — not an exact per-page row count.
+  // The list now fills each page across the shared API's underlying pages: the
+  // client pulls eval-config pages and accumulates insight configs until it has
+  // --max-results of them. With several insight configs in the account, a page
+  // fills exactly — page-1 holds one insight config and carries a nextToken past
+  // it; page-2 holds the next, distinct insight config.
   test("paginates the list with --max-results and --next-token", async () => {
     const firstPage = await run(["eval", "online-insight", "list", "--max-results", "1"]);
     matchGolden(FIXTURES, "list-page-1.golden.json", firstPage);
 
     const first = JSON.parse(firstPage);
     expect(first.onlineEvaluationConfigs).toBeArray();
-    expect(first.onlineEvaluationConfigs.length).toBeLessThanOrEqual(1);
+    expect(first.onlineEvaluationConfigs.length).toBe(1);
     for (const c of first.onlineEvaluationConfigs)
       expect(c.insights?.length ?? 0).toBeGreaterThan(0);
     expect(first.nextToken).toBeString();
@@ -163,9 +163,15 @@ describe("online-insight CRUDL", () => {
     matchGolden(FIXTURES, "list-page-2.golden.json", secondPage);
     const second = JSON.parse(secondPage);
     expect(second.onlineEvaluationConfigs).toBeArray();
+    expect(second.onlineEvaluationConfigs.length).toBe(1);
     for (const c of second.onlineEvaluationConfigs)
       expect(c.insights?.length ?? 0).toBeGreaterThan(0);
-  });
+
+    // page-2 is the next insight config, not a repeat of page-1's.
+    expect(second.onlineEvaluationConfigs[0].onlineEvaluationConfigId).not.toBe(
+      first.onlineEvaluationConfigs[0].onlineEvaluationConfigId,
+    );
+  }, 60_000);
 
   // resume and pause are asserted in one test because the service rejects an
   // update while the previous one is still settling (ConflictException, state

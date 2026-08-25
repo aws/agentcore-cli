@@ -17,7 +17,7 @@ export const createCreateOnlineInsightHandler = (core: Core, io: AppIO) =>
     flags: [
       flag("name", "the name of the online insight config", z.string().optional()),
       flag("role-arn", "IAM role the online insight assumes", z.string().optional()),
-      flag("agent", "runtime ID whose traffic to sample", z.string().optional()),
+      flag("agent", "harness ID or runtime ID whose traffic to sample", z.string().optional()),
       flag(
         "endpoint",
         "the agent endpoint qualifier to scope monitoring to (default DEFAULT)",

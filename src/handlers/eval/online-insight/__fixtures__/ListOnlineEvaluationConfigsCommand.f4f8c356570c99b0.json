@@ -6,8 +6,12 @@
       "onlineEvaluationConfigName": "agentcore_cli_online_insight_fixture",
       "status": "ACTIVE",
       "executionStatus": "DISABLED",
-      "createdAt": "2026-08-25T16:31:04.975Z",
-      "updatedAt": "2026-08-25T16:31:05.170Z",
+      "createdAt": {
+        "$date": "2026-08-25T16:31:04.975Z"
+      },
+      "updatedAt": {
+        "$date": "2026-08-25T16:31:05.170Z"
+      },
       "insights": [
         {
           "insightId": "Builtin.Insight.FailureAnalysis"

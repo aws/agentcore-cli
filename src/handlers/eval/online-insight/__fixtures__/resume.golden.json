@@ -1,7 +1,7 @@
 {
-  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_insight_fixture-5Y5vyaDABJ",
-  "onlineEvaluationConfigId": "agentcore_cli_online_insight_fixture-5Y5vyaDABJ",
-  "updatedAt": "2026-08-24T22:27:21.365Z",
+  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_insight_fixture-yfp5iH59lN",
+  "onlineEvaluationConfigId": "agentcore_cli_online_insight_fixture-yfp5iH59lN",
+  "updatedAt": "2026-08-25T16:31:09.841Z",
   "status": "UPDATING",
   "executionStatus": "ENABLED"
 }

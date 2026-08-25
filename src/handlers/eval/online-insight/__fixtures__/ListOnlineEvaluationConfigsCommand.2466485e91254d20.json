@@ -1,0 +1,18 @@
+{
+  "onlineEvaluationConfigs": [
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/PromoteT2_oeT2t-pKLwdZDXyw",
+      "onlineEvaluationConfigId": "PromoteT2_oeT2t-pKLwdZDXyw",
+      "onlineEvaluationConfigName": "PromoteT2_oeT2t",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-06-15T17:06:17.784Z"
+      },
+      "updatedAt": {
+        "$date": "2026-06-15T17:06:45.466Z"
+      }
+    }
+  ],
+  "nextToken": "AQICAHg005/7fkIBR7tGFhppNaSDRXSe8ajCw8sa0ZnYTqa1SAF/1t1526ridGsffTzrIjppAAABJTCCASEGCSqGSIb3DQEHBqCCARIwggEOAgEAMIIBBwYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAzN9WFcwN6QeLoYg38CARCAgdmoQZ7B1WhAtY0w9xRVJPr3nW2aUVD9oD8G1rJSXbrpGqM2x5+hgLNE0YITiVxj6062dhvC+u1Zlk3Itp77jqaOPDfL2witA87RAt8D2ShlOl1czeJD1QZufySNgzz8vZvDqwYBlxtQclpcse+CkCaUxT+iNkoB2+DBmgVkGgo9zQyjPCQ/NLIz+HF6mRjy940uCj/m2MfnV3tqfapoBo3lOJtskHu/7xbKX9x12VXqxCEujs4gb4CYu5c/fDaNh4FZ/QXRUTrSSVPqhIBEY/mX59hh2MzAAvrY"
+}

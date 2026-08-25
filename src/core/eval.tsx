@@ -90,6 +90,7 @@ import {
   InputValidationError,
   NetworkingError,
   ResourceNotFoundError,
+  ResultTruncationError,
 } from "../errors";
 import type {
   BatchEvaluationDetail,
@@ -171,6 +172,10 @@ const noopLogger: Logger = {
   error: () => {},
   child: () => noopLogger,
 };
+
+const DEFAULT_ONLINE_INSIGHT_PAGE_SIZE = 100;
+const MAX_ONLINE_INSIGHT_PAGES = 101;
+type InsightSummary = NonNullable<ListOnlineInsightsResponse["onlineEvaluationConfigs"]>[number];
 
 export class EvalClient implements CoreEvalClient {
   constructor(
@@ -603,13 +608,37 @@ export class EvalClient implements CoreEvalClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListOnlineInsightsResponse> {
-    const response = await this.listOnlineEvaluationConfigs(nextToken, maxResults, options);
-    return {
-      ...response,
-      onlineEvaluationConfigs: (response.onlineEvaluationConfigs ?? []).filter(
+    // Fill the requested page across underlying pages, since the shared List API
+    // returns eval configs too (mirrors listGatewayConnectors over Targets).
+    const pageSize = maxResults ?? DEFAULT_ONLINE_INSIGHT_PAGE_SIZE;
+    const items: InsightSummary[] = [];
+    let token = nextToken;
+    let filling = true;
+
+    for (let page = 0; page < MAX_ONLINE_INSIGHT_PAGES; page++) {
+      const requestToken = token;
+      const requestSize = filling ? pageSize - items.length : DEFAULT_ONLINE_INSIGHT_PAGE_SIZE;
+      const response = await this.listOnlineEvaluationConfigs(token, requestSize, options);
+      const insights = (response.onlineEvaluationConfigs ?? []).filter(
         (c) => (c.insights?.length ?? 0) > 0,
-      ),
-    };
+      );
+
+      if (filling) {
+        items.push(...insights);
+        filling = items.length < pageSize;
+      } else if (insights.length > 0) {
+        return { ...response, onlineEvaluationConfigs: items, nextToken: requestToken };
+      }
+
+      if (response.nextToken === undefined) {
+        return { ...response, onlineEvaluationConfigs: items, nextToken: undefined };
+      }
+      token = response.nextToken;
+    }
+
+    throw new ResultTruncationError(
+      `Online insight discovery exceeded ${MAX_ONLINE_INSIGHT_PAGES} config pages; results are incomplete`,
+    );
   }
 
   async setOnlineInsightExecutionStatus(
