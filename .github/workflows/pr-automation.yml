@@ -10,7 +10,7 @@ on:
         description: Automation to run
         required: true
         type: choice
-        options: [harness-review, security-review]
+        options: [harness-review, security-review, pr-tarball]
       pr_number:
         description: Pull request number
         required: true
@@ -64,6 +64,7 @@ jobs:
     uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-ai-review.yml@4b3972e790e4cc312ddf6f1909a0b6ca8a749506
     with:
       runner: codebuild
+      model_id: us.anthropic.claude-opus-5
       pr_url: >-
         ${{ github.event_name == 'workflow_dispatch' && format('{0}/{1}/pull/{2}', github.server_url, github.repository,
         inputs.pr_number) || github.event.pull_request.html_url }}
@@ -71,3 +72,155 @@ jobs:
       system_prompt_path: examples/AgentCoreCliReviewer/app/PRReviewer/system-prompt.md
       review_prompt_path: examples/AgentCoreCliReviewer/app/PRReviewer/prompts/review.md
     secrets: inherit
+
+  # pull_request_target workflows are loaded from main, so refactor's Bun tarball runs here.
+  tarball-authorize:
+    if: |
+      (github.event_name == 'workflow_dispatch' && inputs.automation == 'pr-tarball') ||
+      (
+        github.event_name == 'pull_request_target' &&
+        github.event.pull_request.base.ref == 'refactor' &&
+        contains(fromJSON('["opened","reopened","synchronize"]'), github.event.action)
+      )
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      is_authorized: ${{ steps.check.outputs.is_authorized }}
+      pr_number: ${{ steps.pr.outputs.number }}
+      head_sha: ${{ steps.pr.outputs.head_sha }}
+    steps:
+      - name: Resolve PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
+        run: |
+          if [[ ! "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::Invalid PR number: $PR_NUMBER"
+            exit 1
+          fi
+
+          pr="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          author="$(jq -r '.user.login' <<< "$pr")"
+          base_ref="$(jq -r '.base.ref' <<< "$pr")"
+          head_sha="$(jq -r '.head.sha' <<< "$pr")"
+          state="$(jq -r '.state' <<< "$pr")"
+
+          if [[ "$state" != "open" ]]; then
+            echo "::error::PR #${PR_NUMBER} is not open"
+            exit 1
+          fi
+
+          if [[ "$base_ref" != "refactor" ]]; then
+            echo "::error::PR #${PR_NUMBER} does not target refactor"
+            exit 1
+          fi
+
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "author=$author" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+      - name: Fetch secrets from Secrets Manager
+        if: github.event_name == 'pull_request_target'
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          repo: AUTHORIZED_USERS
+      - name: Check authorization
+        if: github.event_name == 'pull_request_target'
+        id: authz
+        uses: aws/agentcore-devx-devtools/.github/actions/check-authorized-user@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          subject: ${{ steps.pr.outputs.author }}
+          authorized-users: ${{ env.AUTHORIZED_USERS }}
+      - name: Determine authorization
+        id: check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          IS_AUTHORIZED: ${{ steps.authz.outputs.is-authorized }}
+          PR_AUTHOR: ${{ steps.pr.outputs.author }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "Tarball generation manually dispatched by ${GITHUB_ACTOR}"
+            echo "is_authorized=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$IS_AUTHORIZED" == "true" ]]; then
+            echo "PR author ${PR_AUTHOR} is authorized"
+            echo "is_authorized=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "PR author ${PR_AUTHOR} is not in AUTHORIZED_USERS, skipping"
+            echo "is_authorized=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  pr-tarball:
+    needs: tarball-authorize
+    if: needs.tarball-authorize.outputs.is_authorized == 'true'
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.tarball-authorize.outputs.head_sha }}
+          persist-credentials: false
+          allow-unsafe-pr-checkout: true
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+
+      - name: Pack CLI
+        id: tarball
+        run: |
+          bun pm pack --destination "$RUNNER_TEMP"
+          tarball="$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name 'agentcore-*.tgz' -print -quit)"
+          test -f "$tarball"
+          echo "name=$(basename "$tarball")" >> "$GITHUB_OUTPUT"
+          echo "path=$tarball" >> "$GITHUB_OUTPUT"
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Create or update PR release
+        id: release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ needs.tarball-authorize.outputs.pr_number }}
+          TARBALL_NAME: ${{ steps.tarball.outputs.name }}
+          TARBALL_PATH: ${{ steps.tarball.outputs.path }}
+          HEAD_SHA: ${{ needs.tarball-authorize.outputs.head_sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          tag="pr-${PR_NUMBER}-tarball"
+          gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$tag" \
+            "$TARBALL_PATH" \
+            --title "PR #${PR_NUMBER} Tarball" \
+            --notes "Auto-generated tarball for PR #${PR_NUMBER}." \
+            --draft \
+            --target "$HEAD_SHA"
+
+          download_url="https://github.com/${REPOSITORY}/releases/download/${tag}/${TARBALL_NAME}"
+          echo "url=$download_url" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR
+        uses: marocchino/sticky-pull-request-comment@v3
+        with:
+          header: tarball
+          message: |
+            ## Package Tarball
+
+            **[${{ steps.tarball.outputs.name }}](${{ steps.release.outputs.url }})**
+
+            ### How to install
+
+            ```bash
+            gh release download pr-${{ needs.tarball-authorize.outputs.pr_number }}-tarball --repo ${{ github.repository }} --pattern "*.tgz" --dir /tmp/pr-tarball
+            bun add --global /tmp/pr-tarball/${{ steps.tarball.outputs.name }}
+            ```
