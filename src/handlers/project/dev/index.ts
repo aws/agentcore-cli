@@ -53,15 +53,25 @@ function selectRuntimes(project: Project, name?: string): ProjectRuntime[] {
   );
 }
 
-function renderEvent(io: AppIO, event: DevEvent, json?: JsonRenderer, agent?: string): void {
+/** An agent's own output, always tagged with the agent that produced it. */
+function renderAgentEvent(io: AppIO, event: DevEvent, agent: string, json?: JsonRenderer): void {
   if (json) {
-    json.renderJsonLine(agent === undefined ? event : { agent, ...event });
+    json.renderJsonLine({ agent, ...event });
     return;
   }
 
   const output = event.type === "stdout" ? io.stdout : io.stderr;
   const line = event.type === "status" ? event.message : event.line;
-  output.write(agent === undefined ? `${line}\n` : `[${agent}] ${line}\n`);
+  output.write(`[${agent}] ${line}\n`);
+}
+
+/** A command-level status line, not attributed to any agent. */
+function renderStatus(io: AppIO, message: string, json?: JsonRenderer): void {
+  if (json) {
+    json.renderJsonLine({ type: "status", message });
+    return;
+  }
+  io.stderr.write(`${message}\n`);
 }
 
 export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
@@ -119,22 +129,16 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
               if (tracePersistErrorReported) return;
               tracePersistErrorReported = true;
               const detail = error instanceof Error ? error.message : String(error);
-              renderEvent(
+              renderStatus(
                 config.io,
-                {
-                  type: "status",
-                  message: `Warning: failed to persist traces to ${tracesDirectory} (${detail}); collected traces may be incomplete.`,
-                },
+                `Warning: failed to persist traces to ${tracesDirectory} (${detail}); collected traces may be incomplete.`,
                 json,
               );
             },
           });
-          renderEvent(
+          renderStatus(
             config.io,
-            {
-              type: "status",
-              message: `OTEL collector listening on port ${collector.port}; traces persist to ${tracesDirectory}.`,
-            },
+            `OTEL collector listening on port ${collector.port}; traces persist to ${tracesDirectory}.`,
             json,
           );
         }
@@ -178,7 +182,7 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
         );
 
         for await (const { agentName, event } of supervisor.events()) {
-          renderEvent(config.io, event, json, agentName);
+          renderAgentEvent(config.io, event, agentName, json);
           if (controller.signal.aborted) break;
           const phases = supervisor.snapshot();
           if (phases.every(({ phase }) => phase !== "starting" && phase !== "running")) {
