@@ -212,6 +212,7 @@ jobs:
       - name: Comment on PR
         uses: marocchino/sticky-pull-request-comment@v3
         with:
+          number: ${{ needs.tarball-authorize.outputs.pr_number }}
           header: tarball
           message: |
             ## Package Tarball
