@@ -124,11 +124,13 @@ jobs:
           echo "author=$author" >> "$GITHUB_OUTPUT"
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
       - name: Fetch secrets from Secrets Manager
+        if: github.event_name == 'pull_request_target'
         uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
         with:
           role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
           repo: AUTHORIZED_USERS
       - name: Check authorization
+        if: github.event_name == 'pull_request_target'
         id: authz
         uses: aws/agentcore-devx-devtools/.github/actions/check-authorized-user@31aa3b031a86664e29861d68956e44b07cf21a74
         with:
@@ -137,10 +139,14 @@ jobs:
       - name: Determine authorization
         id: check
         env:
+          EVENT_NAME: ${{ github.event_name }}
           IS_AUTHORIZED: ${{ steps.authz.outputs.is-authorized }}
           PR_AUTHOR: ${{ steps.pr.outputs.author }}
         run: |
-          if [[ "$IS_AUTHORIZED" == "true" ]]; then
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "Tarball generation manually dispatched by ${GITHUB_ACTOR}"
+            echo "is_authorized=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$IS_AUTHORIZED" == "true" ]]; then
             echo "PR author ${PR_AUTHOR} is authorized"
             echo "is_authorized=true" >> "$GITHUB_OUTPUT"
           else
