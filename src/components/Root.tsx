@@ -62,6 +62,9 @@ import { ConfigBundleListScreen } from "../handlers/eval/config-bundle/list/scre
 import { ConfigBundleGetScreen } from "../handlers/eval/config-bundle/get/screen.tsx";
 import { ConfigBundleVersionScreen } from "../handlers/eval/config-bundle/version/screen.tsx";
 import { ConfigBundleVersionListScreen } from "../handlers/eval/config-bundle/version/list/screen.tsx";
+import { AbTestScreen } from "../handlers/eval/ab-test/screen.tsx";
+import { AbTestListScreen } from "../handlers/eval/ab-test/list/screen.tsx";
+import { AbTestGetScreen, AbTestGetJsonScreen } from "../handlers/eval/ab-test/get/screen.tsx";
 import { MemoryEventScreen } from "../handlers/memory/event/screen.tsx";
 import { MemoryEventGetScreen } from "../handlers/memory/event/get/screen.tsx";
 import { MemoryEventListScreen } from "../handlers/memory/event/list/screen.tsx";
@@ -551,6 +554,23 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/eval/batch-evaluation/get/:batchEvaluationId"
             element={<BatchEvaluationGetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route path="agentcore/eval/ab-test" element={<AbTestScreen ctx={ctx} core={core} />} />
+          <Route
+            path="agentcore/eval/ab-test/list"
+            element={<AbTestListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/ab-test/get"
+            element={<Navigate to="/agentcore/eval/ab-test/list" replace />}
+          />
+          <Route
+            path="agentcore/eval/ab-test/get/:abTestId"
+            element={<AbTestGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/ab-test/get/:abTestId/json"
+            element={<AbTestGetJsonScreen ctx={ctx} core={core} />}
           />
           <Route
             path="agentcore/eval/batch-insights"

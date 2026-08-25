@@ -13,3 +13,5 @@ export function createAbTestHandler(core: Core, io: AppIO): Router {
     .handler(createGetAbTestHandler(core, io))
     .handler(createListAbTestsHandler(core));
 }
+
+export { AbTestScreen } from "./screen.tsx";
