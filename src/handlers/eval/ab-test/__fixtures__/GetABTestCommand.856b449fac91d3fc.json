@@ -1,0 +1,88 @@
+{
+  "abTestId": "abvfylatest_abtargettest-a5f5674e07",
+  "abTestArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:ab-test/abvfylatest_abtargettest-a5f5674e07",
+  "name": "abvfylatest_abtargettest",
+  "status": "ACTIVE",
+  "executionStatus": "STOPPED",
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:gateway/abvfylatest-abgateway-t4w4fdbovi",
+  "variants": [
+    {
+      "name": "C",
+      "weight": 50,
+      "variantConfiguration": {
+        "target": {
+          "name": "prod"
+        }
+      }
+    },
+    {
+      "name": "T1",
+      "weight": 50,
+      "variantConfiguration": {
+        "target": {
+          "name": "staging"
+        }
+      }
+    }
+  ],
+  "evaluationConfig": {
+    "perVariantOnlineEvaluationConfig": [
+      {
+        "name": "C",
+        "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/ABVfyLatest_ProdEval-2vqlCb2UiG"
+      },
+      {
+        "name": "T1",
+        "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/ABVfyLatest_StagingEval-4utSyp3pE9"
+      }
+    ]
+  },
+  "createdAt": {
+    "$date": "2026-06-17T22:10:40.198Z"
+  },
+  "updatedAt": {
+    "$date": "2026-07-01T22:11:16.000Z"
+  },
+  "description": "0.20.0 target-based AB",
+  "roleArn": "arn:aws:iam::725476964917:role/AgentCore-ABVfyLatest-ABTestABTargetTest-111a51f2",
+  "currentRunId": "c9e913a7-9ee2-48fe-9a6b-820f7db1662e",
+  "startedAt": {
+    "$date": "2026-06-17T22:10:43.667Z"
+  },
+  "stoppedAt": {
+    "$date": "2026-07-01T22:11:16.749Z"
+  },
+  "maxDurationExpiresAt": {
+    "$date": "2026-07-01T22:10:43.667Z"
+  },
+  "results": {
+    "evaluatorMetrics": [
+      {
+        "evaluatorArn": "arn:aws:bedrock-agentcore:::evaluator/Builtin.Helpfulness",
+        "controlStats": {
+          "variantName": "C",
+          "sampleSize": 4,
+          "mean": 0.6275000000000001
+        },
+        "variantResults": [
+          {
+            "variantName": "T1",
+            "sampleSize": 8,
+            "mean": 0.6475000000000001,
+            "isSignificant": false,
+            "absoluteChange": 0.020000000000000018,
+            "percentChange": 3.1872509960159388,
+            "pValue": 0.9687271479378647,
+            "confidenceInterval": {
+              "lower": -0.1078568731042645,
+              "upper": 0.14785687310426454
+            }
+          }
+        ]
+      }
+    ],
+    "analysisTimestamp": {
+      "$date": "2026-06-17T22:36:26.738Z"
+    }
+  }
+}

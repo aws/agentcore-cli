@@ -1,0 +1,6 @@
+{
+  "$error": {
+    "name": "ResourceNotFoundException",
+    "message": "AB test not found: abTestId=missing-abtest-0000000000"
+  }
+}

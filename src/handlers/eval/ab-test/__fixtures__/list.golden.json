@@ -1,0 +1,37 @@
+{
+  "abTests": [
+    {
+      "abTestId": "abtestval_cs_3p_abtest-fd3ed89cb0",
+      "abTestArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:ab-test/abtestval_cs_3p_abtest-fd3ed89cb0",
+      "name": "abtestval_cs_3p_abtest",
+      "status": "ACTIVE",
+      "executionStatus": "STOPPED",
+      "createdAt": "2026-06-24T23:02:52.192Z",
+      "updatedAt": "2026-07-08T23:03:42.000Z",
+      "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:gateway/abtestval-cs-3p-abtest-gw-pywgl6xbpy"
+    },
+    {
+      "abTestId": "abvfylatest_abtargettest-a5f5674e07",
+      "abTestArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:ab-test/abvfylatest_abtargettest-a5f5674e07",
+      "name": "abvfylatest_abtargettest",
+      "status": "ACTIVE",
+      "executionStatus": "STOPPED",
+      "createdAt": "2026-06-17T22:10:40.198Z",
+      "updatedAt": "2026-07-01T22:11:16.000Z",
+      "description": "0.20.0 target-based AB",
+      "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:gateway/abvfylatest-abgateway-t4w4fdbovi"
+    },
+    {
+      "abTestId": "abvfyprerelease_abtargettest-3d4c25ff6c",
+      "abTestArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:ab-test/abvfyprerelease_abtargettest-3d4c25ff6c",
+      "name": "abvfyprerelease_abtargettest",
+      "status": "ACTIVE",
+      "executionStatus": "STOPPED",
+      "createdAt": "2026-06-17T20:29:28.252Z",
+      "updatedAt": "2026-07-01T20:30:07.000Z",
+      "description": "Prerelease target-based AB: prod vs staging",
+      "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:gateway/abvfyprerelease-abgateway-oetvoualer"
+    }
+  ],
+  "nextToken": "eyJhd3NBY2NvdW50SWQiOiB7IlMiOiAiNzI1NDc2OTY0OTE3In0sICJhYlRlc3RJZCI6IHsiUyI6ICJhYnZmeXByZXJlbGVhc2VfYWJ0YXJnZXR0ZXN0LTNkNGMyNWZmNmMifSwgInVwZGF0ZWRBdCI6IHsiUyI6ICIyMDI2LTA3LTAxVDIwOjMwOjA3WiJ9fQ=="
+}

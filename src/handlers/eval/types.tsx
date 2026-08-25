@@ -30,6 +30,8 @@ import type {
   UpdateOnlineEvaluationConfigResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
+  GetABTestResponse,
+  ListABTestsResponse,
   GetBatchEvaluationResponse,
   ListBatchEvaluationsResponse,
   StartBatchEvaluationResponse,
@@ -344,6 +346,13 @@ export interface CoreEvalClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListBatchEvaluationsResponse>;
+
+  getABTest(id: string, options: CoreOptions): Promise<GetABTestResponse>;
+  listABTests(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListABTestsResponse>;
   // startBatchEvaluation submits an async, service-side evaluation over sessions
   // the service gathers from the resolved data source. Returns the durable job id
   // + RUNNING status; poll with getBatchEvaluation.

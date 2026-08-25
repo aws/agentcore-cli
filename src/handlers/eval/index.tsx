@@ -10,6 +10,7 @@ import { createBatchEvaluationHandler } from "./batch-evaluation";
 import { createBatchInsightsHandler } from "./batch-insights";
 import { createOnDemandHandler } from "./ondemand";
 import { createConfigBundleHandler } from "./config-bundle";
+import { createAbTestHandler } from "./ab-test";
 
 export function createEvalHandler(core: Core, io: AppIO): Router {
   return new Router("eval", "evaluate and optimize AgentCore agents")
@@ -21,7 +22,8 @@ export function createEvalHandler(core: Core, io: AppIO): Router {
     .handler(createBatchEvaluationHandler(core, io))
     .handler(createBatchInsightsHandler(core, io))
     .handler(createOnDemandHandler(core, io))
-    .handler(createConfigBundleHandler(core, io));
+    .handler(createConfigBundleHandler(core, io))
+    .handler(createAbTestHandler(core, io));
 }
 
 export { EvalScreen } from "./screen.tsx";

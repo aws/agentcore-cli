@@ -59,6 +59,8 @@ import {
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   EvaluateCommand,
+  GetABTestCommand,
+  ListABTestsCommand,
   GetBatchEvaluationCommand,
   ListBatchEvaluationsCommand,
   StartBatchEvaluationCommand,
@@ -66,6 +68,8 @@ import {
   type EvaluationResultContent,
   type EvaluationTarget,
   type BatchEvaluationSummary,
+  type GetABTestResponse,
+  type ListABTestsResponse,
   type ListBatchEvaluationsResponse,
   type StartBatchEvaluationResponse,
   type DataSourceConfig as DataPlaneDataSourceConfig,
@@ -383,6 +387,20 @@ export class EvalClient implements CoreEvalClient {
     return this.clients
       .data(toClientConfig(options))
       .send(new ListBatchEvaluationsCommand({ nextToken, maxResults }));
+  }
+
+  async getABTest(id: string, options: CoreOptions): Promise<GetABTestResponse> {
+    return this.clients.data(toClientConfig(options)).send(new GetABTestCommand({ abTestId: id }));
+  }
+
+  async listABTests(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListABTestsResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new ListABTestsCommand({ nextToken, maxResults }));
   }
 
   async listBatchInsights(
