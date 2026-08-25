@@ -34,7 +34,7 @@ const TEMPLATES: Record<string, Template> = {
           name: "hello_world",
           build: "CodeZip",
           entrypoint: "main.py",
-          codeLocation: "app/hello-world",
+          codeLocation: "app/hello_world",
           // Required for CodeZip builds: the CDK construct library rejects a
           // CodeZip runtime with no runtimeVersion, and it is what selects the
           // packager. Container builds take their version from the image.
@@ -51,7 +51,7 @@ const TEMPLATES: Record<string, Template> = {
           name: "hello_world",
           build: "Container",
           entrypoint: "main.py",
-          codeLocation: "app/hello-world",
+          codeLocation: "app/hello_world",
           dockerfile: "Dockerfile",
         },
       ],
@@ -100,7 +100,8 @@ export async function createProjectTree(
       FsTreeNode.createFile(".env.local", () => src.read("templates/shared/env.local.template")),
     ]),
     FsTreeNode.createDirectory("app", [
-      await FsTreeNode.fromAssetSource(src, template.assetDir, "hello-world"),
+      // TODO: replace this hardcoded "hello_world" with the runtime name once templates are more flexible.
+      await FsTreeNode.fromAssetSource(src, template.assetDir, "hello_world"),
     ]),
   ]);
 }

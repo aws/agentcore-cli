@@ -10,7 +10,7 @@ import { AgentNameSchema, BuildTypeSchema } from "../../projectSchemas/runtime";
 
 export const RUNTIME_TEMPLATE_SHORTCUTS = {
   "hello-world-python": {
-    runtimeName: "hello-world",
+    runtimeName: "hello_world",
     build: "CodeZip",
     language: "Python",
     framework: "none",
@@ -18,7 +18,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     memory: "none",
   },
   "hello-world-python-container": {
-    runtimeName: "hello-world",
+    runtimeName: "hello_world",
     build: "Container",
     language: "Python",
     framework: "none",

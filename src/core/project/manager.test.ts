@@ -103,7 +103,7 @@ describe("FsProjectManager.create", () => {
         name: "hello_world",
         build: "CodeZip",
         entrypoint: "main.py",
-        codeLocation: "app/hello-world",
+        codeLocation: "app/hello_world",
         runtimeVersion: "PYTHON_3_14",
       },
     ]);
@@ -117,7 +117,7 @@ describe("FsProjectManager.create", () => {
       scaffoldRuntimeInput: HELLO_WORLD_PYTHON_CONTAINER,
     });
 
-    const appDir = join(directory, "example", "app", "hello-world");
+    const appDir = join(directory, "example", "app", "hello_world");
     // dockerignore.template must render to .dockerignore (the fsTree regex fix).
     expect(await Bun.file(join(appDir, ".dockerignore")).exists()).toBe(true);
     expect(await Bun.file(join(appDir, "dockerignore.template")).exists()).toBe(false);
@@ -149,7 +149,7 @@ describe("FsProjectManager.create", () => {
     const projectRoot = join(directory, "example");
     expect(commands).toEqual([
       { command: ["npm", "install"], cwd: join(projectRoot, "agentcore", "cdk") },
-      { command: ["uv", "sync"], cwd: join(projectRoot, "app", "hello-world") },
+      { command: ["uv", "sync"], cwd: join(projectRoot, "app", "hello_world") },
       { command: ["git", "init"], cwd: projectRoot },
     ]);
   });
@@ -508,7 +508,7 @@ describe("FsProjectManager.resolve", () => {
             name: "hello_world",
             build: "CodeZip",
             entrypoint: "main.py",
-            codeLocation: "app/hello-world",
+            codeLocation: "app/hello_world",
           },
         ],
       }),

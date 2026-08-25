@@ -97,7 +97,7 @@ describe("project create", () => {
     const projectRoot = join(directory, "MyAgent");
     expect(core.projectCommands).toEqual([
       { command: ["npm", "install"], cwd: join(projectRoot, "agentcore", "cdk") },
-      { command: ["uv", "sync"], cwd: join(projectRoot, "app", "hello-world") },
+      { command: ["uv", "sync"], cwd: join(projectRoot, "app", "hello_world") },
       { command: ["git", "init"], cwd: projectRoot },
     ]);
     expect(io.stderr()).toContain("Creating project tree");
@@ -710,7 +710,7 @@ describe("project build", () => {
 
   test("resolves the project from a nested directory", async () => {
     const projectRoot = await inBuildableProject();
-    process.chdir(join(projectRoot, "app", "hello-world"));
+    process.chdir(join(projectRoot, "app", "hello_world"));
 
     const { core } = await run(["build"]);
 
