@@ -124,10 +124,11 @@ async function main() {
   const connectorParametersByFile = resolveConnectorParametersByFile(specAny, projectRoot);
   const harnessConfigs = resolveHarnessConfigs(specAny, projectRoot);
 
-  // Read deployed state for credential ARNs (populated by pre-deploy identity setup)
+  // Read deployed state for credential ARNs (populated by pre-deploy identity setup).
+  // Lives top-level under agentcore/ (committed), not the gitignored .cli/ dir.
   let deployedState: Record<string, unknown> | undefined;
   try {
-    deployedState = JSON.parse(fs.readFileSync(path.join(configRoot, '.cli', 'deployed-state.json'), 'utf8'));
+    deployedState = JSON.parse(fs.readFileSync(path.join(configRoot, 'deployed-state.json'), 'utf8'));
   } catch {
     // Deployed state may not exist on first deploy
   }

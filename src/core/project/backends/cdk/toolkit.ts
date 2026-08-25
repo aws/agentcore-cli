@@ -28,7 +28,13 @@ export type CdkOutputs = Record<string, string>;
 export type CdkCredentialProvider = SdkBaseConfig["credentialProvider"];
 export type CdkCredentialResolver = (region: string) => Promise<CdkCredentialProvider>;
 
-export type CdkRunner = (operation: CdkOperation, options: CdkRunOptions) => Promise<CdkOutputs>;
+/**
+ * Result of a CDK operation. `stackArn` is the ARN of the deployed stack (only
+ * a deploy produces one); bootstrap leaves it undefined.
+ */
+export type CdkRunResult = { outputs: CdkOutputs; stackArn?: string };
+
+export type CdkRunner = (operation: CdkOperation, options: CdkRunOptions) => Promise<CdkRunResult>;
 
 export type CdkToolkit = Pick<Toolkit, "bootstrap" | "deploy" | "fromAssemblyDirectory">;
 
@@ -167,7 +173,7 @@ export async function performCdkOperation(
   { lib, toolkit }: LoadedCdkToolkit,
   operation: CdkOperation,
   options: CdkRunOptions,
-): Promise<CdkOutputs> {
+): Promise<CdkRunResult> {
   if (operation.kind === "bootstrap") {
     await toolkit.bootstrap(lib.BootstrapEnvironments.fromList(operation.environments), {
       parameters: lib.BootstrapStackParameters.withExisting({
@@ -177,7 +183,7 @@ export async function performCdkOperation(
         source: lib.BootstrapSource.customTemplate(operation.templateFile),
       }),
     });
-    return {};
+    return { outputs: {} };
   }
 
   const source = await toolkit.fromAssemblyDirectory(options.assemblyDirectory);
@@ -201,8 +207,9 @@ export async function performCdkOperation(
     );
   }
 
-  // A stack that deployed but declares no outputs is legitimate.
-  return result.stacks[0]?.outputs ?? {};
+  // A stack that deployed but declares no outputs is legitimate. The stack ARN
+  // is what the CLI persists to bind the target to this exact deployment.
+  return { outputs: result.stacks[0]?.outputs ?? {}, stackArn: result.stacks[0]?.stackArn };
 }
 
 export function createCdkRunner(

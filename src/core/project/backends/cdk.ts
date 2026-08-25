@@ -12,6 +12,7 @@ import {
 import type { Logger } from "../../../logging";
 import type { DeployBackendInput, ProjectBackend } from "./types";
 import { stackArtifactIdForTarget } from "./cdk/assembly";
+import { updateTargetState } from "./cdk/deployedState";
 import {
   probeBootstrap,
   resolveAwsAccount,
@@ -138,7 +139,14 @@ export class CdkBackend implements ProjectBackend {
     }
 
     yield { message: `Deploying ${stackArtifactId}` };
-    const outputs = await this.cdk({ kind: "deploy", stackArtifactId }, options);
+    const { outputs, stackArn } = await this.cdk({ kind: "deploy", stackArtifactId }, options);
+
+    // Persist the deployed stack's ARN so later commands read live resource
+    // state from CFN.  Merged per target, so deploying one target never drops another's recorded state
+    if (stackArn) {
+      await updateTargetState(this.json, project.rootPath, target.name, { stackArn });
+    }
+
     return { outputs };
   }
 

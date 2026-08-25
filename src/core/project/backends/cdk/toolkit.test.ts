@@ -114,7 +114,7 @@ describe("performCdkOperation", () => {
         { kind: "bootstrap", environments: ["aws://111122223333/us-east-1"] },
         runOptions(),
       ),
-    ).toEqual({});
+    ).toEqual({ outputs: {} });
 
     expect(calls.map(({ method }) => method)).toEqual(["bootstrap"]);
     const [environments, options] = calls[0]!.args as [
@@ -153,13 +153,16 @@ describe("performCdkOperation", () => {
   test("deploys exactly one named stack from the synthesized assembly", async () => {
     const { calls, loaded } = loadedToolkit();
 
-    const outputs = await performCdkOperation(
+    const result = await performCdkOperation(
       loaded,
       { kind: "deploy", stackArtifactId: "AgentCore-orders-default" },
       runOptions({ assemblyDirectory: "/workspace/agentcore/cdk/cdk.out" }),
     );
 
-    expect(outputs).toEqual({ RuntimeArn: "arn:runtime" });
+    expect(result).toEqual({
+      outputs: { RuntimeArn: "arn:runtime" },
+      stackArn: DEPLOYED_STACK.stackArn,
+    });
     expect(calls.map(({ method }) => method)).toEqual(["fromAssemblyDirectory", "deploy"]);
     expect(calls[0]!.args).toEqual(["/workspace/agentcore/cdk/cdk.out"]);
     expect(calls[1]!.args[1]).toMatchObject({
@@ -190,13 +193,13 @@ describe("performCdkOperation", () => {
   test("accepts a deployed stack that declares no outputs", async () => {
     const { loaded } = loadedToolkit([{ ...DEPLOYED_STACK, outputs: {} }]);
 
-    const outputs = await performCdkOperation(
+    const result = await performCdkOperation(
       loaded,
       { kind: "deploy", stackArtifactId: "AgentCore-orders-default" },
       runOptions({ assemblyDirectory: "/workspace/agentcore/cdk/cdk.out" }),
     );
 
-    expect(outputs).toEqual({});
+    expect(result).toEqual({ outputs: {}, stackArn: DEPLOYED_STACK.stackArn });
   });
 });
 
