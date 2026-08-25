@@ -1,6 +1,3 @@
-// Disables the post-invoke span-ingestion wait so the replay returns immediately.
-process.env.SIMULATE_INGESTION_WAIT_MS = "0";
-
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -76,7 +73,12 @@ function invokeDataset(jsonl: string, clients: AwsClients) {
     throw new Error("fetch is only used on the CUSTOM_JWT path, which these tests do not exercise");
   }) as unknown as CoreFetch;
   return new EvalClient(clients, fetch).invokeDataset(
-    { runtimeId: "rt-1", payloadTemplate: '{"prompt":"{input}"}', dataset: datasetFile(jsonl) },
+    {
+      runtimeId: "rt-1",
+      payloadTemplate: '{"prompt":"{input}"}',
+      dataset: datasetFile(jsonl),
+      waitIngestionMs: 0,
+    },
     OPTIONS,
   );
 }
@@ -236,7 +238,8 @@ describe("EvalClient.invokeDataset", () => {
     expect(r.invoked).toBe(2);
     expect(r.failed).toBe(1);
     expect(r.sessions.map((s) => s.exampleId).sort()).toEqual(["ok1", "ok2"]);
-    expect(r.firstError?.message).toMatch(/invoke failed/);
+    expect(r.failures.map((f) => f.exampleId)).toEqual(["bad"]);
+    expect(r.failures[0]?.error).toMatch(/invoke failed/);
   });
 
   test("invokes each turn exactly once across all examples, rendered through the template", async () => {

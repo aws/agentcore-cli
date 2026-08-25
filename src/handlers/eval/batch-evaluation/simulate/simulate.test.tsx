@@ -17,6 +17,7 @@ const INVOKE_RESULT: InvokeDatasetResult = {
   ],
   invoked: 2,
   failed: 0,
+  failures: [],
 };
 
 async function run(args: string[], configure?: (core: TestCoreClient) => void) {
@@ -120,12 +121,17 @@ describe("eval batch-evaluation simulate", () => {
   test("composes startBatchEvaluation over the created sessions + wrapped ground truth", async () => {
     const { core, stdout } = await run(BASE);
 
-    // Rendered output is the batch job + invoked/failed counts.
+    // Rendered output: the batch job + counts + the exampleId↔sessionId map (join key for a
+    // later `get`). No failures key when nothing failed.
     expect(JSON.parse(stdout)).toEqual({
       batchEvaluationId: "batch-eval-test",
       status: "RUNNING",
       examplesInvoked: 2,
       examplesFailed: 0,
+      sessions: [
+        { exampleId: "e1", sessionId: "s1" },
+        { exampleId: "e2", sessionId: "s2" },
+      ],
     });
 
     const start = core.eval.calls.find((c) => c.method === "startBatchEvaluation");
@@ -159,11 +165,35 @@ describe("eval batch-evaluation simulate", () => {
     expect(input.groundTruth).toMatchSnapshot();
   });
 
-  test("refuses to grade when nothing was invoked", async () => {
+  test("refuses to grade when nothing was invoked, naming the first failure", async () => {
     await expect(
       run(BASE, (core) =>
-        core.eval.setInvokeDatasetResponse({ sessions: [], invoked: 0, failed: 3 }),
+        core.eval.setInvokeDatasetResponse({
+          sessions: [],
+          invoked: 0,
+          failed: 3,
+          failures: [
+            { exampleId: "e1", error: "HTTP 500" },
+            { exampleId: "e2", error: "HTTP 500" },
+            { exampleId: "e3", error: "HTTP 500" },
+          ],
+        }),
       ),
-    ).rejects.toThrow(/no examples could be invoked \(3 failed\)/);
+    ).rejects.toThrow(/no examples could be invoked \(3 failed\).*first error: e1 — HTTP 500/);
+  });
+
+  test("passes --ingestion-wait-ms through to invokeDataset and renders failures", async () => {
+    const { core, stdout } = await run([...BASE, "--ingestion-wait-ms", "0"], (c) =>
+      c.eval.setInvokeDatasetResponse({
+        sessions: [{ exampleId: "ok1", sessionId: "s1" }],
+        invoked: 1,
+        failed: 1,
+        failures: [{ exampleId: "bad", error: "HTTP 500" }],
+      }),
+    );
+    const invoke = core.eval.calls.find((c) => c.method === "invokeDataset");
+    expect(invoke).toBeDefined();
+    expect((invoke!.args[0] as { waitIngestionMs?: number }).waitIngestionMs).toBe(0);
+    expect(JSON.parse(stdout).failures).toEqual([{ exampleId: "bad", error: "HTTP 500" }]);
   });
 });

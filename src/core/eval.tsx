@@ -142,6 +142,9 @@ import {
 } from "./onlineEvalExecutionRole";
 
 const DEFAULT_ENDPOINT_QUALIFIER = "DEFAULT";
+// Default span-ingestion wait before grading a simulate run (AgentCore emits spans ~30s-3min
+// after invoke). Overridable per run via --ingestion-wait-ms; matches the old CLI's default.
+const DEFAULT_INGESTION_WAIT_MS = 180_000;
 const DATASET_EXAMPLES_BATCH_LIMIT = 1000;
 const DATASET_MUTATION_PAYLOAD_LIMIT_BYTES = 5 * 1024 * 1024;
 const DATASET_ACTIVE_TIMEOUT_MS = 60_000;
@@ -624,7 +627,7 @@ export class EvalClient implements CoreEvalClient {
     const deps = { clients: this.clients, fetch: this.fetch, logger: this.logger };
     const accountId = accountIdFromRuntimeArn(runtime.agentRuntimeArn);
 
-    const { ok, failed, firstError } = await runExamples(examples, async (example) => {
+    const { ok, failures } = await runExamples(examples, async (example) => {
       // One session per example; the id is a client-owned input per the AgentCore docs,
       // reused across turns so the conversation and its per-turn traces stay in order.
       const sessionId = randomUUID();
@@ -655,27 +658,28 @@ export class EvalClient implements CoreEvalClient {
           return { text };
         },
       };
-      try {
-        const groundTruth = await example.run(ctx);
-        return { exampleId: example.exampleId, sessionId, groundTruth };
-      } catch (error) {
-        // Enrich with the example identity so the dropped-invoke reason is self-describing
-        // in firstError, instead of a bare transport message logged separately.
-        const cause = error instanceof Error ? error : new Error(String(error));
-        throw new Error(
-          `example "${example.exampleId}" (${example.schemaType}) failed to invoke: ${cause.message}`,
-          { cause },
-        );
-      }
+      // runExamples records a throw as { item: example, error }; the example id is carried
+      // structurally in `failures`, so no need to re-wrap the message here.
+      const groundTruth = await example.run(ctx);
+      return { exampleId: example.exampleId, sessionId, groundTruth };
     });
 
-    if (failed > 0) {
-      this.logger.warn(`invokeDataset: ${failed} example(s) failed to invoke and were dropped`);
+    // Name the dropped examples + the first reason so a partial failure is diagnosable —
+    // not just a count. Per-example errors stay on the result, not in telemetry.
+    const invokeFailures = failures.map((f) => ({
+      exampleId: f.item.exampleId,
+      error: f.error.message,
+    }));
+    if (invokeFailures.length > 0) {
+      this.logger.warn(
+        `invokeDataset: ${invokeFailures.length} example(s) failed to invoke and were dropped` +
+          `; first: ${invokeFailures[0]!.exampleId} — ${invokeFailures[0]!.error}`,
+      );
     }
 
     // AgentCore emits spans ~30s-3min after invoke; grade too early and it reads an empty
-    // log group and fails every session. Disabled via SIMULATE_INGESTION_WAIT_MS=0 (tests).
-    const waitMs = Number(process.env.SIMULATE_INGESTION_WAIT_MS ?? 180_000);
+    // log group and fails every session. Caller tunes via --ingestion-wait-ms (0 skips).
+    const waitMs = input.waitIngestionMs ?? DEFAULT_INGESTION_WAIT_MS;
     if (ok.length > 0 && waitMs > 0) {
       this.logger.info(
         `waiting ${Math.round(waitMs / 1000)}s for span ingestion before evaluating`,
@@ -683,7 +687,12 @@ export class EvalClient implements CoreEvalClient {
       await sleep(waitMs, undefined, { signal });
     }
 
-    return { sessions: ok, invoked: ok.length, failed, firstError };
+    return {
+      sessions: ok,
+      invoked: ok.length,
+      failed: invokeFailures.length,
+      failures: invokeFailures,
+    };
   }
 
   // Resolve a dataset ref to JSONL text: a local path directly, else download the id to a
