@@ -64,6 +64,7 @@ jobs:
     uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-ai-review.yml@4b3972e790e4cc312ddf6f1909a0b6ca8a749506
     with:
       runner: codebuild
+      model_id: us.anthropic.claude-opus-5
       pr_url: >-
         ${{ github.event_name == 'workflow_dispatch' &&
         format('{0}/{1}/pull/{2}', github.server_url, github.repository, inputs.pr_number) ||
