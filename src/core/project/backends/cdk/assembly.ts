@@ -9,6 +9,8 @@ const STACK_ARTIFACT = "aws:cloudformation:stack";
 /** What CDK writes in an artifact's `environment` when the stack is env-agnostic. */
 const UNKNOWN_ACCOUNT = "unknown-account";
 const UNKNOWN_REGION = "unknown-region";
+/** The resource CDK adds to every stack of its own accord, which no user asked for. */
+const METADATA_RESOURCE_TYPE = "AWS::CDK::Metadata";
 
 const AssemblyManifestSchema = z.object({
   artifacts: z
@@ -21,6 +23,7 @@ const AssemblyManifestSchema = z.object({
           .object({
             tags: z.record(z.string(), z.string()).optional(),
             templateFile: z.string().optional(),
+            stackName: z.string().optional(),
           })
           .optional(),
       }),
@@ -30,7 +33,15 @@ const AssemblyManifestSchema = z.object({
 
 const StackTemplateSchema = z
   .object({
-    Resources: z.record(z.string(), z.unknown()).default({}),
+    Resources: z
+      .record(
+        z.string(),
+        // An untyped resource is a malformed template rather than a metadata
+        // resource, so leaving Type optional counts it as deployable and keeps
+        // the teardown path from claiming such a stack is empty.
+        z.object({ Type: z.string().optional() }).passthrough(),
+      )
+      .default({}),
   })
   .passthrough();
 
@@ -38,6 +49,8 @@ const StackTemplateSchema = z
 export interface StackArtifact {
   /** Artifact id the CDK Toolkit selects the stack by. */
   id: string;
+  /** Name CloudFormation knows the deployed stack by. */
+  stackName: string;
   /** Assembly-relative path of the synthesized template. */
   templateFile: string | undefined;
 }
@@ -86,22 +99,36 @@ export async function stackArtifactForTarget(
 
   const [id, artifact] = matches[0]!;
   assertEnvironmentMatches(id, artifact.environment, expected);
-  return { id, templateFile: artifact.properties?.templateFile };
+  return {
+    id,
+    // Mirrors how CDK itself resolves a stack artifact's physical name
+    // (`properties.stackName || artifactId`), so the name we hand CloudFormation
+    // is the one the Toolkit would have used.
+    stackName: artifact.properties?.stackName ?? id,
+    templateFile: artifact.properties?.templateFile,
+  };
 }
 
 /**
- * Refuses to deploy a synthesized template that declares no resources.
+ * Counts the resources in a synthesized template that the project actually asked
+ * for, so a deploy can tell "update this stack" from "tear it down".
  *
- * The CDK Toolkit reads such a template as an instruction to *delete* an
- * existing stack of that name, and reports the run as a normal success. Without
- * this check `project deploy` is the only way to destroy a deployed stack, and
- * there is no `project destroy` for a user to have asked for it with.
+ * `AWS::CDK::Metadata` is excluded because CDK adds it to every stack unless
+ * version reporting is disabled: a project whose spec declares nothing still
+ * synthesizes a template holding that one resource. Counting raw resources would
+ * therefore never reach zero through the CLI, so a check for an empty
+ * `Resources` block would never fire — and the interesting question is whether
+ * anything the user asked for is left, not whether CDK's own bookkeeping is.
+ *
+ * Reading the template rather than the spec keeps this honest as the spec grows:
+ * a resource type added later shows up here without anyone remembering to extend
+ * a list of collections to check.
  */
-export async function assertStackHasResources(
+export async function countDeployableResources(
   json: ReadWriteJson,
   assemblyDirectory: string,
   artifact: StackArtifact,
-): Promise<void> {
+): Promise<number> {
   // The cloud assembly schema requires templateFile on a stack artifact, so its
   // absence is a malformed assembly rather than a stack to deploy unchecked.
   if (artifact.templateFile === undefined) {
@@ -119,13 +146,9 @@ export async function assertStackHasResources(
   }
 
   const template = await json.read(templatePath, StackTemplateSchema);
-  if (Object.keys(template.Resources).length === 0) {
-    throw new ProjectStateError(
-      `The synthesized stack '${artifact.id}' declares no resources, so deploying it would ` +
-        `delete the existing stack rather than update it. Check that the project spec still ` +
-        `declares the runtimes, gateways and memories it should before deploying.`,
-    );
-  }
+  return Object.values(template.Resources).filter(
+    (resource) => resource.Type !== METADATA_RESOURCE_TYPE,
+  ).length;
 }
 
 // Both the target tag and the stack's environment derive from the same target in
@@ -137,8 +160,11 @@ function assertEnvironmentMatches(
   environment: string | undefined,
   expected: StackEnvironment,
 ): void {
-  // An artifact with no environment is environment-agnostic: it deploys into
-  // whatever the credentials resolve to, which the account preflight checked.
+  // Not the env-agnostic case — CDK spells that out as
+  // aws://unknown-account/unknown-region, handled below. `environment` is
+  // optional in the cloud assembly schema, so a stack artifact without one is a
+  // manifest we cannot draw any conclusion from; the account preflight has
+  // already confirmed the credentials point at the target account either way.
   if (environment === undefined) return;
 
   const parsed = /^aws:\/\/([^/]+)\/(.+)$/.exec(environment);

@@ -8,6 +8,7 @@ import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { createSilentLogger } from "../../../testing";
 import { CdkBackend } from "./cdk";
 import { DEPLOYED_STATE_RELATIVE_PATH } from "./cdk/deployedState";
+import type { DeployBackendInput } from "./types";
 import type { BootstrapState } from "./cdk/environment";
 import type { CdkCredentialProvider, CdkOperation, CdkOutputs, CdkRunOptions } from "./cdk/toolkit";
 
@@ -16,6 +17,13 @@ const TARGET = {
   account: "111122223333",
   region: "us-east-1",
 } as const;
+
+/** A template holding only what CDK adds itself, as an empty project synthesizes. */
+const METADATA_ONLY = { CDKMetadata: { Type: "AWS::CDK::Metadata" } };
+
+function deployInput(overrides: Partial<DeployBackendInput> = {}): DeployBackendInput {
+  return { target: TARGET, confirmTeardown: false, ...overrides };
+}
 
 const tempDirectories: string[] = [];
 
@@ -115,6 +123,8 @@ type HarnessOptions = {
   template?: boolean;
   failOperation?: CdkOperation["kind"];
   bootstrapError?: Error;
+  /** Whether CloudFormation still holds the target's stack. Defaults to present. */
+  stackExists?: boolean;
 };
 
 function harness(options: HarnessOptions = {}) {
@@ -125,6 +135,7 @@ function harness(options: HarnessOptions = {}) {
   const bootstrapCredentials: CdkCredentialProvider[] = [];
   const accountRegions: string[] = [];
   const bootstrapRegions: string[] = [];
+  const stackProbes: string[] = [];
   let templateLoads = 0;
   let templateCleanups = 0;
   const credentials: CdkCredentialProvider = async () => ({
@@ -152,6 +163,10 @@ function harness(options: HarnessOptions = {}) {
       bootstrapCredentials.push(provider);
       if (options.bootstrapError) throw options.bootstrapError;
       return options.bootstrap ?? { kind: "current", version: 30 };
+    },
+    stack: async (stackName) => {
+      stackProbes.push(stackName);
+      return options.stackExists ?? true;
     },
     cdk: async (operation, runOptions) => {
       runs.push({ operation, options: runOptions });
@@ -194,6 +209,7 @@ function harness(options: HarnessOptions = {}) {
     credentialRegions,
     credentials,
     runs,
+    stackProbes,
     templateLoads: () => templateLoads,
     templateCleanups: () => templateCleanups,
   };
@@ -255,7 +271,7 @@ describe("CdkBackend.deploy", () => {
     await writeAssembly(input, [TARGET.name]);
     const subject = harness({ outputs: { RuntimeArn: "arn:runtime" } });
 
-    const deployed = await collectDeploy(subject.backend.deploy(input, { target: TARGET }));
+    const deployed = await collectDeploy(subject.backend.deploy(input, deployInput()));
 
     expect(deployed.events).toEqual([
       { message: `Verifying AWS account ${TARGET.account}` },
@@ -293,7 +309,7 @@ describe("CdkBackend.deploy", () => {
       stackArn: "arn:aws:cloudformation:us-east-1:111122223333:stack/AgentCore-example-default/abc",
     });
 
-    await collectDeploy(subject.backend.deploy(input, { target: TARGET }));
+    await collectDeploy(subject.backend.deploy(input, deployInput()));
 
     const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
     expect(JSON.parse(await Bun.file(statePath).text())).toEqual({
@@ -311,7 +327,7 @@ describe("CdkBackend.deploy", () => {
     await writeAssembly(input, [TARGET.name]);
     const subject = harness({ outputs: { RuntimeArn: "arn:runtime" }, omitStackArn: true });
 
-    await expect(collectDeploy(subject.backend.deploy(input, { target: TARGET }))).rejects.toThrow(
+    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow(
       /without a stack ARN/,
     );
     expect(existsSync(join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH))).toBe(false);
@@ -324,25 +340,92 @@ describe("CdkBackend.deploy", () => {
     await writeFile(statePath, "{ not valid json");
     const subject = harness({ outputs: { RuntimeArn: "arn:runtime" } });
 
-    await expect(
-      collectDeploy(subject.backend.deploy(input, { target: TARGET })),
-    ).rejects.toThrow();
+    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow();
     // Validated before synth/bootstrap/deploy, so nothing ran against AWS.
     expect(subject.commands).toEqual([]);
     expect(subject.runs).toEqual([]);
   });
 
-  test("refuses a resource-less stack before the Toolkit can delete it", async () => {
+  test("will not remove a stack the user did not ask to remove", async () => {
     const input = await project();
     await writeAssembly(input, [TARGET.name], { resources: {} });
     const subject = harness();
 
-    await expect(collectDeploy(subject.backend.deploy(input, { target: TARGET }))).rejects.toThrow(
-      /declares no resources/,
+    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow(
+      /would delete stack 'AgentCore-example-default-0'.*--yes/s,
     );
     // Nothing reached the Toolkit, so no stack was deleted and none bootstrapped.
     expect(subject.runs).toEqual([]);
     expect(subject.bootstrapRegions).toEqual([]);
+  });
+
+  test("treats a template holding only CDK's own metadata as nothing to deploy", async () => {
+    // An empty project still synthesizes this one resource, so a check for an
+    // empty Resources block would let the teardown case through as a deploy.
+    const input = await project();
+    await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
+    const subject = harness();
+
+    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow(
+      /--yes/,
+    );
+    expect(subject.runs).toEqual([]);
+  });
+
+  test("removes the stack when the teardown is confirmed", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
+    const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
+    await mkdir(dirname(statePath), { recursive: true });
+    await writeFile(
+      statePath,
+      JSON.stringify({
+        targets: {
+          default: { stackArn: "arn:stack:default" },
+          prod: { stackArn: "arn:stack:prod" },
+        },
+      }),
+    );
+    const subject = harness();
+
+    const deployed = await collectDeploy(
+      subject.backend.deploy(input, deployInput({ confirmTeardown: true })),
+    );
+
+    expect(deployed.result).toEqual({ outputs: {}, tornDown: true });
+    expect(deployed.events).toContainEqual({
+      message: "Removing stack AgentCore-example-default-0",
+    });
+    // Destroyed explicitly, rather than by deploying an empty template and
+    // letting the Toolkit infer a deletion.
+    expect(subject.runs.map(({ operation }) => operation)).toEqual([
+      { kind: "destroy", stackArtifactId: "AgentCore-example-default-0" },
+    ]);
+    expect(subject.stackProbes).toEqual(["AgentCore-example-default-0"]);
+    expect(JSON.parse(await Bun.file(statePath).text())).toEqual({
+      targets: { prod: { stackArn: "arn:stack:prod" } },
+    });
+  });
+
+  test("says to add a resource when there is no stack to remove either", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
+    const subject = harness({ stackExists: false });
+
+    await expect(
+      collectDeploy(subject.backend.deploy(input, deployInput({ confirmTeardown: true }))),
+    ).rejects.toThrow(/no stack .* exists .* to remove.*Add a resource/s);
+    expect(subject.runs).toEqual([]);
+  });
+
+  test("does not probe for a stack when there is something to deploy", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const subject = harness();
+
+    await collectDeploy(subject.backend.deploy(input, deployInput()));
+
+    expect(subject.stackProbes).toEqual([]);
   });
 
   test("refuses a stack synthesized for a different region than the target", async () => {
@@ -352,7 +435,7 @@ describe("CdkBackend.deploy", () => {
     });
     const subject = harness();
 
-    await expect(collectDeploy(subject.backend.deploy(input, { target: TARGET }))).rejects.toThrow(
+    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow(
       /built for region us-west-2 \(target expects us-east-1\)/,
     );
     expect(subject.runs).toEqual([]);
@@ -366,7 +449,7 @@ describe("CdkBackend.deploy", () => {
     await writeAssembly(input, [TARGET.name]);
     const subject = harness({ bootstrap });
 
-    const deployed = await collectDeploy(subject.backend.deploy(input, { target: TARGET }));
+    const deployed = await collectDeploy(subject.backend.deploy(input, deployInput()));
 
     expect(subject.runs.map(({ operation }) => operation)).toEqual([
       {
@@ -384,7 +467,7 @@ describe("CdkBackend.deploy", () => {
     const input = await project();
     const subject = harness({ account: "999900001111" });
 
-    await expect(collectDeploy(subject.backend.deploy(input, { target: TARGET }))).rejects.toThrow(
+    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow(
       /expects AWS account 111122223333.*999900001111/,
     );
     expect(subject.commands).toEqual([]);
@@ -397,7 +480,7 @@ describe("CdkBackend.deploy", () => {
     await writeAssembly(input, ["other"]);
     const subject = harness();
 
-    await expect(collectDeploy(subject.backend.deploy(input, { target: TARGET }))).rejects.toThrow(
+    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow(
       /no stack for deployment target 'default'/,
     );
     expect(subject.bootstrapRegions).toEqual([]);
@@ -409,7 +492,7 @@ describe("CdkBackend.deploy", () => {
     await writeAssembly(input, [TARGET.name, TARGET.name]);
     const subject = harness();
 
-    await expect(collectDeploy(subject.backend.deploy(input, { target: TARGET }))).rejects.toThrow(
+    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow(
       /2 stacks for deployment target 'default'/,
     );
     expect(subject.bootstrapRegions).toEqual([]);
@@ -422,9 +505,7 @@ describe("CdkBackend.deploy", () => {
     const failure = new Error("CDKToolkit is UPDATE_IN_PROGRESS");
     const subject = harness({ bootstrapError: failure });
 
-    await expect(collectDeploy(subject.backend.deploy(input, { target: TARGET }))).rejects.toBe(
-      failure,
-    );
+    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toBe(failure);
     expect(subject.runs).toEqual([]);
   });
 
@@ -433,7 +514,7 @@ describe("CdkBackend.deploy", () => {
     await writeAssembly(input, [TARGET.name]);
     const subject = harness({ bootstrap: { kind: "absent" }, template: true });
 
-    await collectDeploy(subject.backend.deploy(input, { target: TARGET }));
+    await collectDeploy(subject.backend.deploy(input, deployInput()));
 
     expect(subject.runs[0]?.operation).toEqual({
       kind: "bootstrap",
@@ -453,7 +534,7 @@ describe("CdkBackend.deploy", () => {
       failOperation: "bootstrap",
     });
 
-    await expect(collectDeploy(subject.backend.deploy(input, { target: TARGET }))).rejects.toThrow(
+    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow(
       "bootstrap failed",
     );
     expect(subject.templateCleanups()).toBe(1);

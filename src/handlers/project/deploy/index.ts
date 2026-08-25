@@ -16,6 +16,11 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
     description: "deploy the project to AWS",
     flags: [
       flag("target", "name of the aws-targets.json entry to deploy", z.string().default("default")),
+      flag(
+        "yes",
+        "confirm removing the target's stack when the project declares nothing to deploy",
+        z.boolean().default(false),
+      ),
     ],
     handle: async (ctx, flags) => {
       // withProject has already resolved the enclosing project.
@@ -24,7 +29,10 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       // Progress goes to stderr, keeping stdout for machine output. Driven by
       // hand rather than `for await` because the outputs we render below are the
       // generator's return value, which `for await` discards.
-      const deployment = config.projectManager.deploy(project, { target: flags.target });
+      const deployment = config.projectManager.deploy(project, {
+        target: flags.target,
+        confirmTeardown: flags.yes,
+      });
       let next = await deployment.next();
       while (!next.done) {
         config.io.stderr.write(`${next.value.message}\n`);
@@ -32,7 +40,11 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       }
       const result = next.value;
 
-      config.io.stderr.write(`Deployed project '${project.name}' to target '${flags.target}'\n`);
+      config.io.stderr.write(
+        result.tornDown
+          ? `Removed project '${project.name}' from target '${flags.target}'\n`
+          : `Deployed project '${project.name}' to target '${flags.target}'\n`,
+      );
       if (ctx.require(JsonKey)) {
         ctx.require(JsonRendererKey).renderJson(result);
         return;

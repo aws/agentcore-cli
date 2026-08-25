@@ -78,6 +78,10 @@ function loadedToolkit(stacks: unknown[] = [DEPLOYED_STACK]) {
       calls.push({ method: "deploy", args });
       return { stacks } as never;
     },
+    destroy: async (...args: Parameters<CdkToolkit["destroy"]>) => {
+      calls.push({ method: "destroy", args });
+      return { stacks: [] } as never;
+    },
   };
   return { calls, loaded: { lib: toolkitLib, toolkit } as LoadedCdkToolkit };
 }
@@ -188,6 +192,43 @@ describe("performCdkOperation", () => {
     await expect(deploying).rejects.toThrow(
       /deployed no stack for 'AgentCore-orders-default'.*no resources.*deleted rather than updated/s,
     );
+  });
+
+  test("destroys exactly one named stack from the synthesized assembly", async () => {
+    const { calls, loaded } = loadedToolkit();
+
+    expect(
+      await performCdkOperation(
+        loaded,
+        { kind: "destroy", stackArtifactId: "AgentCore-orders-default" },
+        runOptions({ assemblyDirectory: "/workspace/agentcore/cdk/cdk.out" }),
+      ),
+    ).toEqual({ outputs: {} });
+
+    // Never deploy: an empty template would also delete the stack, but reports
+    // success whether or not the deletion worked.
+    expect(calls.map(({ method }) => method)).toEqual(["fromAssemblyDirectory", "destroy"]);
+    expect(calls[0]!.args).toEqual(["/workspace/agentcore/cdk/cdk.out"]);
+    expect(calls[1]!.args[1]).toMatchObject({
+      stacks: {
+        strategy: toolkitLib.StackSelectionStrategy.PATTERN_MUST_MATCH_SINGLE,
+        patterns: ["AgentCore-orders-default"],
+      },
+    });
+  });
+
+  // The empty `stacks` a destroy returns is the expected shape, not the missing
+  // stack the deploy path refuses.
+  test("does not read a destroy's empty stack list as a failure", async () => {
+    const { loaded } = loadedToolkit([]);
+
+    expect(
+      await performCdkOperation(
+        loaded,
+        { kind: "destroy", stackArtifactId: "AgentCore-orders-default" },
+        runOptions(),
+      ),
+    ).toEqual({ outputs: {} });
   });
 
   test("accepts a deployed stack that declares no outputs", async () => {

@@ -477,7 +477,10 @@ export class FsProjectManager implements ProjectManager {
       );
     }
 
-    return yield* this.backendFor(project).deploy(project, { target });
+    return yield* this.backendFor(project).deploy(project, {
+      target,
+      confirmTeardown: input.confirmTeardown,
+    });
   }
 
   private backendFor(project: Project): ProjectBackend {

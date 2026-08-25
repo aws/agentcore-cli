@@ -104,7 +104,9 @@ describe("project deploy handler", () => {
 
     await subject.run();
 
-    expect(subject.calls.map(({ input }) => input)).toEqual([{ target: DEFAULT_TARGET }]);
+    expect(subject.calls.map(({ input }) => input)).toEqual([
+      { target: DEFAULT_TARGET, confirmTeardown: false },
+    ]);
     expect(subject.io.stderr()).toContain("Preparing deployment\nDeploying stack");
     expect(subject.io.stderr()).toContain("Deployed project 'orders' to target 'default'");
     expect(subject.io.stdout()).toBe("AlphaArn: arn:alpha\nZetaUrl: https://zeta.example");
@@ -117,8 +119,35 @@ describe("project deploy handler", () => {
 
     await subject.run(["--target", "staging", "--json"]);
 
-    expect(subject.calls.map(({ input }) => input)).toEqual([{ target: STAGING_TARGET }]);
+    expect(subject.calls.map(({ input }) => input)).toEqual([
+      { target: STAGING_TARGET, confirmTeardown: false },
+    ]);
     expect(JSON.parse(subject.io.stdout())).toEqual(result);
+  });
+
+  // --yes is the only way to authorize the teardown the backend refuses without
+  // it, so a flag that never reaches the backend would make it unreachable.
+  test("carries --yes through as permission to tear the stack down", async () => {
+    const subject = testDeployCommand({ outputs: {} });
+    await inProjectWithTargets(subject);
+
+    await subject.run(["--yes"]);
+
+    expect(subject.calls.map(({ input }) => input.confirmTeardown)).toEqual([true]);
+  });
+
+  test("says the project was removed when the deploy tore the stack down", async () => {
+    const subject = testDeployCommand({ outputs: {}, tornDown: true }, [
+      { message: "Removing stack AgentCore-orders-default" },
+    ]);
+    await inProjectWithTargets(subject);
+
+    await subject.run(["--yes"]);
+
+    expect(subject.io.stderr()).toContain("Removing stack AgentCore-orders-default");
+    expect(subject.io.stderr()).toContain("Removed project 'orders' from target 'default'");
+    // "Deployed" would be the wrong word for a stack that no longer exists.
+    expect(subject.io.stderr()).not.toContain("Deployed project");
   });
 
   test("rejects an unknown target without invoking the backend", async () => {

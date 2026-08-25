@@ -385,8 +385,9 @@ describe("FsProjectManager.deploy", () => {
     manager: FsProjectManager,
     project: Project,
     target: string,
+    confirmTeardown = false,
   ): Promise<{ events: ProjectEvent[]; result: DeployResult }> {
-    const generator = manager.deploy(project, { target });
+    const generator = manager.deploy(project, { target, confirmTeardown });
     const events: ProjectEvent[] = [];
     while (true) {
       const next = await generator.next();
@@ -415,11 +416,25 @@ describe("FsProjectManager.deploy", () => {
 
     const deployed = await deploy(subject.manager, project, "prod");
 
-    expect(subject.calls).toEqual([{ project, input: { target: targets[1]! } }]);
+    expect(subject.calls).toEqual([
+      { project, input: { target: targets[1]!, confirmTeardown: false } },
+    ]);
     expect(deployed.events).toEqual([{ message: "Backend deployment started" }]);
     expect(deployed.result).toEqual({
       outputs: { RuntimeArn: "arn:runtime" },
     });
+  });
+
+  // The backend decides whether a deploy of nothing is a teardown; the manager's
+  // job is only to carry the user's confirmation through to it.
+  test("passes the teardown confirmation through to the backend", async () => {
+    const root = await inTempDirectory();
+    const subject = deployManager();
+    const project = await projectWithTargets(root, targets);
+
+    await deploy(subject.manager, project, "prod", true);
+
+    expect(subject.calls.map(({ input }) => input.confirmTeardown)).toEqual([true]);
   });
 
   test("rejects an unknown target before invoking the backend", async () => {

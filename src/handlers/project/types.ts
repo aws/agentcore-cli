@@ -108,6 +108,11 @@ export type ProjectEvent = {
 export type DeployProjectInput = {
   /** Name of the aws-targets.json entry to deploy. */
   target: string;
+  /**
+   * Permission to tear the target's stack down when the project no longer
+   * declares anything to deploy. Withheld by default.
+   */
+  confirmTeardown: boolean;
 };
 
 export type DeployResult = {
@@ -119,6 +124,12 @@ export type DeployResult = {
    * map rather than indexing into it.
    */
   outputs: Record<string, string>;
+  /**
+   * Set when the deploy removed the target's stack instead of updating it,
+   * because the project no longer declares anything to deploy. Callers report
+   * this differently: "deployed" is the wrong word for what happened.
+   */
+  tornDown?: boolean;
 };
 
 export type ResolveProjectInput = {

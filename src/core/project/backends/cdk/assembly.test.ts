@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { FsReadWriteJson } from "../../../../io";
 import { createSilentLogger } from "../../../../testing";
-import { assertStackHasResources, stackArtifactForTarget } from "./assembly";
+import { countDeployableResources, stackArtifactForTarget } from "./assembly";
 
 const temporaryDirectories: string[] = [];
 const json = new FsReadWriteJson({ logger: createSilentLogger() });
@@ -50,6 +50,27 @@ describe("stackArtifactForTarget", () => {
 
     expect(await stackArtifactForTarget(json, directory, "prod", EXPECTED)).toEqual({
       id: "nested/stack-id",
+      // No stackName in the manifest, so CloudFormation knows the stack by its
+      // artifact id — the same fallback CDK itself applies.
+      stackName: "nested/stack-id",
+      templateFile: TEMPLATE_FILE,
+    });
+  });
+
+  test("prefers the manifest's stack name over the artifact id", async () => {
+    const directory = await assembly({
+      "nested/stack-id": stackArtifact("prod", {
+        properties: {
+          tags: { "agentcore:target-name": "prod" },
+          templateFile: TEMPLATE_FILE,
+          stackName: "AgentCore-example-prod",
+        },
+      }),
+    });
+
+    expect(await stackArtifactForTarget(json, directory, "prod", EXPECTED)).toEqual({
+      id: "nested/stack-id",
+      stackName: "AgentCore-example-prod",
       templateFile: TEMPLATE_FILE,
     });
   });
@@ -131,38 +152,65 @@ describe("stackArtifactForTarget", () => {
   });
 });
 
-describe("assertStackHasResources", () => {
-  test("accepts a template that declares resources", async () => {
-    const directory = await assembly({ Stack: stackArtifact("prod") });
-    await writeTemplate(directory, { Runtime: { Type: "AWS::BedrockAgentCore::Runtime" } });
+describe("countDeployableResources", () => {
+  const artifact = { id: "Stack", stackName: "Stack", templateFile: TEMPLATE_FILE };
 
-    expect(
-      await assertStackHasResources(json, directory, { id: "Stack", templateFile: TEMPLATE_FILE }),
-    ).toBeUndefined();
+  test("counts the resources the project asked for", async () => {
+    const directory = await assembly({ Stack: stackArtifact("prod") });
+    await writeTemplate(directory, {
+      Runtime: { Type: "AWS::BedrockAgentCore::Runtime" },
+      Role: { Type: "AWS::IAM::Role" },
+    });
+
+    expect(await countDeployableResources(json, directory, artifact)).toBe(2);
   });
 
-  test("rejects a resource-less template, which the Toolkit reads as a deletion", async () => {
+  test("does not count the metadata resource CDK adds on its own", async () => {
+    // The reason a check for an empty Resources block never fires: an empty
+    // project still synthesizes this.
+    const directory = await assembly({ Stack: stackArtifact("prod") });
+    await writeTemplate(directory, { CDKMetadata: { Type: "AWS::CDK::Metadata" } });
+
+    expect(await countDeployableResources(json, directory, artifact)).toBe(0);
+  });
+
+  test("counts a real resource sitting alongside the metadata one", async () => {
+    const directory = await assembly({ Stack: stackArtifact("prod") });
+    await writeTemplate(directory, {
+      CDKMetadata: { Type: "AWS::CDK::Metadata" },
+      Runtime: { Type: "AWS::BedrockAgentCore::Runtime" },
+    });
+
+    expect(await countDeployableResources(json, directory, artifact)).toBe(1);
+  });
+
+  test("counts an untyped resource, rather than reading a broken template as empty", async () => {
+    const directory = await assembly({ Stack: stackArtifact("prod") });
+    await writeTemplate(directory, { Mystery: {} });
+
+    expect(await countDeployableResources(json, directory, artifact)).toBe(1);
+  });
+
+  test("reports an empty Resources block as nothing to deploy", async () => {
     const directory = await assembly({ Stack: stackArtifact("prod") });
     await writeTemplate(directory, {});
 
-    await expect(
-      assertStackHasResources(json, directory, { id: "Stack", templateFile: TEMPLATE_FILE }),
-    ).rejects.toThrow(/declares no resources, so deploying it would delete the existing stack/);
+    expect(await countDeployableResources(json, directory, artifact)).toBe(0);
   });
 
   test("rejects a template the assembly names but does not contain", async () => {
     const directory = await assembly({ Stack: stackArtifact("prod") });
 
-    await expect(
-      assertStackHasResources(json, directory, { id: "Stack", templateFile: TEMPLATE_FILE }),
-    ).rejects.toThrow(/synthesized template for stack 'Stack' is missing/);
+    await expect(countDeployableResources(json, directory, artifact)).rejects.toThrow(
+      /synthesized template for stack 'Stack' is missing/,
+    );
   });
 
   test("rejects a stack artifact that names no template at all", async () => {
     const directory = await assembly({ Stack: stackArtifact("prod") });
 
     await expect(
-      assertStackHasResources(json, directory, { id: "Stack", templateFile: undefined }),
+      countDeployableResources(json, directory, { ...artifact, templateFile: undefined }),
     ).rejects.toThrow(/names no template file/);
   });
 });
