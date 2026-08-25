@@ -15,8 +15,9 @@ of `src/cli/` and `src/lib/`), and a PR may target `main`, `refactor`, or a `fea
 `main` tree while reviewing a PR that targets `refactor` will make correct code look broken.
 
 Before you read any file for surrounding context, determine the PR's base branch (the `base.ref` field of
-the PR — e.g. `curl -sH "Authorization: Bearer $CLONE_TOKEN" https://api.github.com/repos/aws/agentcore-cli/pulls/<number> | jq -r .base.ref`)
-and sync the clone to it:
+the PR). `aws/agentcore-cli` is public, so an unauthenticated call works — no runtime token is available:
+`curl -s https://api.github.com/repos/aws/agentcore-cli/pulls/<number> | jq -r .base.ref`. Then sync the
+clone to it:
 
 ```
 cd /opt/workspace/agentcore-cli
