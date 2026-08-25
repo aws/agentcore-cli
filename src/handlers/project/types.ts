@@ -43,15 +43,20 @@ type CreateProjectInputBase = {
 };
 
 /** Set of flags needed to scaffold a new Runtime-based agent **/
-export const ScaffoldRuntimeInputSchema = z.object({
-  runtimeName: AgentNameSchema,
-  build: BuildTypeSchema,
-  language: z.enum(["Python"]),
-  framework: z.enum(["none"]),
-  modelProvider: z.enum(["Bedrock"]),
-  apiKey: z.string().min(1).optional(),
-  memory: z.enum(["none"]),
-});
+export const ScaffoldRuntimeInputSchema = z
+  .object({
+    runtimeName: AgentNameSchema,
+    build: BuildTypeSchema,
+    language: z.enum(["Python"]),
+    framework: z.enum(["none"]),
+    modelProvider: z.enum(["Bedrock"]),
+    apiKey: z.string().min(1).optional(),
+    memory: z.enum(["none"]),
+  })
+  .refine(({ modelProvider, apiKey }) => !(modelProvider === "Bedrock" && apiKey !== undefined), {
+    message: "API keys are not compatible with Bedrock model providers",
+    path: ["apiKey"],
+  });
 
 export type ScaffoldRuntimeInput = z.infer<typeof ScaffoldRuntimeInputSchema>;
 

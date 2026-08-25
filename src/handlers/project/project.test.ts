@@ -180,6 +180,36 @@ describe("project create", () => {
     expect(existsSync(join(directory, "MyProject"))).toBe(false);
   });
 
+  test("rejects an API key with the Bedrock model provider before scaffolding", async () => {
+    const directory = await inTempDirectory();
+    await expect(
+      run(
+        [
+          "create",
+          "--name",
+          "MyProject",
+          "--build",
+          "CodeZip",
+          "--language",
+          "Python",
+          "--framework",
+          "none",
+          "--model-provider",
+          "Bedrock",
+          "--api-key",
+          "-",
+          "--memory",
+          "none",
+          "--skip-install",
+          "--skip-git",
+        ],
+        { stdin: "secret-key" },
+      ),
+    ).rejects.toThrow(/API keys are not compatible with Bedrock model providers/);
+
+    expect(existsSync(join(directory, "MyProject"))).toBe(false);
+  });
+
   test("rejects incomplete custom flags", async () => {
     await inTempDirectory();
     await expect(
