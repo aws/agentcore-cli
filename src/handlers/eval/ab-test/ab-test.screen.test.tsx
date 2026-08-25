@@ -33,22 +33,26 @@ function getResponse(overrides: Partial<GetABTestResponse> = {}): GetABTestRespo
     executionStatus: "RUNNING",
     gatewayArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/orders",
     variants: [
-      { name: "C", weight: 50 },
-      { name: "T1", weight: 50 },
+      { name: "C", weight: 50, variantConfiguration: { target: { name: "orders-prod-target" } } },
+      { name: "T1", weight: 50, variantConfiguration: { target: { name: "orders-v2-target" } } },
     ],
+    evaluationConfig: {
+      onlineEvaluationConfigArn:
+        "arn:aws:bedrock-agentcore:us-east-1:123456789012:online-evaluation-config/quality",
+    },
+    createdAt: new Date("2026-07-19T01:02:03.000Z"),
+    updatedAt: new Date("2026-07-20T12:34:56.000Z"),
     results: {
       evaluatorMetrics: [
         {
           evaluatorArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:evaluator/quality",
-          controlStats: { treatmentName: "C", sampleSize: 100, mean: 0.8 },
-          variantResults: [
-            { treatmentName: "T1", sampleSize: 100, mean: 0.86, isSignificant: true },
-          ],
+          controlStats: { variantName: "C", sampleSize: 100, mean: 0.8 },
+          variantResults: [{ variantName: "T1", sampleSize: 100, mean: 0.86, isSignificant: true }],
         },
       ],
     },
     ...overrides,
-  } as GetABTestResponse;
+  } satisfies GetABTestResponse;
 }
 
 function coreWithTests(tests: ABTestSummary[]): TestCoreClient {
