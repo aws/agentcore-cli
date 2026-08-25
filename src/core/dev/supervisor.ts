@@ -1,5 +1,5 @@
-import { connect } from "node:net";
 import { ResourceNotFoundError } from "../../errors";
+import { waitForPort } from "../../io";
 import type { DevEvent, DevRunner } from "../../handlers/project/dev/types";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 
@@ -14,9 +14,9 @@ export interface AgentStatus {
   error?: string;
 }
 
-/** A dev event attributed to the agent that produced it. */
+/** A dev event tagged with the name of the runtime that produced it. */
 export interface SupervisedEvent {
-  agent: string;
+  agentName: string;
   event: DevEvent;
 }
 
@@ -25,11 +25,15 @@ export type SupervisorConfig = {
   projectRoot: string;
   runners: { CodeZip: DevRunner; Container: DevRunner };
   /** Resolves the full child environment for a runtime (dev env + OTEL vars). */
-  environment: (runtime: ProjectRuntime) => Promise<Record<string, string>>;
+  getDevEnvVarsForRuntime: (runtime: ProjectRuntime) => Promise<Record<string, string>>;
   /** Resolves the port a runtime should serve on. */
   resolvePort: (runtime: ProjectRuntime) => Promise<number>;
-  /** Resolves once a started agent accepts connections on its port. */
-  waitReady?: (port: number, signal: AbortSignal) => Promise<void>;
+  /**
+   * Resolves once a started agent accepts connections on its port. `lastActivityAt`
+   * returns the time of the agent's most recent output, so a build that keeps
+   * logging is not timed out mid-flight.
+   */
+  waitReady?: (port: number, signal: AbortSignal, lastActivityAt: () => number) => Promise<void>;
   signal: AbortSignal;
 };
 
@@ -52,7 +56,11 @@ export class DevSupervisor {
   private readonly agents = new Map<string, AgentEntry>();
   private readonly queue: SupervisedEvent[] = [];
   private wake: (() => void) | undefined;
-  private readonly waitReady: (port: number, signal: AbortSignal) => Promise<void>;
+  private readonly waitReady: (
+    port: number,
+    signal: AbortSignal,
+    lastActivityAt: () => number,
+  ) => Promise<void>;
 
   constructor(private readonly config: SupervisorConfig) {
     for (const runtime of config.runtimes) {
@@ -107,7 +115,7 @@ export class DevSupervisor {
    * and repeated starts of the same agent share one attempt; a previously
    * failed agent may be started again.
    */
-  public start(name: string): Promise<{ name: string; port: number }> {
+  public async start(name: string): Promise<{ name: string; port: number }> {
     const entry = this.agents.get(name);
     if (!entry) {
       const available = [...this.agents.keys()].join(", ");
@@ -116,7 +124,7 @@ export class DevSupervisor {
       );
     }
     if (entry.phase === "running" && entry.port !== undefined) {
-      return Promise.resolve({ name, port: entry.port });
+      return { name, port: entry.port };
     }
     if (entry.starting) return entry.starting;
 
@@ -145,8 +153,8 @@ export class DevSupervisor {
     }
   }
 
-  private push(agent: string, event: DevEvent): void {
-    this.queue.push({ agent, event });
+  private push(agentName: string, event: DevEvent): void {
+    this.queue.push({ agentName, event });
     this.wake?.();
   }
 
@@ -156,7 +164,7 @@ export class DevSupervisor {
     entry.error = undefined;
 
     const controller = new AbortController();
-    const onParentAbort = () => controller.abort();
+    const onParentAbort = () => controller.abort(this.config.signal.reason);
     // Chained for the agent's whole lifetime (not just startup): the command's
     // Ctrl-C must tear down every running child. The pump removes it on exit.
     this.config.signal.addEventListener("abort", onParentAbort, { once: true });
@@ -164,14 +172,17 @@ export class DevSupervisor {
 
     try {
       const port = await this.config.resolvePort(entry.runtime);
-      const env = await this.config.environment(entry.runtime);
+      const env = await this.config.getDevEnvVarsForRuntime(entry.runtime);
       const runner = this.config.runners[entry.runtime.build];
 
       let ready = false;
-      const readiness = this.waitReady(port, controller.signal).then(() => {
+      const activity = { at: Date.now() };
+      const readiness = this.waitReady(port, controller.signal, () => activity.at).then(() => {
         ready = true;
       });
-      const earlyExit = this.pump(entry, runner, { port, env, signal: controller.signal })
+      const earlyExit = this.pump(entry, runner, { port, env, signal: controller.signal }, () => {
+        activity.at = Date.now();
+      })
         .finally(unchain)
         .then(() => {
           if (!ready)
@@ -205,6 +216,7 @@ export class DevSupervisor {
     entry: AgentEntry,
     runner: DevRunner,
     input: { port: number; env: Record<string, string>; signal: AbortSignal },
+    onActivity: () => void,
   ): Promise<void> {
     const name = entry.runtime.name;
     try {
@@ -215,6 +227,7 @@ export class DevSupervisor {
         env: input.env,
         signal: input.signal,
       })) {
+        onActivity();
         this.push(name, event);
       }
       if (entry.phase === "running") {
@@ -232,46 +245,4 @@ export class DevSupervisor {
       }
     }
   }
-}
-
-/** Generous enough for a cold dependency install before the server first binds. */
-const READY_TIMEOUT_MS = 120_000;
-
-/**
- * Poll until a loopback TCP connection to `port` succeeds, the signal aborts,
- * or the deadline passes — a child that stays alive without ever binding must
- * fail its start instead of blocking every later runtime.
- */
-export function waitForPort(
-  port: number,
-  signal: AbortSignal,
-  intervalMs = 250,
-  timeoutMs = READY_TIMEOUT_MS,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  return new Promise((resolve, reject) => {
-    const attempt = () => {
-      if (signal.aborted) {
-        reject(new Error("Aborted while waiting for the agent to become ready."));
-        return;
-      }
-      if (Date.now() > deadline) {
-        reject(
-          new Error(
-            `Agent did not accept connections on port ${port} within ${timeoutMs / 1000}s.`,
-          ),
-        );
-        return;
-      }
-      const socket = connect({ port, host: "127.0.0.1" }, () => {
-        socket.destroy();
-        resolve();
-      });
-      socket.on("error", () => {
-        socket.destroy();
-        setTimeout(attempt, intervalMs);
-      });
-    };
-    attempt();
-  });
 }

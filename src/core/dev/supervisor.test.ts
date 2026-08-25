@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
-import { DevSupervisor, waitForPort, type SupervisedEvent } from "./supervisor";
+import { DevSupervisor, type SupervisedEvent } from "./supervisor";
+import { waitForPort } from "../../io";
 import { createServer } from "node:net";
 
 function runtime(name: string, build: ProjectRuntime["build"] = "CodeZip"): ProjectRuntime {
@@ -91,7 +92,7 @@ function harness(options: HarnessOptions = {}) {
     runtimes: options.runtimes ?? [runtime("orders"), runtime("billing", "Container")],
     projectRoot: "/workspace/project",
     runners: { CodeZip: codeZip.runner, Container: container.runner },
-    environment: async (agentRuntime) => ({ AGENT: agentRuntime.name }),
+    getDevEnvVarsForRuntime: async (agentRuntime) => ({ AGENT: agentRuntime.name }),
     resolvePort: async () => nextPort++,
     waitReady: options.ready ?? (async () => {}),
     signal: controller.signal,
@@ -183,9 +184,9 @@ describe("DevSupervisor", () => {
     controller.abort();
   });
 
-  test("unknown agents are rejected with the available names", () => {
+  test("unknown agents are rejected with the available names", async () => {
     const { supervisor, controller } = harness();
-    expect(() => supervisor.start("missing")).toThrow("Available agents: orders, billing");
+    await expect(supervisor.start("missing")).rejects.toThrow("Available agents: orders, billing");
     controller.abort();
   });
 
@@ -199,15 +200,15 @@ describe("DevSupervisor", () => {
     const events = await drain(supervisor, controller);
 
     expect(events).toContainEqual({
-      agent: "orders",
+      agentName: "orders",
       event: { type: "stdout", line: "orders out" },
     });
     expect(events).toContainEqual({
-      agent: "billing",
+      agentName: "billing",
       event: { type: "stderr", line: "billing err" },
     });
     expect(events).toContainEqual({
-      agent: "orders",
+      agentName: "orders",
       event: { type: "status", message: "Agent 'orders' is running on port 9100." },
     });
   });
@@ -233,7 +234,7 @@ describe("DevSupervisor", () => {
     const next = await Promise.race([events.next(), Bun.sleep(200).then(() => "stalled" as const)]);
     expect(next).not.toBe("stalled");
     expect((next as IteratorResult<SupervisedEvent>).value).toMatchObject({
-      agent: "orders",
+      agentName: "orders",
       event: { type: "stdout", line: "two" },
     });
     controller.abort();
@@ -263,7 +264,7 @@ describe("DevSupervisor", () => {
     expect(supervisor.running("orders")).toBeUndefined();
     const events = await drain(supervisor, controller);
     expect(events).toContainEqual({
-      agent: "orders",
+      agentName: "orders",
       event: { type: "status", message: "Agent 'orders' crashed: segfault" },
     });
   });
@@ -287,15 +288,25 @@ describe("DevSupervisor", () => {
   test("readiness polling gives up at its deadline instead of blocking forever", async () => {
     const signal = new AbortController().signal;
     // Nothing listens on this port; a bounded poll must reject, not hang.
-    await expect(waitForPort(1, signal, 10, 100)).rejects.toThrow(
-      "did not accept connections on port 1 within 0.1s",
+    await expect(waitForPort(1, signal, undefined, 10, 100)).rejects.toThrow(
+      "produced no output and did not accept connections on port 1 within 0.1s",
     );
 
     const server = createServer();
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const port = (server.address() as { port: number }).port;
-    await waitForPort(port, signal, 10, 1000); // resolves against a live listener
+    await waitForPort(port, signal, undefined, 10, 1000); // resolves against a live listener
     server.close();
+  });
+
+  test("recent activity keeps a silent port from timing out", async () => {
+    const controller = new AbortController();
+    // Idle window is 20ms, but the agent keeps "producing output", so the poll
+    // must not give up on the deadline — only the abort below ends it.
+    const pending = waitForPort(1, controller.signal, () => Date.now(), 5, 20);
+    await Bun.sleep(60);
+    controller.abort();
+    await expect(pending).rejects.toThrow("Aborted while waiting");
   });
 
   test("failed setup does not leak parent abort listeners across retries", async () => {
@@ -318,7 +329,7 @@ describe("DevSupervisor", () => {
       runtimes: [runtime("orders")],
       projectRoot: "/workspace/project",
       runners: { CodeZip: serverRunner().runner, Container: serverRunner().runner },
-      environment: async () => ({}),
+      getDevEnvVarsForRuntime: async () => ({}),
       resolvePort: async () => {
         throw new Error("no ports for you");
       },

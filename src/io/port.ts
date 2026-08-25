@@ -1,4 +1,4 @@
-import { createServer } from "node:net";
+import { connect, createServer } from "node:net";
 
 export type PortChecker = (port: number, signal: AbortSignal) => Promise<boolean>;
 
@@ -25,3 +25,47 @@ export const checkPort: PortChecker = async (port, signal) => {
   signal.throwIfAborted();
   return available;
 };
+
+/** How long an agent may stay silent before its startup is abandoned. */
+const IDLE_TIMEOUT_MS = 120_000;
+
+/**
+ * Poll until a loopback TCP connection to `port` succeeds, the signal aborts,
+ * or the agent has been silent past `idleMs`. Timing off the last output rather
+ * than a fixed deadline lets a still-building container keep its start alive.
+ */
+export function waitForPort(
+  port: number,
+  signal: AbortSignal,
+  lastActivityAt?: () => number,
+  intervalMs = 250,
+  idleMs = IDLE_TIMEOUT_MS,
+): Promise<void> {
+  const startedAt = Date.now();
+  const since = lastActivityAt ?? (() => startedAt);
+  return new Promise((resolve, reject) => {
+    const attempt = () => {
+      if (signal.aborted) {
+        reject(new Error("Aborted while waiting for the agent to become ready."));
+        return;
+      }
+      if (Date.now() - since() > idleMs) {
+        reject(
+          new Error(
+            `Agent produced no output and did not accept connections on port ${port} within ${idleMs / 1000}s.`,
+          ),
+        );
+        return;
+      }
+      const socket = connect({ port, host: "127.0.0.1" }, () => {
+        socket.destroy();
+        resolve();
+      });
+      socket.on("error", () => {
+        socket.destroy();
+        setTimeout(attempt, intervalMs);
+      });
+    };
+    attempt();
+  });
+}

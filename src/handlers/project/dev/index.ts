@@ -2,11 +2,12 @@ import { join } from "node:path";
 import z from "zod";
 import { rewriteOtelEndpointForContainer } from "../../../core/dev/otel/collector";
 import { resolveDevPort } from "../../../core/dev/port";
-import { DevSupervisor } from "../../../core/dev/supervisor";
+import { DevSupervisor, type SupervisorConfig } from "../../../core/dev/supervisor";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   InputValidationError,
   ResourceNotFoundError,
+  SilentCLIError,
   UserCancellationError,
 } from "../../../errors";
 import type { AppIO, PortChecker } from "../../../io";
@@ -23,6 +24,8 @@ export type DevProjectHandlerConfig = {
   loadDevEnvironment: DevEnvironmentLoader;
   checkPort: PortChecker;
   startTraceCollector: DevTraceCollectorStarter;
+  /** Overrides how the supervisor decides an agent is ready (defaults to a real TCP poll). */
+  waitReady?: SupervisorConfig["waitReady"];
 };
 
 /** Env for a spawned agent so its OTEL SDK reports to the collector as this runtime. */
@@ -137,7 +140,9 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
         }
         controller.signal.throwIfAborted();
 
-        const environment = async (runtime: ProjectRuntime): Promise<Record<string, string>> => {
+        const getDevEnvVarsForRuntime = async (
+          runtime: ProjectRuntime,
+        ): Promise<Record<string, string>> => {
           const { env } = await config.loadDevEnvironment({
             projectRoot: project.rootPath,
             runtime,
@@ -150,41 +155,39 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           return { ...env, ...otel };
         };
 
-        if (runtimes.length === 1) {
-          await runSingleRuntime(
-            config,
-            runtimes[0]!,
-            project,
-            flags.port,
-            environment,
-            controller,
-            json,
-          );
-          return;
-        }
-
-        // Several runtimes: supervise them all, streaming agent-attributed output.
         const supervisor = new DevSupervisor({
           runtimes,
           projectRoot: project.rootPath,
           runners: config.runners,
-          environment,
+          getDevEnvVarsForRuntime,
           resolvePort: async (runtime) =>
-            (await resolveDevPort(runtime.protocol, undefined, config.checkPort, controller.signal))
-              .port,
+            (
+              await resolveDevPort(
+                runtime.protocol,
+                flags.port,
+                config.checkPort,
+                controller.signal,
+              )
+            ).port,
+          waitReady: config.waitReady,
           signal: controller.signal,
         });
-        // Sequential starts: concurrent port resolution would race two agents
-        // onto the same port. Failed starts surface as attributed status events.
-        for (const runtime of runtimes) {
-          await supervisor.start(runtime.name).catch(() => {});
-        }
-        controller.signal.throwIfAborted();
 
-        for await (const { agent, event } of supervisor.events()) {
-          renderEvent(config.io, event, json, agent);
+        const starts = Promise.allSettled(
+          runtimes.map((runtime) => supervisor.start(runtime.name)),
+        );
+
+        for await (const { agentName, event } of supervisor.events()) {
+          renderEvent(config.io, event, json, agentName);
+          if (controller.signal.aborted) break;
+          const phases = supervisor.snapshot();
+          if (phases.every(({ phase }) => phase !== "starting" && phase !== "running")) {
+            if (phases.some(({ phase }) => phase === "failed")) throw new SilentCLIError();
+            break;
+          }
         }
         controller.signal.throwIfAborted();
+        await starts;
       } catch (error) {
         controller.signal.throwIfAborted();
         throw error;
@@ -196,49 +199,3 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
       }
     },
   });
-
-/**
- * Run one runtime directly, streaming its output unattributed. Unlike the
- * supervised multi-agent path, a crash here fails the command (scripts and CI
- * rely on the non-zero exit).
- */
-async function runSingleRuntime(
-  config: DevProjectHandlerConfig,
-  runtime: ProjectRuntime,
-  project: Project,
-  explicitPort: number | undefined,
-  environment: (runtime: ProjectRuntime) => Promise<Record<string, string>>,
-  controller: AbortController,
-  json?: JsonRenderer,
-): Promise<void> {
-  const devPort = await resolveDevPort(
-    runtime.protocol,
-    explicitPort,
-    config.checkPort,
-    controller.signal,
-  );
-  if (devPort.port !== devPort.requestedPort) {
-    renderEvent(
-      config.io,
-      {
-        type: "status",
-        message: `Port ${devPort.requestedPort} is in use; using ${devPort.port}.`,
-      },
-      json,
-    );
-  }
-
-  const env = await environment(runtime);
-  controller.signal.throwIfAborted();
-
-  const runner = config.runners[runtime.build];
-  for await (const event of runner.run({
-    runtime,
-    projectRoot: project.rootPath,
-    port: devPort.port,
-    env,
-    signal: controller.signal,
-  })) {
-    renderEvent(config.io, event, json);
-  }
-}
