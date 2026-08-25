@@ -9,6 +9,11 @@ This workspace contains two repos for developing and testing the AgentCore CLI.
 The terminal experience for creating, developing, and deploying AI agents to AgentCore. Node.js/TypeScript CLI built
 with Ink (React-based TUI).
 
+> **Branches:** `agentcore-cli` has an active, long-lived `refactor` branch that diverges substantially from `main`,
+> including a different top-level source layout (`src/handlers/`, `src/core/` rather than `src/cli/`, `src/lib/`).
+> PRs may target `main`, `refactor`, or `feat/**`. Always analyze a PR against its own base branch — never assume the
+> `main` layout.
+
 ### agentcore-l3-cdk-constructs/ (`aws/agentcore-l3-cdk-constructs`)
 
 AWS CDK L3 constructs for declaring and deploying AgentCore infrastructure. Used by agentcore-cli to vend CDK projects
