@@ -7,6 +7,9 @@ import { createAddMemoryHandler } from "./memory";
 import { createAddRuntimeHandler } from "./runtime";
 import { createAddOnlineEvalHandler } from "./online-eval";
 import { createAddOnlineInsightHandler } from "./online-insight";
+import { createAddGatewayHandler } from "./gateway";
+import { createAddGatewayTargetHandler } from "./gateway-target";
+import { createAddGatewayConnectorHandler } from "./gateway-connector";
 import type { AddProjectResourceConfig } from "./types";
 
 export function createAddProjectResourceHandler(config: AddProjectResourceConfig): Router {
@@ -19,5 +22,8 @@ export function createAddProjectResourceHandler(config: AddProjectResourceConfig
   projectAdd.handler(createAddOnlineEvalHandler(config));
   projectAdd.handler(createAddOnlineInsightHandler(config));
   projectAdd.handler(createAddCredentialsHandler(config));
+  projectAdd.handler(createAddGatewayHandler(config));
+  projectAdd.handler(createAddGatewayTargetHandler(config));
+  projectAdd.handler(createAddGatewayConnectorHandler(config));
   return projectAdd;
 }

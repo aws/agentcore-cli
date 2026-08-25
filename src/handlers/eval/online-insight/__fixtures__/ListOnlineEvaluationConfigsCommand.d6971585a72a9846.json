@@ -1,0 +1,174 @@
+{
+  "onlineEvaluationConfigs": [
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/bugbashagent_abtesteval-53zYJX8x4X",
+      "onlineEvaluationConfigId": "bugbashagent_abtesteval-53zYJX8x4X",
+      "onlineEvaluationConfigName": "bugbashagent_abtesteval",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-06-15T18:19:55.627Z"
+      },
+      "updatedAt": {
+        "$date": "2026-06-15T18:20:08.431Z"
+      }
+    },
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/bugbashagent_lambda_ctrl_eval-EY3GWNCDgH",
+      "onlineEvaluationConfigId": "bugbashagent_lambda_ctrl_eval-EY3GWNCDgH",
+      "onlineEvaluationConfigName": "bugbashagent_lambda_ctrl_eval",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-06-15T19:41:54.132Z"
+      },
+      "updatedAt": {
+        "$date": "2026-06-15T19:42:10.231Z"
+      }
+    },
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/bugbashagent_lambda_trtm_eval-IlN5S34Bc5",
+      "onlineEvaluationConfigId": "bugbashagent_lambda_trtm_eval-IlN5S34Bc5",
+      "onlineEvaluationConfigName": "bugbashagent_lambda_trtm_eval",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-06-15T19:41:54.111Z"
+      },
+      "updatedAt": {
+        "$date": "2026-06-15T19:42:10.335Z"
+      }
+    },
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/demoEval_onlineEval1-QErY9BEWT5",
+      "onlineEvaluationConfigId": "demoEval_onlineEval1-QErY9BEWT5",
+      "onlineEvaluationConfigName": "demoEval_onlineEval1",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-07-16T17:26:21.325Z"
+      },
+      "updatedAt": {
+        "$date": "2026-07-16T17:26:36.933Z"
+      }
+    },
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/demoEval_onlineEvalBoto3_20260716180853-tbD9Ob7VUX",
+      "onlineEvaluationConfigId": "demoEval_onlineEvalBoto3_20260716180853-tbD9Ob7VUX",
+      "onlineEvaluationConfigName": "demoEval_onlineEvalBoto3_20260716180853",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-07-16T18:08:54.221Z"
+      },
+      "updatedAt": {
+        "$date": "2026-07-16T18:08:54.477Z"
+      },
+      "description": "boto3-created: onlineEvalBoto3"
+    },
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/demoEval_onlineInsights1-QE6As2GTTB",
+      "onlineEvaluationConfigId": "demoEval_onlineInsights1-QE6As2GTTB",
+      "onlineEvaluationConfigName": "demoEval_onlineInsights1",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-07-16T17:26:21.625Z"
+      },
+      "updatedAt": {
+        "$date": "2026-07-16T17:26:37.218Z"
+      },
+      "insights": [
+        {
+          "insightId": "Builtin.Insight.FailureAnalysis"
+        }
+      ],
+      "clusteringConfig": {
+        "frequencies": [
+          "DAILY"
+        ]
+      }
+    },
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/demoEval_onlineInsightsBoto3_20260716180854-aTLOAI48Jr",
+      "onlineEvaluationConfigId": "demoEval_onlineInsightsBoto3_20260716180854-aTLOAI48Jr",
+      "onlineEvaluationConfigName": "demoEval_onlineInsightsBoto3_20260716180854",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-07-16T18:08:54.762Z"
+      },
+      "updatedAt": {
+        "$date": "2026-07-16T18:08:54.954Z"
+      },
+      "description": "boto3-created: onlineInsightsBoto3",
+      "insights": [
+        {
+          "insightId": "Builtin.Insight.UserIntent"
+        }
+      ],
+      "clusteringConfig": {
+        "frequencies": [
+          "DAILY"
+        ]
+      }
+    },
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/deploytest_myeval-JMv0ihHd30",
+      "onlineEvaluationConfigId": "deploytest_myeval-JMv0ihHd30",
+      "onlineEvaluationConfigName": "deploytest_myeval",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-04-21T22:47:43.896Z"
+      },
+      "updatedAt": {
+        "$date": "2026-04-21T22:47:52.237Z"
+      }
+    },
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/oiVerify1_prodInsights-rPYFuF2WsE",
+      "onlineEvaluationConfigId": "oiVerify1_prodInsights-rPYFuF2WsE",
+      "onlineEvaluationConfigName": "oiVerify1_prodInsights",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-08-21T16:49:04.244Z"
+      },
+      "updatedAt": {
+        "$date": "2026-08-21T16:49:04.485Z"
+      },
+      "insights": [
+        {
+          "insightId": "Builtin.Insight.FailureAnalysis"
+        }
+      ]
+    },
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/temp-5Dz9Ox6yMC",
+      "onlineEvaluationConfigId": "temp-5Dz9Ox6yMC",
+      "onlineEvaluationConfigName": "temp",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2025-12-02T21:09:17.495Z"
+      },
+      "updatedAt": {
+        "$date": "2025-12-02T21:09:17.831Z"
+      }
+    },
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/tjHarnessDerivTest-8rZzgXEHiM",
+      "onlineEvaluationConfigId": "tjHarnessDerivTest-8rZzgXEHiM",
+      "onlineEvaluationConfigName": "tjHarnessDerivTest",
+      "status": "ACTIVE",
+      "executionStatus": "DISABLED",
+      "createdAt": {
+        "$date": "2026-07-27T17:56:04.618Z"
+      },
+      "updatedAt": {
+        "$date": "2026-07-27T17:56:04.805Z"
+      }
+    }
+  ]
+}

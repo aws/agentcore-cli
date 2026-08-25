@@ -470,7 +470,7 @@ export const AgentCoreGatewaySchema = z
       if (gw.protocolType !== "None" && NON_MCP_TARGET_TYPES.includes(target.targetType)) {
         ctx.addIssue({
           code: "custom",
-          message: `Target "${target.name}" is ${target.targetType} but gateway does not have protocolType: "None". Add --protocol-type None when creating the gateway.`,
+          message: `Target "${target.name}" is ${target.targetType} but the Gateway does not have protocolType: "None"`,
         });
       }
     }

@@ -1,0 +1,18 @@
+{
+  "onlineEvaluationConfigs": [
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/bugbashagent_abtesteval-53zYJX8x4X",
+      "onlineEvaluationConfigId": "bugbashagent_abtesteval-53zYJX8x4X",
+      "onlineEvaluationConfigName": "bugbashagent_abtesteval",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-06-15T18:19:55.627Z"
+      },
+      "updatedAt": {
+        "$date": "2026-06-15T18:20:08.431Z"
+      }
+    }
+  ],
+  "nextToken": "AQICAHg005/7fkIBR7tGFhppNaSDRXSe8ajCw8sa0ZnYTqa1SAEA/pmj5q635xfQGQ4QXUlHAAABLTCCASkGCSqGSIb3DQEHBqCCARowggEWAgEAMIIBDwYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAy5YU6pQns8SXsO4kQCARCAgeGwubPdRib9QRXkHSShAPRM2WPb8HvBdgXouAhwVTYyKkijfndoqV1k6CP8nC3WIcp5PTvkLOHrLYiR3DoHeUtXDHycZVMU1j/W1lkrBTK6nVUKJHThayoZKxXHW3NCdzHvGcoAylWjPIPnqLyxn9wjdTwX/YMrd6gu+6pjx02cddsuuSvJ9QtWX4u3lkogS2za/kM1R5HDm56W8e808lVrt479Ykkf2Uc0tlpH0tBJnKC6PyYeBD5hhq1gKBmyWgVWVQjJOhxdGwNUqE2aG+OuckEE1c28oLLQqSDYah7fW5M="
+}

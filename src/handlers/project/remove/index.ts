@@ -13,9 +13,16 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
   createHandler({
     name: "remove",
     description: "remove a resource from the project",
-    flags: [flag("name", "name of the resource to remove", z.string().min(1).optional())],
+    flags: [
+      flag("name", "name of the resource to remove", z.string().min(1).optional()),
+      flag("gateway", "name of the parent Gateway for a Target", z.string().min(1).optional()),
+    ],
     arguments: [
-      argument("resource", "type of resource to remove", z.enum(["harness", "runtime"]).optional()),
+      argument(
+        "resource",
+        "type of resource to remove",
+        z.enum(["harness", "runtime", "gateway", "gateway-target", "gateway-connector"]).optional(),
+      ),
     ],
     handle: async (ctx, flags, args) => {
       const resource = args["resource"];
@@ -23,10 +30,27 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
       if (!resource) throw new InputValidationError(`resource argument is required to remove`);
       if (!name) throw new InputValidationError(`--name is required option`);
 
-      await config.projectManager.removeResource(ctx.require(ProjectKey), {
-        resourceType: resource,
-        name,
-      });
+      const project = ctx.require(ProjectKey);
+      if (resource === "gateway-target" || resource === "gateway-connector") {
+        if (!flags.gateway) {
+          throw new InputValidationError(`--gateway is required option`);
+        }
+        await config.projectManager.removeResource(project, {
+          resourceType: "gateway-target",
+          gatewayName: flags.gateway,
+          name,
+        });
+      } else {
+        if (flags.gateway) {
+          throw new InputValidationError(
+            `--gateway is valid only when removing a gateway-target or gateway-connector`,
+          );
+        }
+        await config.projectManager.removeResource(project, {
+          resourceType: resource,
+          name,
+        });
+      }
 
       config.io.stdout.write(`removed ${resource} with name '${name}' from project`);
     },

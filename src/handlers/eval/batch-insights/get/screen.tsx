@@ -3,19 +3,12 @@ import { useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
 import type { ScreenProps } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
-import { InsightsJob } from "../insightsJob";
 
 function useBatchInsightsDetail({ ctx, core }: ScreenProps, id: string | undefined) {
   const opts = coreOptsFromCtx(ctx);
   return useQuery({
     queryKey: ["batch-insights", opts.region, id],
-    queryFn: async () => {
-      const { detail } = await core.eval.getBatchEvaluation(id!, opts, {
-        includeResults: false,
-      });
-      InsightsJob.assert(detail, id!);
-      return detail;
-    },
+    queryFn: () => core.eval.getBatchInsights(id!, opts),
     enabled: id !== undefined,
   });
 }

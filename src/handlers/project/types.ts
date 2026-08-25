@@ -7,6 +7,7 @@ import z from "zod";
 import type { RuntimeResourceConfig } from "./add/runtime/types";
 import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
 import { AgentNameSchema, BuildTypeSchema } from "../../projectSchemas/runtime";
+import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 
 export const RUNTIME_TEMPLATE_SHORTCUTS = {
   "hello-world-python": {
@@ -137,14 +138,29 @@ export type AddResourceInput =
   | {
       resourceType: "memory";
       resourceConfig: z.input<typeof MemorySchema>;
+    }
+  | {
+      resourceType: "gateway";
+      resourceConfig: AgentCoreGateway;
+    }
+  | {
+      resourceType: "gateway-target";
+      gatewayName: string;
+      resourceConfig: AgentCoreGatewayTarget;
     };
 
 export type ProjectResource = AddResourceInput["resourceType"];
 
-export type RemoveResourceInput = {
-  resourceType: ProjectResource;
-  name: string;
-};
+export type RemoveResourceInput =
+  | {
+      resourceType: Exclude<ProjectResource, "gateway-target">;
+      name: string;
+    }
+  | {
+      resourceType: "gateway-target";
+      gatewayName: string;
+      name: string;
+    };
 
 /**
  * The primary interface for interacting with projects

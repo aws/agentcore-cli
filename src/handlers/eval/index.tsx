@@ -5,6 +5,7 @@ import type { AppIO } from "../../io";
 import type { Core } from "../types";
 import { createEvaluatorHandler } from "./evaluator";
 import { createOnlineEvalHandler } from "./online-eval";
+import { createOnlineInsightHandler } from "./online-insight";
 import { createDatasetHandler } from "./dataset";
 import { createBatchEvaluationHandler } from "./batch-evaluation";
 import { createBatchInsightsHandler } from "./batch-insights";
@@ -17,6 +18,7 @@ export function createEvalHandler(core: Core, io: AppIO): Router {
     .default(renderTui(core, io))
     .handler(createEvaluatorHandler(core, io))
     .handler(createOnlineEvalHandler(core, io))
+    .handler(createOnlineInsightHandler(core, io))
     .handler(createDatasetHandler(core, io))
     .handler(createBatchEvaluationHandler(core, io))
     .handler(createBatchInsightsHandler(core, io))

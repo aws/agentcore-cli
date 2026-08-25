@@ -46,7 +46,7 @@ function detail(overrides: Partial<GetBatchEvaluationResponse> = {}): GetBatchEv
 
 function coreWithBatchEvaluations(items: BatchEvaluationSummary[]): TestCoreClient {
   const core = new TestCoreClient();
-  core.eval.setBatchEvalListResponse({ batchEvaluations: items });
+  core.eval.setBatchInsightsListResponse({ batchEvaluations: items });
   return core;
 }
 
@@ -63,22 +63,12 @@ describe("batch-insights menu", () => {
 });
 
 describe("batch-insights picker", () => {
-  test("filters evaluator-only jobs from the shared service page", async () => {
-    const core = coreWithBatchEvaluations([
-      summary(),
-      summary({
-        batchEvaluationId: "evaluation-1",
-        batchEvaluationName: "quality_evaluation",
-        insights: undefined,
-        evaluators: [{ evaluatorId: "Builtin.Correctness" }],
-      }),
-    ]);
+  test("loads Insights from the dedicated Core facade", async () => {
+    const core = coreWithBatchEvaluations([summary()]);
     const screen = renderScreen("/agentcore/eval/batch-insights/list", { core });
 
     await waitForText(screen.lastFrame, "failure_analysis");
-    const frame = screen.lastFrame()!;
-    expect(frame).not.toContain("quality_evaluation");
-    expect(core.eval.calls[0]?.method).toBe("listBatchEvaluations");
+    expect(core.eval.calls[0]?.method).toBe("listBatchInsights");
   });
 
   test("bare get redirects to the filtered picker", async () => {
@@ -86,7 +76,7 @@ describe("batch-insights picker", () => {
     const screen = renderScreen("/agentcore/eval/batch-insights/get", { core });
 
     await waitForText(screen.lastFrame, "failure_analysis");
-    expect(core.eval.calls[0]?.method).toBe("listBatchEvaluations");
+    expect(core.eval.calls[0]?.method).toBe("listBatchInsights");
   });
 
   test("selection opens the matching insights JSON", async () => {
@@ -99,18 +89,13 @@ describe("batch-insights picker", () => {
     await waitForText(screen.lastFrame, "agentcore → eval → batch-insights → get → insights-1");
     await waitFor(() =>
       core.eval.calls.some(
-        (call) => call.method === "getBatchEvaluation" && call.args[0] === "insights-1",
+        (call) => call.method === "getBatchInsights" && call.args[0] === "insights-1",
       ),
     );
   });
 
   test("shows the Insights-specific empty state", async () => {
-    const core = coreWithBatchEvaluations([
-      summary({
-        insights: undefined,
-        evaluators: [{ evaluatorId: "Builtin.Correctness" }],
-      }),
-    ]);
+    const core = coreWithBatchEvaluations([]);
     const screen = renderScreen("/agentcore/eval/batch-insights/list", { core });
 
     await waitForText(screen.lastFrame, "No batch insights found in this Region.");
@@ -126,9 +111,9 @@ describe("batch-insights detail", () => {
     await waitForText(screen.lastFrame, "failure_analysis");
     const frame = screen.lastFrame()!;
     expect(frame).toContain('"failureAnalysisResult"');
-    expect(core.eval.calls.find((call) => call.method === "getBatchEvaluation")).toEqual({
-      method: "getBatchEvaluation",
-      args: ["insights-1", { region: "us-east-1" }, { includeResults: false }],
+    expect(core.eval.calls.find((call) => call.method === "getBatchInsights")).toEqual({
+      method: "getBatchInsights",
+      args: ["insights-1", { region: "us-east-1" }],
     });
   });
 

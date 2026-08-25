@@ -147,6 +147,29 @@ export type CreateOnlineEvalInput = {
   | { agent?: undefined; endpoint?: undefined; dataSourceConfig: DataSourceConfig }
 );
 
+export type CreateOnlineInsightInput = {
+  name: string;
+  description?: string;
+  samplingRate: number;
+  sessionTimeoutMinutes?: number;
+  filters?: Rule["filters"];
+  insightIds: string[];
+  clusteringConfig?: { frequencies: ("DAILY" | "WEEKLY" | "MONTHLY")[] };
+  evaluationExecutionRoleArn: string;
+  enableOnCreate?: boolean;
+} & (
+  | { agent: string; endpoint?: string; dataSourceConfig?: undefined }
+  | { agent?: undefined; endpoint?: undefined; dataSourceConfig: DataSourceConfig }
+);
+
+// Online insight configs are the same OnlineEvaluationConfig resource with insights
+// instead of evaluators, so the responses share the SDK shapes under insight names.
+export type CreateOnlineInsightResponse = CreateOnlineEvaluationConfigResponse;
+export type GetOnlineInsightResponse = GetOnlineEvaluationConfigResponse;
+export type UpdateOnlineInsightResponse = UpdateOnlineEvaluationConfigResponse;
+export type ListOnlineInsightsResponse = ListOnlineEvaluationConfigsResponse;
+export type DeleteOnlineInsightResponse = DeleteOnlineEvaluationConfigResponse;
+
 // UpdateOnlineEvalInput carries the fields a caller may change on an online
 // evaluation config. Undefined fields are left untouched by Core (merged over
 // the current config, since UpdateOnlineEvaluationConfig replaces the whole
@@ -333,7 +356,13 @@ export interface CoreEvalClient {
     options: CoreOptions,
     opts?: { includeResults?: boolean },
   ): Promise<GetBatchEvaluationResult>;
+  getBatchInsights(id: string, options: CoreOptions): Promise<BatchEvaluationDetail>;
   listBatchEvaluations(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListBatchEvaluationsResponse>;
+  listBatchInsights(
     nextToken: string | undefined,
     maxResults: number | undefined,
     options: CoreOptions,
@@ -400,6 +429,23 @@ export interface CoreEvalClient {
     id: string,
     options: CoreOptions,
   ): Promise<DeleteOnlineEvaluationConfigResponse>;
+
+  createOnlineInsight(
+    input: CreateOnlineInsightInput,
+    options: CoreOptions,
+  ): Promise<CreateOnlineInsightResponse>;
+  getOnlineInsight(id: string, options: CoreOptions): Promise<GetOnlineInsightResponse>;
+  listOnlineInsights(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListOnlineInsightsResponse>;
+  setOnlineInsightExecutionStatus(
+    id: string,
+    executionStatus: "ENABLED" | "DISABLED",
+    options: CoreOptions,
+  ): Promise<UpdateOnlineInsightResponse>;
+  deleteOnlineInsight(id: string, options: CoreOptions): Promise<DeleteOnlineInsightResponse>;
 
   createConfigurationBundle(
     input: CreateConfigurationBundleInput,

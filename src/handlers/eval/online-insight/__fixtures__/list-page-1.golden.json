@@ -1,0 +1,19 @@
+{
+  "onlineEvaluationConfigs": [
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_insight_fixture-yfp5iH59lN",
+      "onlineEvaluationConfigId": "agentcore_cli_online_insight_fixture-yfp5iH59lN",
+      "onlineEvaluationConfigName": "agentcore_cli_online_insight_fixture",
+      "status": "ACTIVE",
+      "executionStatus": "DISABLED",
+      "createdAt": "2026-08-25T16:31:04.975Z",
+      "updatedAt": "2026-08-25T16:31:05.170Z",
+      "insights": [
+        {
+          "insightId": "Builtin.Insight.FailureAnalysis"
+        }
+      ]
+    }
+  ],
+  "nextToken": "AQICAHg005/7fkIBR7tGFhppNaSDRXSe8ajCw8sa0ZnYTqa1SAG1uwA5wg4Mnmn2lr1wxQlMAAABOjCCATYGCSqGSIb3DQEHBqCCAScwggEjAgEAMIIBHAYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAzxRbl1JxBFwy0KsUkCARCAge6SIQLwM+WYuOMzKxRs/vC8XvOvmJqaet8gXLq3jftE66wbjp8kgmynFYGSCgV3xyS4XClgK0jfvDmHu24vCYIOsQWR0rlTLVAOmoabTAIrJTVNJ7OVHTecnN8X7636DVPOp9mMXQqj+Tt3WpbwKjZOV+WE8fxTuJHsX/NZuKgvoEKaDYzohVzI3mSaopuIhZTNP/Zsnfp40ng/EmhBcMIIHmmfBUEsIiwTOKRU4Cyy8YXtzSKSJa/6mK9Q+N/Mnv4SvfGZ1q8YGyacxKNu3JIFcBh69nt9EqIsZUD2ix0UAj+zx5RBC03KSyyYe7VX"
+}

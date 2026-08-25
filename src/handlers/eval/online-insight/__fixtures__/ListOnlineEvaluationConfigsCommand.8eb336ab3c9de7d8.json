@@ -1,0 +1,18 @@
+{
+  "onlineEvaluationConfigs": [
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/abtestval_cs_treatment_eval-AdSjkL4CHu",
+      "onlineEvaluationConfigId": "abtestval_cs_treatment_eval-AdSjkL4CHu",
+      "onlineEvaluationConfigName": "abtestval_cs_treatment_eval",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-06-24T22:58:24.648Z"
+      },
+      "updatedAt": {
+        "$date": "2026-06-24T22:58:38.393Z"
+      }
+    }
+  ],
+  "nextToken": "AQICAHg005/7fkIBR7tGFhppNaSDRXSe8ajCw8sa0ZnYTqa1SAFM6h6SCUQmIgVYFizOBp1WAAABMTCCAS0GCSqGSIb3DQEHBqCCAR4wggEaAgEAMIIBEwYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAyG57nTLRj8meJTtJMCARCAgeU5XHDint5XK6wwVUrgbd2d8rWKtPAhXH4pDciLa50ddGuGW9YmH9N0nIjoplGOC628Sdw0tgea5uCgD7U1PS1LrKcumHRJTApyloKQM2zzf0yuyLxNEu2LnTMw3ERBdkE1RpmbKTAsntYmKmJ7QqTR2vr0Lj9e7BZmXuJ4JvWgRZvy+zdILkFu56pg3Jnoau7evxs24adQl5TTTHnr8bndc1HrI4rtUfESSxVSjgney4uEbRGwEsteCEQcg8hhI8DvzfjnsPG0cbADT+XkKdkgQlglfHFfrt+InjXeV7FgEclurEle"
+}

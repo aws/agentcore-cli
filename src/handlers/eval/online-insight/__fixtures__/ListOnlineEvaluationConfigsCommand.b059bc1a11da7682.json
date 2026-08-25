@@ -1,0 +1,18 @@
+{
+  "onlineEvaluationConfigs": [
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/abdemo_evalconfig-ntDb6Q5PLh",
+      "onlineEvaluationConfigId": "abdemo_evalconfig-ntDb6Q5PLh",
+      "onlineEvaluationConfigName": "abdemo_evalconfig",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-05-27T22:10:42.270Z"
+      },
+      "updatedAt": {
+        "$date": "2026-05-27T22:10:51.516Z"
+      }
+    }
+  ],
+  "nextToken": "AQICAHg005/7fkIBR7tGFhppNaSDRXSe8ajCw8sa0ZnYTqa1SAHXldOHSiwlHCGwpqNILBb0AAABJzCCASMGCSqGSIb3DQEHBqCCARQwggEQAgEAMIIBCQYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAxk2UsD/gh8KvDgTk0CARCAgdsnoTf6PAYq+ypMZAv3aNonvoikkHdLRzctX20DCdVwWGExhfMqhfCAoiElb516LU2GKagEzb9tKWXvblUs4x+ZtkqtNkhdXulZRUGUeec7F3E0G8fAQW0pugvlSd6+q9hwK7py7g6o8vMVXsrRaElf9V7ns1QUNPL+ZNkJw1fYZS9MJR8WdPJ50EwhRyx/5kaqKVYb4K57MqoC6eEGPjzgwgAGBIOdW9j5bF6w4rP7GsZCqLpMXi8Rqvhul5Ao2O8YTgaTMeyjjpNdPpz1GNhN9WVMEg4x0xJ2eA4="
+}

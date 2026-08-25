@@ -172,7 +172,10 @@ describe("eval batch-insights get", () => {
       failureAnalysisResult: { failures: [] },
     });
     expect(JSON.parse(stdout).consoleUrl).toBeUndefined();
-    expect(core.eval.calls[0]?.args[2]).toEqual({ includeResults: false });
+    expect(core.eval.calls[0]).toEqual({
+      method: "getBatchInsights",
+      args: ["bi-1", { region: REGION }],
+    });
   });
 
   test("rejects an evaluator-only batch evaluation", async () => {
@@ -190,16 +193,12 @@ describe("eval batch-insights get", () => {
 });
 
 describe("eval batch-insights list", () => {
-  test("filters mixed service results and preserves pagination", async () => {
+  test("returns the logical Insights page from Core", async () => {
     const response = {
       batchEvaluations: [
         {
           batchEvaluationId: "bi-1",
           insights: [{ insightId: "Builtin.Insight.FailureAnalysis" }],
-        },
-        {
-          batchEvaluationId: "be-1",
-          evaluators: [{ evaluatorId: "Builtin.Helpfulness" }],
         },
         { batchEvaluationId: "bi-2", insights: [{ insightId: "Builtin.Insight.UserIntent" }] },
       ],
@@ -207,7 +206,7 @@ describe("eval batch-insights list", () => {
     } as unknown as ListBatchEvaluationsResponse;
     const { core, stdout } = await run(
       ["eval", "batch-insights", "list", "--next-token", "page-1", "--max-results", "20", "--json"],
-      (client) => client.eval.setBatchEvalListResponse(response, "page-1"),
+      (client) => client.eval.setBatchInsightsListResponse(response, "page-1"),
     );
     const output = JSON.parse(stdout);
 
@@ -216,6 +215,9 @@ describe("eval batch-insights list", () => {
       output.batchEvaluations.map((item: { batchEvaluationId: string }) => item.batchEvaluationId),
     ).toEqual(["bi-1", "bi-2"]);
     expect(output.batchEvaluations[0].consoleUrl).toBeUndefined();
-    expect(core.eval.calls[0]?.args).toEqual(["page-1", 20, { region: REGION }]);
+    expect(core.eval.calls[0]).toEqual({
+      method: "listBatchInsights",
+      args: ["page-1", 20, { region: REGION }],
+    });
   });
 });

@@ -65,6 +65,7 @@ import {
   type EvaluationReferenceInput,
   type EvaluationResultContent,
   type EvaluationTarget,
+  type BatchEvaluationSummary,
   type ListBatchEvaluationsResponse,
   type StartBatchEvaluationResponse,
   type DataSourceConfig as DataPlaneDataSourceConfig,
@@ -92,6 +93,7 @@ import {
   InputValidationError,
   NetworkingError,
   ResourceNotFoundError,
+  ResultTruncationError,
 } from "../errors";
 import type {
   BatchEvaluationDetail,
@@ -103,6 +105,12 @@ import type {
   CreateConfigurationBundleInput,
   CreateDatasetInput,
   CreateOnlineEvalInput,
+  CreateOnlineInsightInput,
+  CreateOnlineInsightResponse,
+  GetOnlineInsightResponse,
+  ListOnlineInsightsResponse,
+  UpdateOnlineInsightResponse,
+  DeleteOnlineInsightResponse,
   EvaluateInput,
   EvaluateResult,
   GetBatchEvaluationResult,
@@ -165,6 +173,9 @@ const EVALUATE_TARGET_BATCH = 10;
 // CloudWatch Logs Insights hard ceiling: a query returns at most 100k rows.
 const INSIGHTS_MAX_ROWS = 100_000;
 
+const DEFAULT_BATCH_INSIGHTS_PAGE_SIZE = 50;
+const MAX_BATCH_INSIGHTS_SCAN_REQUESTS = 101;
+
 // noopLogger is the default for the optional logger arg so callers that don't
 // need batch-evaluation result-log diagnostics (e.g. dataset-only tests) can
 // omit it. Production (src/core/index.tsx) injects a real child logger.
@@ -175,6 +186,10 @@ const noopLogger: Logger = {
   error: () => {},
   child: () => noopLogger,
 };
+
+const DEFAULT_ONLINE_INSIGHT_PAGE_SIZE = 100;
+const MAX_ONLINE_INSIGHT_PAGES = 101;
+type InsightSummary = NonNullable<ListOnlineInsightsResponse["onlineEvaluationConfigs"]>[number];
 
 export class EvalClient implements CoreEvalClient {
   constructor(
@@ -362,6 +377,14 @@ export class EvalClient implements CoreEvalClient {
     }
   }
 
+  async getBatchInsights(id: string, options: CoreOptions): Promise<BatchEvaluationDetail> {
+    const { detail } = await this.getBatchEvaluation(id, options, { includeResults: false });
+    if (!EvalClient.isBatchInsights(detail)) {
+      throw new InputValidationError(`batch evaluation "${id}" is not a batch insights run`);
+    }
+    return detail;
+  }
+
   async listBatchEvaluations(
     nextToken: string | undefined,
     maxResults: number | undefined,
@@ -370,6 +393,56 @@ export class EvalClient implements CoreEvalClient {
     return this.clients
       .data(toClientConfig(options))
       .send(new ListBatchEvaluationsCommand({ nextToken, maxResults }));
+  }
+
+  async listBatchInsights(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListBatchEvaluationsResponse> {
+    const insightsPageSize = maxResults ?? DEFAULT_BATCH_INSIGHTS_PAGE_SIZE;
+    if (!Number.isInteger(insightsPageSize) || insightsPageSize < 1) {
+      throw new InputValidationError("maxResults must be a positive integer");
+    }
+    const batchEvaluations: BatchEvaluationSummary[] = [];
+    let batchEvaluationToken = nextToken;
+
+    for (let request = 0; request < MAX_BATCH_INSIGHTS_SCAN_REQUESTS; request++) {
+      const requestToken = batchEvaluationToken;
+      const response = await this.listBatchEvaluations(requestToken, undefined, options);
+      const serviceItems = response.batchEvaluations ?? [];
+      const insights = serviceItems.filter(EvalClient.isBatchInsights);
+
+      if (batchEvaluations.length < insightsPageSize) {
+        const remaining = insightsPageSize - batchEvaluations.length;
+        if (insights.length > remaining) {
+          const boundaryInsight = insights[remaining - 1]!;
+          const boundarySize = serviceItems.indexOf(boundaryInsight) + 1;
+          // Re-read through the last returned Insights job so the service token
+          // cannot skip later matches from this Batch Evaluation page.
+          const boundaryResponse = await this.listBatchEvaluations(
+            requestToken,
+            boundarySize,
+            options,
+          );
+
+          batchEvaluations.push(...insights.slice(0, remaining));
+          return { ...boundaryResponse, batchEvaluations };
+        }
+        batchEvaluations.push(...insights);
+      } else if (insights.length > 0) {
+        return { ...response, batchEvaluations, nextToken: requestToken };
+      }
+
+      if (response.nextToken === undefined) {
+        return { ...response, batchEvaluations, nextToken: undefined };
+      }
+      batchEvaluationToken = response.nextToken;
+    }
+
+    throw new ResultTruncationError(
+      `Batch Insights discovery exceeded ${MAX_BATCH_INSIGHTS_SCAN_REQUESTS} Batch Evaluation scan requests; results are incomplete`,
+    );
   }
 
   async startBatchEvaluation(
@@ -442,6 +515,10 @@ export class EvalClient implements CoreEvalClient {
         filterConfig,
       },
     };
+  }
+
+  private static isBatchInsights(job: { insights?: unknown[] }): boolean {
+    return Boolean(job.insights?.length);
   }
 
   async getTracesForAgent(input: GetTracesInput, options: CoreOptions): Promise<SessionTrace[]> {
@@ -696,6 +773,109 @@ export class EvalClient implements CoreEvalClient {
     return input.evaluationExecutionRoleArn
       ? control.send(command)
       : retryWhileRolePropagates(() => control.send(command));
+  }
+
+  async createOnlineInsight(
+    input: CreateOnlineInsightInput,
+    options: CoreOptions,
+  ): Promise<CreateOnlineInsightResponse> {
+    const dataSourceConfig =
+      input.agent !== undefined
+        ? await agentDataSource(input.agent, input.endpoint, this.clients, options)
+        : input.dataSourceConfig;
+    const control = this.clients.control(toClientConfig(options));
+
+    const command = new CreateOnlineEvaluationConfigCommand({
+      onlineEvaluationConfigName: input.name,
+      description: input.description,
+      rule: toRule(input.samplingRate, input.sessionTimeoutMinutes, input.filters),
+      dataSourceConfig,
+      insights: input.insightIds.map((insightId) => ({ insightId })),
+      clusteringConfig: input.clusteringConfig,
+      evaluationExecutionRoleArn: input.evaluationExecutionRoleArn,
+      enableOnCreate: input.enableOnCreate ?? true,
+    });
+
+    return control.send(command);
+  }
+
+  async getOnlineInsight(id: string, options: CoreOptions): Promise<GetOnlineInsightResponse> {
+    const control = this.clients.control(toClientConfig(options));
+    const config = await control.send(
+      new GetOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }),
+    );
+    if ((config.insights?.length ?? 0) === 0)
+      throw new InputValidationError(`"${id}" is not an online-insight config`, {
+        meta: { onlineEvaluationConfigId: id },
+      });
+    return config;
+  }
+
+  async listOnlineInsights(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListOnlineInsightsResponse> {
+    // Fill the requested page across underlying pages, since the shared List API
+    // returns eval configs too (mirrors listGatewayConnectors over Targets).
+    const pageSize = maxResults ?? DEFAULT_ONLINE_INSIGHT_PAGE_SIZE;
+    const items: InsightSummary[] = [];
+    let token = nextToken;
+    let filling = true;
+
+    for (let page = 0; page < MAX_ONLINE_INSIGHT_PAGES; page++) {
+      const requestToken = token;
+      const requestSize = filling ? pageSize - items.length : DEFAULT_ONLINE_INSIGHT_PAGE_SIZE;
+      const response = await this.listOnlineEvaluationConfigs(token, requestSize, options);
+      const insights = (response.onlineEvaluationConfigs ?? []).filter(
+        (c) => (c.insights?.length ?? 0) > 0,
+      );
+
+      if (filling) {
+        items.push(...insights);
+        filling = items.length < pageSize;
+      } else if (insights.length > 0) {
+        return { ...response, onlineEvaluationConfigs: items, nextToken: requestToken };
+      }
+
+      if (response.nextToken === undefined) {
+        return { ...response, onlineEvaluationConfigs: items, nextToken: undefined };
+      }
+      token = response.nextToken;
+    }
+
+    throw new ResultTruncationError(
+      `Online insight discovery exceeded ${MAX_ONLINE_INSIGHT_PAGES} config pages; results are incomplete`,
+    );
+  }
+
+  async setOnlineInsightExecutionStatus(
+    id: string,
+    executionStatus: "ENABLED" | "DISABLED",
+    options: CoreOptions,
+  ): Promise<UpdateOnlineInsightResponse> {
+    const config = await this.clients
+      .control(toClientConfig(options))
+      .send(new GetOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }));
+    if ((config.insights?.length ?? 0) === 0)
+      throw new InputValidationError(`"${id}" is not an online-insight config`, {
+        meta: { onlineEvaluationConfigId: id },
+      });
+    return this.setOnlineEvaluationExecutionStatus(id, executionStatus, options);
+  }
+
+  async deleteOnlineInsight(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteOnlineInsightResponse> {
+    const config = await this.clients
+      .control(toClientConfig(options))
+      .send(new GetOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }));
+    if ((config.insights?.length ?? 0) === 0)
+      throw new InputValidationError(`"${id}" is not an online-insight config`, {
+        meta: { onlineEvaluationConfigId: id },
+      });
+    return this.deleteOnlineEvaluationConfig(id, options);
   }
 
   // updateOnlineEvaluationConfig fetches the current config and merges the

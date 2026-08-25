@@ -1,0 +1,18 @@
+{
+  "onlineEvaluationConfigs": [
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/ABVfyPrerelease_StagingEval-fH26hNBHL6",
+      "onlineEvaluationConfigId": "ABVfyPrerelease_StagingEval-fH26hNBHL6",
+      "onlineEvaluationConfigName": "ABVfyPrerelease_StagingEval",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": {
+        "$date": "2026-06-17T20:28:09.163Z"
+      },
+      "updatedAt": {
+        "$date": "2026-06-17T20:28:26.799Z"
+      }
+    }
+  ],
+  "nextToken": "AQICAHg005/7fkIBR7tGFhppNaSDRXSe8ajCw8sa0ZnYTqa1SAEGKvMXX2Cm4/S/KStrfopDAAABMTCCAS0GCSqGSIb3DQEHBqCCAR4wggEaAgEAMIIBEwYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAw1KJ0cEhRQL4p+UE0CARCAgeV538C7j2ricanMKFfPyYmCr8Ic1ptlXnxBMvA+DsF/Q9k0yAr9eLKmGy+yfoZXcw5E2+ga9xr9T2Y6m4jZ3P2QJO/HiyXbazrZ894PSV0/QQVJa4ALMDOU54YI1tEbC4mER5sB9dXqge/xZEJXyY5ECGQr1s0BB1/zzW0Yd1FKaUJvAcVeb8ZvUtFIFHVhAh0MuR85hgDX4lMzm6jOwKZdnaALpQXHayCyAriElSLOnBHdaTUh0+H/Fef3BTcCWvga92LASH2FiVJdnIo8qHoy34cVVSwoBFYw4D2+VkT9EIaQcrDk"
+}

@@ -153,10 +153,29 @@ export class FsProjectManager implements ProjectManager {
     const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
     const existingResources = existingProjectSpec[projectSpecKey];
-    if (existingResources.find((r) => r.name === resourceConfig.name))
+    if (resourceType === "gateway-target") {
+      // Current L3 outputs are keyed only by Target name, so names must remain
+      // project-unique until those outputs include the parent Gateway.
+      const gateway = existingProjectSpec.agentCoreGateways.find((candidate) =>
+        candidate.targets.some((target) => target.name === resourceConfig.name),
+      );
+      if (gateway) {
+        throw new InputValidationError(
+          `a gateway target with name '${resourceConfig.name}' already exists in gateway '${gateway.name}'`,
+        );
+      }
+      if (
+        existingProjectSpec.unassignedTargets?.some((target) => target.name === resourceConfig.name)
+      ) {
+        throw new InputValidationError(
+          `an unassigned gateway target with name '${resourceConfig.name}' already exists`,
+        );
+      }
+    } else if (existingResources.find((resource) => resource.name === resourceConfig.name)) {
       throw new InputValidationError(
         `a ${resourceType} with name '${resourceConfig.name}' already exists`,
       );
+    }
 
     // Widened: arms push their own shapes; the whole-spec safeParse below validates.
     const newResources: unknown[] = [...existingResources];
@@ -164,7 +183,7 @@ export class FsProjectManager implements ProjectManager {
     // Non-file work that a failed spec write must also reverse.
     let envFile: EnvLocalFile | undefined;
 
-    switch (resourceType) {
+    switch (input.resourceType) {
       case "harness": {
         yield { message: `Scaffolding harness in project` };
         const outputPath = join(project.rootPath, "app", resourceConfig.name);
@@ -202,9 +221,25 @@ export class FsProjectManager implements ProjectManager {
       case "online-eval":
       case "online-insight":
       case "memory":
+      case "gateway":
         newResources.push(resourceConfig);
         break;
-
+      case "gateway-target": {
+        const gatewayIndex = existingProjectSpec.agentCoreGateways.findIndex(
+          (gateway) => gateway.name === input.gatewayName,
+        );
+        if (gatewayIndex < 0) {
+          throw new InputValidationError(
+            `gateway '${input.gatewayName}' does not exist in this project; check agentCoreGateways in agentcore.json`,
+          );
+        }
+        const gateway = existingProjectSpec.agentCoreGateways[gatewayIndex]!;
+        newResources[gatewayIndex] = {
+          ...gateway,
+          targets: [...gateway.targets, resourceConfig],
+        };
+        break;
+      }
       default: {
         const unhandled: never = input;
         throw new NotImplementedError(`unsupported project resource: ${String(unhandled)}`);
@@ -260,22 +295,34 @@ export class FsProjectManager implements ProjectManager {
 
   public async removeResource(project: Project, input: RemoveResourceInput): Promise<Project> {
     const agentCoreSpecPath = this.getProjectSpecPath(project);
-    const projectSpecKey = toProjectSpecKey(input.resourceType);
-
     const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
-    const existingResources = existingProjectSpec[projectSpecKey];
-    const newResources = existingResources.filter((r) => r.name !== input.name);
+    let removed = false;
+    let newSpec: unknown;
+    if (input.resourceType === "gateway-target") {
+      const gateways = [...existingProjectSpec.agentCoreGateways];
+      const gatewayIndex = gateways.findIndex((gateway) => gateway.name === input.gatewayName);
+      if (gatewayIndex >= 0) {
+        const gateway = gateways[gatewayIndex]!;
+        const targets = gateway.targets.filter((target) => target.name !== input.name);
+        removed = targets.length !== gateway.targets.length;
+        gateways[gatewayIndex] = { ...gateway, targets };
+      }
+      newSpec = { ...existingProjectSpec, agentCoreGateways: gateways };
+    } else {
+      const projectSpecKey = toProjectSpecKey(input.resourceType);
+      const existingResources = existingProjectSpec[projectSpecKey];
+      const newResources = existingResources.filter((resource) => resource.name !== input.name);
+      removed = newResources.length !== existingResources.length;
+      newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
+    }
 
-    if (newResources.length === existingResources.length)
+    if (!removed)
       this.logger
         .child({ input })
         .warn(`unable to remove resource from project that does not exist.`);
 
-    const newSpecParseResult = ProjectSpecSchema.safeParse({
-      ...existingProjectSpec,
-      [projectSpecKey]: newResources,
-    });
+    const newSpecParseResult = ProjectSpecSchema.safeParse(newSpec);
 
     if (!newSpecParseResult.success)
       throw new InputValidationError(z.prettifyError(newSpecParseResult.error), {
@@ -385,5 +432,8 @@ function toProjectSpecKey(resourceType: ProjectResource) {
       return "onlineEvalConfigs";
     case "memory":
       return "memories";
+    case "gateway":
+    case "gateway-target":
+      return "agentCoreGateways";
   }
 }

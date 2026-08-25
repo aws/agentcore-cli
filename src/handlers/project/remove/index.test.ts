@@ -90,6 +90,16 @@ describe("project remove", () => {
       specKey: "harnesses",
       expectedRemaining: [],
     },
+    {
+      label: "gateway",
+      commands: [
+        ["add", "gateway", "--name", "keep"],
+        ["add", "gateway", "--name", "remove"],
+        ["remove", "gateway", "--name", "remove"],
+      ],
+      specKey: "agentCoreGateways",
+      expectedRemaining: ["keep"],
+    },
   ])("$label", async ({ commands, specKey, expectedRemaining }) => {
     const projectRoot = await inProject();
 
@@ -102,10 +112,65 @@ describe("project remove", () => {
     expect(remaining.map((r) => r.name)).toEqual(expectedRemaining);
   });
 
+  test.each([
+    {
+      resource: "gateway-target",
+      add: [
+        "add",
+        "gateway-target",
+        "--gateway",
+        "tools",
+        "--name",
+        "remove",
+        "--endpoint",
+        "https://remove.example.com",
+      ],
+    },
+    {
+      resource: "gateway-connector",
+      add: [
+        "add",
+        "gateway-connector",
+        "--gateway",
+        "tools",
+        "--name",
+        "remove",
+        "--connector",
+        "web-search",
+      ],
+    },
+  ])("removes a nested $resource while preserving sibling Targets", async ({ resource, add }) => {
+    const projectRoot = await inProject();
+    await run(["add", "gateway", "--name", "tools"]);
+    await run([
+      "add",
+      "gateway-target",
+      "--gateway",
+      "tools",
+      "--name",
+      "keep",
+      "--endpoint",
+      "https://keep.example.com",
+    ]);
+    await run([...add]);
+
+    await run(["remove", resource, "--gateway", "tools", "--name", "remove"]);
+
+    const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(
+      agentcoreJson.agentCoreGateways[0].targets.map((target: { name: string }) => target.name),
+    ).toEqual(["keep"]);
+  });
+
   // Verifies that missing required inputs are rejected before calling the manager.
   test.each<[string, string[]]>([
     ["missing resource argument", ["remove", "--name", "x"]],
     ["missing --name flag", ["remove", "harness"]],
+    ["missing --gateway for a Target", ["remove", "gateway-target", "--name", "target"]],
+    [
+      "--gateway on a non-Target resource",
+      ["remove", "gateway", "--gateway", "tools", "--name", "tools"],
+    ],
   ])("%s", async (_label, args) => {
     await inProject();
     await expect(run(args)).rejects.toBeInstanceOf(InputValidationError);

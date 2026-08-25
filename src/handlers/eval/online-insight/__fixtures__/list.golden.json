@@ -1,0 +1,71 @@
+{
+  "onlineEvaluationConfigs": [
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_insight_fixture-yfp5iH59lN",
+      "onlineEvaluationConfigId": "agentcore_cli_online_insight_fixture-yfp5iH59lN",
+      "onlineEvaluationConfigName": "agentcore_cli_online_insight_fixture",
+      "status": "ACTIVE",
+      "executionStatus": "DISABLED",
+      "createdAt": "2026-08-25T16:31:04.975Z",
+      "updatedAt": "2026-08-25T16:31:05.170Z",
+      "insights": [
+        {
+          "insightId": "Builtin.Insight.FailureAnalysis"
+        }
+      ]
+    },
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/demoEval_onlineInsights1-QE6As2GTTB",
+      "onlineEvaluationConfigId": "demoEval_onlineInsights1-QE6As2GTTB",
+      "onlineEvaluationConfigName": "demoEval_onlineInsights1",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": "2026-07-16T17:26:21.625Z",
+      "updatedAt": "2026-07-16T17:26:37.218Z",
+      "insights": [
+        {
+          "insightId": "Builtin.Insight.FailureAnalysis"
+        }
+      ],
+      "clusteringConfig": {
+        "frequencies": [
+          "DAILY"
+        ]
+      }
+    },
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/demoEval_onlineInsightsBoto3_20260716180854-aTLOAI48Jr",
+      "onlineEvaluationConfigId": "demoEval_onlineInsightsBoto3_20260716180854-aTLOAI48Jr",
+      "onlineEvaluationConfigName": "demoEval_onlineInsightsBoto3_20260716180854",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": "2026-07-16T18:08:54.762Z",
+      "updatedAt": "2026-07-16T18:08:54.954Z",
+      "description": "boto3-created: onlineInsightsBoto3",
+      "insights": [
+        {
+          "insightId": "Builtin.Insight.UserIntent"
+        }
+      ],
+      "clusteringConfig": {
+        "frequencies": [
+          "DAILY"
+        ]
+      }
+    },
+    {
+      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/oiVerify1_prodInsights-rPYFuF2WsE",
+      "onlineEvaluationConfigId": "oiVerify1_prodInsights-rPYFuF2WsE",
+      "onlineEvaluationConfigName": "oiVerify1_prodInsights",
+      "status": "ACTIVE",
+      "executionStatus": "ENABLED",
+      "createdAt": "2026-08-21T16:49:04.244Z",
+      "updatedAt": "2026-08-21T16:49:04.485Z",
+      "insights": [
+        {
+          "insightId": "Builtin.Insight.FailureAnalysis"
+        }
+      ]
+    }
+  ]
+}

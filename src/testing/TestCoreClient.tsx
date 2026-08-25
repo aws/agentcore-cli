@@ -129,6 +129,7 @@ import type {
   CreateConfigurationBundleInput,
   CreateDatasetInput,
   CreateOnlineEvalInput,
+  CreateOnlineInsightInput,
   DatasetUpdateResult,
   DatasetUpdateProgressEvent,
   EvaluateInput,
@@ -153,6 +154,7 @@ import type { ReadWriteJson } from "../io";
 import { createSilentLogger } from "./logging";
 import { FsProjectManager, type ProjectBackend } from "../core/project";
 import type { ManagedBy } from "../projectSchemas/project";
+import { InputValidationError } from "../errors";
 
 // TestCoreClient is a hand-controllable `Core` for tests. It implements the same
 // interface the real CoreClient satisfies, so it drops straight into
@@ -1401,6 +1403,7 @@ export class TestEvalClient implements CoreEvalClient {
   // simulates a CloudWatch read failure surfaced as `resultsError`.
   private batchEvalGetResponse: GetBatchEvaluationResponse = DEFAULT_GET_BATCH_EVAL_RESPONSE;
   private batchEvalListResponses = new Map<string | undefined, ListBatchEvaluationsResponse>();
+  private batchInsightsListResponses = new Map<string | undefined, ListBatchEvaluationsResponse>();
   private batchEvalResults: BatchEvaluationResultEntry[] = [];
   private batchEvalResultsError?: unknown;
   private startBatchEvalResponse: StartBatchEvaluationResponse = DEFAULT_START_BATCH_EVAL_RESPONSE;
@@ -1578,6 +1581,16 @@ export class TestEvalClient implements CoreEvalClient {
     return this;
   }
 
+  // setBatchInsightsListResponse sets what listBatchInsights resolves to (when
+  // not erroring). Pass `forNextToken` to serve a later logical Insights page.
+  setBatchInsightsListResponse(
+    response: ListBatchEvaluationsResponse,
+    forNextToken?: string,
+  ): this {
+    this.batchInsightsListResponses.set(forNextToken, response);
+    return this;
+  }
+
   // setBatchEvalResults sets the per-session results getBatchEvaluation merges in
   // (when results are requested, the job is terminal, and it has a CloudWatch
   // output config).
@@ -1686,6 +1699,17 @@ export class TestEvalClient implements CoreEvalClient {
     return { detail };
   }
 
+  async getBatchInsights(id: string, options: CoreOptions): Promise<BatchEvaluationDetail> {
+    this.calls.push({ method: "getBatchInsights", args: [id, options] });
+    if (this.error) throw this.error;
+
+    const detail: BatchEvaluationDetail = { ...this.batchEvalGetResponse };
+    if (!detail.insights?.length) {
+      throw new InputValidationError(`batch evaluation "${id}" is not a batch insights run`);
+    }
+    return detail;
+  }
+
   async listBatchEvaluations(
     nextToken: string | undefined,
     maxResults: number | undefined,
@@ -1698,6 +1722,20 @@ export class TestEvalClient implements CoreEvalClient {
       this.batchEvalListResponses.get(undefined) ??
       DEFAULT_LIST_BATCH_EVALS_RESPONSE
     );
+  }
+
+  async listBatchInsights(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListBatchEvaluationsResponse> {
+    this.calls.push({ method: "listBatchInsights", args: [nextToken, maxResults, options] });
+    if (this.error) throw this.error;
+    const response =
+      this.batchInsightsListResponses.get(nextToken) ??
+      this.batchInsightsListResponses.get(undefined) ??
+      DEFAULT_LIST_BATCH_EVALS_RESPONSE;
+    return { ...response, batchEvaluations: response.batchEvaluations ?? [] };
   }
 
   async startBatchEvaluation(
@@ -1818,6 +1856,56 @@ export class TestEvalClient implements CoreEvalClient {
     options: CoreOptions,
   ): Promise<DeleteOnlineEvaluationConfigResponse> {
     this.calls.push({ method: "deleteOnlineEvaluationConfig", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.onlineEvalDeleteResponse;
+  }
+
+  async createOnlineInsight(
+    input: CreateOnlineInsightInput,
+    options: CoreOptions,
+  ): Promise<CreateOnlineEvaluationConfigResponse> {
+    this.calls.push({ method: "createOnlineInsight", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.onlineEvalCreateResponse;
+  }
+
+  async getOnlineInsight(
+    id: string,
+    options: CoreOptions,
+  ): Promise<GetOnlineEvaluationConfigResponse> {
+    this.calls.push({ method: "getOnlineInsight", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.onlineEvalGetResponse;
+  }
+
+  async listOnlineInsights(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListOnlineEvaluationConfigsResponse> {
+    this.calls.push({ method: "listOnlineInsights", args: [nextToken, maxResults, options] });
+    if (this.error) throw this.error;
+    return this.onlineEvalListResponses.get(nextToken) ?? { onlineEvaluationConfigs: [] };
+  }
+
+  async setOnlineInsightExecutionStatus(
+    id: string,
+    executionStatus: "ENABLED" | "DISABLED",
+    options: CoreOptions,
+  ): Promise<UpdateOnlineEvaluationConfigResponse> {
+    this.calls.push({
+      method: "setOnlineInsightExecutionStatus",
+      args: [id, executionStatus, options],
+    });
+    if (this.error) throw this.error;
+    return this.onlineEvalUpdateResponse;
+  }
+
+  async deleteOnlineInsight(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteOnlineEvaluationConfigResponse> {
+    this.calls.push({ method: "deleteOnlineInsight", args: [id, options] });
     if (this.error) throw this.error;
     return this.onlineEvalDeleteResponse;
   }
