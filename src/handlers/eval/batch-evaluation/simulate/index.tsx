@@ -115,7 +115,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
           examplesInvoked: r.invoked,
           examplesFailed: r.failed,
           sessions: r.sessions.map((s) => ({ exampleId: s.exampleId, sessionId: s.sessionId })),
-          ...(r.failures.length > 0 && { failures: r.failures }),
+          failures: r.failures,
         });
       } finally {
         process.off("SIGINT", interrupt);

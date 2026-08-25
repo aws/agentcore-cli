@@ -130,6 +130,7 @@ describe("eval batch-evaluation simulate", () => {
         { exampleId: "e1", sessionId: "s1" },
         { exampleId: "e2", sessionId: "s2" },
       ],
+      failures: [],
     });
 
     const start = core.eval.calls.find((c) => c.method === "startBatchEvaluation");
