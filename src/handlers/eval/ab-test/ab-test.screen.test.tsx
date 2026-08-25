@@ -61,6 +61,24 @@ function coreWithTests(tests: ABTestSummary[]): TestCoreClient {
   return core;
 }
 
+describe("ab-test menu", () => {
+  test("lists only the read commands, not the write commands", async () => {
+    const r = renderScreen("/agentcore/eval/ab-test");
+
+    await waitForText(r.lastFrame, "list A/B tests");
+    const frame = r.lastFrame()!;
+    expect(frame).toContain("get an A/B test by id");
+    for (const write of [
+      "pause a running A/B test",
+      "resume a paused A/B test",
+      "stop an A/B test",
+      "delete a stopped A/B test",
+    ]) {
+      expect(frame).not.toContain(write);
+    }
+  });
+});
+
 describe("ab-test picker", () => {
   test("renders columns, id, name, status, execution, and update time", async () => {
     const core = coreWithTests([

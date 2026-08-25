@@ -14,6 +14,7 @@ export function createAbTestHandler(core: Core, io: AppIO): Router {
   return new Router("ab-test", "inspect AgentCore A/B tests")
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
+    .supportedTuiCommands("get", "list")
     .handler(createGetAbTestHandler(core, io))
     .handler(createListAbTestsHandler(core))
     .handler(createPauseAbTestHandler(core))
