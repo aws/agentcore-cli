@@ -114,8 +114,6 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
           status: job.status,
           examplesInvoked: r.invoked,
           examplesFailed: r.failed,
-          // exampleId ↔ sessionId so a later `get` (results keyed by sessionId) maps back to
-          // the dataset row; failures name which examples dropped and why.
           sessions: r.sessions.map((s) => ({ exampleId: s.exampleId, sessionId: s.sessionId })),
           ...(r.failures.length > 0 && { failures: r.failures }),
         });

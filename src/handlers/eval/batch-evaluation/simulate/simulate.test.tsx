@@ -121,8 +121,6 @@ describe("eval batch-evaluation simulate", () => {
   test("composes startBatchEvaluation over the created sessions + wrapped ground truth", async () => {
     const { core, stdout } = await run(BASE);
 
-    // Rendered output: the batch job + counts + the exampleId↔sessionId map (join key for a
-    // later `get`). No failures key when nothing failed.
     expect(JSON.parse(stdout)).toEqual({
       batchEvaluationId: "batch-eval-test",
       status: "RUNNING",

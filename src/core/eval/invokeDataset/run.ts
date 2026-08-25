@@ -1,6 +1,3 @@
-// A failed worker is caught and dropped, not thrown — the caller reports which items failed
-// via `failures` (item + error), so it can name them. Bounded concurrency because each item
-// invokes a live runtime.
 export type ExampleRun<Item, Result> = {
   ok: Result[];
   failures: { item: Item; error: Error }[];

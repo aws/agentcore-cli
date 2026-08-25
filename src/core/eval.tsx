@@ -142,8 +142,6 @@ import {
 } from "./onlineEvalExecutionRole";
 
 const DEFAULT_ENDPOINT_QUALIFIER = "DEFAULT";
-// Default span-ingestion wait before grading a simulate run (AgentCore emits spans ~30s-3min
-// after invoke). Overridable per run via --ingestion-wait-ms; matches the old CLI's default.
 const DEFAULT_INGESTION_WAIT_MS = 180_000;
 const DATASET_EXAMPLES_BATCH_LIMIT = 1000;
 const DATASET_MUTATION_PAYLOAD_LIMIT_BYTES = 5 * 1024 * 1024;
@@ -658,14 +656,10 @@ export class EvalClient implements CoreEvalClient {
           return { text };
         },
       };
-      // runExamples records a throw as { item: example, error }; the example id is carried
-      // structurally in `failures`, so no need to re-wrap the message here.
       const groundTruth = await example.run(ctx);
       return { exampleId: example.exampleId, sessionId, groundTruth };
     });
 
-    // Name the dropped examples + the first reason so a partial failure is diagnosable —
-    // not just a count. Per-example errors stay on the result, not in telemetry.
     const invokeFailures = failures.map((f) => ({
       exampleId: f.item.exampleId,
       error: f.error.message,
@@ -677,8 +671,6 @@ export class EvalClient implements CoreEvalClient {
       );
     }
 
-    // AgentCore emits spans ~30s-3min after invoke; grade too early and it reads an empty
-    // log group and fails every session. Caller tunes via --ingestion-wait-ms (0 skips).
     const waitMs = input.waitIngestionMs ?? DEFAULT_INGESTION_WAIT_MS;
     if (ok.length > 0 && waitMs > 0) {
       this.logger.info(

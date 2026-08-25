@@ -230,12 +230,9 @@ export type InvokeDatasetInput = {
   userId?: string;
   dataset: string; // local JSONL path or a dataset id
   datasetVersion?: string;
-  // ms to wait for span ingestion after invoking before returning (default 180000; 0 skips).
   waitIngestionMs?: number;
 };
 
-// InvokeFailure names one example that could not be invoked, and why — so a partial failure
-// is diagnosable (which example, not just a count). The reason is a plain message string.
 export type InvokeFailure = { exampleId: string; error: string };
 
 // InvokedSession is one replayed example: the session created for it plus its neutral
@@ -247,9 +244,6 @@ export type InvokedSession = {
   groundTruth?: InlineGroundTruth;
 };
 
-// InvokeDatasetResult reports the created sessions plus how many examples were invoked vs
-// dropped (a failed invoke is skipped, not fatal). `failures` names which examples dropped
-// and why, so the handler can surface them instead of only a count.
 export type InvokeDatasetResult = {
   sessions: InvokedSession[];
   invoked: number;
