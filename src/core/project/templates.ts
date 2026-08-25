@@ -100,7 +100,7 @@ export async function createProjectTree(
       FsTreeNode.createFile(".env.local", () => src.read("templates/shared/env.local.template")),
     ]),
     FsTreeNode.createDirectory("app", [
-      await FsTreeNode.fromAssetSource(src, template.assetDir, input.runtimeName),
+      await FsTreeNode.fromAssetSource(src, template.assetDir, "hello-world"),
     ]),
   ]);
 }
