@@ -181,7 +181,7 @@ async function* transformA2aSse(
   for await (const data of sseData(stream)) {
     try {
       const event = JSON.parse(data) as Record<string, unknown>;
-      const { text, kind } = extractSseEventText(event, streamedFromStatus);
+      const { text, kind } = extractA2aEventText(event, streamedFromStatus);
       if (text) {
         if (kind === "status-update") streamedFromStatus = true;
         yield sseEvent(text);
@@ -193,7 +193,7 @@ async function* transformA2aSse(
 }
 
 // When streamedFromStatus is set, artifact-update text is skipped because status-update already streamed it.
-function extractSseEventText(
+function extractA2aEventText(
   event: Record<string, unknown>,
   streamedFromStatus: boolean,
 ): { text: string | null; kind: string | undefined } {
