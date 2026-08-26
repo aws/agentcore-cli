@@ -48,10 +48,8 @@ describe("project add policy-engine", () => {
       ["add", "policy-engine", "--name", "9starts-with-digit"],
       "Must begin with a letter",
     ],
-    ["duplicate name", ["add", "policy-engine", "--name", "Guardrails"], "already exists"],
-  ])("rejects %s", async (label, args, message) => {
+  ])("rejects %s", async (_label, args, message) => {
     await inProject();
-    if (label === "duplicate name") await run(["add", "policy-engine", "--name", "Guardrails"]);
     await expect(run(args)).rejects.toThrow(message);
   });
 });

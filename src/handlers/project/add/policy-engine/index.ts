@@ -26,7 +26,6 @@ export const createAddPolicyEngineHandler = (config: AddProjectResourceConfig) =
         description: flags.description,
         encryptionKeyArn: flags["encryption-key-arn"],
         tags: parseTags(flags.tags),
-        policies: [],
       };
 
       for await (const event of config.projectManager.addResource(project, {
