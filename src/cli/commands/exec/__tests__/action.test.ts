@@ -1207,10 +1207,11 @@ describe('handleShellSession WS close code 1000 → clean exit', () => {
     expect(stderrData).not.toMatch(/disconnected/);
   });
 
-  it('resolves success:true with exitCode 0 when WS closes with code 1006 and no STATUS frame', async () => {
-    // connectShell only resolves after STATUS confirmation, so any WS close without a STATUS
-    // termination frame (any close code) is treated as exit 0 — the shell ran to completion;
-    // the server just didn't send a termination frame.
+  it('resolves success:false with exitCode 1 when WS closes with abnormal code 1006 and no STATUS frame', async () => {
+    // connectShell now resolves as soon as the socket opens (the 0x03 confirmation-frame wait was
+    // removed), so an abnormal close such as 1006 can happen before the shell is usable. Without a
+    // STATUS termination frame, only code 1000 counts as a clean exit — any other code is a real
+    // failure and must NOT be reported as exit 0.
     const handlers2: Record<string, ((...args: unknown[]) => void)[]> = {};
     const fire2 = (event: string, ...args: unknown[]) => handlers2[event]?.forEach(fn => fn(...args));
     const mockWs2 = {
@@ -1239,9 +1240,9 @@ describe('handleShellSession WS close code 1000 → clean exit', () => {
     fire2('close', 1006);
     const result = await sessionPromise;
 
-    expect(result.success).toBe(true);
-    // exitCode is 0: session confirmed, no STATUS termination frame → treated as clean exit
-    expect(result.exitCode).toBe(0);
+    expect(result.success).toBe(false);
+    // exitCode is 1: abnormal close with no STATUS termination frame → treated as a failure
+    expect(result.exitCode).toBe(1);
   });
 });
 

@@ -144,6 +144,21 @@ describe('connectShell', () => {
     expect(conn.shellId).toBe('my-fallback-shell');
   });
 
+  it('fails when a new connection has no shell ID (no header and no provided shellId)', async () => {
+    const connectPromise = connectShell({
+      region: 'us-east-1',
+      runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r',
+      // No shellId provided (fresh connect) and the upgrade header never arrives, so there is no
+      // usable shell ID. Resolving with '' would silently break reconnect — connect must fail.
+    });
+
+    await new Promise(r => setTimeout(r, 0));
+    // No upgrade event fires — open arrives without a shell-id header.
+    wsState.openHandler?.();
+
+    await expect(connectPromise).rejects.toThrow(/did not return a shell ID/);
+  });
+
   it('resolves immediately on open event (no confirmation frame needed)', async () => {
     const connectPromise = connectShell({
       region: 'us-east-1',

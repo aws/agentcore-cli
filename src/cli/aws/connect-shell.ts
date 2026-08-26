@@ -191,10 +191,26 @@ async function openWebSocket(options: ConnectShellOptions): Promise<ShellConnect
     // Connection is ready immediately after WebSocket opens — no confirmation frame wait.
     ws.on('open', () => {
       if (settled) return;
+      // The 101 upgrade header is the only server-provided source of the shell ID now that the
+      // 0x03 confirmation frame is gone; on a reconnect the caller-supplied shellId is a valid
+      // fallback. If neither is present we have no usable ID — fail instead of resolving with '',
+      // because an empty shell ID silently breaks reconnect (the session cannot be reattached and
+      // the reconnect hint is suppressed). The server returns this header on every successful
+      // upgrade, so its absence is a real anomaly, not a normal state.
+      const resolvedShellId = shellIdFromHeader ?? shellId;
+      if (!resolvedShellId) {
+        fail(
+          new Error(
+            'Shell session could not be established: the server did not return a shell ID. ' +
+              'Retry, or run `agentcore status` to check the runtime.'
+          )
+        );
+        return;
+      }
       settled = true;
       resolve({
         ws,
-        shellId: shellIdFromHeader ?? shellId ?? '',
+        shellId: resolvedShellId,
         sessionId: options.sessionId,
       });
     });

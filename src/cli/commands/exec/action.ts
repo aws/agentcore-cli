@@ -459,12 +459,25 @@ export async function handleShellSession(ctx: ExecContext, options: ExecOptions)
     });
 
     ws.on('close', (code: number) => {
-      // If the STATUS termination frame arrived, use its exit code.
-      // Otherwise, treat non-kick closes as exit 0: the shell ran to completion but the server
-      // didn't send a STATUS termination frame (observed behavior on the beta runtime).
-      // connectShell only resolves after the STATUS confirmation frame, so the session is always
-      // active by the time we reach here — there are no unconfirmed closes.
-      const resolvedExitCode = exitCode ?? (code !== 4000 ? 0 : null);
+      // The STATUS termination frame is the authoritative exit signal — when it arrived, use its
+      // exit code regardless of the WebSocket close code.
+      //
+      // Without a STATUS frame, fall back to the WebSocket close code. connectShell now resolves as
+      // soon as the socket opens (the 0x03 confirmation-frame wait was removed), so an abnormal
+      // close such as 1006 can occur before the shell is usable. Only code 1000 (normal closure —
+      // the server's deliberate close after a clean shell exit) counts as success; any other code
+      // is a real failure and must not be reported as exit 0. Kick (4000) stays null so cleanup
+      // prints the reconnect hint instead of a spurious exit line.
+      let resolvedExitCode: number | null;
+      if (exitCode !== null) {
+        resolvedExitCode = exitCode;
+      } else if (code === 1000) {
+        resolvedExitCode = 0;
+      } else if (code === 4000) {
+        resolvedExitCode = null;
+      } else {
+        resolvedExitCode = 1;
+      }
       cleanup(resolvedExitCode);
     });
 
