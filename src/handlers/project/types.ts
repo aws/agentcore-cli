@@ -184,6 +184,7 @@ export type AddResourceInput =
   | {
       resourceType: "policy-engine";
       resourceConfig: z.input<typeof PolicyEngineSchema>;
+      attachGateways?: { names: string[]; mode: "ENFORCE" | "LOG_ONLY" };
     };
 
 export type ProjectResource = AddResourceInput["resourceType"];

@@ -14,10 +14,23 @@ export const createAddPolicyEngineHandler = (config: AddProjectResourceConfig) =
       flag("description", "Policy Engine description", z.string().optional()),
       flag("encryption-key-arn", "KMS encryption key ARN", z.string().optional()),
       flag("tags", "tags as repeated key=value or a JSON object", z.array(z.string()).optional()),
+      flag(
+        "attach-to-gateways",
+        "names of project Gateways to attach this engine to",
+        z.array(z.string()).optional(),
+      ),
+      flag(
+        "attach-mode",
+        "attached Gateway enforcement mode: log-only or enforce (default enforce)",
+        z.enum(["log-only", "enforce"]).optional(),
+      ),
     ],
     handle: async (ctx, flags) => {
       if (!flags.name) {
         throw new InputValidationError("required option '--name <name>' not specified");
+      }
+      if (flags["attach-mode"] !== undefined && flags["attach-to-gateways"] === undefined) {
+        throw new InputValidationError("--attach-mode requires --attach-to-gateways");
       }
       const project = ctx.require(ProjectKey);
 
@@ -31,9 +44,20 @@ export const createAddPolicyEngineHandler = (config: AddProjectResourceConfig) =
       for await (const event of config.projectManager.addResource(project, {
         resourceType: "policy-engine",
         resourceConfig: engine,
+        attachGateways: flags["attach-to-gateways"]
+          ? {
+              names: flags["attach-to-gateways"],
+              mode: flags["attach-mode"] === "log-only" ? "LOG_ONLY" : "ENFORCE",
+            }
+          : undefined,
       })) {
         config.io.stderr.write(`${event.message}\n`);
       }
       config.io.stderr.write(`added Policy Engine '${flags.name}' to '${project.name}'\n`);
+      if (flags["attach-to-gateways"]) {
+        config.io.stderr.write(
+          `attached '${flags.name}' to ${flags["attach-to-gateways"].length} gateway(s)\n`,
+        );
+      }
     },
   });

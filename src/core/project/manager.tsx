@@ -246,9 +246,24 @@ export class FsProjectManager implements ProjectManager {
       case "gateway":
         projectSpec.agentCoreGateways.push(input.resourceConfig);
         break;
-      case "policy-engine":
+      case "policy-engine": {
         projectSpec.policyEngines.push(parseResource(PolicyEngineSchema, input.resourceConfig));
+        for (const gatewayName of input.attachGateways?.names ?? []) {
+          const gateway = projectSpec.agentCoreGateways.find(
+            (candidate) => candidate.name === gatewayName,
+          );
+          if (!gateway) {
+            throw new InputValidationError(
+              `gateway '${gatewayName}' does not exist in this project; check agentCoreGateways in agentcore.json`,
+            );
+          }
+          gateway.policyEngineConfiguration = {
+            policyEngineName: input.resourceConfig.name,
+            mode: input.attachGateways!.mode,
+          };
+        }
         break;
+      }
       case "gateway-target": {
         const gatewayIndex = projectSpec.agentCoreGateways.findIndex(
           (gateway) => gateway.name === input.gatewayName,
