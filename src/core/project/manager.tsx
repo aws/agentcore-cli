@@ -31,6 +31,7 @@ import { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import { CredentialSchema } from "../../projectSchemas/credential";
 import { MemorySchema } from "../../projectSchemas/memory";
 import { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
+import { PolicyEngineSchema } from "../../projectSchemas/policy";
 import { enclosingProjectRoot } from "./fsUtils";
 import {
   AgentCoreCLIError,
@@ -245,6 +246,9 @@ export class FsProjectManager implements ProjectManager {
       case "gateway":
         projectSpec.agentCoreGateways.push(input.resourceConfig);
         break;
+      case "policy-engine":
+        projectSpec.policyEngines.push(parseResource(PolicyEngineSchema, input.resourceConfig));
+        break;
       case "gateway-target": {
         const gatewayIndex = projectSpec.agentCoreGateways.findIndex(
           (gateway) => gateway.name === input.gatewayName,
@@ -454,6 +458,8 @@ function toProjectSpecKey(resourceType: ProjectResource) {
     case "gateway":
     case "gateway-target":
       return "agentCoreGateways";
+    case "policy-engine":
+      return "policyEngines";
   }
 }
 
