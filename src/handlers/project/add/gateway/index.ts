@@ -2,7 +2,7 @@ import z from "zod";
 import { InputValidationError } from "../../../../errors";
 import { SourceResolver } from "../../../../io";
 import { GatewayAuthorizerConfigSchema } from "../../../../projectSchemas/auth";
-import type { AgentCoreGateway } from "../../../../projectSchemas/gateway";
+import { gatewayResourceName, type AgentCoreGateway } from "../../../../projectSchemas/gateway";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import { parseJsonFlagWithSchema, parseTags } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
@@ -55,7 +55,7 @@ export const createAddGatewayHandler = (config: AddProjectResourceConfig) =>
         throw new InputValidationError("required option '--name <name>' not specified");
       }
       const project = ctx.require(ProjectKey);
-      const resourceName = `${project.name}-${flags.name}`;
+      const resourceName = gatewayResourceName(project.name, { name: flags.name });
       if (resourceName.length > 48) {
         throw new InputValidationError(
           `Gateway resource name '${resourceName}' exceeds the service limit of 48 characters`,
