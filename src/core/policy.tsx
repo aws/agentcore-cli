@@ -114,8 +114,13 @@ export class PolicyClient implements CorePolicyClient {
     const asset = assets.policyGenerationAssets?.[0];
     const statement = asset?.definition?.cedar?.statement;
     if (!statement) {
+      const findings = (asset?.findings ?? [])
+        .map((finding) => `[${finding.type}] ${finding.description}`)
+        .join("; ");
       throw new AgentCoreCLIError(
-        "generation completed but returned no generated policy statement",
+        findings
+          ? `the description could not be translated into a Cedar policy: ${findings}`
+          : "generation completed but returned no generated policy statement",
       );
     }
     return {

@@ -91,6 +91,21 @@ describe("PolicyClient.generatePolicy", () => {
       "bad input",
     ],
     ["no assets", { ...HAPPY, assets: { policyGenerationAssets: [] } }, "no generated policy"],
+    [
+      "the description is not translatable",
+      {
+        ...HAPPY,
+        assets: {
+          policyGenerationAssets: [
+            {
+              rawTextFragment: "do the thing",
+              findings: [{ type: "INVALID", description: "Non-translatable" }],
+            },
+          ],
+        },
+      },
+      "could not be translated into a Cedar policy: [INVALID] Non-translatable",
+    ],
   ])("fails when %s", async (_label, responses, message) => {
     await expect(drain(client(responses), input)).rejects.toThrow(message);
   });
