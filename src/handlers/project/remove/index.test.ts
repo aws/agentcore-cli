@@ -10,6 +10,7 @@ import {
   testIO,
 } from "../../../testing";
 import { InputValidationError } from "../../../errors";
+import { projectSpec, writeProjectSpec } from "../add/gateway-test-support";
 
 const originalCwd = process.cwd();
 const tempDirectories: string[] = [];
@@ -193,10 +194,6 @@ describe("project remove", () => {
     ]);
   }
 
-  async function projectSpec(projectRoot: string) {
-    return Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-  }
-
   test.each([
     ["with --engine", ["--engine", "Guardrails"]],
     ["resolving the engine from an unambiguous name", []],
@@ -219,10 +216,7 @@ describe("project remove", () => {
     // second one by editing the spec the way a user would.
     const spec = await projectSpec(projectRoot);
     spec.policyEngines[1].policies = spec.policyEngines[0].policies;
-    await Bun.write(
-      join(projectRoot, "agentcore", "agentcore.json"),
-      JSON.stringify(spec, undefined, 2),
-    );
+    await writeProjectSpec(projectRoot, spec);
 
     await expect(run(["remove", "policy", "--name", "DenyAll"])).rejects.toThrow(
       "exists in multiple engines: First, Second",

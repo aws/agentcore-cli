@@ -6,7 +6,6 @@ import { policyEngineResourceName, type PolicySchema } from "../../../../project
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import { coreOptsFromCtx } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
-import type { GeneratedPolicy } from "./types";
 
 /**
  A substring heuristic, not a Cedar parser; --authorization-phase overrides it.
@@ -16,6 +15,11 @@ export function inferAuthorizationPhase(statement: string): "INITIATE" | "RETURN
 }
 
 const PHASES = { initiate: "INITIATE", "return-output": "RETURN_OUTPUT" } as const;
+const VALIDATION_MODES = {
+  "fail-on-any-findings": "FAIL_ON_ANY_FINDINGS",
+  "ignore-all-findings": "IGNORE_ALL_FINDINGS",
+} as const;
+const ENFORCEMENT_MODES = { active: "ACTIVE", "log-only": "LOG_ONLY" } as const;
 
 export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -67,21 +71,22 @@ export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
         throw new InputValidationError("--gateway is valid only with --generate");
       }
       const project = ctx.require(ProjectKey);
-      if (!project.spec.policyEngines.some((engine) => engine.name === flags.engine)) {
-        throw new InputValidationError(
-          `policy engine '${flags.engine}' does not exist in policyEngines[]`,
-        );
-      }
 
       let statement: string;
       let sourceFile: string | undefined;
       if (flags.statement !== undefined) {
         const source = new SourceResolver({ stdin: config.io.stdin });
-        statement = await source.resolveText("statement", flags.statement);
+        statement = (await source.resolveText("statement", flags.statement))!;
         if (flags.statement.startsWith("file://")) {
           sourceFile = flags.statement.slice("file://".length);
         }
       } else {
+        // Fail before the minute-long generation call; the manager re-checks on write.
+        if (!project.spec.policyEngines.some((engine) => engine.name === flags.engine)) {
+          throw new InputValidationError(
+            `policy engine '${flags.engine}' does not exist in policyEngines[]`,
+          );
+        }
         const gateways = project.spec.agentCoreGateways;
         const gateway = flags.gateway
           ? gateways.find((candidate) => candidate.name === flags.gateway)
@@ -118,7 +123,7 @@ export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
           config.io.stderr.write(`${next.value.message}\n`);
           next = await generator.next();
         }
-        const generated: GeneratedPolicy = next.value;
+        const generated = next.value;
         statement = generated.statement;
         config.io.stderr.write(`Generated Cedar policy:\n${statement}\n`);
         for (const finding of generated.findings) {
@@ -135,11 +140,8 @@ export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
         description: flags.description,
         statement,
         sourceFile,
-        validationMode:
-          flags["validation-mode"] === "ignore-all-findings"
-            ? "IGNORE_ALL_FINDINGS"
-            : "FAIL_ON_ANY_FINDINGS",
-        enforcementMode: flags["enforcement-mode"] === "log-only" ? "LOG_ONLY" : "ACTIVE",
+        validationMode: flags["validation-mode"] && VALIDATION_MODES[flags["validation-mode"]],
+        enforcementMode: flags["enforcement-mode"] && ENFORCEMENT_MODES[flags["enforcement-mode"]],
         authorizationPhase,
       };
 

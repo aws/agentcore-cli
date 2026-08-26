@@ -9,6 +9,17 @@ import {
   testIO,
 } from "../../../testing";
 
+export async function projectSpec(projectRoot: string) {
+  return Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+}
+
+export async function writeProjectSpec(projectRoot: string, spec: unknown): Promise<void> {
+  await Bun.write(
+    join(projectRoot, "agentcore", "agentcore.json"),
+    JSON.stringify(spec, undefined, 2),
+  );
+}
+
 export function createGatewayProjectTestHarness(directoryPrefix: string) {
   const originalCwd = process.cwd();
   const tempDirectories: string[] = [];
@@ -33,17 +44,6 @@ export function createGatewayProjectTestHarness(directoryPrefix: string) {
     const projectRoot = join(directory, name);
     process.chdir(projectRoot);
     return projectRoot;
-  }
-
-  async function projectSpec(projectRoot: string) {
-    return Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-  }
-
-  async function writeProjectSpec(projectRoot: string, spec: unknown): Promise<void> {
-    await Bun.write(
-      join(projectRoot, "agentcore", "agentcore.json"),
-      JSON.stringify(spec, undefined, 2),
-    );
   }
 
   async function addGateway(name = "tools"): Promise<void> {
