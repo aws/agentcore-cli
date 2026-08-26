@@ -31,7 +31,7 @@ import { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import { CredentialSchema } from "../../projectSchemas/credential";
 import { MemorySchema } from "../../projectSchemas/memory";
 import { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
-import { PolicyEngineSchema } from "../../projectSchemas/policy";
+import { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
 import { enclosingProjectRoot } from "./fsUtils";
 import {
   AgentCoreCLIError,
@@ -179,6 +179,16 @@ export class FsProjectManager implements ProjectManager {
           `an unassigned gateway target with name '${input.resourceConfig.name}' already exists`,
         );
       }
+    } else if (input.resourceType === "policy") {
+      // Policy names are account-unique on the service, so the check spans engines.
+      const engine = projectSpec.policyEngines.find((candidate) =>
+        candidate.policies.some((policy) => policy.name === input.resourceConfig.name),
+      );
+      if (engine) {
+        throw new InputValidationError(
+          `a policy with name '${input.resourceConfig.name}' already exists in policy engine '${engine.name}'`,
+        );
+      }
     } else if (existingResources.find((resource) => resource.name === input.resourceConfig.name)) {
       throw new InputValidationError(
         `a ${input.resourceType} with name '${input.resourceConfig.name}' already exists`,
@@ -262,6 +272,18 @@ export class FsProjectManager implements ProjectManager {
             mode: input.attachGateways!.mode,
           };
         }
+        break;
+      }
+      case "policy": {
+        const engine = projectSpec.policyEngines.find(
+          (candidate) => candidate.name === input.engineName,
+        );
+        if (!engine) {
+          throw new InputValidationError(
+            `policy engine '${input.engineName}' does not exist in this project; check policyEngines in agentcore.json`,
+          );
+        }
+        engine.policies.push(parseResource(PolicySchema, input.resourceConfig));
         break;
       }
       case "gateway-target": {
@@ -474,6 +496,7 @@ function toProjectSpecKey(resourceType: ProjectResource) {
     case "gateway-target":
       return "agentCoreGateways";
     case "policy-engine":
+    case "policy":
       return "policyEngines";
   }
 }

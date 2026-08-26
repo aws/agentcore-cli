@@ -11,6 +11,7 @@ import { createAddGatewayHandler } from "./gateway";
 import { createAddGatewayTargetHandler } from "./gateway-target";
 import { createAddGatewayConnectorHandler } from "./gateway-connector";
 import { createAddPolicyEngineHandler } from "./policy-engine";
+import { createAddPolicyHandler } from "./policy";
 import type { AddProjectResourceConfig } from "./types";
 
 export function createAddProjectResourceHandler(config: AddProjectResourceConfig): Router {
@@ -27,5 +28,6 @@ export function createAddProjectResourceHandler(config: AddProjectResourceConfig
   projectAdd.handler(createAddGatewayTargetHandler(config));
   projectAdd.handler(createAddGatewayConnectorHandler(config));
   projectAdd.handler(createAddPolicyEngineHandler(config));
+  projectAdd.handler(createAddPolicyHandler(config));
   return projectAdd;
 }

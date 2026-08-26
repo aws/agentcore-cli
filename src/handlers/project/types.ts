@@ -9,7 +9,7 @@ import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-co
 import { AgentNameSchema, BuildTypeSchema, EntrypointSchema } from "../../projectSchemas/runtime";
 import { RuntimeVersionSchema } from "../../projectSchemas/constants";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
-import type { PolicyEngineSchema } from "../../projectSchemas/policy";
+import type { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
 
 export const RUNTIME_TEMPLATE_SHORTCUTS = {
   "hello-world-python": {
@@ -185,18 +185,28 @@ export type AddResourceInput =
       resourceType: "policy-engine";
       resourceConfig: z.input<typeof PolicyEngineSchema>;
       attachGateways?: { names: string[]; mode: "ENFORCE" | "LOG_ONLY" };
+    }
+  | {
+      resourceType: "policy";
+      engineName: string;
+      resourceConfig: z.input<typeof PolicySchema>;
     };
 
 export type ProjectResource = AddResourceInput["resourceType"];
 
 export type RemoveResourceInput =
   | {
-      resourceType: Exclude<ProjectResource, "gateway-target">;
+      resourceType: Exclude<ProjectResource, "gateway-target" | "policy">;
       name: string;
     }
   | {
       resourceType: "gateway-target";
       gatewayName: string;
+      name: string;
+    }
+  | {
+      resourceType: "policy";
+      engineName?: string;
       name: string;
     };
 
