@@ -165,9 +165,15 @@ describe("project dev selection and dispatch", () => {
   test.each([
     [project(), {}, "This project has no runtimes", InputValidationError],
     [
+      project(runtime("orders")),
+      {},
+      "--no-ui runs a single agent in the terminal. Pass --agent <name> to choose which one. Available: orders",
+      InputValidationError,
+    ],
+    [
       project(runtime("orders"), runtime("support", "Container")),
       {},
-      "Use --agent to select one. Available runtimes: orders, support",
+      "--no-ui runs a single agent in the terminal. Pass --agent <name> to choose which one. Available: orders, support",
       InputValidationError,
     ],
     [
@@ -220,7 +226,7 @@ describe("project dev selection and dispatch", () => {
         return port === 8081;
       },
     });
-    await subject.run();
+    await subject.run({ agent: "orders" });
 
     expect(checked).toEqual([8080, 8081]);
     expect(subject.codeZip.inputs[0]?.port).toBe(8081);
@@ -231,7 +237,7 @@ describe("project dev selection and dispatch", () => {
 describe("project dev trace collection", () => {
   test("starts the collector, announces it, and points a CodeZip agent at loopback", async () => {
     const subject = harness();
-    await subject.run();
+    await subject.run({ agent: "orders" });
 
     expect(subject.collector.starts).toEqual([
       {
@@ -250,14 +256,14 @@ describe("project dev trace collection", () => {
 
   test("binds the collector to all interfaces so a container can reach it", async () => {
     const subject = harness({ project: project(runtime("support", "Container")) });
-    await subject.run();
+    await subject.run({ agent: "support" });
 
     expect(subject.collector.starts[0]?.host).toBe("0.0.0.0");
   });
 
   test("reports a trace-persistence failure once, not per failed export", async () => {
     const subject = harness();
-    await subject.run();
+    await subject.run({ agent: "orders" });
 
     const onError = subject.collector.starts[0]?.onError;
     onError?.(new Error("disk full"));
@@ -271,7 +277,7 @@ describe("project dev trace collection", () => {
 
   test("--no-traces skips the collector entirely", async () => {
     const subject = harness();
-    await subject.run({ traces: false });
+    await subject.run({ agent: "orders", traces: false });
 
     expect(subject.collector.starts).toHaveLength(0);
     expect(subject.codeZip.inputs[0]?.env).toEqual({ FROM_LOADER: "yes" });
@@ -280,7 +286,7 @@ describe("project dev trace collection", () => {
   test("a runtime with instrumentation disabled skips the collector", async () => {
     const disabled = { ...runtime(), instrumentation: { enableOtel: false } } as ProjectRuntime;
     const subject = harness({ project: project(disabled) });
-    await subject.run();
+    await subject.run({ agent: "orders" });
 
     expect(subject.collector.starts).toHaveLength(0);
     expect(subject.codeZip.inputs[0]?.env).toEqual({ FROM_LOADER: "yes" });
@@ -294,7 +300,7 @@ describe("project dev trace collection", () => {
     };
     const subject = harness({ codeZip });
 
-    await expect(subject.run()).rejects.toThrow("runner failed");
+    await expect(subject.run({ agent: "orders" })).rejects.toThrow("runner failed");
     expect(subject.collector.state.closed).toBe(1);
   });
 });
@@ -407,7 +413,7 @@ test("project dev renders attributed human and NDJSON output", async () => {
 
   for (const json of [false, true]) {
     const subject = harness({ codeZip: captureRunner(events), json });
-    await subject.run({ traces: false });
+    await subject.run({ agent: "orders", traces: false });
     expect(subject.io.stdout()).toBe(
       json
         ? events.map((event) => JSON.stringify({ agent: "orders", ...event })).join("\n")
@@ -439,7 +445,7 @@ describe("project dev interruption", () => {
       const codeZip = heldRunner();
       const before = process.listenerCount(signal);
       const subject = harness({ codeZip });
-      const pending = subject.run();
+      const pending = subject.run({ agent: "orders" });
       const input = await codeZip.started;
 
       process.emit(signal, signal);
@@ -465,6 +471,6 @@ describe("project dev interruption", () => {
       throw failure;
     };
 
-    await expect(harness({ codeZip }).run()).rejects.toBe(failure);
+    await expect(harness({ codeZip }).run({ agent: "orders" })).rejects.toBe(failure);
   });
 });

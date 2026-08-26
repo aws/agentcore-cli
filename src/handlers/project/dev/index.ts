@@ -122,9 +122,13 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
       try {
         const project = ctx.require(ProjectKey);
         const region = ctx.require(RegionKey);
-        const runtimes = flags.ui
-          ? selectRuntimes(project, flags.agent)
-          : [selectSingleRuntime(project, flags.agent)];
+        const runtimes = selectRuntimes(project, flags.agent);
+        if (!flags.ui && !flags.agent) {
+          const available = runtimes.map((runtime) => runtime.name).join(", ");
+          throw new InputValidationError(
+            `--no-ui runs a single agent in the terminal. Pass --agent <name> to choose which one. Available: ${available}.`,
+          );
+        }
         if (runtimes.length > 1 && flags.port !== undefined) {
           throw new InputValidationError(
             "--port applies to a single runtime. Use --agent to select one.",
@@ -264,16 +268,6 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
       }
     },
   });
-
-/** In --no-ui mode exactly one runtime streams to the terminal, as before. */
-function selectSingleRuntime(project: Project, name?: string): ProjectRuntime {
-  const runtimes = selectRuntimes(project, name);
-  if (runtimes.length === 1) return runtimes[0]!;
-  const available = runtimes.map(({ name: runtimeName }) => runtimeName).join(", ");
-  throw new InputValidationError(
-    `Multiple runtimes found. Use --agent to select one. Available runtimes: ${available}.`,
-  );
-}
 
 /**
  * Run one runtime directly. Unlike the supervised Inspector path, a crash here
