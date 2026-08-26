@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 
-const { cleanup, inProject, projectSpec, run } =
+const { addGateway, cleanup, inProject, projectSpec, run } =
   createGatewayProjectTestHarness("policy-engine-add");
 
 afterEach(cleanup);
@@ -53,10 +53,13 @@ describe("project add policy-engine", () => {
     await expect(run(args)).rejects.toThrow(message);
   });
 
-  test("attaches the engine to named gateways with the default enforce mode", async () => {
+  test.each([
+    ["defaults to enforce", [], "ENFORCE"],
+    ["honors --attach-mode log-only", ["--attach-mode", "log-only"], "LOG_ONLY"],
+  ])("attaches the engine to named gateways: %s", async (_label, modeArgs, mode) => {
     const projectRoot = await inProject();
-    await run(["add", "gateway", "--name", "tools"]);
-    await run(["add", "gateway", "--name", "search"]);
+    await addGateway("tools");
+    await addGateway("search");
 
     await run([
       "add",
@@ -66,6 +69,7 @@ describe("project add policy-engine", () => {
       "--attach-to-gateways",
       "tools",
       "search",
+      ...modeArgs,
     ]);
 
     const spec = await projectSpec(projectRoot);
@@ -73,28 +77,9 @@ describe("project add policy-engine", () => {
     for (const gateway of spec.agentCoreGateways) {
       expect(gateway.policyEngineConfiguration).toEqual({
         policyEngineName: "Guardrails",
-        mode: "ENFORCE",
+        mode,
       });
     }
-  });
-
-  test("attaches in log-only mode when requested", async () => {
-    const projectRoot = await inProject();
-    await run(["add", "gateway", "--name", "tools"]);
-    await run([
-      "add",
-      "policy-engine",
-      "--name",
-      "Guardrails",
-      "--attach-to-gateways",
-      "tools",
-      "--attach-mode",
-      "log-only",
-    ]);
-
-    expect((await projectSpec(projectRoot)).agentCoreGateways[0].policyEngineConfiguration).toEqual(
-      { policyEngineName: "Guardrails", mode: "LOG_ONLY" },
-    );
   });
 
   test("rejects unknown gateway names without writing the engine", async () => {
