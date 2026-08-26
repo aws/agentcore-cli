@@ -1,10 +1,13 @@
 import { computeSyncPlan } from '../plan';
 import type { PackageManifest } from '../types';
+import { CDK_PIN, newerPrerelease } from './fixtures';
 import { describe, expect, it } from 'vitest';
+
+const CDK_PIN_NEWER = newerPrerelease(CDK_PIN);
 
 const VENDED: PackageManifest = {
   dependencies: {
-    '@aws/agentcore-cdk': '0.1.0-alpha.49',
+    '@aws/agentcore-cdk': CDK_PIN,
     'aws-cdk-lib': '~2.261.0',
     constructs: '~10.7.0',
   },
@@ -42,7 +45,7 @@ describe('computeSyncPlan', () => {
     expect(plan.migratedFromCaret).toBe(true);
     expect(plan.skew).toEqual([]);
     expect(plan.changes).toEqual([
-      { name: '@aws/agentcore-cdk', section: 'dependencies', from: '^0.1.0-alpha.19', to: '0.1.0-alpha.49' },
+      { name: '@aws/agentcore-cdk', section: 'dependencies', from: '^0.1.0-alpha.19', to: CDK_PIN },
       { name: 'aws-cdk-lib', section: 'dependencies', from: '^2.248.0', to: '~2.261.0' },
       { name: 'constructs', section: 'dependencies', from: '^10.0.0', to: '~10.7.0' },
     ]);
@@ -83,12 +86,12 @@ describe('computeSyncPlan', () => {
     expect(plan.changes).toEqual([{ name: 'aws-cdk-lib', section: 'dependencies', from: '~2.261.5', to: '~2.261.0' }]);
   });
 
-  it('detects prerelease skew on the exact-pinned construct (alpha.51 > alpha.49)', () => {
+  it('detects prerelease skew on the exact-pinned construct (a newer prerelease than the pin)', () => {
     const plan = computeSyncPlan(
       VENDED,
-      project({ dependencies: { ...VENDED.dependencies, '@aws/agentcore-cdk': '0.1.0-alpha.51' } })
+      project({ dependencies: { ...VENDED.dependencies, '@aws/agentcore-cdk': CDK_PIN_NEWER } })
     );
-    expect(plan.skew).toEqual([{ name: '@aws/agentcore-cdk', declared: '0.1.0-alpha.51', expected: '0.1.0-alpha.49' }]);
+    expect(plan.skew).toEqual([{ name: '@aws/agentcore-cdk', declared: CDK_PIN_NEWER, expected: CDK_PIN }]);
   });
 
   it('upgrades an older exact-pinned prerelease', () => {
@@ -98,7 +101,7 @@ describe('computeSyncPlan', () => {
     );
     expect(plan.skew).toEqual([]);
     expect(plan.changes).toEqual([
-      { name: '@aws/agentcore-cdk', section: 'dependencies', from: '0.1.0-alpha.19', to: '0.1.0-alpha.49' },
+      { name: '@aws/agentcore-cdk', section: 'dependencies', from: '0.1.0-alpha.19', to: CDK_PIN },
     ]);
   });
 

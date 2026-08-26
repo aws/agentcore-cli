@@ -1,6 +1,7 @@
 import { CliVersionTooOldError, DependencySyncError } from '../../errors/types';
 import { syncManagedDependencies } from '../sync';
 import type { SyncManagedDependenciesOptions } from '../types';
+import { CDK_PIN } from './fixtures';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
@@ -14,7 +15,7 @@ vi.mock('../../utils/subprocess', () => ({
 const VENDED = {
   name: 'agentcore-cdk-app',
   dependencies: {
-    '@aws/agentcore-cdk': '0.1.0-alpha.49',
+    '@aws/agentcore-cdk': CDK_PIN,
     'aws-cdk-lib': '~2.261.0',
   },
   devDependencies: {
@@ -78,7 +79,7 @@ describe('syncManagedDependencies', () => {
     expect(result.notice).toContain('disableDependencyManagement');
 
     const written = readProject();
-    expect(written.dependencies['@aws/agentcore-cdk']).toBe('0.1.0-alpha.49');
+    expect(written.dependencies['@aws/agentcore-cdk']).toBe(CDK_PIN);
     expect(written.dependencies['aws-cdk-lib']).toBe('~2.261.0');
     expect(written.dependencies.lodash).toBe('^4.17.21');
 
@@ -103,7 +104,7 @@ describe('syncManagedDependencies', () => {
   it('preserves key order and unknown fields when rewriting', async () => {
     writeProject({
       zeta: 'kept',
-      dependencies: { lodash: '1.0.0', 'aws-cdk-lib': '~2.250.0', '@aws/agentcore-cdk': '0.1.0-alpha.49' },
+      dependencies: { lodash: '1.0.0', 'aws-cdk-lib': '~2.250.0', '@aws/agentcore-cdk': CDK_PIN },
       scripts: { build: 'tsc' },
       devDependencies: { typescript: '~5.9.3' },
     });
@@ -163,7 +164,7 @@ describe('syncManagedDependencies', () => {
     expect(result.warnings.some(w => w.includes('newer than this CLI was tested with'))).toBe(true);
     // The skewed dep is left alone; the other managed dep still syncs.
     expect(readProject().dependencies['aws-cdk-lib']).toBe('~2.300.0');
-    expect(readProject().dependencies['@aws/agentcore-cdk']).toBe('0.1.0-alpha.49');
+    expect(readProject().dependencies['@aws/agentcore-cdk']).toBe(CDK_PIN);
   });
 
   it('check mode computes the plan and a future-tense notice without writing or installing', async () => {
@@ -211,7 +212,7 @@ describe('syncManagedDependencies', () => {
 
   it('restores a deleted managed dependency', async () => {
     writeProject({
-      dependencies: { '@aws/agentcore-cdk': '0.1.0-alpha.49' },
+      dependencies: { '@aws/agentcore-cdk': CDK_PIN },
       devDependencies: { typescript: '~5.9.3' },
     });
     const result = await run();
