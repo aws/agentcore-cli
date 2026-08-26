@@ -57,7 +57,7 @@ export function waitForPort(
         );
         return;
       }
-      const socket = connect({ port, host: "127.0.0.1" }, () => {
+      const socket = connect({ port, host: "127.0.0.1", signal }, () => {
         socket.destroy();
         resolve();
       });
