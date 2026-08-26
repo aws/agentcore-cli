@@ -57,10 +57,17 @@ export function waitForPort(
         );
         return;
       }
-      const socket = connect({ port, host: "127.0.0.1", signal }, () => {
+      const socket = connect({ port, host: "127.0.0.1" }, () => {
         socket.destroy();
         resolve();
       });
+      const onAbort = () => {
+        socket.destroy();
+        reject(new Error("Aborted while waiting for the agent to become ready."));
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+      socket.once("close", () => signal.removeEventListener("abort", onAbort));
+      if (signal.aborted) onAbort();
       socket.on("error", () => {
         socket.destroy();
         setTimeout(attempt, intervalMs);
