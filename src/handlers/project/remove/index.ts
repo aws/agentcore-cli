@@ -41,6 +41,15 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
       if (!resource) throw new InputValidationError(`resource argument is required to remove`);
       if (!name) throw new InputValidationError(`--name is required option`);
 
+      if (flags.gateway && resource !== "gateway-target" && resource !== "gateway-connector") {
+        throw new InputValidationError(
+          `--gateway is valid only when removing a gateway-target or gateway-connector`,
+        );
+      }
+      if (flags.engine && resource !== "policy") {
+        throw new InputValidationError(`--engine is valid only when removing a policy`);
+      }
+
       const project = ctx.require(ProjectKey);
       if (resource === "gateway-target" || resource === "gateway-connector") {
         if (!flags.gateway) {
@@ -58,14 +67,6 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
           name,
         });
       } else {
-        if (flags.gateway) {
-          throw new InputValidationError(
-            `--gateway is valid only when removing a gateway-target or gateway-connector`,
-          );
-        }
-        if (flags.engine) {
-          throw new InputValidationError(`--engine is valid only when removing a policy`);
-        }
         await config.projectManager.removeResource(project, {
           resourceType: resource,
           name,

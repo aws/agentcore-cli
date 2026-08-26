@@ -193,9 +193,8 @@ describe("project remove", () => {
     ]);
   }
 
-  async function policyEngines(projectRoot: string) {
-    const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    return agentcoreJson.policyEngines;
+  async function projectSpec(projectRoot: string) {
+    return Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
   }
 
   test.each([
@@ -208,20 +207,22 @@ describe("project remove", () => {
 
     await run(["remove", "policy", "--name", "DenyAll", ...engineArgs]);
 
-    expect((await policyEngines(projectRoot))[0].policies).toEqual([]);
+    expect((await projectSpec(projectRoot)).policyEngines[0].policies).toEqual([]);
   });
 
   test("rejects an ambiguous policy name without --engine", async () => {
-    await inProject();
+    const projectRoot = await inProject();
     await run(["add", "policy-engine", "--name", "First"]);
     await run(["add", "policy-engine", "--name", "Second"]);
     await addPolicy("First", "DenyAll");
     // Duplicate policy names cannot be added through the CLI, so seed the
     // second one by editing the spec the way a user would.
-    const specPath = join(process.cwd(), "agentcore", "agentcore.json");
-    const spec = await Bun.file(specPath).json();
-    spec.policyEngines[1].policies = [...spec.policyEngines[0].policies];
-    await Bun.write(specPath, JSON.stringify(spec, undefined, 2));
+    const spec = await projectSpec(projectRoot);
+    spec.policyEngines[1].policies = spec.policyEngines[0].policies;
+    await Bun.write(
+      join(projectRoot, "agentcore", "agentcore.json"),
+      JSON.stringify(spec, undefined, 2),
+    );
 
     await expect(run(["remove", "policy", "--name", "DenyAll"])).rejects.toThrow(
       "exists in multiple engines: First, Second",
@@ -235,8 +236,8 @@ describe("project remove", () => {
 
     await run(["remove", "policy-engine", "--name", "Guardrails"]);
 
-    const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    expect(agentcoreJson.policyEngines).toEqual([]);
-    expect(agentcoreJson.agentCoreGateways[0].policyEngineConfiguration).toBeUndefined();
+    const spec = await projectSpec(projectRoot);
+    expect(spec.policyEngines).toEqual([]);
+    expect(spec.agentCoreGateways[0].policyEngineConfiguration).toBeUndefined();
   });
 });

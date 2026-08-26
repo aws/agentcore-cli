@@ -364,13 +364,15 @@ export class FsProjectManager implements ProjectManager {
             .join(", ")}; use --engine to choose one`,
         );
       }
-      const engineName = input.engineName ?? candidates[0]?.name;
+      const owner = input.engineName
+        ? candidates.find((engine) => engine.name === input.engineName)
+        : candidates[0];
+      removed = owner !== undefined;
       const engines = existingProjectSpec.policyEngines.map((engine) =>
-        engine.name === engineName
+        engine === owner
           ? { ...engine, policies: engine.policies.filter((policy) => policy.name !== input.name) }
           : engine,
       );
-      removed = candidates.some((engine) => engine.name === engineName);
       newSpec = { ...existingProjectSpec, policyEngines: engines };
     } else if (input.resourceType === "policy-engine") {
       const engines = existingProjectSpec.policyEngines.filter(
