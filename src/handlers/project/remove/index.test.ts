@@ -171,8 +171,72 @@ describe("project remove", () => {
       "--gateway on a non-Target resource",
       ["remove", "gateway", "--gateway", "tools", "--name", "tools"],
     ],
+    [
+      "--engine on a non-policy resource",
+      ["remove", "gateway", "--engine", "Guardrails", "--name", "tools"],
+    ],
   ])("%s", async (_label, args) => {
     await inProject();
     await expect(run(args)).rejects.toBeInstanceOf(InputValidationError);
+  });
+
+  async function addPolicy(engine: string, name: string): Promise<void> {
+    await run([
+      "add",
+      "policy",
+      "--engine",
+      engine,
+      "--name",
+      name,
+      "--statement",
+      "forbid (principal, action, resource);",
+    ]);
+  }
+
+  async function policyEngines(projectRoot: string) {
+    const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    return agentcoreJson.policyEngines;
+  }
+
+  test.each([
+    ["with --engine", ["--engine", "Guardrails"]],
+    ["resolving the engine from an unambiguous name", []],
+  ])("removes a policy from its engine %s", async (_label, engineArgs) => {
+    const projectRoot = await inProject();
+    await run(["add", "policy-engine", "--name", "Guardrails"]);
+    await addPolicy("Guardrails", "DenyAll");
+
+    await run(["remove", "policy", "--name", "DenyAll", ...engineArgs]);
+
+    expect((await policyEngines(projectRoot))[0].policies).toEqual([]);
+  });
+
+  test("rejects an ambiguous policy name without --engine", async () => {
+    await inProject();
+    await run(["add", "policy-engine", "--name", "First"]);
+    await run(["add", "policy-engine", "--name", "Second"]);
+    await addPolicy("First", "DenyAll");
+    // Duplicate policy names cannot be added through the CLI, so seed the
+    // second one by editing the spec the way a user would.
+    const specPath = join(process.cwd(), "agentcore", "agentcore.json");
+    const spec = await Bun.file(specPath).json();
+    spec.policyEngines[1].policies = [...spec.policyEngines[0].policies];
+    await Bun.write(specPath, JSON.stringify(spec, undefined, 2));
+
+    await expect(run(["remove", "policy", "--name", "DenyAll"])).rejects.toThrow(
+      "exists in multiple engines: First, Second",
+    );
+  });
+
+  test("removing an engine strips gateway references", async () => {
+    const projectRoot = await inProject();
+    await run(["add", "gateway", "--name", "tools"]);
+    await run(["add", "policy-engine", "--name", "Guardrails", "--attach-to-gateways", "tools"]);
+
+    await run(["remove", "policy-engine", "--name", "Guardrails"]);
+
+    const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(agentcoreJson.policyEngines).toEqual([]);
+    expect(agentcoreJson.agentCoreGateways[0].policyEngineConfiguration).toBeUndefined();
   });
 });

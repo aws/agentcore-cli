@@ -353,7 +353,37 @@ export class FsProjectManager implements ProjectManager {
 
     let removed = false;
     let newSpec: unknown;
-    if (input.resourceType === "gateway-target") {
+    if (input.resourceType === "policy") {
+      const candidates = existingProjectSpec.policyEngines.filter((engine) =>
+        engine.policies.some((policy) => policy.name === input.name),
+      );
+      if (!input.engineName && candidates.length > 1) {
+        throw new InputValidationError(
+          `policy '${input.name}' exists in multiple engines: ${candidates
+            .map((engine) => engine.name)
+            .join(", ")}; use --engine to choose one`,
+        );
+      }
+      const engineName = input.engineName ?? candidates[0]?.name;
+      const engines = existingProjectSpec.policyEngines.map((engine) =>
+        engine.name === engineName
+          ? { ...engine, policies: engine.policies.filter((policy) => policy.name !== input.name) }
+          : engine,
+      );
+      removed = candidates.some((engine) => engine.name === engineName);
+      newSpec = { ...existingProjectSpec, policyEngines: engines };
+    } else if (input.resourceType === "policy-engine") {
+      const engines = existingProjectSpec.policyEngines.filter(
+        (engine) => engine.name !== input.name,
+      );
+      removed = engines.length !== existingProjectSpec.policyEngines.length;
+      const gateways = existingProjectSpec.agentCoreGateways.map((gateway) =>
+        gateway.policyEngineConfiguration?.policyEngineName === input.name
+          ? { ...gateway, policyEngineConfiguration: undefined }
+          : gateway,
+      );
+      newSpec = { ...existingProjectSpec, policyEngines: engines, agentCoreGateways: gateways };
+    } else if (input.resourceType === "gateway-target") {
       const gateways = [...existingProjectSpec.agentCoreGateways];
       const gatewayIndex = gateways.findIndex((gateway) => gateway.name === input.gatewayName);
       if (gatewayIndex >= 0) {
