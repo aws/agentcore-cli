@@ -1,0 +1,8 @@
+{
+  "contentType": "text/event-stream; charset=utf-8",
+  "runtimeSessionId": "00000000-0000-4000-8000-000000000001",
+  "response": {
+    "$stream": "data: \"Hello! How can I help you today\"\n\ndata: \"?\"\n\n"
+  },
+  "statusCode": 200
+}

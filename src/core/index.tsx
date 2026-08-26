@@ -38,6 +38,9 @@ type CoreClientConfig = {
   createLogsClient: CreateLogsClient;
   logger: Logger;
   fetch?: CoreFetch;
+  // Session-id generator handed to EvalClient. Tests inject a deterministic one so replay
+  // fixtures + goldens are stable; production omits it and EvalClient defaults to randomUUID.
+  newSessionId?: () => string;
 };
 
 // CoreClient is the single entry point to the Bedrock AgentCore APIs. It owns the
@@ -78,7 +81,12 @@ export class CoreClient implements AwsClients {
     // EvalClient shares the injected fetch: dataset content is served from a
     // presigned S3 URL, outside the SDK seam the other operations use. The logger
     // is used for batch-evaluation result-log diagnostics.
-    this.eval = new EvalClient(this, fetch, this.logger.child({ module: "eval" }));
+    this.eval = new EvalClient(
+      this,
+      fetch,
+      this.logger.child({ module: "eval" }),
+      config.newSessionId,
+    );
 
     this.projectManager = new FsProjectManager({
       logger: this.logger.child({ module: "projectManager" }),

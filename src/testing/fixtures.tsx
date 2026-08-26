@@ -145,6 +145,35 @@ function reviveError(tagged: TaggedError): Error {
   return error;
 }
 
+// InvokeAgentRuntime's `response` is an SdkStream, whose circular socket-backed object graph
+// makes stringify blow the stack. Freeze it to text under this tag for the fixture, and
+// revive it to an async iterable for the caller — the shape the invoke body reader consumes.
+// ponytail: text bodies only (invoke returns JSON) — switch to base64 if a binary op needs it.
+const STREAM_TAG = "$stream";
+
+async function freezeStream(response: unknown): Promise<unknown> {
+  const stream = (response as { response?: { transformToString?: () => Promise<string> } })
+    ?.response;
+  if (typeof stream?.transformToString !== "function") return response;
+  return {
+    ...(response as Record<string, unknown>),
+    response: { [STREAM_TAG]: await stream.transformToString() },
+  };
+}
+
+async function* streamOf(text: string): AsyncGenerator<Uint8Array> {
+  yield new TextEncoder().encode(text);
+}
+
+function reviveStream(recorded: unknown): unknown {
+  const stream = (recorded as { response?: Record<string, unknown> })?.response;
+  if (!stream || typeof stream !== "object" || !(STREAM_TAG in stream)) return recorded;
+  return {
+    ...(recorded as Record<string, unknown>),
+    response: streamOf(stream[STREAM_TAG] as string),
+  };
+}
+
 // makeRecordingSend returns a `.send()` that records to / replays from `dir`.
 // In record mode it delegates to the real client, saves the response (or the
 // service error), and propagates it; otherwise it reads the fixture, failing
@@ -168,8 +197,9 @@ function makeRecordingSend<C extends { send: (command: any) => Promise<any> }>(
         writeFileSync(path, stringify(sanitizePresignedUrls(tagged)));
         throw error;
       }
-      writeFileSync(path, stringify(sanitizePresignedUrls(response)));
-      return response;
+      const frozen = await freezeStream(response);
+      writeFileSync(path, stringify(sanitizePresignedUrls(frozen)));
+      return reviveStream(frozen);
     }
 
     if (!existsSync(path)) {
@@ -180,7 +210,7 @@ function makeRecordingSend<C extends { send: (command: any) => Promise<any> }>(
     }
     const recorded = parse(readFileSync(path, "utf8"));
     if (isTaggedError(recorded)) throw reviveError(recorded);
-    return recorded;
+    return reviveStream(recorded);
   };
 }
 

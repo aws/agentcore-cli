@@ -160,3 +160,100 @@ describe("eval batch-evaluation list", () => {
     expect(core.eval.calls[0]?.args).toEqual([undefined, 10, { region: "us-west-2" }]);
   });
 });
+
+// simulate's happy path (replay → StartBatchEvaluation → rendered output, incl. the
+// ground-truth wrapping) is covered end to end by the fixture-backed suite. These are the
+// handler-only edges that can't be recorded: required-flag validation, the refusal when
+// every invoke failed, and the --ingestion-wait-ms passthrough.
+describe("eval batch-evaluation simulate", () => {
+  const BASE = [
+    "eval",
+    "batch-evaluation",
+    "simulate",
+    "--runtime-id",
+    "r-1",
+    "--payload-template",
+    '{"prompt":"{input}"}',
+    "--dataset",
+    "/tmp/ds.jsonl",
+    "--evaluator",
+    "Builtin.Helpfulness",
+    "--name",
+    "sim-1",
+  ];
+
+  test.each<[RegExp, string[]]>([
+    [
+      /--runtime-id/,
+      ["--payload-template", "{}", "--dataset", "/tmp/ds.jsonl", "--evaluator", "E", "--name", "n"],
+    ],
+    [
+      /--payload-template/,
+      ["--runtime-id", "r-1", "--dataset", "/tmp/ds.jsonl", "--evaluator", "E", "--name", "n"],
+    ],
+    [
+      /--dataset/,
+      ["--runtime-id", "r-1", "--payload-template", "{}", "--evaluator", "E", "--name", "n"],
+    ],
+    [
+      /--evaluator/,
+      [
+        "--runtime-id",
+        "r-1",
+        "--payload-template",
+        "{}",
+        "--dataset",
+        "/tmp/ds.jsonl",
+        "--name",
+        "n",
+      ],
+    ],
+    [
+      /--name/,
+      [
+        "--runtime-id",
+        "r-1",
+        "--payload-template",
+        "{}",
+        "--dataset",
+        "/tmp/ds.jsonl",
+        "--evaluator",
+        "E",
+      ],
+    ],
+  ])("rejects when a required flag is missing (%s)", async (expected, args) => {
+    await expect(run(["eval", "batch-evaluation", "simulate", ...args])).rejects.toThrow(expected);
+  });
+
+  test("refuses to grade when nothing was invoked, naming the first failure", async () => {
+    await expect(
+      run(BASE, (c) =>
+        c.eval.setInvokeDatasetResponse({
+          sessions: [],
+          invoked: 0,
+          failed: 3,
+          failures: [
+            { exampleId: "e1", error: "HTTP 500" },
+            { exampleId: "e2", error: "HTTP 500" },
+            { exampleId: "e3", error: "HTTP 500" },
+          ],
+        }),
+      ),
+    ).rejects.toThrow(/no examples could be invoked \(3 failed\).*first error: e1 — HTTP 500/);
+  });
+
+  test("passes --ingestion-wait-ms through to invokeDataset and renders failures", async () => {
+    const { core, stdout } = await run([...BASE, "--ingestion-wait-ms", "0"], (c) =>
+      c.eval.setInvokeDatasetResponse({
+        sessions: [{ exampleId: "ok1", sessionId: "s1" }],
+        invoked: 1,
+        failed: 1,
+        failures: [{ exampleId: "bad", error: "HTTP 500" }],
+      }),
+    );
+    const invoke = core.eval.calls.find((c) => c.method === "invokeDataset");
+    expect(invoke).toBeDefined();
+    expect((invoke!.args[0] as { waitIngestionMs?: number }).waitIngestionMs).toBe(0);
+    expect(JSON.parse(stdout).failures).toEqual([{ exampleId: "bad", error: "HTTP 500" }]);
+  });
+});

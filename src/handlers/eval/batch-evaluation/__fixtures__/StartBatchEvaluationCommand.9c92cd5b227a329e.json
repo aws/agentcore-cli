@@ -1,0 +1,20 @@
+{
+  "batchEvaluationId": "golden_batch_simulate_fixture1-86183b0ccc",
+  "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:batch-evaluate/golden_batch_simulate_fixture1-86183b0ccc",
+  "batchEvaluationName": "golden_batch_simulate_fixture1",
+  "status": "PENDING",
+  "createdAt": {
+    "$date": "2026-08-26T22:07:26.049Z"
+  },
+  "evaluators": [
+    {
+      "evaluatorId": "Builtin.Helpfulness"
+    }
+  ],
+  "outputConfig": {
+    "cloudWatchConfig": {
+      "logGroupName": "/aws/bedrock-agentcore/evaluations/batch-evaluations/results/default",
+      "logStreamName": "run-golden_batch_simulate_fixture1-86183b0ccc"
+    }
+  }
+}
