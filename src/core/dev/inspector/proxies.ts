@@ -1,9 +1,3 @@
-/**
- * Thin proxies to a locally running agent: POST /api/mcp (JSON-RPC forward)
- * and GET /api/a2a/agent-card. Ported from the reference mcp-proxy.ts /
- * a2a-proxy.ts. Both forward the client's abort signal so a disconnect cancels
- * the upstream request.
- */
 import type { HttpRequest, HttpResponse } from "../../../io/httpServer";
 import { apiError, asString, errorMessage, iterateBody, json, parseJsonBody } from "./respond";
 import type { InspectorDeps } from "./types";
@@ -11,7 +5,6 @@ import type { InspectorDeps } from "./types";
 /** Cap the buffered MCP response so a runaway agent cannot exhaust memory. */
 const MAX_MCP_RESPONSE_BYTES = 10 * 1024 * 1024;
 
-/** POST /api/mcp — forward a JSON-RPC body to the agent's /mcp endpoint. */
 export async function handleMcpProxy(
   deps: InspectorDeps,
   request: HttpRequest,
@@ -31,8 +24,7 @@ export async function handleMcpProxy(
   try {
     mcpResponse = await fetch(`http://127.0.0.1:${running.port}/mcp`, {
       method: "POST",
-      // The response is buffered and returned as JSON below, so ask for JSON
-      // only rather than advertising an event stream this proxy never streams.
+      // Accept JSON only because this proxy buffers the full response and never streams.
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -59,7 +51,6 @@ export async function handleMcpProxy(
   return json(200, { success: true, result, sessionId: responseSessionId });
 }
 
-/** GET /api/a2a/agent-card?agentName=xxx — fetch the running agent's A2A card. */
 export async function handleA2aAgentCard(
   deps: InspectorDeps,
   url: URL,
@@ -87,7 +78,6 @@ export async function handleA2aAgentCard(
   }
 }
 
-/** Read a response body as text, or undefined when it exceeds `maxBytes`. */
 async function readCapped(response: Response, maxBytes: number): Promise<string | undefined> {
   const chunks: Uint8Array[] = [];
   let size = 0;

@@ -109,7 +109,6 @@ describe("startHttpServer", () => {
 });
 
 describe("stream", () => {
-  /** A minimal ServerResponse double recording writes and whether end() ran. */
   function fakeResponse() {
     const written: string[] = [];
     let ended = false;

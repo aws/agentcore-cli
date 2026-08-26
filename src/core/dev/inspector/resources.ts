@@ -1,11 +1,3 @@
-/**
- * GET /api/resources — the project resource graph the SPA's resources panel
- * renders, built from the resolved project spec. Resource details the
- * reference exposed but this project schema lacks (aws-targets regions,
- * per-harness model/tool specs, deployed state) are emitted with their
- * neutral defaults so the wire shape stays intact; deployed state returns
- * with real deploy wiring.
- */
 import type { HttpResponse } from "../../../io/httpServer";
 import { apiError, json } from "./respond";
 import type { InspectorDeps } from "./types";
@@ -15,7 +7,7 @@ export function handleResources(deps: InspectorDeps): HttpResponse {
   if (!project) return apiError(404, "No agentcore project found");
 
   const spec = project.spec;
-  // The literal is the wire contract — the SPA depends on these exact field names.
+  // The literal is the wire contract. The SPA depends on these exact field names.
   const resources = {
     success: true,
     project: project.name,
@@ -29,8 +21,7 @@ export function handleResources(deps: InspectorDeps): HttpResponse {
       protocol: runtime.protocol ?? "HTTP",
       envVars: runtime.envVars?.map((envVar) => envVar.name) ?? [],
     })),
-    // Harness registry entries carry only name + path; model/tool details
-    // lived in per-harness spec files the reference read separately.
+    // Project schema has no per-harness model or tool spec yet, so neutral defaults.
     harnesses: spec.harnesses.map((harness) => ({ name: harness.name, model: "", tools: [] })),
     memories: spec.memories.map((memory) => ({
       name: memory.name,
@@ -83,7 +74,7 @@ export function handleResources(deps: InspectorDeps): HttpResponse {
       name: target.name,
       targetType: target.targetType,
     })),
-    // The project schema has no aws-targets equivalent yet.
+    // Project schema has no aws-targets or deployed-state equivalent yet, so neutral defaults.
     deploymentTargets: [],
   };
   return json(200, resources);

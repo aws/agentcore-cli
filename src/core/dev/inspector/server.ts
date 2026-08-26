@@ -1,10 +1,7 @@
 /**
- * The Agent Inspector request handler: a pure request → response function the
- * dev command composes with io/startHttpServer. It ports the reference
- * WebUIServer's security model (DNS-rebinding Host check, server-side origin
- * allowlist, X-Agentcore-Local on POSTs, CORS preflight) and the SPA routes this
- * layer answers: status, on-demand start, trace reads, agent invocation, the MCP
- * and A2A proxies, the project resource graph, and the static SPA.
+ * The Agent Inspector request handler: a pure request to response function
+ * wrapping the security model (loopback Host check, origin allowlist,
+ * X-Agentcore-Local on POSTs) around the SPA, proxy, and trace routes.
  */
 import { ResourceNotFoundError } from "../../../errors";
 import type { HttpRequest, HttpRequestHandler, HttpResponse } from "../../../io/httpServer";
@@ -14,20 +11,17 @@ import { handleResources } from "./resources";
 import { apiError, asString, errorMessage, json, parseJsonBody, parseTimeParam } from "./respond";
 import type { InspectorDeps } from "./types";
 
-/** Origins the Vite dev server uses for the frontend HMR workflow. */
 const DEV_SERVER_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"];
 
-/** Loopback Host headers the DNS-rebinding guard accepts, port already stripped. */
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
-/** Newest traces returned per list poll — bounds a payload that carries full spans per row. */
+/** Bounds a payload that carries full spans per row. */
 const TRACE_LIST_LIMIT = 200;
 
-/** CSP for served HTML, blocking inline-script injection from agent responses. */
+/** Blocks inline-script injection from agent responses in served HTML. */
 const CSP_HEADER =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self' data:";
 
-/** CORS headers that never vary; only Access-Control-Allow-Origin is per-request. */
 const STATIC_CORS_HEADERS = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, X-Agentcore-Local, Mcp-Session-Id",
@@ -37,15 +31,12 @@ const STATIC_CORS_HEADERS = {
 
 export function createInspectorHandler(deps: InspectorDeps): HttpRequestHandler {
   return async (request) => {
-    // DNS rebinding protection — a custom domain resolving to 127.0.0.1 would
-    // bypass origin checks, so only loopback Host headers are accepted.
+    // A custom domain resolving to 127.0.0.1 would bypass origin checks, so only loopback Host headers are accepted.
     const host = request.headers.host ?? "";
     const hostname = host.replace(/:\d+$/, "");
     if (!LOOPBACK_HOSTS.has(hostname)) return forbidden("Forbidden");
 
-    // Server-side origin validation — CORS headers alone only stop the browser
-    // from reading responses; the request's side effects (starting agents,
-    // invoking with AWS credentials) must be blocked before any handler runs.
+    // CORS only stops the browser reading responses, so side effects (starting agents, invoking with AWS credentials) must be blocked here before any handler runs.
     const origin = asString(request.headers.origin);
     const allowedOrigins = [`http://${host}`, ...DEV_SERVER_ORIGINS];
     if (origin && !allowedOrigins.includes(origin)) return forbidden("Forbidden");
@@ -53,8 +44,7 @@ export function createInspectorHandler(deps: InspectorDeps): HttpRequestHandler 
 
     if (request.method === "OPTIONS") return { status: 204, headers: cors };
 
-    // Require a custom header on all POSTs: it forces a CORS preflight (which
-    // the origin check blocks cross-origin), closing the simple-form-POST gap.
+    // The custom header forces a CORS preflight that the origin check blocks cross-origin, closing the simple-form-POST gap.
     if (request.method === "POST" && !request.headers["x-agentcore-local"]) {
       return withHeaders(forbidden("Forbidden: missing X-Agentcore-Local header"), cors);
     }
@@ -86,10 +76,9 @@ async function route(deps: InspectorDeps, request: HttpRequest): Promise<HttpRes
   return apiError(404, "Not Found");
 }
 
-/** GET /api/status — available agents, running ports, and per-agent errors. */
 function handleStatus(deps: InspectorDeps): HttpResponse {
   const snapshot = deps.supervisor.snapshot();
-  // The literal is the wire contract — the SPA depends on these exact field names.
+  // The literal is the wire contract. The SPA depends on these exact field names.
   const status = {
     mode: "dev",
     agents: snapshot.map(({ name, buildType, protocol }) => ({ name, buildType, protocol })),
@@ -105,7 +94,6 @@ function handleStatus(deps: InspectorDeps): HttpResponse {
   return json(200, status);
 }
 
-/** POST /api/start — start an agent on demand; concurrent starts share one attempt. */
 async function handleStart(deps: InspectorDeps, request: HttpRequest): Promise<HttpResponse> {
   const agentName = asString(parseJsonBody(request.body)?.agentName);
   if (!agentName) return apiError(400, "agentName is required");
@@ -119,7 +107,6 @@ async function handleStart(deps: InspectorDeps, request: HttpRequest): Promise<H
   }
 }
 
-/** GET /api/traces?agentName=xxx — recent local OTEL traces. */
 async function handleListTraces(deps: InspectorDeps, url: URL): Promise<HttpResponse> {
   if (!deps.traces) return apiError(404, "Traces are not available");
 
@@ -141,7 +128,6 @@ async function handleListTraces(deps: InspectorDeps, url: URL): Promise<HttpResp
   }
 }
 
-/** GET /api/traces/:traceId — full span and log data for one local trace. */
 async function handleGetTrace(deps: InspectorDeps, url: URL): Promise<HttpResponse> {
   if (!deps.traces) return apiError(404, "Traces are not available");
 
@@ -157,7 +143,6 @@ async function handleGetTrace(deps: InspectorDeps, url: URL): Promise<HttpRespon
   }
 }
 
-/** Serve a static SPA asset, falling back to index.html for client-side routes. */
 async function serveAsset(
   deps: InspectorDeps,
   pathname: string,
@@ -171,7 +156,7 @@ async function serveAsset(
       "Content-Type": asset.contentType,
       ...(asset.contentType.includes("text/html") && { "Content-Security-Policy": CSP_HEADER }),
     },
-    // A view over the cached bytes, not a copy — the server only reads it.
+    // A view over the cached bytes, not a copy, since the server only reads it.
     body: Buffer.from(asset.body.buffer, asset.body.byteOffset, asset.body.byteLength),
   };
 }
@@ -181,8 +166,7 @@ function forbidden(message: string): HttpResponse {
 }
 
 function corsHeaders(origin: string | undefined, allowedOrigins: string[]): Record<string, string> {
-  // A present origin already passed the allowlist check above, so echo it back;
-  // otherwise fall back to the primary allowed origin.
+  // A present origin already passed the allowlist check above, so it is safe to echo back.
   return { "Access-Control-Allow-Origin": origin || allowedOrigins[0]!, ...STATIC_CORS_HEADERS };
 }
 

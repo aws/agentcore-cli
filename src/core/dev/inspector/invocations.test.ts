@@ -6,7 +6,6 @@ import type { InspectorDeps } from "./types";
 const farm = new ServerFarm();
 afterEach(() => farm.close());
 
-/** A fake agent that replies with a fixed SSE stream over its own body. */
 function sseAgent(frames: string[]): HttpRequestHandler {
   return () => ({
     status: 200,
@@ -15,7 +14,6 @@ function sseAgent(frames: string[]): HttpRequestHandler {
   });
 }
 
-/** Stand up a fake agent, point a running supervisor at it, and start the inspector. */
 async function inspectorFor(handler: HttpRequestHandler, protocol = "HTTP") {
   const agent = await farm.serve(handler);
   const supervisor = fakeSupervisor({ agents: [runningAgent("orders", agent.port, protocol)] });

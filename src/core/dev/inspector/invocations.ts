@@ -1,10 +1,4 @@
-/**
- * POST /invocations — the protocol-aware proxy to a locally running agent.
- * Ported from the reference web-ui/handlers/invocations.ts; the SSE framing
- * (`data: <json>\n\n`) is part of the SPA wire contract. Every upstream fetch
- * carries the client's abort signal so a browser disconnect tears down the
- * agent request instead of leaking it.
- */
+// Every upstream fetch carries the client abort signal, so a browser disconnect tears down the agent request.
 import { randomUUID } from "node:crypto";
 import type { HttpRequest, HttpResponse } from "../../../io/httpServer";
 import {
@@ -25,13 +19,11 @@ export async function handleInvocations(
 ): Promise<HttpResponse> {
   const parsed = parseJsonBody(request.body);
   const agentName = asString(parsed?.agentName);
-  // One session id for the whole exchange: request header, agent body, and the
-  // echoed x-session-id must agree, so it is computed once here.
+  // Request header, agent body, and echoed x-session-id must agree, so one session id is computed once.
   const sessionId = asString(parsed?.sessionId) ?? randomUUID();
   const userId = asString(parsed?.userId);
   const signal = request.signal;
 
-  // Route to the named agent, falling back to the first running one.
   let running = agentName ? deps.supervisor.running(agentName) : undefined;
   if (!running) {
     const first = deps.supervisor.snapshot().find((agent) => agent.phase === "running");
@@ -51,11 +43,6 @@ export async function handleInvocations(
   return invokeHttpAgent(running.port, request.body, sessionId, userId, signal);
 }
 
-/**
- * POST to an agent's /invocations route with the shared session/user headers.
- * `normalizeSse` re-frames an event stream through {@link parseAgentEvent}; a
- * non-event-stream response, or a typed stream (AGUI), passes through untouched.
- */
 async function forwardInvocation(
   port: number,
   body: Buffer | string,
@@ -95,7 +82,6 @@ async function forwardInvocation(
   };
 }
 
-/** Forward an HTTP agent's raw body, normalizing SSE events to plain text. */
 function invokeHttpAgent(
   port: number,
   body: Buffer,
@@ -109,7 +95,6 @@ function invokeHttpAgent(
   });
 }
 
-/** Re-frame each agent SSE event through {@link parseAgentEvent}. */
 async function* transformAgentSse(
   stream: AsyncIterable<Uint8Array>,
 ): AsyncGenerator<Uint8Array, void> {
@@ -119,13 +104,7 @@ async function* transformAgentSse(
   }
 }
 
-/**
- * Extract the payload to emit from one agent SSE `data` frame: a plain text
- * token, an `{ error }` object, or null when the frame carries no displayable
- * content. Handles `{"text": ...}` events from the bedrock-agentcore runtime,
- * `{"error": ...}` events, and ConverseStream-shaped content deltas; a frame
- * that is not JSON is itself a plain-text token.
- */
+// Handles bedrock {text}, {error}, ConverseStream contentBlockDelta, bare JSON string, and non-JSON tokens.
 export function parseAgentEvent(data: string): string | { error: string } | null {
   try {
     const parsed: unknown = JSON.parse(data);
@@ -146,11 +125,7 @@ export function parseAgentEvent(data: string): string | { error: string } | null
   return null;
 }
 
-/**
- * A2A agents speak JSON-RPC at their root path: translate the SPA's
- * `{ prompt }` payload into `message/stream` and reduce the A2A event stream
- * to the `data: "text"` frames the SPA's chat expects.
- */
+// A2A agents speak JSON-RPC at their root path, so {prompt} becomes a message/stream call reduced to text frames.
 async function invokeA2aAgent(
   port: number,
   body: Record<string, unknown> | undefined,
@@ -192,7 +167,6 @@ async function invokeA2aAgent(
     return sse(transformA2aSse(iterateBody(agentResponse.body)), sessionId);
   }
 
-  // Non-streaming fallback: extract text from the JSON-RPC result.
   const responseText = await agentResponse.text();
   try {
     const parsed = JSON.parse(responseText) as Record<string, unknown>;
@@ -233,12 +207,7 @@ function isStatusUpdateEvent(event: Record<string, unknown>): boolean {
   return target.kind === "status-update";
 }
 
-/**
- * Extract displayable text from an A2A SSE event (artifact-update or
- * status-update, optionally wrapped in a JSON-RPC result envelope). When
- * `streamedFromStatus` is set, artifact-update text is skipped because the
- * same content already streamed incrementally via status-update events.
- */
+// When streamedFromStatus is set, artifact-update text is skipped because status-update already streamed it.
 function extractSseEventText(
   event: Record<string, unknown>,
   streamedFromStatus: boolean,
@@ -261,7 +230,6 @@ function extractSseEventText(
   return extractTaskText(target);
 }
 
-/** Extract text from a full A2A Task result (artifacts array and/or status message). */
 function extractTaskText(result: Record<string, unknown>): string | null {
   const artifacts = result.artifacts as { parts?: A2aPart[] }[] | undefined;
   if (artifacts) {
@@ -289,10 +257,7 @@ function extractPartsText(parts: A2aPart[] | undefined): string | null {
   return texts.length > 0 ? texts.join("") : null;
 }
 
-/**
- * AGUI agents expect a RunAgentInput body; translate the SPA's `{ prompt }`
- * payload and pass the typed AG-UI SSE response through untouched.
- */
+// AGUI agents expect a RunAgentInput body, and the typed AG-UI SSE response passes through untouched.
 function invokeAguiAgent(
   port: number,
   body: Record<string, unknown> | undefined,
