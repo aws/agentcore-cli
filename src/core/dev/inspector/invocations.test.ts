@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { HttpRequestHandler } from "../../../io/httpServer";
+import { type HttpRequestHandler, startHttpServer } from "../../../io/httpServer";
+import { parseAgentEvent } from "./invocations";
 import { ServerFarm, fakeSupervisor, post, runningAgent } from "./testkit";
 import type { InspectorDeps } from "./types";
 
@@ -36,6 +37,40 @@ describe("POST /invocations routing", () => {
       success: false,
       error: "MCP agents are invoked through POST /api/mcp, not /invocations.",
     });
+  });
+});
+
+describe("upstream connection failures", () => {
+  async function deadPort(): Promise<number> {
+    const handle = await startHttpServer(() => ({ status: 200 }));
+    await handle.close();
+    return handle.port;
+  }
+
+  test.each([
+    { protocol: "HTTP", errorPrefix: "Agent server error" },
+    { protocol: "A2A", errorPrefix: "A2A agent error" },
+  ])("returns 502 when a $protocol agent is unreachable", async ({ protocol, errorPrefix }) => {
+    const supervisor = fakeSupervisor({
+      agents: [runningAgent("orders", await deadPort(), protocol)],
+    });
+    const { url } = await farm.inspector({ supervisor });
+    const response = await post(url, "/invocations", { agentName: "orders", prompt: "hi" });
+    expect(response.status).toBe(502);
+    const body = (await response.json()) as { success: boolean; error: string };
+    expect(body.success).toBe(false);
+    expect(body.error).toContain(errorPrefix);
+  });
+});
+
+describe("parseAgentEvent drops non-renderable frames", () => {
+  test.each([
+    { name: "a JSON primitive that is not text", data: JSON.stringify(42) },
+    { name: "a blank error field", data: JSON.stringify({ error: "" }) },
+    { name: "a blank text field", data: JSON.stringify({ text: "" }) },
+    { name: "an empty non-JSON token", data: "" },
+  ])("returns null for $name", ({ data }) => {
+    expect(parseAgentEvent(data)).toBeNull();
   });
 });
 
@@ -140,6 +175,50 @@ describe("A2A agent invocation", () => {
     const response = await post(url, "/invocations", { agentName: "orders", prompt: "hi" });
     expect(response.headers.get("content-type")).toContain("text/event-stream");
     expect(await response.text()).toBe(`data: ${JSON.stringify("final")}\n\n`);
+  });
+
+  test.each([
+    {
+      name: "an artifact-update with no preceding status-update",
+      frame: JSON.stringify({
+        result: { kind: "artifact-update", artifact: { parts: [{ kind: "text", text: "art" }] } },
+      }),
+      expected: "art",
+    },
+    { name: "a frame that is not JSON", frame: "not-json", expected: "not-json" },
+    {
+      name: "a task event carrying a status message",
+      frame: JSON.stringify({
+        result: {
+          kind: "task",
+          status: { message: { parts: [{ kind: "text", text: "task-text" }] } },
+        },
+      }),
+      expected: "task-text",
+    },
+  ])("streams text extracted from $name", async ({ frame, expected }) => {
+    const { url } = await inspectorFor(sseAgent([frame]), "A2A");
+    const response = await post(url, "/invocations", { agentName: "orders", prompt: "hi" });
+    expect(await response.text()).toBe(`data: ${JSON.stringify(expected)}\n\n`);
+  });
+
+  test("drops a task frame that carries no renderable parts", async () => {
+    const { url } = await inspectorFor(
+      sseAgent([JSON.stringify({ result: { kind: "task" } })]),
+      "A2A",
+    );
+    const response = await post(url, "/invocations", { agentName: "orders", prompt: "hi" });
+    expect(await response.text()).toBe("");
+  });
+
+  test("passes a non-JSON A2A response through as plain text", async () => {
+    const { url } = await inspectorFor(
+      () => ({ status: 200, headers: { "Content-Type": "text/plain" }, body: "not json" }),
+      "A2A",
+    );
+    const response = await post(url, "/invocations", { agentName: "orders", prompt: "hi" });
+    expect(response.headers.get("content-type")).toContain("text/plain");
+    expect(await response.text()).toBe("not json");
   });
 
   test("requires a prompt", async () => {

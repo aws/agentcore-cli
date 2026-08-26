@@ -35,6 +35,81 @@ function project(): Project {
         },
       ],
       credentials: [{ authorizerType: "ApiKeyCredentialProvider", name: "stripe-key" }],
+      evaluators: [
+        {
+          name: "quality",
+          level: "SESSION",
+          description: "Checks quality",
+          config: {
+            llmAsAJudge: {
+              model: "anthropic.claude-v2",
+              instructions: "Judge the answer",
+              ratingScale: { numerical: [{ value: 1, label: "bad", definition: "Bad answer" }] },
+            },
+          },
+        },
+      ],
+      onlineEvalConfigs: [
+        { name: "prod_eval", agent: "orders", samplingRate: 10, evaluators: ["quality"] },
+      ],
+      agentCoreGateways: [
+        {
+          name: "gw",
+          targets: [
+            {
+              name: "orders-target",
+              targetType: "lambda",
+              toolDefinitions: [
+                {
+                  name: "lookup",
+                  description: "Look up an order",
+                  inputSchema: { type: "object" },
+                },
+              ],
+              compute: {
+                host: "Lambda",
+                implementation: { language: "Python", path: "tools", handler: "handler.main" },
+                pythonVersion: "PYTHON_3_12",
+              },
+            },
+          ],
+        },
+      ],
+      mcpRuntimeTools: [
+        {
+          name: "search-tool",
+          toolDefinition: {
+            name: "search",
+            description: "Search the catalog",
+            inputSchema: { type: "object" },
+          },
+          compute: {
+            host: "AgentCoreRuntime",
+            implementation: { language: "Python", path: "tools", handler: "handler.main" },
+          },
+          bindings: [{ runtimeName: "orders", envVarName: "SEARCH_URL" }],
+        },
+      ],
+      unassignedTargets: [
+        {
+          name: "catalog",
+          targetType: "smithyModel",
+          schemaSource: { inline: { path: "schema.smithy" } },
+        },
+      ],
+      policyEngines: [
+        {
+          name: "guardrails",
+          description: "Access policies",
+          policies: [
+            {
+              name: "allow_read",
+              description: "Allow reads",
+              statement: "permit(principal, action, resource);",
+            },
+          ],
+        },
+      ],
     }),
   };
 }
@@ -67,12 +142,29 @@ describe("GET /api/resources", () => {
         },
       ],
       credentials: [{ name: "stripe-key", type: "ApiKeyCredentialProvider" }],
-      gateways: [],
-      mcpRuntimeTools: [],
-      evaluators: [],
-      onlineEvalConfigs: [],
-      policyEngines: [],
-      unassignedTargets: [],
+      gateways: [{ name: "gw", targets: [{ name: "lookup", targetType: "lambda" }] }],
+      mcpRuntimeTools: [
+        { name: "search-tool", bindings: [{ runtimeName: "orders", envVarName: "SEARCH_URL" }] },
+      ],
+      evaluators: [
+        {
+          name: "quality",
+          level: "SESSION",
+          description: "Checks quality",
+          configType: "llm-as-a-judge",
+        },
+      ],
+      onlineEvalConfigs: [
+        { name: "prod_eval", agent: "orders", evaluators: ["quality"], samplingRate: 10 },
+      ],
+      policyEngines: [
+        {
+          name: "guardrails",
+          description: "Access policies",
+          policies: [{ name: "allow_read", description: "Allow reads" }],
+        },
+      ],
+      unassignedTargets: [{ name: "catalog", targetType: "smithyModel" }],
       deploymentTargets: [],
     });
   });
