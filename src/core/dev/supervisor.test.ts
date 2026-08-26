@@ -292,11 +292,13 @@ describe("DevSupervisor", () => {
       "produced no output and did not accept connections on port 1 within 0.1s",
     );
 
-    const server = createServer();
+    const server = createServer((socket) => socket.destroy());
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const port = (server.address() as { port: number }).port;
     await waitForPort(port, signal, undefined, 10, 1000); // resolves against a live listener
-    server.close();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
   });
 
   test("recent activity keeps a silent port from timing out", async () => {
