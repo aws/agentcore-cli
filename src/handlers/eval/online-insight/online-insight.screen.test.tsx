@@ -77,7 +77,7 @@ describe("online-insight menu", () => {
 });
 
 describe("online-insight picker", () => {
-  test("renders name, execution status, the insights column, and update time", async () => {
+  test("renders name, execution status, and update time", async () => {
     const core = coreWithConfigs([
       configSummary({
         onlineEvaluationConfigName: "staging_intent_insights",
@@ -89,20 +89,8 @@ describe("online-insight picker", () => {
 
     await waitForText(screen.lastFrame, "staging_intent_insights");
     const frame = screen.lastFrame()!;
-    expect(frame).toContain("insights");
     expect(frame).toContain("DISABLED");
-    expect(frame).toContain("yes");
     expect(frame).toContain("2026-07-21 02:03");
-  });
-
-  test("shows '-' in the insights column when a config has no insights", async () => {
-    const core = coreWithConfigs([
-      configSummary({ onlineEvaluationConfigName: "no_insights_config", insights: [] }),
-    ]);
-    const screen = renderScreen("/agentcore/eval/online-insight/list", { core });
-
-    await waitForText(screen.lastFrame, "no_insights_config");
-    expect(screen.lastFrame()).not.toContain("yes");
   });
 
   test("calls listOnlineInsights with exact Core options", async () => {

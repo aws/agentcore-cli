@@ -9,14 +9,13 @@ import type { DataTableColumn } from "./ui/data-table";
 // OnlineEvalRow is the flat, display-ready shape the table renders. It also
 // satisfies DataTable's `T extends Record<string, unknown>` constraint, which the
 // SDK's OnlineEvaluationConfigSummary interface does not. The list API returns
-// only summary fields (name/status/executionStatus/timestamps/insights); richer
+// only summary fields (name/status/executionStatus/timestamps); richer
 // detail like sampling rate and evaluators comes from GetOnlineEvaluationConfig.
 interface OnlineEvalRow extends Record<string, unknown> {
   configId: string;
   configName: string;
   status: string;
   executionStatus: string;
-  hasInsights: boolean;
   updatedAt: string;
 }
 
@@ -24,9 +23,6 @@ export const onlineEvalColumns = [
   { key: "configName", header: "name", flex: true },
   { key: "status", header: "status", width: 12 },
   { key: "executionStatus", header: "execution", width: 11 },
-  // #2029: surface whether the config has insights enabled straight from the
-  // list summary — no per-row GetOnlineEvaluationConfig call needed.
-  { key: "hasInsights", header: "insights", width: 9, render: (value) => (value ? "yes" : "-") },
   {
     key: "updatedAt",
     header: "updated UTC",
@@ -42,7 +38,6 @@ function toRow(config: OnlineEvaluationConfigSummary): OnlineEvalRow {
     configName: config.onlineEvaluationConfigName ?? id,
     status: config.status ?? "-",
     executionStatus: config.executionStatus ?? "-",
-    hasInsights: (config.insights?.length ?? 0) > 0,
     updatedAt: config.updatedAt?.toISOString() ?? "-",
   };
 }

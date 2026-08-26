@@ -16,7 +16,6 @@ interface OnlineInsightRow extends Record<string, unknown> {
   configName: string;
   status: string;
   executionStatus: string;
-  hasInsights: boolean;
   updatedAt: string;
 }
 
@@ -24,9 +23,6 @@ const onlineInsightColumns = [
   { key: "configName", header: "name", flex: true },
   { key: "status", header: "status", width: 12 },
   { key: "executionStatus", header: "execution", width: 11 },
-  // Whether the config actually carries insight definitions — an insight config
-  // with an empty insights list is valid, so surface it straight from the summary.
-  { key: "hasInsights", header: "insights", width: 9, render: (value) => (value ? "yes" : "-") },
   {
     key: "updatedAt",
     header: "updated UTC",
@@ -42,7 +38,6 @@ function toRow(config: OnlineEvaluationConfigSummary): OnlineInsightRow {
     configName: config.onlineEvaluationConfigName ?? id,
     status: config.status ?? "-",
     executionStatus: config.executionStatus ?? "-",
-    hasInsights: (config.insights?.length ?? 0) > 0,
     updatedAt: config.updatedAt?.toISOString() ?? "-",
   };
 }
