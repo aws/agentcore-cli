@@ -6,12 +6,12 @@ import { formatTimestamp } from "./formatTimestamp";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
 import type { DataTableColumn } from "./ui/data-table";
 
-// OnlineEvalRow is the flat, display-ready shape the table renders. It also
+// OnlineInsightRow is the flat, display-ready shape the table renders. It also
 // satisfies DataTable's `T extends Record<string, unknown>` constraint, which the
-// SDK's OnlineEvaluationConfigSummary interface does not. The list API returns
-// only summary fields (name/status/executionStatus/timestamps/insights); richer
-// detail like sampling rate and evaluators comes from GetOnlineEvaluationConfig.
-interface OnlineEvalRow extends Record<string, unknown> {
+// SDK's OnlineEvaluationConfigSummary interface does not. ListOnlineInsights
+// returns the same summary type as the online-eval list; richer detail like
+// sampling rate and clustering comes from GetOnlineInsight.
+interface OnlineInsightRow extends Record<string, unknown> {
   configId: string;
   configName: string;
   status: string;
@@ -20,12 +20,12 @@ interface OnlineEvalRow extends Record<string, unknown> {
   updatedAt: string;
 }
 
-export const onlineEvalColumns = [
+const onlineInsightColumns = [
   { key: "configName", header: "name", flex: true },
   { key: "status", header: "status", width: 12 },
   { key: "executionStatus", header: "execution", width: 11 },
-  // #2029: surface whether the config has insights enabled straight from the
-  // list summary — no per-row GetOnlineEvaluationConfig call needed.
+  // Whether the config actually carries insight definitions — an insight config
+  // with an empty insights list is valid, so surface it straight from the summary.
   { key: "hasInsights", header: "insights", width: 9, render: (value) => (value ? "yes" : "-") },
   {
     key: "updatedAt",
@@ -33,9 +33,9 @@ export const onlineEvalColumns = [
     width: 16,
     render: formatTimestamp,
   },
-] satisfies DataTableColumn<OnlineEvalRow>[];
+] satisfies DataTableColumn<OnlineInsightRow>[];
 
-function toRow(config: OnlineEvaluationConfigSummary): OnlineEvalRow {
+function toRow(config: OnlineEvaluationConfigSummary): OnlineInsightRow {
   const id = config.onlineEvaluationConfigId ?? "";
   return {
     configId: id,
@@ -47,7 +47,7 @@ function toRow(config: OnlineEvaluationConfigSummary): OnlineEvalRow {
   };
 }
 
-export interface OnlineEvalPickerProps extends ScreenProps {
+export interface OnlineInsightPickerProps extends ScreenProps {
   breadcrumb: string[];
   description?: string;
   onSelect: (configId: string) => void;
@@ -55,19 +55,19 @@ export interface OnlineEvalPickerProps extends ScreenProps {
 }
 
 /**
- * Fetches the caller's online evaluation configs and renders them as a navigable
- * table. The shared body of every "pick a config" screen (list, and — in the
- * write TUI — update/pause/resume/delete). Esc returns to the parent menu derived
- * from the breadcrumb unless a host supplies its own onEscape.
+ * Fetches the caller's online insight configs and renders them as a navigable
+ * table. The shared body of every "pick an insight config" screen. Esc returns to
+ * the parent menu derived from the breadcrumb unless a host supplies its own
+ * onEscape.
  */
-export function OnlineEvalPicker({
+export function OnlineInsightPicker({
   ctx,
   core,
   breadcrumb,
   description,
   onSelect,
   onEscape,
-}: OnlineEvalPickerProps) {
+}: OnlineInsightPickerProps) {
   const opts = coreOptsFromCtx(ctx);
   const navigate = useNavigate();
   const goBack = onEscape ?? (() => navigate("/" + breadcrumb.slice(0, -1).join("/")));
@@ -76,23 +76,23 @@ export function OnlineEvalPicker({
     <PaginatedTablePicker
       breadcrumb={breadcrumb}
       description={description}
-      queryKey={["online-evals", opts.region]}
+      queryKey={["online-insights", opts.region]}
       loadPage={async (token, pageSize) => {
-        const response = await core.eval.listOnlineEvaluationConfigs(token, pageSize, opts);
+        const response = await core.eval.listOnlineInsights(token, pageSize, opts);
         return {
           items: response.onlineEvaluationConfigs ?? [],
           nextToken: response.nextToken,
         };
       }}
       toRow={toRow}
-      columns={onlineEvalColumns}
+      columns={onlineInsightColumns}
       getValue={(row) => row.configId}
       onSelect={onSelect}
       onBack={goBack}
-      loadingMessage="Loading online evaluation configs…"
+      loadingMessage="Loading online insight configs…"
       errorMessage={(error) => `Error: ${error.message}`}
-      emptyMessage="No online evaluation configs found in this Region."
-      emptyPageMessage="No online evaluation configs on this page."
+      emptyMessage="No online insight configs found in this Region."
+      emptyPageMessage="No online insight configs on this page."
     />
   );
 }
