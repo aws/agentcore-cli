@@ -183,8 +183,5 @@ describe("eval batch-evaluation (fixture-backed)", () => {
     ]);
 
     matchGolden(FIXTURES, "simulate.golden.json", io.stdout());
-    const out = JSON.parse(io.stdout());
-    expect(out.batchEvaluationId).toBeTruthy();
-    expect(out.examplesInvoked).toBeGreaterThan(0);
   }, 180_000);
 });
