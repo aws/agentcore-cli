@@ -51,6 +51,9 @@
     },
   },
   "overrides": {
+    "@aws-cdk/toolkit-lib": {
+      "yaml": "^1",
+    },
     "@opentelemetry/core": "^2.10.0",
   },
   "packages": {

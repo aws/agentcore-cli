@@ -85,6 +85,9 @@
     "zod": "^4.4.3"
   },
   "overrides": {
-    "@opentelemetry/core": "^2.10.0"
+    "@opentelemetry/core": "^2.10.0",
+    "@aws-cdk/toolkit-lib": {
+      "yaml": "^1"
+    }
   }
 }
