@@ -189,8 +189,6 @@ export class EvalClient implements CoreEvalClient {
     private readonly fetch: CoreFetch = globalThis.fetch,
     // logger for batch-evaluation result-log diagnostics
     private readonly logger: Logger = noopLogger,
-    // Session id minted per replayed example. Injectable so fixture/golden tests get
-    // deterministic ids (stable invoke request + stable golden); production uses randomUUID.
     private readonly newSessionId: () => string = randomUUID,
   ) {}
 

@@ -42,9 +42,6 @@ const MISSING_JOB_ID = "missing-batch-eval-0000000000";
 const FIXTURE_EVAL_AGENT = "asdf_MyAgent-3s5axvBC6Q";
 const FIXTURE_EVAL_NAME = "golden_batch_evaluate_fixture685";
 
-// simulate is also a WRITE: a record run invokes the agent per dataset row and submits a
-// real StartBatchEvaluation. Bump this name (the service rejects a duplicate) when
-// re-recording, and keep the fixture dataset small so the golden stays legible.
 const FIXTURE_SIMULATE_NAME = "golden_batch_simulate_fixture1";
 const FIXTURE_SIMULATE_DATASET = join(FIXTURES, "simulate-ds.jsonl");
 
@@ -144,9 +141,6 @@ describe("eval batch-evaluation (fixture-backed)", () => {
   });
 
   test("simulate replays a dataset, then submits a batch job over the created sessions", async () => {
-    // Deterministic session ids so the InvokeAgentRuntime fixture key and the golden are
-    // stable run to run (production mints a random UUID per example). --ingestion-wait-ms 0
-    // skips the 180s span-ingestion sleep, which is meaningless against recorded data.
     let n = 0;
     const { createControlClient, createDataClient, createIamClient, createLogsClient } =
       fixtureFactories(FIXTURES);

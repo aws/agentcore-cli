@@ -161,10 +161,6 @@ describe("eval batch-evaluation list", () => {
   });
 });
 
-// simulate's happy path (replay → StartBatchEvaluation → rendered output, incl. the
-// ground-truth wrapping) is covered end to end by the fixture-backed suite. These are the
-// handler-only edges that can't be recorded: required-flag validation, the refusal when
-// every invoke failed, and the --ingestion-wait-ms passthrough.
 describe("eval batch-evaluation simulate", () => {
   const BASE = [
     "eval",

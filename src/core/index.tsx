@@ -38,8 +38,6 @@ type CoreClientConfig = {
   createLogsClient: CreateLogsClient;
   logger: Logger;
   fetch?: CoreFetch;
-  // Session-id generator handed to EvalClient. Tests inject a deterministic one so replay
-  // fixtures + goldens are stable; production omits it and EvalClient defaults to randomUUID.
   newSessionId?: () => string;
 };
 

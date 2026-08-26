@@ -145,10 +145,6 @@ function reviveError(tagged: TaggedError): Error {
   return error;
 }
 
-// InvokeAgentRuntime's `response` is an SdkStream, whose circular socket-backed object graph
-// makes stringify blow the stack. Freeze it to text under this tag for the fixture, and
-// revive it to an async iterable for the caller — the shape the invoke body reader consumes.
-// ponytail: text bodies only (invoke returns JSON) — switch to base64 if a binary op needs it.
 const STREAM_TAG = "$stream";
 
 async function freezeStream(response: unknown): Promise<unknown> {
