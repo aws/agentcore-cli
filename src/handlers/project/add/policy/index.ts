@@ -3,7 +3,9 @@ import { InputValidationError } from "../../../../errors";
 import { SourceResolver } from "../../../../io";
 import type { PolicySchema } from "../../../../projectSchemas/policy";
 import { createHandler, flag, ProjectKey } from "../../../../router";
+import { coreOptsFromCtx } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
+import type { GeneratedPolicy } from "./types";
 
 /**
  A substring heuristic, not a Cedar parser; --authorization-phase overrides it.
@@ -79,7 +81,29 @@ export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
           sourceFile = flags.statement.slice("file://".length);
         }
       } else {
-        throw new InputValidationError("--generate is not implemented yet");
+        const generator = config.policy.generatePolicy(
+          {
+            projectName: project.name,
+            engineName: flags.engine,
+            gatewayName: flags.gateway,
+            description: flags.generate!,
+          },
+          coreOptsFromCtx(ctx),
+        );
+        let generated: GeneratedPolicy;
+        while (true) {
+          const next = await generator.next();
+          if (next.done) {
+            generated = next.value;
+            break;
+          }
+          config.io.stderr.write(`${next.value.message}\n`);
+        }
+        statement = generated.statement;
+        config.io.stderr.write(`Generated Cedar policy:\n${statement}\n`);
+        for (const finding of generated.findings) {
+          config.io.stderr.write(`finding [${finding.type}]: ${finding.description}\n`);
+        }
       }
 
       const authorizationPhase = flags["authorization-phase"]

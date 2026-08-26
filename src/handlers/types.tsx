@@ -6,6 +6,7 @@ import type { CoreMemoryClient } from "./memory/types.tsx";
 import type { CoreRuntimeClient } from "./runtime/types.tsx";
 import type { Context } from "../router";
 import type { ProjectManager } from "./project/types.ts";
+import type { CorePolicyClient } from "./project/add/policy/types";
 
 export interface Core {
   harness: CoreHarnessClient;
@@ -14,6 +15,7 @@ export interface Core {
   runtime: CoreRuntimeClient;
   gateway: CoreGatewayClient;
   eval: CoreEvalClient;
+  policy: CorePolicyClient;
   projectManager: ProjectManager;
 }
 

@@ -7,6 +7,7 @@ import { GatewayClient } from "./gateway";
 import { HarnessClient } from "./harness";
 import { IdentityClient } from "./identity";
 import { MemoryClient } from "./memory";
+import { PolicyClient } from "./policy";
 import { RuntimeClient } from "./runtime";
 import type {
   AwsClients,
@@ -64,6 +65,7 @@ export class CoreClient implements AwsClients {
   readonly runtime: RuntimeClient;
   readonly gateway: GatewayClient;
   readonly eval: EvalClient;
+  readonly policy: PolicyClient;
 
   readonly projectManager: ProjectManager;
 
@@ -85,6 +87,7 @@ export class CoreClient implements AwsClients {
       this.logger.child({ module: "eval" }),
       config.newSessionId,
     );
+    this.policy = new PolicyClient(this, this.logger.child({ module: "policy" }));
 
     this.projectManager = new FsProjectManager({
       logger: this.logger.child({ module: "projectManager" }),
