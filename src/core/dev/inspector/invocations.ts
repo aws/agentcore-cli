@@ -40,7 +40,10 @@ export async function handleInvocations(
   if (running.protocol === "AGUI") {
     return invokeAguiAgent(running.port, parsed, sessionId, userId, signal);
   }
-  return invokeHttpAgent(running.port, request.body, sessionId, userId, signal);
+  return forwardInvocation(running.port, request.body, sessionId, userId, signal, {
+    accept: "text/event-stream, */*",
+    normalizeSse: true,
+  });
 }
 
 async function forwardInvocation(
@@ -80,19 +83,6 @@ async function forwardInvocation(
         ? transformAgentSse(stream)
         : stream,
   };
-}
-
-function invokeHttpAgent(
-  port: number,
-  body: Buffer,
-  sessionId: string,
-  userId: string | undefined,
-  signal: AbortSignal,
-): Promise<HttpResponse> {
-  return forwardInvocation(port, body, sessionId, userId, signal, {
-    accept: "text/event-stream, */*",
-    normalizeSse: true,
-  });
 }
 
 async function* transformAgentSse(
@@ -191,9 +181,9 @@ async function* transformA2aSse(
   for await (const data of sseData(stream)) {
     try {
       const event = JSON.parse(data) as Record<string, unknown>;
-      const text = extractSseEventText(event, streamedFromStatus);
+      const { text, kind } = extractSseEventText(event, streamedFromStatus);
       if (text) {
-        if (isStatusUpdateEvent(event)) streamedFromStatus = true;
+        if (kind === "status-update") streamedFromStatus = true;
         yield sseEvent(text);
       }
     } catch {
@@ -202,43 +192,36 @@ async function* transformA2aSse(
   }
 }
 
-function isStatusUpdateEvent(event: Record<string, unknown>): boolean {
-  const target = (event.result as Record<string, unknown>) ?? event;
-  return target.kind === "status-update";
-}
-
 // When streamedFromStatus is set, artifact-update text is skipped because status-update already streamed it.
 function extractSseEventText(
   event: Record<string, unknown>,
   streamedFromStatus: boolean,
-): string | null {
+): { text: string | null; kind: string | undefined } {
   const target = (event.result as Record<string, unknown>) ?? event;
   const kind = target.kind as string | undefined;
 
   if (kind === "artifact-update") {
-    if (streamedFromStatus) return null;
+    if (streamedFromStatus) return { text: null, kind };
     const artifact = target.artifact as { parts?: A2aPart[] } | undefined;
-    return extractPartsText(artifact?.parts);
+    return { text: extractPartsText(artifact?.parts), kind };
   }
 
   if (kind === "status-update") {
     const status = target.status as { message?: { parts?: A2aPart[] } } | undefined;
-    if (status?.message?.parts) return extractPartsText(status.message.parts);
-    return null;
+    return { text: status?.message?.parts ? extractPartsText(status.message.parts) : null, kind };
   }
 
-  return extractTaskText(target);
+  return { text: extractTaskText(target), kind };
 }
 
 function extractTaskText(result: Record<string, unknown>): string | null {
   const artifacts = result.artifacts as { parts?: A2aPart[] }[] | undefined;
   if (artifacts) {
-    const texts: string[] = [];
-    for (const artifact of artifacts) {
-      const text = extractPartsText(artifact.parts);
-      if (text) texts.push(text);
-    }
-    if (texts.length > 0) return texts.join("\n");
+    const text = artifacts
+      .map((artifact) => extractPartsText(artifact.parts))
+      .filter((part): part is string => part !== null)
+      .join("\n");
+    if (text) return text;
   }
 
   const status = result.status as { message?: { parts?: A2aPart[] } } | undefined;
@@ -249,16 +232,15 @@ function extractTaskText(result: Record<string, unknown>): string | null {
 type A2aPart = { kind?: string; type?: string; text?: string };
 
 function extractPartsText(parts: A2aPart[] | undefined): string | null {
-  if (!parts) return null;
-  const texts: string[] = [];
-  for (const part of parts) {
-    if ((part.kind === "text" || part.type === "text") && part.text) texts.push(part.text);
-  }
-  return texts.length > 0 ? texts.join("") : null;
+  const text = (parts ?? [])
+    .filter((part) => (part.kind === "text" || part.type === "text") && part.text)
+    .map((part) => part.text ?? "")
+    .join("");
+  return text || null;
 }
 
 // AGUI agents expect a RunAgentInput body, and the typed AG-UI SSE response passes through untouched.
-function invokeAguiAgent(
+async function invokeAguiAgent(
   port: number,
   body: Record<string, unknown> | undefined,
   sessionId: string,
@@ -266,7 +248,7 @@ function invokeAguiAgent(
   signal: AbortSignal,
 ): Promise<HttpResponse> {
   const prompt = asString(body?.prompt);
-  if (!prompt) return Promise.resolve(apiError(400, "prompt is required"));
+  if (!prompt) return apiError(400, "prompt is required");
 
   const aguiBody = JSON.stringify({
     threadId: sessionId,
