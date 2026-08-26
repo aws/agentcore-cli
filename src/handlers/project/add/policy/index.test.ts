@@ -19,12 +19,11 @@ async function withEngine(): Promise<string> {
 }
 
 describe("inferAuthorizationPhase", () => {
-  test.each([
-    [FORBID_ALL, "INITIATE"],
-    [SUPPRESS, "RETURN_OUTPUT"],
-    ["permit (principal, action, resource) when { context.output.done };", "RETURN_OUTPUT"],
-  ])("classifies %s", (statement, phase) => {
-    expect(inferAuthorizationPhase(statement)).toBe(phase);
+  // FORBID_ALL to INITIATE and SUPPRESS to RETURN_OUTPUT are asserted end to end below.
+  test("classifies context.output without suppressOutput as RETURN_OUTPUT", () => {
+    expect(
+      inferAuthorizationPhase("permit (principal, action, resource) when { context.output.done };"),
+    ).toBe("RETURN_OUTPUT");
   });
 });
 

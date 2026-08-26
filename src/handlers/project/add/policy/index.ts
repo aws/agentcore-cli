@@ -12,6 +12,8 @@ export function inferAuthorizationPhase(statement: string): "INITIATE" | "RETURN
   return /\bsuppressOutput\b|context\.output/.test(statement) ? "RETURN_OUTPUT" : "INITIATE";
 }
 
+const PHASES = { initiate: "INITIATE", "return-output": "RETURN_OUTPUT" } as const;
+
 export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "policy",
@@ -80,12 +82,9 @@ export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
         throw new InputValidationError("--generate is not implemented yet");
       }
 
-      const authorizationPhase =
-        flags["authorization-phase"] === undefined
-          ? inferAuthorizationPhase(statement)
-          : flags["authorization-phase"] === "return-output"
-            ? "RETURN_OUTPUT"
-            : "INITIATE";
+      const authorizationPhase = flags["authorization-phase"]
+        ? PHASES[flags["authorization-phase"]]
+        : inferAuthorizationPhase(statement);
 
       const policy: z.input<typeof PolicySchema> = {
         name: flags.name,
