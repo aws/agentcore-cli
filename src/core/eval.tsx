@@ -58,14 +58,19 @@ import {
   type UpdateOnlineEvaluationConfigResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
+  DeleteRecommendationCommand,
   EvaluateCommand,
   GetABTestCommand,
   ListABTestsCommand,
   UpdateABTestCommand,
   DeleteABTestCommand,
   GetBatchEvaluationCommand,
+  GetRecommendationCommand,
   ListBatchEvaluationsCommand,
+  ListRecommendationsCommand,
   StartBatchEvaluationCommand,
+  StartRecommendationCommand,
+  type DeleteRecommendationResponse,
   type EvaluationReferenceInput,
   type EvaluationResultContent,
   type EvaluationTarget,
@@ -75,8 +80,13 @@ import {
   type ABTestExecutionStatus,
   type UpdateABTestResponse,
   type DeleteABTestResponse,
+  type GetRecommendationResponse,
   type ListBatchEvaluationsResponse,
+  type ListRecommendationsResponse,
+  type RecommendationStatus,
   type StartBatchEvaluationResponse,
+  type StartRecommendationRequest,
+  type StartRecommendationResponse,
   type DataSourceConfig as DataPlaneDataSourceConfig,
   type CloudWatchFilterConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
@@ -340,6 +350,39 @@ export class EvalClient implements CoreEvalClient {
     return this.clients
       .control(toClientConfig(options))
       .send(new DeleteEvaluatorCommand({ evaluatorId: id }));
+  }
+
+  async startRecommendation(
+    request: StartRecommendationRequest,
+    options: CoreOptions,
+  ): Promise<StartRecommendationResponse> {
+    return this.clients.data(toClientConfig(options)).send(new StartRecommendationCommand(request));
+  }
+
+  async getRecommendation(id: string, options: CoreOptions): Promise<GetRecommendationResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new GetRecommendationCommand({ recommendationId: id }));
+  }
+
+  async listRecommendations(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    statusFilter: RecommendationStatus | undefined,
+    options: CoreOptions,
+  ): Promise<ListRecommendationsResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new ListRecommendationsCommand({ nextToken, maxResults, statusFilter }));
+  }
+
+  async deleteRecommendation(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteRecommendationResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new DeleteRecommendationCommand({ recommendationId: id }));
   }
 
   // getBatchEvaluation returns the service-side job (status + evaluator summaries

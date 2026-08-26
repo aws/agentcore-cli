@@ -78,7 +78,9 @@ import type {
   ABTestExecutionStatus,
   UpdateABTestResponse,
   DeleteABTestResponse,
+  DeleteRecommendationResponse,
   GetBatchEvaluationResponse,
+  GetRecommendationResponse,
   GetEventInput,
   GetEventOutput,
   GetMemoryRecordInput,
@@ -96,9 +98,13 @@ import type {
   ListEventsOutput,
   ListMemoryRecordsInput,
   ListMemoryRecordsOutput,
+  ListRecommendationsResponse,
   ListSessionsInput,
   ListSessionsOutput,
+  RecommendationStatus,
   StartBatchEvaluationResponse,
+  StartRecommendationRequest,
+  StartRecommendationResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { Core } from "../handlers/types";
 import type { CoreHarnessClient, CreateHarnessInput } from "../handlers/harness/types";
@@ -279,6 +285,12 @@ const DEFAULT_START_BATCH_EVAL_RESPONSE = {
   batchEvaluationId: "batch-eval-test",
   status: "RUNNING",
 } as unknown as StartBatchEvaluationResponse;
+const DEFAULT_START_RECOMMENDATION_RESPONSE = {} as StartRecommendationResponse;
+const DEFAULT_GET_RECOMMENDATION_RESPONSE = {} as GetRecommendationResponse;
+const DEFAULT_LIST_RECOMMENDATIONS_RESPONSE: ListRecommendationsResponse = {
+  recommendationSummaries: [],
+};
+const DEFAULT_DELETE_RECOMMENDATION_RESPONSE = {} as DeleteRecommendationResponse;
 const DEFAULT_UPDATE_DATASET_RESULT: DatasetUpdateResult = {
   datasetId: "dataset-orders-abc123",
   added: 0,
@@ -1370,6 +1382,13 @@ export class TestEvalClient implements CoreEvalClient {
   private updateResponse: UpdateEvaluatorResponse = DEFAULT_UPDATE_EVALUATOR_RESPONSE;
   private getResponse: GetEvaluatorResponse = DEFAULT_GET_EVALUATOR_RESPONSE;
   private deleteResponse: DeleteEvaluatorResponse = DEFAULT_DELETE_EVALUATOR_RESPONSE;
+  private startRecommendationResponse: StartRecommendationResponse =
+    DEFAULT_START_RECOMMENDATION_RESPONSE;
+  private getRecommendationResponse: GetRecommendationResponse =
+    DEFAULT_GET_RECOMMENDATION_RESPONSE;
+  private recommendationListResponses = new Map<string | undefined, ListRecommendationsResponse>();
+  private deleteRecommendationResponse: DeleteRecommendationResponse =
+    DEFAULT_DELETE_RECOMMENDATION_RESPONSE;
   // Online-eval responses, keyed the same way: listOnlineEvaluationConfigs pages
   // by nextToken, the rest are single canned values.
   private onlineEvalListResponses = new Map<
@@ -1464,6 +1483,29 @@ export class TestEvalClient implements CoreEvalClient {
   // setDeleteResponse sets what deleteEvaluator resolves to (when not erroring).
   setDeleteResponse(response: DeleteEvaluatorResponse): this {
     this.deleteResponse = response;
+    return this;
+  }
+
+  setStartRecommendationResponse(response: StartRecommendationResponse): this {
+    this.startRecommendationResponse = response;
+    return this;
+  }
+
+  setGetRecommendationResponse(response: GetRecommendationResponse): this {
+    this.getRecommendationResponse = response;
+    return this;
+  }
+
+  setListRecommendationsResponse(
+    response: ListRecommendationsResponse,
+    forNextToken?: string,
+  ): this {
+    this.recommendationListResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setDeleteRecommendationResponse(response: DeleteRecommendationResponse): this {
+    this.deleteRecommendationResponse = response;
     return this;
   }
 
@@ -1708,6 +1750,48 @@ export class TestEvalClient implements CoreEvalClient {
     this.calls.push({ method: "deleteEvaluator", args: [id, options] });
     if (this.error) throw this.error;
     return this.deleteResponse;
+  }
+
+  async startRecommendation(
+    request: StartRecommendationRequest,
+    options: CoreOptions,
+  ): Promise<StartRecommendationResponse> {
+    this.calls.push({ method: "startRecommendation", args: [request, options] });
+    if (this.error) throw this.error;
+    return this.startRecommendationResponse;
+  }
+
+  async getRecommendation(id: string, options: CoreOptions): Promise<GetRecommendationResponse> {
+    this.calls.push({ method: "getRecommendation", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.getRecommendationResponse;
+  }
+
+  async listRecommendations(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    statusFilter: RecommendationStatus | undefined,
+    options: CoreOptions,
+  ): Promise<ListRecommendationsResponse> {
+    this.calls.push({
+      method: "listRecommendations",
+      args: [nextToken, maxResults, statusFilter, options],
+    });
+    if (this.error) throw this.error;
+    return (
+      this.recommendationListResponses.get(nextToken) ??
+      this.recommendationListResponses.get(undefined) ??
+      DEFAULT_LIST_RECOMMENDATIONS_RESPONSE
+    );
+  }
+
+  async deleteRecommendation(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteRecommendationResponse> {
+    this.calls.push({ method: "deleteRecommendation", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.deleteRecommendationResponse;
   }
 
   async getBatchEvaluation(

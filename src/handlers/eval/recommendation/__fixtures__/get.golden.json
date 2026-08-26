@@ -1,0 +1,83 @@
+{
+  "recommendationId": "agentcore_cli_recommendation_fixture-34E234DD5E",
+  "recommendationArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:recommendation/agentcore_cli_recommendation_fixture-34E234DD5E",
+  "name": "agentcore_cli_recommendation_fixture",
+  "type": "SYSTEM_PROMPT_RECOMMENDATION",
+  "recommendationConfig": {
+    "systemPromptRecommendationConfig": {
+      "systemPrompt": {
+        "text": "You are a concise support assistant. Answer the user's question directly."
+      },
+      "agentTraces": {
+        "sessionSpans": [
+          {
+            "traceId": "0123456789abcdef0123456789abcdef",
+            "endTimeUnixNano": 1750000001000000000,
+            "resource": {
+              "attributes": {
+                "service.name": "agentcore-cli-fixture",
+                "aws.service.type": "gen_ai_agent"
+              }
+            },
+            "kind": "INTERNAL",
+            "flags": 256,
+            "durationNano": 1000000000,
+            "startTimeUnixNano": 1750000000000000000,
+            "body": {
+              "output": {
+                "messages": [
+                  {
+                    "content": [
+                      {
+                        "text": "Two plus two is four."
+                      }
+                    ],
+                    "role": "assistant"
+                  }
+                ]
+              },
+              "input": {
+                "messages": [
+                  {
+                    "content": [
+                      {
+                        "text": "What is two plus two?"
+                      }
+                    ],
+                    "role": "user"
+                  }
+                ]
+              }
+            },
+            "spanId": "0123456789abcdef",
+            "scope": {
+              "name": "agentcore-cli-fixture"
+            },
+            "name": "invoke_agent AgentCore CLI fixture",
+            "attributes": {
+              "gen_ai.agent.name": "AgentCore CLI fixture",
+              "aws.genai.span_kind": "AGENT",
+              "gen_ai.operation.name": "invoke_agent",
+              "session.id": "00000000-0000-4000-8000-000000000001",
+              "gen_ai.system": "strands-agents"
+            },
+            "status": {
+              "code": "OK"
+            }
+          }
+        ]
+      },
+      "evaluationConfig": {
+        "evaluators": [
+          {
+            "evaluatorArn": "arn:aws:bedrock-agentcore:::evaluator/Builtin.Helpfulness"
+          }
+        ]
+      }
+    }
+  },
+  "status": "IN_PROGRESS",
+  "createdAt": "2026-08-26T14:53:00.323Z",
+  "updatedAt": "2026-08-26T14:53:00.933Z",
+  "description": "Golden recommendation fixture"
+}

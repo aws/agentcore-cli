@@ -35,8 +35,14 @@ import type {
   ABTestExecutionStatus,
   UpdateABTestResponse,
   DeleteABTestResponse,
+  DeleteRecommendationResponse,
   GetBatchEvaluationResponse,
+  GetRecommendationResponse,
+  ListRecommendationsResponse,
   ListBatchEvaluationsResponse,
+  RecommendationStatus,
+  StartRecommendationRequest,
+  StartRecommendationResponse,
   StartBatchEvaluationResponse,
   SessionMetadataShape,
   InlineGroundTruth,
@@ -364,6 +370,19 @@ export interface CoreEvalClient {
     options: CoreOptions,
   ): Promise<ListEvaluatorsResponse>;
   deleteEvaluator(id: string, options: CoreOptions): Promise<DeleteEvaluatorResponse>;
+
+  startRecommendation(
+    request: StartRecommendationRequest,
+    options: CoreOptions,
+  ): Promise<StartRecommendationResponse>;
+  getRecommendation(id: string, options: CoreOptions): Promise<GetRecommendationResponse>;
+  listRecommendations(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    statusFilter: RecommendationStatus | undefined,
+    options: CoreOptions,
+  ): Promise<ListRecommendationsResponse>;
+  deleteRecommendation(id: string, options: CoreOptions): Promise<DeleteRecommendationResponse>;
 
   // getBatchEvaluation returns the service-side job and, unless `includeResults`
   // is false, the per-session results read from its per-job CloudWatch stream once
