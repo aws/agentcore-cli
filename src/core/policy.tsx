@@ -112,7 +112,8 @@ export class PolicyClient implements CorePolicyClient {
       }),
     );
     const asset = assets.policyGenerationAssets?.[0];
-    const statement = asset?.definition?.cedar?.statement;
+    // The service returns either plain Cedar or its Dogwood superset member.
+    const statement = asset?.definition?.cedar?.statement ?? asset?.definition?.policy?.statement;
     if (!statement) {
       const findings = (asset?.findings ?? [])
         .map((finding) => `[${finding.type}] ${finding.description}`)

@@ -82,6 +82,22 @@ describe("PolicyClient.generatePolicy", () => {
     expect(messages.some((message) => message.includes("Generating"))).toBe(true);
   });
 
+  test("reads a Dogwood policy definition member", async () => {
+    const { result } = await drain(
+      client({
+        ...HAPPY,
+        assets: {
+          policyGenerationAssets: [
+            { definition: { policy: { statement: "forbid (principal, action, resource);" } } },
+          ],
+        },
+      }),
+      input,
+    );
+    expect(result.statement).toBe("forbid (principal, action, resource);");
+    expect(result.findings).toEqual([]);
+  });
+
   test.each([
     ["engine not deployed", { ...HAPPY, engines: { policyEngines: [] } }, "is not deployed"],
     ["gateway not deployed", { ...HAPPY, gateways: { items: [] } }, "not deployed"],
