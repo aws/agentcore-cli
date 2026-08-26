@@ -40,6 +40,11 @@ on:
         required: false
         type: boolean
         default: false
+      cdk_dist_tag:
+        description: '@aws/agentcore-cdk npm dist-tag to pin the vended CDK template to (default: latest)'
+        required: false
+        type: string
+        default: 'latest'
 
 permissions:
   contents: write
@@ -134,6 +139,13 @@ jobs:
 
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "📦 Preview version: $NEW_VERSION"
+
+      - name: Sync vended CDK version
+        env:
+          CDK_DIST_TAG: ${{ github.event.inputs.cdk_dist_tag }}
+        run: |
+          npx tsx scripts/sync-vended-cdk.ts --tag "${CDK_DIST_TAG:-latest}"
+          npx prettier --write src/assets/cdk/package.json
 
       - name: Regenerate JSON schema
         run: |
