@@ -44,12 +44,25 @@ export function waitForPort(
   const startedAt = Date.now();
   const since = lastActivityAt ?? (() => startedAt);
   return new Promise((resolve, reject) => {
+    let socket: ReturnType<typeof connect> | undefined;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+
+    const cleanup = () => {
+      socket?.destroy();
+      if (retry) clearTimeout(retry);
+      signal.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(new Error("Aborted while waiting for the agent to become ready."));
+    };
     const attempt = () => {
       if (signal.aborted) {
-        reject(new Error("Aborted while waiting for the agent to become ready."));
+        onAbort();
         return;
       }
       if (Date.now() - since() > idleMs) {
+        cleanup();
         reject(
           new Error(
             `Agent produced no output and did not accept connections on port ${port} within ${idleMs / 1000}s.`,
@@ -57,22 +70,22 @@ export function waitForPort(
         );
         return;
       }
-      const socket = connect({ port, host: "127.0.0.1" }, () => {
-        socket.destroy();
+      socket = connect({ port, host: "127.0.0.1" }, () => {
+        cleanup();
         resolve();
       });
-      const onAbort = () => {
-        socket.destroy();
-        reject(new Error("Aborted while waiting for the agent to become ready."));
-      };
-      signal.addEventListener("abort", onAbort, { once: true });
-      socket.once("close", () => signal.removeEventListener("abort", onAbort));
-      if (signal.aborted) onAbort();
       socket.on("error", () => {
-        socket.destroy();
-        setTimeout(attempt, intervalMs);
+        socket?.destroy();
+        socket = undefined;
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        retry = setTimeout(attempt, intervalMs);
       });
     };
+
+    signal.addEventListener("abort", onAbort, { once: true });
     attempt();
   });
 }
