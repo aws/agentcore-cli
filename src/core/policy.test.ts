@@ -63,14 +63,15 @@ async function drain(client: PolicyClient, input: Parameters<PolicyClient["gener
 
 describe("PolicyClient.generatePolicy", () => {
   const input = {
-    projectName: "Proj",
     engineName: "Guardrails",
     gatewayName: "tools",
+    engineServiceName: "Proj_Guardrails",
+    gatewayServiceName: "Proj-tools",
     description: "block hate speech",
   };
 
   function client(responses: Parameters<typeof fakeClients>[0]) {
-    return new PolicyClient(fakeClients(responses), createSilentLogger(), { pollDelayMs: 0 });
+    return new PolicyClient(fakeClients(responses), createSilentLogger(), 0);
   }
 
   test("resolves deployed ids, generates, and returns statement with findings", async () => {
@@ -81,38 +82,16 @@ describe("PolicyClient.generatePolicy", () => {
     expect(messages.some((message) => message.includes("Generating"))).toBe(true);
   });
 
-  test("uses the only deployed project gateway when none is named", async () => {
-    const { result } = await drain(client(HAPPY), { ...input, gatewayName: undefined });
-    expect(result.statement).toBe("forbid (principal, action, resource);");
-  });
-
   test.each([
     ["engine not deployed", { ...HAPPY, engines: { policyEngines: [] } }, "is not deployed"],
     ["gateway not deployed", { ...HAPPY, gateways: { items: [] } }, "not deployed"],
-    [
-      "multiple gateways without --gateway",
-      {
-        ...HAPPY,
-        gateways: {
-          items: [
-            { name: "Proj-tools", gatewayId: "gw-1" },
-            { name: "Proj-search", gatewayId: "gw-2" },
-          ],
-        },
-      },
-      "pass --gateway to choose one",
-    ],
     [
       "generation failed",
       { ...HAPPY, get: { status: "GENERATE_FAILED", statusReasons: ["bad input"] } },
       "bad input",
     ],
     ["no assets", { ...HAPPY, assets: { policyGenerationAssets: [] } }, "no generated policy"],
-  ])("fails when %s", async (label, responses, message) => {
-    const generateInput =
-      label === "multiple gateways without --gateway"
-        ? { ...input, gatewayName: undefined }
-        : input;
-    await expect(drain(client(responses), generateInput)).rejects.toThrow(message);
+  ])("fails when %s", async (_label, responses, message) => {
+    await expect(drain(client(responses), input)).rejects.toThrow(message);
   });
 });

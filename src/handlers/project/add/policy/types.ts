@@ -1,9 +1,12 @@
 import type { CoreOptions } from "../../../../core/types";
 
 export type GeneratePolicyInput = {
-  projectName: string;
+  /** Project-spec names, used in progress and error messages. */
   engineName: string;
-  gatewayName?: string;
+  gatewayName: string;
+  /** Exact deployed service names the control-plane lookups match against. */
+  engineServiceName: string;
+  gatewayServiceName: string;
   description: string;
 };
 

@@ -49,3 +49,10 @@ export const PolicyEngineSchema = z.object({
     ),
 });
 export type PolicyEngine = z.infer<typeof PolicyEngineSchema>;
+
+/**
+ The deployed service name of a policy engine; mirrors the L3 AgentCorePolicyEngine construct's rule.
+**/
+export function policyEngineResourceName(projectName: string, engineName: string): string {
+  return `${projectName}_${engineName}`;
+}

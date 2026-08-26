@@ -1,7 +1,8 @@
 import z from "zod";
 import { InputValidationError } from "../../../../errors";
 import { SourceResolver } from "../../../../io";
-import type { PolicySchema } from "../../../../projectSchemas/policy";
+import { gatewayResourceName } from "../../../../projectSchemas/gateway";
+import { policyEngineResourceName, type PolicySchema } from "../../../../projectSchemas/policy";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import { coreOptsFromCtx } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
@@ -81,24 +82,43 @@ export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
           sourceFile = flags.statement.slice("file://".length);
         }
       } else {
+        const gateways = project.spec.agentCoreGateways;
+        const gateway = flags.gateway
+          ? gateways.find((candidate) => candidate.name === flags.gateway)
+          : gateways.length === 1
+            ? gateways[0]
+            : undefined;
+        if (flags.gateway && !gateway) {
+          throw new InputValidationError(
+            `gateway '${flags.gateway}' does not exist in agentCoreGateways[]`,
+          );
+        }
+        if (!gateway) {
+          throw new InputValidationError(
+            gateways.length === 0
+              ? "--generate needs a deployed gateway; add one to this project and deploy it first"
+              : `this project declares multiple gateways: ${gateways
+                  .map((candidate) => candidate.name)
+                  .join(", ")}; pass --gateway to choose one`,
+          );
+        }
+
         const generator = config.policy.generatePolicy(
           {
-            projectName: project.name,
             engineName: flags.engine,
-            gatewayName: flags.gateway,
+            gatewayName: gateway.name,
+            engineServiceName: policyEngineResourceName(project.name, flags.engine),
+            gatewayServiceName: gatewayResourceName(project.name, gateway),
             description: flags.generate!,
           },
           coreOptsFromCtx(ctx),
         );
-        let generated: GeneratedPolicy;
-        while (true) {
-          const next = await generator.next();
-          if (next.done) {
-            generated = next.value;
-            break;
-          }
+        let next = await generator.next();
+        while (!next.done) {
           config.io.stderr.write(`${next.value.message}\n`);
+          next = await generator.next();
         }
+        const generated: GeneratedPolicy = next.value;
         statement = generated.statement;
         config.io.stderr.write(`Generated Cedar policy:\n${statement}\n`);
         for (const finding of generated.findings) {

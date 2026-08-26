@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import {
   GetGatewayCommand,
   GetPolicyGenerationCommand,
@@ -21,20 +22,12 @@ import { toClientConfig } from "./utils";
 const GENERATION_POLL_DELAY_MS = 3_000;
 const GENERATION_MAX_POLLS = 40;
 
-type PolicyClientConfig = {
-  pollDelayMs?: number;
-};
-
 export class PolicyClient implements CorePolicyClient {
-  private readonly pollDelayMs: number;
-
   constructor(
     private readonly clients: AwsClients,
     private readonly logger: Logger,
-    config: PolicyClientConfig = {},
-  ) {
-    this.pollDelayMs = config.pollDelayMs ?? GENERATION_POLL_DELAY_MS;
-  }
+    private readonly pollDelayMs = GENERATION_POLL_DELAY_MS,
+  ) {}
 
   async *generatePolicy(
     input: GeneratePolicyInput,
@@ -43,14 +36,13 @@ export class PolicyClient implements CorePolicyClient {
     const control = this.clients.control(toClientConfig(options));
 
     yield { message: `Resolving deployed policy engine '${input.engineName}'` };
-    const engineServiceName = `${input.projectName}_${input.engineName}`;
     let engine: PolicyEngineSummary | undefined;
     let engineToken: string | undefined;
     do {
       const page = await control.send(
         new ListPolicyEngineSummariesCommand({ nextToken: engineToken }),
       );
-      engine = page.policyEngines?.find((candidate) => candidate.name === engineServiceName);
+      engine = page.policyEngines?.find((candidate) => candidate.name === input.engineServiceName);
       engineToken = page.nextToken;
     } while (!engine && engineToken);
     if (!engine?.policyEngineId) {
@@ -59,39 +51,24 @@ export class PolicyClient implements CorePolicyClient {
       );
     }
 
-    yield { message: "Resolving deployed gateway" };
-    const gatewayServicePrefix = `${input.projectName}-`;
-    const deployed: GatewaySummary[] = [];
+    yield { message: `Resolving deployed gateway '${input.gatewayName}'` };
+    let deployed: GatewaySummary | undefined;
     let gatewayToken: string | undefined;
     do {
       const page = await control.send(new ListGatewaysCommand({ nextToken: gatewayToken }));
-      for (const candidate of page.items ?? []) {
-        const matches = input.gatewayName
-          ? candidate.name === `${gatewayServicePrefix}${input.gatewayName}`
-          : candidate.name?.startsWith(gatewayServicePrefix);
-        if (matches) deployed.push(candidate);
-      }
+      deployed = page.items?.find((candidate) => candidate.name === input.gatewayServiceName);
       gatewayToken = page.nextToken;
-    } while (gatewayToken);
-    if (deployed.length === 0) {
+    } while (!deployed && gatewayToken);
+    if (!deployed) {
       throw new ResourceNotFoundError(
-        input.gatewayName
-          ? `gateway '${input.gatewayName}' is not deployed; run 'agentcore project deploy' first`
-          : `no deployed gateway found for project '${input.projectName}'; deploy one or pass --gateway`,
-      );
-    }
-    if (!input.gatewayName && deployed.length > 1) {
-      throw new AgentCoreCLIError(
-        `multiple deployed gateways found: ${deployed
-          .map((candidate) => candidate.name)
-          .join(", ")}; pass --gateway to choose one`,
+        `gateway '${input.gatewayName}' is not deployed; run 'agentcore project deploy' first`,
       );
     }
     const gateway = await control.send(
-      new GetGatewayCommand({ gatewayIdentifier: deployed[0]!.gatewayId }),
+      new GetGatewayCommand({ gatewayIdentifier: deployed.gatewayId }),
     );
     if (!gateway.gatewayArn) {
-      throw new AgentCoreCLIError(`could not resolve the ARN of gateway '${deployed[0]!.name}'`);
+      throw new AgentCoreCLIError(`could not resolve the ARN of gateway '${input.gatewayName}'`);
     }
 
     yield { message: "Generating a Cedar policy from the description (may take a minute)" };
@@ -110,7 +87,7 @@ export class PolicyClient implements CorePolicyClient {
     let status: string | undefined = "GENERATING";
     let statusReasons: string[] | undefined;
     for (let poll = 0; poll < GENERATION_MAX_POLLS && status === "GENERATING"; poll++) {
-      await new Promise((resolve) => setTimeout(resolve, this.pollDelayMs));
+      await sleep(this.pollDelayMs);
       const current = await control.send(
         new GetPolicyGenerationCommand({
           policyGenerationId: started.policyGenerationId,

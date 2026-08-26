@@ -2239,7 +2239,7 @@ export class TestPolicyClient implements CorePolicyClient {
   ): AsyncGenerator<{ message: string }, GeneratedPolicy> {
     this.generateCalls.push(input);
     if (this.generateError) throw this.generateError;
-    yield { message: "Generating a Cedar policy from the description (may take a minute)" };
+    yield { message: "generating" };
     return this.generateResult;
   }
 }

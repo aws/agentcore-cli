@@ -433,6 +433,17 @@ export type GatewayPolicyEngineConfiguration = z.infer<
 >;
 export const GatewayProtocolTypeSchema = z.enum(["MCP", "None"]);
 export type GatewayProtocolType = z.infer<typeof GatewayProtocolTypeSchema>;
+
+/**
+ The deployed service name of a gateway; mirrors the L3 Gateway construct's rule.
+**/
+export function gatewayResourceName(
+  projectName: string,
+  gateway: { name: string; resourceName?: string },
+): string {
+  return gateway.resourceName ?? `${projectName}-${gateway.name}`;
+}
+
 export const AgentCoreGatewaySchema = z
   .object({
     name: GatewayNameSchema,

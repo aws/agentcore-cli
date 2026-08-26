@@ -146,6 +146,7 @@ describe("project add policy", () => {
 
   test("adds a generated policy and surfaces findings", async () => {
     const projectRoot = await withEngine();
+    await run(["add", "gateway", "--name", "tools"]);
     const core = new TestCoreClient();
     core.policy.generateResult = {
       statement: SUPPRESS,
@@ -172,6 +173,8 @@ describe("project add policy", () => {
     expect(core.policy.generateCalls[0]).toMatchObject({
       engineName: "Guardrails",
       gatewayName: "tools",
+      engineServiceName: "TestProject_Guardrails",
+      gatewayServiceName: "TestProject-tools",
       description: "block hate speech",
     });
     expect(io.stderr()).toContain("Generated Cedar policy:");
@@ -183,8 +186,29 @@ describe("project add policy", () => {
     });
   });
 
+  test.each([
+    ["an unknown --gateway", ["--gateway", "missing"], "does not exist in agentCoreGateways[]"],
+    ["no gateways in the project", [], "add one to this project"],
+  ])("rejects --generate with %s", async (_label, gatewayArgs, message) => {
+    await withEngine();
+    await expect(
+      run([
+        "add",
+        "policy",
+        "--engine",
+        "Guardrails",
+        "--name",
+        "Gen",
+        "--generate",
+        "x",
+        ...gatewayArgs,
+      ]),
+    ).rejects.toThrow(message);
+  });
+
   test("fails without writing when generation fails", async () => {
     const projectRoot = await withEngine();
+    await run(["add", "gateway", "--name", "tools"]);
     const core = new TestCoreClient();
     core.policy.generateError = new Error("policy engine 'Guardrails' is not deployed");
 
