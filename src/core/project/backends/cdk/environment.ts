@@ -60,7 +60,8 @@ export function readBootstrapState(stacks?: Stack[]): Exclude<BootstrapState, { 
     : { kind: "outdated", version };
 }
 
-export function isBootstrapStackNotFound(error: unknown): boolean {
+/** True when CloudFormation reports the stack does not exist (its "not found" signal is a thrown ValidationError, not an empty result). */
+export function isStackNotFound(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const candidate = error as { name?: unknown; message?: unknown };
   return (
@@ -92,7 +93,7 @@ export async function probeBootstrap(
   try {
     return readBootstrapState(await read(region, credentials));
   } catch (error) {
-    if (isBootstrapStackNotFound(error)) return { kind: "absent" };
+    if (isStackNotFound(error)) return { kind: "absent" };
     throw error;
   }
 }

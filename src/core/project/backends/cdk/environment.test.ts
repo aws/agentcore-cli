@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Stack } from "@aws-sdk/client-cloudformation";
-import { isBootstrapStackNotFound, probeBootstrap, readBootstrapState } from "./environment";
+import { isStackNotFound, probeBootstrap, readBootstrapState } from "./environment";
 import type { CdkCredentialProvider } from "./toolkit";
 
 const credentials: CdkCredentialProvider = async () => ({
@@ -69,7 +69,7 @@ describe("probeBootstrap", () => {
       name: "ValidationError",
     });
 
-    expect(isBootstrapStackNotFound(notFound)).toBe(true);
+    expect(isStackNotFound(notFound)).toBe(true);
     expect(
       await probeBootstrap("us-east-1", credentials, async () => {
         throw notFound;
