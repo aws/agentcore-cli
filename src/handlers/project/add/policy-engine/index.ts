@@ -1,12 +1,16 @@
 import z from "zod";
 import { InputValidationError } from "../../../../errors";
-import {
-  policyEngineResourceName,
-  type PolicyEngineSchema,
-} from "../../../../projectSchemas/policy";
+import type { PolicyEngineSchema } from "../../../../projectSchemas/policy";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import { parseTags } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
+
+/**
+ The deployed service name of a policy engine; mirrors the L3 AgentCorePolicyEngine construct's rule.
+**/
+export function policyEngineResourceName(projectName: string, engineName: string): string {
+  return `${projectName}_${engineName}`;
+}
 
 export const createAddPolicyEngineHandler = (config: AddProjectResourceConfig) =>
   createHandler({
