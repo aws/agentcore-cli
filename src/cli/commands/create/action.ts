@@ -240,6 +240,8 @@ export async function createProjectWithAgent(options: CreateWithAgentOptions): P
         configBaseDir,
         efsAccessPoints,
         s3AccessPoints,
+        capacityProviderConfiguration,
+        capacityProviderVolumes,
       });
       if (!importResult.success) {
         onProgress?.('Import agent from Bedrock', 'error');

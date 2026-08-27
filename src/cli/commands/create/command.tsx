@@ -390,6 +390,14 @@ async function handleCreateCLI(options: CreateOptions): Promise<void> {
           '--network-mode cannot be set when attaching a capacity provider (--capacity-provider) — the capacity provider supplies the network topology. Remove --network-mode.'
         );
       }
+      // A newly-scaffolded project has no capacityProviders[] for an in-project name to resolve
+      // against, so only an external capacity provider ARN can be attached at create time. Reject
+      // the name form up front rather than scaffolding a project that then fails validation.
+      if (options.capacityProvider && !isCapacityProviderArn(options.capacityProvider)) {
+        throw new ValidationError(
+          `--capacity-provider "${options.capacityProvider}" is a capacity provider name, but a new project has no capacity providers to reference by name. Pass an external capacity provider ARN, or scaffold the project first and then run "agentcore add capacity-provider" followed by "agentcore add agent --capacity-provider ${options.capacityProvider}".`
+        );
+      }
       const cpVolumePairs = zipCapacityProviderVolumePairs(options.cpVolumeName ?? [], options.cpVolumeMountPath ?? []);
       if (!cpVolumePairs.success) {
         throw new ValidationError(cpVolumePairs.error);

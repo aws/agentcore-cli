@@ -5,6 +5,8 @@
  */
 import { APP_DIR, ConfigIO, toError } from '../../../../lib';
 import type {
+  CapacityProviderConfiguration,
+  CapacityProviderVolumeConfig,
   EfsAccessPointConfig,
   RuntimeAuthorizerType,
   S3FilesAccessPointConfig,
@@ -38,6 +40,10 @@ export interface ExecuteImportAgentParams {
   sessionStorageMountPath?: string;
   efsAccessPoints?: EfsAccessPointConfig[];
   s3AccessPoints?: S3FilesAccessPointConfig[];
+  /** Attach the imported runtime to a capacity provider (in-project sibling by name or external ARN). */
+  capacityProviderConfiguration?: CapacityProviderConfiguration;
+  /** Capacity-provider volume mounts (require capacityProviderConfiguration). */
+  capacityProviderVolumes?: CapacityProviderVolumeConfig[];
 }
 
 export async function executeImportAgent(
@@ -58,6 +64,8 @@ export async function executeImportAgent(
     sessionStorageMountPath,
     efsAccessPoints,
     s3AccessPoints,
+    capacityProviderConfiguration,
+    capacityProviderVolumes,
   } = params;
   const projectRoot = dirname(configBaseDir);
   const agentPath = join(projectRoot, APP_DIR, name);
@@ -111,6 +119,10 @@ export async function executeImportAgent(
       sessionStorageMountPath,
       efsAccessPoints,
       s3AccessPoints,
+      // A capacity provider supplies its own network topology; mapGenerateConfigToAgent omits
+      // networkMode/networkConfig when a CP is attached, so the persisted spec stays schema-valid.
+      capacityProviderConfiguration,
+      capacityProviderVolumes,
     };
     await writeAgentToProject(generateConfig, { configBaseDir });
 

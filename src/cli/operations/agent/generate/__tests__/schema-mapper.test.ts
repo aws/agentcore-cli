@@ -1,3 +1,4 @@
+import { AgentEnvSpecSchema } from '../../../../../schema';
 import { computeManagedOAuthCredentialName } from '../../../../primitives/credential-utils.js';
 import type { AddAgentConfig } from '../../../../tui/screens/agent/types.js';
 import { mapAddAgentConfigToGenerateConfig, mapByoConfigToAgent } from '../../../../tui/screens/agent/useAddAgent.js';
@@ -409,6 +410,35 @@ describe('mapByoConfigToAgent - VPC support', () => {
     });
     expect(result.networkMode).toBe('PUBLIC');
     expect(result.networkConfig).toBeUndefined();
+  });
+});
+
+describe('mapByoConfigToAgent - capacity provider', () => {
+  const baseByoConfig = {
+    name: 'MyByo',
+    agentType: 'byo' as const,
+    codeLocation: 'app/MyByo/',
+    entrypoint: 'main.py',
+    language: 'Python' as const,
+    buildType: 'CodeZip' as const,
+    protocol: 'HTTP' as const,
+    framework: 'Strands' as const,
+    modelProvider: 'Bedrock' as const,
+    pythonVersion: 'PYTHON_3_12' as const,
+    memory: 'none' as const,
+  };
+
+  // The AgentEnvSpec schema rejects a capacityProviderConfiguration combined with any networkMode, so
+  // the BYO mapper must leave networkMode unset for a CP-attached runtime (not default it to PUBLIC).
+  it('omits networkMode/networkConfig and stays schema-valid when a CP is attached', () => {
+    const result = mapByoConfigToAgent({
+      ...baseByoConfig,
+      capacityProviderConfiguration: { capacityProviderName: 'my_pool' },
+    });
+    expect(result.networkMode).toBeUndefined();
+    expect(result.networkConfig).toBeUndefined();
+    expect(result.capacityProviderConfiguration).toEqual({ capacityProviderName: 'my_pool' });
+    expect(AgentEnvSpecSchema.safeParse(result).success).toBe(true);
   });
 });
 

@@ -326,7 +326,10 @@ export function useGenerateWizard(options?: UseGenerateWizardOptions) {
           // The steps array hasn't updated yet, so we compute the first sub-step manually
           if (selected.has('dockerfile') && config.buildType === 'Container') {
             setStep('dockerfile');
-          } else if (selected.has('network')) {
+          } else if (selected.has('network') && !selected.has('capacityProvider')) {
+            // A capacity provider supplies its own network topology, so when both are selected the
+            // network steps are dropped from `steps` (CP wins). Match that precedence here — routing
+            // to networkMode would land on a step absent from `steps` and skip the CP screen.
             setStep('networkMode');
           } else if (selected.has('headers')) {
             setStep('requestHeaderAllowlist');

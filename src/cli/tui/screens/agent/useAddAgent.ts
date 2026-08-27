@@ -81,7 +81,10 @@ export type AddAgentOutcome = AddAgentCreateResult | AddAgentByoResult | AddAgen
  * Maps AddAgentConfig (from BYO wizard) to v2 AgentEnvSpec for schema persistence.
  */
 export function mapByoConfigToAgent(config: AddAgentConfig): AgentEnvSpec {
-  const networkMode = config.networkMode ?? 'PUBLIC';
+  // A capacity provider supplies its own network topology, so a CP-attached runtime carries no
+  // networkMode/networkConfig at all — the AgentEnvSpec schema rejects a capacityProviderConfiguration
+  // combined with either. Leave networkMode unset when a CP is attached (do not default to PUBLIC).
+  const networkMode = config.capacityProviderConfiguration ? undefined : (config.networkMode ?? 'PUBLIC');
   return {
     name: config.name,
     build: config.buildType,
@@ -90,7 +93,7 @@ export function mapByoConfigToAgent(config: AddAgentConfig): AgentEnvSpec {
     codeLocation: config.codeLocation as DirectoryPath,
     runtimeVersion: config.pythonVersion,
     protocol: config.protocol ?? 'HTTP',
-    networkMode,
+    ...(networkMode !== undefined && { networkMode }),
     ...(networkMode === 'VPC' &&
       config.subnets &&
       config.securityGroups && {
@@ -406,6 +409,8 @@ async function handleImportPath(
     sessionStorageMountPath: config.sessionStorageMountPath,
     efsAccessPoints: config.efsAccessPoints,
     s3AccessPoints: config.s3AccessPoints,
+    capacityProviderConfiguration: config.capacityProviderConfiguration,
+    capacityProviderVolumes: config.capacityProviderVolumes,
   });
 
   if (!result.success) {

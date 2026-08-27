@@ -1,4 +1,4 @@
-import { CapacityProviderSchema, isValidOperatorRoleArn } from '../capacity-provider';
+import { CapacityProviderArnSchema, CapacityProviderSchema, isValidOperatorRoleArn } from '../capacity-provider';
 import { describe, expect, it } from 'vitest';
 
 const validCp = {
@@ -94,5 +94,35 @@ describe('isValidOperatorRoleArn', () => {
   it('rejects non-role and malformed ARNs', () => {
     expect(isValidOperatorRoleArn('arn:aws:iam::123456789012:user/Bob')).toBe(false);
     expect(isValidOperatorRoleArn('not-an-arn')).toBe(false);
+  });
+});
+
+describe('CapacityProviderArnSchema', () => {
+  it('accepts an ARN whose resource is a full capacityProviderId ({name}-{10 alnum})', () => {
+    expect(
+      CapacityProviderArnSchema.safeParse(
+        'arn:aws:bedrock-agentcore:us-west-2:123456789012:capacity-provider/my_pool-a1b2c3d4e5'
+      ).success
+    ).toBe(true);
+    // Partition-agnostic.
+    expect(
+      CapacityProviderArnSchema.safeParse(
+        'arn:aws-us-gov:bedrock-agentcore:us-gov-west-1:123456789012:capacity-provider/Pool-AbCdEfGhIj'
+      ).success
+    ).toBe(true);
+  });
+
+  it('rejects a free-form resource segment (bad external ARN caught before deploy)', () => {
+    // Missing the `-{10 alnum}` id suffix — the shape the service actually requires.
+    expect(
+      CapacityProviderArnSchema.safeParse('arn:aws:bedrock-agentcore:us-west-2:123456789012:capacity-provider/x')
+        .success
+    ).toBe(false);
+    // Suffix too short.
+    expect(
+      CapacityProviderArnSchema.safeParse(
+        'arn:aws:bedrock-agentcore:us-west-2:123456789012:capacity-provider/pool-abc123'
+      ).success
+    ).toBe(false);
   });
 });

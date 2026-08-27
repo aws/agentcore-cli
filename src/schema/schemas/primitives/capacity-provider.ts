@@ -63,12 +63,21 @@ export function isValidOperatorRoleArn(value: string): boolean {
 // NOTE: This block is duplicated in @aws/agentcore-cdk. Keep the two in sync.
 // ============================================================================
 
-/** Partition-agnostic capacity-provider ARN (arn:[^:]+: per multi-partition rules). */
-export const CAPACITY_PROVIDER_ARN_PATTERN = /^arn:[^:]+:bedrock-agentcore:[a-z0-9-]+:\d{12}:capacity-provider\/.+$/;
+/**
+ * Partition-agnostic capacity-provider ARN (arn:[^:]+: per multi-partition rules). The resource
+ * segment is the service capacityProviderId — `{name}-{10 alnum}` — not a free-form string, so a
+ * malformed external ARN is rejected at `add`/validate time instead of only failing at deploy.
+ * Keep the id shape in sync with CAPACITY_PROVIDER_ID_PATTERN (cli/commands/capacity-provider/constants).
+ */
+export const CAPACITY_PROVIDER_ARN_PATTERN =
+  /^arn:[^:]+:bedrock-agentcore:[a-z0-9-]+:\d{12}:capacity-provider\/[a-zA-Z][a-zA-Z0-9_]{0,47}-[a-zA-Z0-9]{10}$/;
 
 export const CapacityProviderArnSchema = z
   .string()
-  .regex(CAPACITY_PROVIDER_ARN_PATTERN, 'Must be a valid bedrock-agentcore capacity provider ARN');
+  .regex(
+    CAPACITY_PROVIDER_ARN_PATTERN,
+    'Must be a valid bedrock-agentcore capacity provider ARN (…:capacity-provider/{name}-{10 alphanumerics})'
+  );
 
 /**
  * Route a `--capacity-provider <name-or-arn>` value: an `arn:` prefix means an

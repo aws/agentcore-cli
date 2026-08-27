@@ -133,6 +133,25 @@ describe('useGenerateWizard — advanced config gate', () => {
       vi.useRealTimers();
     });
 
+    it('setAdvanced with network AND capacityProvider routes to capacityProvider (CP wins, network skipped)', () => {
+      vi.useFakeTimers();
+      const { ref, lastFrame } = setup();
+      walkToAdvanced(ref);
+
+      // A capacity provider supplies its own network topology, so the steps memo drops the network
+      // steps when both are selected. The routing must match — landing on networkMode (absent from
+      // steps) would fall through to confirm and skip the capacity-provider screen entirely.
+      act(() => ref.current!.wizard.setAdvanced(['network', 'capacityProvider']));
+      act(() => {
+        vi.runAllTimers();
+      });
+
+      const frame = lastFrame()!;
+      expect(frame).toContain('step:capacityProvider');
+      expect(frame).not.toContain('step:networkMode');
+      vi.useRealTimers();
+    });
+
     it('setAdvanced with settings injects sub-steps after advanced', () => {
       const { ref } = setup();
       walkToAdvanced(ref);
