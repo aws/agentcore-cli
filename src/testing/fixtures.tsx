@@ -5,8 +5,10 @@ import type { BedrockAgentCoreControlClient } from "@aws-sdk/client-bedrock-agen
 import type { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import type { IAMClient } from "@aws-sdk/client-iam";
 import type { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
+import type { CloudFormationClient } from "@aws-sdk/client-cloudformation";
 import type {
   ClientConfig,
+  CreateCloudFormationClient,
   CreateControlClient,
   CreateDataClient,
   CreateIamClient,
@@ -14,6 +16,7 @@ import type {
   CoreFetch,
 } from "../core/types";
 import {
+  createCloudFormationClient,
   createControlClient,
   createDataClient,
   createIamClient,
@@ -215,12 +218,19 @@ function makeRecordingSend<C extends { send: (command: any) => Promise<any> }>(
 // (parsing → middleware → handler → CoreClient) against recorded data. The fake
 // clients only implement `.send()`, which is all CoreClient uses.
 export function fixtureFactories(dir: string): {
+  createCloudFormationClient: CreateCloudFormationClient;
   createControlClient: CreateControlClient;
   createDataClient: CreateDataClient;
   createIamClient: CreateIamClient;
   createLogsClient: CreateLogsClient;
 } {
   return {
+    createCloudFormationClient: (config) => {
+      const real = createCloudFormationClient(config);
+      return {
+        send: makeRecordingSend(real, dir),
+      } as unknown as CloudFormationClient;
+    },
     createControlClient: (config: ClientConfig) => {
       // The real client is only constructed to satisfy record mode; in replay
       // mode its `.send()` is never reached.

@@ -11,6 +11,8 @@ import {
 } from "../../../io";
 import type { Logger } from "../../../logging";
 import type { DeployBackendInput, ProjectBackend } from "./types";
+import { createCloudFormationClient } from "../../factories";
+import type { CreateCloudFormationClient } from "../../types";
 import {
   countDeployableResources,
   stackArtifactForTarget,
@@ -18,6 +20,8 @@ import {
 } from "./cdk/assembly";
 import { readDeployedState, removeTargetState, updateTargetState } from "./cdk/deployedState";
 import {
+  bootstrapStackReader,
+  createCloudFormationStackReader,
   probeBootstrap,
   probeStack,
   resolveAwsAccount,
@@ -40,6 +44,7 @@ export type CdkBackendConfig = {
   runner?: ProcessRunner;
   checkTool?: typeof requireTool;
   json?: ReadWriteJson;
+  createCloudFormationClient?: CreateCloudFormationClient;
   cdk?: CdkRunner;
   resolveCredentials?: CdkCredentialResolver;
   bootstrap?: BootstrapProbe;
@@ -69,8 +74,16 @@ export class CdkBackend implements ProjectBackend {
     this.cdk = config.cdk ?? createCdkRunner(config.logger);
     this.resolveCredentials =
       config.resolveCredentials ?? createCdkCredentialResolver(config.logger);
-    this.bootstrap = config.bootstrap ?? probeBootstrap;
-    this.stack = config.stack ?? probeStack;
+    const readStack = createCloudFormationStackReader(
+      config.createCloudFormationClient ?? createCloudFormationClient,
+    );
+    const readBootstrapStack = bootstrapStackReader(readStack);
+    this.bootstrap =
+      config.bootstrap ??
+      ((region, credentials) => probeBootstrap(region, credentials, readBootstrapStack));
+    this.stack =
+      config.stack ??
+      ((stackName, region, credentials) => probeStack(stackName, region, credentials, readStack));
     this.resolveAccount = config.resolveAccount ?? resolveAwsAccount;
     this.loadBootstrapTemplate = config.loadBootstrapTemplate ?? loadBootstrapTemplate;
   }
@@ -207,15 +220,13 @@ export class CdkBackend implements ProjectBackend {
       );
     }
 
-    const confirmed =
-      input.confirmTeardown ||
-      (await input.requestTeardownConfirmation?.({
-        projectName: project.name,
-        targetName: target.name,
-        stackName: artifact.stackName,
-        account: target.account,
-        region: target.region,
-      }));
+    const confirmed = await input.confirmTeardown({
+      projectName: project.name,
+      targetName: target.name,
+      resourceDescription: `stack '${artifact.stackName}' and every resource in it`,
+      account: target.account,
+      region: target.region,
+    });
     if (!confirmed) {
       throw new ProjectStateError(
         `Project '${project.name}' declares no resources to deploy, so deploying to target ` +

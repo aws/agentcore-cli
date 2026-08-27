@@ -159,7 +159,7 @@ import type {
 } from "../handlers/eval/types";
 import { isTerminalStatus } from "../core/batchEvaluationResults";
 import { abortable } from "../core/abortable";
-import type { CoreOptions } from "../core/types";
+import type { CoreOptions, CreateCloudFormationClient } from "../core/types";
 import type { ProjectManager } from "../handlers/project/types";
 import type { Logger } from "../logging";
 import type { ReadWriteJson } from "../io";
@@ -1208,6 +1208,7 @@ type TestCoreClientOptions = {
   logger?: Logger;
   json?: ReadWriteJson;
   backends?: Partial<Record<ManagedBy, ProjectBackend>>;
+  createCloudFormationClient?: CreateCloudFormationClient;
 };
 
 export class TestIdentityClient implements CoreIdentityClient {
@@ -2238,6 +2239,7 @@ export class TestCoreClient implements Core {
   constructor(options?: TestCoreClientOptions) {
     this.projectManager = new FsProjectManager({
       logger: options?.logger ?? createSilentLogger(),
+      createCloudFormationClient: options?.createCloudFormationClient,
       json: options?.json,
       backends: options?.backends,
       runner: async (command, { cwd }) => {

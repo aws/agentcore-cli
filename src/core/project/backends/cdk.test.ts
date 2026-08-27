@@ -22,7 +22,7 @@ const TARGET = {
 const METADATA_ONLY = { CDKMetadata: { Type: "AWS::CDK::Metadata" } };
 
 function deployInput(overrides: Partial<DeployBackendInput> = {}): DeployBackendInput {
-  return { target: TARGET, confirmTeardown: false, ...overrides };
+  return { target: TARGET, confirmTeardown: async () => false, ...overrides };
 }
 
 const tempDirectories: string[] = [];
@@ -367,7 +367,7 @@ describe("CdkBackend.deploy", () => {
         subject.backend.deploy(
           input,
           deployInput({
-            requestTeardownConfirmation: async (request) => {
+            confirmTeardown: async (request) => {
               requests.push(request);
               return false;
             },
@@ -380,7 +380,7 @@ describe("CdkBackend.deploy", () => {
       {
         projectName: "example",
         targetName: "default",
-        stackName: "AgentCore-example-default-0",
+        resourceDescription: "stack 'AgentCore-example-default-0' and every resource in it",
         account: TARGET.account,
         region: TARGET.region,
       },
@@ -416,23 +416,16 @@ describe("CdkBackend.deploy", () => {
       }),
     );
     const subject = harness();
-    let prompted = false;
-
     const deployed = await collectDeploy(
       subject.backend.deploy(
         input,
         deployInput({
-          confirmTeardown: true,
-          requestTeardownConfirmation: async () => {
-            prompted = true;
-            return false;
-          },
+          confirmTeardown: async () => true,
         }),
       ),
     );
 
     expect(deployed.result).toEqual({ outputs: {}, tornDown: true });
-    expect(prompted).toBe(false);
     expect(deployed.events).toContainEqual({
       message: "Removing stack AgentCore-example-default-0",
     });
@@ -453,7 +446,9 @@ describe("CdkBackend.deploy", () => {
     const subject = harness({ stackExists: false });
 
     await expect(
-      collectDeploy(subject.backend.deploy(input, deployInput({ confirmTeardown: true }))),
+      collectDeploy(
+        subject.backend.deploy(input, deployInput({ confirmTeardown: async () => true })),
+      ),
     ).rejects.toThrow(/no stack .* exists .* to remove.*Add a resource/s);
     expect(subject.runs).toEqual([]);
   });

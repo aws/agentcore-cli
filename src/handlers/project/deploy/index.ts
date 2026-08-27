@@ -44,10 +44,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       // generator's return value, which `for await` discards.
       const deployment = config.projectManager.deploy(project, {
         target: flags.target,
-        confirmTeardown: flags.yes,
-        ...(canPrompt && {
-          requestTeardownConfirmation: createTeardownConfirmationHandler(config.io),
-        }),
+        confirmTeardown: createTeardownConfirmationHandler(config.io, flags.yes, canPrompt),
       });
       let next = await deployment.next();
       while (!next.done) {
@@ -73,7 +70,14 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
     },
   });
 
-function createTeardownConfirmationHandler(io: AppIO): TeardownConfirmationHandler {
+function createTeardownConfirmationHandler(
+  io: AppIO,
+  confirmed: boolean,
+  canPrompt: boolean,
+): TeardownConfirmationHandler {
+  if (confirmed) return async () => true;
+  if (!canPrompt) return async () => false;
+
   return async (request) => {
     if (!(await promptForTeardown(io, request))) {
       throw new UserCancellationError();
@@ -96,7 +100,7 @@ async function promptForTeardown(
     const answer = await Promise.race([
       readline.question(
         `Project '${request.projectName}' declares no resources to deploy.\n` +
-          `Delete stack '${request.stackName}' and every resource in it from target ` +
+          `Delete ${request.resourceDescription} from target ` +
           `'${request.targetName}' (${request.account}/${request.region})? (y/N) `,
       ),
       cancelled,

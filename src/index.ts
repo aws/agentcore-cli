@@ -9,6 +9,7 @@ import { join } from "path";
 
 import { CoreClient } from "./core";
 import {
+  createCloudFormationClient,
   createControlClient,
   createDataClient,
   createIamClient,
@@ -66,6 +67,7 @@ process.exit(
       // factories (rather than instances) lets CoreClient build one client per
       // region on demand.
       const coreClient = new CoreClient({
+        createCloudFormationClient,
         createControlClient,
         createDataClient,
         createIamClient,

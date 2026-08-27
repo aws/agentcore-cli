@@ -28,7 +28,7 @@ const TARGETS = [DEFAULT_TARGET, STAGING_TARGET];
 const TEARDOWN: TeardownConfirmationRequest = {
   projectName: "orders",
   targetName: "default",
-  stackName: "AgentCore-orders-default-0",
+  resourceDescription: "stack 'AgentCore-orders-default-0' and every resource in it",
   account: DEFAULT_TARGET.account,
   region: DEFAULT_TARGET.region,
 };
@@ -45,22 +45,23 @@ function fakeBackend(
   teardown?: TeardownConfirmationRequest,
 ) {
   const calls: { project: Project; input: DeployBackendInput }[] = [];
+  const confirmations: boolean[] = [];
   const backend: ProjectBackend = {
     async *build() {},
     async *deploy(project, input) {
       calls.push({ project, input });
-      if (
-        teardown &&
-        !input.confirmTeardown &&
-        !(await input.requestTeardownConfirmation?.(teardown))
-      ) {
-        throw new Error("Re-run with --yes to confirm the teardown.");
+      if (teardown) {
+        const confirmed = await input.confirmTeardown(teardown);
+        confirmations.push(confirmed);
+        if (!confirmed) {
+          throw new Error("Re-run with --yes to confirm the teardown.");
+        }
       }
       yield* events;
       return result;
     },
   };
-  return { calls, backend };
+  return { calls, confirmations, backend };
 }
 
 type TestDeployOptions = {
@@ -133,9 +134,8 @@ describe("project deploy handler", () => {
 
     await subject.run();
 
-    expect(subject.calls.map(({ input }) => input)).toEqual([
-      { target: DEFAULT_TARGET, confirmTeardown: false },
-    ]);
+    expect(subject.calls).toHaveLength(1);
+    expect(subject.calls[0]?.input.target).toEqual(DEFAULT_TARGET);
     expect(subject.io.stderr()).toContain("Preparing deployment\nDeploying stack");
     expect(subject.io.stderr()).toContain("Deployed project 'orders' to target 'default'");
     expect(subject.io.stdout()).toBe("AlphaArn: arn:alpha\nZetaUrl: https://zeta.example");
@@ -148,9 +148,8 @@ describe("project deploy handler", () => {
 
     await subject.run(["--target", "staging", "--json"]);
 
-    expect(subject.calls.map(({ input }) => input)).toEqual([
-      { target: STAGING_TARGET, confirmTeardown: false },
-    ]);
+    expect(subject.calls).toHaveLength(1);
+    expect(subject.calls[0]?.input.target).toEqual(STAGING_TARGET);
     expect(JSON.parse(subject.io.stdout())).toEqual(result);
   });
 
@@ -166,8 +165,7 @@ describe("project deploy handler", () => {
 
     await subject.run(["--yes"]);
 
-    expect(subject.calls.map(({ input }) => input.confirmTeardown)).toEqual([true]);
-    expect(subject.calls[0]?.input.requestTeardownConfirmation).toBeUndefined();
+    expect(subject.confirmations).toEqual([true]);
     expect(subject.io.stderr()).not.toContain("(y/N)");
   });
 
@@ -229,7 +227,7 @@ describe("project deploy handler", () => {
     await expect(subject.run()).rejects.toThrow(/--yes/);
 
     expect(subject.io.stderr()).not.toContain("(y/N)");
-    expect(subject.calls[0]?.input.requestTeardownConfirmation).toBeUndefined();
+    expect(subject.confirmations).toEqual([false]);
   });
 
   test("requires --yes instead of prompting in JSON mode", async () => {
@@ -243,7 +241,7 @@ describe("project deploy handler", () => {
     await expect(subject.run(["--json"])).rejects.toThrow(/--yes/);
 
     expect(subject.io.stderr()).not.toContain("(y/N)");
-    expect(subject.calls[0]?.input.requestTeardownConfirmation).toBeUndefined();
+    expect(subject.confirmations).toEqual([false]);
   });
 
   test("does not prompt for a normal deployment", async () => {

@@ -9,14 +9,8 @@ import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 export type DeployBackendInput = {
   /** Fully resolved account and region selected from aws-targets.json. */
   target: AwsDeploymentTarget;
-  /**
-   * Permission to tear the target's stack down when the project no longer
-   * declares anything to deploy. Withheld by default: that deploy destroys
-   * deployed resources, so it takes saying so.
-   */
-  confirmTeardown: boolean;
-  /** Requests approval after synthesis identifies an otherwise unconfirmed teardown. */
-  requestTeardownConfirmation?: TeardownConfirmationHandler;
+  /** Requests approval after synthesis identifies a teardown. */
+  confirmTeardown: TeardownConfirmationHandler;
 };
 
 /** Builds the deployable artifacts owned by a project's selected backend. */

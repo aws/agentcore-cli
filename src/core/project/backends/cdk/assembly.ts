@@ -42,14 +42,14 @@ const StackTemplateSchema = z
   .passthrough();
 
 /** The synthesized stack a deploy selected, and where its template lives. */
-export interface StackArtifact {
+export type StackArtifact = {
   /** Artifact id the CDK Toolkit selects the stack by. */
   id: string;
   /** Name CloudFormation knows the deployed stack by. */
   stackName: string;
   /** Assembly-relative path of the synthesized template. */
   templateFile: string | undefined;
-}
+};
 
 /** Finds the one synthesized stack artifact tagged for the selected deployment target. */
 export async function stackArtifactForTarget(

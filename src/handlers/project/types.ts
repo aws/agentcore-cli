@@ -109,7 +109,8 @@ export type ProjectEvent = {
 export type TeardownConfirmationRequest = {
   projectName: string;
   targetName: string;
-  stackName: string;
+  /** Human-readable description of the resources the backend will remove. */
+  resourceDescription: string;
   account: string;
   region: string;
 };
@@ -121,13 +122,8 @@ export type TeardownConfirmationHandler = (
 export type DeployProjectInput = {
   /** Name of the aws-targets.json entry to deploy. */
   target: string;
-  /**
-   * Permission to tear the target's stack down when the project no longer
-   * declares anything to deploy. Withheld by default.
-   */
-  confirmTeardown: boolean;
   /** Requests approval after the backend discovers that this deploy is a teardown. */
-  requestTeardownConfirmation?: TeardownConfirmationHandler;
+  confirmTeardown: TeardownConfirmationHandler;
 };
 
 export type DeployResult = {

@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import type { Stack } from "@aws-sdk/client-cloudformation";
-import { isStackNotFound, probeBootstrap, probeStack, readBootstrapState } from "./environment";
+import type { CloudFormationClient, Stack } from "@aws-sdk/client-cloudformation";
+import {
+  bootstrapStackReader,
+  createCloudFormationStackReader,
+  isStackNotFound,
+  probeBootstrap,
+  probeStack,
+  readBootstrapState,
+} from "./environment";
 import type { CdkCredentialProvider } from "./toolkit";
 
 const credentials: CdkCredentialProvider = async () => ({
@@ -16,6 +23,39 @@ function stack(status: Stack["StackStatus"], version?: string): Stack {
     Outputs: version ? [{ OutputKey: "BootstrapVersion", OutputValue: version }] : [],
   };
 }
+
+test("injects and caches CloudFormation clients by credentials and region", async () => {
+  const otherCredentials: CdkCredentialProvider = async () => ({
+    accessKeyId: "other-access-key",
+    secretAccessKey: "other-secret-key",
+  });
+  const creations: { region: string; credentials: CdkCredentialProvider }[] = [];
+  const stackNames: string[] = [];
+  const read = createCloudFormationStackReader((config) => {
+    creations.push({
+      region: config.region,
+      credentials: config.credentials as CdkCredentialProvider,
+    });
+    return {
+      send: async (command: { input: { StackName?: string } }) => {
+        stackNames.push(command.input.StackName ?? "");
+        return { Stacks: [stack("CREATE_COMPLETE", "30")] };
+      },
+    } as unknown as CloudFormationClient;
+  });
+
+  await bootstrapStackReader(read)("us-east-1", credentials);
+  await read("Application", "us-east-1", credentials);
+  await read("Regional", "eu-west-1", credentials);
+  await read("OtherCredentials", "us-east-1", otherCredentials);
+
+  expect(creations).toEqual([
+    { region: "us-east-1", credentials },
+    { region: "eu-west-1", credentials },
+    { region: "us-east-1", credentials: otherCredentials },
+  ]);
+  expect(stackNames).toEqual(["CDKToolkit", "Application", "Regional", "OtherCredentials"]);
+});
 
 describe("readBootstrapState", () => {
   test("accepts stable stacks at or above the minimum version", () => {

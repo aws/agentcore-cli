@@ -47,11 +47,13 @@ import { AwsDeploymentTargetsSchema } from "../../projectSchemas/aws-targets";
 import type { RuntimeResourceConfig } from "../../handlers/project/add/runtime/types";
 import type { TemplateRenderer } from "./templates/types";
 import { HandlebarsTemplateRenderer } from "./templates/renderer";
+import type { CreateCloudFormationClient } from "../types";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
 type ProjectManagerConfig = {
   logger: Logger;
+  createCloudFormationClient?: CreateCloudFormationClient;
   source?: AssetSource;
   runner?: ProcessRunner;
   checkTool?: typeof requireTool;
@@ -81,6 +83,7 @@ export class FsProjectManager implements ProjectManager {
     this.backends = config.backends ?? {
       CDK: new CdkBackend({
         logger: config.logger,
+        createCloudFormationClient: config.createCloudFormationClient,
         runner: config.runner,
         checkTool: config.checkTool,
         json: config.json,
@@ -480,9 +483,6 @@ export class FsProjectManager implements ProjectManager {
     return yield* this.backendFor(project).deploy(project, {
       target,
       confirmTeardown: input.confirmTeardown,
-      ...(input.requestTeardownConfirmation && {
-        requestTeardownConfirmation: input.requestTeardownConfirmation,
-      }),
     });
   }
 
