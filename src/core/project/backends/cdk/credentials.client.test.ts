@@ -164,7 +164,11 @@ describe("createIdentityProviderClient", () => {
     const client = await createIdentityProviderClient("us-east-1", credentials);
 
     expect(
-      await client.createOauth2Provider({ name: "o", vendor: "CustomOauth2", config: {} }),
+      await client.createOauth2Provider({
+        name: "o",
+        vendor: "CustomOauth2",
+        config: { customOauth2ProviderConfig: { oauthDiscovery: { discoveryUrl: "u" } } },
+      }),
     ).toEqual({ credentialProviderArn: "arn:cp" });
   });
 
