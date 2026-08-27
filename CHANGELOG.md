@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.28.1] - 2026-08-27
+
+### Added
+- feat(release): auto-bump the vended CDK pin during release prep (#2118) (c6765b63)
+
+### Fixed
+- fix: route harness invoke exec through command API (#2097) (d1bd57ee)
+- fix(ci): use shared refactor workflow automation (#2005) (cad94708)
+- fix(export): validate project before harness fetch (#2091) (15b041a7)
+
+### Other Changes
+- test(deps): derive vended agentcore-cdk pin from the template (#2117) (d367f793)
+
 ## [0.28.0] - 2026-08-24
 
 ### Added
