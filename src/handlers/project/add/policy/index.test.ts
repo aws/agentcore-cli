@@ -186,17 +186,27 @@ describe("project add policy", () => {
     });
   });
 
+  test("rejects --generate when multiple gateways exist and none is named", async () => {
+    await withEngine();
+    await run(["add", "gateway", "--name", "tools"]);
+    await run(["add", "gateway", "--name", "search"]);
+    await expect(
+      run(["add", "policy", "--engine", "Guardrails", "--name", "Gen", "--generate", "x"]),
+    ).rejects.toThrow("multiple gateways: tools, search; pass --gateway");
+  });
+
   test.each([
-    ["an unknown --gateway", ["--gateway", "missing"], "does not exist in agentCoreGateways[]"],
-    ["no gateways in the project", [], "add one to this project"],
-  ])("rejects --generate with %s", async (_label, gatewayArgs, message) => {
+    ["--engine", "Missing", [], "does not exist in policyEngines[]"],
+    ["--gateway", "Guardrails", ["--gateway", "missing"], "does not exist in agentCoreGateways[]"],
+    ["no gateways in the project via", "Guardrails", [], "add one to this project"],
+  ])("rejects --generate with an unknown %s", async (_label, engine, gatewayArgs, message) => {
     await withEngine();
     await expect(
       run([
         "add",
         "policy",
         "--engine",
-        "Guardrails",
+        engine,
         "--name",
         "Gen",
         "--generate",
