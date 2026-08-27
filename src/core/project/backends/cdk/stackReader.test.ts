@@ -42,9 +42,11 @@ describe("describeStack", () => {
     expect(await describeStack("us-east-1", credentials, "missing", describe)).toBeUndefined();
   });
 
-  test("returns undefined when the describer yields no stacks", async () => {
+  test("throws on an empty successful response — distinct from not-found", async () => {
     const describe: DescribeStacks = async () => [];
-    expect(await describeStack("us-east-1", credentials, "empty", describe)).toBeUndefined();
+    await expect(describeStack("us-east-1", credentials, "empty", describe)).rejects.toThrow(
+      /returned no stack/,
+    );
   });
 
   test("propagates errors other than not-found", async () => {

@@ -1,4 +1,5 @@
 import type { Stack } from "@aws-sdk/client-cloudformation";
+import { MalformedServiceResponseError } from "../../../../errors/errors";
 import { isStackNotFound } from "./environment";
 import type { CdkCredentialProvider } from "./toolkit";
 
@@ -41,12 +42,24 @@ export async function describeStack(
   stackName: string,
   describe: DescribeStacks = cloudFormationDescriber(region, credentials),
 ): Promise<Stack | undefined> {
+  let stacks: Stack[] | undefined;
   try {
-    // Not-found is a thrown ValidationError, not an empty result; every other
-    // error (auth, throttling, malformed request) is real and propagates.
-    return (await describe(stackName))?.[0];
+    stacks = await describe(stackName);
   } catch (error) {
+    // A missing stack is reported by a thrown ValidationError, not an empty
+    // result, so this is the only "not deployed" signal. Every other error
+    // (auth, throttling, malformed request) is real and propagates.
     if (isStackNotFound(error)) return undefined;
     throw error;
   }
+
+  const stack = stacks?.[0];
+  if (!stack) {
+    // A *successful* DescribeStacks with no stack is malformed, not not-found;
+    // returning undefined would misreport a service problem as "not deployed".
+    throw new MalformedServiceResponseError(
+      `CloudFormation returned no stack after describing '${stackName}'`,
+    );
+  }
+  return stack;
 }
