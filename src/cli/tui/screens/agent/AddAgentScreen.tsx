@@ -644,7 +644,10 @@ export function AddAgentScreen({ existingAgentNames, onComplete, onExit }: AddAg
         setTimeout(() => {
           if (selected.has('dockerfile') && byoConfig.buildType === 'Container') {
             setByoStep('dockerfile');
-          } else if (selected.has('network')) {
+          } else if (selected.has('network') && !selected.has('capacityProvider')) {
+            // A capacity provider supplies its own network topology, so when both are selected the
+            // network steps are dropped from computeByoSteps (CP wins). Match that precedence here —
+            // routing to networkMode would land on a step absent from byoSteps and skip the CP screen.
             setByoStep('networkMode');
           } else if (selected.has('headers')) {
             setByoStep('requestHeaderAllowlist');

@@ -73,23 +73,48 @@ export async function resolveDeleteTarget(
   const configIO = new ConfigIO({ baseDir: configRoot });
   const deployed = await configIO.readDeployedState();
 
-  // Deployed state is keyed per target; find the target that has this capacity provider.
-  let record: { capacityProviderId: string; capacityProviderArn: string } | undefined;
-  for (const target of Object.values(deployed.targets)) {
-    const found = target.resources?.capacityProviders?.[name];
-    if (found) {
-      record = found;
-      break;
-    }
-  }
-  if (!record) {
+  // Deployed state is keyed per target, and the same capacity-provider name can be deployed in more
+  // than one target/region. Collect every match and disambiguate by region rather than blindly
+  // taking the first — otherwise a caller-supplied --region could be paired with an id from a
+  // different target and the delete would be sent to the wrong region.
+  const matches = Object.values(deployed.targets)
+    .map(target => target.resources?.capacityProviders?.[name])
+    .filter((r): r is { capacityProviderId: string; capacityProviderArn: string } => Boolean(r))
+    .map(r => ({ ...r, region: regionFromArn(r.capacityProviderArn) }));
+
+  if (matches.length === 0) {
     throw new Error(
       `Capacity provider "${name}" is not deployed in this project. Deploy it first, or pass its id or ARN with --capacity-provider.`
     );
   }
 
+  const deployedRegions = [...new Set(matches.map(m => m.region).filter(Boolean))].join(', ');
+  let record: { capacityProviderId: string; capacityProviderArn: string; region?: string };
+  if (options.region) {
+    // Constrain resolution to the requested region so the id and region always come from the same
+    // deployment.
+    const inRegion = matches.filter(m => m.region === options.region);
+    if (inRegion.length === 0) {
+      throw new Error(
+        `Capacity provider "${name}" is not deployed in region ${options.region}${deployedRegions ? ` (found in: ${deployedRegions})` : ''}. Pass a matching --region, or the capacity provider id or ARN with --capacity-provider.`
+      );
+    }
+    if (inRegion.length > 1) {
+      throw new Error(
+        `Capacity provider "${name}" resolves to multiple deployments in region ${options.region}. Pass the capacity provider id or ARN with --capacity-provider to disambiguate.`
+      );
+    }
+    record = inRegion[0]!;
+  } else if (matches.length > 1) {
+    throw new Error(
+      `Capacity provider "${name}" is deployed in multiple regions (${deployedRegions}). Pass --region to select one, or the capacity provider id or ARN with --capacity-provider.`
+    );
+  } else {
+    record = matches[0]!;
+  }
+
   // The capacity provider ARN always carries the region, so it is the most reliable source.
-  const region = options.region ?? regionFromArn(record.capacityProviderArn) ?? (await detectRegion()).region;
+  const region = options.region ?? record.region ?? (await detectRegion()).region;
 
   return {
     capacityProviderId: record.capacityProviderId,

@@ -247,7 +247,10 @@ export function AddCapacityProviderScreen({ onComplete, onExit, existingNames }:
         instanceTypes,
         instanceProfileArn: instanceProfileArn || undefined,
         volumes,
-        volumeEncrypted: volumes.length > 0 && volumeEncrypted ? true : undefined,
+        // Preserve the explicit encryption choice (including `false`) when volumes exist. Collapsing
+        // No-encryption to `undefined` makes the primitive omit `Encrypted`, whose service default is
+        // true — so the created volume would be encrypted despite the user selecting No.
+        volumeEncrypted: volumes.length > 0 ? volumeEncrypted : undefined,
         volumeKmsKey: volumeEncrypted && volumeKmsKey ? volumeKmsKey : undefined,
         idleInstanceTimeout: idleTimeout || undefined,
         maxLifetime: maxLifetime || undefined,

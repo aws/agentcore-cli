@@ -733,6 +733,11 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
         accessPointArn: arn,
         mountPath: (options.s3MountPaths ?? [])[i] ?? '',
       })),
+      capacityProviderConfiguration: this.buildCapacityProviderConfiguration(options.capacityProvider),
+      capacityProviderVolumes: (options.cpVolumeNames ?? []).map((volumeName, i) => ({
+        volumeName,
+        mountPath: (options.cpVolumeMountPaths ?? [])[i] ?? '',
+      })),
     });
   }
 

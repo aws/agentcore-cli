@@ -412,6 +412,34 @@ describe('create command', () => {
       expect(json.success).toBe(false);
       expect(json.error).toContain('matching pairs');
     });
+
+    it('rejects the capacity-provider name form (a new project has no sibling to resolve)', async () => {
+      const name = `CpName${Date.now().toString().slice(-6)}`;
+      const result = await runCLI(
+        [
+          'create',
+          '--name',
+          name,
+          '--language',
+          'Python',
+          '--framework',
+          'Strands',
+          '--model-provider',
+          'Bedrock',
+          '--memory',
+          'none',
+          '--capacity-provider',
+          'my_pool',
+          '--json',
+        ],
+        testDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('no capacity providers to reference by name');
+    });
   });
 
   describe('--defaults', () => {
