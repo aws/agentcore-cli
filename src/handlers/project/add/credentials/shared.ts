@@ -45,7 +45,7 @@ export async function addCredentialToProject(
   });
   if (clash) {
     throw new InputValidationError(
-      `credential '${newName}' would store its secret in the same .env.local variable as ` +
+      `credential '${newName}' would use the same environment variable for its secret as ` +
         `'${clash.name}'; choose a name that does not collide.`,
     );
   }

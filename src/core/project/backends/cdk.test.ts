@@ -336,6 +336,7 @@ describe("CdkBackend.deploy", () => {
   test("checks local CDK prerequisites before provisioning credentials", async () => {
     const input = await project(false); // no agentcore/cdk/node_modules
     let provisioned = false;
+    // eslint-disable-next-line require-yield -- a spy that should never run (deploy fails first)
     const provisionCredentials: CredentialProvisioner = async function* () {
       provisioned = true;
       return {};

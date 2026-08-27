@@ -589,6 +589,15 @@ describe("project add credentials", () => {
     );
   });
 
+  test("rejects different credential types that collide on one secret variable", async () => {
+    await inProject();
+    // OAuth 'foo' → AGENTCORE_CREDENTIAL_FOO_CLIENT_SECRET; api-key 'foo_client_secret' → the same.
+    await run(["add", "credentials", "oauth", "--name", "foo", "--discovery-url", discoveryUrl]);
+    await expect(
+      run(["add", "credentials", "api-key", "--name", "foo_client_secret"]),
+    ).rejects.toThrow(/same environment variable/);
+  });
+
   test.each<[string, string[], RegExp]>([
     [
       "api-key: an inline secret value",
