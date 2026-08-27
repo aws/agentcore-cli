@@ -12,6 +12,19 @@ const RECOMMENDATION_TYPES = [
   "TOOL_DESCRIPTION_RECOMMENDATION",
 ] as const;
 
+const REQUIRED_FLAGS = ["name", "type", "recommendation-config"] as const;
+type RequiredFlag = (typeof REQUIRED_FLAGS)[number];
+
+function assertRequiredFlags(
+  flags: Partial<Record<RequiredFlag, string>>,
+): asserts flags is Record<RequiredFlag, string> {
+  for (const name of REQUIRED_FLAGS) {
+    if (!flags[name]) {
+      throw new InputValidationError(`required option '--${name} <${name}>' not specified`);
+    }
+  }
+}
+
 export const createStartRecommendationHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "start",
@@ -38,17 +51,7 @@ export const createStartRecommendationHandler = (core: Core, io: AppIO) =>
       flag("tags", "tags as key=value (repeatable) or JSON object", z.array(z.string()).optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["name"]) {
-        throw new InputValidationError("required option '--name <name>' not specified");
-      }
-      if (!flags["type"]) {
-        throw new InputValidationError("required option '--type <type>' not specified");
-      }
-      if (!flags["recommendation-config"]) {
-        throw new InputValidationError(
-          "required option '--recommendation-config <recommendation-config>' not specified",
-        );
-      }
+      assertRequiredFlags(flags);
 
       const source = new SourceResolver({ stdin: io.stdin });
       const recommendationConfig = parseJsonFlag<RecommendationConfig>(

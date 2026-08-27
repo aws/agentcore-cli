@@ -85,7 +85,6 @@ import {
   type ListRecommendationsResponse,
   type RecommendationStatus,
   type StartBatchEvaluationResponse,
-  type StartRecommendationRequest,
   type StartRecommendationResponse,
   type DataSourceConfig as DataPlaneDataSourceConfig,
   type CloudWatchFilterConfig,
@@ -143,6 +142,7 @@ import type {
   SpanRecord,
   StartBatchInsightsInput,
   StartBatchEvaluationInput,
+  StartRecommendationInput,
   UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
 } from "../handlers/eval/types";
@@ -353,10 +353,10 @@ export class EvalClient implements CoreEvalClient {
   }
 
   async startRecommendation(
-    request: StartRecommendationRequest,
+    input: StartRecommendationInput,
     options: CoreOptions,
   ): Promise<StartRecommendationResponse> {
-    return this.clients.data(toClientConfig(options)).send(new StartRecommendationCommand(request));
+    return this.clients.data(toClientConfig(options)).send(new StartRecommendationCommand(input));
   }
 
   async getRecommendation(id: string, options: CoreOptions): Promise<GetRecommendationResponse> {

@@ -40,8 +40,9 @@ import type {
   GetRecommendationResponse,
   ListRecommendationsResponse,
   ListBatchEvaluationsResponse,
+  RecommendationConfig,
   RecommendationStatus,
-  StartRecommendationRequest,
+  RecommendationType,
   StartRecommendationResponse,
   StartBatchEvaluationResponse,
   SessionMetadataShape,
@@ -231,6 +232,14 @@ export type RoleScopeWarning = {
 };
 
 export type CreateDatasetInput = CreateDatasetRequest;
+export type StartRecommendationInput = {
+  name: string;
+  description?: string;
+  type: RecommendationType;
+  recommendationConfig: RecommendationConfig;
+  kmsKeyArn?: string;
+  tags?: Record<string, string>;
+};
 export type CreateConfigurationBundleInput = Pick<
   CreateConfigurationBundleRequest,
   "bundleName" | "components" | "branchName" | "commitMessage" | "kmsKeyArn"
@@ -372,7 +381,7 @@ export interface CoreEvalClient {
   deleteEvaluator(id: string, options: CoreOptions): Promise<DeleteEvaluatorResponse>;
 
   startRecommendation(
-    request: StartRecommendationRequest,
+    input: StartRecommendationInput,
     options: CoreOptions,
   ): Promise<StartRecommendationResponse>;
   getRecommendation(id: string, options: CoreOptions): Promise<GetRecommendationResponse>;
