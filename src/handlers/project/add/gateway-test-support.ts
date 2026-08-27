@@ -24,10 +24,10 @@ export function createGatewayProjectTestHarness(directoryPrefix: string) {
   const originalCwd = process.cwd();
   const tempDirectories: string[] = [];
 
-  async function run(args: string[], stdin?: string, core = new TestCoreClient()) {
+  async function run(args: string[], stdin?: string) {
     const io = testIO();
     if (stdin !== undefined) io.io.stdin.end(stdin);
-    const root = createRootHandler(core, {
+    const root = createRootHandler(new TestCoreClient(), {
       io: io.io,
       globalConfigAccessor: new TestGlobalConfigAccessor(),
       logger: createSilentLogger(),

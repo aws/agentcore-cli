@@ -1,10 +1,8 @@
 import z from "zod";
 import { InputValidationError } from "../../../../errors";
 import { SourceResolver } from "../../../../io";
-import { gatewayResourceName } from "../../../../projectSchemas/gateway";
-import { policyEngineResourceName, type PolicySchema } from "../../../../projectSchemas/policy";
+import type { PolicySchema } from "../../../../projectSchemas/policy";
 import { createHandler, flag, ProjectKey } from "../../../../router";
-import { coreOptsFromCtx } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
 
 /**
@@ -35,12 +33,6 @@ export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
         z.string().optional(),
       ),
       flag(
-        "generate",
-        "generate the Cedar statement from a natural-language description",
-        z.string().optional(),
-      ),
-      flag("gateway", "deployed Gateway name that scopes --generate", z.string().optional()),
-      flag(
         "validation-mode",
         "validation mode: fail-on-any-findings or ignore-all-findings",
         z.enum(["fail-on-any-findings", "ignore-all-findings"]).optional(),
@@ -63,81 +55,16 @@ export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
       if (!flags.name) {
         throw new InputValidationError("required option '--name <name>' not specified");
       }
-      const sources = [flags.statement, flags.generate].filter((value) => value !== undefined);
-      if (sources.length !== 1) {
-        throw new InputValidationError("specify exactly one of '--statement' or '--generate'");
-      }
-      if (flags.gateway !== undefined && flags.generate === undefined) {
-        throw new InputValidationError("--gateway is valid only with --generate");
+      if (!flags.statement) {
+        throw new InputValidationError("required option '--statement <statement>' not specified");
       }
       const project = ctx.require(ProjectKey);
 
-      let statement: string;
-      let sourceFile: string | undefined;
-      if (flags.statement !== undefined) {
-        const source = new SourceResolver({ stdin: config.io.stdin });
-        statement = (await source.resolveText("statement", flags.statement))!;
-        if (flags.statement.startsWith("file://")) {
-          sourceFile = flags.statement.slice("file://".length);
-        }
-      } else {
-        // Fail before the minute-long generation call; the manager re-checks on write.
-        if (!project.spec.policyEngines.some((engine) => engine.name === flags.engine)) {
-          throw new InputValidationError(
-            `policy engine '${flags.engine}' does not exist in policyEngines[]`,
-          );
-        }
-        const owner = project.spec.policyEngines.find((engine) =>
-          engine.policies.some((policy) => policy.name === flags.name),
-        );
-        if (owner) {
-          throw new InputValidationError(
-            `a policy with name '${flags.name}' already exists in policy engine '${owner.name}'`,
-          );
-        }
-        const gateways = project.spec.agentCoreGateways;
-        const gateway = flags.gateway
-          ? gateways.find((candidate) => candidate.name === flags.gateway)
-          : gateways.length === 1
-            ? gateways[0]
-            : undefined;
-        if (flags.gateway && !gateway) {
-          throw new InputValidationError(
-            `gateway '${flags.gateway}' does not exist in agentCoreGateways[]`,
-          );
-        }
-        if (!gateway) {
-          throw new InputValidationError(
-            gateways.length === 0
-              ? "--generate needs a deployed gateway; add one to this project and deploy it first"
-              : `this project declares multiple gateways: ${gateways
-                  .map((candidate) => candidate.name)
-                  .join(", ")}; pass --gateway to choose one`,
-          );
-        }
-
-        const generator = config.policy.generatePolicy(
-          {
-            engineName: flags.engine,
-            gatewayName: gateway.name,
-            engineServiceName: policyEngineResourceName(project.name, flags.engine),
-            gatewayServiceName: gatewayResourceName(project.name, gateway),
-            description: flags.generate!,
-          },
-          coreOptsFromCtx(ctx),
-        );
-        let next = await generator.next();
-        while (!next.done) {
-          config.io.stderr.write(`${next.value.message}\n`);
-          next = await generator.next();
-        }
-        const generated = next.value;
-        statement = generated.statement;
-        config.io.stderr.write(`Generated Cedar policy:\n${statement}\n`);
-        for (const finding of generated.findings) {
-          config.io.stderr.write(`finding [${finding.type}]: ${finding.description}\n`);
-        }
-      }
+      const source = new SourceResolver({ stdin: config.io.stdin });
+      const statement = (await source.resolveText("statement", flags.statement))!;
+      const sourceFile = flags.statement.startsWith("file://")
+        ? flags.statement.slice("file://".length)
+        : undefined;
 
       const authorizationPhase = flags["authorization-phase"]
         ? PHASES[flags["authorization-phase"]]

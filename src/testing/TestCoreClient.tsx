@@ -161,11 +161,6 @@ import { isTerminalStatus } from "../core/batchEvaluationResults";
 import { abortable } from "../core/abortable";
 import type { CoreOptions } from "../core/types";
 import type { ProjectManager } from "../handlers/project/types";
-import type {
-  CorePolicyClient,
-  GeneratedPolicy,
-  GeneratePolicyInput,
-} from "../handlers/project/add/policy/types";
 import type { Logger } from "../logging";
 import type { ReadWriteJson } from "../io";
 import { createSilentLogger } from "./logging";
@@ -2226,24 +2221,6 @@ export class TestEvalClient implements CoreEvalClient {
   }
 }
 
-export class TestPolicyClient implements CorePolicyClient {
-  generateResult: GeneratedPolicy = {
-    statement: "forbid (principal, action, resource);",
-    findings: [],
-  };
-  generateError: Error | undefined;
-  generateCalls: GeneratePolicyInput[] = [];
-
-  async *generatePolicy(
-    input: GeneratePolicyInput,
-  ): AsyncGenerator<{ message: string }, GeneratedPolicy> {
-    this.generateCalls.push(input);
-    if (this.generateError) throw this.generateError;
-    yield { message: "generating" };
-    return this.generateResult;
-  }
-}
-
 // TestCoreClient implements the Core contract with fully controllable sub-clients.
 export class TestCoreClient implements Core {
   readonly harness = new TestHarnessClient();
@@ -2252,7 +2229,6 @@ export class TestCoreClient implements Core {
   readonly runtime = new TestRuntimeClient();
   readonly gateway = new TestGatewayClient();
   readonly eval = new TestEvalClient();
-  readonly policy = new TestPolicyClient();
   readonly projectManager: ProjectManager;
 
   // Commands the project manager would have run (npm install, git init, ...),
