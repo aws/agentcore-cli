@@ -2,12 +2,22 @@ import z from "zod";
 import { InputValidationError } from "../../../../errors";
 import { SourceResolver } from "../../../../io";
 import { GatewayAuthorizerConfigSchema } from "../../../../projectSchemas/auth";
-import { gatewayResourceName, type AgentCoreGateway } from "../../../../projectSchemas/gateway";
+import type { AgentCoreGateway } from "../../../../projectSchemas/gateway";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import { parseJsonFlagWithSchema, parseTags } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
 
 const GatewayAuthorizerConfigurationInputSchema = GatewayAuthorizerConfigSchema.strict();
+
+/**
+ The deployed service name of a gateway; mirrors the L3 Gateway construct's rule.
+**/
+export function gatewayResourceName(
+  projectName: string,
+  gateway: { name: string; resourceName?: string },
+): string {
+  return gateway.resourceName ?? `${projectName}-${gateway.name}`;
+}
 
 export const createAddGatewayHandler = (config: AddProjectResourceConfig) =>
   createHandler({
