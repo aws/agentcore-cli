@@ -103,7 +103,6 @@ import type {
   ListSessionsOutput,
   RecommendationStatus,
   StartBatchEvaluationResponse,
-  StartRecommendationRequest,
   StartRecommendationResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { Core } from "../handlers/types";
@@ -154,6 +153,7 @@ import type {
   SessionTrace,
   StartBatchInsightsInput,
   StartBatchEvaluationInput,
+  StartRecommendationInput,
   UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
 } from "../handlers/eval/types";
@@ -1753,10 +1753,10 @@ export class TestEvalClient implements CoreEvalClient {
   }
 
   async startRecommendation(
-    request: StartRecommendationRequest,
+    input: StartRecommendationInput,
     options: CoreOptions,
   ): Promise<StartRecommendationResponse> {
-    this.calls.push({ method: "startRecommendation", args: [request, options] });
+    this.calls.push({ method: "startRecommendation", args: [input, options] });
     if (this.error) throw this.error;
     return this.startRecommendationResponse;
   }

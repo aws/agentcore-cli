@@ -18,6 +18,8 @@ import {
   settle,
   TestGlobalConfigAccessor,
   testIO,
+  waitFor,
+  WaitForTimeoutError,
 } from "../../../testing";
 import { createRootHandler } from "../../index";
 
@@ -122,30 +124,44 @@ async function waitForTerminal(
   client: BedrockAgentCoreClient,
   id: string,
 ): Promise<RecommendationStatus | undefined> {
-  const deadline = Date.now() + RECORDING_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const response = await client.send(new GetRecommendationCommand({ recommendationId: id }));
-    if (response.status === "COMPLETED" || response.status === "FAILED") {
-      return response.status;
-    }
-    if (response.status === "DELETING") return response.status;
-    await Bun.sleep(POLL_INTERVAL_MS);
+  let status: RecommendationStatus | undefined;
+  try {
+    await waitFor(
+      async () => {
+        status = (await client.send(new GetRecommendationCommand({ recommendationId: id }))).status;
+        return status === "COMPLETED" || status === "FAILED" || status === "DELETING";
+      },
+      RECORDING_TIMEOUT_MS,
+      POLL_INTERVAL_MS,
+    );
+  } catch (error) {
+    if (!(error instanceof WaitForTimeoutError)) throw error;
+    throw new Error(`timed out waiting for recommendation ${id} to reach a terminal state`, {
+      cause: error,
+    });
   }
-  throw new Error(`timed out waiting for recommendation ${id} to reach a terminal state`);
+  return status;
 }
 
 async function waitUntilDeleted(client: BedrockAgentCoreClient, id: string): Promise<void> {
-  const deadline = Date.now() + RECORDING_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    try {
-      await client.send(new GetRecommendationCommand({ recommendationId: id }));
-    } catch (error) {
-      if (isNotFound(error)) return;
-      throw error;
-    }
-    await Bun.sleep(POLL_INTERVAL_MS);
+  try {
+    await waitFor(
+      async () => {
+        try {
+          await client.send(new GetRecommendationCommand({ recommendationId: id }));
+          return false;
+        } catch (error) {
+          if (isNotFound(error)) return true;
+          throw error;
+        }
+      },
+      RECORDING_TIMEOUT_MS,
+      POLL_INTERVAL_MS,
+    );
+  } catch (error) {
+    if (!(error instanceof WaitForTimeoutError)) throw error;
+    throw new Error(`timed out waiting for recommendation ${id} to be deleted`, { cause: error });
   }
-  throw new Error(`timed out waiting for recommendation ${id} to be deleted`);
 }
 
 async function cleanupRecommendation(client: BedrockAgentCoreClient, id: string): Promise<void> {
