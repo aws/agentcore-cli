@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createRootHandler } from "../../index";
+import type { Core } from "../../types";
 import {
   createSilentLogger,
   TestCoreClient,
@@ -24,7 +25,7 @@ export function createGatewayProjectTestHarness(directoryPrefix: string) {
   const originalCwd = process.cwd();
   const tempDirectories: string[] = [];
 
-  async function run(args: string[], stdin?: string, core = new TestCoreClient()) {
+  async function run(args: string[], stdin?: string, core: Core = new TestCoreClient()) {
     const io = testIO();
     if (stdin !== undefined) io.io.stdin.end(stdin);
     const root = createRootHandler(core, {
