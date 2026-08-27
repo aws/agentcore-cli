@@ -295,4 +295,18 @@ describe("createCredentialProvisioner", () => {
     );
     expect(subject.calls).toEqual([]);
   });
+
+  test("creates nothing when a later credential's secret is missing", async () => {
+    const subject = identity();
+    // First credential's secret is present; the second's is not.
+    const input = await project(
+      [API_KEY, { authorizerType: "ApiKeyCredentialProvider", name: "other-key" }],
+      "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n",
+    );
+
+    await expect(run(subject.provision, input)).rejects.toThrow(/AGENTCORE_CREDENTIAL_OTHER_KEY/);
+    // Both looked up, but no provider was created — the missing secret is caught
+    // before the first create, so there is no half-provisioned AWS state.
+    expect(subject.calls.map((c) => c.kind)).toEqual(["getApiKey", "getApiKey"]);
+  });
 });

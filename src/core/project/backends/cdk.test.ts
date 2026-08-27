@@ -333,6 +333,21 @@ describe("CdkBackend.deploy", () => {
     expect(state.targets.default?.stackArn).toBeUndefined();
   });
 
+  test("checks local CDK prerequisites before provisioning credentials", async () => {
+    const input = await project(false); // no agentcore/cdk/node_modules
+    let provisioned = false;
+    const provisionCredentials: CredentialProvisioner = async function* () {
+      provisioned = true;
+      return {};
+    };
+    const subject = harness({ provisionCredentials });
+
+    await expect(collectDeploy(subject.backend.deploy(input, { target: TARGET }))).rejects.toThrow(
+      /npm install/,
+    );
+    expect(provisioned).toBe(false);
+  });
+
   test("fails before touching AWS when the existing state file is malformed", async () => {
     const input = await project();
     const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);

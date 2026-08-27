@@ -165,87 +165,113 @@ export function createCredentialProvisioner(
     const declared = project.spec.credentials;
     if (declared.length === 0) return {};
 
-    // Rejected up front so a project with an unsupported credential fails before
-    // any provider is created, rather than part-way through the list.
+    // Rejected up front so an unsupported credential fails before any AWS call.
     const payment = declared.find((c) => c.authorizerType === "PaymentCredentialProvider");
     if (payment) throw paymentUnsupported(payment.name);
 
     const env = await new EnvLocalFile(project.rootPath).read();
     const client = await createClient(region, credentials);
 
-    const provisioned: DeployedCredentials = {};
+    // Resolve every credential before creating any: look up existing providers
+    // (reused as-is) and validate the secret for the rest. A missing secret then
+    // fails before the first provider is created, not partway through the list.
+    const plans: { name: string; provision: Provision }[] = [];
     for (const credential of declared) {
-      // Provider names are account-global, so a name already taken by another
-      // project in this account is adopted rather than recreated.
-      yield { message: `Preparing credential provider '${credential.name}'` };
-      provisioned[credential.name] = await provisionOne(client, credential, env, project.rootPath);
+      plans.push({
+        name: credential.name,
+        provision: await resolveCredential(client, credential, env, project.rootPath),
+      });
+    }
+
+    const provisioned: DeployedCredentials = {};
+    for (const { name, provision } of plans) {
+      yield { message: `Preparing credential provider '${name}'` };
+      provisioned[name] = "reuse" in provision ? provision.reuse : await provision.create();
     }
     return provisioned;
   };
 }
 
-async function provisionOne(
+/** An existing provider to reuse, or a creation deferred until every secret is validated. */
+type Provision = { reuse: DeployedCredential } | { create: () => Promise<DeployedCredential> };
+
+function resolveCredential(
   client: IdentityProviderClient,
   credential: Credential,
   env: Record<string, string | undefined>,
   rootPath: string,
-): Promise<DeployedCredential> {
+): Promise<Provision> {
   switch (credential.authorizerType) {
     case "ApiKeyCredentialProvider":
-      return provisionApiKey(client, credential, env, rootPath);
+      return resolveApiKey(client, credential, env, rootPath);
     case "OAuthCredentialProvider":
-      return provisionOauth2(client, credential, env, rootPath);
+      return resolveOauth2(client, credential, env, rootPath);
     case "PaymentCredentialProvider":
       // Unreachable: rejected before provisioning starts.
       throw paymentUnsupported(credential.name);
   }
 }
 
-async function provisionApiKey(
+async function resolveApiKey(
   client: IdentityProviderClient,
   credential: ApiKeyCredential,
   env: Record<string, string | undefined>,
   rootPath: string,
-): Promise<DeployedCredential> {
+): Promise<Provision> {
+  // Provider names are account-global, so one already in this account is reused.
   const existing = await client.getApiKeyProvider(credential.name);
-  if (existing) return existing;
+  if (existing) return { reuse: existing };
 
-  if (credential.secretRef) {
-    return client.createApiKeyProvider({ name: credential.name, secretRef: credential.secretRef });
-  }
-
-  const envKey = credentialEnvVarName(credential.name);
-  const apiKey = env[envKey];
-  if (!apiKey) throw missingSecret(credential.name, envKey, "secretRef", rootPath);
-  return client.createApiKeyProvider({ name: credential.name, apiKey });
+  const input: ApiKeyProviderInput = credential.secretRef
+    ? { name: credential.name, secretRef: credential.secretRef }
+    : {
+        name: credential.name,
+        apiKey: requireEnvSecret(credential.name, env, rootPath, "secretRef"),
+      };
+  return { create: () => client.createApiKeyProvider(input) };
 }
 
-async function provisionOauth2(
+async function resolveOauth2(
   client: IdentityProviderClient,
   credential: OAuthCredential,
   env: Record<string, string | undefined>,
   rootPath: string,
-): Promise<DeployedCredential> {
+): Promise<Provision> {
   const existing = await client.getOauth2Provider(credential.name);
-  if (existing) return existing;
+  if (existing) return { reuse: existing };
 
-  let secret: Record<string, unknown>;
-  if (credential.clientSecretRef) {
-    secret = { clientSecretConfig: credential.clientSecretRef, clientSecretSource: "EXTERNAL" };
-  } else {
-    const envKey = credentialEnvVarName(credential.name, CLIENT_SECRET_SUFFIX);
-    const clientSecret = env[envKey];
-    if (!clientSecret) throw missingSecret(credential.name, envKey, "clientSecretRef", rootPath);
-    secret = { clientSecret };
-  }
+  const secret: Record<string, unknown> = credential.clientSecretRef
+    ? { clientSecretConfig: credential.clientSecretRef, clientSecretSource: "EXTERNAL" }
+    : {
+        clientSecret: requireEnvSecret(
+          credential.name,
+          env,
+          rootPath,
+          "clientSecretRef",
+          CLIENT_SECRET_SUFFIX,
+        ),
+      };
+  const config = credential.providerConfig
+    ? vendorConfigWithSecret(credential.name, credential.providerConfig, secret)
+    : guidedCustomConfig(credential, secret);
+  return {
+    create: () =>
+      client.createOauth2Provider({ name: credential.name, vendor: credential.vendor, config }),
+  };
+}
 
-  return client.createOauth2Provider({
-    name: credential.name,
-    vendor: credential.vendor,
-    config: credential.providerConfig
-      ? vendorConfigWithSecret(credential.name, credential.providerConfig, secret)
-      : guidedCustomConfig(credential, secret),
-  });
+/** Reads a credential's secret from `.env.local`, throwing an actionable error when absent. */
+function requireEnvSecret(
+  name: string,
+  env: Record<string, string | undefined>,
+  rootPath: string,
+  refField: "secretRef" | "clientSecretRef",
+  suffix = "",
+): string {
+  const envKey = credentialEnvVarName(name, suffix);
+  const secret = env[envKey];
+  if (!secret) throw missingSecret(name, envKey, refField, rootPath);
+  return secret;
 }
 
 /**

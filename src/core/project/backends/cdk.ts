@@ -69,9 +69,10 @@ export class CdkBackend implements ProjectBackend {
     this.provisionCredentials = config.provisionCredentials ?? createCredentialProvisioner();
   }
 
-  public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
+  // Local prerequisites for synth. Checked before any AWS mutation so a missing
+  // toolchain or dependencies fails without having provisioned credentials.
+  private async ensureCdkDependencies(project: Project): Promise<void> {
     const cdkDir = this.cdkDirectory(project);
-
     if (!existsSync(join(cdkDir, "node_modules"))) {
       throw new ProjectStateError(
         `CDK dependencies are missing for project '${project.name}'. ` +
@@ -79,12 +80,16 @@ export class CdkBackend implements ProjectBackend {
       );
     }
     await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
+  }
+
+  public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
+    await this.ensureCdkDependencies(project);
 
     yield { message: "Synthesizing CloudFormation templates" };
     await this.runner(
       ["npm", "run", "cdk", "--", "synth", "--quiet", "--output", this.assemblyDirectory(project)],
       {
-        cwd: cdkDir,
+        cwd: this.cdkDirectory(project),
         onOutput: (chunk) => this.logger.debug(chunk),
       },
     );
@@ -105,9 +110,10 @@ export class CdkBackend implements ProjectBackend {
       );
     }
 
-    // Validate any existing deployed state before mutating AWS. A malformed file
-    // must fail here — not after bootstrap/deploy — so we never leave AWS changed
-    // with the new stack ARN unrecorded because the post-deploy write can't parse it.
+    // Fail on local setup errors (missing toolchain/deps) and malformed state
+    // before any AWS mutation, so a local problem never leaves credentials
+    // provisioned or the stack ARN unrecorded.
+    await this.ensureCdkDependencies(project);
     await readDeployedState(this.json, project.rootPath);
 
     // Credential providers aren't stack resources; the synthesized app reads their
