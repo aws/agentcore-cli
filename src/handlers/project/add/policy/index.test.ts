@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { TestCoreClient } from "../../../../testing";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 import { inferAuthorizationPhase } from "./index";
 
@@ -113,18 +114,147 @@ describe("project add policy", () => {
       "--name",
     ],
     [
-      "missing --statement",
+      "no statement source",
       ["add", "policy", "--engine", "Guardrails", "--name", "P"],
-      "required option '--statement",
+      "one of '--statement' or '--generate'",
     ],
     [
       "unknown engine",
       ["add", "policy", "--engine", "Missing", "--name", "P", "--statement", FORBID_ALL],
       "policy engine 'Missing' does not exist",
     ],
+    [
+      "--gateway without --generate",
+      [
+        "add",
+        "policy",
+        "--engine",
+        "Guardrails",
+        "--name",
+        "P",
+        "--statement",
+        FORBID_ALL,
+        "--gateway",
+        "tools",
+      ],
+      "--gateway is valid only with --generate",
+    ],
   ])("rejects %s", async (_label, args, message) => {
     await withEngine();
     await expect(run(args)).rejects.toThrow(message);
+  });
+
+  test("adds a generated policy and surfaces findings", async () => {
+    const projectRoot = await withEngine();
+    await run(["add", "gateway", "--name", "tools"]);
+    const core = new TestCoreClient();
+    core.policy.generateResult = {
+      statement: SUPPRESS,
+      findings: [{ type: "VALID", description: "ok" }],
+    };
+
+    const io = await run(
+      [
+        "add",
+        "policy",
+        "--engine",
+        "Guardrails",
+        "--name",
+        "Gen",
+        "--generate",
+        "block hate speech",
+        "--gateway",
+        "tools",
+      ],
+      undefined,
+      core,
+    );
+
+    expect(core.policy.generateCalls[0]).toMatchObject({
+      engineName: "Guardrails",
+      gatewayName: "tools",
+      engineServiceName: "TestProject_Guardrails",
+      gatewayServiceName: "TestProject-tools",
+      description: "block hate speech",
+    });
+    expect(io.stderr()).toContain("Generated Cedar policy:");
+    expect(io.stderr()).toContain("VALID");
+    expect((await projectSpec(projectRoot)).policyEngines[0].policies[0]).toMatchObject({
+      name: "Gen",
+      statement: SUPPRESS,
+      authorizationPhase: "RETURN_OUTPUT",
+    });
+  });
+
+  test("rejects --generate when multiple gateways exist and none is named", async () => {
+    await withEngine();
+    await run(["add", "gateway", "--name", "tools"]);
+    await run(["add", "gateway", "--name", "search"]);
+    await expect(
+      run(["add", "policy", "--engine", "Guardrails", "--name", "Gen", "--generate", "x"]),
+    ).rejects.toThrow("multiple gateways: tools, search; pass --gateway");
+  });
+
+  test.each([
+    ["--engine", "Missing", [], "does not exist in policyEngines[]"],
+    ["--gateway", "Guardrails", ["--gateway", "missing"], "does not exist in agentCoreGateways[]"],
+    ["no gateways in the project via", "Guardrails", [], "add one to this project"],
+  ])("rejects --generate with an unknown %s", async (_label, engine, gatewayArgs, message) => {
+    await withEngine();
+    await expect(
+      run([
+        "add",
+        "policy",
+        "--engine",
+        engine,
+        "--name",
+        "Gen",
+        "--generate",
+        "x",
+        ...gatewayArgs,
+      ]),
+    ).rejects.toThrow(message);
+  });
+
+  test("rejects a duplicate policy name before generating", async () => {
+    await withEngine();
+    await run(["add", "gateway", "--name", "tools"]);
+    await run([
+      "add",
+      "policy",
+      "--engine",
+      "Guardrails",
+      "--name",
+      "DenyAll",
+      "--statement",
+      FORBID_ALL,
+    ]);
+    const core = new TestCoreClient();
+
+    await expect(
+      run(
+        ["add", "policy", "--engine", "Guardrails", "--name", "DenyAll", "--generate", "x"],
+        undefined,
+        core,
+      ),
+    ).rejects.toThrow("already exists in policy engine 'Guardrails'");
+    expect(core.policy.generateCalls).toEqual([]);
+  });
+
+  test("fails without writing when generation fails", async () => {
+    const projectRoot = await withEngine();
+    await run(["add", "gateway", "--name", "tools"]);
+    const core = new TestCoreClient();
+    core.policy.generateError = new Error("policy engine 'Guardrails' is not deployed");
+
+    await expect(
+      run(
+        ["add", "policy", "--engine", "Guardrails", "--name", "Gen", "--generate", "x"],
+        undefined,
+        core,
+      ),
+    ).rejects.toThrow("is not deployed");
+    expect((await projectSpec(projectRoot)).policyEngines[0].policies).toEqual([]);
   });
 
   test("rejects a duplicate policy name across engines", async () => {

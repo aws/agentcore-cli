@@ -13,9 +13,11 @@ import { createStatusProjectHandler } from "./status";
 import { createBuildProjectHandler } from "./build";
 import type { ProjectManager } from "./types";
 import { createAddProjectResourceHandler } from "./add";
+import type { CorePolicyClient } from "./add/policy/types";
 
 type ProjectHandlerConfig = {
   projectManager: ProjectManager;
+  policy: CorePolicyClient;
   io: AppIO;
 };
 
