@@ -35,7 +35,7 @@ export async function createProjectTree(
       config.assetSource.read("templates/shared/gitignore.template"),
     ),
     FsTreeNode.createDirectory("agentcore", [
-      await FsTreeNode.fromAssetSource(config.assetSource, "cdk"),
+      await FsTreeNode.fromAssetSource({ assetSource: config.assetSource }, { assetDir: "cdk" }),
       FsTreeNode.createFile("agentcore.json", async () =>
         json({
           name: input.projectName,

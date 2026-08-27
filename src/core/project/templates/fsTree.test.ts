@@ -72,7 +72,11 @@ describe("FsTreeNode.fromAssetSource", () => {
       },
     };
 
-    const tree = await FsTreeNode.fromAssetSource(source, "template", "root");
+    const tree = await FsTreeNode.fromAssetSource(
+      { assetSource: source },
+      { assetDir: "template" },
+      { rootDirName: "root" },
+    );
 
     expect(tree.name).toBe("root");
     expect(tree.children.map((node) => node.name)).toEqual(["README.md", "src", ".gitignore"]);
@@ -82,5 +86,61 @@ describe("FsTreeNode.fromAssetSource", () => {
       "helpers.ts",
     ]);
     expect(await tree.children[2]?.bytes?.()).toBe("contents:template/gitignore.template");
+  });
+
+  test("renames Dockerfile.template to Dockerfile", async () => {
+    const source: AssetSource = {
+      async list() {
+        return ["template/Dockerfile.template"];
+      },
+      async read(assetPath) {
+        return `contents:${assetPath}`;
+      },
+    };
+
+    const tree = await FsTreeNode.fromAssetSource(
+      { assetSource: source },
+      { assetDir: "template" },
+    );
+
+    expect(tree.children.map((node) => node.name)).toEqual(["Dockerfile"]);
+  });
+
+  test("filters on the rendered name and omits rejected subtrees", async () => {
+    const source: AssetSource = {
+      async list() {
+        return ["template/main.ts", "template/Dockerfile.template", "template/skip/ignored.ts"];
+      },
+      async read(assetPath) {
+        return `contents:${assetPath}`;
+      },
+    };
+
+    const tree = await FsTreeNode.fromAssetSource(
+      { assetSource: source },
+      { assetDir: "template" },
+      { filter: (name) => name !== "Dockerfile" && name !== "skip" },
+    );
+
+    expect(tree.children.map((node) => node.name)).toEqual(["main.ts"]);
+  });
+
+  test("applies transformContent lazily to file contents", async () => {
+    const source: AssetSource = {
+      async list() {
+        return ["template/main.ts"];
+      },
+      async read(assetPath) {
+        return `contents:${assetPath}`;
+      },
+    };
+
+    const tree = await FsTreeNode.fromAssetSource(
+      { assetSource: source },
+      { assetDir: "template" },
+      { transformContent: (raw) => raw.toUpperCase() },
+    );
+
+    expect(await tree.children[0]?.bytes?.()).toBe("CONTENTS:TEMPLATE/MAIN.TS");
   });
 });

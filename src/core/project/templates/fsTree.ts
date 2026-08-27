@@ -71,18 +71,30 @@ export class FsTreeNode {
   }
 
   /**
-   * Expands the flat asset listing under assetDir into a nested tree of nodes.
+   * Builds a file tree from assets under `input.assetDir`.
+   *
+   * @param config - Asset source configuration.
+   * @param input - Asset directory to load.
+   * @param options - Optional root name, lazy content transform, and descendant filter. Rejecting a directory omits its subtree.
    */
   static async fromAssetSource(
-    src: AssetSource,
-    assetDir: string,
-    rootDirName?: string,
-    transform?: (content: string) => string,
+    config: { assetSource: AssetSource },
+    input: { assetDir: string },
+    options?: {
+      rootDirName?: string;
+      transformContent?: (content: string) => string;
+      filter?: (name: string, isDir: boolean) => boolean;
+    },
   ): Promise<FsTreeNode> {
-    const paths = await src.list(assetDir);
+    const { assetSource } = config;
+    const { assetDir } = input;
+    const rootDirName = options?.rootDirName;
+    const transformContent = options?.transformContent;
+    const filter = options?.filter;
+    const paths = await assetSource.list(assetDir);
     const root = FsTreeNode.createDirectory(rootDirName ?? assetDir, []);
 
-    for (const assetPath of paths) {
+    assetPaths: for (const assetPath of paths) {
       const relative = assetPath.slice(assetDir.length + 1);
       const segments = relative.split("/");
       if (segments.some((s) => s === "" || s === "." || s === "..")) {
@@ -92,25 +104,31 @@ export class FsTreeNode {
       }
 
       let parent = root;
-      segments.forEach((segment, index) => {
-        if (index === segments.length - 1) {
+      for (const [index, segment] of segments.entries()) {
+        const isDir = index < segments.length - 1;
+        const name = isDir ? segment : renderName(segment);
+        // if the segment of a path rejects, reject the rest of the path so we jump to top-loop via assetPaths label.
+        if (filter && !filter(name, isDir)) continue assetPaths;
+
+        if (!isDir) {
           parent.children.push(
-            FsTreeNode.createFile(renderName(segment), async () => {
-              const raw = await src.read(assetPath);
-              return transform ? transform(raw) : raw;
+            FsTreeNode.createFile(name, async () => {
+              const raw = await assetSource.read(assetPath);
+              return transformContent ? transformContent(raw) : raw;
             }),
           );
-          return;
+          continue;
         }
 
-        let child = parent.children.find((n): n is FsTreeNode => n.isDir && n.name === segment);
+        let child = parent.children.find(
+          (node): node is FsTreeNode => node.isDir && node.name === name,
+        );
         if (!child) {
-          child = FsTreeNode.createDirectory(segment, []);
+          child = FsTreeNode.createDirectory(name, []);
           parent.children.push(child);
         }
-
         parent = child;
-      });
+      }
     }
 
     return root;
@@ -118,9 +136,13 @@ export class FsTreeNode {
 }
 
 /**
- * Ignore templates are renamed to dotfiles because npm strips real dotfiles when publishing.
+ * Template assets carry a `.template` suffix so their real names survive publishing:
+ * npm strips leading dotfiles, and `bun build` appends a trailing dot to extensionless
+ * embedded assets (a bare `Dockerfile` embeds as `Dockerfile.`). The suffix is stripped here.
  */
 function renderName(filename: string): string {
   const ignore = filename.match(/^(git|npm|docker)ignore\.template$/);
-  return ignore ? `.${ignore[1]}ignore` : filename;
+  if (ignore) return `.${ignore[1]}ignore`;
+  if (filename === "Dockerfile.template") return "Dockerfile";
+  return filename;
 }
