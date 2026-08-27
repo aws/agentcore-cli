@@ -87,6 +87,14 @@ export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
             `policy engine '${flags.engine}' does not exist in policyEngines[]`,
           );
         }
+        const owner = project.spec.policyEngines.find((engine) =>
+          engine.policies.some((policy) => policy.name === flags.name),
+        );
+        if (owner) {
+          throw new InputValidationError(
+            `a policy with name '${flags.name}' already exists in policy engine '${owner.name}'`,
+          );
+        }
         const gateways = project.spec.agentCoreGateways;
         const gateway = flags.gateway
           ? gateways.find((candidate) => candidate.name === flags.gateway)

@@ -108,6 +108,11 @@ describe("PolicyClient.generatePolicy", () => {
     ],
     ["no assets", { ...HAPPY, assets: { policyGenerationAssets: [] } }, "no generated policy"],
     [
+      "polling exhausts while still generating",
+      { ...HAPPY, get: { status: "GENERATING" } },
+      "may still complete",
+    ],
+    [
       "the description is not translatable",
       {
         ...HAPPY,

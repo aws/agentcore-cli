@@ -1,6 +1,9 @@
 import z from "zod";
 import { InputValidationError } from "../../../../errors";
-import type { PolicyEngineSchema } from "../../../../projectSchemas/policy";
+import {
+  policyEngineResourceName,
+  type PolicyEngineSchema,
+} from "../../../../projectSchemas/policy";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import { parseTags } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
@@ -33,6 +36,12 @@ export const createAddPolicyEngineHandler = (config: AddProjectResourceConfig) =
         throw new InputValidationError("--attach-mode requires --attach-to-gateways");
       }
       const project = ctx.require(ProjectKey);
+      const resourceName = policyEngineResourceName(project.name, flags.name);
+      if (resourceName.length > 48) {
+        throw new InputValidationError(
+          `Policy Engine resource name '${resourceName}' exceeds the service limit of 48 characters`,
+        );
+      }
 
       const engine: z.input<typeof PolicyEngineSchema> = {
         name: flags.name,

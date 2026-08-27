@@ -48,6 +48,11 @@ describe("project add policy-engine", () => {
       ["add", "policy-engine", "--name", "9starts-with-digit"],
       "Must begin with a letter",
     ],
+    [
+      "a deployed name over the service limit",
+      ["add", "policy-engine", "--name", `E${"x".repeat(36)}`],
+      "exceeds the service limit of 48 characters",
+    ],
   ])("rejects %s", async (_label, args, message) => {
     await inProject();
     await expect(run(args)).rejects.toThrow(message);

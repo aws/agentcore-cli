@@ -101,7 +101,9 @@ export class PolicyClient implements CorePolicyClient {
     }
     if (status !== "GENERATED") {
       throw new AgentCoreCLIError(
-        `policy generation did not complete: ${statusReasons?.join(", ") ?? status}`,
+        status === "GENERATING"
+          ? "policy generation did not finish within the CLI's wait window; it may still complete, retry the command in a few minutes"
+          : `policy generation did not complete: ${statusReasons?.join(", ") ?? status}`,
       );
     }
 

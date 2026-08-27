@@ -206,6 +206,31 @@ describe("project add policy", () => {
     ).rejects.toThrow(message);
   });
 
+  test("rejects a duplicate policy name before generating", async () => {
+    await withEngine();
+    await run(["add", "gateway", "--name", "tools"]);
+    await run([
+      "add",
+      "policy",
+      "--engine",
+      "Guardrails",
+      "--name",
+      "DenyAll",
+      "--statement",
+      FORBID_ALL,
+    ]);
+    const core = new TestCoreClient();
+
+    await expect(
+      run(
+        ["add", "policy", "--engine", "Guardrails", "--name", "DenyAll", "--generate", "x"],
+        undefined,
+        core,
+      ),
+    ).rejects.toThrow("already exists in policy engine 'Guardrails'");
+    expect(core.policy.generateCalls).toEqual([]);
+  });
+
   test("fails without writing when generation fails", async () => {
     const projectRoot = await withEngine();
     await run(["add", "gateway", "--name", "tools"]);
