@@ -7,6 +7,7 @@ import { createAddMemoryHandler } from "./memory";
 import { createAddRuntimeHandler } from "./runtime";
 import { createAddOnlineEvalHandler } from "./online-eval";
 import { createAddOnlineInsightHandler } from "./online-insight";
+import { createAddEvaluatorHandler } from "./evaluator";
 import { createAddGatewayHandler } from "./gateway";
 import { createAddGatewayTargetHandler } from "./gateway-target";
 import { createAddGatewayConnectorHandler } from "./gateway-connector";
@@ -21,6 +22,7 @@ export function createAddProjectResourceHandler(config: AddProjectResourceConfig
   projectAdd.handler(createAddRuntimeHandler(config));
   projectAdd.handler(createAddOnlineEvalHandler(config));
   projectAdd.handler(createAddOnlineInsightHandler(config));
+  projectAdd.handler(createAddEvaluatorHandler(config));
   projectAdd.handler(createAddCredentialsHandler(config));
   projectAdd.handler(createAddGatewayHandler(config));
   projectAdd.handler(createAddGatewayTargetHandler(config));

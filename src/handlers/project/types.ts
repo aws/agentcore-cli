@@ -2,6 +2,7 @@ import { HarnessSpecSchema } from "../../projectSchemas/harness";
 import type { CredentialSchema } from "../../projectSchemas/credential";
 import type { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import type { MemorySchema } from "../../projectSchemas/memory";
+import type { EvaluatorSchema } from "../../projectSchemas/evaluator";
 import type { ProjectSpecSchema } from "../../projectSchemas/project";
 import z from "zod";
 import type { RuntimeResourceConfig } from "./add/runtime/types";
@@ -170,6 +171,10 @@ export type AddResourceInput =
   | {
       resourceType: "memory";
       resourceConfig: z.input<typeof MemorySchema>;
+    }
+  | {
+      resourceType: "evaluator";
+      resourceConfig: z.input<typeof EvaluatorSchema>;
     }
   | {
       resourceType: "gateway";
