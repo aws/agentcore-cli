@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -272,6 +271,7 @@ describe("CdkBackend.deploy", () => {
     expect(JSON.parse(await Bun.file(statePath).text())).toEqual({
       targets: {
         default: {
+          resources: { credentials: {} },
           stackArn:
             "arn:aws:cloudformation:us-east-1:111122223333:stack/AgentCore-example-default/abc",
         },
@@ -317,7 +317,7 @@ describe("CdkBackend.deploy", () => {
     });
   });
 
-  test("fails a deploy whose result carries no stack ARN, recording nothing", async () => {
+  test("fails a deploy whose result carries no stack ARN, recording no binding", async () => {
     const input = await project();
     await writeAssembly(input, [TARGET.name]);
     const subject = harness({ outputs: { RuntimeArn: "arn:runtime" }, omitStackArn: true });
@@ -325,7 +325,12 @@ describe("CdkBackend.deploy", () => {
     await expect(collectDeploy(subject.backend.deploy(input, { target: TARGET }))).rejects.toThrow(
       /without a stack ARN/,
     );
-    expect(existsSync(join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH))).toBe(false);
+    // The pre-synth credentials write may have created the file, but the failed
+    // deploy must not have recorded a stack binding.
+    const state = JSON.parse(
+      await Bun.file(join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH)).text(),
+    );
+    expect(state.targets.default?.stackArn).toBeUndefined();
   });
 
   test("fails before touching AWS when the existing state file is malformed", async () => {

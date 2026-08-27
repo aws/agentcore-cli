@@ -14,10 +14,9 @@ const KEY_LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
 export const CLIENT_SECRET_SUFFIX = "_CLIENT_SECRET";
 
 /**
- * Derives the variable name a credential's secret is stored under. This is the
- * only contract between `project add credentials` (which writes the entry) and
- * `project deploy` (which reads it back to create the provider), so both sides
- * derive the name here rather than formatting it themselves.
+ * The `.env.local` variable name a credential's secret is stored under — the one
+ * contract between `add credentials` (writes it) and `deploy` (reads it), so both
+ * derive it here rather than formatting their own.
  */
 export function credentialEnvVarName(credentialName: string, suffix = ""): string {
   return `AGENTCORE_CREDENTIAL_${credentialName.replace(/-/g, "_").toUpperCase()}${suffix}`;
@@ -82,12 +81,10 @@ export class EnvLocalFile {
    * does not exist. Values are read back with the same parser `agentcore dev`
    * uses, so quoting written by {@link insertIfNew} round-trips.
    */
-  async read(): Promise<Record<string, string>> {
+  async read(): Promise<Record<string, string | undefined>> {
     const content = await this.readOrNull();
     if (content === null) return {};
-    // parseEnv types values as string | undefined for repeated keys; the last
-    // assignment wins and only string values are ever produced.
-    return parseEnv(content) as Record<string, string>;
+    return parseEnv(content);
   }
 
   /** Restores the file to its pre-write state; a no-op when nothing was written. */

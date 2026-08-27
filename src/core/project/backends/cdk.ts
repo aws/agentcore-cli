@@ -110,18 +110,17 @@ export class CdkBackend implements ProjectBackend {
     // with the new stack ARN unrecorded because the post-deploy write can't parse it.
     await readDeployedState(this.json, project.rootPath);
 
-    // Credential providers exist before synthesis, not as part of the stack: the
-    // synthesized app reads their ARNs out of deployed-state.json, so a project
-    // declaring credentials cannot synthesize until they have been recorded.
+    // Credential providers aren't stack resources; the synthesized app reads their
+    // ARNs from deployed-state.json, so they must exist and be recorded before synth.
     const provisioned = yield* this.provisionCredentials(project, {
       credentials,
       region: target.region,
     });
-    if (Object.keys(provisioned).length > 0) {
-      await updateTargetState(this.json, project.rootPath, target.name, {
-        resources: { credentials: provisioned },
-      });
-    }
+    // Recorded every deploy (even when empty) so dropping the last credential
+    // from the spec clears the stale entry instead of leaving it advertised.
+    await updateTargetState(this.json, project.rootPath, target.name, {
+      resources: { credentials: provisioned },
+    });
 
     yield* this.build(project);
     const assemblyDirectory = this.assemblyDirectory(project);

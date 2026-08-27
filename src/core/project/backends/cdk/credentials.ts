@@ -37,11 +37,7 @@ export type Oauth2ProviderInput = {
   config: Oauth2ProviderConfigInput;
 };
 
-/**
- * The Identity calls credential provisioning needs. Narrowed to four methods so
- * tests can substitute a recorder without standing up the SDK client, following
- * the seam style of the other backend collaborators in this directory.
- */
+/** The Identity calls provisioning needs — four methods, so tests inject a fake instead of the SDK client. */
 export type IdentityProviderClient = {
   getApiKeyProvider(name: string): Promise<DeployedCredential | undefined>;
   createApiKeyProvider(input: ApiKeyProviderInput): Promise<DeployedCredential>;
@@ -66,9 +62,8 @@ export type CredentialProvisioner = (
 ) => AsyncGenerator<ProjectEvent, DeployedCredentials>;
 
 /**
- * Builds an Identity client against the deployment target's own credentials.
- * The SDK is imported lazily so projects without credentials never pay for
- * loading it, matching how the CloudFormation and STS clients are built.
+ * Builds an Identity client for the target's credentials. The SDK is imported
+ * lazily so projects without credentials never pay to load it.
  */
 export const createIdentityProviderClient: IdentityProviderClientFactory = async (
   region,
@@ -155,15 +150,13 @@ export const createIdentityProviderClient: IdentityProviderClientFactory = async
 };
 
 /**
- * Creates the credential providers a project declares, before its CloudFormation
- * templates are synthesized: the synthesized app reads the resulting ARNs out of
- * `deployed-state.json` and cannot synthesize a project with credentials until
- * they exist.
+ * Provisions the credential providers a project declares, before synthesis: the
+ * synthesized app reads their ARNs from `deployed-state.json`, so a project with
+ * credentials can't synthesize until they exist.
  *
- * Providers are created when absent and reused when already present, never
- * updated. Reuse keeps a deploy from minting a new secret version each run and
- * from overwriting a secret rotated outside the CLI; reconciling a provider
- * whose declaration has since changed is deliberately left to a later change.
+ * Created when absent, reused when present, never updated — so a redeploy neither
+ * mints a new secret version nor overwrites one rotated outside the CLI.
+ * Reconciling a changed declaration is left to a later change.
  */
 export function createCredentialProvisioner(
   createClient: IdentityProviderClientFactory = createIdentityProviderClient,
@@ -194,7 +187,7 @@ export function createCredentialProvisioner(
 async function provisionOne(
   client: IdentityProviderClient,
   credential: Credential,
-  env: Record<string, string>,
+  env: Record<string, string | undefined>,
   rootPath: string,
 ): Promise<DeployedCredential> {
   switch (credential.authorizerType) {
@@ -211,7 +204,7 @@ async function provisionOne(
 async function provisionApiKey(
   client: IdentityProviderClient,
   credential: ApiKeyCredential,
-  env: Record<string, string>,
+  env: Record<string, string | undefined>,
   rootPath: string,
 ): Promise<DeployedCredential> {
   const existing = await client.getApiKeyProvider(credential.name);
@@ -230,7 +223,7 @@ async function provisionApiKey(
 async function provisionOauth2(
   client: IdentityProviderClient,
   credential: OAuthCredential,
-  env: Record<string, string>,
+  env: Record<string, string | undefined>,
   rootPath: string,
 ): Promise<DeployedCredential> {
   const existing = await client.getOauth2Provider(credential.name);
