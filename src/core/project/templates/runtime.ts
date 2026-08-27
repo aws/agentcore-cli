@@ -61,11 +61,14 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     if (input.protocol !== undefined && input.protocol !== "HTTP")
       throw new InputValidationError(`hello-world-python only supports HTTP protocol`);
     const tree = await FsTreeNode.fromAssetSource(
-      assetSource,
-      input.scaffoldRuntimeInput.build === "Container"
-        ? "templates/hello-world-python-container"
-        : "templates/hello-world-python",
-      input.name,
+      { assetSource },
+      {
+        assetDir:
+          input.scaffoldRuntimeInput.build === "Container"
+            ? "templates/hello-world-python-container"
+            : "templates/hello-world-python",
+      },
+      { rootDirName: input.name },
     );
     return { tree, spec: { runtimes: [buildRuntimeSpec(input)] } };
   },
@@ -104,11 +107,15 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       needsOs: filesystemConfigurations.length > 0,
       hasConfigBundle: false,
     };
+    const isContainer = input.scaffoldRuntimeInput.build === "Container";
     const tree = await FsTreeNode.fromAssetSource(
-      assetSource,
-      "templates/strands-http-python",
-      input.name,
-      (raw) => templateRenderer.render(raw, context),
+      { assetSource },
+      { assetDir: "templates/strands-http-python" },
+      {
+        rootDirName: input.name,
+        transformContent: (raw) => templateRenderer.render(raw, context),
+        filter: (name) => isContainer || (name !== "Dockerfile" && name !== ".dockerignore"),
+      },
     );
     return {
       tree,

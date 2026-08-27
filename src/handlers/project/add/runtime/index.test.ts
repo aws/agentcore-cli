@@ -94,6 +94,17 @@ describe("project add runtime", () => {
   ];
 
   const expectedSpecByLabel: Record<string, Record<string, unknown>> = {
+    "template overrides to Container": {
+      build: "Container",
+      dockerfile: "Dockerfile",
+    },
+    "container template build override to CodeZip": {
+      build: "CodeZip",
+    },
+    "strands template overrides to Container": {
+      build: "Container",
+      dockerfile: "Dockerfile",
+    },
     "all infrastructure flags": {
       description: "Configured runtime",
       executionRoleArn: "arn:aws:iam::123456789012:role/MyRole",
@@ -129,6 +140,29 @@ describe("project add runtime", () => {
       ["--name", "my_agent", "--template", "hello-world-python-container"],
     ],
     ["strands-python template preset", ["--name", "my_agent", "--template", "strands-python"]],
+    [
+      "template overrides to Container",
+      [
+        "--name",
+        "my_agent",
+        "--template",
+        "hello-world-python",
+        "--build",
+        "Container",
+        "--model-provider",
+        "Bedrock",
+        "--memory",
+        "none",
+      ],
+    ],
+    [
+      "container template build override to CodeZip",
+      ["--name", "my_agent", "--template", "hello-world-python-container", "--build", "CodeZip"],
+    ],
+    [
+      "strands template overrides to Container",
+      ["--name", "my_agent", "--template", "strands-python", "--build", "Container"],
+    ],
     ["custom — all scaffolding flags", ["--name", "my_agent", ...allScaffoldingFlags]],
     [
       "custom — framework strands",
@@ -286,10 +320,17 @@ describe("project add runtime", () => {
     const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
     const runtime = spec.runtimes.find((candidate: { name: string }) => candidate.name === name);
     expect(runtime).toMatchObject({ entrypoint: "main.py", ...expectedSpecByLabel[label] });
-    const isContainer = flags.some(
-      (value) => value === "Container" || value === "hello-world-python-container",
-    );
+    expect(await Bun.file(join(projectRoot, "app", name, "main.py")).exists()).toBe(true);
+    const buildFlagIndex = flags.indexOf("--build");
+    const isContainer =
+      buildFlagIndex >= 0
+        ? flags[buildFlagIndex + 1] === "Container"
+        : flags.includes("hello-world-python-container");
     expect(runtime.runtimeVersion).toBe(isContainer ? undefined : "PYTHON_3_14");
+    expect(await Bun.file(join(projectRoot, "app", name, "Dockerfile")).exists()).toBe(isContainer);
+    expect(await Bun.file(join(projectRoot, "app", name, ".dockerignore")).exists()).toBe(
+      isContainer,
+    );
   });
 
   test.each<[string, string[]]>([
@@ -310,26 +351,6 @@ describe("project add runtime", () => {
       ],
     ],
     [
-      "--template and --build are mutually exclusive",
-      ["--name", "my_agent", "--template", "hello-world-python", "--build", "Container"],
-    ],
-    [
-      "--template and --language are mutually exclusive",
-      ["--name", "my_agent", "--template", "hello-world-python", "--language", "Python"],
-    ],
-    [
-      "--template and --framework are mutually exclusive",
-      ["--name", "my_agent", "--template", "hello-world-python", "--framework", "none"],
-    ],
-    [
-      "--template and --model-provider are mutually exclusive",
-      ["--name", "my_agent", "--template", "hello-world-python", "--model-provider", "Bedrock"],
-    ],
-    [
-      "--template and --memory are mutually exclusive",
-      ["--name", "my_agent", "--template", "hello-world-python", "--memory", "none"],
-    ],
-    [
       "strands-python only supports HTTP",
       ["--name", "my_agent", "--template", "strands-python", "--protocol", "MCP"],
     ],
@@ -344,5 +365,43 @@ describe("project add runtime", () => {
   ])("%s", async (_label, flags) => {
     await inProject();
     await expect(run(["add", "runtime", ...flags])).rejects.toBeInstanceOf(InputValidationError);
+  });
+
+  test.each([
+    ["language", "Python"],
+    ["framework", "none"],
+  ])("rejects --%s as a template override", async (flagName, value) => {
+    await inProject();
+    await expect(
+      run([
+        "add",
+        "runtime",
+        "--name",
+        "my_agent",
+        "--template",
+        "hello-world-python",
+        `--${flagName}`,
+        value,
+      ]),
+    ).rejects.toThrow(`--${flagName} cannot override a template`);
+  });
+
+  test("rejects an incompatible API-key template override", async () => {
+    const projectRoot = await inProject();
+    const apiKeyPath = join(projectRoot, "api-key.txt");
+    await Bun.write(apiKeyPath, "secret-key");
+
+    await expect(
+      run([
+        "add",
+        "runtime",
+        "--name",
+        "my_agent",
+        "--template",
+        "hello-world-python",
+        "--api-key",
+        `file://${apiKeyPath}`,
+      ]),
+    ).rejects.toThrow(/API keys are not compatible with Bedrock model providers/);
   });
 });

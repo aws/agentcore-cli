@@ -114,7 +114,10 @@ describe("project create", () => {
     expect(core.projectCommands).toEqual([]);
   });
 
-  test("rejects --template combined with scaffolding flags", async () => {
+  test.each([
+    ["language", "Python"],
+    ["framework", "none"],
+  ])("rejects --%s as a template override", async (flagName, value) => {
     await inTempDirectory();
     await expect(
       run([
@@ -123,10 +126,88 @@ describe("project create", () => {
         "MyAgent",
         "--template",
         "hello-world-python",
-        "--build",
-        "Container",
+        `--${flagName}`,
+        value,
       ]),
-    ).rejects.toThrow(/--template and --build are mutually exclusive/);
+    ).rejects.toThrow(`--${flagName} cannot override a template`);
+  });
+
+  test("applies compatible overrides to a template", async () => {
+    const directory = await inTempDirectory();
+    await run([
+      "create",
+      "--name",
+      "MyProject",
+      "--template",
+      "strands-python",
+      "--runtime-name",
+      "custom_agent",
+      "--build",
+      "CodeZip",
+      "--model-provider",
+      "Bedrock",
+      "--memory",
+      "none",
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    const projectRoot = join(directory, "MyProject");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0]).toMatchObject({
+      name: "custom_agent",
+      build: "CodeZip",
+      codeLocation: "app/custom_agent",
+      runtimeVersion: "PYTHON_3_14",
+    });
+    expect(await Bun.file(join(projectRoot, "app", "custom_agent", "main.py")).exists()).toBe(true);
+  });
+
+  test("scaffolds a Container agent from the strands template", async () => {
+    const directory = await inTempDirectory();
+    await run([
+      "create",
+      "--name",
+      "MyProject",
+      "--template",
+      "strands-python",
+      "--build",
+      "Container",
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    const projectRoot = join(directory, "MyProject");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0]).toMatchObject({
+      name: "strands_agent",
+      build: "Container",
+      codeLocation: "app/strands_agent",
+      dockerfile: "Dockerfile",
+    });
+    expect(spec.runtimes[0].runtimeVersion).toBeUndefined();
+    const runtimeRoot = join(projectRoot, "app", "strands_agent");
+    expect(await Bun.file(join(runtimeRoot, "main.py")).exists()).toBe(true);
+    expect(await Bun.file(join(runtimeRoot, "Dockerfile")).exists()).toBe(true);
+    expect(await Bun.file(join(runtimeRoot, ".dockerignore")).exists()).toBe(true);
+  });
+
+  test("omits the Dockerfile from a CodeZip strands template", async () => {
+    const directory = await inTempDirectory();
+    await run([
+      "create",
+      "--name",
+      "MyProject",
+      "--template",
+      "strands-python",
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    const runtimeRoot = join(directory, "MyProject", "app", "strands_agent");
+    expect(await Bun.file(join(runtimeRoot, "main.py")).exists()).toBe(true);
+    expect(await Bun.file(join(runtimeRoot, "Dockerfile")).exists()).toBe(false);
+    expect(await Bun.file(join(runtimeRoot, ".dockerignore")).exists()).toBe(false);
   });
 
   test("scaffolds from explicit custom flags", async () => {
