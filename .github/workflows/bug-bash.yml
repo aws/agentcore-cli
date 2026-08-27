@@ -84,17 +84,11 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number || github.run_id }}
         run: |
-          # Key layout is repo-path/pr-number so the S3 console (the file explorer)
-          # groups every recording by repo then PR; the prefix link below deep-links there.
-          prefix="bug-bash/${REPO}/pr-${PR}"
-          key="${prefix}/${{ github.run_id }}.mp4"
+          # Key layout is repo-path/pr-number so recordings group by repo then PR.
+          # Deliberately do NOT print the object URL — just point reviewers at S3.
+          key="bug-bash/${REPO}/pr-${PR}/${{ github.run_id }}.mp4"
           aws s3 cp "$OUT" "s3://${BUGBASH_RECORDING_BUCKET}/${key}"
-          console="https://us-east-1.console.aws.amazon.com/s3/buckets/${BUGBASH_RECORDING_BUCKET}?region=us-east-1&prefix=${prefix}/"
-          {
-            echo "### Bug-bash recording"
-            echo "- Object: \`s3://${BUGBASH_RECORDING_BUCKET}/${key}\`"
-            echo "- [Browse this PR's recordings in the S3 console](${console})"
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Bug-bash recording uploaded — check S3." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload recording as run artifact
         if: always()
