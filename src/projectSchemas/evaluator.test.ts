@@ -32,7 +32,8 @@ describe("evaluator custom validation", () => {
   it("validates model identifiers and KMS key ARNs through owned helpers", () => {
     expect(isValidBedrockModelId("anthropic.claude-v2:1")).toBe(true);
     expect(isValidBedrockModelId("us.anthropic.claude-sonnet-4-5-20250929-v1:0")).toBe(true);
-    // foundation-model ARNs omit the account segment; inference-profile ARNs carry it.
+    // foundation-model ARNs omit the account segment; (application-)inference-profile
+    // ARNs carry it. Each type must match only its documented shape.
     expect(
       isValidBedrockModelId("arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-v2"),
     ).toBe(true);
@@ -41,6 +42,16 @@ describe("evaluator custom validation", () => {
         "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-v2",
       ),
     ).toBe(true);
+    expect(
+      isValidBedrockModelId(
+        "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/my-profile",
+      ),
+    ).toBe(true);
+    // Wrong account format for the resource type is rejected.
+    expect(isValidBedrockModelId("arn:aws:bedrock:us-east-1:123456789012:foundation-model/x")).toBe(
+      false,
+    );
+    expect(isValidBedrockModelId("arn:aws:bedrock:us-east-1::inference-profile/x")).toBe(false);
     expect(isValidBedrockModelId("not a model")).toBe(false);
     expect(
       isValidKmsKeyArn(
