@@ -12,6 +12,7 @@ import {
 import type { Logger } from "../../../logging";
 import type { DeployBackendInput, ProjectBackend } from "./types";
 import { stackArtifactIdForTarget } from "./cdk/assembly";
+import { createCredentialProvisioner, type CredentialProvisioner } from "./cdk/credentials";
 import { readDeployedState, updateTargetState } from "./cdk/deployedState";
 import {
   probeBootstrap,
@@ -38,6 +39,7 @@ export type CdkBackendConfig = {
   bootstrap?: BootstrapProbe;
   resolveAccount?: AccountResolver;
   loadBootstrapTemplate?: BootstrapTemplateLoader;
+  provisionCredentials?: CredentialProvisioner;
 };
 
 /** Builds and deploys projects through the scaffolded CDK app. */
@@ -51,6 +53,7 @@ export class CdkBackend implements ProjectBackend {
   private readonly bootstrap: BootstrapProbe;
   private readonly resolveAccount: AccountResolver;
   private readonly loadBootstrapTemplate: BootstrapTemplateLoader;
+  private readonly provisionCredentials: CredentialProvisioner;
 
   constructor(config: CdkBackendConfig) {
     this.logger = config.logger;
@@ -63,6 +66,7 @@ export class CdkBackend implements ProjectBackend {
     this.bootstrap = config.bootstrap ?? probeBootstrap;
     this.resolveAccount = config.resolveAccount ?? resolveAwsAccount;
     this.loadBootstrapTemplate = config.loadBootstrapTemplate ?? loadBootstrapTemplate;
+    this.provisionCredentials = config.provisionCredentials ?? createCredentialProvisioner();
   }
 
   public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
@@ -105,6 +109,19 @@ export class CdkBackend implements ProjectBackend {
     // must fail here — not after bootstrap/deploy — so we never leave AWS changed
     // with the new stack ARN unrecorded because the post-deploy write can't parse it.
     await readDeployedState(this.json, project.rootPath);
+
+    // Credential providers exist before synthesis, not as part of the stack: the
+    // synthesized app reads their ARNs out of deployed-state.json, so a project
+    // declaring credentials cannot synthesize until they have been recorded.
+    const provisioned = yield* this.provisionCredentials(project, {
+      credentials,
+      region: target.region,
+    });
+    if (Object.keys(provisioned).length > 0) {
+      await updateTargetState(this.json, project.rootPath, target.name, {
+        resources: { credentials: provisioned },
+      });
+    }
 
     yield* this.build(project);
     const assemblyDirectory = this.assemblyDirectory(project);

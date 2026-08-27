@@ -9,7 +9,12 @@ import {
 } from "../../../../identity/oauth2-credential-provider/config";
 import type { AddProjectResourceConfig } from "../../types";
 import type { EnvLocalEntry } from "../../../types";
-import { addCredentialToProject, credentialEnvVarName, parseExclusiveSecretRef } from "../shared";
+import {
+  addCredentialToProject,
+  CLIENT_SECRET_SUFFIX,
+  credentialEnvVarName,
+  parseExclusiveSecretRef,
+} from "../shared";
 
 export const createAddOauthCredentialHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -95,7 +100,7 @@ export const createAddOauthCredentialHandler = (config: AddProjectResourceConfig
         ? []
         : [
             {
-              key: credentialEnvVarName(flags.name, "_CLIENT_SECRET"),
+              key: credentialEnvVarName(flags.name, CLIENT_SECRET_SUFFIX),
               value: clientSecret,
               comment: `OAuth client secret for credential provider '${flags.name}' (set before deploy)`,
             },

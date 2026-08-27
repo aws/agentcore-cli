@@ -1,13 +1,13 @@
 import { ProjectKey, type Context } from "../../../../router";
 import { InputValidationError } from "../../../../errors";
+import { CLIENT_SECRET_SUFFIX, credentialEnvVarName } from "../../../../core/project/envLocal";
 import { parseSecretReference } from "../../../identity/parser";
 import type { AddProjectResourceConfig } from "../types";
 import type { AddResourceInput } from "../../types";
 
-/** Derives the .env.local variable name a credential's secret is stored under. */
-export function credentialEnvVarName(credentialName: string, suffix = ""): string {
-  return `AGENTCORE_CREDENTIAL_${credentialName.replace(/-/g, "_").toUpperCase()}${suffix}`;
-}
+// Re-exported so the add handlers and `project deploy` derive secret variable
+// names from one definition: deploy reads back exactly what add writes.
+export { CLIENT_SECRET_SUFFIX, credentialEnvVarName };
 
 /** Parses a secret-reference flag, rejecting a directly supplied secret alongside it. */
 export function parseExclusiveSecretRef(

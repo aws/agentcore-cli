@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { parseEnv } from "node:util";
-import { EnvLocalFile } from "./envLocal";
+import { CLIENT_SECRET_SUFFIX, credentialEnvVarName, EnvLocalFile } from "./envLocal";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -73,5 +73,25 @@ test("rejects a value that contains a single quote", async () => {
   const file = new EnvLocalFile(root);
   await expect(file.insertIfNew([{ key: "SECRET", value: "a'b", comment: "c" }])).rejects.toThrow(
     /single quote/,
+  );
+});
+
+test("read returns {} when the file does not exist", async () => {
+  const root = await tempRoot();
+  expect(await new EnvLocalFile(root).read()).toEqual({});
+});
+
+test("read parses back the entries insertIfNew wrote", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+  await file.insertIfNew([{ key: "SECRET", value: "s k", comment: "c" }]);
+
+  expect(await file.read()).toEqual({ SECRET: "s k" });
+});
+
+test("credentialEnvVarName upcases, replaces hyphens, and appends the suffix", () => {
+  expect(credentialEnvVarName("openai-key")).toBe("AGENTCORE_CREDENTIAL_OPENAI_KEY");
+  expect(credentialEnvVarName("my-oauth", CLIENT_SECRET_SUFFIX)).toBe(
+    "AGENTCORE_CREDENTIAL_MY_OAUTH_CLIENT_SECRET",
   );
 });

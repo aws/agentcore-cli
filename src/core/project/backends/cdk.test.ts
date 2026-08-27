@@ -7,6 +7,7 @@ import type { DeployResult, Project, ProjectEvent } from "../../../handlers/proj
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { createSilentLogger } from "../../../testing";
 import { CdkBackend } from "./cdk";
+import type { CredentialProvisioner } from "./cdk/credentials";
 import { DEPLOYED_STATE_RELATIVE_PATH } from "./cdk/deployedState";
 import type { BootstrapState } from "./cdk/environment";
 import type { CdkCredentialProvider, CdkOperation, CdkOutputs, CdkRunOptions } from "./cdk/toolkit";
@@ -85,6 +86,7 @@ type HarnessOptions = {
   template?: boolean;
   failOperation?: CdkOperation["kind"];
   bootstrapError?: Error;
+  provisionCredentials?: CredentialProvisioner;
 };
 
 function harness(options: HarnessOptions = {}) {
@@ -152,6 +154,7 @@ function harness(options: HarnessOptions = {}) {
         },
       };
     },
+    ...(options.provisionCredentials && { provisionCredentials: options.provisionCredentials }),
   });
 
   return {
@@ -271,6 +274,44 @@ describe("CdkBackend.deploy", () => {
         default: {
           stackArn:
             "arn:aws:cloudformation:us-east-1:111122223333:stack/AgentCore-example-default/abc",
+        },
+      },
+    });
+  });
+
+  test("provisions credentials before synth and records them under the target", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const provisionCredentials: CredentialProvisioner = async function* () {
+      yield { message: "Preparing credential provider 'openai-key'" };
+      return { "openai-key": { credentialProviderArn: "arn:apikey:openai-key" } };
+    };
+    const subject = harness({
+      outputs: { RuntimeArn: "arn:runtime" },
+      stackArn: "arn:aws:cloudformation:us-east-1:111122223333:stack/AgentCore-example-default/abc",
+      provisionCredentials,
+    });
+
+    const deployed = await collectDeploy(subject.backend.deploy(input, { target: TARGET }));
+
+    // The credential step runs (and its ARNs are recorded) before synthesis, so
+    // the assembly is synthesized against a state file that already describes them.
+    const messages = deployed.events.map((event) => event.message);
+    expect(messages.indexOf("Preparing credential provider 'openai-key'")).toBeLessThan(
+      messages.indexOf("Synthesizing CloudFormation templates"),
+    );
+
+    // The pre-synth credentials write and the post-deploy stack-ARN write merge
+    // into one target entry rather than clobbering each other.
+    const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
+    expect(JSON.parse(await Bun.file(statePath).text())).toEqual({
+      targets: {
+        default: {
+          stackArn:
+            "arn:aws:cloudformation:us-east-1:111122223333:stack/AgentCore-example-default/abc",
+          resources: {
+            credentials: { "openai-key": { credentialProviderArn: "arn:apikey:openai-key" } },
+          },
         },
       },
     });
