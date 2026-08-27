@@ -6,9 +6,6 @@ import type { ReadWriteJson } from "../../../../io";
 
 const TARGET_TAG = "agentcore:target-name";
 const STACK_ARTIFACT = "aws:cloudformation:stack";
-/** What CDK writes in an artifact's `environment` when the stack is env-agnostic. */
-const UNKNOWN_ACCOUNT = "unknown-account";
-const UNKNOWN_REGION = "unknown-region";
 /** The resource CDK adds to every stack of its own accord, which no user asked for. */
 const METADATA_RESOURCE_TYPE = "AWS::CDK::Metadata";
 
@@ -18,7 +15,6 @@ const AssemblyManifestSchema = z.object({
       z.string(),
       z.object({
         type: z.string(),
-        environment: z.string().optional(),
         properties: z
           .object({
             tags: z.record(z.string(), z.string()).optional(),
@@ -55,21 +51,11 @@ export interface StackArtifact {
   templateFile: string | undefined;
 }
 
-/** The account and region a deploy expects its stack to be bound to. */
-export interface StackEnvironment {
-  account: string;
-  region: string;
-}
-
-/**
- * Finds the one synthesized stack artifact tagged for the selected deployment
- * target, and checks it is bound to the environment that target names.
- */
+/** Finds the one synthesized stack artifact tagged for the selected deployment target. */
 export async function stackArtifactForTarget(
   json: ReadWriteJson,
   assemblyDirectory: string,
   target: string,
-  expected: StackEnvironment,
 ): Promise<StackArtifact> {
   const manifestPath = join(assemblyDirectory, "manifest.json");
   if (!existsSync(manifestPath)) {
@@ -98,7 +84,6 @@ export async function stackArtifactForTarget(
   }
 
   const [id, artifact] = matches[0]!;
-  assertEnvironmentMatches(id, artifact.environment, expected);
   return {
     id,
     // Mirrors how CDK itself resolves a stack artifact's physical name
@@ -149,48 +134,4 @@ export async function countDeployableResources(
   return Object.values(template.Resources).filter(
     (resource) => resource.Type !== METADATA_RESOURCE_TYPE,
   ).length;
-}
-
-// Both the target tag and the stack's environment derive from the same target in
-// the synthesized app, so today they cannot disagree. Checking anyway keeps a
-// correct tag from carrying a stack into the wrong account or region: the Toolkit
-// deploys where the artifact's environment points, not where the tag says.
-function assertEnvironmentMatches(
-  id: string,
-  environment: string | undefined,
-  expected: StackEnvironment,
-): void {
-  // Not the env-agnostic case — CDK spells that out as
-  // aws://unknown-account/unknown-region, handled below. `environment` is
-  // optional in the cloud assembly schema, so a stack artifact without one is a
-  // manifest we cannot draw any conclusion from; the account preflight has
-  // already confirmed the credentials point at the target account either way.
-  if (environment === undefined) return;
-
-  const parsed = /^aws:\/\/([^/]+)\/(.+)$/.exec(environment);
-  if (!parsed) {
-    throw new ProjectStateError(
-      `Stack artifact '${id}' declares an unrecognized environment '${environment}'. ` +
-        `Expected the form aws://<account>/<region>.`,
-    );
-  }
-
-  const account = parsed[1]!;
-  const region = parsed[2]!;
-  // The unknown-* placeholders are the env-agnostic case spelled out.
-  const mismatches = [
-    account !== UNKNOWN_ACCOUNT && account !== expected.account
-      ? `account ${account} (target expects ${expected.account})`
-      : undefined,
-    region !== UNKNOWN_REGION && region !== expected.region
-      ? `region ${region} (target expects ${expected.region})`
-      : undefined,
-  ].filter((mismatch) => mismatch !== undefined);
-
-  if (mismatches.length > 0) {
-    throw new ProjectStateError(
-      `The synthesized stack '${id}' is built for ${mismatches.join(" and ")}. ` +
-        `Re-synthesize the project so its stack matches the deployment target.`,
-    );
-  }
 }

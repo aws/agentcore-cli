@@ -118,10 +118,7 @@ export class CdkBackend implements ProjectBackend {
 
     yield* this.build(project);
     const assemblyDirectory = this.assemblyDirectory(project);
-    const artifact = await stackArtifactForTarget(this.json, assemblyDirectory, target.name, {
-      account: target.account,
-      region: target.region,
-    });
+    const artifact = await stackArtifactForTarget(this.json, assemblyDirectory, target.name);
     const options = { assemblyDirectory, credentials, region: target.region };
 
     // Decided before the Toolkit is handed the assembly: it reads a template

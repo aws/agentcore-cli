@@ -60,8 +60,6 @@ async function project(withDependencies = true): Promise<Project> {
 }
 
 type AssemblyOptions = {
-  /** Overrides the environment every stack artifact is synthesized for. */
-  environment?: string;
   /** Overrides the resources every stack's template declares. */
   resources?: Record<string, unknown>;
 };
@@ -101,7 +99,6 @@ async function writeAssembly(
             stack.id,
             {
               type: "aws:cloudformation:stack",
-              environment: options.environment ?? `aws://${TARGET.account}/${TARGET.region}`,
               properties: {
                 templateFile: stack.templateFile,
                 tags: { "agentcore:target-name": stack.target },
@@ -426,19 +423,6 @@ describe("CdkBackend.deploy", () => {
     await collectDeploy(subject.backend.deploy(input, deployInput()));
 
     expect(subject.stackProbes).toEqual([]);
-  });
-
-  test("refuses a stack synthesized for a different region than the target", async () => {
-    const input = await project();
-    await writeAssembly(input, [TARGET.name], {
-      environment: `aws://${TARGET.account}/us-west-2`,
-    });
-    const subject = harness();
-
-    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow(
-      /built for region us-west-2 \(target expects us-east-1\)/,
-    );
-    expect(subject.runs).toEqual([]);
   });
 
   test.each([
