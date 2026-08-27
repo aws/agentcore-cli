@@ -1,12 +1,12 @@
 {
   "name": "@aws/agentcore",
-  "version": "0.27.1",
+  "version": "0.28.1",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
       "name": "@aws/agentcore",
-      "version": "0.27.1",
+      "version": "0.28.1",
       "hasInstallScript": true,
       "license": "Apache-2.0",
       "dependencies": {
@@ -8030,9 +8030,9 @@
       }
     },
     "node_modules/constructs": {
-      "version": "10.6.0",
-      "resolved": "https://registry.npmjs.org/constructs/-/constructs-10.6.0.tgz",
-      "integrity": "sha512-TxHOnBO5zMo/G76ykzGF/wMpEHu257TbWiIxP9K0Yv/+t70UzgBQiTqjkAsWOPC6jW91DzJI0+ehQV6xDRNBuQ==",
+      "version": "10.8.1",
+      "resolved": "https://registry.npmjs.org/constructs/-/constructs-10.8.1.tgz",
+      "integrity": "sha512-98yGXYyhePqPYh3cYu8nzBERmAhC0DONe3UD03okK0nehZ7hYP4wgZuf02a04+uOWxnTJ5Rpp5m0GRNpwyLGGA==",
       "dev": true,
       "license": "Apache-2.0"
     },
