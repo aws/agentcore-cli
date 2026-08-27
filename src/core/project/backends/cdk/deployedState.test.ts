@@ -119,4 +119,34 @@ describe("updateTargetState", () => {
       },
     });
   });
+
+  test("preserves unknown fields inside a credential entry across an update", async () => {
+    const root = await projectRoot();
+    // A field a newer CLI (or the CDK app) records that this code doesn't model.
+    await Bun.write(
+      statePath(root),
+      JSON.stringify({
+        targets: {
+          default: {
+            resources: {
+              credentials: { k: { credentialProviderArn: "arn:a", futureField: "keep" } },
+            },
+          },
+        },
+      }),
+    );
+
+    await updateTargetState(json, root, "default", { stackArn: "arn:stack:default" });
+
+    expect(await readRaw(root)).toEqual({
+      targets: {
+        default: {
+          stackArn: "arn:stack:default",
+          resources: {
+            credentials: { k: { credentialProviderArn: "arn:a", futureField: "keep" } },
+          },
+        },
+      },
+    });
+  });
 });

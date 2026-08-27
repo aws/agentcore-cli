@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { ProjectStateError } from "../../../errors/errors";
+import { MalformedServiceResponseError, ProjectStateError } from "../../../errors/errors";
 import type { DeployResult, Project, ProjectEvent } from "../../../handlers/project/types";
 import {
   FsReadWriteJson,
@@ -12,7 +12,7 @@ import {
 import type { Logger } from "../../../logging";
 import type { DeployBackendInput, ProjectBackend } from "./types";
 import { stackArtifactIdForTarget } from "./cdk/assembly";
-import { updateTargetState } from "./cdk/deployedState";
+import { readDeployedState, updateTargetState } from "./cdk/deployedState";
 import {
   probeBootstrap,
   resolveAwsAccount,
@@ -101,6 +101,11 @@ export class CdkBackend implements ProjectBackend {
       );
     }
 
+    // Validate any existing deployed state before mutating AWS. A malformed file
+    // must fail here — not after bootstrap/deploy — so we never leave AWS changed
+    // with the new stack ARN unrecorded because the post-deploy write can't parse it.
+    await readDeployedState(this.json, project.rootPath);
+
     yield* this.build(project);
     const assemblyDirectory = this.assemblyDirectory(project);
     const stackArtifactId = await stackArtifactIdForTarget(
@@ -141,11 +146,19 @@ export class CdkBackend implements ProjectBackend {
     yield { message: `Deploying ${stackArtifactId}` };
     const { outputs, stackArn } = await this.cdk({ kind: "deploy", stackArtifactId }, options);
 
-    // Persist the deployed stack's ARN so later commands read live resource
-    // state from CFN.  Merged per target, so deploying one target never drops another's recorded state
-    if (stackArn) {
-      await updateTargetState(this.json, project.rootPath, target.name, { stackArn });
+    // A successful deploy always has a stack ARN (CDK's DeployedStack requires
+    // it). Its absence means a malformed result; fail loudly rather than return
+    // success without recording the binding later commands need.
+    if (!stackArn) {
+      throw new MalformedServiceResponseError(
+        `The CDK Toolkit reported a successful deploy of '${stackArtifactId}' without a stack ARN.`,
+      );
     }
+
+    // Persist the deployed stack's ARN so later commands read live resource state
+    // from CloudFormation. Merged per target, so deploying one target never drops
+    // another's recorded state.
+    await updateTargetState(this.json, project.rootPath, target.name, { stackArn });
 
     return { outputs };
   }

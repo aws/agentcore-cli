@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { mkdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { z } from "zod";
-import type { ReadWriteJson } from "../../../../io";
+import { atomicWrite, type ReadWriteJson } from "../../../../io";
 
 /**
  * Project-relative path of the state file the synthesized CDK app reads.
@@ -12,10 +13,15 @@ import type { ReadWriteJson } from "../../../../io";
  */
 export const DEPLOYED_STATE_RELATIVE_PATH = join("agentcore", "deployed-state.json");
 
-const CredentialStateSchema = z.object({
-  credentialProviderArn: z.string(),
-  clientSecretArn: z.string().optional(),
-});
+// Passthrough like the levels above it: a stack-ARN-only update reads and
+// rewrites the whole file, so stripping unknown keys here would drop fields a
+// newer CLI (or the CDK app) records inside a credential entry.
+const CredentialStateSchema = z
+  .object({
+    credentialProviderArn: z.string(),
+    clientSecretArn: z.string().optional(),
+  })
+  .passthrough();
 
 // Only the branches this CLI owns are modelled. Every other key the CDK app or
 // the published @aws/agentcore-cdk DeployedStateSchema records under a target —
@@ -72,6 +78,10 @@ export async function readDeployedState(
  * updating one resource kind (e.g. `credentials`) leaves the others in place.
  * A resource map provided in the patch replaces the previous map for that kind
  * wholesale, so a credential dropped from the spec stops being advertised.
+ *
+ * This read-modify-write is safe for sequential updates (one deploy at a time),
+ * which is the only supported case — concurrent deploys of the same project can
+ * still lose an update, since each reads the file before the other writes.
  */
 export async function updateTargetState(
   json: ReadWriteJson,
@@ -99,6 +109,9 @@ export async function updateTargetState(
     targets: { ...state.targets, [targetName]: merged },
   };
 
-  await json.write(statePath, next);
+  // Written atomically (temp file + rename) so an interruption or disk failure
+  // can't leave a half-written, unparseable state file that blocks later deploys.
+  await mkdir(dirname(statePath), { recursive: true });
+  await atomicWrite(statePath, JSON.stringify(next, undefined, 2));
   return next;
 }
