@@ -36,8 +36,11 @@ export const RatingScaleSchema = z
   );
 export type RatingScale = z.infer<typeof RatingScaleSchema>;
 const BEDROCK_MODEL_ID_PATTERN = /^[a-z][a-z0-9-]*\.[a-zA-Z0-9._-]+(:[0-9]+)?$/;
+// The account segment is optional: foundation-model ARNs omit it
+// (arn:aws:bedrock:us-east-1::foundation-model/...), while inference-profile
+// ARNs carry it (arn:aws:bedrock:us-east-1:123456789012:inference-profile/...).
 const BEDROCK_ARN_PATTERN =
-  /^arn:aws[a-z-]*:bedrock:[a-z0-9-]+:\d{12}:(inference-profile|foundation-model)\/.+$/;
+  /^arn:aws[a-z-]*:bedrock:[a-z0-9-]+:(\d{12})?:(inference-profile|foundation-model)\/.+$/;
 export function isValidBedrockModelId(value: string): boolean {
   return BEDROCK_MODEL_ID_PATTERN.test(value) || BEDROCK_ARN_PATTERN.test(value);
 }

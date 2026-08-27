@@ -31,6 +31,16 @@ describe("evaluator custom validation", () => {
   });
   it("validates model identifiers and KMS key ARNs through owned helpers", () => {
     expect(isValidBedrockModelId("anthropic.claude-v2:1")).toBe(true);
+    expect(isValidBedrockModelId("us.anthropic.claude-sonnet-4-5-20250929-v1:0")).toBe(true);
+    // foundation-model ARNs omit the account segment; inference-profile ARNs carry it.
+    expect(
+      isValidBedrockModelId("arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-v2"),
+    ).toBe(true);
+    expect(
+      isValidBedrockModelId(
+        "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-v2",
+      ),
+    ).toBe(true);
     expect(isValidBedrockModelId("not a model")).toBe(false);
     expect(
       isValidKmsKeyArn(
