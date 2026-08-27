@@ -1,0 +1,105 @@
+name: Bug Bash
+
+# Runs the AgentCore CLI bug-bash bot on every pull request: builds the CLI from
+# the PR head, exercises it against the explore sandbox account, records the TUI
+# session via private-tui-harness, and drops the recording in S3.
+#
+# Shared-secrets model follows the Moab "GitHub Reusable Workflow Guide":
+#   - id-token: write lets the fetch-secrets composite assume this repo's
+#     DevXWorkflowSecretsReader role via OIDC and read secrets from the central
+#     DevX Secrets Manager account (631957124172, us-east-1).
+#   - Reuses the shared E2E_AWS_ROLE_ARN (685197708687) that the harness reviewer
+#     and E2E already run under; recording bucket via BUGBASH_RECORDING_BUCKET.
+#     Both are aws/agentcore-cli/<NAME> secrets, fetched by bare name below.
+#   - Composite action is pinned to a full commit SHA on devtools main, per guide.
+
+on:
+  pull_request:
+    branches: [main, refactor]
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+    inputs:
+      region:
+        description: AWS region to run the bug-bash in
+        required: false
+        default: us-east-1
+        type: string
+
+concurrency:
+  group: bug-bash-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  bug-bash:
+    # The job assumes a real AWS role, so it must never run untrusted fork code.
+    # Fork PRs are intentionally skipped; only same-repo PRs and manual dispatch run.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    timeout-minutes: 30
+    env:
+      AWS_REGION: ${{ inputs.region || 'us-east-1' }}
+      OUT: ${{ runner.temp }}/bug-bash-${{ github.run_id }}.mp4
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+
+      - name: Fetch workflow secrets
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          repo: E2E_AWS_ROLE_ARN, BUGBASH_RECORDING_BUCKET
+
+      # Reuse the shared GitHub-Actions runtime account (685197708687) that the
+      # harness reviewer and E2E already run in, via the existing E2E_AWS_ROLE_ARN.
+      - name: Assume E2E role (shared runtime account)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build the TUI recorder (private-tui-harness)
+        run: |
+          git clone --depth 1 https://github.com/jariy17/private-tui-harness.git "$RUNNER_TEMP/tui-harness"
+          (cd "$RUNNER_TEMP/tui-harness" && npm ci && npm run build)
+          echo "TUI_HARNESS_DIST=$RUNNER_TEMP/tui-harness/dist/index.js" >> "$GITHUB_ENV"
+
+      - name: Run bug-bash + record TUI
+        run: node .github/harness/bug-bash/record.mjs
+
+      - name: Upload recording to S3
+        env:
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number || github.run_id }}
+        run: |
+          # Key layout is repo-path/pr-number so the S3 console (the file explorer)
+          # groups every recording by repo then PR; the prefix link below deep-links there.
+          prefix="bug-bash/${REPO}/pr-${PR}"
+          key="${prefix}/${{ github.run_id }}.mp4"
+          aws s3 cp "$OUT" "s3://${BUGBASH_RECORDING_BUCKET}/${key}"
+          console="https://us-east-1.console.aws.amazon.com/s3/buckets/${BUGBASH_RECORDING_BUCKET}?region=us-east-1&prefix=${prefix}/"
+          {
+            echo "### Bug-bash recording"
+            echo "- Object: \`s3://${BUGBASH_RECORDING_BUCKET}/${key}\`"
+            echo "- [Browse this PR's recordings in the S3 console](${console})"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload recording as run artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bug-bash-recording
+          path: ${{ env.OUT }}
+          if-no-files-found: warn
