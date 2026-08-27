@@ -71,6 +71,26 @@ describe("createIdentityProviderClient", () => {
     });
   });
 
+  test("maps an OAuth2 provider it finds, including its secret ARN", async () => {
+    send = async () => ({
+      credentialProviderArn: "arn:cp",
+      clientSecretArn: { secretArn: "arn:secret" },
+    });
+    const client = await createIdentityProviderClient("us-east-1", credentials);
+
+    expect(await client.getOauth2Provider("o")).toEqual({
+      credentialProviderArn: "arn:cp",
+      clientSecretArn: "arn:secret",
+    });
+  });
+
+  test("omits the secret ARN when Identity returns none", async () => {
+    send = async () => ({ credentialProviderArn: "arn:cp" });
+    const client = await createIdentityProviderClient("us-east-1", credentials);
+
+    expect(await client.getApiKeyProvider("k")).toEqual({ credentialProviderArn: "arn:cp" });
+  });
+
   test("returns undefined when the provider does not exist", async () => {
     send = async () => {
       throw new ResourceNotFoundException();
@@ -124,6 +144,28 @@ describe("createIdentityProviderClient", () => {
       apiKeySecretConfig: secretRef,
       apiKeySecretSource: "EXTERNAL",
     });
+  });
+
+  test("returns the created API key provider's secret ARN", async () => {
+    send = async () => ({
+      credentialProviderArn: "arn:cp",
+      apiKeySecretArn: { secretArn: "arn:secret" },
+    });
+    const client = await createIdentityProviderClient("us-east-1", credentials);
+
+    expect(await client.createApiKeyProvider({ name: "k", apiKey: "sk" })).toEqual({
+      credentialProviderArn: "arn:cp",
+      clientSecretArn: "arn:secret",
+    });
+  });
+
+  test("creates an OAuth2 provider without a returned secret ARN", async () => {
+    send = async () => ({ credentialProviderArn: "arn:cp" });
+    const client = await createIdentityProviderClient("us-east-1", credentials);
+
+    expect(
+      await client.createOauth2Provider({ name: "o", vendor: "CustomOauth2", config: {} }),
+    ).toEqual({ credentialProviderArn: "arn:cp" });
   });
 
   test("creates an OAuth2 provider with its vendor and config", async () => {
