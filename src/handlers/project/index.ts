@@ -48,11 +48,7 @@ export function createProjectHandler(config: ProjectHandlerConfig): Router {
         inspectorAssets: new InspectorAssets(),
         isInteractive: () => process.stdout.isTTY === true,
         watchFile,
-        reloadRuntimes: async (projectRoot) => {
-          const project = await config.projectManager.resolve({ filePath: projectRoot });
-          if (!project) throw new Error("project configuration is currently unreadable");
-          return project.spec.runtimes;
-        },
+        projectManager: config.projectManager,
       }),
     ),
   );
