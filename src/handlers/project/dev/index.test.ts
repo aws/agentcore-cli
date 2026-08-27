@@ -116,7 +116,10 @@ function harness(options: HarnessOptions = {}) {
     watchFile: (path, onChange) => {
       watchers.push({ path, onChange });
     },
-    reloadRuntimes: async () => options.reloadedRuntimes ?? [],
+    projectManager: {
+      resolve: async () =>
+        options.reloadedRuntimes ? project(...options.reloadedRuntimes) : undefined,
+    },
   });
   const ctx = ValueContext.EmptyContext()
     .withValue(ProjectKey, options.project ?? project(runtime()))
@@ -141,10 +144,10 @@ function harness(options: HarnessOptions = {}) {
         agent?: string;
         port?: number;
         traces?: boolean;
-        ui?: boolean;
+        mode?: "browser" | "headless" | "tui";
         "ui-port"?: number;
       } = {},
-    ) => handler.handle(ctx, { traces: true, ui: false, ...flags }, {}),
+    ) => handler.handle(ctx, { traces: true, mode: "headless", ...flags }, {}),
   };
 }
 
@@ -167,13 +170,13 @@ describe("project dev selection and dispatch", () => {
     [
       project(runtime("orders")),
       {},
-      "--no-ui runs a single agent in the terminal. Pass --agent <name> to choose which one. Available: orders",
+      "--mode headless runs a single agent in the terminal. Pass --agent <name> to choose which one. Available: orders",
       InputValidationError,
     ],
     [
       project(runtime("orders"), runtime("support", "Container")),
       {},
-      "--no-ui runs a single agent in the terminal. Pass --agent <name> to choose which one. Available: orders, support",
+      "--mode headless runs a single agent in the terminal. Pass --agent <name> to choose which one. Available: orders, support",
       InputValidationError,
     ],
     [
@@ -309,7 +312,7 @@ describe("project dev Inspector UI mode", () => {
   // Wraps the run promise so awaiting this helper does not flatten it into
   // "wait for the whole dev command to exit".
   async function runUi(subject: ReturnType<typeof harness>, flags: Record<string, unknown> = {}) {
-    const pending = subject.run({ ui: true, ...flags });
+    const pending = subject.run({ mode: "browser", ...flags });
     pending.catch(() => undefined);
     await Bun.sleep(5); // let the handler start the UI server and block on events
     return { pending };
@@ -389,7 +392,7 @@ describe("project dev Inspector UI mode", () => {
 
   test("an explicit --ui-port that is taken fails fast", async () => {
     const subject = harness({ checkPort: async () => false });
-    await expect(subject.run({ ui: true, "ui-port": 9999 })).rejects.toThrow(
+    await expect(subject.run({ mode: "browser", "ui-port": 9999 })).rejects.toThrow(
       "Port 9999 is already in use",
     );
   });
@@ -398,7 +401,7 @@ describe("project dev Inspector UI mode", () => {
     const subject = harness({
       project: project(runtime("orders"), runtime("support", "Container")),
     });
-    await expect(subject.run({ ui: true, port: 4567 })).rejects.toThrow(
+    await expect(subject.run({ mode: "browser", port: 4567 })).rejects.toThrow(
       "--port applies to a single runtime",
     );
   });

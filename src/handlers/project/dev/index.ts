@@ -16,7 +16,7 @@ import type { AppIO, BrowserOpener, FileWatcher, PortChecker, startHttpServer } 
 import { createHandler, flag, ProjectKey } from "../../../router";
 import { JsonRendererKey, type JsonRenderer } from "../../../tui";
 import { JsonKey, RegionKey } from "../../keys";
-import type { Project } from "../types";
+import type { Project, ProjectManager } from "../types";
 import type { DevEnvironmentLoader } from "./environment";
 import type { DevEvent, DevRunner, DevTraceCollector, DevTraceCollectorStarter } from "./types";
 
@@ -36,8 +36,8 @@ export type DevProjectHandlerConfig = {
   isInteractive: () => boolean;
   /** Watches agentcore.json so the Inspector reflects config edits live. */
   watchFile: FileWatcher;
-  /** Re-reads the project's runtime definitions after a config change. */
-  reloadRuntimes: (projectRoot: string) => Promise<ProjectRuntime[]>;
+  /** Re-resolves the project after a config change to pick up runtime edits. */
+  projectManager: Pick<ProjectManager, "resolve">;
   /** Overrides how the supervisor decides an agent is ready (defaults to a real TCP poll). */
   waitReady?: SupervisorConfig["waitReady"];
 };
@@ -100,10 +100,14 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
         z.coerce.number().int().min(1).max(65535).optional(),
       ),
       flag("traces", "disable local OTEL trace collection", z.boolean().default(true)),
-      flag("ui", "run without the Agent Inspector web UI", z.boolean().default(true)),
+      flag(
+        "mode",
+        "how to run: browser (Agent Inspector web UI), headless (one agent in the terminal), or tui",
+        z.enum(["browser", "headless", "tui"]).default("browser"),
+      ),
       flag(
         "ui-port",
-        "port for the Agent Inspector web UI",
+        "port for the Agent Inspector web UI (browser mode)",
         z.coerce.number().int().min(1).max(65535).optional(),
       ),
     ],
@@ -122,11 +126,16 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
       try {
         const project = ctx.require(ProjectKey);
         const region = ctx.require(RegionKey);
+        if (flags.mode === "tui") {
+          throw new InputValidationError(
+            "TUI mode is not available yet. Use --mode browser (default) or --mode headless.",
+          );
+        }
         const runtimes = selectRuntimes(project, flags.agent);
-        if (!flags.ui && !flags.agent) {
+        if (flags.mode === "headless" && !flags.agent) {
           const available = runtimes.map((runtime) => runtime.name).join(", ");
           throw new InputValidationError(
-            `--no-ui runs a single agent in the terminal. Pass --agent <name> to choose which one. Available: ${available}.`,
+            `--mode headless runs a single agent in the terminal. Pass --agent <name> to choose which one. Available: ${available}.`,
           );
         }
         if (runtimes.length > 1 && flags.port !== undefined) {
@@ -185,7 +194,7 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           return { ...env, ...otel };
         };
 
-        if (!flags.ui) {
+        if (flags.mode === "headless") {
           await runWithoutUi(
             config,
             runtimes[0]!,
@@ -234,9 +243,11 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
 
         const onConfigChange = async () => {
           try {
-            const reloaded = await config.reloadRuntimes(project.rootPath);
+            const reloaded = await config.projectManager.resolve({ filePath: project.rootPath });
+            if (!reloaded) return;
+            const runtimes = reloaded.spec.runtimes;
             supervisor.setRuntimes(
-              flags.agent ? reloaded.filter((runtime) => runtime.name === flags.agent) : reloaded,
+              flags.agent ? runtimes.filter((runtime) => runtime.name === flags.agent) : runtimes,
             );
             renderStatus(config.io, "Reloaded agents from agentcore.json.", json);
           } catch {
