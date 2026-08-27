@@ -356,6 +356,38 @@ describe("CdkBackend.deploy", () => {
     expect(subject.bootstrapRegions).toEqual([]);
   });
 
+  test("requests confirmation with the exact teardown details", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
+    const requests: unknown[] = [];
+    const subject = harness();
+
+    await expect(
+      collectDeploy(
+        subject.backend.deploy(
+          input,
+          deployInput({
+            requestTeardownConfirmation: async (request) => {
+              requests.push(request);
+              return false;
+            },
+          }),
+        ),
+      ),
+    ).rejects.toThrow(/--yes/);
+
+    expect(requests).toEqual([
+      {
+        projectName: "example",
+        targetName: "default",
+        stackName: "AgentCore-example-default-0",
+        account: TARGET.account,
+        region: TARGET.region,
+      },
+    ]);
+    expect(subject.runs).toEqual([]);
+  });
+
   test("treats a template holding only CDK's own metadata as nothing to deploy", async () => {
     // An empty project still synthesizes this one resource, so a check for an
     // empty Resources block would let the teardown case through as a deploy.
@@ -384,12 +416,23 @@ describe("CdkBackend.deploy", () => {
       }),
     );
     const subject = harness();
+    let prompted = false;
 
     const deployed = await collectDeploy(
-      subject.backend.deploy(input, deployInput({ confirmTeardown: true })),
+      subject.backend.deploy(
+        input,
+        deployInput({
+          confirmTeardown: true,
+          requestTeardownConfirmation: async () => {
+            prompted = true;
+            return false;
+          },
+        }),
+      ),
     );
 
     expect(deployed.result).toEqual({ outputs: {}, tornDown: true });
+    expect(prompted).toBe(false);
     expect(deployed.events).toContainEqual({
       message: "Removing stack AgentCore-example-default-0",
     });

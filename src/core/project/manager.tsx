@@ -480,6 +480,9 @@ export class FsProjectManager implements ProjectManager {
     return yield* this.backendFor(project).deploy(project, {
       target,
       confirmTeardown: input.confirmTeardown,
+      ...(input.requestTeardownConfirmation && {
+        requestTeardownConfirmation: input.requestTeardownConfirmation,
+      }),
     });
   }
 

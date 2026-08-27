@@ -207,7 +207,16 @@ export class CdkBackend implements ProjectBackend {
       );
     }
 
-    if (!input.confirmTeardown) {
+    const confirmed =
+      input.confirmTeardown ||
+      (await input.requestTeardownConfirmation?.({
+        projectName: project.name,
+        targetName: target.name,
+        stackName: artifact.stackName,
+        account: target.account,
+        region: target.region,
+      }));
+    if (!confirmed) {
       throw new ProjectStateError(
         `Project '${project.name}' declares no resources to deploy, so deploying to target ` +
           `'${target.name}' would delete stack '${artifact.stackName}' and every resource in ` +

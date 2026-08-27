@@ -105,6 +105,19 @@ export type ProjectEvent = {
   message: string;
 };
 
+/** The destructive deployment discovered after a project has been synthesized. */
+export type TeardownConfirmationRequest = {
+  projectName: string;
+  targetName: string;
+  stackName: string;
+  account: string;
+  region: string;
+};
+
+export type TeardownConfirmationHandler = (
+  request: TeardownConfirmationRequest,
+) => Promise<boolean>;
+
 export type DeployProjectInput = {
   /** Name of the aws-targets.json entry to deploy. */
   target: string;
@@ -113,6 +126,8 @@ export type DeployProjectInput = {
    * declares anything to deploy. Withheld by default.
    */
   confirmTeardown: boolean;
+  /** Requests approval after the backend discovers that this deploy is a teardown. */
+  requestTeardownConfirmation?: TeardownConfirmationHandler;
 };
 
 export type DeployResult = {

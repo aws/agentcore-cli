@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { UserCancellationError } from "../../../errors/errors";
 import { createRootHandler } from "../../index";
 import {
   createSilentLogger,
@@ -11,7 +12,7 @@ import {
 } from "../../../testing";
 import type { DeployBackendInput, ProjectBackend } from "../../../core/project";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
-import type { DeployResult, Project, ProjectEvent } from "../types";
+import type { DeployResult, Project, ProjectEvent, TeardownConfirmationRequest } from "../types";
 
 const DEFAULT_TARGET: AwsDeploymentTarget = {
   name: "default",
@@ -24,6 +25,13 @@ const STAGING_TARGET: AwsDeploymentTarget = {
   region: "eu-west-1",
 };
 const TARGETS = [DEFAULT_TARGET, STAGING_TARGET];
+const TEARDOWN: TeardownConfirmationRequest = {
+  projectName: "orders",
+  targetName: "default",
+  stackName: "AgentCore-orders-default-0",
+  account: DEFAULT_TARGET.account,
+  region: DEFAULT_TARGET.region,
+};
 
 /**
  * A ProjectBackend that deploys successfully, which CdkBackend cannot do until
@@ -31,12 +39,23 @@ const TARGETS = [DEFAULT_TARGET, STAGING_TARGET];
  * manager keeps the real FsProjectManager in the path, so target resolution and
  * withProject run for real.
  */
-function fakeBackend(result: DeployResult, events: ProjectEvent[] = []) {
+function fakeBackend(
+  result: DeployResult,
+  events: ProjectEvent[] = [],
+  teardown?: TeardownConfirmationRequest,
+) {
   const calls: { project: Project; input: DeployBackendInput }[] = [];
   const backend: ProjectBackend = {
     async *build() {},
     async *deploy(project, input) {
       calls.push({ project, input });
+      if (
+        teardown &&
+        !input.confirmTeardown &&
+        !(await input.requestTeardownConfirmation?.(teardown))
+      ) {
+        throw new Error("Re-run with --yes to confirm the teardown.");
+      }
       yield* events;
       return result;
     },
@@ -44,9 +63,19 @@ function fakeBackend(result: DeployResult, events: ProjectEvent[] = []) {
   return { calls, backend };
 }
 
-function testDeployCommand(result: DeployResult, events: ProjectEvent[] = []) {
-  const io = testIO();
-  const fake = fakeBackend(result, events);
+type TestDeployOptions = {
+  isTTY?: boolean;
+  stdin?: string;
+  teardown?: TeardownConfirmationRequest;
+};
+
+function testDeployCommand(
+  result: DeployResult,
+  events: ProjectEvent[] = [],
+  options: TestDeployOptions = {},
+) {
+  const io = testIO({ isTTY: options.isTTY, stdin: options.stdin });
+  const fake = fakeBackend(result, events, options.teardown);
   const core = new TestCoreClient({ backends: { CDK: fake.backend } });
   const root = createRootHandler(core, {
     io: io.io,
@@ -128,12 +157,105 @@ describe("project deploy handler", () => {
   // --yes is the only way to authorize the teardown the backend refuses without
   // it, so a flag that never reaches the backend would make it unreachable.
   test("carries --yes through as permission to tear the stack down", async () => {
-    const subject = testDeployCommand({ outputs: {} });
+    const subject = testDeployCommand({ outputs: {}, tornDown: true }, [], {
+      isTTY: true,
+      stdin: "\n",
+      teardown: TEARDOWN,
+    });
     await inProjectWithTargets(subject);
 
     await subject.run(["--yes"]);
 
     expect(subject.calls.map(({ input }) => input.confirmTeardown)).toEqual([true]);
+    expect(subject.calls[0]?.input.requestTeardownConfirmation).toBeUndefined();
+    expect(subject.io.stderr()).not.toContain("(y/N)");
+  });
+
+  test("prompts before tearing down and proceeds on yes", async () => {
+    const subject = testDeployCommand({ outputs: {}, tornDown: true }, [], {
+      isTTY: true,
+      stdin: "yes\n",
+      teardown: TEARDOWN,
+    });
+    await inProjectWithTargets(subject);
+
+    await subject.run();
+
+    expect(subject.io.stderr()).toContain("Project 'orders' declares no resources to deploy.");
+    expect(subject.io.stderr()).toContain(
+      "Delete stack 'AgentCore-orders-default-0' and every resource in it from target " +
+        "'default' (111122223333/us-east-1)? (y/N)",
+    );
+    expect(subject.io.stderr()).toContain("Removed project 'orders' from target 'default'");
+  });
+
+  test.each([
+    ["no", "n\n"],
+    ["the default", "\n"],
+  ])("does not tear down when the user chooses %s", async (_label, stdin) => {
+    const subject = testDeployCommand({ outputs: {}, tornDown: true }, [], {
+      isTTY: true,
+      stdin,
+      teardown: TEARDOWN,
+    });
+    await inProjectWithTargets(subject);
+
+    await expect(subject.run()).rejects.toBeInstanceOf(UserCancellationError);
+
+    expect(subject.io.stderr()).toContain("(y/N)");
+    expect(subject.io.stderr()).not.toContain("Removed project");
+  });
+
+  test("cancels when interactive input closes without an answer", async () => {
+    const subject = testDeployCommand({ outputs: {}, tornDown: true }, [], {
+      isTTY: true,
+      stdin: "",
+      teardown: TEARDOWN,
+    });
+    await inProjectWithTargets(subject);
+
+    await expect(subject.run()).rejects.toBeInstanceOf(UserCancellationError);
+
+    expect(subject.io.stderr()).not.toContain("Removed project");
+  });
+
+  test("requires --yes instead of prompting in a non-interactive shell", async () => {
+    const subject = testDeployCommand({ outputs: {}, tornDown: true }, [], {
+      stdin: "yes\n",
+      teardown: TEARDOWN,
+    });
+    await inProjectWithTargets(subject);
+
+    await expect(subject.run()).rejects.toThrow(/--yes/);
+
+    expect(subject.io.stderr()).not.toContain("(y/N)");
+    expect(subject.calls[0]?.input.requestTeardownConfirmation).toBeUndefined();
+  });
+
+  test("requires --yes instead of prompting in JSON mode", async () => {
+    const subject = testDeployCommand({ outputs: {}, tornDown: true }, [], {
+      isTTY: true,
+      stdin: "yes\n",
+      teardown: TEARDOWN,
+    });
+    await inProjectWithTargets(subject);
+
+    await expect(subject.run(["--json"])).rejects.toThrow(/--yes/);
+
+    expect(subject.io.stderr()).not.toContain("(y/N)");
+    expect(subject.calls[0]?.input.requestTeardownConfirmation).toBeUndefined();
+  });
+
+  test("does not prompt for a normal deployment", async () => {
+    const subject = testDeployCommand({ outputs: { RuntimeArn: "arn:runtime" } }, [], {
+      isTTY: true,
+      stdin: "yes\n",
+    });
+    await inProjectWithTargets(subject);
+
+    await subject.run();
+
+    expect(subject.io.stderr()).not.toContain("(y/N)");
   });
 
   test("says the project was removed when the deploy tore the stack down", async () => {

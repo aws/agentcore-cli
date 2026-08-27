@@ -12,6 +12,7 @@ import {
   type DeployResult,
   type Project,
   type ProjectEvent,
+  type TeardownConfirmationHandler,
 } from "../../handlers/project/types";
 import { createSilentLogger } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
@@ -386,8 +387,13 @@ describe("FsProjectManager.deploy", () => {
     project: Project,
     target: string,
     confirmTeardown = false,
+    requestTeardownConfirmation?: TeardownConfirmationHandler,
   ): Promise<{ events: ProjectEvent[]; result: DeployResult }> {
-    const generator = manager.deploy(project, { target, confirmTeardown });
+    const generator = manager.deploy(project, {
+      target,
+      confirmTeardown,
+      ...(requestTeardownConfirmation && { requestTeardownConfirmation }),
+    });
     const events: ProjectEvent[] = [];
     while (true) {
       const next = await generator.next();
@@ -431,10 +437,12 @@ describe("FsProjectManager.deploy", () => {
     const root = await inTempDirectory();
     const subject = deployManager();
     const project = await projectWithTargets(root, targets);
+    const requestTeardownConfirmation: TeardownConfirmationHandler = async () => true;
 
-    await deploy(subject.manager, project, "prod", true);
+    await deploy(subject.manager, project, "prod", true, requestTeardownConfirmation);
 
     expect(subject.calls.map(({ input }) => input.confirmTeardown)).toEqual([true]);
+    expect(subject.calls[0]?.input.requestTeardownConfirmation).toBe(requestTeardownConfirmation);
   });
 
   test("rejects an unknown target before invoking the backend", async () => {
