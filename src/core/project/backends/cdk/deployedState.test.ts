@@ -52,8 +52,8 @@ describe("readDeployedState", () => {
     });
   });
 
-  test("resolves the file top-level under agentcore/, not .cli/", () => {
-    expect(DEPLOYED_STATE_RELATIVE_PATH).toBe(join("agentcore", "deployed-state.json"));
+  test("resolves the file under agentcore/.cli/", () => {
+    expect(DEPLOYED_STATE_RELATIVE_PATH).toBe(join("agentcore", ".cli", "deployed-state.json"));
   });
 });
 

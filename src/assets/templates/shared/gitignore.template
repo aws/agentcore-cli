@@ -10,8 +10,10 @@ __pycache__/
 # Node
 node_modules/
 
-# AgentCore CLI state
-agentcore/.cli/
+# AgentCore CLI state (ignore local scratch like traces/logs, but commit the
+# deployed-state binding so a target's stack + credential ARNs are shared)
+agentcore/.cli/*
+!agentcore/.cli/deployed-state.json
 
 # CDK
 agentcore/cdk/cdk.out/

@@ -125,10 +125,10 @@ async function main() {
   const harnessConfigs = resolveHarnessConfigs(specAny, projectRoot);
 
   // Read deployed state for credential ARNs (populated by pre-deploy identity setup).
-  // Lives top-level under agentcore/ (committed), not the gitignored .cli/ dir.
+  // Under agentcore/.cli/ to match the released CLI's location.
   let deployedState: Record<string, unknown> | undefined;
   try {
-    deployedState = JSON.parse(fs.readFileSync(path.join(configRoot, 'deployed-state.json'), 'utf8'));
+    deployedState = JSON.parse(fs.readFileSync(path.join(configRoot, '.cli', 'deployed-state.json'), 'utf8'));
   } catch (err) {
     // A missing file is the normal first-deploy case. A malformed one is not:
     // surface it rather than silently synthesizing without the credential ARNs

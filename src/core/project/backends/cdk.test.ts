@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { DeployResult, Project, ProjectEvent } from "../../../handlers/project/types";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
@@ -289,7 +289,9 @@ describe("CdkBackend.deploy", () => {
 
   test("fails before touching AWS when the existing state file is malformed", async () => {
     const input = await project();
-    await writeFile(join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH), "{ not valid json");
+    const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
+    await mkdir(dirname(statePath), { recursive: true });
+    await writeFile(statePath, "{ not valid json");
     const subject = harness({ outputs: { RuntimeArn: "arn:runtime" } });
 
     await expect(

@@ -7,11 +7,13 @@ import { atomicWrite, type ReadWriteJson } from "../../../../io";
 /**
  * Project-relative path of the state file the synthesized CDK app reads.
  *
- * Deliberately top-level under `agentcore/` (not the gitignored `.cli/`): the
- * file is meant to be committed so a target's stack binding and imperatively
- * created credential ARNs are shared across everyone who deploys that target.
+ * Under `agentcore/.cli/` to match the released CLI's location, so a project
+ * created by an older CLI keeps reading the same path after upgrading. It holds
+ * a target's stack binding and its imperatively created credential ARNs; the
+ * scaffolded `.gitignore` keeps this one file committed while ignoring the rest
+ * of `.cli/`.
  */
-export const DEPLOYED_STATE_RELATIVE_PATH = join("agentcore", "deployed-state.json");
+export const DEPLOYED_STATE_RELATIVE_PATH = join("agentcore", ".cli", "deployed-state.json");
 
 // Passthrough like the levels above it: a stack-ARN-only update reads and
 // rewrites the whole file, so stripping unknown keys here would drop fields a
