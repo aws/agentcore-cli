@@ -6,12 +6,12 @@ import { DeserializationError, ProjectStateError } from "../../errors/errors";
 import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { FsProjectManager } from "./manager";
-import {
-  RUNTIME_TEMPLATE_SHORTCUTS,
-  type CreateProjectInput,
-  type DeployResult,
-  type Project,
-  type ProjectEvent,
+import { RUNTIME_TEMPLATE_SHORTCUTS } from "../../handlers/project/shortcuts";
+import type {
+  CreateProjectInput,
+  DeployResult,
+  Project,
+  ProjectEvent,
 } from "../../handlers/project/types";
 import { createSilentLogger } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";

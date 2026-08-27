@@ -10,8 +10,9 @@ import { SourceResolver } from "../../../../io";
 import {
   RUNTIME_TEMPLATE_SHORTCUT_NAMES,
   RUNTIME_TEMPLATE_SHORTCUTS,
-  ScaffoldRuntimeInputSchema,
-} from "../../types";
+  resolveRuntimeTemplateShortcut,
+} from "../../shortcuts";
+import { ScaffoldRuntimeInputSchema } from "../../types";
 import { RuntimeResourceConfigSchema } from "./types";
 
 export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
@@ -23,7 +24,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       flag("description", "an optional description of the runtime", z.string().optional()),
       flag(
         "template",
-        "a preset of flags to be leveraged in scaffolding the runtime. mutually exclusive with all runtime scaffolding flags",
+        "a preset of flags for scaffolding the runtime; compatible flags override preset values",
         z.enum(RUNTIME_TEMPLATE_SHORTCUT_NAMES).optional(),
       ),
       flag("build", "build type: CodeZip or Container", BuildTypeSchema.optional()),
@@ -108,11 +109,12 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       ] as const;
       const presentScaffoldingFlags = scaffoldingFlags.filter((f) => flags[f] !== undefined);
       const isTemplate = flags["template"] !== undefined;
-
-      if (isTemplate && presentScaffoldingFlags.length > 0)
-        throw new InputValidationError(
-          `--template and --${presentScaffoldingFlags[0]} are mutually exclusive`,
-        );
+      const lockedFlag = (["language", "framework"] as const).find(
+        (flagName) => flags[flagName] !== undefined,
+      );
+      if (isTemplate && lockedFlag) {
+        throw new InputValidationError(`--${lockedFlag} cannot override a template`);
+      }
 
       const isCustom = presentScaffoldingFlags.length > 0;
 
@@ -120,7 +122,18 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       const apiKey = await source.resolveSecret("api-key", flags["api-key"]);
 
       const scaffoldRuntimeInput = isTemplate
-        ? RUNTIME_TEMPLATE_SHORTCUTS[flags.template!]
+        ? resolveRuntimeTemplateShortcut(flags.template!, {
+            runtimeName: flags.name,
+            ...(flags.build !== undefined && {
+              build: flags.build,
+              runtimeVersion: flags.build === "CodeZip" ? "PYTHON_3_14" : undefined,
+            }),
+            ...(flags["model-provider"] !== undefined && {
+              modelProvider: flags["model-provider"],
+            }),
+            ...(apiKey !== undefined && { apiKey }),
+            ...(flags.memory !== undefined && { memory: flags.memory }),
+          })
         : isCustom
           ? parseScaffoldRuntimeInput({
               runtimeName: flags.name,
