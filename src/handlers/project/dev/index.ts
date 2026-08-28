@@ -10,6 +10,7 @@ import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   InputValidationError,
   ResourceNotFoundError,
+  SilentCLIError,
   UserCancellationError,
 } from "../../../errors";
 import type { AppIO, BrowserOpener, FileWatcher, PortChecker, startHttpServer } from "../../../io";
@@ -102,7 +103,7 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
       flag("traces", "disable local OTEL trace collection", z.boolean().default(true)),
       flag(
         "mode",
-        "how to run: browser (Agent Inspector web UI), headless (one agent in the terminal), or tui",
+        "how to run: browser (Agent Inspector web UI), headless (agents stream to the terminal), or tui",
         z.enum(["browser", "headless", "tui"]).default("browser"),
       ),
       flag(
@@ -132,12 +133,6 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           );
         }
         const runtimes = selectRuntimes(project, flags.agent);
-        if (flags.mode === "headless" && !flags.agent) {
-          const available = runtimes.map((runtime) => runtime.name).join(", ");
-          throw new InputValidationError(
-            `--mode headless runs a single agent in the terminal. Pass --agent <name> to choose which one. Available: ${available}.`,
-          );
-        }
         if (runtimes.length > 1 && flags.port !== undefined) {
           throw new InputValidationError(
             "--port applies to a single runtime. Use --agent to select one.",
@@ -194,7 +189,7 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           return { ...env, ...otel };
         };
 
-        if (flags.mode === "headless") {
+        if (flags.mode === "headless" && flags.agent) {
           await runWithoutUi(
             config,
             runtimes[0]!,
@@ -226,6 +221,23 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           waitReady: config.waitReady,
           signal: controller.signal,
         });
+
+        if (flags.mode === "headless") {
+          const starts = Promise.allSettled(
+            runtimes.map((runtime) => supervisor.start(runtime.name)),
+          );
+          for await (const { agentName, event } of supervisor.events()) {
+            renderAgentEvent(config.io, event, agentName, json);
+            const phases = supervisor.snapshot();
+            if (phases.every(({ phase }) => phase !== "starting" && phase !== "running")) {
+              if (phases.some(({ phase }) => phase === "failed")) throw new SilentCLIError();
+              break;
+            }
+          }
+          controller.signal.throwIfAborted();
+          await starts;
+          return;
+        }
 
         const uiPort = (
           await findFreePort(UI_DEFAULT_PORT, flags["ui-port"], config.checkPort, controller.signal)

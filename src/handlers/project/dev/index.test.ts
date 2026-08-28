@@ -4,6 +4,7 @@ import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   InputValidationError,
   ResourceNotFoundError,
+  SilentCLIError,
   UserCancellationError,
 } from "../../../errors";
 import type { HttpRequestHandler, PortChecker } from "../../../io";
@@ -40,6 +41,22 @@ function captureRunner(events: DevEvent[] = []) {
     run: async function* (input) {
       inputs.push(input);
       yield* events;
+    },
+  };
+  return { runner, inputs };
+}
+
+/** A runner that emits `events` then stays alive until aborted, like a real dev server. */
+function stayingRunner(events: DevEvent[] = []) {
+  const inputs: DevServerInput[] = [];
+  const runner: DevRunner = {
+    run: async function* (input) {
+      inputs.push(input);
+      yield* events;
+      if (input.signal.aborted) return;
+      await new Promise<void>((resolve) =>
+        input.signal.addEventListener("abort", () => resolve(), { once: true }),
+      );
     },
   };
   return { runner, inputs };
@@ -120,6 +137,9 @@ function harness(options: HarnessOptions = {}) {
       resolve: async () =>
         options.reloadedRuntimes ? project(...options.reloadedRuntimes) : undefined,
     },
+    waitReady: async () => {
+      await Bun.sleep(5);
+    },
   });
   const ctx = ValueContext.EmptyContext()
     .withValue(ProjectKey, options.project ?? project(runtime()))
@@ -168,15 +188,9 @@ describe("project dev selection and dispatch", () => {
   test.each([
     [project(), {}, "This project has no runtimes", InputValidationError],
     [
-      project(runtime("orders")),
-      {},
-      "--mode headless runs a single agent in the terminal. Pass --agent <name> to choose which one. Available: orders",
-      InputValidationError,
-    ],
-    [
       project(runtime("orders"), runtime("support", "Container")),
-      {},
-      "--mode headless runs a single agent in the terminal. Pass --agent <name> to choose which one. Available: orders, support",
+      { port: 4567 },
+      "--port applies to a single runtime. Use --agent to select one.",
       InputValidationError,
     ],
     [
@@ -234,6 +248,64 @@ describe("project dev selection and dispatch", () => {
     expect(checked).toEqual([8080, 8081]);
     expect(subject.codeZip.inputs[0]?.port).toBe(8081);
     expect(subject.io.stderr()).toContain("Port 8080 is in use; using 8081.");
+  });
+});
+
+describe("project dev headless multi-agent", () => {
+  const twoRuntimes = () => project(runtime("orders"), runtime("support", "Container"));
+
+  /** Start a headless multi-agent run and give its agents time to reach "running". */
+  async function supervised(subject: ReturnType<typeof harness>) {
+    const pending = subject.run();
+    pending.catch(() => undefined);
+    await Bun.sleep(30);
+    return { pending };
+  }
+
+  test("supervises every runtime with attributed output and per-runtime env", async () => {
+    const codeZip = stayingRunner([{ type: "stdout", line: "orders says hi" }]);
+    const container = stayingRunner();
+    const subject = harness({ project: twoRuntimes(), codeZip, container });
+    const { pending } = await supervised(subject);
+
+    expect(codeZip.inputs).toHaveLength(1);
+    expect(container.inputs).toHaveLength(1);
+    expect(codeZip.inputs[0]!.env).toMatchObject({
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:43180",
+      OTEL_SERVICE_NAME: "orders",
+    });
+    expect(container.inputs[0]!.env).toMatchObject({
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://host.docker.internal:43180",
+      OTEL_SERVICE_NAME: "support",
+    });
+    expect(subject.io.stdout()).toContain("[orders] orders says hi");
+    expect(subject.io.stderr()).toContain("Agent 'orders' is running on port");
+
+    process.emit("SIGINT", "SIGINT");
+    await expect(pending).rejects.toMatchObject({ exitCode: 130 });
+    expect(subject.collector.state.closed).toBe(1);
+  });
+
+  test("one agent failing to start leaves the others running", async () => {
+    const subject = harness({
+      project: twoRuntimes(),
+      codeZip: captureRunner([{ type: "status", message: "dying" }]),
+      container: stayingRunner(),
+    });
+    const { pending } = await supervised(subject);
+
+    expect(subject.io.stderr()).toContain("[orders] Agent 'orders' failed to start");
+    expect(subject.io.stderr()).toContain("Agent 'support' is running on port");
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
+  test("exits non-zero when every agent fails to start", async () => {
+    const subject = harness({ project: twoRuntimes() });
+
+    await expect(subject.run()).rejects.toBeInstanceOf(SilentCLIError);
+    expect(subject.collector.state.closed).toBe(1);
   });
 });
 
@@ -394,15 +466,6 @@ describe("project dev Inspector UI mode", () => {
     const subject = harness({ checkPort: async () => false });
     await expect(subject.run({ mode: "browser", "ui-port": 9999 })).rejects.toThrow(
       "Port 9999 is already in use",
-    );
-  });
-
-  test("--port with several runtimes is rejected", async () => {
-    const subject = harness({
-      project: project(runtime("orders"), runtime("support", "Container")),
-    });
-    await expect(subject.run({ mode: "browser", port: 4567 })).rejects.toThrow(
-      "--port applies to a single runtime",
     );
   });
 });
