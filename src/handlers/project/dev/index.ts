@@ -223,9 +223,7 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
         });
 
         if (flags.mode === "headless") {
-          const starts = Promise.allSettled(
-            runtimes.map((runtime) => supervisor.start(runtime.name)),
-          );
+          void Promise.allSettled(runtimes.map((runtime) => supervisor.start(runtime.name)));
           for await (const { agentName, event } of supervisor.events()) {
             renderAgentEvent(config.io, event, agentName, json);
             const phases = supervisor.snapshot();
@@ -235,7 +233,6 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
             }
           }
           controller.signal.throwIfAborted();
-          await starts;
           return;
         }
 
