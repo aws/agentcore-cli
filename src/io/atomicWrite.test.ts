@@ -1,11 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { atomicWrite, atomicWriteStream } from "./atomicWrite";
 
 const dirs: string[] = [];
+const testPosix = process.platform === "win32" ? test.skip : test;
 afterEach(async () => {
   await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
@@ -35,6 +36,15 @@ test("overwrites an existing file", async () => {
 
   expect(await Bun.file(target).text()).toBe("new");
   expect(await readdir(dir)).toEqual(["out.txt"]);
+});
+
+testPosix("creates the replacement file with the requested mode", async () => {
+  const dir = await tempDir();
+  const target = join(dir, "secret.txt");
+
+  await atomicWrite(target, "secret", { mode: 0o600 });
+
+  expect((await stat(target)).mode & 0o777).toBe(0o600);
 });
 
 test("cleans up the temp file when rename fails", async () => {

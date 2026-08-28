@@ -78,9 +78,6 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     if (input.protocol !== undefined && input.protocol !== "HTTP")
       throw new InputValidationError("the strands-python template only supports HTTP");
 
-    if (input.scaffoldRuntimeInput.build !== "CodeZip")
-      throw new InputValidationError("the strands template only supports CodeZip builds");
-
     const filesystemConfigurations = input.filesystemConfigurations ?? [];
     const sessionStorageMountPath = filesystemConfigurations.flatMap((configuration) =>
       "sessionStorage" in configuration ? [configuration.sessionStorage.mountPath] : [],
@@ -115,14 +112,22 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       s3Mounts,
       needsOs: filesystemConfigurations.length > 0,
       hasConfigBundle: false,
+      enableOtel: true,
+      // The strands template's entrypoint is fixed to main.py; the container Dockerfile launches it as the `main` module.
+      entrypoint: "main",
     };
+    const isContainer = input.scaffoldRuntimeInput.build === "Container";
     const tree = await FsTreeNode.fromAssetSource(
       { assetSource },
       { assetDir: "templates/strands-http-python" },
       {
         rootDirName: input.name,
         transformContent: (raw) => templateRenderer.render(raw, context),
-        filter: (name, isDir) => memory !== undefined || !isDir || name !== "memory",
+        filter: (name, isDir) => {
+          if (isDir && name === "memory") return memory !== undefined;
+          if (name === "Dockerfile" || name === ".dockerignore") return isContainer;
+          return true;
+        },
       },
     );
     return {

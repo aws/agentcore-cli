@@ -1,3 +1,4 @@
+import { AllowedScopeSchema, OidcDiscoveryUrlSchema } from "./auth";
 import { z } from "zod";
 export const PaymentProviderSchema = z.enum(["CoinbaseCDP", "StripePrivy"]);
 export type PaymentProvider = z.infer<typeof PaymentProviderSchema>;
@@ -19,12 +20,47 @@ export const PaymentConnectorNameSchema = z
     /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/,
     "Must begin with a letter and contain only alphanumeric characters and underscores (max 48 chars)",
   );
-export const PaymentConnectorSchema = z.object({
+
+export const PaymentProvisionModeSchema = z.enum(["MANUAL", "QUICK_CREATE"]);
+export type PaymentProvisionMode = z.infer<typeof PaymentProvisionModeSchema>;
+
+export const ManualPaymentConnectorSchema = z.object({
   name: PaymentConnectorNameSchema,
   provider: PaymentProviderSchema.default("CoinbaseCDP"),
+  provisionMode: z.literal("MANUAL").optional(),
   credentialName: z.string().min(1),
 });
+export type ManualPaymentConnector = z.infer<typeof ManualPaymentConnectorSchema>;
+
+export const QuickCreatePaymentConnectorSchema = z.object({
+  name: PaymentConnectorNameSchema,
+  provider: z.literal("CoinbaseCDP"),
+  provisionMode: z.literal("QUICK_CREATE"),
+  credentialName: z.never().optional(),
+});
+export type QuickCreatePaymentConnector = z.infer<typeof QuickCreatePaymentConnectorSchema>;
+
+export const PaymentConnectorSchema = z.union([
+  QuickCreatePaymentConnectorSchema,
+  ManualPaymentConnectorSchema,
+]);
 export type PaymentConnector = z.infer<typeof PaymentConnectorSchema>;
+export const PaymentManagerDescriptionSchema = z
+  .string()
+  .min(1)
+  .max(4096)
+  .regex(
+    /^[a-zA-Z0-9\s]+$/,
+    "Payment manager description must contain only alphanumeric characters and whitespace",
+  );
+export const PaymentSpendLimitSchema = z
+  .string()
+  .refine(
+    (value) => value.trim().length > 0 && Number.isFinite(Number(value)) && Number(value) >= 0,
+    {
+      message: "Default spend limit must be a non-negative number",
+    },
+  );
 export const PaymentManagerSchema = z
   .object({
     name: PaymentManagerNameSchema,
@@ -32,17 +68,19 @@ export const PaymentManagerSchema = z
     authorizerConfiguration: z
       .object({
         customJWTAuthorizer: z.object({
-          discoveryUrl: z.string().url(),
-          allowedClients: z.array(z.string()).optional(),
-          allowedAudience: z.array(z.string()).optional(),
-          allowedScopes: z.array(z.string()).optional(),
+          discoveryUrl: OidcDiscoveryUrlSchema,
+          allowedClients: z.array(z.string()).min(1).optional(),
+          allowedAudience: z.array(z.string()).min(1).optional(),
+          allowedScopes: z.array(AllowedScopeSchema).min(1).optional(),
         }),
       })
       .optional(),
     connectors: z.array(PaymentConnectorSchema).default([]),
-    description: z.string().optional(),
+    description: PaymentManagerDescriptionSchema.optional(),
     autoPayment: z.boolean().default(DEFAULT_AUTO_PAYMENT),
-    defaultSpendLimit: z.string().default(DEFAULT_SPEND_LIMIT),
+    defaultSpendLimit: z
+      .union([z.literal(""), PaymentSpendLimitSchema])
+      .default(DEFAULT_SPEND_LIMIT),
     paymentToolAllowlist: z.array(z.string()).optional(),
     networkPreferences: z.array(z.string()).optional(),
   })
@@ -57,6 +95,18 @@ export const PaymentManagerSchema = z
           "authorizerConfiguration with customJWTAuthorizer is required when authorizerType is CUSTOM_JWT",
         path: ["authorizerConfiguration"],
       });
+    }
+
+    const connectorNames = new Set<string>();
+    for (const [index, connector] of data.connectors.entries()) {
+      if (connectorNames.has(connector.name)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Duplicate payment connector name: ${connector.name}`,
+          path: ["connectors", index, "name"],
+        });
+      }
+      connectorNames.add(connector.name);
     }
   });
 export type PaymentManager = z.infer<typeof PaymentManagerSchema>;

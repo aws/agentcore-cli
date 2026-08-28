@@ -1,5 +1,6 @@
 import { HarnessSpecSchema } from "../../projectSchemas/harness";
 import type { CredentialSchema } from "../../projectSchemas/credential";
+import type { PaymentConnectorSchema, PaymentManagerSchema } from "../../projectSchemas/payment";
 import type { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import { MemorySchema } from "../../projectSchemas/memory";
 import type { EvaluatorSchema } from "../../projectSchemas/evaluator";
@@ -179,13 +180,32 @@ export type AddResourceInput =
       resourceType: "policy";
       engineName: string;
       resourceConfig: z.input<typeof PolicySchema>;
+    }
+  | {
+      resourceType: "payment-manager";
+      resourceConfig: z.input<typeof PaymentManagerSchema>;
+    }
+  | {
+      resourceType: "payment-connector";
+      managerName: string;
+      resourceConfig: z.input<typeof PaymentConnectorSchema>;
     };
 
 export type ProjectResource = AddResourceInput["resourceType"];
 
 export type RemoveResourceInput =
   | {
-      resourceType: Exclude<ProjectResource, "gateway-target" | "policy">;
+      resourceType:
+        | "harness"
+        | "runtime"
+        | "credential"
+        | "config-bundle"
+        | "online-eval"
+        | "online-insight"
+        | "memory"
+        | "gateway"
+        | "policy-engine"
+        | "payment-manager";
       name: string;
     }
   | {
@@ -196,6 +216,11 @@ export type RemoveResourceInput =
   | {
       resourceType: "policy";
       engineName?: string;
+      name: string;
+    }
+  | {
+      resourceType: "payment-connector";
+      managerName: string;
       name: string;
     };
 

@@ -6,7 +6,7 @@ export type GatewayAuthorizerType = z.infer<typeof GatewayAuthorizerTypeSchema>;
 export const RuntimeAuthorizerTypeSchema = z.enum(["AWS_IAM", "CUSTOM_JWT"]);
 export type RuntimeAuthorizerType = z.infer<typeof RuntimeAuthorizerTypeSchema>;
 const OIDC_WELL_KNOWN_SUFFIX = "/.well-known/openid-configuration";
-const OidcDiscoveryUrlSchema = z
+export const OidcDiscoveryUrlSchema = z
   .string()
   .url("Must be a valid URL")
   .refine((url) => url.startsWith("https://"), {
@@ -17,6 +17,11 @@ const OidcDiscoveryUrlSchema = z
   });
 const MATCH_VALUE_PATTERN = /^[A-Za-z0-9_.-]+$/;
 const ALLOWED_SCOPE_PATTERN = /^[\x21\x23-\x5B\x5D-\x7E]+$/;
+export const AllowedScopeSchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .regex(ALLOWED_SCOPE_PATTERN, "Scope must be printable ASCII with no spaces or quotes");
 const CLAIM_NAME_PATTERN = /^[A-Za-z0-9_.:-]+$/;
 const RESERVED_CLAIM_NAMES = ["client_id"];
 export const ClaimMatchOperatorSchema = z.enum(["EQUALS", "CONTAINS", "CONTAINS_ANY"]);
@@ -144,15 +149,7 @@ export const CustomJwtAuthorizerConfigSchema = z
     discoveryUrl: OidcDiscoveryUrlSchema,
     allowedAudience: z.array(z.string().min(1)).optional(),
     allowedClients: z.array(z.string().min(1)).optional(),
-    allowedScopes: z
-      .array(
-        z
-          .string()
-          .min(1)
-          .max(255)
-          .regex(ALLOWED_SCOPE_PATTERN, "Scope must be printable ASCII with no spaces or quotes"),
-      )
-      .optional(),
+    allowedScopes: z.array(AllowedScopeSchema).optional(),
     customClaims: z.array(CustomClaimValidationSchema).min(1).optional(),
     privateEndpoint: PrivateEndpointSchema.optional(),
     privateEndpointOverrides: z.array(PrivateEndpointOverrideSchema).max(5).optional(),

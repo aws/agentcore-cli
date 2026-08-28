@@ -101,6 +101,10 @@ describe("project add runtime", () => {
     "container template build override to CodeZip": {
       build: "CodeZip",
     },
+    "strands template overrides to Container": {
+      build: "Container",
+      dockerfile: "Dockerfile",
+    },
     "all infrastructure flags": {
       description: "Configured runtime",
       executionRoleArn: "arn:aws:iam::123456789012:role/MyRole",
@@ -154,6 +158,10 @@ describe("project add runtime", () => {
     [
       "container template build override to CodeZip",
       ["--name", "my_agent", "--template", "hello-world-python-container", "--build", "CodeZip"],
+    ],
+    [
+      "strands template overrides to Container",
+      ["--name", "my_agent", "--template", "strands-python", "--build", "Container"],
     ],
     ["custom — all scaffolding flags", ["--name", "my_agent", ...allScaffoldingFlags]],
     [
@@ -319,6 +327,10 @@ describe("project add runtime", () => {
         ? flags[buildFlagIndex + 1] === "Container"
         : flags.includes("hello-world-python-container");
     expect(runtime.runtimeVersion).toBe(isContainer ? undefined : "PYTHON_3_14");
+    expect(await Bun.file(join(projectRoot, "app", name, "Dockerfile")).exists()).toBe(isContainer);
+    expect(await Bun.file(join(projectRoot, "app", name, ".dockerignore")).exists()).toBe(
+      isContainer,
+    );
   });
 
   test.each([
@@ -385,10 +397,6 @@ describe("project add runtime", () => {
     [
       "strands-python only supports HTTP",
       ["--name", "my_agent", "--template", "strands-python", "--protocol", "MCP"],
-    ],
-    [
-      "strands-python only supports CodeZip builds",
-      ["--name", "my_agent", "--template", "strands-python", "--build", "Container"],
     ],
     [
       "invalid JSON in --network-config",

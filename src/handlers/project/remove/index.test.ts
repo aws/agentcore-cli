@@ -163,11 +163,86 @@ describe("project remove", () => {
     ).toEqual(["keep"]);
   });
 
+  test("removes a payment manager with its connectors while preserving reusable credentials", async () => {
+    const projectRoot = await inProject();
+    await run(["add", "credentials", "payment", "--name", "shared", "--provider", "CoinbaseCDP"]);
+    await run(["add", "payment-manager", "--name", "keep"]);
+    await run(["add", "payment-manager", "--name", "remove"]);
+    await run([
+      "add",
+      "payment-connector",
+      "--manager",
+      "remove",
+      "--name",
+      "connector",
+      "--credential",
+      "shared",
+    ]);
+
+    await run(["remove", "payment-manager", "--name", "remove"]);
+
+    const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(agentcoreJson.payments.map((manager: { name: string }) => manager.name)).toEqual([
+      "keep",
+    ]);
+    expect(agentcoreJson.credentials).toEqual([
+      {
+        authorizerType: "PaymentCredentialProvider",
+        name: "shared",
+        provider: "CoinbaseCDP",
+      },
+    ]);
+  });
+
+  test("removes a nested payment connector while preserving siblings and credentials", async () => {
+    const projectRoot = await inProject();
+    await run(["add", "credentials", "payment", "--name", "shared", "--provider", "CoinbaseCDP"]);
+    await run(["add", "payment-manager", "--name", "payments"]);
+    await run([
+      "add",
+      "payment-connector",
+      "--manager",
+      "payments",
+      "--name",
+      "keep",
+      "--credential",
+      "shared",
+    ]);
+    await run([
+      "add",
+      "payment-connector",
+      "--manager",
+      "payments",
+      "--name",
+      "remove",
+      "--credential",
+      "shared",
+    ]);
+
+    await run(["remove", "payment-connector", "--manager", "payments", "--name", "remove"]);
+
+    const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(
+      agentcoreJson.payments[0].connectors.map((connector: { name: string }) => connector.name),
+    ).toEqual(["keep"]);
+    expect(agentcoreJson.credentials).toEqual([
+      {
+        authorizerType: "PaymentCredentialProvider",
+        name: "shared",
+        provider: "CoinbaseCDP",
+      },
+    ]);
+  });
+
   // Verifies that missing required inputs are rejected before calling the manager.
   test.each<[string, string[]]>([
     ["missing resource argument", ["remove", "--name", "x"]],
     ["missing --name flag", ["remove", "harness"]],
     ["missing --gateway for a Target", ["remove", "gateway-target", "--name", "target"]],
+    [
+      "missing --manager for a payment connector",
+      ["remove", "payment-connector", "--name", "connector"],
+    ],
     [
       "--gateway on a non-Target resource",
       ["remove", "gateway", "--gateway", "tools", "--name", "tools"],
@@ -175,6 +250,10 @@ describe("project remove", () => {
     [
       "--engine on a non-policy resource",
       ["remove", "gateway", "--engine", "Guardrails", "--name", "tools"],
+    ],
+    [
+      "--manager on a non-payment-connector resource",
+      ["remove", "payment-manager", "--manager", "payments", "--name", "payments"],
     ],
   ])("%s", async (_label, args) => {
     await inProject();

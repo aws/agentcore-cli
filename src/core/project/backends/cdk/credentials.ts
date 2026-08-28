@@ -8,13 +8,8 @@ import type {
   OAuthCredential,
   SecretReference,
 } from "../../../../projectSchemas/credential";
-import {
-  CLIENT_ID_SUFFIX,
-  CLIENT_SECRET_SUFFIX,
-  credentialEnvVarName,
-  ENV_LOCAL_RELATIVE_PATH,
-  EnvLocalFile,
-} from "../../envLocal";
+import { credentialEnvVarName } from "../../../../projectSchemas/credential";
+import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "../../envLocal";
 import type { CdkCredentialProvider } from "./toolkit";
 
 /** A provisioned provider, in the shape the synthesized CDK app reads back. */
@@ -249,13 +244,12 @@ async function resolveOauth2(
           env,
           rootPath,
           "clientSecretRef",
-          CLIENT_SECRET_SUFFIX,
+          "_CLIENT_SECRET",
         ),
       };
   // Projects created by older CLIs kept the client id in .env.local rather than
   // agentcore.json, so fall back to that legacy variable when the spec has none.
-  const clientId =
-    credential.clientId ?? env[credentialEnvVarName(credential.name, CLIENT_ID_SUFFIX)];
+  const clientId = credential.clientId ?? env[credentialEnvVarName(credential.name, "_CLIENT_ID")];
   const config = credential.providerConfig
     ? vendorConfigWithSecret(credential.name, credential.providerConfig, secret)
     : guidedCustomConfig(credential, clientId, secret);

@@ -1,10 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { parseEnv } from "node:util";
-import { CLIENT_SECRET_SUFFIX, credentialEnvVarName, EnvLocalFile } from "./envLocal";
+import { EnvLocalFile } from "./envLocal";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -20,6 +20,26 @@ async function tempRoot(): Promise<string> {
 }
 
 const ENTRY = { key: "SECRET", value: "v", comment: "c" };
+const testPosix = process.platform === "win32" ? test.skip : test;
+
+testPosix("creates and replaces the secrets file with owner-only permissions", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+
+  await file.insertIfNew([ENTRY]);
+  expect((await stat(file.path)).mode & 0o777).toBe(0o600);
+
+  await chmod(file.path, 0o644);
+  await file.insertIfNew([ENTRY]);
+  expect((await stat(file.path)).mode & 0o777).toBe(0o600);
+
+  await chmod(file.path, 0o644);
+  await file.insertIfNew([{ key: "SECOND", value: "v", comment: "c" }]);
+  expect((await stat(file.path)).mode & 0o777).toBe(0o600);
+
+  await file.rollback();
+  expect((await stat(file.path)).mode & 0o777).toBe(0o600);
+});
 
 test("rollback deletes the file it created", async () => {
   const root = await tempRoot();
@@ -87,11 +107,4 @@ test("read parses back the entries insertIfNew wrote", async () => {
   await file.insertIfNew([{ key: "SECRET", value: "s k", comment: "c" }]);
 
   expect(await file.read()).toEqual({ SECRET: "s k" });
-});
-
-test("credentialEnvVarName upcases, replaces hyphens, and appends the suffix", () => {
-  expect(credentialEnvVarName("openai-key")).toBe("AGENTCORE_CREDENTIAL_OPENAI_KEY");
-  expect(credentialEnvVarName("my-oauth", CLIENT_SECRET_SUFFIX)).toBe(
-    "AGENTCORE_CREDENTIAL_MY_OAUTH_CLIENT_SECRET",
-  );
 });

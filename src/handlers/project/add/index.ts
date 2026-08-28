@@ -14,6 +14,8 @@ import { createAddGatewayConnectorHandler } from "./gateway-connector";
 import { createAddPolicyEngineHandler } from "./policy-engine";
 import { createAddPolicyHandler } from "./policy";
 import type { AddProjectResourceConfig } from "./types";
+import { createAddPaymentConnectorHandler } from "./payment-connector";
+import { createAddPaymentManagerHandler } from "./payment-manager";
 
 export function createAddProjectResourceHandler(config: AddProjectResourceConfig): Router {
   const projectAdd = new Router("add", "add project resources");
@@ -31,5 +33,7 @@ export function createAddProjectResourceHandler(config: AddProjectResourceConfig
   projectAdd.handler(createAddGatewayConnectorHandler(config));
   projectAdd.handler(createAddPolicyEngineHandler(config));
   projectAdd.handler(createAddPolicyHandler(config));
+  projectAdd.handler(createAddPaymentManagerHandler(config));
+  projectAdd.handler(createAddPaymentConnectorHandler(config));
   return projectAdd;
 }

@@ -163,6 +163,71 @@ describe("project create", () => {
     expect(await Bun.file(join(projectRoot, "app", "custom_agent", "main.py")).exists()).toBe(true);
   });
 
+  test("scaffolds a Container agent from the strands template", async () => {
+    const directory = await inTempDirectory();
+    await run([
+      "create",
+      "--name",
+      "MyProject",
+      "--template",
+      "strands-python",
+      "--build",
+      "Container",
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    const projectRoot = join(directory, "MyProject");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0]).toMatchObject({
+      name: "strands_agent",
+      build: "Container",
+      codeLocation: "app/strands_agent",
+      dockerfile: "Dockerfile",
+    });
+    expect(spec.runtimes[0].runtimeVersion).toBeUndefined();
+    const runtimeRoot = join(projectRoot, "app", "strands_agent");
+    expect(await Bun.file(join(runtimeRoot, "Dockerfile")).exists()).toBe(true);
+    expect(await Bun.file(join(runtimeRoot, ".dockerignore")).exists()).toBe(true);
+  });
+
+  test("omits the Dockerfile from a CodeZip strands template", async () => {
+    const directory = await inTempDirectory();
+    await run([
+      "create",
+      "--name",
+      "MyProject",
+      "--template",
+      "strands-python",
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    const runtimeRoot = join(directory, "MyProject", "app", "strands_agent");
+    expect(await Bun.file(join(runtimeRoot, "Dockerfile")).exists()).toBe(false);
+    expect(await Bun.file(join(runtimeRoot, ".dockerignore")).exists()).toBe(false);
+  });
+
+  test("generates uv.lock for a Container scaffold even with --skip-install", async () => {
+    const directory = await inTempDirectory();
+    const { core } = await run([
+      "create",
+      "--name",
+      "MyProject",
+      "--template",
+      "strands-python",
+      "--build",
+      "Container",
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    expect(core.projectCommands).toContainEqual({
+      command: ["uv", "lock"],
+      cwd: join(directory, "MyProject", "app", "strands_agent"),
+    });
+  });
+
   test.each([
     ["default", [], ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"]],
     ["none", ["--memory", "none"], []],

@@ -2,6 +2,7 @@ import { Router } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
 import { createAddApiKeyCredentialHandler } from "./api-key";
 import { createAddOauthCredentialHandler } from "./oauth";
+import { createAddPaymentCredentialHandler } from "./payment";
 
 export function createAddCredentialsHandler(config: AddProjectResourceConfig): Router {
   const credentials = new Router(
@@ -10,5 +11,6 @@ export function createAddCredentialsHandler(config: AddProjectResourceConfig): R
   );
   credentials.handler(createAddApiKeyCredentialHandler(config));
   credentials.handler(createAddOauthCredentialHandler(config));
+  credentials.handler(createAddPaymentCredentialHandler(config));
   return credentials;
 }

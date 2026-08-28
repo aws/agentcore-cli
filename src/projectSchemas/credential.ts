@@ -113,3 +113,27 @@ export const CredentialSchema = z.discriminatedUnion("authorizerType", [
   PaymentCredentialSchema,
 ]);
 export type Credential = z.infer<typeof CredentialSchema>;
+
+/** Derives the .env.local variable name used for credential material. */
+export function credentialEnvVarName(credentialName: string, suffix = ""): string {
+  return `AGENTCORE_CREDENTIAL_${credentialName.replace(/-/g, "_").toUpperCase()}${suffix}`;
+}
+
+/** Returns every .env.local key a credential reserves when it does not use an external secret. */
+export function credentialEnvironmentVariableNames(credential: Credential): string[] {
+  switch (credential.authorizerType) {
+    case "ApiKeyCredentialProvider":
+      return credential.secretRef ? [] : [credentialEnvVarName(credential.name)];
+    case "OAuthCredentialProvider":
+      return credential.clientSecretRef
+        ? []
+        : [credentialEnvVarName(credential.name, "_CLIENT_SECRET")];
+    case "PaymentCredentialProvider": {
+      const suffixes =
+        credential.provider === "CoinbaseCDP"
+          ? ["_API_KEY_ID", "_API_KEY_SECRET", "_WALLET_SECRET"]
+          : ["_APP_ID", "_APP_SECRET", "_AUTHORIZATION_PRIVATE_KEY", "_AUTHORIZATION_ID"];
+      return suffixes.map((suffix) => credentialEnvVarName(credential.name, suffix));
+    }
+  }
+}

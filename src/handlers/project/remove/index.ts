@@ -17,6 +17,11 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
       flag("name", "name of the resource to remove", z.string().min(1).optional()),
       flag("gateway", "name of the parent Gateway for a Target", z.string().min(1).optional()),
       flag("engine", "name of the parent Policy Engine for a Policy", z.string().min(1).optional()),
+      flag(
+        "manager",
+        "name of the parent payment manager for a connector",
+        z.string().min(1).optional(),
+      ),
     ],
     arguments: [
       argument(
@@ -31,6 +36,8 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
             "gateway-connector",
             "policy-engine",
             "policy",
+            "payment-manager",
+            "payment-connector",
           ])
           .optional(),
       ),
@@ -49,6 +56,9 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
       if (flags.engine && resource !== "policy") {
         throw new InputValidationError(`--engine is valid only when removing a policy`);
       }
+      if (flags.manager && resource !== "payment-connector") {
+        throw new InputValidationError(`--manager is valid only when removing a payment-connector`);
+      }
 
       const project = ctx.require(ProjectKey);
       if (resource === "gateway-target" || resource === "gateway-connector") {
@@ -64,6 +74,15 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
         await config.projectManager.removeResource(project, {
           resourceType: "policy",
           engineName: flags.engine,
+          name,
+        });
+      } else if (resource === "payment-connector") {
+        if (!flags.manager) {
+          throw new InputValidationError(`--manager is required option`);
+        }
+        await config.projectManager.removeResource(project, {
+          resourceType: "payment-connector",
+          managerName: flags.manager,
           name,
         });
       } else {

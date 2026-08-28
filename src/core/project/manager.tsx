@@ -32,6 +32,7 @@ import { CredentialSchema } from "../../projectSchemas/credential";
 import { MemorySchema } from "../../projectSchemas/memory";
 import { EvaluatorSchema } from "../../projectSchemas/evaluator";
 import { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
+import { PaymentConnectorSchema, PaymentManagerSchema } from "../../projectSchemas/payment";
 import { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
 import { enclosingProjectRoot, projectSpecPath } from "./fsUtils";
 import {
@@ -134,6 +135,10 @@ export class FsProjectManager implements ProjectManager {
 
       const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
       yield* this.installRuntimeDependencies(appDir);
+    } else if (scaffoldRuntimeInput.build === "Container") {
+      // containers require uv.lock to build, so even with no-install we must generate the lock.
+      const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
+      yield* this.ensureLockFileExists(appDir);
     }
 
     if (!input.skipGit) {
@@ -164,7 +169,7 @@ export class FsProjectManager implements ProjectManager {
     yield { message: `Reading project spec file at '${agentCoreSpecPath}'` };
     const projectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
-    const existingResources = projectSpec[projectSpecKey];
+    const existingResources = projectSpec[projectSpecKey] ?? [];
     if (input.resourceType === "gateway-target") {
       // Current L3 outputs are keyed only by Target name, so names must remain
       // project-unique until those outputs include the parent Gateway.
@@ -191,6 +196,20 @@ export class FsProjectManager implements ProjectManager {
       if (engine) {
         throw new InputValidationError(
           `a policy with name '${input.resourceConfig.name}' already exists in policy engine '${engine.name}'`,
+        );
+      }
+    } else if (input.resourceType === "payment-connector") {
+      const manager = projectSpec.payments?.find(
+        (candidate) => candidate.name === input.managerName,
+      );
+      if (!manager) {
+        throw new InputValidationError(
+          `payment manager '${input.managerName}' does not exist in this project`,
+        );
+      }
+      if (manager.connectors.some((connector) => connector.name === input.resourceConfig.name)) {
+        throw new InputValidationError(
+          `a payment connector with name '${input.resourceConfig.name}' already exists in manager '${input.managerName}'`,
         );
       }
     } else if (existingResources.find((resource) => resource.name === input.resourceConfig.name)) {
@@ -264,6 +283,11 @@ export class FsProjectManager implements ProjectManager {
       case "gateway":
         projectSpec.agentCoreGateways.push(input.resourceConfig);
         break;
+      case "payment-manager": {
+        projectSpec.payments ??= [];
+        projectSpec.payments.push(parseResource(PaymentManagerSchema, input.resourceConfig));
+        break;
+      }
       case "policy-engine": {
         projectSpec.policyEngines.push(parseResource(PolicyEngineSchema, input.resourceConfig));
         for (const gatewayName of input.attachGateways?.names ?? []) {
@@ -304,6 +328,13 @@ export class FsProjectManager implements ProjectManager {
           );
         }
         projectSpec.agentCoreGateways[gatewayIndex]!.targets.push(input.resourceConfig);
+        break;
+      }
+      case "payment-connector": {
+        const manager = projectSpec.payments!.find(
+          (candidate) => candidate.name === input.managerName,
+        )!;
+        manager.connectors.push(parseResource(PaymentConnectorSchema, input.resourceConfig));
         break;
       }
       default: {
@@ -403,9 +434,19 @@ export class FsProjectManager implements ProjectManager {
         gateways[gatewayIndex] = { ...gateway, targets };
       }
       newSpec = { ...existingProjectSpec, agentCoreGateways: gateways };
+    } else if (input.resourceType === "payment-connector") {
+      const payments = [...(existingProjectSpec.payments ?? [])];
+      const managerIndex = payments.findIndex((manager) => manager.name === input.managerName);
+      if (managerIndex >= 0) {
+        const manager = payments[managerIndex]!;
+        const connectors = manager.connectors.filter((connector) => connector.name !== input.name);
+        removed = connectors.length !== manager.connectors.length;
+        payments[managerIndex] = { ...manager, connectors };
+      }
+      newSpec = { ...existingProjectSpec, payments };
     } else {
       const projectSpecKey = toProjectSpecKey(input.resourceType);
-      const existingResources = existingProjectSpec[projectSpecKey];
+      const existingResources = existingProjectSpec[projectSpecKey] ?? [];
       const newResources = existingResources.filter((resource) => resource.name !== input.name);
       removed = newResources.length !== existingResources.length;
       newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
@@ -511,6 +552,26 @@ export class FsProjectManager implements ProjectManager {
     }
   }
 
+  /**
+   * Check if the uv.lock file exists within the project, and generate it if missing.
+   */
+  private async *ensureLockFileExists(appDir: string): AsyncGenerator<ProjectEvent, void> {
+    if (!existsSync(join(appDir, "pyproject.toml")) || existsSync(join(appDir, "uv.lock"))) {
+      return;
+    }
+    yield { message: "Generating uv.lock for container build" };
+    try {
+      await this.run(["uv", "lock"], appDir);
+    } catch {
+      yield {
+        message:
+          `Warning: could not generate uv.lock in ${appDir} (is uv installed?). ` +
+          "Run `uv lock` there before `agentcore project dev` or `deploy` — " +
+          "container builds install from uv.lock.",
+      };
+    }
+  }
+
   // Runs a command with its output streamed to the file logger.
   private run(command: string[], cwd: string): Promise<void> {
     return this.runner(command, { cwd, onOutput: (chunk) => this.logger.debug(chunk) });
@@ -543,6 +604,9 @@ function toProjectSpecKey(resourceType: ProjectResource) {
     case "policy-engine":
     case "policy":
       return "policyEngines";
+    case "payment-manager":
+    case "payment-connector":
+      return "payments";
   }
 }
 

@@ -8,7 +8,7 @@ import {
 } from "./gateway";
 import { ABTestSchema } from "./ab-test";
 import { ConfigBundleSchema } from "./config-bundle";
-import { CredentialSchema } from "./credential";
+import { CredentialSchema, credentialEnvironmentVariableNames } from "./credential";
 import { DatasetSchema } from "./dataset";
 import { EvaluatorSchema } from "./evaluator";
 import { HarnessRegistryEntrySchema } from "./harness";
@@ -36,6 +36,7 @@ export const ProjectNameSchema = z
   });
 const BUILTIN_EVALUATOR_PREFIX = "Builtin.";
 const ARN_PREFIX = "arn:";
+const toEnvironmentName = (name: string) => name.replace(/-/g, "_").toUpperCase();
 const uniqueNames = (resource: string) =>
   uniqueBy<{ name: string }>(
     ({ name }) => name,
@@ -248,8 +249,42 @@ export const ProjectSpecSchema = z
         }
       }
     }
+    const credentialEnvironmentNames = new Map<string, string>();
+    for (const [credentialIndex, credential] of spec.credentials.entries()) {
+      for (const environmentName of credentialEnvironmentVariableNames(credential)) {
+        const conflictingName = credentialEnvironmentNames.get(environmentName);
+        if (conflictingName) {
+          ctx.addIssue({
+            code: "custom",
+            message:
+              `Credential "${credential.name}" and "${conflictingName}" derive the same environment variable "${environmentName}"; ` +
+              "choose credential names that produce distinct environment variables",
+            path: ["credentials", credentialIndex, "name"],
+          });
+        } else {
+          credentialEnvironmentNames.set(environmentName, credential.name);
+        }
+      }
+    }
+    const paymentManagerEnvironmentNames = new Map<string, string>();
     for (const [paymentIndex, payment] of (spec.payments ?? []).entries()) {
+      const environmentName = toEnvironmentName(payment.name);
+      const conflictingName = paymentManagerEnvironmentNames.get(environmentName);
+      if (conflictingName) {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            `Payment managers "${payment.name}" and "${conflictingName}" derive the same payment manager environment name; ` +
+            "choose names that differ by more than letter casing",
+          path: ["payments", paymentIndex, "name"],
+        });
+      } else {
+        paymentManagerEnvironmentNames.set(environmentName, payment.name);
+      }
+
       for (const [connectorIndex, connector] of payment.connectors.entries()) {
+        if (connector.provisionMode === "QUICK_CREATE") continue;
+
         const credential = spec.credentials.find((c) => c.name === connector.credentialName);
         if (!credential) {
           ctx.addIssue({
@@ -262,6 +297,14 @@ export const ProjectSpecSchema = z
             code: "custom",
             message: `Payment connector "${connector.name}" in manager "${payment.name}" references credential "${connector.credentialName}" which is a ${credential.authorizerType}, not a PaymentCredentialProvider`,
             path: ["payments", paymentIndex, "connectors", connectorIndex, "credentialName"],
+          });
+        } else if (credential.provider !== connector.provider) {
+          ctx.addIssue({
+            code: "custom",
+            message:
+              `Payment connector "${connector.name}" in manager "${payment.name}" uses provider "${connector.provider}", ` +
+              `but credential "${connector.credentialName}" uses provider "${credential.provider}"`,
+            path: ["payments", paymentIndex, "connectors", connectorIndex, "provider"],
           });
         }
       }

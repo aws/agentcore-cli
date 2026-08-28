@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { CredentialSchema } from "./credential";
+import { CredentialSchema, credentialEnvironmentVariableNames } from "./credential";
 
 const DISCOVERY_URL = "https://idp.example.com/.well-known/openid-configuration";
 const SECRET_REF = {
@@ -50,6 +50,22 @@ describe("credential schema", () => {
         clientSecretRef: SECRET_REF,
       },
     ],
+    [
+      "a Coinbase payment credential",
+      {
+        authorizerType: "PaymentCredentialProvider",
+        name: "coinbase",
+        provider: "CoinbaseCDP",
+      },
+    ],
+    [
+      "a StripePrivy payment credential",
+      {
+        authorizerType: "PaymentCredentialProvider",
+        name: "stripe",
+        provider: "StripePrivy",
+      },
+    ],
   ])("accepts %s and retains its fields", (_label, value) => {
     const result = CredentialSchema.safeParse(value);
     expect(result.success).toBe(true);
@@ -65,6 +81,53 @@ describe("credential schema", () => {
     });
     expect(result.success).toBe(true);
     expect(result.data).toMatchObject({ vendor: "CustomOauth2" });
+  });
+
+  it("derives the environment variables used by each credential type", () => {
+    const environmentNames = (value: Record<string, unknown>) =>
+      credentialEnvironmentVariableNames(CredentialSchema.parse(value));
+
+    expect(
+      environmentNames({ authorizerType: "ApiKeyCredentialProvider", name: "service-key" }),
+    ).toEqual(["AGENTCORE_CREDENTIAL_SERVICE_KEY"]);
+    expect(
+      environmentNames({
+        authorizerType: "ApiKeyCredentialProvider",
+        name: "service-key",
+        secretRef: SECRET_REF,
+      }),
+    ).toEqual([]);
+    expect(
+      environmentNames({
+        authorizerType: "OAuthCredentialProvider",
+        name: "github",
+        vendor: "GithubOauth2",
+        providerConfig: { githubOauth2ProviderConfig: { clientId: "client-1" } },
+      }),
+    ).toEqual(["AGENTCORE_CREDENTIAL_GITHUB_CLIENT_SECRET"]);
+    expect(
+      environmentNames({
+        authorizerType: "PaymentCredentialProvider",
+        name: "coinbase",
+        provider: "CoinbaseCDP",
+      }),
+    ).toEqual([
+      "AGENTCORE_CREDENTIAL_COINBASE_API_KEY_ID",
+      "AGENTCORE_CREDENTIAL_COINBASE_API_KEY_SECRET",
+      "AGENTCORE_CREDENTIAL_COINBASE_WALLET_SECRET",
+    ]);
+    expect(
+      environmentNames({
+        authorizerType: "PaymentCredentialProvider",
+        name: "stripe",
+        provider: "StripePrivy",
+      }),
+    ).toEqual([
+      "AGENTCORE_CREDENTIAL_STRIPE_APP_ID",
+      "AGENTCORE_CREDENTIAL_STRIPE_APP_SECRET",
+      "AGENTCORE_CREDENTIAL_STRIPE_AUTHORIZATION_PRIVATE_KEY",
+      "AGENTCORE_CREDENTIAL_STRIPE_AUTHORIZATION_ID",
+    ]);
   });
 
   it.each<[string, Record<string, unknown>, RegExp]>([
@@ -123,6 +186,15 @@ describe("credential schema", () => {
       "an invalid credential name",
       { authorizerType: "ApiKeyCredentialProvider", name: "bad name!" },
       /alphanumeric/,
+    ],
+    [
+      "an unsupported payment provider",
+      {
+        authorizerType: "PaymentCredentialProvider",
+        name: "payment",
+        provider: "Unsupported",
+      },
+      /provider/,
     ],
     [
       "a credential name shorter than 3 characters",

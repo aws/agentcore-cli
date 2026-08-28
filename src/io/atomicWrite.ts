@@ -13,10 +13,18 @@ export interface AtomicWriteStreamOptions {
   transforms?: Transform[];
 }
 
-export async function atomicWrite(path: string, contents: string | Uint8Array): Promise<void> {
+export interface AtomicWriteOptions {
+  mode?: number;
+}
+
+export async function atomicWrite(
+  path: string,
+  contents: string | Uint8Array,
+  options: AtomicWriteOptions = {},
+): Promise<void> {
   const tempPath = join(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`);
   try {
-    await writeFile(tempPath, contents);
+    await writeFile(tempPath, contents, { mode: options.mode });
     await rename(tempPath, path);
   } catch (error) {
     await rm(tempPath, { force: true });
