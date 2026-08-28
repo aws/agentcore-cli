@@ -952,6 +952,10 @@ export class FsProjectManager implements ProjectManager {
       );
       yield { message: "Syncing Python dependencies with uv" };
       await this.run(["uv", "sync"], appDir);
+    } else if (existsSync(join(appDir, "package.json"))) {
+      await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
+      yield { message: "Installing Node dependencies with npm" };
+      await this.run(["npm", "install"], appDir);
     }
   }
 

@@ -203,6 +203,18 @@ describe("CodeZipDevRunner", () => {
       ["npm", "exec", "--", "tsx", "watch", "index.js"],
     ]);
   });
+
+  test("runs the .ts source when a TypeScript runtime's entrypoint is the compiled .js", async () => {
+    const root = await projectRoot(true);
+    await writeFile(join(root, "app", "hello-world", "main.ts"), "");
+    const { calls, runner } = harness();
+
+    await collect(runner.run(input(root, runtime({ entrypoint: "main.js" }))));
+
+    expect(calls.map(({ command }) => command)).toEqual([
+      ["npm", "exec", "--", "tsx", "watch", "main.ts"],
+    ]);
+  });
 });
 
 describe("CodeZipDevRunner OTEL instrumentation", () => {
