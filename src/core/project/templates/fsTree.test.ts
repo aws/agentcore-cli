@@ -83,4 +83,19 @@ describe("FsTreeNode.fromAssetSource", () => {
     ]);
     expect(await tree.children[2]?.bytes?.()).toBe("contents:template/gitignore.template");
   });
+
+  test("strips .template suffix from non-ignore files", async () => {
+    const source: AssetSource = {
+      async list() {
+        return ["template/Dockerfile.template", "template/dockerignore.template"];
+      },
+      async read(assetPath) {
+        return `contents:${assetPath}`;
+      },
+    };
+
+    const tree = await FsTreeNode.fromAssetSource(source, "template", "root");
+
+    expect(tree.children.map((node) => node.name)).toEqual(["Dockerfile", ".dockerignore"]);
+  });
 });
