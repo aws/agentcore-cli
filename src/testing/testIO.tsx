@@ -53,3 +53,33 @@ export function testIO({ isTTY = false, stdin: stdinContent }: TestIOOptions = {
     stderr: err.read,
   };
 }
+
+// TtyInput is the writable stdin of a TTY TestIO: tests push raw key sequences
+// into it to drive a mounted TUI.
+export interface TtyInput extends NodeJS.ReadStream {
+  write(chunk: string): boolean;
+}
+
+// ttyTestIO builds a TestIO that Ink will accept as a real terminal: isTTY on
+// every stream, the no-op setRawMode/ref/unref that Ink calls when it takes over
+// stdin, and a fixed window size (Ink needs columns/rows to lay frames out).
+// Use it for tests that mount the TUI through the production path
+// (renderTui/renderTuiAt) rather than through ink-testing-library.
+export function ttyTestIO(columns = 100, rows = 40): { streams: TestIO; stdin: TtyInput } {
+  const streams = testIO({ isTTY: true });
+  const stdin = streams.io.stdin as TtyInput;
+  stdin.setRawMode = function () {
+    return this;
+  };
+  stdin.ref = function () {
+    return this;
+  };
+  stdin.unref = function () {
+    return this;
+  };
+  Object.defineProperties(streams.io.stdout, {
+    columns: { configurable: true, value: columns },
+    rows: { configurable: true, value: rows },
+  });
+  return { streams, stdin };
+}

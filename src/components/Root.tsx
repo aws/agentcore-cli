@@ -107,8 +107,15 @@ import { GatewayRuleScreen } from "../handlers/gateway/rule/screen.tsx";
 import { GatewayRuleListScreen } from "../handlers/gateway/rule/list/screen.tsx";
 import { GatewayRuleGetScreen } from "../handlers/gateway/rule/get/screen.tsx";
 import { GatewayInvokeScreen } from "../handlers/gateway/invoke/screen.tsx";
+import { ProjectScreen, ProjectCommandNotImplementedScreen } from "../handlers/project/screen.tsx";
 import { RootScreen, HelpScreen } from "../handlers/screen.tsx";
 import type { Context } from "../router";
+
+// PROJECT_COMMANDS are the `agentcore project` subcommands that are listed in
+// the menu but have no screen of their own yet. Each is routed explicitly so
+// selecting it reports "not implemented" instead of falling through to the
+// catch-all HelpScreen, which prints the launching command's help and quits.
+const PROJECT_COMMANDS = ["create", "add", "remove", "dev", "deploy", "status", "build"] as const;
 
 export interface RootProps {
   // path is the command path to the executing node (e.g. "/agentcore").
@@ -736,6 +743,16 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
             path="agentcore/identity/oauth2-credential-provider/get/:name/json"
             element={<Oauth2CredentialProviderGetJsonScreen ctx={ctx} core={core} />}
           />
+          <Route path="agentcore/project" element={<ProjectScreen ctx={ctx} core={core} />} />
+          {PROJECT_COMMANDS.map((command) => (
+            <Route
+              key={command}
+              path={`agentcore/project/${command}`}
+              element={
+                <ProjectCommandNotImplementedScreen ctx={ctx} core={core} command={command} />
+              }
+            />
+          ))}
           <Route path="*" element={<HelpScreen ctx={ctx} core={core} />} />
         </Routes>
       </MemoryRouter>
