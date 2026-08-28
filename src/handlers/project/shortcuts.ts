@@ -36,6 +36,15 @@ export const MEMORY_SHORTCUT_NAMES = Object.keys(MEMORY_SHORTCUTS) as unknown as
   ...MemoryShortcutName[],
 ];
 
+/** The default CodeZip runtime version for each language. */
+export const LANGUAGE_VERSION_DEFAULTS = {
+  Python: "PYTHON_3_14",
+  TypeScript: "NODE_22",
+} as const satisfies Record<
+  ScaffoldRuntimeInput["language"],
+  NonNullable<ScaffoldRuntimeInput["runtimeVersion"]>
+>;
+
 type RuntimeTemplateShortcut = Omit<ScaffoldRuntimeInput, "memory"> & {
   memory: MemoryShortcutName;
 };
