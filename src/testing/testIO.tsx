@@ -60,11 +60,10 @@ export interface TtyInput extends NodeJS.ReadStream {
   write(chunk: string): boolean;
 }
 
-// ttyTestIO builds a TestIO that Ink will accept as a real terminal: isTTY on
-// every stream, the no-op setRawMode/ref/unref that Ink calls when it takes over
-// stdin, and a fixed window size (Ink needs columns/rows to lay frames out).
-// Use it for tests that mount the TUI through the production path
-// (renderTui/renderTuiAt) rather than through ink-testing-library.
+// ttyTestIO builds a TestIO that Ink accepts as a real terminal: isTTY, the
+// no-op stdin methods Ink calls when it takes over, and a window size (Ink needs
+// columns/rows to lay out frames). For tests that mount the TUI through
+// renderTui/renderTuiAt rather than ink-testing-library.
 export function ttyTestIO(columns = 100, rows = 40): { streams: TestIO; stdin: TtyInput } {
   const streams = testIO({ isTTY: true });
   const stdin = streams.io.stdin as TtyInput;

@@ -50,7 +50,7 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   root.handler(createGatewayHandler(core, io));
   root.handler(createEvalHandler(core, io));
   root.handler(createConfigHandler());
-  root.handler(createProjectHandler({ projectManager: core.projectManager, io }));
+  root.handler(createProjectHandler({ core, io }));
 
   // Invoking with no subcommand launches the interactive TUI.
   root.default(renderTui(core, io));

@@ -5,6 +5,8 @@ import { ContainerDevRunner } from "../../core/dev/container";
 import { InspectorAssets } from "../../core/dev/inspectorAssets";
 import { startOtelCollector } from "../../core/dev/otel/collector";
 import { withProject } from "../../middleware";
+import { renderTui } from "../../tui";
+import type { Core } from "../types";
 import { createCreateProjectHandler } from "./create";
 import { createRemoveProjectHandler } from "./remove";
 import { createDevProjectHandler } from "./dev";
@@ -16,16 +18,20 @@ import type { ProjectManager } from "./types";
 import { createAddProjectResourceHandler } from "./add";
 
 type ProjectHandlerConfig = {
-  projectManager: ProjectManager;
+  core: Core;
   io: AppIO;
 };
 
-export function createProjectHandler(config: ProjectHandlerConfig): Router {
+export function createProjectHandler({ core, io }: ProjectHandlerConfig): Router {
+  const projectManager: ProjectManager = core.projectManager;
+  const config = { projectManager, io };
   const project = new Router("project", "manage an AgentCore project");
 
-  project.handler(
-    createCreateProjectHandler({ projectManager: config.projectManager, io: config.io }),
-  );
+  // Without a default, a bare `agentcore project` falls back to Commander's help
+  // and a usage exit code instead of the menu every sibling router opens.
+  project.default(renderTui(core, io));
+
+  project.handler(createCreateProjectHandler({ projectManager, io }));
   project.handler(createAddProjectResourceHandler(config));
   project.handler(
     withProject({ projectManager: config.projectManager })(

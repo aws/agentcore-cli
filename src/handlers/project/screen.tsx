@@ -16,10 +16,9 @@ export interface ProjectCommandNotImplementedScreenProps extends ScreenProps {
 // ProjectCommandNotImplementedScreen is the landing screen for a project
 // subcommand that is listed in the menu but has no screen yet.
 //
-// Ink's `exit(error)` rejects the `waitUntilExit()` that renderTuiAt awaits, so
-// the error travels the normal CLI path: the TUI tears down, the terminal is
-// restored, and runWithExitCode prints it and sets the exit code. Throwing
-// during render would instead surface a React stack trace.
+// exit(error) rejects the waitUntilExit() that renderTuiAt awaits, so the TUI
+// tears down and the error takes the normal CLI path. Throwing during render
+// would surface a React stack trace instead.
 export function ProjectCommandNotImplementedScreen({
   command,
 }: ProjectCommandNotImplementedScreenProps) {

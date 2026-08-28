@@ -3,14 +3,35 @@ import {
   renderScreen,
   waitForText,
   cleanupScreens,
+  createSilentLogger,
   TestCoreClient,
+  TestGlobalConfigAccessor,
+  testIO,
   ttyTestIO,
+  waitFor,
 } from "../../testing";
 import { renderTuiAt } from "../../tui";
 import { NotImplementedError } from "../../errors";
-import { ValueContext } from "../../router";
+import { compile, ValueContext } from "../../router";
+import { createRootHandler } from "../index";
 
 afterEach(cleanupScreens);
+
+// projectSubcommands reads the project group's children off the compiled
+// Commander tree, so tests driven by it cover any subcommand added later.
+function projectSubcommands(): string[] {
+  const root = compile(
+    createRootHandler(new TestCoreClient(), {
+      io: testIO().io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    }),
+    ValueContext.EmptyContext(),
+  );
+  const project = root.commands.find((command) => command.name() === "project")!;
+  // `help` is Commander's own, not one of ours.
+  return project.commands.map((command) => command.name()).filter((name) => name !== "help");
+}
 
 describe("project menu", () => {
   test("lists every project subcommand", async () => {
@@ -18,7 +39,7 @@ describe("project menu", () => {
 
     await waitForText(r.lastFrame, "manage an AgentCore project");
     const frame = r.lastFrame()!;
-    for (const command of ["create", "add", "remove", "dev", "deploy", "status", "build"]) {
+    for (const command of projectSubcommands()) {
       expect(frame).toContain(command);
     }
     r.unmount();
@@ -32,7 +53,6 @@ describe("project menu", () => {
     await waitForText(r.lastFrame, "❯ project");
     await r.press("return");
 
-    // The project menu, not the blank frame the catch-all used to produce.
     await waitForText(r.lastFrame, "agentcore → project");
     expect(r.lastFrame()).toContain("create");
     r.unmount();
@@ -50,12 +70,14 @@ describe("project menu", () => {
 });
 
 describe("project subcommands without a screen", () => {
-  // Driven through renderTuiAt (the production mount path) rather than
-  // renderScreen: the behavior under test is that Ink's exit(error) rejects the
-  // promise the CLI awaits, which is what turns into an exit code and a message
-  // on stderr. ink-testing-library does not expose waitUntilExit, so it cannot
-  // observe this.
-  test.each(["create", "add", "remove", "dev", "deploy", "status", "build"])(
+  // renderTuiAt rather than renderScreen: ink-testing-library exposes no
+  // waitUntilExit, so it cannot observe the rejection under test.
+  //
+  // Reading the cases off the router also guards Root's hand-written
+  // PROJECT_COMMANDS: an unrouted subcommand hits the catch-all, which resolves
+  // instead of rejecting. Frames can't detect that — the catch-all exits before
+  // painting, so it and this screen both render empty.
+  test.each(projectSubcommands())(
     "%s tears down the TUI with NotImplementedError",
     async (command) => {
       const { streams } = ttyTestIO();
@@ -90,5 +112,38 @@ describe("project subcommands without a screen", () => {
     expect(error.message).toContain("agentcore project deploy --help");
     // Surfaces as a plain CLI failure, not a crash.
     expect(error.exitCode).toBe(1);
+  });
+});
+
+describe("agentcore project (no subcommand)", () => {
+  // Exercises the real CLI entrypoint; the screen tests mount a path directly
+  // and so never caught the missing default handler.
+  test("opens the interactive menu", async () => {
+    const { streams, stdin } = ttyTestIO();
+    const root = createRootHandler(new TestCoreClient(), {
+      io: streams.io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+
+    const routing = root.route(["node", "agentcore", "project"]);
+    await waitFor(() => streams.stdout().includes("manage an AgentCore project"));
+
+    stdin.write(String.fromCharCode(3)); // ctrl+c
+    await expect(routing).resolves.toBeUndefined();
+  });
+
+  test("prints help instead of the TUI under --json", async () => {
+    const io = testIO();
+    const root = createRootHandler(new TestCoreClient(), {
+      io: io.io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+
+    await root.route(["node", "agentcore", "project", "--json"]);
+
+    expect(io.stdout()).toContain("Usage:");
+    expect(io.stdout()).toContain("create");
   });
 });
