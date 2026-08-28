@@ -90,7 +90,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       flag(
         "language",
         "target language for the scaffolded runtime code",
-        z.enum(["Python"]).optional(),
+        z.enum(["Python", "TypeScript"]).optional(),
       ),
       flag(
         "framework",
@@ -320,8 +320,12 @@ async function resolveScaffoldRuntimeInput(
         modelProvider: flags["model-provider"],
         apiKey,
         memory: MEMORY_SHORTCUTS[flags["memory"] ?? defaultMemory](runtimeName),
-        entrypoint: "main.py",
-        runtimeVersion: flags["build"] === "CodeZip" ? "PYTHON_3_14" : undefined,
+        runtimeVersion:
+          flags["build"] === "CodeZip"
+            ? flags["language"] === "TypeScript"
+              ? "NODE_22"
+              : "PYTHON_3_14"
+            : undefined,
       });
 }
 

@@ -511,6 +511,43 @@ describe("project create", () => {
     ]);
   });
 
+  test("scaffolds a TypeScript strands runtime from custom flags", async () => {
+    const directory = await inTempDirectory();
+    await run([
+      "create",
+      "--name",
+      "MyAgent",
+      "--build",
+      "CodeZip",
+      "--language",
+      "TypeScript",
+      "--framework",
+      "strands",
+      "--model-provider",
+      "Bedrock",
+      "--memory",
+      "none",
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    const projectRoot = join(directory, "MyAgent");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    // NODE_22 runtimes deploy a compiled main.js, so the spec entrypoint is main.js
+    // even though the scaffolded source is main.ts.
+    expect(spec.runtimes).toEqual([
+      {
+        name: "MyAgent",
+        build: "CodeZip",
+        entrypoint: "main.js",
+        codeLocation: "app/MyAgent",
+        runtimeVersion: "NODE_22",
+        protocol: "HTTP",
+      },
+    ]);
+    expect(await Bun.file(join(projectRoot, "app", "MyAgent", "main.ts")).exists()).toBe(true);
+  });
+
   test.each(["shortTerm", "longAndShortTerm"] as const)(
     "rejects --memory %s with --framework none",
     async (memoryShortcut) => {

@@ -377,6 +377,47 @@ describe("project add runtime", () => {
     expect(memory.strategies.map(({ type }: { type: string }) => type)).toEqual(expectedStrategies);
   });
 
+  test.each<[string, string[], string[]]>([
+    [
+      "template preset",
+      ["--name", "my_agent", "--template", "strands-ts"],
+      ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"],
+    ],
+    [
+      "custom without memory",
+      [
+        "--name",
+        "my_agent",
+        "--build",
+        "CodeZip",
+        "--language",
+        "TypeScript",
+        "--framework",
+        "strands",
+        "--model-provider",
+        "Bedrock",
+        "--memory",
+        "none",
+      ],
+      [],
+    ],
+  ])("strands-ts %s scaffolds a TypeScript agent", async (_label, flags, expectedStrategies) => {
+    const projectRoot = await inProject();
+    await run(["add", "runtime", ...flags]);
+
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    const runtime = spec.runtimes.find(
+      (candidate: { name: string }) => candidate.name === "my_agent",
+    );
+    expect(runtime).toMatchObject({ entrypoint: "main.js", runtimeVersion: "NODE_22" });
+
+    const memory = (spec.memories ?? []).find(
+      (candidate: { name: string }) => candidate.name === "my_agentMemory",
+    );
+    const strategies = memory?.strategies.map(({ type }: { type: string }) => type) ?? [];
+    expect(strategies).toEqual(expectedStrategies);
+  });
+
   test.each<[string, string[]]>([
     ["missing --name", ["--template", "hello-world-python"]],
     [
@@ -397,6 +438,21 @@ describe("project add runtime", () => {
     [
       "strands-python only supports HTTP",
       ["--name", "my_agent", "--template", "strands-python", "--protocol", "MCP"],
+    ],
+    [
+      "TypeScript without a strands template has no resolver",
+      [
+        "--name",
+        "my_agent",
+        "--build",
+        "CodeZip",
+        "--language",
+        "TypeScript",
+        "--framework",
+        "none",
+        "--model-provider",
+        "Bedrock",
+      ],
     ],
     [
       "invalid JSON in --network-config",
