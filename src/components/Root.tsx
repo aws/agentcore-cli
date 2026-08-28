@@ -113,8 +113,7 @@ import type { Context } from "../router";
 
 // PROJECT_COMMANDS are the `agentcore project` subcommands that are listed in
 // the menu but have no screen of their own yet. Each is routed explicitly so
-// selecting it reports "not implemented" instead of falling through to the
-// catch-all HelpScreen, which prints the launching command's help and quits.
+// selecting it reports "not implemented" error
 const PROJECT_COMMANDS = ["create", "add", "remove", "dev", "deploy", "status", "build"] as const;
 
 export interface RootProps {

@@ -12,12 +12,6 @@ import { ValueContext } from "../../router";
 
 afterEach(cleanupScreens);
 
-// `project` used to be listed in the root menu with no route to match it, so
-// selecting it fell through to the catch-all HelpScreen — which prints the
-// launching command's help and exits, leaving the user with a blank frame and no
-// TUI. It now has a menu, and its subcommands report that they have no screen
-// yet rather than pretending to.
-
 describe("project menu", () => {
   test("lists every project subcommand", async () => {
     const r = renderScreen("/agentcore/project");

@@ -14,9 +14,7 @@ export interface ProjectCommandNotImplementedScreenProps extends ScreenProps {
 }
 
 // ProjectCommandNotImplementedScreen is the landing screen for a project
-// subcommand that is listed in the menu but has no screen yet. The subcommands
-// stay listed so the command surface remains discoverable, and selecting one
-// fails honestly rather than rendering a screen that only restates `--help`.
+// subcommand that is listed in the menu but has no screen yet.
 //
 // Ink's `exit(error)` rejects the `waitUntilExit()` that renderTuiAt awaits, so
 // the error travels the normal CLI path: the TUI tears down, the terminal is
