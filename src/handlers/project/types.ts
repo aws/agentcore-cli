@@ -1,38 +1,16 @@
 import { HarnessSpecSchema } from "../../projectSchemas/harness";
 import type { CredentialSchema } from "../../projectSchemas/credential";
 import type { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
-import type { MemorySchema } from "../../projectSchemas/memory";
+import { MemorySchema } from "../../projectSchemas/memory";
+import type { EvaluatorSchema } from "../../projectSchemas/evaluator";
 import type { ProjectSpecSchema } from "../../projectSchemas/project";
 import z from "zod";
 import type { RuntimeResourceConfig } from "./add/runtime/types";
 import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
-import { AgentNameSchema, BuildTypeSchema } from "../../projectSchemas/runtime";
+import { AgentNameSchema, BuildTypeSchema, EntrypointSchema } from "../../projectSchemas/runtime";
+import { RuntimeVersionSchema } from "../../projectSchemas/constants";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
-
-export const RUNTIME_TEMPLATE_SHORTCUTS = {
-  "hello-world-python": {
-    runtimeName: "hello_world",
-    build: "CodeZip",
-    language: "Python",
-    framework: "none",
-    modelProvider: "Bedrock",
-    memory: "none",
-  },
-  "hello-world-python-container": {
-    runtimeName: "hello_world",
-    build: "Container",
-    language: "Python",
-    framework: "none",
-    modelProvider: "Bedrock",
-    memory: "none",
-  },
-} as const satisfies Record<string, ScaffoldRuntimeInput>;
-
-export type RuntimeTemplateShortcutName = keyof typeof RUNTIME_TEMPLATE_SHORTCUTS;
-
-export const RUNTIME_TEMPLATE_SHORTCUT_NAMES = Object.keys(
-  RUNTIME_TEMPLATE_SHORTCUTS,
-) as unknown as readonly [RuntimeTemplateShortcutName, ...RuntimeTemplateShortcutName[]];
+import type { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
 
 type CreateProjectInputBase = {
   /** The name of the project; also the directory it is scaffolded into. */
@@ -43,20 +21,38 @@ type CreateProjectInputBase = {
   skipGit?: boolean;
 };
 
-/** Set of flags needed to scaffold a new Runtime-based agent **/
+/** Set of arguments needed to scaffold a new Runtime-based agent. */
 export const ScaffoldRuntimeInputSchema = z
   .object({
     runtimeName: AgentNameSchema,
     build: BuildTypeSchema,
     language: z.enum(["Python"]),
-    framework: z.enum(["none"]),
+    framework: z.enum(["strands", "none"]),
     modelProvider: z.enum(["Bedrock"]),
     apiKey: z.string().min(1).optional(),
-    memory: z.enum(["none"]),
+    memory: MemorySchema.optional(),
+    entrypoint: EntrypointSchema,
+    runtimeVersion: RuntimeVersionSchema.optional(),
   })
   .refine(({ modelProvider, apiKey }) => !(modelProvider === "Bedrock" && apiKey !== undefined), {
     message: "API keys are not compatible with Bedrock model providers",
     path: ["apiKey"],
+  })
+  .superRefine(({ build, runtimeVersion }, ctx) => {
+    if (build === "CodeZip" && runtimeVersion === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: "runtimeVersion is required for CodeZip builds",
+        path: ["runtimeVersion"],
+      });
+    }
+    if (build === "Container" && runtimeVersion !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: "runtimeVersion is not supported for Container builds",
+        path: ["runtimeVersion"],
+      });
+    }
   });
 
 export type ScaffoldRuntimeInput = z.infer<typeof ScaffoldRuntimeInputSchema>;
@@ -71,9 +67,25 @@ export type ProjectEvent = {
   message: string;
 };
 
+/** The destructive deployment discovered after a project has been synthesized. */
+export type TeardownConfirmationRequest = {
+  projectName: string;
+  targetName: string;
+  /** Human-readable description of the resources the backend will remove. */
+  resourceDescription: string;
+  account: string;
+  region: string;
+};
+
+export type TeardownConfirmationHandler = (
+  request: TeardownConfirmationRequest,
+) => Promise<boolean>;
+
 export type DeployProjectInput = {
   /** Name of the aws-targets.json entry to deploy. */
   target: string;
+  /** Requests approval after the backend discovers that this deploy is a teardown. */
+  confirmTeardown: TeardownConfirmationHandler;
 };
 
 export type DeployResult = {
@@ -85,6 +97,12 @@ export type DeployResult = {
    * map rather than indexing into it.
    */
   outputs: Record<string, string>;
+  /**
+   * Set when the deploy removed the target's stack instead of updating it,
+   * because the project no longer declares anything to deploy. Callers report
+   * this differently: "deployed" is the wrong word for what happened.
+   */
+  tornDown?: boolean;
 };
 
 export type ResolveProjectInput = {
@@ -140,6 +158,10 @@ export type AddResourceInput =
       resourceConfig: z.input<typeof MemorySchema>;
     }
   | {
+      resourceType: "evaluator";
+      resourceConfig: z.input<typeof EvaluatorSchema>;
+    }
+  | {
       resourceType: "gateway";
       resourceConfig: AgentCoreGateway;
     }
@@ -147,18 +169,33 @@ export type AddResourceInput =
       resourceType: "gateway-target";
       gatewayName: string;
       resourceConfig: AgentCoreGatewayTarget;
+    }
+  | {
+      resourceType: "policy-engine";
+      resourceConfig: z.input<typeof PolicyEngineSchema>;
+      attachGateways?: { names: string[]; mode: "ENFORCE" | "LOG_ONLY" };
+    }
+  | {
+      resourceType: "policy";
+      engineName: string;
+      resourceConfig: z.input<typeof PolicySchema>;
     };
 
 export type ProjectResource = AddResourceInput["resourceType"];
 
 export type RemoveResourceInput =
   | {
-      resourceType: Exclude<ProjectResource, "gateway-target">;
+      resourceType: Exclude<ProjectResource, "gateway-target" | "policy">;
       name: string;
     }
   | {
       resourceType: "gateway-target";
       gatewayName: string;
+      name: string;
+    }
+  | {
+      resourceType: "policy";
+      engineName?: string;
       name: string;
     };
 

@@ -26,7 +26,19 @@ export async function resolveDevPort(
   checkPort: PortChecker,
   signal: AbortSignal,
 ): Promise<DevPort> {
-  const defaultPort = DEV_PORTS[protocol ?? "HTTP"];
+  return findFreePort(DEV_PORTS[protocol ?? "HTTP"], explicitPort, checkPort, signal);
+}
+
+/**
+ * Resolve a free port from `defaultPort`. An explicit port must be free or the
+ * call fails; otherwise the next free port from the default up is taken.
+ */
+export async function findFreePort(
+  defaultPort: number,
+  explicitPort: number | undefined,
+  checkPort: PortChecker,
+  signal: AbortSignal,
+): Promise<DevPort> {
   const requestedPort = explicitPort ?? defaultPort;
 
   if (await checkPort(requestedPort, signal)) {

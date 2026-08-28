@@ -35,8 +35,15 @@ import type {
   ABTestExecutionStatus,
   UpdateABTestResponse,
   DeleteABTestResponse,
+  DeleteRecommendationResponse,
   GetBatchEvaluationResponse,
+  GetRecommendationResponse,
+  ListRecommendationsResponse,
   ListBatchEvaluationsResponse,
+  RecommendationConfig,
+  RecommendationStatus,
+  RecommendationType,
+  StartRecommendationResponse,
   StartBatchEvaluationResponse,
   SessionMetadataShape,
   InlineGroundTruth,
@@ -225,6 +232,14 @@ export type RoleScopeWarning = {
 };
 
 export type CreateDatasetInput = CreateDatasetRequest;
+export type StartRecommendationInput = {
+  name: string;
+  description?: string;
+  type: RecommendationType;
+  recommendationConfig: RecommendationConfig;
+  kmsKeyArn?: string;
+  tags?: Record<string, string>;
+};
 export type CreateConfigurationBundleInput = Pick<
   CreateConfigurationBundleRequest,
   "bundleName" | "components" | "branchName" | "commitMessage" | "kmsKeyArn"
@@ -271,7 +286,10 @@ export type InvokeDatasetInput = {
   userId?: string;
   dataset: string; // local JSONL path or a dataset id
   datasetVersion?: string;
+  waitIngestionMs?: number;
 };
+
+export type InvokeFailure = { exampleId: string; error: string };
 
 // InvokedSession is one replayed example: the session created for it plus its neutral
 // ground truth. Grader-agnostic — the batch handler wraps `groundTruth` as
@@ -282,13 +300,11 @@ export type InvokedSession = {
   groundTruth?: InlineGroundTruth;
 };
 
-// InvokeDatasetResult reports the created sessions plus how many examples were invoked
-// vs dropped (a failed invoke is skipped, not fatal). firstError explains a total failure.
 export type InvokeDatasetResult = {
   sessions: InvokedSession[];
   invoked: number;
   failed: number;
-  firstError?: Error;
+  failures: InvokeFailure[];
 };
 
 export type SpanRecord = Record<string, unknown>;
@@ -364,6 +380,19 @@ export interface CoreEvalClient {
     options: CoreOptions,
   ): Promise<ListEvaluatorsResponse>;
   deleteEvaluator(id: string, options: CoreOptions): Promise<DeleteEvaluatorResponse>;
+
+  startRecommendation(
+    input: StartRecommendationInput,
+    options: CoreOptions,
+  ): Promise<StartRecommendationResponse>;
+  getRecommendation(id: string, options: CoreOptions): Promise<GetRecommendationResponse>;
+  listRecommendations(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    statusFilter: RecommendationStatus | undefined,
+    options: CoreOptions,
+  ): Promise<ListRecommendationsResponse>;
+  deleteRecommendation(id: string, options: CoreOptions): Promise<DeleteRecommendationResponse>;
 
   // getBatchEvaluation returns the service-side job and, unless `includeResults`
   // is false, the per-session results read from its per-job CloudWatch stream once

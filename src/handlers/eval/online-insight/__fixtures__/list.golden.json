@@ -1,20 +1,6 @@
 {
   "onlineEvaluationConfigs": [
     {
-      "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_insight_fixture-NPzirZ4e60",
-      "onlineEvaluationConfigId": "agentcore_cli_online_insight_fixture-NPzirZ4e60",
-      "onlineEvaluationConfigName": "agentcore_cli_online_insight_fixture",
-      "status": "CREATING",
-      "executionStatus": "DISABLED",
-      "createdAt": "2026-08-25T19:22:09.493Z",
-      "updatedAt": "2026-08-25T19:22:09.493Z",
-      "insights": [
-        {
-          "insightId": "Builtin.Insight.FailureAnalysis"
-        }
-      ]
-    },
-    {
       "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/demoEval_onlineInsights1-QE6As2GTTB",
       "onlineEvaluationConfigId": "demoEval_onlineInsights1-QE6As2GTTB",
       "onlineEvaluationConfigName": "demoEval_onlineInsights1",

@@ -433,6 +433,7 @@ export type GatewayPolicyEngineConfiguration = z.infer<
 >;
 export const GatewayProtocolTypeSchema = z.enum(["MCP", "None"]);
 export type GatewayProtocolType = z.infer<typeof GatewayProtocolTypeSchema>;
+
 export const AgentCoreGatewaySchema = z
   .object({
     name: GatewayNameSchema,

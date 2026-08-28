@@ -148,6 +148,29 @@ describe("project custom validation", () => {
     }
   });
 
+  it("validates gateway policy engine references", () => {
+    const gatewayWithEngine = (policyEngineName: string) => ({
+      ...minimalProject,
+      agentCoreGateways: [
+        {
+          name: "gateway",
+          targets: [],
+          policyEngineConfiguration: { policyEngineName, mode: "ENFORCE" },
+        },
+      ],
+      policyEngines: [{ name: "Guardrails" }],
+    });
+
+    expect(ProjectSpecSchema.safeParse(gatewayWithEngine("Guardrails")).success).toBe(true);
+    const result = ProjectSpecSchema.safeParse(gatewayWithEngine("Missing"));
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.some((issue) => issue.message.includes("unknown policy engine")),
+      ).toBe(true);
+    }
+  });
+
   it("distinguishes project knowledge-base names from external IDs", () => {
     const target = {
       name: "knowledge",

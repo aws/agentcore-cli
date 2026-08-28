@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling ~= 1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore Runtime Application using Strands SDK"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    {{#if (eq modelProvider "Anthropic")}}"anthropic ~= 0.30.0",
+    {{/if}}"aws-opentelemetry-distro ~= 0.17.0",
+    "bedrock-agentcore ~= 1.9.1",
+    "botocore[crt] ~= 1.43.0",
+    {{#if (eq modelProvider "Gemini")}}"google-genai ~= 1.0.0",
+    {{/if}}"mcp ~= 1.24.0",
+    {{#if (eq modelProvider "OpenAI")}}"openai ~= 1.0.0",
+    {{/if}}{{#if (eq modelProvider "LiteLLM")}}"litellm ~= 1.0.0",
+    {{/if}}{{#if bedrockMantle}}"openai ~= 1.0.0",
+    "aws-bedrock-token-generator ~= 1.0.0",
+    {{/if}}"strands-agents ~= 1.15.0",
+    {{#if (or hasBrowser hasCodeInterpreter)}}"strands-agents-tools ~= 0.1.0",
+    {{/if}}{{#if hasBrowser}}"nest-asyncio ~= 1.5.0",
+    "playwright ~= 1.42.0",
+    {{/if}}{{#if hasGateway}}{{#if (includes gatewayAuthTypes "AWS_IAM")}}"mcp-proxy-for-aws ~= 1.1.0",
+    {{/if}}{{/if}}
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

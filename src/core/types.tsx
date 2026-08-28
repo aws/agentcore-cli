@@ -2,6 +2,10 @@ import type { BedrockAgentCoreControlClient } from "@aws-sdk/client-bedrock-agen
 import type { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import type { IAMClient } from "@aws-sdk/client-iam";
 import type { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
+import type {
+  CloudFormationClient,
+  CloudFormationClientConfig,
+} from "@aws-sdk/client-cloudformation";
 
 // CoreOptions is the standard trailing argument for Core operations. It carries
 // the per-call settings a handler resolves from context (the AWS region and an
@@ -20,6 +24,11 @@ export interface ClientConfig {
   endpoint?: string;
 }
 
+export type CredentialedClientConfig = {
+  region: string;
+  credentials: NonNullable<CloudFormationClientConfig["credentials"]>;
+};
+
 // Factories construct an SDK client from a ClientConfig. Injecting these (rather
 // than the clients themselves) lets CoreClient create/cache one client per config
 // while keeping construction swappable for unit tests.
@@ -27,6 +36,7 @@ export type CreateControlClient = (config: ClientConfig) => BedrockAgentCoreCont
 export type CreateDataClient = (config: ClientConfig) => BedrockAgentCoreClient;
 export type CreateIamClient = (config: ClientConfig) => IAMClient;
 export type CreateLogsClient = (config: ClientConfig) => CloudWatchLogsClient;
+export type CreateCloudFormationClient = (config: CredentialedClientConfig) => CloudFormationClient;
 export type CoreFetch = (
   ...args: Parameters<typeof globalThis.fetch>
 ) => ReturnType<typeof globalThis.fetch>;

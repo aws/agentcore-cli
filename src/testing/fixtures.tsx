@@ -5,8 +5,10 @@ import type { BedrockAgentCoreControlClient } from "@aws-sdk/client-bedrock-agen
 import type { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import type { IAMClient } from "@aws-sdk/client-iam";
 import type { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
+import type { CloudFormationClient } from "@aws-sdk/client-cloudformation";
 import type {
   ClientConfig,
+  CreateCloudFormationClient,
   CreateControlClient,
   CreateDataClient,
   CreateIamClient,
@@ -14,6 +16,7 @@ import type {
   CoreFetch,
 } from "../core/types";
 import {
+  createCloudFormationClient,
   createControlClient,
   createDataClient,
   createIamClient,
@@ -145,6 +148,31 @@ function reviveError(tagged: TaggedError): Error {
   return error;
 }
 
+const STREAM_TAG = "$stream";
+
+async function freezeStream(response: unknown): Promise<unknown> {
+  const stream = (response as { response?: { transformToString?: () => Promise<string> } })
+    ?.response;
+  if (typeof stream?.transformToString !== "function") return response;
+  return {
+    ...(response as Record<string, unknown>),
+    response: { [STREAM_TAG]: await stream.transformToString() },
+  };
+}
+
+async function* streamOf(text: string): AsyncGenerator<Uint8Array> {
+  yield new TextEncoder().encode(text);
+}
+
+function reviveStream(recorded: unknown): unknown {
+  const stream = (recorded as { response?: Record<string, unknown> })?.response;
+  if (!stream || typeof stream !== "object" || !(STREAM_TAG in stream)) return recorded;
+  return {
+    ...(recorded as Record<string, unknown>),
+    response: streamOf(stream[STREAM_TAG] as string),
+  };
+}
+
 // makeRecordingSend returns a `.send()` that records to / replays from `dir`.
 // In record mode it delegates to the real client, saves the response (or the
 // service error), and propagates it; otherwise it reads the fixture, failing
@@ -168,8 +196,9 @@ function makeRecordingSend<C extends { send: (command: any) => Promise<any> }>(
         writeFileSync(path, stringify(sanitizePresignedUrls(tagged)));
         throw error;
       }
-      writeFileSync(path, stringify(sanitizePresignedUrls(response)));
-      return response;
+      const frozen = await freezeStream(response);
+      writeFileSync(path, stringify(sanitizePresignedUrls(frozen)));
+      return reviveStream(frozen);
     }
 
     if (!existsSync(path)) {
@@ -180,7 +209,7 @@ function makeRecordingSend<C extends { send: (command: any) => Promise<any> }>(
     }
     const recorded = parse(readFileSync(path, "utf8"));
     if (isTaggedError(recorded)) throw reviveError(recorded);
-    return recorded;
+    return reviveStream(recorded);
   };
 }
 
@@ -189,12 +218,19 @@ function makeRecordingSend<C extends { send: (command: any) => Promise<any> }>(
 // (parsing → middleware → handler → CoreClient) against recorded data. The fake
 // clients only implement `.send()`, which is all CoreClient uses.
 export function fixtureFactories(dir: string): {
+  createCloudFormationClient: CreateCloudFormationClient;
   createControlClient: CreateControlClient;
   createDataClient: CreateDataClient;
   createIamClient: CreateIamClient;
   createLogsClient: CreateLogsClient;
 } {
   return {
+    createCloudFormationClient: (config) => {
+      const real = createCloudFormationClient(config);
+      return {
+        send: makeRecordingSend(real, dir),
+      } as unknown as CloudFormationClient;
+    },
     createControlClient: (config: ClientConfig) => {
       // The real client is only constructed to satisfy record mode; in replay
       // mode its `.send()` is never reached.

@@ -42,6 +42,9 @@ const MISSING_JOB_ID = "missing-batch-eval-0000000000";
 const FIXTURE_EVAL_AGENT = "asdf_MyAgent-3s5axvBC6Q";
 const FIXTURE_EVAL_NAME = "golden_batch_evaluate_fixture685";
 
+const FIXTURE_SIMULATE_NAME = "golden_batch_simulate_fixture1";
+const FIXTURE_SIMULATE_DATASET = join(FIXTURES, "simulate-ds.jsonl");
+
 function createFixtureCore(): CoreClient {
   const { createControlClient, createDataClient, createIamClient, createLogsClient } =
     fixtureFactories(FIXTURES);
@@ -136,4 +139,49 @@ describe("eval batch-evaluation (fixture-backed)", () => {
     expect(job.batchEvaluationId).toBeTruthy();
     expect(job.status).toBeTruthy();
   });
+
+  test("simulate replays a dataset, then submits a batch job over the created sessions", async () => {
+    let n = 0;
+    const { createControlClient, createDataClient, createIamClient, createLogsClient } =
+      fixtureFactories(FIXTURES);
+    const core = new CoreClient({
+      createControlClient,
+      createDataClient,
+      createIamClient,
+      createLogsClient,
+      logger: createSilentLogger(),
+      newSessionId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
+    });
+    const io = testIO();
+    const root = createRootHandler(core, {
+      io: io.io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+
+    await root.route([
+      "node",
+      "agentcore",
+      "eval",
+      "batch-evaluation",
+      "simulate",
+      "--runtime-id",
+      FIXTURE_EVAL_AGENT,
+      "--payload-template",
+      '{"prompt":"{input}"}',
+      "--dataset",
+      FIXTURE_SIMULATE_DATASET,
+      "--evaluator",
+      "Builtin.Helpfulness",
+      "--name",
+      FIXTURE_SIMULATE_NAME,
+      "--ingestion-wait-ms",
+      "0",
+      "--json",
+      "--region",
+      REGION,
+    ]);
+
+    matchGolden(FIXTURES, "simulate.golden.json", io.stdout());
+  }, 180_000);
 });

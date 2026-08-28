@@ -9,6 +9,16 @@ import type { AddProjectResourceConfig } from "../types";
 
 const GatewayAuthorizerConfigurationInputSchema = GatewayAuthorizerConfigSchema.strict();
 
+/**
+ The deployed service name of a gateway; mirrors the L3 Gateway construct's rule.
+**/
+export function gatewayResourceName(
+  projectName: string,
+  gateway: { name: string; resourceName?: string },
+): string {
+  return gateway.resourceName ?? `${projectName}-${gateway.name}`;
+}
+
 export const createAddGatewayHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "gateway",
@@ -55,7 +65,7 @@ export const createAddGatewayHandler = (config: AddProjectResourceConfig) =>
         throw new InputValidationError("required option '--name <name>' not specified");
       }
       const project = ctx.require(ProjectKey);
-      const resourceName = `${project.name}-${flags.name}`;
+      const resourceName = gatewayResourceName(project.name, { name: flags.name });
       if (resourceName.length > 48) {
         throw new InputValidationError(
           `Gateway resource name '${resourceName}' exceeds the service limit of 48 characters`,

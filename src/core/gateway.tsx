@@ -28,19 +28,13 @@ import {
   type ListGatewaysResponse,
   type ListGatewayTargetsResponse,
   type TargetConfiguration,
-  type TargetSummary,
   type UpdateGatewayRequest,
   type UpdateGatewayResponse,
   type UpdateGatewayRuleResponse,
   type UpdateGatewayTargetRequest,
   type UpdateGatewayTargetResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import {
-  AgentCoreCLIError,
-  ERROR_SOURCE,
-  InputValidationError,
-  ResultTruncationError,
-} from "../errors";
+import { AgentCoreCLIError, ERROR_SOURCE, InputValidationError } from "../errors";
 import type {
   CoreGatewayClient,
   CreateGatewayInput,
@@ -54,12 +48,12 @@ import type {
 } from "../handlers/gateway/types";
 import type { Logger } from "../logging";
 import { abortable } from "./abortable";
+import { FilteredPaginator } from "./filteredPaginator";
 import type { AwsClients, CoreFetch, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
 
 const DEFAULT_CONNECTOR_PAGE_SIZE = 100;
 const CONNECTOR_TARGET_SCAN_PAGE_SIZE = 1000;
-const MAX_CONNECTOR_TARGET_SCAN_REQUESTS = 101;
 
 async function* emptyBody(): AsyncGenerator<Uint8Array> {}
 
@@ -368,51 +362,19 @@ export class GatewayClient implements CoreGatewayClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListGatewayTargetsResponse> {
-    const connectorPageSize = maxResults ?? DEFAULT_CONNECTOR_PAGE_SIZE;
-    const items: TargetSummary[] = [];
-    let targetToken = nextToken;
-
-    for (let request = 0; request < MAX_CONNECTOR_TARGET_SCAN_REQUESTS; request++) {
-      const requestToken = targetToken;
-      const response = await this.listGatewayTargets(
-        gatewayId,
-        targetToken,
-        CONNECTOR_TARGET_SCAN_PAGE_SIZE,
-        options,
-      );
-      const targets = response.items ?? [];
-      const connectors = targets.filter((target) => target.targetType === TargetType.CONNECTOR);
-
-      if (items.length < connectorPageSize) {
-        const remaining = connectorPageSize - items.length;
-        if (connectors.length > remaining) {
-          const boundaryTarget = connectors[remaining - 1]!;
-          const boundarySize = targets.indexOf(boundaryTarget) + 1;
-          // Re-read only through the last returned Connector so the AWS token cannot skip matches.
-          const boundaryResponse = await this.listGatewayTargets(
-            gatewayId,
-            requestToken,
-            boundarySize,
-            options,
-          );
-
-          items.push(...connectors.slice(0, remaining));
-          return { ...boundaryResponse, items };
-        }
-        items.push(...connectors);
-      } else if (connectors.length > 0) {
-        return { ...response, items, nextToken: requestToken };
-      }
-
-      if (response.nextToken === undefined) {
-        return { ...response, items, nextToken: undefined };
-      }
-      targetToken = response.nextToken;
-    }
-
-    throw new ResultTruncationError(
-      `Gateway Connector discovery exceeded ${MAX_CONNECTOR_TARGET_SCAN_REQUESTS} Target scan requests; results are incomplete`,
-    );
+    const page = await FilteredPaginator.paginate({
+      fetchPage: async (token, size) => {
+        const r = await this.listGatewayTargets(gatewayId, token, size, options);
+        return { items: r.items ?? [], nextToken: r.nextToken };
+      },
+      predicate: (t) => t.targetType === TargetType.CONNECTOR,
+      nextToken,
+      maxResults,
+      defaultPageSize: DEFAULT_CONNECTOR_PAGE_SIZE,
+      scanPageSize: CONNECTOR_TARGET_SCAN_PAGE_SIZE,
+      resourceLabel: "Gateway Connector",
+    });
+    return { items: page.items, nextToken: page.nextToken };
   }
 
   async updateGatewayTarget(

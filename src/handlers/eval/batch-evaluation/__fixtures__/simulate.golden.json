@@ -1,0 +1,13 @@
+{
+  "batchEvaluationId": "golden_batch_simulate_fixture1-86183b0ccc",
+  "status": "PENDING",
+  "examplesInvoked": 1,
+  "examplesFailed": 0,
+  "sessions": [
+    {
+      "exampleId": "e1",
+      "sessionId": "00000000-0000-4000-8000-000000000001"
+    }
+  ],
+  "failures": []
+}

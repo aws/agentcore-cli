@@ -6,18 +6,20 @@ import { DeserializationError, ProjectStateError } from "../../errors/errors";
 import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { FsProjectManager } from "./manager";
+import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import {
-  RUNTIME_TEMPLATE_SHORTCUTS,
   type CreateProjectInput,
   type DeployResult,
   type Project,
   type ProjectEvent,
+  type TeardownConfirmationHandler,
 } from "../../handlers/project/types";
 import { createSilentLogger } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 
-const HELLO_WORLD_PYTHON = RUNTIME_TEMPLATE_SHORTCUTS["hello-world-python"];
-const HELLO_WORLD_PYTHON_CONTAINER = RUNTIME_TEMPLATE_SHORTCUTS["hello-world-python-container"];
+const HELLO_WORLD_PYTHON = resolveRuntimeTemplateShortcut("hello-world-python");
+const HELLO_WORLD_PYTHON_CONTAINER = resolveRuntimeTemplateShortcut("hello-world-python-container");
+const STRANDS_PYTHON = resolveRuntimeTemplateShortcut("strands-python");
 
 const originalCwd = process.cwd();
 const tempDirectories: string[] = [];
@@ -69,6 +71,13 @@ async function runCreate(
   }
 }
 
+async function projectManifest(projectRoot: string): Promise<string[]> {
+  return (await readdir(projectRoot, { recursive: true, withFileTypes: true }))
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(projectRoot, join(entry.parentPath, entry.name)).replaceAll("\\", "/"))
+    .sort();
+}
+
 describe("FsProjectManager.create", () => {
   test("scaffolds the expected file tree into a fresh directory", async () => {
     const directory = await inTempDirectory();
@@ -78,14 +87,23 @@ describe("FsProjectManager.create", () => {
     });
 
     const projectRoot = join(directory, "example");
-    const manifest = (await readdir(projectRoot, { recursive: true, withFileTypes: true }))
-      .filter((entry) => entry.isFile())
-      .map((entry) =>
-        relative(projectRoot, join(entry.parentPath, entry.name)).replaceAll("\\", "/"),
-      )
-      .sort();
+    expect(await projectManifest(projectRoot)).toMatchSnapshot();
+  });
 
-    expect(manifest).toMatchSnapshot();
+  test("snapshots the Strands project manifest and runtime spec", async () => {
+    const directory = await inTempDirectory();
+    await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: STRANDS_PYTHON,
+    });
+
+    const projectRoot = join(directory, "example");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect({
+      manifest: await projectManifest(projectRoot),
+      runtimes: spec.runtimes,
+      memories: spec.memories,
+    }).toMatchSnapshot();
   });
 
   test("writes a deploy-ready agentcore.json registering the template agent", async () => {
@@ -369,8 +387,12 @@ describe("FsProjectManager.deploy", () => {
     manager: FsProjectManager,
     project: Project,
     target: string,
+    confirmTeardown: TeardownConfirmationHandler = async () => false,
   ): Promise<{ events: ProjectEvent[]; result: DeployResult }> {
-    const generator = manager.deploy(project, { target });
+    const generator = manager.deploy(project, {
+      target,
+      confirmTeardown,
+    });
     const events: ProjectEvent[] = [];
     while (true) {
       const next = await generator.next();
@@ -399,7 +421,9 @@ describe("FsProjectManager.deploy", () => {
 
     const deployed = await deploy(subject.manager, project, "prod");
 
-    expect(subject.calls).toEqual([{ project, input: { target: targets[1]! } }]);
+    expect(subject.calls).toHaveLength(1);
+    expect(subject.calls[0]?.project).toBe(project);
+    expect(subject.calls[0]?.input.target).toEqual(targets[1]);
     expect(deployed.events).toEqual([{ message: "Backend deployment started" }]);
     expect(deployed.result).toEqual({
       outputs: { RuntimeArn: "arn:runtime" },

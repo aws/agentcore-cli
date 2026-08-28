@@ -10,6 +10,7 @@ import {
   testIO,
 } from "../../../testing";
 import { InputValidationError } from "../../../errors";
+import { projectSpec, writeProjectSpec } from "../add/gateway-test-support";
 
 const originalCwd = process.cwd();
 const tempDirectories: string[] = [];
@@ -171,8 +172,66 @@ describe("project remove", () => {
       "--gateway on a non-Target resource",
       ["remove", "gateway", "--gateway", "tools", "--name", "tools"],
     ],
+    [
+      "--engine on a non-policy resource",
+      ["remove", "gateway", "--engine", "Guardrails", "--name", "tools"],
+    ],
   ])("%s", async (_label, args) => {
     await inProject();
     await expect(run(args)).rejects.toBeInstanceOf(InputValidationError);
+  });
+
+  async function addPolicy(engine: string, name: string): Promise<void> {
+    await run([
+      "add",
+      "policy",
+      "--engine",
+      engine,
+      "--name",
+      name,
+      "--statement",
+      "forbid (principal, action, resource);",
+    ]);
+  }
+
+  test.each([
+    ["with --engine", ["--engine", "Guardrails"]],
+    ["resolving the engine from an unambiguous name", []],
+  ])("removes a policy from its engine %s", async (_label, engineArgs) => {
+    const projectRoot = await inProject();
+    await run(["add", "policy-engine", "--name", "Guardrails"]);
+    await addPolicy("Guardrails", "DenyAll");
+
+    await run(["remove", "policy", "--name", "DenyAll", ...engineArgs]);
+
+    expect((await projectSpec(projectRoot)).policyEngines[0].policies).toEqual([]);
+  });
+
+  test("rejects an ambiguous policy name without --engine", async () => {
+    const projectRoot = await inProject();
+    await run(["add", "policy-engine", "--name", "First"]);
+    await run(["add", "policy-engine", "--name", "Second"]);
+    await addPolicy("First", "DenyAll");
+    // Duplicate policy names cannot be added through the CLI, so seed the
+    // second one by editing the spec the way a user would.
+    const spec = await projectSpec(projectRoot);
+    spec.policyEngines[1].policies = spec.policyEngines[0].policies;
+    await writeProjectSpec(projectRoot, spec);
+
+    await expect(run(["remove", "policy", "--name", "DenyAll"])).rejects.toThrow(
+      "exists in multiple engines: First, Second",
+    );
+  });
+
+  test("removing an engine strips gateway references", async () => {
+    const projectRoot = await inProject();
+    await run(["add", "gateway", "--name", "tools"]);
+    await run(["add", "policy-engine", "--name", "Guardrails", "--attach-to-gateways", "tools"]);
+
+    await run(["remove", "policy-engine", "--name", "Guardrails"]);
+
+    const spec = await projectSpec(projectRoot);
+    expect(spec.policyEngines).toEqual([]);
+    expect(spec.agentCoreGateways[0].policyEngineConfiguration).toBeUndefined();
   });
 });

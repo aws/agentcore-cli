@@ -58,25 +58,33 @@ import {
   type UpdateOnlineEvaluationConfigResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
+  DeleteRecommendationCommand,
   EvaluateCommand,
   GetABTestCommand,
   ListABTestsCommand,
   UpdateABTestCommand,
   DeleteABTestCommand,
   GetBatchEvaluationCommand,
+  GetRecommendationCommand,
   ListBatchEvaluationsCommand,
+  ListRecommendationsCommand,
   StartBatchEvaluationCommand,
+  StartRecommendationCommand,
+  type DeleteRecommendationResponse,
   type EvaluationReferenceInput,
   type EvaluationResultContent,
   type EvaluationTarget,
-  type BatchEvaluationSummary,
   type GetABTestResponse,
   type ListABTestsResponse,
   type ABTestExecutionStatus,
   type UpdateABTestResponse,
   type DeleteABTestResponse,
+  type GetRecommendationResponse,
   type ListBatchEvaluationsResponse,
+  type ListRecommendationsResponse,
+  type RecommendationStatus,
   type StartBatchEvaluationResponse,
+  type StartRecommendationResponse,
   type DataSourceConfig as DataPlaneDataSourceConfig,
   type CloudWatchFilterConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
@@ -102,7 +110,6 @@ import {
   InputValidationError,
   NetworkingError,
   ResourceNotFoundError,
-  ResultTruncationError,
 } from "../errors";
 import type {
   BatchEvaluationDetail,
@@ -133,6 +140,7 @@ import type {
   SpanRecord,
   StartBatchInsightsInput,
   StartBatchEvaluationInput,
+  StartRecommendationInput,
   UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
 } from "../handlers/eval/types";
@@ -147,6 +155,7 @@ import { applyExampleIds, diffExamples, indexRemoteById, parseJsonl } from "./da
 import type { Addition } from "./datasetDiff";
 import type { AwsClients, CoreFetch, CoreOptions } from "./types";
 import type { Logger } from "../logging";
+import { FilteredPaginator } from "./filteredPaginator";
 import { toClientConfig } from "./utils";
 import {
   accountIdFromRoleArn,
@@ -158,6 +167,7 @@ import {
 } from "./onlineEvalExecutionRole";
 
 const DEFAULT_ENDPOINT_QUALIFIER = "DEFAULT";
+const DEFAULT_INGESTION_WAIT_MS = 180_000;
 const DATASET_EXAMPLES_BATCH_LIMIT = 1000;
 const DATASET_MUTATION_PAYLOAD_LIMIT_BYTES = 5 * 1024 * 1024;
 const DATASET_ACTIVE_TIMEOUT_MS = 60_000;
@@ -184,7 +194,6 @@ const EVALUATE_TARGET_BATCH = 10;
 const INSIGHTS_MAX_ROWS = 100_000;
 
 const DEFAULT_BATCH_INSIGHTS_PAGE_SIZE = 50;
-const MAX_BATCH_INSIGHTS_SCAN_REQUESTS = 101;
 
 // noopLogger is the default for the optional logger arg so callers that don't
 // need batch-evaluation result-log diagnostics (e.g. dataset-only tests) can
@@ -198,8 +207,6 @@ const noopLogger: Logger = {
 };
 
 const DEFAULT_ONLINE_INSIGHT_PAGE_SIZE = 100;
-const MAX_ONLINE_INSIGHT_PAGES = 101;
-type InsightSummary = NonNullable<ListOnlineInsightsResponse["onlineEvaluationConfigs"]>[number];
 
 export class EvalClient implements CoreEvalClient {
   constructor(
@@ -208,6 +215,7 @@ export class EvalClient implements CoreEvalClient {
     private readonly fetch: CoreFetch = globalThis.fetch,
     // logger for batch-evaluation result-log diagnostics
     private readonly logger: Logger = noopLogger,
+    private readonly newSessionId: () => string = randomUUID,
   ) {}
 
   async createEvaluator(
@@ -342,6 +350,39 @@ export class EvalClient implements CoreEvalClient {
       .send(new DeleteEvaluatorCommand({ evaluatorId: id }));
   }
 
+  async startRecommendation(
+    input: StartRecommendationInput,
+    options: CoreOptions,
+  ): Promise<StartRecommendationResponse> {
+    return this.clients.data(toClientConfig(options)).send(new StartRecommendationCommand(input));
+  }
+
+  async getRecommendation(id: string, options: CoreOptions): Promise<GetRecommendationResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new GetRecommendationCommand({ recommendationId: id }));
+  }
+
+  async listRecommendations(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    statusFilter: RecommendationStatus | undefined,
+    options: CoreOptions,
+  ): Promise<ListRecommendationsResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new ListRecommendationsCommand({ nextToken, maxResults, statusFilter }));
+  }
+
+  async deleteRecommendation(
+    id: string,
+    options: CoreOptions,
+  ): Promise<DeleteRecommendationResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new DeleteRecommendationCommand({ recommendationId: id }));
+  }
+
   // getBatchEvaluation returns the service-side job (status + evaluator summaries
   // + CloudWatch output config) and, by default, the per-session results read from
   // the job's CloudWatch stream once it is terminal. Batch evaluation lives on the
@@ -440,49 +481,18 @@ export class EvalClient implements CoreEvalClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListBatchEvaluationsResponse> {
-    const insightsPageSize = maxResults ?? DEFAULT_BATCH_INSIGHTS_PAGE_SIZE;
-    if (!Number.isInteger(insightsPageSize) || insightsPageSize < 1) {
-      throw new InputValidationError("maxResults must be a positive integer");
-    }
-    const batchEvaluations: BatchEvaluationSummary[] = [];
-    let batchEvaluationToken = nextToken;
-
-    for (let request = 0; request < MAX_BATCH_INSIGHTS_SCAN_REQUESTS; request++) {
-      const requestToken = batchEvaluationToken;
-      const response = await this.listBatchEvaluations(requestToken, undefined, options);
-      const serviceItems = response.batchEvaluations ?? [];
-      const insights = serviceItems.filter(EvalClient.isBatchInsights);
-
-      if (batchEvaluations.length < insightsPageSize) {
-        const remaining = insightsPageSize - batchEvaluations.length;
-        if (insights.length > remaining) {
-          const boundaryInsight = insights[remaining - 1]!;
-          const boundarySize = serviceItems.indexOf(boundaryInsight) + 1;
-          // Re-read through the last returned Insights job so the service token
-          // cannot skip later matches from this Batch Evaluation page.
-          const boundaryResponse = await this.listBatchEvaluations(
-            requestToken,
-            boundarySize,
-            options,
-          );
-
-          batchEvaluations.push(...insights.slice(0, remaining));
-          return { ...boundaryResponse, batchEvaluations };
-        }
-        batchEvaluations.push(...insights);
-      } else if (insights.length > 0) {
-        return { ...response, batchEvaluations, nextToken: requestToken };
-      }
-
-      if (response.nextToken === undefined) {
-        return { ...response, batchEvaluations, nextToken: undefined };
-      }
-      batchEvaluationToken = response.nextToken;
-    }
-
-    throw new ResultTruncationError(
-      `Batch Insights discovery exceeded ${MAX_BATCH_INSIGHTS_SCAN_REQUESTS} Batch Evaluation scan requests; results are incomplete`,
-    );
+    const page = await FilteredPaginator.paginate({
+      fetchPage: async (token, size) => {
+        const r = await this.listBatchEvaluations(token, size, options);
+        return { items: r.batchEvaluations ?? [], nextToken: r.nextToken };
+      },
+      predicate: EvalClient.isBatchInsights,
+      nextToken,
+      maxResults,
+      defaultPageSize: DEFAULT_BATCH_INSIGHTS_PAGE_SIZE,
+      resourceLabel: "Batch Insights",
+    });
+    return { batchEvaluations: page.items, nextToken: page.nextToken };
   }
 
   async startBatchEvaluation(
@@ -674,10 +684,10 @@ export class EvalClient implements CoreEvalClient {
     const deps = { clients: this.clients, fetch: this.fetch, logger: this.logger };
     const accountId = accountIdFromRuntimeArn(runtime.agentRuntimeArn);
 
-    const { ok, failed, firstError } = await runExamples(examples, async (example) => {
+    const { ok, failures } = await runExamples(examples, async (example) => {
       // One session per example; the id is a client-owned input per the AgentCore docs,
       // reused across turns so the conversation and its per-turn traces stay in order.
-      const sessionId = randomUUID();
+      const sessionId = this.newSessionId();
       const ctx: RunContext = {
         invokeOnce: async (payload) => {
           const response = await invokeRuntime(
@@ -705,27 +715,22 @@ export class EvalClient implements CoreEvalClient {
           return { text };
         },
       };
-      try {
-        const groundTruth = await example.run(ctx);
-        return { exampleId: example.exampleId, sessionId, groundTruth };
-      } catch (error) {
-        // Enrich with the example identity so the dropped-invoke reason is self-describing
-        // in firstError, instead of a bare transport message logged separately.
-        const cause = error instanceof Error ? error : new Error(String(error));
-        throw new Error(
-          `example "${example.exampleId}" (${example.schemaType}) failed to invoke: ${cause.message}`,
-          { cause },
-        );
-      }
+      const groundTruth = await example.run(ctx);
+      return { exampleId: example.exampleId, sessionId, groundTruth };
     });
 
-    if (failed > 0) {
-      this.logger.warn(`invokeDataset: ${failed} example(s) failed to invoke and were dropped`);
+    const invokeFailures = failures.map((f) => ({
+      exampleId: f.item.exampleId,
+      error: f.error.message,
+    }));
+    if (invokeFailures.length > 0) {
+      this.logger.warn(
+        `invokeDataset: ${invokeFailures.length} example(s) failed to invoke and were dropped` +
+          `; first: ${invokeFailures[0]!.exampleId} — ${invokeFailures[0]!.error}`,
+      );
     }
 
-    // AgentCore emits spans ~30s-3min after invoke; grade too early and it reads an empty
-    // log group and fails every session. Disabled via SIMULATE_INGESTION_WAIT_MS=0 (tests).
-    const waitMs = Number(process.env.SIMULATE_INGESTION_WAIT_MS ?? 180_000);
+    const waitMs = input.waitIngestionMs ?? DEFAULT_INGESTION_WAIT_MS;
     if (ok.length > 0 && waitMs > 0) {
       this.logger.info(
         `waiting ${Math.round(waitMs / 1000)}s for span ingestion before evaluating`,
@@ -733,7 +738,12 @@ export class EvalClient implements CoreEvalClient {
       await sleep(waitMs, undefined, { signal });
     }
 
-    return { sessions: ok, invoked: ok.length, failed, firstError };
+    return {
+      sessions: ok,
+      invoked: ok.length,
+      failed: invokeFailures.length,
+      failures: invokeFailures,
+    };
   }
 
   // Resolve a dataset ref to JSONL text: a local path directly, else download the id to a
@@ -924,37 +934,18 @@ export class EvalClient implements CoreEvalClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListOnlineInsightsResponse> {
-    // Fill the requested page across underlying pages, since the shared List API
-    // returns eval configs too (mirrors listGatewayConnectors over Targets).
-    const pageSize = maxResults ?? DEFAULT_ONLINE_INSIGHT_PAGE_SIZE;
-    const items: InsightSummary[] = [];
-    let token = nextToken;
-    let filling = true;
-
-    for (let page = 0; page < MAX_ONLINE_INSIGHT_PAGES; page++) {
-      const requestToken = token;
-      const requestSize = filling ? pageSize - items.length : DEFAULT_ONLINE_INSIGHT_PAGE_SIZE;
-      const response = await this.listOnlineEvaluationConfigs(token, requestSize, options);
-      const insights = (response.onlineEvaluationConfigs ?? []).filter(
-        (c) => (c.insights?.length ?? 0) > 0,
-      );
-
-      if (filling) {
-        items.push(...insights);
-        filling = items.length < pageSize;
-      } else if (insights.length > 0) {
-        return { ...response, onlineEvaluationConfigs: items, nextToken: requestToken };
-      }
-
-      if (response.nextToken === undefined) {
-        return { ...response, onlineEvaluationConfigs: items, nextToken: undefined };
-      }
-      token = response.nextToken;
-    }
-
-    throw new ResultTruncationError(
-      `Online insight discovery exceeded ${MAX_ONLINE_INSIGHT_PAGES} config pages; results are incomplete`,
-    );
+    const page = await FilteredPaginator.paginate({
+      fetchPage: async (token, size) => {
+        const r = await this.listOnlineEvaluationConfigs(token, size, options);
+        return { items: r.onlineEvaluationConfigs ?? [], nextToken: r.nextToken };
+      },
+      predicate: (c) => (c.insights?.length ?? 0) > 0,
+      nextToken,
+      maxResults,
+      defaultPageSize: DEFAULT_ONLINE_INSIGHT_PAGE_SIZE,
+      resourceLabel: "Online insight",
+    });
+    return { onlineEvaluationConfigs: page.items, nextToken: page.nextToken };
   }
 
   async setOnlineInsightExecutionStatus(

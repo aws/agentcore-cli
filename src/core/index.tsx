@@ -12,6 +12,7 @@ import type {
   AwsClients,
   ClientConfig,
   CoreFetch,
+  CreateCloudFormationClient,
   CreateControlClient,
   CreateDataClient,
   CreateIamClient,
@@ -26,18 +27,21 @@ export type {
   ClientConfig,
   CoreFetch,
   CreateControlClient,
+  CreateCloudFormationClient,
   CreateDataClient,
   CreateIamClient,
   CreateLogsClient,
 } from "./types";
 
 type CoreClientConfig = {
+  createCloudFormationClient?: CreateCloudFormationClient;
   createControlClient: CreateControlClient;
   createDataClient: CreateDataClient;
   createIamClient: CreateIamClient;
   createLogsClient: CreateLogsClient;
   logger: Logger;
   fetch?: CoreFetch;
+  newSessionId?: () => string;
 };
 
 // CoreClient is the single entry point to the Bedrock AgentCore APIs. It owns the
@@ -78,10 +82,16 @@ export class CoreClient implements AwsClients {
     // EvalClient shares the injected fetch: dataset content is served from a
     // presigned S3 URL, outside the SDK seam the other operations use. The logger
     // is used for batch-evaluation result-log diagnostics.
-    this.eval = new EvalClient(this, fetch, this.logger.child({ module: "eval" }));
+    this.eval = new EvalClient(
+      this,
+      fetch,
+      this.logger.child({ module: "eval" }),
+      config.newSessionId,
+    );
 
     this.projectManager = new FsProjectManager({
       logger: this.logger.child({ module: "projectManager" }),
+      createCloudFormationClient: config.createCloudFormationClient,
     });
   }
 

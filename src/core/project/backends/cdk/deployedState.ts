@@ -117,3 +117,19 @@ export async function updateTargetState(
   await atomicWrite(statePath, JSON.stringify(next, undefined, 2));
   return next;
 }
+
+/** Removes a target's state after its CloudFormation stack is destroyed. */
+export async function removeTargetState(
+  json: ReadWriteJson,
+  projectRoot: string,
+  targetName: string,
+): Promise<DeployedState> {
+  const statePath = statePathFor(projectRoot);
+  const state = await readDeployedState(json, projectRoot);
+  if (!(targetName in state.targets)) return state;
+
+  const { [targetName]: _removed, ...targets } = state.targets;
+  const next = { ...state, targets };
+  await atomicWrite(statePath, JSON.stringify(next, undefined, 2));
+  return next;
+}

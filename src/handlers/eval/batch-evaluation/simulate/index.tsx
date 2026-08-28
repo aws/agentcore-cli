@@ -34,6 +34,11 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
       flag("name", "batch evaluation name (unique in the account)", z.string().optional()),
       flag("description", "description for the batch evaluation", z.string().optional()),
       flag("kms-key-arn", "KMS key to encrypt evaluation data at rest", z.string().optional()),
+      flag(
+        "ingestion-wait-ms",
+        "ms to wait for span ingestion before grading (default 180000; 0 to skip)",
+        z.coerce.number().int().nonnegative().optional(),
+      ),
     ],
     handle: async (ctx, flags) => {
       if (!flags["runtime-id"])
@@ -69,12 +74,14 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
             userId: flags["user-id"],
             dataset: flags["dataset"],
             datasetVersion: flags["dataset-version"],
+            waitIngestionMs: flags["ingestion-wait-ms"],
           },
           opts,
           controller.signal,
         );
         if (r.invoked === 0) {
-          const detail = r.firstError ? `; first error: ${r.firstError.message}` : "";
+          const first = r.failures[0];
+          const detail = first ? `; first error: ${first.exampleId} — ${first.error}` : "";
           throw new InputValidationError(
             `no examples could be invoked (${r.failed} failed) — nothing to evaluate${detail}`,
           );
@@ -107,6 +114,8 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
           status: job.status,
           examplesInvoked: r.invoked,
           examplesFailed: r.failed,
+          sessions: r.sessions.map((s) => ({ exampleId: s.exampleId, sessionId: s.sessionId })),
+          failures: r.failures,
         });
       } finally {
         process.off("SIGINT", interrupt);
