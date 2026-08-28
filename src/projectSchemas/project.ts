@@ -114,7 +114,15 @@ export const ProjectSpecSchema = z
         }
       }
     }
+    const policyEngineNames = new Set(spec.policyEngines.map((engine) => engine.name));
     for (const gw of spec.agentCoreGateways ?? []) {
+      const engineName = gw.policyEngineConfiguration?.policyEngineName;
+      if (engineName && !policyEngineNames.has(engineName)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Gateway "${gw.name}" references unknown policy engine "${engineName}". Check spec.policyEngines.`,
+        });
+      }
       for (const target of gw.targets) {
         if (target.targetType === "httpRuntime") {
           if (target.httpRuntime?.runtime) {

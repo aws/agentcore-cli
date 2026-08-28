@@ -90,7 +90,7 @@ describe("startOtelCollector", () => {
     const response = await post("/v1/traces", protobufTracePayload());
     expect(response.status).toBe(200);
 
-    const traces = await collector.store.list();
+    const traces = await collector.traces.list();
     expect(traces).toHaveLength(1);
     expect(traces[0]!.traceId).toBe(TRACE_ID_HEX);
   });
@@ -100,7 +100,7 @@ describe("startOtelCollector", () => {
     const response = await post("/v1/logs", protobufLogsPayload());
     expect(response.status).toBe(200);
 
-    const detail = await collector.store.get(TRACE_ID_HEX);
+    const detail = await collector.traces.get(TRACE_ID_HEX);
     expect(detail?.resourceLogs).toBeDefined();
   });
 
@@ -129,13 +129,13 @@ describe("startOtelCollector", () => {
     });
     const response = await post("/v1/traces", body, "application/json");
     expect(response.status).toBe(200);
-    expect((await collector.store.list()).map((trace) => trace.traceId)).toEqual([TRACE_ID_HEX]);
+    expect((await collector.traces.list()).map((trace) => trace.traceId)).toEqual([TRACE_ID_HEX]);
   });
 
   test("rejects malformed payloads with 400", async () => {
     expect((await post("/v1/traces", "not json", "application/json")).status).toBe(400);
     expect((await post("/v1/traces", Buffer.from([0xff, 0xff, 0xff]))).status).toBe(400);
-    expect(await collector.store.list()).toEqual([]);
+    expect(await collector.traces.list()).toEqual([]);
   });
 
   test.each(["null", "[]", "42", '{"resourceSpans":5}'])(
@@ -154,7 +154,7 @@ describe("startOtelCollector", () => {
         });
         expect(response.status).toBe(400);
         expect(errors).toEqual([]);
-        expect(await strict.store.list()).toEqual([]);
+        expect(await strict.traces.list()).toEqual([]);
       } finally {
         await strict.close();
       }

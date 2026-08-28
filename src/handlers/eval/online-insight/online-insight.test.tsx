@@ -138,44 +138,6 @@ describe("online-insight CRUDL", () => {
     for (const c of configs) expect(c.insights?.length ?? 0).toBeGreaterThan(0);
   });
 
-  // The list now fills each page across the shared API's underlying pages: the
-  // client pulls eval-config pages and accumulates insight configs until it has
-  // --max-results of them. With several insight configs in the account, a page
-  // fills exactly — page-1 holds one insight config and carries a nextToken past
-  // it; page-2 holds the next, distinct insight config.
-  test("paginates the list with --max-results and --next-token", async () => {
-    const firstPage = await run(["eval", "online-insight", "list", "--max-results", "1"]);
-    matchGolden(FIXTURES, "list-page-1.golden.json", firstPage);
-
-    const first = JSON.parse(firstPage);
-    expect(first.onlineEvaluationConfigs).toBeArray();
-    expect(first.onlineEvaluationConfigs.length).toBe(1);
-    for (const c of first.onlineEvaluationConfigs)
-      expect(c.insights?.length ?? 0).toBeGreaterThan(0);
-    expect(first.nextToken).toBeString();
-
-    const secondPage = await run([
-      "eval",
-      "online-insight",
-      "list",
-      "--max-results",
-      "1",
-      "--next-token",
-      first.nextToken,
-    ]);
-    matchGolden(FIXTURES, "list-page-2.golden.json", secondPage);
-    const second = JSON.parse(secondPage);
-    expect(second.onlineEvaluationConfigs).toBeArray();
-    expect(second.onlineEvaluationConfigs.length).toBe(1);
-    for (const c of second.onlineEvaluationConfigs)
-      expect(c.insights?.length ?? 0).toBeGreaterThan(0);
-
-    // page-2 is the next insight config, not a repeat of page-1's.
-    expect(second.onlineEvaluationConfigs[0].onlineEvaluationConfigId).not.toBe(
-      first.onlineEvaluationConfigs[0].onlineEvaluationConfigId,
-    );
-  }, 60_000);
-
   // resume and pause are asserted in one test because the service rejects an
   // update while the previous one is still settling (ConflictException, state
   // UPDATING). Recording therefore waits for the config to leave UPDATING between

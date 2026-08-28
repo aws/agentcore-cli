@@ -45,3 +45,5 @@ export {
   type HttpResponse,
   type HttpServerHandle,
 } from "./httpServer";
+export { openBrowser, type BrowserOpener } from "./openBrowser";
+export { watchFile, type FileWatcher } from "./watchFile";

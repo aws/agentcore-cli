@@ -22,6 +22,7 @@ function serverRunner(events: DevEvent[] = []) {
     run: async function* (input) {
       inputs.push(input);
       yield* events;
+      if (input.signal.aborted) return;
       await new Promise<void>((resolve) =>
         input.signal.addEventListener("abort", () => resolve(), { once: true }),
       );
@@ -360,5 +361,22 @@ describe("DevSupervisor", () => {
     await consuming;
 
     expect(codeZip.inputs[0]!.signal.aborted).toBe(true);
+    // events() waits for the child's pump before ending, so the agent's final
+    // "stopped" event is drained rather than lost when the collector closes.
+    expect(events).toContainEqual({
+      agentName: "orders",
+      event: { type: "status", message: "Agent 'orders' stopped." },
+    });
+  });
+
+  test("an edit to a running agent applies on its next start, not live", async () => {
+    const { supervisor, controller } = harness();
+    await supervisor.start("orders");
+
+    supervisor.setRuntimes([{ ...runtime("orders"), protocol: "A2A" } as ProjectRuntime]);
+    // The live process keeps its protocol, so the Inspector never proxies it with
+    // metadata that no longer matches the running child.
+    expect(supervisor.running("orders")).toEqual({ port: 9100, protocol: "HTTP" });
+    controller.abort();
   });
 });

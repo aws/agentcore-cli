@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import type { Stack } from "@aws-sdk/client-cloudformation";
-import { isStackNotFound, probeBootstrap, readBootstrapState } from "./environment";
+import type { CloudFormationClient, Stack } from "@aws-sdk/client-cloudformation";
+import {
+  bootstrapStackReader,
+  createCloudFormationStackReader,
+  isStackNotFound,
+  probeBootstrap,
+  probeStack,
+  readBootstrapState,
+} from "./environment";
 import type { CdkCredentialProvider } from "./toolkit";
 
 const credentials: CdkCredentialProvider = async () => ({
@@ -16,6 +23,39 @@ function stack(status: Stack["StackStatus"], version?: string): Stack {
     Outputs: version ? [{ OutputKey: "BootstrapVersion", OutputValue: version }] : [],
   };
 }
+
+test("injects and caches CloudFormation clients by credentials and region", async () => {
+  const otherCredentials: CdkCredentialProvider = async () => ({
+    accessKeyId: "other-access-key",
+    secretAccessKey: "other-secret-key",
+  });
+  const creations: { region: string; credentials: CdkCredentialProvider }[] = [];
+  const stackNames: string[] = [];
+  const read = createCloudFormationStackReader((config) => {
+    creations.push({
+      region: config.region,
+      credentials: config.credentials as CdkCredentialProvider,
+    });
+    return {
+      send: async (command: { input: { StackName?: string } }) => {
+        stackNames.push(command.input.StackName ?? "");
+        return { Stacks: [stack("CREATE_COMPLETE", "30")] };
+      },
+    } as unknown as CloudFormationClient;
+  });
+
+  await bootstrapStackReader(read)("us-east-1", credentials);
+  await read("Application", "us-east-1", credentials);
+  await read("Regional", "eu-west-1", credentials);
+  await read("OtherCredentials", "us-east-1", otherCredentials);
+
+  expect(creations).toEqual([
+    { region: "us-east-1", credentials },
+    { region: "eu-west-1", credentials },
+    { region: "us-east-1", credentials: otherCredentials },
+  ]);
+  expect(stackNames).toEqual(["CDKToolkit", "Application", "Regional", "OtherCredentials"]);
+});
 
 describe("readBootstrapState", () => {
   test("accepts stable stacks at or above the minimum version", () => {
@@ -108,5 +148,77 @@ describe("probeBootstrap", () => {
 
     expect(regions).toEqual(["eu-west-1"]);
     expect(providers).toEqual([credentials]);
+  });
+});
+
+describe("probeStack", () => {
+  test("reports a stack CloudFormation still holds as present", async () => {
+    expect(
+      await probeStack("AgentCore-orders-default", "us-east-1", credentials, async () => [
+        stack("CREATE_COMPLETE"),
+      ]),
+    ).toBe(true);
+  });
+
+  test.each([
+    // A stack part-way through a failed change is still a stack the user needs a
+    // way to remove, so status must not narrow this to "healthy stacks only".
+    "ROLLBACK_COMPLETE",
+    "UPDATE_ROLLBACK_FAILED",
+    "DELETE_FAILED",
+  ] as const)("counts a stack in %s as present", async (status) => {
+    expect(
+      await probeStack("AgentCore-orders-default", "us-east-1", credentials, async () => [
+        stack(status),
+      ]),
+    ).toBe(true);
+  });
+
+  test("reports a stack CloudFormation does not know about as absent", async () => {
+    expect(
+      await probeStack("AgentCore-orders-default", "us-east-1", credentials, async () => {
+        throw Object.assign(new Error("Stack with id AgentCore-orders-default does not exist"), {
+          name: "ValidationError",
+        });
+      }),
+    ).toBe(false);
+  });
+
+  test("treats an empty response as absent rather than crashing", async () => {
+    expect(
+      await probeStack("AgentCore-orders-default", "us-east-1", credentials, async () => undefined),
+    ).toBe(false);
+  });
+
+  // Reporting "no stack" on a permissions or throttling failure would turn a
+  // teardown the user confirmed into an unexplained "add a resource" error.
+  test("propagates a failure that is not a missing stack", async () => {
+    const failure = Object.assign(new Error("User is not authorized"), {
+      name: "AccessDeniedException",
+    });
+
+    await expect(
+      probeStack("AgentCore-orders-default", "us-east-1", credentials, async () => {
+        throw failure;
+      }),
+    ).rejects.toBe(failure);
+  });
+
+  test("looks the stack up by name in the target region with the deployment credentials", async () => {
+    const reads: { stackName: string; region: string; provider: CdkCredentialProvider }[] = [];
+
+    await probeStack(
+      "AgentCore-orders-prod",
+      "eu-west-1",
+      credentials,
+      async (stackName, region, provider) => {
+        reads.push({ stackName, region, provider });
+        return [stack("CREATE_COMPLETE")];
+      },
+    );
+
+    expect(reads).toEqual([
+      { stackName: "AgentCore-orders-prod", region: "eu-west-1", provider: credentials },
+    ]);
   });
 });

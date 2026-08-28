@@ -7,11 +7,12 @@ import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { FsProjectManager } from "./manager";
 import { RUNTIME_TEMPLATE_SHORTCUTS } from "../../handlers/project/shortcuts";
-import type {
-  CreateProjectInput,
-  DeployResult,
-  Project,
-  ProjectEvent,
+import {
+  type CreateProjectInput,
+  type DeployResult,
+  type Project,
+  type ProjectEvent,
+  type TeardownConfirmationHandler,
 } from "../../handlers/project/types";
 import { createSilentLogger } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
@@ -385,8 +386,12 @@ describe("FsProjectManager.deploy", () => {
     manager: FsProjectManager,
     project: Project,
     target: string,
+    confirmTeardown: TeardownConfirmationHandler = async () => false,
   ): Promise<{ events: ProjectEvent[]; result: DeployResult }> {
-    const generator = manager.deploy(project, { target });
+    const generator = manager.deploy(project, {
+      target,
+      confirmTeardown,
+    });
     const events: ProjectEvent[] = [];
     while (true) {
       const next = await generator.next();
@@ -415,7 +420,9 @@ describe("FsProjectManager.deploy", () => {
 
     const deployed = await deploy(subject.manager, project, "prod");
 
-    expect(subject.calls).toEqual([{ project, input: { target: targets[1]! } }]);
+    expect(subject.calls).toHaveLength(1);
+    expect(subject.calls[0]?.project).toBe(project);
+    expect(subject.calls[0]?.input.target).toEqual(targets[1]);
     expect(deployed.events).toEqual([{ message: "Backend deployment started" }]);
     expect(deployed.result).toEqual({
       outputs: { RuntimeArn: "arn:runtime" },

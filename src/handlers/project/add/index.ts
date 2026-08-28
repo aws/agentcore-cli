@@ -7,9 +7,12 @@ import { createAddMemoryHandler } from "./memory";
 import { createAddRuntimeHandler } from "./runtime";
 import { createAddOnlineEvalHandler } from "./online-eval";
 import { createAddOnlineInsightHandler } from "./online-insight";
+import { createAddEvaluatorHandler } from "./evaluator";
 import { createAddGatewayHandler } from "./gateway";
 import { createAddGatewayTargetHandler } from "./gateway-target";
 import { createAddGatewayConnectorHandler } from "./gateway-connector";
+import { createAddPolicyEngineHandler } from "./policy-engine";
+import { createAddPolicyHandler } from "./policy";
 import type { AddProjectResourceConfig } from "./types";
 
 export function createAddProjectResourceHandler(config: AddProjectResourceConfig): Router {
@@ -21,9 +24,12 @@ export function createAddProjectResourceHandler(config: AddProjectResourceConfig
   projectAdd.handler(createAddRuntimeHandler(config));
   projectAdd.handler(createAddOnlineEvalHandler(config));
   projectAdd.handler(createAddOnlineInsightHandler(config));
+  projectAdd.handler(createAddEvaluatorHandler(config));
   projectAdd.handler(createAddCredentialsHandler(config));
   projectAdd.handler(createAddGatewayHandler(config));
   projectAdd.handler(createAddGatewayTargetHandler(config));
   projectAdd.handler(createAddGatewayConnectorHandler(config));
+  projectAdd.handler(createAddPolicyEngineHandler(config));
+  projectAdd.handler(createAddPolicyHandler(config));
   return projectAdd;
 }

@@ -1,22 +1,27 @@
 import { join } from "node:path";
 import z from "zod";
+import { createInspectorHandler } from "../../../core/dev/inspector/server";
+import type { InspectorDeps } from "../../../core/dev/inspector/types";
 import { rewriteOtelEndpointForContainer } from "../../../core/dev/otel/collector";
-import { resolveDevPort } from "../../../core/dev/port";
+import { findFreePort, resolveDevPort } from "../../../core/dev/port";
+import { projectSpecPath } from "../../../core/project/fsUtils";
 import { DevSupervisor, type SupervisorConfig } from "../../../core/dev/supervisor";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   InputValidationError,
   ResourceNotFoundError,
-  SilentCLIError,
   UserCancellationError,
 } from "../../../errors";
-import type { AppIO, PortChecker } from "../../../io";
+import type { AppIO, BrowserOpener, FileWatcher, PortChecker, startHttpServer } from "../../../io";
 import { createHandler, flag, ProjectKey } from "../../../router";
 import { JsonRendererKey, type JsonRenderer } from "../../../tui";
 import { JsonKey, RegionKey } from "../../keys";
-import type { Project } from "../types";
+import type { Project, ProjectManager } from "../types";
 import type { DevEnvironmentLoader } from "./environment";
 import type { DevEvent, DevRunner, DevTraceCollector, DevTraceCollectorStarter } from "./types";
+
+/** The Inspector UI binds 8081 or, when that is taken, the next free port. */
+const UI_DEFAULT_PORT = 8081;
 
 export type DevProjectHandlerConfig = {
   io: AppIO;
@@ -24,6 +29,15 @@ export type DevProjectHandlerConfig = {
   loadDevEnvironment: DevEnvironmentLoader;
   checkPort: PortChecker;
   startTraceCollector: DevTraceCollectorStarter;
+  startServer: typeof startHttpServer;
+  openBrowser: BrowserOpener;
+  inspectorAssets: InspectorDeps["assets"];
+  /** Whether the command runs on an interactive terminal (gates browser auto-open). */
+  isInteractive: () => boolean;
+  /** Watches agentcore.json so the Inspector reflects config edits live. */
+  watchFile: FileWatcher;
+  /** Re-resolves the project after a config change to pick up runtime edits. */
+  projectManager: Pick<ProjectManager, "resolve">;
   /** Overrides how the supervisor decides an agent is ready (defaults to a real TCP poll). */
   waitReady?: SupervisorConfig["waitReady"];
 };
@@ -86,6 +100,16 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
         z.coerce.number().int().min(1).max(65535).optional(),
       ),
       flag("traces", "disable local OTEL trace collection", z.boolean().default(true)),
+      flag(
+        "mode",
+        "how to run: browser (Agent Inspector web UI), headless (one agent in the terminal), or tui",
+        z.enum(["browser", "headless", "tui"]).default("browser"),
+      ),
+      flag(
+        "ui-port",
+        "port for the Agent Inspector web UI (browser mode)",
+        z.coerce.number().int().min(1).max(65535).optional(),
+      ),
     ],
     handle: async (ctx, flags) => {
       const controller = new AbortController();
@@ -102,7 +126,18 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
       try {
         const project = ctx.require(ProjectKey);
         const region = ctx.require(RegionKey);
+        if (flags.mode === "tui") {
+          throw new InputValidationError(
+            "TUI mode is not available yet. Use --mode browser (default) or --mode headless.",
+          );
+        }
         const runtimes = selectRuntimes(project, flags.agent);
+        if (flags.mode === "headless" && !flags.agent) {
+          const available = runtimes.map((runtime) => runtime.name).join(", ");
+          throw new InputValidationError(
+            `--mode headless runs a single agent in the terminal. Pass --agent <name> to choose which one. Available: ${available}.`,
+          );
+        }
         if (runtimes.length > 1 && flags.port !== undefined) {
           throw new InputValidationError(
             "--port applies to a single runtime. Use --agent to select one.",
@@ -159,11 +194,26 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           return { ...env, ...otel };
         };
 
+        if (flags.mode === "headless") {
+          await runWithoutUi(
+            config,
+            runtimes[0]!,
+            project,
+            flags.port,
+            getDevEnvVarsForRuntime,
+            controller,
+            json,
+          );
+          return;
+        }
+
         const supervisor = new DevSupervisor({
           runtimes,
           projectRoot: project.rootPath,
           runners: config.runners,
           getDevEnvVarsForRuntime,
+          // The --port guard above rejects an explicit port with more than one
+          // runtime, so passing flags.port here only ever applies to a lone one.
           resolvePort: async (runtime) =>
             (
               await resolveDevPort(
@@ -177,21 +227,47 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           signal: controller.signal,
         });
 
-        const starts = Promise.allSettled(
-          runtimes.map((runtime) => supervisor.start(runtime.name)),
+        const uiPort = (
+          await findFreePort(UI_DEFAULT_PORT, flags["ui-port"], config.checkPort, controller.signal)
+        ).port;
+        const server = await config.startServer(
+          createInspectorHandler({
+            supervisor,
+            traces: collector?.traces,
+            assets: config.inspectorAssets,
+            project,
+            selectedAgent: flags.agent,
+          }),
+          { port: uiPort, signal: controller.signal },
         );
+
+        const onConfigChange = async () => {
+          try {
+            const reloaded = await config.projectManager.resolve({ filePath: project.rootPath });
+            if (!reloaded) return;
+            const runtimes = reloaded.spec.runtimes;
+            supervisor.setRuntimes(
+              flags.agent ? runtimes.filter((runtime) => runtime.name === flags.agent) : runtimes,
+            );
+            renderStatus(config.io, "Reloaded agents from agentcore.json.", json);
+          } catch {
+            // A half-saved config parses on the next change event.
+          }
+        };
+        config.watchFile(
+          projectSpecPath(project.rootPath),
+          () => void onConfigChange(),
+          controller.signal,
+        );
+
+        const url = `http://127.0.0.1:${server.port}`;
+        renderStatus(config.io, `Agent Inspector running at ${url}`, json);
+        if (config.isInteractive() && !json) await config.openBrowser(url);
 
         for await (const { agentName, event } of supervisor.events()) {
           renderAgentEvent(config.io, event, agentName, json);
-          if (controller.signal.aborted) break;
-          const phases = supervisor.snapshot();
-          if (phases.every(({ phase }) => phase !== "starting" && phase !== "running")) {
-            if (phases.some(({ phase }) => phase === "failed")) throw new SilentCLIError();
-            break;
-          }
         }
         controller.signal.throwIfAborted();
-        await starts;
       } catch (error) {
         controller.signal.throwIfAborted();
         throw error;
@@ -203,3 +279,45 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
       }
     },
   });
+
+/**
+ * Run one runtime directly. Unlike the supervised Inspector path, a crash here
+ * fails the command (scripts and CI rely on the non-zero exit).
+ */
+async function runWithoutUi(
+  config: DevProjectHandlerConfig,
+  runtime: ProjectRuntime,
+  project: Project,
+  explicitPort: number | undefined,
+  environment: (runtime: ProjectRuntime) => Promise<Record<string, string>>,
+  controller: AbortController,
+  json?: JsonRenderer,
+): Promise<void> {
+  const devPort = await resolveDevPort(
+    runtime.protocol,
+    explicitPort,
+    config.checkPort,
+    controller.signal,
+  );
+  if (devPort.port !== devPort.requestedPort) {
+    renderStatus(
+      config.io,
+      `Port ${devPort.requestedPort} is in use; using ${devPort.port}.`,
+      json,
+    );
+  }
+
+  const env = await environment(runtime);
+  controller.signal.throwIfAborted();
+
+  const runner = config.runners[runtime.build];
+  for await (const event of runner.run({
+    runtime,
+    projectRoot: project.rootPath,
+    port: devPort.port,
+    env,
+    signal: controller.signal,
+  })) {
+    renderAgentEvent(config.io, event, runtime.name, json);
+  }
+}

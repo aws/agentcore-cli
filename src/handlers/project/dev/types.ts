@@ -1,3 +1,4 @@
+import type { InspectorTraces } from "../../../core/dev/inspector/types";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 
 export type DevEvent =
@@ -22,6 +23,8 @@ export interface DevTraceCollector {
   port: number;
   /** Environment variables that point an agent's OTEL SDK at the receiver. */
   envVars: Record<string, string>;
+  /** The trace reads the Inspector serves, without exposing the store itself. */
+  traces: InspectorTraces;
   close(): Promise<void>;
 }
 

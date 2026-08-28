@@ -74,7 +74,6 @@ import {
   type EvaluationReferenceInput,
   type EvaluationResultContent,
   type EvaluationTarget,
-  type BatchEvaluationSummary,
   type GetABTestResponse,
   type ListABTestsResponse,
   type ABTestExecutionStatus,
@@ -111,7 +110,6 @@ import {
   InputValidationError,
   NetworkingError,
   ResourceNotFoundError,
-  ResultTruncationError,
 } from "../errors";
 import type {
   BatchEvaluationDetail,
@@ -157,6 +155,7 @@ import { applyExampleIds, diffExamples, indexRemoteById, parseJsonl } from "./da
 import type { Addition } from "./datasetDiff";
 import type { AwsClients, CoreFetch, CoreOptions } from "./types";
 import type { Logger } from "../logging";
+import { FilteredPaginator } from "./filteredPaginator";
 import { toClientConfig } from "./utils";
 import {
   accountIdFromRoleArn,
@@ -195,7 +194,6 @@ const EVALUATE_TARGET_BATCH = 10;
 const INSIGHTS_MAX_ROWS = 100_000;
 
 const DEFAULT_BATCH_INSIGHTS_PAGE_SIZE = 50;
-const MAX_BATCH_INSIGHTS_SCAN_REQUESTS = 101;
 
 // noopLogger is the default for the optional logger arg so callers that don't
 // need batch-evaluation result-log diagnostics (e.g. dataset-only tests) can
@@ -209,8 +207,6 @@ const noopLogger: Logger = {
 };
 
 const DEFAULT_ONLINE_INSIGHT_PAGE_SIZE = 100;
-const MAX_ONLINE_INSIGHT_PAGES = 101;
-type InsightSummary = NonNullable<ListOnlineInsightsResponse["onlineEvaluationConfigs"]>[number];
 
 export class EvalClient implements CoreEvalClient {
   constructor(
@@ -485,49 +481,18 @@ export class EvalClient implements CoreEvalClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListBatchEvaluationsResponse> {
-    const insightsPageSize = maxResults ?? DEFAULT_BATCH_INSIGHTS_PAGE_SIZE;
-    if (!Number.isInteger(insightsPageSize) || insightsPageSize < 1) {
-      throw new InputValidationError("maxResults must be a positive integer");
-    }
-    const batchEvaluations: BatchEvaluationSummary[] = [];
-    let batchEvaluationToken = nextToken;
-
-    for (let request = 0; request < MAX_BATCH_INSIGHTS_SCAN_REQUESTS; request++) {
-      const requestToken = batchEvaluationToken;
-      const response = await this.listBatchEvaluations(requestToken, undefined, options);
-      const serviceItems = response.batchEvaluations ?? [];
-      const insights = serviceItems.filter(EvalClient.isBatchInsights);
-
-      if (batchEvaluations.length < insightsPageSize) {
-        const remaining = insightsPageSize - batchEvaluations.length;
-        if (insights.length > remaining) {
-          const boundaryInsight = insights[remaining - 1]!;
-          const boundarySize = serviceItems.indexOf(boundaryInsight) + 1;
-          // Re-read through the last returned Insights job so the service token
-          // cannot skip later matches from this Batch Evaluation page.
-          const boundaryResponse = await this.listBatchEvaluations(
-            requestToken,
-            boundarySize,
-            options,
-          );
-
-          batchEvaluations.push(...insights.slice(0, remaining));
-          return { ...boundaryResponse, batchEvaluations };
-        }
-        batchEvaluations.push(...insights);
-      } else if (insights.length > 0) {
-        return { ...response, batchEvaluations, nextToken: requestToken };
-      }
-
-      if (response.nextToken === undefined) {
-        return { ...response, batchEvaluations, nextToken: undefined };
-      }
-      batchEvaluationToken = response.nextToken;
-    }
-
-    throw new ResultTruncationError(
-      `Batch Insights discovery exceeded ${MAX_BATCH_INSIGHTS_SCAN_REQUESTS} Batch Evaluation scan requests; results are incomplete`,
-    );
+    const page = await FilteredPaginator.paginate({
+      fetchPage: async (token, size) => {
+        const r = await this.listBatchEvaluations(token, size, options);
+        return { items: r.batchEvaluations ?? [], nextToken: r.nextToken };
+      },
+      predicate: EvalClient.isBatchInsights,
+      nextToken,
+      maxResults,
+      defaultPageSize: DEFAULT_BATCH_INSIGHTS_PAGE_SIZE,
+      resourceLabel: "Batch Insights",
+    });
+    return { batchEvaluations: page.items, nextToken: page.nextToken };
   }
 
   async startBatchEvaluation(
@@ -969,37 +934,18 @@ export class EvalClient implements CoreEvalClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListOnlineInsightsResponse> {
-    // Fill the requested page across underlying pages, since the shared List API
-    // returns eval configs too (mirrors listGatewayConnectors over Targets).
-    const pageSize = maxResults ?? DEFAULT_ONLINE_INSIGHT_PAGE_SIZE;
-    const items: InsightSummary[] = [];
-    let token = nextToken;
-    let filling = true;
-
-    for (let page = 0; page < MAX_ONLINE_INSIGHT_PAGES; page++) {
-      const requestToken = token;
-      const requestSize = filling ? pageSize - items.length : DEFAULT_ONLINE_INSIGHT_PAGE_SIZE;
-      const response = await this.listOnlineEvaluationConfigs(token, requestSize, options);
-      const insights = (response.onlineEvaluationConfigs ?? []).filter(
-        (c) => (c.insights?.length ?? 0) > 0,
-      );
-
-      if (filling) {
-        items.push(...insights);
-        filling = items.length < pageSize;
-      } else if (insights.length > 0) {
-        return { ...response, onlineEvaluationConfigs: items, nextToken: requestToken };
-      }
-
-      if (response.nextToken === undefined) {
-        return { ...response, onlineEvaluationConfigs: items, nextToken: undefined };
-      }
-      token = response.nextToken;
-    }
-
-    throw new ResultTruncationError(
-      `Online insight discovery exceeded ${MAX_ONLINE_INSIGHT_PAGES} config pages; results are incomplete`,
-    );
+    const page = await FilteredPaginator.paginate({
+      fetchPage: async (token, size) => {
+        const r = await this.listOnlineEvaluationConfigs(token, size, options);
+        return { items: r.onlineEvaluationConfigs ?? [], nextToken: r.nextToken };
+      },
+      predicate: (c) => (c.insights?.length ?? 0) > 0,
+      nextToken,
+      maxResults,
+      defaultPageSize: DEFAULT_ONLINE_INSIGHT_PAGE_SIZE,
+      resourceLabel: "Online insight",
+    });
+    return { onlineEvaluationConfigs: page.items, nextToken: page.nextToken };
   }
 
   async setOnlineInsightExecutionStatus(

@@ -2,7 +2,9 @@ import { BedrockAgentCoreControlClient } from "@aws-sdk/client-bedrock-agentcore
 import { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import { IAMClient } from "@aws-sdk/client-iam";
 import { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
+import { CloudFormationClient } from "@aws-sdk/client-cloudformation";
 import type {
+  CreateCloudFormationClient,
   CreateControlClient,
   CreateDataClient,
   CreateIamClient,
@@ -24,3 +26,6 @@ export const createIamClient: CreateIamClient = (config) => new IAMClient({ ...c
 
 export const createLogsClient: CreateLogsClient = (config) =>
   new CloudWatchLogsClient({ ...config });
+
+export const createCloudFormationClient: CreateCloudFormationClient = (config) =>
+  new CloudFormationClient({ ...config });

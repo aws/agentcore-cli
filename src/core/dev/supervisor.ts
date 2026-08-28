@@ -43,6 +43,10 @@ type AgentEntry = {
   port?: number;
   error?: string;
   starting?: Promise<{ name: string; port: number }>;
+  /** The running child's pump, so shutdown can await its final spans. */
+  running?: Promise<void>;
+  /** A reloaded definition held for a live agent, applied on its next start. */
+  pendingRuntime?: ProjectRuntime;
 };
 
 /**
@@ -79,8 +83,15 @@ export class DevSupervisor {
     const names = new Set(runtimes.map((runtime) => runtime.name));
     for (const runtime of runtimes) {
       const existing = this.agents.get(runtime.name);
-      if (existing) existing.runtime = runtime;
-      else this.agents.set(runtime.name, { runtime, phase: "idle" });
+      if (!existing) {
+        this.agents.set(runtime.name, { runtime, phase: "idle" });
+      } else if (existing.phase === "running" || existing.phase === "starting") {
+        // A live process keeps its current definition; the edit applies on next
+        // start, so the Inspector never proxies a running agent with stale metadata.
+        existing.pendingRuntime = runtime;
+      } else {
+        existing.runtime = runtime;
+      }
     }
     for (const [name, entry] of this.agents) {
       if (!names.has(name) && entry.phase !== "running" && entry.phase !== "starting") {
@@ -128,6 +139,10 @@ export class DevSupervisor {
     }
     if (entry.starting) return entry.starting;
 
+    if (entry.pendingRuntime) {
+      entry.runtime = entry.pendingRuntime;
+      entry.pendingRuntime = undefined;
+    }
     entry.starting = this.launch(entry).finally(() => {
       entry.starting = undefined;
     });
@@ -141,7 +156,14 @@ export class DevSupervisor {
   public async *events(): AsyncGenerator<SupervisedEvent, void> {
     while (true) {
       for (const event of this.queue.splice(0)) yield event;
-      if (this.config.signal.aborted) return;
+      if (this.config.signal.aborted) {
+        // Let every live child finish shutting down so its final spans reach the
+        // collector before the caller closes it, then drain what they emitted.
+        const running = [...this.agents.values()].map((entry) => entry.running).filter(Boolean);
+        await Promise.allSettled(running);
+        for (const event of this.queue.splice(0)) yield event;
+        return;
+      }
       await new Promise<void>((resolve) => {
         this.wake = resolve;
         // A push during the yields above ran while wake was undefined, so its
@@ -180,14 +202,14 @@ export class DevSupervisor {
       const readiness = this.waitReady(port, controller.signal, () => activity.at).then(() => {
         ready = true;
       });
-      const earlyExit = this.pump(entry, runner, { port, env, signal: controller.signal }, () => {
+      const pump = this.pump(entry, runner, { port, env, signal: controller.signal }, () => {
         activity.at = Date.now();
-      })
-        .finally(unchain)
-        .then(() => {
-          if (!ready)
-            throw new Error(entry.error ?? `Agent '${name}' exited before it became ready.`);
-        });
+      });
+      entry.running = pump;
+      const earlyExit = pump.finally(unchain).then(() => {
+        if (!ready)
+          throw new Error(entry.error ?? `Agent '${name}' exited before it became ready.`);
+      });
       // Both branches outlive the race (the pump runs for the agent's lifetime);
       // swallow their late rejections so losing branches never become unhandled.
       readiness.catch(() => {});

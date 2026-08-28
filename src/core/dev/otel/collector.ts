@@ -36,7 +36,7 @@ export interface OtelCollector {
   /** The port the OTLP/HTTP receiver listens on. */
   port: number;
   /** Reads the traces this collector persists. */
-  store: TraceStore;
+  traces: TraceStore;
   /** Environment variables that point an agent's OTEL SDK at this collector. */
   envVars: Record<string, string>;
   /** Stops the receiver. Also invoked by the start signal, if one was given. */
@@ -68,7 +68,12 @@ export async function startOtelCollector(
     signal: options.signal,
   });
 
-  return { port: server.port, store, envVars: otelEnvVars(server.port), close: server.close };
+  return {
+    port: server.port,
+    traces: store,
+    envVars: otelEnvVars(server.port),
+    close: server.close,
+  };
 }
 
 async function route(

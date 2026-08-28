@@ -8,6 +8,7 @@ import { createSilentLogger } from "../../../../testing";
 import {
   DEPLOYED_STATE_RELATIVE_PATH,
   readDeployedState,
+  removeTargetState,
   updateTargetState,
 } from "./deployedState";
 
@@ -147,6 +148,20 @@ describe("updateTargetState", () => {
           },
         },
       },
+    });
+  });
+});
+
+describe("removeTargetState", () => {
+  test("removes only the destroyed target", async () => {
+    const root = await projectRoot();
+    await updateTargetState(json, root, "default", { stackArn: "arn:stack:default" });
+    await updateTargetState(json, root, "prod", { stackArn: "arn:stack:prod" });
+
+    await removeTargetState(json, root, "default");
+
+    expect(await readRaw(root)).toEqual({
+      targets: { prod: { stackArn: "arn:stack:prod" } },
     });
   });
 });

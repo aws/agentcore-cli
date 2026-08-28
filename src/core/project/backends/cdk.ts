@@ -11,13 +11,23 @@ import {
 } from "../../../io";
 import type { Logger } from "../../../logging";
 import type { DeployBackendInput, ProjectBackend } from "./types";
-import { stackArtifactIdForTarget } from "./cdk/assembly";
-import { readDeployedState, updateTargetState } from "./cdk/deployedState";
+import { createCloudFormationClient } from "../../factories";
+import type { CreateCloudFormationClient } from "../../types";
 import {
+  countDeployableResources,
+  stackArtifactForTarget,
+  type StackArtifact,
+} from "./cdk/assembly";
+import { readDeployedState, removeTargetState, updateTargetState } from "./cdk/deployedState";
+import {
+  bootstrapStackReader,
+  createCloudFormationStackReader,
   probeBootstrap,
+  probeStack,
   resolveAwsAccount,
   type AccountResolver,
   type BootstrapProbe,
+  type StackProbe,
 } from "./cdk/environment";
 import {
   createCdkCredentialResolver,
@@ -26,6 +36,7 @@ import {
   type BootstrapTemplateLoader,
   type CdkCredentialResolver,
   type CdkRunner,
+  type CdkRunOptions,
 } from "./cdk/toolkit";
 
 export type CdkBackendConfig = {
@@ -33,9 +44,11 @@ export type CdkBackendConfig = {
   runner?: ProcessRunner;
   checkTool?: typeof requireTool;
   json?: ReadWriteJson;
+  createCloudFormationClient?: CreateCloudFormationClient;
   cdk?: CdkRunner;
   resolveCredentials?: CdkCredentialResolver;
   bootstrap?: BootstrapProbe;
+  stack?: StackProbe;
   resolveAccount?: AccountResolver;
   loadBootstrapTemplate?: BootstrapTemplateLoader;
 };
@@ -49,6 +62,7 @@ export class CdkBackend implements ProjectBackend {
   private readonly cdk: CdkRunner;
   private readonly resolveCredentials: CdkCredentialResolver;
   private readonly bootstrap: BootstrapProbe;
+  private readonly stack: StackProbe;
   private readonly resolveAccount: AccountResolver;
   private readonly loadBootstrapTemplate: BootstrapTemplateLoader;
 
@@ -60,7 +74,16 @@ export class CdkBackend implements ProjectBackend {
     this.cdk = config.cdk ?? createCdkRunner(config.logger);
     this.resolveCredentials =
       config.resolveCredentials ?? createCdkCredentialResolver(config.logger);
-    this.bootstrap = config.bootstrap ?? probeBootstrap;
+    const readStack = createCloudFormationStackReader(
+      config.createCloudFormationClient ?? createCloudFormationClient,
+    );
+    const readBootstrapStack = bootstrapStackReader(readStack);
+    this.bootstrap =
+      config.bootstrap ??
+      ((region, credentials) => probeBootstrap(region, credentials, readBootstrapStack));
+    this.stack =
+      config.stack ??
+      ((stackName, region, credentials) => probeStack(stackName, region, credentials, readStack));
     this.resolveAccount = config.resolveAccount ?? resolveAwsAccount;
     this.loadBootstrapTemplate = config.loadBootstrapTemplate ?? loadBootstrapTemplate;
   }
@@ -108,12 +131,15 @@ export class CdkBackend implements ProjectBackend {
 
     yield* this.build(project);
     const assemblyDirectory = this.assemblyDirectory(project);
-    const stackArtifactId = await stackArtifactIdForTarget(
-      this.json,
-      assemblyDirectory,
-      target.name,
-    );
+    const artifact = await stackArtifactForTarget(this.json, assemblyDirectory, target.name);
     const options = { assemblyDirectory, credentials, region: target.region };
+
+    // Decided before the Toolkit is handed the assembly: it reads a template
+    // with nothing in it as an instruction to delete the stack, and reports that
+    // as an ordinary successful deploy.
+    if ((await countDeployableResources(this.json, assemblyDirectory, artifact)) === 0) {
+      return yield* this.teardown({ project, artifact, input, options });
+    }
 
     const bootstrap = await this.bootstrap(target.region, credentials);
     this.logger
@@ -143,15 +169,18 @@ export class CdkBackend implements ProjectBackend {
       }
     }
 
-    yield { message: `Deploying ${stackArtifactId}` };
-    const { outputs, stackArn } = await this.cdk({ kind: "deploy", stackArtifactId }, options);
+    yield { message: `Deploying ${artifact.id}` };
+    const { outputs, stackArn } = await this.cdk(
+      { kind: "deploy", stackArtifactId: artifact.id },
+      options,
+    );
 
     // A successful deploy always has a stack ARN (CDK's DeployedStack requires
     // it). Its absence means a malformed result; fail loudly rather than return
     // success without recording the binding later commands need.
     if (!stackArn) {
       throw new MalformedServiceResponseError(
-        `The CDK Toolkit reported a successful deploy of '${stackArtifactId}' without a stack ARN.`,
+        `The CDK Toolkit reported a successful deploy of '${artifact.id}' without a stack ARN.`,
       );
     }
 
@@ -161,6 +190,55 @@ export class CdkBackend implements ProjectBackend {
     await updateTargetState(this.json, project.rootPath, target.name, { stackArn });
 
     return { outputs };
+  }
+
+  /**
+   * Removes the target's stack, for a deploy of a project that declares nothing
+   * to deploy.
+   *
+   * Destroying explicitly rather than letting the Toolkit infer it from an empty
+   * template is what makes this reportable: `destroy` fails loudly if the stack
+   * cannot be removed, where a deploy of an empty template succeeds either way.
+   */
+  private async *teardown({
+    project,
+    artifact,
+    input,
+    options,
+  }: {
+    project: Project;
+    artifact: StackArtifact;
+    input: DeployBackendInput;
+    options: CdkRunOptions;
+  }): AsyncGenerator<ProjectEvent, DeployResult> {
+    const { target } = input;
+    if (!(await this.stack(artifact.stackName, target.region, options.credentials))) {
+      throw new ProjectStateError(
+        `Project '${project.name}' declares no resources to deploy, and no stack ` +
+          `'${artifact.stackName}' exists in ${target.account}/${target.region} to remove. ` +
+          `Add a resource — for example 'agentcore project add runtime' — before deploying.`,
+      );
+    }
+
+    const confirmed = await input.confirmTeardown({
+      projectName: project.name,
+      targetName: target.name,
+      resourceDescription: `stack '${artifact.stackName}' and every resource in it`,
+      account: target.account,
+      region: target.region,
+    });
+    if (!confirmed) {
+      throw new ProjectStateError(
+        `Project '${project.name}' declares no resources to deploy, so deploying to target ` +
+          `'${target.name}' would delete stack '${artifact.stackName}' and every resource in ` +
+          `it. Re-run with --yes to confirm, or restore the resources the project should have.`,
+      );
+    }
+
+    yield { message: `Removing stack ${artifact.stackName}` };
+    await this.cdk({ kind: "destroy", stackArtifactId: artifact.id }, options);
+    await removeTargetState(this.json, project.rootPath, target.name);
+    return { outputs: {}, tornDown: true };
   }
 
   private cdkDirectory(project: Project): string {

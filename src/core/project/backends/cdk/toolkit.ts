@@ -13,7 +13,8 @@ import type { Logger } from "../../../../logging";
 
 export type CdkOperation =
   | { kind: "bootstrap"; environments: string[]; templateFile?: string }
-  | { kind: "deploy"; stackArtifactId: string };
+  | { kind: "deploy"; stackArtifactId: string }
+  | { kind: "destroy"; stackArtifactId: string };
 
 export type CdkRunOptions = {
   /** Synthesized cloud assembly used by deploy operations. */
@@ -36,7 +37,10 @@ export type CdkRunResult = { outputs: CdkOutputs; stackArn?: string };
 
 export type CdkRunner = (operation: CdkOperation, options: CdkRunOptions) => Promise<CdkRunResult>;
 
-export type CdkToolkit = Pick<Toolkit, "bootstrap" | "deploy" | "fromAssemblyDirectory">;
+export type CdkToolkit = Pick<
+  Toolkit,
+  "bootstrap" | "deploy" | "destroy" | "fromAssemblyDirectory"
+>;
 
 export type CdkToolkitLib = Pick<
   typeof import("@aws-cdk/toolkit-lib"),
@@ -187,18 +191,25 @@ export async function performCdkOperation(
   }
 
   const source = await toolkit.fromAssemblyDirectory(options.assemblyDirectory);
-  const result = await toolkit.deploy(source, {
-    stacks: {
-      strategy: lib.StackSelectionStrategy.PATTERN_MUST_MATCH_SINGLE,
-      patterns: [operation.stackArtifactId],
-    },
-  });
+  const stacks = {
+    strategy: lib.StackSelectionStrategy.PATTERN_MUST_MATCH_SINGLE,
+    patterns: [operation.stackArtifactId],
+  };
+
+  if (operation.kind === "destroy") {
+    await toolkit.destroy(source, { stacks });
+    return { outputs: {} };
+  }
+
+  const result = await toolkit.deploy(source, { stacks });
 
   // PATTERN_MUST_MATCH_SINGLE throws when the pattern matches anything other
   // than one stack, so a missing result is not "no match": the Toolkit skips a
   // stack whose template has no resources, and *deletes* it if it already
   // exists. Both return normally, so reporting empty outputs here would call a
-  // deletion a successful deploy.
+  // deletion a successful deploy. A deploy that would empty the stack is routed
+  // to an explicit, confirmed destroy before reaching this call, so this is the
+  // backstop for arriving in that state some other way.
   if (result.stacks.length !== 1) {
     throw new AgentCoreCLIError(
       `The CDK Toolkit deployed no stack for '${operation.stackArtifactId}'. ` +

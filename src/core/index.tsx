@@ -12,6 +12,7 @@ import type {
   AwsClients,
   ClientConfig,
   CoreFetch,
+  CreateCloudFormationClient,
   CreateControlClient,
   CreateDataClient,
   CreateIamClient,
@@ -26,12 +27,14 @@ export type {
   ClientConfig,
   CoreFetch,
   CreateControlClient,
+  CreateCloudFormationClient,
   CreateDataClient,
   CreateIamClient,
   CreateLogsClient,
 } from "./types";
 
 type CoreClientConfig = {
+  createCloudFormationClient?: CreateCloudFormationClient;
   createControlClient: CreateControlClient;
   createDataClient: CreateDataClient;
   createIamClient: CreateIamClient;
@@ -88,6 +91,7 @@ export class CoreClient implements AwsClients {
 
     this.projectManager = new FsProjectManager({
       logger: this.logger.child({ module: "projectManager" }),
+      createCloudFormationClient: config.createCloudFormationClient,
     });
   }
 
