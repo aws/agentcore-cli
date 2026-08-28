@@ -6,20 +6,13 @@ import type { TemplateRenderer, TemplateResolver } from "./types";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
 import { InputValidationError } from "../../../errors";
 
-/**
- * The scaffolded entrypoint filename for a language. TypeScript deploys a
- * compiled main.js (esbuild runs at synth), while Python runs main.py directly.
- */
-function entrypointForLanguage(language: ScaffoldRuntimeInput["language"]): string {
-  return language === "TypeScript" ? "main.js" : "main.py";
-}
-
 function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
   const { scaffoldRuntimeInput, name, ...infra } = input;
   return {
     name,
     build: scaffoldRuntimeInput.build,
-    entrypoint: entrypointForLanguage(scaffoldRuntimeInput.language),
+    // TypeScript deploys a compiled main.js (esbuild runs at synth); Python runs main.py directly.
+    entrypoint: scaffoldRuntimeInput.language === "TypeScript" ? "main.js" : "main.py",
     codeLocation: `app/${name}` as ProjectRuntime["codeLocation"],
     ...(scaffoldRuntimeInput.runtimeVersion && {
       runtimeVersion: scaffoldRuntimeInput.runtimeVersion,
