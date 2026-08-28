@@ -206,6 +206,34 @@ describe("createCredentialProvisioner", () => {
     });
   });
 
+  test("falls back to the legacy _CLIENT_ID variable when the spec has no clientId", async () => {
+    const subject = identity();
+    // An older CLI kept the client id in .env.local, not agentcore.json.
+    const { clientId: _dropped, ...withoutClientId } = OAUTH;
+    const input = await project(
+      [withoutClientId],
+      "AGENTCORE_CREDENTIAL_MY_OAUTH_CLIENT_SECRET='shh'\n" +
+        "AGENTCORE_CREDENTIAL_MY_OAUTH_CLIENT_ID='legacy-client'\n",
+    );
+
+    await run(subject.provision, input);
+
+    expect(subject.calls[1]).toEqual({
+      kind: "createOauth2",
+      input: {
+        name: "my-oauth",
+        vendor: "CustomOauth2",
+        config: {
+          customOauth2ProviderConfig: {
+            oauthDiscovery: { discoveryUrl: DISCOVERY },
+            clientId: "legacy-client",
+            clientSecret: "shh",
+          },
+        },
+      },
+    });
+  });
+
   test("injects the secret into a spec-supplied provider config", async () => {
     const subject = identity();
     const input = await project(

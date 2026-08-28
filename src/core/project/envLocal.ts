@@ -13,6 +13,9 @@ const KEY_LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
 /** Suffix distinguishing an OAuth credential's client secret from an API key. */
 export const CLIENT_SECRET_SUFFIX = "_CLIENT_SECRET";
 
+/** Legacy suffix older CLIs stored an OAuth credential's client id under (now in agentcore.json). */
+export const CLIENT_ID_SUFFIX = "_CLIENT_ID";
+
 /**
  * The `.env.local` variable name a credential's secret is stored under — the one
  * contract between `add credentials` (writes it) and `deploy` (reads it), so both

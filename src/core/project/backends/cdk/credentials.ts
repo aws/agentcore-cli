@@ -9,6 +9,7 @@ import type {
   SecretReference,
 } from "../../../../projectSchemas/credential";
 import {
+  CLIENT_ID_SUFFIX,
   CLIENT_SECRET_SUFFIX,
   credentialEnvVarName,
   ENV_LOCAL_RELATIVE_PATH,
@@ -251,9 +252,13 @@ async function resolveOauth2(
           CLIENT_SECRET_SUFFIX,
         ),
       };
+  // Projects created by older CLIs kept the client id in .env.local rather than
+  // agentcore.json, so fall back to that legacy variable when the spec has none.
+  const clientId =
+    credential.clientId ?? env[credentialEnvVarName(credential.name, CLIENT_ID_SUFFIX)];
   const config = credential.providerConfig
     ? vendorConfigWithSecret(credential.name, credential.providerConfig, secret)
-    : guidedCustomConfig(credential, secret);
+    : guidedCustomConfig(credential, clientId, secret);
   return {
     create: () =>
       client.createOauth2Provider({ name: credential.name, vendor: credential.vendor, config }),
@@ -303,6 +308,7 @@ function vendorConfigWithSecret(
 
 function guidedCustomConfig(
   credential: OAuthCredential,
+  clientId: string | undefined,
   secret: Record<string, unknown>,
 ): Oauth2ProviderConfigInput {
   // The spec's schema requires discoveryUrl for a guided credential; this guards
@@ -318,7 +324,7 @@ function guidedCustomConfig(
   return {
     customOauth2ProviderConfig: {
       oauthDiscovery: { discoveryUrl: credential.discoveryUrl },
-      ...(credential.clientId !== undefined && { clientId: credential.clientId }),
+      ...(clientId !== undefined && { clientId }),
       ...secret,
     },
   };
