@@ -51,9 +51,11 @@ export function toPythonPackageName(name: string): string {
 }
 
 /**
- * Normalize a name for use as an npm package name: lowercase, URL-safe, and
- * trimmed of leading/trailing separators (npm rejects uppercase and names that
- * start with a dot or underscore).
+ * Normalize a name for use as an npm package name.
+ *
+ * @param name - The raw runtime/project name to normalize.
+ * @returns An npm-safe package name.
+ * @see {@link https://github.com/npm/validate-npm-package-name} for npm's package name rules.
  */
 function toNpmPackageName(name: string): string {
   return name
