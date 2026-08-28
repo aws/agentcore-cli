@@ -27,6 +27,7 @@ import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 const HELLO_WORLD_PYTHON = resolveRuntimeTemplateShortcut("hello-world-python");
 const HELLO_WORLD_PYTHON_CONTAINER = resolveRuntimeTemplateShortcut("hello-world-python-container");
 const STRANDS_PYTHON = resolveRuntimeTemplateShortcut("strands-python");
+const STRANDS_TS = resolveRuntimeTemplateShortcut("strands-ts");
 
 const originalCwd = process.cwd();
 const tempDirectories: string[] = [];
@@ -102,6 +103,22 @@ describe("FsProjectManager.create", () => {
     await runCreate(manager().manager, {
       name: "example",
       scaffoldRuntimeInput: STRANDS_PYTHON,
+    });
+
+    const projectRoot = join(directory, "example");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect({
+      manifest: await projectManifest(projectRoot),
+      runtimes: spec.runtimes,
+      memories: spec.memories,
+    }).toMatchSnapshot();
+  });
+
+  test("snapshots the Strands TypeScript project manifest and runtime spec", async () => {
+    const directory = await inTempDirectory();
+    await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: STRANDS_TS,
     });
 
     const projectRoot = join(directory, "example");

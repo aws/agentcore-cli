@@ -48,7 +48,6 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "none",
     modelProvider: "Bedrock",
     memory: "none",
-    entrypoint: "main.py",
     runtimeVersion: "PYTHON_3_14",
   },
   "hello-world-python-container": {
@@ -58,7 +57,6 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "none",
     modelProvider: "Bedrock",
     memory: "none",
-    entrypoint: "main.py",
   },
   "strands-python": {
     runtimeName: "strands_agent",
@@ -67,8 +65,16 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "strands",
     modelProvider: "Bedrock",
     memory: "longAndShortTerm",
-    entrypoint: "main.py",
     runtimeVersion: "PYTHON_3_14",
+  },
+  "strands-ts": {
+    runtimeName: "strands_agent",
+    build: "CodeZip",
+    language: "TypeScript",
+    framework: "strands",
+    modelProvider: "Bedrock",
+    memory: "longAndShortTerm",
+    runtimeVersion: "NODE_22",
   },
 } as const satisfies Record<string, RuntimeTemplateShortcut>;
 
@@ -90,7 +96,7 @@ export function resolveRuntimeTemplateShortcut(
   name: RuntimeTemplateShortcutName,
   overrides?: RuntimeTemplateOverrides,
 ): ScaffoldRuntimeInput {
-  const template = RUNTIME_TEMPLATE_SHORTCUTS[name];
+  const template: RuntimeTemplateShortcut = RUNTIME_TEMPLATE_SHORTCUTS[name];
   const runtimeName = overrides?.runtimeName ?? template.runtimeName;
   const build = overrides?.build ?? template.build;
   const memoryShortcutName = overrides?.memory ?? template.memory;
@@ -104,8 +110,7 @@ export function resolveRuntimeTemplateShortcut(
     modelProvider: overrides?.modelProvider ?? template.modelProvider,
     ...(overrides?.apiKey !== undefined && { apiKey: overrides.apiKey }),
     ...(memory && { memory }),
-    entrypoint: template.entrypoint,
-    runtimeVersion: build === "CodeZip" ? "PYTHON_3_14" : undefined,
+    runtimeVersion: build === "CodeZip" ? (template.runtimeVersion ?? "PYTHON_3_14") : undefined,
   };
 
   const result = ScaffoldRuntimeInputSchema.safeParse(input);

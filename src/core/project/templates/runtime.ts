@@ -6,12 +6,20 @@ import type { TemplateRenderer, TemplateResolver } from "./types";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
 import { InputValidationError } from "../../../errors";
 
+/**
+ * The scaffolded entrypoint filename for a language. TypeScript deploys a
+ * compiled main.js (esbuild runs at synth), while Python runs main.py directly.
+ */
+function entrypointForLanguage(language: ScaffoldRuntimeInput["language"]): string {
+  return language === "TypeScript" ? "main.js" : "main.py";
+}
+
 function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
   const { scaffoldRuntimeInput, name, ...infra } = input;
   return {
     name,
     build: scaffoldRuntimeInput.build,
-    entrypoint: scaffoldRuntimeInput.entrypoint,
+    entrypoint: entrypointForLanguage(scaffoldRuntimeInput.language),
     codeLocation: `app/${name}` as ProjectRuntime["codeLocation"],
     ...(scaffoldRuntimeInput.runtimeVersion && {
       runtimeVersion: scaffoldRuntimeInput.runtimeVersion,
@@ -47,6 +55,19 @@ export function toPythonPackageName(name: string): string {
     .replace(/[^a-zA-Z0-9._-]/g, "-")
     .replace(/^[^a-zA-Z0-9]+/, "")
     .replace(/[^a-zA-Z0-9]+$/, "");
+}
+
+/**
+ * Normalize a name for use as an npm package name: lowercase, URL-safe, and
+ * trimmed of leading/trailing separators (npm rejects uppercase and names that
+ * start with a dot or underscore).
+ */
+function toNpmPackageName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "-")
+    .replace(/^[._-]+/, "")
+    .replace(/[._-]+$/, "");
 }
 
 function buildResolverKey(
@@ -175,6 +196,41 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
           if (name === "Dockerfile" || name === ".dockerignore") return isContainer;
           return true;
         },
+      },
+    );
+    return {
+      tree,
+      spec: {
+        runtimes: [{ ...buildRuntimeSpec(input), protocol: "HTTP" as const }],
+        ...(memory && { memories: [memory] }),
+      },
+    };
+  },
+  [buildResolverKey("strands", "TypeScript")]: async (input: RuntimeResourceConfig) => {
+    if (input.protocol !== undefined && input.protocol !== "HTTP")
+      throw new InputValidationError("the strands-ts template only supports HTTP");
+
+    if (input.scaffoldRuntimeInput.build !== "CodeZip")
+      throw new InputValidationError("the strands template only supports CodeZip builds");
+
+    const memory = input.scaffoldRuntimeInput.memory;
+    const context = {
+      name: toNpmPackageName(input.name),
+      modelProvider: input.scaffoldRuntimeInput.modelProvider,
+      hasMemory: memory !== undefined,
+      // the CDK injects this env var corresponding to the actual ID once its resolved on deployment.
+      memoryEnvVarName: memory ? `MEMORY_${memory.name.toUpperCase()}_ID` : undefined,
+      memoryStrategies: memory?.strategies.map(({ type }) => type) ?? [],
+      hasIdentity: false,
+      identityProviders: [],
+    };
+    const tree = await FsTreeNode.fromAssetSource(
+      { assetSource },
+      { assetDir: "templates/strands-http-typescript" },
+      {
+        rootDirName: input.name,
+        transformContent: (raw) => templateRenderer.render(raw, context),
+        filter: (name, isDir) => memory !== undefined || !isDir || name !== "memory",
       },
     );
     return {

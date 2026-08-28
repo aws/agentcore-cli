@@ -101,3 +101,78 @@ exports[`FsProjectManager.create snapshots the Strands project manifest and runt
   ],
 }
 `;
+
+exports[`FsProjectManager.create snapshots the Strands TypeScript project manifest and runtime spec 1`] = `
+{
+  "manifest": [
+    ".gitignore",
+    "agentcore/.env.local",
+    "agentcore/agentcore.json",
+    "agentcore/aws-targets.json",
+    "agentcore/cdk/.gitignore",
+    "agentcore/cdk/.npmignore",
+    "agentcore/cdk/.prettierrc",
+    "agentcore/cdk/README.md",
+    "agentcore/cdk/bin/cdk.ts",
+    "agentcore/cdk/cdk.json",
+    "agentcore/cdk/jest.config.js",
+    "agentcore/cdk/lib/cdk-stack.ts",
+    "agentcore/cdk/package.json",
+    "agentcore/cdk/test/cdk.test.ts",
+    "agentcore/cdk/tsconfig.json",
+    "app/strands_agent/.gitignore",
+    "app/strands_agent/README.md",
+    "app/strands_agent/main.ts",
+    "app/strands_agent/mcp_client/client.ts",
+    "app/strands_agent/memory/memory.ts",
+    "app/strands_agent/model/load.ts",
+    "app/strands_agent/package.json",
+    "app/strands_agent/tsconfig.json",
+  ],
+  "memories": [
+    {
+      "eventExpiryDuration": 30,
+      "name": "strands_agentMemory",
+      "strategies": [
+        {
+          "namespaceTemplates": [
+            "/users/{actorId}/facts",
+          ],
+          "type": "SEMANTIC",
+        },
+        {
+          "namespaceTemplates": [
+            "/users/{actorId}/preferences",
+          ],
+          "type": "USER_PREFERENCE",
+        },
+        {
+          "namespaceTemplates": [
+            "/summaries/{actorId}/{sessionId}",
+          ],
+          "type": "SUMMARIZATION",
+        },
+        {
+          "namespaceTemplates": [
+            "/episodes/{actorId}/{sessionId}",
+          ],
+          "reflectionNamespaceTemplates": [
+            "/episodes/{actorId}",
+          ],
+          "type": "EPISODIC",
+        },
+      ],
+    },
+  ],
+  "runtimes": [
+    {
+      "build": "CodeZip",
+      "codeLocation": "app/strands_agent",
+      "entrypoint": "main.js",
+      "name": "strands_agent",
+      "protocol": "HTTP",
+      "runtimeVersion": "NODE_22",
+    },
+  ],
+}
+`;

@@ -10,7 +10,7 @@ import type { ProjectSpecSchema } from "../../projectSchemas/project";
 import z from "zod";
 import type { ImportBedrockAgentInput, RuntimeResourceConfig } from "./add/runtime/types";
 import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
-import { AgentNameSchema, BuildTypeSchema, EntrypointSchema } from "../../projectSchemas/runtime";
+import { AgentNameSchema, BuildTypeSchema } from "../../projectSchemas/runtime";
 import { RuntimeVersionSchema } from "../../projectSchemas/constants";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import type { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
@@ -29,12 +29,11 @@ export const ScaffoldRuntimeInputSchema = z
   .object({
     runtimeName: AgentNameSchema,
     build: BuildTypeSchema,
-    language: z.enum(["Python"]),
+    language: z.enum(["Python", "TypeScript"]),
     framework: z.enum(["strands", "none"]),
     modelProvider: z.enum(["Bedrock"]),
     apiKey: z.string().min(1).optional(),
     memory: MemorySchema.optional(),
-    entrypoint: EntrypointSchema,
     runtimeVersion: RuntimeVersionSchema.optional(),
   })
   .refine(({ modelProvider, apiKey }) => !(modelProvider === "Bedrock" && apiKey !== undefined), {
