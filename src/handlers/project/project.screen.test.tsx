@@ -8,11 +8,11 @@ import {
   TestGlobalConfigAccessor,
   testIO,
   ttyTestIO,
-  waitFor,
 } from "../../testing";
 import { renderTuiAt } from "../../tui";
-import { NotImplementedError } from "../../errors";
+import { InvalidEnvironmentError, NotImplementedError } from "../../errors";
 import { compile, ValueContext } from "../../router";
+import { ExitCode } from "../../runnable";
 import { createRootHandler } from "../index";
 
 afterEach(cleanupScreens);
@@ -118,19 +118,28 @@ describe("project subcommands without a screen", () => {
 describe("agentcore project (no subcommand)", () => {
   // Exercises the real CLI entrypoint; the screen tests mount a path directly
   // and so never caught the missing default handler.
-  test("opens the interactive menu", async () => {
-    const { streams, stdin } = ttyTestIO();
+  //
+  // Asserts renderTui's TTY guard rather than a rendered frame: Ink only writes
+  // frames incrementally when interactive (`!isInCi && isTTY`), so asserting on
+  // frames here would pass locally and time out under CI. Reaching the guard at
+  // all proves the group routed to the TUI — Commander help neither throws nor
+  // touches stderr.
+  test("routes to the TUI rather than printing Commander help", async () => {
+    const io = testIO();
     const root = createRootHandler(new TestCoreClient(), {
-      io: streams.io,
+      io: io.io,
       logger: createSilentLogger(),
       globalConfigAccessor: new TestGlobalConfigAccessor(),
     });
 
-    const routing = root.route(["node", "agentcore", "project"]);
-    await waitFor(() => streams.stdout().includes("manage an AgentCore project"));
+    const caught: unknown = await root.route(["node", "agentcore", "project"]).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
 
-    stdin.write(String.fromCharCode(3)); // ctrl+c
-    await expect(routing).resolves.toBeUndefined();
+    expect(caught).toBeInstanceOf(InvalidEnvironmentError);
+    expect((caught as InvalidEnvironmentError).exitCode).toBe(ExitCode.USAGE);
+    expect(io.stdout()).toBe("");
   });
 
   test("prints help instead of the TUI under --json", async () => {
