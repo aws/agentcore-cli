@@ -44,6 +44,8 @@ function unusedIdentity(): CredentialProviderCalls {
     getPaymentCredentialProvider: unexpected("getPaymentCredentialProvider"),
     createPaymentCredentialProvider: unexpected("createPaymentCredentialProvider"),
     updatePaymentCredentialProvider: unexpected("updatePaymentCredentialProvider"),
+    deleteApiKeyCredentialProvider: unexpected("deleteApiKeyCredentialProvider"),
+    deleteOauth2CredentialProvider: unexpected("deleteOauth2CredentialProvider"),
     deletePaymentCredentialProvider: unexpected("deletePaymentCredentialProvider"),
   };
 }

@@ -45,6 +45,10 @@ export type CredentialProviderCalls = Pick<
   | "getPaymentCredentialProvider"
   | "createPaymentCredentialProvider"
   | "updatePaymentCredentialProvider"
+  // Deletes undo what one deploy created; a provider that already existed is never
+  // deleted by a deploy, and only payment providers are deleted by a teardown.
+  | "deleteApiKeyCredentialProvider"
+  | "deleteOauth2CredentialProvider"
   | "deletePaymentCredentialProvider"
 >;
 
@@ -133,21 +137,77 @@ export function createCredentialProvisioner(
     // Resolve every credential before writing any: look up existing providers and
     // validate the secret each one needs. A missing secret then fails before the
     // first provider is written, not partway through the list.
-    const plans: { name: string; provision: Provision }[] = [];
+    const plans: { credential: Credential; provision: Provision }[] = [];
     for (const credential of declared) {
       plans.push({
-        name: credential.name,
+        credential,
         provision: await resolveCredential(identity, credential, options, env, project.rootPath),
       });
     }
 
     const provisioned: DeployedCredentials = {};
-    for (const { name, provision } of plans) {
-      yield { message: `Preparing credential provider '${name}'` };
-      provisioned[name] = "reuse" in provision ? provision.reuse : await provision.write();
+    // Providers this deploy brought into existence, so a later failure can undo them
+    // rather than leaving one behind that nothing records.
+    const created: Credential[] = [];
+    try {
+      for (const { credential, provision } of plans) {
+        yield { message: `Preparing credential provider '${credential.name}'` };
+        if ("reuse" in provision) {
+          provisioned[credential.name] = provision.reuse;
+          continue;
+        }
+        provisioned[credential.name] = await provision.write();
+        if (provision.kind === "create") created.push(credential);
+      }
+    } catch (error) {
+      yield* rollback(identity, created, options);
+      throw error;
     }
     return provisioned;
   };
+}
+
+/**
+ * Deletes the providers a failed deploy created, newest first. A provider that
+ * already existed is left alone — this deploy only updated its secret, and undoing
+ * that would need the value it held before.
+ *
+ * A deletion that fails is reported rather than thrown: the error that started the
+ * rollback is the one the user needs to see.
+ */
+async function* rollback(
+  identity: CredentialProviderCalls,
+  created: Credential[],
+  options: CoreOptions,
+): AsyncGenerator<ProjectEvent, void> {
+  for (const credential of [...created].reverse()) {
+    yield { message: `Removing credential provider '${credential.name}' this deploy created` };
+    try {
+      await deleteCredential(identity, credential, options);
+    } catch (error) {
+      yield {
+        message:
+          `Could not remove credential provider '${credential.name}': ` +
+          `${(error as Error).message}. It exists in AWS but is not recorded; the next deploy ` +
+          `of this project will adopt it.`,
+      };
+    }
+  }
+}
+
+function deleteCredential(
+  identity: CredentialProviderCalls,
+  credential: Credential,
+  options: CoreOptions,
+): Promise<unknown> {
+  switch (credential.authorizerType) {
+    case "ApiKeyCredentialProvider":
+      return identity.deleteApiKeyCredentialProvider(credential.name, options);
+    case "OAuthCredentialProvider":
+      return identity.deleteOauth2CredentialProvider(credential.name, options);
+    case "PaymentCredentialProvider":
+      return identity.deletePaymentCredentialProvider(credential.name, options);
+  }
 }
 
 /**

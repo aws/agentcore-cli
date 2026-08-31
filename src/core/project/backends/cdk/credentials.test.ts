@@ -11,6 +11,8 @@ import {
   type UpdateApiKeyCredentialProviderResponse,
   type UpdateOauth2CredentialProviderResponse,
   type CreatePaymentCredentialProviderResponse,
+  type DeleteApiKeyCredentialProviderResponse,
+  type DeleteOauth2CredentialProviderResponse,
   type DeletePaymentCredentialProviderResponse,
   type GetPaymentCredentialProviderResponse,
   type UpdatePaymentCredentialProviderResponse,
@@ -105,6 +107,8 @@ type Behavior = {
   createReturns?: DeployedCredential;
   /** Thrown by every payment-provider deletion. */
   deleteFails?: Error;
+  /** Thrown by the creation of the named provider, in place of a created one. */
+  createFailsFor?: string;
 };
 
 function identity(
@@ -134,11 +138,17 @@ function identity(
     },
     async createApiKeyCredentialProvider(input, options) {
       calls.push({ kind: "createApiKey", input, options });
+      if (behavior.createFailsFor === input.name) throw new Error(`create ${input.name} failed`);
       return apiKeyResponse(created(input.name ?? "", "apikey"));
     },
     async updateApiKeyCredentialProvider(input, options) {
       calls.push({ kind: "updateApiKey", input, options });
       return apiKeyResponse(created(input.name ?? "", "apikey"));
+    },
+    async deleteApiKeyCredentialProvider(name, options) {
+      calls.push({ kind: "deleteApiKey", input: name, options });
+      if (behavior.deleteFails) throw behavior.deleteFails;
+      return {} as DeleteApiKeyCredentialProviderResponse;
     },
     async getOauth2CredentialProvider(name, options) {
       calls.push({ kind: "getOauth2", input: name, options });
@@ -151,6 +161,11 @@ function identity(
     async updateOauth2CredentialProvider(input, options) {
       calls.push({ kind: "updateOauth2", input, options });
       return oauth2Response(created(input.name ?? "", "oauth"));
+    },
+    async deleteOauth2CredentialProvider(name, options) {
+      calls.push({ kind: "deleteOauth2", input: name, options });
+      if (behavior.deleteFails) throw behavior.deleteFails;
+      return {} as DeleteOauth2CredentialProviderResponse;
     },
     async getPaymentCredentialProvider(name, options) {
       calls.push({ kind: "getPayment", input: name, options });
@@ -612,6 +627,72 @@ describe("createCredentialProvisioner", () => {
     const { events } = await collect(remove(input, { credentials: CREDENTIALS, region: REGION }));
 
     expect(events[1]?.message).toMatch(/Could not remove credential provider 'wallet'.*in use/);
+  });
+
+  test("deletes what it created when a later provider fails", async () => {
+    const subject = identity({}, { createFailsFor: "other-key" });
+    const input = await project(
+      [API_KEY, { authorizerType: "ApiKeyCredentialProvider", name: "other-key" }],
+      "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n" + "AGENTCORE_CREDENTIAL_OTHER_KEY='sk-other'\n",
+    );
+
+    // The failure the user needs to see is the one that stopped the deploy.
+    await expect(run(subject.provision, input)).rejects.toThrow(/create other-key failed/);
+    expect(subject.calls.map((call) => call.kind)).toEqual([
+      "getApiKey",
+      "getApiKey",
+      "createApiKey",
+      "createApiKey",
+      // Only the one this run brought into existence.
+      "deleteApiKey",
+    ]);
+    expect(subject.calls[4]?.input).toBe("openai-key");
+  });
+
+  test("does not delete a provider it only updated", async () => {
+    const subject = identity(
+      { "openai-key": { credentialProviderArn: "arn:existing" } },
+      { createFailsFor: "other-key" },
+    );
+    const input = await project(
+      [API_KEY, { authorizerType: "ApiKeyCredentialProvider", name: "other-key" }],
+      "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n" + "AGENTCORE_CREDENTIAL_OTHER_KEY='sk-other'\n",
+    );
+
+    await expect(run(subject.provision, input)).rejects.toThrow(/create other-key failed/);
+    // Undoing an update would need the secret the provider held before, which the
+    // CLI never had, so the pre-existing provider is left as this deploy set it.
+    expect(subject.calls.map((call) => call.kind)).not.toContain("deleteApiKey");
+  });
+
+  test("reports a provider it created but could not delete", async () => {
+    const subject = identity(
+      {},
+      { createFailsFor: "other-key", deleteFails: new Error("access denied") },
+    );
+    const input = await project(
+      [API_KEY, { authorizerType: "ApiKeyCredentialProvider", name: "other-key" }],
+      "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n" + "AGENTCORE_CREDENTIAL_OTHER_KEY='sk-other'\n",
+    );
+
+    const generator = subject.provision(input, { credentials: CREDENTIALS, region: REGION });
+    const events: ProjectEvent[] = [];
+    await expect(
+      (async () => {
+        while (true) {
+          const next = await generator.next();
+          if (next.done) return;
+          events.push(next.value);
+        }
+      })(),
+    ).rejects.toThrow(/create other-key failed/);
+
+    expect(events.map((event) => event.message)).toContain(
+      "Removing credential provider 'openai-key' this deploy created",
+    );
+    expect(events[events.length - 1]?.message).toMatch(
+      /Could not remove credential provider 'openai-key'.*access denied.*next deploy/s,
+    );
   });
 
   test("creates nothing when a later credential's secret is missing", async () => {
