@@ -11,7 +11,8 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
   return {
     name,
     build: scaffoldRuntimeInput.build,
-    entrypoint: scaffoldRuntimeInput.entrypoint,
+    // TypeScript deploys a compiled main.js (esbuild runs at synth); Python runs main.py directly.
+    entrypoint: scaffoldRuntimeInput.language === "TypeScript" ? "main.js" : "main.py",
     codeLocation: `app/${name}` as ProjectRuntime["codeLocation"],
     ...(scaffoldRuntimeInput.runtimeVersion && {
       runtimeVersion: scaffoldRuntimeInput.runtimeVersion,
@@ -42,11 +43,26 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
  * Valid names consist only of ASCII letters, numbers, period, underscore, and
  * hyphen, and must start and end with a letter or number.
  */
-function toPythonPackageName(name: string): string {
+export function toPythonPackageName(name: string): string {
   return name
     .replace(/[^a-zA-Z0-9._-]/g, "-")
     .replace(/^[^a-zA-Z0-9]+/, "")
     .replace(/[^a-zA-Z0-9]+$/, "");
+}
+
+/**
+ * Normalize a name for use as an npm package name.
+ *
+ * @param name - The raw runtime/project name to normalize.
+ * @returns An npm-safe package name.
+ * @see {@link https://github.com/npm/validate-npm-package-name} for npm's package name rules.
+ */
+function toNpmPackageName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "-")
+    .replace(/^[._-]+/, "")
+    .replace(/[._-]+$/, "");
 }
 
 function buildResolverKey(
@@ -55,6 +71,49 @@ function buildResolverKey(
 ): `${ScaffoldRuntimeInput["framework"]}/${ScaffoldRuntimeInput["language"]}` {
   return `${framework}/${language}`;
 }
+
+// The IAM policy file the proxy template vends; wired into the runtime's
+// additionalPolicies so the execution role may call bedrock:InvokeAgent.
+const BEDROCK_AGENT_POLICY_FILE = "bedrock-agent-policy.json";
+
+const importBedrockAgentResolver =
+  (assetSource: AssetSource, templateRenderer: TemplateRenderer) =>
+  async (input: RuntimeResourceConfig) => {
+    const imported = input.importBedrockAgent!;
+    if (input.protocol !== undefined && input.protocol !== "HTTP")
+      throw new InputValidationError("an imported Bedrock Agent proxy only supports HTTP");
+
+    const context = {
+      name: toPythonPackageName(input.name),
+      agentId: imported.agentId,
+      agentAliasId: imported.agentAliasId,
+      agentRegion: imported.region,
+      agentName: imported.agentName,
+      agentAliasArn: imported.agentAliasArn,
+    };
+    const tree = await FsTreeNode.fromAssetSource(
+      { assetSource },
+      { assetDir: "templates/bedrock-agent-proxy-python" },
+      {
+        rootDirName: input.name,
+        transformContent: (raw) => templateRenderer.render(raw, context),
+      },
+    );
+
+    const base = buildRuntimeSpec(input);
+    return {
+      tree,
+      spec: {
+        runtimes: [
+          {
+            ...base,
+            protocol: "HTTP" as const,
+            additionalPolicies: [...(base.additionalPolicies ?? []), BEDROCK_AGENT_POLICY_FILE],
+          },
+        ],
+      },
+    };
+  };
 
 const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: TemplateRenderer) => ({
   [buildResolverKey("none", "Python")]: async (input: RuntimeResourceConfig) => {
@@ -125,9 +184,56 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
         transformContent: (raw) => templateRenderer.render(raw, context),
         filter: (name, isDir) => {
           if (isDir && name === "memory") return memory !== undefined;
+          // hooks/ carries the execution-limits capability, which only
+          // `project export harness` renders (harnesses can cap
+          // iterations/tokens/time; scaffolded runtimes cannot).
+          if (isDir && name === "hooks") return false;
           if (name === "Dockerfile" || name === ".dockerignore") return isContainer;
           return true;
         },
+      },
+    );
+    return {
+      tree,
+      spec: {
+        runtimes: [{ ...buildRuntimeSpec(input), protocol: "HTTP" as const }],
+        ...(memory && { memories: [memory] }),
+      },
+    };
+  },
+  [buildResolverKey("strands", "TypeScript")]: async (input: RuntimeResourceConfig) => {
+    if (input.protocol !== undefined && input.protocol !== "HTTP")
+      throw new InputValidationError("the strands-ts template only supports HTTP");
+
+    if (input.scaffoldRuntimeInput.build !== "CodeZip")
+      throw new InputValidationError("the strands template only supports CodeZip builds");
+
+    const memory = input.scaffoldRuntimeInput.memory;
+    // The TypeScript strands SDK's createAgentCoreMemoryStores requires at least one
+    // namespace, so short-term-only memory (no long-term strategies) is unsupported.
+    // https://github.com/aws/bedrock-agentcore-sdk-typescript/blob/v0.3.0/src/memory/integrations/strands/factory.ts#L130-L133
+    if (memory !== undefined && memory.strategies.length === 0)
+      throw new InputValidationError(
+        "the strands-ts template does not support short-term-only memory; add long-term strategies or use --memory none",
+      );
+
+    const context = {
+      name: toNpmPackageName(input.name),
+      modelProvider: input.scaffoldRuntimeInput.modelProvider,
+      hasMemory: memory !== undefined,
+      // the CDK injects this env var corresponding to the actual ID once its resolved on deployment.
+      memoryEnvVarName: memory ? `MEMORY_${memory.name.toUpperCase()}_ID` : undefined,
+      memoryStrategies: memory?.strategies.map(({ type }) => type) ?? [],
+      hasIdentity: false,
+      identityProviders: [],
+    };
+    const tree = await FsTreeNode.fromAssetSource(
+      { assetSource },
+      { assetDir: "templates/strands-http-typescript" },
+      {
+        rootDirName: input.name,
+        transformContent: (raw) => templateRenderer.render(raw, context),
+        filter: (name, isDir) => memory !== undefined || !isDir || name !== "memory",
       },
     );
     return {
@@ -150,6 +256,12 @@ export function getRuntimeTemplateResolver(
   config: GetRuntimeTemplateResolverConfig,
   input: RuntimeResourceConfig,
 ): TemplateResolver<RuntimeResourceConfig> | undefined {
+  // An imported Bedrock Agent always scaffolds the proxy template, regardless
+  // of the framework/language key.
+  if (input.importBedrockAgent) {
+    return { resolve: importBedrockAgentResolver(config.assetSource, config.templateRenderer) };
+  }
+
   const { framework, language } = input.scaffoldRuntimeInput;
   const key = buildResolverKey(framework, language);
 

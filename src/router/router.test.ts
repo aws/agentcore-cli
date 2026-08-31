@@ -17,7 +17,7 @@ import {
   type Handler,
   type Middleware,
 } from "./index";
-import { InputValidationError } from "../errors";
+import { AgentCoreCLIError, InputValidationError } from "../errors";
 import { DefaultTelemetryClient } from "../telemetry";
 import { createSilentLogger, TestGlobalConfigAccessor } from "../testing";
 
@@ -786,5 +786,44 @@ test.each([
   expect(recordedMetrics[0]!.attributes).toMatchObject({
     command_path: "/agentcore/config",
     exit_reason: shouldThrow ? "failure" : "success",
+  });
+});
+
+test("--version on a versioned router prints the version and maps to exit 0", async () => {
+  const root = new Router("agentcore").version("9.9.9");
+  root.handler(
+    createHandler({
+      name: "noop",
+      description: "",
+      flags: [],
+      handle: async () => {},
+    }),
+  );
+
+  // Commander surfaces the version exit through exitOverride as a
+  // CommanderError; the error layer maps its exitCode 0 through unchanged.
+  const error = await root.route(["node", "agentcore", "--version"]).then(
+    () => {
+      throw new Error("expected --version to exit via CommanderError");
+    },
+    (e: unknown) => e,
+  );
+  expect(error).toMatchObject({ code: "commander.version", message: "9.9.9" });
+  expect(AgentCoreCLIError.fromError(error).exitCode).toBe(0);
+});
+
+test("--version is an unknown option on a router without a version", async () => {
+  const root = new Router("agentcore");
+  root.handler(
+    createHandler({
+      name: "noop",
+      description: "",
+      flags: [],
+      handle: async () => {},
+    }),
+  );
+
+  await expect(root.route(["node", "agentcore", "--version"])).rejects.toMatchObject({
+    code: "commander.unknownOption",
   });
 });

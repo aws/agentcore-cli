@@ -8,7 +8,6 @@ import { JsonKey } from "../../keys";
 import { ExitCode, withUserCancellation } from "../../../runnable";
 import { renderTuiAt } from "../../../tui";
 import {
-  normalizeRuntimeInvokeRequest,
   parseRuntimeInvokeHeaders,
   resolveRuntimeInvokeSources,
   resolveRuntimeInvokeTuiBearerToken,
@@ -16,6 +15,7 @@ import {
 } from "./request";
 import { writeRuntimeInvokeResponse } from "./response";
 import { RuntimeInvokeLaunchContextKey } from "./launchContext";
+import { invokeRuntimeTarget } from "./operation";
 
 export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -114,27 +114,30 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
           signal,
         );
         const options = coreOptsFromCtx(ctx);
-        const runtime = await core.runtime.getRuntime(runtimeId, options, signal);
-        const request = normalizeRuntimeInvokeRequest(runtime, {
-          runtimeId,
-          qualifier: flags.qualifier,
-          payload: sources.payload,
-          contentType: flags["content-type"],
-          accept: flags.accept,
-          runtimeSessionId: flags["session-id"],
-          runtimeUserId: flags["user-id"],
-          applicationHeaders,
-          bearerToken: sources.bearerToken,
-          mcpSessionId: flags["mcp-session-id"],
-          mcpProtocolVersion: flags["mcp-protocol-version"],
-          mcpMethod: flags["mcp-method"],
-          mcpName: flags["mcp-name"],
-          traceId: flags["trace-id"],
-          traceParent: flags["trace-parent"],
-          traceState: flags["trace-state"],
-          baggage: flags.baggage,
-        });
-        const response = await core.runtime.invokeRuntime(request, options, signal);
+        const response = await invokeRuntimeTarget(
+          core.runtime,
+          {
+            runtimeId,
+            qualifier: flags.qualifier,
+            payload: sources.payload,
+            contentType: flags["content-type"],
+            accept: flags.accept,
+            runtimeSessionId: flags["session-id"],
+            runtimeUserId: flags["user-id"],
+            applicationHeaders,
+            bearerToken: sources.bearerToken,
+            mcpSessionId: flags["mcp-session-id"],
+            mcpProtocolVersion: flags["mcp-protocol-version"],
+            mcpMethod: flags["mcp-method"],
+            mcpName: flags["mcp-name"],
+            traceId: flags["trace-id"],
+            traceParent: flags["trace-parent"],
+            traceState: flags["trace-state"],
+            baggage: flags.baggage,
+          },
+          options,
+          signal,
+        );
         await writeRuntimeInvokeResponse(response, {
           stdout: io.stdout,
           stderr: io.stderr,

@@ -14,8 +14,8 @@ src/assets/agent-inspector/
 coverage
 *.lcov
 
-# logs
-logs
+# logs (root-level runtime output only; src/**/logs are real modules)
+/logs
 _.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 

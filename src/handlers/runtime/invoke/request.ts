@@ -9,7 +9,10 @@ export const runtimeIdSchema = z
   .string()
   .refine((value) => !value.startsWith("arn:"), "must be a Runtime ID, not an ARN");
 
-type RuntimeInvokeInput = Omit<RuntimeInvokeRequest, "accountId" | "qualifier" | "contentType"> &
+export type RuntimeInvokeInput = Omit<
+  RuntimeInvokeRequest,
+  "accountId" | "qualifier" | "contentType"
+> &
   Partial<Pick<RuntimeInvokeRequest, "qualifier" | "contentType">>;
 
 const CUSTOM_HEADER_PREFIX = "x-amzn-bedrock-agentcore-runtime-custom-";

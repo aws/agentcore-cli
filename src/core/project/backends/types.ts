@@ -1,4 +1,5 @@
 import type {
+  DeployedProjectResource,
   DeployResult,
   Project,
   ProjectEvent,
@@ -13,8 +14,16 @@ export type DeployBackendInput = {
   confirmTeardown: TeardownConfirmationHandler;
 };
 
+export type ResolveDeployedResourcesBackendInput = {
+  target: AwsDeploymentTarget;
+};
+
 /** Builds the deployable artifacts owned by a project's selected backend. */
 export interface ProjectBackend {
   build(project: Project): AsyncGenerator<ProjectEvent, void>;
   deploy(project: Project, input: DeployBackendInput): AsyncGenerator<ProjectEvent, DeployResult>;
+  resolveDeployedResources(
+    project: Project,
+    input: ResolveDeployedResourcesBackendInput,
+  ): Promise<DeployedProjectResource[]>;
 }

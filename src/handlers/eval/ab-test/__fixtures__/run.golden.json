@@ -1,0 +1,8 @@
+{
+  "abTestId": "agentcore_cli_abtest_run-8e10bf2f27",
+  "abTestArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:ab-test/agentcore_cli_abtest_run-8e10bf2f27",
+  "status": "CREATING",
+  "executionStatus": "NOT_STARTED",
+  "createdAt": "2026-08-27T21:03:19.535Z",
+  "name": "agentcore_cli_abtest_run"
+}

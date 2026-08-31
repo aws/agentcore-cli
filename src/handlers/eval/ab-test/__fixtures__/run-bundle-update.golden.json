@@ -1,0 +1,6 @@
+{
+  "bundleArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:configuration-bundle/agentcore_cli_abtest_run_bundle-QTjmqQ9zT6",
+  "bundleId": "agentcore_cli_abtest_run_bundle-QTjmqQ9zT6",
+  "versionId": "d9379d05-8c1c-4764-afcb-8b5f852d6830",
+  "updatedAt": "2026-08-27T21:03:02.235Z"
+}

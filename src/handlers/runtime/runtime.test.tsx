@@ -77,7 +77,16 @@ describe("runtime command hierarchy", () => {
       "invoke",
       "version",
       "endpoint",
+      "logs",
+      "traces",
     ]);
+    expect(
+      runtime
+        ?.children()
+        .find((child) => child.name() === "traces")
+        ?.children()
+        .map((child) => child.name()),
+    ).toEqual(["list", "get"]);
     expect(
       runtime
         ?.children()

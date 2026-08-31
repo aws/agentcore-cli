@@ -1,0 +1,10 @@
+{
+  "abTestId": "agentcore_cli_abtest_tb_run-a0a822a9f4",
+  "abTestArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:ab-test/agentcore_cli_abtest_tb_run-a0a822a9f4",
+  "status": "CREATING",
+  "executionStatus": "NOT_STARTED",
+  "createdAt": {
+    "$date": "2026-08-31T19:41:00.464Z"
+  },
+  "name": "agentcore_cli_abtest_tb_run"
+}

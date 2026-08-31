@@ -6,13 +6,7 @@ import { coreOptsFromCtx } from "../../utils.tsx";
 import { JsonKey } from "../../keys.tsx";
 import { JsonRendererKey, renderTuiAt } from "../../../tui";
 import { InputValidationError } from "../../../errors";
-import {
-  applyEvent,
-  finishTurn,
-  newSessionId,
-  newTurn,
-  type TranscriptItem,
-} from "./transcript.tsx";
+import { invokeHarnessTurn } from "./operation.ts";
 
 export const createInvokeHarnessHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -54,33 +48,17 @@ export const createInvokeHarnessHandler = (core: Core, io: AppIO) =>
       }
 
       const opts = coreOptsFromCtx(ctx);
-      const detail = await core.harness.getHarness(flags["id"], opts);
-      const sessionId = flags["session-id"] ?? newSessionId();
-
-      const response = await core.harness.invokeHarness(
+      const result = await invokeHarnessTurn(
+        core.harness,
         {
-          harnessArn: detail.harness?.arn,
+          harnessId: flags["id"],
+          prompt: flags["prompt"],
           qualifier: flags["qualifier"] ?? "DEFAULT",
-          runtimeSessionId: sessionId,
-          messages: [{ role: "user", content: [{ text: flags["prompt"] }] }],
+          sessionId: flags["session-id"],
         },
         opts,
       );
-
-      const turn = newTurn();
-      for await (const event of response.stream ?? []) {
-        applyEvent(turn, event);
-      }
-      finishTurn(turn);
-
-      const transcript: TranscriptItem[] = [{ kind: "user", text: flags["prompt"] }, ...turn.items];
-      ctx.require(JsonRendererKey).renderJson({
-        sessionId,
-        stopReason: turn.stopReason,
-        usage: turn.usage,
-        latencyMs: turn.latencyMs,
-        transcript,
-      });
+      ctx.require(JsonRendererKey).renderJson(result);
     },
   });
 

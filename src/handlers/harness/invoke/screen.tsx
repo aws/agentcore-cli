@@ -78,6 +78,7 @@ export interface HarnessChatProps extends ScreenProps {
   // variant is the command hosting the chat: it names the breadcrumb and picks
   // the starting mode ("exec" starts in exec mode; "invoke" in chat mode).
   variant: "invoke" | "exec";
+  onBack?: () => void;
 }
 
 // HarnessChat is the conversation view shared by `invoke` and `exec`: a
@@ -92,6 +93,7 @@ export function HarnessChat({
   initialSessionId,
   initialQualifier,
   variant,
+  onBack,
 }: HarnessChatProps) {
   const opts = coreOptsFromCtx(ctx);
   const { columns, rows } = useWindowSize();
@@ -278,6 +280,7 @@ export function HarnessChat({
       }
       if (key.escape) {
         if (streamingRef.current) abortRef.current?.abort();
+        else if (onBack) onBack();
         else navigate(-1);
         return;
       }

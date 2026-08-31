@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import cliTruncate from "cli-truncate";
 import { Box, Text, useInput, useWindowSize } from "ink";
 import stringWidth from "string-width";
@@ -79,10 +79,15 @@ export function DataTable<T extends Record<string, unknown>>({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState(false);
 
-  useEffect(() => {
+  // Reset the cursor when the caller swaps datasets. Adjusting state during
+  // render (rather than in an effect) applies the reset in the same frame the
+  // new data first paints.
+  const [prevResetKey, setPrevResetKey] = useState(selectionResetKey);
+  if (prevResetKey !== selectionResetKey) {
+    setPrevResetKey(selectionResetKey);
     setSelectedRow(0);
     setCurrentPage(0);
-  }, [selectionResetKey]);
+  }
 
   // Filter
   const filtered = data.filter((row) => {

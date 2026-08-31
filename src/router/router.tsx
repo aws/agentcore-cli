@@ -4,7 +4,7 @@ import { type Context, type ContextKey, ValueContext, contextKey } from "./conte
 import { applyGlobalFlags, formatParameterDetails, parseFlags, toOption } from "./flags";
 import { parseArguments, toCommanderArgument } from "./args";
 
-import { Command } from "commander";
+import { Command, CommanderError } from "commander";
 import type { Logger } from "../logging";
 import type { GlobalConfigAccessor } from "../globalConfig";
 import type { Project } from "../handlers/project/types";
@@ -226,6 +226,7 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
   private globalFlags: GlobalFlag[] = [];
   private defaultHandle?: DefaultHandle;
   private tuiCommandNames?: ReadonlySet<string>;
+  private cliVersion?: string;
 
   constructor(
     private readonly cmdName: string,
@@ -266,6 +267,16 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
   // flags from the context and has no own flags/arguments.
   default(fn: DefaultHandle): this {
     this.defaultHandle = fn;
+    return this;
+  }
+
+  // version makes a bare `--version`/`-V` on this router print the given
+  // string and exit 0. It is handled before Commander parses (root command
+  // only, like the original CLI) rather than registered as a Commander
+  // option: a root-level --version option would shadow subcommands that
+  // declare their own `--version <value>` flag (e.g. `harness version get`).
+  version(version: string): this {
+    this.cliVersion = version;
     return this;
   }
 
@@ -327,6 +338,22 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
   // --- Router execution ---
 
   async route(argv: string[], ctx: Context = ValueContext.EmptyContext()): Promise<void> {
-    await compile(this, ctx).parseAsync(argv);
+    const commandArgs = argv.slice(2);
+    if (
+      this.cliVersion &&
+      commandArgs.length === 1 &&
+      (commandArgs[0] === "--version" || commandArgs[0] === "-V")
+    ) {
+      process.stdout.write(`${this.cliVersion}\n`);
+      // The same exit shape Commander's own version option produces, so the
+      // error layer maps it to a silent exit 0.
+      throw new CommanderError(0, "commander.version", this.cliVersion);
+    }
+
+    const command = compile(this, ctx);
+    if (this.cliVersion) {
+      command.addHelpText("after", `\nRun '${this.cmdName} --version' to print the CLI version.`);
+    }
+    await command.parseAsync(argv);
   }
 }

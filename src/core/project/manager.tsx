@@ -1,17 +1,24 @@
 import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { copyFile, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type {
   AddResourceInput,
   CreateProjectInput,
   DeployProjectInput,
   DeployResult,
+  ExportHarnessInput,
+  ExportHarnessResult,
+  ResolveDeployedResourceInput,
+  ResolveDeployedResourcesInput,
+  ResolvedDeployedResource,
+  ResolvedDeployedResources,
   ResolveProjectInput,
   Project,
   ProjectManager,
   ProjectEvent,
   ProjectResource,
   RemoveResourceInput,
+  RemoveResourceResult,
 } from "../../handlers/project/types";
 import type { Logger } from "../../logging";
 import {
@@ -23,12 +30,24 @@ import {
 } from "../../io";
 import { defaultSource, type AssetSource } from "./source";
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
-import { getHarnessTemplateResolver } from "./templates/harness";
+import { getHarnessTemplateResolver, validateHarnessTemplateSource } from "./templates/harness";
 import { createProjectTree } from "./templates/project";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
+import {
+  DEFAULT_EXPORT_SYSTEM_PROMPT,
+  EXPORT_NOTES_FILENAME,
+  buildDockerfileStub,
+  buildExportNotesMarkdown,
+  mapHarnessToExportPlan,
+} from "./templates/export";
+import { HarnessSpecSchema } from "../../projectSchemas/harness";
+import { FsTreeNode } from "./templates/fsTree";
 import { ProjectSpecSchema, type ManagedBy } from "../../projectSchemas/project";
 import { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
-import { CredentialSchema } from "../../projectSchemas/credential";
+import {
+  CredentialSchema,
+  credentialEnvironmentVariableNames,
+} from "../../projectSchemas/credential";
 import { MemorySchema } from "../../projectSchemas/memory";
 import { EvaluatorSchema } from "../../projectSchemas/evaluator";
 import { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
@@ -38,13 +57,23 @@ import { enclosingProjectRoot, projectSpecPath } from "./fsUtils";
 import {
   AgentCoreCLIError,
   InputValidationError,
+  InvalidEnvironmentError,
+  MalformedServiceResponseError,
   NotImplementedError,
   ProjectStateError,
+  ResourceNotFoundError,
 } from "../../errors/errors";
 import z from "zod";
 import { CdkBackend } from "./backends/cdk";
+import { resolveAwsAccount } from "./backends/cdk/environment";
 import type { ProjectBackend } from "./backends/types";
-import { AwsDeploymentTargetsSchema } from "../../projectSchemas/aws-targets";
+import {
+  AgentCoreRegionSchema,
+  AwsDeploymentTargetSchema,
+  AwsDeploymentTargetsSchema,
+  DEFAULT_TARGET_NAME,
+  type AwsDeploymentTarget,
+} from "../../projectSchemas/aws-targets";
 import type { RuntimeResourceConfig } from "../../handlers/project/add/runtime/types";
 import type { TemplateRenderer } from "./templates/types";
 import { HandlebarsTemplateRenderer } from "./templates/renderer";
@@ -64,6 +93,12 @@ type ProjectManagerConfig = {
   json?: ReadWriteJson;
   backends?: Partial<Record<ManagedBy, ProjectBackend>>;
   templateRenderer?: TemplateRenderer;
+  /**
+   * Resolves the AWS account behind the active credentials (STS
+   * GetCallerIdentity), used to synthesize the default deployment target.
+   * Injectable so unit tests never call AWS.
+   */
+  resolveAccount?: (region: string) => Promise<string>;
 };
 
 /**
@@ -77,6 +112,7 @@ export class FsProjectManager implements ProjectManager {
   private readonly checkTool: typeof requireTool;
   private readonly json: ReadWriteJson;
   private readonly backends: Partial<Record<ManagedBy, ProjectBackend>>;
+  private readonly resolveAccount: (region: string) => Promise<string>;
 
   constructor(config: ProjectManagerConfig) {
     this.logger = config.logger;
@@ -95,6 +131,7 @@ export class FsProjectManager implements ProjectManager {
       }),
     };
     this.templateRenderer = config.templateRenderer ?? new HandlebarsTemplateRenderer();
+    this.resolveAccount = config.resolveAccount ?? resolveAwsAccount;
   }
 
   public async resolve(input: ResolveProjectInput): Promise<Project | undefined> {
@@ -119,6 +156,10 @@ export class FsProjectManager implements ProjectManager {
       );
     }
 
+    if (input.scaffoldHarnessInput) {
+      validateHarnessTemplateSource(input.scaffoldHarnessInput);
+    }
+
     const scaffoldRuntimeInput = input.scaffoldRuntimeInput;
     const destination = join(process.cwd(), input.name);
 
@@ -126,9 +167,25 @@ export class FsProjectManager implements ProjectManager {
     const projectTree = await createProjectTree(
       { templateRenderer: this.templateRenderer, assetSource: this.assetSource },
       { projectName: input.name },
-      { runtime: scaffoldRuntimeInput },
+      { runtime: scaffoldRuntimeInput, importBedrockAgent: input.importBedrockAgent },
     );
     await projectTree.write(destination);
+
+    // A harness project scaffolds through the same addResource flow that
+    // `project add harness` uses, so a create-time harness and an added one can
+    // never drift apart.
+    if (input.scaffoldHarnessInput) {
+      const scaffolded = await this.resolve({ filePath: destination });
+      if (!scaffolded) {
+        throw new ProjectStateError(
+          `the project scaffolded at ${destination} could not be read back`,
+        );
+      }
+      yield* this.addResource(scaffolded, {
+        resourceType: "harness",
+        resourceConfig: input.scaffoldHarnessInput,
+      });
+    }
 
     // A failed step leaves the scaffolded files in place; the error tells the
     // user how to rerun the step by hand.
@@ -137,9 +194,11 @@ export class FsProjectManager implements ProjectManager {
       yield { message: "Installing CDK dependencies with npm" };
       await this.run(["npm", "install"], join(destination, "agentcore", "cdk"));
 
-      const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
-      yield* this.installRuntimeDependencies(appDir);
-    } else if (scaffoldRuntimeInput.build === "Container") {
+      if (scaffoldRuntimeInput) {
+        const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
+        yield* this.installRuntimeDependencies(appDir);
+      }
+    } else if (scaffoldRuntimeInput?.build === "Container") {
       // containers require uv.lock to build, so even with no-install we must generate the lock.
       const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
       yield* this.ensureLockFileExists(appDir);
@@ -390,7 +449,10 @@ export class FsProjectManager implements ProjectManager {
     return projectSpecPath(project.rootPath);
   }
 
-  public async removeResource(project: Project, input: RemoveResourceInput): Promise<Project> {
+  public async removeResource(
+    project: Project,
+    input: RemoveResourceInput,
+  ): Promise<RemoveResourceResult> {
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
@@ -431,22 +493,28 @@ export class FsProjectManager implements ProjectManager {
     } else if (input.resourceType === "gateway-target") {
       const gateways = [...existingProjectSpec.agentCoreGateways];
       const gatewayIndex = gateways.findIndex((gateway) => gateway.name === input.gatewayName);
-      if (gatewayIndex >= 0) {
-        const gateway = gateways[gatewayIndex]!;
-        const targets = gateway.targets.filter((target) => target.name !== input.name);
-        removed = targets.length !== gateway.targets.length;
-        gateways[gatewayIndex] = { ...gateway, targets };
+      if (gatewayIndex < 0) {
+        throw new ResourceNotFoundError(
+          `no gateway named '${input.gatewayName}' exists in this project`,
+        );
       }
+      const gateway = gateways[gatewayIndex]!;
+      const targets = gateway.targets.filter((target) => target.name !== input.name);
+      removed = targets.length !== gateway.targets.length;
+      gateways[gatewayIndex] = { ...gateway, targets };
       newSpec = { ...existingProjectSpec, agentCoreGateways: gateways };
     } else if (input.resourceType === "payment-connector") {
       const payments = [...(existingProjectSpec.payments ?? [])];
       const managerIndex = payments.findIndex((manager) => manager.name === input.managerName);
-      if (managerIndex >= 0) {
-        const manager = payments[managerIndex]!;
-        const connectors = manager.connectors.filter((connector) => connector.name !== input.name);
-        removed = connectors.length !== manager.connectors.length;
-        payments[managerIndex] = { ...manager, connectors };
+      if (managerIndex < 0) {
+        throw new ResourceNotFoundError(
+          `no payment-manager named '${input.managerName}' exists in this project`,
+        );
       }
+      const manager = payments[managerIndex]!;
+      const connectors = manager.connectors.filter((connector) => connector.name !== input.name);
+      removed = connectors.length !== manager.connectors.length;
+      payments[managerIndex] = { ...manager, connectors };
       newSpec = { ...existingProjectSpec, payments };
     } else {
       const projectSpecKey = toProjectSpecKey(input.resourceType);
@@ -456,23 +524,296 @@ export class FsProjectManager implements ProjectManager {
       newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
     }
 
-    if (!removed)
-      this.logger
-        .child({ input })
-        .warn(`unable to remove resource from project that does not exist.`);
+    if (!removed) {
+      throw new ResourceNotFoundError(
+        `no ${input.resourceType} named '${input.name}' exists in this project`,
+      );
+    }
 
-    const newSpecParseResult = ProjectSpecSchema.safeParse(newSpec);
+    // A credential's secret material lives in .env.local, so removing the
+    // credential also deletes the keys it reserved (none when an external
+    // secretRef holds the material).
+    let envFile: EnvLocalFile | undefined;
+    let removedEnvKeys: string[] = [];
+    if (input.resourceType === "credential") {
+      const credential = existingProjectSpec.credentials.find(
+        (candidate) => candidate.name === input.name,
+      )!;
+      const envKeys = credentialEnvironmentVariableNames(credential);
+      if (envKeys.length > 0) {
+        envFile = new EnvLocalFile(project.rootPath);
+        removedEnvKeys = (await envFile.removeKeys(envKeys)).removed;
+      }
+    }
 
-    if (!newSpecParseResult.success)
-      throw new InputValidationError(z.prettifyError(newSpecParseResult.error), {
-        cause: newSpecParseResult.error,
-      });
-
-    const newProjectSpec = await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
+    const newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile);
 
     return {
-      ...project,
-      spec: newProjectSpec,
+      project: { ...project, spec: newProjectSpec },
+      removedEnvKeys,
+    };
+  }
+
+  public async removeAllResources(project: Project): Promise<RemoveResourceResult> {
+    const agentCoreSpecPath = this.getProjectSpecPath(project);
+    const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
+
+    let envFile: EnvLocalFile | undefined;
+    let removedEnvKeys: string[] = [];
+    const envKeys = existingProjectSpec.credentials.flatMap((credential) =>
+      credentialEnvironmentVariableNames(credential),
+    );
+    if (envKeys.length > 0) {
+      envFile = new EnvLocalFile(project.rootPath);
+      removedEnvKeys = (await envFile.removeKeys(envKeys)).removed;
+    }
+
+    // A spec-level reset, mirroring the original CLI's `remove all`: every
+    // resource collection is emptied while name, version, managedBy, tags, and
+    // $schema survive. Code under app/ and aws-targets.json are left in place
+    // so a following deploy can tear down the target's stack.
+    const newSpec = {
+      ...existingProjectSpec,
+      runtimes: [],
+      memories: [],
+      knowledgeBases: [],
+      credentials: [],
+      evaluators: [],
+      onlineEvalConfigs: [],
+      agentCoreGateways: [],
+      policyEngines: [],
+      configBundles: [],
+      abTests: [],
+      harnesses: [],
+      mcpRuntimeTools: undefined,
+      unassignedTargets: undefined,
+      datasets: undefined,
+      httpGateways: undefined,
+      payments: undefined,
+    };
+
+    const newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile);
+
+    return {
+      project: { ...project, spec: newProjectSpec },
+      removedEnvKeys,
+    };
+  }
+
+  // Validates and writes an updated spec; a failure rolls back any .env.local
+  // edit staged for the same removal so the two files stay consistent.
+  private async commitSpec(
+    agentCoreSpecPath: string,
+    newSpec: unknown,
+    envFile: EnvLocalFile | undefined,
+  ): Promise<z.infer<typeof ProjectSpecSchema>> {
+    try {
+      const newSpecParseResult = ProjectSpecSchema.safeParse(newSpec);
+      if (!newSpecParseResult.success)
+        throw new InputValidationError(z.prettifyError(newSpecParseResult.error), {
+          cause: newSpecParseResult.error,
+        });
+      return await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
+    } catch (err) {
+      await envFile?.rollback().catch((e) => {
+        const error = AgentCoreCLIError.fromError(e);
+        this.logger
+          .child({ errorName: error.name, errorMessage: error.message })
+          .warn(`failed to roll back ${ENV_LOCAL_RELATIVE_PATH}`);
+      });
+      throw err;
+    }
+  }
+
+  public async *exportHarness(
+    project: Project,
+    input: ExportHarnessInput,
+  ): AsyncGenerator<ProjectEvent, ExportHarnessResult> {
+    const agentCoreSpecPath = this.getProjectSpecPath(project);
+    const { targetAgentName } = input;
+
+    yield { message: `Reading project spec file at '${agentCoreSpecPath}'` };
+    const projectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
+
+    // Resolve the harness spec + system prompt: from the prefetched service
+    // payload (--arn) or from the in-project harness files (--name).
+    let harnessName: string;
+    let spec: z.output<typeof HarnessSpecSchema>;
+    let systemPrompt: string;
+    let harnessDir: string | undefined;
+    if (input.prefetched) {
+      spec = input.prefetched.spec;
+      harnessName = spec.name;
+      const prompt = input.prefetched.systemPrompt?.trim();
+      systemPrompt =
+        prompt && prompt.length > 0 ? prompt : (spec.systemPrompt ?? DEFAULT_EXPORT_SYSTEM_PROMPT);
+    } else {
+      harnessName = input.harnessName!;
+      const entry = projectSpec.harnesses.find((candidate) => candidate.name === harnessName);
+      if (!entry) {
+        const available = projectSpec.harnesses.map((candidate) => candidate.name).join(", ");
+        throw new ResourceNotFoundError(
+          `Harness '${harnessName}' not found in agentcore.json. ` +
+            `Available harnesses: ${available || "none"}`,
+        );
+      }
+      harnessDir = join(project.rootPath, entry.path);
+      yield { message: `Reading harness configuration from '${join(entry.path, "harness.json")}'` };
+      spec = await this.json.read(join(harnessDir, "harness.json"), HarnessSpecSchema);
+      const promptPath = join(harnessDir, "system-prompt.md");
+      const filePrompt = existsSync(promptPath)
+        ? (await readFile(promptPath, "utf-8")).trim()
+        : undefined;
+      systemPrompt =
+        filePrompt && filePrompt.length > 0
+          ? filePrompt
+          : (spec.systemPrompt ?? DEFAULT_EXPORT_SYSTEM_PROMPT);
+    }
+
+    // Refuse to overwrite anything: the target name must be free in the spec
+    // (runtimes AND harnesses share the app/ namespace) and on disk. A leftover
+    // directory with no spec entry would otherwise be silently overwritten.
+    if (projectSpec.runtimes.some((runtime) => runtime.name === targetAgentName)) {
+      throw new InputValidationError(
+        `a runtime with name '${targetAgentName}' already exists; choose a different --target-agent-name`,
+      );
+    }
+    if (projectSpec.harnesses.some((harness) => harness.name === targetAgentName)) {
+      throw new InputValidationError(
+        `a harness with name '${targetAgentName}' already exists; choose a different --target-agent-name`,
+      );
+    }
+    const agentDir = join(project.rootPath, "app", targetAgentName);
+    if (existsSync(agentDir)) {
+      throw new InputValidationError(
+        `the directory 'app/${targetAgentName}/' already exists; remove it or choose a different --target-agent-name`,
+      );
+    }
+
+    yield { message: `Mapping harness '${harnessName}' to the Strands runtime template` };
+    const plan = mapHarnessToExportPlan({
+      harnessName,
+      targetAgentName,
+      spec,
+      systemPrompt,
+      projectSpec,
+      build: input.build,
+      harnessDockerfileExists:
+        spec.dockerfile !== undefined &&
+        harnessDir !== undefined &&
+        existsSync(join(harnessDir, spec.dockerfile)),
+    });
+
+    const isContainer = plan.buildType === "Container";
+    yield { message: `Rendering agent code at 'app/${targetAgentName}'` };
+    const tree = await FsTreeNode.fromAssetSource(
+      { assetSource: this.assetSource },
+      { assetDir: "templates/strands-http-python" },
+      {
+        rootDirName: targetAgentName,
+        transformContent: (raw) => this.templateRenderer.render(raw, plan.context),
+        filter: (name, isDir) => {
+          if (isDir && name === "memory") return plan.hasMemory;
+          if (isDir && name === "hooks") return plan.hasExecutionLimits;
+          // The template's own Dockerfile is used only for a plain Container
+          // export; containerUri/custom-Dockerfile harnesses replace it below.
+          if (name === "Dockerfile")
+            return isContainer && plan.dockerfilePlan.source === "template";
+          if (name === ".dockerignore") return isContainer;
+          return true;
+        },
+      },
+    );
+
+    // Everything under agentDir is created by this export; remove it when a
+    // later step fails so no orphan directory outlives its spec entry.
+    const cleanupAgentDir = () =>
+      rm(agentDir, { recursive: true, force: true }).catch((e) => {
+        const error = AgentCoreCLIError.fromError(e);
+        this.logger
+          .child({ errorName: error.name, errorMessage: error.message })
+          .warn(`failed to clean up ${agentDir}`);
+      });
+
+    let envFile: EnvLocalFile | undefined;
+    try {
+      await tree.write(join(project.rootPath, "app"));
+
+      // Post-render files the template cannot express.
+      if (plan.dockerfilePlan.source === "stub") {
+        await writeFile(
+          join(agentDir, "Dockerfile"),
+          buildDockerfileStub(plan.dockerfilePlan.containerUri),
+        );
+      } else if (plan.dockerfilePlan.source === "harnessCopy") {
+        await copyFile(join(harnessDir!, spec.dockerfile!), join(agentDir, "Dockerfile"));
+      }
+      for (const [fileName, policyDoc] of Object.entries(plan.policyFiles)) {
+        await writeFile(join(agentDir, fileName), `${JSON.stringify(policyDoc, null, 2)}\n`);
+      }
+
+      yield { message: `Writing ${EXPORT_NOTES_FILENAME}` };
+      const notesPath = join(agentDir, EXPORT_NOTES_FILENAME);
+      await writeFile(
+        notesPath,
+        buildExportNotesMarkdown(
+          plan.notes,
+          harnessName,
+          targetAgentName,
+          await readStrandsVersion(agentDir),
+        ),
+      );
+
+      if (plan.envEntries.length > 0) {
+        envFile = new EnvLocalFile(project.rootPath);
+        yield { message: `Updating secrets file at '${envFile.path}'` };
+        const { skipped } = await envFile.insertIfNew(plan.envEntries);
+        for (const key of skipped) {
+          yield {
+            message: `'${key}' already exists in ${ENV_LOCAL_RELATIVE_PATH}; left unchanged`,
+          };
+        }
+      }
+
+      yield { message: `Updating project spec file at '${agentCoreSpecPath}'` };
+      projectSpec.runtimes.push(plan.runtime);
+      for (const credential of plan.credentials) {
+        if (!projectSpec.credentials.some((candidate) => candidate.name === credential.name)) {
+          projectSpec.credentials.push(credential);
+        }
+      }
+      const parsed = ProjectSpecSchema.safeParse(projectSpec);
+      if (!parsed.success) {
+        throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
+      }
+      await this.json.write(agentCoreSpecPath, parsed.data);
+    } catch (err) {
+      this.logger.warn(
+        `harness export failed; attempting best-effort cleanup of staged changes under ${agentDir}`,
+      );
+      await Promise.all([
+        cleanupAgentDir(),
+        envFile?.rollback().catch((e) => {
+          const error = AgentCoreCLIError.fromError(e);
+          this.logger
+            .child({ errorName: error.name, errorMessage: error.message })
+            .warn(`failed to roll back ${ENV_LOCAL_RELATIVE_PATH}`);
+        }),
+      ]);
+      throw err;
+    }
+
+    // Deps go in only after the spec commit: a sync failure past this point
+    // leaves a consistent project the user can finish with a manual `uv sync`,
+    // so it must NOT trigger the cleanup above.
+    yield* this.installRuntimeDependencies(agentDir);
+
+    return {
+      harnessName,
+      agentName: targetAgentName,
+      agentPath: agentDir,
+      notesPath: join(agentDir, EXPORT_NOTES_FILENAME),
+      notes: plan.notes,
     };
   }
 
@@ -501,24 +842,37 @@ export class FsProjectManager implements ProjectManager {
     input: DeployProjectInput,
   ): AsyncGenerator<ProjectEvent, DeployResult> {
     const targetsPath = join(project.rootPath, "agentcore", "aws-targets.json");
-    if (!existsSync(targetsPath)) {
-      throw new ProjectStateError(
-        `No deployment targets are configured for project '${project.name}'. ` +
-          `Add ${targetsPath}, for example:\n\n${TARGETS_EXAMPLE}`,
-      );
+    const fileExists = existsSync(targetsPath);
+    const targets = fileExists ? await this.json.read(targetsPath, AwsDeploymentTargetsSchema) : [];
+
+    let target = targets.find((candidate) => candidate.name === input.target);
+
+    // A freshly created project defines no targets, so the default one is
+    // synthesized from the environment rather than demanded up front. Only
+    // `default` gets this treatment: inventing a *named* target would turn a
+    // typo'd --target into a deployment somewhere unintended.
+    if (!target && input.target === DEFAULT_TARGET_NAME) {
+      target = await this.provisionDefaultTarget(project, targetsPath, input.region);
+      yield {
+        message:
+          `Created default deployment target: account ${target.account}, ` +
+          `region ${target.region} (${join("agentcore", "aws-targets.json")})`,
+      };
     }
 
-    const targets = await this.json.read(targetsPath, AwsDeploymentTargetsSchema);
-
-    if (targets.length === 0) {
-      throw new ProjectStateError(
-        `No deployment targets are configured for project '${project.name}'. ` +
-          `Add at least one to ${targetsPath}, for example:\n\n${TARGETS_EXAMPLE}`,
-      );
-    }
-
-    const target = targets.find((candidate) => candidate.name === input.target);
     if (!target) {
+      if (!fileExists) {
+        throw new ProjectStateError(
+          `No deployment targets are configured for project '${project.name}'. ` +
+            `Add ${targetsPath}, for example:\n\n${TARGETS_EXAMPLE}`,
+        );
+      }
+      if (targets.length === 0) {
+        throw new ProjectStateError(
+          `No deployment targets are configured for project '${project.name}'. ` +
+            `Add at least one to ${targetsPath}, for example:\n\n${TARGETS_EXAMPLE}`,
+        );
+      }
       throw new ProjectStateError(
         `Project '${project.name}' has no deployment target named '${input.target}'. ` +
           `${targetsPath} defines: ${targets.map(({ name }) => name).join(", ")}.`,
@@ -529,6 +883,120 @@ export class FsProjectManager implements ProjectManager {
       target,
       confirmTeardown: input.confirmTeardown,
     });
+  }
+
+  public async resolveDeployedResource(
+    project: Project,
+    input: ResolveDeployedResourceInput,
+  ): Promise<ResolvedDeployedResource> {
+    const resolved = await this.resolveDeployedResources(project, { target: input.target });
+    const resource = resolved.resources.find(
+      ({ resourceType, name }) => resourceType === input.resourceType && name === input.name,
+    );
+    if (resource) return { id: resource.id, target: resolved.target };
+
+    const label = input.resourceType === "runtime" ? "Runtime" : "Harness";
+    throw new ProjectStateError(
+      `${label} '${input.name}' is not deployed to target '${input.target}'. ` +
+        `Run 'agentcore project deploy --target ${input.target}' first.`,
+    );
+  }
+
+  public async resolveDeployedResources(
+    project: Project,
+    input: ResolveDeployedResourcesInput,
+  ): Promise<ResolvedDeployedResources> {
+    const target = await this.resolveExistingTarget(project, input.target);
+    const resources = await this.backendFor(project).resolveDeployedResources(project, { target });
+    return { resources, target };
+  }
+
+  private async resolveExistingTarget(
+    project: Project,
+    name: string,
+  ): Promise<AwsDeploymentTarget> {
+    const targetsPath = join(project.rootPath, "agentcore", "aws-targets.json");
+    if (!existsSync(targetsPath)) {
+      throw new ProjectStateError(
+        `No deployment targets are configured for project '${project.name}'. ` +
+          `Add ${targetsPath}, for example:\n\n${TARGETS_EXAMPLE}`,
+      );
+    }
+
+    const targets = await this.json.read(targetsPath, AwsDeploymentTargetsSchema);
+    if (targets.length === 0) {
+      throw new ProjectStateError(
+        `No deployment targets are configured for project '${project.name}'. ` +
+          `Add at least one to ${targetsPath}, for example:\n\n${TARGETS_EXAMPLE}`,
+      );
+    }
+
+    const target = targets.find((candidate) => candidate.name === name);
+    if (!target) {
+      throw new ProjectStateError(
+        `Project '${project.name}' has no deployment target named '${name}'. ` +
+          `${targetsPath} defines: ${targets.map(({ name }) => name).join(", ")}.`,
+      );
+    }
+
+    return target;
+  }
+
+  /**
+   * Builds the default deployment target from the environment — the active
+   * credentials' account and the CLI's effective region — and persists it to
+   * aws-targets.json alongside any targets already defined there.
+   */
+  private async provisionDefaultTarget(
+    project: Project,
+    targetsPath: string,
+    region: string,
+  ): Promise<AwsDeploymentTarget> {
+    const supportedRegion = AgentCoreRegionSchema.safeParse(region);
+    if (!supportedRegion.success) {
+      throw new InputValidationError(
+        `Cannot create the default deployment target for project '${project.name}': ` +
+          `'${region}' is not an AgentCore-supported region.\n` +
+          `Supported regions: ${AgentCoreRegionSchema.options.join(", ")}.\n` +
+          `Re-run with --region <region> or set AWS_REGION to one of them.`,
+      );
+    }
+
+    let account: string;
+    try {
+      account = await this.resolveAccount(supportedRegion.data);
+    } catch (error) {
+      const cause = AgentCoreCLIError.fromError(error);
+      throw new InvalidEnvironmentError(
+        `Cannot create the default deployment target for project '${project.name}' because ` +
+          `the AWS account could not be resolved: ${cause.message}\n` +
+          `Check that valid AWS credentials are configured (for example via 'aws configure', ` +
+          `AWS_PROFILE, or environment variables) and re-run 'agentcore project deploy'.`,
+        { cause: error },
+      );
+    }
+
+    const entry = AwsDeploymentTargetSchema.safeParse({
+      name: DEFAULT_TARGET_NAME,
+      account,
+      region: supportedRegion.data,
+    });
+    if (!entry.success) {
+      throw new MalformedServiceResponseError(
+        `STS returned an AWS account ID that is not usable as a deployment target:\n` +
+          z.prettifyError(entry.error),
+        { cause: entry.error },
+      );
+    }
+
+    // Merged into the raw file contents rather than the schema-parsed targets,
+    // so existing entries keep their exact key order and any fields the schema
+    // does not know about.
+    const existing = existsSync(targetsPath)
+      ? await this.json.read(targetsPath, z.array(z.record(z.string(), z.unknown())))
+      : [];
+    await this.json.write(targetsPath, [...existing, entry.data]);
+    return entry.data;
   }
 
   private backendFor(project: Project): ProjectBackend {
@@ -553,6 +1021,10 @@ export class FsProjectManager implements ProjectManager {
       );
       yield { message: "Syncing Python dependencies with uv" };
       await this.run(["uv", "sync"], appDir);
+    } else if (existsSync(join(appDir, "package.json"))) {
+      await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
+      yield { message: "Installing Node dependencies with npm" };
+      await this.run(["npm", "install"], appDir);
     }
   }
 
@@ -611,6 +1083,17 @@ function toProjectSpecKey(resourceType: ProjectResource) {
     case "payment-manager":
     case "payment-connector":
       return "payments";
+  }
+}
+
+/** The strands-agents requirement from the rendered pyproject.toml, for EXPORT_NOTES.md. */
+async function readStrandsVersion(agentDir: string): Promise<string> {
+  try {
+    const pyproject = await readFile(join(agentDir, "pyproject.toml"), "utf-8");
+    const match = /strands-agents\s*([~><=]+\s*[\d.]+)/.exec(pyproject);
+    return match ? `strands-agents ${match[1]}` : "strands-agents (version unknown)";
+  } catch {
+    return "strands-agents (version unknown)";
   }
 }
 

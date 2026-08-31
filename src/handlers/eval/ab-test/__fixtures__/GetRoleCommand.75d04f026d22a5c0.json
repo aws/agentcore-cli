@@ -1,0 +1,6 @@
+{
+  "$error": {
+    "name": "NoSuchEntityException",
+    "message": "The role with name AgentCoreABTest-agentcore_cli_abtest_tb_run-16f47b77 cannot be found."
+  }
+}

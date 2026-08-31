@@ -60,6 +60,9 @@ function fakeBackend(
       yield* events;
       return result;
     },
+    async resolveDeployedResources() {
+      return [];
+    },
   };
   return { calls, confirmations, backend };
 }
@@ -68,6 +71,7 @@ type TestDeployOptions = {
   isTTY?: boolean;
   stdin?: string;
   teardown?: TeardownConfirmationRequest;
+  resolveAccount?: (region: string) => Promise<string>;
 };
 
 function testDeployCommand(
@@ -77,7 +81,10 @@ function testDeployCommand(
 ) {
   const io = testIO({ isTTY: options.isTTY, stdin: options.stdin });
   const fake = fakeBackend(result, events, options.teardown);
-  const core = new TestCoreClient({ backends: { CDK: fake.backend } });
+  const core = new TestCoreClient({
+    backends: { CDK: fake.backend },
+    resolveAccount: options.resolveAccount,
+  });
   const root = createRootHandler(core, {
     io: io.io,
     globalConfigAccessor: new TestGlobalConfigAccessor(),
@@ -280,11 +287,63 @@ describe("project deploy handler", () => {
     expect(subject.calls).toEqual([]);
   });
 
-  test("requires deployment targets to be configured", async () => {
+  test("requires deployment targets to be configured for a named target", async () => {
     const subject = testDeployCommand({ outputs: {} });
     await inProjectWithTargets(subject, JSON.stringify([]));
 
-    await expect(subject.run()).rejects.toThrow(/No deployment targets are configured/);
+    await expect(subject.run(["--target", "staging"])).rejects.toThrow(
+      /No deployment targets are configured/,
+    );
+    expect(subject.calls).toEqual([]);
+  });
+
+  // The zero-configuration path: a fresh project's aws-targets.json is [], so
+  // the first deploy must invent the default target rather than demand edits.
+  test("creates the default target from the environment on first deploy", async () => {
+    const subject = testDeployCommand({ outputs: { RuntimeArn: "arn:runtime" } });
+    const projectRoot = await inProjectWithTargets(subject, JSON.stringify([]));
+
+    await subject.run(["--region", "us-west-2"]);
+
+    expect(subject.calls).toHaveLength(1);
+    expect(subject.calls[0]?.input.target).toEqual({
+      name: "default",
+      account: "111122223333",
+      region: "us-west-2",
+    });
+    expect(subject.io.stderr()).toContain(
+      "Created default deployment target: account 111122223333, region us-west-2",
+    );
+    expect(subject.io.stderr()).toContain("Deployed project 'orders' to target 'default'");
+    expect(await Bun.file(join(projectRoot, "agentcore", "aws-targets.json")).json()).toEqual([
+      { name: "default", account: "111122223333", region: "us-west-2" },
+    ]);
+  });
+
+  test("rejects an unsupported region instead of writing an invalid target", async () => {
+    const subject = testDeployCommand({ outputs: {} });
+    const projectRoot = await inProjectWithTargets(subject, JSON.stringify([]));
+
+    const message = await messageFrom(subject.run(["--region", "us-west-1"]));
+
+    expect(message).toContain("'us-west-1' is not an AgentCore-supported region");
+    expect(message).toContain("us-east-1");
+    expect(subject.calls).toEqual([]);
+    expect(await Bun.file(join(projectRoot, "agentcore", "aws-targets.json")).text()).toBe("[]");
+  });
+
+  test("explains how to fix unresolvable credentials", async () => {
+    const subject = testDeployCommand({ outputs: {} }, [], {
+      resolveAccount: async () => {
+        throw new Error("Could not load credentials from any providers");
+      },
+    });
+    await inProjectWithTargets(subject, JSON.stringify([]));
+
+    const message = await messageFrom(subject.run(["--region", "us-east-1"]));
+
+    expect(message).toContain("Could not load credentials from any providers");
+    expect(message).toContain("aws configure");
     expect(subject.calls).toEqual([]);
   });
 });

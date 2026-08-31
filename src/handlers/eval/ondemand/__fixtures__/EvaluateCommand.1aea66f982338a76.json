@@ -1,0 +1,26 @@
+{
+  "evaluationResults": [
+    {
+      "evaluatorArn": "arn:aws:bedrock-agentcore:::evaluator/Builtin.Correctness",
+      "evaluatorId": "Builtin.Correctness",
+      "evaluatorName": "Builtin.Correctness",
+      "context": {
+        "spanContext": {
+          "sessionId": "00000000-0000-4000-8000-4a4a72800001",
+          "traceId": "6a91fe944cf38d6b2d8c3c6a66e63ad4"
+        }
+      },
+      "explanation": "The agent responded with '4' which matches the expected response of '4'. The trailing newline is irrelevant to the correctness of the answer.",
+      "value": 1,
+      "label": "Correct",
+      "tokenUsage": {
+        "inputTokens": 484,
+        "outputTokens": 53,
+        "totalTokens": 537
+      },
+      "ignoredReferenceInputFields": [
+        "assertions"
+      ]
+    }
+  ]
+}

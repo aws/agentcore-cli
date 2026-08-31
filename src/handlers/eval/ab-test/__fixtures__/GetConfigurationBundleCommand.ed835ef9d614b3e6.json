@@ -1,0 +1,23 @@
+{
+  "bundleArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:configuration-bundle/agentcore_cli_abtest_run_bundle-Fcuyfm8hxE",
+  "bundleId": "agentcore_cli_abtest_run_bundle-Fcuyfm8hxE",
+  "bundleName": "agentcore_cli_abtest_run_bundle",
+  "versionId": "ee7a2803-a60c-4b93-ac4d-5c20f32856da",
+  "components": {
+    "arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q": {
+      "configuration": {
+        "system_prompt": "A/B run fixture v1."
+      }
+    }
+  },
+  "createdAt": {
+    "$date": "2026-08-27T21:01:43.000Z"
+  },
+  "updatedAt": {
+    "$date": "2026-08-27T21:01:43.000Z"
+  },
+  "lineageMetadata": {
+    "parentVersionIds": [],
+    "branchName": "mainline"
+  }
+}

@@ -80,6 +80,7 @@ import type {
   GetABTestResponse,
   ListABTestsResponse,
   ABTestExecutionStatus,
+  CreateABTestResponse,
   UpdateABTestResponse,
   DeleteABTestResponse,
   DeleteRecommendationResponse,
@@ -133,9 +134,18 @@ import type {
 } from "../handlers/identity/types";
 import type { CoreMemoryClient } from "../handlers/memory/types";
 import type {
+  CoreObservabilityClient,
   CoreRuntimeClient,
+  DeployedRuntime,
+  GetRuntimeTraceInput,
+  ListRuntimeTracesInput,
   RuntimeInvokeRequest,
   RuntimeInvokeResponse,
+  RuntimeLogEvent,
+  SearchRuntimeLogsInput,
+  StreamRuntimeLogsInput,
+  TraceRecord,
+  TraceSummary,
 } from "../handlers/runtime/types";
 import type {
   BatchEvaluationDetail,
@@ -143,6 +153,8 @@ import type {
   CodeBasedUpdate,
   CoreEvalClient,
   CreateConfigurationBundleInput,
+  CreateConfigBasedABTestInput,
+  CreateTargetBasedABTestInput,
   CreateDatasetInput,
   CreateOnlineEvalInput,
   CreateOnlineInsightInput,
@@ -166,11 +178,16 @@ import type {
 import { isTerminalStatus } from "../core/batchEvaluationResults";
 import { abortable } from "../core/abortable";
 import type { CoreOptions, CreateCloudFormationClient } from "../core/types";
-import type { ProjectManager } from "../handlers/project/types";
+import type { Project, ProjectManager } from "../handlers/project/types";
 import type { Logger } from "../logging";
 import type { ReadWriteJson } from "../io";
 import { createSilentLogger } from "./logging";
 import { FsProjectManager, type ProjectBackend } from "../core/project";
+import type {
+  BedrockAgentMetadata,
+  DescribeBedrockAgent,
+  DescribeBedrockAgentInput,
+} from "../core/project/bedrockAgent";
 import type { ManagedBy } from "../projectSchemas/project";
 import { InputValidationError } from "../errors";
 
@@ -291,6 +308,7 @@ const DEFAULT_GET_ABTEST_RESPONSE = {} as GetABTestResponse;
 const DEFAULT_LIST_ABTESTS_RESPONSE: ListABTestsResponse = { abTests: [] };
 const DEFAULT_UPDATE_ABTEST_RESPONSE = {} as UpdateABTestResponse;
 const DEFAULT_DELETE_ABTEST_RESPONSE = {} as DeleteABTestResponse;
+const DEFAULT_CREATE_ABTEST_RESPONSE = {} as CreateABTestResponse;
 const DEFAULT_START_BATCH_EVAL_RESPONSE = {
   batchEvaluationId: "batch-eval-test",
   status: "RUNNING",
@@ -1219,6 +1237,7 @@ type TestCoreClientOptions = {
   json?: ReadWriteJson;
   backends?: Partial<Record<ManagedBy, ProjectBackend>>;
   createCloudFormationClient?: CreateCloudFormationClient;
+  resolveAccount?: (region: string) => Promise<string>;
 };
 
 export class TestIdentityClient implements CoreIdentityClient {
@@ -1490,6 +1509,7 @@ export class TestEvalClient implements CoreEvalClient {
   private abTestListResponses = new Map<string | undefined, ListABTestsResponse>();
   private abTestUpdateResponse: UpdateABTestResponse = DEFAULT_UPDATE_ABTEST_RESPONSE;
   private abTestDeleteResponse: DeleteABTestResponse = DEFAULT_DELETE_ABTEST_RESPONSE;
+  private abTestCreateResponse: CreateABTestResponse = DEFAULT_CREATE_ABTEST_RESPONSE;
   private batchEvalResults: BatchEvaluationResultEntry[] = [];
   private batchEvalResultsError?: unknown;
   private startBatchEvalResponse: StartBatchEvaluationResponse = DEFAULT_START_BATCH_EVAL_RESPONSE;
@@ -1737,6 +1757,11 @@ export class TestEvalClient implements CoreEvalClient {
     return this;
   }
 
+  setAbTestCreateResponse(response: CreateABTestResponse): this {
+    this.abTestCreateResponse = response;
+    return this;
+  }
+
   // setUpdateDatasetResult sets what updateDatasetExamples resolves to (when not
   // erroring).
   setUpdateDatasetResult(result: DatasetUpdateResult): this {
@@ -1944,6 +1969,24 @@ export class TestEvalClient implements CoreEvalClient {
     this.calls.push({ method: "deleteABTest", args: [id, options] });
     if (this.error) throw this.error;
     return this.abTestDeleteResponse;
+  }
+
+  async createConfigBasedABTest(
+    input: CreateConfigBasedABTestInput,
+    options: CoreOptions,
+  ): Promise<CreateABTestResponse> {
+    this.calls.push({ method: "createConfigBasedABTest", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.abTestCreateResponse;
+  }
+
+  async createTargetBasedABTest(
+    input: CreateTargetBasedABTestInput,
+    options: CoreOptions,
+  ): Promise<CreateABTestResponse> {
+    this.calls.push({ method: "createTargetBasedABTest", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.abTestCreateResponse;
   }
 
   async startBatchEvaluation(
@@ -2274,6 +2317,66 @@ export class TestEvalClient implements CoreEvalClient {
   }
 }
 
+// TestObservabilityClient is a controllable CoreObservabilityClient: seed
+// `logEvents` / `resolveDeployedRuntimeResponse`, or set `error` to force the
+// next call to throw. Every call is recorded on `calls`.
+export class TestObservabilityClient implements CoreObservabilityClient {
+  calls: { method: string; args: unknown[] }[] = [];
+  error: Error | undefined;
+
+  resolveDeployedRuntimeResponse: DeployedRuntime = {
+    runtimeId: "project_runtime-0000000000",
+    region: "us-west-2",
+    stackName: "AgentCore-project-default",
+    targetName: "default",
+  };
+  logEvents: RuntimeLogEvent[] = [];
+
+  async resolveDeployedRuntime(project: Project, targetName: string): Promise<DeployedRuntime> {
+    this.calls.push({ method: "resolveDeployedRuntime", args: [project, targetName] });
+    if (this.error) throw this.error;
+    return this.resolveDeployedRuntimeResponse;
+  }
+
+  async *streamRuntimeLogs(
+    input: StreamRuntimeLogsInput,
+    options: CoreOptions,
+    signal: AbortSignal,
+  ): AsyncGenerator<RuntimeLogEvent, void> {
+    this.calls.push({ method: "streamRuntimeLogs", args: [input, options, signal] });
+    if (this.error) throw this.error;
+    yield* this.logEvents;
+  }
+
+  async *searchRuntimeLogs(
+    input: SearchRuntimeLogsInput,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): AsyncGenerator<RuntimeLogEvent, void> {
+    this.calls.push({ method: "searchRuntimeLogs", args: [input, options, signal] });
+    if (this.error) throw this.error;
+    yield* this.logEvents;
+  }
+
+  traceSummaries: TraceSummary[] = [];
+  traceRecords: TraceRecord[] = [];
+
+  async listRuntimeTraces(
+    input: ListRuntimeTracesInput,
+    options: CoreOptions,
+  ): Promise<TraceSummary[]> {
+    this.calls.push({ method: "listRuntimeTraces", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.traceSummaries;
+  }
+
+  async getRuntimeTrace(input: GetRuntimeTraceInput, options: CoreOptions): Promise<TraceRecord[]> {
+    this.calls.push({ method: "getRuntimeTrace", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.traceRecords;
+  }
+}
+
 // TestCoreClient implements the Core contract with fully controllable sub-clients.
 export class TestCoreClient implements Core {
   readonly harness = new TestHarnessClient();
@@ -2282,11 +2385,28 @@ export class TestCoreClient implements Core {
   readonly runtime = new TestRuntimeClient();
   readonly gateway = new TestGatewayClient();
   readonly eval = new TestEvalClient();
+  readonly observability = new TestObservabilityClient();
   readonly projectManager: ProjectManager;
 
   // Commands the project manager would have run (npm install, git init, ...),
   // recorded instead of spawned so tests stay fast and hermetic.
   readonly projectCommands: { command: string[]; cwd: string }[] = [];
+
+  // Seed with `agentId/agentAliasId` keys to make Bedrock Agents resolvable
+  // through describeBedrockAgent; unseeded ids reject like the service would.
+  readonly bedrockAgentDescriptions: Record<string, BedrockAgentMetadata> = {};
+  readonly describedBedrockAgents: DescribeBedrockAgentInput[] = [];
+  readonly describeBedrockAgent: DescribeBedrockAgent = async (input) => {
+    this.describedBedrockAgents.push(input);
+    const metadata = this.bedrockAgentDescriptions[`${input.agentId}/${input.agentAliasId}`];
+    if (!metadata) {
+      throw new InputValidationError(
+        `no Bedrock Agent with id '${input.agentId}' exists in ${input.region}; ` +
+          `check --agent-id and --region`,
+      );
+    }
+    return metadata;
+  };
 
   constructor(options?: TestCoreClientOptions) {
     this.projectManager = new FsProjectManager({
@@ -2298,6 +2418,9 @@ export class TestCoreClient implements Core {
         this.projectCommands.push({ command, cwd });
       },
       checkTool: async () => {}, // CI hosts don't have uv installed
+      // Deploy synthesizes the default target through STS; stub the lookup so
+      // tests stay hermetic.
+      resolveAccount: options?.resolveAccount ?? (async () => "111122223333"),
     });
   }
 }

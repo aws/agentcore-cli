@@ -1,0 +1,41 @@
+{
+  "evaluatorArn": "arn:aws:bedrock-agentcore:::evaluator/Builtin.Correctness",
+  "evaluatorId": "Builtin.Correctness",
+  "evaluatorName": "Builtin.Correctness",
+  "evaluatorConfig": {
+    "llmAsAJudge": {
+      "ratingScale": {
+        "numerical": [
+          {
+            "value": {
+              "string": "0.0",
+              "type": "bigDecimal"
+            },
+            "label": "Incorrect"
+          },
+          {
+            "value": 0.5,
+            "label": "Partially correct"
+          },
+          {
+            "value": {
+              "string": "1.0",
+              "type": "bigDecimal"
+            },
+            "label": "Correct"
+          }
+        ]
+      }
+    }
+  },
+  "level": "TRACE",
+  "status": "ACTIVE",
+  "createdAt": {
+    "$date": "2024-10-22T00:00:00.000Z"
+  },
+  "updatedAt": {
+    "$date": "2024-10-22T00:00:00.000Z"
+  },
+  "description": "Response Quality Metric. Evaluates whether the information in the agent's response is factually accurate",
+  "lockedForModification": true
+}

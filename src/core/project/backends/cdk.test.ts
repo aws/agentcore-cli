@@ -2,7 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import type { Stack } from "@aws-sdk/client-cloudformation";
 import type { DeployResult, Project, ProjectEvent } from "../../../handlers/project/types";
+import { FsReadWriteJson } from "../../../io";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { createSilentLogger } from "../../../testing";
 import { CdkBackend } from "./cdk";
@@ -11,7 +13,7 @@ import type {
   CredentialProvisioner,
   PaymentCredentialRemover,
 } from "./cdk/credentials";
-import { DEPLOYED_STATE_RELATIVE_PATH } from "./cdk/deployedState";
+import { DEPLOYED_STATE_RELATIVE_PATH, updateTargetState } from "./cdk/deployedState";
 import type { DeployBackendInput } from "./types";
 import type { BootstrapState } from "./cdk/environment";
 import type { CdkCredentialProvider, CdkOperation, CdkOutputs, CdkRunOptions } from "./cdk/toolkit";
@@ -21,6 +23,9 @@ const TARGET = {
   account: "111122223333",
   region: "us-east-1",
 } as const;
+const STACK_ARN =
+  "arn:aws:cloudformation:us-east-1:111122223333:stack/AgentCore-example-default/abc";
+const json = new FsReadWriteJson({ logger: createSilentLogger() });
 
 /** A template holding only what CDK adds itself, as an empty project synthesizes. */
 const METADATA_ONLY = { CDKMetadata: { Type: "AWS::CDK::Metadata" } };
@@ -151,8 +156,8 @@ type HarnessOptions = {
   bootstrapError?: Error;
   provisionCredentials?: CredentialProvisioner;
   removePaymentCredentials?: PaymentCredentialRemover;
-  /** Whether CloudFormation still holds the target's stack. Defaults to present. */
-  stackExists?: boolean;
+  /** Stack returned by CloudFormation. Defaults to a present stack; null means absent. */
+  describedStack?: Stack | null;
 };
 
 function harness(options: HarnessOptions = {}) {
@@ -163,7 +168,8 @@ function harness(options: HarnessOptions = {}) {
   const bootstrapCredentials: CdkCredentialProvider[] = [];
   const accountRegions: string[] = [];
   const bootstrapRegions: string[] = [];
-  const stackProbes: string[] = [];
+  const stackReads: { stackName: string; region: string; credentials: CdkCredentialProvider }[] =
+    [];
   let templateLoads = 0;
   let templateCleanups = 0;
   const credentials: CdkCredentialProvider = async () => ({
@@ -192,10 +198,6 @@ function harness(options: HarnessOptions = {}) {
       bootstrapCredentials.push(provider);
       if (options.bootstrapError) throw options.bootstrapError;
       return options.bootstrap ?? { kind: "current", version: 30 };
-    },
-    stack: async (stackName) => {
-      stackProbes.push(stackName);
-      return options.stackExists ?? true;
     },
     cdk: async (operation, runOptions) => {
       runs.push({ operation, options: runOptions });
@@ -230,6 +232,17 @@ function harness(options: HarnessOptions = {}) {
     ...(options.removePaymentCredentials && {
       removePaymentCredentials: options.removePaymentCredentials,
     }),
+    describeStack: async (region, provider, stackName) => {
+      stackReads.push({ stackName, region, credentials: provider });
+      if (options.describedStack === null) return undefined;
+      return (
+        options.describedStack ?? {
+          StackName: stackName,
+          CreationTime: new Date(0),
+          StackStatus: "CREATE_COMPLETE",
+        }
+      );
+    },
   });
 
   return {
@@ -242,7 +255,7 @@ function harness(options: HarnessOptions = {}) {
     credentialRegions,
     credentials,
     runs,
-    stackProbes,
+    stackReads,
     templateLoads: () => templateLoads,
     templateCleanups: () => templateCleanups,
   };
@@ -531,7 +544,13 @@ describe("CdkBackend.deploy", () => {
     expect(subject.runs.map(({ operation }) => operation)).toEqual([
       { kind: "destroy", stackArtifactId: "AgentCore-example-default-0" },
     ]);
-    expect(subject.stackProbes).toEqual(["AgentCore-example-default-0"]);
+    expect(subject.stackReads).toEqual([
+      {
+        stackName: "AgentCore-example-default-0",
+        region: TARGET.region,
+        credentials: subject.credentials,
+      },
+    ]);
     expect(JSON.parse(await Bun.file(statePath).text())).toEqual({
       targets: { prod: { stackArn: "arn:stack:prod" } },
     });
@@ -562,7 +581,7 @@ describe("CdkBackend.deploy", () => {
   test("says to add a resource when there is no stack to remove either", async () => {
     const input = await project();
     await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
-    const subject = harness({ stackExists: false });
+    const subject = harness({ describedStack: null });
 
     await expect(
       collectDeploy(
@@ -579,7 +598,7 @@ describe("CdkBackend.deploy", () => {
 
     await collectDeploy(subject.backend.deploy(input, deployInput()));
 
-    expect(subject.stackProbes).toEqual([]);
+    expect(subject.stackReads).toEqual([]);
   });
 
   test.each([
@@ -680,5 +699,119 @@ describe("CdkBackend.deploy", () => {
     );
     expect(subject.templateCleanups()).toBe(1);
     expect(subject.runs.map(({ operation }) => operation.kind)).toEqual(["bootstrap"]);
+  });
+});
+
+describe("CdkBackend.resolveDeployedResources", () => {
+  test("describes the stack once and returns only resources with deployed ID outputs", async () => {
+    const input = await project();
+    input.spec = ProjectSpecSchema.parse({
+      ...input.spec,
+      runtimes: [
+        {
+          name: "checkout_agent",
+          build: "CodeZip",
+          entrypoint: "main.py",
+          codeLocation: "app/checkout_agent",
+          runtimeVersion: "PYTHON_3_14",
+        },
+        {
+          name: "inventory",
+          build: "CodeZip",
+          entrypoint: "main.py",
+          codeLocation: "app/inventory",
+          runtimeVersion: "PYTHON_3_14",
+        },
+      ],
+      harnesses: [{ name: "support_agent", path: "app/support_agent" }],
+    });
+    await updateTargetState(json, input.rootPath, TARGET.name, { stackArn: STACK_ARN });
+    const subject = harness({
+      describedStack: {
+        StackName: "AgentCore-example-default",
+        CreationTime: new Date(0),
+        StackStatus: "CREATE_COMPLETE",
+        Outputs: [
+          {
+            ExportName: "AgentCore-example-default-checkout-agent-RuntimeId",
+            OutputValue: "checkout_agent-AbCdEf1234",
+          },
+          {
+            ExportName: "AgentCore-example-default-Harness-support-agent-Id",
+            OutputValue: "support_agent-AbCdEf1234",
+          },
+        ],
+      },
+    });
+
+    const resources = await subject.backend.resolveDeployedResources(input, { target: TARGET });
+
+    expect(resources).toEqual([
+      { resourceType: "runtime", name: "checkout_agent", id: "checkout_agent-AbCdEf1234" },
+      { resourceType: "harness", name: "support_agent", id: "support_agent-AbCdEf1234" },
+    ]);
+    expect(subject.stackReads).toHaveLength(1);
+  });
+
+  test("fails without reading AWS when the target has no deployed stack ARN", async () => {
+    const input = await project();
+    const subject = harness({ describedStack: null });
+
+    await expect(
+      subject.backend.resolveDeployedResources(input, { target: TARGET }),
+    ).rejects.toThrow(/not deployed.*project deploy --target default/s);
+    expect(subject.stackReads).toEqual([]);
+    expect(subject.accountCredentials).toEqual([]);
+  });
+
+  test("fails actionably when the recorded stack no longer exists", async () => {
+    const input = await project();
+    await updateTargetState(json, input.rootPath, TARGET.name, { stackArn: STACK_ARN });
+    const subject = harness({ describedStack: null });
+
+    await expect(
+      subject.backend.resolveDeployedResources(input, { target: TARGET }),
+    ).rejects.toThrow(/not deployed.*project deploy --target default/s);
+    expect(subject.stackReads[0]?.stackName).toBe(STACK_ARN);
+  });
+
+  test("omits configured resources that have no deployed ID output", async () => {
+    const input = await project();
+    input.spec = ProjectSpecSchema.parse({
+      ...input.spec,
+      runtimes: [
+        {
+          name: "checkout",
+          build: "CodeZip",
+          entrypoint: "main.py",
+          codeLocation: "app/checkout",
+          runtimeVersion: "PYTHON_3_14",
+        },
+      ],
+    });
+    await updateTargetState(json, input.rootPath, TARGET.name, { stackArn: STACK_ARN });
+    const subject = harness({
+      describedStack: {
+        StackName: "AgentCore-example-default",
+        CreationTime: new Date(0),
+        StackStatus: "CREATE_COMPLETE",
+        Outputs: [],
+      },
+    });
+
+    await expect(
+      subject.backend.resolveDeployedResources(input, { target: TARGET }),
+    ).resolves.toEqual([]);
+  });
+
+  test("rejects the wrong account before reading CloudFormation", async () => {
+    const input = await project();
+    await updateTargetState(json, input.rootPath, TARGET.name, { stackArn: STACK_ARN });
+    const subject = harness({ account: "999900001111" });
+
+    await expect(
+      subject.backend.resolveDeployedResources(input, { target: TARGET }),
+    ).rejects.toThrow(/expects AWS account 111122223333.*999900001111/s);
+    expect(subject.stackReads).toEqual([]);
   });
 });

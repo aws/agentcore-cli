@@ -56,6 +56,7 @@
   },
   "dependencies": {
     "@aws-cdk/toolkit-lib": "1.38.2",
+    "@aws-sdk/client-bedrock-agent": "^3.1092.0",
     "@aws-sdk/client-bedrock-agentcore": "^3.1092.0",
     "@aws-sdk/client-bedrock-agentcore-control": "^3.1102.0",
     "@aws-sdk/client-cloudformation": "^3.1092.0",

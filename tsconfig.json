@@ -27,5 +27,5 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
   },
-  "exclude": ["src/assets"]
+  "exclude": ["src/assets", "out", "dist"]
 }

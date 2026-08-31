@@ -5,10 +5,12 @@ import { parseJsonFlag, parseTags } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
 import { HarnessSpecSchema } from "../../../../projectSchemas/harness";
 
-const DEFAULT_MODEL = {
+/** The model a harness runs on when none is configured; `project create`'s
+ * harness path shares it so the two entry points cannot drift. */
+export const DEFAULT_HARNESS_MODEL = {
   provider: "bedrock",
   modelId: "global.anthropic.claude-sonnet-4-6",
-};
+} as const;
 
 export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -71,7 +73,7 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
     handle: async (ctx, flags) => {
       const harnessInput = {
         name: flags.name,
-        model: parseJsonFlag("model", flags["model"]) ?? DEFAULT_MODEL,
+        model: parseJsonFlag("model", flags["model"]) ?? DEFAULT_HARNESS_MODEL,
         systemPrompt: flags["system-prompt"],
         executionRoleArn: flags["execution-role-arn"],
         tools: parseJsonFlag("tools", flags["tools"]),

@@ -28,9 +28,9 @@ afterEach(async () => {
   );
 });
 
-async function run(args: string[]) {
+async function run(args: string[], opts?: { core?: TestCoreClient }) {
   const io = testIO();
-  const core = new TestCoreClient();
+  const core = opts?.core ?? new TestCoreClient();
   const root = createRootHandler(core, {
     io: io.io,
     globalConfigAccessor: new TestGlobalConfigAccessor(),
@@ -377,6 +377,47 @@ describe("project add runtime", () => {
     expect(memory.strategies.map(({ type }: { type: string }) => type)).toEqual(expectedStrategies);
   });
 
+  test.each<[string, string[], string[]]>([
+    [
+      "template preset",
+      ["--name", "my_agent", "--template", "strands-ts"],
+      ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"],
+    ],
+    [
+      "custom without memory",
+      [
+        "--name",
+        "my_agent",
+        "--build",
+        "CodeZip",
+        "--language",
+        "TypeScript",
+        "--framework",
+        "strands",
+        "--model-provider",
+        "Bedrock",
+        "--memory",
+        "none",
+      ],
+      [],
+    ],
+  ])("strands-ts %s scaffolds a TypeScript agent", async (_label, flags, expectedStrategies) => {
+    const projectRoot = await inProject();
+    await run(["add", "runtime", ...flags]);
+
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    const runtime = spec.runtimes.find(
+      (candidate: { name: string }) => candidate.name === "my_agent",
+    );
+    expect(runtime).toMatchObject({ entrypoint: "main.js", runtimeVersion: "NODE_22" });
+
+    const memory = (spec.memories ?? []).find(
+      (candidate: { name: string }) => candidate.name === "my_agentMemory",
+    );
+    const strategies = memory?.strategies.map(({ type }: { type: string }) => type) ?? [];
+    expect(strategies).toEqual(expectedStrategies);
+  });
+
   test.each<[string, string[]]>([
     ["missing --name", ["--template", "hello-world-python"]],
     [
@@ -397,6 +438,38 @@ describe("project add runtime", () => {
     [
       "strands-python only supports HTTP",
       ["--name", "my_agent", "--template", "strands-python", "--protocol", "MCP"],
+    ],
+    [
+      "TypeScript without a strands template has no resolver",
+      [
+        "--name",
+        "my_agent",
+        "--build",
+        "CodeZip",
+        "--language",
+        "TypeScript",
+        "--framework",
+        "none",
+        "--model-provider",
+        "Bedrock",
+      ],
+    ],
+    [
+      "strands-ts rejects short-term-only memory",
+      [
+        "--name",
+        "my_agent",
+        "--build",
+        "CodeZip",
+        "--language",
+        "TypeScript",
+        "--framework",
+        "strands",
+        "--model-provider",
+        "Bedrock",
+        "--memory",
+        "shortTerm",
+      ],
     ],
     [
       "invalid JSON in --network-config",
@@ -482,5 +555,120 @@ describe("project add runtime", () => {
         `file://${apiKeyPath}`,
       ]),
     ).rejects.toThrow(/API keys are not compatible with Bedrock model providers/);
+  });
+});
+
+describe("project add runtime --type import", () => {
+  const metadata = {
+    agentName: "SupportAgent",
+    agentStatus: "PREPARED",
+    agentAliasArn: "arn:aws:bedrock:us-east-1:111122223333:agent-alias/A1B2C3D4E5/TSTALIASID",
+    agentAliasName: "live",
+    agentAliasStatus: "PREPARED",
+    foundationModel: "us.amazon.nova-lite-v1:0",
+  };
+
+  const importArgs = [
+    "add",
+    "runtime",
+    "--name",
+    "support_proxy",
+    "--type",
+    "import",
+    "--agent-id",
+    "A1B2C3D4E5",
+    "--agent-alias-id",
+    "TSTALIASID",
+    "--region",
+    "us-east-1",
+  ];
+
+  test("scaffolds a proxy runtime wrapping the described Bedrock Agent", async () => {
+    const projectRoot = await inProject();
+    const core = new TestCoreClient();
+    core.bedrockAgentDescriptions["A1B2C3D4E5/TSTALIASID"] = metadata;
+
+    await run(importArgs, { core });
+
+    expect(core.describedBedrockAgents).toEqual([
+      { region: "us-east-1", agentId: "A1B2C3D4E5", agentAliasId: "TSTALIASID" },
+    ]);
+
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0]).toMatchObject({
+      name: "support_proxy",
+      build: "CodeZip",
+      entrypoint: "main.py",
+      codeLocation: "app/support_proxy",
+      runtimeVersion: "PYTHON_3_14",
+      protocol: "HTTP",
+      additionalPolicies: ["bedrock-agent-policy.json"],
+    });
+
+    const appDir = join(projectRoot, "app", "support_proxy");
+    const main = await Bun.file(join(appDir, "main.py")).text();
+    expect(main).toContain('"A1B2C3D4E5"');
+    expect(main).toContain('"TSTALIASID"');
+    expect(main).toContain('"us-east-1"');
+    expect(main).toContain("invoke_agent");
+
+    const policy = await Bun.file(join(appDir, "bedrock-agent-policy.json")).json();
+    expect(policy.Statement[0]).toMatchObject({
+      Action: "bedrock:InvokeAgent",
+      Resource: metadata.agentAliasArn,
+    });
+
+    const pyproject = await Bun.file(join(appDir, "pyproject.toml")).text();
+    expect(pyproject).toContain('name = "support_proxy"');
+    expect(pyproject).toContain("boto3");
+  });
+
+  test("warns when the agent is not PREPARED", async () => {
+    await inProject();
+    const core = new TestCoreClient();
+    core.bedrockAgentDescriptions["A1B2C3D4E5/TSTALIASID"] = {
+      ...metadata,
+      agentStatus: "NOT_PREPARED",
+    };
+
+    const { io } = await run(importArgs, { core });
+    expect(io.stderr()).toContain("not PREPARED");
+  });
+
+  test("rejects a nonexistent agent with the describe error", async () => {
+    await inProject();
+    await expect(run(importArgs)).rejects.toThrow(/no Bedrock Agent with id 'A1B2C3D4E5'/);
+  });
+
+  test("rejects an unsupported --region before any service call", async () => {
+    await inProject();
+    const core = new TestCoreClient();
+    const args = [...importArgs.slice(0, -2), "--region", "eu-north-1"];
+    await expect(run(args, { core })).rejects.toThrow(/not a supported Bedrock Agent region/);
+    expect(core.describedBedrockAgents).toEqual([]);
+  });
+
+  test("requires --agent-id and --agent-alias-id with --type import", async () => {
+    await inProject();
+    await expect(
+      run(["add", "runtime", "--name", "p", "--type", "import", "--region", "us-east-1"]),
+    ).rejects.toThrow(/requires both --agent-id and --agent-alias-id/);
+  });
+
+  test("rejects --agent-id without --type import", async () => {
+    await inProject();
+    await expect(run(["add", "runtime", "--name", "p", "--agent-id", "A1"])).rejects.toThrow(
+      /--agent-id and --agent-alias-id require --type import/,
+    );
+  });
+
+  test("rejects scaffolding flags combined with --type import", async () => {
+    await inProject();
+    await expect(run([...importArgs, "--framework", "strands"])).rejects.toThrow(
+      /--framework is a scaffolding flag/,
+    );
+    await expect(run([...importArgs, "--template", "hello-world-python"])).rejects.toThrow(
+      /--template is a scaffolding flag/,
+    );
   });
 });

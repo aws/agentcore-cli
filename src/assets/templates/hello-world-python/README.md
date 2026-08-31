@@ -27,9 +27,6 @@ curl -X POST http://localhost:8080/invocations \
   -d '{"prompt": "Hello!"}'
 ```
 
-<!-- TODO: replace the uv run + curl instructions with `agentcore dev` and
-     `agentcore invoke` once those commands are available. -->
-
 ## Build your agent
 
 Start in `main.py`:
@@ -58,3 +55,8 @@ for multi-agent patterns, MCP tools, and model configuration.
 
 Deploy from the project root with the AgentCore CLI; the CDK app under
 `agentcore/cdk` provisions the Runtime that hosts this agent.
+
+```bash
+agentcore project deploy
+agentcore project invoke runtime --payload '{"prompt":"Hello!"}'
+```

@@ -7,33 +7,11 @@ import {
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
+  ttyTestIO,
   tick,
   waitFor,
 } from "../testing";
 import { ExitCode } from "../runnable";
-
-interface TtyInput extends NodeJS.ReadStream {
-  write(chunk: string): boolean;
-}
-
-function ttyTestIO(): { streams: ReturnType<typeof testIO>; stdin: TtyInput } {
-  const streams = testIO({ isTTY: true });
-  const stdin = streams.io.stdin as TtyInput;
-  stdin.setRawMode = function () {
-    return this;
-  };
-  stdin.ref = function () {
-    return this;
-  };
-  stdin.unref = function () {
-    return this;
-  };
-  Object.defineProperties(streams.io.stdout, {
-    columns: { configurable: true, value: 100 },
-    rows: { configurable: true, value: 40 },
-  });
-  return { streams, stdin };
-}
 
 describe("renderJson", () => {
   test("pretty-prints a value as indented JSON to the given writer", () => {

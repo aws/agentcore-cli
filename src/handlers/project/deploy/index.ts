@@ -2,9 +2,10 @@ import { createInterface } from "node:readline/promises";
 import z from "zod";
 import { UserCancellationError } from "../../../errors/errors";
 import type { AppIO } from "../../../io";
+import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
 import { createHandler, flag, ProjectKey } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
-import { JsonKey } from "../../keys";
+import { JsonKey, RegionKey } from "../../keys";
 import type {
   ProjectManager,
   TeardownConfirmationRequest,
@@ -21,7 +22,12 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
     name: "deploy",
     description: "deploy the project to AWS",
     flags: [
-      flag("target", "name of the aws-targets.json entry to deploy", z.string().default("default")),
+      flag(
+        "target",
+        "name of the aws-targets.json entry to deploy; the default target is created " +
+          "automatically from your AWS account and region on first deploy",
+        z.string().default(DEFAULT_TARGET_NAME),
+      ),
       flag(
         "yes",
         "confirm removing the target's stack when the project declares nothing to deploy",
@@ -44,6 +50,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       // generator's return value, which `for await` discards.
       const deployment = config.projectManager.deploy(project, {
         target: flags.target,
+        region: ctx.require(RegionKey),
         confirmTeardown: createTeardownConfirmationHandler(config.io, flags.yes, canPrompt),
       });
       let next = await deployment.next();

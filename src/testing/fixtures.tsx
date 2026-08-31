@@ -53,6 +53,20 @@ export async function settle(ms = 5_000): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Use this when a test needs a value that is unique for every recording but identical on every
+// replay. For example, when we run `agentcore eval ondemand simulate`, each recording needs a
+// different session id so we don't contaminate the run by reading back traces from old sessions.
+export function uniquePerRecording<T>(dir: string, name: string, generate: () => T): T {
+  const path = join(dir, `${name}.json`);
+  if (isRecording()) {
+    mkdirSync(dir, { recursive: true });
+    const value = generate();
+    writeFileSync(path, stringify(value));
+    return value;
+  }
+  return parse<T>(readFileSync(path, "utf8"));
+}
+
 // An AWS SDK command as seen at the `.send()` boundary: its class carries the
 // operation name and it holds the request `input`. We only read these.
 interface SdkCommand {

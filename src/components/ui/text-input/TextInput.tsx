@@ -135,8 +135,16 @@ const FocusedInput: React.FC<FocusedInputProps> = ({
     }
     if (key.ctrl || key.meta || key.escape) return;
 
-    onChange(value.slice(0, cursor) + input + value.slice(cursor));
-    setRawCursor(cursor + input.length);
+    // Rapid keystrokes and terminal pastes coalesce into one multi-character
+    // input event whose key.return is false even when the chunk carries a
+    // trailing "\r" — so control bytes would land in the value as invisible
+    // characters. A single-line input must never store them.
+    // eslint-disable-next-line no-control-regex
+    const text = input.replace(/[\u0000-\u001F\u007F]/g, "");
+    if (text.length === 0) return;
+
+    onChange(value.slice(0, cursor) + text + value.slice(cursor));
+    setRawCursor(cursor + text.length);
   });
 
   return (

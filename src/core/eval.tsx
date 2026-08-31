@@ -16,6 +16,7 @@ import {
   GetDatasetCommand,
   GetEvaluatorCommand,
   GetHarnessCommand,
+  GetGatewayCommand,
   GetOnlineEvaluationConfigCommand,
   ListConfigurationBundlesCommand,
   ListConfigurationBundleVersionsCommand,
@@ -60,6 +61,7 @@ import {
 import {
   DeleteRecommendationCommand,
   EvaluateCommand,
+  CreateABTestCommand,
   GetABTestCommand,
   ListABTestsCommand,
   UpdateABTestCommand,
@@ -74,6 +76,8 @@ import {
   type EvaluationReferenceInput,
   type EvaluationResultContent,
   type EvaluationTarget,
+  type CreateABTestRequest,
+  type CreateABTestResponse,
   type GetABTestResponse,
   type ListABTestsResponse,
   type ABTestExecutionStatus,
@@ -88,13 +92,7 @@ import {
   type DataSourceConfig as DataPlaneDataSourceConfig,
   type CloudWatchFilterConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
-import {
-  GetQueryResultsCommand,
-  ResourceNotFoundException,
-  StartQueryCommand,
-  type CloudWatchLogsClient,
-  type ResultField,
-} from "@aws-sdk/client-cloudwatch-logs";
+import { ResourceNotFoundException, type ResultField } from "@aws-sdk/client-cloudwatch-logs";
 import type { DocumentType } from "@smithy/types";
 import { randomUUID } from "node:crypto";
 import { unlink } from "node:fs/promises";
@@ -104,13 +102,20 @@ import { Transform } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
   AgentCoreCLIError,
-  CloudWatchQueryError,
   ERROR_SOURCE,
   FileWriteError,
   InputValidationError,
   NetworkingError,
   ResourceNotFoundError,
 } from "../errors";
+import {
+  DEFAULT_ENDPOINT_QUALIFIER,
+  INSIGHTS_MAX_ROWS,
+  runInsightsQuery,
+  runtimeLogGroup,
+  sanitizeQueryValue,
+  type InsightsRowLimit,
+} from "./observability";
 import type {
   BatchEvaluationDetail,
   CodeBasedUpdate,
@@ -119,6 +124,8 @@ import type {
   RoleScopeWarning,
   CoreEvalClient,
   CreateConfigurationBundleInput,
+  CreateConfigBasedABTestInput,
+  CreateTargetBasedABTestInput,
   CreateDatasetInput,
   CreateOnlineEvalInput,
   CreateOnlineInsightInput,
@@ -165,8 +172,8 @@ import {
   revokeOnlineEvalScope,
   scopePolicyName,
 } from "./onlineEvalExecutionRole";
+import { accountIdFromArn, deleteAbTestRole, provisionAbTestRole } from "./abTestExecutionRole";
 
-const DEFAULT_ENDPOINT_QUALIFIER = "DEFAULT";
 const DEFAULT_INGESTION_WAIT_MS = 180_000;
 const DATASET_EXAMPLES_BATCH_LIMIT = 1000;
 const DATASET_MUTATION_PAYLOAD_LIMIT_BYTES = 5 * 1024 * 1024;
@@ -190,8 +197,17 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 // A hard Evaluate limit: at most 10 trace/span ids per request.
 const EVALUATE_TARGET_BATCH = 10;
 
-// CloudWatch Logs Insights hard ceiling: a query returns at most 100k rows.
-const INSIGHTS_MAX_ROWS = 100_000;
+// Eval's row-ceiling policy for the shared Insights runner: overflowing the
+// CloudWatch hard ceiling means a partial conversation would be scored, so the
+// remedy is eval-specific (narrow the session scope or go through batch).
+const EVAL_INSIGHTS_ROW_LIMIT: InsightsRowLimit = {
+  maxRows: INSIGHTS_MAX_ROWS,
+  buildError: (maxRows) =>
+    new InputValidationError(
+      `Too many spans in scope (>= ${maxRows}). Narrow --session-ids or the time ` +
+        `window, or use 'eval batch-evaluation' for large jobs.`,
+    ),
+};
 
 const DEFAULT_BATCH_INSIGHTS_PAGE_SIZE = 50;
 
@@ -216,6 +232,7 @@ export class EvalClient implements CoreEvalClient {
     // logger for batch-evaluation result-log diagnostics
     private readonly logger: Logger = noopLogger,
     private readonly newSessionId: () => string = randomUUID,
+    private readonly now: () => number = () => Date.now(),
   ) {}
 
   async createEvaluator(
@@ -476,6 +493,147 @@ export class EvalClient implements CoreEvalClient {
       .send(new DeleteABTestCommand({ abTestId: id }));
   }
 
+  private async createABTest(
+    name: string,
+    gateway: string,
+    callerRoleArn: string | undefined,
+    build: (context: {
+      gatewayArn: string;
+      accountId: string;
+      roleArn: string;
+    }) => CreateABTestRequest,
+    options: CoreOptions,
+  ): Promise<CreateABTestResponse> {
+    const control = this.clients.control(toClientConfig(options));
+    const gatewayArn = (await control.send(new GetGatewayCommand({ gatewayIdentifier: gateway })))
+      .gatewayArn!;
+    const accountId = accountIdFromArn(gatewayArn);
+
+    let roleArn = callerRoleArn;
+    let provisionedRoleArn: string | undefined;
+    if (!roleArn) {
+      const provisioned = await provisionAbTestRole(
+        this.clients.iam({ region: options.region }),
+        name,
+        gatewayArn,
+        options.region,
+      );
+      roleArn = provisioned.roleArn;
+      if (provisioned.created) provisionedRoleArn = provisioned.roleArn;
+    }
+
+    const command = new CreateABTestCommand(build({ gatewayArn, accountId, roleArn }));
+    try {
+      return callerRoleArn
+        ? await this.clients.data(toClientConfig(options)).send(command)
+        : await retryWhileRolePropagates(() =>
+            this.clients.data(toClientConfig(options)).send(command),
+          );
+    } catch (error) {
+      if (provisionedRoleArn) {
+        try {
+          await deleteAbTestRole(this.clients.iam({ region: options.region }), provisionedRoleArn);
+        } catch {
+          void 0;
+        }
+      }
+      throw error;
+    }
+  }
+
+  async createConfigBasedABTest(
+    input: CreateConfigBasedABTestInput,
+    options: CoreOptions,
+  ): Promise<CreateABTestResponse> {
+    const treatmentWeight = input.treatmentWeight ?? 50;
+    return this.createABTest(
+      input.name,
+      input.gateway,
+      input.roleArn,
+      ({ gatewayArn, accountId, roleArn }) => {
+        const bundleArn = (id: string) =>
+          `arn:aws:bedrock-agentcore:${options.region}:${accountId}:configuration-bundle/${id}`;
+        return {
+          name: input.name,
+          gatewayArn,
+          variants: [
+            {
+              name: "C",
+              weight: 100 - treatmentWeight,
+              variantConfiguration: {
+                configurationBundle: {
+                  bundleArn: bundleArn(input.control.configBundle),
+                  bundleVersion: input.control.bundleVersion,
+                },
+              },
+            },
+            {
+              name: "T1",
+              weight: treatmentWeight,
+              variantConfiguration: {
+                configurationBundle: {
+                  bundleArn: bundleArn(input.treatment.configBundle),
+                  bundleVersion: input.treatment.bundleVersion,
+                },
+              },
+            },
+          ],
+          evaluationConfig: {
+            onlineEvaluationConfigArn: `arn:aws:bedrock-agentcore:${options.region}:${accountId}:online-evaluation-config/${input.onlineEval}`,
+          },
+          roleArn,
+          gatewayFilter: input.gatewayFilter,
+          enableOnCreate: input.enableOnCreate ?? true,
+          clientToken: randomUUID(),
+        };
+      },
+      options,
+    );
+  }
+
+  async createTargetBasedABTest(
+    input: CreateTargetBasedABTestInput,
+    options: CoreOptions,
+  ): Promise<CreateABTestResponse> {
+    const treatmentWeight = input.treatmentWeight ?? 50;
+    return this.createABTest(
+      input.name,
+      input.gateway,
+      input.roleArn,
+      ({ gatewayArn, accountId, roleArn }) => {
+        const evalArn = (id: string) =>
+          `arn:aws:bedrock-agentcore:${options.region}:${accountId}:online-evaluation-config/${id}`;
+        return {
+          name: input.name,
+          gatewayArn,
+          variants: [
+            {
+              name: "C",
+              weight: 100 - treatmentWeight,
+              variantConfiguration: { target: { name: input.control.gatewayTarget } },
+            },
+            {
+              name: "T1",
+              weight: treatmentWeight,
+              variantConfiguration: { target: { name: input.treatment.gatewayTarget } },
+            },
+          ],
+          evaluationConfig: {
+            perVariantOnlineEvaluationConfig: [
+              { name: "C", onlineEvaluationConfigArn: evalArn(input.control.onlineEval) },
+              { name: "T1", onlineEvaluationConfigArn: evalArn(input.treatment.onlineEval) },
+            ],
+          },
+          roleArn,
+          gatewayFilter: input.gatewayFilter,
+          enableOnCreate: input.enableOnCreate ?? true,
+          clientToken: randomUUID(),
+        };
+      },
+      options,
+    );
+  }
+
   async listBatchInsights(
     nextToken: string | undefined,
     maxResults: number | undefined,
@@ -582,7 +740,7 @@ export class EvalClient implements CoreEvalClient {
     const logGroupName = runtimeLogGroup(runtimeId, qualifier);
     const serviceName = runtimeServiceName(runtimeName, qualifier);
 
-    const endMs = input.window ? +input.window.endTime : Date.now();
+    const endMs = input.window ? +input.window.endTime : this.now();
     const startMs = input.window ? +input.window.startTime : endMs - SEVEN_DAYS_MS;
     const startSec = Math.floor(startMs / 1000);
     const endSec = Math.floor(endMs / 1000);
@@ -593,7 +751,14 @@ export class EvalClient implements CoreEvalClient {
     // Runtime group required (missing = agent has no traces); aws/spans optional now
     // https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability-configure.html#observability-configure-unified-traces
     const [runtimeRows, sharedRows] = await Promise.all([
-      runInsightsQuery(logs, [logGroupName], queryString, startSec, endSec).catch((error) => {
+      runInsightsQuery(
+        logs,
+        [logGroupName],
+        queryString,
+        startSec,
+        endSec,
+        EVAL_INSIGHTS_ROW_LIMIT,
+      ).catch((error) => {
         if (error instanceof ResourceNotFoundException) {
           throw new ResourceNotFoundError(
             `No telemetry found for agent "${input.agent}": its runtime log group ${logGroupName} ` +
@@ -603,7 +768,14 @@ export class EvalClient implements CoreEvalClient {
         }
         throw error;
       }),
-      runInsightsQuery(logs, [SPANS_LOG_GROUP], queryString, startSec, endSec).catch((error) => {
+      runInsightsQuery(
+        logs,
+        [SPANS_LOG_GROUP],
+        queryString,
+        startSec,
+        endSec,
+        EVAL_INSIGHTS_ROW_LIMIT,
+      ).catch((error) => {
         if (error instanceof ResourceNotFoundException) return [];
         throw error;
       }),
@@ -1736,13 +1908,6 @@ function endWithNewline(): Transform {
   });
 }
 
-// runtimeLogGroup mirrors the old CLI's derivation (src/cli/aws/cloudwatch.ts):
-// AgentCore always writes a runtime endpoint's traces to this fixed path, keyed
-// by the runtime *id*.
-function runtimeLogGroup(runtimeId: string, endpoint: string): string {
-  return `/aws/bedrock-agentcore/runtimes/${runtimeId}-${endpoint}`;
-}
-
 // runtimeServiceName derives the CloudWatch trace service name that scopes a
 // CreateOnlineEvaluationConfig data source to one runtime endpoint's sessions:
 // `{runtimeName}.{endpoint}`, keyed by the runtime *name* (verified against
@@ -1805,12 +1970,6 @@ async function agentDataSource(
   };
 }
 
-// sanitizeQueryValue strips single quotes so an id can't break out of the quoted
-// Insights filter literal it is interpolated into (matches the old CLI).
-function sanitizeQueryValue(value: string): string {
-  return value.replace(/'/g, "");
-}
-
 function buildSpanQuery(serviceName: string, sessionIds?: string[], traceId?: string): string {
   let query = `fields @message, attributes.session.id as sessionId, traceId, spanId
      | filter resource.attributes.service.name in ['${sanitizeQueryValue(serviceName)}']`;
@@ -1823,60 +1982,6 @@ function buildSpanQuery(serviceName: string, sessionIds?: string[], traceId?: st
   }
   query += `\n     | sort @timestamp asc\n     | limit ${INSIGHTS_MAX_ROWS}`;
   return query;
-}
-
-// runInsightsQuery starts a CloudWatch Logs Insights query, waits for it to finish,
-// then drains all result pages. GetQueryResults returns <=10k rows per call, so a
-// long session's spans span multiple pages (nextToken); dropping any would score a
-// partial conversation. Fails fast if the ceiling is hit — that belongs in batch.
-async function runInsightsQuery(
-  logs: CloudWatchLogsClient,
-  logGroupNames: string[],
-  queryString: string,
-  startSec: number,
-  endSec: number,
-): Promise<ResultField[][]> {
-  const started = await logs.send(
-    new StartQueryCommand({ logGroupNames, queryString, startTime: startSec, endTime: endSec }),
-  );
-  const queryId = started.queryId;
-
-  // Phase 1: wait for completion. A large scan can take minutes, so the deadline is
-  // generous; each poll costs one cheap GetQueryResults call.
-  let status = "Running";
-  for (let i = 0; i < 300 && status !== "Complete"; i++) {
-    const result = await logs.send(new GetQueryResultsCommand({ queryId }));
-    status = result.status ?? "Unknown";
-    if (status === "Failed" || status === "Cancelled" || status === "Timeout") {
-      throw new CloudWatchQueryError(`CloudWatch Logs Insights query ${status.toLowerCase()}`, {
-        meta: { queryId, status },
-      });
-    }
-    if (status !== "Complete") await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-  if (status !== "Complete") {
-    throw new CloudWatchQueryError("CloudWatch Logs Insights query did not finish in time", {
-      meta: { queryId, status },
-    });
-  }
-
-  // Phase 2: drain pages. Terminates on nextToken; total is bounded by the query's
-  // `| limit INSIGHTS_MAX_ROWS`.
-  const rows: ResultField[][] = [];
-  let nextToken: string | undefined;
-  do {
-    const result = await logs.send(new GetQueryResultsCommand({ queryId, nextToken }));
-    rows.push(...(result.results ?? []));
-    nextToken = result.nextToken;
-  } while (nextToken);
-
-  if (rows.length >= INSIGHTS_MAX_ROWS) {
-    throw new InputValidationError(
-      `Too many spans in scope (>= ${INSIGHTS_MAX_ROWS}). Narrow --session-ids or the time ` +
-        `window, or use 'eval batch-evaluation' for large jobs.`,
-    );
-  }
-  return rows;
 }
 
 // Group parsed @message docs by session, keeping only sessions with >=1 span
@@ -2024,19 +2129,25 @@ function chunk<T>(items: T[], size: number): T[][] {
 // is created. It surfaces as one of two messages depending on which part has not
 // propagated yet.
 const ROLE_NOT_PROPAGATED =
-  /role cannot be assumed|does not have permissions to (create log group|access the specified log groups)/i;
+  /cannot be assumed|unable to assume|does not have permissions to (create log group|access the specified log groups)/i;
 
-// retryWhileRolePropagates retries `send` while the service reports the execution
-// role as unusable, which is how a not-yet-propagated role or policy surfaces.
-// Bounded and short: propagation is normally a few seconds, and a role that is
-// genuinely misconfigured should fail fast rather than hang.
 async function retryWhileRolePropagates<T>(send: () => Promise<T>): Promise<T> {
-  const delaysMs = [1_000, 2_000, 4_000, 8_000];
+  const delaysMs = [2_000, 4_000, 8_000, 15_000];
   for (const delay of delaysMs) {
     try {
       return await send();
     } catch (error) {
-      if (!ROLE_NOT_PROPAGATED.test((error as Error).message)) throw error;
+      const err = error as {
+        name?: string;
+        message?: string;
+        $metadata?: { httpStatusCode?: number };
+      };
+      const retryable =
+        err.name === "AccessDeniedException" ||
+        err.$metadata?.httpStatusCode === 403 ||
+        (err.name === "ValidationException" && /assume|role|trust/i.test(err.message ?? "")) ||
+        ROLE_NOT_PROPAGATED.test(err.message ?? "");
+      if (!retryable) throw error;
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }

@@ -1,0 +1,14 @@
+{
+  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:online-evaluation-config/agentcore_cli_abtest_tb_eval_c-ZjE12UEs99",
+  "onlineEvaluationConfigId": "agentcore_cli_abtest_tb_eval_c-ZjE12UEs99",
+  "createdAt": {
+    "$date": "2026-08-31T19:40:25.319Z"
+  },
+  "status": "CREATING",
+  "executionStatus": "DISABLED",
+  "outputConfig": {
+    "cloudWatchConfig": {
+      "logGroupName": "/aws/bedrock-agentcore/evaluations/results/agentcore_cli_abtest_tb_eval_c-ZjE12UEs99"
+    }
+  }
+}

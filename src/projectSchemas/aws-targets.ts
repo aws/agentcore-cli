@@ -25,6 +25,13 @@ export const AgentCoreRegionSchema = z.enum([
   "us-gov-west-1",
 ]);
 
+/**
+ * The target `project deploy` uses when --target is omitted. Only this target
+ * is ever synthesized from the environment when aws-targets.json lacks it;
+ * named targets must be defined explicitly so a typo cannot invent one.
+ */
+export const DEFAULT_TARGET_NAME = "default";
+
 export const DeploymentTargetNameSchema = z
   .string()
   .min(1)

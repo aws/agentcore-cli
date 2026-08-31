@@ -9,6 +9,7 @@ import type { EnvLocalEntry } from "../../handlers/project/types";
 export const ENV_LOCAL_RELATIVE_PATH = join("agentcore", ".env.local");
 
 const KEY_LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
+const COMMENT_LINE = /^\s*#/;
 const SECRET_FILE_MODE = 0o600;
 
 /**
@@ -75,6 +76,44 @@ export class EnvLocalFile {
     const content = await this.readOrNull();
     if (content === null) return {};
     return parseEnv(content);
+  }
+
+  /**
+   * Deletes entries by key, along with the comment line `insertIfNew` wrote
+   * directly above each one. Keys that are absent (or a file that does not
+   * exist) are reported rather than treated as errors, so callers can say
+   * exactly what changed. Snapshots the prior state for `rollback`, like
+   * `insertIfNew`.
+   */
+  async removeKeys(keys: string[]): Promise<{ removed: string[]; missing: string[] }> {
+    const targets = new Set(keys);
+    const existing = await this.readOrNull();
+    if (existing === null) return { removed: [], missing: [...targets] };
+    await this.enforcePermissions();
+
+    const kept: string[] = [];
+    const removedKeys = new Set<string>();
+    for (const line of existing.split("\n")) {
+      const key = KEY_LINE.exec(line)?.[1];
+      if (key !== undefined && targets.has(key)) {
+        // Drop the entry's own comment line, but never an unrelated line above.
+        const previous = kept[kept.length - 1];
+        if (previous !== undefined && COMMENT_LINE.test(previous)) kept.pop();
+        removedKeys.add(key);
+        continue;
+      }
+      kept.push(line);
+    }
+
+    if (removedKeys.size > 0) {
+      // Preserve the earliest snapshot so rollback undoes this whole operation.
+      if (this.snapshot === undefined) this.snapshot = existing;
+      await atomicWrite(this.path, kept.join("\n"), { mode: SECRET_FILE_MODE });
+    }
+    return {
+      removed: [...targets].filter((key) => removedKeys.has(key)),
+      missing: [...targets].filter((key) => !removedKeys.has(key)),
+    };
   }
 
   /** Restores the file to its pre-write state; a no-op when nothing was written. */

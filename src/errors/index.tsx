@@ -12,6 +12,7 @@ export {
   NetworkingError,
   NotImplementedError,
   ProjectFileExistsError,
+  ProjectStateError,
   ResourceNotFoundError,
   ResultTruncationError,
   RuntimeInvokeResponseError,

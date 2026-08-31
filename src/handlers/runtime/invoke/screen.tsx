@@ -140,20 +140,22 @@ export function RuntimeInvokeScreen(props: ScreenProps) {
   );
 }
 
-type RuntimeInvokeConsoleProps = ScreenProps & {
+export type RuntimeInvokeConsoleProps = ScreenProps & {
   runtimeId: string;
   qualifier: string;
   initialContext?: RuntimeInvokeLaunchContext;
   returnOnEscape?: boolean;
+  onBack?: () => void;
 };
 
-function RuntimeInvokeConsole({
+export function RuntimeInvokeConsole({
   ctx,
   core,
   runtimeId,
   qualifier,
   initialContext,
   returnOnEscape,
+  onBack,
 }: RuntimeInvokeConsoleProps) {
   const opts = coreOptsFromCtx(ctx);
   const navigate = useNavigate();
@@ -307,6 +309,7 @@ function RuntimeInvokeConsole({
       }
       if (key.escape) {
         if (abortRef.current) abortRef.current.abort();
+        else if (onBack) onBack();
         else if (returnOnEscape) navigate(-1);
         else setTargetPicker({ stage: "endpoint", runtimeId: target.runtimeId });
         return;

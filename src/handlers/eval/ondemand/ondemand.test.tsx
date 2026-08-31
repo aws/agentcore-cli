@@ -180,7 +180,99 @@ describe("eval ondemand command hierarchy", () => {
       .find((c) => c.name() === "eval")
       ?.children()
       .find((c) => c.name() === "ondemand");
-    expect(group?.children().map((c) => c.name())).toEqual(["evaluate"]);
+    expect(group?.children().map((c) => c.name())).toEqual(["evaluate", "simulate"]);
+  });
+});
+
+describe("eval ondemand simulate", () => {
+  const BASE = [
+    "eval",
+    "ondemand",
+    "simulate",
+    "--runtime-id",
+    "r-1",
+    "--payload-template",
+    '{"prompt":"{input}"}',
+    "--dataset",
+    "/tmp/ds.jsonl",
+    "--evaluator",
+    "Builtin.Helpfulness",
+  ];
+
+  test.each<[RegExp, string[]]>([
+    [
+      /--runtime-id/,
+      ["--payload-template", "{}", "--dataset", "/tmp/ds.jsonl", "--evaluator", "E"],
+    ],
+    [
+      /--payload-template/,
+      ["--runtime-id", "r-1", "--dataset", "/tmp/ds.jsonl", "--evaluator", "E"],
+    ],
+    [/--dataset/, ["--runtime-id", "r-1", "--payload-template", "{}", "--evaluator", "E"]],
+    [
+      /--evaluator/,
+      ["--runtime-id", "r-1", "--payload-template", "{}", "--dataset", "/tmp/ds.jsonl"],
+    ],
+  ])("rejects when a required flag is missing (%s)", async (expected, args) => {
+    await expect(run(["eval", "ondemand", "simulate", ...args])).rejects.toThrow(expected);
+  });
+
+  test("refuses to grade when nothing was invoked, naming the first failure", async () => {
+    await expect(
+      run(BASE, (c) =>
+        c.eval.setInvokeDatasetResponse({
+          sessions: [],
+          invoked: 0,
+          failed: 2,
+          failures: [
+            { exampleId: "e1", error: "HTTP 500" },
+            { exampleId: "e2", error: "HTTP 500" },
+          ],
+        }),
+      ),
+    ).rejects.toThrow(/no examples could be invoked \(2 failed\).*first error: e1 — HTTP 500/);
+  });
+
+  test("passes --ingestion-wait-ms through to invokeDataset and renders failures", async () => {
+    const { core, stdout } = await run([...BASE, "--ingestion-wait-ms", "0"], (c) =>
+      c.eval.setInvokeDatasetResponse({
+        sessions: [{ exampleId: "ok1", sessionId: "s1" }],
+        invoked: 1,
+        failed: 1,
+        failures: [{ exampleId: "bad", error: "HTTP 500" }],
+      }),
+    );
+    const invoke = core.eval.calls.find((c) => c.method === "invokeDataset");
+    expect(invoke).toBeDefined();
+    expect((invoke!.args[0] as { waitIngestionMs?: number }).waitIngestionMs).toBe(0);
+    const out = JSON.parse(stdout);
+    expect(out.failures).toEqual([{ exampleId: "bad", error: "HTTP 500" }]);
+    expect(out.sessions).toEqual([{ exampleId: "ok1", sessionId: "s1" }]);
+  });
+
+  test("forwards a turn's expectedResponse as a reference input", async () => {
+    const { core } = await run(BASE, (c) =>
+      c.eval.setInvokeDatasetResponse({
+        sessions: [
+          {
+            exampleId: "e1",
+            sessionId: "s1",
+            groundTruth: { turns: [{ input: { prompt: "q" }, expectedResponse: { text: "42" } }] },
+          },
+        ],
+        invoked: 1,
+        failed: 0,
+        failures: [],
+      }),
+    );
+    // expectedResponse is trace-level: correlated to the session's first trace (TRACE.traceIds[0]).
+    const evaluate = core.eval.calls.find((c) => c.method === "evaluate");
+    expect((evaluate!.args[0] as { groundTruth: unknown[] }).groundTruth).toEqual([
+      {
+        context: { spanContext: { sessionId: "s1", traceId: "t1" } },
+        expectedResponse: { text: "42" },
+      },
+    ]);
   });
 });
 

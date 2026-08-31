@@ -1,0 +1,344 @@
+{
+  "queryLanguage": "CWLI",
+  "results": [
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"deployment.environment.name\":\"bedrock-agentcore:default\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"cloud.region\":\"us-west-2\",\"aws.log.stream.names\":\"otel-rt-logs\",\"telemetry.sdk.name\":\"opentelemetry\",\"aws.service.type\":\"gen_ai_agent\",\"telemetry.sdk.language\":\"python\",\"cloud.provider\":\"aws\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"telemetry.sdk.version\":\"1.40.0\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"telemetry.auto.version\":\"0.17.0-aws\"}},\"scope\":{\"name\":\"opentelemetry.instrumentation.urllib3\",\"version\":\"0.61b0\"},\"traceId\":\"6a91fe944cf38d6b2d8c3c6a66e63ad4\",\"spanId\":\"7604363a92848eb2\",\"parentSpanId\":\"ed790aebac4076a8\",\"flags\":256,\"name\":\"PUT\",\"kind\":\"CLIENT\",\"startTimeUnixNano\":1787952793581551046,\"endTimeUnixNano\":1787952793582587769,\"durationNano\":1036723,\"attributes\":{\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"telemetry.extended\":\"true\",\"http.url\":\"http://169.254.169.254/latest/api/token\",\"aws.remote.service\":\"169.254.169.254\",\"aws.local.environment\":\"bedrock-agentcore:default\",\"aws.remote.operation\":\"PUT /latest\",\"http.status_code\":200,\"aws.local.operation\":\"UnmappedOperation\",\"aws.span.kind\":\"CLIENT\",\"PlatformType\":\"AWS::BedrockAgentCore\",\"http.method\":\"PUT\",\"http.response.status_code\":200,\"session.id\":\"00000000-0000-4000-8000-4a4a72800001\"},\"status\":{\"code\":\"UNSET\"}}"
+      },
+      {
+        "field": "sessionId",
+        "value": "00000000-0000-4000-8000-4a4a72800001"
+      },
+      {
+        "field": "traceId",
+        "value": "6a91fe944cf38d6b2d8c3c6a66e63ad4"
+      },
+      {
+        "field": "spanId",
+        "value": "7604363a92848eb2"
+      },
+      {
+        "field": "@ptr",
+        "value": "CpwBCmAKFjY4NTE5NzcwODY4Nzphd3Mvc3BhbnMQABokZTE0NTI5MzgtZjVjZi00OTc1LWE0N2QtYzk3YzMwZmFlY2ZlIg4IoJSR24I0EIekw/uENDjv37W+yTNAyO+wktMzSAASNhoYAgamDtnsAAAAACb26P0ABqkf6bAAAAHCIAEo7o+q0oQ0MJyuqtKENDgPQJrXAUiue1CBTSACEAAYAQ=="
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"deployment.environment.name\":\"bedrock-agentcore:default\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"cloud.region\":\"us-west-2\",\"aws.log.stream.names\":\"otel-rt-logs\",\"telemetry.sdk.name\":\"opentelemetry\",\"aws.service.type\":\"gen_ai_agent\",\"telemetry.sdk.language\":\"python\",\"cloud.provider\":\"aws\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"telemetry.sdk.version\":\"1.40.0\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"telemetry.auto.version\":\"0.17.0-aws\"}},\"scope\":{\"name\":\"opentelemetry.instrumentation.urllib3\",\"version\":\"0.61b0\"},\"traceId\":\"6a91fe944cf38d6b2d8c3c6a66e63ad4\",\"spanId\":\"16323742446ec885\",\"parentSpanId\":\"ed790aebac4076a8\",\"flags\":256,\"name\":\"GET\",\"kind\":\"CLIENT\",\"startTimeUnixNano\":1787952793582988074,\"endTimeUnixNano\":1787952793583576639,\"durationNano\":588565,\"attributes\":{\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"telemetry.extended\":\"true\",\"http.url\":\"http://169.254.169.254/latest/meta-data/iam/security-credentials/\",\"aws.remote.service\":\"169.254.169.254\",\"aws.local.environment\":\"bedrock-agentcore:default\",\"aws.remote.operation\":\"GET /latest\",\"http.status_code\":200,\"aws.local.operation\":\"UnmappedOperation\",\"aws.span.kind\":\"CLIENT\",\"PlatformType\":\"AWS::BedrockAgentCore\",\"http.method\":\"GET\",\"http.response.status_code\":200,\"session.id\":\"00000000-0000-4000-8000-4a4a72800001\"},\"status\":{\"code\":\"UNSET\"}}"
+      },
+      {
+        "field": "sessionId",
+        "value": "00000000-0000-4000-8000-4a4a72800001"
+      },
+      {
+        "field": "traceId",
+        "value": "6a91fe944cf38d6b2d8c3c6a66e63ad4"
+      },
+      {
+        "field": "spanId",
+        "value": "16323742446ec885"
+      },
+      {
+        "field": "@ptr",
+        "value": "CpwBCmAKFjY4NTE5NzcwODY4Nzphd3Mvc3BhbnMQABokZTE0NTI5MzgtZjVjZi00OTc1LWE0N2QtYzk3YzMwZmFlY2ZlIg4IoJSR24I0EIekw/uENDjv37W+yTNAyO+wktMzSAASNhoYAgamDtnsAAAAACb26P0ABqkf6bAAAAHCIAEo7o+q0oQ0MJyuqtKENDgPQJrXAUiue1CBTSACEAEYAQ=="
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"deployment.environment.name\":\"bedrock-agentcore:default\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"cloud.region\":\"us-west-2\",\"aws.log.stream.names\":\"otel-rt-logs\",\"telemetry.sdk.name\":\"opentelemetry\",\"aws.service.type\":\"gen_ai_agent\",\"telemetry.sdk.language\":\"python\",\"cloud.provider\":\"aws\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"telemetry.sdk.version\":\"1.40.0\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"telemetry.auto.version\":\"0.17.0-aws\"}},\"scope\":{\"name\":\"opentelemetry.instrumentation.urllib3\",\"version\":\"0.61b0\"},\"traceId\":\"6a91fe944cf38d6b2d8c3c6a66e63ad4\",\"spanId\":\"55ccdd09778b7c13\",\"parentSpanId\":\"ed790aebac4076a8\",\"flags\":256,\"name\":\"GET\",\"kind\":\"CLIENT\",\"startTimeUnixNano\":1787952793583915675,\"endTimeUnixNano\":1787952793584473407,\"durationNano\":557732,\"attributes\":{\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"telemetry.extended\":\"true\",\"http.url\":\"http://169.254.169.254/latest/meta-data/iam/security-credentials/execution_role\",\"aws.remote.service\":\"169.254.169.254\",\"aws.local.environment\":\"bedrock-agentcore:default\",\"aws.remote.operation\":\"GET /latest\",\"http.status_code\":200,\"aws.local.operation\":\"UnmappedOperation\",\"aws.span.kind\":\"CLIENT\",\"PlatformType\":\"AWS::BedrockAgentCore\",\"http.method\":\"GET\",\"http.response.status_code\":200,\"session.id\":\"00000000-0000-4000-8000-4a4a72800001\"},\"status\":{\"code\":\"UNSET\"}}"
+      },
+      {
+        "field": "sessionId",
+        "value": "00000000-0000-4000-8000-4a4a72800001"
+      },
+      {
+        "field": "traceId",
+        "value": "6a91fe944cf38d6b2d8c3c6a66e63ad4"
+      },
+      {
+        "field": "spanId",
+        "value": "55ccdd09778b7c13"
+      },
+      {
+        "field": "@ptr",
+        "value": "CpwBCmAKFjY4NTE5NzcwODY4Nzphd3Mvc3BhbnMQABokZTE0NTI5MzgtZjVjZi00OTc1LWE0N2QtYzk3YzMwZmFlY2ZlIg4IoJSR24I0EIekw/uENDjv37W+yTNAyO+wktMzSAASNhoYAgamDtnsAAAAACb26P0ABqkf6bAAAAHCIAEo7o+q0oQ0MJyuqtKENDgPQJrXAUiue1CBTSACEAIYAQ=="
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"deployment.environment.name\":\"bedrock-agentcore:default\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"cloud.region\":\"us-west-2\",\"aws.log.stream.names\":\"otel-rt-logs\",\"telemetry.sdk.name\":\"opentelemetry\",\"aws.service.type\":\"gen_ai_agent\",\"telemetry.sdk.language\":\"python\",\"cloud.provider\":\"aws\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"telemetry.sdk.version\":\"1.40.0\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"telemetry.auto.version\":\"0.17.0-aws\"}},\"scope\":{\"name\":\"opentelemetry.instrumentation.httpx\",\"version\":\"0.61b0\"},\"traceId\":\"6a91fe944cf38d6b2d8c3c6a66e63ad4\",\"spanId\":\"516839883f3dccf8\",\"parentSpanId\":\"ed790aebac4076a8\",\"flags\":256,\"name\":\"POST\",\"kind\":\"CLIENT\",\"startTimeUnixNano\":1787952793691038985,\"endTimeUnixNano\":1787952793733308895,\"durationNano\":42269910,\"attributes\":{\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"telemetry.extended\":\"true\",\"http.url\":\"https://bugbashgw1776978672-zsy8cbqwts.gateway.bedrock-agentcore.us-west-2.amazonaws.com/mcp\",\"aws.remote.service\":\"bugbashgw1776978672-zsy8cbqwts.gateway.bedrock-agentcore.us-west-2.amazonaws.com\",\"aws.local.environment\":\"bedrock-agentcore:default\",\"aws.remote.operation\":\"POST /mcp\",\"http.status_code\":200,\"aws.local.operation\":\"UnmappedOperation\",\"aws.span.kind\":\"CLIENT\",\"PlatformType\":\"AWS::BedrockAgentCore\",\"http.method\":\"POST\",\"http.response.status_code\":200,\"session.id\":\"00000000-0000-4000-8000-4a4a72800001\"},\"status\":{\"code\":\"UNSET\"}}"
+      },
+      {
+        "field": "sessionId",
+        "value": "00000000-0000-4000-8000-4a4a72800001"
+      },
+      {
+        "field": "traceId",
+        "value": "6a91fe944cf38d6b2d8c3c6a66e63ad4"
+      },
+      {
+        "field": "spanId",
+        "value": "516839883f3dccf8"
+      },
+      {
+        "field": "@ptr",
+        "value": "CpwBCmAKFjY4NTE5NzcwODY4Nzphd3Mvc3BhbnMQABokZTE0NTI5MzgtZjVjZi00OTc1LWE0N2QtYzk3YzMwZmFlY2ZlIg4IoJSR24I0EIekw/uENDjv37W+yTNAyO+wktMzSAASNhoYAgamDtnsAAAAACb26P0ABqkf6bAAAAHCIAEo7o+q0oQ0MJyuqtKENDgPQJrXAUiue1CBTSACEAMYAQ=="
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"deployment.environment.name\":\"bedrock-agentcore:default\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"cloud.region\":\"us-west-2\",\"aws.log.stream.names\":\"otel-rt-logs\",\"telemetry.sdk.name\":\"opentelemetry\",\"aws.service.type\":\"gen_ai_agent\",\"telemetry.sdk.language\":\"python\",\"cloud.provider\":\"aws\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"telemetry.sdk.version\":\"1.40.0\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"telemetry.auto.version\":\"0.17.0-aws\"}},\"scope\":{\"name\":\"opentelemetry.instrumentation.httpx\",\"version\":\"0.61b0\"},\"traceId\":\"6a91fe944cf38d6b2d8c3c6a66e63ad4\",\"spanId\":\"4403738c398f6c0c\",\"parentSpanId\":\"ed790aebac4076a8\",\"flags\":256,\"name\":\"POST\",\"kind\":\"CLIENT\",\"startTimeUnixNano\":1787952793735879895,\"endTimeUnixNano\":1787952793763063671,\"durationNano\":27183776,\"attributes\":{\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"telemetry.extended\":\"true\",\"http.url\":\"https://bugbashgw1776978672-zsy8cbqwts.gateway.bedrock-agentcore.us-west-2.amazonaws.com/mcp\",\"aws.remote.service\":\"bugbashgw1776978672-zsy8cbqwts.gateway.bedrock-agentcore.us-west-2.amazonaws.com\",\"aws.local.environment\":\"bedrock-agentcore:default\",\"aws.remote.operation\":\"POST /mcp\",\"http.status_code\":202,\"aws.local.operation\":\"UnmappedOperation\",\"aws.span.kind\":\"CLIENT\",\"PlatformType\":\"AWS::BedrockAgentCore\",\"http.method\":\"POST\",\"http.response.status_code\":202,\"session.id\":\"00000000-0000-4000-8000-4a4a72800001\"},\"status\":{\"code\":\"UNSET\"}}"
+      },
+      {
+        "field": "sessionId",
+        "value": "00000000-0000-4000-8000-4a4a72800001"
+      },
+      {
+        "field": "traceId",
+        "value": "6a91fe944cf38d6b2d8c3c6a66e63ad4"
+      },
+      {
+        "field": "spanId",
+        "value": "4403738c398f6c0c"
+      },
+      {
+        "field": "@ptr",
+        "value": "CpwBCmAKFjY4NTE5NzcwODY4Nzphd3Mvc3BhbnMQABokZTE0NTI5MzgtZjVjZi00OTc1LWE0N2QtYzk3YzMwZmFlY2ZlIg4IoJSR24I0EIekw/uENDjv37W+yTNAyO+wktMzSAASNhoYAgamDtnsAAAAACb26P0ABqkf6bAAAAHCIAEo7o+q0oQ0MJyuqtKENDgPQJrXAUiue1CBTSACEAQYAQ=="
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"deployment.environment.name\":\"bedrock-agentcore:default\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"cloud.region\":\"us-west-2\",\"aws.log.stream.names\":\"otel-rt-logs\",\"telemetry.sdk.name\":\"opentelemetry\",\"aws.service.type\":\"gen_ai_agent\",\"telemetry.sdk.language\":\"python\",\"cloud.provider\":\"aws\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"telemetry.sdk.version\":\"1.40.0\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"telemetry.auto.version\":\"0.17.0-aws\"}},\"scope\":{\"name\":\"opentelemetry.instrumentation.httpx\",\"version\":\"0.61b0\"},\"traceId\":\"6a91fe944cf38d6b2d8c3c6a66e63ad4\",\"spanId\":\"2aa50f6e0a584472\",\"parentSpanId\":\"ed790aebac4076a8\",\"flags\":256,\"name\":\"POST\",\"kind\":\"CLIENT\",\"startTimeUnixNano\":1787952793764326730,\"endTimeUnixNano\":1787952793832132293,\"durationNano\":67805563,\"attributes\":{\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"telemetry.extended\":\"true\",\"http.url\":\"https://bugbashgw1776978672-zsy8cbqwts.gateway.bedrock-agentcore.us-west-2.amazonaws.com/mcp\",\"aws.remote.service\":\"bugbashgw1776978672-zsy8cbqwts.gateway.bedrock-agentcore.us-west-2.amazonaws.com\",\"aws.local.environment\":\"bedrock-agentcore:default\",\"aws.remote.operation\":\"POST /mcp\",\"http.status_code\":200,\"aws.local.operation\":\"UnmappedOperation\",\"aws.span.kind\":\"CLIENT\",\"PlatformType\":\"AWS::BedrockAgentCore\",\"http.method\":\"POST\",\"http.response.status_code\":200,\"session.id\":\"00000000-0000-4000-8000-4a4a72800001\"},\"status\":{\"code\":\"UNSET\"}}"
+      },
+      {
+        "field": "sessionId",
+        "value": "00000000-0000-4000-8000-4a4a72800001"
+      },
+      {
+        "field": "traceId",
+        "value": "6a91fe944cf38d6b2d8c3c6a66e63ad4"
+      },
+      {
+        "field": "spanId",
+        "value": "2aa50f6e0a584472"
+      },
+      {
+        "field": "@ptr",
+        "value": "CpwBCmAKFjY4NTE5NzcwODY4Nzphd3Mvc3BhbnMQABokZTE0NTI5MzgtZjVjZi00OTc1LWE0N2QtYzk3YzMwZmFlY2ZlIg4IoJSR24I0EIekw/uENDjv37W+yTNAyO+wktMzSAASNhoYAgamDtnsAAAAACb26P0ABqkf6bAAAAHCIAEo7o+q0oQ0MJyuqtKENDgPQJrXAUiue1CBTSACEAUYAQ=="
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"deployment.environment.name\":\"bedrock-agentcore:default\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"cloud.region\":\"us-west-2\",\"aws.log.stream.names\":\"otel-rt-logs\",\"telemetry.sdk.name\":\"opentelemetry\",\"aws.service.type\":\"gen_ai_agent\",\"telemetry.sdk.language\":\"python\",\"cloud.provider\":\"aws\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"telemetry.sdk.version\":\"1.40.0\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"telemetry.auto.version\":\"0.17.0-aws\"}},\"scope\":{\"name\":\"strands.telemetry.tracer\",\"version\":\"\"},\"traceId\":\"6a91fe944cf38d6b2d8c3c6a66e63ad4\",\"spanId\":\"7b1eeecf45c6e146\",\"parentSpanId\":\"a37ebb08225f5f32\",\"flags\":256,\"name\":\"chat\",\"kind\":\"INTERNAL\",\"startTimeUnixNano\":1787952793835468170,\"endTimeUnixNano\":1787952795780790373,\"durationNano\":1945322203,\"attributes\":{\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"gen_ai.usage.prompt_tokens\":1211,\"gen_ai.usage.output_tokens\":70,\"gen_ai.server.request.duration\":1908,\"gen_ai.usage.total_tokens\":1281,\"gen_ai.usage.completion_tokens\":70,\"aws.genai.span_kind\":\"LLM\",\"gen_ai.event.start_time\":\"2026-08-28T21:33:13.835475+00:00\",\"gen_ai.server.time_to_first_token\":1510,\"aws.local.environment\":\"bedrock-agentcore:default\",\"gen_ai.provider.name\":\"strands-agents\",\"gen_ai.operation.name\":\"chat\",\"gen_ai.event.end_time\":\"2026-08-28T21:33:15.780751+00:00\",\"gen_ai.usage.input_tokens\":1211,\"aws.genai.token_count_total\":1281,\"gen_ai.request.model\":\"global.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"PlatformType\":\"AWS::BedrockAgentCore\",\"session.id\":\"00000000-0000-4000-8000-4a4a72800001\",\"gen_ai.system\":\"strands-agents\"},\"status\":{\"code\":\"OK\"}}"
+      },
+      {
+        "field": "sessionId",
+        "value": "00000000-0000-4000-8000-4a4a72800001"
+      },
+      {
+        "field": "traceId",
+        "value": "6a91fe944cf38d6b2d8c3c6a66e63ad4"
+      },
+      {
+        "field": "spanId",
+        "value": "7b1eeecf45c6e146"
+      },
+      {
+        "field": "@ptr",
+        "value": "CpwBCmAKFjY4NTE5NzcwODY4Nzphd3Mvc3BhbnMQABokZTE0NTI5MzgtZjVjZi00OTc1LWE0N2QtYzk3YzMwZmFlY2ZlIg4IoJSR24I0EIekw/uENDjv37W+yTNAyO+wktMzSAASNhoYAgamDtnsAAAAACb26P0ABqkf6bAAAAHCIAEo7o+q0oQ0MJyuqtKENDgPQJrXAUiue1CBTSACEAcYAQ=="
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"deployment.environment.name\":\"bedrock-agentcore:default\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"cloud.region\":\"us-west-2\",\"aws.log.stream.names\":\"otel-rt-logs\",\"telemetry.sdk.name\":\"opentelemetry\",\"aws.service.type\":\"gen_ai_agent\",\"telemetry.sdk.language\":\"python\",\"cloud.provider\":\"aws\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"telemetry.sdk.version\":\"1.40.0\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"telemetry.auto.version\":\"0.17.0-aws\"}},\"scope\":{\"name\":\"opentelemetry.instrumentation.botocore.bedrock-runtime\",\"version\":\"0.61b0\"},\"traceId\":\"6a91fe944cf38d6b2d8c3c6a66e63ad4\",\"spanId\":\"9432e4327acddbb4\",\"parentSpanId\":\"7b1eeecf45c6e146\",\"flags\":256,\"name\":\"chat global.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"kind\":\"CLIENT\",\"startTimeUnixNano\":1787952793848383168,\"endTimeUnixNano\":1787952795780207477,\"durationNano\":1931824309,\"attributes\":{\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"rpc.service\":\"Bedrock Runtime\",\"aws.remote.resource.identifier\":\"global.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"aws.local.environment\":\"bedrock-agentcore:default\",\"aws.remote.operation\":\"ConverseStream\",\"gen_ai.provider.name\":\"aws.bedrock\",\"server.address\":\"bedrock-runtime.us-west-2.amazonaws.com\",\"aws.request_id\":\"d139b90c-6426-4af8-b100-d99e033a7b14\",\"aws.local.operation\":\"UnmappedOperation\",\"aws.span.kind\":\"CLIENT\",\"aws.auth.region\":\"us-west-2\",\"rpc.method\":\"ConverseStream\",\"gen_ai.response.finish_reasons\":[\"tool_use\"],\"server.port\":443,\"gen_ai.request.model\":\"global.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"http.response.status_code\":200,\"gen_ai.system\":\"aws.bedrock\",\"telemetry.extended\":\"true\",\"gen_ai.usage.output_tokens\":70,\"aws.genai.span_kind\":\"LLM\",\"rpc.system\":\"aws-api\",\"aws.remote.service\":\"AWS::BedrockRuntime\",\"http.status_code\":200,\"aws.region\":\"us-west-2\",\"aws.remote.resource.type\":\"AWS::Bedrock::Model\",\"gen_ai.operation.name\":\"chat\",\"gen_ai.usage.input_tokens\":1211,\"aws.genai.token_count_total\":1281,\"retry_attempts\":0,\"PlatformType\":\"AWS::BedrockAgentCore\",\"aws.auth.account.access_key\":\"ASIAZ7CHXJWH4DWE2LBS\",\"session.id\":\"00000000-0000-4000-8000-4a4a72800001\"},\"status\":{\"code\":\"UNSET\"}}"
+      },
+      {
+        "field": "sessionId",
+        "value": "00000000-0000-4000-8000-4a4a72800001"
+      },
+      {
+        "field": "traceId",
+        "value": "6a91fe944cf38d6b2d8c3c6a66e63ad4"
+      },
+      {
+        "field": "spanId",
+        "value": "9432e4327acddbb4"
+      },
+      {
+        "field": "@ptr",
+        "value": "CpwBCmAKFjY4NTE5NzcwODY4Nzphd3Mvc3BhbnMQABokZTE0NTI5MzgtZjVjZi00OTc1LWE0N2QtYzk3YzMwZmFlY2ZlIg4IoJSR24I0EIekw/uENDjv37W+yTNAyO+wktMzSAASNhoYAgamDtnsAAAAACb26P0ABqkf6bAAAAHCIAEo7o+q0oQ0MJyuqtKENDgPQJrXAUiue1CBTSACEAYYAQ=="
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"deployment.environment.name\":\"bedrock-agentcore:default\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"cloud.region\":\"us-west-2\",\"aws.log.stream.names\":\"otel-rt-logs\",\"telemetry.sdk.name\":\"opentelemetry\",\"aws.service.type\":\"gen_ai_agent\",\"telemetry.sdk.language\":\"python\",\"cloud.provider\":\"aws\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"telemetry.sdk.version\":\"1.40.0\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"telemetry.auto.version\":\"0.17.0-aws\"}},\"scope\":{\"name\":\"strands.telemetry.tracer\",\"version\":\"\"},\"traceId\":\"6a91fe944cf38d6b2d8c3c6a66e63ad4\",\"spanId\":\"4ad640cbd3587ff3\",\"parentSpanId\":\"a37ebb08225f5f32\",\"flags\":256,\"name\":\"execute_tool add_numbers\",\"kind\":\"INTERNAL\",\"startTimeUnixNano\":1787952795781281491,\"endTimeUnixNano\":1787952795781997134,\"durationNano\":715643,\"attributes\":{\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"gen_ai.tool.status\":\"success\",\"gen_ai.tool.call.id\":\"tooluse_3jtUttUiLMVTz1Qqd4hYGz\",\"gen_ai.tool.description\":\"Return the sum of two numbers\",\"gen_ai.tool.json_schema\":\"{\\\"properties\\\": {\\\"a\\\": {\\\"description\\\": \\\"Parameter a\\\", \\\"type\\\": \\\"integer\\\"}, \\\"b\\\": {\\\"description\\\": \\\"Parameter b\\\", \\\"type\\\": \\\"integer\\\"}}, \\\"required\\\": [\\\"a\\\", \\\"b\\\"], \\\"type\\\": \\\"object\\\"}\",\"aws.genai.span_kind\":\"TOOL\",\"gen_ai.event.start_time\":\"2026-08-28T21:33:15.781295+00:00\",\"aws.local.environment\":\"bedrock-agentcore:default\",\"gen_ai.provider.name\":\"strands-agents\",\"gen_ai.operation.name\":\"execute_tool\",\"gen_ai.event.end_time\":\"2026-08-28T21:33:15.781979+00:00\",\"gen_ai.tool.name\":\"add_numbers\",\"PlatformType\":\"AWS::BedrockAgentCore\",\"session.id\":\"00000000-0000-4000-8000-4a4a72800001\",\"gen_ai.system\":\"strands-agents\"},\"status\":{\"code\":\"OK\"}}"
+      },
+      {
+        "field": "sessionId",
+        "value": "00000000-0000-4000-8000-4a4a72800001"
+      },
+      {
+        "field": "traceId",
+        "value": "6a91fe944cf38d6b2d8c3c6a66e63ad4"
+      },
+      {
+        "field": "spanId",
+        "value": "4ad640cbd3587ff3"
+      },
+      {
+        "field": "@ptr",
+        "value": "CpwBCmAKFjY4NTE5NzcwODY4Nzphd3Mvc3BhbnMQABokZTE0NTI5MzgtZjVjZi00OTc1LWE0N2QtYzk3YzMwZmFlY2ZlIg4IoJSR24I0EIekw/uENDjv37W+yTNAyO+wktMzSAASNhoYAgamDtnsAAAAACb26P0ABqkf6bAAAAHCIAEo7o+q0oQ0MJyuqtKENDgPQJrXAUiue1CBTSACEAgYAQ=="
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"deployment.environment.name\":\"bedrock-agentcore:default\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"cloud.region\":\"us-west-2\",\"aws.log.stream.names\":\"otel-rt-logs\",\"telemetry.sdk.name\":\"opentelemetry\",\"aws.service.type\":\"gen_ai_agent\",\"telemetry.sdk.language\":\"python\",\"cloud.provider\":\"aws\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"telemetry.sdk.version\":\"1.40.0\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"telemetry.auto.version\":\"0.17.0-aws\"}},\"scope\":{\"name\":\"strands.telemetry.tracer\",\"version\":\"\"},\"traceId\":\"6a91fe944cf38d6b2d8c3c6a66e63ad4\",\"spanId\":\"a37ebb08225f5f32\",\"parentSpanId\":\"5f3fc94f1decac15\",\"flags\":256,\"name\":\"execute_event_loop_cycle\",\"kind\":\"INTERNAL\",\"startTimeUnixNano\":1787952793835335831,\"endTimeUnixNano\":1787952795782144605,\"durationNano\":1946808774,\"attributes\":{\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"gen_ai.operation.name\":\"execute_event_loop_cycle\",\"gen_ai.event.end_time\":\"2026-08-28T21:33:15.782133+00:00\",\"event_loop.cycle_id\":\"0d22d22c-190f-4c18-bf70-c0d3115cb990\",\"gen_ai.event.start_time\":\"2026-08-28T21:33:13.835347+00:00\",\"PlatformType\":\"AWS::BedrockAgentCore\",\"session.id\":\"00000000-0000-4000-8000-4a4a72800001\",\"gen_ai.system\":\"strands-agents\",\"aws.local.environment\":\"bedrock-agentcore:default\",\"gen_ai.provider.name\":\"strands-agents\"},\"status\":{\"code\":\"OK\"}}"
+      },
+      {
+        "field": "sessionId",
+        "value": "00000000-0000-4000-8000-4a4a72800001"
+      },
+      {
+        "field": "traceId",
+        "value": "6a91fe944cf38d6b2d8c3c6a66e63ad4"
+      },
+      {
+        "field": "spanId",
+        "value": "a37ebb08225f5f32"
+      },
+      {
+        "field": "@ptr",
+        "value": "CpwBCmAKFjY4NTE5NzcwODY4Nzphd3Mvc3BhbnMQABokZTE0NTI5MzgtZjVjZi00OTc1LWE0N2QtYzk3YzMwZmFlY2ZlIg4IoJSR24I0EIekw/uENDjv37W+yTNAyO+wktMzSAASNhoYAgamDtnsAAAAACb26P0ABqkf6bAAAAHCIAEo7o+q0oQ0MJyuqtKENDgPQJrXAUiue1CBTSACEAkYAQ=="
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"deployment.environment.name\":\"bedrock-agentcore:default\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"cloud.region\":\"us-west-2\",\"aws.log.stream.names\":\"otel-rt-logs\",\"telemetry.sdk.name\":\"opentelemetry\",\"aws.service.type\":\"gen_ai_agent\",\"telemetry.sdk.language\":\"python\",\"cloud.provider\":\"aws\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"telemetry.sdk.version\":\"1.40.0\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"telemetry.auto.version\":\"0.17.0-aws\"}},\"scope\":{\"name\":\"opentelemetry.instrumentation.botocore.bedrock-runtime\",\"version\":\"0.61b0\"},\"traceId\":\"6a91fe944cf38d6b2d8c3c6a66e63ad4\",\"spanId\":\"072a6b01f30dcf74\",\"parentSpanId\":\"ad52d36b18057ff1\",\"flags\":256,\"name\":\"chat global.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"kind\":\"CLIENT\",\"startTimeUnixNano\":1787952795783348917,\"endTimeUnixNano\":1787952797467653794,\"durationNano\":1684304877,\"attributes\":{\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"rpc.service\":\"Bedrock Runtime\",\"aws.remote.resource.identifier\":\"global.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"aws.local.environment\":\"bedrock-agentcore:default\",\"aws.remote.operation\":\"ConverseStream\",\"gen_ai.provider.name\":\"aws.bedrock\",\"server.address\":\"bedrock-runtime.us-west-2.amazonaws.com\",\"aws.request_id\":\"f988e74d-ba06-4055-9e7a-17d48cff7413\",\"aws.local.operation\":\"UnmappedOperation\",\"aws.span.kind\":\"CLIENT\",\"aws.auth.region\":\"us-west-2\",\"rpc.method\":\"ConverseStream\",\"gen_ai.response.finish_reasons\":[\"end_turn\"],\"server.port\":443,\"gen_ai.request.model\":\"global.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"http.response.status_code\":200,\"gen_ai.system\":\"aws.bedrock\",\"telemetry.extended\":\"true\",\"gen_ai.usage.output_tokens\":4,\"aws.genai.span_kind\":\"LLM\",\"rpc.system\":\"aws-api\",\"aws.remote.service\":\"AWS::BedrockRuntime\",\"http.status_code\":200,\"aws.region\":\"us-west-2\",\"aws.remote.resource.type\":\"AWS::Bedrock::Model\",\"gen_ai.operation.name\":\"chat\",\"gen_ai.usage.input_tokens\":1295,\"aws.genai.token_count_total\":1299,\"retry_attempts\":0,\"PlatformType\":\"AWS::BedrockAgentCore\",\"aws.auth.account.access_key\":\"ASIAZ7CHXJWH4DWE2LBS\",\"session.id\":\"00000000-0000-4000-8000-4a4a72800001\"},\"status\":{\"code\":\"UNSET\"}}"
+      },
+      {
+        "field": "sessionId",
+        "value": "00000000-0000-4000-8000-4a4a72800001"
+      },
+      {
+        "field": "traceId",
+        "value": "6a91fe944cf38d6b2d8c3c6a66e63ad4"
+      },
+      {
+        "field": "spanId",
+        "value": "072a6b01f30dcf74"
+      },
+      {
+        "field": "@ptr",
+        "value": "CpwBCmAKFjY4NTE5NzcwODY4Nzphd3Mvc3BhbnMQABokZTE0NTI5MzgtZjVjZi00OTc1LWE0N2QtYzk3YzMwZmFlY2ZlIg4IoJSR24I0EIekw/uENDjv37W+yTNAyO+wktMzSAASNhoYAgamDtnsAAAAACb26P0ABqkf6bAAAAHCIAEo7o+q0oQ0MJyuqtKENDgPQJrXAUiue1CBTSACEAoYAQ=="
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"deployment.environment.name\":\"bedrock-agentcore:default\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"cloud.region\":\"us-west-2\",\"aws.log.stream.names\":\"otel-rt-logs\",\"telemetry.sdk.name\":\"opentelemetry\",\"aws.service.type\":\"gen_ai_agent\",\"telemetry.sdk.language\":\"python\",\"cloud.provider\":\"aws\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"telemetry.sdk.version\":\"1.40.0\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"telemetry.auto.version\":\"0.17.0-aws\"}},\"scope\":{\"name\":\"strands.telemetry.tracer\",\"version\":\"\"},\"traceId\":\"6a91fe944cf38d6b2d8c3c6a66e63ad4\",\"spanId\":\"5f3fc94f1decac15\",\"parentSpanId\":\"ed790aebac4076a8\",\"flags\":256,\"name\":\"invoke_agent Strands Agents\",\"kind\":\"INTERNAL\",\"startTimeUnixNano\":1787952793834752450,\"endTimeUnixNano\":1787952797468576817,\"durationNano\":3633824367,\"attributes\":{\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"gen_ai.usage.prompt_tokens\":2506,\"gen_ai.usage.output_tokens\":74,\"gen_ai.usage.cache_write_input_tokens\":0,\"gen_ai.agent.name\":\"Strands Agents\",\"gen_ai.usage.total_tokens\":2580,\"gen_ai.usage.completion_tokens\":74,\"aws.genai.span_kind\":\"AGENT\",\"gen_ai.event.start_time\":\"2026-08-28T21:33:13.834769+00:00\",\"aws.local.environment\":\"bedrock-agentcore:default\",\"gen_ai.provider.name\":\"strands-agents\",\"gen_ai.operation.name\":\"invoke_agent\",\"gen_ai.event.end_time\":\"2026-08-28T21:33:17.468556+00:00\",\"gen_ai.usage.input_tokens\":2506,\"aws.genai.token_count_total\":2580,\"gen_ai.request.model\":\"global.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"gen_ai.usage.cache_read_input_tokens\":0,\"gen_ai.agent.tools\":\"[\\\"add_numbers\\\", \\\"x_amz_bedrock_agentcore_search\\\", \\\"mcpTarget___web_fetch_exa\\\", \\\"mcpTarget___web_search_exa\\\"]\",\"PlatformType\":\"AWS::BedrockAgentCore\",\"session.id\":\"00000000-0000-4000-8000-4a4a72800001\",\"gen_ai.system\":\"strands-agents\"},\"status\":{\"code\":\"OK\"}}"
+      },
+      {
+        "field": "sessionId",
+        "value": "00000000-0000-4000-8000-4a4a72800001"
+      },
+      {
+        "field": "traceId",
+        "value": "6a91fe944cf38d6b2d8c3c6a66e63ad4"
+      },
+      {
+        "field": "spanId",
+        "value": "5f3fc94f1decac15"
+      },
+      {
+        "field": "@ptr",
+        "value": "CpwBCmAKFjY4NTE5NzcwODY4Nzphd3Mvc3BhbnMQABokZTE0NTI5MzgtZjVjZi00OTc1LWE0N2QtYzk3YzMwZmFlY2ZlIg4IoJSR24I0EIekw/uENDjv37W+yTNAyO+wktMzSAASNhoYAgamDtnsAAAAACb26P0ABqkf6bAAAAHCIAEo7o+q0oQ0MJyuqtKENDgPQJrXAUiue1CBTSACEA0YAQ=="
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"deployment.environment.name\":\"bedrock-agentcore:default\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"cloud.region\":\"us-west-2\",\"aws.log.stream.names\":\"otel-rt-logs\",\"telemetry.sdk.name\":\"opentelemetry\",\"aws.service.type\":\"gen_ai_agent\",\"telemetry.sdk.language\":\"python\",\"cloud.provider\":\"aws\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"telemetry.sdk.version\":\"1.40.0\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"telemetry.auto.version\":\"0.17.0-aws\"}},\"scope\":{\"name\":\"opentelemetry.instrumentation.starlette\",\"version\":\"0.61b0\"},\"traceId\":\"6a91fe944cf38d6b2d8c3c6a66e63ad4\",\"spanId\":\"ed790aebac4076a8\",\"parentSpanId\":\"33f5dbcf78a5fa01\",\"flags\":768,\"name\":\"POST /invocations\",\"kind\":\"SERVER\",\"startTimeUnixNano\":1787952793540648784,\"endTimeUnixNano\":1787952797468963069,\"durationNano\":3928314285,\"attributes\":{\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"net.peer.port\":48820,\"telemetry.extended\":\"true\",\"http.target\":\"/invocations\",\"http.flavor\":\"1.1\",\"http.url\":\"http://cell01.us-west-2.prod.arp.kepler-analytics.aws.dev/invocations\",\"net.peer.ip\":\"127.0.0.1\",\"http.host\":\"127.0.0.1:8080\",\"aws.local.environment\":\"bedrock-agentcore:default\",\"http.status_code\":200,\"aws.local.operation\":\"POST /invocations\",\"aws.span.kind\":\"SERVER\",\"http.server_name\":\"cell01.us-west-2.prod.arp.kepler-analytics.aws.dev\",\"net.host.port\":8080,\"http.route\":\"/invocations\",\"PlatformType\":\"AWS::BedrockAgentCore\",\"http.method\":\"POST\",\"http.response.status_code\":200,\"session.id\":\"00000000-0000-4000-8000-4a4a72800001\",\"http.scheme\":\"http\"},\"status\":{\"code\":\"UNSET\"}}"
+      },
+      {
+        "field": "sessionId",
+        "value": "00000000-0000-4000-8000-4a4a72800001"
+      },
+      {
+        "field": "traceId",
+        "value": "6a91fe944cf38d6b2d8c3c6a66e63ad4"
+      },
+      {
+        "field": "spanId",
+        "value": "ed790aebac4076a8"
+      },
+      {
+        "field": "@ptr",
+        "value": "CpwBCmAKFjY4NTE5NzcwODY4Nzphd3Mvc3BhbnMQABokZTE0NTI5MzgtZjVjZi00OTc1LWE0N2QtYzk3YzMwZmFlY2ZlIg4IoJSR24I0EIekw/uENDjv37W+yTNAyO+wktMzSAASNhoYAgamDtnsAAAAACb26P0ABqkf6bAAAAHCIAEo7o+q0oQ0MJyuqtKENDgPQJrXAUiue1CBTSACEA4YAQ=="
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"deployment.environment.name\":\"bedrock-agentcore:default\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"cloud.region\":\"us-west-2\",\"aws.log.stream.names\":\"otel-rt-logs\",\"telemetry.sdk.name\":\"opentelemetry\",\"aws.service.type\":\"gen_ai_agent\",\"telemetry.sdk.language\":\"python\",\"cloud.provider\":\"aws\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"telemetry.sdk.version\":\"1.40.0\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"telemetry.auto.version\":\"0.17.0-aws\"}},\"scope\":{\"name\":\"strands.telemetry.tracer\",\"version\":\"\"},\"traceId\":\"6a91fe944cf38d6b2d8c3c6a66e63ad4\",\"spanId\":\"d7b0a909896809ba\",\"parentSpanId\":\"5f3fc94f1decac15\",\"flags\":256,\"name\":\"execute_event_loop_cycle\",\"kind\":\"INTERNAL\",\"startTimeUnixNano\":1787952795782385331,\"endTimeUnixNano\":1787952797468400669,\"durationNano\":1686015338,\"attributes\":{\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"gen_ai.operation.name\":\"execute_event_loop_cycle\",\"gen_ai.event.end_time\":\"2026-08-28T21:33:17.468386+00:00\",\"event_loop.cycle_id\":\"5d873f75-9a9e-4e1a-b494-8e7857bbf933\",\"gen_ai.event.start_time\":\"2026-08-28T21:33:15.782395+00:00\",\"event_loop.parent_cycle_id\":\"0d22d22c-190f-4c18-bf70-c0d3115cb990\",\"PlatformType\":\"AWS::BedrockAgentCore\",\"session.id\":\"00000000-0000-4000-8000-4a4a72800001\",\"gen_ai.system\":\"strands-agents\",\"aws.local.environment\":\"bedrock-agentcore:default\",\"gen_ai.provider.name\":\"strands-agents\"},\"status\":{\"code\":\"OK\"}}"
+      },
+      {
+        "field": "sessionId",
+        "value": "00000000-0000-4000-8000-4a4a72800001"
+      },
+      {
+        "field": "traceId",
+        "value": "6a91fe944cf38d6b2d8c3c6a66e63ad4"
+      },
+      {
+        "field": "spanId",
+        "value": "d7b0a909896809ba"
+      },
+      {
+        "field": "@ptr",
+        "value": "CpwBCmAKFjY4NTE5NzcwODY4Nzphd3Mvc3BhbnMQABokZTE0NTI5MzgtZjVjZi00OTc1LWE0N2QtYzk3YzMwZmFlY2ZlIg4IoJSR24I0EIekw/uENDjv37W+yTNAyO+wktMzSAASNhoYAgamDtnsAAAAACb26P0ABqkf6bAAAAHCIAEo7o+q0oQ0MJyuqtKENDgPQJrXAUiue1CBTSACEAwYAQ=="
+      }
+    ],
+    [
+      {
+        "field": "@message",
+        "value": "{\"resource\":{\"attributes\":{\"deployment.environment.name\":\"bedrock-agentcore:default\",\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"service.name\":\"asdf_MyAgent.DEFAULT\",\"cloud.region\":\"us-west-2\",\"aws.log.stream.names\":\"otel-rt-logs\",\"telemetry.sdk.name\":\"opentelemetry\",\"aws.service.type\":\"gen_ai_agent\",\"telemetry.sdk.language\":\"python\",\"cloud.provider\":\"aws\",\"cloud.resource_id\":\"arn:aws:bedrock-agentcore:us-west-2:685197708687:runtime/asdf_MyAgent-3s5axvBC6Q/runtime-endpoint/DEFAULT:DEFAULT\",\"aws.log.group.names\":\"/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT\",\"telemetry.sdk.version\":\"1.40.0\",\"cloud.platform\":\"aws_bedrock_agentcore\",\"telemetry.auto.version\":\"0.17.0-aws\"}},\"scope\":{\"name\":\"strands.telemetry.tracer\",\"version\":\"\"},\"traceId\":\"6a91fe944cf38d6b2d8c3c6a66e63ad4\",\"spanId\":\"ad52d36b18057ff1\",\"parentSpanId\":\"d7b0a909896809ba\",\"flags\":256,\"name\":\"chat\",\"kind\":\"INTERNAL\",\"startTimeUnixNano\":1787952795782789184,\"endTimeUnixNano\":1787952797468097953,\"durationNano\":1685308769,\"attributes\":{\"aws.local.service\":\"asdf_MyAgent.DEFAULT\",\"gen_ai.usage.prompt_tokens\":1295,\"gen_ai.usage.output_tokens\":4,\"gen_ai.server.request.duration\":1679,\"gen_ai.usage.total_tokens\":1299,\"gen_ai.usage.completion_tokens\":4,\"aws.genai.span_kind\":\"LLM\",\"gen_ai.event.start_time\":\"2026-08-28T21:33:15.782800+00:00\",\"gen_ai.server.time_to_first_token\":1490,\"aws.local.environment\":\"bedrock-agentcore:default\",\"gen_ai.provider.name\":\"strands-agents\",\"gen_ai.operation.name\":\"chat\",\"gen_ai.event.end_time\":\"2026-08-28T21:33:17.468062+00:00\",\"gen_ai.usage.input_tokens\":1295,\"aws.genai.token_count_total\":1299,\"gen_ai.request.model\":\"global.anthropic.claude-sonnet-4-5-20250929-v1:0\",\"PlatformType\":\"AWS::BedrockAgentCore\",\"session.id\":\"00000000-0000-4000-8000-4a4a72800001\",\"gen_ai.system\":\"strands-agents\"},\"status\":{\"code\":\"OK\"}}"
+      },
+      {
+        "field": "sessionId",
+        "value": "00000000-0000-4000-8000-4a4a72800001"
+      },
+      {
+        "field": "traceId",
+        "value": "6a91fe944cf38d6b2d8c3c6a66e63ad4"
+      },
+      {
+        "field": "spanId",
+        "value": "ad52d36b18057ff1"
+      },
+      {
+        "field": "@ptr",
+        "value": "CpwBCmAKFjY4NTE5NzcwODY4Nzphd3Mvc3BhbnMQABokZTE0NTI5MzgtZjVjZi00OTc1LWE0N2QtYzk3YzMwZmFlY2ZlIg4IoJSR24I0EIekw/uENDjv37W+yTNAyO+wktMzSAASNhoYAgamDtnsAAAAACb26P0ABqkf6bAAAAHCIAEo7o+q0oQ0MJyuqtKENDgPQJrXAUiue1CBTSACEAsYAQ=="
+      }
+    ]
+  ],
+  "statistics": {
+    "recordsMatched": 15,
+    "recordsScanned": 30,
+    "estimatedRecordsSkipped": 43,
+    "bytesScanned": 55094,
+    "estimatedBytesSkipped": 78544,
+    "logGroupsScanned": 1
+  },
+  "status": "Complete"
+}

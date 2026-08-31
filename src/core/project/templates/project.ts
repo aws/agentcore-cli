@@ -1,7 +1,10 @@
 import { FsTreeNode } from "./fsTree";
 import type { AssetSource } from "../source";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
-import type { RuntimeResourceConfig } from "../../../handlers/project/add/runtime/types";
+import type {
+  ImportBedrockAgentInput,
+  RuntimeResourceConfig,
+} from "../../../handlers/project/add/runtime/types";
 import { InputValidationError } from "../../../errors/errors";
 import { getRuntimeTemplateResolver } from "./runtime";
 import type { SpecEntries, Template, TemplateRenderer } from "./types";
@@ -14,13 +17,14 @@ type CreateProjectConfig = {
 export async function createProjectTree(
   config: CreateProjectConfig,
   input: { projectName: string },
-  options?: { runtime?: ScaffoldRuntimeInput },
+  options?: { runtime?: ScaffoldRuntimeInput; importBedrockAgent?: ImportBedrockAgentInput },
 ): Promise<FsTreeNode> {
   const templates: Template[] = [];
   if (options?.runtime) {
     const runtimeConfig: RuntimeResourceConfig = {
       name: options.runtime.runtimeName,
       scaffoldRuntimeInput: options.runtime,
+      importBedrockAgent: options.importBedrockAgent,
     };
 
     const resolver = getRuntimeTemplateResolver(config, runtimeConfig);

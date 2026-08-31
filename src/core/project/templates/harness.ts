@@ -12,9 +12,7 @@ const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 export function getHarnessTemplateResolver(): TemplateResolver<z.input<typeof HarnessSpecSchema>> {
   return {
     async resolve(spec) {
-      if (spec.dockerfile && !existsSync(spec.dockerfile)) {
-        throw new InputValidationError(`dockerfile not found: '${spec.dockerfile}'`);
-      }
+      validateHarnessTemplateSource(spec);
 
       // strip system prompt from harness.json to keep file as source of truth. otherwise harness.json system prompt overrides.
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -41,6 +39,12 @@ export function getHarnessTemplateResolver(): TemplateResolver<z.input<typeof Ha
       };
     },
   };
+}
+
+export function validateHarnessTemplateSource(spec: z.input<typeof HarnessSpecSchema>): void {
+  if (spec.dockerfile && !existsSync(spec.dockerfile)) {
+    throw new InputValidationError(`dockerfile not found: '${spec.dockerfile}'`);
+  }
 }
 
 function parseHarnessSpec(spec: z.input<typeof HarnessSpecSchema>) {

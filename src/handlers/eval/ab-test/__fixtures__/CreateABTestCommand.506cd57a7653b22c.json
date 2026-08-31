@@ -1,0 +1,6 @@
+{
+  "$error": {
+    "name": "ValidationException",
+    "message": "Unable to assume the provided IAM role. Verify the role exists and its trust policy allows bedrock-agentcore.amazonaws.com to assume it."
+  }
+}

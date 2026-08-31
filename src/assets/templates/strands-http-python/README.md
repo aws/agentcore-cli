@@ -38,3 +38,9 @@ Command Prompt, or `.\.venv\Scripts\activate.ps1` in Windows PowerShell.
 # Deployment
 
 After providing credentials, `agentcore project deploy` will deploy your project into Amazon Bedrock AgentCore.
+
+Invoke the deployed Runtime with its native payload:
+
+```bash
+agentcore project invoke runtime --payload '{"prompt":"Hello!"}'
+```

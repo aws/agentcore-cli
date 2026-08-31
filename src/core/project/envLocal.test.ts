@@ -108,3 +108,71 @@ test("read parses back the entries insertIfNew wrote", async () => {
 
   expect(await file.read()).toEqual({ SECRET: "s k" });
 });
+
+test("removeKeys deletes an entry and its comment while leaving neighbors", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+  await file.insertIfNew([
+    { key: "KEEP", value: "1", comment: "kept entry" },
+    { key: "DROP", value: "2", comment: "dropped entry" },
+  ]);
+
+  const result = await file.removeKeys(["DROP"]);
+
+  expect(result).toEqual({ removed: ["DROP"], missing: [] });
+  expect(await Bun.file(file.path).text()).toBe("# kept entry\nKEEP='1'\n");
+});
+
+test("removeKeys reports keys that are not present without rewriting the file", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+  await Bun.write(file.path, "USER_MANAGED=1\n");
+
+  const result = await file.removeKeys(["ABSENT"]);
+
+  expect(result).toEqual({ removed: [], missing: ["ABSENT"] });
+  expect(await Bun.file(file.path).text()).toBe("USER_MANAGED=1\n");
+  await file.rollback(); // nothing was written, so nothing to restore
+  expect(await Bun.file(file.path).text()).toBe("USER_MANAGED=1\n");
+});
+
+test("removeKeys on a missing file reports every key as missing", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+
+  expect(await file.removeKeys(["A", "B"])).toEqual({ removed: [], missing: ["A", "B"] });
+  expect(existsSync(file.path)).toBe(false);
+});
+
+test("removeKeys never deletes a non-comment line above the entry", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+  await Bun.write(file.path, "USER_MANAGED=1\nDROP=2\n");
+
+  await file.removeKeys(["DROP"]);
+
+  expect(await Bun.file(file.path).text()).toBe("USER_MANAGED=1\n");
+});
+
+test("rollback restores the content removeKeys deleted", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+  await Bun.write(file.path, "# api key\nSECRET='v'\nOTHER=1\n");
+
+  await file.removeKeys(["SECRET"]);
+  expect(await Bun.file(file.path).text()).toBe("OTHER=1\n");
+
+  await file.rollback();
+  expect(await Bun.file(file.path).text()).toBe("# api key\nSECRET='v'\nOTHER=1\n");
+});
+
+testPosix("removeKeys keeps owner-only permissions on the rewritten file", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+  await Bun.write(file.path, "# c\nDROP='v'\nKEEP=1\n");
+  await chmod(file.path, 0o644);
+
+  await file.removeKeys(["DROP"]);
+
+  expect((await stat(file.path)).mode & 0o777).toBe(0o600);
+});

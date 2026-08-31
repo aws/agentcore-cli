@@ -1,0 +1,72 @@
+{
+  "evaluatorArn": "arn:aws:bedrock-agentcore:::evaluator/Builtin.Helpfulness",
+  "evaluatorId": "Builtin.Helpfulness",
+  "evaluatorName": "Builtin.Helpfulness",
+  "evaluatorConfig": {
+    "llmAsAJudge": {
+      "ratingScale": {
+        "numerical": [
+          {
+            "value": {
+              "string": "0.0",
+              "type": "bigDecimal"
+            },
+            "label": "Not helpful at all"
+          },
+          {
+            "value": {
+              "string": "1.0",
+              "type": "bigDecimal"
+            },
+            "label": "Very unhelpful"
+          },
+          {
+            "value": {
+              "string": "2.0",
+              "type": "bigDecimal"
+            },
+            "label": "Somewhat unhelpful"
+          },
+          {
+            "value": {
+              "string": "3.0",
+              "type": "bigDecimal"
+            },
+            "label": "Neutral/Mixed"
+          },
+          {
+            "value": {
+              "string": "4.0",
+              "type": "bigDecimal"
+            },
+            "label": "Somewhat helpful"
+          },
+          {
+            "value": {
+              "string": "5.0",
+              "type": "bigDecimal"
+            },
+            "label": "Very helpful"
+          },
+          {
+            "value": {
+              "string": "6.0",
+              "type": "bigDecimal"
+            },
+            "label": "Above and beyond"
+          }
+        ]
+      }
+    }
+  },
+  "level": "TRACE",
+  "status": "ACTIVE",
+  "createdAt": {
+    "$date": "2024-10-22T00:00:00.000Z"
+  },
+  "updatedAt": {
+    "$date": "2024-10-22T00:00:00.000Z"
+  },
+  "description": "Response Quality Metric. Evaluates from user's perspective how useful and valuable the agent's response is",
+  "lockedForModification": true
+}

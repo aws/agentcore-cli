@@ -30,6 +30,8 @@ import type {
   UpdateOnlineEvaluationConfigResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
+  CreateABTestResponse,
+  GatewayFilter,
   GetABTestResponse,
   ListABTestsResponse,
   ABTestExecutionStatus,
@@ -231,6 +233,33 @@ export type RoleScopeWarning = {
   logGroupNames: string[];
 };
 
+export type BundleRef = { configBundle: string; bundleVersion: string };
+
+export type CreateConfigBasedABTestInput = {
+  name: string;
+  gateway: string;
+  control: BundleRef;
+  treatment: BundleRef;
+  onlineEval: string;
+  treatmentWeight?: number;
+  gatewayFilter?: GatewayFilter;
+  roleArn?: string;
+  enableOnCreate?: boolean;
+};
+
+export type TargetVariantRef = { gatewayTarget: string; onlineEval: string };
+
+export type CreateTargetBasedABTestInput = {
+  name: string;
+  gateway: string;
+  control: TargetVariantRef;
+  treatment: TargetVariantRef;
+  treatmentWeight?: number;
+  gatewayFilter?: GatewayFilter;
+  roleArn?: string;
+  enableOnCreate?: boolean;
+};
+
 export type CreateDatasetInput = CreateDatasetRequest;
 export type StartRecommendationInput = {
   name: string;
@@ -427,6 +456,14 @@ export interface CoreEvalClient {
     options: CoreOptions,
   ): Promise<UpdateABTestResponse>;
   deleteABTest(id: string, options: CoreOptions): Promise<DeleteABTestResponse>;
+  createConfigBasedABTest(
+    input: CreateConfigBasedABTestInput,
+    options: CoreOptions,
+  ): Promise<CreateABTestResponse>;
+  createTargetBasedABTest(
+    input: CreateTargetBasedABTestInput,
+    options: CoreOptions,
+  ): Promise<CreateABTestResponse>;
   // startBatchEvaluation submits an async, service-side evaluation over sessions
   // the service gathers from the resolved data source. Returns the durable job id
   // + RUNNING status; poll with getBatchEvaluation.

@@ -10,7 +10,8 @@ It gives you two ways to work, from the same binary:
   JSON (`--json`), so it can be used by codeing agents and can drop cleanly into
   scripts, CI, and automation.
 - **An interactive TUI** — bare Harness, Runtime, Memory, Identity, and Gateway
-  branches and leaves open their corresponding menus and selection flows.
+  branches and leaves open their corresponding menus and selection flows, and a
+  bare `project create` opens a guided create wizard.
 
 ```bash
 agentcore                      # launch the interactive TUI
@@ -27,7 +28,9 @@ responses. `agentcore` wraps all of that behind one ergonomic tool.
 ## Command surface
 
 Commands with operation flags run headlessly. Bare Harness, Runtime, Memory,
-Identity, and Gateway branches and leaves open their interactive flows.
+Identity, and Gateway branches and leaves open their interactive flows, as does
+a bare `project create` in a terminal (any flag, `--json`, or a non-TTY stays
+headless).
 
 ```
 agentcore                          # interactive TUI
@@ -65,6 +68,10 @@ agentcore                          # interactive TUI
 │   ├── get                        # fetch a Runtime by id
 │   ├── list                       # list Runtimes (server-side paginated)
 │   ├── invoke                     # invoke a Runtime headlessly or in a persistent console
+│   ├── logs                       # follow a Runtime's logs live, or search a time window
+│   ├── traces
+│   │   ├── list                   # list a Runtime's recent traces
+│   │   └── get                    # download a trace's log records to a JSON file
 │   ├── version
 │   │   ├── get                    # get a specific Runtime version
 │   │   └── list                   # list a Runtime's versions
@@ -104,8 +111,40 @@ agentcore                          # interactive TUI
 │       ├── get                    # get an evaluator by id (type-agnostic)
 │       ├── list                   # list evaluators (server-side paginated)
 │       └── delete                 # delete an evaluator by id
+├── project                        # manage an AgentCore project (scaffold → deploy)
+│   ├── create                     # create a project: a managed harness by default,
+│   │                              #   or scaffolded runtime code via --template/--framework;
+│   │                              #   bare `project create` opens an interactive wizard
+│   ├── add                        # add a resource to the project (runtime, harness, memory, …)
+│   ├── export
+│   │   └── harness                # convert a harness into an editable Strands runtime agent
+│   ├── remove                     # remove a resource from the project spec (spec-level;
+│   │                              #   code under app/ is kept). Resource types: harness,
+│   │                              #   runtime, credential, config-bundle, online-eval,
+│   │                              #   online-insight, memory, gateway, gateway-target,
+│   │                              #   gateway-connector, policy-engine, policy,
+│   │                              #   payment-manager, payment-connector — or `all`, which
+│   │                              #   empties every resource collection (y/N prompt; --yes
+│   │                              #   skips it for non-interactive use)
+│   ├── dev                        # run the project locally
+│   ├── deploy                     # deploy to AWS (auto-provisions the default target)
+│   ├── invoke                     # invoke a deployed project resource
+│   │   ├── runtime                # use the existing Runtime invoke experience
+│   │   └── harness                # use the existing Harness invoke experience
+│   ├── status                     # inspect deployed project resources
+│   └── build                      # synthesize the project's CloudFormation templates
 └── config                         # read/write global config values
 ```
+
+`project export harness` "ejects" a harness to code you own: it renders a
+Python Strands agent under `app/<target-agent-name>/` mapping the harness spec
+(model, system prompt, tools, skills, memory, execution limits), registers the
+new runtime in `agentcore.json` (the harness entry stays), and writes an
+`EXPORT_NOTES.md` in the agent directory listing anything that could not be
+mapped mechanically. Pass `--name <harness>` for an in-project harness or
+`--arn <harnessArn>` to fetch a deployed one (the fetch uses the region
+embedded in the ARN); `--target-agent-name` overrides the default
+`<harnessName>Agent`, and `--build CodeZip|Container` overrides the build type.
 
 Global flags (declared at the root, available on every command):
 
@@ -116,7 +155,50 @@ Global flags (declared at the root, available on every command):
 | `--debug`        | Debug logging.                                                       |
 | `--endpoint-url` | Override the service endpoint URL (e.g. for testing against a stub). |
 
+### Invoke a project resource
+
+Run `agentcore project invoke` from inside a project to choose a deployed
+Runtime or Harness interactively. Headless invocation keeps each resource's
+existing input contract:
+
+```bash
+agentcore project invoke runtime \
+  --name checkout \
+  --payload '{"prompt":"Check order 123."}' \
+  --content-type application/json
+
+agentcore project invoke harness \
+  --name support \
+  --prompt "Help with my account."
+```
+
+Use `--target` to select a deployment target. When a project declares exactly
+one resource of the requested type, `--name` may be omitted.
+
 ### Examples
+
+```bash
+# Create a project. The default is a harness project: a managed agent
+# configured by spec, no model-loop code to maintain. --defaults says so
+# explicitly; harness flags (--model-id, --max-iterations, --timeout, …)
+# tune it.
+agentcore project create --name MyAssistant
+cd MyAssistant && agentcore project deploy
+# … or run `agentcore project create` bare in a terminal for the guided
+# wizard (name → harness or template → confirm), which drives the same
+# creation path.
+agentcore harness invoke --id <id from the deploy outputs> --prompt "hello"
+
+# Scaffold runtime code instead (pass a template or framework flags).
+agentcore project create --name MyAgent --template strands-python
+
+# Wrap an existing Amazon Bedrock Agent as a runtime: a generated proxy
+# forwards prompts to the agent, so it deploys and invokes like any other
+# runtime. --region names the Bedrock Agent's region. Also available as
+# `project add runtime --type import` inside a project.
+agentcore project create --name MyProxy --type import \
+  --agent-id A1B2C3D4E5 --agent-alias-id TSTALIASID --region us-east-1
+```
 
 ```bash
 # Create a harness; a default execution role is created for you.
@@ -147,6 +229,18 @@ agentcore runtime version get --id <runtimeId> --version <version>
 agentcore runtime version list --id <runtimeId> --max-results 20
 agentcore runtime endpoint get --id <runtimeId> --qualifier DEFAULT
 agentcore runtime endpoint list --id <runtimeId> --max-results 20
+
+# Follow a Runtime's logs live (Ctrl+C to stop); inside a project --id is optional
+agentcore runtime logs --id <runtimeId>
+agentcore runtime logs --id <runtimeId> --level error --query "database"
+
+# Search a past window instead (--since/--until switch to search mode)
+agentcore runtime logs --id <runtimeId> --since 1h --limit 100
+agentcore runtime logs --id <runtimeId> --since 2026-08-30T12:00:00Z --until now --json
+
+# List recent traces (they take 2-3 minutes to appear), then download one
+agentcore runtime traces list --id <runtimeId> --since 30m
+agentcore runtime traces get <traceId> --id <runtimeId> --output trace.json
 
 # Inspect AgentCore Memories without project configuration or deployment
 agentcore memory get --id <memoryId>
@@ -208,6 +302,13 @@ agentcore eval evaluator code-based create \
 agentcore eval evaluator get --id <evaluatorId> --json
 agentcore eval evaluator list --max-results 20 --json
 agentcore eval evaluator delete --id <evaluatorId> --json
+
+# Remove resources from a project's spec (run inside the project)
+agentcore project remove memory --name recall
+agentcore project remove credential --name svc-key   # also deletes its .env.local entries
+agentcore project remove gateway-target --gateway tools --name search
+agentcore project remove all                         # y/N prompt; empties every collection
+agentcore project remove all --yes                   # non-interactive
 ```
 
 Source-aware values: any field flag documented as such accepts the value inline,

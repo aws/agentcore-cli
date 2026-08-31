@@ -35,13 +35,20 @@ export class CodeZipDevRunner implements DevRunner {
     resolvePathWithinProject(input.projectRoot, directory, "runtime code directory");
 
     const [entrypoint] = input.runtime.entrypoint.split(":");
-    const entrypointPath = resolve(directory, entrypoint!);
+    // the spec stores `.js` to be compatible with deploy, but dev uses `tsx watch` on the source code.
+    // therefore we take the `.ts` version of the entrypoint if it exists for dev, and fallback to the
+    // `.js` in case a project has a pure js entrypoint.
+    const devEntrypoint =
+      entrypoint!.endsWith(".js") && isFile(resolve(directory, entrypoint!.replace(/\.js$/, ".ts")))
+        ? entrypoint!.replace(/\.js$/, ".ts")
+        : entrypoint!;
+    const entrypointPath = resolve(directory, devEntrypoint);
     if (!isFile(entrypointPath)) {
       throw new InputValidationError(`runtime entrypoint not found: ${entrypointPath}`);
     }
     resolvePathWithinProject(input.projectRoot, entrypointPath, "runtime entrypoint");
 
-    if (!entrypoint!.endsWith(".py") && !existsSync(join(directory, "node_modules"))) {
+    if (!devEntrypoint.endsWith(".py") && !existsSync(join(directory, "node_modules"))) {
       yield { type: "status", message: "Installing Node dependencies with npm" };
       yield* this.streamProcess(["npm", "install"], {
         cwd: directory,
@@ -51,8 +58,8 @@ export class CodeZipDevRunner implements DevRunner {
     }
 
     yield { type: "status", message: "Starting development server" };
-    const serverProcess = commandForRuntime(entrypoint!, directory, input);
-    if (entrypoint!.endsWith(".py") && input.env?.OTEL_EXPORTER_OTLP_ENDPOINT) {
+    const serverProcess = commandForRuntime(devEntrypoint, directory, input);
+    if (devEntrypoint.endsWith(".py") && input.env?.OTEL_EXPORTER_OTLP_ENDPOINT) {
       const sitecustomizeDir = await this.findOtelSitecustomizeDir(directory, input.signal);
       if (sitecustomizeDir) {
         const existing = serverProcess.options.env?.PYTHONPATH;

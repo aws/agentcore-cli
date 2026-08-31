@@ -40,7 +40,15 @@ export function createGatewayProjectTestHarness(directoryPrefix: string) {
     const directory = await mkdtemp(join(tmpdir(), `agentcore-${directoryPrefix}-`));
     tempDirectories.push(directory);
     process.chdir(directory);
-    await run(["create", "--name", name, "--skip-install", "--skip-git"]);
+    await run([
+      "create",
+      "--name",
+      name,
+      "--template",
+      "hello-world-python",
+      "--skip-install",
+      "--skip-git",
+    ]);
     const projectRoot = join(directory, name);
     process.chdir(projectRoot);
     return projectRoot;

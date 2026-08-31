@@ -1,4 +1,6 @@
 import { HarnessSpecSchema } from "../../projectSchemas/harness";
+import type { BuildType } from "../../projectSchemas/runtime";
+import type { ExportNote } from "../../core/project/templates/export";
 import type { CredentialSchema } from "../../projectSchemas/credential";
 import type { PaymentConnectorSchema, PaymentManagerSchema } from "../../projectSchemas/payment";
 import type { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
@@ -6,12 +8,13 @@ import { MemorySchema } from "../../projectSchemas/memory";
 import type { EvaluatorSchema } from "../../projectSchemas/evaluator";
 import type { ProjectSpecSchema } from "../../projectSchemas/project";
 import z from "zod";
-import type { RuntimeResourceConfig } from "./add/runtime/types";
+import type { ImportBedrockAgentInput, RuntimeResourceConfig } from "./add/runtime/types";
 import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
-import { AgentNameSchema, BuildTypeSchema, EntrypointSchema } from "../../projectSchemas/runtime";
+import { AgentNameSchema, BuildTypeSchema } from "../../projectSchemas/runtime";
 import { RuntimeVersionSchema } from "../../projectSchemas/constants";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import type { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
+import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
 
 type CreateProjectInputBase = {
   /** The name of the project; also the directory it is scaffolded into. */
@@ -27,12 +30,11 @@ export const ScaffoldRuntimeInputSchema = z
   .object({
     runtimeName: AgentNameSchema,
     build: BuildTypeSchema,
-    language: z.enum(["Python"]),
+    language: z.enum(["Python", "TypeScript"]),
     framework: z.enum(["strands", "none"]),
     modelProvider: z.enum(["Bedrock"]),
     apiKey: z.string().min(1).optional(),
     memory: MemorySchema.optional(),
-    entrypoint: EntrypointSchema,
     runtimeVersion: RuntimeVersionSchema.optional(),
   })
   .refine(({ modelProvider, apiKey }) => !(modelProvider === "Bedrock" && apiKey !== undefined), {
@@ -58,10 +60,25 @@ export const ScaffoldRuntimeInputSchema = z
 
 export type ScaffoldRuntimeInput = z.infer<typeof ScaffoldRuntimeInputSchema>;
 
-export type CreateProjectInput = CreateProjectInputBase & {
-  /** The resolved template parameters. The handler maps --template to these before calling the manager. */
-  scaffoldRuntimeInput: ScaffoldRuntimeInput;
-};
+/** Set of arguments needed to create a project around a harness. */
+export type ScaffoldHarnessInput = z.input<typeof HarnessSpecSchema>;
+
+export type CreateProjectInput = CreateProjectInputBase &
+  (
+    | {
+        /** The resolved template parameters. The handler maps --template to these before calling the manager. */
+        scaffoldRuntimeInput: ScaffoldRuntimeInput;
+        /** Present when the runtime proxies an imported Bedrock Agent. */
+        importBedrockAgent?: ImportBedrockAgentInput;
+        scaffoldHarnessInput?: undefined;
+      }
+    | {
+        /** The harness the created project declares (the default create path). */
+        scaffoldHarnessInput: ScaffoldHarnessInput;
+        scaffoldRuntimeInput?: undefined;
+        importBedrockAgent?: undefined;
+      }
+  );
 
 /** A progress step reported while a long-running project operation runs. */
 export type ProjectEvent = {
@@ -85,6 +102,12 @@ export type TeardownConfirmationHandler = (
 export type DeployProjectInput = {
   /** Name of the aws-targets.json entry to deploy. */
   target: string;
+  /**
+   * The effective AWS region the CLI already resolved (--region flag, env,
+   * shared config file). Used to synthesize the default target when
+   * aws-targets.json does not define one — never to override a defined target.
+   */
+  region: string;
   /** Requests approval after the backend discovers that this deploy is a teardown. */
   confirmTeardown: TeardownConfirmationHandler;
 };
@@ -109,6 +132,32 @@ export type DeployResult = {
 export type ResolveProjectInput = {
   /** A path to search from when locating the project root. */
   filePath: string;
+};
+
+export type ResolveDeployedResourceInput = {
+  target: string;
+  resourceType: ProjectInvokableResource;
+  name: string;
+};
+
+export type ResolveDeployedResourcesInput = {
+  target: string;
+};
+
+export type DeployedProjectResource = {
+  resourceType: ProjectInvokableResource;
+  name: string;
+  id: string;
+};
+
+export type ResolvedDeployedResource = {
+  id: string;
+  target: AwsDeploymentTarget;
+};
+
+export type ResolvedDeployedResources = {
+  resources: DeployedProjectResource[];
+  target: AwsDeploymentTarget;
 };
 
 export type Project = {
@@ -193,6 +242,35 @@ export type AddResourceInput =
 
 export type ProjectResource = AddResourceInput["resourceType"];
 
+/** Input for {@link ProjectManager.exportHarness}. */
+export type ExportHarnessInput = {
+  /** Name of an in-project harness. Mutually exclusive with `prefetched`. */
+  harnessName?: string;
+  /** A harness spec + system prompt fetched from the service (the `--arn` path). */
+  prefetched?: {
+    spec: z.output<typeof HarnessSpecSchema>;
+    systemPrompt?: string;
+  };
+  /** Name of the runtime agent to generate. */
+  targetAgentName: string;
+  /** Build override; when absent the harness spec decides (CodeZip unless it demands Container). */
+  build?: BuildType;
+};
+
+/** Result of {@link ProjectManager.exportHarness}. */
+export type ExportHarnessResult = {
+  harnessName: string;
+  agentName: string;
+  /** Absolute path of the generated agent directory. */
+  agentPath: string;
+  /** Absolute path of the EXPORT_NOTES.md file inside it. */
+  notesPath: string;
+  /** Manual follow-up items also written to EXPORT_NOTES.md. */
+  notes: ExportNote[];
+};
+
+export type ProjectInvokableResource = Extract<ProjectResource, "harness" | "runtime">;
+
 export type RemoveResourceInput =
   | {
       resourceType:
@@ -224,6 +302,13 @@ export type RemoveResourceInput =
       name: string;
     };
 
+/** The outcome of a spec-level removal. */
+export type RemoveResourceResult = {
+  project: Project;
+  /** .env.local keys deleted because the removed credential(s) reserved them. */
+  removedEnvKeys: string[];
+};
+
 /**
  * The primary interface for interacting with projects
  */
@@ -240,9 +325,43 @@ export interface ProjectManager {
   /** Locate an existing AgentCore project. Returns undefined if no project can be found. */
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;
 
+  /** Resolve a logical project resource to its deployed physical ID and target. */
+  resolveDeployedResource(
+    project: Project,
+    input: ResolveDeployedResourceInput,
+  ): Promise<ResolvedDeployedResource>;
+
+  /** Resolve every configured Runtime and Harness present in the deployed target stack. */
+  resolveDeployedResources(
+    project: Project,
+    input: ResolveDeployedResourcesInput,
+  ): Promise<ResolvedDeployedResources>;
+
   /** Add a resource to an existing AgentCore project. */
   addResource(project: Project, input: AddResourceInput): AsyncGenerator<ProjectEvent, Project>;
 
-  /** Remove a resource from an existing AgentCore project. */
-  removeResource(project: Project, input: RemoveResourceInput): Promise<Project>;
+  /**
+   * Remove a resource from an existing AgentCore project. Throws
+   * ResourceNotFoundError when nothing with the given name exists.
+   */
+  removeResource(project: Project, input: RemoveResourceInput): Promise<RemoveResourceResult>;
+
+  /**
+   * Empty every resource collection in the project spec, leaving name,
+   * version, managedBy, and other non-resource fields intact. Spec-level only:
+   * code directories under app/ and aws-targets.json survive, so a following
+   * deploy can tear down the target's stack.
+   */
+  removeAllResources(project: Project): Promise<RemoveResourceResult>;
+
+  /**
+   * Convert a harness into an editable Strands runtime agent: render the agent
+   * code under app/<targetAgentName>/, register the runtime in agentcore.json
+   * (the source harness entry is kept), and write EXPORT_NOTES.md for anything
+   * that could not be mapped mechanically.
+   */
+  exportHarness(
+    project: Project,
+    input: ExportHarnessInput,
+  ): AsyncGenerator<ProjectEvent, ExportHarnessResult>;
 }

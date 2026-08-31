@@ -3,5 +3,5 @@
 # frames are plain text (no ANSI color codes) regardless of whether stdout is a
 # TTY, keeping frame assertions deterministic across `bun test` and piped runs.
 preload = ["./src/testing/setup.ts"]
-pathIgnorePatterns = ["src/assets/**"]
+pathIgnorePatterns = ["src/assets/**", "out/**", "dist/**"]
 coveragePathIgnorePatterns = ["src/testing/**", "src/assets/**"]

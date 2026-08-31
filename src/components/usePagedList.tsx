@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useWindowSize } from "ink";
 
 // CHROME_ROWS is everything a picker screen renders around the table rows:
@@ -45,16 +45,15 @@ export function usePagedList(maxPageSize?: number): PagedList {
   const fitsTerminal = Math.max(3, rows - CHROME_ROWS);
   const pageSize = maxPageSize ? Math.min(fitsTerminal, maxPageSize) : fitsTerminal;
 
+  // A resize changes maxResults, which invalidates the token trail (tokens
+  // encode positions relative to the old page size) — so every read derives
+  // page-1 values while state.pageSize is stale, and every write rebases onto
+  // initialPagination(pageSize) first. No effect needed: state catches up on
+  // the next interaction.
   const [state, setState] = useState<PaginationState>(() => initialPagination(pageSize));
   const pageSizeChanged = state.pageSize !== pageSize;
   const pageIndex = pageSizeChanged ? 0 : state.pageIndex;
   const token = pageSizeChanged ? undefined : state.tokens[state.pageIndex];
-
-  // A resize changes maxResults, which invalidates the token trail (tokens
-  // encode positions relative to the old page size) — restart from page 1.
-  useEffect(() => {
-    setState((current) => (current.pageSize === pageSize ? current : initialPagination(pageSize)));
-  }, [pageSize]);
 
   return {
     pageSize,

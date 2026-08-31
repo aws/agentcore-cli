@@ -21,11 +21,14 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
         'JSON payload template; {input} is the scenario input, e.g. {"prompt":"{input}"}',
         z.string().optional(),
       ),
-      flag("header", "an ordered application header (repeatable)", z.array(z.string()).optional()),
+      flag("header", "an ordered application header (repeatable)", z.array(z.string()).optional(), {
+        sensitive: true,
+      }),
       flag(
         "bearer-token",
         "CUSTOM_JWT bearer token (for JWT-auth runtimes)",
         z.string().optional(),
+        { sensitive: true },
       ),
       flag("user-id", "runtime user id", z.string().optional()),
       flag("dataset", "dataset source: local JSONL path or a dataset id", z.string().optional()),

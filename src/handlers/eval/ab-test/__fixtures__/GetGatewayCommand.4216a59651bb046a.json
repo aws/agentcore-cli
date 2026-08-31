@@ -1,0 +1,20 @@
+{
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:gateway/agentcore-cli-gateway-read-fixture-a-l6opkbe2kd",
+  "gatewayId": "agentcore-cli-gateway-read-fixture-a-l6opkbe2kd",
+  "createdAt": {
+    "$date": "2026-07-29T22:19:37.409Z"
+  },
+  "updatedAt": {
+    "$date": "2026-07-29T22:19:37.971Z"
+  },
+  "status": "READY",
+  "name": "agentcore-cli-gateway-read-fixture-a",
+  "authorizerType": "NONE",
+  "gatewayUrl": "https://agentcore-cli-gateway-read-fixture-a-l6opkbe2kd.gateway.bedrock-agentcore.us-west-2.amazonaws.com/mcp",
+  "description": "AgentCore CLI persistent Gateway read fixture",
+  "roleArn": "arn:aws:iam::685197708687:role/AgentCoreCliGatewayReadFixtureRole",
+  "protocolType": "MCP",
+  "workloadIdentityDetails": {
+    "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:workload-identity-directory/default/workload-identity/agentcore-cli-gateway-read-fixture-a-l6opkbe2kd"
+  }
+}

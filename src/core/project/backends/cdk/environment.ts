@@ -37,11 +37,6 @@ export type StackReader = (
   region: string,
   credentials: CdkCredentialProvider,
 ) => Promise<Stack[] | undefined>;
-export type StackProbe = (
-  stackName: string,
-  region: string,
-  credentials: CdkCredentialProvider,
-) => Promise<boolean>;
 
 /** Shares CloudFormation connections for calls using the same credentials and region. */
 export function createCloudFormationStackReader(
@@ -127,30 +122,11 @@ export async function probeBootstrap(
   }
 }
 
-/**
- * Whether CloudFormation still holds a stack of this name, so a deploy with
- * nothing left to deploy can tell "tear the stack down" from "there was never
- * anything here".
- *
- * Any stack CloudFormation returns counts as present, whatever its status: a
- * stack stuck mid-rollback is still a stack the user needs a way to remove.
- * Deleted stacks are not returned when looked up by name, only by id.
- */
-export async function probeStack(
-  stackName: string,
+/** Omitting `credentials` resolves through the default AWS SDK provider chain. */
+export const resolveAwsAccount = async (
   region: string,
-  credentials: CdkCredentialProvider,
-  read: StackReader,
-): Promise<boolean> {
-  try {
-    return ((await read(stackName, region, credentials)) ?? []).length > 0;
-  } catch (error) {
-    if (isStackNotFound(error)) return false;
-    throw error;
-  }
-}
-
-export const resolveAwsAccount: AccountResolver = async (region, credentials) => {
+  credentials?: CdkCredentialProvider,
+): Promise<string> => {
   const { GetCallerIdentityCommand, STSClient } = await import("@aws-sdk/client-sts");
   const client = new STSClient({ credentials, region });
   try {

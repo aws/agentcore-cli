@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -8,9 +9,16 @@ import {
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
+  type TestIOOptions,
 } from "../../../testing";
-import { InputValidationError } from "../../../errors";
+import {
+  InputValidationError,
+  ResourceNotFoundError,
+  UserCancellationError,
+} from "../../../errors";
 import { projectSpec, writeProjectSpec } from "../add/gateway-test-support";
+import { credentialEnvVarName } from "../../../projectSchemas/credential";
+import { ENV_LOCAL_RELATIVE_PATH } from "../../../core/project/envLocal";
 
 const originalCwd = process.cwd();
 const tempDirectories: string[] = [];
@@ -29,8 +37,8 @@ afterEach(async () => {
   );
 });
 
-async function run(args: string[]) {
-  const io = testIO();
+async function run(args: string[], ioOptions?: TestIOOptions) {
+  const io = testIO(ioOptions);
   const core = new TestCoreClient();
   const root = createRootHandler(core, {
     io: io.io,
@@ -43,7 +51,15 @@ async function run(args: string[]) {
 
 async function inProject(name = "TestProject"): Promise<string> {
   const directory = await inTempDirectory();
-  await run(["create", "--name", name, "--skip-install", "--skip-git"]);
+  await run([
+    "create",
+    "--name",
+    name,
+    "--template",
+    "hello-world-python",
+    "--skip-install",
+    "--skip-git",
+  ]);
   const projectRoot = join(directory, name);
   process.chdir(projectRoot);
   return projectRoot;
@@ -86,12 +102,6 @@ describe("project remove", () => {
       expectedRemaining: ["keep_me"],
     },
     {
-      label: "removing a non-existent resource succeeds (no-op)",
-      commands: [["remove", "harness", "--name", "ghost"]],
-      specKey: "harnesses",
-      expectedRemaining: [],
-    },
-    {
       label: "gateway",
       commands: [
         ["add", "gateway", "--name", "keep"],
@@ -100,6 +110,71 @@ describe("project remove", () => {
       ],
       specKey: "agentCoreGateways",
       expectedRemaining: ["keep"],
+    },
+    {
+      label: "config-bundle",
+      commands: [
+        [
+          "add",
+          "config-bundle",
+          "--name",
+          "OrdersConfig",
+          "--components",
+          '{"arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/orders-agent":{"configuration":{"temperature":0.2}}}',
+        ],
+        ["remove", "config-bundle", "--name", "OrdersConfig"],
+      ],
+      specKey: "configBundles",
+      expectedRemaining: [],
+    },
+    {
+      label: "online-eval",
+      commands: [
+        [
+          "add",
+          "online-eval",
+          "--name",
+          "quality",
+          "--agent",
+          "hello_world",
+          "--evaluator",
+          "Builtin.Correctness",
+          "--sampling-rate",
+          "5",
+        ],
+        ["remove", "online-eval", "--name", "quality"],
+      ],
+      specKey: "onlineEvalConfigs",
+      expectedRemaining: [],
+    },
+    {
+      label: "online-insight",
+      commands: [
+        [
+          "add",
+          "online-insight",
+          "--name",
+          "failures",
+          "--agent",
+          "hello_world",
+          "--insight",
+          "Builtin.Insight.FailureAnalysis",
+          "--sampling-rate",
+          "5",
+        ],
+        ["remove", "online-insight", "--name", "failures"],
+      ],
+      specKey: "onlineEvalConfigs",
+      expectedRemaining: [],
+    },
+    {
+      label: "memory",
+      commands: [
+        ["add", "memory", "--name", "recall"],
+        ["remove", "memory", "--name", "recall"],
+      ],
+      specKey: "memories",
+      expectedRemaining: [],
     },
   ])("$label", async ({ commands, specKey, expectedRemaining }) => {
     const projectRoot = await inProject();
@@ -111,6 +186,63 @@ describe("project remove", () => {
     const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
     const remaining = (agentcoreJson[specKey] ?? []) as { name: string }[];
     expect(remaining.map((r) => r.name)).toEqual(expectedRemaining);
+  });
+
+  test("removing a non-existent resource fails with a not-found error", async () => {
+    const projectRoot = await inProject();
+    const before = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).text();
+
+    const removal = run(["remove", "harness", "--name", "ghost"]);
+    await expect(removal).rejects.toBeInstanceOf(ResourceNotFoundError);
+    await expect(removal).rejects.toThrow(`no harness named 'ghost' exists in this project`);
+
+    // The spec file is untouched, unlike the old warn-and-rewrite behavior.
+    expect(await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).text()).toBe(before);
+  });
+
+  test("removing a target of a non-existent gateway names the missing gateway", async () => {
+    await inProject();
+    await expect(
+      run(["remove", "gateway-target", "--gateway", "ghost", "--name", "t"]),
+    ).rejects.toThrow(`no gateway named 'ghost' exists in this project`);
+  });
+
+  test("removing a credential deletes its .env.local entry and reports it", async () => {
+    const projectRoot = await inProject();
+    await run(["add", "credentials", "api-key", "--name", "svc-key", "--api-key", "-"], {
+      stdin: "sekret",
+    });
+    const envPath = join(projectRoot, ENV_LOCAL_RELATIVE_PATH);
+    const envKey = credentialEnvVarName("svc-key");
+    expect(await Bun.file(envPath).text()).toContain(`${envKey}='sekret'`);
+
+    const { io } = await run(["remove", "credential", "--name", "svc-key"]);
+
+    expect((await projectSpec(projectRoot)).credentials).toEqual([]);
+    expect(await Bun.file(envPath).text()).not.toContain(envKey);
+    expect(io.stderr()).toContain(`removed '${envKey}' from ${ENV_LOCAL_RELATIVE_PATH}`);
+    expect(io.stdout()).toContain("removed credential with name 'svc-key' from project");
+  });
+
+  test("removing a secret-reference credential leaves .env.local alone", async () => {
+    const projectRoot = await inProject();
+    await run([
+      "add",
+      "credentials",
+      "api-key",
+      "--name",
+      "ext-key",
+      "--api-key-secret-reference",
+      '{"secretId":"arn:aws:secretsmanager:us-east-1:123456789012:secret:x","jsonKey":"k"}',
+    ]);
+    const envPath = join(projectRoot, ENV_LOCAL_RELATIVE_PATH);
+    await Bun.write(envPath, "USER_MANAGED=1\n");
+
+    const { io } = await run(["remove", "credential", "--name", "ext-key"]);
+
+    expect((await projectSpec(projectRoot)).credentials).toEqual([]);
+    expect(await Bun.file(envPath).text()).toBe("USER_MANAGED=1\n");
+    expect(io.stderr()).not.toContain("removed '");
   });
 
   test.each([
@@ -312,5 +444,144 @@ describe("project remove", () => {
     const spec = await projectSpec(projectRoot);
     expect(spec.policyEngines).toEqual([]);
     expect(spec.agentCoreGateways[0].policyEngineConfiguration).toBeUndefined();
+  });
+});
+
+describe("project remove all", () => {
+  // Fills a project with one of everything the CLI can add, plus an
+  // unassignedTargets entry only reachable by editing the spec.
+  async function populatedProject(): Promise<string> {
+    const projectRoot = await inProject();
+    await run(["add", "harness", "--name", "my_harness"]);
+    await run(["add", "gateway", "--name", "tools"]);
+    await run([
+      "add",
+      "gateway-target",
+      "--gateway",
+      "tools",
+      "--name",
+      "search",
+      "--endpoint",
+      "https://search.example.com",
+    ]);
+    await run(["add", "credentials", "api-key", "--name", "svc-key", "--api-key", "-"], {
+      stdin: "sekret",
+    });
+    await run(["add", "memory", "--name", "recall"]);
+    await run(["add", "policy-engine", "--name", "Guardrails"]);
+    await run([
+      "add",
+      "policy",
+      "--engine",
+      "Guardrails",
+      "--name",
+      "DenyAll",
+      "--statement",
+      "forbid (principal, action, resource);",
+    ]);
+    await run(["add", "payment-manager", "--name", "payments"]);
+    await run([
+      "add",
+      "config-bundle",
+      "--name",
+      "OrdersConfig",
+      "--components",
+      '{"arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/orders-agent":{"configuration":{"temperature":0.2}}}',
+    ]);
+    const spec = await projectSpec(projectRoot);
+    spec.unassignedTargets = [structuredClone(spec.agentCoreGateways[0].targets[0])];
+    spec.unassignedTargets[0].name = "orphan";
+    await writeProjectSpec(projectRoot, spec);
+    return projectRoot;
+  }
+
+  test("--yes empties every resource collection while keeping non-resource fields", async () => {
+    const projectRoot = await populatedProject();
+    const before = await projectSpec(projectRoot);
+    const envPath = join(projectRoot, ENV_LOCAL_RELATIVE_PATH);
+    const envKey = credentialEnvVarName("svc-key");
+
+    const { io } = await run(["remove", "all", "--yes"]);
+
+    const spec = await projectSpec(projectRoot);
+    for (const collection of [
+      "runtimes",
+      "memories",
+      "knowledgeBases",
+      "credentials",
+      "evaluators",
+      "onlineEvalConfigs",
+      "agentCoreGateways",
+      "policyEngines",
+      "configBundles",
+      "abTests",
+      "harnesses",
+    ]) {
+      expect(spec[collection]).toEqual([]);
+    }
+    for (const collection of [
+      "mcpRuntimeTools",
+      "unassignedTargets",
+      "datasets",
+      "httpGateways",
+      "payments",
+    ]) {
+      expect(spec[collection]).toBeUndefined();
+    }
+    expect(spec.name).toBe(before.name);
+    expect(spec.version).toBe(before.version);
+    expect(spec.managedBy).toBe(before.managedBy);
+
+    // Removal stays spec-level: scaffolded code and the credential's env entry.
+    expect(existsSync(join(projectRoot, "app", "hello_world"))).toBe(true);
+    expect(await Bun.file(envPath).text()).not.toContain(envKey);
+    expect(io.stderr()).toContain(`removed '${envKey}' from ${ENV_LOCAL_RELATIVE_PATH}`);
+    expect(io.stdout()).toContain("removed all resources from project");
+  });
+
+  test("prompts on a TTY and proceeds on 'y'", async () => {
+    const projectRoot = await inProject();
+
+    const { io } = await run(["remove", "all"], { isTTY: true, stdin: "y\n" });
+
+    expect(io.stderr()).toContain("Remove every resource from project 'TestProject'?");
+    expect((await projectSpec(projectRoot)).runtimes).toEqual([]);
+  });
+
+  test("declining the prompt cancels without touching the spec", async () => {
+    const projectRoot = await inProject();
+    const before = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).text();
+
+    await expect(run(["remove", "all"], { isTTY: true, stdin: "n\n" })).rejects.toBeInstanceOf(
+      UserCancellationError,
+    );
+
+    expect(await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).text()).toBe(before);
+  });
+
+  test("without --yes and without a TTY it fails rather than proceeding", async () => {
+    const projectRoot = await inProject();
+    const before = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).text();
+
+    const removal = run(["remove", "all"]);
+    await expect(removal).rejects.toBeInstanceOf(InputValidationError);
+    await expect(removal).rejects.toThrow(/--yes/);
+
+    expect(await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).text()).toBe(before);
+  });
+
+  test("rejects --name alongside all", async () => {
+    await inProject();
+    await expect(run(["remove", "all", "--name", "x", "--yes"])).rejects.toThrow(
+      "--name is not valid when removing all resources",
+    );
+  });
+
+  test("is idempotent on an already-empty project", async () => {
+    const projectRoot = await inProject();
+    await run(["remove", "all", "--yes"]);
+    await run(["remove", "all", "--yes"]);
+
+    expect((await projectSpec(projectRoot)).runtimes).toEqual([]);
   });
 });

@@ -25,3 +25,9 @@ Environment variables for local development go in `agentcore/.env.local`
 ```bash
 agentcore project deploy
 ```
+
+Invoke the deployed Runtime with its native payload:
+
+```bash
+agentcore project invoke runtime --payload '{"prompt":"Hello!"}'
+```
