@@ -18,7 +18,6 @@ export function importScaffoldRuntimeInput(runtimeName: string): ScaffoldRuntime
     language: "Python",
     framework: "none",
     modelProvider: "Bedrock",
-    entrypoint: "main.py",
     runtimeVersion: "PYTHON_3_14",
   };
 }

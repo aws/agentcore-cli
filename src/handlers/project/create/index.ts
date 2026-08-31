@@ -274,7 +274,7 @@ type RuntimePathFlagValues = {
   name: string;
   template?: (typeof RUNTIME_TEMPLATE_SHORTCUT_NAMES)[number];
   build?: "CodeZip" | "Container";
-  language?: "Python";
+  language?: "Python" | "TypeScript";
   framework?: "strands" | "none";
   "model-provider"?: "Bedrock";
   "api-key"?: string;
