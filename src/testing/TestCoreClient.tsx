@@ -128,18 +128,9 @@ import type {
 } from "../handlers/identity/types";
 import type { CoreMemoryClient } from "../handlers/memory/types";
 import type {
-  CoreObservabilityClient,
   CoreRuntimeClient,
-  DeployedRuntime,
-  GetRuntimeTraceInput,
-  ListRuntimeTracesInput,
   RuntimeInvokeRequest,
   RuntimeInvokeResponse,
-  RuntimeLogEvent,
-  SearchRuntimeLogsInput,
-  StreamRuntimeLogsInput,
-  TraceRecord,
-  TraceSummary,
 } from "../handlers/runtime/types";
 import type {
   BatchEvaluationDetail,
@@ -172,7 +163,16 @@ import type {
 import { isTerminalStatus } from "../core/batchEvaluationResults";
 import { abortable } from "../core/abortable";
 import type { CoreOptions, CreateCloudFormationClient } from "../core/types";
-import type { Project, ProjectManager } from "../handlers/project/types";
+import type {
+  CoreObservabilityClient,
+  InsightsQuery,
+  InsightsQueryRow,
+  LogRecord,
+  LogSearchQuery,
+  LogTailQuery,
+  ObservableResourceRef,
+} from "../core/observability";
+import type { ProjectManager } from "../handlers/project/types";
 import type { Logger } from "../logging";
 import type { ReadWriteJson } from "../io";
 import { createSilentLogger } from "./logging";
@@ -2265,63 +2265,52 @@ export class TestEvalClient implements CoreEvalClient {
   }
 }
 
-// TestObservabilityClient is a controllable CoreObservabilityClient: seed
-// `logEvents` / `resolveDeployedRuntimeResponse`, or set `error` to force the
-// next call to throw. Every call is recorded on `calls`.
 export class TestObservabilityClient implements CoreObservabilityClient {
-  calls: { method: string; args: unknown[] }[] = [];
-  error: Error | undefined;
+  readonly calls: RecordedCall[] = [];
+  logRecords: LogRecord[] = [];
+  queryRows: InsightsQueryRow[] = [];
+  error?: Error;
 
-  resolveDeployedRuntimeResponse: DeployedRuntime = {
-    runtimeId: "project_runtime-0000000000",
-    region: "us-west-2",
-    stackName: "AgentCore-project-default",
-    targetName: "default",
-  };
-  logEvents: RuntimeLogEvent[] = [];
-
-  async resolveDeployedRuntime(project: Project, targetName: string): Promise<DeployedRuntime> {
-    this.calls.push({ method: "resolveDeployedRuntime", args: [project, targetName] });
-    if (this.error) throw this.error;
-    return this.resolveDeployedRuntimeResponse;
-  }
-
-  async *streamRuntimeLogs(
-    input: StreamRuntimeLogsInput,
-    options: CoreOptions,
-    signal: AbortSignal,
-  ): AsyncGenerator<RuntimeLogEvent, void> {
-    this.calls.push({ method: "streamRuntimeLogs", args: [input, options, signal] });
-    if (this.error) throw this.error;
-    yield* this.logEvents;
-  }
-
-  async *searchRuntimeLogs(
-    input: SearchRuntimeLogsInput,
+  async *searchLogs(
+    resource: ObservableResourceRef,
+    query: LogSearchQuery,
     options: CoreOptions,
     signal?: AbortSignal,
-  ): AsyncGenerator<RuntimeLogEvent, void> {
-    this.calls.push({ method: "searchRuntimeLogs", args: [input, options, signal] });
+  ): AsyncGenerator<LogRecord, void> {
+    this.calls.push({
+      method: "searchLogs",
+      args: [resource, query, options, signal],
+    });
     if (this.error) throw this.error;
-    yield* this.logEvents;
+    yield* this.logRecords;
   }
 
-  traceSummaries: TraceSummary[] = [];
-  traceRecords: TraceRecord[] = [];
-
-  async listRuntimeTraces(
-    input: ListRuntimeTracesInput,
+  async *tailLogs(
+    resource: ObservableResourceRef,
+    query: LogTailQuery,
     options: CoreOptions,
-  ): Promise<TraceSummary[]> {
-    this.calls.push({ method: "listRuntimeTraces", args: [input, options] });
+    signal: AbortSignal,
+  ): AsyncGenerator<LogRecord, void> {
+    this.calls.push({
+      method: "tailLogs",
+      args: [resource, query, options, signal],
+    });
     if (this.error) throw this.error;
-    return this.traceSummaries;
+    yield* this.logRecords;
   }
 
-  async getRuntimeTrace(input: GetRuntimeTraceInput, options: CoreOptions): Promise<TraceRecord[]> {
-    this.calls.push({ method: "getRuntimeTrace", args: [input, options] });
+  async queryLogs(
+    resource: ObservableResourceRef,
+    query: InsightsQuery,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<InsightsQueryRow[]> {
+    this.calls.push({
+      method: "queryLogs",
+      args: [resource, query, options, signal],
+    });
     if (this.error) throw this.error;
-    return this.traceRecords;
+    return this.queryRows;
   }
 }
 

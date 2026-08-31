@@ -209,6 +209,7 @@ test("exposes feature sub-clients", () => {
   expect(core.harness).toBeDefined();
   expect(core.memory).toBeDefined();
   expect(core.gateway).toBeDefined();
+  expect(core.observability).toBeDefined();
 });
 
 test("getEvent sends a GetEventCommand on the data client", async () => {

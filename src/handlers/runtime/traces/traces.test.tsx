@@ -6,7 +6,6 @@ import { join, resolve } from "node:path";
 import { createSilentLogger, TestCoreClient, testIO } from "../../../testing";
 import { TestGlobalConfigAccessor } from "../../../testing/globalConfig";
 import { createRootHandler } from "../../index";
-import type { GetRuntimeTraceInput, ListRuntimeTracesInput } from "../types";
 import { formatTraceTable, formatTraceTimestamp } from "./list";
 import { resolveTraceOutputPath } from "./get/outputPath";
 import type { Project } from "../../project/types";
@@ -27,21 +26,21 @@ function testTracesCommand() {
   return {
     core,
     io,
-    route: (args: string[]) => root.route(["node", "agentcore", ...args, "--region", REGION]),
+    route: (args: string[]) => root.route(["bun", "agentcore", ...args, "--region", REGION]),
   };
 }
 
 describe("runtime traces list", () => {
   test("queries the window and renders a table", async () => {
     const { core, io, route } = testTracesCommand();
-    core.observability.traceSummaries = [
+    core.observability.queryRows = [
       {
         traceId: "abc123",
-        timestamp: "1709391000000",
+        lastSeen: "1709391000000",
         sessionId: "session-1",
         spanCount: "7",
       },
-      { traceId: "def456", timestamp: "not-a-number" },
+      { traceId: "def456", lastSeen: "not-a-number" },
     ];
 
     await route([
@@ -50,6 +49,8 @@ describe("runtime traces list", () => {
       "list",
       "--id",
       "my_agent-AbC123XyZ9",
+      "--qualifier",
+      "blue",
       "--since",
       `${SINCE_MS}`,
       "--until",
@@ -60,13 +61,17 @@ describe("runtime traces list", () => {
 
     expect(core.observability.calls).toHaveLength(1);
     const call = core.observability.calls[0]!;
-    expect(call.method).toBe("listRuntimeTraces");
-    expect(call.args[0] as ListRuntimeTracesInput).toEqual({
-      runtimeId: "my_agent-AbC123XyZ9",
+    expect(call.method).toBe("queryLogs");
+    expect(call.args[0]).toEqual({
+      kind: "runtime",
+      id: "my_agent-AbC123XyZ9",
+      qualifier: "blue",
+    });
+    expect(call.args[1]).toMatchObject({
       startTimeMs: SINCE_MS,
       endTimeMs: UNTIL_MS,
-      limit: 5,
     });
+    expect((call.args[1] as { queryString: string }).queryString).toContain("| limit 5");
 
     const [header, first, second] = io.stdout().split("\n");
     expect(header).toMatch(/^TRACE ID\s+TIMESTAMP\s+SESSION ID$/);
@@ -80,12 +85,14 @@ describe("runtime traces list", () => {
 
     await route(["runtime", "traces", "list", "--id", "rt-1", "--since", `${SINCE_MS}`]);
 
-    expect((core.observability.calls[0]!.args[0] as ListRuntimeTracesInput).limit).toBe(20);
+    expect((core.observability.calls[0]!.args[1] as { queryString: string }).queryString).toContain(
+      "| limit 20",
+    );
   });
 
   test("--json renders a single JSON document", async () => {
     const { core, io, route } = testTracesCommand();
-    core.observability.traceSummaries = [{ traceId: "abc123", timestamp: "1709391000000" }];
+    core.observability.queryRows = [{ traceId: "abc123", lastSeen: "1709391000000" }];
 
     await route(["runtime", "traces", "list", "--id", "rt-1", "--json"]);
 
@@ -108,8 +115,8 @@ describe("runtime traces list", () => {
 describe("runtime traces get", () => {
   test("downloads the records, writes the JSON file, and prints its path", async () => {
     const { core, io, route } = testTracesCommand();
-    core.observability.traceRecords = [
-      { "@timestamp": "2026-08-30 12:00:00.000", "@message": { body: "hello" } },
+    core.observability.queryRows = [
+      { "@timestamp": "2026-08-30 12:00:00.000", "@message": '{"body":"hello"}' },
     ];
     const output = join(mkdtempSync(join(tmpdir(), "trace-out-")), "nested", "trace.json");
 
@@ -127,12 +134,18 @@ describe("runtime traces get", () => {
     ]);
 
     const call = core.observability.calls[0]!;
-    expect(call.method).toBe("getRuntimeTrace");
-    expect(call.args[0] as GetRuntimeTraceInput).toMatchObject({
-      runtimeId: "my_agent-AbC123XyZ9",
-      traceId: "abc123def456",
+    expect(call.method).toBe("queryLogs");
+    expect(call.args[0]).toEqual({
+      kind: "runtime",
+      id: "my_agent-AbC123XyZ9",
+    });
+    expect(call.args[1]).toMatchObject({
       startTimeMs: SINCE_MS,
     });
+    expect((call.args[1] as { queryString: string }).queryString).toContain(
+      "| filter traceId = 'abc123def456'",
+    );
+    expect((call.args[1] as { rowLimit: { maxRows: number } }).rowLimit.maxRows).toBe(10_000);
 
     expect(io.stdout()).toBe(output);
     expect(io.stderr()).toContain("Saved 1 records for trace abc123def456");
@@ -143,7 +156,7 @@ describe("runtime traces get", () => {
 
   test("--json reports the file path and record count", async () => {
     const { core, io, route } = testTracesCommand();
-    core.observability.traceRecords = [{ "@message": "a" }, { "@message": "b" }];
+    core.observability.queryRows = [{ "@message": "a" }, { "@message": "b" }];
     const output = join(mkdtempSync(join(tmpdir(), "trace-out-")), "trace.json");
 
     await route([
@@ -164,6 +177,23 @@ describe("runtime traces get", () => {
   test("surfaces core errors (e.g. no trace data) unchanged", async () => {
     const { core, route } = testTracesCommand();
     core.observability.error = new Error("No trace data found for trace ID: abc123");
+
+    await expect(route(["runtime", "traces", "get", "abc123", "--id", "rt-1"])).rejects.toThrow(
+      "No trace data found for trace ID: abc123",
+    );
+  });
+
+  test("rejects malformed trace IDs before querying", async () => {
+    const { core, route } = testTracesCommand();
+
+    await expect(
+      route(["runtime", "traces", "get", "not'a$trace", "--id", "rt-1"]),
+    ).rejects.toThrow("Invalid trace ID format");
+    expect(core.observability.calls).toHaveLength(0);
+  });
+
+  test("fails when the query returns no trace records", async () => {
+    const { route } = testTracesCommand();
 
     await expect(route(["runtime", "traces", "get", "abc123", "--id", "rt-1"])).rejects.toThrow(
       "No trace data found for trace ID: abc123",

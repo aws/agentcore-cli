@@ -16,6 +16,7 @@ export {
   TestMemoryClient,
   TestRuntimeClient,
   TestEvalClient,
+  TestObservabilityClient,
   type RecordedCall,
 } from "./TestCoreClient";
 export { StreamController } from "./StreamController";

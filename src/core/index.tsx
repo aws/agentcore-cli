@@ -7,9 +7,12 @@ import { GatewayClient } from "./gateway";
 import { HarnessClient } from "./harness";
 import { IdentityClient } from "./identity";
 import { MemoryClient } from "./memory";
-import { ObservabilityClient } from "./observability";
+import {
+  CloudWatchSourceReader,
+  ObservabilityClient,
+  RuntimeSourceResolver,
+} from "./observability";
 import { RuntimeClient } from "./runtime";
-import { FsReadWriteJson } from "../io";
 import type {
   AwsClients,
   ClientConfig,
@@ -96,15 +99,10 @@ export class CoreClient implements AwsClients {
       config.newSessionId,
       config.now,
     );
-
-    // Observability resolves a project's deployed runtime from its stack
-    // outputs, so it reads aws-targets.json through the same JSON layer the
-    // project manager uses.
-    this.observability = new ObservabilityClient(this, {
-      readJson: new FsReadWriteJson({
-        logger: this.logger.child({ module: "observability" }),
-      }),
-    });
+    this.observability = new ObservabilityClient(
+      { runtime: new RuntimeSourceResolver() },
+      new CloudWatchSourceReader(this),
+    );
 
     this.projectManager = new FsProjectManager({
       logger: this.logger.child({ module: "projectManager" }),
@@ -150,7 +148,7 @@ export class CoreClient implements AwsClients {
   }
 
   // logs returns the CloudWatch Logs client for `config`, creating and caching it
-  // on first use (used to read batch-evaluation result log streams).
+  // on first use for customer-facing observability and evaluation result streams.
   logs(config: ClientConfig): CloudWatchLogsClient {
     const key = cacheKey(config);
     let client = this.logsClients.get(key);

@@ -1,9 +1,9 @@
 import z from "zod";
-import { parseTimeString } from "../../../../core/observability";
 import type { AppIO } from "../../../../io";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import { JsonKey } from "../../../keys";
+import { resolveTimeWindow } from "../../../observability/time";
 import type { Core } from "../../../types";
 import { runtimeIdSchema } from "../../invoke/request";
 import { resolveRuntimeTarget } from "../../resolveRuntimeTarget";
@@ -50,6 +50,7 @@ export const createListRuntimeTracesHandler = (core: Core, io: AppIO) =>
         "the ID of the Runtime (defaults to the project's deployed runtime)",
         runtimeIdSchema.optional(),
       ),
+      flag("qualifier", "the Runtime endpoint qualifier", z.string().min(1).optional()),
       flag("limit", "maximum number of traces to display", z.number().int().positive().default(20)),
       flag(
         "since",
@@ -63,17 +64,38 @@ export const createListRuntimeTracesHandler = (core: Core, io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      const startTimeMs =
-        flags.since !== undefined
-          ? parseTimeString(flags.since)
-          : Date.now() - DEFAULT_TRACES_WINDOW_MS;
-      const endTimeMs = flags.until !== undefined ? parseTimeString(flags.until) : Date.now();
+      const { startTimeMs, endTimeMs } = resolveTimeWindow({
+        since: flags.since,
+        until: flags.until,
+        defaultWindowMs: DEFAULT_TRACES_WINDOW_MS,
+      });
 
       const target = await resolveRuntimeTarget(core, ctx, flags.id);
-      const traces = await core.observability.listRuntimeTraces(
-        { runtimeId: target.runtimeId, startTimeMs, endTimeMs, limit: flags.limit },
+      const queryString =
+        `filter ispresent(traceId) and traceId != ""\n` +
+        `| stats earliest(@timestamp) as firstSeen, latest(@timestamp) as lastSeen, ` +
+        `count(*) as spanCount, earliest(attributes.session.id) as sessionId by traceId\n` +
+        `| sort lastSeen desc\n` +
+        `| limit ${Math.floor(flags.limit)}`;
+      const rows = await core.observability.queryLogs(
+        {
+          kind: "runtime",
+          id: target.runtimeId,
+          ...(flags.qualifier ? { qualifier: flags.qualifier } : {}),
+        },
+        { queryString, startTimeMs, endTimeMs },
         target.options,
       );
+      const traces: TraceSummary[] = [];
+      for (const fields of rows) {
+        if (!fields.traceId) continue;
+        traces.push({
+          traceId: fields.traceId,
+          timestamp: fields.lastSeen ?? fields.firstSeen ?? "unknown",
+          sessionId: fields.sessionId,
+          spanCount: fields.spanCount,
+        });
+      }
 
       if (ctx.require(JsonKey)) {
         ctx.require(JsonRendererKey).renderJson({ traces });

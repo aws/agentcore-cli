@@ -3,87 +3,100 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InputValidationError } from "../../errors";
-import { RegionKey } from "../keys";
 import { ValueContext } from "../../router";
-import type { Core } from "../types";
 import type { Project } from "../project/types";
-import type { DeployedRuntime } from "./types";
+import { RegionKey } from "../keys";
+import type { Core } from "../types";
 import { resolveRuntimeTarget } from "./resolveRuntimeTarget";
 
 const ctx = ValueContext.EmptyContext().withValue(RegionKey, "us-east-1");
-
 const PROJECT = { name: "Proj", rootPath: "/proj", spec: {} } as unknown as Project;
-
-const DEPLOYED: DeployedRuntime = {
-  runtimeId: "proj_agent-AbC123XyZ9",
+const TARGET = {
+  name: "default",
+  account: "111122223333",
   region: "eu-west-1",
-  stackName: "AgentCore-Proj-default",
-  targetName: "default",
+} as const;
+const RUNTIME = {
+  resourceType: "runtime" as const,
+  name: "agent",
+  id: "proj_agent-AbC123XyZ9",
 };
 
 function stubCore(config: {
   resolve: () => Promise<Project | undefined>;
-  deployed?: DeployedRuntime;
-}): { core: Core; observabilityCalls: unknown[][] } {
-  const observabilityCalls: unknown[][] = [];
+  resources?: { resourceType: "runtime" | "harness"; name: string; id: string }[];
+}): { core: Core; deployedCalls: unknown[][] } {
+  const deployedCalls: unknown[][] = [];
   const core = {
-    projectManager: { resolve: config.resolve },
-    observability: {
-      resolveDeployedRuntime: async (project: Project, targetName: string) => {
-        observabilityCalls.push([project, targetName]);
-        return config.deployed ?? DEPLOYED;
+    projectManager: {
+      resolve: config.resolve,
+      resolveDeployedResources: async (project: Project, input: { target: string }) => {
+        deployedCalls.push([project, input]);
+        return {
+          resources: config.resources ?? [RUNTIME],
+          target: TARGET,
+        };
       },
     },
   } as unknown as Core;
-  return { core, observabilityCalls };
+  return { core, deployedCalls };
 }
 
 describe("resolveRuntimeTarget", () => {
   test("an explicit --id wins and keeps the ambient region", async () => {
-    const { core, observabilityCalls } = stubCore({ resolve: async () => undefined });
+    const { core, deployedCalls } = stubCore({ resolve: async () => undefined });
 
     const target = await resolveRuntimeTarget(core, ctx, "explicit-id", tmpdir());
 
     expect(target.runtimeId).toBe("explicit-id");
     expect(target.options).toEqual({ region: "us-east-1", endpointUrl: undefined });
     expect(target.project).toBeUndefined();
-    expect(observabilityCalls).toHaveLength(0);
+    expect(deployedCalls).toHaveLength(0);
   });
 
-  test("an explicit --id attaches the enclosing project as context", async () => {
-    const { core } = stubCore({ resolve: async () => PROJECT });
+  test("an explicit --id attaches project context and tolerates a broken project", async () => {
+    const withProject = stubCore({ resolve: async () => PROJECT });
+    expect(
+      (await resolveRuntimeTarget(withProject.core, ctx, "explicit-id", "/proj/app")).project,
+    ).toBe(PROJECT);
 
-    const target = await resolveRuntimeTarget(core, ctx, "explicit-id", "/proj/somewhere");
-
-    expect(target.project).toBe(PROJECT);
-  });
-
-  test("an explicit --id survives a broken project spec", async () => {
-    const { core } = stubCore({
+    const broken = stubCore({
       resolve: async () => {
         throw new Error("agentcore.json is corrupt");
       },
     });
-
-    const target = await resolveRuntimeTarget(core, ctx, "explicit-id", tmpdir());
-
-    expect(target.runtimeId).toBe("explicit-id");
-    expect(target.project).toBeUndefined();
+    expect((await resolveRuntimeTarget(broken.core, ctx, "explicit-id", tmpdir())).project).toBe(
+      undefined,
+    );
   });
 
-  test("without --id the project's default-target runtime resolves, region included", async () => {
-    const { core, observabilityCalls } = stubCore({ resolve: async () => PROJECT });
+  test("resolves the project's default-target Runtime and deployment region", async () => {
+    const { core, deployedCalls } = stubCore({ resolve: async () => PROJECT });
 
     const target = await resolveRuntimeTarget(core, ctx, undefined, "/proj/app");
 
-    expect(observabilityCalls).toEqual([[PROJECT, "default"]]);
-    expect(target.runtimeId).toBe("proj_agent-AbC123XyZ9");
-    // The deployment target's region wins: the stack and log groups live there.
+    expect(deployedCalls).toEqual([[PROJECT, { target: "default" }]]);
+    expect(target.runtimeId).toBe(RUNTIME.id);
     expect(target.options.region).toBe("eu-west-1");
     expect(target.project).toBe(PROJECT);
   });
 
-  test("without --id and outside a project, a usage error demands --id", async () => {
+  test("requires an explicit id when zero or multiple Runtimes are deployed", async () => {
+    const none = stubCore({ resolve: async () => PROJECT, resources: [] });
+    await expect(resolveRuntimeTarget(none.core, ctx, undefined, "/proj/app")).rejects.toThrow(
+      "has no Runtime deployed",
+    );
+
+    const multiple = stubCore({
+      resolve: async () => PROJECT,
+      resources: [RUNTIME, { ...RUNTIME, name: "other", id: "other-runtime" }],
+    });
+    await expect(resolveRuntimeTarget(multiple.core, ctx, undefined, "/proj/app")).rejects.toThrow(
+      `choose one with --id: ${RUNTIME.id}, other-runtime`,
+    );
+  });
+
+  test("outside a project, a usage error demands --id", async () => {
     const { core } = stubCore({ resolve: async () => undefined });
     const outside = mkdtempSync(join(tmpdir(), "no-project-"));
 

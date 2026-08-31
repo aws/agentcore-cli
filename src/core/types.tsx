@@ -50,8 +50,8 @@ export interface AwsClients {
   control(config: ClientConfig): BedrockAgentCoreControlClient;
   data(config: ClientConfig): BedrockAgentCoreClient;
   iam(config: ClientConfig): IAMClient;
-  // logs reads the CloudWatch Logs streams AgentCore writes batch-evaluation
-  // results to. CloudWatch is a distinct service from the AgentCore data plane,
-  // so it gets its own client/factory rather than reusing `data`.
+  // logs reads AgentCore operational logs, traces, and evaluation result
+  // streams. CloudWatch is distinct from the AgentCore data plane, so it gets
+  // its own client/factory rather than reusing `data`.
   logs(config: ClientConfig): CloudWatchLogsClient;
 }

@@ -1,17 +1,27 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import z from "zod";
-import { parseTimeString } from "../../../../core/observability";
-import { FileWriteError } from "../../../../errors";
+import { sanitizeQueryValue } from "../../../../core/observability";
+import {
+  FileWriteError,
+  InputValidationError,
+  ResourceNotFoundError,
+  ResultTruncationError,
+} from "../../../../errors";
 import type { AppIO } from "../../../../io";
 import { argument, createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import { JsonKey } from "../../../keys";
+import { resolveTimeWindow } from "../../../observability/time";
 import type { Core } from "../../../types";
 import { runtimeIdSchema } from "../../invoke/request";
 import { resolveRuntimeTarget } from "../../resolveRuntimeTarget";
+import type { TraceRecord } from "../../types";
 import { DEFAULT_TRACES_WINDOW_MS } from "../index";
 import { resolveTraceOutputPath } from "./outputPath";
+
+const TRACE_ID_PATTERN = /^[a-fA-F0-9-]+$/;
+const TRACE_RECORD_LIMIT = 10_000;
 
 export const createGetRuntimeTraceHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -24,6 +34,7 @@ export const createGetRuntimeTraceHandler = (core: Core, io: AppIO) =>
         "the ID of the Runtime (defaults to the project's deployed runtime)",
         runtimeIdSchema.optional(),
       ),
+      flag("qualifier", "the Runtime endpoint qualifier", z.string().min(1).optional()),
       flag(
         "output",
         "the output file path (default: agentcore/.cli/traces/<runtime>-<traceId>.json in a project)",
@@ -42,17 +53,61 @@ export const createGetRuntimeTraceHandler = (core: Core, io: AppIO) =>
     ],
     handle: async (ctx, flags, args) => {
       const traceId = args["trace-id"];
-      const startTimeMs =
-        flags.since !== undefined
-          ? parseTimeString(flags.since)
-          : Date.now() - DEFAULT_TRACES_WINDOW_MS;
-      const endTimeMs = flags.until !== undefined ? parseTimeString(flags.until) : Date.now();
+      if (!TRACE_ID_PATTERN.test(traceId)) {
+        throw new InputValidationError(
+          "Invalid trace ID format. Expected a hex string (e.g., abc123def456).",
+          { meta: { traceId } },
+        );
+      }
+      const { startTimeMs, endTimeMs } = resolveTimeWindow({
+        since: flags.since,
+        until: flags.until,
+        defaultWindowMs: DEFAULT_TRACES_WINDOW_MS,
+      });
 
       const target = await resolveRuntimeTarget(core, ctx, flags.id);
-      const records = await core.observability.getRuntimeTrace(
-        { runtimeId: target.runtimeId, traceId, startTimeMs, endTimeMs },
+      const queryString =
+        `fields @timestamp, @message\n` +
+        `| filter traceId = '${sanitizeQueryValue(traceId)}'\n` +
+        `| sort @timestamp asc\n` +
+        `| limit ${TRACE_RECORD_LIMIT}`;
+      const rows = await core.observability.queryLogs(
+        {
+          kind: "runtime",
+          id: target.runtimeId,
+          ...(flags.qualifier ? { qualifier: flags.qualifier } : {}),
+        },
+        {
+          queryString,
+          startTimeMs,
+          endTimeMs,
+          rowLimit: {
+            maxRows: TRACE_RECORD_LIMIT,
+            buildError: (maxRows) =>
+              new ResultTruncationError(
+                `Trace ${traceId} contains at least ${maxRows} records; narrow --since/--until`,
+              ),
+          },
+        },
         target.options,
       );
+      if (rows.length === 0) {
+        throw new ResourceNotFoundError(`No trace data found for trace ID: ${traceId}`, {
+          meta: { traceId },
+        });
+      }
+      const records: TraceRecord[] = rows.map((row) => {
+        const record: TraceRecord = { ...row };
+        const message = record["@message"];
+        if (typeof message === "string") {
+          try {
+            record["@message"] = JSON.parse(message);
+          } catch {
+            // Keep non-JSON messages unchanged.
+          }
+        }
+        return record;
+      });
 
       const filePath = resolveTraceOutputPath({
         output: flags.output,

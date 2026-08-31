@@ -1,4 +1,4 @@
-import { InputValidationError } from "../../errors";
+import { InputValidationError, ResourceNotFoundError } from "../../errors";
 import { ExitCode } from "../../runnable";
 import type { Context } from "../../router";
 import type { CoreOptions } from "../../core/types";
@@ -18,9 +18,8 @@ export interface RuntimeTarget {
 /**
  * Resolves which runtime an observability command (`runtime logs` /
  * `runtime traces`) addresses. An explicit --id wins and works anywhere; without
- * one the enclosing project's deployed runtime is resolved live from its
- * CloudFormation stack outputs (default target). Outside a project, --id is
- * required.
+ * one the enclosing project's default deployment is resolved through the
+ * project manager. Outside a project, --id is required.
  *
  * When resolving automatically, the deployment target's region overrides the
  * ambient one: the stack and its log groups live there.
@@ -50,10 +49,25 @@ export async function resolveRuntimeTarget(
     );
   }
 
-  const deployed = await core.observability.resolveDeployedRuntime(project, DEFAULT_TARGET_NAME);
+  const deployed = await core.projectManager.resolveDeployedResources(project, {
+    target: DEFAULT_TARGET_NAME,
+  });
+  const runtimes = deployed.resources.filter(({ resourceType }) => resourceType === "runtime");
+  if (runtimes.length === 0) {
+    throw new ResourceNotFoundError(
+      `Project '${project.name}' has no Runtime deployed to target '${DEFAULT_TARGET_NAME}'. ` +
+        "Deploy a Runtime first, or pass --id <runtimeId>.",
+    );
+  }
+  if (runtimes.length > 1) {
+    throw new InputValidationError(
+      `Project '${project.name}' has multiple deployed Runtimes; choose one with ` +
+        `--id: ${runtimes.map(({ id: runtimeId }) => runtimeId).join(", ")}`,
+    );
+  }
   return {
-    runtimeId: deployed.runtimeId,
-    options: { ...options, region: deployed.region },
+    runtimeId: runtimes[0]!.id,
+    options: { ...options, region: deployed.target.region },
     project,
   };
 }
