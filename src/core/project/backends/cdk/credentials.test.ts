@@ -93,7 +93,11 @@ type Behavior = {
   createReturns?: DeployedCredential;
 };
 
-function identity(existing: DeployedCredentials = {}, behavior: Behavior = {}) {
+function identity(
+  existing: DeployedCredentials = {},
+  behavior: Behavior = {},
+  processEnv: Record<string, string | undefined> = {},
+) {
   const calls: Call[] = [];
 
   const created = (name: string, prefix: string): DeployedCredential =>
@@ -136,7 +140,7 @@ function identity(existing: DeployedCredentials = {}, behavior: Behavior = {}) {
     },
   };
 
-  return { calls, provision: createCredentialProvisioner(client) };
+  return { calls, provision: createCredentialProvisioner(client, processEnv) };
 }
 
 async function run(
@@ -203,6 +207,28 @@ describe("createCredentialProvisioner", () => {
       apiKeySecretConfig: secretRef,
       apiKeySecretSource: "EXTERNAL",
     });
+  });
+
+  test("takes a secret from the environment when .env.local has none", async () => {
+    const subject = identity({}, {}, { AGENTCORE_CREDENTIAL_OPENAI_KEY: "sk-from-env" });
+    const input = await project([API_KEY]);
+
+    await run(subject.provision, input);
+
+    expect(subject.calls[1]?.input).toEqual({ name: "openai-key", apiKey: "sk-from-env" });
+  });
+
+  test("prefers the environment over .env.local, ignoring unrelated variables", async () => {
+    const subject = identity(
+      {},
+      {},
+      { AGENTCORE_CREDENTIAL_OPENAI_KEY: "sk-from-env", HOME: "/should/not/matter" },
+    );
+    const input = await project([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-from-file'\n");
+
+    await run(subject.provision, input);
+
+    expect(subject.calls[1]?.input).toEqual({ name: "openai-key", apiKey: "sk-from-env" });
   });
 
   test("names the variable and file to fix when an API key secret is missing", async () => {

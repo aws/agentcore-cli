@@ -11,7 +11,7 @@ import type {
   Credential,
   OAuthCredential,
 } from "../../../../projectSchemas/credential";
-import { credentialEnvVarName } from "../../../../projectSchemas/credential";
+import { CREDENTIAL_ENV_PREFIX, credentialEnvVarName } from "../../../../projectSchemas/credential";
 import type { CoreOptions } from "../../../types";
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "../../envLocal";
 import type { CdkCredentialProvider } from "./toolkit";
@@ -61,6 +61,7 @@ export type CredentialProvisioner = (
  */
 export function createCredentialProvisioner(
   identity: CredentialProviderCalls,
+  processEnv: Record<string, string | undefined> = process.env,
 ): CredentialProvisioner {
   return async function* provisionCredentials(project, { region, credentials }) {
     const declared = project.spec.credentials;
@@ -70,7 +71,12 @@ export function createCredentialProvisioner(
     const payment = declared.find((c) => c.authorizerType === "PaymentCredentialProvider");
     if (payment) throw paymentUnsupported(payment.name);
 
-    const env = await new EnvLocalFile(project.rootPath).read();
+    // Credential variables set in the process environment win over the file, so a
+    // deploy can be handed its secrets without writing them to disk first.
+    const env = {
+      ...(await new EnvLocalFile(project.rootPath).read()),
+      ...credentialEnvironment(processEnv),
+    };
     // Every Identity call runs against the deployment target's own credentials
     // rather than the default chain, in the region the target deploys to.
     const options: CoreOptions = { region, credentials };
@@ -219,6 +225,18 @@ async function resolveOauth2(
 }
 
 /**
+ * The credential variables an environment carries. Filtered to the credential prefix
+ * so a deploy reads the secrets it was handed and nothing else from the environment.
+ */
+function credentialEnvironment(
+  processEnv: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  return Object.fromEntries(
+    Object.entries(processEnv).filter(([key]) => key.startsWith(CREDENTIAL_ENV_PREFIX)),
+  );
+}
+
+/**
  * Reads a credential's secret from `.env.local`, shaped into the request field it
  * fills, or undefined when the variable is unset.
  */
@@ -339,8 +357,9 @@ function missingSecret(
 ): ProjectStateError {
   return new ProjectStateError(
     `Credential '${name}' has no secret to create its provider with. Set ${envKey} in ` +
-      `${join(rootPath, ENV_LOCAL_RELATIVE_PATH)}, or give the credential a '${refField}' in ` +
-      `agentcore.json pointing at a secret you keep in AWS Secrets Manager.`,
+      `${join(rootPath, ENV_LOCAL_RELATIVE_PATH)} or in the environment you deploy from, or ` +
+      `give the credential a '${refField}' in agentcore.json pointing at a secret you keep in ` +
+      `AWS Secrets Manager.`,
   );
 }
 

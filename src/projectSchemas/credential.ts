@@ -114,9 +114,12 @@ export const CredentialSchema = z.discriminatedUnion("authorizerType", [
 ]);
 export type Credential = z.infer<typeof CredentialSchema>;
 
+/** The prefix every variable carrying credential material shares. */
+export const CREDENTIAL_ENV_PREFIX = "AGENTCORE_CREDENTIAL_";
+
 /** Derives the .env.local variable name used for credential material. */
 export function credentialEnvVarName(credentialName: string, suffix = ""): string {
-  return `AGENTCORE_CREDENTIAL_${credentialName.replace(/-/g, "_").toUpperCase()}${suffix}`;
+  return `${CREDENTIAL_ENV_PREFIX}${credentialName.replace(/-/g, "_").toUpperCase()}${suffix}`;
 }
 
 /**
