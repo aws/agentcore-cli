@@ -15,8 +15,10 @@ import { createCloudFormationClient } from "../../factories";
 import type { CreateCloudFormationClient } from "../../types";
 import {
   createCredentialProvisioner,
+  createPaymentCredentialRemover,
   type CredentialProviderCalls,
   type CredentialProvisioner,
+  type PaymentCredentialRemover,
 } from "./cdk/credentials";
 import {
   countDeployableResources,
@@ -59,6 +61,7 @@ export type CdkBackendConfig = {
   resolveAccount?: AccountResolver;
   loadBootstrapTemplate?: BootstrapTemplateLoader;
   provisionCredentials?: CredentialProvisioner;
+  removePaymentCredentials?: PaymentCredentialRemover;
 };
 
 /** Builds and deploys projects through the scaffolded CDK app. */
@@ -74,6 +77,7 @@ export class CdkBackend implements ProjectBackend {
   private readonly resolveAccount: AccountResolver;
   private readonly loadBootstrapTemplate: BootstrapTemplateLoader;
   private readonly provisionCredentials: CredentialProvisioner;
+  private readonly removePaymentCredentials: PaymentCredentialRemover;
 
   constructor(config: CdkBackendConfig) {
     this.logger = config.logger;
@@ -97,6 +101,8 @@ export class CdkBackend implements ProjectBackend {
     this.loadBootstrapTemplate = config.loadBootstrapTemplate ?? loadBootstrapTemplate;
     this.provisionCredentials =
       config.provisionCredentials ?? createCredentialProvisioner(config.identity);
+    this.removePaymentCredentials =
+      config.removePaymentCredentials ?? createPaymentCredentialRemover(config.identity);
   }
 
   // Local prerequisites for synth. Checked before any AWS mutation so a missing
@@ -266,6 +272,11 @@ export class CdkBackend implements ProjectBackend {
 
     yield { message: `Removing stack ${artifact.stackName}` };
     await this.cdk({ kind: "destroy", stackArtifactId: artifact.id }, options);
+    // After the stack, since a resource in it may still be using the provider.
+    yield* this.removePaymentCredentials(project, {
+      credentials: options.credentials,
+      region: target.region,
+    });
     await removeTargetState(this.json, project.rootPath, target.name);
     return { outputs: {}, tornDown: true };
   }

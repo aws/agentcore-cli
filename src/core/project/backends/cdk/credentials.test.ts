@@ -10,6 +10,10 @@ import {
   type GetOauth2CredentialProviderResponse,
   type UpdateApiKeyCredentialProviderResponse,
   type UpdateOauth2CredentialProviderResponse,
+  type CreatePaymentCredentialProviderResponse,
+  type DeletePaymentCredentialProviderResponse,
+  type GetPaymentCredentialProviderResponse,
+  type UpdatePaymentCredentialProviderResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { Project, ProjectEvent } from "../../../../handlers/project/types";
 import { ProjectSpecSchema } from "../../../../projectSchemas/project";
@@ -17,6 +21,7 @@ import type { CoreOptions } from "../../../types";
 import { EnvLocalFile } from "../../envLocal";
 import {
   createCredentialProvisioner,
+  createPaymentCredentialRemover,
   type CredentialProviderCalls,
   type CredentialProvisioner,
   type DeployedCredential,
@@ -77,6 +82,13 @@ const apiKeyResponse = (provider: DeployedCredential | undefined) =>
     CreateApiKeyCredentialProviderResponse &
     UpdateApiKeyCredentialProviderResponse;
 
+const paymentResponse = (provider: DeployedCredential | undefined) =>
+  ({
+    credentialProviderArn: provider?.credentialProviderArn,
+  }) as GetPaymentCredentialProviderResponse &
+    CreatePaymentCredentialProviderResponse &
+    UpdatePaymentCredentialProviderResponse;
+
 const oauth2Response = (provider: DeployedCredential | undefined) =>
   ({
     credentialProviderArn: provider?.credentialProviderArn,
@@ -91,6 +103,8 @@ type Behavior = {
   getFails?: Error;
   /** Returned by every create, in place of a fully populated provider. */
   createReturns?: DeployedCredential;
+  /** Thrown by every payment-provider deletion. */
+  deleteFails?: Error;
 };
 
 function identity(
@@ -138,9 +152,37 @@ function identity(
       calls.push({ kind: "updateOauth2", input, options });
       return oauth2Response(created(input.name ?? "", "oauth"));
     },
+    async getPaymentCredentialProvider(name, options) {
+      calls.push({ kind: "getPayment", input: name, options });
+      return paymentResponse(lookup(name));
+    },
+    async createPaymentCredentialProvider(input, options) {
+      calls.push({ kind: "createPayment", input, options });
+      return paymentResponse(created(input.name ?? "", "payment"));
+    },
+    async updatePaymentCredentialProvider(input, options) {
+      calls.push({ kind: "updatePayment", input, options });
+      return paymentResponse(created(input.name ?? "", "payment"));
+    },
+    async deletePaymentCredentialProvider(name, options) {
+      calls.push({ kind: "deletePayment", input: name, options });
+      if (behavior.deleteFails) throw behavior.deleteFails;
+      return {} as DeletePaymentCredentialProviderResponse;
+    },
   };
 
-  return { calls, provision: createCredentialProvisioner(client, processEnv) };
+  return { calls, client, provision: createCredentialProvisioner(client, processEnv) };
+}
+
+async function collect(
+  generator: AsyncGenerator<ProjectEvent, void>,
+): Promise<{ events: ProjectEvent[] }> {
+  const events: ProjectEvent[] = [];
+  while (true) {
+    const next = await generator.next();
+    if (next.done) return { events };
+    events.push(next.value);
+  }
 }
 
 async function run(
@@ -453,20 +495,123 @@ describe("createCredentialProvisioner", () => {
     await expect(run(subject.provision, input)).rejects.toThrow(/exactly one vendor config object/);
   });
 
-  test("rejects a payment credential before creating any provider", async () => {
+  test("creates a Coinbase payment provider from the vendor's variables", async () => {
     const subject = identity();
     const input = await project(
-      [
-        API_KEY,
-        { authorizerType: "PaymentCredentialProvider", name: "pay-1", provider: "StripePrivy" },
-      ],
-      "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n",
+      [{ authorizerType: "PaymentCredentialProvider", name: "wallet", provider: "CoinbaseCDP" }],
+      "AGENTCORE_CREDENTIAL_WALLET_API_KEY_ID='key-1'\n" +
+        "AGENTCORE_CREDENTIAL_WALLET_API_KEY_SECRET='key-secret'\n" +
+        "AGENTCORE_CREDENTIAL_WALLET_WALLET_SECRET='wallet-secret'\n",
+    );
+
+    const { result } = await run(subject.provision, input);
+
+    expect(subject.calls.map((call) => call.kind)).toEqual(["getPayment", "createPayment"]);
+    expect(subject.calls[1]?.input).toEqual({
+      name: "wallet",
+      credentialProviderVendor: "CoinbaseCDP",
+      providerConfigurationInput: {
+        coinbaseCdpConfiguration: {
+          apiKeyId: "key-1",
+          apiKeySecret: "key-secret",
+          walletSecret: "wallet-secret",
+        },
+      },
+    });
+    // A payment provider holds several secrets, each under its own vendor field, so
+    // only the provider ARN is recorded.
+    expect(result).toEqual({ wallet: { credentialProviderArn: "arn:payment:wallet" } });
+  });
+
+  test("updates an existing StripePrivy payment provider", async () => {
+    const subject = identity({ pay: { credentialProviderArn: "arn:existing" } });
+    const input = await project(
+      [{ authorizerType: "PaymentCredentialProvider", name: "pay", provider: "StripePrivy" }],
+      "AGENTCORE_CREDENTIAL_PAY_APP_ID='app-1'\n" +
+        "AGENTCORE_CREDENTIAL_PAY_APP_SECRET='app-secret'\n" +
+        "AGENTCORE_CREDENTIAL_PAY_AUTHORIZATION_PRIVATE_KEY='priv-key'\n" +
+        "AGENTCORE_CREDENTIAL_PAY_AUTHORIZATION_ID='auth-1'\n",
+    );
+
+    await run(subject.provision, input);
+
+    expect(subject.calls.map((call) => call.kind)).toEqual(["getPayment", "updatePayment"]);
+    expect(subject.calls[1]?.input).toEqual({
+      name: "pay",
+      credentialProviderVendor: "StripePrivy",
+      providerConfigurationInput: {
+        stripePrivyConfiguration: {
+          appId: "app-1",
+          appSecret: "app-secret",
+          authorizationPrivateKey: "priv-key",
+          authorizationId: "auth-1",
+        },
+      },
+    });
+  });
+
+  test("names every payment variable that is unset", async () => {
+    const subject = identity();
+    const input = await project(
+      [{ authorizerType: "PaymentCredentialProvider", name: "wallet", provider: "CoinbaseCDP" }],
+      "AGENTCORE_CREDENTIAL_WALLET_API_KEY_ID='key-1'\n",
     );
 
     await expect(run(subject.provision, input)).rejects.toThrow(
-      /PaymentCredentialProvider, which 'agentcore project deploy' cannot create/,
+      /AGENTCORE_CREDENTIAL_WALLET_API_KEY_SECRET, AGENTCORE_CREDENTIAL_WALLET_WALLET_SECRET/,
     );
-    expect(subject.calls).toEqual([]);
+  });
+
+  test("leaves an existing payment provider alone when its variables are unset", async () => {
+    const existing = { credentialProviderArn: "arn:existing" };
+    const subject = identity({ wallet: existing });
+    const input = await project([
+      { authorizerType: "PaymentCredentialProvider", name: "wallet", provider: "CoinbaseCDP" },
+    ]);
+
+    const { result } = await run(subject.provision, input);
+
+    expect(subject.calls.map((call) => call.kind)).toEqual(["getPayment"]);
+    expect(result).toEqual({ wallet: existing });
+  });
+
+  test("deletes only the payment providers a torn-down project declares", async () => {
+    const subject = identity();
+    const input = await project([
+      API_KEY,
+      { authorizerType: "PaymentCredentialProvider", name: "wallet", provider: "CoinbaseCDP" },
+    ]);
+
+    const remove = createPaymentCredentialRemover(subject.client);
+    const { events } = await collect(remove(input, { credentials: CREDENTIALS, region: REGION }));
+
+    // The api-key provider is named account-globally and may be shared, so it stays.
+    expect(subject.calls).toEqual([{ kind: "deletePayment", input: "wallet", options: OPTIONS }]);
+    expect(events).toEqual([{ message: "Removing credential provider 'wallet'" }]);
+  });
+
+  test("treats a payment provider that is already gone as removed", async () => {
+    const subject = identity({}, { deleteFails: notFound() });
+    const input = await project([
+      { authorizerType: "PaymentCredentialProvider", name: "wallet", provider: "CoinbaseCDP" },
+    ]);
+
+    const remove = createPaymentCredentialRemover(subject.client);
+    const { events } = await collect(remove(input, { credentials: CREDENTIALS, region: REGION }));
+
+    expect(events).toEqual([{ message: "Removing credential provider 'wallet'" }]);
+  });
+
+  test("reports a payment provider it could not delete rather than failing", async () => {
+    const subject = identity({}, { deleteFails: new Error("still in use") });
+    const input = await project([
+      { authorizerType: "PaymentCredentialProvider", name: "wallet", provider: "CoinbaseCDP" },
+    ]);
+
+    const remove = createPaymentCredentialRemover(subject.client);
+    const { events } = await collect(remove(input, { credentials: CREDENTIALS, region: REGION }));
+
+    expect(events[1]?.message).toMatch(/Could not remove credential provider 'wallet'.*in use/);
   });
 
   test("creates nothing when a later credential's secret is missing", async () => {

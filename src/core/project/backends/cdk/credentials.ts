@@ -2,6 +2,7 @@ import { join } from "node:path";
 import {
   ResourceNotFoundException,
   type Oauth2ProviderConfigInput,
+  type PaymentProviderConfigurationInput,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { MalformedServiceResponseError, ProjectStateError } from "../../../../errors/errors";
 import type { CoreIdentityClient } from "../../../../handlers/identity/types";
@@ -10,8 +11,13 @@ import type {
   ApiKeyCredential,
   Credential,
   OAuthCredential,
+  PaymentCredential,
 } from "../../../../projectSchemas/credential";
-import { CREDENTIAL_ENV_PREFIX, credentialEnvVarName } from "../../../../projectSchemas/credential";
+import {
+  CREDENTIAL_ENV_PREFIX,
+  credentialEnvironmentVariableNames,
+  credentialEnvVarName,
+} from "../../../../projectSchemas/credential";
 import type { CoreOptions } from "../../../types";
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "../../envLocal";
 import type { CdkCredentialProvider } from "./toolkit";
@@ -36,6 +42,10 @@ export type CredentialProviderCalls = Pick<
   | "getOauth2CredentialProvider"
   | "createOauth2CredentialProvider"
   | "updateOauth2CredentialProvider"
+  | "getPaymentCredentialProvider"
+  | "createPaymentCredentialProvider"
+  | "updatePaymentCredentialProvider"
+  | "deletePaymentCredentialProvider"
 >;
 
 export type CredentialProvisionInput = {
@@ -48,6 +58,49 @@ export type CredentialProvisioner = (
   project: Project,
   input: CredentialProvisionInput,
 ) => AsyncGenerator<ProjectEvent, DeployedCredentials>;
+
+export type PaymentCredentialRemover = (
+  project: Project,
+  input: CredentialProvisionInput,
+) => AsyncGenerator<ProjectEvent, void>;
+
+/**
+ * Deletes the payment credential providers a project declares, for a teardown that
+ * has already removed its stack.
+ *
+ * Only payment providers: they hold a payment vendor's own API key, wallet and
+ * authorization secrets, provisioned for this project alone. An API-key or OAuth
+ * provider is named account-globally and may be shared with another project or with
+ * work done outside the CLI, so tearing down one project never removes it.
+ *
+ * A provider that is already gone is not an error, and a provider that cannot be
+ * deleted is reported rather than failing a teardown whose stack is already gone.
+ */
+export function createPaymentCredentialRemover(
+  identity: Pick<CredentialProviderCalls, "deletePaymentCredentialProvider">,
+): PaymentCredentialRemover {
+  return async function* removePaymentCredentials(project, { region, credentials }) {
+    const payments = project.spec.credentials.filter(
+      (credential) => credential.authorizerType === "PaymentCredentialProvider",
+    );
+    if (payments.length === 0) return;
+
+    const options: CoreOptions = { region, credentials };
+    for (const { name } of payments) {
+      yield { message: `Removing credential provider '${name}'` };
+      try {
+        await identity.deletePaymentCredentialProvider(name, options);
+      } catch (error) {
+        if (error instanceof ResourceNotFoundException) continue;
+        yield {
+          message:
+            `Could not remove credential provider '${name}': ${(error as Error).message}. ` +
+            `Delete it with 'aws bedrock-agentcore-control delete-payment-credential-provider'.`,
+        };
+      }
+    }
+  };
+}
 
 /**
  * Provisions the credential providers a project declares, before synthesis: the
@@ -66,10 +119,6 @@ export function createCredentialProvisioner(
   return async function* provisionCredentials(project, { region, credentials }) {
     const declared = project.spec.credentials;
     if (declared.length === 0) return {};
-
-    // Rejected up front so an unsupported credential fails before any AWS call.
-    const payment = declared.find((c) => c.authorizerType === "PaymentCredentialProvider");
-    if (payment) throw paymentUnsupported(payment.name);
 
     // Credential variables set in the process environment win over the file, so a
     // deploy can be handed its secrets without writing them to disk first.
@@ -123,8 +172,7 @@ function resolveCredential(
     case "OAuthCredentialProvider":
       return resolveOauth2(identity, credential, options, env, rootPath);
     case "PaymentCredentialProvider":
-      // Unreachable: rejected before provisioning starts.
-      throw paymentUnsupported(credential.name);
+      return resolvePayment(identity, credential, options, env, rootPath);
   }
 }
 
@@ -237,6 +285,83 @@ function credentialEnvironment(
 }
 
 /**
+ * A payment provider's fields all come from the environment — the vendor's own
+ * identifiers as well as its secrets — so the credential is written only when every
+ * one of them is present, and an existing provider is otherwise left alone.
+ */
+async function resolvePayment(
+  identity: CredentialProviderCalls,
+  credential: PaymentCredential,
+  options: CoreOptions,
+  env: Record<string, string | undefined>,
+  rootPath: string,
+): Promise<Provision> {
+  const { name } = credential;
+  const existing = await undefinedWhenAbsent(() =>
+    identity.getPaymentCredentialProvider(name, options),
+  );
+
+  const fields = paymentFields(credential, env);
+  if ("missing" in fields) {
+    if (existing) return { reuse: paymentProvision(name, existing) };
+    throw missingPaymentSecrets(name, fields.missing, rootPath);
+  }
+
+  const input = {
+    name,
+    credentialProviderVendor: credential.provider as never,
+    providerConfigurationInput: fields.configuration,
+  };
+  if (existing) {
+    return {
+      kind: "update",
+      write: async () =>
+        paymentProvision(name, await identity.updatePaymentCredentialProvider(input, options)),
+    };
+  }
+  return {
+    kind: "create",
+    write: async () =>
+      paymentProvision(name, await identity.createPaymentCredentialProvider(input, options)),
+  };
+}
+
+/**
+ * Collects a payment vendor's configuration from the environment, or reports every
+ * variable that is unset so the user can fill them in one pass.
+ */
+function paymentFields(
+  credential: PaymentCredential,
+  env: Record<string, string | undefined>,
+): { configuration: PaymentProviderConfigurationInput } | { missing: string[] } {
+  const read = (suffix: string) => env[credentialEnvVarName(credential.name, suffix)];
+  const missing = credentialEnvironmentVariableNames(credential).filter((key) => !env[key]);
+  if (missing.length > 0) return { missing };
+
+  if (credential.provider === "CoinbaseCDP") {
+    return {
+      configuration: {
+        coinbaseCdpConfiguration: {
+          apiKeyId: read("_API_KEY_ID")!,
+          apiKeySecret: read("_API_KEY_SECRET")!,
+          walletSecret: read("_WALLET_SECRET")!,
+        },
+      },
+    };
+  }
+  return {
+    configuration: {
+      stripePrivyConfiguration: {
+        appId: read("_APP_ID")!,
+        appSecret: read("_APP_SECRET")!,
+        authorizationPrivateKey: read("_AUTHORIZATION_PRIVATE_KEY")!,
+        authorizationId: read("_AUTHORIZATION_ID")!,
+      },
+    },
+  };
+}
+
+/**
  * Reads a credential's secret from `.env.local`, shaped into the request field it
  * fills, or undefined when the variable is unset.
  */
@@ -285,6 +410,15 @@ function oauth2Provision(
     response.credentialProviderArn,
     response.clientSecretArn?.secretArn,
   );
+}
+
+// A payment provider holds several secrets rather than one, each reported under its
+// vendor's own field, so only the provider ARN is recorded.
+function paymentProvision(
+  name: string,
+  response: { credentialProviderArn?: string },
+): DeployedCredential {
+  return deployedCredential(name, response.credentialProviderArn, undefined);
 }
 
 function deployedCredential(
@@ -363,12 +497,15 @@ function missingSecret(
   );
 }
 
-function paymentUnsupported(name: string): ProjectStateError {
+function missingPaymentSecrets(
+  name: string,
+  missing: string[],
+  rootPath: string,
+): ProjectStateError {
   return new ProjectStateError(
-    `Credential '${name}' is a PaymentCredentialProvider, which 'agentcore project deploy' ` +
-      `cannot create: a payment provider needs vendor configuration (API key, wallet and ` +
-      `authorization secrets) that agentcore.json has no fields for. Remove it from the project ` +
-      `spec to deploy the rest of the project.`,
+    `Credential '${name}' is missing the values its payment provider needs: ` +
+      `${missing.join(", ")}. Set them in ${join(rootPath, ENV_LOCAL_RELATIVE_PATH)} or in the ` +
+      `environment you deploy from.`,
   );
 }
 

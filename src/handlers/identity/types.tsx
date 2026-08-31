@@ -13,6 +13,12 @@ import type {
   UpdateApiKeyCredentialProviderResponse,
   UpdateOauth2CredentialProviderRequest,
   UpdateOauth2CredentialProviderResponse,
+  CreatePaymentCredentialProviderRequest,
+  CreatePaymentCredentialProviderResponse,
+  DeletePaymentCredentialProviderResponse,
+  GetPaymentCredentialProviderResponse,
+  UpdatePaymentCredentialProviderRequest,
+  UpdatePaymentCredentialProviderResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { CoreOptions } from "../../core/types";
 
@@ -20,6 +26,8 @@ export type CreateApiKeyCredentialProviderInput = CreateApiKeyCredentialProvider
 export type UpdateApiKeyCredentialProviderInput = UpdateApiKeyCredentialProviderRequest;
 export type CreateOauth2CredentialProviderInput = CreateOauth2CredentialProviderRequest;
 export type UpdateOauth2CredentialProviderInput = UpdateOauth2CredentialProviderRequest;
+export type CreatePaymentCredentialProviderInput = CreatePaymentCredentialProviderRequest;
+export type UpdatePaymentCredentialProviderInput = UpdatePaymentCredentialProviderRequest;
 
 export interface CoreIdentityClient {
   createApiKeyCredentialProvider(
@@ -65,4 +73,24 @@ export interface CoreIdentityClient {
     name: string,
     options: CoreOptions,
   ): Promise<DeleteOauth2CredentialProviderResponse>;
+
+  // Payment credential providers hold a payment vendor's own credentials (a Coinbase
+  // CDP API key and wallet secret, or Privy app and authorization secrets). They are
+  // provisioned by `project deploy` rather than an `agentcore identity` subcommand.
+  createPaymentCredentialProvider(
+    input: CreatePaymentCredentialProviderInput,
+    options: CoreOptions,
+  ): Promise<CreatePaymentCredentialProviderResponse>;
+  getPaymentCredentialProvider(
+    name: string,
+    options: CoreOptions,
+  ): Promise<GetPaymentCredentialProviderResponse>;
+  updatePaymentCredentialProvider(
+    input: UpdatePaymentCredentialProviderInput,
+    options: CoreOptions,
+  ): Promise<UpdatePaymentCredentialProviderResponse>;
+  deletePaymentCredentialProvider(
+    name: string,
+    options: CoreOptions,
+  ): Promise<DeletePaymentCredentialProviderResponse>;
 }

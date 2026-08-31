@@ -6,7 +6,11 @@ import type { DeployResult, Project, ProjectEvent } from "../../../handlers/proj
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { createSilentLogger } from "../../../testing";
 import { CdkBackend } from "./cdk";
-import type { CredentialProviderCalls, CredentialProvisioner } from "./cdk/credentials";
+import type {
+  CredentialProviderCalls,
+  CredentialProvisioner,
+  PaymentCredentialRemover,
+} from "./cdk/credentials";
 import { DEPLOYED_STATE_RELATIVE_PATH } from "./cdk/deployedState";
 import type { DeployBackendInput } from "./types";
 import type { BootstrapState } from "./cdk/environment";
@@ -37,6 +41,10 @@ function unusedIdentity(): CredentialProviderCalls {
     getOauth2CredentialProvider: unexpected("getOauth2CredentialProvider"),
     createOauth2CredentialProvider: unexpected("createOauth2CredentialProvider"),
     updateOauth2CredentialProvider: unexpected("updateOauth2CredentialProvider"),
+    getPaymentCredentialProvider: unexpected("getPaymentCredentialProvider"),
+    createPaymentCredentialProvider: unexpected("createPaymentCredentialProvider"),
+    updatePaymentCredentialProvider: unexpected("updatePaymentCredentialProvider"),
+    deletePaymentCredentialProvider: unexpected("deletePaymentCredentialProvider"),
   };
 }
 
@@ -140,6 +148,7 @@ type HarnessOptions = {
   failOperation?: CdkOperation["kind"];
   bootstrapError?: Error;
   provisionCredentials?: CredentialProvisioner;
+  removePaymentCredentials?: PaymentCredentialRemover;
   /** Whether CloudFormation still holds the target's stack. Defaults to present. */
   stackExists?: boolean;
 };
@@ -216,6 +225,9 @@ function harness(options: HarnessOptions = {}) {
       };
     },
     ...(options.provisionCredentials && { provisionCredentials: options.provisionCredentials }),
+    ...(options.removePaymentCredentials && {
+      removePaymentCredentials: options.removePaymentCredentials,
+    }),
   });
 
   return {
@@ -521,6 +533,28 @@ describe("CdkBackend.deploy", () => {
     expect(JSON.parse(await Bun.file(statePath).text())).toEqual({
       targets: { prod: { stackArn: "arn:stack:prod" } },
     });
+  });
+
+  test("removes the project's payment credential providers after its stack", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
+    const removals: string[] = [];
+    const removePaymentCredentials: PaymentCredentialRemover = async function* (project) {
+      removals.push(project.name);
+      yield { message: "Removing credential provider 'wallet'" };
+    };
+    const subject = harness({ removePaymentCredentials });
+
+    const deployed = await collectDeploy(
+      subject.backend.deploy(input, deployInput({ confirmTeardown: async () => true })),
+    );
+
+    expect(removals).toEqual(["example"]);
+    // After the destroy, since a resource in the stack may still be using it.
+    const messages = deployed.events.map((event) => event.message);
+    expect(messages.indexOf("Removing stack AgentCore-example-default-0")).toBeLessThan(
+      messages.indexOf("Removing credential provider 'wallet'"),
+    );
   });
 
   test("says to add a resource when there is no stack to remove either", async () => {

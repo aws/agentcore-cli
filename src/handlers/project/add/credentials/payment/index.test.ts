@@ -213,14 +213,16 @@ describe("project add credentials payment", () => {
     expect((await projectSpec(projectRoot)).credentials).toHaveLength(1);
   });
 
-  test("rejects credentials that generate overlapping environment variables", async () => {
+  test("rejects a credential that would overlap a payment credential's variables", async () => {
     const projectRoot = await inProject();
-    await run(["add", "credentials", "api-key", "--name", "stripe_app_id"]);
 
-    await expect(
-      run(["add", "credentials", "payment", "--name", "stripe", "--provider", "StripePrivy"]),
-    ).rejects.toThrow("environment variable");
+    // The only way to collide with a payment credential 'stripe' is to be named for
+    // one of its fields, so such a name is refused on its own — before a payment
+    // credential exists to collide with, and whether or not one ever does.
+    await expect(run(["add", "credentials", "api-key", "--name", "stripe_app_id"])).rejects.toThrow(
+      /_APP_ID/,
+    );
 
-    expect((await projectSpec(projectRoot)).credentials).toHaveLength(1);
+    expect((await projectSpec(projectRoot)).credentials ?? []).toHaveLength(0);
   });
 });
