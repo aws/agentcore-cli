@@ -455,6 +455,23 @@ describe("project add runtime", () => {
       ],
     ],
     [
+      "strands-ts rejects short-term-only memory",
+      [
+        "--name",
+        "my_agent",
+        "--build",
+        "CodeZip",
+        "--language",
+        "TypeScript",
+        "--framework",
+        "strands",
+        "--model-provider",
+        "Bedrock",
+        "--memory",
+        "shortTerm",
+      ],
+    ],
+    [
       "invalid JSON in --network-config",
       ["--name", "my_agent", ...template, "--network-config", "{bad}"],
     ],
