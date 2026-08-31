@@ -6,7 +6,7 @@ import type { DeployResult, Project, ProjectEvent } from "../../../handlers/proj
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { createSilentLogger } from "../../../testing";
 import { CdkBackend } from "./cdk";
-import type { CredentialProvisioner } from "./cdk/credentials";
+import type { CredentialProviderCalls, CredentialProvisioner } from "./cdk/credentials";
 import { DEPLOYED_STATE_RELATIVE_PATH } from "./cdk/deployedState";
 import type { DeployBackendInput } from "./types";
 import type { BootstrapState } from "./cdk/environment";
@@ -20,6 +20,23 @@ const TARGET = {
 
 /** A template holding only what CDK adds itself, as an empty project synthesizes. */
 const METADATA_ONLY = { CDKMetadata: { Type: "AWS::CDK::Metadata" } };
+
+/**
+ * Identity for backends whose provisioning is not under test: these projects declare
+ * no credentials, and the tests that do exercise provisioning inject their own
+ * CredentialProvisioner. Any call here is a test that stopped meaning what it says.
+ */
+function unusedIdentity(): CredentialProviderCalls {
+  const unexpected = (call: string) => async (): Promise<never> => {
+    throw new Error(`unexpected Identity call: ${call}`);
+  };
+  return {
+    getApiKeyCredentialProvider: unexpected("getApiKeyCredentialProvider"),
+    createApiKeyCredentialProvider: unexpected("createApiKeyCredentialProvider"),
+    getOauth2CredentialProvider: unexpected("getOauth2CredentialProvider"),
+    createOauth2CredentialProvider: unexpected("createOauth2CredentialProvider"),
+  };
+}
 
 function deployInput(overrides: Partial<DeployBackendInput> = {}): DeployBackendInput {
   return { target: TARGET, confirmTeardown: async () => false, ...overrides };
@@ -143,6 +160,7 @@ function harness(options: HarnessOptions = {}) {
 
   const backend = new CdkBackend({
     logger: createSilentLogger(),
+    identity: unusedIdentity(),
     runner: async (command, { cwd }) => {
       commands.push({ command, cwd });
     },
@@ -254,6 +272,7 @@ describe("CdkBackend.build", () => {
     const input = await project();
     const subject = new CdkBackend({
       logger: createSilentLogger(),
+      identity: unusedIdentity(),
       runner: async () => {
         throw new Error("cdk synth exploded");
       },

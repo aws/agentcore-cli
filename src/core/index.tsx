@@ -92,6 +92,9 @@ export class CoreClient implements AwsClients {
     this.projectManager = new FsProjectManager({
       logger: this.logger.child({ module: "projectManager" }),
       createCloudFormationClient: config.createCloudFormationClient,
+      // A project deploy provisions credential providers through the same Identity
+      // client the `agentcore identity` commands use, against its target's credentials.
+      identity: this.identity,
     });
   }
 
@@ -146,6 +149,27 @@ export class CoreClient implements AwsClients {
 
 // cacheKey derives a stable cache key from a ClientConfig so that distinct
 // configurations (region, endpoint, ...) map to distinct cached clients.
+//
+// `credentials` is a provider function or an object of resolved credentials, so it
+// cannot be serialized — JSON.stringify drops functions silently, which would map two
+// callers with different credentials in the same region onto one cached client. It is
+// keyed by identity instead.
 function cacheKey(config: ClientConfig): string {
-  return JSON.stringify(config);
+  const { credentials, ...serializable } = config;
+  const suffix = credentials ? `|credentials:${credentialsId(credentials)}` : "";
+  return JSON.stringify(serializable) + suffix;
+}
+
+const credentialsIds = new WeakMap<object, number>();
+let nextCredentialsId = 0;
+
+// credentialsId assigns each credential source a stable id for the lifetime of the
+// object, so the same source reuses its client and a different one gets its own.
+function credentialsId(credentials: NonNullable<ClientConfig["credentials"]>): number {
+  let id = credentialsIds.get(credentials);
+  if (id === undefined) {
+    id = nextCredentialsId++;
+    credentialsIds.set(credentials, id);
+  }
+  return id;
 }

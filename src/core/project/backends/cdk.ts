@@ -13,7 +13,11 @@ import type { Logger } from "../../../logging";
 import type { DeployBackendInput, ProjectBackend } from "./types";
 import { createCloudFormationClient } from "../../factories";
 import type { CreateCloudFormationClient } from "../../types";
-import { createCredentialProvisioner, type CredentialProvisioner } from "./cdk/credentials";
+import {
+  createCredentialProvisioner,
+  type CredentialProviderCalls,
+  type CredentialProvisioner,
+} from "./cdk/credentials";
 import {
   countDeployableResources,
   stackArtifactForTarget,
@@ -46,6 +50,8 @@ export type CdkBackendConfig = {
   checkTool?: typeof requireTool;
   json?: ReadWriteJson;
   createCloudFormationClient?: CreateCloudFormationClient;
+  /** Identity client used to provision the project's credential providers. */
+  identity: CredentialProviderCalls;
   cdk?: CdkRunner;
   resolveCredentials?: CdkCredentialResolver;
   bootstrap?: BootstrapProbe;
@@ -89,7 +95,8 @@ export class CdkBackend implements ProjectBackend {
       ((stackName, region, credentials) => probeStack(stackName, region, credentials, readStack));
     this.resolveAccount = config.resolveAccount ?? resolveAwsAccount;
     this.loadBootstrapTemplate = config.loadBootstrapTemplate ?? loadBootstrapTemplate;
-    this.provisionCredentials = config.provisionCredentials ?? createCredentialProvisioner();
+    this.provisionCredentials =
+      config.provisionCredentials ?? createCredentialProvisioner(config.identity);
   }
 
   // Local prerequisites for synth. Checked before any AWS mutation so a missing

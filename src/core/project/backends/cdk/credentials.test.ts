@@ -2,15 +2,23 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import {
+  ResourceNotFoundException,
+  type CreateApiKeyCredentialProviderResponse,
+  type CreateOauth2CredentialProviderResponse,
+  type GetApiKeyCredentialProviderResponse,
+  type GetOauth2CredentialProviderResponse,
+} from "@aws-sdk/client-bedrock-agentcore-control";
 import type { Project, ProjectEvent } from "../../../../handlers/project/types";
 import { ProjectSpecSchema } from "../../../../projectSchemas/project";
+import type { CoreOptions } from "../../../types";
 import { EnvLocalFile } from "../../envLocal";
 import {
   createCredentialProvisioner,
+  type CredentialProviderCalls,
   type CredentialProvisioner,
   type DeployedCredential,
   type DeployedCredentials,
-  type IdentityProviderClient,
 } from "./credentials";
 import type { CdkCredentialProvider } from "./toolkit";
 
@@ -19,6 +27,7 @@ const CREDENTIALS: CdkCredentialProvider = async () => ({
   accessKeyId: "access-key",
   secretAccessKey: "secret-key",
 });
+const OPTIONS: CoreOptions = { region: REGION, credentials: CREDENTIALS };
 
 const API_KEY = { authorizerType: "ApiKeyCredentialProvider", name: "openai-key" } as const;
 const DISCOVERY = "https://example.com/.well-known/openid-configuration";
@@ -50,44 +59,70 @@ async function project(credentials: unknown[], envLocal?: string): Promise<Proje
   };
 }
 
-type Call = { kind: string; input: unknown };
+type Call = { kind: string; input: unknown; options: CoreOptions };
 
-function identity(existing: DeployedCredentials = {}) {
+// Identity reports a provider that does not exist by throwing, which is the normal
+// first-deploy case rather than a failure.
+const notFound = () =>
+  new ResourceNotFoundException({ $metadata: {}, message: "provider not found" });
+
+// The two provider families carry their secret ARN under different response fields.
+const apiKeyResponse = (provider: DeployedCredential | undefined) =>
+  ({
+    credentialProviderArn: provider?.credentialProviderArn,
+    ...(provider?.clientSecretArn && { apiKeySecretArn: { secretArn: provider.clientSecretArn } }),
+  }) as GetApiKeyCredentialProviderResponse & CreateApiKeyCredentialProviderResponse;
+
+const oauth2Response = (provider: DeployedCredential | undefined) =>
+  ({
+    credentialProviderArn: provider?.credentialProviderArn,
+    ...(provider?.clientSecretArn && { clientSecretArn: { secretArn: provider.clientSecretArn } }),
+  }) as GetOauth2CredentialProviderResponse & CreateOauth2CredentialProviderResponse;
+
+/** Overrides for the paths that only a failing or incomplete Identity produces. */
+type Behavior = {
+  /** Thrown by every lookup, in place of the not-found default. */
+  getFails?: Error;
+  /** Returned by every create, in place of a fully populated provider. */
+  createReturns?: DeployedCredential;
+};
+
+function identity(existing: DeployedCredentials = {}, behavior: Behavior = {}) {
   const calls: Call[] = [];
-  const factoryArgs: { region: string; credentials: CdkCredentialProvider }[] = [];
 
-  const created = (name: string, prefix: string): DeployedCredential => ({
-    credentialProviderArn: `arn:${prefix}:${name}`,
-    clientSecretArn: `arn:secret:${name}`,
-  });
+  const created = (name: string, prefix: string): DeployedCredential =>
+    behavior.createReturns ?? {
+      credentialProviderArn: `arn:${prefix}:${name}`,
+      clientSecretArn: `arn:secret:${name}`,
+    };
 
-  const client: IdentityProviderClient = {
-    async getApiKeyProvider(name) {
-      calls.push({ kind: "getApiKey", input: name });
-      return existing[name];
+  const lookup = (name: string): DeployedCredential => {
+    if (behavior.getFails) throw behavior.getFails;
+    const found = existing[name];
+    if (!found) throw notFound();
+    return found;
+  };
+
+  const client: CredentialProviderCalls = {
+    async getApiKeyCredentialProvider(name, options) {
+      calls.push({ kind: "getApiKey", input: name, options });
+      return apiKeyResponse(lookup(name));
     },
-    async createApiKeyProvider(input) {
-      calls.push({ kind: "createApiKey", input });
-      return created(input.name, "apikey");
+    async createApiKeyCredentialProvider(input, options) {
+      calls.push({ kind: "createApiKey", input, options });
+      return apiKeyResponse(created(input.name ?? "", "apikey"));
     },
-    async getOauth2Provider(name) {
-      calls.push({ kind: "getOauth2", input: name });
-      return existing[name];
+    async getOauth2CredentialProvider(name, options) {
+      calls.push({ kind: "getOauth2", input: name, options });
+      return oauth2Response(lookup(name));
     },
-    async createOauth2Provider(input) {
-      calls.push({ kind: "createOauth2", input });
-      return created(input.name, "oauth");
+    async createOauth2CredentialProvider(input, options) {
+      calls.push({ kind: "createOauth2", input, options });
+      return oauth2Response(created(input.name ?? "", "oauth"));
     },
   };
 
-  return {
-    calls,
-    factoryArgs,
-    provision: createCredentialProvisioner(async (region, credentials) => {
-      factoryArgs.push({ region, credentials });
-      return client;
-    }),
-  };
+  return { calls, provision: createCredentialProvisioner(client) };
 }
 
 async function run(
@@ -104,23 +139,23 @@ async function run(
 }
 
 describe("createCredentialProvisioner", () => {
-  test("does not build a client for a project without credentials", async () => {
+  test("calls Identity not at all for a project without credentials", async () => {
     const subject = identity();
 
     const { events, result } = await run(subject.provision, await project([]));
 
     expect(result).toEqual({});
     expect(events).toEqual([]);
-    expect(subject.factoryArgs).toEqual([]);
+    expect(subject.calls).toEqual([]);
   });
 
-  test("builds the client against the target's own region and credentials", async () => {
+  test("runs every call against the target's own region and credentials", async () => {
     const subject = identity();
     const input = await project([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n");
 
     await run(subject.provision, input);
 
-    expect(subject.factoryArgs).toEqual([{ region: REGION, credentials: CREDENTIALS }]);
+    expect(subject.calls.map((call) => call.options)).toEqual([OPTIONS, OPTIONS]);
   });
 
   test("creates an API key provider from the secret in .env.local", async () => {
@@ -130,7 +165,7 @@ describe("createCredentialProvisioner", () => {
     const { events, result } = await run(subject.provision, input);
 
     expect(events).toEqual([{ message: "Preparing credential provider 'openai-key'" }]);
-    expect(subject.calls).toEqual([
+    expect(subject.calls.map(({ kind, input: called }) => ({ kind, input: called }))).toEqual([
       { kind: "getApiKey", input: "openai-key" },
       { kind: "createApiKey", input: { name: "openai-key", apiKey: "sk-live" } },
     ]);
@@ -149,10 +184,11 @@ describe("createCredentialProvisioner", () => {
 
     await run(subject.provision, input);
 
-    expect(subject.calls).toEqual([
-      { kind: "getApiKey", input: "openai-key" },
-      { kind: "createApiKey", input: { name: "openai-key", secretRef } },
-    ]);
+    expect(subject.calls[1]?.input).toEqual({
+      name: "openai-key",
+      apiKeySecretConfig: secretRef,
+      apiKeySecretSource: "EXTERNAL",
+    });
   });
 
   test("names the variable and file to fix when an API key secret is missing", async () => {
@@ -173,8 +209,32 @@ describe("createCredentialProvisioner", () => {
 
     const { result } = await run(subject.provision, input);
 
-    expect(subject.calls).toEqual([{ kind: "getApiKey", input: "openai-key" }]);
+    expect(subject.calls.map((call) => call.kind)).toEqual(["getApiKey"]);
     expect(result).toEqual({ "openai-key": existing });
+  });
+
+  test("records a provider that has no secret ARN without one", async () => {
+    const subject = identity({ "openai-key": { credentialProviderArn: "arn:existing" } });
+    const input = await project([API_KEY]);
+
+    const { result } = await run(subject.provision, input);
+
+    expect(result).toEqual({ "openai-key": { credentialProviderArn: "arn:existing" } });
+  });
+
+  test("fails when Identity returns a provider without an ARN", async () => {
+    const subject = identity({}, { createReturns: {} as DeployedCredential });
+    const input = await project([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n");
+
+    await expect(run(subject.provision, input)).rejects.toThrow(/no credentialProviderArn/);
+  });
+
+  test("propagates a lookup failure that is not a missing provider", async () => {
+    const denied = Object.assign(new Error("denied"), { name: "AccessDeniedException" });
+    const subject = identity({}, { getFails: denied });
+    const input = await project([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n");
+
+    await expect(run(subject.provision, input)).rejects.toBe(denied);
   });
 
   test("creates a guided OAuth2 provider without forwarding scopes", async () => {
@@ -183,14 +243,14 @@ describe("createCredentialProvisioner", () => {
 
     const { result } = await run(subject.provision, input);
 
-    expect(subject.calls).toEqual([
+    expect(subject.calls.map(({ kind, input: called }) => ({ kind, input: called }))).toEqual([
       { kind: "getOauth2", input: "my-oauth" },
       {
         kind: "createOauth2",
         input: {
           name: "my-oauth",
-          vendor: "CustomOauth2",
-          config: {
+          credentialProviderVendor: "CustomOauth2",
+          oauth2ProviderConfigInput: {
             customOauth2ProviderConfig: {
               oauthDiscovery: { discoveryUrl: DISCOVERY },
               clientId: "client-1",
@@ -218,17 +278,14 @@ describe("createCredentialProvisioner", () => {
 
     await run(subject.provision, input);
 
-    expect(subject.calls[1]).toEqual({
-      kind: "createOauth2",
-      input: {
-        name: "my-oauth",
-        vendor: "CustomOauth2",
-        config: {
-          customOauth2ProviderConfig: {
-            oauthDiscovery: { discoveryUrl: DISCOVERY },
-            clientId: "legacy-client",
-            clientSecret: "shh",
-          },
+    expect(subject.calls[1]?.input).toEqual({
+      name: "my-oauth",
+      credentialProviderVendor: "CustomOauth2",
+      oauth2ProviderConfigInput: {
+        customOauth2ProviderConfig: {
+          oauthDiscovery: { discoveryUrl: DISCOVERY },
+          clientId: "legacy-client",
+          clientSecret: "shh",
         },
       },
     });
@@ -252,14 +309,11 @@ describe("createCredentialProvisioner", () => {
 
     await run(subject.provision, input);
 
-    expect(subject.calls[1]).toEqual({
-      kind: "createOauth2",
-      input: {
-        name: "vendored",
-        vendor: "GoogleOauth2",
-        config: {
-          googleOauth2ProviderConfig: { clientId: "google-client", clientSecret: "g-secret" },
-        },
+    expect(subject.calls[1]?.input).toEqual({
+      name: "vendored",
+      credentialProviderVendor: "GoogleOauth2",
+      oauth2ProviderConfigInput: {
+        googleOauth2ProviderConfig: { clientId: "google-client", clientSecret: "g-secret" },
       },
     });
   });
@@ -271,18 +325,15 @@ describe("createCredentialProvisioner", () => {
 
     await run(subject.provision, input);
 
-    expect(subject.calls[1]).toEqual({
-      kind: "createOauth2",
-      input: {
-        name: "my-oauth",
-        vendor: "CustomOauth2",
-        config: {
-          customOauth2ProviderConfig: {
-            oauthDiscovery: { discoveryUrl: DISCOVERY },
-            clientId: "client-1",
-            clientSecretConfig: clientSecretRef,
-            clientSecretSource: "EXTERNAL",
-          },
+    expect(subject.calls[1]?.input).toEqual({
+      name: "my-oauth",
+      credentialProviderVendor: "CustomOauth2",
+      oauth2ProviderConfigInput: {
+        customOauth2ProviderConfig: {
+          oauthDiscovery: { discoveryUrl: DISCOVERY },
+          clientId: "client-1",
+          clientSecretConfig: clientSecretRef,
+          clientSecretSource: "EXTERNAL",
         },
       },
     });

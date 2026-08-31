@@ -7,13 +7,20 @@ import type {
   CloudFormationClientConfig,
 } from "@aws-sdk/client-cloudformation";
 
+// AwsCredentials is an explicit credential source for a call: either resolved
+// credentials or a provider that resolves them. Callers that rely on the SDK's own
+// default credential chain leave it unset.
+export type AwsCredentials = NonNullable<CloudFormationClientConfig["credentials"]>;
+
 // CoreOptions is the standard trailing argument for Core operations. It carries
 // the per-call settings a handler resolves from context (the AWS region and an
 // optional endpoint URL override) and is translated into a ClientConfig by the
-// sub-clients.
+// sub-clients. `credentials` is for callers that must not use the default chain —
+// a project deploy runs against its target's credentials.
 export interface CoreOptions {
   region: string;
   endpointUrl?: string;
+  credentials?: AwsCredentials;
 }
 
 // ClientConfig is the per-request configuration handed to the client factories. It
@@ -22,11 +29,12 @@ export interface CoreOptions {
 export interface ClientConfig {
   region: string;
   endpoint?: string;
+  credentials?: AwsCredentials;
 }
 
 export type CredentialedClientConfig = {
   region: string;
-  credentials: NonNullable<CloudFormationClientConfig["credentials"]>;
+  credentials: AwsCredentials;
 };
 
 // Factories construct an SDK client from a ClientConfig. Injecting these (rather
