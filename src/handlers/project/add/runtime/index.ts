@@ -5,7 +5,7 @@ import { parseJsonFlag, parseTags } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
 import { type EnvVar, BuildTypeSchema } from "../../../../projectSchemas/runtime";
 import { RuntimeAuthorizerTypeSchema } from "../../../../projectSchemas/auth";
-import { NetworkModeSchema, ProtocolModeSchema } from "../../../../projectSchemas/constants";
+import { NetworkModeSchema } from "../../../../projectSchemas/constants";
 import { SourceResolver } from "../../../../io";
 import {
   LANGUAGE_VERSION_DEFAULTS,
@@ -87,7 +87,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         "additional IAM policy ARNs or policy document paths for the execution role",
         z.array(z.string()).optional(),
       ),
-      flag("protocol", "server protocol: HTTP, MCP, A2A, AGUI", ProtocolModeSchema.optional()),
+      flag("protocol", "server protocol: HTTP or MCP", z.enum(["HTTP", "MCP"]).optional()),
       flag(
         "network-mode",
         "network mode for the runtime environment (PUBLIC or VPC)",

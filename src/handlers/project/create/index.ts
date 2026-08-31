@@ -22,7 +22,6 @@ import {
   HarnessSpecSchema,
   type HarnessModelProvider,
 } from "../../../projectSchemas/harness";
-import { ProtocolModeSchema } from "../../../projectSchemas/constants";
 import { InputValidationError } from "../../../errors";
 import { parseJsonFlag } from "../../utils";
 import { DEFAULT_HARNESS_MODEL } from "../add/harness";
@@ -114,7 +113,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         "agent framework for the scaffolded runtime code",
         z.enum(["strands", "none"]).optional(),
       ),
-      flag("protocol", "server protocol: HTTP, MCP, A2A, AGUI", ProtocolModeSchema.optional()),
+      flag("protocol", "server protocol: HTTP or MCP", z.enum(["HTTP", "MCP"]).optional()),
       flag(
         "model-provider",
         "model provider: bedrock, open_ai, gemini, or lite_llm for harnesses; Bedrock for runtime code",
@@ -301,7 +300,7 @@ type RuntimePathFlagValues = {
   build?: "CodeZip" | "Container";
   language?: "Python" | "TypeScript";
   framework?: "strands" | "none";
-  protocol?: z.infer<typeof ProtocolModeSchema>;
+  protocol?: "HTTP" | "MCP";
   "model-provider"?: ModelProviderFlag;
   "api-key"?: string;
   memory?: (typeof MEMORY_SHORTCUT_NAMES)[number];
