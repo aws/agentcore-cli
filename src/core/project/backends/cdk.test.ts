@@ -33,8 +33,10 @@ function unusedIdentity(): CredentialProviderCalls {
   return {
     getApiKeyCredentialProvider: unexpected("getApiKeyCredentialProvider"),
     createApiKeyCredentialProvider: unexpected("createApiKeyCredentialProvider"),
+    updateApiKeyCredentialProvider: unexpected("updateApiKeyCredentialProvider"),
     getOauth2CredentialProvider: unexpected("getOauth2CredentialProvider"),
     createOauth2CredentialProvider: unexpected("createOauth2CredentialProvider"),
+    updateOauth2CredentialProvider: unexpected("updateOauth2CredentialProvider"),
   };
 }
 

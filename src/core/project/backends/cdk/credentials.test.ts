@@ -8,6 +8,8 @@ import {
   type CreateOauth2CredentialProviderResponse,
   type GetApiKeyCredentialProviderResponse,
   type GetOauth2CredentialProviderResponse,
+  type UpdateApiKeyCredentialProviderResponse,
+  type UpdateOauth2CredentialProviderResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { Project, ProjectEvent } from "../../../../handlers/project/types";
 import { ProjectSpecSchema } from "../../../../projectSchemas/project";
@@ -71,13 +73,17 @@ const apiKeyResponse = (provider: DeployedCredential | undefined) =>
   ({
     credentialProviderArn: provider?.credentialProviderArn,
     ...(provider?.clientSecretArn && { apiKeySecretArn: { secretArn: provider.clientSecretArn } }),
-  }) as GetApiKeyCredentialProviderResponse & CreateApiKeyCredentialProviderResponse;
+  }) as GetApiKeyCredentialProviderResponse &
+    CreateApiKeyCredentialProviderResponse &
+    UpdateApiKeyCredentialProviderResponse;
 
 const oauth2Response = (provider: DeployedCredential | undefined) =>
   ({
     credentialProviderArn: provider?.credentialProviderArn,
     ...(provider?.clientSecretArn && { clientSecretArn: { secretArn: provider.clientSecretArn } }),
-  }) as GetOauth2CredentialProviderResponse & CreateOauth2CredentialProviderResponse;
+  }) as GetOauth2CredentialProviderResponse &
+    CreateOauth2CredentialProviderResponse &
+    UpdateOauth2CredentialProviderResponse;
 
 /** Overrides for the paths that only a failing or incomplete Identity produces. */
 type Behavior = {
@@ -112,12 +118,20 @@ function identity(existing: DeployedCredentials = {}, behavior: Behavior = {}) {
       calls.push({ kind: "createApiKey", input, options });
       return apiKeyResponse(created(input.name ?? "", "apikey"));
     },
+    async updateApiKeyCredentialProvider(input, options) {
+      calls.push({ kind: "updateApiKey", input, options });
+      return apiKeyResponse(created(input.name ?? "", "apikey"));
+    },
     async getOauth2CredentialProvider(name, options) {
       calls.push({ kind: "getOauth2", input: name, options });
       return oauth2Response(lookup(name));
     },
     async createOauth2CredentialProvider(input, options) {
       calls.push({ kind: "createOauth2", input, options });
+      return oauth2Response(created(input.name ?? "", "oauth"));
+    },
+    async updateOauth2CredentialProvider(input, options) {
+      calls.push({ kind: "updateOauth2", input, options });
       return oauth2Response(created(input.name ?? "", "oauth"));
     },
   };
@@ -202,15 +216,69 @@ describe("createCredentialProvisioner", () => {
     );
   });
 
-  test("reuses a provider that already exists instead of recreating it", async () => {
+  test("updates a provider that already exists with the current secret", async () => {
     const existing = { credentialProviderArn: "arn:existing", clientSecretArn: "arn:existing/s" };
     const subject = identity({ "openai-key": existing });
-    const input = await project([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n");
+    const input = await project([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-rotated'\n");
+
+    const { result } = await run(subject.provision, input);
+
+    expect(subject.calls.map((call) => call.kind)).toEqual(["getApiKey", "updateApiKey"]);
+    expect(subject.calls[1]?.input).toEqual({ name: "openai-key", apiKey: "sk-rotated" });
+    expect(result).toEqual({
+      "openai-key": {
+        credentialProviderArn: "arn:apikey:openai-key",
+        clientSecretArn: "arn:secret:openai-key",
+      },
+    });
+  });
+
+  test("updates an existing OAuth provider with the current client secret", async () => {
+    const subject = identity({ "my-oauth": { credentialProviderArn: "arn:existing" } });
+    const input = await project([OAUTH], "AGENTCORE_CREDENTIAL_MY_OAUTH_CLIENT_SECRET='rotated'\n");
+
+    await run(subject.provision, input);
+
+    expect(subject.calls.map((call) => call.kind)).toEqual(["getOauth2", "updateOauth2"]);
+    expect(subject.calls[1]?.input).toEqual({
+      name: "my-oauth",
+      credentialProviderVendor: "CustomOauth2",
+      oauth2ProviderConfigInput: {
+        customOauth2ProviderConfig: {
+          oauthDiscovery: { discoveryUrl: DISCOVERY },
+          clientId: "client-1",
+          clientSecret: "rotated",
+        },
+      },
+    });
+  });
+
+  test("leaves an existing provider alone when no secret is available locally", async () => {
+    const existing = { credentialProviderArn: "arn:existing", clientSecretArn: "arn:existing/s" };
+    const subject = identity({ "openai-key": existing });
+    // No .env.local entry and no secretRef: there is nothing to push, so the
+    // provider keeps whatever secret it holds rather than failing the deploy.
+    const input = await project([API_KEY]);
 
     const { result } = await run(subject.provision, input);
 
     expect(subject.calls.map((call) => call.kind)).toEqual(["getApiKey"]);
     expect(result).toEqual({ "openai-key": existing });
+  });
+
+  test("updates a provider backed by an external secret reference", async () => {
+    const secretRef = { secretId: "prod/openai", jsonKey: "apiKey" };
+    const subject = identity({ "openai-key": { credentialProviderArn: "arn:existing" } });
+    const input = await project([{ ...API_KEY, secretRef }]);
+
+    await run(subject.provision, input);
+
+    expect(subject.calls.map((call) => call.kind)).toEqual(["getApiKey", "updateApiKey"]);
+    expect(subject.calls[1]?.input).toEqual({
+      name: "openai-key",
+      apiKeySecretConfig: secretRef,
+      apiKeySecretSource: "EXTERNAL",
+    });
   });
 
   test("records a provider that has no secret ARN without one", async () => {

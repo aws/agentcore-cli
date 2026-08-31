@@ -26,14 +26,16 @@ export type DeployedCredentials = Record<string, DeployedCredential>;
 /**
  * The Identity operations provisioning uses, narrowed from the Core client that
  * backs the `agentcore identity` commands. Narrowed rather than taken whole so
- * tests fake four calls instead of ten.
+ * tests fake six calls instead of ten.
  */
 export type CredentialProviderCalls = Pick<
   CoreIdentityClient,
   | "getApiKeyCredentialProvider"
   | "createApiKeyCredentialProvider"
+  | "updateApiKeyCredentialProvider"
   | "getOauth2CredentialProvider"
   | "createOauth2CredentialProvider"
+  | "updateOauth2CredentialProvider"
 >;
 
 export type CredentialProvisionInput = {
@@ -52,9 +54,10 @@ export type CredentialProvisioner = (
  * synthesized app reads their ARNs from `deployed-state.json`, so a project with
  * credentials can't synthesize until they exist.
  *
- * Created when absent, reused when present, never updated — so a redeploy neither
- * mints a new secret version nor overwrites one rotated outside the CLI.
- * Reconciling a changed declaration is left to a later change.
+ * A provider is created when absent and updated when present, so editing a secret
+ * in `.env.local` and redeploying pushes the new value. A provider whose secret the
+ * CLI cannot see — nothing in `.env.local` and no external reference — is left
+ * exactly as it is rather than failing the deploy.
  */
 export function createCredentialProvisioner(
   identity: CredentialProviderCalls,
@@ -72,9 +75,9 @@ export function createCredentialProvisioner(
     // rather than the default chain, in the region the target deploys to.
     const options: CoreOptions = { region, credentials };
 
-    // Resolve every credential before creating any: look up existing providers
-    // (reused as-is) and validate the secret for the rest. A missing secret then
-    // fails before the first provider is created, not partway through the list.
+    // Resolve every credential before writing any: look up existing providers and
+    // validate the secret each one needs. A missing secret then fails before the
+    // first provider is written, not partway through the list.
     const plans: { name: string; provision: Provision }[] = [];
     for (const credential of declared) {
       plans.push({
@@ -86,14 +89,20 @@ export function createCredentialProvisioner(
     const provisioned: DeployedCredentials = {};
     for (const { name, provision } of plans) {
       yield { message: `Preparing credential provider '${name}'` };
-      provisioned[name] = "reuse" in provision ? provision.reuse : await provision.create();
+      provisioned[name] = "reuse" in provision ? provision.reuse : await provision.write();
     }
     return provisioned;
   };
 }
 
-/** An existing provider to reuse, or a creation deferred until every secret is validated. */
-type Provision = { reuse: DeployedCredential } | { create: () => Promise<DeployedCredential> };
+/**
+ * What a credential needs: an existing provider to leave alone, or a write —
+ * `create` for a provider that does not exist yet, `update` for one that does —
+ * deferred until every credential has been resolved.
+ */
+type Provision =
+  | { reuse: DeployedCredential }
+  | { kind: "create" | "update"; write: () => Promise<DeployedCredential> };
 
 function resolveCredential(
   identity: CredentialProviderCalls,
@@ -121,17 +130,33 @@ async function resolveApiKey(
   rootPath: string,
 ): Promise<Provision> {
   const { name } = credential;
-  // Provider names are account-global, so one already in this account is reused.
+  // Provider names are account-global, so one already in this account is the one
+  // this project's credential resolves to.
   const existing = await undefinedWhenAbsent(() =>
     identity.getApiKeyCredentialProvider(name, options),
   );
-  if (existing) return { reuse: apiKeyProvision(name, existing) };
 
-  const input = credential.secretRef
-    ? { name, apiKeySecretConfig: credential.secretRef, apiKeySecretSource: "EXTERNAL" as const }
-    : { name, apiKey: requireEnvSecret(name, env, rootPath, "secretRef") };
+  const secret = credential.secretRef
+    ? { apiKeySecretConfig: credential.secretRef, apiKeySecretSource: "EXTERNAL" as const }
+    : secretFromEnv(env, name, (apiKey) => ({ apiKey }));
+  if (!secret) {
+    // Nothing to write. An existing provider keeps whatever secret it holds; an
+    // absent one cannot be created at all.
+    if (existing) return { reuse: apiKeyProvision(name, existing) };
+    throw missingSecret(name, credentialEnvVarName(name), "secretRef", rootPath);
+  }
+
+  const input = { name, ...secret };
+  if (existing) {
+    return {
+      kind: "update",
+      write: async () =>
+        apiKeyProvision(name, await identity.updateApiKeyCredentialProvider(input, options)),
+    };
+  }
   return {
-    create: async () =>
+    kind: "create",
+    write: async () =>
       apiKeyProvision(name, await identity.createApiKeyCredentialProvider(input, options)),
   };
 }
@@ -146,41 +171,65 @@ async function resolveOauth2(
   const existing = await undefinedWhenAbsent(() =>
     identity.getOauth2CredentialProvider(credential.name, options),
   );
-  if (existing) return { reuse: oauth2Provision(credential.name, existing) };
 
-  const secret: Record<string, unknown> = credential.clientSecretRef
+  const secret: Record<string, unknown> | undefined = credential.clientSecretRef
     ? { clientSecretConfig: credential.clientSecretRef, clientSecretSource: "EXTERNAL" }
-    : {
-        clientSecret: requireEnvSecret(
-          credential.name,
-          env,
-          rootPath,
-          "clientSecretRef",
-          "_CLIENT_SECRET",
-        ),
-      };
+    : secretFromEnv(env, credential.name, (clientSecret) => ({ clientSecret }), "_CLIENT_SECRET");
+  if (!secret) {
+    if (existing) return { reuse: oauth2Provision(credential.name, existing) };
+    throw missingSecret(
+      credential.name,
+      credentialEnvVarName(credential.name, "_CLIENT_SECRET"),
+      "clientSecretRef",
+      rootPath,
+    );
+  }
+
   // Projects created by older CLIs kept the client id in .env.local rather than
   // agentcore.json, so fall back to that legacy variable when the spec has none.
   const clientId = credential.clientId ?? env[credentialEnvVarName(credential.name, "_CLIENT_ID")];
   const config = credential.providerConfig
     ? vendorConfigWithSecret(credential.name, credential.providerConfig, secret)
     : guidedCustomConfig(credential, clientId, secret);
+  const input = {
+    name: credential.name,
+    // The spec's vendor is free-form so a new service vendor works without
+    // a CLI release; the service rejects values it does not know.
+    credentialProviderVendor: credential.vendor as never,
+    oauth2ProviderConfigInput: config,
+  };
+  if (existing) {
+    return {
+      kind: "update",
+      write: async () =>
+        oauth2Provision(
+          credential.name,
+          await identity.updateOauth2CredentialProvider(input, options),
+        ),
+    };
+  }
   return {
-    create: async () =>
+    kind: "create",
+    write: async () =>
       oauth2Provision(
         credential.name,
-        await identity.createOauth2CredentialProvider(
-          {
-            name: credential.name,
-            // The spec's vendor is free-form so a new service vendor works without
-            // a CLI release; the service rejects values it does not know.
-            credentialProviderVendor: credential.vendor as never,
-            oauth2ProviderConfigInput: config,
-          },
-          options,
-        ),
+        await identity.createOauth2CredentialProvider(input, options),
       ),
   };
+}
+
+/**
+ * Reads a credential's secret from `.env.local`, shaped into the request field it
+ * fills, or undefined when the variable is unset.
+ */
+function secretFromEnv<T>(
+  env: Record<string, string | undefined>,
+  name: string,
+  field: (secret: string) => T,
+  suffix = "",
+): T | undefined {
+  const secret = env[credentialEnvVarName(name, suffix)];
+  return secret ? field(secret) : undefined;
 }
 
 /**
@@ -229,20 +278,6 @@ function deployedCredential(
     credentialProviderArn: requireArn(credentialProviderArn, name),
     ...(secretArn && { clientSecretArn: secretArn }),
   };
-}
-
-/** Reads a credential's secret from `.env.local`, throwing an actionable error when absent. */
-function requireEnvSecret(
-  name: string,
-  env: Record<string, string | undefined>,
-  rootPath: string,
-  refField: "secretRef" | "clientSecretRef",
-  suffix = "",
-): string {
-  const envKey = credentialEnvVarName(name, suffix);
-  const secret = env[envKey];
-  if (!secret) throw missingSecret(name, envKey, refField, rootPath);
-  return secret;
 }
 
 /**
