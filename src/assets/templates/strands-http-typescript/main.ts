@@ -36,6 +36,7 @@ You are a helpful assistant. Use tools when appropriate.
 
 const requestSchema = z.object({
   prompt: z.string().default(''),
+  userId: z.string().optional(),
 });
 
 {{#if hasMemory}}
