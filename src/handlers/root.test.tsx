@@ -17,6 +17,7 @@ describe("createRootHandler", () => {
       "memory",
       "gateway",
       "eval",
+      "feedback",
       "config",
       "project",
     ]);
