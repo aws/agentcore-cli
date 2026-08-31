@@ -119,6 +119,40 @@ export function credentialEnvVarName(credentialName: string, suffix = ""): strin
   return `AGENTCORE_CREDENTIAL_${credentialName.replace(/-/g, "_").toUpperCase()}${suffix}`;
 }
 
+/**
+ * The suffixes the CLI appends to a credential's base variable to name one of its
+ * fields — both the secret-bearing ones and the readable identifiers.
+ */
+const CREDENTIAL_FIELD_SUFFIXES = [
+  "_CLIENT_SECRET",
+  "_API_KEY_SECRET",
+  "_APP_SECRET",
+  "_WALLET_SECRET",
+  "_AUTHORIZATION_PRIVATE_KEY",
+  // Identifiers rather than secrets. `_CLIENT_ID` is no longer written — an OAuth
+  // client id lives in agentcore.json — but deploy still reads it for projects
+  // created before that move, so a name that produces it is still a hazard.
+  "_CLIENT_ID",
+  "_API_KEY_ID",
+  "_APP_ID",
+  "_AUTHORIZATION_ID",
+] as const;
+
+/**
+ * Reports the field suffix a credential name ends in, if any.
+ *
+ * A credential named `svc_client_id` derives `AGENTCORE_CREDENTIAL_SVC_CLIENT_ID`,
+ * which is indistinguishable from the client id of an OAuth credential named `svc`.
+ * Rejecting such a name at creation fails closed: the collision check in
+ * {@link credentialEnvironmentVariableNames} only sees fields a credential currently
+ * writes, so it cannot catch a clash with a field written by an older CLI or added
+ * by a later one.
+ */
+export function credentialNameFieldSuffix(credentialName: string): string | undefined {
+  const normalized = credentialName.replace(/-/g, "_").toUpperCase();
+  return CREDENTIAL_FIELD_SUFFIXES.find((suffix) => normalized.endsWith(suffix));
+}
+
 /** Returns every .env.local key a credential reserves when it does not use an external secret. */
 export function credentialEnvironmentVariableNames(credential: Credential): string[] {
   switch (credential.authorizerType) {

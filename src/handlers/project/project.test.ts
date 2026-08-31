@@ -778,6 +778,15 @@ describe("project add credentials", () => {
     ).rejects.toThrow(/same environment variable/);
   });
 
+  test("rejects a name ending in a field suffix even with nothing to collide with", async () => {
+    await inProject();
+    // Nothing in the spec derives AGENTCORE_CREDENTIAL_SVC_CLIENT_ID, but a pre-0.29
+    // OAuth credential named 'svc' would read it as its client id.
+    await expect(run(["add", "credentials", "api-key", "--name", "svc-client-id"])).rejects.toThrow(
+      /_CLIENT_ID/,
+    );
+  });
+
   test.each<[string, string[], RegExp]>([
     [
       "api-key: an inline secret value",

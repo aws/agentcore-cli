@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { CredentialSchema, credentialEnvironmentVariableNames } from "./credential";
+import {
+  CredentialSchema,
+  credentialEnvironmentVariableNames,
+  credentialNameFieldSuffix,
+} from "./credential";
 
 const DISCOVERY_URL = "https://idp.example.com/.well-known/openid-configuration";
 const SECRET_REF = {
@@ -81,6 +85,17 @@ describe("credential schema", () => {
     });
     expect(result.success).toBe(true);
     expect(result.data).toMatchObject({ vendor: "CustomOauth2" });
+  });
+
+  it("reports the field suffix a credential name would shadow", () => {
+    expect(credentialNameFieldSuffix("service-key")).toBeUndefined();
+    expect(credentialNameFieldSuffix("svc-client-id")).toBe("_CLIENT_ID");
+    expect(credentialNameFieldSuffix("svc_client_secret")).toBe("_CLIENT_SECRET");
+    expect(credentialNameFieldSuffix("wallet-authorization-private-key")).toBe(
+      "_AUTHORIZATION_PRIVATE_KEY",
+    );
+    // The suffix must terminate the name; carrying it in the middle is fine.
+    expect(credentialNameFieldSuffix("client-id-service")).toBeUndefined();
   });
 
   it("derives the environment variables used by each credential type", () => {
