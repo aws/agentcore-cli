@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import z from "zod";
 import { FsProjectManager } from "./manager";
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
-import { createSilentLogger } from "../../testing";
+import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import type { ExportHarnessInput, Project, ProjectEvent } from "../../handlers/project/types";
 import { HarnessSpecSchema } from "../../projectSchemas/harness";
@@ -33,6 +33,7 @@ function manager(options: { json?: ReadWriteJson } = {}) {
   return {
     manager: new FsProjectManager({
       logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
       json: options.json,
       runner: async (command, { cwd }) => {
         commands.push({ command, cwd });

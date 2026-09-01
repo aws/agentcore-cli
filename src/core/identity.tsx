@@ -37,18 +37,12 @@ import type {
   UpdateOauth2CredentialProviderInput,
   UpdatePaymentCredentialProviderInput,
 } from "../handlers/identity/types";
-import { createControlClient } from "./factories";
 import type { AwsClients, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
 
-// createIdentityClient builds an IdentityClient that owns its control-plane client,
-// for callers constructed outside CoreClient (which hands out its cached ones).
-export const createIdentityClient = (): IdentityClient =>
-  new IdentityClient({ control: createControlClient });
-
 export class IdentityClient implements CoreIdentityClient {
-  // Only the control plane is used, so the dependency is narrowed to it: CoreClient
-  // still satisfies this by passing itself.
+  // Narrowed to `control` so any holder of a cached control client satisfies it;
+  // CoreClient passes itself.
   constructor(private readonly clients: Pick<AwsClients, "control">) {}
 
   async createApiKeyCredentialProvider(

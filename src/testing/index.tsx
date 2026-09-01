@@ -13,6 +13,7 @@ export {
   TestCoreClient,
   TestGatewayClient,
   TestHarnessClient,
+  TestIdentityClient,
   TestMemoryClient,
   TestRuntimeClient,
   TestEvalClient,

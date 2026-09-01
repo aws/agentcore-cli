@@ -22,7 +22,7 @@ import {
   type Project,
   type ProjectEvent,
 } from "../../handlers/project/types";
-import { createSilentLogger } from "../../testing";
+import { createSilentLogger, TestIdentityClient } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 
 const HELLO_WORLD_PYTHON = resolveRuntimeTemplateShortcut("hello-world-python");
@@ -55,6 +55,7 @@ function manager(): { manager: FsProjectManager; commands: { command: string[]; 
   return {
     manager: new FsProjectManager({
       logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
       runner: async (command, { cwd }) => {
         commands.push({ command, cwd });
       },
@@ -263,6 +264,7 @@ describe("FsProjectManager.create", () => {
     const directory = await inTempDirectory();
     const failing = new FsProjectManager({
       logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
       runner: async () => {
         throw new Error("npm exploded");
       },
@@ -379,6 +381,7 @@ describe("FsProjectManager.build", () => {
     const project = await scaffolded(subject, directory);
     const failing = new FsProjectManager({
       logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
       runner: async () => {
         throw new Error("cdk synth exploded");
       },
@@ -413,6 +416,7 @@ describe("FsProjectManager.deploy", () => {
       accountCalls,
       manager: new FsProjectManager({
         logger: createSilentLogger(),
+        identity: new TestIdentityClient(),
         backends: { CDK: backend },
         resolveAccount: async (region) => {
           accountCalls.push(region);

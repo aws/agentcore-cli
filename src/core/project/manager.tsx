@@ -78,7 +78,6 @@ import type { RuntimeResourceConfig } from "../../handlers/project/add/runtime/t
 import type { TemplateRenderer } from "./templates/types";
 import { HandlebarsTemplateRenderer } from "./templates/renderer";
 import type { CreateCloudFormationClient } from "../types";
-import { createIdentityClient } from "../identity";
 import type { CoreIdentityClient } from "../../handlers/identity/types";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
@@ -86,7 +85,12 @@ const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "regio
 type ProjectManagerConfig = {
   logger: Logger;
   createCloudFormationClient?: CreateCloudFormationClient;
-  identity?: CoreIdentityClient;
+  /**
+   * Identity operations a deploy provisions credential providers through. Required
+   * rather than defaulted, so a caller that forgets one fails to compile instead of
+   * silently getting a client that talks to AWS.
+   */
+  identity: CoreIdentityClient;
   source?: AssetSource;
   runner?: ProcessRunner;
   checkTool?: typeof requireTool;
@@ -124,7 +128,7 @@ export class FsProjectManager implements ProjectManager {
       CDK: new CdkBackend({
         logger: config.logger,
         createCloudFormationClient: config.createCloudFormationClient,
-        identity: config.identity ?? createIdentityClient(),
+        identity: config.identity,
         runner: config.runner,
         checkTool: config.checkTool,
         json: config.json,

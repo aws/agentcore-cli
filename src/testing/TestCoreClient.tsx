@@ -2412,6 +2412,7 @@ export class TestCoreClient implements Core {
     this.projectManager = new FsProjectManager({
       logger: options?.logger ?? createSilentLogger(),
       createCloudFormationClient: options?.createCloudFormationClient,
+      identity: this.identity,
       json: options?.json,
       backends: options?.backends,
       runner: async (command, { cwd }) => {
