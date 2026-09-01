@@ -906,7 +906,10 @@ export class FsProjectManager implements ProjectManager {
     input: ResolveDeployedResourcesInput,
   ): Promise<ResolvedDeployedResources> {
     const target = await this.resolveExistingTarget(project, input.target);
-    const resources = await this.backendFor(project).resolveDeployedResources(project, { target });
+    const resources = await this.backendFor(project).resolveDeployedResources(project, {
+      target,
+      allowMissing: input.allowMissing,
+    });
     return { resources, target };
   }
 

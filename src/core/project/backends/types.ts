@@ -16,6 +16,8 @@ export type DeployBackendInput = {
 
 export type ResolveDeployedResourcesBackendInput = {
   target: AwsDeploymentTarget;
+  /** When true, an undeployed target yields [] instead of throwing. */
+  allowMissing?: boolean;
 };
 
 /** Builds the deployable artifacts owned by a project's selected backend. */

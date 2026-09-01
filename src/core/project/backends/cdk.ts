@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Stack } from "@aws-sdk/client-cloudformation";
 import { MalformedServiceResponseError, ProjectStateError } from "../../../errors/errors";
 import type {
+  DeployableResource,
   DeployResult,
   Project,
   ProjectEvent,
@@ -51,17 +52,61 @@ import { describeStack } from "./cdk/stackReader";
 
 type StackDescriber = typeof describeStack;
 
+// Mirrors @aws/agentcore-cdk's exportName() (its src/cdk/logical-ids.ts): join the
+// parts with "-" after turning "_" into "-" and dropping anything outside
+// [A-Za-z0-9:-]. Replicated rather than imported because that package is a CDK
+// construct library, not a CLI dependency — this is the source-of-truth format.
+function cfnExportName(...parts: string[]): string {
+  return parts.map((part) => part.replace(/_/g, "-").replace(/[^a-zA-Z0-9:-]/g, "")).join("-");
+}
+
+// toCdkId mirrors the payment CfnOutput logical-id construction in the CLI's own
+// cdk-stack.ts (assets/cdk/lib/cdk-stack.ts): underscores stripped, rest kept.
+function toCdkId(name: string): string {
+  return name.replace(/_/g, "");
+}
+
+// The exportName parts (after the stack name) for every type whose deployed id is
+// a CloudFormation export. credential + payment are excluded on purpose — credential
+// comes from deployed-state, payment matches by OutputKey below. `satisfies Record`
+// makes this exhaustive: adding a DeployableResource without a row here is a compile
+// error, so a new type can never silently resolve to "not found".
+type CfnOutputResource = Exclude<DeployableResource, "credential" | "payment">;
+
+const EXPORT_PARTS = {
+  runtime: (name) => [name, "RuntimeId"],
+  harness: (name) => ["Harness", name, "Id"],
+  memory: (name) => ["Memory", name, "Id"],
+  "knowledge-base": (name) => ["KnowledgeBase", name, "Id"],
+  evaluator: (name) => ["Evaluator", name, "Id"],
+  "online-eval": (name) => ["OnlineEval", name, "Id"],
+  gateway: (name) => ["Gateway", name, "Id"],
+  "gateway-target": (name) => ["GatewayTarget", name, "Id"],
+  "policy-engine": (name) => ["PolicyEngine", name, "Id"],
+  policy: (name, parent) => ["Policy", parent ?? "", name, "Id"],
+  "config-bundle": (name) => ["ConfigBundle", name, "Id"],
+  dataset: (name) => ["Dataset", name, "Id"],
+  // Output arrives with aws/agentcore-l3-cdk-constructs#336; resolves once it ships.
+  "capacity-provider": (name) => ["CapacityProvider", name, "Id"],
+} satisfies Record<CfnOutputResource, (name: string, parent?: string) => string[]>;
+
 function findDeployedResourceId(
   stack: Stack,
-  input: Pick<ResolvedDeployedResource, "resourceType" | "name">,
+  input: { resourceType: Exclude<DeployableResource, "credential">; name: string; parent?: string },
 ): string | undefined {
   if (!stack.StackName) return undefined;
-  const exportResourceName = input.name.replaceAll("_", "-");
-  const exportName =
-    input.resourceType === "runtime"
-      ? `${stack.StackName}-${exportResourceName}-RuntimeId`
-      : `${stack.StackName}-Harness-${exportResourceName}-Id`;
-  return stack.Outputs?.find((output) => output.ExportName === exportName)?.OutputValue;
+  // TODO(cdk): the CLI's payment CfnOutputs (assets/cdk/lib/cdk-stack.ts) set no
+  // ExportName, so match by their predictable OutputKey. Once they export a name,
+  // fold payment into EXPORT_PARTS and delete this branch.
+  if (input.resourceType === "payment") {
+    const key = `Payment${toCdkId(input.name)}ManagerId`;
+    return stack.Outputs?.find((output) => output.OutputKey === key)?.OutputValue;
+  }
+  const want = cfnExportName(
+    stack.StackName,
+    ...EXPORT_PARTS[input.resourceType](input.name, input.parent),
+  );
+  return stack.Outputs?.find((output) => output.ExportName === want)?.OutputValue;
 }
 
 export type CdkBackendConfig = {
@@ -266,10 +311,11 @@ export class CdkBackend implements ProjectBackend {
     project: Project,
     input: ResolveDeployedResourcesBackendInput,
   ): Promise<ResolvedDeployedResource[]> {
-    const { target } = input;
+    const { target, allowMissing } = input;
     const deployedState = await readDeployedState(this.json, project.rootPath);
     const stackArn = deployedState.targets[target.name]?.stackArn;
     if (!stackArn) {
+      if (allowMissing) return [];
       throw new ProjectStateError(
         `Project '${project.name}' is not deployed to target '${target.name}'. ` +
           `Run 'agentcore project deploy --target ${target.name}' first.`,
@@ -279,19 +325,63 @@ export class CdkBackend implements ProjectBackend {
     const credentials = await this.credentialsForTarget(target);
     const stack = await this.describeStack(target.region, credentials, stackArn);
     if (!stack) {
+      if (allowMissing) return [];
       throw new ProjectStateError(
         `Project '${project.name}' is not deployed to target '${target.name}'. ` +
           `Run 'agentcore project deploy --target ${target.name}' first.`,
       );
     }
 
-    const resources = [
-      ...project.spec.runtimes.map(({ name }) => ({ resourceType: "runtime" as const, name })),
-      ...project.spec.harnesses.map(({ name }) => ({ resourceType: "harness" as const, name })),
+    const { spec } = project;
+    // Credential ids are never stack outputs — they're created imperatively and
+    // recorded in deployed-state. Read them from the state we already loaded.
+    const credentialArns = deployedState.targets[target.name]?.resources?.credentials ?? {};
+
+    type Declared = { resourceType: DeployableResource; name: string; parent?: string };
+    const declared: Declared[] = [
+      ...spec.runtimes.map(({ name }) => ({ resourceType: "runtime" as const, name })),
+      ...spec.harnesses.map(({ name }) => ({ resourceType: "harness" as const, name })),
+      ...spec.memories.map(({ name }) => ({ resourceType: "memory" as const, name })),
+      ...spec.knowledgeBases.map(({ name }) => ({ resourceType: "knowledge-base" as const, name })),
+      ...spec.credentials.map(({ name }) => ({ resourceType: "credential" as const, name })),
+      ...spec.evaluators.map(({ name }) => ({ resourceType: "evaluator" as const, name })),
+      ...spec.onlineEvalConfigs.map(({ name }) => ({ resourceType: "online-eval" as const, name })),
+      ...spec.agentCoreGateways.flatMap((gw) => [
+        { resourceType: "gateway" as const, name: gw.name },
+        ...(gw.targets ?? []).map(({ name }) => ({
+          resourceType: "gateway-target" as const,
+          name,
+          parent: gw.name,
+        })),
+      ]),
+      ...(spec.unassignedTargets ?? []).map(({ name }) => ({
+        resourceType: "gateway-target" as const,
+        name,
+      })),
+      ...spec.policyEngines.flatMap((engine) => [
+        { resourceType: "policy-engine" as const, name: engine.name },
+        ...(engine.policies ?? []).map(({ name }) => ({
+          resourceType: "policy" as const,
+          name,
+          parent: engine.name,
+        })),
+      ]),
+      ...spec.configBundles.map(({ name }) => ({ resourceType: "config-bundle" as const, name })),
+      ...(spec.datasets ?? []).map(({ name }) => ({ resourceType: "dataset" as const, name })),
+      ...(spec.payments ?? []).map(({ name }) => ({ resourceType: "payment" as const, name })),
+      // capacity-provider has no spec array yet — arrives with l3-cdk-constructs#336.
     ];
-    return resources.flatMap((resource) => {
-      const id = findDeployedResourceId(stack, resource);
-      return id ? [{ ...resource, id, target }] : [];
+
+    return declared.flatMap((r) => {
+      const id =
+        r.resourceType === "credential"
+          ? credentialArns[r.name]?.credentialProviderArn
+          : findDeployedResourceId(stack, {
+              resourceType: r.resourceType,
+              name: r.name,
+              parent: r.parent,
+            });
+      return id ? [{ ...r, id, target }] : [];
     });
   }
 

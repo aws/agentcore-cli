@@ -705,4 +705,127 @@ describe("CdkBackend.resolveDeployedResources", () => {
     ).rejects.toThrow(/expects AWS account 111122223333.*999900001111/s);
     expect(subject.stackReads).toEqual([]);
   });
+
+  test("resolves every deployed resource type: exports, payment OutputKey, credential from state, nested parents, underscores", async () => {
+    const input = await project();
+    // The resolver only reads names (and nested target/policy names), so a
+    // hand-shaped spec is enough here — schema validity is tested elsewhere.
+    input.spec = {
+      ...input.spec,
+      runtimes: [{ name: "web" }],
+      harnesses: [{ name: "chat" }],
+      memories: [{ name: "user_mem" }], // underscore must map to -user-mem-
+      knowledgeBases: [{ name: "kb" }],
+      credentials: [{ name: "cred" }], // id comes from deployed-state, not outputs
+      evaluators: [{ name: "ev" }],
+      onlineEvalConfigs: [{ name: "oe" }],
+      agentCoreGateways: [{ name: "gw", targets: [{ name: "tgt" }] }],
+      policyEngines: [{ name: "pe", policies: [{ name: "pol" }] }],
+      configBundles: [{ name: "cb" }],
+      datasets: [{ name: "ds" }],
+      payments: [{ name: "pay" }],
+    } as unknown as typeof input.spec;
+    await updateTargetState(json, input.rootPath, TARGET.name, {
+      stackArn: STACK_ARN,
+      resources: { credentials: { cred: { credentialProviderArn: "arn:aws:cred/cred" } } },
+    });
+    const S = "AgentCore-example-default";
+    const out = (ExportName: string, OutputValue: string) => ({ ExportName, OutputValue });
+    const subject = harness({
+      describedStack: {
+        StackName: S,
+        CreationTime: new Date(0),
+        StackStatus: "CREATE_COMPLETE",
+        Outputs: [
+          out(`${S}-web-RuntimeId`, "web-1"),
+          out(`${S}-Harness-chat-Id`, "chat-1"),
+          out(`${S}-Memory-user-mem-Id`, "mem-1"),
+          out(`${S}-KnowledgeBase-kb-Id`, "kb-1"),
+          out(`${S}-Evaluator-ev-Id`, "ev-1"),
+          out(`${S}-OnlineEval-oe-Id`, "oe-1"),
+          out(`${S}-Gateway-gw-Id`, "gw-1"),
+          out(`${S}-GatewayTarget-tgt-Id`, "tgt-1"),
+          out(`${S}-PolicyEngine-pe-Id`, "pe-1"),
+          out(`${S}-Policy-pe-pol-Id`, "pol-1"),
+          out(`${S}-ConfigBundle-cb-Id`, "cb-1"),
+          out(`${S}-Dataset-ds-Id`, "ds-1"),
+          // payment: no ExportName — only a predictable OutputKey
+          { OutputKey: "PaymentpayManagerId", OutputValue: "pay-1" },
+        ],
+      },
+    });
+
+    const resources = await subject.backend.resolveDeployedResources(input, { target: TARGET });
+
+    expect(resources).toEqual([
+      { resourceType: "runtime", name: "web", id: "web-1", target: TARGET },
+      { resourceType: "harness", name: "chat", id: "chat-1", target: TARGET },
+      { resourceType: "memory", name: "user_mem", id: "mem-1", target: TARGET },
+      { resourceType: "knowledge-base", name: "kb", id: "kb-1", target: TARGET },
+      { resourceType: "credential", name: "cred", id: "arn:aws:cred/cred", target: TARGET },
+      { resourceType: "evaluator", name: "ev", id: "ev-1", target: TARGET },
+      { resourceType: "online-eval", name: "oe", id: "oe-1", target: TARGET },
+      { resourceType: "gateway", name: "gw", id: "gw-1", target: TARGET },
+      { resourceType: "gateway-target", name: "tgt", parent: "gw", id: "tgt-1", target: TARGET },
+      { resourceType: "policy-engine", name: "pe", id: "pe-1", target: TARGET },
+      { resourceType: "policy", name: "pol", parent: "pe", id: "pol-1", target: TARGET },
+      { resourceType: "config-bundle", name: "cb", id: "cb-1", target: TARGET },
+      { resourceType: "dataset", name: "ds", id: "ds-1", target: TARGET },
+      { resourceType: "payment", name: "pay", id: "pay-1", target: TARGET },
+    ]);
+    expect(subject.stackReads).toHaveLength(1);
+  });
+
+  test("omits a declared non-runtime resource that has no deployed output", async () => {
+    const input = await project();
+    input.spec = {
+      ...input.spec,
+      runtimes: [],
+      harnesses: [],
+      memories: [{ name: "mem" }],
+    } as unknown as typeof input.spec;
+    await updateTargetState(json, input.rootPath, TARGET.name, { stackArn: STACK_ARN });
+    const subject = harness({
+      describedStack: {
+        StackName: "AgentCore-example-default",
+        CreationTime: new Date(0),
+        StackStatus: "CREATE_COMPLETE",
+        Outputs: [],
+      },
+    });
+
+    await expect(
+      subject.backend.resolveDeployedResources(input, { target: TARGET }),
+    ).resolves.toEqual([]);
+  });
+
+  test("allowMissing returns [] instead of throwing when the target has no stack ARN", async () => {
+    const input = await project();
+    const subject = harness({ describedStack: null });
+
+    await expect(
+      subject.backend.resolveDeployedResources(input, { target: TARGET, allowMissing: true }),
+    ).resolves.toEqual([]);
+    expect(subject.stackReads).toEqual([]);
+  });
+
+  test("allowMissing returns [] instead of throwing when the recorded stack is gone", async () => {
+    const input = await project();
+    await updateTargetState(json, input.rootPath, TARGET.name, { stackArn: STACK_ARN });
+    const subject = harness({ describedStack: null });
+
+    await expect(
+      subject.backend.resolveDeployedResources(input, { target: TARGET, allowMissing: true }),
+    ).resolves.toEqual([]);
+  });
+
+  test("allowMissing does not swallow a wrong-account error", async () => {
+    const input = await project();
+    await updateTargetState(json, input.rootPath, TARGET.name, { stackArn: STACK_ARN });
+    const subject = harness({ account: "999900001111" });
+
+    await expect(
+      subject.backend.resolveDeployedResources(input, { target: TARGET, allowMissing: true }),
+    ).rejects.toThrow(/expects AWS account 111122223333.*999900001111/s);
+  });
 });

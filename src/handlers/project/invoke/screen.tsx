@@ -83,24 +83,31 @@ export function ProjectInvokePickerScreen({ ctx, core }: ScreenProps) {
 
   const rows = useMemo<ProjectInvokableRow[]>(
     () =>
-      (deployed?.resources ?? []).map((resource) => {
-        if (resource.resourceType === "runtime") {
-          const configured = project?.spec.runtimes.find(({ name }) => name === resource.name);
+      // resolveDeployedResources now returns every deployed resource type, but only
+      // runtimes and harnesses are invokable — drop the rest so they aren't listed.
+      (deployed?.resources ?? [])
+        .filter(
+          (r): r is typeof r & { resourceType: "runtime" | "harness" } =>
+            r.resourceType === "runtime" || r.resourceType === "harness",
+        )
+        .map((resource) => {
+          if (resource.resourceType === "runtime") {
+            const configured = project?.spec.runtimes.find(({ name }) => name === resource.name);
+            return {
+              ...resource,
+              type: "Runtime" as const,
+              protocol: configured?.protocol ?? "HTTP",
+              source: configured?.codeLocation ?? "-",
+            };
+          }
+          const configured = project?.spec.harnesses.find(({ name }) => name === resource.name);
           return {
             ...resource,
-            type: "Runtime" as const,
-            protocol: configured?.protocol ?? "HTTP",
-            source: configured?.codeLocation ?? "-",
+            type: "Harness" as const,
+            protocol: "-",
+            source: configured?.path ?? "-",
           };
-        }
-        const configured = project?.spec.harnesses.find(({ name }) => name === resource.name);
-        return {
-          ...resource,
-          type: "Harness" as const,
-          protocol: "-",
-          source: configured?.path ?? "-",
-        };
-      }),
+        }),
     [deployed, project],
   );
 

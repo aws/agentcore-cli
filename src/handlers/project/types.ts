@@ -143,12 +143,46 @@ export type ResolveDeployedResourceInput = {
 
 export type ResolveDeployedResourcesInput = {
   target: string;
+  /**
+   * When true, an undeployed target resolves to an empty resource list instead
+   * of throwing. `project status` wants to render every declared resource as
+   * local-only rather than error out before the stack exists; deploy/remove
+   * still want the hard failure, so it stays opt-in.
+   */
+  allowMissing?: boolean;
 };
 
+/**
+ * Every project resource type that can be surfaced as deployed. Broader than
+ * {@link ProjectInvokableResource} (runtime/harness) because `project status`
+ * reports the whole stack, not just what you can invoke. Not derived from
+ * {@link ProjectResource}: the deployed vocabulary differs (e.g. `payment`, not
+ * `payment-manager`/`payment-connector`; adds `knowledge-base`, `dataset`,
+ * `capacity-provider`).
+ */
+export type DeployableResource =
+  | "runtime"
+  | "harness"
+  | "memory"
+  | "knowledge-base"
+  | "credential"
+  | "evaluator"
+  | "online-eval"
+  | "gateway"
+  | "gateway-target"
+  | "policy-engine"
+  | "policy"
+  | "config-bundle"
+  | "dataset"
+  | "payment"
+  | "capacity-provider";
+
 export type ResolvedDeployedResource = {
-  resourceType: ProjectInvokableResource;
+  resourceType: DeployableResource;
   name: string;
   id: string;
+  /** Owner name for nested types: policy → engine, gateway-target → gateway. */
+  parent?: string;
   target: AwsDeploymentTarget;
 };
 
