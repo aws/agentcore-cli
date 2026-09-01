@@ -32,6 +32,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@aws/agentcore-cdk': path.resolve(__dirname, './node_modules/@aws/agentcore-cdk/dist/index.js'),
     },
   },
   plugins: [textLoaderPlugin],
