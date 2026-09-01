@@ -54,7 +54,7 @@ vi.mock('../action.js', () => ({
       async (recorder: { set: (attrs: Record<string, unknown>) => void }) => {
         const sessionResult = await mockHandleShellSession(opts);
         recorder.set({
-          is_reconnect: (sessionResult as Record<string, unknown>).isReconnect ?? Boolean(opts.shellId),
+          is_reconnect: Boolean(opts.shellId),
           exit_code:
             (sessionResult as Record<string, unknown>).exitCode ??
             ((sessionResult as Record<string, unknown>).success ? 0 : 1),
@@ -343,7 +343,6 @@ describe('exec telemetry attributes', () => {
       exitCode: 0,
       reconnectAttempts: 0,
       wasKicked: false,
-      isReconnect: false,
     });
 
     const program = new Command();
@@ -372,7 +371,6 @@ describe('exec telemetry attributes', () => {
       exitCode: 2,
       reconnectAttempts: 0,
       wasKicked: false,
-      isReconnect: false,
     });
 
     const program = new Command();
@@ -399,7 +397,6 @@ describe('exec telemetry attributes', () => {
       exitCode: 0,
       reconnectAttempts: 3,
       wasKicked: true,
-      isReconnect: true,
     });
 
     const program = new Command();
@@ -407,9 +404,12 @@ describe('exec telemetry attributes', () => {
     registerExec(program);
 
     await expect(
-      program.parseAsync(['exec', '--it', '--runtime', 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r'], {
-        from: 'user',
-      })
+      program.parseAsync(
+        ['exec', '--it', '--runtime', 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/r', '--shell-id', 'old-shell'],
+        {
+          from: 'user',
+        }
+      )
     ).rejects.toThrow();
 
     const telemetryCalls = vi.mocked(withCommandRunTelemetry).mock.calls;
