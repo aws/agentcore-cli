@@ -4,18 +4,9 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   ResourceNotFoundException,
-  type CreateApiKeyCredentialProviderResponse,
-  type CreateOauth2CredentialProviderResponse,
   type GetApiKeyCredentialProviderResponse,
   type GetOauth2CredentialProviderResponse,
-  type UpdateApiKeyCredentialProviderResponse,
-  type UpdateOauth2CredentialProviderResponse,
-  type CreatePaymentCredentialProviderResponse,
-  type DeleteApiKeyCredentialProviderResponse,
-  type DeleteOauth2CredentialProviderResponse,
-  type DeletePaymentCredentialProviderResponse,
   type GetPaymentCredentialProviderResponse,
-  type UpdatePaymentCredentialProviderResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { Project, ProjectEvent } from "../../../../handlers/project/types";
 import { ProjectSpecSchema } from "../../../../projectSchemas/project";
@@ -47,6 +38,11 @@ const OAUTH = {
   discoveryUrl: DISCOVERY,
   scopes: ["read"],
 } as const;
+const COINBASE = {
+  authorizerType: "PaymentCredentialProvider",
+  name: "wallet",
+  provider: "CoinbaseCDP",
+} as const;
 
 const tempDirectories: string[] = [];
 afterEach(async () => {
@@ -68,125 +64,163 @@ async function project(credentials: unknown[], envLocal?: string): Promise<Proje
   };
 }
 
-type Call = { kind: string; input: unknown; options: CoreOptions };
+type ProviderKind = "apikey" | "oauth" | "payment";
 
-// Identity reports a provider that does not exist by throwing, which is the normal
-// first-deploy case rather than a failure.
-const notFound = () =>
-  new ResourceNotFoundException({ $metadata: {}, message: "provider not found" });
-
-// The two provider families carry their secret ARN under different response fields.
-const apiKeyResponse = (provider: DeployedCredential | undefined) =>
-  ({
-    credentialProviderArn: provider?.credentialProviderArn,
-    ...(provider?.clientSecretArn && { apiKeySecretArn: { secretArn: provider.clientSecretArn } }),
-  }) as GetApiKeyCredentialProviderResponse &
-    CreateApiKeyCredentialProviderResponse &
-    UpdateApiKeyCredentialProviderResponse;
-
-const paymentResponse = (provider: DeployedCredential | undefined) =>
-  ({
-    credentialProviderArn: provider?.credentialProviderArn,
-  }) as GetPaymentCredentialProviderResponse &
-    CreatePaymentCredentialProviderResponse &
-    UpdatePaymentCredentialProviderResponse;
-
-const oauth2Response = (provider: DeployedCredential | undefined) =>
-  ({
-    credentialProviderArn: provider?.credentialProviderArn,
-    ...(provider?.clientSecretArn && { clientSecretArn: { secretArn: provider.clientSecretArn } }),
-  }) as GetOauth2CredentialProviderResponse &
-    CreateOauth2CredentialProviderResponse &
-    UpdateOauth2CredentialProviderResponse;
+/**
+ * A provider as it exists in the fake account. Tests assert against these rather than
+ * against a call log, so a change in how provisioning gets to this state does not
+ * break them.
+ */
+type StoredProvider = {
+  credentialProviderArn?: string;
+  clientSecretArn?: string;
+  /** The request body this provider was last written with; absent if never written. */
+  config?: unknown;
+  /** How this run last touched it; absent when it was left exactly as found. */
+  operation?: "created" | "updated";
+};
 
 /** Overrides for the paths that only a failing or incomplete Identity produces. */
 type Behavior = {
-  /** Thrown by every lookup, in place of the not-found default. */
+  /** Thrown by every lookup, in place of reporting what the account holds. */
   getFails?: Error;
-  /** Returned by every create, in place of a fully populated provider. */
-  createReturns?: DeployedCredential;
-  /** Thrown by every payment-provider deletion. */
+  /** The ARNs every write returns, in place of fully populated ones. */
+  writeReturns?: DeployedCredential;
+  /** Thrown by every deletion. */
   deleteFails?: Error;
-  /** Thrown by the creation of the named provider, in place of a created one. */
+  /** Thrown when the named provider would be created. */
   createFailsFor?: string;
 };
 
-function identity(
+/**
+ * An in-memory Identity account: providers can be looked up, created, updated and
+ * deleted, and the resulting contents are what tests assert on.
+ *
+ * `deleted` is tracked separately because a provider that was created and then rolled
+ * back is indistinguishable from one that was never created by looking at the
+ * contents alone, and that distinction is the whole point of the rollback path.
+ */
+function account(
   existing: DeployedCredentials = {},
   behavior: Behavior = {},
   processEnv: Record<string, string | undefined> = {},
 ) {
-  const calls: Call[] = [];
+  const providers = new Map<string, StoredProvider>(
+    Object.entries(existing).map(([name, provider]) => [name, { ...provider }]),
+  );
+  const deleted: string[] = [];
+  const optionsSeen: CoreOptions[] = [];
 
-  const created = (name: string, prefix: string): DeployedCredential =>
-    behavior.createReturns ?? {
-      credentialProviderArn: `arn:${prefix}:${name}`,
-      clientSecretArn: `arn:secret:${name}`,
-    };
-
-  const lookup = (name: string): DeployedCredential => {
+  const lookup = (name: string, options: CoreOptions): StoredProvider => {
+    optionsSeen.push(options);
     if (behavior.getFails) throw behavior.getFails;
-    const found = existing[name];
-    if (!found) throw notFound();
+    const found = providers.get(name);
+    if (!found) throw new ResourceNotFoundException({ $metadata: {}, message: "not found" });
     return found;
   };
 
+  const write = (
+    kind: ProviderKind,
+    name: string,
+    config: unknown,
+    operation: "created" | "updated",
+    options: CoreOptions,
+  ): StoredProvider => {
+    optionsSeen.push(options);
+    if (operation === "created" && behavior.createFailsFor === name) {
+      throw new Error(`create ${name} failed`);
+    }
+    const arns =
+      behavior.writeReturns ??
+      ({
+        credentialProviderArn: `arn:${kind}:${name}`,
+        clientSecretArn: `arn:secret:${name}`,
+      } satisfies DeployedCredential);
+    const stored: StoredProvider = { ...arns, config, operation };
+    providers.set(name, stored);
+    return stored;
+  };
+
+  const remove = (name: string, options: CoreOptions) => {
+    optionsSeen.push(options);
+    if (behavior.deleteFails) throw behavior.deleteFails;
+    providers.delete(name);
+    deleted.push(name);
+  };
+
+  // The three provider families carry their secret ARN under different response
+  // fields, so each maps the stored provider onto its own response shape.
+  const asApiKey = (provider: StoredProvider) =>
+    ({
+      credentialProviderArn: provider.credentialProviderArn,
+      ...(provider.clientSecretArn && {
+        apiKeySecretArn: { secretArn: provider.clientSecretArn },
+      }),
+    }) as GetApiKeyCredentialProviderResponse;
+
+  const asOauth2 = (provider: StoredProvider) =>
+    ({
+      credentialProviderArn: provider.credentialProviderArn,
+      ...(provider.clientSecretArn && { clientSecretArn: { secretArn: provider.clientSecretArn } }),
+    }) as GetOauth2CredentialProviderResponse;
+
+  const asPayment = (provider: StoredProvider) =>
+    ({
+      credentialProviderArn: provider.credentialProviderArn,
+    }) as GetPaymentCredentialProviderResponse;
+
   const client: CredentialProviderCalls = {
     async getApiKeyCredentialProvider(name, options) {
-      calls.push({ kind: "getApiKey", input: name, options });
-      return apiKeyResponse(lookup(name));
+      return asApiKey(lookup(name, options));
     },
     async createApiKeyCredentialProvider(input, options) {
-      calls.push({ kind: "createApiKey", input, options });
-      if (behavior.createFailsFor === input.name) throw new Error(`create ${input.name} failed`);
-      return apiKeyResponse(created(input.name ?? "", "apikey"));
+      return asApiKey(write("apikey", input.name ?? "", input, "created", options));
     },
     async updateApiKeyCredentialProvider(input, options) {
-      calls.push({ kind: "updateApiKey", input, options });
-      return apiKeyResponse(created(input.name ?? "", "apikey"));
+      return asApiKey(write("apikey", input.name ?? "", input, "updated", options));
     },
     async deleteApiKeyCredentialProvider(name, options) {
-      calls.push({ kind: "deleteApiKey", input: name, options });
-      if (behavior.deleteFails) throw behavior.deleteFails;
-      return {} as DeleteApiKeyCredentialProviderResponse;
+      remove(name, options);
+      return {};
     },
     async getOauth2CredentialProvider(name, options) {
-      calls.push({ kind: "getOauth2", input: name, options });
-      return oauth2Response(lookup(name));
+      return asOauth2(lookup(name, options));
     },
     async createOauth2CredentialProvider(input, options) {
-      calls.push({ kind: "createOauth2", input, options });
-      return oauth2Response(created(input.name ?? "", "oauth"));
+      return asOauth2(write("oauth", input.name ?? "", input, "created", options));
     },
     async updateOauth2CredentialProvider(input, options) {
-      calls.push({ kind: "updateOauth2", input, options });
-      return oauth2Response(created(input.name ?? "", "oauth"));
+      return asOauth2(write("oauth", input.name ?? "", input, "updated", options));
     },
     async deleteOauth2CredentialProvider(name, options) {
-      calls.push({ kind: "deleteOauth2", input: name, options });
-      if (behavior.deleteFails) throw behavior.deleteFails;
-      return {} as DeleteOauth2CredentialProviderResponse;
+      remove(name, options);
+      return {};
     },
     async getPaymentCredentialProvider(name, options) {
-      calls.push({ kind: "getPayment", input: name, options });
-      return paymentResponse(lookup(name));
+      return asPayment(lookup(name, options));
     },
     async createPaymentCredentialProvider(input, options) {
-      calls.push({ kind: "createPayment", input, options });
-      return paymentResponse(created(input.name ?? "", "payment"));
+      return asPayment(write("payment", input.name ?? "", input, "created", options));
     },
     async updatePaymentCredentialProvider(input, options) {
-      calls.push({ kind: "updatePayment", input, options });
-      return paymentResponse(created(input.name ?? "", "payment"));
+      return asPayment(write("payment", input.name ?? "", input, "updated", options));
     },
     async deletePaymentCredentialProvider(name, options) {
-      calls.push({ kind: "deletePayment", input: name, options });
-      if (behavior.deleteFails) throw behavior.deleteFails;
-      return {} as DeletePaymentCredentialProviderResponse;
+      remove(name, options);
+      return {};
     },
   };
 
-  return { calls, client, provision: createCredentialProvisioner(client, processEnv) };
+  return {
+    client,
+    deleted,
+    optionsSeen,
+    provision: createCredentialProvisioner(client, processEnv),
+    /** What the account holds once the run is over. */
+    contents: () => Object.fromEntries(providers),
+    /** The request body a single provider was last written with. */
+    configFor: (name: string) => providers.get(name)?.config,
+  };
 }
 
 async function collect(
@@ -213,53 +247,75 @@ async function run(
   }
 }
 
+/** Drains a provisioning run that is expected to throw, keeping the events it emitted. */
+async function runFailing(
+  provision: CredentialProvisioner,
+  input: Project,
+): Promise<{ events: ProjectEvent[]; error: Error }> {
+  const generator = provision(input, { credentials: CREDENTIALS, region: REGION });
+  const events: ProjectEvent[] = [];
+  try {
+    while (true) {
+      const next = await generator.next();
+      if (next.done) throw new Error("expected provisioning to fail");
+      events.push(next.value);
+    }
+  } catch (error) {
+    return { events, error: error as Error };
+  }
+}
+
+const CREATED_OPENAI = {
+  credentialProviderArn: "arn:apikey:openai-key",
+  clientSecretArn: "arn:secret:openai-key",
+};
+
 describe("createCredentialProvisioner", () => {
-  test("calls Identity not at all for a project without credentials", async () => {
-    const subject = identity();
+  test("touches Identity not at all for a project without credentials", async () => {
+    const subject = account();
 
     const { events, result } = await run(subject.provision, await project([]));
 
     expect(result).toEqual({});
     expect(events).toEqual([]);
-    expect(subject.calls).toEqual([]);
+    expect(subject.optionsSeen).toEqual([]);
   });
 
   test("runs every call against the target's own region and credentials", async () => {
-    const subject = identity();
+    const subject = account();
     const input = await project([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n");
 
     await run(subject.provision, input);
 
-    expect(subject.calls.map((call) => call.options)).toEqual([OPTIONS, OPTIONS]);
+    expect(subject.optionsSeen.length).toBeGreaterThan(0);
+    expect(subject.optionsSeen).toEqual(subject.optionsSeen.map(() => OPTIONS));
   });
 
   test("creates an API key provider from the secret in .env.local", async () => {
-    const subject = identity();
+    const subject = account();
     const input = await project([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n");
 
     const { events, result } = await run(subject.provision, input);
 
     expect(events).toEqual([{ message: "Preparing credential provider 'openai-key'" }]);
-    expect(subject.calls.map(({ kind, input: called }) => ({ kind, input: called }))).toEqual([
-      { kind: "getApiKey", input: "openai-key" },
-      { kind: "createApiKey", input: { name: "openai-key", apiKey: "sk-live" } },
-    ]);
-    expect(result).toEqual({
+    expect(subject.contents()).toEqual({
       "openai-key": {
-        credentialProviderArn: "arn:apikey:openai-key",
-        clientSecretArn: "arn:secret:openai-key",
+        ...CREATED_OPENAI,
+        operation: "created",
+        config: { name: "openai-key", apiKey: "sk-live" },
       },
     });
+    expect(result).toEqual({ "openai-key": CREATED_OPENAI });
   });
 
   test("creates an API key provider from a Secrets Manager reference", async () => {
     const secretRef = { secretId: "prod/openai", jsonKey: "apiKey" };
-    const subject = identity();
+    const subject = account();
     const input = await project([{ ...API_KEY, secretRef }]);
 
     await run(subject.provision, input);
 
-    expect(subject.calls[1]?.input).toEqual({
+    expect(subject.configFor("openai-key")).toEqual({
       name: "openai-key",
       apiKeySecretConfig: secretRef,
       apiKeySecretSource: "EXTERNAL",
@@ -267,16 +323,19 @@ describe("createCredentialProvisioner", () => {
   });
 
   test("takes a secret from the environment when .env.local has none", async () => {
-    const subject = identity({}, {}, { AGENTCORE_CREDENTIAL_OPENAI_KEY: "sk-from-env" });
+    const subject = account({}, {}, { AGENTCORE_CREDENTIAL_OPENAI_KEY: "sk-from-env" });
     const input = await project([API_KEY]);
 
     await run(subject.provision, input);
 
-    expect(subject.calls[1]?.input).toEqual({ name: "openai-key", apiKey: "sk-from-env" });
+    expect(subject.configFor("openai-key")).toEqual({
+      name: "openai-key",
+      apiKey: "sk-from-env",
+    });
   });
 
   test("prefers the environment over .env.local, ignoring unrelated variables", async () => {
-    const subject = identity(
+    const subject = account(
       {},
       {},
       { AGENTCORE_CREDENTIAL_OPENAI_KEY: "sk-from-env", HOME: "/should/not/matter" },
@@ -285,11 +344,14 @@ describe("createCredentialProvisioner", () => {
 
     await run(subject.provision, input);
 
-    expect(subject.calls[1]?.input).toEqual({ name: "openai-key", apiKey: "sk-from-env" });
+    expect(subject.configFor("openai-key")).toEqual({
+      name: "openai-key",
+      apiKey: "sk-from-env",
+    });
   });
 
   test("names the variable and file to fix when an API key secret is missing", async () => {
-    const subject = identity();
+    const subject = account();
     const input = await project([API_KEY]);
 
     await expect(run(subject.provision, input)).rejects.toThrow(
@@ -300,30 +362,31 @@ describe("createCredentialProvisioner", () => {
   });
 
   test("updates a provider that already exists with the current secret", async () => {
-    const existing = { credentialProviderArn: "arn:existing", clientSecretArn: "arn:existing/s" };
-    const subject = identity({ "openai-key": existing });
+    const subject = account({
+      "openai-key": { credentialProviderArn: "arn:existing", clientSecretArn: "arn:existing/s" },
+    });
     const input = await project([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-rotated'\n");
 
     const { result } = await run(subject.provision, input);
 
-    expect(subject.calls.map((call) => call.kind)).toEqual(["getApiKey", "updateApiKey"]);
-    expect(subject.calls[1]?.input).toEqual({ name: "openai-key", apiKey: "sk-rotated" });
-    expect(result).toEqual({
+    expect(subject.contents()).toEqual({
       "openai-key": {
-        credentialProviderArn: "arn:apikey:openai-key",
-        clientSecretArn: "arn:secret:openai-key",
+        ...CREATED_OPENAI,
+        operation: "updated",
+        config: { name: "openai-key", apiKey: "sk-rotated" },
       },
     });
+    expect(result).toEqual({ "openai-key": CREATED_OPENAI });
   });
 
   test("updates an existing OAuth provider with the current client secret", async () => {
-    const subject = identity({ "my-oauth": { credentialProviderArn: "arn:existing" } });
+    const subject = account({ "my-oauth": { credentialProviderArn: "arn:existing" } });
     const input = await project([OAUTH], "AGENTCORE_CREDENTIAL_MY_OAUTH_CLIENT_SECRET='rotated'\n");
 
     await run(subject.provision, input);
 
-    expect(subject.calls.map((call) => call.kind)).toEqual(["getOauth2", "updateOauth2"]);
-    expect(subject.calls[1]?.input).toEqual({
+    expect(subject.contents()["my-oauth"]?.operation).toBe("updated");
+    expect(subject.configFor("my-oauth")).toEqual({
       name: "my-oauth",
       credentialProviderVendor: "CustomOauth2",
       oauth2ProviderConfigInput: {
@@ -338,26 +401,27 @@ describe("createCredentialProvisioner", () => {
 
   test("leaves an existing provider alone when no secret is available locally", async () => {
     const existing = { credentialProviderArn: "arn:existing", clientSecretArn: "arn:existing/s" };
-    const subject = identity({ "openai-key": existing });
+    const subject = account({ "openai-key": existing });
     // No .env.local entry and no secretRef: there is nothing to push, so the
     // provider keeps whatever secret it holds rather than failing the deploy.
     const input = await project([API_KEY]);
 
     const { result } = await run(subject.provision, input);
 
-    expect(subject.calls.map((call) => call.kind)).toEqual(["getApiKey"]);
+    // Untouched: no operation recorded against it, and its ARNs are the ones it had.
+    expect(subject.contents()).toEqual({ "openai-key": existing });
     expect(result).toEqual({ "openai-key": existing });
   });
 
   test("updates a provider backed by an external secret reference", async () => {
     const secretRef = { secretId: "prod/openai", jsonKey: "apiKey" };
-    const subject = identity({ "openai-key": { credentialProviderArn: "arn:existing" } });
+    const subject = account({ "openai-key": { credentialProviderArn: "arn:existing" } });
     const input = await project([{ ...API_KEY, secretRef }]);
 
     await run(subject.provision, input);
 
-    expect(subject.calls.map((call) => call.kind)).toEqual(["getApiKey", "updateApiKey"]);
-    expect(subject.calls[1]?.input).toEqual({
+    expect(subject.contents()["openai-key"]?.operation).toBe("updated");
+    expect(subject.configFor("openai-key")).toEqual({
       name: "openai-key",
       apiKeySecretConfig: secretRef,
       apiKeySecretSource: "EXTERNAL",
@@ -365,7 +429,7 @@ describe("createCredentialProvisioner", () => {
   });
 
   test("records a provider that has no secret ARN without one", async () => {
-    const subject = identity({ "openai-key": { credentialProviderArn: "arn:existing" } });
+    const subject = account({ "openai-key": { credentialProviderArn: "arn:existing" } });
     const input = await project([API_KEY]);
 
     const { result } = await run(subject.provision, input);
@@ -374,7 +438,7 @@ describe("createCredentialProvisioner", () => {
   });
 
   test("fails when Identity returns a provider without an ARN", async () => {
-    const subject = identity({}, { createReturns: {} as DeployedCredential });
+    const subject = account({}, { writeReturns: {} as DeployedCredential });
     const input = await project([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n");
 
     await expect(run(subject.provision, input)).rejects.toThrow(/no credentialProviderArn/);
@@ -382,35 +446,30 @@ describe("createCredentialProvisioner", () => {
 
   test("propagates a lookup failure that is not a missing provider", async () => {
     const denied = Object.assign(new Error("denied"), { name: "AccessDeniedException" });
-    const subject = identity({}, { getFails: denied });
+    const subject = account({}, { getFails: denied });
     const input = await project([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n");
 
     await expect(run(subject.provision, input)).rejects.toBe(denied);
   });
 
   test("creates a guided OAuth2 provider without forwarding scopes", async () => {
-    const subject = identity();
+    const subject = account();
     const input = await project([OAUTH], "AGENTCORE_CREDENTIAL_MY_OAUTH_CLIENT_SECRET='shh'\n");
 
     const { result } = await run(subject.provision, input);
 
-    expect(subject.calls.map(({ kind, input: called }) => ({ kind, input: called }))).toEqual([
-      { kind: "getOauth2", input: "my-oauth" },
-      {
-        kind: "createOauth2",
-        input: {
-          name: "my-oauth",
-          credentialProviderVendor: "CustomOauth2",
-          oauth2ProviderConfigInput: {
-            customOauth2ProviderConfig: {
-              oauthDiscovery: { discoveryUrl: DISCOVERY },
-              clientId: "client-1",
-              clientSecret: "shh",
-            },
-          },
+    expect(subject.contents()["my-oauth"]?.operation).toBe("created");
+    expect(subject.configFor("my-oauth")).toEqual({
+      name: "my-oauth",
+      credentialProviderVendor: "CustomOauth2",
+      oauth2ProviderConfigInput: {
+        customOauth2ProviderConfig: {
+          oauthDiscovery: { discoveryUrl: DISCOVERY },
+          clientId: "client-1",
+          clientSecret: "shh",
         },
       },
-    ]);
+    });
     expect(result["my-oauth"]).toEqual({
       credentialProviderArn: "arn:oauth:my-oauth",
       clientSecretArn: "arn:secret:my-oauth",
@@ -418,7 +477,7 @@ describe("createCredentialProvisioner", () => {
   });
 
   test("falls back to the legacy _CLIENT_ID variable when the spec has no clientId", async () => {
-    const subject = identity();
+    const subject = account();
     // An older CLI kept the client id in .env.local, not agentcore.json.
     const { clientId: _dropped, ...withoutClientId } = OAUTH;
     const input = await project(
@@ -429,7 +488,7 @@ describe("createCredentialProvisioner", () => {
 
     await run(subject.provision, input);
 
-    expect(subject.calls[1]?.input).toEqual({
+    expect(subject.configFor("my-oauth")).toEqual({
       name: "my-oauth",
       credentialProviderVendor: "CustomOauth2",
       oauth2ProviderConfigInput: {
@@ -443,7 +502,7 @@ describe("createCredentialProvisioner", () => {
   });
 
   test("injects the secret into a spec-supplied provider config", async () => {
-    const subject = identity();
+    const subject = account();
     const input = await project(
       [
         {
@@ -460,7 +519,7 @@ describe("createCredentialProvisioner", () => {
 
     await run(subject.provision, input);
 
-    expect(subject.calls[1]?.input).toEqual({
+    expect(subject.configFor("vendored")).toEqual({
       name: "vendored",
       credentialProviderVendor: "GoogleOauth2",
       oauth2ProviderConfigInput: {
@@ -471,12 +530,12 @@ describe("createCredentialProvisioner", () => {
 
   test("passes an OAuth secret reference through as an external secret", async () => {
     const clientSecretRef = { secretId: "prod/oauth", jsonKey: "clientSecret" };
-    const subject = identity();
+    const subject = account();
     const input = await project([{ ...OAUTH, clientSecretRef }]);
 
     await run(subject.provision, input);
 
-    expect(subject.calls[1]?.input).toEqual({
+    expect(subject.configFor("my-oauth")).toEqual({
       name: "my-oauth",
       credentialProviderVendor: "CustomOauth2",
       oauth2ProviderConfigInput: {
@@ -491,7 +550,7 @@ describe("createCredentialProvisioner", () => {
   });
 
   test("rejects a provider config that is not a single vendor object", async () => {
-    const subject = identity();
+    const subject = account();
     const input = await project(
       [
         {
@@ -511,9 +570,9 @@ describe("createCredentialProvisioner", () => {
   });
 
   test("creates a Coinbase payment provider from the vendor's variables", async () => {
-    const subject = identity();
+    const subject = account();
     const input = await project(
-      [{ authorizerType: "PaymentCredentialProvider", name: "wallet", provider: "CoinbaseCDP" }],
+      [COINBASE],
       "AGENTCORE_CREDENTIAL_WALLET_API_KEY_ID='key-1'\n" +
         "AGENTCORE_CREDENTIAL_WALLET_API_KEY_SECRET='key-secret'\n" +
         "AGENTCORE_CREDENTIAL_WALLET_WALLET_SECRET='wallet-secret'\n",
@@ -521,8 +580,8 @@ describe("createCredentialProvisioner", () => {
 
     const { result } = await run(subject.provision, input);
 
-    expect(subject.calls.map((call) => call.kind)).toEqual(["getPayment", "createPayment"]);
-    expect(subject.calls[1]?.input).toEqual({
+    expect(subject.contents()["wallet"]?.operation).toBe("created");
+    expect(subject.configFor("wallet")).toEqual({
       name: "wallet",
       credentialProviderVendor: "CoinbaseCDP",
       providerConfigurationInput: {
@@ -539,7 +598,7 @@ describe("createCredentialProvisioner", () => {
   });
 
   test("updates an existing StripePrivy payment provider", async () => {
-    const subject = identity({ pay: { credentialProviderArn: "arn:existing" } });
+    const subject = account({ pay: { credentialProviderArn: "arn:existing" } });
     const input = await project(
       [{ authorizerType: "PaymentCredentialProvider", name: "pay", provider: "StripePrivy" }],
       "AGENTCORE_CREDENTIAL_PAY_APP_ID='app-1'\n" +
@@ -550,8 +609,8 @@ describe("createCredentialProvisioner", () => {
 
     await run(subject.provision, input);
 
-    expect(subject.calls.map((call) => call.kind)).toEqual(["getPayment", "updatePayment"]);
-    expect(subject.calls[1]?.input).toEqual({
+    expect(subject.contents()["pay"]?.operation).toBe("updated");
+    expect(subject.configFor("pay")).toEqual({
       name: "pay",
       credentialProviderVendor: "StripePrivy",
       providerConfigurationInput: {
@@ -566,11 +625,8 @@ describe("createCredentialProvisioner", () => {
   });
 
   test("names every payment variable that is unset", async () => {
-    const subject = identity();
-    const input = await project(
-      [{ authorizerType: "PaymentCredentialProvider", name: "wallet", provider: "CoinbaseCDP" }],
-      "AGENTCORE_CREDENTIAL_WALLET_API_KEY_ID='key-1'\n",
-    );
+    const subject = account();
+    const input = await project([COINBASE], "AGENTCORE_CREDENTIAL_WALLET_API_KEY_ID='key-1'\n");
 
     await expect(run(subject.provision, input)).rejects.toThrow(
       /AGENTCORE_CREDENTIAL_WALLET_API_KEY_SECRET, AGENTCORE_CREDENTIAL_WALLET_WALLET_SECRET/,
@@ -579,37 +635,107 @@ describe("createCredentialProvisioner", () => {
 
   test("leaves an existing payment provider alone when its variables are unset", async () => {
     const existing = { credentialProviderArn: "arn:existing" };
-    const subject = identity({ wallet: existing });
-    const input = await project([
-      { authorizerType: "PaymentCredentialProvider", name: "wallet", provider: "CoinbaseCDP" },
-    ]);
+    const subject = account({ wallet: existing });
+    const input = await project([COINBASE]);
 
     const { result } = await run(subject.provision, input);
 
-    expect(subject.calls.map((call) => call.kind)).toEqual(["getPayment"]);
+    expect(subject.contents()).toEqual({ wallet: existing });
     expect(result).toEqual({ wallet: existing });
   });
 
+  test("creates nothing when a later credential's secret is missing", async () => {
+    const subject = account();
+    // First credential's secret is present; the second's is not.
+    const input = await project(
+      [API_KEY, { authorizerType: "ApiKeyCredentialProvider", name: "other-key" }],
+      "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n",
+    );
+
+    await expect(run(subject.provision, input)).rejects.toThrow(/AGENTCORE_CREDENTIAL_OTHER_KEY/);
+    // The missing secret is caught before the first create, so the account is
+    // untouched rather than half-provisioned.
+    expect(subject.contents()).toEqual({});
+  });
+});
+
+describe("createCredentialProvisioner rollback", () => {
+  const TWO_KEYS = [API_KEY, { authorizerType: "ApiKeyCredentialProvider", name: "other-key" }];
+  const BOTH_SECRETS =
+    "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n" + "AGENTCORE_CREDENTIAL_OTHER_KEY='sk-other'\n";
+
+  test("deletes what it created when a later provider fails", async () => {
+    const subject = account({}, { createFailsFor: "other-key" });
+    const input = await project(TWO_KEYS, BOTH_SECRETS);
+
+    // The failure the user needs to see is the one that stopped the deploy.
+    const { error } = await runFailing(subject.provision, input);
+
+    expect(error.message).toMatch(/create other-key failed/);
+    expect(subject.deleted).toEqual(["openai-key"]);
+    expect(subject.contents()).toEqual({});
+  });
+
+  test("does not delete a provider it only updated", async () => {
+    const subject = account(
+      { "openai-key": { credentialProviderArn: "arn:existing" } },
+      { createFailsFor: "other-key" },
+    );
+    const input = await project(TWO_KEYS, BOTH_SECRETS);
+
+    const { error } = await runFailing(subject.provision, input);
+
+    expect(error.message).toMatch(/create other-key failed/);
+    // Undoing an update would need the secret the provider held before, which the
+    // CLI never had, so the pre-existing provider is left as this deploy set it.
+    expect(subject.deleted).toEqual([]);
+    expect(subject.contents()["openai-key"]?.operation).toBe("updated");
+  });
+
+  test("reports a provider it created but could not delete", async () => {
+    const subject = account(
+      {},
+      { createFailsFor: "other-key", deleteFails: new Error("access denied") },
+    );
+    const input = await project(TWO_KEYS, BOTH_SECRETS);
+
+    const { events, error } = await runFailing(subject.provision, input);
+
+    expect(error.message).toMatch(/create other-key failed/);
+    expect(events.map((event) => event.message)).toContain(
+      "Removing credential provider 'openai-key' this deploy created",
+    );
+    expect(events[events.length - 1]?.message).toMatch(
+      /Could not remove credential provider 'openai-key'.*access denied.*next deploy/s,
+    );
+    // The provider it could not delete is still there, which is what the message says.
+    expect(subject.contents()["openai-key"]?.operation).toBe("created");
+  });
+});
+
+describe("createPaymentCredentialRemover", () => {
   test("deletes only the payment providers a torn-down project declares", async () => {
-    const subject = identity();
-    const input = await project([
-      API_KEY,
-      { authorizerType: "PaymentCredentialProvider", name: "wallet", provider: "CoinbaseCDP" },
-    ]);
+    const apiKeyProvider = { credentialProviderArn: "arn:apikey:openai-key" };
+    const subject = account({
+      "openai-key": apiKeyProvider,
+      wallet: { credentialProviderArn: "arn:payment:wallet" },
+    });
+    const input = await project([API_KEY, COINBASE]);
 
     const remove = createPaymentCredentialRemover(subject.client);
     const { events } = await collect(remove(input, { credentials: CREDENTIALS, region: REGION }));
 
     // The api-key provider is named account-globally and may be shared, so it stays.
-    expect(subject.calls).toEqual([{ kind: "deletePayment", input: "wallet", options: OPTIONS }]);
+    expect(subject.contents()).toEqual({ "openai-key": apiKeyProvider });
+    expect(subject.deleted).toEqual(["wallet"]);
     expect(events).toEqual([{ message: "Removing credential provider 'wallet'" }]);
+    expect(subject.optionsSeen).toEqual([OPTIONS]);
   });
 
   test("treats a payment provider that is already gone as removed", async () => {
-    const subject = identity({}, { deleteFails: notFound() });
-    const input = await project([
-      { authorizerType: "PaymentCredentialProvider", name: "wallet", provider: "CoinbaseCDP" },
-    ]);
+    const notFound = new ResourceNotFoundException({ $metadata: {}, message: "not found" });
+    const subject = account({}, { deleteFails: notFound });
+    const input = await project([COINBASE]);
 
     const remove = createPaymentCredentialRemover(subject.client);
     const { events } = await collect(remove(input, { credentials: CREDENTIALS, region: REGION }));
@@ -618,94 +744,14 @@ describe("createCredentialProvisioner", () => {
   });
 
   test("reports a payment provider it could not delete rather than failing", async () => {
-    const subject = identity({}, { deleteFails: new Error("still in use") });
-    const input = await project([
-      { authorizerType: "PaymentCredentialProvider", name: "wallet", provider: "CoinbaseCDP" },
-    ]);
+    const existing = { credentialProviderArn: "arn:payment:wallet" };
+    const subject = account({ wallet: existing }, { deleteFails: new Error("still in use") });
+    const input = await project([COINBASE]);
 
     const remove = createPaymentCredentialRemover(subject.client);
     const { events } = await collect(remove(input, { credentials: CREDENTIALS, region: REGION }));
 
     expect(events[1]?.message).toMatch(/Could not remove credential provider 'wallet'.*in use/);
-  });
-
-  test("deletes what it created when a later provider fails", async () => {
-    const subject = identity({}, { createFailsFor: "other-key" });
-    const input = await project(
-      [API_KEY, { authorizerType: "ApiKeyCredentialProvider", name: "other-key" }],
-      "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n" + "AGENTCORE_CREDENTIAL_OTHER_KEY='sk-other'\n",
-    );
-
-    // The failure the user needs to see is the one that stopped the deploy.
-    await expect(run(subject.provision, input)).rejects.toThrow(/create other-key failed/);
-    expect(subject.calls.map((call) => call.kind)).toEqual([
-      "getApiKey",
-      "getApiKey",
-      "createApiKey",
-      "createApiKey",
-      // Only the one this run brought into existence.
-      "deleteApiKey",
-    ]);
-    expect(subject.calls[4]?.input).toBe("openai-key");
-  });
-
-  test("does not delete a provider it only updated", async () => {
-    const subject = identity(
-      { "openai-key": { credentialProviderArn: "arn:existing" } },
-      { createFailsFor: "other-key" },
-    );
-    const input = await project(
-      [API_KEY, { authorizerType: "ApiKeyCredentialProvider", name: "other-key" }],
-      "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n" + "AGENTCORE_CREDENTIAL_OTHER_KEY='sk-other'\n",
-    );
-
-    await expect(run(subject.provision, input)).rejects.toThrow(/create other-key failed/);
-    // Undoing an update would need the secret the provider held before, which the
-    // CLI never had, so the pre-existing provider is left as this deploy set it.
-    expect(subject.calls.map((call) => call.kind)).not.toContain("deleteApiKey");
-  });
-
-  test("reports a provider it created but could not delete", async () => {
-    const subject = identity(
-      {},
-      { createFailsFor: "other-key", deleteFails: new Error("access denied") },
-    );
-    const input = await project(
-      [API_KEY, { authorizerType: "ApiKeyCredentialProvider", name: "other-key" }],
-      "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n" + "AGENTCORE_CREDENTIAL_OTHER_KEY='sk-other'\n",
-    );
-
-    const generator = subject.provision(input, { credentials: CREDENTIALS, region: REGION });
-    const events: ProjectEvent[] = [];
-    await expect(
-      (async () => {
-        while (true) {
-          const next = await generator.next();
-          if (next.done) return;
-          events.push(next.value);
-        }
-      })(),
-    ).rejects.toThrow(/create other-key failed/);
-
-    expect(events.map((event) => event.message)).toContain(
-      "Removing credential provider 'openai-key' this deploy created",
-    );
-    expect(events[events.length - 1]?.message).toMatch(
-      /Could not remove credential provider 'openai-key'.*access denied.*next deploy/s,
-    );
-  });
-
-  test("creates nothing when a later credential's secret is missing", async () => {
-    const subject = identity();
-    // First credential's secret is present; the second's is not.
-    const input = await project(
-      [API_KEY, { authorizerType: "ApiKeyCredentialProvider", name: "other-key" }],
-      "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n",
-    );
-
-    await expect(run(subject.provision, input)).rejects.toThrow(/AGENTCORE_CREDENTIAL_OTHER_KEY/);
-    // Both looked up, but no provider was created — the missing secret is caught
-    // before the first create, so there is no half-provisioned AWS state.
-    expect(subject.calls.map((c) => c.kind)).toEqual(["getApiKey", "getApiKey"]);
+    expect(subject.contents()).toEqual({ wallet: existing });
   });
 });
