@@ -246,6 +246,21 @@ describe("project add runtime", () => {
       ],
     ],
     [
+      "strands-py-a2a with session, EFS, and S3 mounts",
+      [
+        "--name",
+        "fs_a2a",
+        "--template",
+        "strands-py-a2a",
+        "--network-mode",
+        "VPC",
+        "--network-config",
+        '{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}',
+        "--filesystem-configurations",
+        '[{"sessionStorage":{"mountPath":"/mnt/session"}},{"efsAccessPoint":{"accessPointArn":"arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0","mountPath":"/mnt/efs"}},{"s3FilesAccessPoint":{"accessPointArn":"arn:aws:s3files:us-east-1:123456789012:file-system/fs-0123456789abcdef01/access-point/fsap-0123456789abcdef1","mountPath":"/mnt/s3"}}]',
+      ],
+    ],
+    [
       "custom MCP runtime",
       [
         "--name",
