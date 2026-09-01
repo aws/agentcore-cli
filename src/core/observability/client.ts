@@ -2,10 +2,8 @@ import type { CoreOptions } from "../types";
 import type {
   LogSource,
   ObservableResourceRef,
-  ObservabilitySourceResolver,
   ObservabilitySourceResolverRegistry,
   ResolvedObservabilityTarget,
-  ResolvedResourceIdentity,
 } from "./resolver";
 import type {
   InsightsQuery,
@@ -16,7 +14,8 @@ import type {
   SourceReader,
 } from "./sourceReader";
 
-export interface LogRecord {
+/** CLI read contract normalized from provider-specific log events. */
+export type LogRecord = {
   timestamp: Date;
   message: string;
   correlation?: {
@@ -29,12 +28,12 @@ export interface LogRecord {
   ingestionTime?: Date;
   source: {
     provider: "cloudwatch";
-    resource: ResolvedResourceIdentity;
+    resource: ObservableResourceRef;
     logGroupName: string;
     logStreamName?: string;
   };
   raw?: unknown;
-}
+};
 
 export interface CoreObservabilityClient {
   searchLogs(
@@ -116,13 +115,12 @@ export class ObservabilityClient implements CoreObservabilityClient {
     options: CoreOptions,
     signal?: AbortSignal,
   ): Promise<ResolvedObservabilityTarget> {
-    const resolver = this.resolvers[resource.kind] as ObservabilitySourceResolver<typeof resource>;
-    return resolver.resolve(resource, options, signal);
+    return this.resolvers[resource.kind].resolve(resource, options, signal);
   }
 }
 
 function toLogRecord(
-  resource: ResolvedResourceIdentity,
+  resource: ObservableResourceRef,
   source: LogSource,
   record: RawLogRecord,
 ): LogRecord {

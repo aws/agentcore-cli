@@ -9,35 +9,28 @@ export type ObservableResourceRef = {
   qualifier?: string;
 };
 
-export type ResolvedResourceIdentity = {
-  kind: ObservableResourceRef["kind"];
-  id: string;
-  qualifier?: string;
-};
-
 export type LogSource = {
   provider: "cloudwatch";
   logGroupName: string;
 };
 
 export interface ResolvedObservabilityTarget {
-  resource: ResolvedResourceIdentity;
+  resource: ObservableResourceRef;
   logs: readonly LogSource[];
 }
 
-export interface ObservabilitySourceResolver<R extends ObservableResourceRef> {
+export interface ObservabilitySourceResolver {
   resolve(
-    resource: R,
+    resource: ObservableResourceRef,
     options: CoreOptions,
     signal?: AbortSignal,
   ): Promise<ResolvedObservabilityTarget>;
 }
 
-export type ObservabilitySourceResolverRegistry = {
-  [K in ObservableResourceRef["kind"]]: ObservabilitySourceResolver<
-    Extract<ObservableResourceRef, { kind: K }>
-  >;
-};
+export type ObservabilitySourceResolverRegistry = Record<
+  ObservableResourceRef["kind"],
+  ObservabilitySourceResolver
+>;
 
 export function runtimeLogGroup(runtimeId: string, qualifier: string): string {
   return `/aws/bedrock-agentcore/runtimes/${runtimeId}-${qualifier}`;
@@ -47,11 +40,9 @@ export function runtimeLogGroup(runtimeId: string, qualifier: string): string {
  * Resolves Runtime identity into the CloudWatch locations used by generic log
  * operations. CloudWatch access remains the source reader's responsibility.
  */
-export class RuntimeSourceResolver implements ObservabilitySourceResolver<
-  Extract<ObservableResourceRef, { kind: "runtime" }>
-> {
+export class RuntimeSourceResolver implements ObservabilitySourceResolver {
   async resolve(
-    resource: Extract<ObservableResourceRef, { kind: "runtime" }>,
+    resource: ObservableResourceRef,
     _options: CoreOptions,
     _signal?: AbortSignal,
   ): Promise<ResolvedObservabilityTarget> {

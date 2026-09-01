@@ -4,10 +4,8 @@ import { flag, Router } from "../../router";
 import { renderTui } from "../../tui";
 import type { AppIO } from "../../io";
 import type { Core } from "../types";
-import type {
-  ObservableResourceCommand,
-  ObservabilityHandlerFactories,
-} from "../observability/types";
+import { createLogsHandler } from "../observability/logs";
+import type { ObservableResourceCommand } from "../observability/types";
 import { createRuntimeEndpointHandler } from "./endpoint";
 import { createGetRuntimeHandler } from "./get";
 import { createInvokeRuntimeHandler } from "./invoke";
@@ -45,11 +43,7 @@ function runtimeObservabilityResource(
   };
 }
 
-export function createRuntimeHandler(
-  core: Core,
-  io: AppIO,
-  observabilityHandlers: ObservabilityHandlerFactories,
-): Router {
+export function createRuntimeHandler(core: Core, io: AppIO): Router {
   return new Router("runtime", "inspect AgentCore Runtimes")
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
@@ -59,10 +53,6 @@ export function createRuntimeHandler(
     .handler(createInvokeRuntimeHandler(core, io))
     .handler(createRuntimeVersionHandler(core, io))
     .handler(createRuntimeEndpointHandler(core, io))
-    .handler(
-      observabilityHandlers.createLogsHandler({
-        resource: runtimeObservabilityResource(core),
-      }),
-    )
+    .handler(createLogsHandler(core.observability, io, runtimeObservabilityResource(core)))
     .handler(createRuntimeTracesHandler(core, io));
 }

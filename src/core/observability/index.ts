@@ -15,7 +15,6 @@ export {
   type ObservabilitySourceResolver,
   type ObservabilitySourceResolverRegistry,
   type ResolvedObservabilityTarget,
-  type ResolvedResourceIdentity,
 } from "./resolver";
 export {
   CloudWatchSourceReader,

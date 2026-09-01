@@ -8,7 +8,6 @@ import { createRuntimeHandler } from "./runtime/index.tsx";
 import { DebugKey, EndpointKey, JsonKey, RegionKey } from "./keys.tsx";
 import { createConfigHandler } from "./config/";
 import { createProjectHandler } from "./project/index.ts";
-import { ObservabilityHandlerFactory } from "./observability/handlerFactory";
 import { renderTui } from "../tui";
 import { withRegion, withJsonRenderer, withLogging, withGlobalConfigAccessor } from "../middleware";
 import type { AppIO } from "../io";
@@ -26,7 +25,6 @@ export interface RootHandlerConfig {
 export function createRootHandler(core: Core, config: RootHandlerConfig): Router {
   const { io, logger } = config;
   const root = new Router("agentcore", "the platform for production AI agents");
-  const observabilityHandlers = new ObservabilityHandlerFactory(core.observability, io);
 
   // `agentcore --version` prints the build-time package version.
   root.version(PACKAGE_VERSION);
@@ -51,7 +49,7 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   // Install sub handlers
   root.handler(createHarnessHandler(core, io));
   root.handler(createIdentityHandler(core, io));
-  root.handler(createRuntimeHandler(core, io, observabilityHandlers));
+  root.handler(createRuntimeHandler(core, io));
   root.handler(createMemoryHandler(core, io));
   root.handler(createGatewayHandler(core, io));
   root.handler(createEvalHandler(core, io));
