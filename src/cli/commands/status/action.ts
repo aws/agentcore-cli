@@ -799,7 +799,7 @@ export async function handleProjectStatus(
   return {
     success: true,
     projectName: project.name,
-    targetName: selectedTargetName ?? '',
+    targetName: selectedTargetName,
     targetRegion: targetConfig?.region,
     resources,
     deployedState,
