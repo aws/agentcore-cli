@@ -13,3 +13,10 @@ export interface TracesGetOptions {
   until?: string;
   json?: boolean;
 }
+
+export interface TracesCompareOptions {
+  runtime?: string;
+  since?: string;
+  until?: string;
+  json?: boolean;
+}
