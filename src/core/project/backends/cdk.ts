@@ -66,46 +66,68 @@ function toCdkId(name: string): string {
   return name.replace(/_/g, "");
 }
 
-// The exportName parts (after the stack name) for every type whose deployed id is
-// a CloudFormation export. credential + payment are excluded on purpose — credential
-// comes from deployed-state, payment matches by OutputKey below. `satisfies Record`
-// makes this exhaustive: adding a DeployableResource without a row here is a compile
-// error, so a new type can never silently resolve to "not found".
-type CfnOutputResource = Exclude<DeployableResource, "credential" | "payment">;
-
-const EXPORT_PARTS = {
-  runtime: (name) => [name, "RuntimeId"],
-  harness: (name) => ["Harness", name, "Id"],
-  memory: (name) => ["Memory", name, "Id"],
-  "knowledge-base": (name) => ["KnowledgeBase", name, "Id"],
-  evaluator: (name) => ["Evaluator", name, "Id"],
-  "online-eval": (name) => ["OnlineEval", name, "Id"],
-  gateway: (name) => ["Gateway", name, "Id"],
-  "gateway-target": (name) => ["GatewayTarget", name, "Id"],
-  "policy-engine": (name) => ["PolicyEngine", name, "Id"],
-  policy: (name, parent) => ["Policy", parent ?? "", name, "Id"],
-  "config-bundle": (name) => ["ConfigBundle", name, "Id"],
-  // Output arrives with aws/agentcore-l3-cdk-constructs#336; resolves once it ships.
-  "capacity-provider": (name) => ["CapacityProvider", name, "Id"],
-} satisfies Record<CfnOutputResource, (name: string, parent?: string) => string[]>;
-
-function findDeployedResourceId(
-  stack: Stack,
-  input: { resourceType: Exclude<DeployableResource, "credential">; name: string; parent?: string },
+// resolveResourceId maps a declared resource to its deployed physical id. Most ids
+// are CloudFormation exports under a deterministic ExportName; payment and credential
+// come from elsewhere, so every source lives in this one switch. The `never` default
+// makes a new DeployableResource a compile error rather than a resource that silently
+// vanishes from `project status`.
+function resolveResourceId(
+  sources: {
+    stack: Stack;
+    /** deployed-state credential ARNs by name — credentials are created imperatively, never by CFN. */
+    credentialArns: Record<string, { credentialProviderArn: string }>;
+  },
+  input: { resourceType: DeployableResource; name: string; parent?: string },
 ): string | undefined {
-  if (!stack.StackName) return undefined;
-  // TODO(cdk): the CLI's payment CfnOutputs (assets/cdk/lib/cdk-stack.ts) set no
-  // ExportName, so match by their predictable OutputKey. Once they export a name,
-  // fold payment into EXPORT_PARTS and delete this branch.
-  if (input.resourceType === "payment") {
-    const key = `Payment${toCdkId(input.name)}ManagerId`;
-    return stack.Outputs?.find((output) => output.OutputKey === key)?.OutputValue;
+  const { stack, credentialArns } = sources;
+  const { resourceType, name, parent } = input;
+
+  const byExportName = (...parts: string[]) => {
+    if (!stack.StackName) return undefined;
+    const want = cfnExportName(stack.StackName, ...parts);
+    return stack.Outputs?.find((output) => output.ExportName === want)?.OutputValue;
+  };
+
+  switch (resourceType) {
+    case "runtime":
+      return byExportName(name, "RuntimeId");
+    case "harness":
+      return byExportName("Harness", name, "Id");
+    case "memory":
+      return byExportName("Memory", name, "Id");
+    case "knowledge-base":
+      return byExportName("KnowledgeBase", name, "Id");
+    case "evaluator":
+      return byExportName("Evaluator", name, "Id");
+    case "online-eval":
+      return byExportName("OnlineEval", name, "Id");
+    case "gateway":
+      return byExportName("Gateway", name, "Id");
+    case "gateway-target":
+      return byExportName("GatewayTarget", name, "Id");
+    case "policy-engine":
+      return byExportName("PolicyEngine", name, "Id");
+    case "policy":
+      return byExportName("Policy", parent ?? "", name, "Id");
+    case "config-bundle":
+      return byExportName("ConfigBundle", name, "Id");
+    // Output arrives with aws/agentcore-l3-cdk-constructs#336; resolves once it ships.
+    case "capacity-provider":
+      return byExportName("CapacityProvider", name, "Id");
+    // TODO(cdk): the CLI's payment CfnOutputs (assets/cdk/lib/cdk-stack.ts) set no
+    // ExportName, so match by their predictable OutputKey. Once they export a name,
+    // fold payment in above and delete this case.
+    case "payment":
+      return stack.Outputs?.find(
+        (output) => output.OutputKey === `Payment${toCdkId(name)}ManagerId`,
+      )?.OutputValue;
+    case "credential":
+      return credentialArns[name]?.credentialProviderArn;
+    default: {
+      const unhandled: never = resourceType;
+      return unhandled;
+    }
   }
-  const want = cfnExportName(
-    stack.StackName,
-    ...EXPORT_PARTS[input.resourceType](input.name, input.parent),
-  );
-  return stack.Outputs?.find((output) => output.ExportName === want)?.OutputValue;
 }
 
 export type CdkBackendConfig = {
@@ -372,14 +394,7 @@ export class CdkBackend implements ProjectBackend {
     ];
 
     return declared.flatMap((r) => {
-      const id =
-        r.resourceType === "credential"
-          ? credentialArns[r.name]?.credentialProviderArn
-          : findDeployedResourceId(stack, {
-              resourceType: r.resourceType,
-              name: r.name,
-              parent: r.parent,
-            });
+      const id = resolveResourceId({ stack, credentialArns }, r);
       return id ? [{ ...r, id, target }] : [];
     });
   }
