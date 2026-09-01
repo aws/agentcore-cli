@@ -87,7 +87,7 @@ export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceCon
           resourceType: "evaluator",
           resourceConfig: parsed.data,
         })) {
-          config.io.stderr.write(`${event.message}\n`);
+          if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
         }
         config.io.stderr.write(`added evaluator '${flags["name"]}' to '${project.name}'\n`);
         return;
@@ -107,7 +107,7 @@ export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceCon
         resourceConfig: { name: scaffold.name },
         scaffold,
       })) {
-        config.io.stderr.write(`${event.message}\n`);
+        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
       }
 
       config.io.stderr.write(`added evaluator '${flags["name"]}' to '${project.name}'\n`);

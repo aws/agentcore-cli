@@ -340,7 +340,7 @@ export class FsProjectManager implements ProjectManager {
       }
       case "evaluator": {
         if (input.scaffold) {
-          yield { message: "Scaffolding evaluator in project" };
+          yield { type: "step", message: "Scaffolding evaluator in project" };
           const outputPath = join(project.rootPath, "app", input.scaffold.name);
           if (existsSync(outputPath))
             throw new InputValidationError(
