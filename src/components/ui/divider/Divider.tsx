@@ -43,7 +43,7 @@ export const Divider: React.FC<DividerProps> = ({
   }
 
   return (
-    <Box>
+    <Box flexShrink={0}>
       <Text color={theme.colors.border}>{line}</Text>
     </Box>
   );

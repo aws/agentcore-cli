@@ -35,14 +35,20 @@ export function FormRadioGroup({ name, helpText, options, selectedIndex }: FormR
         {options.map((option, i) => {
           const selected = i === selectedIndex;
           return (
-            <Box key={option.label}>
-              <Text color={selected ? theme.colors.focus : theme.colors.muted}>
-                {selected ? "● " : "○ "}
-              </Text>
-              <Text bold={selected} color={selected ? theme.colors.focus : theme.colors.text}>
-                {option.label.padEnd(columnWidth)}
-              </Text>
-              <Text color={theme.colors.muted}>{option.description}</Text>
+            <Box key={option.label} flexDirection="row">
+              <Box width={2} flexShrink={0}>
+                <Text color={selected ? theme.colors.focus : theme.colors.muted}>
+                  {selected ? "●" : "○"}
+                </Text>
+              </Box>
+              <Box width={columnWidth} flexShrink={0}>
+                <Text bold={selected} color={selected ? theme.colors.focus : theme.colors.text}>
+                  {option.label}
+                </Text>
+              </Box>
+              <Box flexShrink={1}>
+                <Text color={theme.colors.muted}>{option.description}</Text>
+              </Box>
             </Box>
           );
         })}
