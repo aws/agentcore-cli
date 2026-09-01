@@ -15,6 +15,7 @@ import { ProtocolModeSchema, RuntimeVersionSchema } from "../../projectSchemas/c
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import type { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
 import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
+import type { ProgressEvent } from "../../tui/progress";
 
 type CreateProjectInputBase = {
   /** The name of the project; also the directory it is scaffolded into. */
@@ -96,10 +97,14 @@ export type CreateProjectInput = CreateProjectInputBase &
       }
   );
 
-/** A progress step reported while a long-running project operation runs. */
-export type ProjectEvent = {
-  message: string;
-};
+/**
+ * A progress event reported while a long-running project operation runs. The
+ * same shape as the generic {@link ProgressEvent} the TUI progress driver
+ * consumes: a `step` begins a new unit of work (completing the previous one),
+ * an `output` line belongs to the current step, and the final step completes
+ * when the generator returns (or fails when it throws).
+ */
+export type ProjectEvent = ProgressEvent;
 
 /** The destructive deployment discovered after a project has been synthesized. */
 export type TeardownConfirmationRequest = {
@@ -148,6 +153,11 @@ export type DeployResult = {
 export type ResolveProjectInput = {
   /** A path to search from when locating the project root. */
   filePath: string;
+};
+
+export type ResolveTargetInput = {
+  /** Name of the aws-targets.json entry to look up. */
+  target: string;
 };
 
 export type ResolveDeployedResourceInput = {
@@ -340,6 +350,16 @@ export interface ProjectManager {
 
   /** Deploy the project to one of its configured AWS targets. */
   deploy(project: Project, input: DeployProjectInput): AsyncGenerator<ProjectEvent, DeployResult>;
+
+  /**
+   * Look up a target in aws-targets.json without provisioning or requiring it.
+   * Returns undefined when the file or the named entry is absent — unlike
+   * deploy, which synthesizes the default target on demand.
+   */
+  resolveTarget(
+    project: Project,
+    input: ResolveTargetInput,
+  ): Promise<AwsDeploymentTarget | undefined>;
 
   /** Locate an existing AgentCore project. Returns undefined if no project can be found. */
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;

@@ -204,7 +204,7 @@ export function ProjectCreateScreen({ core }: ScreenProps) {
     setPhase({ kind: "running" });
     try {
       for await (const event of core.projectManager.create(input)) {
-        setEvents((current) => [...current, event.message]);
+        if (event.type === "step") setEvents((current) => [...current, event.message]);
       }
       setPhase({ kind: "success" });
     } catch (error) {

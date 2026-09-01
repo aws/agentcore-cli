@@ -79,7 +79,7 @@ export const createAddConfigBundleHandler = (config: AddProjectResourceConfig) =
           kmsKeyArn: flags["kms-key-arn"],
         },
       })) {
-        config.io.stderr.write(`${event.message}\n`);
+        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
       }
 
       config.io.stderr.write(`added configuration bundle '${flags.name}' to '${project.name}'\n`);

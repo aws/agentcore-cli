@@ -277,7 +277,7 @@ describe("FsProjectManager.create", () => {
       scaffoldRuntimeInput: HELLO_WORLD_PYTHON,
     });
 
-    expect(events.map((event) => event.message)).toEqual([
+    expect(events.flatMap((event) => (event.type === "step" ? [event.message] : []))).toEqual([
       "Creating project tree",
       "Installing CDK dependencies with npm",
       "Syncing Python dependencies with uv",
@@ -374,7 +374,7 @@ describe("FsProjectManager.build", () => {
         cwd: join(directory, "example", "agentcore", "cdk"),
       },
     ]);
-    expect(events).toEqual([{ message: "Synthesizing CloudFormation templates" }]);
+    expect(events).toEqual([{ type: "step", message: "Synthesizing CloudFormation templates" }]);
   });
 
   test("fails actionably when the CDK dependencies are missing", async () => {
@@ -430,7 +430,7 @@ describe("FsProjectManager.deploy", () => {
       async *build() {},
       async *deploy(project, input) {
         calls.push({ project, input });
-        yield { message: "Backend deployment started" };
+        yield { type: "step" as const, message: "Backend deployment started" };
         return { outputs: { RuntimeArn: "arn:runtime" } };
       },
       async resolveDeployedResources() {
@@ -512,7 +512,7 @@ describe("FsProjectManager.deploy", () => {
     expect(subject.calls).toHaveLength(1);
     expect(subject.calls[0]?.project).toBe(project);
     expect(subject.calls[0]?.input.target).toEqual(targets[1]);
-    expect(deployed.events).toEqual([{ message: "Backend deployment started" }]);
+    expect(deployed.events).toEqual([{ type: "step", message: "Backend deployment started" }]);
     expect(deployed.result).toEqual({
       outputs: { RuntimeArn: "arn:runtime" },
     });
@@ -600,8 +600,8 @@ describe("FsProjectManager.deploy", () => {
     expect(subject.calls).toHaveLength(1);
     expect(subject.calls[0]?.input.target).toEqual(SYNTHESIZED);
     expect(deployed.events).toEqual([
-      { message: CREATED_MESSAGE },
-      { message: "Backend deployment started" },
+      { type: "step", message: CREATED_MESSAGE },
+      { type: "step", message: "Backend deployment started" },
     ]);
     expect(await Bun.file(targetsFile(root)).json()).toEqual([SYNTHESIZED]);
   });
@@ -701,7 +701,7 @@ describe("FsProjectManager.deploy", () => {
 
     expect(subject.accountCalls).toEqual([]);
     expect(subject.calls[0]?.input.target).toEqual(configured[0]!);
-    expect(deployed.events).toEqual([{ message: "Backend deployment started" }]);
+    expect(deployed.events).toEqual([{ type: "step", message: "Backend deployment started" }]);
     expect(await Bun.file(targetsFile(root)).text()).toBe(contents);
   });
 });

@@ -286,7 +286,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       }
 
       for await (const event of config.projectManager.create(createInput)) {
-        config.io.stderr.write(`${event.message}\n`);
+        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
       }
 
       config.io.stderr.write(`Created project '${name}' in ./${name}\n`);

@@ -245,7 +245,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         resourceType: "runtime",
         resourceConfig: result.data,
       })) {
-        config.io.stderr.write(`${event.message}\n`);
+        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
       }
 
       config.io.stderr.write(`added runtime '${flags.name}' to '${project.name}'\n`);

@@ -54,7 +54,7 @@ export async function addCredentialToProject(
     resourceType: "credential",
     ...input,
   })) {
-    config.io.stderr.write(`${event.message}\n`);
+    if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
   }
 
   config.io.stderr.write(`added credential '${input.resourceConfig.name}' to '${project.name}'\n`);

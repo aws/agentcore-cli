@@ -176,7 +176,7 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
         resourceType: "memory",
         resourceConfig: memoryConfig,
       })) {
-        config.io.stderr.write(`${event.message}\n`);
+        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
       }
 
       config.io.stderr.write(`added memory '${flags["name"]}' to '${project.name}'\n`);

@@ -85,7 +85,7 @@ export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
         engineName: flags.engine,
         resourceConfig: policy,
       })) {
-        config.io.stderr.write(`${event.message}\n`);
+        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
       }
       config.io.stderr.write(
         `added Policy '${flags.name}' to Policy Engine '${flags.engine}' in '${project.name}'\n`,

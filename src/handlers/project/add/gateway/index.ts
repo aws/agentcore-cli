@@ -129,7 +129,7 @@ export const createAddGatewayHandler = (config: AddProjectResourceConfig) =>
         resourceType: "gateway",
         resourceConfig: gateway,
       })) {
-        config.io.stderr.write(`${event.message}\n`);
+        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
       }
       config.io.stderr.write(`added Gateway '${flags.name}' to '${project.name}'\n`);
     },

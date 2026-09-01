@@ -85,7 +85,7 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
         resourceType: "online-eval",
         resourceConfig: parsed.data,
       })) {
-        config.io.stderr.write(`${event.message}\n`);
+        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
       }
 
       config.io.stderr.write(`added online-eval config '${flags["name"]}' to '${project.name}'\n`);

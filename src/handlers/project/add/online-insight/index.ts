@@ -102,7 +102,7 @@ export const createAddOnlineInsightHandler = (config: AddProjectResourceConfig) 
         resourceType: "online-insight",
         resourceConfig: parsed.data,
       })) {
-        config.io.stderr.write(`${event.message}\n`);
+        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
       }
 
       config.io.stderr.write(
