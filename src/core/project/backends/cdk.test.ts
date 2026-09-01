@@ -11,6 +11,7 @@ import { CdkBackend } from "./cdk";
 import type {
   CredentialProviderCalls,
   CredentialProvisioner,
+  DeployedCredentials,
   PaymentCredentialRemover,
 } from "./cdk/credentials";
 import { DEPLOYED_STATE_RELATIVE_PATH, updateTargetState } from "./cdk/deployedState";
@@ -576,6 +577,47 @@ describe("CdkBackend.deploy", () => {
     expect(messages.indexOf("Removing stack AgentCore-example-default-0")).toBeLessThan(
       messages.indexOf("Removing credential provider 'wallet'"),
     );
+  });
+
+  test("hands teardown the credentials recorded before the deploy overwrote them", async () => {
+    // The `project remove all` shape: the spec declares nothing, so provisioning
+    // returns nothing and rewrites the credentials map to empty before teardown runs.
+    // The recorded providers are the only remaining record of what to delete.
+    const input = await project();
+    await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
+    const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
+    await mkdir(dirname(statePath), { recursive: true });
+    const recordedWallet = {
+      credentialProviderArn: "arn:payment:wallet",
+      authorizerType: "PaymentCredentialProvider" as const,
+    };
+    await writeFile(
+      statePath,
+      JSON.stringify({
+        targets: {
+          default: {
+            stackArn: "arn:stack:default",
+            resources: { credentials: { wallet: recordedWallet } },
+          },
+        },
+      }),
+    );
+
+    const handed: DeployedCredentials[] = [];
+    const removePaymentCredentials: PaymentCredentialRemover = async function* (
+      _project,
+      { recorded },
+    ) {
+      handed.push(recorded);
+      yield { message: "Removing credential provider 'wallet'" };
+    };
+    const subject = harness({ removePaymentCredentials });
+
+    await collectDeploy(
+      subject.backend.deploy(input, deployInput({ confirmTeardown: async () => true })),
+    );
+
+    expect(handed).toEqual([{ wallet: recordedWallet }]);
   });
 
   test("says to add a resource when there is no stack to remove either", async () => {

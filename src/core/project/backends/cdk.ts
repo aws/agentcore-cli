@@ -29,6 +29,7 @@ import {
   createPaymentCredentialRemover,
   type CredentialProviderCalls,
   type CredentialProvisioner,
+  type DeployedCredentials,
   type PaymentCredentialRemover,
 } from "./cdk/credentials";
 import {
@@ -171,7 +172,12 @@ export class CdkBackend implements ProjectBackend {
     // before any AWS mutation, so a local problem never leaves credentials
     // provisioned or the stack ARN unrecorded.
     await this.ensureCdkDependencies(project);
-    await readDeployedState(this.json, project.rootPath);
+    // Kept from before provisioning rewrites the credentials map: it is the only
+    // record of what this target provisioned, and a teardown reached by emptying the
+    // spec has no other way to know which providers it owns.
+    const recorded =
+      (await readDeployedState(this.json, project.rootPath)).targets[target.name]?.resources
+        ?.credentials ?? {};
 
     // Credential providers aren't stack resources; the synthesized app reads their
     // ARNs from deployed-state.json, so they must exist and be recorded before synth.
@@ -194,7 +200,7 @@ export class CdkBackend implements ProjectBackend {
     // with nothing in it as an instruction to delete the stack, and reports that
     // as an ordinary successful deploy.
     if ((await countDeployableResources(this.json, assemblyDirectory, artifact)) === 0) {
-      return yield* this.teardown({ project, artifact, input, options });
+      return yield* this.teardown({ project, artifact, input, options, recorded });
     }
 
     const bootstrap = await this.bootstrap(target.region, credentials);
@@ -261,11 +267,14 @@ export class CdkBackend implements ProjectBackend {
     artifact,
     input,
     options,
+    recorded,
   }: {
     project: Project;
     artifact: StackArtifact;
     input: DeployBackendInput;
     options: CdkRunOptions;
+    /** The credentials deployed-state.json held for this target before the deploy. */
+    recorded: DeployedCredentials;
   }): AsyncGenerator<ProjectEvent, DeployResult> {
     const { target } = input;
     if (!(await this.describeStack(target.region, options.credentials, artifact.stackName))) {
@@ -297,6 +306,7 @@ export class CdkBackend implements ProjectBackend {
     yield* this.removePaymentCredentials(project, {
       credentials: options.credentials,
       region: target.region,
+      recorded,
     });
     await removeTargetState(this.json, project.rootPath, target.name);
     return { outputs: {}, tornDown: true };
