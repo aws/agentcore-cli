@@ -2,21 +2,25 @@ import type { BedrockAgentCoreControlClient } from "@aws-sdk/client-bedrock-agen
 import type { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import type { IAMClient } from "@aws-sdk/client-iam";
 import type { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
-import type {
-  CloudFormationClient,
-  CloudFormationClientConfig,
-} from "@aws-sdk/client-cloudformation";
+import type { CloudFormationClient } from "@aws-sdk/client-cloudformation";
+import type { AwsCredentialIdentity, AwsCredentialIdentityProvider } from "@smithy/types";
 
 // AwsCredentials is an explicit credential source for a call: either resolved
 // credentials or a provider that resolves them. Callers that rely on the SDK's own
-// default credential chain leave it unset.
-export type AwsCredentials = NonNullable<CloudFormationClientConfig["credentials"]>;
+// default credential chain leave it unset. Every v3 client accepts this same shape,
+// so it comes from the shared Smithy types rather than any one client's config.
+export type AwsCredentials = AwsCredentialIdentity | AwsCredentialIdentityProvider;
 
 // CoreOptions is the standard trailing argument for Core operations. It carries
 // the per-call settings a handler resolves from context (the AWS region and an
 // optional endpoint URL override) and is translated into a ClientConfig by the
 // sub-clients. `credentials` is for callers that must not use the default chain —
 // a project deploy runs against its target's credentials.
+//
+// It stays separate from ClientConfig because the two name the same things
+// differently: CoreOptions uses the vocabulary of the CLI's flags and context
+// (`endpointUrl`), ClientConfig uses the SDK's (`endpoint`). `toClientConfig` is the
+// translation, and it is the only place that has to know both.
 export interface CoreOptions {
   region: string;
   endpointUrl?: string;

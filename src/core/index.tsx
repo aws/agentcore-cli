@@ -12,6 +12,7 @@ import { RuntimeClient } from "./runtime";
 import { FsReadWriteJson } from "../io";
 import type {
   AwsClients,
+  AwsCredentials,
   ClientConfig,
   CoreFetch,
   CreateCloudFormationClient,
@@ -54,10 +55,10 @@ type CoreClientConfig = {
 // factories) and exposes feature-scoped sub-clients such as `harness`, keeping the
 // surface modular as more features are added.
 export class CoreClient implements AwsClients {
-  private controlClients = new Map<string, BedrockAgentCoreControlClient>();
-  private dataClients = new Map<string, BedrockAgentCoreClient>();
-  private iamClients = new Map<string, IAMClient>();
-  private logsClients = new Map<string, CloudWatchLogsClient>();
+  private controlClients = new ClientCache<BedrockAgentCoreControlClient>();
+  private dataClients = new ClientCache<BedrockAgentCoreClient>();
+  private iamClients = new ClientCache<IAMClient>();
+  private logsClients = new ClientCache<CloudWatchLogsClient>();
 
   private readonly createControlClient: CreateControlClient;
   private readonly createDataClient: CreateDataClient;
@@ -109,8 +110,6 @@ export class CoreClient implements AwsClients {
     this.projectManager = new FsProjectManager({
       logger: this.logger.child({ module: "projectManager" }),
       createCloudFormationClient: config.createCloudFormationClient,
-      // A project deploy provisions credential providers through the same Identity
-      // client the `agentcore identity` commands use, against its target's credentials.
       identity: this.identity,
     });
     this.describeBedrockAgent = config.describeBedrockAgent ?? describeBedrockAgent;
@@ -119,75 +118,65 @@ export class CoreClient implements AwsClients {
   // control returns the control-plane client for `config`, creating and caching it
   // on first use.
   control(config: ClientConfig): BedrockAgentCoreControlClient {
-    const key = cacheKey(config);
-    let client = this.controlClients.get(key);
-    if (!client) {
-      client = this.createControlClient(config);
-      this.controlClients.set(key, client);
-    }
-    return client;
+    return this.controlClients.get(config, this.createControlClient);
   }
 
   // data returns the data-plane client for `config`, creating and caching it on
   // first use.
   data(config: ClientConfig): BedrockAgentCoreClient {
-    const key = cacheKey(config);
-    let client = this.dataClients.get(key);
-    if (!client) {
-      client = this.createDataClient(config);
-      this.dataClients.set(key, client);
-    }
-    return client;
+    return this.dataClients.get(config, this.createDataClient);
   }
 
   // iam returns the IAM client for `config`, creating and caching it on first
   // use (used to provision default execution roles).
   iam(config: ClientConfig): IAMClient {
-    const key = cacheKey(config);
-    let client = this.iamClients.get(key);
-    if (!client) {
-      client = this.createIamClient(config);
-      this.iamClients.set(key, client);
-    }
-    return client;
+    return this.iamClients.get(config, this.createIamClient);
   }
 
   // logs returns the CloudWatch Logs client for `config`, creating and caching it
   // on first use (used to read batch-evaluation result log streams).
   logs(config: ClientConfig): CloudWatchLogsClient {
-    const key = cacheKey(config);
-    let client = this.logsClients.get(key);
+    return this.logsClients.get(config, this.createLogsClient);
+  }
+}
+
+// ClientCache holds one SDK client per distinct configuration, so callers asking for
+// the same region (and endpoint, and credentials) share a connection.
+//
+// Credentials cannot be part of a serialized key: they are either a provider function
+// or an object of resolved credentials, and JSON.stringify drops a function silently.
+// That would map two targets in the same region onto one client, and the second would
+// then run with the first one's credentials. They are keyed by object identity in an
+// outer WeakMap instead, with the serializable fields keyed inside it.
+class ClientCache<T> {
+  private readonly withDefaultChain = new Map<string, T>();
+  private readonly byCredentials = new WeakMap<object, Map<string, T>>();
+
+  get(config: ClientConfig, create: (config: ClientConfig) => T): T {
+    const clients = this.forCredentials(config.credentials);
+    const key = configKey(config);
+    let client = clients.get(key);
     if (!client) {
-      client = this.createLogsClient(config);
-      this.logsClients.set(key, client);
+      client = create(config);
+      clients.set(key, client);
     }
     return client;
   }
-}
 
-// cacheKey derives a stable cache key from a ClientConfig so that distinct
-// configurations (region, endpoint, ...) map to distinct cached clients.
-//
-// `credentials` is a provider function or an object of resolved credentials, so it
-// cannot be serialized — JSON.stringify drops functions silently, which would map two
-// callers with different credentials in the same region onto one cached client. It is
-// keyed by identity instead.
-function cacheKey(config: ClientConfig): string {
-  const { credentials, ...serializable } = config;
-  const suffix = credentials ? `|credentials:${credentialsId(credentials)}` : "";
-  return JSON.stringify(serializable) + suffix;
-}
-
-const credentialsIds = new WeakMap<object, number>();
-let nextCredentialsId = 0;
-
-// credentialsId assigns each credential source a stable id for the lifetime of the
-// object, so the same source reuses its client and a different one gets its own.
-function credentialsId(credentials: NonNullable<ClientConfig["credentials"]>): number {
-  let id = credentialsIds.get(credentials);
-  if (id === undefined) {
-    id = nextCredentialsId++;
-    credentialsIds.set(credentials, id);
+  private forCredentials(credentials: AwsCredentials | undefined): Map<string, T> {
+    if (!credentials) return this.withDefaultChain;
+    let clients = this.byCredentials.get(credentials);
+    if (!clients) {
+      clients = new Map();
+      this.byCredentials.set(credentials, clients);
+    }
+    return clients;
   }
-  return id;
+}
+
+// configKey names the fields that change how a client is constructed. It is built
+// field by field rather than by serializing the config, so two callers that list the
+// same fields in a different order still map to the same client.
+function configKey({ region, endpoint }: ClientConfig): string {
+  return JSON.stringify([region, endpoint ?? null]);
 }
