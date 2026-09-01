@@ -165,7 +165,8 @@ describe("project deploy handler", () => {
     // Output lines belong to the debug log outside a TTY, not the plain stream.
     expect(subject.io.stderr()).not.toContain("CREATE_IN_PROGRESS");
     expect(subject.io.stderr()).toContain("Deployed project 'orders' to target 'default'");
-    expect(subject.io.stdout()).toBe("AlphaArn: arn:alpha\nZetaUrl: https://zeta.example");
+    // Stack outputs are rendered only with --json; without it stdout stays empty.
+    expect(subject.io.stdout()).toBe("");
   });
 
   test("passes an explicit target and renders the result as JSON", async () => {
