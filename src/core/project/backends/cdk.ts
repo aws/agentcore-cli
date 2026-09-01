@@ -85,7 +85,6 @@ const EXPORT_PARTS = {
   "policy-engine": (name) => ["PolicyEngine", name, "Id"],
   policy: (name, parent) => ["Policy", parent ?? "", name, "Id"],
   "config-bundle": (name) => ["ConfigBundle", name, "Id"],
-  dataset: (name) => ["Dataset", name, "Id"],
   // Output arrives with aws/agentcore-l3-cdk-constructs#336; resolves once it ships.
   "capacity-provider": (name) => ["CapacityProvider", name, "Id"],
 } satisfies Record<CfnOutputResource, (name: string, parent?: string) => string[]>;
@@ -367,7 +366,7 @@ export class CdkBackend implements ProjectBackend {
         })),
       ]),
       ...spec.configBundles.map(({ name }) => ({ resourceType: "config-bundle" as const, name })),
-      ...(spec.datasets ?? []).map(({ name }) => ({ resourceType: "dataset" as const, name })),
+      // datasets are intentionally excluded — out of scope for project status.
       ...(spec.payments ?? []).map(({ name }) => ({ resourceType: "payment" as const, name })),
       // capacity-provider has no spec array yet — arrives with l3-cdk-constructs#336.
     ];

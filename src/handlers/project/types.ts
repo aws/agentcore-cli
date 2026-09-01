@@ -157,8 +157,8 @@ export type ResolveDeployedResourcesInput = {
  * {@link ProjectInvokableResource} (runtime/harness) because `project status`
  * reports the whole stack, not just what you can invoke. Not derived from
  * {@link ProjectResource}: the deployed vocabulary differs (e.g. `payment`, not
- * `payment-manager`/`payment-connector`; adds `knowledge-base`, `dataset`,
- * `capacity-provider`).
+ * `payment-manager`/`payment-connector`; adds `knowledge-base` and
+ * `capacity-provider`). Datasets are deliberately out of scope for status.
  */
 export type DeployableResource =
   | "runtime"
@@ -173,7 +173,6 @@ export type DeployableResource =
   | "policy-engine"
   | "policy"
   | "config-bundle"
-  | "dataset"
   | "payment"
   | "capacity-provider";
 

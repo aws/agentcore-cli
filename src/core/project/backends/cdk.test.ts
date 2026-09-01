@@ -722,7 +722,6 @@ describe("CdkBackend.resolveDeployedResources", () => {
       agentCoreGateways: [{ name: "gw", targets: [{ name: "tgt" }] }],
       policyEngines: [{ name: "pe", policies: [{ name: "pol" }] }],
       configBundles: [{ name: "cb" }],
-      datasets: [{ name: "ds" }],
       payments: [{ name: "pay" }],
     } as unknown as typeof input.spec;
     await updateTargetState(json, input.rootPath, TARGET.name, {
@@ -748,7 +747,6 @@ describe("CdkBackend.resolveDeployedResources", () => {
           out(`${S}-PolicyEngine-pe-Id`, "pe-1"),
           out(`${S}-Policy-pe-pol-Id`, "pol-1"),
           out(`${S}-ConfigBundle-cb-Id`, "cb-1"),
-          out(`${S}-Dataset-ds-Id`, "ds-1"),
           // payment: no ExportName — only a predictable OutputKey
           { OutputKey: "PaymentpayManagerId", OutputValue: "pay-1" },
         ],
@@ -770,7 +768,6 @@ describe("CdkBackend.resolveDeployedResources", () => {
       { resourceType: "policy-engine", name: "pe", id: "pe-1", target: TARGET },
       { resourceType: "policy", name: "pol", parent: "pe", id: "pol-1", target: TARGET },
       { resourceType: "config-bundle", name: "cb", id: "cb-1", target: TARGET },
-      { resourceType: "dataset", name: "ds", id: "ds-1", target: TARGET },
       { resourceType: "payment", name: "pay", id: "pay-1", target: TARGET },
     ]);
     expect(subject.stackReads).toHaveLength(1);
