@@ -1,9 +1,10 @@
 import type { Context } from "../router";
 import type z from "zod";
 import type { CoreOptions } from "../core/types";
-import { InputValidationError } from "../errors";
+import { AgentCoreCLIError, InputValidationError, SilentCLIError } from "../errors";
 import { formatZodError } from "../router/schema";
 import { EndpointKey, RegionKey } from "./keys";
+import { JsonRendererKey } from "../tui";
 
 // coreOptsFromCtx builds the standard CoreOptions handed to Core operations from
 // the values pinned on the context: the resolved region (always present, see the
@@ -122,4 +123,15 @@ export function parseTags(values: string[] | undefined): Record<string, string> 
     result[entry.slice(0, eqIndex)] = entry.slice(eqIndex + 1);
   }
   return result;
+}
+
+// renderJsonError reports a command failure as a JSON document in --json mode,
+// so scripted callers can read the outcome from stdout instead of parsing the
+// human-oriented `Error: ...` line the exit-code handler prints to stderr.
+// Callers rethrow afterwards; exit codes are untouched. Errors marked silent
+// (e.g. a user cancellation) stay silent here too.
+export function renderJsonError(ctx: Context, error: unknown): void {
+  const cliError = AgentCoreCLIError.fromError(error);
+  if (cliError instanceof SilentCLIError) return;
+  ctx.require(JsonRendererKey).renderJson({ error: cliError.message });
 }

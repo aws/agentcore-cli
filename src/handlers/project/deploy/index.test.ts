@@ -46,6 +46,7 @@ function fakeBackend(
   result: DeployResult,
   events: ProjectEvent[] = [],
   teardown?: TeardownConfirmationRequest,
+  failure?: Error,
 ) {
   const calls: { project: Project; input: DeployBackendInput }[] = [];
   const confirmations: boolean[] = [];
@@ -61,6 +62,7 @@ function fakeBackend(
         }
       }
       yield* events;
+      if (failure) throw failure;
       return result;
     },
     async resolveDeployedResources() {
@@ -74,6 +76,8 @@ type TestDeployOptions = {
   isTTY?: boolean;
   stdin?: string;
   teardown?: TeardownConfirmationRequest;
+  /** Thrown by the fake backend after its events, to exercise failure paths. */
+  failure?: Error;
   resolveAccount?: (region: string) => Promise<string>;
 };
 
@@ -83,7 +87,7 @@ function testDeployCommand(
   options: TestDeployOptions = {},
 ) {
   const io = testIO({ isTTY: options.isTTY, stdin: options.stdin });
-  const fake = fakeBackend(result, events, options.teardown);
+  const fake = fakeBackend(result, events, options.teardown, options.failure);
   const core = new TestCoreClient({
     backends: { CDK: fake.backend },
     resolveAccount: options.resolveAccount,
@@ -178,7 +182,36 @@ describe("project deploy handler", () => {
 
     expect(subject.calls).toHaveLength(1);
     expect(subject.calls[0]?.input.target).toEqual(STAGING_TARGET);
-    expect(JSON.parse(subject.io.stdout())).toEqual(result);
+    expect(JSON.parse(subject.io.stdout())).toEqual({
+      message: "Deployed project 'orders' to target 'staging'",
+      ...result,
+    });
+  });
+
+  test("renders a teardown result as JSON with the removal message", async () => {
+    const subject = testDeployCommand({ outputs: {}, tornDown: true });
+    await inProjectWithTargets(subject);
+
+    await subject.run(["--yes", "--json"]);
+
+    expect(JSON.parse(subject.io.stdout())).toEqual({
+      message: "Removed project 'orders' from target 'default'",
+      outputs: {},
+      tornDown: true,
+    });
+  });
+
+  test("renders a deploy failure as JSON without changing the thrown error", async () => {
+    const subject = testDeployCommand({ outputs: {} }, [], {
+      failure: new Error("The stack failed creation: ROLLBACK_COMPLETE"),
+    });
+    await inProjectWithTargets(subject);
+
+    await expect(subject.run(["--json"])).rejects.toThrow("ROLLBACK_COMPLETE");
+
+    expect(JSON.parse(subject.io.stdout())).toEqual({
+      error: "The stack failed creation: ROLLBACK_COMPLETE",
+    });
   });
 
   // --yes is the only way to authorize the teardown the backend refuses without
@@ -294,6 +327,10 @@ describe("project deploy handler", () => {
 
     expect(subject.io.stderr()).not.toContain("(y/N)");
     expect(subject.confirmations).toEqual([false]);
+    // JSON mode reports the refusal on stdout too, so scripts need not parse stderr.
+    expect(JSON.parse(subject.io.stdout())).toEqual({
+      error: expect.stringContaining("--yes"),
+    });
   });
 
   test("does not prompt for a normal deployment", async () => {

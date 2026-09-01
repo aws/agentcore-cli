@@ -7,7 +7,8 @@ import { createHandler, flag, ProjectKey } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
 import { runWithProgress } from "../../../tui/progress";
 import { JsonKey, RegionKey } from "../../keys";
-import type { Project, ProjectManager, TeardownConfirmationHandler } from "../types";
+import { renderJsonError } from "../../utils";
+import type { DeployResult, Project, ProjectManager, TeardownConfirmationHandler } from "../types";
 
 type DeployProjectHandlerConfig = {
   projectManager: ProjectManager;
@@ -60,18 +61,23 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       });
       // Progress goes to stderr, keeping stdout for machine output. --json
       // forces the plain path so no ANSI reaches a scripted caller's stderr.
-      const result = await runWithProgress(deployment, {
-        io: config.io,
-        interactive: jsonOutput ? false : undefined,
-      });
+      let result: DeployResult;
+      try {
+        result = await runWithProgress(deployment, {
+          io: config.io,
+          interactive: jsonOutput ? false : undefined,
+        });
+      } catch (error) {
+        if (jsonOutput) renderJsonError(ctx, error);
+        throw error;
+      }
 
-      config.io.stderr.write(
-        result.tornDown
-          ? `Removed project '${project.name}' from target '${flags.target}'\n`
-          : `Deployed project '${project.name}' to target '${flags.target}'\n`,
-      );
+      const message = result.tornDown
+        ? `Removed project '${project.name}' from target '${flags.target}'`
+        : `Deployed project '${project.name}' to target '${flags.target}'`;
+      config.io.stderr.write(`${message}\n`);
       if (jsonOutput) {
-        ctx.require(JsonRendererKey).renderJson(result);
+        ctx.require(JsonRendererKey).renderJson({ message, ...result });
         return;
       }
     },
