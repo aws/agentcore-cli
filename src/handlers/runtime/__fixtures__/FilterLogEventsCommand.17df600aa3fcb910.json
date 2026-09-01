@@ -1,0 +1,13 @@
+{
+  "events": [
+    {
+      "logStreamName": "2026/08/12/[runtime-logs-67ebf93b-65e3-4127-9e13-483b239f256a]c7aba76f-c59f-4c8f-9e59-2872aea6dc45",
+      "timestamp": 1786555392053,
+      "message": "{\"timestamp\": \"2026-08-12T17:23:12.053Z\", \"level\": \"INFO\", \"message\": \"Returning streaming response (generator) (0.000s)\", \"logger\": \"bedrock_agentcore.app\", \"requestId\": \"37dcffe9-22bd-4a40-a18d-6cfbcc14a6d1\", \"sessionId\": \"67ebf93b-65e3-4127-9e13-483b239f256a\"}",
+      "ingestionTime": 1786555392873,
+      "eventId": "39841516581234934748312552609710478377045077922388246529"
+    }
+  ],
+  "searchedLogStreams": [],
+  "nextToken": "Bxkq6kVGFtq2y_MoigeqscPOdhXVbhiVtLoAmXb5jCreh6VSmn_zY7_b0sChd8dRESndx7N3wXVbpuIqdmNLkJpOqr-yUSOaZWF4_SfBMCKpa712QZRkZMBvlz6Zlf_KFhA4JI0um3l4ZnBohPfJ-EiDg23EyMn3LuVmDGPyslZHBzYyveSO7ePjizO2a8lydQgGIP47tglwQHwmaN_ou7RUU_APNaAohfFSoilGzq79ZmPOtzMAZIAsPXBKlG1gwreo2MRY9R7z7CBfdwdgcppoU9xXT5leGBh6fURYH-UD6hH7zSo5D_5VTFHC_5EXh0nXzUGI--D4-ACtc1cN5znhgo_aO3yqg2X6JVrLiZc"
+}

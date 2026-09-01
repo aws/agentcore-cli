@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-08-12T17:23:12.053Z",
+  "message": "{\"timestamp\": \"2026-08-12T17:23:12.053Z\", \"level\": \"INFO\", \"message\": \"Returning streaming response (generator) (0.000s)\", \"logger\": \"bedrock_agentcore.app\", \"requestId\": \"37dcffe9-22bd-4a40-a18d-6cfbcc14a6d1\", \"sessionId\": \"67ebf93b-65e3-4127-9e13-483b239f256a\"}",
+  "correlation": {
+    "sessionId": "67ebf93b-65e3-4127-9e13-483b239f256a"
+  },
+  "severity": "INFO",
+  "ingestionTime": "2026-08-12T17:23:12.873Z",
+  "source": {
+    "provider": "cloudwatch",
+    "resource": {
+      "kind": "runtime",
+      "id": "asdf_MyAgent-3s5axvBC6Q",
+      "qualifier": "DEFAULT"
+    },
+    "logGroupName": "/aws/bedrock-agentcore/runtimes/asdf_MyAgent-3s5axvBC6Q-DEFAULT",
+    "logStreamName": "2026/08/12/[runtime-logs-67ebf93b-65e3-4127-9e13-483b239f256a]c7aba76f-c59f-4c8f-9e59-2872aea6dc45"
+  },
+  "raw": {
+    "logStreamName": "2026/08/12/[runtime-logs-67ebf93b-65e3-4127-9e13-483b239f256a]c7aba76f-c59f-4c8f-9e59-2872aea6dc45",
+    "timestamp": 1786555392053,
+    "message": "{\"timestamp\": \"2026-08-12T17:23:12.053Z\", \"level\": \"INFO\", \"message\": \"Returning streaming response (generator) (0.000s)\", \"logger\": \"bedrock_agentcore.app\", \"requestId\": \"37dcffe9-22bd-4a40-a18d-6cfbcc14a6d1\", \"sessionId\": \"67ebf93b-65e3-4127-9e13-483b239f256a\"}",
+    "ingestionTime": 1786555392873,
+    "eventId": "39841516581234934748312552609710478377045077922388246529"
+  }
+}
