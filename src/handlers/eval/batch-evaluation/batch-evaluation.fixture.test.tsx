@@ -24,10 +24,10 @@ const FIXTURES = join(import.meta.dir, "__fixtures__");
 // re-recording.
 //
 // This suite exercises the real seam end to end: parsing → handler → CoreClient →
-// GetBatchEvaluation (data plane) → readEvaluationResults → GetLogEvents (the
-// createLogsClient fixture seam). The TestCoreClient suite (batch-evaluation.test.tsx)
-// covers the edges that can't be recorded on demand: a non-terminal job, a
-// CloudWatch read failure, and list pagination.
+// GetBatchEvaluation (data plane) → readEvaluationResults → CloudWatchSourceReader
+// → GetLogEvents (the createLogsClient fixture seam). The TestCoreClient suite
+// (batch-evaluation.test.tsx) covers the edges that can't be recorded on demand:
+// a non-terminal job, a CloudWatch read failure, and list pagination.
 const FIXTURE_JOB_ID = "GTProbe2_1786034545579-8ffefc851e";
 
 // A well-formed but absent id, to reach the not-found path without a

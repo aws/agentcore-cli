@@ -64,6 +64,9 @@ function createClient(rawRecords: RawLogRecord[]) {
       });
       yield* rawRecords;
     },
+    async *readLogStream() {
+      yield* rawRecords;
+    },
     async queryLogs(
       source: LogSource,
       query: InsightsQuery,

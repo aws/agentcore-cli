@@ -109,12 +109,14 @@ import {
   ResourceNotFoundError,
 } from "../errors";
 import {
+  CloudWatchSourceReader,
   DEFAULT_ENDPOINT_QUALIFIER,
   INSIGHTS_MAX_ROWS,
   runInsightsQuery,
   runtimeLogGroup,
   sanitizeQueryValue,
   type InsightsRowLimit,
+  type SourceReader,
 } from "./observability";
 import type {
   BatchEvaluationDetail,
@@ -233,6 +235,7 @@ export class EvalClient implements CoreEvalClient {
     private readonly logger: Logger = noopLogger,
     private readonly newSessionId: () => string = randomUUID,
     private readonly now: () => number = () => Date.now(),
+    private readonly sourceReader: SourceReader = new CloudWatchSourceReader(clients),
   ) {}
 
   async createEvaluator(
@@ -432,9 +435,13 @@ export class EvalClient implements CoreEvalClient {
 
     try {
       detail.results = await readEvaluationResults(
-        this.clients.logs({ region: options.region }),
-        cw.logGroupName,
-        cw.logStreamName,
+        this.sourceReader,
+        {
+          provider: "cloudwatch",
+          logGroupName: cw.logGroupName,
+          logStreamName: cw.logStreamName,
+        },
+        options,
         this.logger,
       );
       return { detail };

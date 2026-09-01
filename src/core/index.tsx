@@ -87,6 +87,7 @@ export class CoreClient implements AwsClients {
     this.createLogsClient = config.createLogsClient;
     this.logger = config.logger;
     const fetch = config.fetch ?? globalThis.fetch;
+    const sourceReader = new CloudWatchSourceReader(this);
     this.runtime = new RuntimeClient(this, fetch, this.logger.child({ module: "runtime" }));
     this.gateway = new GatewayClient(this, fetch, this.logger.child({ module: "gateway" }));
     // EvalClient shares the injected fetch: dataset content is served from a
@@ -98,10 +99,11 @@ export class CoreClient implements AwsClients {
       this.logger.child({ module: "eval" }),
       config.newSessionId,
       config.now,
+      sourceReader,
     );
     this.observability = new ObservabilityClient(
       { runtime: new RuntimeSourceResolver() },
-      new CloudWatchSourceReader(this),
+      sourceReader,
     );
 
     this.projectManager = new FsProjectManager({

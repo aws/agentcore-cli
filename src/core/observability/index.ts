@@ -21,6 +21,8 @@ export {
   type InsightsQuery,
   type InsightsQueryRow,
   type LogSearchQuery,
+  type LogStreamReadQuery,
+  type LogStreamSource,
   type LogTailQuery,
   type RawLogRecord,
   type SourceReader,

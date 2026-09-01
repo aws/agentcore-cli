@@ -1,12 +1,14 @@
 import {
   DescribeLogGroupsCommand,
   FilterLogEventsCommand,
+  GetLogEventsCommand,
   ResourceNotFoundException,
   StartLiveTailCommand,
   type FilteredLogEvent,
   type LiveTailSessionLogEvent,
+  type OutputLogEvent,
 } from "@aws-sdk/client-cloudwatch-logs";
-import { ResourceNotFoundError } from "../../errors";
+import { ResourceNotFoundError, ResultTruncationError } from "../../errors";
 import type { AwsClients, CoreOptions } from "../types";
 import { toClientConfig } from "../utils";
 import { runInsightsQuery, type InsightsRowLimit } from "./insights";
@@ -17,7 +19,7 @@ export type RawLogRecord = {
   message: string;
   ingestionTime?: number;
   logStreamName?: string;
-  raw: FilteredLogEvent | LiveTailSessionLogEvent;
+  raw: FilteredLogEvent | LiveTailSessionLogEvent | OutputLogEvent;
 };
 
 export type LogSearchQuery = {
@@ -29,6 +31,14 @@ export type LogSearchQuery = {
 
 export type LogTailQuery = {
   filterPattern?: string;
+};
+
+export type LogStreamSource = LogSource & {
+  logStreamName: string;
+};
+
+export type LogStreamReadQuery = {
+  maxPages?: number;
 };
 
 export type InsightsQuery = {
@@ -53,6 +63,13 @@ export interface SourceReader {
     query: LogTailQuery,
     options: CoreOptions,
     signal: AbortSignal,
+  ): AsyncIterable<RawLogRecord>;
+
+  readLogStream(
+    source: LogStreamSource,
+    query: LogStreamReadQuery,
+    options: CoreOptions,
+    signal?: AbortSignal,
   ): AsyncIterable<RawLogRecord>;
 
   queryLogs(
@@ -176,6 +193,60 @@ export class CloudWatchSourceReader implements SourceReader {
     }
   }
 
+  async *readLogStream(
+    source: LogStreamSource,
+    query: LogStreamReadQuery,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): AsyncGenerator<RawLogRecord, void> {
+    if (query.maxPages !== undefined && query.maxPages <= 0) return;
+
+    const logs = this.clients.logs(toClientConfig(options));
+    let nextToken: string | undefined;
+    let pagesRead = 0;
+
+    while (query.maxPages === undefined || pagesRead < query.maxPages) {
+      const requestToken = nextToken;
+      let response;
+      try {
+        response = await logs.send(
+          new GetLogEventsCommand({
+            logGroupName: source.logGroupName,
+            logStreamName: source.logStreamName,
+            startFromHead: true,
+            ...(requestToken ? { nextToken: requestToken } : {}),
+          }),
+          { abortSignal: signal },
+        );
+      } catch (error) {
+        if (error instanceof ResourceNotFoundException) {
+          throw missingLogStreamError(source, error);
+        }
+        throw error;
+      }
+
+      pagesRead++;
+      for (const event of response.events ?? []) {
+        yield toRawLogRecord(event, source.logStreamName);
+      }
+
+      nextToken = response.nextForwardToken;
+      if (!nextToken || nextToken === requestToken) return;
+    }
+
+    throw new ResultTruncationError(
+      `CloudWatch log stream ${source.logStreamName} exceeds ${query.maxPages} pages; ` +
+        "retrieved records are incomplete",
+      {
+        meta: {
+          logGroupName: source.logGroupName,
+          logStreamName: source.logStreamName,
+          maxPages: query.maxPages,
+        },
+      },
+    );
+  }
+
   async queryLogs(
     source: LogSource,
     query: InsightsQuery,
@@ -209,12 +280,17 @@ export class CloudWatchSourceReader implements SourceReader {
   }
 }
 
-function toRawLogRecord(event: FilteredLogEvent | LiveTailSessionLogEvent): RawLogRecord {
+function toRawLogRecord(
+  event: FilteredLogEvent | LiveTailSessionLogEvent | OutputLogEvent,
+  defaultLogStreamName?: string,
+): RawLogRecord {
+  const logStreamName =
+    ("logStreamName" in event ? event.logStreamName : undefined) ?? defaultLogStreamName;
   return {
     timestamp: event.timestamp ?? Date.now(),
     message: event.message ?? "",
     ...(event.ingestionTime !== undefined ? { ingestionTime: event.ingestionTime } : {}),
-    ...(event.logStreamName ? { logStreamName: event.logStreamName } : {}),
+    ...(logStreamName ? { logStreamName } : {}),
     raw: event,
   };
 }
@@ -224,5 +300,19 @@ function missingLogGroupError(source: LogSource, cause?: unknown): ResourceNotFo
     `CloudWatch log group ${source.logGroupName} does not exist. ` +
       "Has the resource been invoked or emitted logs yet?",
     { cause, meta: { logGroupName: source.logGroupName } },
+  );
+}
+
+function missingLogStreamError(source: LogStreamSource, cause?: unknown): ResourceNotFoundError {
+  return new ResourceNotFoundError(
+    `CloudWatch log stream ${source.logStreamName} does not exist in log group ` +
+      `${source.logGroupName}.`,
+    {
+      cause,
+      meta: {
+        logGroupName: source.logGroupName,
+        logStreamName: source.logStreamName,
+      },
+    },
   );
 }
