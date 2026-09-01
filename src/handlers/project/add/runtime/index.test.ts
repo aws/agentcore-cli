@@ -71,8 +71,6 @@ describe("project add runtime", () => {
     "arn:aws:iam::123456789012:role/MyRole",
     "--additional-policies",
     "arn:aws:iam::123456789012:policy/MyPolicy",
-    "--protocol",
-    "HTTP",
     "--network-mode",
     "VPC",
     "--network-config",
@@ -105,16 +103,16 @@ describe("project add runtime", () => {
       build: "Container",
       dockerfile: "Dockerfile",
     },
-    "strands-py-mcp template preset": {
+    "py-mcp template preset": {
       build: "CodeZip",
       protocol: "MCP",
     },
-    "strands-py-mcp overrides to Container": {
+    "py-mcp overrides to Container": {
       build: "Container",
       dockerfile: "Dockerfile",
       protocol: "MCP",
     },
-    "custom strands MCP runtime": {
+    "custom MCP runtime": {
       build: "CodeZip",
       protocol: "MCP",
     },
@@ -122,7 +120,6 @@ describe("project add runtime", () => {
       description: "Configured runtime",
       executionRoleArn: "arn:aws:iam::123456789012:role/MyRole",
       additionalPolicies: ["arn:aws:iam::123456789012:policy/MyPolicy"],
-      protocol: "HTTP",
       networkMode: "VPC",
       networkConfig: {
         subnets: ["subnet-0123456789abcdef0"],
@@ -176,13 +173,43 @@ describe("project add runtime", () => {
       "strands template overrides to Container",
       ["--name", "my_agent", "--template", "strands-python", "--build", "Container"],
     ],
-    ["strands-py-mcp template preset", ["--name", "my_mcp", "--template", "strands-py-mcp"]],
+    ["py-mcp template preset", ["--name", "my_mcp", "--template", "py-mcp"]],
     [
-      "strands-py-mcp overrides to Container",
-      ["--name", "my_mcp", "--template", "strands-py-mcp", "--build", "Container"],
+      "py-mcp overrides to Container",
+      ["--name", "my_mcp", "--template", "py-mcp", "--build", "Container"],
     ],
     [
-      "custom strands MCP runtime",
+      "strands-python with session, EFS, and S3 mounts",
+      [
+        "--name",
+        "fs_agent",
+        "--template",
+        "strands-python",
+        "--network-mode",
+        "VPC",
+        "--network-config",
+        '{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}',
+        "--filesystem-configurations",
+        '[{"sessionStorage":{"mountPath":"/mnt/session"}},{"efsAccessPoint":{"accessPointArn":"arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0","mountPath":"/mnt/efs"}},{"s3FilesAccessPoint":{"accessPointArn":"arn:aws:s3files:us-east-1:123456789012:file-system/fs-0123456789abcdef01/access-point/fsap-0123456789abcdef1","mountPath":"/mnt/s3"}}]',
+      ],
+    ],
+    [
+      "py-mcp with session, EFS, and S3 mounts",
+      [
+        "--name",
+        "fs_mcp",
+        "--template",
+        "py-mcp",
+        "--network-mode",
+        "VPC",
+        "--network-config",
+        '{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}',
+        "--filesystem-configurations",
+        '[{"sessionStorage":{"mountPath":"/mnt/session"}},{"efsAccessPoint":{"accessPointArn":"arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0","mountPath":"/mnt/efs"}},{"s3FilesAccessPoint":{"accessPointArn":"arn:aws:s3files:us-east-1:123456789012:file-system/fs-0123456789abcdef01/access-point/fsap-0123456789abcdef1","mountPath":"/mnt/s3"}}]',
+      ],
+    ],
+    [
+      "custom MCP runtime",
       [
         "--name",
         "mcp_custom",
@@ -191,7 +218,7 @@ describe("project add runtime", () => {
         "--language",
         "Python",
         "--framework",
-        "strands",
+        "none",
         "--protocol",
         "MCP",
         "--model-provider",
@@ -473,7 +500,7 @@ describe("project add runtime", () => {
       ],
     ],
     [
-      "strands-python only supports HTTP",
+      "--protocol cannot override the strands-python template",
       ["--name", "my_agent", "--template", "strands-python", "--protocol", "MCP"],
     ],
     [
@@ -513,15 +540,23 @@ describe("project add runtime", () => {
       ["--name", "my_agent", ...template, "--network-config", "{bad}"],
     ],
     [
-      "hello-world-python only supports HTTP",
+      "--protocol cannot override the hello-world-python template",
       ["--name", "my_agent", "--template", "hello-world-python", "--protocol", "MCP"],
     ],
     [
-      "strands-py-mcp does not support memory",
-      ["--name", "my_agent", "--template", "strands-py-mcp", "--memory", "shortTerm"],
+      "py-mcp does not support memory",
+      ["--name", "my_agent", "--template", "py-mcp", "--memory", "shortTerm"],
     ],
     [
-      "custom strands MCP runtime does not support memory",
+      "--protocol alone requires --framework and --language",
+      ["--name", "my_agent", "--protocol", "MCP"],
+    ],
+    [
+      "--protocol cannot override a template",
+      ["--name", "my_agent", "--template", "py-mcp", "--protocol", "MCP"],
+    ],
+    [
+      "custom MCP runtime does not support memory",
       [
         "--name",
         "my_agent",
@@ -530,7 +565,7 @@ describe("project add runtime", () => {
         "--language",
         "Python",
         "--framework",
-        "strands",
+        "none",
         "--protocol",
         "MCP",
         "--model-provider",

@@ -240,7 +240,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       },
     };
   },
-  [buildResolverKey("strands", "Python", "MCP")]: async (input: RuntimeResourceConfig) => {
+  [buildResolverKey("none", "Python", "MCP")]: async (input: RuntimeResourceConfig) => {
     if (input.scaffoldRuntimeInput.memory !== undefined)
       throw new InputValidationError("memory is not supported with an MCP runtime");
     const filesystemConfigurations = input.filesystemConfigurations ?? [];
@@ -272,7 +272,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     const isContainer = input.scaffoldRuntimeInput.build === "Container";
     const tree = await FsTreeNode.fromAssetSource(
       { assetSource },
-      { assetDir: "templates/strands-mcp-python" },
+      { assetDir: "templates/python-mcp" },
       {
         rootDirName: input.name,
         transformContent: (raw) => templateRenderer.render(raw, context),

@@ -85,11 +85,11 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     memory: "longAndShortTerm",
     runtimeVersion: "NODE_22",
   },
-  "strands-py-mcp": {
+  "py-mcp": {
     runtimeName: "mcp_server",
     build: "CodeZip",
     language: "Python",
-    framework: "strands",
+    framework: "none",
     protocol: "MCP",
     modelProvider: "Bedrock",
     memory: "none",
@@ -106,7 +106,6 @@ export const RUNTIME_TEMPLATE_SHORTCUT_NAMES = Object.keys(
 type RuntimeTemplateOverrides = {
   runtimeName?: string;
   build?: ScaffoldRuntimeInput["build"];
-  protocol?: ScaffoldRuntimeInput["protocol"];
   modelProvider?: ScaffoldRuntimeInput["modelProvider"];
   apiKey?: string;
   memory?: MemoryShortcutName;
@@ -119,7 +118,6 @@ export function resolveRuntimeTemplateShortcut(
   const template: RuntimeTemplateShortcut = RUNTIME_TEMPLATE_SHORTCUTS[name];
   const runtimeName = overrides?.runtimeName ?? template.runtimeName;
   const build = overrides?.build ?? template.build;
-  const protocol = overrides?.protocol ?? template.protocol;
   const memoryShortcutName = overrides?.memory ?? template.memory;
   const memory = MEMORY_SHORTCUTS[memoryShortcutName](runtimeName);
 
@@ -128,7 +126,7 @@ export function resolveRuntimeTemplateShortcut(
     build,
     language: template.language,
     framework: template.framework,
-    protocol,
+    protocol: template.protocol,
     modelProvider: overrides?.modelProvider ?? template.modelProvider,
     ...(overrides?.apiKey !== undefined && { apiKey: overrides.apiKey }),
     ...(memory && { memory }),

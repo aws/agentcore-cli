@@ -517,14 +517,14 @@ describe("project create", () => {
     });
   });
 
-  test("scaffolds an MCP server from the strands-py-mcp template (CodeZip default)", async () => {
+  test("scaffolds an MCP server from the py-mcp template (CodeZip default)", async () => {
     const directory = await inTempDirectory();
     await run([
       "create",
       "--name",
       "MyProject",
       "--template",
-      "strands-py-mcp",
+      "py-mcp",
       "--skip-install",
       "--skip-git",
     ]);
@@ -545,14 +545,14 @@ describe("project create", () => {
     expect(await Bun.file(join(runtimeRoot, "Dockerfile")).exists()).toBe(false);
   });
 
-  test("scaffolds a Container MCP server from the strands-py-mcp template", async () => {
+  test("scaffolds a Container MCP server from the py-mcp template", async () => {
     const directory = await inTempDirectory();
     await run([
       "create",
       "--name",
       "MyProject",
       "--template",
-      "strands-py-mcp",
+      "py-mcp",
       "--build",
       "Container",
       "--skip-install",

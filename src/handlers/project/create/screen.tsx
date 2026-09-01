@@ -82,8 +82,8 @@ const TEMPLATE_OPTIONS: {
     description: "Strands agent on Bedrock with memory (CodeZip build)",
   },
   {
-    template: "strands-py-mcp",
-    label: "strands-py-mcp",
+    template: "py-mcp",
+    label: "py-mcp",
     description: "MCP server exposing tools via FastMCP (CodeZip build)",
   },
 ];
