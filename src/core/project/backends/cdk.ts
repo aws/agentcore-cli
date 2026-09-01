@@ -301,42 +301,45 @@ export class CdkBackend implements ProjectBackend {
       return stack.Outputs?.find((output) => output.ExportName === want)?.OutputValue;
     };
 
-    // Where each resource type's deployed id comes from. Keeping every source in one
+    // Where each resource type's deployed ARN comes from. Keeping every source in one
     // switch means the `never` default turns a new DeployableResource into a compile
     // error, rather than a resource that silently vanishes from `project status`.
     const idOf = ({ resourceType, name, parent }: Declared): string | undefined => {
       switch (resourceType) {
         case "runtime":
-          return byExportName(name, "RuntimeId");
+          return byExportName(name, "RuntimeArn");
         case "harness":
-          return byExportName("Harness", name, "Id");
+          return byExportName("Harness", name, "Arn");
         case "memory":
-          return byExportName("Memory", name, "Id");
+          return byExportName("Memory", name, "Arn");
         case "knowledge-base":
-          return byExportName("KnowledgeBase", name, "Id");
+          return byExportName("KnowledgeBase", name, "Arn");
         case "evaluator":
-          return byExportName("Evaluator", name, "Id");
+          return byExportName("Evaluator", name, "Arn");
         case "online-eval":
-          return byExportName("OnlineEval", name, "Id");
+          return byExportName("OnlineEval", name, "Arn");
         case "gateway":
-          return byExportName("Gateway", name, "Id");
+          return byExportName("Gateway", name, "Arn");
+        // TODO(cdk): AgentCoreMcp exports GatewayTarget-<name>-Id but no -Arn, so this
+        // is the one resource reported by id. Once the construct exports an Arn, switch
+        // to byExportName("GatewayTarget", name, "Arn") and this case joins the rest.
         case "gateway-target":
           return byExportName("GatewayTarget", name, "Id");
         case "policy-engine":
-          return byExportName("PolicyEngine", name, "Id");
+          return byExportName("PolicyEngine", name, "Arn");
         case "policy":
-          return byExportName("Policy", parent ?? "", name, "Id");
+          return byExportName("Policy", parent ?? "", name, "Arn");
         case "config-bundle":
-          return byExportName("ConfigBundle", name, "Id");
+          return byExportName("ConfigBundle", name, "Arn");
         // Output arrives with aws/agentcore-l3-cdk-constructs#336; resolves once it ships.
         case "capacity-provider":
-          return byExportName("CapacityProvider", name, "Id");
+          return byExportName("CapacityProvider", name, "Arn");
         // TODO(cdk): the CLI's payment CfnOutputs (assets/cdk/lib/cdk-stack.ts) set no
         // ExportName, so match by their predictable OutputKey. Once they export a name,
         // fold payment in above and delete this case.
         case "payment":
           return stack.Outputs?.find(
-            (output) => output.OutputKey === `Payment${toCdkId(name)}ManagerId`,
+            (output) => output.OutputKey === `Payment${toCdkId(name)}ManagerArn`,
           )?.OutputValue;
         case "credential":
           return credentialArns[name]?.credentialProviderArn;

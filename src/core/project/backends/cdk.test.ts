@@ -21,6 +21,8 @@ const TARGET = {
 } as const;
 const STACK_ARN =
   "arn:aws:cloudformation:us-east-1:111122223333:stack/AgentCore-example-default/abc";
+/** ARN prefix the CDK's `-Arn` exports carry, so fixtures assert ARNs and not bare ids. */
+const ARN = `arn:aws:bedrock-agentcore:${TARGET.region}:${TARGET.account}`;
 const json = new FsReadWriteJson({ logger: createSilentLogger() });
 
 /** A template holding only what CDK adds itself, as an empty project synthesizes. */
@@ -614,12 +616,12 @@ describe("CdkBackend.resolveDeployedResources", () => {
         StackStatus: "CREATE_COMPLETE",
         Outputs: [
           {
-            ExportName: "AgentCore-example-default-checkout-agent-RuntimeId",
-            OutputValue: "checkout_agent-AbCdEf1234",
+            ExportName: "AgentCore-example-default-checkout-agent-RuntimeArn",
+            OutputValue: `${ARN}:runtime/checkout_agent-AbCdEf1234`,
           },
           {
-            ExportName: "AgentCore-example-default-Harness-support-agent-Id",
-            OutputValue: "support_agent-AbCdEf1234",
+            ExportName: "AgentCore-example-default-Harness-support-agent-Arn",
+            OutputValue: `${ARN}:harness/support_agent-AbCdEf1234`,
           },
         ],
       },
@@ -631,13 +633,13 @@ describe("CdkBackend.resolveDeployedResources", () => {
       {
         resourceType: "runtime",
         name: "checkout_agent",
-        id: "checkout_agent-AbCdEf1234",
+        id: `${ARN}:runtime/checkout_agent-AbCdEf1234`,
         target: TARGET,
       },
       {
         resourceType: "harness",
         name: "support_agent",
-        id: "support_agent-AbCdEf1234",
+        id: `${ARN}:harness/support_agent-AbCdEf1234`,
         target: TARGET,
       },
     ]);
@@ -736,19 +738,20 @@ describe("CdkBackend.resolveDeployedResources", () => {
         CreationTime: new Date(0),
         StackStatus: "CREATE_COMPLETE",
         Outputs: [
-          out(`${S}-web-RuntimeId`, "web-1"),
-          out(`${S}-Harness-chat-Id`, "chat-1"),
-          out(`${S}-Memory-user-mem-Id`, "mem-1"),
-          out(`${S}-KnowledgeBase-kb-Id`, "kb-1"),
-          out(`${S}-Evaluator-ev-Id`, "ev-1"),
-          out(`${S}-OnlineEval-oe-Id`, "oe-1"),
-          out(`${S}-Gateway-gw-Id`, "gw-1"),
+          out(`${S}-web-RuntimeArn`, `${ARN}:runtime/web-1`),
+          out(`${S}-Harness-chat-Arn`, `${ARN}:harness/chat-1`),
+          out(`${S}-Memory-user-mem-Arn`, `${ARN}:memory/mem-1`),
+          out(`${S}-KnowledgeBase-kb-Arn`, `${ARN}:knowledge-base/kb-1`),
+          out(`${S}-Evaluator-ev-Arn`, `${ARN}:evaluator/ev-1`),
+          out(`${S}-OnlineEval-oe-Arn`, `${ARN}:online-eval/oe-1`),
+          out(`${S}-Gateway-gw-Arn`, `${ARN}:gateway/gw-1`),
+          // gateway-target is the one type the CDK exports by id only (no -Arn).
           out(`${S}-GatewayTarget-tgt-Id`, "tgt-1"),
-          out(`${S}-PolicyEngine-pe-Id`, "pe-1"),
-          out(`${S}-Policy-pe-pol-Id`, "pol-1"),
-          out(`${S}-ConfigBundle-cb-Id`, "cb-1"),
+          out(`${S}-PolicyEngine-pe-Arn`, `${ARN}:policy-engine/pe-1`),
+          out(`${S}-Policy-pe-pol-Arn`, `${ARN}:policy/pol-1`),
+          out(`${S}-ConfigBundle-cb-Arn`, `${ARN}:config-bundle/cb-1`),
           // payment: no ExportName — only a predictable OutputKey
-          { OutputKey: "PaymentpayManagerId", OutputValue: "pay-1" },
+          { OutputKey: "PaymentpayManagerArn", OutputValue: `${ARN}:payment-manager/pay-1` },
         ],
       },
     });
@@ -756,19 +759,40 @@ describe("CdkBackend.resolveDeployedResources", () => {
     const resources = await subject.backend.resolveDeployedResources(input, { target: TARGET });
 
     expect(resources).toEqual([
-      { resourceType: "runtime", name: "web", id: "web-1", target: TARGET },
-      { resourceType: "harness", name: "chat", id: "chat-1", target: TARGET },
-      { resourceType: "memory", name: "user_mem", id: "mem-1", target: TARGET },
-      { resourceType: "knowledge-base", name: "kb", id: "kb-1", target: TARGET },
+      { resourceType: "runtime", name: "web", id: `${ARN}:runtime/web-1`, target: TARGET },
+      { resourceType: "harness", name: "chat", id: `${ARN}:harness/chat-1`, target: TARGET },
+      { resourceType: "memory", name: "user_mem", id: `${ARN}:memory/mem-1`, target: TARGET },
+      {
+        resourceType: "knowledge-base",
+        name: "kb",
+        id: `${ARN}:knowledge-base/kb-1`,
+        target: TARGET,
+      },
       { resourceType: "credential", name: "cred", id: "arn:aws:cred/cred", target: TARGET },
-      { resourceType: "evaluator", name: "ev", id: "ev-1", target: TARGET },
-      { resourceType: "online-eval", name: "oe", id: "oe-1", target: TARGET },
-      { resourceType: "gateway", name: "gw", id: "gw-1", target: TARGET },
+      { resourceType: "evaluator", name: "ev", id: `${ARN}:evaluator/ev-1`, target: TARGET },
+      { resourceType: "online-eval", name: "oe", id: `${ARN}:online-eval/oe-1`, target: TARGET },
+      { resourceType: "gateway", name: "gw", id: `${ARN}:gateway/gw-1`, target: TARGET },
       { resourceType: "gateway-target", name: "tgt", parent: "gw", id: "tgt-1", target: TARGET },
-      { resourceType: "policy-engine", name: "pe", id: "pe-1", target: TARGET },
-      { resourceType: "policy", name: "pol", parent: "pe", id: "pol-1", target: TARGET },
-      { resourceType: "config-bundle", name: "cb", id: "cb-1", target: TARGET },
-      { resourceType: "payment", name: "pay", id: "pay-1", target: TARGET },
+      {
+        resourceType: "policy-engine",
+        name: "pe",
+        id: `${ARN}:policy-engine/pe-1`,
+        target: TARGET,
+      },
+      {
+        resourceType: "policy",
+        name: "pol",
+        parent: "pe",
+        id: `${ARN}:policy/pol-1`,
+        target: TARGET,
+      },
+      {
+        resourceType: "config-bundle",
+        name: "cb",
+        id: `${ARN}:config-bundle/cb-1`,
+        target: TARGET,
+      },
+      { resourceType: "payment", name: "pay", id: `${ARN}:payment-manager/pay-1`, target: TARGET },
     ]);
     expect(subject.stackReads).toHaveLength(1);
   });
