@@ -218,7 +218,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         );
       }
 
-      const lockedFlag = (["language", "framework"] as const).find(
+      const lockedFlag = (["language", "framework", "protocol"] as const).find(
         (flagName) => flags[flagName] !== undefined,
       );
       if (isTemplate && lockedFlag) {
@@ -336,7 +336,6 @@ async function resolveScaffoldRuntimeInput(
     ? resolveRuntimeTemplateShortcut(flags["template"], {
         runtimeName: flags["runtime-name"],
         build: flags["build"],
-        protocol: flags["protocol"],
         modelProvider,
         apiKey,
         memory: flags["memory"],

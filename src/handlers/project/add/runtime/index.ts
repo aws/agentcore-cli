@@ -130,13 +130,14 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         "build",
         "language",
         "framework",
+        "protocol",
         "model-provider",
         "api-key",
         "memory",
       ] as const;
       const presentScaffoldingFlags = scaffoldingFlags.filter((f) => flags[f] !== undefined);
       const isTemplate = flags["template"] !== undefined;
-      const lockedFlag = (["language", "framework"] as const).find(
+      const lockedFlag = (["language", "framework", "protocol"] as const).find(
         (flagName) => flags[flagName] !== undefined,
       );
       if (isTemplate && lockedFlag) {
@@ -181,7 +182,6 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
           ? resolveRuntimeTemplateShortcut(flags.template!, {
               runtimeName: flags.name,
               build: flags.build,
-              protocol: flags.protocol,
               modelProvider: flags["model-provider"],
               apiKey,
               memory: flags.memory,
