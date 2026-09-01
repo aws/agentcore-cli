@@ -53,8 +53,10 @@ export async function addCredentialToProject(
 
   // The collision check above only compares the fields credentials write today. A name
   // ending in a field suffix would also shadow a field the CLI no longer writes but
-  // still reads (an OAuth client id in a pre-0.29 project) or one a later credential
-  // adds, so such a name is refused outright rather than when something clashes.
+  // still reads — an OAuth client id, which now lives in agentcore.json but is still
+  // read from .env.local for projects created before it moved — or one a later
+  // credential adds. Such a name is refused outright rather than when something
+  // clashes; see CREDENTIAL_FIELD_SUFFIXES for the full list and why each is there.
   const fieldSuffix = credentialNameFieldSuffix(newName);
   if (fieldSuffix) {
     throw new InputValidationError(
