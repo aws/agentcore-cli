@@ -1,13 +1,22 @@
-import { ConflictError, ResourceNotFoundError, findConfigRoot, serializeResult, toError } from '../../lib';
+import {
+  ConflictError,
+  ResourceNotFoundError,
+  createConfigIO,
+  findConfigRoot,
+  serializeResult,
+  toError,
+} from '../../lib';
 import type { Result } from '../../lib/result';
 import type { EvaluationLevel, Evaluator, EvaluatorConfig } from '../../schema';
 import {
+  BASE_EVALUATOR_ID_PATTERN,
   EvaluationLevelSchema,
   EvaluatorModelIdSchema,
   EvaluatorModelProviderSchema,
   EvaluatorSchema,
   isValidKmsKeyArn,
 } from '../../schema';
+import { getEvaluator } from '../aws/agentcore-control';
 import { getErrorMessage } from '../errors';
 import type { RemovalPreview, SchemaChange } from '../operations/remove/types';
 import { runCliCommand } from '../telemetry/cli-command-run.js';
@@ -125,7 +134,9 @@ export interface ThirdPartyLibraryOptions {
 
 export interface AddEvaluatorOptions {
   name: string;
-  level: EvaluationLevel;
+  // Required. For a derived evaluator the CLI resolves it from the base metric
+  // before calling add(); other types take it from --level.
+  level?: EvaluationLevel;
   description?: string;
   config: EvaluatorConfig;
   kmsKeyArn?: string;
@@ -341,10 +352,20 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
       .command(this.kind)
       .description('Add a custom evaluator to the project')
       .option('--name <name>', 'Evaluator name')
-      .option('--level <level>', 'Evaluation level: SESSION, TRACE, TOOL_CALL')
-      .option('--type <type>', 'Evaluator type: llm-as-a-judge (default) or code-based')
-      .option('--model <model>', '[LLM] Bedrock inference profile ID or OpenResponses model ID for LLM-as-a-Judge')
+      .option(
+        '--level <level>',
+        'Evaluation level: SESSION, TRACE, TOOL_CALL (auto-resolved from the base for --type derived)'
+      )
+      .option('--type <type>', 'Evaluator type: llm-as-a-judge (default), code-based, or derived')
+      .option(
+        '--model <model>',
+        '[LLM] Bedrock inference profile ID or OpenResponses model ID; [derived] Bedrock inference profile ID for the judge model'
+      )
       .option('--model-provider <provider>', '[LLM] Model provider: Bedrock (default) or OpenResponses')
+      .option(
+        '--base-evaluator-id <id>',
+        '[derived] Managed base metric to derive from: "ThirdParty.<Provider>.<Metric>" or "Builtin.<Metric>"'
+      )
       .option(
         '--instructions <text>',
         '[LLM] Evaluation prompt instructions (must include level-appropriate placeholders, e.g. {context})'
@@ -373,6 +394,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
           type?: string;
           model?: string;
           modelProvider?: string;
+          baseEvaluatorId?: string;
           instructions?: string;
           ratingScale?: string;
           lambdaArn?: string;
@@ -394,12 +416,19 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 throw new Error(error);
               };
 
-              if (!cliOptions.name || !cliOptions.level) {
-                fail('--name and --level are required in non-interactive mode');
+              // A derived evaluator resolves its level from the base metric, so
+              // --level is optional (an offline override); required otherwise.
+              const isDerived = cliOptions.type === 'derived' || cliOptions.baseEvaluatorId !== undefined;
+
+              if (!cliOptions.name) {
+                fail('--name is required in non-interactive mode');
+              }
+              if (!isDerived && !cliOptions.level) {
+                fail('--level is required in non-interactive mode');
               }
 
-              const levelResult = EvaluationLevelSchema.safeParse(cliOptions.level);
-              if (!levelResult.success) {
+              const levelResult = cliOptions.level ? EvaluationLevelSchema.safeParse(cliOptions.level) : undefined;
+              if (levelResult && !levelResult.success) {
                 fail(`Invalid --level "${cliOptions.level}". Must be one of: SESSION, TRACE, TOOL_CALL`);
               }
 
@@ -490,10 +519,12 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 }
               }
 
-              // Default --type to code-based when 3P template is provided
-              const evalType = cliOptions.type ?? (threePLibrary ? 'code-based' : 'llm-as-a-judge');
-              if (evalType !== 'llm-as-a-judge' && evalType !== 'code-based') {
-                fail(`Invalid --type "${evalType}". Must be one of: llm-as-a-judge, code-based`);
+              // Default --type: derived when a base id is given, else code-based when a
+              // 3P (code) template is provided, else llm-as-a-judge.
+              const evalType =
+                cliOptions.type ?? (isDerived ? 'derived' : threePLibrary ? 'code-based' : 'llm-as-a-judge');
+              if (evalType !== 'llm-as-a-judge' && evalType !== 'code-based' && evalType !== 'derived') {
+                fail(`Invalid --type "${evalType}". Must be one of: llm-as-a-judge, code-based, derived`);
               }
 
               // Cross-validate flags against evaluator type
@@ -502,11 +533,20 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 if (cliOptions.timeout) fail('--timeout requires --type code-based');
                 if (threePLibrary) fail('--3p-template-json requires --type code-based');
               }
+              if (evalType !== 'derived' && cliOptions.baseEvaluatorId) {
+                fail('--base-evaluator-id requires --type derived');
+              }
               if (evalType === 'code-based') {
                 if (cliOptions.model) fail('--model cannot be used with --type code-based');
                 if (cliOptions.modelProvider) fail('--model-provider cannot be used with --type code-based');
                 if (cliOptions.instructions) fail('--instructions cannot be used with --type code-based');
                 if (cliOptions.ratingScale) fail('--rating-scale cannot be used with --type code-based');
+              }
+              if (evalType === 'derived') {
+                // The base metric owns the prompt and scale.
+                if (cliOptions.instructions) fail('--instructions cannot be used with --type derived');
+                if (cliOptions.ratingScale) fail('--rating-scale cannot be used with --type derived');
+                if (cliOptions.modelProvider) fail('--model-provider cannot be used with --type derived');
               }
               if (cliOptions.config && cliOptions.modelProvider) {
                 fail(
@@ -516,8 +556,39 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
 
               let configJson: EvaluatorConfig;
               let thirdParty: ThirdPartyLibraryOptions | undefined;
+              // For derived, the level is resolved from the base metric (or --level override).
+              let resolvedLevel: EvaluationLevel | undefined = levelResult?.data;
 
-              if (threePLibrary) {
+              if (evalType === 'derived') {
+                // --config carries a full evaluator config for other types; a derived
+                // evaluator is built from --base-evaluator-id + --model, so reject
+                // --config here rather than silently ignoring it.
+                if (cliOptions.config) {
+                  fail('--config is not supported with --type derived; use --base-evaluator-id and --model');
+                }
+                if (!cliOptions.baseEvaluatorId) {
+                  fail('--base-evaluator-id is required for --type derived');
+                }
+                if (!cliOptions.model) {
+                  fail('--model is required for --type derived (you bring the judge model)');
+                }
+                if (!BASE_EVALUATOR_ID_PATTERN.test(cliOptions.baseEvaluatorId!)) {
+                  fail(
+                    `Invalid --base-evaluator-id "${cliOptions.baseEvaluatorId}". ` +
+                      'Must be "ThirdParty.<Provider>.<Metric>" or "Builtin.<Metric>"'
+                  );
+                }
+                // The service requires the derived evaluator's level to match the base
+                // metric's level. Resolve it via GetEvaluator so the customer never has
+                // to know or type it; --level stays available as an offline override.
+                resolvedLevel ??= await this.resolveBaseEvaluatorLevel(cliOptions.baseEvaluatorId!);
+                configJson = {
+                  derived: {
+                    baseEvaluatorId: cliOptions.baseEvaluatorId!,
+                    model: cliOptions.model!,
+                  },
+                };
+              } else if (threePLibrary) {
                 const libraryConfig = THIRD_PARTY_EVALUATOR_LIBRARIES[threePLibrary];
                 configJson = this.buildThirdPartyConfig(cliOptions.name!, libraryConfig, cliOptions.timeout);
                 thirdParty = {
@@ -553,7 +624,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                 const modelProvider = modelProviderResult.data!;
 
                 if (!cliOptions.instructions) {
-                  const level = levelResult.data!;
+                  const level = levelResult!.data!;
                   const placeholders = LEVEL_PLACEHOLDERS[level].map(p => `{${p}}`).join(', ');
                   fail(
                     `--instructions is required in non-interactive mode (or use --config). ` +
@@ -561,7 +632,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                   );
                 }
 
-                const placeholderCheck = validateInstructionPlaceholders(cliOptions.instructions!, levelResult.data!);
+                const placeholderCheck = validateInstructionPlaceholders(cliOptions.instructions!, levelResult!.data!);
                 if (placeholderCheck !== true) {
                   fail(placeholderCheck);
                 }
@@ -603,7 +674,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
 
               const result = await this.add({
                 name: cliOptions.name!,
-                level: levelResult.data!,
+                level: resolvedLevel,
                 config: configJson,
                 kmsKeyArn: cliOptions.kmsKeyArn,
                 thirdParty,
@@ -622,6 +693,10 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
                   console.log(`  IAM:  ${result.codePath}execution-role-policy.json`);
                   console.log(
                     `\n  Next: Edit lambda_function.py with your evaluation logic, then run \`agentcore deploy\``
+                  );
+                } else if (evalType === 'derived') {
+                  console.log(
+                    `Added evaluator '${result.evaluatorName}' (derived from ${cliOptions.baseEvaluatorId} evaluator)`
                   );
                 } else {
                   console.log(`Added evaluator '${result.evaluatorName}'`);
@@ -644,7 +719,7 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
 
               return {
                 evaluator_type: standardize(EvaluatorType, evalType),
-                evaluator_level: standardize(EvaluatorLevel, levelResult.data),
+                evaluator_level: standardize(EvaluatorLevel, resolvedLevel),
                 ...(configJson.llmAsAJudge && {
                   evaluator_model_provider: standardize(
                     EvaluatorModelProvider,
@@ -728,7 +803,36 @@ export class EvaluatorPrimitive extends BasePrimitive<AddEvaluatorOptions, Remov
     };
   }
 
+  /**
+   * Resolve a derived evaluator's level from its base metric. The service requires
+   * the derived evaluator's level to match the base's, so we read it via
+   * GetEvaluator instead of asking the customer to know it.
+   */
+  private async resolveBaseEvaluatorLevel(baseEvaluatorId: string): Promise<EvaluationLevel> {
+    // A fresh project has no saved deploy targets, so resolve the region directly
+    // from the environment/profile fallback (env vars, then the AWS profile's region).
+    const region = await createConfigIO().resolveRegionFallback();
+    if (!region) {
+      throw new Error(
+        `Could not resolve an AWS region to look up "${baseEvaluatorId}". Set AWS_REGION or pass --level explicitly.`
+      );
+    }
+    try {
+      const base = await getEvaluator({ region, evaluatorId: baseEvaluatorId });
+      return base.level;
+    } catch (err) {
+      throw new Error(
+        `Could not resolve the level for base evaluator "${baseEvaluatorId}": ${getErrorMessage(err)}. ` +
+          'Pass --level explicitly to override.'
+      );
+    }
+  }
+
   private async createEvaluator(options: AddEvaluatorOptions): Promise<Evaluator> {
+    if (!options.level) {
+      throw new Error('Evaluation level is required (SESSION, TRACE, or TOOL_CALL)');
+    }
+
     const evaluator: Evaluator = {
       name: options.name,
       level: options.level,
