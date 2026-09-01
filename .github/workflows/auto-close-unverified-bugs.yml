@@ -1,0 +1,139 @@
+name: Auto Close Unverified Bugs
+
+on:
+  schedule:
+    - cron: '0 14 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Log actions without changing issues
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  close-unverified-bugs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Process issues awaiting reporter information
+        uses: actions/github-script@v9
+        env:
+          LABEL_NAME: autoclose in 7 days
+          DAYS_TO_WAIT: '7'
+          MANUAL_DRY_RUN: ${{ inputs.dry_run || false }}
+        with:
+          script: |
+            const labelName = process.env.LABEL_NAME;
+            const waitMs =
+              Number(process.env.DAYS_TO_WAIT) * 24 * 60 * 60 * 1000;
+            const dryRun =
+              context.eventName === "workflow_dispatch" &&
+              process.env.MANUAL_DRY_RUN === "true";
+
+            const candidates = await github.paginate(
+              github.rest.issues.listForRepo,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: "open",
+                labels: labelName,
+                per_page: 100,
+              },
+            );
+
+            const issues = candidates.filter((issue) => !issue.pull_request);
+            core.info(`Found ${issues.length} issue(s) with "${labelName}"`);
+
+            for (const issue of issues) {
+              const events = await github.paginate(
+                github.rest.issues.listEvents,
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  per_page: 100,
+                },
+              );
+
+              const labelEvents = events
+                .filter(
+                  (event) =>
+                    event.event === "labeled" &&
+                    event.label?.name === labelName,
+                )
+                .sort(
+                  (left, right) =>
+                    new Date(right.created_at) - new Date(left.created_at),
+                );
+
+              if (labelEvents.length === 0) {
+                core.warning(
+                  `Skipping #${issue.number}: label event was not found`,
+                );
+                continue;
+              }
+
+              const labeledAt = new Date(labelEvents[0].created_at);
+              const comments = await github.paginate(
+                github.rest.issues.listComments,
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  since: labeledAt.toISOString(),
+                  per_page: 100,
+                },
+              );
+
+              const reporterResponded = comments.some(
+                (comment) =>
+                  comment.user?.login === issue.user?.login &&
+                  new Date(comment.created_at) > labeledAt,
+              );
+
+              if (reporterResponded) {
+                core.info(
+                  `Reporter responded on #${issue.number}; removing label`,
+                );
+                if (!dryRun) {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    name: labelName,
+                  });
+                }
+                continue;
+              }
+
+              if (Date.now() - labeledAt.getTime() < waitMs) {
+                core.info(`#${issue.number} is still within the waiting period`);
+                continue;
+              }
+
+              core.info(`Closing #${issue.number} after the waiting period`);
+              if (!dryRun) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  body:
+                    "This issue was automatically closed because the " +
+                    "requested reproduction details were not provided within " +
+                    "7 days. Add the missing information in a new issue if " +
+                    "the problem persists.",
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  state: "closed",
+                  state_reason: "not_planned",
+                });
+              }
+            }

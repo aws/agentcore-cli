@@ -1,73 +1,152 @@
 name: Bug Report
-description: Report a bug or unexpected behavior
+description: Report reproducible unexpected behavior in the AgentCore CLI
+title: '[BUG] '
 labels: ['bug']
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report a bug. Please fill out the sections below so we can reproduce and fix the issue.
+        Include a minimal reproduction and exact environment details. Remove
+        credentials, tokens, account IDs, customer data, and other sensitive
+        information from commands, configuration, and logs.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I tested with the latest available AgentCore CLI release.
+          required: true
+        - label: I removed credentials and sensitive data from this report.
+          required: true
 
   - type: textarea
     id: description
     attributes:
       label: Description
-      description: A clear and concise description of the bug.
-      placeholder: Describe what happened...
-    validations:
-      required: true
-
-  - type: textarea
-    id: steps
-    attributes:
-      label: Steps to Reproduce
-      description: Steps to reproduce the behavior.
-      placeholder: |
-        1. Run `agentcore ...`
-        2. Select ...
-        3. Observe ...
-    validations:
-      required: true
-
-  - type: textarea
-    id: expected
-    attributes:
-      label: Expected Behavior
-      description: What you expected to happen.
-    validations:
-      required: true
-
-  - type: textarea
-    id: actual
-    attributes:
-      label: Actual Behavior
-      description: What actually happened.
+      description: Describe the incorrect behavior and its impact.
+      placeholder: What happened, and what does it prevent you from doing?
     validations:
       required: true
 
   - type: input
     id: cli-version
     attributes:
-      label: CLI Version
-      description: Output of `agentcore --version`
-      placeholder: '1.0.0'
+      label: CLI version
+      description: Output of `agentcore --version`.
+      placeholder: '1.2.3'
     validations:
-      required: false
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version
+      description: Output of `node --version`.
+      placeholder: 'v22.17.0'
+    validations:
+      required: true
 
   - type: dropdown
-    id: os
+    id: installation-method
     attributes:
-      label: Operating System
+      label: Installation method
       options:
-        - macOS
-        - Windows
-        - Linux
+        - npm global install
+        - npx
+        - Built from source
+        - Package tarball
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: operating-system
+    attributes:
+      label: Operating system
+      description: Include the operating system name, version, and architecture.
+      placeholder: 'macOS 15.5 arm64'
+    validations:
+      required: true
+
+  - type: input
+    id: aws-region
+    attributes:
+      label: AWS Region
+      description: Region used when the problem occurred, or `N/A` for local-only behavior.
+      placeholder: 'us-west-2'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: resource-dependency
+    attributes:
+      label: Resource dependency
+      description: Does the reproduction require live AWS resources?
+      options:
+        - No, it reproduces locally
+        - Yes, it requires live AWS resources
+        - Both local and live AWS behavior are affected
+        - Unknown
     validations:
       required: true
 
   - type: textarea
+    id: steps
+    attributes:
+      label: Minimal reproduction
+      description: |
+        Provide the smallest complete sequence that reproduces the problem,
+        including project setup and commands. Use placeholders for identifiers.
+      placeholder: |
+        1. Create a project with `agentcore create ...`
+        2. Add this minimal configuration: ...
+        3. Run `agentcore ...`
+        4. Observe ...
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: State the exact result you expected.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and error output
+      description: Include the complete relevant error and stack trace after removing sensitive data.
+      render: shell
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Reproduction frequency
+      options:
+        - Every time
+        - Intermittently
+        - Once
+        - Unknown
+    validations:
+      required: true
+
+  - type: input
+    id: last-working-version
+    attributes:
+      label: Last known working version
+      description: If this is a regression, provide the last CLI version that worked.
+      placeholder: 'N/A or 1.2.2'
+
+  - type: textarea
     id: context
     attributes:
-      label: Additional Context
-      description: Any other context, screenshots, or logs that might help.
-    validations:
-      required: false
+      label: Additional context
+      description: Add sanitized configuration, screenshots, or related issue links.
