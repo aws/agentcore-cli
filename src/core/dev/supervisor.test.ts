@@ -15,17 +15,19 @@ function runtime(name: string, build: ProjectRuntime["build"] = "CodeZip"): Proj
   } as ProjectRuntime;
 }
 
-/** A runner that emits `events`, then stays alive until its signal aborts (like a real server). */
+/** A runner that emits `events`, stays alive until its signal aborts, then rejects with the abort reason (like the real process runner). */
 function serverRunner(events: DevEvent[] = []) {
   const inputs: DevServerInput[] = [];
   const runner: DevRunner = {
     run: async function* (input) {
       inputs.push(input);
       yield* events;
-      if (input.signal.aborted) return;
-      await new Promise<void>((resolve) =>
-        input.signal.addEventListener("abort", () => resolve(), { once: true }),
-      );
+      if (!input.signal.aborted) {
+        await new Promise<void>((resolve) =>
+          input.signal.addEventListener("abort", () => resolve(), { once: true }),
+        );
+      }
+      throw input.signal.reason;
     },
   };
   return { runner, inputs };

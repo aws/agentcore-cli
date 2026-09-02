@@ -258,6 +258,15 @@ export class DevSupervisor {
         this.push(name, { type: "status", message: `Agent '${name}' stopped.` });
       }
     } catch (error) {
+      /** The runner rejects with the abort reason on teardown, which is a stop, not a crash. */
+      if (input.signal.aborted) {
+        if (entry.phase === "running") {
+          entry.phase = "idle";
+          entry.port = undefined;
+          this.push(name, { type: "status", message: `Agent '${name}' stopped.` });
+        }
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       entry.error = message;
       if (entry.phase === "running") {

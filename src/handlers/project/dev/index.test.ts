@@ -46,17 +46,19 @@ function captureRunner(events: DevEvent[] = []) {
   return { runner, inputs };
 }
 
-/** A runner that emits `events` then stays alive until aborted, like a real dev server. */
+/** A runner that emits `events` then stays alive until aborted, rejecting with the abort reason like the real process runner. */
 function stayingRunner(events: DevEvent[] = []) {
   const inputs: DevServerInput[] = [];
   const runner: DevRunner = {
     run: async function* (input) {
       inputs.push(input);
       yield* events;
-      if (input.signal.aborted) return;
-      await new Promise<void>((resolve) =>
-        input.signal.addEventListener("abort", () => resolve(), { once: true }),
-      );
+      if (!input.signal.aborted) {
+        await new Promise<void>((resolve) =>
+          input.signal.addEventListener("abort", () => resolve(), { once: true }),
+        );
+      }
+      throw input.signal.reason;
     },
   };
   return { runner, inputs };
@@ -283,6 +285,7 @@ describe("project dev headless multi-agent", () => {
 
     process.emit("SIGINT", "SIGINT");
     await expect(pending).rejects.toMatchObject({ exitCode: 130 });
+    expect(subject.io.stderr()).not.toContain("crashed");
     expect(subject.collector.state.closed).toBe(1);
   });
 
