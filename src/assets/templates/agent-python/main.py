@@ -5,7 +5,7 @@ app = BedrockAgentCoreApp()
 
 @app.entrypoint
 def invoke(payload, context):
-    """Return a fixed greeting for every invocation."""
+    """Add agent logic here"""
     return {"message": "Hello, world!"}
 
 
