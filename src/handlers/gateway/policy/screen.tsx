@@ -56,12 +56,12 @@ function GeneratePolicyForm({ ctx, core, gatewayId }: ScreenProps & { gatewayId:
   const [events, setEvents] = useState<string[]>([]);
   const scrollRef = useRef<ScrollViewRef>(null);
   const aliveRef = useRef(true);
-  useEffect(() => {
-    aliveRef.current = true;
-    return () => {
+  useEffect(
+    () => () => {
       aliveRef.current = false;
-    };
-  }, []);
+    },
+    [],
+  );
 
   const submit = async () => {
     setEvents([]);
@@ -162,14 +162,11 @@ function GeneratePolicyForm({ ctx, core, gatewayId }: ScreenProps & { gatewayId:
             <ScrollView ref={scrollRef}>
               <EventLog events={events} />
               <Divider />
-              {phase.result.policies.flatMap((policy, index) =>
-                policy.statement
-                  ? [
-                      <Text key={`statement-${index}`}>{policy.statement.trimEnd()}</Text>,
-                      <Text key={`gap-${index}`}> </Text>,
-                    ]
-                  : [],
-              )}
+              <Text>
+                {phase.result.policies
+                  .flatMap((policy) => (policy.statement ? [policy.statement.trimEnd()] : []))
+                  .join("\n\n")}
+              </Text>
               {phase.result.policies.flatMap((policy, index) =>
                 policy.findings.map((finding, findingIndex) => (
                   <Text key={`finding-${index}-${findingIndex}`} color={theme.colors.muted}>
