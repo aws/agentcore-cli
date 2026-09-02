@@ -50,7 +50,7 @@ type RuntimeTemplateShortcut = Omit<ScaffoldRuntimeInput, "memory"> & {
 };
 
 export const RUNTIME_TEMPLATE_SHORTCUTS = {
-  "hello-world-python": {
+  "agent-python": {
     runtimeName: "hello_world",
     build: "CodeZip",
     language: "Python",
@@ -59,15 +59,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     memory: "none",
     runtimeVersion: "PYTHON_3_14",
   },
-  "hello-world-python-container": {
-    runtimeName: "hello_world",
-    build: "Container",
-    language: "Python",
-    framework: "none",
-    modelProvider: "Bedrock",
-    memory: "none",
-  },
-  "strands-python": {
+  "agent-python-strands": {
     runtimeName: "strands_agent",
     build: "CodeZip",
     language: "Python",
@@ -76,7 +68,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     memory: "longAndShortTerm",
     runtimeVersion: "PYTHON_3_14",
   },
-  "strands-ts": {
+  "agent-typescript-strands": {
     runtimeName: "strands_agent",
     build: "CodeZip",
     language: "TypeScript",
@@ -85,7 +77,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     memory: "longAndShortTerm",
     runtimeVersion: "NODE_22",
   },
-  "py-mcp": {
+  "mcp-python-fastmcp": {
     runtimeName: "mcp_server",
     build: "CodeZip",
     language: "Python",
@@ -95,7 +87,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     memory: "none",
     runtimeVersion: "PYTHON_3_14",
   },
-  "strands-py-a2a": {
+  "a2a-python-strands": {
     runtimeName: "a2a_agent",
     build: "CodeZip",
     language: "Python",

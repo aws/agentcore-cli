@@ -53,7 +53,7 @@ export interface HarnessExportInput {
 
 /** The pure mapping result; the project manager executes it against the filesystem. */
 export interface HarnessExportPlan {
-  /** Handlebars context for rendering the strands-http-python template. */
+  /** Handlebars context for rendering the export-harness-python template. */
   context: Record<string, unknown>;
   /** The runtimes[] entry to append to agentcore.json. */
   runtime: ProjectRuntime;

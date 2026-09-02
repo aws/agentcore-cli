@@ -61,7 +61,7 @@ async function projectWithHarness(
       name: "orders",
       skipInstall: true,
       skipGit: true,
-      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("hello-world-python"),
+      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python"),
     }),
   );
   project = await drain(

@@ -25,12 +25,14 @@ import {
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 
-const HELLO_WORLD_PYTHON = resolveRuntimeTemplateShortcut("hello-world-python");
-const HELLO_WORLD_PYTHON_CONTAINER = resolveRuntimeTemplateShortcut("hello-world-python-container");
-const STRANDS_PYTHON = resolveRuntimeTemplateShortcut("strands-python");
-const STRANDS_TS = resolveRuntimeTemplateShortcut("strands-ts");
-const STRANDS_PY_A2A = resolveRuntimeTemplateShortcut("strands-py-a2a");
-const STRANDS_PY_A2A_CONTAINER = resolveRuntimeTemplateShortcut("strands-py-a2a", {
+const HELLO_WORLD_PYTHON = resolveRuntimeTemplateShortcut("agent-python");
+const HELLO_WORLD_PYTHON_CONTAINER = resolveRuntimeTemplateShortcut("agent-python", {
+  build: "Container",
+});
+const STRANDS_PYTHON = resolveRuntimeTemplateShortcut("agent-python-strands");
+const STRANDS_TS = resolveRuntimeTemplateShortcut("agent-typescript-strands");
+const STRANDS_PY_A2A = resolveRuntimeTemplateShortcut("a2a-python-strands");
+const STRANDS_PY_A2A_CONTAINER = resolveRuntimeTemplateShortcut("a2a-python-strands", {
   build: "Container",
 });
 
@@ -289,12 +291,12 @@ describe("FsProjectManager.create", () => {
   test.each([
     [
       "Python",
-      resolveRuntimeTemplateShortcut("strands-python", { build: "Container" }),
+      resolveRuntimeTemplateShortcut("agent-python-strands", { build: "Container" }),
       ["uv", "lock"],
     ],
     [
       "TypeScript",
-      resolveRuntimeTemplateShortcut("strands-ts", { build: "Container" }),
+      resolveRuntimeTemplateShortcut("agent-typescript-strands", { build: "Container" }),
       ["npm", "install", "--package-lock-only"],
     ],
   ])(

@@ -78,7 +78,7 @@ function translatedImportPlan(
 }
 
 describe("project add runtime", () => {
-  const template = ["--template", "hello-world-python"];
+  const template = ["--template", "agent-python"];
 
   const allScaffoldingFlags = [
     "--build",
@@ -125,18 +125,15 @@ describe("project add runtime", () => {
       build: "Container",
       dockerfile: "Dockerfile",
     },
-    "container template build override to CodeZip": {
-      build: "CodeZip",
-    },
     "strands template overrides to Container": {
       build: "Container",
       dockerfile: "Dockerfile",
     },
-    "py-mcp template preset": {
+    "mcp-python-fastmcp template preset": {
       build: "CodeZip",
       protocol: "MCP",
     },
-    "py-mcp overrides to Container": {
+    "mcp-python-fastmcp overrides to Container": {
       build: "Container",
       dockerfile: "Dockerfile",
       protocol: "MCP",
@@ -145,11 +142,11 @@ describe("project add runtime", () => {
       build: "CodeZip",
       protocol: "MCP",
     },
-    "strands-py-a2a template preset": {
+    "a2a-python-strands template preset": {
       build: "CodeZip",
       protocol: "A2A",
     },
-    "strands-py-a2a overrides to Container": {
+    "a2a-python-strands overrides to Container": {
       build: "Container",
       dockerfile: "Dockerfile",
       protocol: "A2A",
@@ -188,17 +185,16 @@ describe("project add runtime", () => {
   test.each<[string, string[]]>([
     ["template preset", ["--name", "my_agent", ...template]],
     [
-      "container template preset",
-      ["--name", "my_agent", "--template", "hello-world-python-container"],
+      "agent-python-strands template preset",
+      ["--name", "my_agent", "--template", "agent-python-strands"],
     ],
-    ["strands-python template preset", ["--name", "my_agent", "--template", "strands-python"]],
     [
       "template overrides to Container",
       [
         "--name",
         "my_agent",
         "--template",
-        "hello-world-python",
+        "agent-python",
         "--build",
         "Container",
         "--model-provider",
@@ -208,22 +204,24 @@ describe("project add runtime", () => {
       ],
     ],
     [
-      "container template build override to CodeZip",
-      ["--name", "my_agent", "--template", "hello-world-python-container", "--build", "CodeZip"],
-    ],
-    [
       "strands template overrides to Container",
-      ["--name", "my_agent", "--template", "strands-python", "--build", "Container"],
+      ["--name", "my_agent", "--template", "agent-python-strands", "--build", "Container"],
     ],
-    ["py-mcp template preset", ["--name", "my_mcp", "--template", "py-mcp"]],
     [
-      "py-mcp overrides to Container",
-      ["--name", "my_mcp", "--template", "py-mcp", "--build", "Container"],
+      "mcp-python-fastmcp template preset",
+      ["--name", "my_mcp", "--template", "mcp-python-fastmcp"],
     ],
-    ["strands-py-a2a template preset", ["--name", "my_a2a", "--template", "strands-py-a2a"]],
     [
-      "strands-py-a2a overrides to Container",
-      ["--name", "my_a2a", "--template", "strands-py-a2a", "--build", "Container"],
+      "mcp-python-fastmcp overrides to Container",
+      ["--name", "my_mcp", "--template", "mcp-python-fastmcp", "--build", "Container"],
+    ],
+    [
+      "a2a-python-strands template preset",
+      ["--name", "my_a2a", "--template", "a2a-python-strands"],
+    ],
+    [
+      "a2a-python-strands overrides to Container",
+      ["--name", "my_a2a", "--template", "a2a-python-strands", "--build", "Container"],
     ],
     [
       "custom A2A runtime",
@@ -245,12 +243,12 @@ describe("project add runtime", () => {
       ],
     ],
     [
-      "strands-python with session, EFS, and S3 mounts",
+      "agent-python-strands with session, EFS, and S3 mounts",
       [
         "--name",
         "fs_agent",
         "--template",
-        "strands-python",
+        "agent-python-strands",
         "--network-mode",
         "VPC",
         "--network-config",
@@ -260,12 +258,12 @@ describe("project add runtime", () => {
       ],
     ],
     [
-      "py-mcp with session, EFS, and S3 mounts",
+      "mcp-python-fastmcp with session, EFS, and S3 mounts",
       [
         "--name",
         "fs_mcp",
         "--template",
-        "py-mcp",
+        "mcp-python-fastmcp",
         "--network-mode",
         "VPC",
         "--network-config",
@@ -275,12 +273,12 @@ describe("project add runtime", () => {
       ],
     ],
     [
-      "strands-py-a2a with session, EFS, and S3 mounts",
+      "a2a-python-strands with session, EFS, and S3 mounts",
       [
         "--name",
         "fs_a2a",
         "--template",
-        "strands-py-a2a",
+        "a2a-python-strands",
         "--network-mode",
         "VPC",
         "--network-config",
@@ -467,10 +465,7 @@ describe("project add runtime", () => {
     expect(runtime).toMatchObject({ entrypoint: "main.py", ...expectedSpecByLabel[label] });
     expect(await Bun.file(join(projectRoot, "app", name, "main.py")).exists()).toBe(true);
     const buildFlagIndex = flags.indexOf("--build");
-    const isContainer =
-      buildFlagIndex >= 0
-        ? flags[buildFlagIndex + 1] === "Container"
-        : flags.includes("hello-world-python-container");
+    const isContainer = buildFlagIndex >= 0 && flags[buildFlagIndex + 1] === "Container";
     expect(runtime.runtimeVersion).toBe(isContainer ? undefined : "PYTHON_3_14");
     expect(await Bun.file(join(projectRoot, "app", name, "Dockerfile")).exists()).toBe(isContainer);
     expect(await Bun.file(join(projectRoot, "app", name, ".dockerignore")).exists()).toBe(
@@ -525,15 +520,15 @@ describe("project add runtime", () => {
   test.each<[string, string[], string[]]>([
     [
       "template preset defaults to long and short-term memory",
-      ["--name", "my_a2a", "--template", "strands-py-a2a"],
+      ["--name", "my_a2a", "--template", "a2a-python-strands"],
       ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"],
     ],
     [
       "template preset with --memory none",
-      ["--name", "my_a2a", "--template", "strands-py-a2a", "--memory", "none"],
+      ["--name", "my_a2a", "--template", "a2a-python-strands", "--memory", "none"],
       [],
     ],
-  ])("strands-py-a2a %s", async (_label, flags, expectedStrategies) => {
+  ])("a2a-python-strands %s", async (_label, flags, expectedStrategies) => {
     const projectRoot = await inProject();
     await run(["add", "runtime", ...flags]);
 
@@ -556,7 +551,7 @@ describe("project add runtime", () => {
   test.each<[string, string[], string[]]>([
     [
       "template preset",
-      ["--name", "my_agent", "--template", "strands-ts"],
+      ["--name", "my_agent", "--template", "agent-typescript-strands"],
       ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"],
     ],
     [
@@ -579,43 +574,46 @@ describe("project add runtime", () => {
     ],
     [
       "template overrides to Container",
-      ["--name", "my_agent", "--template", "strands-ts", "--build", "Container"],
+      ["--name", "my_agent", "--template", "agent-typescript-strands", "--build", "Container"],
       ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"],
     ],
-  ])("strands-ts %s scaffolds a TypeScript agent", async (_label, flags, expectedStrategies) => {
-    const projectRoot = await inProject();
-    await run(["add", "runtime", ...flags]);
+  ])(
+    "agent-typescript-strands %s scaffolds a TypeScript agent",
+    async (_label, flags, expectedStrategies) => {
+      const projectRoot = await inProject();
+      await run(["add", "runtime", ...flags]);
 
-    const buildFlagIndex = flags.indexOf("--build");
-    const isContainer = buildFlagIndex >= 0 && flags[buildFlagIndex + 1] === "Container";
+      const buildFlagIndex = flags.indexOf("--build");
+      const isContainer = buildFlagIndex >= 0 && flags[buildFlagIndex + 1] === "Container";
 
-    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    const runtime = spec.runtimes.find(
-      (candidate: { name: string }) => candidate.name === "my_agent",
-    );
-    expect(runtime).toMatchObject({
-      entrypoint: "main.js",
-      ...(isContainer
-        ? { build: "Container", dockerfile: "Dockerfile" }
-        : { build: "CodeZip", runtimeVersion: "NODE_22" }),
-    });
-    expect(runtime.runtimeVersion).toBe(isContainer ? undefined : "NODE_22");
-    expect(await Bun.file(join(projectRoot, "app", "my_agent", "Dockerfile")).exists()).toBe(
-      isContainer,
-    );
-    expect(await Bun.file(join(projectRoot, "app", "my_agent", ".dockerignore")).exists()).toBe(
-      isContainer,
-    );
+      const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+      const runtime = spec.runtimes.find(
+        (candidate: { name: string }) => candidate.name === "my_agent",
+      );
+      expect(runtime).toMatchObject({
+        entrypoint: "main.js",
+        ...(isContainer
+          ? { build: "Container", dockerfile: "Dockerfile" }
+          : { build: "CodeZip", runtimeVersion: "NODE_22" }),
+      });
+      expect(runtime.runtimeVersion).toBe(isContainer ? undefined : "NODE_22");
+      expect(await Bun.file(join(projectRoot, "app", "my_agent", "Dockerfile")).exists()).toBe(
+        isContainer,
+      );
+      expect(await Bun.file(join(projectRoot, "app", "my_agent", ".dockerignore")).exists()).toBe(
+        isContainer,
+      );
 
-    const memory = (spec.memories ?? []).find(
-      (candidate: { name: string }) => candidate.name === "my_agentMemory",
-    );
-    const strategies = memory?.strategies.map(({ type }: { type: string }) => type) ?? [];
-    expect(strategies).toEqual(expectedStrategies);
-  });
+      const memory = (spec.memories ?? []).find(
+        (candidate: { name: string }) => candidate.name === "my_agentMemory",
+      );
+      const strategies = memory?.strategies.map(({ type }: { type: string }) => type) ?? [];
+      expect(strategies).toEqual(expectedStrategies);
+    },
+  );
 
   test.each<[string, string[]]>([
-    ["missing --name", ["--template", "hello-world-python"]],
+    ["missing --name", ["--template", "agent-python"]],
     [
       "missing --build without --template",
       [
@@ -632,8 +630,8 @@ describe("project add runtime", () => {
       ],
     ],
     [
-      "--protocol cannot override the strands-python template",
-      ["--name", "my_agent", "--template", "strands-python", "--protocol", "MCP"],
+      "--protocol cannot override the agent-python-strands template",
+      ["--name", "my_agent", "--template", "agent-python-strands", "--protocol", "MCP"],
     ],
     [
       "TypeScript without a strands template has no resolver",
@@ -651,7 +649,7 @@ describe("project add runtime", () => {
       ],
     ],
     [
-      "strands-ts rejects short-term-only memory",
+      "agent-typescript-strands rejects short-term-only memory",
       [
         "--name",
         "my_agent",
@@ -672,12 +670,12 @@ describe("project add runtime", () => {
       ["--name", "my_agent", ...template, "--network-config", "{bad}"],
     ],
     [
-      "--protocol cannot override the hello-world-python template",
-      ["--name", "my_agent", "--template", "hello-world-python", "--protocol", "MCP"],
+      "--protocol cannot override the agent-python template",
+      ["--name", "my_agent", "--template", "agent-python", "--protocol", "MCP"],
     ],
     [
-      "py-mcp does not support memory",
-      ["--name", "my_agent", "--template", "py-mcp", "--memory", "shortTerm"],
+      "mcp-python-fastmcp does not support memory",
+      ["--name", "my_agent", "--template", "mcp-python-fastmcp", "--memory", "shortTerm"],
     ],
     [
       "--protocol alone requires --framework and --language",
@@ -685,7 +683,7 @@ describe("project add runtime", () => {
     ],
     [
       "--protocol cannot override a template",
-      ["--name", "my_agent", "--template", "py-mcp", "--protocol", "MCP"],
+      ["--name", "my_agent", "--template", "mcp-python-fastmcp", "--protocol", "MCP"],
     ],
     [
       "custom MCP runtime does not support memory",
@@ -758,7 +756,7 @@ describe("project add runtime", () => {
         "--name",
         "my_agent",
         "--template",
-        "hello-world-python",
+        "agent-python",
         `--${flagName}`,
         value,
       ]),
@@ -777,7 +775,7 @@ describe("project add runtime", () => {
         "--name",
         "my_agent",
         "--template",
-        "hello-world-python",
+        "agent-python",
         "--api-key",
         `file://${apiKeyPath}`,
       ]),
@@ -925,7 +923,7 @@ describe("project add runtime --type import", () => {
     const core = new TestCoreClient();
     core.bedrockAgentImportPlans["A1B2C3D4E5/TSTALIASID"] = translatedImportPlan();
     await expect(run([...importArgs, "--framework", "strands"], { core })).resolves.toBeDefined();
-    await expect(run([...importArgs, "--template", "hello-world-python"])).rejects.toThrow(
+    await expect(run([...importArgs, "--template", "agent-python"])).rejects.toThrow(
       /--template cannot be combined/,
     );
     await expect(run([...importArgs, "--build", "Container"])).rejects.toThrow(

@@ -226,7 +226,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
                     ? LANGUAGE_VERSION_DEFAULTS[flags.language ?? "Python"]
                     : undefined,
               })
-            : resolveRuntimeTemplateShortcut("hello-world-python", { runtimeName: flags.name });
+            : resolveRuntimeTemplateShortcut("agent-python", { runtimeName: flags.name });
 
       const inputEnvironmentVariables = parseJsonFlag<Record<string, string>>(
         "environment-variables",

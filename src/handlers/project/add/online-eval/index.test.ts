@@ -47,7 +47,7 @@ async function inProject(name = "TestProject"): Promise<string> {
     "--name",
     name,
     "--template",
-    "hello-world-python",
+    "agent-python",
     "--skip-install",
     "--skip-git",
   ]);

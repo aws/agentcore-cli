@@ -65,7 +65,7 @@ async function inProjectWithHarness(
     "--name",
     "orders",
     "--template",
-    "hello-world-python",
+    "agent-python",
     "--skip-install",
     "--skip-git",
   ]);

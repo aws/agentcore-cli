@@ -99,7 +99,7 @@ function emptyCreateProjectForm(): CreateProjectFormValues {
     name: "",
     kind: "harness",
     model: emptyProjectModel(),
-    template: "strands-python",
+    template: "agent-python-strands",
     memory: "longAndShortTerm",
   };
 }
@@ -123,28 +123,23 @@ const TEMPLATE_OPTIONS: {
   description: string;
 }[] = [
   {
-    template: "strands-python",
-    label: "strands-python (recommended)",
+    template: "agent-python-strands",
+    label: "agent-python-strands (recommended)",
     description: "Strands agent on Bedrock with memory (CodeZip build)",
   },
   {
-    template: "hello-world-python",
-    label: "hello-world-python",
+    template: "agent-python",
+    label: "agent-python",
     description: "minimal Python agent on Bedrock, no framework (CodeZip build)",
   },
   {
-    template: "hello-world-python-container",
-    label: "hello-world-python-container",
-    description: "the hello-world agent packaged as a container image",
-  },
-  {
-    template: "py-mcp",
-    label: "py-mcp",
+    template: "mcp-python-fastmcp",
+    label: "mcp-python-fastmcp",
     description: "MCP server exposing tools via FastMCP (CodeZip build)",
   },
   {
-    template: "strands-py-a2a",
-    label: "strands-py-a2a",
+    template: "a2a-python-strands",
+    label: "a2a-python-strands",
     description: "Strands agent speaking the A2A protocol on Bedrock (CodeZip build)",
   },
 ];
@@ -195,9 +190,9 @@ export function buildCreateInput(values: CreateProjectFormValues): CreateProject
     skipGit: false,
     scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(
       values.template,
-      // Memory is a strands question; the hello-world templates keep their own
+      // Memory is a strands question; the non-strands templates keep their own
       // (memory-less) defaults, exactly like `--template` without `--memory`.
-      values.template === "strands-python" ? { memory: values.memory } : undefined,
+      values.template === "agent-python-strands" ? { memory: values.memory } : undefined,
     ),
   };
 }
@@ -219,7 +214,7 @@ function summaryOf(values: CreateProjectFormValues): Record<string, string> {
     };
   }
   const withTemplate = { ...base, type: "agent code", template: values.template };
-  return values.template === "strands-python"
+  return values.template === "agent-python-strands"
     ? {
         ...withTemplate,
         memory: MEMORY_OPTIONS.find((option) => option.memory === values.memory)!.label,
@@ -263,7 +258,9 @@ export function ProjectCreateScreen({ core }: ScreenProps) {
         ? [{ key: "model", title: "model" }]
         : [
             { key: "template", title: "template" },
-            ...(values.template === "strands-python" ? [{ key: "memory", title: "memory" }] : []),
+            ...(values.template === "agent-python-strands"
+              ? [{ key: "memory", title: "memory" }]
+              : []),
           ];
     return [
       { key: "name", title: "name" },

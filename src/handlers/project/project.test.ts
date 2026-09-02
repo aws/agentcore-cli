@@ -241,23 +241,16 @@ describe("project create", () => {
       run(["create", "--name", "MyAgent", "--framework", "strands", "--model-id", "x"]),
     ).rejects.toThrow(/Cannot mix runtime scaffolding flags \(--framework\)/);
     await expect(
-      run(["create", "--name", "MyAgent", "--template", "hello-world-python", "--timeout", "9"]),
+      run(["create", "--name", "MyAgent", "--template", "agent-python", "--timeout", "9"]),
     ).rejects.toThrow(/harness-only flags \(--timeout\)/);
     await expect(
-      run([
-        "create",
-        "--name",
-        "MyAgent",
-        "--template",
-        "hello-world-python",
-        "--no-harness-memory",
-      ]),
+      run(["create", "--name", "MyAgent", "--template", "agent-python", "--no-harness-memory"]),
     ).rejects.toThrow(/harness-only flags \(--no-harness-memory\)/);
   });
 
   test("--defaults is ignored when a runtime path flag routes to scaffolding", async () => {
     const directory = await inTempDirectory();
-    await run(["create", "--name", "MyAgent", "--defaults", "--template", "hello-world-python"]);
+    await run(["create", "--name", "MyAgent", "--defaults", "--template", "agent-python"]);
 
     const spec = await Bun.file(join(directory, "MyAgent", "agentcore", "agentcore.json")).json();
     expect(spec.runtimes[0]).toMatchObject({ name: "hello_world" });
@@ -368,13 +361,7 @@ describe("project create", () => {
 
   test("runs the post-scaffold steps and reports progress on stderr", async () => {
     const directory = await inTempDirectory();
-    const { io, core } = await run([
-      "create",
-      "--name",
-      "MyAgent",
-      "--template",
-      "hello-world-python",
-    ]);
+    const { io, core } = await run(["create", "--name", "MyAgent", "--template", "agent-python"]);
 
     const projectRoot = join(directory, "MyAgent");
     expect(core.projectCommands).toEqual([
@@ -402,15 +389,7 @@ describe("project create", () => {
   ])("rejects --%s as a template override", async (flagName, value) => {
     await inTempDirectory();
     await expect(
-      run([
-        "create",
-        "--name",
-        "MyAgent",
-        "--template",
-        "hello-world-python",
-        `--${flagName}`,
-        value,
-      ]),
+      run(["create", "--name", "MyAgent", "--template", "agent-python", `--${flagName}`, value]),
     ).rejects.toThrow(`--${flagName} cannot override a template`);
   });
 
@@ -421,7 +400,7 @@ describe("project create", () => {
       "--name",
       "MyProject",
       "--template",
-      "strands-python",
+      "agent-python-strands",
       "--runtime-name",
       "custom_agent",
       "--build",
@@ -453,7 +432,7 @@ describe("project create", () => {
         "--name",
         "MyProject",
         "--template",
-        "strands-python",
+        "agent-python-strands",
         "--model-provider",
         "open_ai",
       ]),
@@ -468,7 +447,7 @@ describe("project create", () => {
       "--name",
       "MyProject",
       "--template",
-      "strands-python",
+      "agent-python-strands",
       "--build",
       "Container",
       "--skip-install",
@@ -496,7 +475,7 @@ describe("project create", () => {
       "--name",
       "MyProject",
       "--template",
-      "strands-python",
+      "agent-python-strands",
       "--skip-install",
       "--skip-git",
     ]);
@@ -513,7 +492,7 @@ describe("project create", () => {
       "--name",
       "MyProject",
       "--template",
-      "strands-python",
+      "agent-python-strands",
       "--build",
       "Container",
       "--skip-install",
@@ -526,14 +505,14 @@ describe("project create", () => {
     });
   });
 
-  test("scaffolds an MCP server from the py-mcp template (CodeZip default)", async () => {
+  test("scaffolds an MCP server from the mcp-python-fastmcp template (CodeZip default)", async () => {
     const directory = await inTempDirectory();
     await run([
       "create",
       "--name",
       "MyProject",
       "--template",
-      "py-mcp",
+      "mcp-python-fastmcp",
       "--skip-install",
       "--skip-git",
     ]);
@@ -554,14 +533,14 @@ describe("project create", () => {
     expect(await Bun.file(join(runtimeRoot, "Dockerfile")).exists()).toBe(false);
   });
 
-  test("scaffolds a Container MCP server from the py-mcp template", async () => {
+  test("scaffolds a Container MCP server from the mcp-python-fastmcp template", async () => {
     const directory = await inTempDirectory();
     await run([
       "create",
       "--name",
       "MyProject",
       "--template",
-      "py-mcp",
+      "mcp-python-fastmcp",
       "--build",
       "Container",
       "--skip-install",
@@ -768,7 +747,7 @@ describe("project create", () => {
           "--name",
           "MyProject",
           "--template",
-          "hello-world-python",
+          "agent-python",
           "--api-key",
           "-",
           "--skip-install",

@@ -45,7 +45,7 @@ export function createGatewayProjectTestHarness(directoryPrefix: string) {
       "--name",
       name,
       "--template",
-      "hello-world-python",
+      "agent-python",
       "--skip-install",
       "--skip-git",
     ]);

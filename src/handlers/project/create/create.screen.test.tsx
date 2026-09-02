@@ -282,14 +282,14 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "● scaffolded agent code");
     await r.press("return");
 
-    // Template step: the three refactor-supported templates are offered.
+    // Template step: the supported templates are offered.
     await waitForText(r.lastFrame, "choose a template");
-    expect(r.lastFrame()).toContain("hello-world-python");
-    expect(r.lastFrame()).toContain("hello-world-python-container");
-    expect(r.lastFrame()).toContain("● strands-python (recommended)");
+    expect(r.lastFrame()).toContain("mcp-python-fastmcp");
+    expect(r.lastFrame()).toContain("a2a-python-strands");
+    expect(r.lastFrame()).toContain("● agent-python-strands (recommended)");
     const templateFrame = r.lastFrame() ?? "";
-    expect(templateFrame.indexOf("strands-python")).toBeLessThan(
-      templateFrame.indexOf("hello-world-python"),
+    expect(templateFrame.indexOf("agent-python-strands")).toBeLessThan(
+      templateFrame.indexOf("mcp-python-fastmcp"),
     );
     await r.press("return");
 
@@ -306,18 +306,18 @@ describe("project create wizard", () => {
       line.includes("this project will be created"),
     );
     expect(reviewLines[reviewHeading + 1] ?? "").toContain("─");
-    expect(r.lastFrame()).toContain("strands-python");
+    expect(r.lastFrame()).toContain("agent-python-strands");
     expect(r.lastFrame()).toContain("long and short-term");
     await r.press("return");
     await waitForText(r.lastFrame, "project created in ./StrandsApp", 5000);
 
-    // Identical to the flag-driven `--template strands-python` input.
+    // Identical to the flag-driven `--template agent-python-strands` input.
     expect(inputs).toEqual([
       {
         name: "StrandsApp",
         skipInstall: false,
         skipGit: false,
-        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("strands-python"),
+        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands"),
       },
     ]);
 
@@ -344,7 +344,7 @@ describe("project create wizard", () => {
     await r.press("down");
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("return"); // strands-python is preselected
+    await r.press("return"); // agent-python-strands is preselected
     await waitForText(r.lastFrame, "choose a memory configuration");
     await r.press("down"); // none
     await waitForText(r.lastFrame, "● none");
@@ -357,7 +357,9 @@ describe("project create wizard", () => {
       name: "BareStrands",
       skipInstall: false,
       skipGit: false,
-      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("strands-python", { memory: "none" }),
+      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands", {
+        memory: "none",
+      }),
     });
     r.unmount();
   }, 10000);
@@ -375,8 +377,8 @@ describe("project create wizard", () => {
     await r.press("down");
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // hello-world-python
-    await waitForText(r.lastFrame, "● hello-world-python ");
+    await r.press("down"); // agent-python
+    await waitForText(r.lastFrame, "● agent-python ");
     await r.press("return");
 
     // Straight to review: hello-world does not support memory.
@@ -389,7 +391,7 @@ describe("project create wizard", () => {
       name: "HelloApp",
       skipInstall: false,
       skipGit: false,
-      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("hello-world-python"),
+      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python"),
     });
     r.unmount();
   }, 10000);
