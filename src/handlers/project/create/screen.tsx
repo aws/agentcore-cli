@@ -14,6 +14,7 @@ import {
 } from "../shortcuts";
 import { resolveScaffoldHarnessInput } from "./index";
 import { Layout } from "../../../components/Layout";
+import { EventLog } from "../../../components/EventLog";
 import { FormTextInput } from "../../../components/FormTextInput";
 import { FormRadioGroup, type FormRadioOption } from "../../../components/FormRadioGroup";
 import { KeyValueTable } from "../../../components/KeyValueTable";
@@ -781,18 +782,6 @@ function ReviewStep({
 }
 
 // ─── result panels ────────────────────────────────────────────────────────────
-
-function EventLog({ events }: { events: string[] }) {
-  return (
-    <Box flexDirection="column">
-      {events.map((message, index) => (
-        <Text key={`${index}-${message}`} color={theme.colors.muted}>
-          ✓ {message}
-        </Text>
-      ))}
-    </Box>
-  );
-}
 
 function SuccessPanel({ name, onContinue }: { name: string; onContinue: () => void }) {
   useInput((_input, key) => {

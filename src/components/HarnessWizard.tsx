@@ -11,6 +11,7 @@ import type { CreateHarnessInput } from "../handlers/harness/types";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { Layout } from "./Layout";
+import { ErrorPanel } from "./ErrorPanel";
 import { FormTextInput } from "./FormTextInput";
 import { FormRadioGroup, type FormRadioOption } from "./FormRadioGroup";
 import { FormCheckboxMultiSelect, type FormCheckboxOption } from "./FormCheckboxMultiSelect";
@@ -1185,19 +1186,6 @@ function SuccessPanel({
           }}
         />
       </Box>
-    </Box>
-  );
-}
-
-function ErrorPanel({ message, onBack }: { message: string; onBack: () => void }) {
-  useInput((_input, key) => {
-    if (key.escape || key.return) onBack();
-  });
-
-  return (
-    <Box flexDirection="column">
-      <Text color={theme.colors.error}>✗ {message}</Text>
-      <Text color={theme.colors.muted}>{"  esc returns to the form"}</Text>
     </Box>
   );
 }
