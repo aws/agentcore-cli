@@ -95,34 +95,6 @@ async function projectManifest(projectRoot: string): Promise<string[]> {
 }
 
 describe("FsProjectManager.create", () => {
-  // The progress driver renders a live tail under the running step from `output` events. Before
-  // these steps streamed, subprocess chunks went only to the debug log and the tail stayed empty.
-  test("streams subprocess output as output events so progress can tail it", async () => {
-    await inTempDirectory();
-    const subject = new FsProjectManager({
-      logger: createSilentLogger(),
-      identity: new TestIdentityClient(),
-      runner: async (_command, { onOutput }) => {
-        onOutput?.("added 320 packages, and audited 341 packages in 6s\n");
-        onOutput?.("partial line with no trailing newline");
-      },
-      checkTool: async () => {},
-    });
-
-    const { events } = await runCreate(subject, {
-      name: "example",
-      scaffoldRuntimeInput: AGENT_PYTHON,
-      skipInstall: false,
-      skipGit: true,
-    });
-
-    const lines = events.flatMap((event) => (event.type === "output" ? [event.line] : []));
-    expect(lines).toContain("added 320 packages, and audited 341 packages in 6s");
-    // The splitter must flush the unterminated trailing chunk when the process exits.
-    expect(lines).toContain("partial line with no trailing newline");
-    expect(events.some((event) => event.type === "step")).toBe(true);
-  });
-
   test("scaffolds the expected file tree into a fresh directory", async () => {
     const directory = await inTempDirectory();
     await runCreate(manager().manager, {

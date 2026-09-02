@@ -31,7 +31,6 @@ import {
   type ReadWriteJson,
 } from "../../io";
 import { withOutputEvents } from "./events";
-import { formatNpmProgressLine } from "./npmProgress";
 import { defaultSource, type AssetSource } from "./source";
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
 import { getHarnessTemplateResolver, validateHarnessTemplateSource } from "./templates/harness";
@@ -86,9 +85,26 @@ import type { CoreIdentityClient } from "../../handlers/identity/types";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
-// npm prints nothing until it exits when stderr is piped; its HTTP log is the only per-package
-// progress it will emit, and formatNpmProgressLine renders it readably.
+// npm prints nothing until it exits when stderr is piped, and its HTTP log is the only per-package
+// progress it will emit, so the log is asked for and then rewritten into package names.
 const NPM_INSTALL = ["npm", "install", "--loglevel=http"];
+const NPM_FETCH = /^npm http fetch [A-Z]+ \d{3} https?:\/\/[^/]+(\S*)/;
+
+function npmProgressLine(line: string): string | undefined {
+  const path = NPM_FETCH.exec(line)?.[1];
+  // Deprecation warnings and the closing summary are already written for people.
+  if (path === undefined) return line;
+  // `/-/npm/v1/...` names no package; the only one an install makes is the audit request.
+  if (path.startsWith("/-/")) return "auditing dependencies";
+  // A private registry may serve manifests under a prefix, so the name is the path's tail. A scope
+  // reaches us either as its own segment or encoded into one as %2f.
+  const [manifest = "", tarball] = path.split("/-/");
+  const segments = manifest.replace(/%2f/gi, "/").split("/").filter(Boolean);
+  const scope = segments.at(-2);
+  const name = scope?.startsWith("@") ? `${scope}/${segments.at(-1)}` : segments.at(-1);
+  if (name === undefined) return undefined;
+  return `${tarball === undefined ? "resolving" : "downloading"} ${name}`;
+}
 
 type ProjectManagerConfig = {
   logger: Logger;
@@ -204,11 +220,7 @@ export class FsProjectManager implements ProjectManager {
     if (!input.skipInstall) {
       await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
       yield { type: "step", message: "Installing CDK dependencies with npm" };
-      yield* this.runStreaming(
-        NPM_INSTALL,
-        join(destination, "agentcore", "cdk"),
-        formatNpmProgressLine,
-      );
+      yield* this.runStreaming(NPM_INSTALL, join(destination, "agentcore", "cdk"), npmProgressLine);
 
       if (scaffoldRuntimeInput) {
         const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
@@ -1059,7 +1071,7 @@ export class FsProjectManager implements ProjectManager {
     } else if (existsSync(join(appDir, "package.json"))) {
       await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
       yield { type: "step", message: "Installing Node dependencies with npm" };
-      yield* this.runStreaming(NPM_INSTALL, appDir, formatNpmProgressLine);
+      yield* this.runStreaming(NPM_INSTALL, appDir, npmProgressLine);
     }
   }
 
