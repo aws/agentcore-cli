@@ -62,6 +62,11 @@ import {
   type CdkRunOptions,
   type CdkRunResult,
 } from "./cdk/toolkit";
+import { createPaymentConnectorCalls } from "./cdk/paymentConnectorCalls";
+import {
+  createQuickCreateAuthorizationReporter,
+  type QuickCreateAuthorizationReporter,
+} from "./cdk/paymentConnectors";
 import { describeStack } from "./cdk/stackReader";
 
 type StackDescriber = typeof describeStack;
@@ -106,6 +111,7 @@ export type CdkBackendConfig = {
   provisionCredentials?: CredentialProvisioner;
   removePaymentCredentials?: PaymentCredentialRemover;
   describeStack?: StackDescriber;
+  reportQuickCreateAuthorizations?: QuickCreateAuthorizationReporter;
 };
 
 /** Builds and deploys projects through the scaffolded CDK app. */
@@ -122,6 +128,7 @@ export class CdkBackend implements ProjectBackend {
   private readonly provisionCredentials: CredentialProvisioner;
   private readonly removePaymentCredentials: PaymentCredentialRemover;
   private readonly describeStack: StackDescriber;
+  private readonly reportQuickCreateAuthorizations: QuickCreateAuthorizationReporter;
 
   constructor(config: CdkBackendConfig) {
     this.logger = config.logger;
@@ -150,6 +157,11 @@ export class CdkBackend implements ProjectBackend {
         describeStack(region, credentials, stackName, (name) =>
           readStack(name, region, credentials),
         ));
+    this.reportQuickCreateAuthorizations =
+      config.reportQuickCreateAuthorizations ??
+      createQuickCreateAuthorizationReporter(
+        createPaymentConnectorCalls(config.createCloudFormationClient),
+      );
   }
 
   // Local prerequisites for synth. Checked before any AWS mutation so a missing
@@ -285,6 +297,15 @@ export class CdkBackend implements ProjectBackend {
     // from CloudFormation. Merged per target, so deploying one target never drops
     // another's recorded state.
     await updateTargetState(this.json, project.rootPath, target.name, { stackArn });
+
+    // Reported after the stack is up and its ARN recorded: a Quick Create
+    // connector is deployed but unusable until someone follows its authorization
+    // link, and that link expires minutes after the connector is created.
+    yield* this.reportQuickCreateAuthorizations(project, {
+      stackName: artifact.stackName,
+      region: target.region,
+      credentials,
+    });
 
     return { outputs };
   }
