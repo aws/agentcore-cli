@@ -3,16 +3,15 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "hello-world"
+name = "agent-python"
 version = "0.1.0"
-description = "AgentCore Runtime application using the Strands SDK"
+description = "Minimal AgentCore Runtime HTTP agent"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "aws-opentelemetry-distro ~= 0.18.0",
     "bedrock-agentcore ~= 1.9.1",
     "botocore[crt] ~= 1.43.0",
-    "strands-agents ~= 1.15.0",
 ]
 
 [tool.hatch.build.targets.wheel]
