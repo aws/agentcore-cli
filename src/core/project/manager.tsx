@@ -31,6 +31,7 @@ import {
   type ReadWriteJson,
 } from "../../io";
 import { withOutputEvents } from "./events";
+import { formatNpmProgressLine } from "./npmProgress";
 import { defaultSource, type AssetSource } from "./source";
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
 import { getHarnessTemplateResolver, validateHarnessTemplateSource } from "./templates/harness";
@@ -84,6 +85,10 @@ import type { CreateCloudFormationClient } from "../types";
 import type { CoreIdentityClient } from "../../handlers/identity/types";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
+
+// npm prints nothing until it exits when stderr is piped; its HTTP log is the only per-package
+// progress it will emit, and formatNpmProgressLine renders it readably.
+const NPM_INSTALL = ["npm", "install", "--loglevel=http"];
 
 type ProjectManagerConfig = {
   logger: Logger;
@@ -199,7 +204,11 @@ export class FsProjectManager implements ProjectManager {
     if (!input.skipInstall) {
       await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
       yield { type: "step", message: "Installing CDK dependencies with npm" };
-      yield* this.runStreaming(["npm", "install"], join(destination, "agentcore", "cdk"));
+      yield* this.runStreaming(
+        NPM_INSTALL,
+        join(destination, "agentcore", "cdk"),
+        formatNpmProgressLine,
+      );
 
       if (scaffoldRuntimeInput) {
         const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
@@ -1050,7 +1059,7 @@ export class FsProjectManager implements ProjectManager {
     } else if (existsSync(join(appDir, "package.json"))) {
       await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
       yield { type: "step", message: "Installing Node dependencies with npm" };
-      yield* this.runStreaming(["npm", "install"], appDir);
+      yield* this.runStreaming(NPM_INSTALL, appDir, formatNpmProgressLine);
     }
   }
 
@@ -1097,9 +1106,13 @@ export class FsProjectManager implements ProjectManager {
   private async *runStreaming(
     command: string[],
     cwd: string,
+    formatLine: (line: string) => string | undefined = (line) => line,
   ): AsyncGenerator<ProjectEvent, void, unknown> {
     yield* withOutputEvents((emit) => {
-      const lines = createLineSplitter(emit);
+      const lines = createLineSplitter((line) => {
+        const formatted = formatLine(line);
+        if (formatted !== undefined) emit(formatted);
+      });
       return this.runner(command, {
         cwd,
         onOutput: (chunk) => {

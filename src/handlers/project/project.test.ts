@@ -263,7 +263,10 @@ describe("project create", () => {
 
     const projectRoot = join(directory, "MyAgent");
     expect(core.projectCommands).toEqual([
-      { command: ["npm", "install"], cwd: join(projectRoot, "agentcore", "cdk") },
+      {
+        command: ["npm", "install", "--loglevel=http"],
+        cwd: join(projectRoot, "agentcore", "cdk"),
+      },
       { command: ["git", "init"], cwd: projectRoot },
     ]);
   });
@@ -365,7 +368,10 @@ describe("project create", () => {
 
     const projectRoot = join(directory, "MyAgent");
     expect(core.projectCommands).toEqual([
-      { command: ["npm", "install"], cwd: join(projectRoot, "agentcore", "cdk") },
+      {
+        command: ["npm", "install", "--loglevel=http"],
+        cwd: join(projectRoot, "agentcore", "cdk"),
+      },
       { command: ["uv", "sync"], cwd: join(projectRoot, "app", "agent_python") },
       { command: ["git", "init"], cwd: projectRoot },
     ]);

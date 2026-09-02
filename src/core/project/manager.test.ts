@@ -298,7 +298,10 @@ describe("FsProjectManager.create", () => {
 
     const projectRoot = join(directory, "example");
     expect(commands).toEqual([
-      { command: ["npm", "install"], cwd: join(projectRoot, "agentcore", "cdk") },
+      {
+        command: ["npm", "install", "--loglevel=http"],
+        cwd: join(projectRoot, "agentcore", "cdk"),
+      },
       { command: ["uv", "sync"], cwd: join(projectRoot, "app", "agent_python") },
       { command: ["git", "init"], cwd: projectRoot },
     ]);
