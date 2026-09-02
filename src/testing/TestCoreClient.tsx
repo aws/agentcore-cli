@@ -2404,21 +2404,24 @@ export class TestObservabilityClient implements CoreObservabilityClient {
 }
 
 export class TestPolicyClient implements CorePolicyClient {
+  result: PolicyGenerationResult = {
+    policyGenerationId: "gen-1",
+    policyEngineId: "pe-1",
+    gatewayArn: "arn:aws:bedrock-agentcore:us-west-2:111122223333:gateway/gw-1",
+    policies: [
+      { statement: "forbid (principal, action, resource is AgentCore::Gateway);", findings: [] },
+    ],
+  };
+  error: Error | undefined;
   readonly calls: GeneratePolicyInput[] = [];
 
   async *generatePolicy(
     input: GeneratePolicyInput,
   ): AsyncGenerator<ProgressEvent, PolicyGenerationResult> {
     this.calls.push(input);
-    yield { type: "step", message: "Generating policy" };
-    return {
-      policyGenerationId: "gen-1",
-      policyEngineId: "pe-1",
-      gatewayArn: "arn:aws:bedrock-agentcore:us-west-2:111122223333:gateway/gw-1",
-      policies: [
-        { statement: "forbid (principal, action, resource is AgentCore::Gateway);", findings: [] },
-      ],
-    };
+    yield { type: "step", message: "Resolving gateway" };
+    if (this.error) throw this.error;
+    return this.result;
   }
 }
 

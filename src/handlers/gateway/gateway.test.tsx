@@ -15,6 +15,9 @@ import {
 } from "../../testing";
 import { compile, isTuiCommandSupported, ValueContext } from "../../router";
 import { createRootHandler } from "../index";
+import { PathKey } from "../../router";
+import { JsonKey } from "../keys";
+import { createGeneratePolicyHandler } from "./policy/generate";
 import type { Core } from "../types";
 
 const REGION = "us-west-2";
@@ -148,7 +151,7 @@ describe("gateway validation", () => {
     ["Policy generate gateway", ["gateway", "policy", "generate", "--prompt", "x"], /--gateway-id/],
     [
       "Policy generate prompt",
-      ["gateway", "policy", "generate", "--gateway-id", GATEWAY_ID],
+      ["gateway", "policy", "generate", "--gateway-id", GATEWAY_ID, "--json"],
       /--prompt/,
     ],
   ] as const)(
@@ -217,4 +220,33 @@ describe("gateway policy generate against a faked control plane", () => {
     await expect(attempt).rejects.toBeInstanceOf(NetworkingError);
     await expect(attempt).rejects.toThrow("did not finish within 2s");
   }, 10_000);
+});
+
+describe("gateway policy generate deep link", () => {
+  test.each([
+    ["opens the form when only --gateway-id is given", { "gateway-id": "gw-1" }, 1],
+    ["stays headless when --name is also given", { "gateway-id": "gw-1", name: "n" }, 0],
+  ])("%s", async (_label, flags, expectedRenders) => {
+    const core = new TestCoreClient();
+    let renders = 0;
+    const handler = createGeneratePolicyHandler(
+      core,
+      testIO().io,
+      async (path, _ctx, renderedCore) => {
+        renders++;
+        expect(path).toBe("/agentcore/gateway/policy/generate/gw-1");
+        expect(renderedCore).toBe(core);
+      },
+    );
+    const ctx = ValueContext.EmptyContext()
+      .withValue(PathKey, "/agentcore/gateway/policy/generate")
+      .withValue(JsonKey, false);
+
+    const attempt = handler.handle(ctx, { prompt: undefined, ...flags }, {});
+    if (expectedRenders === 0) await expect(attempt).rejects.toThrow(/--prompt/);
+    else await attempt;
+
+    expect(renders).toBe(expectedRenders);
+    expect(core.policy.calls).toEqual([]);
+  });
 });

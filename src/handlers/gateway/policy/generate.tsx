@@ -1,15 +1,19 @@
 import z from "zod";
 import { InputValidationError } from "../../../errors";
 import { type AppIO, SourceResolver } from "../../../io";
-import { createHandler, flag } from "../../../router";
-import { JsonRendererKey } from "../../../tui";
+import { createHandler, flag, PathKey } from "../../../router";
+import { JsonRendererKey, renderTuiAt } from "../../../tui";
 import { runWithProgress } from "../../../tui/progress";
 import { JsonKey } from "../../keys";
 import type { Core } from "../../types";
 import { coreOptsFromCtx, renderJsonError } from "../../utils";
 import type { PolicyGenerationResult } from "./types";
 
-export const createGeneratePolicyHandler = (core: Core, io: AppIO) =>
+export const createGeneratePolicyHandler = (
+  core: Core,
+  io: AppIO,
+  renderGenerateTui: typeof renderTuiAt = renderTuiAt,
+) =>
   createHandler({
     name: "generate",
     description: "generate a Cedar policy for a Gateway from a natural-language prompt",
@@ -39,6 +43,21 @@ export const createGeneratePolicyHandler = (core: Core, io: AppIO) =>
       if (!flags["gateway-id"]) {
         throw new InputValidationError("required option '--gateway-id <gateway-id>' not specified");
       }
+      const jsonOutput = ctx.require(JsonKey);
+      if (
+        flags.prompt === undefined &&
+        !jsonOutput &&
+        flags["policy-engine-id"] === undefined &&
+        flags.name === undefined
+      ) {
+        await renderGenerateTui(
+          `${ctx.require(PathKey)}/${encodeURIComponent(flags["gateway-id"])}`,
+          ctx,
+          core,
+          io,
+        );
+        return;
+      }
       if (flags.prompt === undefined) {
         throw new InputValidationError("required option '--prompt <prompt>' not specified");
       }
@@ -46,7 +65,6 @@ export const createGeneratePolicyHandler = (core: Core, io: AppIO) =>
         "prompt",
         flags.prompt,
       ))!;
-      const jsonOutput = ctx.require(JsonKey);
 
       const generation = core.policy.generatePolicy(
         {
