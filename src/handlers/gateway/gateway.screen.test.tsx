@@ -110,7 +110,7 @@ describe("Gateway menu and list", () => {
 
     await waitForText(screen.lastFrame, "inspect AgentCore Gateways");
     const frame = screen.lastFrame()!;
-    for (const command of ["get", "list", "invoke", "target", "connector", "rule"]) {
+    for (const command of ["get", "list", "invoke", "target", "connector", "rule", "policy"]) {
       expect(frame).toContain(command);
     }
     expect(frame).not.toMatch(/\bcreate\b/);

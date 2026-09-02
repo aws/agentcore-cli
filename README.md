@@ -101,7 +101,7 @@ agentcore                          # interactive TUI
 │   │   ├── get                    # get a Rule under a Gateway
 │   │   └── list                   # list Rules under a Gateway
 │   └── policy
-│       └── generate               # generate Cedar for a Gateway from a natural-language prompt
+│       └── generate               # generate Cedar for a Gateway from a prompt (TUI when run bare)
 ├── eval                           # evaluate and optimize AgentCore agents
 │   └── evaluator                  # manage AgentCore evaluators
 │       ├── llm-as-a-judge         # LLM-as-a-Judge evaluators

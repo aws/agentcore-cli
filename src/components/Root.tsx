@@ -107,6 +107,7 @@ import { GatewayRuleScreen } from "../handlers/gateway/rule/screen.tsx";
 import { GatewayRuleListScreen } from "../handlers/gateway/rule/list/screen.tsx";
 import { GatewayRuleGetScreen } from "../handlers/gateway/rule/get/screen.tsx";
 import { GatewayInvokeScreen } from "../handlers/gateway/invoke/screen.tsx";
+import { GatewayPolicyGenerateScreen } from "../handlers/gateway/policy/screen.tsx";
 import { ProjectScreen, ProjectCommandNotImplementedScreen } from "../handlers/project/screen.tsx";
 import { ProjectCreateScreen } from "../handlers/project/create/screen.tsx";
 import { ProjectInvokePickerScreen } from "../handlers/project/invoke/screen.tsx";
@@ -463,6 +464,18 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/gateway/rule/get/:gatewayId/:ruleId"
             element={<GatewayRuleGetScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/gateway/policy"
+            element={<Navigate to="/agentcore/gateway/policy/generate" replace />}
+          />
+          <Route
+            path="agentcore/gateway/policy/generate"
+            element={<GatewayPolicyGenerateScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/gateway/policy/generate/:gatewayId"
+            element={<GatewayPolicyGenerateScreen ctx={ctx} core={core} />}
           />
           <Route path="agentcore/eval" element={<EvalScreen ctx={ctx} core={core} />} />
           <Route
