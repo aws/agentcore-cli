@@ -287,10 +287,13 @@ describe("DefaultTelemetryClient", () => {
 describe("OtelHistogramSink", () => {
   let testCollector: ReturnType<typeof Bun.serve>;
   let receivedBodies: any[];
+  let savedTelemetryDisabled: string | undefined;
 
   const logger = createSilentLogger();
 
   beforeEach(async () => {
+    savedTelemetryDisabled = process.env.AGENTCORE_TELEMETRY_DISABLED;
+    delete process.env.AGENTCORE_TELEMETRY_DISABLED;
     receivedBodies = [];
     testCollector = Bun.serve({
       port: 0,
@@ -303,6 +306,11 @@ describe("OtelHistogramSink", () => {
   });
 
   afterEach(async () => {
+    if (savedTelemetryDisabled === undefined) {
+      delete process.env.AGENTCORE_TELEMETRY_DISABLED;
+    } else {
+      process.env.AGENTCORE_TELEMETRY_DISABLED = savedTelemetryDisabled;
+    }
     testCollector.stop(true);
   });
 
@@ -388,4 +396,40 @@ describe("OtelHistogramSink", () => {
       }
     },
   );
+
+  test("AGENTCORE_TELEMETRY_DISABLED suppresses network export while audit still writes", async () => {
+    const auditFilePath = join(tmpdir(), `env-disabled-audit-${crypto.randomUUID()}.jsonl`);
+    const globalConfigAccessor = new TestGlobalConfigAccessor({
+      initialConfigData: {
+        ...DEFAULT_GLOBAL_CONFIG,
+        telemetry: {
+          enabled: true,
+          audit: true,
+          endpoint: `http://localhost:${testCollector.port}`,
+        },
+      },
+    });
+
+    process.env.AGENTCORE_TELEMETRY_DISABLED = "1";
+    try {
+      const client = new DefaultTelemetryClient({
+        logger,
+        sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        globalConfigAccessor,
+        auditFilePath,
+      });
+      const event = client.createMetricEvent("cli.command_run", {
+        exit_reason: "success",
+        command_path: "/agentcore",
+      });
+      await event.emit(100);
+      await client.shutdown();
+    } finally {
+      delete process.env.AGENTCORE_TELEMETRY_DISABLED;
+    }
+
+    expect(receivedBodies).toHaveLength(0);
+    expect(await readFile(auditFilePath, "utf8")).toContain("cli.command_run");
+    await rm(auditFilePath, { force: true });
+  });
 });

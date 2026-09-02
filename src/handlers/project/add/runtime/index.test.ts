@@ -71,8 +71,6 @@ describe("project add runtime", () => {
     "arn:aws:iam::123456789012:role/MyRole",
     "--additional-policies",
     "arn:aws:iam::123456789012:policy/MyPolicy",
-    "--protocol",
-    "HTTP",
     "--network-mode",
     "VPC",
     "--network-config",
@@ -105,11 +103,36 @@ describe("project add runtime", () => {
       build: "Container",
       dockerfile: "Dockerfile",
     },
+    "py-mcp template preset": {
+      build: "CodeZip",
+      protocol: "MCP",
+    },
+    "py-mcp overrides to Container": {
+      build: "Container",
+      dockerfile: "Dockerfile",
+      protocol: "MCP",
+    },
+    "custom MCP runtime": {
+      build: "CodeZip",
+      protocol: "MCP",
+    },
+    "strands-py-a2a template preset": {
+      build: "CodeZip",
+      protocol: "A2A",
+    },
+    "strands-py-a2a overrides to Container": {
+      build: "Container",
+      dockerfile: "Dockerfile",
+      protocol: "A2A",
+    },
+    "custom A2A runtime": {
+      build: "CodeZip",
+      protocol: "A2A",
+    },
     "all infrastructure flags": {
       description: "Configured runtime",
       executionRoleArn: "arn:aws:iam::123456789012:role/MyRole",
       additionalPolicies: ["arn:aws:iam::123456789012:policy/MyPolicy"],
-      protocol: "HTTP",
       networkMode: "VPC",
       networkConfig: {
         subnets: ["subnet-0123456789abcdef0"],
@@ -162,6 +185,99 @@ describe("project add runtime", () => {
     [
       "strands template overrides to Container",
       ["--name", "my_agent", "--template", "strands-python", "--build", "Container"],
+    ],
+    ["py-mcp template preset", ["--name", "my_mcp", "--template", "py-mcp"]],
+    [
+      "py-mcp overrides to Container",
+      ["--name", "my_mcp", "--template", "py-mcp", "--build", "Container"],
+    ],
+    ["strands-py-a2a template preset", ["--name", "my_a2a", "--template", "strands-py-a2a"]],
+    [
+      "strands-py-a2a overrides to Container",
+      ["--name", "my_a2a", "--template", "strands-py-a2a", "--build", "Container"],
+    ],
+    [
+      "custom A2A runtime",
+      [
+        "--name",
+        "a2a_custom",
+        "--build",
+        "CodeZip",
+        "--language",
+        "Python",
+        "--framework",
+        "strands",
+        "--protocol",
+        "A2A",
+        "--model-provider",
+        "Bedrock",
+        "--memory",
+        "none",
+      ],
+    ],
+    [
+      "strands-python with session, EFS, and S3 mounts",
+      [
+        "--name",
+        "fs_agent",
+        "--template",
+        "strands-python",
+        "--network-mode",
+        "VPC",
+        "--network-config",
+        '{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}',
+        "--filesystem-configurations",
+        '[{"sessionStorage":{"mountPath":"/mnt/session"}},{"efsAccessPoint":{"accessPointArn":"arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0","mountPath":"/mnt/efs"}},{"s3FilesAccessPoint":{"accessPointArn":"arn:aws:s3files:us-east-1:123456789012:file-system/fs-0123456789abcdef01/access-point/fsap-0123456789abcdef1","mountPath":"/mnt/s3"}}]',
+      ],
+    ],
+    [
+      "py-mcp with session, EFS, and S3 mounts",
+      [
+        "--name",
+        "fs_mcp",
+        "--template",
+        "py-mcp",
+        "--network-mode",
+        "VPC",
+        "--network-config",
+        '{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}',
+        "--filesystem-configurations",
+        '[{"sessionStorage":{"mountPath":"/mnt/session"}},{"efsAccessPoint":{"accessPointArn":"arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0","mountPath":"/mnt/efs"}},{"s3FilesAccessPoint":{"accessPointArn":"arn:aws:s3files:us-east-1:123456789012:file-system/fs-0123456789abcdef01/access-point/fsap-0123456789abcdef1","mountPath":"/mnt/s3"}}]',
+      ],
+    ],
+    [
+      "strands-py-a2a with session, EFS, and S3 mounts",
+      [
+        "--name",
+        "fs_a2a",
+        "--template",
+        "strands-py-a2a",
+        "--network-mode",
+        "VPC",
+        "--network-config",
+        '{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}',
+        "--filesystem-configurations",
+        '[{"sessionStorage":{"mountPath":"/mnt/session"}},{"efsAccessPoint":{"accessPointArn":"arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0","mountPath":"/mnt/efs"}},{"s3FilesAccessPoint":{"accessPointArn":"arn:aws:s3files:us-east-1:123456789012:file-system/fs-0123456789abcdef01/access-point/fsap-0123456789abcdef1","mountPath":"/mnt/s3"}}]',
+      ],
+    ],
+    [
+      "custom MCP runtime",
+      [
+        "--name",
+        "mcp_custom",
+        "--build",
+        "CodeZip",
+        "--language",
+        "Python",
+        "--framework",
+        "none",
+        "--protocol",
+        "MCP",
+        "--model-provider",
+        "Bedrock",
+        "--memory",
+        "none",
+      ],
     ],
     ["custom — all scaffolding flags", ["--name", "my_agent", ...allScaffoldingFlags]],
     [
@@ -379,6 +495,37 @@ describe("project add runtime", () => {
 
   test.each<[string, string[], string[]]>([
     [
+      "template preset defaults to long and short-term memory",
+      ["--name", "my_a2a", "--template", "strands-py-a2a"],
+      ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"],
+    ],
+    [
+      "template preset with --memory none",
+      ["--name", "my_a2a", "--template", "strands-py-a2a", "--memory", "none"],
+      [],
+    ],
+  ])("strands-py-a2a %s", async (_label, flags, expectedStrategies) => {
+    const projectRoot = await inProject();
+    await run(["add", "runtime", ...flags]);
+
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    const memory = (spec.memories ?? []).find(
+      (candidate: { name: string }) => candidate.name === "my_a2aMemory",
+    );
+    const memoryDir = join(projectRoot, "app", "my_a2a", "memory", "session.py");
+
+    if (expectedStrategies.length === 0) {
+      expect(memory).toBeUndefined();
+      expect(await Bun.file(memoryDir).exists()).toBe(false);
+      return;
+    }
+
+    expect(memory.strategies.map(({ type }: { type: string }) => type)).toEqual(expectedStrategies);
+    expect(await Bun.file(memoryDir).exists()).toBe(true);
+  });
+
+  test.each<[string, string[], string[]]>([
+    [
       "template preset",
       ["--name", "my_agent", "--template", "strands-ts"],
       ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"],
@@ -401,15 +548,35 @@ describe("project add runtime", () => {
       ],
       [],
     ],
+    [
+      "template overrides to Container",
+      ["--name", "my_agent", "--template", "strands-ts", "--build", "Container"],
+      ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"],
+    ],
   ])("strands-ts %s scaffolds a TypeScript agent", async (_label, flags, expectedStrategies) => {
     const projectRoot = await inProject();
     await run(["add", "runtime", ...flags]);
+
+    const buildFlagIndex = flags.indexOf("--build");
+    const isContainer = buildFlagIndex >= 0 && flags[buildFlagIndex + 1] === "Container";
 
     const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
     const runtime = spec.runtimes.find(
       (candidate: { name: string }) => candidate.name === "my_agent",
     );
-    expect(runtime).toMatchObject({ entrypoint: "main.js", runtimeVersion: "NODE_22" });
+    expect(runtime).toMatchObject({
+      entrypoint: "main.js",
+      ...(isContainer
+        ? { build: "Container", dockerfile: "Dockerfile" }
+        : { build: "CodeZip", runtimeVersion: "NODE_22" }),
+    });
+    expect(runtime.runtimeVersion).toBe(isContainer ? undefined : "NODE_22");
+    expect(await Bun.file(join(projectRoot, "app", "my_agent", "Dockerfile")).exists()).toBe(
+      isContainer,
+    );
+    expect(await Bun.file(join(projectRoot, "app", "my_agent", ".dockerignore")).exists()).toBe(
+      isContainer,
+    );
 
     const memory = (spec.memories ?? []).find(
       (candidate: { name: string }) => candidate.name === "my_agentMemory",
@@ -436,7 +603,7 @@ describe("project add runtime", () => {
       ],
     ],
     [
-      "strands-python only supports HTTP",
+      "--protocol cannot override the strands-python template",
       ["--name", "my_agent", "--template", "strands-python", "--protocol", "MCP"],
     ],
     [
@@ -476,8 +643,39 @@ describe("project add runtime", () => {
       ["--name", "my_agent", ...template, "--network-config", "{bad}"],
     ],
     [
-      "hello-world-python only supports HTTP",
+      "--protocol cannot override the hello-world-python template",
       ["--name", "my_agent", "--template", "hello-world-python", "--protocol", "MCP"],
+    ],
+    [
+      "py-mcp does not support memory",
+      ["--name", "my_agent", "--template", "py-mcp", "--memory", "shortTerm"],
+    ],
+    [
+      "--protocol alone requires --framework and --language",
+      ["--name", "my_agent", "--protocol", "MCP"],
+    ],
+    [
+      "--protocol cannot override a template",
+      ["--name", "my_agent", "--template", "py-mcp", "--protocol", "MCP"],
+    ],
+    [
+      "custom MCP runtime does not support memory",
+      [
+        "--name",
+        "my_agent",
+        "--build",
+        "CodeZip",
+        "--language",
+        "Python",
+        "--framework",
+        "none",
+        "--protocol",
+        "MCP",
+        "--model-provider",
+        "Bedrock",
+        "--memory",
+        "shortTerm",
+      ],
     ],
     [
       "--memory shortTerm is not supported with --framework none",

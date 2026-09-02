@@ -26,7 +26,7 @@ export const globalConfigFileSchema = z.object({
 export type GlobalConfigFileData = z.infer<typeof globalConfigFileSchema>;
 
 /** The fully resolved config after applying defaults — all fields required. */
-export type GlobalConfig = DeepRequired<GlobalConfigFileData>;
+export type GlobalConfig = DeepRequired<GlobalConfigFileData> & { isFirstRun?: boolean };
 
 /** Manages access to a set of configuration values for the CLI  */
 export interface GlobalConfigAccessor {

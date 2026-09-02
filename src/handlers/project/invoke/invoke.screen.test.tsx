@@ -7,7 +7,7 @@ import type {
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { ProjectKey } from "../../../router";
 import { cleanupScreens, renderScreen, TestCoreClient, waitForText } from "../../../testing";
-import type { DeployedProjectResource, Project } from "../types";
+import type { Project, ResolvedDeployedResource } from "../types";
 
 afterEach(cleanupScreens);
 
@@ -46,14 +46,16 @@ function endpoint(name: string): AgentRuntimeEndpoint {
 
 const TARGET = { name: "default", account: "111122223333", region: "eu-west-1" } as const;
 
-const DEPLOYED_RESOURCES: DeployedProjectResource[] = [
-  { resourceType: "runtime", name: "checkout", id: "runtime-123" },
-  { resourceType: "harness", name: "support", id: "harness-123" },
+const DEPLOYED_RESOURCES: ResolvedDeployedResource[] = [
+  { resourceType: "runtime", name: "checkout", id: "runtime-123", target: TARGET },
+  { resourceType: "harness", name: "support", id: "harness-123", target: TARGET },
 ];
 
-function core(resources: DeployedProjectResource[] = DEPLOYED_RESOURCES): TestCoreClient {
+function core(resources: ResolvedDeployedResource[] = DEPLOYED_RESOURCES): TestCoreClient {
   const value = new TestCoreClient();
   value.projectManager.resolveDeployedResource = async (_project, input) => ({
+    resourceType: input.resourceType,
+    name: input.name,
     id: input.resourceType === "runtime" ? "runtime-123" : "harness-123",
     target: TARGET,
   });
@@ -76,7 +78,7 @@ function core(resources: DeployedProjectResource[] = DEPLOYED_RESOURCES): TestCo
 describe("project invoke picker", () => {
   test("lists only resources present in the deployed target", async () => {
     const screen = renderScreen("/agentcore/project/invoke", {
-      core: core([{ resourceType: "harness", name: "support", id: "harness-123" }]),
+      core: core([{ resourceType: "harness", name: "support", id: "harness-123", target: TARGET }]),
       withContext: (ctx) => ctx.withValue(ProjectKey, project),
     });
 

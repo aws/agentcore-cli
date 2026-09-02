@@ -15,7 +15,7 @@ export interface HeaderProps {
 
 // Header renders a screen's breadcrumb trail followed by a divider.
 export const Header: React.FC<HeaderProps> = ({ breadcrumb, description }) => (
-  <Box flexDirection="column">
+  <Box flexDirection="column" flexShrink={0}>
     <Box paddingLeft={1} paddingRight={1}>
       <Text>
         {breadcrumb.map((segment, i) => (

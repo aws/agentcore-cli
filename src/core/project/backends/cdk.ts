@@ -3,18 +3,20 @@ import { join } from "node:path";
 import type { Stack } from "@aws-sdk/client-cloudformation";
 import { MalformedServiceResponseError, ProjectStateError } from "../../../errors/errors";
 import type {
-  DeployedProjectResource,
   DeployResult,
   Project,
   ProjectEvent,
+  ResolvedDeployedResource,
 } from "../../../handlers/project/types";
 import {
+  createLineSplitter,
   FsReadWriteJson,
   requireTool,
   runProcess,
   type ProcessRunner,
   type ReadWriteJson,
 } from "../../../io";
+import { withOutputEvents } from "../events";
 import type { Logger } from "../../../logging";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import type {
@@ -52,16 +54,24 @@ import {
   loadBootstrapTemplate,
   type BootstrapTemplateLoader,
   type CdkCredentialResolver,
+  type CdkOperation,
   type CdkRunner,
   type CdkRunOptions,
+  type CdkRunResult,
 } from "./cdk/toolkit";
 import { describeStack } from "./cdk/stackReader";
 
 type StackDescriber = typeof describeStack;
 
+/**
+ * How many trailing Toolkit lines an operation keeps for error context. Matches
+ * the cap streamProcess uses for a failed subprocess's captured output.
+ */
+const MAX_ERROR_OUTPUT_LINES = 20;
+
 function findDeployedResourceId(
   stack: Stack,
-  input: Pick<DeployedProjectResource, "resourceType" | "name">,
+  input: Pick<ResolvedDeployedResource, "resourceType" | "name">,
 ): string | undefined {
   if (!stack.StackName) return undefined;
   const exportResourceName = input.name.replaceAll("_", "-");
@@ -150,14 +160,31 @@ export class CdkBackend implements ProjectBackend {
   public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
     await this.ensureCdkDependencies(project);
 
-    yield { message: "Synthesizing CloudFormation templates" };
-    await this.runner(
-      ["npm", "run", "cdk", "--", "synth", "--quiet", "--output", this.assemblyDirectory(project)],
-      {
-        cwd: this.cdkDirectory(project),
-        onOutput: (chunk) => this.logger.debug(chunk),
-      },
-    );
+    yield { type: "step", message: "Synthesizing CloudFormation templates" };
+    yield* withOutputEvents((emit) => {
+      // Chunks still go to the debug log whole; the splitter reassembles them
+      // into lines for the live progress tail.
+      const lines = createLineSplitter(emit);
+      return this.runner(
+        [
+          "npm",
+          "run",
+          "cdk",
+          "--",
+          "synth",
+          "--quiet",
+          "--output",
+          this.assemblyDirectory(project),
+        ],
+        {
+          cwd: this.cdkDirectory(project),
+          onOutput: (chunk) => {
+            this.logger.debug(chunk);
+            lines.push(chunk);
+          },
+        },
+      ).finally(() => lines.flush());
+    });
   }
 
   public async *deploy(
@@ -165,7 +192,7 @@ export class CdkBackend implements ProjectBackend {
     input: DeployBackendInput,
   ): AsyncGenerator<ProjectEvent, DeployResult> {
     const { target } = input;
-    yield { message: `Verifying AWS account ${target.account}` };
+    yield { type: "step", message: `Verifying AWS account ${target.account}` };
     const credentials = await this.credentialsForTarget(target);
 
     // Fail on local setup errors (missing toolchain/deps) and malformed state
@@ -215,10 +242,10 @@ export class CdkBackend implements ProjectBackend {
 
     if (bootstrap.kind !== "current") {
       const environment = `aws://${target.account}/${target.region}`;
-      yield { message: `Bootstrapping ${environment}` };
+      yield { type: "step", message: `Bootstrapping ${environment}` };
       const template = await this.loadBootstrapTemplate();
       try {
-        await this.cdk(
+        yield* this.runCdk(
           {
             kind: "bootstrap",
             environments: [environment],
@@ -231,8 +258,8 @@ export class CdkBackend implements ProjectBackend {
       }
     }
 
-    yield { message: `Deploying ${artifact.id}` };
-    const { outputs, stackArn } = await this.cdk(
+    yield { type: "step", message: `Deploying ${artifact.id}` };
+    const { outputs, stackArn } = yield* this.runCdk(
       { kind: "deploy", stackArtifactId: artifact.id },
       options,
     );
@@ -300,8 +327,8 @@ export class CdkBackend implements ProjectBackend {
       );
     }
 
-    yield { message: `Removing stack ${artifact.stackName}` };
-    await this.cdk({ kind: "destroy", stackArtifactId: artifact.id }, options);
+    yield { type: "step", message: `Removing stack ${artifact.stackName}` };
+    yield* this.runCdk({ kind: "destroy", stackArtifactId: artifact.id }, options);
     // After the stack, since a resource in it may still be using the provider.
     yield* this.removePaymentCredentials(project, {
       credentials: options.credentials,
@@ -312,10 +339,41 @@ export class CdkBackend implements ProjectBackend {
     return { outputs: {}, tornDown: true };
   }
 
+  /**
+   * Runs one Toolkit operation with its progress streamed as `output` events.
+   * The trailing lines are also kept so a failure can carry them: the Toolkit's
+   * errors are often terse ("Access Denied"), and the resource events it
+   * reported just before failing are what make the error debuggable from the
+   * terminal alone.
+   */
+  private async *runCdk(
+    operation: CdkOperation,
+    options: CdkRunOptions,
+  ): AsyncGenerator<ProjectEvent, CdkRunResult> {
+    const recent: string[] = [];
+    try {
+      return yield* withOutputEvents((emit) =>
+        this.cdk(operation, {
+          ...options,
+          onOutput: (line) => {
+            recent.push(line);
+            if (recent.length > MAX_ERROR_OUTPUT_LINES) recent.shift();
+            emit(line);
+          },
+        }),
+      );
+    } catch (error) {
+      if (error instanceof Error && recent.length > 0) {
+        error.message += `\n\nRecent output:\n${recent.join("\n")}`;
+      }
+      throw error;
+    }
+  }
+
   public async resolveDeployedResources(
     project: Project,
     input: ResolveDeployedResourcesBackendInput,
-  ): Promise<DeployedProjectResource[]> {
+  ): Promise<ResolvedDeployedResource[]> {
     const { target } = input;
     const deployedState = await readDeployedState(this.json, project.rootPath);
     const stackArn = deployedState.targets[target.name]?.stackArn;
@@ -341,7 +399,7 @@ export class CdkBackend implements ProjectBackend {
     ];
     return resources.flatMap((resource) => {
       const id = findDeployedResourceId(stack, resource);
-      return id ? [{ ...resource, id }] : [];
+      return id ? [{ ...resource, id, target }] : [];
     });
   }
 

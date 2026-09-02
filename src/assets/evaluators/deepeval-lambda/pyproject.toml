@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ Name }}"
+version = "0.1.0"
+description = "AgentCore Code-Based Evaluator (DeepEval)"
+requires-python = ">=3.10"
+dependencies = [
+    # 1.20.0 is the first release shipping third_party.deepeval.DeepEvalAdapter;
+    # the extra owns the deepeval version, so pinning it here only conflicts.
+    "bedrock-agentcore[deepeval]>=1.20.0,<2.0.0",
+{{#if ModelProviderBedrock}}
+    # deepeval's AmazonBedrockModel imports aiobotocore at runtime; only 3.x
+    # allows the botocore that bedrock-agentcore requires.
+    "aiobotocore>=3.0.0,<4.0.0",
+{{/if}}
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

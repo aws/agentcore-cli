@@ -128,12 +128,13 @@ export function createPaymentCredentialRemover(
 
     const options: CoreOptions = { region, credentials };
     for (const name of names) {
-      yield { message: `Removing credential provider '${name}'` };
+      yield { type: "step", message: `Removing credential provider '${name}'` };
       try {
         await identity.deletePaymentCredentialProvider(name, options);
       } catch (error) {
         if (error instanceof ResourceNotFoundException) continue;
         yield {
+          type: "step",
           message:
             `Could not remove credential provider '${name}': ${(error as Error).message}. ` +
             `Delete it with 'aws bedrock-agentcore-control delete-payment-credential-provider'.`,
@@ -188,7 +189,7 @@ export function createCredentialProvisioner(
     const created: Credential[] = [];
     try {
       for (const { credential, provision } of plans) {
-        yield { message: `Preparing credential provider '${credential.name}'` };
+        yield { type: "step", message: `Preparing credential provider '${credential.name}'` };
         if ("reuse" in provision) {
           provisioned[credential.name] = provision.reuse;
           continue;
@@ -224,12 +225,16 @@ async function* rollback(
   options: CoreOptions,
 ): AsyncGenerator<ProjectEvent, void> {
   for (const credential of [...created].reverse()) {
-    yield { message: `Removing credential provider '${credential.name}' this deploy created` };
+    yield {
+      type: "step",
+      message: `Removing credential provider '${credential.name}' this deploy created`,
+    };
     try {
       await deleteCredential(identity, credential, options);
     } catch (error) {
       if (error instanceof ResourceNotFoundException) continue;
       yield {
+        type: "step",
         message:
           `Could not remove credential provider '${credential.name}': ` +
           `${(error as Error).message}. It exists in AWS but is not recorded; the next deploy ` +

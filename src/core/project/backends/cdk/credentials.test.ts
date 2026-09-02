@@ -239,6 +239,11 @@ function account(
   };
 }
 
+/** The step messages in order, so an assertion names what it expects rather than a shape. */
+function stepMessages(events: ProjectEvent[]): string[] {
+  return events.flatMap((event) => (event.type === "step" ? [event.message] : []));
+}
+
 async function collect(
   generator: AsyncGenerator<ProjectEvent, void>,
 ): Promise<{ events: ProjectEvent[] }> {
@@ -322,7 +327,9 @@ describe("createCredentialProvisioner", () => {
 
     const { events, result } = await run(subject.provision, input);
 
-    expect(events).toEqual([{ message: "Preparing credential provider 'openai-key'" }]);
+    expect(events).toEqual([
+      { type: "step", message: "Preparing credential provider 'openai-key'" },
+    ]);
     expect(subject.contents()).toEqual({
       "openai-key": {
         ...CREATED_OPENAI,
@@ -823,10 +830,9 @@ describe("createCredentialProvisioner rollback", () => {
     const { events, error } = await runFailing(subject.provision, input);
 
     expect(error.message).toMatch(/create other-key failed/);
-    expect(events.map((event) => event.message)).toContain(
-      "Removing credential provider 'openai-key' this deploy created",
-    );
-    expect(events[events.length - 1]?.message).toMatch(
+    const messages = stepMessages(events);
+    expect(messages).toContain("Removing credential provider 'openai-key' this deploy created");
+    expect(messages[messages.length - 1]).toMatch(
       /Could not remove credential provider 'openai-key'.*access denied.*next deploy/s,
     );
     // The provider it could not delete is still there, which is what the message says.
@@ -851,7 +857,7 @@ describe("createPaymentCredentialRemover", () => {
     // The api-key provider is named account-globally and may be shared, so it stays.
     expect(subject.contents()).toEqual({ "openai-key": apiKeyProvider });
     expect(subject.deleted).toEqual(["wallet"]);
-    expect(events).toEqual([{ message: "Removing credential provider 'wallet'" }]);
+    expect(events).toEqual([{ type: "step", message: "Removing credential provider 'wallet'" }]);
     expect(subject.optionsSeen).toEqual([OPTIONS]);
   });
 
@@ -877,7 +883,7 @@ describe("createPaymentCredentialRemover", () => {
 
     expect(subject.deleted).toEqual(["wallet"]);
     expect(subject.contents()).toEqual({});
-    expect(events).toEqual([{ message: "Removing credential provider 'wallet'" }]);
+    expect(events).toEqual([{ type: "step", message: "Removing credential provider 'wallet'" }]);
   });
 
   test("classifies a provider recorded before the type was persisted by its ARN", async () => {
@@ -953,7 +959,7 @@ describe("createPaymentCredentialRemover", () => {
       remove(input, { credentials: CREDENTIALS, region: REGION, recorded: {} }),
     );
 
-    expect(events).toEqual([{ message: "Removing credential provider 'wallet'" }]);
+    expect(events).toEqual([{ type: "step", message: "Removing credential provider 'wallet'" }]);
   });
 
   test("reports a payment provider it could not delete rather than failing", async () => {
@@ -966,7 +972,9 @@ describe("createPaymentCredentialRemover", () => {
       remove(input, { credentials: CREDENTIALS, region: REGION, recorded: {} }),
     );
 
-    expect(events[1]?.message).toMatch(/Could not remove credential provider 'wallet'.*in use/);
+    expect(stepMessages(events)[1]).toMatch(
+      /Could not remove credential provider 'wallet'.*in use/,
+    );
     expect(subject.contents()).toEqual({ wallet: existing });
   });
 });

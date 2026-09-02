@@ -45,8 +45,10 @@ export class DefaultGlobalConfigAccessor implements GlobalConfigAccessor {
 
     const configFileData = await this.readConfigFile();
 
-    // if no installationId is present, generate one and merge it into the file data
-    if (!configFileData.installationId) {
+    // a run with no persisted installationId is the first run on this machine
+    const isFirstRun = !configFileData.installationId;
+
+    if (isFirstRun) {
       configFileData.installationId = DEFAULT_GLOBAL_CONFIG.installationId;
       this.logger.info(`no installationId found, persisting one`);
 
@@ -61,7 +63,7 @@ export class DefaultGlobalConfigAccessor implements GlobalConfigAccessor {
       }
     }
 
-    this.cachedConfig = applyOverrides(DEFAULT_GLOBAL_CONFIG, configFileData);
+    this.cachedConfig = { ...applyOverrides(DEFAULT_GLOBAL_CONFIG, configFileData), isFirstRun };
     return this.cachedConfig;
   }
 

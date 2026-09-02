@@ -7,6 +7,9 @@ on:
         required: true
         type: string
 
+env:
+  AGENTCORE_TELEMETRY_DISABLED: "1"
+
 jobs:
   build:
     name: Build (${{ matrix.name }})

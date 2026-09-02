@@ -92,7 +92,7 @@ export const createAddPaymentManagerHandler = (config: AddProjectResourceConfig)
           networkPreferences: flags["network-preferences"],
         },
       })) {
-        config.io.stderr.write(`${event.message}\n`);
+        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
       }
       config.io.stderr.write(`added payment manager '${flags.name}' to '${project.name}'\n`);
       if (flags["auto-payment"]) {

@@ -176,3 +176,78 @@ exports[`FsProjectManager.create snapshots the Strands TypeScript project manife
   ],
 }
 `;
+
+exports[`FsProjectManager.create snapshots the Strands A2A project manifest and runtime spec 1`] = `
+{
+  "manifest": [
+    ".gitignore",
+    "agentcore/.env.local",
+    "agentcore/agentcore.json",
+    "agentcore/aws-targets.json",
+    "agentcore/cdk/.gitignore",
+    "agentcore/cdk/.npmignore",
+    "agentcore/cdk/.prettierrc",
+    "agentcore/cdk/README.md",
+    "agentcore/cdk/bin/cdk.ts",
+    "agentcore/cdk/cdk.json",
+    "agentcore/cdk/jest.config.js",
+    "agentcore/cdk/lib/cdk-stack.ts",
+    "agentcore/cdk/package.json",
+    "agentcore/cdk/test/cdk.test.ts",
+    "agentcore/cdk/tsconfig.json",
+    "app/a2a_agent/.gitignore",
+    "app/a2a_agent/README.md",
+    "app/a2a_agent/main.py",
+    "app/a2a_agent/memory/__init__.py",
+    "app/a2a_agent/memory/session.py",
+    "app/a2a_agent/model/__init__.py",
+    "app/a2a_agent/model/load.py",
+    "app/a2a_agent/pyproject.toml",
+  ],
+  "memories": [
+    {
+      "eventExpiryDuration": 30,
+      "name": "a2a_agentMemory",
+      "strategies": [
+        {
+          "namespaceTemplates": [
+            "/users/{actorId}/facts",
+          ],
+          "type": "SEMANTIC",
+        },
+        {
+          "namespaceTemplates": [
+            "/users/{actorId}/preferences",
+          ],
+          "type": "USER_PREFERENCE",
+        },
+        {
+          "namespaceTemplates": [
+            "/summaries/{actorId}/{sessionId}",
+          ],
+          "type": "SUMMARIZATION",
+        },
+        {
+          "namespaceTemplates": [
+            "/episodes/{actorId}/{sessionId}",
+          ],
+          "reflectionNamespaceTemplates": [
+            "/episodes/{actorId}",
+          ],
+          "type": "EPISODIC",
+        },
+      ],
+    },
+  ],
+  "runtimes": [
+    {
+      "build": "CodeZip",
+      "codeLocation": "app/a2a_agent",
+      "entrypoint": "main.py",
+      "name": "a2a_agent",
+      "protocol": "A2A",
+      "runtimeVersion": "PYTHON_3_14",
+    },
+  ],
+}
+`;

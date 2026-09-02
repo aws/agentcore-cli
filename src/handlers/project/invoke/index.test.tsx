@@ -85,11 +85,13 @@ function backend() {
           resourceType: "runtime" as const,
           name,
           id: RUNTIME_ID,
+          target: input.target,
         })),
         ...project.spec.harnesses.map(({ name }) => ({
           resourceType: "harness" as const,
           name,
           id: HARNESS_ID,
+          target: input.target,
         })),
       ];
     },

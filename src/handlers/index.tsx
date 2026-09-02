@@ -1,5 +1,6 @@
 import { Router } from "../router";
 import { createEvalHandler } from "./eval/index.tsx";
+import { createFeedbackHandler } from "./feedback/index.tsx";
 import { createGatewayHandler } from "./gateway/index.tsx";
 import { createHarnessHandler } from "./harness/index.tsx";
 import { createIdentityHandler } from "./identity/index.tsx";
@@ -8,6 +9,7 @@ import { createRuntimeHandler } from "./runtime/index.tsx";
 import { DebugKey, EndpointKey, JsonKey, RegionKey } from "./keys.tsx";
 import { createConfigHandler } from "./config/";
 import { createProjectHandler } from "./project/index.ts";
+import { createUpdateHandler } from "./update/index.tsx";
 import { renderTui } from "../tui";
 import { withRegion, withJsonRenderer, withLogging, withGlobalConfigAccessor } from "../middleware";
 import type { AppIO } from "../io";
@@ -53,8 +55,10 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   root.handler(createMemoryHandler(core, io));
   root.handler(createGatewayHandler(core, io));
   root.handler(createEvalHandler(core, io));
+  root.handler(createFeedbackHandler(core, io));
   root.handler(createConfigHandler());
   root.handler(createProjectHandler({ core, io }));
+  root.handler(createUpdateHandler(io));
 
   // Invoking with no subcommand launches the interactive TUI.
   root.default(renderTui(core, io));

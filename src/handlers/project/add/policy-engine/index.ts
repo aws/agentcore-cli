@@ -64,7 +64,7 @@ export const createAddPolicyEngineHandler = (config: AddProjectResourceConfig) =
             }
           : undefined,
       })) {
-        config.io.stderr.write(`${event.message}\n`);
+        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
       }
       config.io.stderr.write(`added Policy Engine '${flags.name}' to '${project.name}'\n`);
       if (flags["attach-to-gateways"]) {

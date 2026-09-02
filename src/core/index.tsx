@@ -77,6 +77,7 @@ export class CoreClient implements AwsClients {
 
   readonly projectManager: ProjectManager;
   readonly describeBedrockAgent: DescribeBedrockAgent;
+  readonly fetch: CoreFetch;
 
   constructor(config: CoreClientConfig) {
     this.createControlClient = config.createControlClient;
@@ -85,6 +86,7 @@ export class CoreClient implements AwsClients {
     this.createLogsClient = config.createLogsClient;
     this.logger = config.logger;
     const fetch = config.fetch ?? globalThis.fetch;
+    this.fetch = fetch;
     this.runtime = new RuntimeClient(this, fetch, this.logger.child({ module: "runtime" }));
     this.gateway = new GatewayClient(this, fetch, this.logger.child({ module: "gateway" }));
     // EvalClient shares the injected fetch: dataset content is served from a

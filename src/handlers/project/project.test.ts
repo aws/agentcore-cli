@@ -517,6 +517,62 @@ describe("project create", () => {
     });
   });
 
+  test("scaffolds an MCP server from the py-mcp template (CodeZip default)", async () => {
+    const directory = await inTempDirectory();
+    await run([
+      "create",
+      "--name",
+      "MyProject",
+      "--template",
+      "py-mcp",
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    const projectRoot = join(directory, "MyProject");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0]).toMatchObject({
+      name: "mcp_server",
+      build: "CodeZip",
+      protocol: "MCP",
+      codeLocation: "app/mcp_server",
+      runtimeVersion: "PYTHON_3_14",
+    });
+    const runtimeRoot = join(projectRoot, "app", "mcp_server");
+    const mainPy = await Bun.file(join(runtimeRoot, "main.py")).text();
+    expect(mainPy).toContain("FastMCP");
+    expect(mainPy).toContain('mcp.run(transport="streamable-http")');
+    expect(await Bun.file(join(runtimeRoot, "Dockerfile")).exists()).toBe(false);
+  });
+
+  test("scaffolds a Container MCP server from the py-mcp template", async () => {
+    const directory = await inTempDirectory();
+    await run([
+      "create",
+      "--name",
+      "MyProject",
+      "--template",
+      "py-mcp",
+      "--build",
+      "Container",
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    const projectRoot = join(directory, "MyProject");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0]).toMatchObject({
+      name: "mcp_server",
+      build: "Container",
+      protocol: "MCP",
+      dockerfile: "Dockerfile",
+    });
+    expect(spec.runtimes[0].runtimeVersion).toBeUndefined();
+    expect(await Bun.file(join(projectRoot, "app", "mcp_server", "Dockerfile")).exists()).toBe(
+      true,
+    );
+  });
+
   test.each([
     ["default", [], ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"]],
     ["none", ["--memory", "none"], []],

@@ -20,7 +20,7 @@ import { FsReadWriteJson } from "./io";
 import { createFileLogger, LOG_LEVEL } from "./logging";
 import { runWithExitCode } from "./runnable";
 import { DefaultGlobalConfigAccessor } from "./globalConfig";
-import { DefaultTelemetryClient } from "./telemetry";
+import { DefaultTelemetryClient, printFirstRunNotice } from "./telemetry";
 import { AgentCoreCLIError } from "./errors";
 import { PACKAGE_VERSION } from "./constants";
 import { CommandRunMetricEventKey, ValueContext } from "./router";
@@ -60,6 +60,8 @@ process.exit(
     const commandRunMetricEvent = telemetryClient.createMetricEvent("cli.command_run", {
       exit_reason: "success",
     });
+
+    const globalConfig = await globalConfigAccessor.get();
 
     try {
       rootLogger.info(`running CLI`);
@@ -112,6 +114,12 @@ process.exit(
       }
       await telemetryClient.shutdown();
       await rootLogger.end();
+
+      printFirstRunNotice(
+        globalConfig.isFirstRun ?? false,
+        globalConfig.telemetry.enabled,
+        io.stderr,
+      );
     }
   }),
 );

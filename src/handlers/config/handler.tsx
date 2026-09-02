@@ -28,9 +28,10 @@ export const createConfigHandler = () =>
       const jsonRenderer = ctx.require(JsonRendererKey);
 
       const globalConfig = await globalConfigAccessor.get();
-      // print entire config when key is missing.
+      // isFirstRun is not user controlled, so strip from the output.
       if (!args.key) {
-        jsonRenderer.renderJson(globalConfig);
+        const { isFirstRun: _isFirstRun, ...persistedConfig } = globalConfig;
+        jsonRenderer.renderJson(persistedConfig);
         return;
       }
 

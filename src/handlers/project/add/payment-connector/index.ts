@@ -65,7 +65,7 @@ export const createAddPaymentConnectorHandler = (config: AddProjectResourceConfi
               credentialName: credentialName!,
             },
       })) {
-        config.io.stderr.write(`${event.message}\n`);
+        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
       }
 
       config.io.stderr.write(

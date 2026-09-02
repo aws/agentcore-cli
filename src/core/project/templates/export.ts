@@ -16,7 +16,7 @@ import { credentialEnvVarName, type Credential } from "../../../projectSchemas/c
 import type { Memory } from "../../../projectSchemas/memory";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
 import { InputValidationError } from "../../../errors/errors";
-import { toPythonPackageName } from "./runtime";
+import { toPythonPackageName } from "../fsUtils";
 
 type ProjectSpec = z.infer<typeof ProjectSpecSchema>;
 

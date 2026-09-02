@@ -125,7 +125,7 @@ Use project add gateway-connector for curated Connector shortcuts.`,
         gatewayName: flags.gateway,
         resourceConfig: target,
       })) {
-        config.io.stderr.write(`${event.message}\n`);
+        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
       }
       config.io.stderr.write(
         `added Target '${target.name}' to Gateway '${flags.gateway}' in '${project.name}'\n`,

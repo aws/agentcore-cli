@@ -302,15 +302,16 @@ export function fixtureFetch(dir: string): CoreFetch {
     if (isRecording()) {
       mkdirSync(dir, { recursive: true });
       const response = await globalThis.fetch(input, init);
+      const body = await response.text();
       const fixture: FetchFixture = {
         status: response.status,
         statusText: response.statusText,
-        body: await response.text(),
+        body: sanitizePresignedUrls(body),
       };
       writeFileSync(path, stringify(fixture));
-      return new Response(fixture.body, {
-        status: fixture.status,
-        statusText: fixture.statusText,
+      return new Response(body, {
+        status: response.status,
+        statusText: response.statusText,
       });
     }
 

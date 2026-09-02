@@ -75,7 +75,7 @@ export const createExportHarnessHandler = (config: ExportProjectResourceConfig) 
       const exportRun = config.projectManager.exportHarness(project, input);
       let next = await exportRun.next();
       while (!next.done) {
-        config.io.stderr.write(`${next.value.message}\n`);
+        if (next.value.type === "step") config.io.stderr.write(`${next.value.message}\n`);
         next = await exportRun.next();
       }
       const result = next.value;

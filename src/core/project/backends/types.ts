@@ -1,8 +1,8 @@
 import type {
-  DeployedProjectResource,
   DeployResult,
   Project,
   ProjectEvent,
+  ResolvedDeployedResource,
   TeardownConfirmationHandler,
 } from "../../../handlers/project/types";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
@@ -25,5 +25,5 @@ export interface ProjectBackend {
   resolveDeployedResources(
     project: Project,
     input: ResolveDeployedResourcesBackendInput,
-  ): Promise<DeployedProjectResource[]>;
+  ): Promise<ResolvedDeployedResource[]>;
 }

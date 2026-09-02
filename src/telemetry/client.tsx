@@ -87,7 +87,7 @@ export class DefaultTelemetryClient implements TelemetryClient {
         }),
       );
 
-    if (globalConfig.telemetry.enabled)
+    if (globalConfig.telemetry.enabled && !telemetryDisabledByEnv())
       metricSinks.push(
         new OtelHistogramSink({
           logger: this.logger.child({ module: "otelCollectorSink" }),
@@ -112,6 +112,12 @@ export class DefaultTelemetryClient implements TelemetryClient {
       "node.version": process.version,
     });
   });
+}
+
+/** Returns true when AGENTCORE_TELEMETRY_DISABLED is set to "true" or "1". */
+function telemetryDisabledByEnv(): boolean {
+  const value = process.env.AGENTCORE_TELEMETRY_DISABLED?.toLowerCase().trim();
+  return value === "true" || value === "1";
 }
 
 /** wraps an async function such that it only executes once **/

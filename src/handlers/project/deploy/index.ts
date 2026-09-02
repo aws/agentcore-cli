@@ -5,12 +5,10 @@ import type { AppIO } from "../../../io";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
 import { createHandler, flag, ProjectKey } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
+import { runWithProgress } from "../../../tui/progress";
 import { JsonKey, RegionKey } from "../../keys";
-import type {
-  ProjectManager,
-  TeardownConfirmationRequest,
-  TeardownConfirmationHandler,
-} from "../types";
+import { renderJsonError } from "../../utils";
+import type { DeployResult, Project, ProjectManager, TeardownConfirmationHandler } from "../types";
 
 type DeployProjectHandlerConfig = {
   projectManager: ProjectManager;
@@ -45,57 +43,113 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         config.io.stdout.isTTY &&
         config.io.stderr.isTTY;
 
-      // Progress goes to stderr, keeping stdout for machine output. Driven by
-      // hand rather than `for await` because the outputs we render below are the
-      // generator's return value, which `for await` discards.
+      // The teardown question is settled here, before the generator starts:
+      // once the progress UI is mounted, nothing downstream may block on
+      // interactive input.
+      const confirmTeardown = await resolveTeardownDecision(
+        config,
+        project,
+        flags.target,
+        flags.yes,
+        canPrompt === true,
+      );
+
       const deployment = config.projectManager.deploy(project, {
         target: flags.target,
         region: ctx.require(RegionKey),
-        confirmTeardown: createTeardownConfirmationHandler(config.io, flags.yes, canPrompt),
+        confirmTeardown,
       });
-      let next = await deployment.next();
-      while (!next.done) {
-        config.io.stderr.write(`${next.value.message}\n`);
-        next = await deployment.next();
+      // Progress goes to stderr, keeping stdout for machine output. --json
+      // forces the plain path so no ANSI reaches a scripted caller's stderr.
+      let result: DeployResult;
+      try {
+        result = await runWithProgress(deployment, {
+          io: config.io,
+          interactive: jsonOutput ? false : undefined,
+        });
+      } catch (error) {
+        if (jsonOutput) renderJsonError(ctx, error);
+        throw error;
       }
-      const result = next.value;
 
-      config.io.stderr.write(
-        result.tornDown
-          ? `Removed project '${project.name}' from target '${flags.target}'\n`
-          : `Deployed project '${project.name}' to target '${flags.target}'\n`,
-      );
+      const message = result.tornDown
+        ? `Removed project '${project.name}' from target '${flags.target}'`
+        : `Deployed project '${project.name}' to target '${flags.target}'`;
+      config.io.stderr.write(`${message}\n`);
       if (jsonOutput) {
-        ctx.require(JsonRendererKey).renderJson(result);
+        ctx.require(JsonRendererKey).renderJson({ message, ...result });
         return;
-      }
-      for (const [key, value] of Object.entries(result.outputs).sort(([a], [b]) =>
-        a.localeCompare(b),
-      )) {
-        config.io.stdout.write(`${key}: ${value}\n`);
       }
     },
   });
 
-function createTeardownConfirmationHandler(
-  io: AppIO,
+/**
+ * True when the spec declares none of the resources `removeAllResources`
+ * clears, i.e. what an emptied project looks like. This is the up-front proxy
+ * for the backend's post-synth zero-resource count; the two can disagree when a
+ * declared resource synthesizes no CloudFormation resource (or a hand-edited
+ * CDK app adds one), so the backend's count stays authoritative and this only
+ * decides whether to ask the user before starting.
+ */
+function declaresNothingDeployable(project: Project): boolean {
+  const { spec } = project;
+  const collections = [
+    spec.runtimes,
+    spec.memories,
+    spec.knowledgeBases,
+    spec.credentials,
+    spec.evaluators,
+    spec.onlineEvalConfigs,
+    spec.agentCoreGateways,
+    spec.policyEngines,
+    spec.configBundles,
+    spec.abTests,
+    spec.harnesses,
+    spec.mcpRuntimeTools ?? [],
+    spec.unassignedTargets ?? [],
+    spec.datasets ?? [],
+    spec.payments ?? [],
+  ];
+  return collections.every((collection) => collection.length === 0);
+}
+
+/**
+ * Resolves the teardown question before the deploy generator starts. The
+ * returned handler never blocks on input: it is a pre-answered decision the
+ * backend consults if synthesis confirms the deploy would remove the stack.
+ */
+async function resolveTeardownDecision(
+  config: DeployProjectHandlerConfig,
+  project: Project,
+  targetName: string,
   confirmed: boolean,
   canPrompt: boolean,
-): TeardownConfirmationHandler {
+): Promise<TeardownConfirmationHandler> {
   if (confirmed) return async () => true;
-  if (!canPrompt) return async () => false;
 
-  return async (request) => {
-    if (!(await promptForTeardown(io, request))) {
-      throw new UserCancellationError();
+  if (canPrompt && declaresNothingDeployable(project)) {
+    // An undefined target cannot have a stack to tear down: deploy either
+    // rejects the name or provisions a fresh default, and the backend then
+    // fails with "no stack ... to remove" before consulting the decision.
+    const target = await config.projectManager.resolveTarget(project, { target: targetName });
+    if (target) {
+      if (!(await promptForTeardown(config.io, project.name, target))) {
+        throw new UserCancellationError();
+      }
+      return async () => true;
     }
-    return true;
-  };
+  }
+
+  // Non-interactive, --json, or the spec-level check missed (see
+  // declaresNothingDeployable): the backend's own zero-resource check throws
+  // the "re-run with --yes" ProjectStateError when this declines.
+  return async () => false;
 }
 
 async function promptForTeardown(
   io: AppIO,
-  request: TeardownConfirmationRequest,
+  projectName: string,
+  target: { name: string; account: string; region: string },
 ): Promise<boolean> {
   const readline = createInterface({ input: io.stdin, output: io.stderr });
   try {
@@ -104,11 +158,13 @@ async function promptForTeardown(
       readline.once("SIGINT", cancel);
       readline.once("close", cancel);
     });
+    // Asked before synthesis, so the exact stack name is not known yet; the
+    // target coordinates identify what would be deleted.
     const answer = await Promise.race([
       readline.question(
-        `Project '${request.projectName}' declares no resources to deploy.\n` +
-          `Delete ${request.resourceDescription} from target ` +
-          `'${request.targetName}' (${request.account}/${request.region})? (y/N) `,
+        `Project '${projectName}' declares no resources to deploy.\n` +
+          `Deploying will delete everything deployed to target ` +
+          `'${target.name}' (${target.account}/${target.region}). Continue? (y/N) `,
       ),
       cancelled,
     ]);

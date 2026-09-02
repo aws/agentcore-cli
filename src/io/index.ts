@@ -4,6 +4,7 @@ export {
   type AtomicWriteStreamOptions,
   type AtomicWriteStreamSource,
 } from "./atomicWrite";
+export { AsyncChannel, createLineSplitter, type LineSplitter } from "./channel";
 export {
   MissingToolError,
   ProcessFailedError,

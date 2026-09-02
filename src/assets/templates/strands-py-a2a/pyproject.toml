@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling ~= 1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "AgentCore A2A Agent using Strands SDK"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    {{#if (eq modelProvider "Anthropic")}}"anthropic ~= 0.30.0",
+    {{/if}}"a2a-sdk[all] >= 0.3.0, < 0.4.0",
+    "aws-opentelemetry-distro ~= 0.17.0",
+    "bedrock-agentcore[a2a] ~= 1.9.1",
+    "botocore[crt] ~= 1.43.0",
+    {{#if (eq modelProvider "Gemini")}}"google-genai ~= 1.0.0",
+    {{/if}}{{#if (eq modelProvider "OpenAI")}}"openai ~= 1.0.0",
+    {{/if}}{{#if (eq modelProvider "LiteLLM")}}"litellm ~= 1.0.0",
+    {{/if}}"strands-agents ~= 1.15.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

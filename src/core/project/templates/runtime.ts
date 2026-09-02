@@ -5,6 +5,7 @@ import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import type { TemplateRenderer, TemplateResolver } from "./types";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
 import { InputValidationError } from "../../../errors";
+import { toPythonPackageName } from "../fsUtils";
 
 function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
   const { scaffoldRuntimeInput, name, ...infra } = input;
@@ -39,18 +40,6 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
 }
 
 /**
- * Normalize a name for use as a Python package name per PEP 508.
- * Valid names consist only of ASCII letters, numbers, period, underscore, and
- * hyphen, and must start and end with a letter or number.
- */
-export function toPythonPackageName(name: string): string {
-  return name
-    .replace(/[^a-zA-Z0-9._-]/g, "-")
-    .replace(/^[^a-zA-Z0-9]+/, "")
-    .replace(/[^a-zA-Z0-9]+$/, "");
-}
-
-/**
  * Normalize a name for use as an npm package name.
  *
  * @param name - The raw runtime/project name to normalize.
@@ -68,8 +57,9 @@ function toNpmPackageName(name: string): string {
 function buildResolverKey(
   framework: ScaffoldRuntimeInput["framework"],
   language: ScaffoldRuntimeInput["language"],
-): `${ScaffoldRuntimeInput["framework"]}/${ScaffoldRuntimeInput["language"]}` {
-  return `${framework}/${language}`;
+  protocol: ScaffoldRuntimeInput["protocol"],
+): `${ScaffoldRuntimeInput["framework"]}/${ScaffoldRuntimeInput["language"]}/${NonNullable<ScaffoldRuntimeInput["protocol"]>}` {
+  return `${framework}/${language}/${protocol ?? "HTTP"}`;
 }
 
 // The IAM policy file the proxy template vends; wired into the runtime's
@@ -116,9 +106,7 @@ const importBedrockAgentResolver =
   };
 
 const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: TemplateRenderer) => ({
-  [buildResolverKey("none", "Python")]: async (input: RuntimeResourceConfig) => {
-    if (input.protocol !== undefined && input.protocol !== "HTTP")
-      throw new InputValidationError(`hello-world-python only supports HTTP protocol`);
+  [buildResolverKey("none", "Python", "HTTP")]: async (input: RuntimeResourceConfig) => {
     if (input.scaffoldRuntimeInput.memory !== undefined)
       throw new InputValidationError(`memory is not supported with the hello-world template`);
     const tree = await FsTreeNode.fromAssetSource(
@@ -133,10 +121,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     );
     return { tree, spec: { runtimes: [buildRuntimeSpec(input)] } };
   },
-  [buildResolverKey("strands", "Python")]: async (input: RuntimeResourceConfig) => {
-    if (input.protocol !== undefined && input.protocol !== "HTTP")
-      throw new InputValidationError("the strands-python template only supports HTTP");
-
+  [buildResolverKey("strands", "Python", "HTTP")]: async (input: RuntimeResourceConfig) => {
     const filesystemConfigurations = input.filesystemConfigurations ?? [];
     const sessionStorageMountPath = filesystemConfigurations.flatMap((configuration) =>
       "sessionStorage" in configuration ? [configuration.sessionStorage.mountPath] : [],
@@ -201,12 +186,9 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       },
     };
   },
-  [buildResolverKey("strands", "TypeScript")]: async (input: RuntimeResourceConfig) => {
+  [buildResolverKey("strands", "TypeScript", "HTTP")]: async (input: RuntimeResourceConfig) => {
     if (input.protocol !== undefined && input.protocol !== "HTTP")
       throw new InputValidationError("the strands-ts template only supports HTTP");
-
-    if (input.scaffoldRuntimeInput.build !== "CodeZip")
-      throw new InputValidationError("the strands template only supports CodeZip builds");
 
     const memory = input.scaffoldRuntimeInput.memory;
     // The TypeScript strands SDK's createAgentCoreMemoryStores requires at least one
@@ -227,19 +209,126 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       hasIdentity: false,
       identityProviders: [],
     };
+    const isContainer = input.scaffoldRuntimeInput.build === "Container";
     const tree = await FsTreeNode.fromAssetSource(
       { assetSource },
       { assetDir: "templates/strands-http-typescript" },
       {
         rootDirName: input.name,
         transformContent: (raw) => templateRenderer.render(raw, context),
-        filter: (name, isDir) => memory !== undefined || !isDir || name !== "memory",
+        filter: (name, isDir) => {
+          if (isDir && name === "memory") return memory !== undefined;
+          if (name === "Dockerfile" || name === ".dockerignore") return isContainer;
+          return true;
+        },
       },
     );
     return {
       tree,
       spec: {
         runtimes: [{ ...buildRuntimeSpec(input), protocol: "HTTP" as const }],
+        ...(memory && { memories: [memory] }),
+      },
+    };
+  },
+  [buildResolverKey("none", "Python", "MCP")]: async (input: RuntimeResourceConfig) => {
+    if (input.scaffoldRuntimeInput.memory !== undefined)
+      throw new InputValidationError("memory is not supported with an MCP runtime");
+    const filesystemConfigurations = input.filesystemConfigurations ?? [];
+    const sessionStorageMountPath = filesystemConfigurations.flatMap((configuration) =>
+      "sessionStorage" in configuration ? [configuration.sessionStorage.mountPath] : [],
+    )[0];
+    const efsMounts = filesystemConfigurations.flatMap((configuration) =>
+      "efsAccessPoint" in configuration
+        ? [{ mountPath: configuration.efsAccessPoint.mountPath }]
+        : [],
+    );
+    const s3Mounts = filesystemConfigurations.flatMap((configuration) =>
+      "s3FilesAccessPoint" in configuration
+        ? [{ mountPath: configuration.s3FilesAccessPoint.mountPath }]
+        : [],
+    );
+    const context = {
+      name: toPythonPackageName(input.name),
+      sessionStorageMountPath,
+      efsMounts,
+      s3Mounts,
+      needsOs: filesystemConfigurations.length > 0,
+      // The AgentCore Runtime requires OTEL dependencies to be present; the
+      // container launches main.py as the `main` module under
+      // opentelemetry-instrument, and FastMCP binds the streamable-HTTP server.
+      enableOtel: true,
+      entrypoint: "main",
+    };
+    const isContainer = input.scaffoldRuntimeInput.build === "Container";
+    const tree = await FsTreeNode.fromAssetSource(
+      { assetSource },
+      { assetDir: "templates/python-mcp" },
+      {
+        rootDirName: input.name,
+        transformContent: (raw) => templateRenderer.render(raw, context),
+        filter: (name) => {
+          if (name === "Dockerfile" || name === ".dockerignore") return isContainer;
+          return true;
+        },
+      },
+    );
+    return {
+      tree,
+      spec: { runtimes: [{ ...buildRuntimeSpec(input), protocol: "MCP" as const }] },
+    };
+  },
+  [buildResolverKey("strands", "Python", "A2A")]: async (input: RuntimeResourceConfig) => {
+    const filesystemConfigurations = input.filesystemConfigurations ?? [];
+    const sessionStorageMountPath = filesystemConfigurations.flatMap((configuration) =>
+      "sessionStorage" in configuration ? [configuration.sessionStorage.mountPath] : [],
+    )[0];
+    const efsMounts = filesystemConfigurations.flatMap((configuration) =>
+      "efsAccessPoint" in configuration
+        ? [{ mountPath: configuration.efsAccessPoint.mountPath }]
+        : [],
+    );
+    const s3Mounts = filesystemConfigurations.flatMap((configuration) =>
+      "s3FilesAccessPoint" in configuration
+        ? [{ mountPath: configuration.s3FilesAccessPoint.mountPath }]
+        : [],
+    );
+    const memory = input.scaffoldRuntimeInput.memory;
+    const context = {
+      name: toPythonPackageName(input.name),
+      modelProvider: input.scaffoldRuntimeInput.modelProvider,
+      hasMemory: memory !== undefined,
+      // the CDK injects this env var corresponding to the actual ID once its resolved on deployment.
+      memoryEnvVarName: memory ? `MEMORY_${memory.name.toUpperCase()}_ID` : undefined,
+      memoryStrategies: memory?.strategies.map(({ type }) => type) ?? [],
+      sessionStorageMountPath,
+      efsMounts,
+      s3Mounts,
+      needsOs: filesystemConfigurations.length > 0,
+      // The AgentCore Runtime requires OTEL dependencies to be present; the
+      // container launches main.py as the `main` module under
+      // opentelemetry-instrument, and serve_a2a binds the A2A server on port 9000.
+      enableOtel: true,
+      entrypoint: "main",
+    };
+    const isContainer = input.scaffoldRuntimeInput.build === "Container";
+    const tree = await FsTreeNode.fromAssetSource(
+      { assetSource },
+      { assetDir: "templates/strands-py-a2a" },
+      {
+        rootDirName: input.name,
+        transformContent: (raw) => templateRenderer.render(raw, context),
+        filter: (name, isDir) => {
+          if (isDir && name === "memory") return memory !== undefined;
+          if (name === "Dockerfile" || name === ".dockerignore") return isContainer;
+          return true;
+        },
+      },
+    );
+    return {
+      tree,
+      spec: {
+        runtimes: [{ ...buildRuntimeSpec(input), protocol: "A2A" as const }],
         ...(memory && { memories: [memory] }),
       },
     };
@@ -262,8 +351,8 @@ export function getRuntimeTemplateResolver(
     return { resolve: importBedrockAgentResolver(config.assetSource, config.templateRenderer) };
   }
 
-  const { framework, language } = input.scaffoldRuntimeInput;
-  const key = buildResolverKey(framework, language);
+  const { framework, language, protocol } = input.scaffoldRuntimeInput;
+  const key = buildResolverKey(framework, language, protocol);
 
   const resolve = getTemplateResolvers(config.assetSource, config.templateRenderer)[key];
   if (!resolve) return undefined;

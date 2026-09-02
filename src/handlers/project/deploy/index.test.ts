@@ -32,6 +32,9 @@ const TEARDOWN: TeardownConfirmationRequest = {
   account: DEFAULT_TARGET.account,
   region: DEFAULT_TARGET.region,
 };
+const TEARDOWN_PROMPT =
+  "Deploying will delete everything deployed to target 'default' (111122223333/us-east-1). " +
+  "Continue? (y/N)";
 
 /**
  * A ProjectBackend that deploys successfully, which CdkBackend cannot do until
@@ -43,6 +46,7 @@ function fakeBackend(
   result: DeployResult,
   events: ProjectEvent[] = [],
   teardown?: TeardownConfirmationRequest,
+  failure?: Error,
 ) {
   const calls: { project: Project; input: DeployBackendInput }[] = [];
   const confirmations: boolean[] = [];
@@ -58,6 +62,7 @@ function fakeBackend(
         }
       }
       yield* events;
+      if (failure) throw failure;
       return result;
     },
     async resolveDeployedResources() {
@@ -71,6 +76,8 @@ type TestDeployOptions = {
   isTTY?: boolean;
   stdin?: string;
   teardown?: TeardownConfirmationRequest;
+  /** Thrown by the fake backend after its events, to exercise failure paths. */
+  failure?: Error;
   resolveAccount?: (region: string) => Promise<string>;
 };
 
@@ -80,7 +87,7 @@ function testDeployCommand(
   options: TestDeployOptions = {},
 ) {
   const io = testIO({ isTTY: options.isTTY, stdin: options.stdin });
-  const fake = fakeBackend(result, events, options.teardown);
+  const fake = fakeBackend(result, events, options.teardown, options.failure);
   const core = new TestCoreClient({
     backends: { CDK: fake.backend },
     resolveAccount: options.resolveAccount,
@@ -131,11 +138,26 @@ async function inProjectWithTargets(
   return projectRoot;
 }
 
+/**
+ * Rewrites the spec so it declares no resources — what remove --all leaves —
+ * which is the up-front signal the deploy handler prompts for a teardown on.
+ */
+async function emptyProjectSpec(projectRoot: string): Promise<void> {
+  await writeFile(
+    join(projectRoot, "agentcore", "agentcore.json"),
+    JSON.stringify({ name: "orders", version: 1 }),
+  );
+}
+
 describe("project deploy handler", () => {
   test("defaults to the default target and keeps progress off stdout", async () => {
     const subject = testDeployCommand(
       { outputs: { ZetaUrl: "https://zeta.example", AlphaArn: "arn:alpha" } },
-      [{ message: "Preparing deployment" }, { message: "Deploying stack" }],
+      [
+        { type: "step", message: "Preparing deployment" },
+        { type: "output", line: "CREATE_IN_PROGRESS | AWS::IAM::Role" },
+        { type: "step", message: "Deploying stack" },
+      ],
     );
     await inProjectWithTargets(subject);
 
@@ -144,8 +166,11 @@ describe("project deploy handler", () => {
     expect(subject.calls).toHaveLength(1);
     expect(subject.calls[0]?.input.target).toEqual(DEFAULT_TARGET);
     expect(subject.io.stderr()).toContain("Preparing deployment\nDeploying stack");
+    // Output lines belong to the debug log outside a TTY, not the plain stream.
+    expect(subject.io.stderr()).not.toContain("CREATE_IN_PROGRESS");
     expect(subject.io.stderr()).toContain("Deployed project 'orders' to target 'default'");
-    expect(subject.io.stdout()).toBe("AlphaArn: arn:alpha\nZetaUrl: https://zeta.example");
+    // Stack outputs are rendered only with --json; without it stdout stays empty.
+    expect(subject.io.stdout()).toBe("");
   });
 
   test("passes an explicit target and renders the result as JSON", async () => {
@@ -157,7 +182,36 @@ describe("project deploy handler", () => {
 
     expect(subject.calls).toHaveLength(1);
     expect(subject.calls[0]?.input.target).toEqual(STAGING_TARGET);
-    expect(JSON.parse(subject.io.stdout())).toEqual(result);
+    expect(JSON.parse(subject.io.stdout())).toEqual({
+      message: "Deployed project 'orders' to target 'staging'",
+      ...result,
+    });
+  });
+
+  test("renders a teardown result as JSON with the removal message", async () => {
+    const subject = testDeployCommand({ outputs: {}, tornDown: true });
+    await inProjectWithTargets(subject);
+
+    await subject.run(["--yes", "--json"]);
+
+    expect(JSON.parse(subject.io.stdout())).toEqual({
+      message: "Removed project 'orders' from target 'default'",
+      outputs: {},
+      tornDown: true,
+    });
+  });
+
+  test("renders a deploy failure as JSON without changing the thrown error", async () => {
+    const subject = testDeployCommand({ outputs: {} }, [], {
+      failure: new Error("The stack failed creation: ROLLBACK_COMPLETE"),
+    });
+    await inProjectWithTargets(subject);
+
+    await expect(subject.run(["--json"])).rejects.toThrow("ROLLBACK_COMPLETE");
+
+    expect(JSON.parse(subject.io.stdout())).toEqual({
+      error: "The stack failed creation: ROLLBACK_COMPLETE",
+    });
   });
 
   // --yes is the only way to authorize the teardown the backend refuses without
@@ -176,21 +230,23 @@ describe("project deploy handler", () => {
     expect(subject.io.stderr()).not.toContain("(y/N)");
   });
 
+  // The prompt is settled before the deploy generator starts (and before any
+  // progress UI could own the terminal), so it fires on the spec declaring
+  // nothing deployable rather than on the backend's post-synth discovery.
   test("prompts before tearing down and proceeds on yes", async () => {
     const subject = testDeployCommand({ outputs: {}, tornDown: true }, [], {
       isTTY: true,
       stdin: "yes\n",
       teardown: TEARDOWN,
     });
-    await inProjectWithTargets(subject);
+    const projectRoot = await inProjectWithTargets(subject);
+    await emptyProjectSpec(projectRoot);
 
     await subject.run();
 
     expect(subject.io.stderr()).toContain("Project 'orders' declares no resources to deploy.");
-    expect(subject.io.stderr()).toContain(
-      "Delete stack 'AgentCore-orders-default-0' and every resource in it from target " +
-        "'default' (111122223333/us-east-1)? (y/N)",
-    );
+    expect(subject.io.stderr()).toContain(TEARDOWN_PROMPT);
+    expect(subject.confirmations).toEqual([true]);
     expect(subject.io.stderr()).toContain("Removed project 'orders' from target 'default'");
   });
 
@@ -203,11 +259,14 @@ describe("project deploy handler", () => {
       stdin,
       teardown: TEARDOWN,
     });
-    await inProjectWithTargets(subject);
+    const projectRoot = await inProjectWithTargets(subject);
+    await emptyProjectSpec(projectRoot);
 
     await expect(subject.run()).rejects.toBeInstanceOf(UserCancellationError);
 
     expect(subject.io.stderr()).toContain("(y/N)");
+    // Declined before the generator started: the backend never ran.
+    expect(subject.calls).toEqual([]);
     expect(subject.io.stderr()).not.toContain("Removed project");
   });
 
@@ -217,11 +276,30 @@ describe("project deploy handler", () => {
       stdin: "",
       teardown: TEARDOWN,
     });
-    await inProjectWithTargets(subject);
+    const projectRoot = await inProjectWithTargets(subject);
+    await emptyProjectSpec(projectRoot);
 
     await expect(subject.run()).rejects.toBeInstanceOf(UserCancellationError);
 
+    expect(subject.calls).toEqual([]);
     expect(subject.io.stderr()).not.toContain("Removed project");
+  });
+
+  // The spec-level check can miss (a hand-edited CDK app can synthesize an
+  // empty template from a non-empty spec); the backend's post-synth count is
+  // the backstop, and by then the answer must already be no.
+  test("falls back to requiring --yes when only synthesis reveals the teardown", async () => {
+    const subject = testDeployCommand({ outputs: {}, tornDown: true }, [], {
+      isTTY: true,
+      stdin: "yes\n",
+      teardown: TEARDOWN,
+    });
+    await inProjectWithTargets(subject);
+
+    await expect(subject.run()).rejects.toThrow(/--yes/);
+
+    expect(subject.io.stderr()).not.toContain("(y/N)");
+    expect(subject.confirmations).toEqual([false]);
   });
 
   test("requires --yes instead of prompting in a non-interactive shell", async () => {
@@ -249,6 +327,10 @@ describe("project deploy handler", () => {
 
     expect(subject.io.stderr()).not.toContain("(y/N)");
     expect(subject.confirmations).toEqual([false]);
+    // JSON mode reports the refusal on stdout too, so scripts need not parse stderr.
+    expect(JSON.parse(subject.io.stdout())).toEqual({
+      error: expect.stringContaining("--yes"),
+    });
   });
 
   test("does not prompt for a normal deployment", async () => {
@@ -265,7 +347,7 @@ describe("project deploy handler", () => {
 
   test("says the project was removed when the deploy tore the stack down", async () => {
     const subject = testDeployCommand({ outputs: {}, tornDown: true }, [
-      { message: "Removing stack AgentCore-orders-default" },
+      { type: "step", message: "Removing stack AgentCore-orders-default" },
     ]);
     await inProjectWithTargets(subject);
 

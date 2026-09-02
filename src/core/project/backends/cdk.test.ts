@@ -159,6 +159,10 @@ type HarnessOptions = {
   removePaymentCredentials?: PaymentCredentialRemover;
   /** Stack returned by CloudFormation. Defaults to a present stack; null means absent. */
   describedStack?: Stack | null;
+  /** Chunks the fake synth process streams through onOutput. */
+  synthOutput?: string[];
+  /** Lines the fake Toolkit reports through each operation's onOutput sink. */
+  cdkOutput?: string[];
 };
 
 function harness(options: HarnessOptions = {}) {
@@ -181,8 +185,9 @@ function harness(options: HarnessOptions = {}) {
   const backend = new CdkBackend({
     logger: createSilentLogger(),
     identity: unusedIdentity(),
-    runner: async (command, { cwd }) => {
+    runner: async (command, { cwd, onOutput }) => {
       commands.push({ command, cwd });
+      for (const chunk of options.synthOutput ?? []) onOutput?.(chunk);
     },
     checkTool: async () => {},
     resolveCredentials: async (region) => {
@@ -202,6 +207,7 @@ function harness(options: HarnessOptions = {}) {
     },
     cdk: async (operation, runOptions) => {
       runs.push({ operation, options: runOptions });
+      for (const line of options.cdkOutput ?? []) runOptions.onOutput?.(line);
       if (operation.kind === options.failOperation) {
         throw new Error(`${operation.kind} failed`);
       }
@@ -279,15 +285,38 @@ async function collectDeploy(
   }
 }
 
+/**
+ * The step messages in order, dropping the streamed `output` lines. Ordering
+ * assertions are about the steps: the output events interleaved between them are
+ * whatever the fake process happened to emit.
+ */
+function stepMessages(events: ProjectEvent[]): string[] {
+  return events.flatMap((event) => (event.type === "step" ? [event.message] : []));
+}
+
 describe("CdkBackend.build", () => {
   test("synthesizes into the assembly directory deploy reads", async () => {
     const input = await project();
     const subject = harness();
 
     expect(await collect(subject.backend.build(input))).toEqual([
-      { message: "Synthesizing CloudFormation templates" },
+      { type: "step", message: "Synthesizing CloudFormation templates" },
     ]);
     expect(subject.commands).toEqual([{ command: synthCommand(input), cwd: cdkDirectory(input) }]);
+  });
+
+  test("streams synth output as line-buffered output events", async () => {
+    const input = await project();
+    // The chunk boundary splits a line, so a chunk-per-event bridge would leak
+    // the fragments "line t" / "wo".
+    const subject = harness({ synthOutput: ["line one\nline t", "wo\ntrailing partial"] });
+
+    expect(await collect(subject.backend.build(input))).toEqual([
+      { type: "step", message: "Synthesizing CloudFormation templates" },
+      { type: "output", line: "line one" },
+      { type: "output", line: "line two" },
+      { type: "output", line: "trailing partial" },
+    ]);
   });
 
   test("fails actionably when CDK dependencies are missing", async () => {
@@ -322,9 +351,9 @@ describe("CdkBackend.deploy", () => {
     const deployed = await collectDeploy(subject.backend.deploy(input, deployInput()));
 
     expect(deployed.events).toEqual([
-      { message: `Verifying AWS account ${TARGET.account}` },
-      { message: "Synthesizing CloudFormation templates" },
-      { message: "Deploying AgentCore-example-default-0" },
+      { type: "step", message: `Verifying AWS account ${TARGET.account}` },
+      { type: "step", message: "Synthesizing CloudFormation templates" },
+      { type: "step", message: "Deploying AgentCore-example-default-0" },
     ]);
     expect(deployed.result).toEqual({ outputs: { RuntimeArn: "arn:runtime" } });
     expect(subject.commands).toEqual([{ command: synthCommand(input), cwd: cdkDirectory(input) }]);
@@ -338,6 +367,9 @@ describe("CdkBackend.deploy", () => {
           assemblyDirectory: assemblyDirectory(input),
           credentials: subject.credentials,
           region: TARGET.region,
+          // The backend wires each operation's Toolkit output into its own
+          // event stream through this per-operation sink.
+          onOutput: expect.any(Function),
         },
       },
     ]);
@@ -347,6 +379,38 @@ describe("CdkBackend.deploy", () => {
     expect(subject.accountRegions).toEqual([TARGET.region]);
     expect(subject.bootstrapRegions).toEqual([TARGET.region]);
     expect(subject.templateLoads()).toBe(0);
+  });
+
+  test("streams Toolkit lines as output events under the deploy step", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const subject = harness({
+      outputs: {},
+      cdkOutput: ["AgentCore-example-default-0 | 4/12 | CREATE_IN_PROGRESS"],
+    });
+
+    const deployed = await collectDeploy(subject.backend.deploy(input, deployInput()));
+
+    const deployStep = deployed.events.findIndex(
+      (event) => event.type === "step" && event.message.startsWith("Deploying"),
+    );
+    expect(deployed.events.slice(deployStep)).toEqual([
+      { type: "step", message: "Deploying AgentCore-example-default-0" },
+      { type: "output", line: "AgentCore-example-default-0 | 4/12 | CREATE_IN_PROGRESS" },
+    ]);
+  });
+
+  test("attaches the Toolkit's recent output to a terse operation failure", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const subject = harness({
+      failOperation: "deploy",
+      cdkOutput: ["CREATE_FAILED | AWS::IAM::Role | RuntimeRole", "ROLLBACK_IN_PROGRESS"],
+    });
+
+    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow(
+      /deploy failed[\s\S]*Recent output:[\s\S]*CREATE_FAILED \| AWS::IAM::Role \| RuntimeRole[\s\S]*ROLLBACK_IN_PROGRESS/,
+    );
   });
 
   test("persists the deployed stack ARN under the target", async () => {
@@ -375,7 +439,7 @@ describe("CdkBackend.deploy", () => {
     const input = await project();
     await writeAssembly(input, [TARGET.name]);
     const provisionCredentials: CredentialProvisioner = async function* () {
-      yield { message: "Preparing credential provider 'openai-key'" };
+      yield { type: "step", message: "Preparing credential provider 'openai-key'" };
       return { "openai-key": { credentialProviderArn: "arn:apikey:openai-key" } };
     };
     const subject = harness({
@@ -388,7 +452,7 @@ describe("CdkBackend.deploy", () => {
 
     // The credential step runs (and its ARNs are recorded) before synthesis, so
     // the assembly is synthesized against a state file that already describes them.
-    const messages = deployed.events.map((event) => event.message);
+    const messages = stepMessages(deployed.events);
     expect(messages.indexOf("Preparing credential provider 'openai-key'")).toBeLessThan(
       messages.indexOf("Synthesizing CloudFormation templates"),
     );
@@ -538,6 +602,7 @@ describe("CdkBackend.deploy", () => {
 
     expect(deployed.result).toEqual({ outputs: {}, tornDown: true });
     expect(deployed.events).toContainEqual({
+      type: "step",
       message: "Removing stack AgentCore-example-default-0",
     });
     // Destroyed explicitly, rather than by deploying an empty template and
@@ -563,7 +628,7 @@ describe("CdkBackend.deploy", () => {
     const removals: string[] = [];
     const removePaymentCredentials: PaymentCredentialRemover = async function* (project) {
       removals.push(project.name);
-      yield { message: "Removing credential provider 'wallet'" };
+      yield { type: "step", message: "Removing credential provider 'wallet'" };
     };
     const subject = harness({ removePaymentCredentials });
 
@@ -573,7 +638,7 @@ describe("CdkBackend.deploy", () => {
 
     expect(removals).toEqual(["example"]);
     // After the destroy, since a resource in the stack may still be using it.
-    const messages = deployed.events.map((event) => event.message);
+    const messages = stepMessages(deployed.events);
     expect(messages.indexOf("Removing stack AgentCore-example-default-0")).toBeLessThan(
       messages.indexOf("Removing credential provider 'wallet'"),
     );
@@ -609,7 +674,7 @@ describe("CdkBackend.deploy", () => {
       { recorded },
     ) {
       handed.push(recorded);
-      yield { message: "Removing credential provider 'wallet'" };
+      yield { type: "step", message: "Removing credential provider 'wallet'" };
     };
     const subject = harness({ removePaymentCredentials });
 
@@ -661,6 +726,7 @@ describe("CdkBackend.deploy", () => {
       { kind: "deploy", stackArtifactId: "AgentCore-example-default-0" },
     ]);
     expect(deployed.events).toContainEqual({
+      type: "step",
       message: `Bootstrapping aws://${TARGET.account}/${TARGET.region}`,
     });
   });
@@ -789,8 +855,18 @@ describe("CdkBackend.resolveDeployedResources", () => {
     const resources = await subject.backend.resolveDeployedResources(input, { target: TARGET });
 
     expect(resources).toEqual([
-      { resourceType: "runtime", name: "checkout_agent", id: "checkout_agent-AbCdEf1234" },
-      { resourceType: "harness", name: "support_agent", id: "support_agent-AbCdEf1234" },
+      {
+        resourceType: "runtime",
+        name: "checkout_agent",
+        id: "checkout_agent-AbCdEf1234",
+        target: TARGET,
+      },
+      {
+        resourceType: "harness",
+        name: "support_agent",
+        id: "support_agent-AbCdEf1234",
+        target: TARGET,
+      },
     ]);
     expect(subject.stackReads).toHaveLength(1);
   });

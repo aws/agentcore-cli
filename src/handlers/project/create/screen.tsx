@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
+import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import { useNavigate } from "react-router";
 import { ProjectNameSchema } from "../../../projectSchemas/project";
+import type { HarnessModelProvider } from "../../../projectSchemas/harness";
 import type { ScreenProps } from "../../types";
 import type { CreateProjectInput } from "../types";
 import { DEFAULT_HARNESS_MODEL } from "../add/harness";
@@ -28,21 +30,75 @@ const theme = darkTheme;
 // a harness (the default) or scaffolded runtime code.
 type ProjectKind = "harness" | "agent";
 
+interface ProjectModelConfig {
+  modelId: string;
+  apiKeyArn: string;
+  apiBase: string;
+}
+
+interface ProjectModelValues {
+  provider: HarnessModelProvider;
+  configs: Record<HarnessModelProvider, ProjectModelConfig>;
+}
+
 interface CreateProjectFormValues {
   name: string;
   kind: ProjectKind;
-  // modelId configures the harness path; everything else uses defaults.
-  modelId: string;
+  model: ProjectModelValues;
   // template + memory configure the agent path; memory applies to strands only.
   template: RuntimeTemplateShortcutName;
   memory: MemoryShortcutName;
+}
+
+const MODEL_PROVIDERS: {
+  provider: HarnessModelProvider;
+  label: string;
+  description: string;
+  defaultModelId: string;
+}[] = [
+  {
+    provider: "bedrock",
+    label: "bedrock (recommended)",
+    description: "an Amazon Bedrock model or inference profile",
+    defaultModelId: DEFAULT_HARNESS_MODEL.modelId,
+  },
+  {
+    provider: "open_ai",
+    label: "openai",
+    description: "an OpenAI model using an API-key credential ARN",
+    defaultModelId: "gpt-5",
+  },
+  {
+    provider: "gemini",
+    label: "gemini",
+    description: "a Google Gemini model using an API-key credential ARN",
+    defaultModelId: "gemini-2.5-flash",
+  },
+  {
+    provider: "lite_llm",
+    label: "litellm",
+    description: "a third-party provider through LiteLLM",
+    defaultModelId: "anthropic/claude-sonnet-4-5",
+  },
+];
+
+function emptyProjectModel(): ProjectModelValues {
+  return {
+    provider: "bedrock",
+    configs: Object.fromEntries(
+      MODEL_PROVIDERS.map(({ provider, defaultModelId }) => [
+        provider,
+        { modelId: defaultModelId, apiKeyArn: "", apiBase: "" },
+      ]),
+    ) as Record<HarnessModelProvider, ProjectModelConfig>,
+  };
 }
 
 function emptyCreateProjectForm(): CreateProjectFormValues {
   return {
     name: "",
     kind: "harness",
-    modelId: DEFAULT_HARNESS_MODEL.modelId,
+    model: emptyProjectModel(),
     template: "strands-python",
     memory: "longAndShortTerm",
   };
@@ -67,6 +123,11 @@ const TEMPLATE_OPTIONS: {
   description: string;
 }[] = [
   {
+    template: "strands-python",
+    label: "strands-python (recommended)",
+    description: "Strands agent on Bedrock with memory (CodeZip build)",
+  },
+  {
     template: "hello-world-python",
     label: "hello-world-python",
     description: "minimal Python agent on Bedrock, no framework (CodeZip build)",
@@ -77,39 +138,54 @@ const TEMPLATE_OPTIONS: {
     description: "the hello-world agent packaged as a container image",
   },
   {
-    template: "strands-python",
-    label: "strands-python (recommended)",
-    description: "Strands agent on Bedrock with memory (CodeZip build)",
+    template: "py-mcp",
+    label: "py-mcp",
+    description: "MCP server exposing tools via FastMCP (CodeZip build)",
+  },
+  {
+    template: "strands-py-a2a",
+    label: "strands-py-a2a",
+    description: "Strands agent speaking the A2A protocol on Bedrock (CodeZip build)",
   },
 ];
 
 const MEMORY_OPTIONS: { memory: MemoryShortcutName; label: string; description: string }[] = [
+  {
+    memory: "longAndShortTerm",
+    label: "long and short-term",
+    description: "session events plus long-term memory strategies (recommended)",
+  },
   { memory: "none", label: "none", description: "no memory resources" },
   {
     memory: "shortTerm",
     label: "short-term",
     description: "raw session events, 30-day expiry",
   },
-  {
-    memory: "longAndShortTerm",
-    label: "long and short-term",
-    description: "session events plus long-term memory strategies (recommended)",
-  },
 ];
 
-// buildCreateInput translates the form into the same CreateProjectInput the
-// flag-driven `project create` builds: the harness path reuses its
-// resolveScaffoldHarnessInput translation and the agent path resolves the same
-// template shortcuts, so the wizard cannot drift from the headless CLI.
+function selectedModel(values: CreateProjectFormValues): ProjectModelConfig {
+  return values.model.configs[values.model.provider];
+}
+
+// buildCreateInput translates the form through the same resolver as the
+// flag-driven path, including its existing API-key ARN support.
 export function buildCreateInput(values: CreateProjectFormValues): CreateProjectInput {
   if (values.kind === "harness") {
+    const provider = values.model.provider;
+    const config = selectedModel(values);
     return {
       name: values.name,
       skipInstall: false,
       skipGit: false,
       scaffoldHarnessInput: resolveScaffoldHarnessInput({
         name: values.name,
-        "model-id": values.modelId,
+        "model-provider": provider,
+        "model-id": config.modelId.trim(),
+        "api-key-arn": config.apiKeyArn.trim() || undefined,
+        "api-base":
+          provider === "lite_llm" && config.apiBase.trim() !== ""
+            ? config.apiBase.trim()
+            : undefined,
       }),
     };
   }
@@ -128,14 +204,35 @@ export function buildCreateInput(values: CreateProjectFormValues): CreateProject
 
 // summaryOf renders the review table: what will be created, and where.
 function summaryOf(values: CreateProjectFormValues): Record<string, string> {
-  const base = { project: values.name, directory: `./${values.name}` };
+  const base = { project: values.name };
   if (values.kind === "harness") {
-    return { ...base, type: "harness", model: values.modelId };
+    const provider = values.model.provider;
+    const config = selectedModel(values);
+    return {
+      ...base,
+      type: "harness",
+      provider: providerLabel(provider),
+      model: config.modelId,
+      ...(config.apiKeyArn && { "api key arn": config.apiKeyArn }),
+      ...(config.apiBase && { "api base url": config.apiBase }),
+      directory: `./${values.name}`,
+    };
   }
   const withTemplate = { ...base, type: "agent code", template: values.template };
   return values.template === "strands-python"
-    ? { ...withTemplate, memory: values.memory }
-    : withTemplate;
+    ? {
+        ...withTemplate,
+        memory: MEMORY_OPTIONS.find((option) => option.memory === values.memory)!.label,
+        directory: `./${values.name}`,
+      }
+    : { ...withTemplate, directory: `./${values.name}` };
+}
+
+function providerLabel(provider: HarnessModelProvider): string {
+  return MODEL_PROVIDERS.find((candidate) => candidate.provider === provider)!.label.replace(
+    " (recommended)",
+    "",
+  );
 }
 
 // ─── wizard shell ─────────────────────────────────────────────────────────────
@@ -199,7 +296,7 @@ export function ProjectCreateScreen({ core }: ScreenProps) {
     setPhase({ kind: "running" });
     try {
       for await (const event of core.projectManager.create(input)) {
-        setEvents((current) => [...current, event.message]);
+        if (event.type === "step") setEvents((current) => [...current, event.message]);
       }
       setPhase({ kind: "success" });
     } catch (error) {
@@ -212,7 +309,7 @@ export function ProjectCreateScreen({ core }: ScreenProps) {
       <Box flexDirection="column">
         {phase.kind === "form" && (
           <>
-            <Box paddingX={1}>
+            <Box paddingX={1} flexShrink={0}>
               <Stepper
                 steps={steps}
                 currentStep={stepKey}
@@ -259,8 +356,9 @@ function hintsFor(stepKey: string, phase: WizardPhase): { key: string; label: st
   ];
   switch (stepKey) {
     case "name":
-    case "model":
       return [{ key: "enter", label: "continue" }, ...base];
+    case "model":
+      return [{ key: "↑↓", label: "navigate" }, { key: "enter", label: "continue" }, ...base];
     case "type":
     case "template":
     case "memory":
@@ -309,8 +407,8 @@ function WizardStep({ stepKey, values, patch, onNext, onBack, onSubmit }: Wizard
     case "model":
       return (
         <ModelStep
-          value={values.modelId}
-          onChange={(modelId) => patch({ modelId })}
+          value={values.model}
+          onChange={(model) => patch({ model })}
           onNext={onNext}
           onBack={onBack}
         />
@@ -382,7 +480,7 @@ function NameStep({
     <Box flexDirection="column" paddingX={1}>
       <FormTextInput
         name="name your project"
-        helpText="also the directory it is created in · letters and digits, starting with a letter"
+        helpText="also the directory name · 1–23 letters and digits, starting with a letter"
         placeholder="MyAssistant"
         errorText=""
         value={value}
@@ -443,47 +541,206 @@ function RadioStep({
   );
 }
 
+type ModelFieldKey = keyof ProjectModelConfig;
+
+interface ModelField {
+  key: ModelFieldKey;
+  name: string;
+  helpText: string;
+  placeholder: string;
+  required: boolean;
+  requiredError: string;
+}
+
+function modelFields(provider: HarnessModelProvider): ModelField[] {
+  const option = MODEL_PROVIDERS.find((candidate) => candidate.provider === provider)!;
+  const fields: ModelField[] = [
+    {
+      key: "modelId",
+      name: "model id",
+      helpText:
+        provider === "bedrock"
+          ? "a Bedrock model or inference profile id"
+          : `the ${providerLabel(provider)} model to use`,
+      placeholder: option.defaultModelId,
+      required: true,
+      requiredError: `enter a model id for ${providerLabel(provider)}`,
+    },
+  ];
+
+  if (provider !== "bedrock") {
+    fields.push({
+      key: "apiKeyArn",
+      name: "api key arn",
+      helpText:
+        provider === "lite_llm"
+          ? "optional · an AgentCore Identity API-key credential provider ARN"
+          : "an AgentCore Identity API-key credential provider ARN",
+      placeholder:
+        provider === "lite_llm"
+          ? "optional"
+          : "arn:aws:bedrock-agentcore:…:token-vault/…/apikeycredentialprovider/…",
+      required: provider !== "lite_llm",
+      requiredError: `enter an API key ARN for ${providerLabel(provider)}`,
+    });
+  }
+
+  if (provider === "lite_llm") {
+    fields.push({
+      key: "apiBase",
+      name: "api base url",
+      helpText: "optional · the provider API endpoint",
+      placeholder: "https://…",
+      required: false,
+      requiredError: "",
+    });
+  }
+
+  return fields;
+}
+
 function ModelStep({
   value,
   onChange,
   onNext,
   onBack,
 }: {
-  value: string;
-  onChange: (value: string) => void;
+  value: ProjectModelValues;
+  onChange: (value: ProjectModelValues) => void;
   onNext: () => void;
   onBack: () => void;
 }) {
+  const providerIndex = MODEL_PROVIDERS.findIndex((option) => option.provider === value.provider);
+  const fields = modelFields(value.provider);
+  const config = value.configs[value.provider];
+  const [focusedField, setFocusedField] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollViewRef>(null);
+
+  const keepFocusedFieldVisible = useCallback(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+    if (focusedField === null) {
+      scroll.scrollToTop();
+      return;
+    }
+
+    const position = scroll.getItemPosition(focusedField + 1);
+    if (!position) return;
+    const viewportHeight = scroll.getViewportHeight();
+    const offset = scroll.getScrollOffset();
+    const bottom = position.top + position.height;
+    if (position.top < offset) scroll.scrollTo(position.top);
+    else if (bottom > offset + viewportHeight) scroll.scrollTo(bottom - viewportHeight);
+  }, [focusedField]);
+
+  useEffect(() => {
+    keepFocusedFieldVisible();
+  }, [keepFocusedFieldVisible, value.provider, error]);
 
   useInput((_input, key) => {
+    if (focusedField === null) {
+      if (key.escape) {
+        onBack();
+        return;
+      }
+      if (key.upArrow || key.downArrow) {
+        const nextIndex = key.upArrow
+          ? Math.max(0, providerIndex - 1)
+          : Math.min(MODEL_PROVIDERS.length - 1, providerIndex + 1);
+        onChange({ ...value, provider: MODEL_PROVIDERS[nextIndex]!.provider });
+        setError(null);
+        return;
+      }
+      if (key.return) setFocusedField(0);
+      return;
+    }
+
     if (key.escape) {
-      onBack();
+      setFocusedField(null);
+      setError(null);
+      return;
+    }
+    if (key.upArrow) {
+      setFocusedField(focusedField === 0 ? null : focusedField - 1);
+      setError(null);
+      return;
+    }
+    if (key.downArrow) {
+      setFocusedField(Math.min(fields.length - 1, focusedField + 1));
+      setError(null);
       return;
     }
     if (key.return) {
-      if (value.trim() === "") {
-        setError("enter a model id");
+      const field = fields[focusedField]!;
+      if (field.required && config[field.key].trim() === "") {
+        setError(field.requiredError);
+        return;
+      }
+      if (focusedField < fields.length - 1) {
+        setFocusedField(focusedField + 1);
+        return;
+      }
+      const missing = fields.findIndex(
+        (candidate) => candidate.required && config[candidate.key].trim() === "",
+      );
+      if (missing >= 0) {
+        setFocusedField(missing);
+        setError(fields[missing]!.requiredError);
         return;
       }
       onNext();
     }
   });
 
+  const options: FormRadioOption[] = MODEL_PROVIDERS.map(({ label, description }) => ({
+    label,
+    description,
+  }));
+
   return (
-    <Box flexDirection="column" paddingX={1}>
-      <FormTextInput
-        name="model id"
-        helpText="the model the harness runs on · every other setting uses defaults"
-        placeholder={DEFAULT_HARNESS_MODEL.modelId}
-        errorText=""
-        value={value}
-        onChange={(next) => {
-          onChange(next);
-          setError(null);
-        }}
-      />
-      {error && <Text color={theme.colors.error}>{error}</Text>}
+    <Box flexDirection="column" paddingX={1} flexGrow={1} minHeight={0}>
+      <ScrollView
+        ref={scrollRef}
+        flexGrow={1}
+        minHeight={0}
+        onItemHeightChange={keepFocusedFieldVisible}
+        onViewportSizeChange={keepFocusedFieldVisible}
+      >
+        <FormRadioGroup
+          key="provider"
+          name="choose a model"
+          helpText="the provider and model that will power the harness"
+          options={options}
+          selectedIndex={providerIndex}
+        />
+        {fields.map((field, fieldIndex) => (
+          <FormTextInput
+            key={`${value.provider}.${field.key}`}
+            name={field.name}
+            helpText={field.helpText}
+            placeholder={field.placeholder}
+            errorText=""
+            value={config[field.key]}
+            onChange={(next) => {
+              onChange({
+                ...value,
+                configs: {
+                  ...value.configs,
+                  [value.provider]: { ...config, [field.key]: next },
+                },
+              });
+              setError(null);
+            }}
+            focused={focusedField === fieldIndex}
+          />
+        ))}
+        {error && (
+          <Text key="error" color={theme.colors.error}>
+            {error}
+          </Text>
+        )}
+      </ScrollView>
     </Box>
   );
 }
@@ -517,9 +774,11 @@ function ReviewStep({
       >
         <KeyValueTable items={summaryOf(values)} />
       </Box>
-      <Text color={theme.colors.muted}>
-        enter scaffolds the project, installs dependencies, and initializes git
-      </Text>
+      <Box marginTop={1}>
+        <Text color={theme.colors.muted}>
+          enter scaffolds the project, installs dependencies, and initializes git
+        </Text>
+      </Box>
     </Box>
   );
 }
@@ -544,13 +803,15 @@ function SuccessPanel({ name, onContinue }: { name: string; onContinue: () => vo
   });
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" gap={1}>
       <Text color={theme.colors.success} bold>
         ✔ project created in ./{name}
       </Text>
-      <Text color={theme.colors.text}>next steps</Text>
-      <Text color={theme.colors.primary}>{`  cd ${name}`}</Text>
-      <Text color={theme.colors.primary}>{"  agentcore project deploy"}</Text>
+      <Box flexDirection="column">
+        <Text color={theme.colors.text}>next steps</Text>
+        <Text color={theme.colors.primary}>{`  cd ${name}`}</Text>
+        <Text color={theme.colors.primary}>{"  agentcore project deploy"}</Text>
+      </Box>
       <Text color={theme.colors.muted}>enter exits</Text>
     </Box>
   );

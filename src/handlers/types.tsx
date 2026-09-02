@@ -5,6 +5,7 @@ import type { CoreIdentityClient } from "./identity/types.tsx";
 import type { CoreMemoryClient } from "./memory/types.tsx";
 import type { CoreObservabilityClient, CoreRuntimeClient } from "./runtime/types.tsx";
 import type { Context } from "../router";
+import type { CoreFetch } from "../core/types";
 import type { ProjectManager } from "./project/types.ts";
 import type { DescribeBedrockAgent } from "../core/project/bedrockAgent";
 
@@ -19,6 +20,8 @@ export interface Core {
   projectManager: ProjectManager;
   /** Describes a Bedrock Agent + alias for `--type import`. */
   describeBedrockAgent: DescribeBedrockAgent;
+  /** Shared outbound HTTP for handlers that call non-AWS APIs directly (e.g. feedback → Aperture). */
+  fetch: CoreFetch;
 }
 
 // ScreenProps is the common prop set every TUI screen receives. `ctx` carries the

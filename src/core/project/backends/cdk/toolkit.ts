@@ -23,6 +23,12 @@ export type CdkRunOptions = {
   credentials: CdkCredentialProvider;
   /** Region used for the Toolkit's own AWS SDK calls. */
   region: string;
+  /**
+   * Receives each line the Toolkit reports during this operation (resource
+   * progress, asset publishing). Everything still lands in the debug log
+   * whether or not a sink is given.
+   */
+  onOutput?: (line: string) => void;
 };
 
 export type CdkOutputs = Record<string, string>;
@@ -113,7 +119,7 @@ export async function loadBootstrapTemplate(
   };
 }
 
-export function createCdkIoHost(logger: Logger): IIoHost {
+export function createCdkIoHost(logger: Logger, onLine?: (line: string) => void): IIoHost {
   const toolkitLogger = logger.child({ component: "cdk-toolkit" });
   const notify = async (message: IoMessage<unknown>): Promise<void> => {
     toolkitLogger
@@ -123,6 +129,14 @@ export function createCdkIoHost(logger: Logger): IIoHost {
         ...(message.code && { code: message.code }),
       })
       .debug(message.message);
+    // Toolkit messages can span lines (diffs, stack traces); split so the sink
+    // always receives displayable single lines.
+    if (onLine) {
+      for (const line of message.message.split("\n")) {
+        const trimmed = line.trimEnd();
+        if (trimmed) onLine(trimmed);
+      }
+    }
   };
 
   return {
@@ -227,8 +241,10 @@ export function createCdkRunner(
   logger: Logger,
   load: CdkToolkitLoader = loadCdkToolkit,
 ): CdkRunner {
-  const ioHost = createCdkIoHost(logger);
   return async (operation, options) => {
+    // A fresh ioHost per operation, so each operation's messages can flow into
+    // its own onOutput sink rather than only the construction-time logger.
+    const ioHost = createCdkIoHost(logger, options.onOutput);
     const loaded = await load(ioHost, options.region, options.credentials);
     return performCdkOperation(loaded, operation, options);
   };

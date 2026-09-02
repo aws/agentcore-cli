@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ Name }}"
+version = "0.1.0"
+description = "AgentCore Code-Based Evaluator (Autoevals)"
+requires-python = ">=3.10"
+dependencies = [
+    # 1.20.0 is the first release shipping third_party.autoevals.AutoEvalsAdapter;
+    # the extra owns the autoevals version, so pinning it here only conflicts.
+    "bedrock-agentcore[autoevals]>=1.20.0,<2.0.0",
+{{#if ModelProviderBedrock}}
+    # autoevals grades via LiteLLMClient -> Bedrock (Converse); litellm replaces the openai judge
+    "litellm>=1.60,<1.85",
+{{else}}
+    "openai>=1.0.0,<2.0.0",
+{{/if}}
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

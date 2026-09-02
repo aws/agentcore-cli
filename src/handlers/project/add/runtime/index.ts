@@ -5,7 +5,7 @@ import { parseJsonFlag, parseTags } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
 import { type EnvVar, BuildTypeSchema } from "../../../../projectSchemas/runtime";
 import { RuntimeAuthorizerTypeSchema } from "../../../../projectSchemas/auth";
-import { NetworkModeSchema, ProtocolModeSchema } from "../../../../projectSchemas/constants";
+import { NetworkModeSchema } from "../../../../projectSchemas/constants";
 import { SourceResolver } from "../../../../io";
 import {
   LANGUAGE_VERSION_DEFAULTS,
@@ -87,7 +87,11 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         "additional IAM policy ARNs or policy document paths for the execution role",
         z.array(z.string()).optional(),
       ),
-      flag("protocol", "server protocol: HTTP, MCP, A2A, AGUI", ProtocolModeSchema.optional()),
+      flag(
+        "protocol",
+        "server protocol: HTTP, MCP, or A2A",
+        z.enum(["HTTP", "MCP", "A2A"]).optional(),
+      ),
       flag(
         "network-mode",
         "network mode for the runtime environment (PUBLIC or VPC)",
@@ -130,13 +134,14 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         "build",
         "language",
         "framework",
+        "protocol",
         "model-provider",
         "api-key",
         "memory",
       ] as const;
       const presentScaffoldingFlags = scaffoldingFlags.filter((f) => flags[f] !== undefined);
       const isTemplate = flags["template"] !== undefined;
-      const lockedFlag = (["language", "framework"] as const).find(
+      const lockedFlag = (["language", "framework", "protocol"] as const).find(
         (flagName) => flags[flagName] !== undefined,
       );
       if (isTemplate && lockedFlag) {
@@ -191,6 +196,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
                 build: flags.build,
                 language: flags.language,
                 framework: flags.framework,
+                protocol: flags.protocol,
                 modelProvider: flags["model-provider"],
                 apiKey,
                 memory: MEMORY_SHORTCUTS[flags.memory ?? defaultMemory](runtimeName),
@@ -243,7 +249,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         resourceType: "runtime",
         resourceConfig: result.data,
       })) {
-        config.io.stderr.write(`${event.message}\n`);
+        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
       }
 
       config.io.stderr.write(`added runtime '${flags.name}' to '${project.name}'\n`);

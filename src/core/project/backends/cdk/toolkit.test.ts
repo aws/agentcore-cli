@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { IoMessage, IoRequest } from "@aws-cdk/toolkit-lib";
+import type { IIoHost, IoMessage, IoRequest } from "@aws-cdk/toolkit-lib";
 import * as toolkitLib from "@aws-cdk/toolkit-lib";
 import { createSilentLogger } from "../../../../testing";
 import {
@@ -95,6 +95,22 @@ describe("CDK Toolkit IO", () => {
     await createCdkIoHost(logger).notify(message("stack deployment started"));
 
     expect(debug).toHaveBeenCalledWith("stack deployment started");
+  });
+
+  test("forwards notification lines to the output sink while still debug-logging", async () => {
+    const logger = createSilentLogger();
+    const debug = mock(() => {});
+    logger.debug = debug;
+    const lines: string[] = [];
+
+    // A multi-line Toolkit message (a diff, a stack trace) must reach the sink
+    // as displayable single lines.
+    await createCdkIoHost(logger, (line) => lines.push(line)).notify(
+      message("first line\nsecond line\n"),
+    );
+
+    expect(lines).toEqual(["first line", "second line"]);
+    expect(debug).toHaveBeenCalledWith("first line\nsecond line\n");
   });
 
   test("answers noninteractive requests with their default response", async () => {
@@ -272,6 +288,24 @@ describe("Toolkit loading", () => {
 
     expect(regions).toEqual(["eu-west-1"]);
     expect(providers).toEqual([credentials]);
+  });
+
+  test("routes the operation's ioHost messages into its onOutput sink", async () => {
+    const { loaded } = loadedToolkit();
+    const lines: string[] = [];
+    const ioHosts: IIoHost[] = [];
+    const runner = createCdkRunner(createSilentLogger(), async (ioHost) => {
+      ioHosts.push(ioHost);
+      return loaded;
+    });
+
+    await runner(
+      { kind: "deploy", stackArtifactId: "AgentCore-orders-default" },
+      runOptions({ onOutput: (line) => lines.push(line) }),
+    );
+    await ioHosts[0]!.notify(message("CREATE_COMPLETE | AWS::IAM::Role"));
+
+    expect(lines).toEqual(["CREATE_COMPLETE | AWS::IAM::Role"]);
   });
 });
 

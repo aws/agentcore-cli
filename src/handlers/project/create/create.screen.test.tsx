@@ -79,10 +79,15 @@ describe("project create wizard", () => {
     expect(r.lastFrame()).toContain("● harness (recommended)");
     await r.press("return");
 
-    // Model step: prefilled with the default harness model.
-    await waitForText(r.lastFrame, "model id");
+    // Model step: providers and the selected provider's fields share one page.
+    await waitForText(r.lastFrame, "choose a model");
+    expect(r.lastFrame()).toContain("● bedrock (recommended)");
+    expect(r.lastFrame()).toContain("○ openai");
+    expect(r.lastFrame()).toContain("○ gemini");
+    expect(r.lastFrame()).toContain("○ litellm");
     expect(r.lastFrame()).toContain(DEFAULT_MODEL_ID);
-    await r.press("return");
+    await r.press("return"); // focus model id
+    await r.press("return"); // accept model id
 
     // Review: the summary names the project, type, model, and directory.
     await waitForText(r.lastFrame, "this project will be created");
@@ -131,8 +136,10 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "what should the project be built around?");
     await r.press("return");
 
-    // The cursor starts at the end of the prefilled id; typing appends.
-    await waitForText(r.lastFrame, "model id");
+    // Enter focuses the selected provider's model field. The cursor starts at
+    // the end of the prefilled id, so typing appends.
+    await waitForText(r.lastFrame, "choose a model");
+    await r.press("return");
     await r.write("-test");
     await r.press("return");
     await waitForText(r.lastFrame, "this project will be created");
@@ -150,6 +157,115 @@ describe("project create wizard", () => {
     });
     r.unmount();
   }, 10000);
+
+  test("a provider API key ARN flows through the existing harness input", async () => {
+    const directory = await inTempDirectory();
+    const core = new TestCoreClient();
+    const inputs = spyOnCreate(core);
+    const r = renderScreen("/agentcore/project/create", { core });
+    const apiKeyArn =
+      "arn:aws:bedrock-agentcore:us-east-1:123456789012:token-vault/default/apikeycredentialprovider/OpenAIKey";
+
+    await waitForText(r.lastFrame, "name your project");
+    await r.write("OpenAIApp");
+    await r.press("return");
+    await waitForText(r.lastFrame, "what should the project be built around?");
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "choose a model");
+    await r.press("down");
+    expect(r.lastFrame()).toContain("● openai");
+    await r.press("return"); // focus model id
+    expect(r.lastFrame()).toContain("gpt-5");
+    await r.press("return"); // focus API key ARN
+    await r.press("return");
+    await waitForText(r.lastFrame, "enter an API key ARN for openai");
+    await r.write(apiKeyArn);
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "this project will be created");
+    const review = r.lastFrame()!;
+    expect(review).toContain("provider");
+    expect(review).toContain("openai");
+    expect(review).toContain("model");
+    expect(review).toContain("gpt-5");
+    expect(review).toContain("api key arn");
+    expect(review.replace(/\s/g, "")).toContain(apiKeyArn);
+    await r.press("return");
+    await waitForText(r.lastFrame, "project created in ./OpenAIApp", 5000);
+
+    expect(inputs[0]).toEqual({
+      name: "OpenAIApp",
+      skipInstall: false,
+      skipGit: false,
+      scaffoldHarnessInput: {
+        name: "OpenAIApp",
+        model: {
+          provider: "open_ai",
+          modelId: "gpt-5",
+          apiKeyArn,
+        },
+      },
+    });
+
+    const root = join(directory, "OpenAIApp");
+    const spec = await Bun.file(join(root, "agentcore", "agentcore.json")).json();
+    expect(spec.credentials).toEqual([]);
+    const harness = await Bun.file(join(root, "app", "OpenAIApp", "harness.json")).json();
+    expect(harness.model).toEqual({
+      provider: "open_ai",
+      modelId: "gpt-5",
+      apiKeyArn,
+    });
+    r.unmount();
+  }, 10000);
+
+  test("switching providers preserves each provider's model input", async () => {
+    const r = renderScreen("/agentcore/project/create");
+
+    await waitForText(r.lastFrame, "name your project");
+    await r.write("ProviderApp");
+    await r.press("return");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model");
+
+    await r.press("down"); // openai
+    await r.press("return"); // model id
+    await r.write("-custom");
+    await r.press("escape"); // provider list
+    await r.press("down"); // gemini
+    expect(r.lastFrame()).toContain("● gemini");
+    await r.press("up"); // openai
+    await r.press("return");
+    expect(r.lastFrame()).toContain("gpt-5-custom");
+    r.unmount();
+  });
+
+  test("the model picker remains readable in an 80x24 terminal", async () => {
+    const r = renderScreen("/agentcore/project/create");
+    await r.resize(80, 24);
+
+    await waitForText(r.lastFrame, "name your project");
+    await r.write("CompactApp");
+    await r.press("return");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model");
+
+    const frame = r.lastFrame()!;
+    const lines = frame.split("\n");
+    expect(lines[0]).toContain("agentcore → project → create");
+    expect(lines[1]).toBe("─".repeat(80));
+    expect(lines[2]).toContain("✓ name");
+    expect(frame).toContain("● bedrock (recommended)");
+    expect(frame).toContain("○ openai");
+    expect(frame).toContain("○ gemini");
+    expect(frame).toContain("○ litellm");
+    expect(frame).toContain("model id");
+    expect(frame).toContain(DEFAULT_MODEL_ID);
+    expect(frame).toContain("[enter] continue");
+    expect(frame).toContain("[esc] back");
+    r.unmount();
+  });
 
   test("template flow: strands with the default memory choice", async () => {
     const directory = await inTempDirectory();
@@ -171,16 +287,27 @@ describe("project create wizard", () => {
     expect(r.lastFrame()).toContain("hello-world-python");
     expect(r.lastFrame()).toContain("hello-world-python-container");
     expect(r.lastFrame()).toContain("● strands-python (recommended)");
+    const templateFrame = r.lastFrame() ?? "";
+    expect(templateFrame.indexOf("strands-python")).toBeLessThan(
+      templateFrame.indexOf("hello-world-python"),
+    );
     await r.press("return");
 
     // Memory step: asked only for strands; long and short-term preselected.
     await waitForText(r.lastFrame, "choose a memory configuration");
     expect(r.lastFrame()).toContain("● long and short-term");
+    const memoryFrame = r.lastFrame() ?? "";
+    expect(memoryFrame.indexOf("long and short-term")).toBeLessThan(memoryFrame.indexOf("none"));
     await r.press("return");
 
     await waitForText(r.lastFrame, "this project will be created");
+    const reviewLines = (r.lastFrame() ?? "").split("\n");
+    const reviewHeading = reviewLines.findIndex((line) =>
+      line.includes("this project will be created"),
+    );
+    expect(reviewLines[reviewHeading + 1] ?? "").toContain("─");
     expect(r.lastFrame()).toContain("strands-python");
-    expect(r.lastFrame()).toContain("longAndShortTerm");
+    expect(r.lastFrame()).toContain("long and short-term");
     await r.press("return");
     await waitForText(r.lastFrame, "project created in ./StrandsApp", 5000);
 
@@ -219,8 +346,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "choose a template");
     await r.press("return"); // strands-python is preselected
     await waitForText(r.lastFrame, "choose a memory configuration");
-    await r.press("up"); // short-term
-    await r.press("up"); // none
+    await r.press("down"); // none
     await waitForText(r.lastFrame, "● none");
     await r.press("return");
     await waitForText(r.lastFrame, "this project will be created");
@@ -249,8 +375,7 @@ describe("project create wizard", () => {
     await r.press("down");
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("up"); // hello-world-python-container
-    await r.press("up"); // hello-world-python
+    await r.press("down"); // hello-world-python
     await waitForText(r.lastFrame, "● hello-world-python ");
     await r.press("return");
 
@@ -341,11 +466,58 @@ describe("project create wizard", () => {
     r.unmount();
   });
 
+  test("the spinner follows streamed progress without a blank row", async () => {
+    const core = new TestCoreClient();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    core.projectManager.create = () => {
+      return (async function* () {
+        yield { type: "step", message: "syncing dependencies" };
+        await held;
+        throw new Error("stopped");
+      })();
+    };
+    const r = renderScreen("/agentcore/project/create", { core });
+
+    await waitForText(r.lastFrame, "name your project");
+    await r.write("DemoApp");
+    await r.press("return");
+    await waitForText(r.lastFrame, "what should the project be built around?");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model");
+    await r.press("return");
+    await r.press("return");
+    await waitForText(r.lastFrame, "this project will be created");
+    await r.press("return");
+
+    await waitFor(() =>
+      r.frames.some(
+        (frame) => frame.includes("✓ syncing dependencies") && frame.includes("creating DemoApp…"),
+      ),
+    );
+    const progressFrame =
+      [...r.frames]
+        .reverse()
+        .find(
+          (frame) =>
+            frame.includes("✓ syncing dependencies") && frame.includes("creating DemoApp…"),
+        ) ?? "";
+    const lines = progressFrame.split("\n");
+    const eventLine = lines.findIndex((line) => line.includes("✓ syncing dependencies"));
+    const spinnerLine = lines.findIndex((line) => line.includes("creating DemoApp…"));
+    expect(spinnerLine).toBe(eventLine + 1);
+
+    r.unmount();
+    release();
+  });
+
   test("an error from create() renders after the streamed progress", async () => {
     const core = new TestCoreClient();
     core.projectManager.create = () => {
       return (async function* () {
-        yield { message: "creating project directory" };
+        yield { type: "step" as const, message: "creating project directory" };
         throw new Error("disk full");
       })();
     };
@@ -356,8 +528,9 @@ describe("project create wizard", () => {
     await r.press("return");
     await waitForText(r.lastFrame, "what should the project be built around?");
     await r.press("return");
-    await waitForText(r.lastFrame, "model id");
-    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model");
+    await r.press("return"); // focus model id
+    await r.press("return"); // accept model id
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
 
@@ -377,7 +550,7 @@ describe("project create wizard", () => {
     core.projectManager.create = (input) => {
       created.push(input);
       return (async function* () {
-        yield { message: "creating project directory" };
+        yield { type: "step" as const, message: "creating project directory" };
         throw new Error("disk full");
       })();
     };
@@ -404,8 +577,9 @@ describe("project create wizard", () => {
     // key that landed before its step's input handler subscribed.
     await tick(50);
     stdin.write("DemoApp");
-    // One return per step: name → type → model → review → submit.
-    for (let press = 0; press < 4; press++) {
+    // One return per step, plus one to enter the model field:
+    // name → type → provider → model → review → submit.
+    for (let press = 0; press < 5; press++) {
       await tick(50);
       stdin.write("\r");
     }

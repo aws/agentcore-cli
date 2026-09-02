@@ -5,16 +5,17 @@ import type { CredentialSchema } from "../../projectSchemas/credential";
 import type { PaymentConnectorSchema, PaymentManagerSchema } from "../../projectSchemas/payment";
 import type { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import { MemorySchema } from "../../projectSchemas/memory";
-import type { EvaluatorSchema } from "../../projectSchemas/evaluator";
+import type { EvaluatorSchema, EvaluationLevel } from "../../projectSchemas/evaluator";
 import type { ProjectSpecSchema } from "../../projectSchemas/project";
 import z from "zod";
 import type { ImportBedrockAgentInput, RuntimeResourceConfig } from "./add/runtime/types";
 import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
 import { AgentNameSchema, BuildTypeSchema } from "../../projectSchemas/runtime";
-import { RuntimeVersionSchema } from "../../projectSchemas/constants";
+import { ProtocolModeSchema, RuntimeVersionSchema } from "../../projectSchemas/constants";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import type { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
 import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
+import type { ProgressEvent } from "../../tui/progress";
 
 type CreateProjectInputBase = {
   /** The name of the project; also the directory it is scaffolded into. */
@@ -25,6 +26,21 @@ type CreateProjectInputBase = {
   skipGit?: boolean;
 };
 
+export const EVALUATOR_LIBRARIES = ["deepeval", "autoevals"] as const;
+export type EvaluatorLibrary = (typeof EVALUATOR_LIBRARIES)[number];
+
+/** Set of arguments needed to scaffold a managed code-based evaluator. */
+export type ManagedEvaluatorScaffoldInput = {
+  name: string;
+  level: EvaluationLevel;
+  description?: string;
+  kmsKeyArn?: string;
+  tags?: Record<string, string>;
+  metric?: { library: EvaluatorLibrary; metricClass: string };
+  model?: string;
+  timeoutSeconds?: number;
+};
+
 /** Set of arguments needed to scaffold a new Runtime-based agent. */
 export const ScaffoldRuntimeInputSchema = z
   .object({
@@ -32,6 +48,7 @@ export const ScaffoldRuntimeInputSchema = z
     build: BuildTypeSchema,
     language: z.enum(["Python", "TypeScript"]),
     framework: z.enum(["strands", "none"]),
+    protocol: ProtocolModeSchema.optional(),
     modelProvider: z.enum(["Bedrock"]),
     apiKey: z.string().min(1).optional(),
     memory: MemorySchema.optional(),
@@ -80,10 +97,14 @@ export type CreateProjectInput = CreateProjectInputBase &
       }
   );
 
-/** A progress step reported while a long-running project operation runs. */
-export type ProjectEvent = {
-  message: string;
-};
+/**
+ * A progress event reported while a long-running project operation runs. The
+ * same shape as the generic {@link ProgressEvent} the TUI progress driver
+ * consumes: a `step` begins a new unit of work (completing the previous one),
+ * an `output` line belongs to the current step, and the final step completes
+ * when the generator returns (or fails when it throws).
+ */
+export type ProjectEvent = ProgressEvent;
 
 /** The destructive deployment discovered after a project has been synthesized. */
 export type TeardownConfirmationRequest = {
@@ -134,6 +155,11 @@ export type ResolveProjectInput = {
   filePath: string;
 };
 
+export type ResolveTargetInput = {
+  /** Name of the aws-targets.json entry to look up. */
+  target: string;
+};
+
 export type ResolveDeployedResourceInput = {
   target: string;
   resourceType: ProjectInvokableResource;
@@ -144,19 +170,15 @@ export type ResolveDeployedResourcesInput = {
   target: string;
 };
 
-export type DeployedProjectResource = {
+export type ResolvedDeployedResource = {
   resourceType: ProjectInvokableResource;
   name: string;
-  id: string;
-};
-
-export type ResolvedDeployedResource = {
   id: string;
   target: AwsDeploymentTarget;
 };
 
 export type ResolvedDeployedResources = {
-  resources: DeployedProjectResource[];
+  resources: ResolvedDeployedResource[];
   target: AwsDeploymentTarget;
 };
 
@@ -210,6 +232,12 @@ export type AddResourceInput =
   | {
       resourceType: "evaluator";
       resourceConfig: z.input<typeof EvaluatorSchema>;
+      scaffold?: undefined;
+    }
+  | {
+      resourceType: "evaluator";
+      resourceConfig: { name: string };
+      scaffold: ManagedEvaluatorScaffoldInput;
     }
   | {
       resourceType: "gateway";
@@ -281,6 +309,7 @@ export type RemoveResourceInput =
         | "online-eval"
         | "online-insight"
         | "memory"
+        | "evaluator"
         | "gateway"
         | "policy-engine"
         | "payment-manager";
@@ -321,6 +350,16 @@ export interface ProjectManager {
 
   /** Deploy the project to one of its configured AWS targets. */
   deploy(project: Project, input: DeployProjectInput): AsyncGenerator<ProjectEvent, DeployResult>;
+
+  /**
+   * Look up a target in aws-targets.json without provisioning or requiring it.
+   * Returns undefined when the file or the named entry is absent — unlike
+   * deploy, which synthesizes the default target on demand.
+   */
+  resolveTarget(
+    project: Project,
+    input: ResolveTargetInput,
+  ): Promise<AwsDeploymentTarget | undefined>;
 
   /** Locate an existing AgentCore project. Returns undefined if no project can be found. */
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;
