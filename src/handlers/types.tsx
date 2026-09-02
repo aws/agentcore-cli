@@ -1,5 +1,6 @@
 import type { CoreEvalClient } from "./eval/types.tsx";
 import type { CoreGatewayClient } from "./gateway/types.tsx";
+import type { CorePolicyClient } from "./gateway/policy/types.tsx";
 import type { CoreHarnessClient } from "./harness/types.tsx";
 import type { CoreIdentityClient } from "./identity/types.tsx";
 import type { CoreMemoryClient } from "./memory/types.tsx";
@@ -17,6 +18,7 @@ export interface Core {
   gateway: CoreGatewayClient;
   eval: CoreEvalClient;
   observability: CoreObservabilityClient;
+  policy: CorePolicyClient;
   projectManager: ProjectManager;
   /** Describes a Bedrock Agent + alias for `--type import`. */
   describeBedrockAgent: DescribeBedrockAgent;
