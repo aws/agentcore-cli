@@ -24,11 +24,13 @@ import type {
 import type { Logger } from "../../logging";
 import {
   FsReadWriteJson,
+  createLineSplitter,
   requireTool,
   runProcess,
   type ProcessRunner,
   type ReadWriteJson,
 } from "../../io";
+import { withOutputEvents } from "./events";
 import { defaultSource, type AssetSource } from "./source";
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
 import { getHarnessTemplateResolver, validateHarnessTemplateSource } from "./templates/harness";
@@ -197,7 +199,7 @@ export class FsProjectManager implements ProjectManager {
     if (!input.skipInstall) {
       await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
       yield { type: "step", message: "Installing CDK dependencies with npm" };
-      await this.run(["npm", "install"], join(destination, "agentcore", "cdk"));
+      yield* this.runStreaming(["npm", "install"], join(destination, "agentcore", "cdk"));
 
       if (scaffoldRuntimeInput) {
         const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
@@ -1044,11 +1046,11 @@ export class FsProjectManager implements ProjectManager {
         "Install uv: https://docs.astral.sh/uv/getting-started/installation/",
       );
       yield { type: "step", message: "Syncing Python dependencies with uv" };
-      await this.run(["uv", "sync"], appDir);
+      yield* this.runStreaming(["uv", "sync"], appDir);
     } else if (existsSync(join(appDir, "package.json"))) {
       await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
       yield { type: "step", message: "Installing Node dependencies with npm" };
-      await this.run(["npm", "install"], appDir);
+      yield* this.runStreaming(["npm", "install"], appDir);
     }
   }
 
@@ -1068,7 +1070,7 @@ export class FsProjectManager implements ProjectManager {
       }
       yield { type: "step", message: `Generating ${lockfile} for container build` };
       try {
-        await this.run(command, appDir);
+        yield* this.runStreaming(command, appDir);
       } catch {
         yield {
           type: "step",
@@ -1085,6 +1087,27 @@ export class FsProjectManager implements ProjectManager {
   // Runs a command with its output streamed to the file logger.
   private run(command: string[], cwd: string): Promise<void> {
     return this.runner(command, { cwd, onOutput: (chunk) => this.logger.debug(chunk) });
+  }
+
+  /**
+   * Runs a command like {@link run}, additionally yielding its output as `output` events so a
+   * progress driver can show a live tail under the running step. Chunks still reach the debug log
+   * whole; the splitter reassembles them into lines for display.
+   */
+  private async *runStreaming(
+    command: string[],
+    cwd: string,
+  ): AsyncGenerator<ProjectEvent, void, unknown> {
+    yield* withOutputEvents((emit) => {
+      const lines = createLineSplitter(emit);
+      return this.runner(command, {
+        cwd,
+        onOutput: (chunk) => {
+          this.logger.debug(chunk);
+          lines.push(chunk);
+        },
+      }).finally(() => lines.flush());
+    });
   }
 }
 
