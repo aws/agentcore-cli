@@ -166,6 +166,9 @@ describe("project build screen", () => {
 
     await waitForFlatText(r.lastFrame, "No AgentCore project found");
     expect(flatFrame(r.lastFrame)).toContain("agentcore project create");
+    // esc is a way off the error, not just ctl+c.
+    await r.press("escape");
+    await waitForText(r.lastFrame, "manage an AgentCore project");
     r.unmount();
   });
 });
@@ -181,12 +184,13 @@ describe("project deploy screen", () => {
     expect(flatFrame(r.lastFrame)).toContain("account 111122223333/us-east-1");
     await r.write("y");
 
-    await waitForText(r.lastFrame, "✔ Project deployed");
+    await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'default'");
     const frame = flatFrame(r.lastFrame);
     expect(frame).toContain("✓ Synthesizing CloudFormation templates");
     expect(frame).toContain("✓ Deploying stack");
-    expect(frame).toContain("Deployed project 'orders' to target 'default'");
     expect(frame).toContain("RuntimeArn arn:runtime");
+    // esc is not offered mid-action; here the action has finished.
+    expect(frame).toContain("[enter] continue");
 
     // A project with resources never confirms a teardown, as on the command line.
     expect(deploys).toHaveLength(1);
@@ -208,9 +212,25 @@ describe("project deploy screen", () => {
     );
     await r.write("y");
 
-    await waitForText(r.lastFrame, "✔ Project removed");
-    expect(flatFrame(r.lastFrame)).toContain("Removed project 'orders' from target 'default'");
+    await waitForText(r.lastFrame, "✔ Removed project 'orders' from target 'default'");
     expect(deploys[0]!.confirmed).toBe(true);
+    r.unmount();
+  });
+
+  test("the outcome follows the result, not the preflight heuristic", async () => {
+    // The spec declares resources, so no teardown is asked — yet the backend
+    // reports it tore the stack down (nothing synthesized). The title must say
+    // what happened, as the command's own line does.
+    const { backend } = fakeBackend({ result: { outputs: {}, tornDown: true } });
+    const core = new TestCoreClient({ backends: { CDK: backend } });
+    await inProject(core);
+    const r = renderScreen("/agentcore/project/deploy", { core });
+
+    await waitForText(r.lastFrame, "Deploy project 'orders' to target 'default'?");
+    await r.write("y");
+
+    await waitForText(r.lastFrame, "✔ Removed project 'orders' from target 'default'");
+    expect(r.lastFrame()).not.toContain("Deployed project");
     r.unmount();
   });
 

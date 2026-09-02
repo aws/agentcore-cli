@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useInput } from "ink";
 import { Layout } from "../../components/Layout";
 import { Spinner } from "../../components/ui/spinner";
 import { darkTheme } from "../../components/ui/_core.js";
@@ -56,6 +56,9 @@ export interface ProjectGateProps {
   // seed is the project already pinned on the launch context, when the command
   // that opened the TUI was itself a project command.
   seed?: Project;
+  // onBack runs on esc when resolution fails, so the user is not left with quit
+  // as the only way off the error.
+  onBack: () => void;
   // children receives the resolved project and returns the screen. It must
   // return an element rather than call hooks itself — the gate renders a
   // spinner on the first paint, so a hook called here would change order.
@@ -64,11 +67,31 @@ export interface ProjectGateProps {
 
 // ProjectGate resolves the project before rendering a project screen, showing
 // the same not-found guidance the CLI prints when there is none.
-export function ProjectGate({ core, breadcrumb, description, seed, children }: ProjectGateProps) {
+export function ProjectGate({
+  core,
+  breadcrumb,
+  description,
+  seed,
+  onBack,
+  children,
+}: ProjectGateProps) {
   const { project, error } = useProject(core, seed);
 
   if (project !== undefined) return children(project);
-
+  if (error !== undefined) {
+    return (
+      <Layout
+        breadcrumb={breadcrumb}
+        description={description}
+        keyHints={[
+          { key: "esc", label: "back" },
+          { key: "ctl+c", label: "quit" },
+        ]}
+      >
+        <ResolutionError message={error} onBack={onBack} />
+      </Layout>
+    );
+  }
   return (
     <Layout
       breadcrumb={breadcrumb}
@@ -76,12 +99,19 @@ export function ProjectGate({ core, breadcrumb, description, seed, children }: P
       keyHints={[{ key: "ctl+c", label: "quit" }]}
     >
       <Box paddingX={1}>
-        {error === undefined ? (
-          <Spinner label="loading project…" />
-        ) : (
-          <Text color={theme.colors.error}>✗ {error}</Text>
-        )}
+        <Spinner label="loading project…" />
       </Box>
     </Layout>
+  );
+}
+
+function ResolutionError({ message, onBack }: { message: string; onBack: () => void }) {
+  useInput((_input, key) => {
+    if (key.escape) onBack();
+  });
+  return (
+    <Box paddingX={1}>
+      <Text color={theme.colors.error}>✗ {message}</Text>
+    </Box>
   );
 }

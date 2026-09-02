@@ -5,8 +5,9 @@ import { Layout } from "./Layout";
 import { Spinner } from "./ui/spinner";
 import { Confirm } from "./ui/confirm";
 import { TaskList, type Task } from "./ui/task-list";
+import { KeyValueTable } from "./KeyValueTable";
 import { darkTheme } from "./ui/_core.js";
-import { applyProgressEvent, settleProgress, type ProgressEvent } from "../tui/progress";
+import { driveProgress, type ProgressEvent } from "../tui/progress";
 
 const theme = darkTheme;
 
@@ -14,6 +15,8 @@ export interface SummaryRow {
   label: string;
   value: string;
 }
+
+export type ActionResult = SummaryRow[] | { title: string; rows: SummaryRow[] };
 
 export interface ConfirmActionProps {
   // breadcrumb labels the screen.
@@ -30,13 +33,16 @@ export interface ConfirmActionProps {
   // isPending / error reflect the summary fetch backing the overlay.
   isPending: boolean;
   error: Error | null;
-  // action performs the confirmed operation and resolves to result rows shown
-  // on the success panel. A long-running operation may instead return a
-  // progress generator — the same AsyncGenerator<ProgressEvent> runWithProgress
-  // drives for the headless command — and its steps render as a live task list
-  // while it runs, exactly as they do on the command line.
-  action: () => Promise<SummaryRow[]> | AsyncGenerator<ProgressEvent, SummaryRow[]>;
-  // successTitle heads the success panel (e.g. "Harness deleted").
+  // action performs the confirmed operation and resolves to what the success
+  // panel shows: result rows, optionally under a title that replaces
+  // successTitle — for an outcome only known once the action has run. A
+  // long-running operation may instead return a progress generator — the same
+  // AsyncGenerator<ProgressEvent> runWithProgress drives for the headless
+  // command — and its steps render as a live task list while it runs, exactly
+  // as they do on the command line.
+  action: () => Promise<ActionResult> | AsyncGenerator<ProgressEvent, ActionResult>;
+  // successTitle heads the success panel (e.g. "Harness deleted") unless the
+  // action's result carries its own.
   successTitle: string;
   // runningLabel is the spinner label while the action runs, shown until the
   // action's first progress step arrives (or throughout, for a plain promise).
@@ -51,7 +57,7 @@ export interface ConfirmActionProps {
 type Phase =
   | { kind: "confirm" }
   | { kind: "running" }
-  | { kind: "success"; rows: SummaryRow[] }
+  | { kind: "success"; title: string; rows: SummaryRow[] }
   | { kind: "error"; message: string };
 
 // ConfirmAction is the shared destructive-action screen body: a summary overlay
@@ -84,22 +90,14 @@ export function ConfirmAction({
     setTasks([]);
     try {
       const result = action();
-      let rows: SummaryRow[];
-      if (isProgressGenerator(result)) {
-        let next = await result.next();
-        while (!next.done) {
-          const event = next.value;
-          setTasks((current) => applyProgressEvent(current, event));
-          next = await result.next();
-        }
-        rows = next.value;
-      } else {
-        rows = await result;
-      }
-      setTasks((current) => settleProgress(current, "done"));
-      setPhase({ kind: "success", rows });
+      const outcome = isProgressGenerator(result)
+        ? await driveProgress(result, setTasks)
+        : await result;
+      const { title, rows } = Array.isArray(outcome)
+        ? { title: successTitle, rows: outcome }
+        : outcome;
+      setPhase({ kind: "success", title, rows });
     } catch (err) {
-      setTasks((current) => settleProgress(current, "failed"));
       setPhase({ kind: "error", message: err instanceof Error ? err.message : String(err) });
     }
   };
@@ -113,10 +111,14 @@ export function ConfirmAction({
         ]
       : phase.kind === "success"
         ? [{ key: "enter", label: "continue" }]
-        : [
-            { key: "esc", label: "back" },
-            { key: "ctl+c", label: "quit" },
-          ];
+        : phase.kind === "running"
+          ? // Nothing listens for esc mid-action: an operation in flight is
+            // not abandoned by leaving the screen.
+            [{ key: "ctl+c", label: "quit" }]
+          : [
+              { key: "esc", label: "back" },
+              { key: "ctl+c", label: "quit" },
+            ];
 
   return (
     <Layout breadcrumb={breadcrumb} description={description} keyHints={hints}>
@@ -134,7 +136,7 @@ export function ConfirmAction({
             marginBottom={1}
           >
             <Text bold>{title}</Text>
-            <SummaryRows rows={rows} />
+            <KeyValueTable items={toItems(rows)} />
           </Box>
 
           {phase.kind === "confirm" && (
@@ -147,7 +149,7 @@ export function ConfirmAction({
           )}
           {phase.kind === "running" && tasks.length === 0 && <Spinner label={runningLabel} />}
           {phase.kind === "success" && (
-            <SuccessBody title={successTitle} rows={phase.rows} onDone={onDone} />
+            <SuccessBody title={phase.title} rows={phase.rows} onDone={onDone} />
           )}
           {phase.kind === "error" && (
             <ErrorBody message={phase.message} onBack={() => setPhase({ kind: "confirm" })} />
@@ -160,29 +162,18 @@ export function ConfirmAction({
 
 // A promise has no Symbol.asyncIterator, so this is a safe discriminator.
 function isProgressGenerator(
-  result: Promise<SummaryRow[]> | AsyncGenerator<ProgressEvent, SummaryRow[]>,
-): result is AsyncGenerator<ProgressEvent, SummaryRow[]> {
+  result: Promise<ActionResult> | AsyncGenerator<ProgressEvent, ActionResult>,
+): result is AsyncGenerator<ProgressEvent, ActionResult> {
   return (
-    typeof (result as AsyncGenerator<ProgressEvent, SummaryRow[]>)[Symbol.asyncIterator] ===
+    typeof (result as AsyncGenerator<ProgressEvent, ActionResult>)[Symbol.asyncIterator] ===
     "function"
   );
 }
 
-// SummaryRows aligns values on a column one past the longest label, so a
-// label longer than the old fixed width (a stack output name, say) still has a
-// gap before its value.
-function SummaryRows({ rows }: { rows: SummaryRow[] }) {
-  const width = rows.reduce((max, row) => Math.max(max, row.label.length), 0) + 2;
-  return (
-    <>
-      {rows.map((row) => (
-        <Text key={row.label}>
-          <Text color={theme.colors.muted}>{row.label.padEnd(width)}</Text>
-          {row.value}
-        </Text>
-      ))}
-    </>
-  );
+// KeyValueTable takes a record; rows are kept as a list here so callers can
+// order them.
+function toItems(rows: SummaryRow[]): Record<string, string> {
+  return Object.fromEntries(rows.map((row) => [row.label, row.value]));
 }
 
 function SuccessBody({
@@ -204,7 +195,7 @@ function SuccessBody({
         ✔ {title}
       </Text>
       <Box flexDirection="column" marginTop={1} marginLeft={2}>
-        <SummaryRows rows={rows} />
+        <KeyValueTable items={toItems(rows)} />
       </Box>
       <Box marginTop={1}>
         <Text color={theme.colors.muted}>

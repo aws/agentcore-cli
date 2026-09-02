@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { testIO } from "../testing";
 import {
   applyProgressEvent,
+  driveProgress,
   runWithProgress,
   settleProgress,
   type ProgressEvent,
@@ -175,5 +176,38 @@ describe("applyProgressEvent / settleProgress", () => {
     ]);
     expect(settleProgress(tasks, "done")).toEqual([{ title: "deploy", state: "done", tail: [] }]);
     expect(settleProgress([], "done")).toEqual([]);
+  });
+});
+
+describe("driveProgress", () => {
+  test("reports the task list after each event, settles done, and resolves the return value", async () => {
+    async function* work() {
+      yield { type: "step", message: "one" } as ProgressEvent;
+      yield { type: "output", line: "detail" } as ProgressEvent;
+      return 42;
+    }
+    const frames: string[] = [];
+    const result = await driveProgress(work(), (tasks) =>
+      frames.push(
+        tasks.map((task) => `${task.state}:${task.title}:${task.tail.join(",")}`).join("|"),
+      ),
+    );
+    expect(result).toBe(42);
+    expect(frames).toEqual(["running:one:", "running:one:detail", "done:one:"]);
+  });
+
+  test("settles the running task failed and rethrows unchanged", async () => {
+    const failure = new Error("boom");
+    async function* work() {
+      yield { type: "step", message: "one" } as ProgressEvent;
+      throw failure;
+    }
+    let last: string | undefined;
+    await expect(
+      driveProgress(work(), (tasks) => {
+        last = tasks.map((task) => `${task.state}:${task.title}`).join("|");
+      }),
+    ).rejects.toBe(failure);
+    expect(last).toBe("failed:one");
   });
 });

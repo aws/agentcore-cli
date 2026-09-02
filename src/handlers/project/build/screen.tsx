@@ -9,6 +9,7 @@ import { builtMessage } from "./index";
 
 const BREADCRUMB = ["agentcore", "project", "build"];
 const DESCRIPTION = "build the project's deployable artifacts";
+const PROJECT_MENU = "/agentcore/project";
 
 // BuildProjectScreen is `agentcore project build` from the menu. It runs the
 // same projectManager.build generator the command runs, and ConfirmAction
@@ -16,12 +17,14 @@ const DESCRIPTION = "build the project's deployable artifacts";
 // command line — the TUI is a frame around the CLI's own progress, not a
 // second progress UI.
 export function BuildProjectScreen({ ctx, core }: ScreenProps) {
+  const navigate = useNavigate();
   return (
     <ProjectGate
       core={core}
       breadcrumb={BREADCRUMB}
       description={DESCRIPTION}
       seed={ctx.value(ProjectKey)}
+      onBack={() => navigate(PROJECT_MENU)}
     >
       {(project) => <BuildConfirm project={project} core={core} />}
     </ProjectGate>
@@ -46,12 +49,12 @@ function BuildConfirm({ project, core }: { project: Project; core: ScreenProps["
       error={null}
       action={async function* () {
         yield* core.projectManager.build(project);
-        return [{ label: "result", value: builtMessage(project) }];
+        return [];
       }}
       successTitle={builtMessage(project)}
       runningLabel="building…"
       onDone={() => exit()}
-      onCancel={() => navigate("/agentcore/project")}
+      onCancel={() => navigate(PROJECT_MENU)}
     />
   );
 }
