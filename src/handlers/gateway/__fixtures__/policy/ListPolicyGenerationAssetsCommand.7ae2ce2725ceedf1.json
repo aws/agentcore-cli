@@ -1,7 +1,7 @@
 {
   "policyGenerationAssets": [
     {
-      "policyGenerationAssetId": "golden_forbid-8xiwjqekhd",
+      "policyGenerationAssetId": "golden_forbid_1788379436724-9nhse8m4wg",
       "rawTextFragment": "forbid IAM principals from calling any tool on this gateway",
       "findings": [
         {

@@ -1,7 +1,7 @@
 {
   "policyGenerationAssets": [
     {
-      "policyGenerationAssetId": "golden_permit-o9blndc30w",
+      "policyGenerationAssetId": "golden_permit_1788379436724-1jag4xr0sz",
       "rawTextFragment": "permit IAM principals to call any tool on this gateway",
       "findings": [
         {

@@ -7,6 +7,7 @@ import {
   matchGolden,
   TestGlobalConfigAccessor,
   testIO,
+  uniquePerRecording,
 } from "../../testing";
 import { createRootHandler } from "../index";
 
@@ -18,6 +19,18 @@ const ENGINE_ARN =
   "arn:aws:bedrock-agentcore:us-west-2:887863153624:policy-engine/PolicyGenE2E_Guardrails-gn5jf72o3t";
 const BARE_GATEWAY_ID = "policygene2e-bare-xl0dy3pq5h";
 const RECORD_TIMEOUT = 600_000;
+
+// Generation names are unique per engine on the service, so each recording needs
+// fresh ones while replays reuse the recorded set.
+const NAMES = uniquePerRecording(FIXTURES, "generation-names", () => {
+  const stamp = Date.now();
+  return {
+    forbid: `golden_forbid_${stamp}`,
+    permit: `golden_permit_${stamp}`,
+    missingEngine: `golden_missing_engine_${stamp}`,
+    untranslatable: `golden_untranslatable_${stamp}`,
+  };
+});
 
 // The fixture graph is the deployed `PolicyGenE2E` project: Gateway `tools` with
 // Policy Engine `Guardrails` attached, and Gateway `bare` with no engine. Record with:
@@ -64,7 +77,7 @@ describe("gateway policy generate fixture-backed flows", () => {
         "--prompt",
         "forbid IAM principals from calling any tool on this gateway",
         "--name",
-        "golden_forbid",
+        NAMES.forbid,
       ]);
       matchGolden(FIXTURES, "generate.golden.cedar", stdout);
       matchGolden(FIXTURES, "generate.golden.stderr", stderr);
@@ -84,7 +97,7 @@ describe("gateway policy generate fixture-backed flows", () => {
         "--prompt",
         "permit IAM principals to call any tool on this gateway",
         "--name",
-        "golden_permit",
+        NAMES.permit,
         "--json",
       ]);
       matchGolden(FIXTURES, "generate-json.golden.json", stdout);
@@ -99,7 +112,7 @@ describe("gateway policy generate fixture-backed flows", () => {
   test.each([
     [
       "the gateway has no engine attached",
-      ["--gateway-id", BARE_GATEWAY_ID, "--prompt", "forbid everything", "--name", "golden_bare"],
+      ["--gateway-id", BARE_GATEWAY_ID, "--prompt", "forbid everything"],
       /has no Policy Engine attached; pass --policy-engine-id/,
     ],
     [
@@ -112,7 +125,7 @@ describe("gateway policy generate fixture-backed flows", () => {
         "--prompt",
         "forbid everything",
         "--name",
-        "golden_missing_engine",
+        NAMES.missingEngine,
       ],
       /policyEngineId/,
     ],
@@ -124,7 +137,7 @@ describe("gateway policy generate fixture-backed flows", () => {
         "--prompt",
         "permit everyone to list tools but forbid calling any tool whose name contains delete",
         "--name",
-        "golden_untranslatable",
+        NAMES.untranslatable,
       ],
       /could not be translated into a Cedar policy: \[INVALID\]/,
     ],

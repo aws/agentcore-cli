@@ -1,8 +1,8 @@
 {
   "policyGenerationAssets": [
     {
-      "policyGenerationAssetId": "golden_untranslatable-jk98c0i1qv",
-      "rawTextFragment": "Permit everyone to list tools.",
+      "policyGenerationAssetId": "golden_untranslatable_1788379436724-s0kq76o_vl",
+      "rawTextFragment": "Forbid calling any tool whose name contains delete.",
       "findings": [
         {
           "type": "INVALID",
@@ -11,8 +11,8 @@
       ]
     },
     {
-      "policyGenerationAssetId": "golden_untranslatable-mt1y937v8n",
-      "rawTextFragment": "Forbid calling any tool whose name contains delete.",
+      "policyGenerationAssetId": "golden_untranslatable_1788379436724-v9e46aqhnp",
+      "rawTextFragment": "Permit everyone to list tools.",
       "findings": [
         {
           "type": "INVALID",

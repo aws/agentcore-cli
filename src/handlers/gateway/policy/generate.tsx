@@ -7,7 +7,6 @@ import { runWithProgress } from "../../../tui/progress";
 import { JsonKey } from "../../keys";
 import type { Core } from "../../types";
 import { coreOptsFromCtx, renderJsonError } from "../../utils";
-import { formatFindings, formatStatements } from "./format";
 import type { PolicyGenerationResult } from "./types";
 
 export const createGeneratePolicyHandler = (core: Core, io: AppIO) =>
@@ -74,7 +73,9 @@ export const createGeneratePolicyHandler = (core: Core, io: AppIO) =>
         ctx.require(JsonRendererKey).renderJson(result);
         return;
       }
-      io.stderr.write(formatFindings(result.policies));
-      io.stdout.write(formatStatements(result.policies));
+      const statements = result.policies.flatMap((policy) =>
+        policy.statement ? [policy.statement.trimEnd()] : [],
+      );
+      io.stdout.write(`${statements.join("\n\n")}\n`);
     },
   });

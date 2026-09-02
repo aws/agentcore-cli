@@ -1,5 +1,5 @@
 {
-  "policyGenerationId": "golden_permit-62mnrlgenk",
+  "policyGenerationId": "golden_permit_1788379436724-ps3sdu9w0d",
   "policyEngineId": "PolicyGenE2E_Guardrails-gn5jf72o3t",
   "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:887863153624:gateway/policygene2e-tools-zhijfh6m5z",
   "policies": [

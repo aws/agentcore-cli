@@ -1,0 +1,17 @@
+{
+  "policyEngineId": "PolicyGenE2E_Guardrails-gn5jf72o3t",
+  "policyGenerationId": "golden_untranslatable_1788379436724-zwadwgy5xq",
+  "name": "golden_untranslatable_1788379436724",
+  "policyGenerationArn": "arn:aws:bedrock-agentcore:us-west-2:887863153624:policy-engine/PolicyGenE2E_Guardrails-gn5jf72o3t/policy-generation/golden_untranslatable_1788379436724-zwadwgy5xq",
+  "resource": {
+    "arn": "arn:aws:bedrock-agentcore:us-west-2:887863153624:gateway/policygene2e-tools-zhijfh6m5z"
+  },
+  "createdAt": {
+    "$date": "2026-09-02T20:04:26.137Z"
+  },
+  "updatedAt": {
+    "$date": "2026-09-02T20:04:26.137Z"
+  },
+  "status": "GENERATING",
+  "statusReasons": []
+}
