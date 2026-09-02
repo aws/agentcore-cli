@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import z from "zod";
 import { ProjectKey } from "../../../../router";
 import {
   MemoryNameSchema,
@@ -10,7 +9,15 @@ import {
 import type { ScreenProps } from "../../../types";
 import type { Project } from "../../types";
 import { ProjectGate } from "../../ProjectGate";
-import { Wizard, Step, TextField, MultiChoiceField, Summary } from "../../../../components/wizard";
+import {
+  Wizard,
+  Step,
+  TextField,
+  MultiChoiceField,
+  Summary,
+  blankToUndefined,
+  numberSchema,
+} from "../../../../components/wizard";
 import {
   DEFAULT_EVENT_EXPIRY_DURATION,
   EventExpiryDurationSchema,
@@ -20,12 +27,8 @@ import {
 } from "./index";
 
 // The retention step collects text, so the flag's numeric bounds are reached
-// through a coercion. Anything unparseable becomes NaN, which the bounds reject.
-const ExpiryInputSchema = z
-  .string()
-  .transform((raw) => Number(raw))
-  .refine((parsed) => Number.isFinite(parsed), { message: "enter a number of days" })
-  .pipe(EventExpiryDurationSchema);
+// through a coercion; the bounds themselves are the flag's.
+const ExpiryInputSchema = numberSchema(EventExpiryDurationSchema, "enter a number of days");
 
 const BREADCRUMB = ["agentcore", "project", "add", "memory"];
 const DESCRIPTION = "adds a memory to the current project";
@@ -58,10 +61,9 @@ interface MemoryFormValues {
 // of handler logic it reaches for, toDefaultStrategy, is the handler's own, so
 // a picked strategy expands to the same namespaces `--strategies SEMANTIC` does.
 export function toMemoryInput(values: MemoryFormValues): MemoryInput {
-  const description = values.description.trim();
   return {
     name: values.name.trim(),
-    description: description === "" ? undefined : description,
+    description: blankToUndefined(values.description),
     eventExpiryDuration: Number(values.expiry),
     strategies:
       values.strategies.length === 0 ? undefined : values.strategies.map(toDefaultStrategy),

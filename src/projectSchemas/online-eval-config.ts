@@ -15,12 +15,13 @@ export const ClusteringConfigSchema = z.object({
     .max(3),
 });
 export type ClusteringConfig = z.infer<typeof ClusteringConfigSchema>;
+export const LogGroupNamesSchema = z.array(z.string().min(1)).min(1).max(5);
 export const OnlineEvalConfigSchema = z
   .object({
     name: OnlineEvalConfigNameSchema,
     agent: z.string().min(1, "Agent name is required").optional(),
     endpoint: z.string().min(1).optional(),
-    logGroupNames: z.array(z.string().min(1)).min(1).max(5).optional(),
+    logGroupNames: LogGroupNamesSchema.optional(),
     serviceNames: z.array(z.string().min(1)).min(1).optional(),
     evaluators: z.array(z.string().min(1)).optional(),
     insights: z.array(z.string().min(1)).optional(),

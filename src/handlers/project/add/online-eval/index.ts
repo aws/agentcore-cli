@@ -3,7 +3,38 @@ import { createHandler, flag, ProjectKey } from "../../../../router";
 import { InputValidationError } from "../../../../errors";
 import { OnlineEvalConfigSchema } from "../../../../projectSchemas/online-eval-config";
 import { parseJsonFlag } from "../../../utils";
+import type { AddResourceInput } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
+
+/**
+ * OnlineEvalInput is what every entry point — the flag handler, the wizard —
+ * resolves its own inputs to before an online-eval config is built. It is the
+ * schema's own shape less the defaults the schema applies; the source rules
+ * (agent or log groups, never both; endpoint needs agent) are the schema's too,
+ * and toAddOnlineEvalInput reports them in the schema's words.
+ */
+export interface OnlineEvalInput {
+  name: string;
+  agent?: string;
+  endpoint?: string;
+  logGroupNames?: string[];
+  serviceNames?: string[];
+  evaluators?: string[];
+  samplingRate: number;
+  description?: string;
+  enableOnCreate?: boolean;
+  tags?: Record<string, string>;
+}
+
+/**
+ * toAddOnlineEvalInput is the one place an online-eval config is assembled and
+ * checked. Both the flag handler and the wizard call it.
+ */
+export function toAddOnlineEvalInput(input: OnlineEvalInput): AddResourceInput {
+  const parsed = OnlineEvalConfigSchema.safeParse(input);
+  if (!parsed.success) throw new InputValidationError(z.prettifyError(parsed.error));
+  return { resourceType: "online-eval", resourceConfig: parsed.data };
+}
 
 export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -53,6 +84,8 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
       ),
       flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),
     ],
+    // handle only turns flags into an OnlineEvalInput. What a config is, and
+    // which combinations are allowed, belongs to toAddOnlineEvalInput.
     handle: async (ctx, flags) => {
       if (!flags["name"])
         throw new InputValidationError("required option '--name <name>' not specified");
@@ -61,7 +94,7 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
           "required option '--sampling-rate <sampling-rate>' not specified",
         );
 
-      const candidate = {
+      const input = toAddOnlineEvalInput({
         name: flags["name"],
         agent: flags["agent"],
         endpoint: flags["endpoint"],
@@ -75,16 +108,10 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
             ? undefined
             : flags["enable-on-create"] === "true",
         tags: parseJsonFlag<Record<string, string>>("tags", flags["tags"]),
-      };
-
-      const parsed = OnlineEvalConfigSchema.safeParse(candidate);
-      if (!parsed.success) throw new InputValidationError(z.prettifyError(parsed.error));
+      });
 
       const project = ctx.require(ProjectKey);
-      for await (const event of config.projectManager.addResource(project, {
-        resourceType: "online-eval",
-        resourceConfig: parsed.data,
-      })) {
+      for await (const event of config.projectManager.addResource(project, input)) {
         config.io.stderr.write(`${event.message}\n`);
       }
 

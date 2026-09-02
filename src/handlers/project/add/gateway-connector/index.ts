@@ -7,8 +7,90 @@ import {
   type ConnectorId,
 } from "../../../../projectSchemas/gateway";
 import { createHandler, flag, ProjectKey } from "../../../../router";
-import { parseJsonFlagWithSchema } from "../../../utils";
+import { formatZodError } from "../../../../router/schema";
+import { parseJsonFlag } from "../../../utils";
+import type { AddResourceInput } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
+
+type AddGatewayTargetInput = Extract<AddResourceInput, { resourceType: "gateway-target" }>;
+
+/**
+ * GatewayConnectorInput is what every entry point — the flag handler, the
+ * wizard — resolves its own inputs to before a connector Target is built. A
+ * Target is either a curated shortcut (a connector ID plus the one value it
+ * needs) or a complete Target object supplied as parsed JSON.
+ */
+export interface GatewayConnectorInput {
+  gatewayName: string;
+  target:
+    | { kind: "shortcut"; name: string; connectorId: ConnectorId; knowledgeBase?: string }
+    | { kind: "configuration"; configuration: unknown };
+}
+
+/**
+ * toAddGatewayConnectorInput is the one place a connector Target is assembled
+ * from user input: the curated shortcuts' default configurations, the
+ * Knowledge Base rule, the shape a complete configuration must have. Both the
+ * flag handler and the wizard call it.
+ */
+export function toAddGatewayConnectorInput(input: GatewayConnectorInput): AddGatewayTargetInput {
+  const target =
+    input.target.kind === "configuration"
+      ? connectorTargetFromConfiguration(input.target.configuration)
+      : connectorTargetFromShortcut(
+          input.target.name,
+          input.target.connectorId,
+          input.target.knowledgeBase,
+        );
+  return { resourceType: "gateway-target", gatewayName: input.gatewayName, resourceConfig: target };
+}
+
+function connectorTargetFromConfiguration(configuration: unknown): AgentCoreGatewayTarget {
+  const parsed = AgentCoreGatewayTargetSchema.safeParse(configuration);
+  if (!parsed.success) {
+    throw new InputValidationError(
+      `Invalid value for option '--connector-configuration': ${formatZodError(parsed.error)}`,
+      { cause: parsed.error },
+    );
+  }
+  if (parsed.data.targetType !== "connector") {
+    throw new InputValidationError('--connector-configuration must have targetType: "connector"');
+  }
+  return parsed.data;
+}
+
+function connectorTargetFromShortcut(
+  name: string,
+  connectorId: ConnectorId,
+  knowledgeBase?: string,
+): AgentCoreGatewayTarget {
+  switch (connectorId) {
+    case "web-search":
+      if (knowledgeBase !== undefined) {
+        throw new InputValidationError(
+          "--knowledge-base requires --connector bedrock-knowledge-bases",
+        );
+      }
+      return {
+        name,
+        targetType: "connector",
+        connectorId,
+        configurations: [{ name: "WebSearch", parameterValues: { maxResults: 10 } }],
+      };
+    case "bedrock-knowledge-bases":
+      if (!knowledgeBase) {
+        throw new InputValidationError(
+          "--connector bedrock-knowledge-bases requires --knowledge-base",
+        );
+      }
+      return {
+        name,
+        targetType: "connector",
+        connectorId,
+        configurations: [{ name: "Retrieve", parameterValues: { knowledgeBaseId: knowledgeBase } }],
+      };
+  }
+}
 
 export const createAddGatewayConnectorHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -33,6 +115,9 @@ export const createAddGatewayConnectorHandler = (config: AddProjectResourceConfi
         z.string().optional(),
       ),
     ],
+    // handle only turns flags into a GatewayConnectorInput — deciding which of
+    // the two forms was given and reading the configuration from its source.
+    // What a connector Target is belongs to toAddGatewayConnectorInput.
     handle: async (ctx, flags) => {
       if (!flags.gateway) {
         throw new InputValidationError("required option '--gateway <gateway>' not specified");
@@ -57,71 +142,35 @@ export const createAddGatewayConnectorHandler = (config: AddProjectResourceConfi
       if (!usesConfiguration && !flags.name) {
         throw new InputValidationError("required option '--name <name>' not specified");
       }
-      if (flags["knowledge-base"] !== undefined && flags.connector !== "bedrock-knowledge-bases") {
-        throw new InputValidationError(
-          "--knowledge-base requires --connector bedrock-knowledge-bases",
-        );
-      }
 
       const project = ctx.require(ProjectKey);
-      let target: AgentCoreGatewayTarget;
+      let input: AddGatewayTargetInput;
       if (usesConfiguration) {
         const source = new SourceResolver({ stdin: config.io.stdin });
-        target = parseJsonFlagWithSchema(
+        const configuration = parseJsonFlag<unknown>(
           "connector-configuration",
           await source.resolveText("connector-configuration", flags["connector-configuration"]),
-          AgentCoreGatewayTargetSchema,
-        )!;
-        if (target.targetType !== "connector") {
-          throw new InputValidationError(
-            '--connector-configuration must have targetType: "connector"',
-          );
-        }
-      } else {
-        target = connectorTargetFromShortcut(
-          flags.name!,
-          flags.connector!,
-          flags["knowledge-base"],
         );
+        input = toAddGatewayConnectorInput({
+          gatewayName: flags.gateway,
+          target: { kind: "configuration", configuration },
+        });
+      } else {
+        input = toAddGatewayConnectorInput({
+          gatewayName: flags.gateway,
+          target: {
+            kind: "shortcut",
+            name: flags.name!,
+            connectorId: flags.connector!,
+            knowledgeBase: flags["knowledge-base"],
+          },
+        });
       }
-
-      for await (const event of config.projectManager.addResource(project, {
-        resourceType: "gateway-target",
-        gatewayName: flags.gateway,
-        resourceConfig: target,
-      })) {
+      for await (const event of config.projectManager.addResource(project, input)) {
         config.io.stderr.write(`${event.message}\n`);
       }
       config.io.stderr.write(
-        `added Connector Target '${target.name}' to Gateway '${flags.gateway}' in '${project.name}'\n`,
+        `added Connector Target '${input.resourceConfig.name}' to Gateway '${flags.gateway}' in '${project.name}'\n`,
       );
     },
   });
-
-function connectorTargetFromShortcut(
-  name: string,
-  connectorId: ConnectorId,
-  knowledgeBase?: string,
-): AgentCoreGatewayTarget {
-  switch (connectorId) {
-    case "web-search":
-      return {
-        name,
-        targetType: "connector",
-        connectorId,
-        configurations: [{ name: "WebSearch", parameterValues: { maxResults: 10 } }],
-      };
-    case "bedrock-knowledge-bases":
-      if (!knowledgeBase) {
-        throw new InputValidationError(
-          "--connector bedrock-knowledge-bases requires --knowledge-base",
-        );
-      }
-      return {
-        name,
-        targetType: "connector",
-        connectorId,
-        configurations: [{ name: "Retrieve", parameterValues: { knowledgeBaseId: knowledgeBase } }],
-      };
-  }
-}

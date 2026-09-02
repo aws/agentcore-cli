@@ -34,7 +34,18 @@ function addSubcommands(): string[] {
 
 // The resources with a wizard. Everything else still routes to the
 // not-implemented screen and stays usable from the command line.
-const WITH_SCREENS = ["memory", "gateway", "policy-engine", "config-bundle"];
+const WITH_SCREENS = [
+  "memory",
+  "gateway",
+  "policy-engine",
+  "config-bundle",
+  "policy",
+  "gateway-connector",
+  "online-eval",
+  "online-insight",
+  "evaluator",
+  "payment-manager",
+];
 
 describe("project add menu", () => {
   test("lists every add resource", async () => {

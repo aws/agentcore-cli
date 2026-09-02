@@ -115,6 +115,15 @@ import { AddMemoryScreen } from "../handlers/project/add/memory/screen.tsx";
 import { AddGatewayScreen } from "../handlers/project/add/gateway/screen.tsx";
 import { AddPolicyEngineScreen } from "../handlers/project/add/policy-engine/screen.tsx";
 import { AddConfigBundleScreen } from "../handlers/project/add/config-bundle/screen.tsx";
+import { AddPolicyScreen } from "../handlers/project/add/policy/screen.tsx";
+import { AddGatewayConnectorScreen } from "../handlers/project/add/gateway-connector/screen.tsx";
+import { AddOnlineEvalScreen } from "../handlers/project/add/online-eval/screen.tsx";
+import { AddOnlineInsightScreen } from "../handlers/project/add/online-insight/screen.tsx";
+import {
+  AddEvaluatorScreen,
+  AddLlmAsAJudgeEvaluatorScreen,
+} from "../handlers/project/add/evaluator/screen.tsx";
+import { AddPaymentManagerScreen } from "../handlers/project/add/payment-manager/screen.tsx";
 import { RootScreen, HelpScreen } from "../handlers/screen.tsx";
 import type { Context } from "../router";
 
@@ -130,14 +139,8 @@ const PROJECT_COMMANDS = ["export", "remove", "dev", "deploy", "status", "build"
 const ADD_COMMANDS = [
   "harness",
   "runtime",
-  "online-eval",
-  "online-insight",
-  "evaluator",
   "credentials",
   "gateway-target",
-  "gateway-connector",
-  "policy",
-  "payment-manager",
   "payment-connector",
 ] as const;
 
@@ -801,6 +804,34 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/project/add/config-bundle"
             element={<AddConfigBundleScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/project/add/policy"
+            element={<AddPolicyScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/project/add/gateway-connector"
+            element={<AddGatewayConnectorScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/project/add/online-eval"
+            element={<AddOnlineEvalScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/project/add/online-insight"
+            element={<AddOnlineInsightScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/project/add/evaluator"
+            element={<AddEvaluatorScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/project/add/evaluator/llm-as-a-judge"
+            element={<AddLlmAsAJudgeEvaluatorScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/project/add/payment-manager"
+            element={<AddPaymentManagerScreen ctx={ctx} core={core} />}
           />
           {ADD_COMMANDS.map((command) => (
             <Route
