@@ -121,6 +121,33 @@ describe("project add gateway wizard", () => {
     r.unmount();
   });
 
+  test("the JWT step rejects the SDK authorizer shape, as the flag path does", async () => {
+    await inProject();
+    const r = renderScreen("/agentcore/project/add/gateway");
+
+    await waitForText(r.lastFrame, "what should this Gateway be called?");
+    await r.write("jwt");
+    await r.press("return");
+    await waitForText(r.lastFrame, "which Target types should this Gateway accept?");
+    await r.press("return");
+    await waitForText(r.lastFrame, "how should inbound callers be authorized?");
+    await r.press("down");
+    await r.press("down");
+    await r.press("return");
+    await waitForText(r.lastFrame, "paste the authorizerConfiguration for your JWT issuer");
+
+    // The SDK's casing is well-formed JSON of the wrong shape. The step must
+    // name the stray key rather than accept it: the project schema would only
+    // reject it later, at submit, as a missing customJwtAuthorizer.
+    await r.write(
+      '{"customJWTAuthorizer":{"discoveryUrl":"https://idp.example.com/.well-known/openid-configuration"}}',
+    );
+    await r.write("\x04");
+    await waitForFlatText(r.lastFrame, "customJWTAuthorizer");
+    expect(r.lastFrame()).toContain("paste the authorizerConfiguration");
+    r.unmount();
+  });
+
   test("a name that would exceed the service limit is rejected", async () => {
     await inProject();
     const r = renderScreen("/agentcore/project/add/gateway");

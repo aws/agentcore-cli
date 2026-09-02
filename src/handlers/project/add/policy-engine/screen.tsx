@@ -2,9 +2,8 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import z from "zod";
 import { ProjectKey } from "../../../../router";
-import type { PolicyEngineSchema } from "../../../../projectSchemas/policy";
 import type { ScreenProps } from "../../../types";
-import type { AddResourceInput, Project } from "../../types";
+import type { Project } from "../../types";
 import { ProjectGate } from "../../ProjectGate";
 import {
   Wizard,
@@ -14,13 +13,15 @@ import {
   MultiChoiceField,
   Summary,
 } from "../../../../components/wizard";
-import { policyEngineResourceName } from "./index";
+import {
+  MAX_POLICY_ENGINE_RESOURCE_NAME_LENGTH,
+  policyEngineResourceName,
+  toAddPolicyEngineInput,
+  type PolicyEngineInput,
+} from "./index";
 
 const BREADCRUMB = ["agentcore", "project", "add", "policy-engine"];
 const DESCRIPTION = "adds a Policy Engine to the current project";
-
-// The service limit the handler enforces on the deployed engine name.
-const MAX_RESOURCE_NAME_LENGTH = 48;
 
 type AttachMode = "enforce" | "log-only";
 
@@ -44,23 +45,21 @@ interface PolicyEngineFormValues {
   attachMode: AttachMode;
 }
 
-export function buildAddPolicyEngineInput(values: PolicyEngineFormValues): AddResourceInput {
-  const engine: z.input<typeof PolicyEngineSchema> = {
-    name: values.name.trim(),
-    description: values.description.trim() === "" ? undefined : values.description.trim(),
-  };
+// toPolicyEngineInput reads the form into the PolicyEngineInput the handler's
+// toAddPolicyEngineInput builds an engine from. It trims and converts, and
+// drops the mode when no Gateway was picked — that step was never shown.
+export function toPolicyEngineInput(values: PolicyEngineFormValues): PolicyEngineInput {
+  const description = values.description.trim();
+  const isAttaching = values.attachToGateways.length > 0;
   return {
-    resourceType: "policy-engine",
-    resourceConfig: engine,
-    // The handler treats an absent --attach-to-gateways as "attach to nothing",
-    // and --attach-mode is meaningless without it.
-    attachGateways:
-      values.attachToGateways.length === 0
-        ? undefined
-        : {
-            names: values.attachToGateways,
-            mode: values.attachMode === "log-only" ? "LOG_ONLY" : "ENFORCE",
-          },
+    name: values.name.trim(),
+    description: description === "" ? undefined : description,
+    attachToGateways: isAttaching ? values.attachToGateways : undefined,
+    attachMode: isAttaching
+      ? values.attachMode === "log-only"
+        ? "LOG_ONLY"
+        : "ENFORCE"
+      : undefined,
   };
 }
 
@@ -102,12 +101,12 @@ function AddPolicyEngineWizard({ project, core }: { project: Project; core: Scre
     () =>
       z.string().superRefine((name, ctx) => {
         const resourceName = policyEngineResourceName(project.name, name);
-        if (resourceName.length > MAX_RESOURCE_NAME_LENGTH) {
+        if (resourceName.length > MAX_POLICY_ENGINE_RESOURCE_NAME_LENGTH) {
           ctx.addIssue({
             code: "custom",
             message:
               `Policy Engine resource name '${resourceName}' exceeds the service limit of ` +
-              `${MAX_RESOURCE_NAME_LENGTH} characters`,
+              `${MAX_POLICY_ENGINE_RESOURCE_NAME_LENGTH} characters`,
           });
         }
       }),
@@ -134,7 +133,12 @@ function AddPolicyEngineWizard({ project, core }: { project: Project; core: Scre
       breadcrumb={BREADCRUMB}
       description={DESCRIPTION}
       onCancel={() => navigate("/agentcore/project/add")}
-      onSubmit={() => core.projectManager.addResource(project, buildAddPolicyEngineInput(values))}
+      onSubmit={() =>
+        core.projectManager.addResource(
+          project,
+          toAddPolicyEngineInput(project, toPolicyEngineInput(values)),
+        )
+      }
       runningLabel={`adding Policy Engine ${values.name.trim()}…`}
       successLabel={`added Policy Engine '${values.name.trim()}' to '${project.name}'`}
       successHint="enter exits"
@@ -142,7 +146,7 @@ function AddPolicyEngineWizard({ project, core }: { project: Project; core: Scre
       <Step name="name" question="what should this Policy Engine be called?">
         <TextField
           label="policy engine name"
-          help={`deployed as ${project.name}_<name>, up to ${MAX_RESOURCE_NAME_LENGTH} characters`}
+          help={`deployed as ${project.name}_<name>, up to ${MAX_POLICY_ENGINE_RESOURCE_NAME_LENGTH} characters`}
           placeholder="access"
           value={values.name}
           onChange={(name) => set({ name })}

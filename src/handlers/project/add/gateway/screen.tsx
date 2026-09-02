@@ -2,10 +2,8 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import z from "zod";
 import { ProjectKey } from "../../../../router";
-import { GatewayAuthorizerConfigSchema } from "../../../../projectSchemas/auth";
-import type { AgentCoreGateway } from "../../../../projectSchemas/gateway";
 import type { ScreenProps } from "../../../types";
-import type { AddResourceInput, Project } from "../../types";
+import type { Project } from "../../types";
 import { ProjectGate } from "../../ProjectGate";
 import {
   Wizard,
@@ -15,13 +13,16 @@ import {
   TextAreaField,
   Summary,
 } from "../../../../components/wizard";
-import { gatewayResourceName } from "./index";
+import {
+  GatewayAuthorizerConfigurationInputSchema,
+  MAX_GATEWAY_RESOURCE_NAME_LENGTH,
+  gatewayResourceName,
+  toAddGatewayInput,
+  type GatewayInput,
+} from "./index";
 
 const BREADCRUMB = ["agentcore", "project", "add", "gateway"];
 const DESCRIPTION = "adds a Gateway to the current project";
-
-// The service limit the handler enforces on the deployed Gateway name.
-const MAX_RESOURCE_NAME_LENGTH = 48;
 
 // The two protocols --protocol-type resolves to: "MCP" when passed, "None" when
 // omitted. The wizard always states one, so `undefined` is not a choice here.
@@ -69,25 +70,24 @@ interface GatewayFormValues {
   description: string;
 }
 
-// buildAddGatewayInput mirrors the flag-driven handler's construction, including
-// the defaults it applies for the flags this wizard does not ask about.
-export function buildAddGatewayInput(values: GatewayFormValues): AddResourceInput {
+// toGatewayInput reads the form into the GatewayInput the handler's
+// toAddGatewayInput builds a Gateway from. It carries no defaults and no rules
+// of its own: it trims, parses, and drops the answers to steps the user never
+// saw — a JWT configuration typed before switching the authorizer to NONE, a
+// semantic-search choice made before switching the protocol away from MCP —
+// so the shared builder sees exactly what was asked.
+export function toGatewayInput(values: GatewayFormValues): GatewayInput {
   const isCustomJwt = values.authorizerType === "CUSTOM_JWT";
-  const gateway: AgentCoreGateway = {
+  const isMcp = values.protocolType === "MCP";
+  const description = values.description.trim();
+  return {
     name: values.name.trim(),
     protocolType: values.protocolType,
     authorizerType: values.authorizerType,
-    authorizerConfiguration: isCustomJwt
-      ? GatewayAuthorizerConfigSchema.parse(JSON.parse(values.authorizerConfiguration))
-      : undefined,
-    description: values.description.trim() === "" ? undefined : values.description.trim(),
-    targets: [],
-    // Semantic search is an MCP-only setting; the handler rejects it otherwise,
-    // so a protocol change away from MCP must not leave it on.
-    enableSemanticSearch: values.protocolType === "MCP" ? values.enableSemanticSearch : false,
-    exceptionLevel: "NONE",
+    authorizerConfiguration: isCustomJwt ? JSON.parse(values.authorizerConfiguration) : undefined,
+    enableSemanticSearch: isMcp ? values.enableSemanticSearch : undefined,
+    description: description === "" ? undefined : description,
   };
-  return { resourceType: "gateway", resourceConfig: gateway };
 }
 
 function summaryOf(values: GatewayFormValues): Record<string, string> {
@@ -134,12 +134,12 @@ function AddGatewayWizard({ project, core }: { project: Project; core: ScreenPro
     () =>
       z.string().superRefine((name, ctx) => {
         const resourceName = gatewayResourceName(project.name, { name });
-        if (resourceName.length > MAX_RESOURCE_NAME_LENGTH) {
+        if (resourceName.length > MAX_GATEWAY_RESOURCE_NAME_LENGTH) {
           ctx.addIssue({
             code: "custom",
             message:
               `Gateway resource name '${resourceName}' exceeds the service limit of ` +
-              `${MAX_RESOURCE_NAME_LENGTH} characters`,
+              `${MAX_GATEWAY_RESOURCE_NAME_LENGTH} characters`,
           });
         }
       }),
@@ -154,7 +154,9 @@ function AddGatewayWizard({ project, core }: { project: Project; core: ScreenPro
       breadcrumb={BREADCRUMB}
       description={DESCRIPTION}
       onCancel={() => navigate("/agentcore/project/add")}
-      onSubmit={() => core.projectManager.addResource(project, buildAddGatewayInput(values))}
+      onSubmit={() =>
+        core.projectManager.addResource(project, toAddGatewayInput(project, toGatewayInput(values)))
+      }
       runningLabel={`adding Gateway ${values.name.trim()}…`}
       successLabel={`added Gateway '${values.name.trim()}' to '${project.name}'`}
       successHint="enter exits"
@@ -162,7 +164,7 @@ function AddGatewayWizard({ project, core }: { project: Project; core: ScreenPro
       <Step name="name" question="what should this Gateway be called?">
         <TextField
           label="gateway name"
-          help={`deployed as ${project.name}-<name>, up to ${MAX_RESOURCE_NAME_LENGTH} characters`}
+          help={`deployed as ${project.name}-<name>, up to ${MAX_GATEWAY_RESOURCE_NAME_LENGTH} characters`}
           placeholder="tools"
           value={values.name}
           onChange={(name) => set({ name })}
@@ -200,7 +202,7 @@ function AddGatewayWizard({ project, core }: { project: Project; core: ScreenPro
             onChange={(authorizerConfiguration) => set({ authorizerConfiguration })}
             required
             json
-            schema={GatewayAuthorizerConfigSchema}
+            schema={GatewayAuthorizerConfigurationInputSchema}
           />
         </Step>
       )}

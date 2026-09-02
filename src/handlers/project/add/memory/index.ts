@@ -10,9 +10,11 @@ import {
   MemoryStrategySchema,
   MemoryStrategyTypeSchema,
   StreamContentLevelSchema,
+  type MemorySchema,
   type MemoryStrategy,
 } from "../../../../projectSchemas/memory";
 import { TagsSchema } from "../../../../projectSchemas/tags";
+import type { AddResourceInput } from "../../types";
 
 // The service default for raw event retention
 export const DEFAULT_EVENT_EXPIRY_DURATION = 30;
@@ -22,6 +24,46 @@ export const DEFAULT_EVENT_EXPIRY_DURATION = 30;
  * retention step enforces the same range rather than a copy of it.
  */
 export const EventExpiryDurationSchema = z.number().int().min(3).max(365);
+
+type MemoryResourceConfig = z.input<typeof MemorySchema>;
+
+/**
+ * MemoryInput is what every entry point — the flag handler, the wizard —
+ * resolves its own inputs to before a memory is built. Values are already
+ * typed: JSON flags have been parsed and validated, shorthand strategies have
+ * been expanded. Anything optional is a field toAddMemoryInput defaults.
+ */
+export interface MemoryInput {
+  name: string;
+  description?: string;
+  eventExpiryDuration?: number;
+  strategies?: MemoryStrategy[];
+  indexedKeys?: MemoryResourceConfig["indexedKeys"];
+  streamDeliveryResources?: MemoryResourceConfig["streamDeliveryResources"];
+  encryptionKeyArn?: string;
+  executionRoleArn?: string;
+  tags?: Record<string, string>;
+}
+
+/**
+ * toAddMemoryInput is the one place a memory is assembled from user input.
+ * Both the flag handler and the wizard call it, so they cannot disagree about
+ * what a memory is or what it defaults to.
+ */
+export function toAddMemoryInput(input: MemoryInput): AddResourceInput {
+  const resourceConfig: MemoryResourceConfig = {
+    name: input.name,
+    description: input.description,
+    eventExpiryDuration: input.eventExpiryDuration ?? DEFAULT_EVENT_EXPIRY_DURATION,
+    strategies: input.strategies,
+    indexedKeys: input.indexedKeys,
+    streamDeliveryResources: input.streamDeliveryResources,
+    encryptionKeyArn: input.encryptionKeyArn,
+    executionRoleArn: input.executionRoleArn,
+    tags: input.tags,
+  };
+  return { resourceType: "memory", resourceConfig };
+}
 
 function projectMemoryObject<T extends z.ZodRawShape>(shape: T, label: string) {
   const supportedFields = new Set(Object.keys(shape));
@@ -150,38 +192,34 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
       ),
       flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),
     ],
+    // handle only turns flags into a MemoryInput — parsing JSON, expanding the
+    // strategies shorthand. What a memory is belongs to toAddMemoryInput.
     handle: async (ctx, flags) => {
       if (!flags.name)
         throw new InputValidationError("required option '--name <name>' not specified");
 
-      const inputIndexedKeys = parseJsonFlagWithSchema(
-        "indexed-keys",
-        flags["indexed-keys"],
-        z.array(IndexedKeyInputSchema),
-      );
-      const inputStreamDelivery = parseJsonFlagWithSchema(
-        "stream-delivery-resources",
-        flags["stream-delivery-resources"],
-        StreamDeliveryResourcesInputSchema,
-      );
-
-      const memoryConfig = {
+      const input = toAddMemoryInput({
         name: flags.name,
         description: flags["description"],
         eventExpiryDuration: flags["event-expiry-duration"],
         strategies: flags["strategies"] ? toStrategies(flags["strategies"]) : undefined,
-        indexedKeys: inputIndexedKeys,
+        indexedKeys: parseJsonFlagWithSchema(
+          "indexed-keys",
+          flags["indexed-keys"],
+          z.array(IndexedKeyInputSchema),
+        ),
+        streamDeliveryResources: parseJsonFlagWithSchema(
+          "stream-delivery-resources",
+          flags["stream-delivery-resources"],
+          StreamDeliveryResourcesInputSchema,
+        ),
         encryptionKeyArn: flags["encryption-key-arn"],
         executionRoleArn: flags["execution-role-arn"],
-        streamDeliveryResources: inputStreamDelivery,
         tags: parseJsonFlagWithSchema("tags", flags["tags"], TagsSchema),
-      };
+      });
 
       const project = ctx.require(ProjectKey);
-      for await (const event of config.projectManager.addResource(project, {
-        resourceType: "memory",
-        resourceConfig: memoryConfig,
-      })) {
+      for await (const event of config.projectManager.addResource(project, input)) {
         config.io.stderr.write(`${event.message}\n`);
       }
 

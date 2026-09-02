@@ -19,6 +19,12 @@ export interface StepProps {
 
 // Step is one page of a <Wizard>: the stepper entry, the question line, and the
 // field that collects the answer.
+//
+// One field per step. Every field registers its own useInput and answers enter,
+// esc and the arrows itself; two fields mounted at once would both react to the
+// same keystroke. The shell has no notion of focus and is not meant to grow
+// one — a step that genuinely needs two related inputs should get a single
+// compound field that owns one useInput and manages focus internally.
 export function Step({ question, children }: StepProps) {
   return (
     <Box flexDirection="column" paddingX={1}>

@@ -4,18 +4,19 @@ import z from "zod";
 import { ProjectKey } from "../../../../router";
 import {
   MemoryNameSchema,
-  MemorySchema,
   MemoryStrategyTypeSchema,
   type MemoryStrategyType,
 } from "../../../../projectSchemas/memory";
 import type { ScreenProps } from "../../../types";
-import type { AddResourceInput, Project } from "../../types";
+import type { Project } from "../../types";
 import { ProjectGate } from "../../ProjectGate";
 import { Wizard, Step, TextField, MultiChoiceField, Summary } from "../../../../components/wizard";
 import {
   DEFAULT_EVENT_EXPIRY_DURATION,
   EventExpiryDurationSchema,
+  toAddMemoryInput,
   toDefaultStrategy,
+  type MemoryInput,
 } from "./index";
 
 // The retention step collects text, so the flag's numeric bounds are reached
@@ -52,18 +53,19 @@ interface MemoryFormValues {
   description: string;
 }
 
-// buildAddMemoryInput translates the form into the AddResourceInput the
-// flag-driven handler builds, reusing its own toDefaultStrategy so a picked
-// strategy expands to the same namespaces `--strategies SEMANTIC` expands to.
-export function buildAddMemoryInput(values: MemoryFormValues): AddResourceInput {
-  const resourceConfig: z.input<typeof MemorySchema> = {
+// toMemoryInput reads the form into the MemoryInput the handler's
+// toAddMemoryInput builds a memory from. It trims and converts; the one piece
+// of handler logic it reaches for, toDefaultStrategy, is the handler's own, so
+// a picked strategy expands to the same namespaces `--strategies SEMANTIC` does.
+export function toMemoryInput(values: MemoryFormValues): MemoryInput {
+  const description = values.description.trim();
+  return {
     name: values.name.trim(),
-    description: values.description.trim() === "" ? undefined : values.description.trim(),
+    description: description === "" ? undefined : description,
     eventExpiryDuration: Number(values.expiry),
     strategies:
       values.strategies.length === 0 ? undefined : values.strategies.map(toDefaultStrategy),
   };
-  return { resourceType: "memory", resourceConfig };
 }
 
 function summaryOf(values: MemoryFormValues): Record<string, string> {
@@ -104,7 +106,9 @@ function AddMemoryWizard({ project, core }: { project: Project; core: ScreenProp
       breadcrumb={BREADCRUMB}
       description={DESCRIPTION}
       onCancel={() => navigate("/agentcore/project/add")}
-      onSubmit={() => core.projectManager.addResource(project, buildAddMemoryInput(values))}
+      onSubmit={() =>
+        core.projectManager.addResource(project, toAddMemoryInput(toMemoryInput(values)))
+      }
       runningLabel={`adding memory ${values.name.trim()}…`}
       successLabel={`added memory '${values.name.trim()}' to '${project.name}'`}
       successHint="enter exits"

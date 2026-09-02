@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { useState } from "react";
 import { render } from "ink-testing-library";
-import { cleanupScreens, keys, tick, waitFor } from "../../testing";
+import { render as inkRender } from "ink";
+import { cleanupScreens, keys, tick, ttyTestIO, waitFor } from "../../testing";
 import { Wizard, type WizardSubmitResult } from "./Wizard";
 import { Step } from "./Step";
 import { ChoiceField, Summary, TextField } from "./fields";
@@ -283,5 +284,33 @@ describe("Wizard shell", () => {
     await waitForFrame(d, "name is required");
     expect(d.lastFrame()).toContain("what is your name?");
     d.unmount();
+  });
+});
+
+describe("Wizard authoring guards", () => {
+  // Ink's own render rather than ink-testing-library: a render-time throw
+  // reaches Ink's error boundary and rejects waitUntilExit, which the testing
+  // library does not expose.
+  test("two steps sharing a name are rejected at render", async () => {
+    const { streams } = ttyTestIO();
+    const { waitUntilExit } = inkRender(
+      <Wizard
+        breadcrumb={["agentcore", "test"]}
+        onCancel={() => {}}
+        onSubmit={async () => {}}
+        runningLabel="working…"
+        successLabel="all done"
+      >
+        <Step name="name" question="first">
+          <Summary items={{}} />
+        </Step>
+        <Step name="name" question="second">
+          <Summary items={{}} />
+        </Step>
+      </Wizard>,
+      { stdin: streams.io.stdin, stdout: streams.io.stdout, stderr: streams.io.stderr },
+    );
+
+    await expect(waitUntilExit()).rejects.toThrow('duplicate <Step name="name">');
   });
 });

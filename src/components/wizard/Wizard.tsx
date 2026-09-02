@@ -80,14 +80,21 @@ export function Wizard({
     [children],
   );
 
-  const steps: StepperStep[] = useMemo(
-    () =>
-      stepElements.map((element) => ({
-        key: element.props.name,
-        title: element.props.title ?? element.props.name,
-      })),
-    [stepElements],
-  );
+  const steps: StepperStep[] = useMemo(() => {
+    const list = stepElements.map((element) => ({
+      key: element.props.name,
+      title: element.props.title ?? element.props.name,
+    }));
+    // Position is keyed by name, so two steps sharing one would make advance()
+    // land on the first of them forever. Catch that at render time, where the
+    // author sees it, instead of as a wizard that quietly cannot move on.
+    const seen = new Set<string>();
+    for (const step of list) {
+      if (seen.has(step.key)) throw new Error(`duplicate <Step name="${step.key}">`);
+      seen.add(step.key);
+    }
+    return list;
+  }, [stepElements]);
 
   const [stepKey, setStepKey] = useState<string>(() => steps[0]?.key ?? "");
 

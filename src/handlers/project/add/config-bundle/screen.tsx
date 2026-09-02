@@ -1,25 +1,25 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import type z from "zod";
 import { ProjectKey } from "../../../../router";
 import {
   ConfigBundleBranchNameSchema,
   ConfigBundleCommitMessageSchema,
   ConfigBundleDescriptionSchema,
   ConfigBundleNameSchema,
-  type ConfigBundleSchema,
 } from "../../../../projectSchemas/config-bundle";
 import type { ScreenProps } from "../../../types";
-import type { AddResourceInput, Project } from "../../types";
+import type { Project } from "../../types";
 import { ProjectGate } from "../../ProjectGate";
 import { Wizard, Step, TextField, Summary } from "../../../../components/wizard";
-import { ComponentsSchema } from "./index";
+import {
+  ComponentsSchema,
+  DEFAULT_BRANCH_NAME,
+  toAddConfigBundleInput,
+  type ConfigBundleInput,
+} from "./index";
 
 const BREADCRUMB = ["agentcore", "project", "add", "config-bundle"];
 const DESCRIPTION = "adds a configuration bundle to the current project";
-
-// The default the --branch-name flag applies.
-const DEFAULT_BRANCH_NAME = "mainline";
 
 // A complete, valid components map. It stays on screen while the user types,
 // so the shape can be copied rather than remembered.
@@ -33,15 +33,23 @@ interface ConfigBundleFormValues {
   commitMessage: string;
 }
 
-export function buildAddConfigBundleInput(values: ConfigBundleFormValues): AddResourceInput {
-  const resourceConfig: z.input<typeof ConfigBundleSchema> = {
+// toConfigBundleInput reads the form into the ConfigBundleInput the handler's
+// toAddConfigBundleInput builds a bundle from. It trims and parses; a blank
+// optional answer is passed as undefined so the shared builder applies the
+// same default the flag path applies.
+export function toConfigBundleInput(values: ConfigBundleFormValues): ConfigBundleInput {
+  return {
     name: values.name.trim(),
-    description: values.description.trim() === "" ? undefined : values.description.trim(),
-    components: ComponentsSchema.parse(JSON.parse(values.components)),
-    branchName: values.branchName.trim() === "" ? DEFAULT_BRANCH_NAME : values.branchName.trim(),
-    commitMessage: values.commitMessage.trim() === "" ? undefined : values.commitMessage.trim(),
+    components: JSON.parse(values.components),
+    description: blankToUndefined(values.description),
+    branchName: blankToUndefined(values.branchName),
+    commitMessage: blankToUndefined(values.commitMessage),
   };
-  return { resourceType: "config-bundle", resourceConfig };
+}
+
+function blankToUndefined(value: string): string | undefined {
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
 }
 
 function summaryOf(values: ConfigBundleFormValues): Record<string, string> {
@@ -93,7 +101,12 @@ function AddConfigBundleWizard({ project, core }: { project: Project; core: Scre
       breadcrumb={BREADCRUMB}
       description={DESCRIPTION}
       onCancel={() => navigate("/agentcore/project/add")}
-      onSubmit={() => core.projectManager.addResource(project, buildAddConfigBundleInput(values))}
+      onSubmit={() =>
+        core.projectManager.addResource(
+          project,
+          toAddConfigBundleInput(toConfigBundleInput(values)),
+        )
+      }
       runningLabel={`adding configuration bundle ${values.name.trim()}…`}
       successLabel={`added configuration bundle '${values.name.trim()}' to '${project.name}'`}
       successHint="enter exits"
