@@ -16,6 +16,7 @@ import type {
 } from "./cdk/credentials";
 import { DEPLOYED_STATE_RELATIVE_PATH, updateTargetState } from "./cdk/deployedState";
 import type { DeployBackendInput } from "./types";
+import type { ResolvedProjectResource } from "../../../handlers/project/types";
 import type { BootstrapState } from "./cdk/environment";
 import type { CdkCredentialProvider, CdkOperation, CdkOutputs, CdkRunOptions } from "./cdk/toolkit";
 
@@ -931,5 +932,149 @@ describe("CdkBackend.resolveDeployedResources", () => {
       subject.backend.resolveDeployedResources(input, { target: TARGET }),
     ).rejects.toThrow(/expects AWS account 111122223333.*999900001111/s);
     expect(subject.stackReads).toEqual([]);
+  });
+});
+
+describe("CdkBackend.resolveProjectResources", () => {
+  const out = (ExportName: string, OutputValue: string) => ({ ExportName, OutputValue });
+  const key = (OutputKey: string, OutputValue: string) => ({ OutputKey, OutputValue });
+  const S = "AgentCore-example-default";
+
+  test("resolves every declared type: exports, payment OutputKeys, credential from state, nested parents, underscores", async () => {
+    const input = await project();
+    input.spec = {
+      ...input.spec,
+      runtimes: [{ name: "web" }],
+      harnesses: [{ name: "chat" }],
+      memories: [{ name: "user_mem" }], // an underscore becomes a dash in the export
+      knowledgeBases: [{ name: "kb" }],
+      credentials: [{ name: "cred" }], // read from deployed state, not the stack
+      evaluators: [{ name: "ev" }],
+      onlineEvalConfigs: [{ name: "oe" }],
+      agentCoreGateways: [{ name: "gw", targets: [{ name: "tgt" }] }],
+      policyEngines: [{ name: "pe", policies: [{ name: "pol" }] }],
+      configBundles: [{ name: "cb" }],
+      payments: [{ name: "pay", connectors: [{ name: "wallet_one" }] }],
+    } as unknown as typeof input.spec;
+    await updateTargetState(json, input.rootPath, TARGET.name, {
+      stackArn: STACK_ARN,
+      resources: { credentials: { cred: { credentialProviderArn: "arn:aws:cred/cred" } } },
+    });
+    const subject = harness({
+      describedStack: {
+        StackName: S,
+        CreationTime: new Date(0),
+        StackStatus: "CREATE_COMPLETE",
+        Outputs: [
+          out(`${S}-web-RuntimeArn`, "arn:runtime/web-1"),
+          out(`${S}-Harness-chat-Arn`, "arn:harness/chat-1"),
+          out(`${S}-Memory-user-mem-Arn`, "arn:memory/mem-1"),
+          out(`${S}-KnowledgeBase-kb-Arn`, "arn:kb/kb-1"),
+          out(`${S}-Evaluator-ev-Arn`, "arn:evaluator/ev-1"),
+          out(`${S}-OnlineEval-oe-Arn`, "arn:online-eval/oe-1"),
+          out(`${S}-Gateway-gw-Arn`, "arn:gateway/gw-1"),
+          out(`${S}-GatewayTarget-tgt-Id`, "tgt-1"),
+          out(`${S}-PolicyEngine-pe-Arn`, "arn:policy-engine/pe-1"),
+          out(`${S}-Policy-pe-pol-Arn`, "arn:policy/pol-1"),
+          out(`${S}-ConfigBundle-cb-Arn`, "arn:config-bundle/cb-1"),
+          key("PaymentpayManagerArn", "arn:payment-manager/pay-1"),
+          key("PaymentpaywalletoneConnectorId", "conn-1"),
+        ],
+      },
+    });
+
+    const resources = await subject.backend.resolveProjectResources(input, { target: TARGET });
+
+    // [type, name, arn, [children...]] so a child under the wrong owner fails here
+    const shape = (resource: ResolvedProjectResource): unknown => [
+      resource.resourceType,
+      resource.name,
+      resource.deploymentState === "deployed" ? resource.id : undefined,
+      ...(resource.children ? [resource.children.map(shape)] : []),
+    ];
+    expect(resources.map(shape)).toEqual([
+      ["runtime", "web", "arn:runtime/web-1"],
+      ["harness", "chat", "arn:harness/chat-1"],
+      ["memory", "user_mem", "arn:memory/mem-1"],
+      ["knowledge-base", "kb", "arn:kb/kb-1"],
+      ["credential", "cred", "arn:aws:cred/cred"],
+      ["evaluator", "ev", "arn:evaluator/ev-1"],
+      ["online-eval", "oe", "arn:online-eval/oe-1"],
+      ["gateway", "gw", "arn:gateway/gw-1", [["gateway-target", "tgt", "tgt-1"]]],
+      ["policy-engine", "pe", "arn:policy-engine/pe-1", [["policy", "pol", "arn:policy/pol-1"]]],
+      ["config-bundle", "cb", "arn:config-bundle/cb-1"],
+      [
+        "payment-manager",
+        "pay",
+        "arn:payment-manager/pay-1",
+        [["payment-connector", "wallet_one", "conn-1"]],
+      ],
+    ]);
+    expect(subject.stackReads).toHaveLength(1);
+  });
+
+  test("reports a declared resource the stack does not publish as local-only", async () => {
+    const input = await project();
+    input.spec = {
+      ...input.spec,
+      memories: [{ name: "shortTerm" }, { name: "longTerm" }],
+    } as unknown as typeof input.spec;
+    await updateTargetState(json, input.rootPath, TARGET.name, { stackArn: STACK_ARN });
+    const subject = harness({
+      describedStack: {
+        StackName: S,
+        CreationTime: new Date(0),
+        StackStatus: "CREATE_COMPLETE",
+        Outputs: [out(`${S}-Memory-shortTerm-Arn`, "arn:memory/short-1")],
+      },
+    });
+
+    const resources = await subject.backend.resolveProjectResources(input, { target: TARGET });
+
+    expect(resources).toEqual([
+      {
+        resourceType: "memory",
+        name: "shortTerm",
+        deploymentState: "deployed",
+        id: "arn:memory/short-1",
+      },
+      { resourceType: "memory", name: "longTerm", deploymentState: "local-only" },
+    ]);
+  });
+
+  test("reports local-only without reading AWS when the target has no recorded stack", async () => {
+    const input = await project();
+    input.spec = {
+      ...input.spec,
+      memories: [{ name: "mem" }],
+    } as unknown as typeof input.spec;
+    const subject = harness({ describedStack: null });
+
+    const resources = await subject.backend.resolveProjectResources(input, { target: TARGET });
+
+    expect(resources).toEqual([
+      { resourceType: "memory", name: "mem", deploymentState: "local-only" },
+    ]);
+    expect(subject.stackReads).toEqual([]);
+    expect(subject.accountCredentials).toEqual([]);
+  });
+
+  test("nests a gateway's targets under the gateway", async () => {
+    const input = await project();
+    input.spec = {
+      ...input.spec,
+      agentCoreGateways: [{ name: "gw", targets: [{ name: "owned" }, { name: "second" }] }],
+    } as unknown as typeof input.spec;
+    const subject = harness({ describedStack: null });
+
+    const resources = await subject.backend.resolveProjectResources(input, { target: TARGET });
+
+    expect(
+      resources.map(({ resourceType, name, children }) => [
+        resourceType,
+        name,
+        children?.map((child) => child.name),
+      ]),
+    ).toEqual([["gateway", "gw", ["owned", "second"]]]);
   });
 });

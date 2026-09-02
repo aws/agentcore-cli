@@ -68,6 +68,9 @@ function fakeBackend(
     async resolveDeployedResources() {
       return [];
     },
+    async resolveProjectResources() {
+      return [];
+    },
   };
   return { calls, confirmations, backend };
 }

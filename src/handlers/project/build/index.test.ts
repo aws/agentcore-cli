@@ -32,6 +32,9 @@ function testBuildCommand(options: TestBuildOptions = {}) {
     async resolveDeployedResources() {
       return [];
     },
+    async resolveProjectResources() {
+      return [];
+    },
   };
   const core = new TestCoreClient({ backends: { CDK: backend } });
   const root = createRootHandler(core, {

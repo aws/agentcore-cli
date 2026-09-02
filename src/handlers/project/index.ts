@@ -91,7 +91,11 @@ export function createProjectHandler({ core, io }: ProjectHandlerConfig): Router
     ),
   );
   project.handler(createProjectInvokeHandler(core, io));
-  project.handler(createStatusProjectHandler());
+  project.handler(
+    withProject({ projectManager: config.projectManager })(
+      createStatusProjectHandler({ projectManager: config.projectManager }),
+    ),
+  );
   // withProject wraps only the commands that require an existing project, so
   // `create` (which refuses to nest inside one) stays unaffected.
   project.handler(

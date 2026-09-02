@@ -6,7 +6,9 @@ import type {
   DeployResult,
   Project,
   ProjectEvent,
+  DeployableResource,
   ResolvedDeployedResource,
+  ResolvedProjectResource,
 } from "../../../handlers/project/types";
 import {
   createLineSplitter,
@@ -23,6 +25,7 @@ import type {
   DeployBackendInput,
   ProjectBackend,
   ResolveDeployedResourcesBackendInput,
+  ResolveProjectResourcesBackendInput,
 } from "./types";
 import { createCloudFormationClient } from "../../factories";
 import type { CreateCloudFormationClient } from "../../types";
@@ -68,6 +71,11 @@ type StackDescriber = typeof describeStack;
  * the cap streamProcess uses for a failed subprocess's captured output.
  */
 const MAX_ERROR_OUTPUT_LINES = 20;
+
+// Payment logical ids drop underscores the same way the template's toCdkId does.
+function cdkId(name: string): string {
+  return name.replace(/_/g, "");
+}
 
 function findDeployedResourceId(
   stack: Stack,
@@ -401,6 +409,140 @@ export class CdkBackend implements ProjectBackend {
       const id = findDeployedResourceId(stack, resource);
       return id ? [{ ...resource, id, target }] : [];
     });
+  }
+
+  public async resolveProjectResources(
+    project: Project,
+    input: ResolveProjectResourcesBackendInput,
+  ): Promise<ResolvedProjectResource[]> {
+    const { target } = input;
+    const { spec } = project;
+    const deployedState = await readDeployedState(this.json, project.rootPath);
+    const recorded = deployedState.targets[target.name];
+
+    // No recorded stack means nothing was ever deployed to this target, which
+    // every resource below reports as local-only.
+    const stack = recorded?.stackArn
+      ? await this.describeStack(
+          target.region,
+          await this.credentialsForTarget(target),
+          recorded.stackArn,
+        )
+      : undefined;
+
+    const byExportName = (...parts: string[]) => {
+      if (!stack?.StackName) return undefined;
+      // The CDK library builds every ExportName through this shared helper
+      // https://github.com/aws/agentcore-l3-cdk-constructs/blob/main/src/cdk/logical-ids.ts#L84
+      const want = [stack.StackName, ...parts]
+        .map((part) => part.replace(/_/g, "-").replace(/[^a-zA-Z0-9:-]/g, ""))
+        .join("-");
+      return stack.Outputs?.find((output) => output.ExportName === want)?.OutputValue;
+    };
+
+    const byOutputKey = (key: string) =>
+      stack?.Outputs?.find((output) => output.OutputKey === key)?.OutputValue;
+
+    const arnOf = (
+      resourceType: DeployableResource,
+      name: string,
+      owner?: string,
+    ): string | undefined => {
+      switch (resourceType) {
+        case "runtime":
+          return byExportName(name, "RuntimeArn");
+        case "harness":
+          return byExportName("Harness", name, "Arn");
+        case "memory":
+          return byExportName("Memory", name, "Arn");
+        case "knowledge-base":
+          return byExportName("KnowledgeBase", name, "Arn");
+        case "evaluator":
+          return byExportName("Evaluator", name, "Arn");
+        case "online-eval":
+          return byExportName("OnlineEval", name, "Arn");
+        case "gateway":
+          return byExportName("Gateway", name, "Arn");
+        case "gateway-target":
+          // The L3 exports an id for targets and never an ARN
+          return byExportName("GatewayTarget", name, "Id");
+        case "policy":
+          // ExportName: <StackName>-Policy-<engineName>-<policyName>-Arn
+          return byExportName("Policy", owner ?? "", name, "Arn");
+        case "policy-engine":
+          return byExportName("PolicyEngine", name, "Arn");
+        case "config-bundle":
+          return byExportName("ConfigBundle", name, "Arn");
+        case "payment-manager":
+          // The CLI template writes the payment outputs. It does not set an
+          // exportName on them. Therefore match on the OutputKey. The template
+          // makes that key from the manager name.
+          // See src/assets/cdk/lib/cdk-stack.ts
+          return byOutputKey(`Payment${cdkId(name)}ManagerArn`);
+        case "payment-connector":
+          // The same template does not set an exportName. Therefore match on the
+          // OutputKey. The template writes only a connector id, and never an ARN.
+          return byOutputKey(`Payment${cdkId(owner ?? "")}${cdkId(name)}ConnectorId`);
+        case "credential":
+          // The CLI creates credential providers imperatively. The stack does not
+          // contain them. Therefore read the ARN from the deployed state file.
+          return recorded?.resources?.credentials?.[name]?.credentialProviderArn;
+        default: {
+          const unhandled: never = resourceType;
+          return unhandled;
+        }
+      }
+    };
+
+    // Resolves one declared resource, and keeps its children with it. The spec
+    // already says which resource owns which, so status never has to pair them
+    // up again by name. `owner` only builds the export name, so it is not
+    // reported.
+    const resolve = (
+      resourceType: DeployableResource,
+      name: string,
+      options: { owner?: string; children?: ResolvedProjectResource[] } = {},
+    ): ResolvedProjectResource => {
+      const id = arnOf(resourceType, name, options.owner);
+      return {
+        resourceType,
+        name,
+        ...(options.children?.length ? { children: options.children } : {}),
+        ...(id ? { deploymentState: "deployed", id } : { deploymentState: "local-only" }),
+      };
+    };
+
+    return [
+      ...spec.runtimes.map(({ name }) => resolve("runtime", name)),
+      ...spec.harnesses.map(({ name }) => resolve("harness", name)),
+      ...spec.memories.map(({ name }) => resolve("memory", name)),
+      ...spec.knowledgeBases.map(({ name }) => resolve("knowledge-base", name)),
+      ...spec.credentials.map(({ name }) => resolve("credential", name)),
+      ...spec.evaluators.map(({ name }) => resolve("evaluator", name)),
+      ...spec.onlineEvalConfigs.map(({ name }) => resolve("online-eval", name)),
+      ...spec.agentCoreGateways.map((gateway) =>
+        resolve("gateway", gateway.name, {
+          children: (gateway.targets ?? []).map(({ name }) =>
+            resolve("gateway-target", name, { owner: gateway.name }),
+          ),
+        }),
+      ),
+      ...spec.policyEngines.map((engine) =>
+        resolve("policy-engine", engine.name, {
+          children: (engine.policies ?? []).map(({ name }) =>
+            resolve("policy", name, { owner: engine.name }),
+          ),
+        }),
+      ),
+      ...spec.configBundles.map(({ name }) => resolve("config-bundle", name)),
+      ...(spec.payments ?? []).map((manager) =>
+        resolve("payment-manager", manager.name, {
+          children: (manager.connectors ?? []).map(({ name }) =>
+            resolve("payment-connector", name, { owner: manager.name }),
+          ),
+        }),
+      ),
+    ];
   }
 
   private async credentialsForTarget(target: AwsDeploymentTarget) {

@@ -95,6 +95,9 @@ function backend() {
         })),
       ];
     },
+    async resolveProjectResources() {
+      throw new Error("project invoke resolves deployed resources, not project resources");
+    },
   };
   return { calls, value };
 }

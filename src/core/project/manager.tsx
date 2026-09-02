@@ -13,6 +13,8 @@ import type {
   ResolvedDeployedResource,
   ResolvedDeployedResources,
   ResolveProjectInput,
+  ResolveProjectResourcesInput,
+  ResolvedProjectResources,
   ResolveTargetInput,
   Project,
   ProjectManager,
@@ -932,6 +934,15 @@ export class FsProjectManager implements ProjectManager {
   ): Promise<ResolvedDeployedResources> {
     const target = await this.resolveExistingTarget(project, input.target);
     const resources = await this.backendFor(project).resolveDeployedResources(project, { target });
+    return { resources, target };
+  }
+
+  public async resolveProjectResources(
+    project: Project,
+    input: ResolveProjectResourcesInput,
+  ): Promise<ResolvedProjectResources> {
+    const target = await this.resolveExistingTarget(project, input.target);
+    const resources = await this.backendFor(project).resolveProjectResources(project, { target });
     return { resources, target };
   }
 

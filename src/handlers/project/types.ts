@@ -181,6 +181,53 @@ export type ResolvedDeployedResources = {
   target: AwsDeploymentTarget;
 };
 
+export type ResolveProjectResourcesInput = {
+  /** Name of the aws-targets.json entry to report on. */
+  target: string;
+};
+
+/**
+ * Every resource type a project can declare and deploy. Broader than
+ * {@link ProjectInvokableResource}: status reports all of them, while invoke only
+ * addresses the two that accept a payload.
+ */
+export type DeployableResource =
+  | "runtime"
+  | "harness"
+  | "memory"
+  | "knowledge-base"
+  | "credential"
+  | "evaluator"
+  | "online-eval"
+  | "gateway"
+  | "gateway-target"
+  | "policy-engine"
+  | "policy"
+  | "config-bundle"
+  | "payment-manager"
+  | "payment-connector";
+
+/**
+ * A declared resource paired with what the target holds for it. `local-only`
+ * means the project declares it but the target's stack has not published it,
+ * which is how status distinguishes "not deployed yet" from "not declared".
+ */
+export type ResolvedProjectResource = {
+  resourceType: DeployableResource;
+  name: string;
+  /**
+   * Resources this one contains: a gateway's targets, a policy engine's
+   * policies, a payment manager's connectors. The spec says who owns what, so
+   * the resolver nests them here and no caller pairs them up by name.
+   */
+  children?: ResolvedProjectResource[];
+} & ({ deploymentState: "deployed"; id: string } | { deploymentState: "local-only" });
+
+export type ResolvedProjectResources = {
+  resources: ResolvedProjectResource[];
+  target: AwsDeploymentTarget;
+};
+
 export type Project = {
   name: string;
   /** Absolute path to the project root (the parent of agentcore/). */
@@ -373,6 +420,15 @@ export interface ProjectManager {
     project: Project,
     input: ResolveDeployedResourcesInput,
   ): Promise<ResolvedDeployedResources>;
+
+  /**
+   * Resolve every resource the project declares, deployed or not, for the named
+   * target. Reports rather than throws when nothing is deployed yet.
+   */
+  resolveProjectResources(
+    project: Project,
+    input: ResolveProjectResourcesInput,
+  ): Promise<ResolvedProjectResources>;
 
   /** Add a resource to an existing AgentCore project. */
   addResource(project: Project, input: AddResourceInput): AsyncGenerator<ProjectEvent, Project>;

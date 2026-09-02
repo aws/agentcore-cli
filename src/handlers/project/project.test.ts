@@ -25,10 +25,9 @@ async function run(args: string[], opts?: { core?: TestCoreClient; stdin?: strin
   return { io, core };
 }
 
-describe.each(["status"])("project %s", (command) => {
-  test("throws because it is not implemented yet", async () => {
-    await expect(run([command])).rejects.toThrow(/not implemented/);
-  });
+test("project status requires an AgentCore project", async () => {
+  await inTempDirectory();
+  await expect(run(["status"])).rejects.toThrow(/No AgentCore project found/);
 });
 
 test("project dev requires an AgentCore project", async () => {
