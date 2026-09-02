@@ -4,12 +4,17 @@ import { JsonRendererKey } from "../../../tui";
 import { runWithProgress } from "../../../tui/progress";
 import { JsonKey } from "../../keys";
 import { renderJsonError } from "../../utils";
-import type { ProjectManager } from "../types";
+import type { Project, ProjectManager } from "../types";
 
 type BuildProjectHandlerConfig = {
   projectManager: ProjectManager;
   io: AppIO;
 };
+
+/** The line both entry points print once a build finishes. */
+export function builtMessage(project: Project): string {
+  return `Built project '${project.name}'`;
+}
 
 export const createBuildProjectHandler = (config: BuildProjectHandlerConfig) =>
   createHandler({
@@ -35,7 +40,7 @@ export const createBuildProjectHandler = (config: BuildProjectHandlerConfig) =>
         throw error;
       }
 
-      const message = `Built project '${project.name}'`;
+      const message = builtMessage(project);
       config.io.stderr.write(`${message}\n`);
       if (jsonOutput) ctx.require(JsonRendererKey).renderJson({ message });
     },

@@ -76,9 +76,10 @@ describe("project subcommands without a screen", () => {
   // Reading the cases off the router also guards Root's hand-written
   // PROJECT_COMMANDS: an unrouted subcommand hits the catch-all, which resolves
   // instead of rejecting. Frames can't detect that — the catch-all exits before
-  // painting, so it and this screen both render empty. `create` and `invoke`
-  // are excluded because both have real screens.
-  test.each(projectSubcommands().filter((command) => command !== "create" && command !== "invoke"))(
+  // painting, so it and this screen both render empty. Subcommands with a real
+  // screen are excluded.
+  const WITH_SCREENS = ["create", "invoke", "build", "deploy"];
+  test.each(projectSubcommands().filter((command) => !WITH_SCREENS.includes(command)))(
     "%s tears down the TUI with NotImplementedError",
     async (command) => {
       const { streams } = ttyTestIO();
@@ -99,7 +100,7 @@ describe("project subcommands without a screen", () => {
     const { streams } = ttyTestIO();
 
     const caught: unknown = await renderTuiAt(
-      "/agentcore/project/deploy",
+      "/agentcore/project/status",
       ValueContext.EmptyContext(),
       new TestCoreClient(),
       streams.io,
@@ -110,7 +111,7 @@ describe("project subcommands without a screen", () => {
 
     expect(caught).toBeInstanceOf(NotImplementedError);
     const error = caught as NotImplementedError;
-    expect(error.message).toContain("agentcore project deploy --help");
+    expect(error.message).toContain("agentcore project status --help");
     // Surfaces as a plain CLI failure, not a crash.
     expect(error.exitCode).toBe(1);
   });

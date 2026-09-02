@@ -25,6 +25,8 @@ export {
   cleanupScreens,
   keys,
   waitForText,
+  flatFrame,
+  waitForFlatText,
   type RenderScreenOptions,
   type RenderScreenResult,
 } from "./renderScreen";

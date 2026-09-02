@@ -170,3 +170,19 @@ export function waitForText(
 ): Promise<void> {
   return waitFor(() => (lastFrame() ?? "").includes(text), timeoutMs);
 }
+
+// flatFrame collapses a frame's whitespace so text that Ink lays out across
+// columns or lines (a key/value table, a wrapped sentence) can be matched as a
+// single string.
+export function flatFrame(lastFrame: () => string | undefined): string {
+  return (lastFrame() ?? "").replace(/\s+/g, " ");
+}
+
+// waitForFlatText is waitForText against the flattened frame.
+export function waitForFlatText(
+  lastFrame: () => string | undefined,
+  text: string,
+  timeoutMs = 1000,
+): Promise<void> {
+  return waitFor(() => flatFrame(lastFrame).includes(text), timeoutMs);
+}

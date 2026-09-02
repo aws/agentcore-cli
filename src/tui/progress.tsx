@@ -25,6 +25,44 @@ export type RunWithProgressOptions = {
 const DEFAULT_TAIL_LINES = 5;
 
 /**
+ * Folds one progress event into a task list: a `step` completes the running
+ * task and starts a new one; an `output` line joins the running task's tail.
+ * Pure, so every renderer of progress — the inline TaskList below, a TUI
+ * screen's running phase — reads events the same way and shows the same steps.
+ */
+export function applyProgressEvent(
+  tasks: readonly Task[],
+  event: ProgressEvent,
+  tailLines = DEFAULT_TAIL_LINES,
+): Task[] {
+  const current = tasks[tasks.length - 1];
+  if (event.type === "step") {
+    const settled = current
+      ? [...tasks.slice(0, -1), { ...current, state: "done" as const, tail: [] }]
+      : [];
+    return [...settled, { title: event.message, state: "running", tail: [] }];
+  }
+  // An output line before the first step has nowhere to render; the debug log
+  // still has it.
+  if (!current) return [...tasks];
+  return [
+    ...tasks.slice(0, -1),
+    { ...current, tail: [...current.tail, event.line].slice(-tailLines) },
+  ];
+}
+
+/**
+ * Marks the running task finished: `done` when the generator returned (its
+ * tail collapses), `failed` when it threw (the tail stays, so the last output
+ * is visible above the error).
+ */
+export function settleProgress(tasks: readonly Task[], state: "done" | "failed"): Task[] {
+  const current = tasks[tasks.length - 1];
+  if (!current) return [...tasks];
+  return [...tasks.slice(0, -1), { ...current, state, tail: state === "done" ? [] : current.tail }];
+}
+
+/**
  * Drains a progress generator into a live step list and resolves with the
  * generator's return value.
  *
@@ -57,7 +95,7 @@ export async function runWithProgress<T>(
   }
 
   const tailLines = options.tailLines ?? DEFAULT_TAIL_LINES;
-  const tasks: Task[] = [];
+  let tasks: Task[] = [];
   // Ink renders onto its `stdout` option; handing it io.stderr keeps progress
   // off the machine-readable stream, same as the plain path.
   const instance = render(<TaskList tasks={[]} tailLines={tailLines} />, {
@@ -70,41 +108,22 @@ export async function runWithProgress<T>(
     exitOnCtrlC: false,
     patchConsole: false,
   });
-  const draw = () => instance.rerender(<TaskList tasks={[...tasks]} tailLines={tailLines} />);
-  const current = () => tasks[tasks.length - 1];
+  const draw = () => instance.rerender(<TaskList tasks={tasks} tailLines={tailLines} />);
 
   try {
     let next = await generator.next();
     while (!next.done) {
-      const event = next.value;
-      if (event.type === "step") {
-        const previous = current();
-        if (previous) {
-          previous.state = "done";
-          previous.tail = [];
-        }
-        tasks.push({ title: event.message, state: "running", tail: [] });
-      } else {
-        // An output line before the first step has nowhere to render; the
-        // debug log still has it.
-        const task = current();
-        if (task) task.tail = [...task.tail, event.line].slice(-tailLines);
-      }
+      tasks = applyProgressEvent(tasks, next.value, tailLines);
       draw();
       next = await generator.next();
     }
-    const last = current();
-    if (last) {
-      last.state = "done";
-      last.tail = [];
-    }
+    tasks = settleProgress(tasks, "done");
     draw();
     return next.value;
   } catch (error) {
     // The failed step keeps its tail: the last frame stays in scrollback above
     // the error message runWithExitCode prints after the rethrow.
-    const task = current();
-    if (task) task.state = "failed";
+    tasks = settleProgress(tasks, "failed");
     draw();
     throw error;
   } finally {

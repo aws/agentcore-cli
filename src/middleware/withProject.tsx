@@ -15,6 +15,18 @@ interface WithProjectConfig {
  *
  * @param config - Contains the {@link ProjectManager} and an optional `cwd` to search from.
  */
+/**
+ * The guidance printed when no project encloses `from`. Exported so TUI screens
+ * that resolve the project themselves (see useProject) say the same thing.
+ */
+export function projectNotFoundMessage(from: string): string {
+  return (
+    `No AgentCore project found at ${from} or any parent directory ` +
+    `(looked for agentcore/agentcore.json). ` +
+    `Run 'agentcore project create' to scaffold one.`
+  );
+}
+
 export function withProject(config: WithProjectConfig): Middleware {
   return (h) => ({
     name: () => h.name(),
@@ -29,11 +41,7 @@ export function withProject(config: WithProjectConfig): Middleware {
       const from = config.cwd ?? process.cwd();
       const project = await config.projectManager.resolve({ filePath: from });
       if (!project) {
-        throw new ProjectStateError(
-          `No AgentCore project found at ${from} or any parent directory ` +
-            `(looked for agentcore/agentcore.json). ` +
-            `Run 'agentcore project create' to scaffold one.`,
-        );
+        throw new ProjectStateError(projectNotFoundMessage(from));
       }
       await h.handle(ctx.withValue<Project>(ProjectKey, project), flags, args);
     },

@@ -15,6 +15,33 @@ type DeployProjectHandlerConfig = {
   io: AppIO;
 };
 
+/** The line both entry points print once a deploy finishes. */
+export function deployedMessage(
+  project: Project,
+  targetName: string,
+  result: DeployResult,
+): string {
+  return result.tornDown
+    ? `Removed project '${project.name}' from target '${targetName}'`
+    : `Deployed project '${project.name}' to target '${targetName}'`;
+}
+
+/**
+ * The teardown question both entry points ask. Asked before synthesis, so the
+ * exact stack name is not known yet; the target coordinates identify what would
+ * be deleted.
+ */
+export function teardownQuestion(
+  projectName: string,
+  target: { name: string; account: string; region: string },
+): string {
+  return (
+    `Project '${projectName}' declares no resources to deploy. ` +
+    `Deploying will delete everything deployed to target ` +
+    `'${target.name}' (${target.account}/${target.region}). Continue?`
+  );
+}
+
 export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =>
   createHandler({
     name: "deploy",
@@ -72,9 +99,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         throw error;
       }
 
-      const message = result.tornDown
-        ? `Removed project '${project.name}' from target '${flags.target}'`
-        : `Deployed project '${project.name}' to target '${flags.target}'`;
+      const message = deployedMessage(project, flags.target, result);
       config.io.stderr.write(`${message}\n`);
       if (jsonOutput) {
         ctx.require(JsonRendererKey).renderJson({ message, ...result });
@@ -91,7 +116,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
  * CDK app adds one), so the backend's count stays authoritative and this only
  * decides whether to ask the user before starting.
  */
-function declaresNothingDeployable(project: Project): boolean {
+export function declaresNothingDeployable(project: Project): boolean {
   const { spec } = project;
   const collections = [
     spec.runtimes,
@@ -158,14 +183,8 @@ async function promptForTeardown(
       readline.once("SIGINT", cancel);
       readline.once("close", cancel);
     });
-    // Asked before synthesis, so the exact stack name is not known yet; the
-    // target coordinates identify what would be deleted.
     const answer = await Promise.race([
-      readline.question(
-        `Project '${projectName}' declares no resources to deploy.\n` +
-          `Deploying will delete everything deployed to target ` +
-          `'${target.name}' (${target.account}/${target.region}). Continue? (y/N) `,
-      ),
+      readline.question(`${teardownQuestion(projectName, target)} (y/N) `),
       cancelled,
     ]);
     return /^(?:y|yes)$/i.test(answer.trim());

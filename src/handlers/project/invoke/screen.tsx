@@ -10,7 +10,8 @@ import { HarnessChat } from "../../harness/invoke/screen";
 import { RegionKey } from "../../keys";
 import { RuntimeInvokeConsole } from "../../runtime/invoke/screen";
 import type { ScreenProps } from "../../types";
-import type { Project, ResolvedDeployedResources } from "../types";
+import type { ResolvedDeployedResources } from "../types";
+import { useProject } from "../ProjectGate";
 
 type ProjectInvokableRow = Record<string, unknown> & {
   resourceType: "runtime" | "harness";
@@ -34,36 +35,13 @@ type Destination =
 
 export function ProjectInvokePickerScreen({ ctx, core }: ScreenProps) {
   const navigate = useNavigate();
-  const [project, setProject] = useState<Project | undefined>(() => ctx.value(ProjectKey));
+  // The project comes from the launch context when a project command opened
+  // the TUI, and is resolved from the cwd otherwise.
+  const { project, error: projectError } = useProject(core, ctx.value(ProjectKey));
   const [deployed, setDeployed] = useState<ResolvedDeployedResources>();
   const [destination, setDestination] = useState<Destination>();
-  const [error, setError] = useState<string>();
-
-  useEffect(() => {
-    if (project) return;
-    let active = true;
-    const from = process.cwd();
-    void core.projectManager
-      .resolve({ filePath: from })
-      .then((resolved) => {
-        if (!active) return;
-        if (!resolved) {
-          setError(
-            `No AgentCore project found at ${from} or any parent directory ` +
-              `(looked for agentcore/agentcore.json). ` +
-              `Run 'agentcore project create' to scaffold one.`,
-          );
-          return;
-        }
-        setProject(resolved);
-      })
-      .catch((cause: unknown) => {
-        if (active) setError(cause instanceof Error ? cause.message : String(cause));
-      });
-    return () => {
-      active = false;
-    };
-  }, [core.projectManager, project]);
+  const [deployedError, setDeployedError] = useState<string>();
+  const error = projectError ?? deployedError;
 
   useEffect(() => {
     if (!project) return;
@@ -74,7 +52,7 @@ export function ProjectInvokePickerScreen({ ctx, core }: ScreenProps) {
         if (active) setDeployed(resolved);
       })
       .catch((cause: unknown) => {
-        if (active) setError(cause instanceof Error ? cause.message : String(cause));
+        if (active) setDeployedError(cause instanceof Error ? cause.message : String(cause));
       });
     return () => {
       active = false;
