@@ -51,16 +51,10 @@ import { describeStack } from "./cdk/stackReader";
 
 type StackDescriber = typeof describeStack;
 
-// Mirrors @aws/agentcore-cdk's exportName() (its src/cdk/logical-ids.ts): join the
-// parts with "-" after turning "_" into "-" and dropping anything outside
-// [A-Za-z0-9:-]. Replicated rather than imported because that package is a CDK
-// construct library, not a CLI dependency — this is the source-of-truth format.
 function cfnExportName(...parts: string[]): string {
   return parts.map((part) => part.replace(/_/g, "-").replace(/[^a-zA-Z0-9:-]/g, "")).join("-");
 }
 
-// toCdkId mirrors the payment CfnOutput logical-id construction in the CLI's own
-// cdk-stack.ts (assets/cdk/lib/cdk-stack.ts): underscores stripped, rest kept.
 function toCdkId(name: string): string {
   return name.replace(/_/g, "");
 }
@@ -289,8 +283,6 @@ export class CdkBackend implements ProjectBackend {
     }
 
     const { spec } = project;
-    // Credential ids are never stack outputs — they're created imperatively and
-    // recorded in deployed-state. Read them from the state we already loaded.
     const credentialArns = deployedState.targets[target.name]?.resources?.credentials ?? {};
 
     type Declared = { resourceType: DeployableResource; name: string; parent?: string };
@@ -301,9 +293,6 @@ export class CdkBackend implements ProjectBackend {
       return stack.Outputs?.find((output) => output.ExportName === want)?.OutputValue;
     };
 
-    // Where each resource type's deployed ARN comes from. Keeping every source in one
-    // switch means the `never` default turns a new DeployableResource into a compile
-    // error, rather than a resource that silently vanishes from `project status`.
     const idOf = ({ resourceType, name, parent }: Declared): string | undefined => {
       switch (resourceType) {
         case "runtime":
@@ -320,9 +309,6 @@ export class CdkBackend implements ProjectBackend {
           return byExportName("OnlineEval", name, "Arn");
         case "gateway":
           return byExportName("Gateway", name, "Arn");
-        // TODO(cdk): AgentCoreMcp exports GatewayTarget-<name>-Id but no -Arn, so this
-        // is the one resource reported by id. Once the construct exports an Arn, switch
-        // to byExportName("GatewayTarget", name, "Arn") and this case joins the rest.
         case "gateway-target":
           return byExportName("GatewayTarget", name, "Id");
         case "policy-engine":
@@ -331,12 +317,8 @@ export class CdkBackend implements ProjectBackend {
           return byExportName("Policy", parent ?? "", name, "Arn");
         case "config-bundle":
           return byExportName("ConfigBundle", name, "Arn");
-        // Output arrives with aws/agentcore-l3-cdk-constructs#336; resolves once it ships.
         case "capacity-provider":
           return byExportName("CapacityProvider", name, "Arn");
-        // TODO(cdk): the CLI's payment CfnOutputs (assets/cdk/lib/cdk-stack.ts) set no
-        // ExportName, so match by their predictable OutputKey. Once they export a name,
-        // fold payment in above and delete this case.
         case "payment":
           return stack.Outputs?.find(
             (output) => output.OutputKey === `Payment${toCdkId(name)}ManagerArn`,
@@ -379,9 +361,7 @@ export class CdkBackend implements ProjectBackend {
         })),
       ]),
       ...spec.configBundles.map(({ name }) => ({ resourceType: "config-bundle" as const, name })),
-      // datasets are intentionally excluded — out of scope for project status.
       ...(spec.payments ?? []).map(({ name }) => ({ resourceType: "payment" as const, name })),
-      // capacity-provider has no spec array yet — arrives with l3-cdk-constructs#336.
     ];
 
     return declared.flatMap((r) => {

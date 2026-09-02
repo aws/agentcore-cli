@@ -83,8 +83,6 @@ export function ProjectInvokePickerScreen({ ctx, core }: ScreenProps) {
 
   const rows = useMemo<ProjectInvokableRow[]>(
     () =>
-      // resolveDeployedResources now returns every deployed resource type, but only
-      // runtimes and harnesses are invokable — drop the rest so they aren't listed.
       (deployed?.resources ?? [])
         .filter(
           (r): r is typeof r & { resourceType: "runtime" | "harness" } =>

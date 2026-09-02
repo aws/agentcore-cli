@@ -21,7 +21,6 @@ const TARGET = {
 } as const;
 const STACK_ARN =
   "arn:aws:cloudformation:us-east-1:111122223333:stack/AgentCore-example-default/abc";
-/** ARN prefix the CDK's `-Arn` exports carry, so fixtures assert ARNs and not bare ids. */
 const ARN = `arn:aws:bedrock-agentcore:${TARGET.region}:${TARGET.account}`;
 const json = new FsReadWriteJson({ logger: createSilentLogger() });
 
@@ -710,8 +709,6 @@ describe("CdkBackend.resolveDeployedResources", () => {
 
   test("resolves every deployed resource type: exports, payment OutputKey, credential from state, nested parents, underscores", async () => {
     const input = await project();
-    // The resolver only reads names (and nested target/policy names), so a
-    // hand-shaped spec is enough here — schema validity is tested elsewhere.
     input.spec = {
       ...input.spec,
       runtimes: [{ name: "web" }],
@@ -745,12 +742,10 @@ describe("CdkBackend.resolveDeployedResources", () => {
           out(`${S}-Evaluator-ev-Arn`, `${ARN}:evaluator/ev-1`),
           out(`${S}-OnlineEval-oe-Arn`, `${ARN}:online-eval/oe-1`),
           out(`${S}-Gateway-gw-Arn`, `${ARN}:gateway/gw-1`),
-          // gateway-target is the one type the CDK exports by id only (no -Arn).
           out(`${S}-GatewayTarget-tgt-Id`, "tgt-1"),
           out(`${S}-PolicyEngine-pe-Arn`, `${ARN}:policy-engine/pe-1`),
           out(`${S}-Policy-pe-pol-Arn`, `${ARN}:policy/pol-1`),
           out(`${S}-ConfigBundle-cb-Arn`, `${ARN}:config-bundle/cb-1`),
-          // payment: no ExportName — only a predictable OutputKey
           { OutputKey: "PaymentpayManagerArn", OutputValue: `${ARN}:payment-manager/pay-1` },
         ],
       },
