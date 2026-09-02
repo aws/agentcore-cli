@@ -32,7 +32,7 @@ export type PolicyGenerationWait = {
 
 const DEFAULT_WAIT: PolicyGenerationWait = { maxWaitTime: 60, minDelay: 2, maxDelay: 5 };
 
-export function resourceIdFromArn(value: string): string {
+function resourceIdFromArn(value: string): string {
   return value.startsWith("arn:") ? value.slice(value.lastIndexOf("/") + 1) : value;
 }
 
@@ -127,9 +127,7 @@ export class PolicyClient implements CorePolicyClient {
         .map((finding) => `[${finding.type}] ${finding.description}`)
         .join("; ");
       throw new AgentCoreCLIError(
-        findings
-          ? `the prompt could not be translated into a Cedar policy: ${findings}`
-          : "policy generation completed but produced no policy statement",
+        `the prompt could not be translated into a Cedar policy${findings ? `: ${findings}` : ""}`,
         { source: ERROR_SOURCE.SERVICE, meta },
       );
     }

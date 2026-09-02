@@ -158,7 +158,7 @@ describe("PolicyClient.generatePolicy", () => {
       "there are no assets",
       { ...HAPPY, assets: [{ policyGenerationAssets: [] }] },
       Error,
-      "produced no policy statement",
+      "could not be translated into a Cedar policy",
     ],
   ])("fails when %s", async (_label, responses, errorClass, message) => {
     const run = drain(

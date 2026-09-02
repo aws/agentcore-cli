@@ -10,15 +10,10 @@ export type GeneratePolicyInput = {
   name: string;
 };
 
-export type GeneratedPolicyFinding = {
-  type: string;
-  description: string;
-};
-
 export type GeneratedPolicy = {
   /** Absent when the service could not translate this fragment. */
   statement?: string;
-  findings: GeneratedPolicyFinding[];
+  findings: { type: string; description: string }[];
 };
 
 export type PolicyGenerationResult = {
