@@ -111,7 +111,7 @@ describe("FsProjectManager.create", () => {
 
     const { events } = await runCreate(subject, {
       name: "example",
-      scaffoldRuntimeInput: HELLO_WORLD_PYTHON,
+      scaffoldRuntimeInput: AGENT_PYTHON,
       skipInstall: false,
       skipGit: true,
     });
