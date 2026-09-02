@@ -110,13 +110,36 @@ import { GatewayInvokeScreen } from "../handlers/gateway/invoke/screen.tsx";
 import { ProjectScreen, ProjectCommandNotImplementedScreen } from "../handlers/project/screen.tsx";
 import { ProjectCreateScreen } from "../handlers/project/create/screen.tsx";
 import { ProjectInvokePickerScreen } from "../handlers/project/invoke/screen.tsx";
+import { AddScreen } from "../handlers/project/add/screen.tsx";
+import { AddMemoryScreen } from "../handlers/project/add/memory/screen.tsx";
+import { AddGatewayScreen } from "../handlers/project/add/gateway/screen.tsx";
+import { AddPolicyEngineScreen } from "../handlers/project/add/policy-engine/screen.tsx";
+import { AddConfigBundleScreen } from "../handlers/project/add/config-bundle/screen.tsx";
 import { RootScreen, HelpScreen } from "../handlers/screen.tsx";
 import type { Context } from "../router";
 
 // PROJECT_COMMANDS are the `agentcore project` subcommands that are listed in
-// the menu but have no screen of their own yet (`create` has the wizard). Each
-// is routed explicitly so selecting it reports "not implemented" error
-const PROJECT_COMMANDS = ["add", "export", "remove", "dev", "deploy", "status", "build"] as const;
+// the menu but have no screen of their own yet (`create` has the wizard, `add`
+// has its own menu). Each is routed explicitly so selecting it reports "not
+// implemented" error
+const PROJECT_COMMANDS = ["export", "remove", "dev", "deploy", "status", "build"] as const;
+
+// ADD_COMMANDS are the `agentcore project add` resources that have no wizard
+// yet. They stay in the menu — every one of them works from the command line —
+// and route here so selecting one says so instead of falling through to help.
+const ADD_COMMANDS = [
+  "harness",
+  "runtime",
+  "online-eval",
+  "online-insight",
+  "evaluator",
+  "credentials",
+  "gateway-target",
+  "gateway-connector",
+  "policy",
+  "payment-manager",
+  "payment-connector",
+] as const;
 
 export interface RootProps {
   // path is the command path to the executing node (e.g. "/agentcore").
@@ -759,6 +782,36 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
               path={`agentcore/project/${command}`}
               element={
                 <ProjectCommandNotImplementedScreen ctx={ctx} core={core} command={command} />
+              }
+            />
+          ))}
+          <Route path="agentcore/project/add" element={<AddScreen ctx={ctx} core={core} />} />
+          <Route
+            path="agentcore/project/add/memory"
+            element={<AddMemoryScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/project/add/gateway"
+            element={<AddGatewayScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/project/add/policy-engine"
+            element={<AddPolicyEngineScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/project/add/config-bundle"
+            element={<AddConfigBundleScreen ctx={ctx} core={core} />}
+          />
+          {ADD_COMMANDS.map((command) => (
+            <Route
+              key={command}
+              path={`agentcore/project/add/${command}`}
+              element={
+                <ProjectCommandNotImplementedScreen
+                  ctx={ctx}
+                  core={core}
+                  command={`add ${command}`}
+                />
               }
             />
           ))}

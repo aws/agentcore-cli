@@ -31,10 +31,14 @@ export function FormCheckboxMultiSelect({
 
   return (
     <Box flexDirection="column">
-      <Box flexDirection="column">
-        <Text color={theme.colors.text}>{name}</Text>
-        <Text color={theme.colors.muted}>{helpText}</Text>
-      </Box>
+      {/* Either row is omitted when empty, so a caller whose surrounding
+          context already asks the question renders just the checkboxes. */}
+      {(name !== "" || helpText !== "") && (
+        <Box flexDirection="column">
+          {name !== "" && <Text color={theme.colors.text}>{name}</Text>}
+          {helpText !== "" && <Text color={theme.colors.muted}>{helpText}</Text>}
+        </Box>
+      )}
       <Box
         flexDirection="column"
         paddingX={1}

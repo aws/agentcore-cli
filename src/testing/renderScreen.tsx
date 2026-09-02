@@ -170,3 +170,20 @@ export function waitForText(
 ): Promise<void> {
   return waitFor(() => (lastFrame() ?? "").includes(text), timeoutMs);
 }
+
+// flatFrame collapses a frame's line breaks and runs of spaces into single
+// spaces. Ink hard-wraps at the terminal width, so a long message — a schema's
+// validation error, say — is split across lines at an unpredictable word.
+// Asserting against the flattened frame matches the sentence the user reads.
+export function flatFrame(lastFrame: () => string | undefined): string {
+  return (lastFrame() ?? "").replace(/\s+/g, " ");
+}
+
+// waitForFlatText is waitForText against the flattened frame.
+export function waitForFlatText(
+  lastFrame: () => string | undefined,
+  text: string,
+  timeoutMs = 1000,
+): Promise<void> {
+  return waitFor(() => flatFrame(lastFrame).includes(text), timeoutMs);
+}

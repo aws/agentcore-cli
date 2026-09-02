@@ -13,7 +13,11 @@ import { createHandler, flag, ProjectKey } from "../../../../router";
 import { parseJsonFlagWithSchema } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
 
-const ComponentsSchema = z
+/**
+ * The shape --components accepts. Exported so the wizard's components step
+ * validates against the same schema rather than a copy of it.
+ */
+export const ComponentsSchema = z
   .record(z.string().min(1), ComponentConfigurationSchema.strict())
   .refine((components) => Object.keys(components).length > 0, {
     message: "must contain at least one component",

@@ -15,7 +15,13 @@ import {
 import { TagsSchema } from "../../../../projectSchemas/tags";
 
 // The service default for raw event retention
-const DEFAULT_EVENT_EXPIRY_DURATION = 30;
+export const DEFAULT_EVENT_EXPIRY_DURATION = 30;
+
+/**
+ * The bounds --event-expiry-duration accepts. Exported so the wizard's
+ * retention step enforces the same range rather than a copy of it.
+ */
+export const EventExpiryDurationSchema = z.number().int().min(3).max(365);
 
 function projectMemoryObject<T extends z.ZodRawShape>(shape: T, label: string) {
   const supportedFields = new Set(Object.keys(shape));
@@ -114,7 +120,7 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
       flag(
         "event-expiry-duration",
         "how long raw events are retained, in days (3-365)",
-        z.number().int().min(3).max(365).default(DEFAULT_EVENT_EXPIRY_DURATION),
+        EventExpiryDurationSchema.default(DEFAULT_EVENT_EXPIRY_DURATION),
       ),
       flag(
         "strategies",
@@ -200,8 +206,12 @@ function toStrategies(raw: string): MemoryStrategy[] {
   return entries.map(toDefaultStrategy);
 }
 
-/** Expands a bare strategy type into a strategy carrying its default namespaces. */
-function toDefaultStrategy(type: string): MemoryStrategy {
+/**
+ * Expands a bare strategy type into a strategy carrying its default namespaces.
+ * Exported so the wizard's strategy picker produces exactly what
+ * `--strategies SEMANTIC,EPISODIC` produces.
+ */
+export function toDefaultStrategy(type: string): MemoryStrategy {
   const parsed = MemoryStrategyTypeSchema.safeParse(type);
   if (!parsed.success)
     throw new InputValidationError(
