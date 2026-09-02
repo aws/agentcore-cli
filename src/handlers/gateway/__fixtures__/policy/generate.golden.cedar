@@ -1,0 +1,1 @@
+forbid (principal is AgentCore::IamEntity, action, resource == AgentCore::Gateway::"arn:aws:bedrock-agentcore:us-west-2:887863153624:gateway/policygene2e-tools-zhijfh6m5z");

@@ -1,0 +1,23 @@
+{
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:887863153624:gateway/policygene2e-tools-zhijfh6m5z",
+  "gatewayId": "policygene2e-tools-zhijfh6m5z",
+  "createdAt": {
+    "$date": "2026-09-02T19:30:56.123Z"
+  },
+  "updatedAt": {
+    "$date": "2026-09-02T19:30:56.809Z"
+  },
+  "status": "READY",
+  "name": "PolicyGenE2E-tools",
+  "authorizerType": "NONE",
+  "gatewayUrl": "https://policygene2e-tools-zhijfh6m5z.gateway.bedrock-agentcore.us-west-2.amazonaws.com",
+  "description": "Gateway for PolicyGenE2E-tools",
+  "roleArn": "arn:aws:iam::887863153624:role/AgentCore-PolicyGenE2E-de-McpGatewayToolsRole1D55B5-WhvuoXGDoNYC",
+  "policyEngineConfiguration": {
+    "arn": "arn:aws:bedrock-agentcore:us-west-2:887863153624:policy-engine/PolicyGenE2E_Guardrails-gn5jf72o3t",
+    "mode": "LOG_ONLY"
+  },
+  "workloadIdentityDetails": {
+    "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-west-2:887863153624:workload-identity-directory/default/workload-identity/policygene2e-tools-zhijfh6m5z"
+  }
+}

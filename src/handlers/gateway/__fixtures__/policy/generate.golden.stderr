@@ -1,0 +1,6 @@
+Resolving gateway policygene2e-tools-zhijfh6m5z
+Starting policy generation golden_forbid
+Waiting for generation to complete
+Reading generated policies
+Findings:
+  policy 1  [DENY_ALL]  Overly Restrictive: The generated policy denies all actions for all principals. Confirm that full restriction is intended before applying this policy.

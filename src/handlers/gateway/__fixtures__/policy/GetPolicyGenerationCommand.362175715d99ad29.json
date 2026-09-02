@@ -1,0 +1,17 @@
+{
+  "policyEngineId": "PolicyGenE2E_Guardrails-gn5jf72o3t",
+  "policyGenerationId": "golden_permit-62mnrlgenk",
+  "name": "golden_permit",
+  "policyGenerationArn": "arn:aws:bedrock-agentcore:us-west-2:887863153624:policy-engine/PolicyGenE2E_Guardrails-gn5jf72o3t/policy-generation/golden_permit-62mnrlgenk",
+  "resource": {
+    "arn": "arn:aws:bedrock-agentcore:us-west-2:887863153624:gateway/policygene2e-tools-zhijfh6m5z"
+  },
+  "createdAt": {
+    "$date": "2026-09-02T19:52:59.583Z"
+  },
+  "updatedAt": {
+    "$date": "2026-09-02T19:53:09.854Z"
+  },
+  "status": "GENERATED",
+  "statusReasons": []
+}

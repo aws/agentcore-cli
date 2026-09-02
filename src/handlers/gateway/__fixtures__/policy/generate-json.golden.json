@@ -1,0 +1,16 @@
+{
+  "policyGenerationId": "golden_permit-62mnrlgenk",
+  "policyEngineId": "PolicyGenE2E_Guardrails-gn5jf72o3t",
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:887863153624:gateway/policygene2e-tools-zhijfh6m5z",
+  "policies": [
+    {
+      "statement": "permit (principal is AgentCore::IamEntity, action, resource == AgentCore::Gateway::\"arn:aws:bedrock-agentcore:us-west-2:887863153624:gateway/policygene2e-tools-zhijfh6m5z\");",
+      "findings": [
+        {
+          "type": "ALLOW_ALL",
+          "description": "Overly Permissive: The generated policy permits all actions for all principals. Confirm that unrestricted access is intended before applying this policy"
+        }
+      ]
+    }
+  ]
+}

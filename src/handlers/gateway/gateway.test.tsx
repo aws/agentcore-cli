@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
+  GetGatewayCommand,
+  GetPolicyGenerationCommand,
+  StartPolicyGenerationCommand,
+} from "@aws-sdk/client-bedrock-agentcore-control";
+import { PolicyClient } from "../../core/policy";
+import type { AwsClients } from "../../core/types";
+import { NetworkingError } from "../../errors";
+import {
   createSilentLogger,
   TestCoreClient,
   TestGlobalConfigAccessor,
@@ -7,16 +15,17 @@ import {
 } from "../../testing";
 import { compile, isTuiCommandSupported, ValueContext } from "../../router";
 import { createRootHandler } from "../index";
+import type { Core } from "../types";
 
 const REGION = "us-west-2";
 const GATEWAY_ID = "gateway-1";
 const TARGET_ID = "target-1";
 const RULE_ID = "rule-1";
 
-async function run(
+async function run<C extends Core>(
   args: string[],
-  core = new TestCoreClient(),
-): Promise<{ core: TestCoreClient; stdout: string }> {
+  core: C = new TestCoreClient() as unknown as C,
+): Promise<{ core: C; stdout: string }> {
   const io = testIO();
   const root = createRootHandler(core, {
     io: io.io,
@@ -136,6 +145,12 @@ describe("gateway validation", () => {
     ["Rule get parent", ["gateway", "rule", "get", "--rule-id", RULE_ID], /--gateway-id/],
     ["Rule get child", ["gateway", "rule", "get", "--gateway-id", GATEWAY_ID], /--rule-id/],
     ["Rule list", ["gateway", "rule", "list", "--max-results", "1"], /--gateway-id/],
+    ["Policy generate gateway", ["gateway", "policy", "generate", "--prompt", "x"], /--gateway-id/],
+    [
+      "Policy generate prompt",
+      ["gateway", "policy", "generate", "--gateway-id", GATEWAY_ID],
+      /--prompt/,
+    ],
   ] as const)(
     "rejects a missing selector for %s before calling Core",
     async (_name, args, error) => {
@@ -143,6 +158,7 @@ describe("gateway validation", () => {
 
       await expect(run([...args], core)).rejects.toThrow(error);
       expect(core.gateway.calls).toEqual([]);
+      expect(core.policy.calls).toEqual([]);
     },
   );
 
@@ -154,4 +170,51 @@ describe("gateway validation", () => {
     );
     expect(core.gateway.calls).toEqual([]);
   });
+});
+
+/**
+ The waiter outcomes below cannot be recorded against the live service, so the
+ control plane is faked at .send() while the real PolicyClient and waiter run.
+**/
+describe("gateway policy generate against a faked control plane", () => {
+  function coreWith(status: string, statusReasons?: string[]): Core {
+    const control = {
+      send: async (command: unknown) => {
+        if (command instanceof GetGatewayCommand) {
+          return {
+            gatewayArn: "arn:aws:bedrock-agentcore:us-west-2:111122223333:gateway/gw-1",
+            policyEngineConfiguration: {
+              arn: "arn:aws:bedrock-agentcore:us-west-2:111122223333:policy-engine/pe-1",
+            },
+          };
+        }
+        if (command instanceof StartPolicyGenerationCommand) return { policyGenerationId: "gen-1" };
+        if (command instanceof GetPolicyGenerationCommand) return { status, statusReasons };
+        throw new Error(`unexpected command ${(command as object).constructor.name}`);
+      },
+    };
+    const clients = { control: () => control } as unknown as AwsClients;
+    return {
+      ...new TestCoreClient(),
+      policy: new PolicyClient(clients, createSilentLogger(), {
+        maxWaitTime: 2,
+        minDelay: 1,
+        maxDelay: 1,
+      }),
+    };
+  }
+
+  const args = ["gateway", "policy", "generate", "--gateway-id", GATEWAY_ID, "--prompt", "x"];
+
+  test("fails with the service reasons when the generation fails", async () => {
+    await expect(
+      run(args, coreWith("GENERATE_FAILED", ["bad prompt", "try again"])),
+    ).rejects.toThrow("policy generation 'gen-1' failed: bad prompt; try again");
+  });
+
+  test("times out when the generation keeps running", async () => {
+    const attempt = run(args, coreWith("GENERATING"));
+    await expect(attempt).rejects.toBeInstanceOf(NetworkingError);
+    await expect(attempt).rejects.toThrow("did not finish within 2s");
+  }, 10_000);
 });

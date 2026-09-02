@@ -1,0 +1,19 @@
+{
+  "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:887863153624:gateway/policygene2e-bare-xl0dy3pq5h",
+  "gatewayId": "policygene2e-bare-xl0dy3pq5h",
+  "createdAt": {
+    "$date": "2026-09-02T19:50:44.028Z"
+  },
+  "updatedAt": {
+    "$date": "2026-09-02T19:50:44.841Z"
+  },
+  "status": "READY",
+  "name": "PolicyGenE2E-bare",
+  "authorizerType": "NONE",
+  "gatewayUrl": "https://policygene2e-bare-xl0dy3pq5h.gateway.bedrock-agentcore.us-west-2.amazonaws.com",
+  "description": "Gateway for PolicyGenE2E-bare",
+  "roleArn": "arn:aws:iam::887863153624:role/AgentCore-PolicyGenE2E-de-McpGatewayBareRole58BAE2C-jSYHioxsHFHU",
+  "workloadIdentityDetails": {
+    "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-west-2:887863153624:workload-identity-directory/default/workload-identity/policygene2e-bare-xl0dy3pq5h"
+  }
+}

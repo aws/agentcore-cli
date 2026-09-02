@@ -1,0 +1,24 @@
+{
+  "policyGenerationAssets": [
+    {
+      "policyGenerationAssetId": "golden_untranslatable-jk98c0i1qv",
+      "rawTextFragment": "Permit everyone to list tools.",
+      "findings": [
+        {
+          "type": "INVALID",
+          "description": "Non-translatable: cannot be expressed in Dogwood"
+        }
+      ]
+    },
+    {
+      "policyGenerationAssetId": "golden_untranslatable-mt1y937v8n",
+      "rawTextFragment": "Forbid calling any tool whose name contains delete.",
+      "findings": [
+        {
+          "type": "INVALID",
+          "description": "Non-translatable: cannot be expressed in Dogwood"
+        }
+      ]
+    }
+  ]
+}

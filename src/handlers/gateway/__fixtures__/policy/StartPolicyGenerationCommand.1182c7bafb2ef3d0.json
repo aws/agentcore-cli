@@ -1,0 +1,6 @@
+{
+  "$error": {
+    "name": "ValidationException",
+    "message": "1 validation error detected. Value at '/policyEngineId' failed to satisfy constraint: Member must satisfy regular expression pattern: ^[A-Za-z][A-Za-z0-9_]*-[a-z0-9_]{10}$"
+  }
+}

@@ -6,13 +6,7 @@ import {
   type GetPolicyGenerationCommandOutput,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { WaiterState } from "@smithy/core/client";
-import {
-  AgentCoreCLIError,
-  ERROR_SOURCE,
-  InputValidationError,
-  MalformedServiceResponseError,
-  NetworkingError,
-} from "../errors";
+import { AgentCoreCLIError, ERROR_SOURCE, InputValidationError, NetworkingError } from "../errors";
 import type {
   CorePolicyClient,
   GeneratedPolicy,
@@ -52,11 +46,7 @@ export class PolicyClient implements CorePolicyClient {
 
     yield { type: "step", message: `Resolving gateway ${gatewayId}` };
     const gateway = await control.send(new GetGatewayCommand({ gatewayIdentifier: gatewayId }));
-    if (!gateway.gatewayArn) {
-      throw new MalformedServiceResponseError(
-        `GetGateway returned no ARN for gateway '${gatewayId}'`,
-      );
-    }
+    const gatewayArn = gateway.gatewayArn!;
     const engine = input.policyEngineId ?? gateway.policyEngineConfiguration?.arn;
     if (!engine) {
       throw new InputValidationError(
@@ -69,15 +59,12 @@ export class PolicyClient implements CorePolicyClient {
     const started = await control.send(
       new StartPolicyGenerationCommand({
         policyEngineId,
-        resource: { arn: gateway.gatewayArn },
+        resource: { arn: gatewayArn },
         content: { rawText: input.prompt },
         name: input.name,
       }),
     );
-    const policyGenerationId = started.policyGenerationId;
-    if (!policyGenerationId) {
-      throw new MalformedServiceResponseError("StartPolicyGeneration returned no generation id");
-    }
+    const policyGenerationId = started.policyGenerationId!;
     const meta = { policyGenerationId, policyEngineId };
 
     yield { type: "step", message: "Waiting for generation to complete" };
@@ -131,6 +118,6 @@ export class PolicyClient implements CorePolicyClient {
         { source: ERROR_SOURCE.SERVICE, meta },
       );
     }
-    return { policyGenerationId, policyEngineId, gatewayArn: gateway.gatewayArn, policies };
+    return { policyGenerationId, policyEngineId, gatewayArn, policies };
   }
 }

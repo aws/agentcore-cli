@@ -1,0 +1,19 @@
+{
+  "policyGenerationAssets": [
+    {
+      "policyGenerationAssetId": "golden_permit-o9blndc30w",
+      "rawTextFragment": "permit IAM principals to call any tool on this gateway",
+      "findings": [
+        {
+          "type": "ALLOW_ALL",
+          "description": "Overly Permissive: The generated policy permits all actions for all principals. Confirm that unrestricted access is intended before applying this policy"
+        }
+      ],
+      "definition": {
+        "policy": {
+          "statement": "permit (principal is AgentCore::IamEntity, action, resource == AgentCore::Gateway::\"arn:aws:bedrock-agentcore:us-west-2:887863153624:gateway/policygene2e-tools-zhijfh6m5z\");"
+        }
+      }
+    }
+  ]
+}
