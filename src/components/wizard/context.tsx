@@ -37,14 +37,15 @@ export function useWizard(): WizardControls {
 export function useKeyHints(hints: KeyHint[]): void {
   const { setHints } = useWizard();
 
-  // The caller passes a fresh array literal on every render, so the effect is
-  // keyed on the hints' content and reads the latest array from a ref. Keying
-  // on the array itself would publish, re-render, and publish again forever.
-  const latest = useRef(hints);
-  latest.current = hints;
-  const signature = hints.map((hint) => `${hint.key}:${hint.label}`).join("|");
-
+  // The caller passes a fresh array literal on every render, so the effect
+  // runs every render — but publishes only when the content changed. Publishing
+  // the array itself unconditionally would re-render, publish, and re-render
+  // again forever; the ref remembers what the footer already shows.
+  const published = useRef<string | undefined>(undefined);
   useEffect(() => {
-    setHints(latest.current);
-  }, [signature, setHints]);
+    const signature = hints.map((hint) => `${hint.key}:${hint.label}`).join("|");
+    if (published.current === signature) return;
+    published.current = signature;
+    setHints(hints);
+  }, [hints, setHints]);
 }
