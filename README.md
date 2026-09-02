@@ -97,9 +97,11 @@ agentcore                          # interactive TUI
 │   ├── connector
 │   │   ├── get                    # get a connector-backed Target
 │   │   └── list                   # list connector-backed Targets
-│   └── rule
-│       ├── get                    # get a Rule under a Gateway
-│       └── list                   # list Rules under a Gateway
+│   ├── rule
+│   │   ├── get                    # get a Rule under a Gateway
+│   │   └── list                   # list Rules under a Gateway
+│   └── policy
+│       └── generate               # generate Cedar for a Gateway from a natural-language prompt
 ├── eval                           # evaluate and optimize AgentCore agents
 │   └── evaluator                  # manage AgentCore evaluators
 │       ├── llm-as-a-judge         # LLM-as-a-Judge evaluators
@@ -262,6 +264,11 @@ agentcore gateway connector get --gateway-id <gatewayId> --id <targetId>
 agentcore gateway connector list --gateway-id <gatewayId> --max-results 20
 agentcore gateway rule get --gateway-id <gatewayId> --rule-id <ruleId>
 agentcore gateway rule list --gateway-id <gatewayId> --max-results 20
+agentcore gateway policy generate --gateway-id <gatewayId> --prompt "forbid IAM callers from every tool"
+agentcore gateway policy generate --gateway-id <gatewayArn> --prompt file://policy.txt --json
+# Pipe the generated Cedar into a project (run inside the project)
+agentcore gateway policy generate --gateway-id <gatewayId> --prompt "..." \
+  | agentcore project add policy --engine Guardrails --name Generated --statement -
 
 # Manage API key credential providers
 agentcore identity api-key-credential-provider create --name my-provider --api-key <key>

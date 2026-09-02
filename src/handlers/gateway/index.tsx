@@ -9,6 +9,7 @@ import { createDeleteGatewayHandler } from "./delete";
 import { createGetGatewayHandler } from "./get";
 import { createInvokeGatewayHandler } from "./invoke";
 import { createListGatewaysHandler } from "./list";
+import { createGatewayPolicyHandler } from "./policy";
 import { createGatewayRuleHandler } from "./rule";
 import { createGatewayTargetHandler } from "./target";
 import { createUpdateGatewayHandler } from "./update";
@@ -26,5 +27,6 @@ export function createGatewayHandler(core: Core, io: AppIO): Router {
     .handler(createInvokeGatewayHandler(core, io))
     .handler(createGatewayTargetHandler(core, io))
     .handler(createGatewayConnectorHandler(core, io))
-    .handler(createGatewayRuleHandler(core, io));
+    .handler(createGatewayRuleHandler(core, io))
+    .handler(createGatewayPolicyHandler(core, io));
 }

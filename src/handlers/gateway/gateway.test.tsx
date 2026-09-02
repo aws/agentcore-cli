@@ -57,6 +57,7 @@ describe("gateway command hierarchy", () => {
     const target = gateway?.children().find((child) => child.name() === "target");
     const connector = gateway?.children().find((child) => child.name() === "connector");
     const rule = gateway?.children().find((child) => child.name() === "rule");
+    const policy = gateway?.children().find((child) => child.name() === "policy");
 
     expect(gateway?.flags().map((flag) => flag.name)).not.toContain("interactive");
     expect(gateway?.children().map((child) => child.name())).toEqual([
@@ -69,6 +70,7 @@ describe("gateway command hierarchy", () => {
       "target",
       "connector",
       "rule",
+      "policy",
     ]);
     expect(target?.children().map((child) => child.name())).toEqual([
       "create",
@@ -91,6 +93,7 @@ describe("gateway command hierarchy", () => {
       "list",
       "delete",
     ]);
+    expect(policy?.children().map((child) => child.name())).toEqual(["generate"]);
   });
 
   test.each([
