@@ -155,8 +155,8 @@ describe("project export harness handler", () => {
 
     // The scaffolded template runtime already owns its name.
     await expect(
-      subject.run(["--name", "exportme", "--target-agent-name", "hello_world"]),
-    ).rejects.toThrow(/runtime with name 'hello_world' already exists/);
+      subject.run(["--name", "exportme", "--target-agent-name", "agent_python"]),
+    ).rejects.toThrow(/runtime with name 'agent_python' already exists/);
     // A harness name is just as taken.
     await expect(
       subject.run(["--name", "exportme", "--target-agent-name", "exportme"]),

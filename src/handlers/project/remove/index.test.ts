@@ -87,7 +87,7 @@ describe("project remove", () => {
     },
     {
       label: "runtime",
-      commands: [["remove", "runtime", "--name", "hello_world"]],
+      commands: [["remove", "runtime", "--name", "agent_python"]],
       specKey: "runtimes",
       expectedRemaining: [],
     },
@@ -136,7 +136,7 @@ describe("project remove", () => {
           "--name",
           "quality",
           "--agent",
-          "hello_world",
+          "agent_python",
           "--evaluator",
           "Builtin.Correctness",
           "--sampling-rate",
@@ -156,7 +156,7 @@ describe("project remove", () => {
           "--name",
           "failures",
           "--agent",
-          "hello_world",
+          "agent_python",
           "--insight",
           "Builtin.Insight.FailureAnalysis",
           "--sampling-rate",
@@ -533,7 +533,7 @@ describe("project remove all", () => {
     expect(spec.managedBy).toBe(before.managedBy);
 
     // Removal stays spec-level: scaffolded code and the credential's env entry.
-    expect(existsSync(join(projectRoot, "app", "hello_world"))).toBe(true);
+    expect(existsSync(join(projectRoot, "app", "agent_python"))).toBe(true);
     expect(await Bun.file(envPath).text()).not.toContain(envKey);
     expect(io.stderr()).toContain(`removed '${envKey}' from ${ENV_LOCAL_RELATIVE_PATH}`);
     expect(io.stdout()).toContain("removed all resources from project");

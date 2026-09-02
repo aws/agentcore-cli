@@ -51,7 +51,7 @@ type RuntimeTemplateShortcut = Omit<ScaffoldRuntimeInput, "memory"> & {
 
 export const RUNTIME_TEMPLATE_SHORTCUTS = {
   "agent-python": {
-    runtimeName: "hello_world",
+    runtimeName: "agent_python",
     build: "CodeZip",
     language: "Python",
     framework: "none",
@@ -60,7 +60,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     runtimeVersion: "PYTHON_3_14",
   },
   "agent-python-strands": {
-    runtimeName: "strands_agent",
+    runtimeName: "agent_python_strands",
     build: "CodeZip",
     language: "Python",
     framework: "strands",
@@ -69,7 +69,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     runtimeVersion: "PYTHON_3_14",
   },
   "agent-typescript-strands": {
-    runtimeName: "strands_agent",
+    runtimeName: "agent_typescript_strands",
     build: "CodeZip",
     language: "TypeScript",
     framework: "strands",
@@ -78,7 +78,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     runtimeVersion: "NODE_22",
   },
   "mcp-python-fastmcp": {
-    runtimeName: "mcp_server",
+    runtimeName: "mcp_python_fastmcp",
     build: "CodeZip",
     language: "Python",
     framework: "none",
@@ -88,7 +88,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     runtimeVersion: "PYTHON_3_14",
   },
   "a2a-python-strands": {
-    runtimeName: "a2a_agent",
+    runtimeName: "a2a_python_strands",
     build: "CodeZip",
     language: "Python",
     framework: "strands",

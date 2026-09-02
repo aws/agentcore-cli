@@ -253,7 +253,7 @@ describe("project create", () => {
     await run(["create", "--name", "MyAgent", "--defaults", "--template", "agent-python"]);
 
     const spec = await Bun.file(join(directory, "MyAgent", "agentcore", "agentcore.json")).json();
-    expect(spec.runtimes[0]).toMatchObject({ name: "hello_world" });
+    expect(spec.runtimes[0]).toMatchObject({ name: "agent_python" });
     expect(spec.harnesses).toBeUndefined();
   });
 
@@ -366,7 +366,7 @@ describe("project create", () => {
     const projectRoot = join(directory, "MyAgent");
     expect(core.projectCommands).toEqual([
       { command: ["npm", "install"], cwd: join(projectRoot, "agentcore", "cdk") },
-      { command: ["uv", "sync"], cwd: join(projectRoot, "app", "hello_world") },
+      { command: ["uv", "sync"], cwd: join(projectRoot, "app", "agent_python") },
       { command: ["git", "init"], cwd: projectRoot },
     ]);
     expect(io.stderr()).toContain("Creating project tree");
@@ -457,13 +457,13 @@ describe("project create", () => {
     const projectRoot = join(directory, "MyProject");
     const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
     expect(spec.runtimes[0]).toMatchObject({
-      name: "strands_agent",
+      name: "agent_python_strands",
       build: "Container",
-      codeLocation: "app/strands_agent",
+      codeLocation: "app/agent_python_strands",
       dockerfile: "Dockerfile",
     });
     expect(spec.runtimes[0].runtimeVersion).toBeUndefined();
-    const runtimeRoot = join(projectRoot, "app", "strands_agent");
+    const runtimeRoot = join(projectRoot, "app", "agent_python_strands");
     expect(await Bun.file(join(runtimeRoot, "Dockerfile")).exists()).toBe(true);
     expect(await Bun.file(join(runtimeRoot, ".dockerignore")).exists()).toBe(true);
   });
@@ -480,7 +480,7 @@ describe("project create", () => {
       "--skip-git",
     ]);
 
-    const runtimeRoot = join(directory, "MyProject", "app", "strands_agent");
+    const runtimeRoot = join(directory, "MyProject", "app", "agent_python_strands");
     expect(await Bun.file(join(runtimeRoot, "Dockerfile")).exists()).toBe(false);
     expect(await Bun.file(join(runtimeRoot, ".dockerignore")).exists()).toBe(false);
   });
@@ -501,7 +501,7 @@ describe("project create", () => {
 
     expect(core.projectCommands).toContainEqual({
       command: ["uv", "lock"],
-      cwd: join(directory, "MyProject", "app", "strands_agent"),
+      cwd: join(directory, "MyProject", "app", "agent_python_strands"),
     });
   });
 
@@ -520,13 +520,13 @@ describe("project create", () => {
     const projectRoot = join(directory, "MyProject");
     const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
     expect(spec.runtimes[0]).toMatchObject({
-      name: "mcp_server",
+      name: "mcp_python_fastmcp",
       build: "CodeZip",
       protocol: "MCP",
-      codeLocation: "app/mcp_server",
+      codeLocation: "app/mcp_python_fastmcp",
       runtimeVersion: "PYTHON_3_14",
     });
-    const runtimeRoot = join(projectRoot, "app", "mcp_server");
+    const runtimeRoot = join(projectRoot, "app", "mcp_python_fastmcp");
     const mainPy = await Bun.file(join(runtimeRoot, "main.py")).text();
     expect(mainPy).toContain("FastMCP");
     expect(mainPy).toContain('mcp.run(transport="streamable-http")');
@@ -550,15 +550,15 @@ describe("project create", () => {
     const projectRoot = join(directory, "MyProject");
     const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
     expect(spec.runtimes[0]).toMatchObject({
-      name: "mcp_server",
+      name: "mcp_python_fastmcp",
       build: "Container",
       protocol: "MCP",
       dockerfile: "Dockerfile",
     });
     expect(spec.runtimes[0].runtimeVersion).toBeUndefined();
-    expect(await Bun.file(join(projectRoot, "app", "mcp_server", "Dockerfile")).exists()).toBe(
-      true,
-    );
+    expect(
+      await Bun.file(join(projectRoot, "app", "mcp_python_fastmcp", "Dockerfile")).exists(),
+    ).toBe(true);
   });
 
   test.each([

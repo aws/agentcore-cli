@@ -325,7 +325,7 @@ describe("project create wizard", () => {
       join(directory, "StrandsApp", "agentcore", "agentcore.json"),
     ).json();
     expect(spec.runtimes.map((runtime: { name: string }) => runtime.name)).toEqual([
-      "strands_agent",
+      "agent_python_strands",
     ]);
     expect(spec.memories).toHaveLength(1);
     r.unmount();

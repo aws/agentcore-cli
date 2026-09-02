@@ -17,9 +17,9 @@ exports[`FsProjectManager.create scaffolds the expected file tree into a fresh d
   "agentcore/cdk/package.json",
   "agentcore/cdk/test/cdk.test.ts",
   "agentcore/cdk/tsconfig.json",
-  "app/hello_world/README.md",
-  "app/hello_world/main.py",
-  "app/hello_world/pyproject.toml",
+  "app/agent_python/README.md",
+  "app/agent_python/main.py",
+  "app/agent_python/pyproject.toml",
 ]
 `;
 
@@ -41,23 +41,23 @@ exports[`FsProjectManager.create snapshots the Strands project manifest and runt
     "agentcore/cdk/package.json",
     "agentcore/cdk/test/cdk.test.ts",
     "agentcore/cdk/tsconfig.json",
-    "app/strands_agent/.gitignore",
-    "app/strands_agent/README.md",
-    "app/strands_agent/main.py",
-    "app/strands_agent/mcp_client/__init__.py",
-    "app/strands_agent/mcp_client/client.py",
-    "app/strands_agent/memory/__init__.py",
-    "app/strands_agent/memory/session.py",
-    "app/strands_agent/model/__init__.py",
-    "app/strands_agent/model/load.py",
-    "app/strands_agent/model/mantle_compat.py",
-    "app/strands_agent/pyproject.toml",
-    "app/strands_agent/skills/fetcher.py",
+    "app/agent_python_strands/.gitignore",
+    "app/agent_python_strands/README.md",
+    "app/agent_python_strands/main.py",
+    "app/agent_python_strands/mcp_client/__init__.py",
+    "app/agent_python_strands/mcp_client/client.py",
+    "app/agent_python_strands/memory/__init__.py",
+    "app/agent_python_strands/memory/session.py",
+    "app/agent_python_strands/model/__init__.py",
+    "app/agent_python_strands/model/load.py",
+    "app/agent_python_strands/model/mantle_compat.py",
+    "app/agent_python_strands/pyproject.toml",
+    "app/agent_python_strands/skills/fetcher.py",
   ],
   "memories": [
     {
       "eventExpiryDuration": 30,
-      "name": "strands_agentMemory",
+      "name": "agent_python_strandsMemory",
       "strategies": [
         {
           "namespaceTemplates": [
@@ -92,9 +92,9 @@ exports[`FsProjectManager.create snapshots the Strands project manifest and runt
   "runtimes": [
     {
       "build": "CodeZip",
-      "codeLocation": "app/strands_agent",
+      "codeLocation": "app/agent_python_strands",
       "entrypoint": "main.py",
-      "name": "strands_agent",
+      "name": "agent_python_strands",
       "protocol": "HTTP",
       "runtimeVersion": "PYTHON_3_14",
     },
@@ -120,19 +120,19 @@ exports[`FsProjectManager.create snapshots the Strands TypeScript project manife
     "agentcore/cdk/package.json",
     "agentcore/cdk/test/cdk.test.ts",
     "agentcore/cdk/tsconfig.json",
-    "app/strands_agent/.gitignore",
-    "app/strands_agent/README.md",
-    "app/strands_agent/main.ts",
-    "app/strands_agent/mcp_client/client.ts",
-    "app/strands_agent/memory/memory.ts",
-    "app/strands_agent/model/load.ts",
-    "app/strands_agent/package.json",
-    "app/strands_agent/tsconfig.json",
+    "app/agent_typescript_strands/.gitignore",
+    "app/agent_typescript_strands/README.md",
+    "app/agent_typescript_strands/main.ts",
+    "app/agent_typescript_strands/mcp_client/client.ts",
+    "app/agent_typescript_strands/memory/memory.ts",
+    "app/agent_typescript_strands/model/load.ts",
+    "app/agent_typescript_strands/package.json",
+    "app/agent_typescript_strands/tsconfig.json",
   ],
   "memories": [
     {
       "eventExpiryDuration": 30,
-      "name": "strands_agentMemory",
+      "name": "agent_typescript_strandsMemory",
       "strategies": [
         {
           "namespaceTemplates": [
@@ -167,9 +167,9 @@ exports[`FsProjectManager.create snapshots the Strands TypeScript project manife
   "runtimes": [
     {
       "build": "CodeZip",
-      "codeLocation": "app/strands_agent",
+      "codeLocation": "app/agent_typescript_strands",
       "entrypoint": "main.js",
-      "name": "strands_agent",
+      "name": "agent_typescript_strands",
       "protocol": "HTTP",
       "runtimeVersion": "NODE_22",
     },
@@ -195,19 +195,19 @@ exports[`FsProjectManager.create snapshots the Strands A2A project manifest and 
     "agentcore/cdk/package.json",
     "agentcore/cdk/test/cdk.test.ts",
     "agentcore/cdk/tsconfig.json",
-    "app/a2a_agent/.gitignore",
-    "app/a2a_agent/README.md",
-    "app/a2a_agent/main.py",
-    "app/a2a_agent/memory/__init__.py",
-    "app/a2a_agent/memory/session.py",
-    "app/a2a_agent/model/__init__.py",
-    "app/a2a_agent/model/load.py",
-    "app/a2a_agent/pyproject.toml",
+    "app/a2a_python_strands/.gitignore",
+    "app/a2a_python_strands/README.md",
+    "app/a2a_python_strands/main.py",
+    "app/a2a_python_strands/memory/__init__.py",
+    "app/a2a_python_strands/memory/session.py",
+    "app/a2a_python_strands/model/__init__.py",
+    "app/a2a_python_strands/model/load.py",
+    "app/a2a_python_strands/pyproject.toml",
   ],
   "memories": [
     {
       "eventExpiryDuration": 30,
-      "name": "a2a_agentMemory",
+      "name": "a2a_python_strandsMemory",
       "strategies": [
         {
           "namespaceTemplates": [
@@ -242,9 +242,9 @@ exports[`FsProjectManager.create snapshots the Strands A2A project manifest and 
   "runtimes": [
     {
       "build": "CodeZip",
-      "codeLocation": "app/a2a_agent",
+      "codeLocation": "app/a2a_python_strands",
       "entrypoint": "main.py",
-      "name": "a2a_agent",
+      "name": "a2a_python_strands",
       "protocol": "A2A",
       "runtimeVersion": "PYTHON_3_14",
     },
