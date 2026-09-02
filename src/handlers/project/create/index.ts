@@ -1,6 +1,7 @@
 import z from "zod";
 import { createHandler, flag } from "../../../router";
 import { SourceResolver, type AppIO } from "../../../io";
+import { runWithProgress } from "../../../tui/progress";
 import {
   LANGUAGE_VERSION_DEFAULTS,
   MEMORY_SHORTCUT_NAMES,
@@ -28,7 +29,7 @@ import { DEFAULT_HARNESS_MODEL } from "../add/harness";
 import type { CoreBedrockAgentImporter } from "../../../core/project/bedrockAgentImport";
 import { importScaffoldRuntimeInput, resolveImportBedrockAgentInput } from "../importBedrockAgent";
 import type { ImportBedrockAgentInput } from "../add/runtime/types";
-import { RegionKey } from "../../keys";
+import { JsonKey, RegionKey } from "../../keys";
 
 type CreateProjectHandlerConfig = {
   projectManager: ProjectManager;
@@ -300,9 +301,12 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         );
       }
 
-      for await (const event of config.projectManager.create(createInput)) {
-        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
-      }
+      // Same driver as build and deploy: a live step list in a TTY, and the previous plain
+      // line-per-step output when stderr is not a TTY or --json wants no ANSI on it.
+      await runWithProgress(config.projectManager.create(createInput), {
+        io: config.io,
+        interactive: ctx.require(JsonKey) ? false : undefined,
+      });
 
       config.io.stderr.write(`Created project '${name}' in ./${name}\n`);
       config.io.stderr.write(`To deploy it: cd ${name} && agentcore project deploy\n`);
