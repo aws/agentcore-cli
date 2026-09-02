@@ -176,7 +176,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     // https://github.com/aws/bedrock-agentcore-sdk-typescript/blob/v0.3.0/src/memory/integrations/strands/factory.ts#L130-L133
     if (memory !== undefined && memory.strategies.length === 0)
       throw new InputValidationError(
-        "the strands-ts template does not support short-term-only memory; add long-term strategies or use --memory none",
+        "the agent-typescript-strands template does not support short-term-only memory; add long-term strategies or use --memory none",
       );
 
     const context = {
