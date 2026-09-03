@@ -57,17 +57,21 @@ export async function renderTuiAt(
 
   // alternateScreen switches the terminal to its alternate buffer so the TUI
   // takes over the screen and the prior scrollback is restored on exit (like Vim).
-  const handoffs = new TuiHandoffController();
-  const tuiCtx = ctx.withValue(TuiHandoffKey, handoffs);
-  const { waitUntilExit } = render(<Root path={path} ctx={tuiCtx} core={core} />, {
-    stdin: io.stdin,
-    stdout: io.stdout,
-    stderr: io.stderr,
-    alternateScreen: true,
-    incrementalRendering: true,
-  });
-  await waitUntilExit();
-  await handoffs.take()?.({ ctx: tuiCtx, core, io });
+  let nextPath: string | undefined = path;
+  while (nextPath !== undefined) {
+    const handoffs = new TuiHandoffController();
+    const tuiCtx = ctx.withValue(TuiHandoffKey, handoffs);
+    const { waitUntilExit } = render(<Root path={nextPath} ctx={tuiCtx} core={core} />, {
+      stdin: io.stdin,
+      stdout: io.stdout,
+      stderr: io.stderr,
+      alternateScreen: true,
+      incrementalRendering: true,
+    });
+    await waitUntilExit();
+    const result = await handoffs.take()?.({ ctx: tuiCtx, core, io });
+    nextPath = result?.resumePath;
+  }
 }
 
 // renderTui builds the root DefaultHandle that mounts the Ink React tree. It
