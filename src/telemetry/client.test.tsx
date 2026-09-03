@@ -10,6 +10,7 @@ import type { MetricSink } from "./types";
 import { FileSystemSink } from "./fileSystemSink";
 import { DEFAULT_GLOBAL_CONFIG } from "../globalConfig";
 import { PACKAGE_VERSION } from "../constants";
+import { resourceAttributesSchema } from "./shapes";
 
 describe("DefaultTelemetryClient", () => {
   let tempDir: string;
@@ -431,5 +432,29 @@ describe("OtelHistogramSink", () => {
     expect(receivedBodies).toHaveLength(0);
     expect(await readFile(auditFilePath, "utf8")).toContain("cli.command_run");
     await rm(auditFilePath, { force: true });
+  });
+});
+
+describe("resourceAttributesSchema", () => {
+  const attributes = (version: string) => ({
+    "service.name": "agentcore-cli",
+    "service.version": version,
+    "agentcore-cli.installation_id": "00000000-0000-0000-0000-000000000000",
+    "agentcore-cli.session_id": "00000000-0000-0000-0000-000000000000",
+    "os.type": "Darwin",
+    "os.version": "25.6.0",
+    "host.arch": "arm64",
+    "node.version": "v22.0.0",
+  });
+
+  test.each(["0.28.1", "1.0.0-rc.0", "1.0.0-preview.29"])(
+    "accepts service.version %s",
+    (version) => {
+      expect(resourceAttributesSchema.safeParse(attributes(version)).success).toBe(true);
+    },
+  );
+
+  test.each(["v1.0.0", "1.0", "1.0.0-"])("rejects service.version %s", (version) => {
+    expect(resourceAttributesSchema.safeParse(attributes(version)).success).toBe(false);
   });
 });
