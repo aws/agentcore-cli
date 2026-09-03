@@ -303,6 +303,91 @@ describe("paginated table picker contract", () => {
     expect(r.lastFrame()).toContain("agentcore → harness → get → alpha-1");
   });
 
+  test("moves focus from the Runtime filter into its matching rows", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setListResponse({
+      agentRuntimes: [
+        runtime({
+          agentRuntimeId: "orders-alpha",
+          agentRuntimeName: "orders-alpha",
+        }),
+        runtime({
+          agentRuntimeId: "orders-beta",
+          agentRuntimeName: "orders-beta",
+        }),
+      ],
+    });
+    const r = renderScreen("/agentcore/runtime/list", { core });
+
+    await waitForText(r.lastFrame, "orders-beta");
+    await r.write("/");
+    await r.write("orders");
+    await waitForText(r.lastFrame, "/ Filter: orders");
+    expect(r.lastFrame()).not.toContain("❯ orders-alpha");
+
+    await r.press("down");
+    await waitForText(r.lastFrame, "❯ orders-alpha");
+    expect(r.lastFrame()).not.toContain("/ Filter: orders█");
+
+    await r.press("up");
+    await waitForText(r.lastFrame, "/ Filter: orders█");
+    expect(r.lastFrame()).not.toContain("❯ orders-alpha");
+
+    await r.press("down");
+    await waitForText(r.lastFrame, "❯ orders-alpha");
+    await r.press("down");
+    await waitForText(r.lastFrame, "❯ orders-beta");
+    await r.press("return");
+
+    await waitFor(() =>
+      core.runtime.calls.some(
+        (call) => call.method === "getRuntime" && call.args[0] === "orders-beta",
+      ),
+    );
+    expect(
+      core.runtime.calls.some(
+        (call) => call.method === "getRuntime" && call.args[0] === "orders-alpha",
+      ),
+    ).toBe(false);
+  });
+
+  test("restores server page navigation after moving focus out of the filter", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setListResponse({
+      agentRuntimes: [
+        runtime({
+          agentRuntimeId: "page-one",
+          agentRuntimeName: "matching-page-one",
+        }),
+      ],
+      nextToken: "t2",
+    });
+    core.runtime.setListResponse(
+      {
+        agentRuntimes: [
+          runtime({
+            agentRuntimeId: "page-two",
+            agentRuntimeName: "matching-page-two",
+          }),
+        ],
+      },
+      "t2",
+    );
+    const r = renderScreen("/agentcore/runtime/list", { core });
+
+    await waitForText(r.lastFrame, "matching-page-one");
+    await r.write("/");
+    await r.write("matching");
+    await waitForText(r.lastFrame, "/ Filter: matching█");
+    await r.press("down");
+    await waitForText(r.lastFrame, "❯ matching-page-one");
+    await r.press("right");
+    await waitForText(r.lastFrame, "❯ matching-page-two");
+
+    expect(r.lastFrame()).toContain("/ Filter: matching");
+    expect(r.lastFrame()).not.toContain("/ Filter: matching█");
+  });
+
   test("fills the content area before and during a long filter", async () => {
     const longFilter = `${"filter-prefix-".repeat(8)}visible-suffix`;
     const core = new TestCoreClient();

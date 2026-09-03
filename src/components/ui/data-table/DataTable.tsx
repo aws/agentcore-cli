@@ -111,15 +111,25 @@ export function DataTable<T extends Record<string, unknown>>({
           setSearchQuery("");
           return;
         }
+        if (key.upArrow) {
+          return;
+        }
+        if (key.downArrow) {
+          setSelectedRow(0);
+          setSearchMode(false);
+          return;
+        }
         if (key.return) {
           setSearchMode(false);
           return;
         }
         if (key.backspace || key.delete) {
+          setSelectedRow(0);
           setSearchQuery((q) => q.slice(0, -1));
           return;
         }
         if (input && !key.ctrl && !key.meta && !/\p{Cc}/u.test(input)) {
+          setSelectedRow(0);
           setSearchQuery((q) => q + input);
         }
         return;
@@ -131,8 +141,10 @@ export function DataTable<T extends Record<string, unknown>>({
       }
 
       const serverPaged = onPrevPage !== undefined || onNextPage !== undefined;
-      if (key.upArrow || input === "k") setSelectedRow((r) => Math.max(0, r - 1));
-      else if (key.downArrow || input === "j")
+      if (key.upArrow || input === "k") {
+        if (selectedRow === 0 && searchQuery) setSearchMode(true);
+        else setSelectedRow((r) => Math.max(0, r - 1));
+      } else if (key.downArrow || input === "j")
         setSelectedRow((r) => Math.min(pageData.length - 1, r + 1));
       else if (key.leftArrow || input === "h") {
         if (serverPaged) {
@@ -267,7 +279,7 @@ export function DataTable<T extends Record<string, unknown>>({
           </Box>
         ) : (
           pageData.map((row, i) => {
-            const isSelected = i === selectedRow && selectable;
+            const isSelected = i === selectedRow && selectable && !searchMode;
             return (
               <Box key={i} flexDirection="row" columnGap={COLUMN_GAP}>
                 {selectable && (
