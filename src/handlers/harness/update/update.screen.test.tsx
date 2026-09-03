@@ -104,10 +104,12 @@ describe("harness update wizard", () => {
     core.harness.setGetResponse(current);
     const r = renderScreen("/agentcore/harness/update/MyHarness-abc123", { core });
 
-    // The harness's bedrock provider is preselected with its model id prefilled.
+    // The harness's bedrock provider is preselected. Its persisted model id is
+    // revealed after confirming the provider.
     await waitForText(r.lastFrame, "● bedrock");
-    expect(r.lastFrame()).toContain("us.anthropic.claude-opus-4-8");
+    expect(r.lastFrame()).not.toContain("us.anthropic.claude-opus-4-8");
     await r.press("return"); // into the model id field
+    await waitForText(r.lastFrame, "us.anthropic.claude-opus-4-8");
     await r.press("return"); // accept it unchanged
     await waitForText(r.lastFrame, "● managed");
     await r.press("return");

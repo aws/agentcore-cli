@@ -71,6 +71,21 @@ describe("Memory record list flow", () => {
     expect(core.memory.calls.some((call) => call.method === "listMemoryRecords")).toBe(false);
   });
 
+  test("reveals the scope input only after enter and hides it again on escape", async () => {
+    const screen = renderScreen("/agentcore/memory/record/list/memory-1");
+    const fieldHelp = "Enter the namespace value used to scope this request.";
+
+    await waitForText(screen.lastFrame, "scope type");
+    expect(screen.lastFrame()).not.toContain(fieldHelp);
+
+    await screen.press("return");
+    await waitForText(screen.lastFrame, fieldHelp);
+
+    await screen.press("escape");
+    await waitFor(() => !(screen.lastFrame() ?? "").includes(fieldHelp));
+    expect(screen.core.memory.calls).toEqual([]);
+  });
+
   test("unwinds the record table through its scope and Memory pickers", async () => {
     const memoryId = "memory/blue one";
     const core = new TestCoreClient();
@@ -85,6 +100,7 @@ describe("Memory record list flow", () => {
     await waitForText(screen.lastFrame, memoryId);
     await screen.press("return");
     await waitForText(screen.lastFrame, "scope type");
+    await screen.press("return"); // focus the namespace input
     await screen.write("/customers/acme");
     await screen.press("return");
     await waitForText(screen.lastFrame, "Customer prefers email notifications.");
@@ -105,6 +121,7 @@ describe("Memory record list flow", () => {
     await waitForText(screen.lastFrame, "scope type");
     await screen.press("down");
     await screen.press("up");
+    await screen.press("return"); // focus the namespace input
     await screen.write("/customers/acme");
     await screen.press("return");
     await waitFor(() => core.memory.calls.some((call) => call.method === "listMemoryRecords"));
@@ -128,6 +145,7 @@ describe("Memory record list flow", () => {
     });
 
     await waitForText(screen.lastFrame, "scope type");
+    await screen.press("return"); // focus the namespace input
     await screen.write("/customers/acme");
     await screen.press("return");
     await waitForText(screen.lastFrame, "Customer prefers email notifications.");
@@ -181,6 +199,7 @@ describe("Memory record list flow", () => {
 
     await waitForText(screen.lastFrame, "scope type");
     await screen.press("down");
+    await screen.press("return"); // focus the namespace path input
     await screen.write("/customers/acme/*");
     await screen.press("return");
     await waitFor(() => core.memory.calls.some((call) => call.method === "listMemoryRecords"));
@@ -317,7 +336,8 @@ describe("Memory record list flow", () => {
     const screen = renderScreen("/agentcore/memory/record/list/memory-1");
 
     await waitForText(screen.lastFrame, "scope type");
-    await screen.press("return");
+    await screen.press("return"); // focus the namespace input
+    await screen.press("return"); // submit the empty value
     await waitForText(screen.lastFrame, "A namespace value is required.");
     expect(screen.core.memory.calls).toEqual([]);
   });

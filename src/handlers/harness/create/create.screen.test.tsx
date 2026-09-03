@@ -111,6 +111,27 @@ describe("harness create wizard", () => {
     r.unmount();
   });
 
+  test("reveals model fields only after enter and hides them again on escape", async () => {
+    const r = renderScreen("/agentcore/harness/create", { core: coreForCreate() });
+
+    await waitForText(r.lastFrame, "the name of your harness");
+    await r.write("my_agent");
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "choose a model");
+    await r.press("down"); // bedrock
+    await waitForText(r.lastFrame, "● bedrock");
+    expect(r.lastFrame()).not.toContain("model id");
+
+    await r.press("return");
+    await waitForText(r.lastFrame, "model id");
+
+    await r.press("escape");
+    await waitFor(() => !(r.lastFrame() ?? "").includes("model id"));
+    expect(r.lastFrame()).toContain("● bedrock");
+    r.unmount();
+  });
+
   test("selecting gemini collects the model id and api key arn", async () => {
     const core = coreForCreate();
     const r = renderScreen("/agentcore/harness/create", { core });
