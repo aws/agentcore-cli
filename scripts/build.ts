@@ -31,9 +31,6 @@ const BOOTSTRAP_TEMPLATE = ["lib", "api", "bootstrap", "bootstrap-template.yaml"
 // traces unreadable and erase error names telemetry keys on.
 const MINIFY = { whitespace: true, syntax: true, identifiers: false } as const;
 
-// React (via Ink) selects its development or production build from NODE_ENV at
-// bundle time. Without this the bundle carries the development build, which is
-// larger to evaluate and slower to render.
 const DEFINE = { "process.env.NODE_ENV": JSON.stringify("production") };
 
 /** Absolute paths of every asset file. dot:true so hidden files (.prettierrc) are included. */
@@ -115,8 +112,9 @@ async function assertAssetsAreText(assets: string[]): Promise<void> {
   }
 }
 
-// V8's compile cache only covers modules loaded after enableCompileCache(), so
-// the bin is a loader in front of the bundle. No-op below Node 22.1.
+/**
+ V8 only caches modules loaded after enableCompileCache(), so the bin is a loader in front of the bundle.
+**/
 const BIN_LOADER = `#!/usr/bin/env node
 import module from "node:module";
 module.enableCompileCache?.();
