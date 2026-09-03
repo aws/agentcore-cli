@@ -1,47 +1,21 @@
 import { test, expect } from "bun:test";
-import type { CloudWatchLogsClient, OutputLogEvent } from "@aws-sdk/client-cloudwatch-logs";
-import { ResultTruncationError } from "../errors";
 import { createSilentLogger } from "../testing";
 import {
   isTerminalStatus,
   parseEvaluationLogEvent,
   readEvaluationResults,
 } from "./batchEvaluationResults";
+import type { CloudWatchLogEvent } from "./observability/index";
 
-// fakeLogs returns a CloudWatchLogsClient that serves `events` as a single page,
-// then signals exhaustion by echoing the same nextForwardToken on the next call —
-// exactly how GetLogEvents ends pagination. Records the tokens it was called with.
-function fakeLogs(events: OutputLogEvent[]): CloudWatchLogsClient {
-  let served = false;
-  return {
-    send: async () => {
-      if (!served) {
-        served = true;
-        return { events, nextForwardToken: "t-end" };
-      }
-      return { events: [], nextForwardToken: "t-end" }; // token unchanged → done
-    },
-  } as unknown as CloudWatchLogsClient;
-}
-
-// fakePagedLogs serves each element of `pages` on successive calls, advancing the
-// forward token per page and repeating the last token once to end. Captures every
-// nextToken the caller sent, so a test can assert the loop paged correctly.
-function fakePagedLogs(pages: OutputLogEvent[][]): {
-  client: CloudWatchLogsClient;
-  tokens: (string | undefined)[];
-} {
-  const tokens: (string | undefined)[] = [];
-  let call = 0;
-  const client = {
-    send: async (command: { input: { nextToken?: string } }) => {
-      tokens.push(command.input.nextToken);
-      const i = call++;
-      if (i < pages.length) return { events: pages[i], nextForwardToken: `t-${i}` };
-      return { events: [], nextForwardToken: `t-${pages.length - 1}` }; // repeat last → done
-    },
-  } as unknown as CloudWatchLogsClient;
-  return { client, tokens };
+async function* events(
+  messages: ({ message?: string } | string)[],
+): AsyncGenerator<CloudWatchLogEvent> {
+  for (const item of messages) {
+    yield {
+      timestamp: new Date(0),
+      message: typeof item === "string" ? item : (item.message ?? ""),
+    };
+  }
 }
 
 // A realistic stream shaped after the real `gen_ai.evaluation.result` records
@@ -49,7 +23,7 @@ function fakePagedLogs(pages: OutputLogEvent[][]): {
 // attributes["aws.bedrock_agentcore.evaluation_level"] (Title-case), session.id
 // sits under attributes, and the trace id is the top-level camelCase `traceId`.
 // One SESSION-level and one TRACE-level record, plus a non-JSON control line.
-const EVENTS: OutputLogEvent[] = [
+const EVENTS = [
   {
     message: JSON.stringify({
       attributes: {
@@ -88,7 +62,7 @@ test("isTerminalStatus recognizes the terminal arm only", () => {
 });
 
 test("readEvaluationResults keeps level + scope so sessions and traces are distinguishable", async () => {
-  const results = await readEvaluationResults(fakeLogs(EVENTS), "lg", "ls", createSilentLogger());
+  const results = await readEvaluationResults(events(EVENTS), createSilentLogger());
 
   // The non-JSON control line is skipped; the two evaluation records parse.
   expect(results).toHaveLength(2);
@@ -109,35 +83,6 @@ test("readEvaluationResults keeps level + scope so sessions and traces are disti
   expect(results.map((r) => r.level)).toEqual(["Session", "Trace"]);
 });
 
-test("readEvaluationResults follows pagination until the forward token stops advancing", async () => {
-  const page = (name: string): OutputLogEvent => ({
-    message: JSON.stringify({
-      attributes: {
-        "gen_ai.evaluation.name": name,
-        "aws.bedrock_agentcore.evaluation_level": "Trace",
-        "session.id": "s1",
-      },
-    }),
-  });
-  const { client, tokens } = fakePagedLogs([
-    [page("Builtin.Correctness")],
-    [page("Builtin.Helpfulness")],
-    [page("Builtin.Faithfulness")],
-  ]);
-
-  const results = await readEvaluationResults(client, "lg", "ls", createSilentLogger());
-
-  // All three pages' records are collected.
-  expect(results.map((r) => r.evaluatorId)).toEqual([
-    "Builtin.Correctness",
-    "Builtin.Helpfulness",
-    "Builtin.Faithfulness",
-  ]);
-  // First call has no token; later calls carry the prior page's forward token; a
-  // final call detects the repeated token and stops.
-  expect(tokens).toEqual([undefined, "t-0", "t-1", "t-2"]);
-});
-
 // Real-log-shape validation lives in the fixture-backed command-flow test
 // (batch-evaluation.fixture.test.tsx), where RECORD=1 captures a live GetLogEvents
 // response and matchGolden pins the parsed output. This file stays a pure unit
@@ -145,43 +90,14 @@ test("readEvaluationResults follows pagination until the forward token stops adv
 
 test("readEvaluationResults skips lines without an evaluation name", async () => {
   const results = await readEvaluationResults(
-    fakeLogs([
+    events([
       { message: JSON.stringify({ attributes: { "some.other.metric": 1 } }) },
       { message: "" },
       { message: undefined },
     ]),
-    "lg",
-    "ls",
     createSilentLogger(),
   );
   expect(results).toEqual([]);
-});
-
-test("readEvaluationResults throws (not silently truncates) when it hits the page cap", async () => {
-  // Token advances on every call, so the loop never detects exhaustion and runs
-  // into MAX_RESULT_PAGES. It must throw so the caller surfaces truncation, rather
-  // than returning the accumulated partial list as if it were complete.
-  let call = 0;
-  const everAdvancing = {
-    send: async () => ({
-      events: [
-        {
-          message: JSON.stringify({
-            attributes: { "gen_ai.evaluation.name": "Builtin.Correctness" },
-          }),
-        },
-      ],
-      nextForwardToken: `t-${call++}`, // always changes → never exhausts
-    }),
-  } as unknown as CloudWatchLogsClient;
-
-  const err = await readEvaluationResults(everAdvancing, "lg", "ls", createSilentLogger()).then(
-    () => undefined,
-    (e) => e as ResultTruncationError,
-  );
-  expect(err).toBeInstanceOf(ResultTruncationError);
-  expect(err?.message).toMatch(/incomplete/);
-  expect(err?.source).toBe("internal"); // our page cap, not a user or service fault
 });
 
 test("parseEvaluationLogEvent warns on and skips an unparseable line", () => {

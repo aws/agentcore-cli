@@ -116,6 +116,7 @@ import {
   sanitizeQueryValue,
   type InsightsRowLimit,
 } from "./observability";
+import { CloudWatchClient } from "./observability/index";
 import type {
   BatchEvaluationDetail,
   CodeBasedUpdate,
@@ -212,6 +213,7 @@ const EVAL_INSIGHTS_ROW_LIMIT: InsightsRowLimit = {
 };
 
 const DEFAULT_BATCH_INSIGHTS_PAGE_SIZE = 50;
+const BATCH_EVALUATION_RESULT_MAX_PAGES = 100;
 
 // noopLogger is the default for the optional logger arg so callers that don't
 // need batch-evaluation result-log diagnostics (e.g. dataset-only tests) can
@@ -227,6 +229,8 @@ const noopLogger: Logger = {
 const DEFAULT_ONLINE_INSIGHT_PAGE_SIZE = 100;
 
 export class EvalClient implements CoreEvalClient {
+  private readonly cloudWatch: CloudWatchClient;
+
   constructor(
     private readonly clients: AwsClients,
     // HTTP client for datasets presigned S3 URL
@@ -235,7 +239,9 @@ export class EvalClient implements CoreEvalClient {
     private readonly logger: Logger = noopLogger,
     private readonly newSessionId: () => string = randomUUID,
     private readonly now: () => number = () => Date.now(),
-  ) {}
+  ) {
+    this.cloudWatch = new CloudWatchClient(clients);
+  }
 
   async createEvaluator(
     request: CreateEvaluatorRequest,
@@ -434,9 +440,16 @@ export class EvalClient implements CoreEvalClient {
 
     try {
       detail.results = await readEvaluationResults(
-        this.clients.logs({ region: options.region }),
-        cw.logGroupName,
-        cw.logStreamName,
+        this.cloudWatch.readLogStream(
+          {
+            logGroupName: cw.logGroupName,
+            logStreamName: cw.logStreamName,
+          },
+          {
+            maxPages: BATCH_EVALUATION_RESULT_MAX_PAGES,
+          },
+          options,
+        ),
         this.logger,
       );
       return { detail };
