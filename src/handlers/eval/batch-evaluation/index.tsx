@@ -8,13 +8,14 @@ import { createListBatchEvaluationsHandler } from "./list";
 import { createEvaluateBatchEvaluationHandler } from "./evaluate";
 import { createSimulateBatchEvaluationHandler } from "./simulate";
 
-// batch-evaluation supports evaluate (start an async job) plus get + list. A bare
-// invocation opens the interactive TUI (list → get), matching evaluator and
-// online-eval.
+// batch-evaluation supports evaluate + simulate (start jobs) plus get + list. A
+// bare invocation opens the interactive TUI (list → get), matching evaluator and
+// online-eval; evaluate/simulate are CLI-only and stay out of the TUI menu.
 export function createBatchEvaluationHandler(core: Core, io: AppIO): Router {
   return new Router("batch-evaluation", "run and inspect AgentCore batch evaluations")
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
+    .supportedTuiCommands("get", "list")
     .handler(createEvaluateBatchEvaluationHandler(core, io))
     .handler(createSimulateBatchEvaluationHandler(core, io))
     .handler(createGetBatchEvaluationHandler(core, io))
